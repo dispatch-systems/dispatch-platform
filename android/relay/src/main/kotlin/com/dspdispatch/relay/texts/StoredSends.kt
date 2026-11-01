@@ -45,8 +45,10 @@ abstract class StoredSends : Sends {
     override suspend fun expire(before: Long, at: Long): List<Send> {
         val stuck = stuck(before)
         for (send in stuck) {
-            update(send.copy(outcome = SendStatus.FAILED, finished = at))
-            keepStatus(send.status(SendStatus.FAILED, at, Failure.NO_RESULT))
+            // The inbox reads the sent texts' rows, placing the app's: one placed went out.
+            val outcome = if (placed(send.id, send.attempt)) SendStatus.SENT else SendStatus.FAILED
+            update(send.copy(outcome = outcome, finished = at))
+            keepStatus(send.status(outcome, at, Failure.NO_RESULT.takeIf { outcome == SendStatus.FAILED }))
         }
         return stuck
     }
@@ -101,6 +103,9 @@ abstract class StoredSends : Sends {
 
     @Query("SELECT * FROM sends WHERE handed < :before AND outcome IS NULL")
     protected abstract suspend fun stuck(before: Long): List<Send>
+
+    @Query("SELECT EXISTS (SELECT 1 FROM send_rows WHERE id = :id AND attempt = :attempt)")
+    protected abstract suspend fun placed(id: String, attempt: Long): Boolean
 
     // A send Android took and never settled is failed by expire first, so it's kept until then. A
     // text not yet delivered may be, failed or sent, as long as the carrier keeps trying: picture

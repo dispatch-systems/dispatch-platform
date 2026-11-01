@@ -119,7 +119,10 @@ interface Sends {
     /** Keeps what Android said of a part of a send, and the statuses it moves the send to. */
     suspend fun heard(heard: Heard)
 
-    /** Fails each send Android took before [before] and said nothing more of, [at]; answers them. */
+    /**
+     * Settles each send Android took before [before] and said nothing more of, [at], as the
+     * provider says: sent when the app's row of it was read in Sent, else failed. Answers them.
+     */
     suspend fun expire(before: Long, at: Long): List<Send>
 
     /**
@@ -144,7 +147,7 @@ interface Sends {
     suspend fun placed(send: Send, row: String)
 }
 
-/** How long Android may take to say how a text it took went; past it, the text failed. */
+/** How long Android may take to say how a text it took went; past it, the provider says. */
 internal const val RESULT_WAIT_MS = 10 * 60 * 1000L
 
 /**

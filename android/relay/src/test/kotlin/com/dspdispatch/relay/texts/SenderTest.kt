@@ -1,5 +1,6 @@
 package com.dspdispatch.relay.texts
 
+import com.dspdispatch.relay.dispatch.Direction
 import com.dspdispatch.relay.dispatch.Dispatch
 import com.dspdispatch.relay.dispatch.Outbox
 import com.dspdispatch.relay.dispatch.OutgoingFile
@@ -186,6 +187,20 @@ class SenderTest {
     }
 
     @Test
+    fun settlesATextAndroidNeverSaidMoreOfByItsRowInSent() = runTest {
+        sender().send(paired, KEY, Outbox(listOf(text("in_sent", 1, "On my way"), text("in_failed", 1, "Gate code?"))))
+        // The inbox reads the app's row in Sent; one in Failed it never reads.
+        val row = Row(Table.SMS, 7, clock + 1_000, Direction.OUT, APP)
+        assertEquals(Whose.DISPATCH, SentByApp(sends, APP).whose(Message(row, listOf("(425) 555-0199"), "On my way", emptyList())))
+        clock += RESULT_WAIT_MS + 1
+        sender().send(paired, KEY, Outbox(emptyList()))
+        assertEquals(
+            setOf(Told("in_sent", 1, SendStatus.SENT, clock), Told("in_failed", 1, SendStatus.FAILED, clock, Failure.NO_RESULT)),
+            sends.statuses(10).toSet(),
+        )
+    }
+
+    @Test
     fun failsATextAndroidNeverSaidMoreOf() = runTest {
         sender().send(paired, KEY, Outbox(listOf(text("text_1", 1, "Hi"))))
         clock += RESULT_WAIT_MS - 1
@@ -222,5 +237,6 @@ class SenderTest {
     private companion object {
         val KEY = "k".repeat(64)
         const val DAY_MS = 24 * 60 * 60 * 1000L
+        const val APP = "com.dspdispatch.relay"
     }
 }
