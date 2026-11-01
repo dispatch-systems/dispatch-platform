@@ -1,6 +1,5 @@
 package com.dspdispatch.relay.texts
 
-import androidx.room3.AutoMigration
 import androidx.room3.Dao
 import androidx.room3.Database
 import androidx.room3.Insert
@@ -12,15 +11,14 @@ import kotlinx.coroutines.flow.Flow
 
 /**
  * The texts queue's storage, and the sends', in the app's own: nothing of it leaves the phone in a
- * backup. Version 2 added the sends.
+ * backup.
  */
 @Database(
     entities = [
         Mark::class, Seen::class, Unread::class, Waiting::class, WaitingFile::class,
         Send::class, Report::class, SendRow::class, Told::class,
     ],
-    version = 2,
-    autoMigrations = [AutoMigration(from = 1, to = 2)],
+    version = 1,
 )
 abstract class TextsDatabase : RoomDatabase() {
     abstract fun queue(): StoredQueue
