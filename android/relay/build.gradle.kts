@@ -3,6 +3,7 @@ import java.util.Properties
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 // The key that signs the app's releases lives on the MacBook it's built on, never in the repo:
@@ -75,10 +76,21 @@ android {
 dependencies {
     implementation(platform(libs.compose.bom))
     implementation(libs.activity.compose)
+    implementation(libs.camera.camera2)
+    implementation(libs.camera.lifecycle)
+    implementation(libs.camera.view)
     implementation(libs.compose.material3)
     implementation(libs.compose.ui)
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.core.ktx)
+    implementation(libs.coroutines.android)
+    implementation(libs.lifecycle.runtime.compose)
+    implementation(libs.lifecycle.service)
+    implementation(libs.okhttp)
+    implementation(libs.serialization.json)
+    implementation(libs.zxing.core)
     debugImplementation(libs.compose.ui.tooling)
+    testImplementation(libs.coroutines.test)
     testImplementation(libs.junit)
+    testImplementation(libs.okhttp.mockwebserver)
 }

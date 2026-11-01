@@ -18,7 +18,9 @@ with `{"error": "<code>", "message": "…"}`: the app acts on the code, never th
 - **Pairing** takes the code someone at the DSP showed (`POST /api/communications/phone/pair`),
   and answers the phone's key: 64 hexadecimal letters (`KEY_BYTES` in hexadecimal), given once,
   which the app keeps.
-- **Every other call** carries `Authorization: Bearer <key>`, once. Without it, or with a key no
+- **Anything but a read** (`POST`) carries `Origin: <the DSP's address>`, as a page of the DSP's
+  address would; without it, it's refused `invalid_origin` (403).
+- **Every call but pairing** carries `Authorization: Bearer <key>`, once. Without it, or with a key no
   phone holds, it's refused `sign_in_required` (401); once the phone was removed,
   `phones_removed` (401): its key works no more, so the app pairs again with a new code.
 

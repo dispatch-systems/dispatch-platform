@@ -7,6 +7,7 @@ import org.junit.Test
 class ServerTest {
     private val production = Server(production = true, productionDomain = "dispatch.test")
     private val dev = Server(production = false, productionDomain = "dispatch.test")
+    private val debug = Server(production = false, productionDomain = "dispatch.test", local = true)
 
     @Test
     fun productionPairsOnlyWithProductionsDsps() {
@@ -22,6 +23,18 @@ class ServerTest {
         assertTrue(dev.accepts("https://bh.elsewhere.test"))
         assertTrue(dev.accepts("https://bh.dev.other.test"))
         assertFalse(dev.accepts("https://bh.dispatch.test"))
+    }
+
+    @Test
+    fun onlyADebugBuildPairsWithADevelopmentServer() {
+        assertTrue(debug.accepts("http://bh.localhost:5180"))
+        assertTrue(debug.accepts("http://bh.localhost"))
+        assertTrue(debug.accepts("https://bh.elsewhere.test"))
+        assertFalse(debug.accepts("http://bh.elsewhere.test"))
+        assertFalse(debug.accepts("http://localhost:5180"))
+        assertFalse(debug.accepts("http://bh.localhost:5180/api"))
+        assertFalse(dev.accepts("http://bh.localhost:5180"))
+        assertFalse(production.accepts("http://bh.localhost:5180"))
     }
 
     @Test
