@@ -69,6 +69,27 @@ class InboxTest {
     }
 
     @Test
+    fun readsAPictureMessageDownloadedLongAfterItCameOnce() = runTest {
+        clock = PAIRED + 40 * HOUR
+        inbox.begin("phone_1", PAIRED)
+        sms(2, PAIRED + 39 * HOUR, Direction.IN, "(206) 555-0102", "First")
+        read()
+        clock += HOUR
+        read()
+        // Downloaded now, as a new row, its time when it came: well behind the look-back.
+        val came = clock - 30 * HOUR
+        mms(3, came, Direction.IN, listOf("(206) 555-0103"), "Late")
+        clock += HOUR
+        read()
+        assertEquals(setOf("sms-2-${PAIRED + 39 * HOUR}", "mms-3-$came"), queue.texts.keys)
+
+        queue.answered(queue.texts.keys.associateWith { emptyList() })
+        clock += HOUR
+        read()
+        assertTrue("read once", queue.texts.isEmpty())
+    }
+
+    @Test
     fun knowsARowWhoseIdWasUsedAgain() = runTest {
         inbox.begin("phone_1", PAIRED)
         sms(2, PAIRED + 10, Direction.IN, "(206) 555-0102", "Deleted later")

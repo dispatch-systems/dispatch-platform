@@ -16,7 +16,7 @@ import java.io.InputStream
 
 /** The phone's texts in Android's own texting provider, `Telephony.Sms` and `Telephony.Mms`. */
 class PhoneProvider(private val resolver: ContentResolver) : Provider {
-    override fun rows(since: Long): List<Row> = (smsRows(since) + mmsRows(since)).sortedWith(compareBy(Row::at, Row::id))
+    override fun rows(scan: Scan): List<Row> = (smsRows(scan) + mmsRows(scan)).sortedWith(compareBy(Row::at, Row::id))
 
     override fun read(row: Row): Reading = try {
         when (row.table) {
@@ -39,11 +39,12 @@ class PhoneProvider(private val resolver: ContentResolver) : Provider {
 
     override fun open(uri: String): InputStream = resolver.openInputStream(uri.toUri()) ?: throw Unavailable(uri)
 
-    private fun smsRows(since: Long): List<Row> = resolver.query(
+    private fun smsRows(scan: Scan): List<Row> = resolver.query(
         Sms.CONTENT_URI,
         arrayOf(Sms._ID, Sms.DATE, Sms.TYPE),
-        "${Sms.DATE} >= ? AND ${Sms.TYPE} IN (${TextBasedSmsColumns.MESSAGE_TYPE_INBOX}, ${TextBasedSmsColumns.MESSAGE_TYPE_SENT})",
-        arrayOf(since.toString()),
+        "${Sms.DATE} >= ? AND (${Sms.DATE} >= ? OR ${Sms._ID} > ?) AND " +
+            "${Sms.TYPE} IN (${TextBasedSmsColumns.MESSAGE_TYPE_INBOX}, ${TextBasedSmsColumns.MESSAGE_TYPE_SENT})",
+        arrayOf(scan.paired.toString(), scan.since.toString(), scan.sms.toString()),
         null,
     ).rows { cursor ->
         val direction = if (cursor.getInt(2) == TextBasedSmsColumns.MESSAGE_TYPE_INBOX) Direction.IN else Direction.OUT
@@ -52,12 +53,13 @@ class PhoneProvider(private val resolver: ContentResolver) : Provider {
 
     // A picture message's time is in seconds. One received counts once the texting app has
     // downloaded it, when it holds the message itself and not only word of it.
-    private fun mmsRows(since: Long): List<Row> = resolver.query(
+    private fun mmsRows(scan: Scan): List<Row> = resolver.query(
         Mms.CONTENT_URI,
         arrayOf(Mms._ID, Mms.DATE, Mms.MESSAGE_BOX),
-        "${Mms.DATE} >= ? AND ((${Mms.MESSAGE_BOX} = ${BaseMmsColumns.MESSAGE_BOX_INBOX} AND " +
-            "${Mms.MESSAGE_TYPE} = $RETRIEVE_CONF) OR ${Mms.MESSAGE_BOX} = ${BaseMmsColumns.MESSAGE_BOX_SENT})",
-        arrayOf(((since + MS_PER_SECOND - 1) / MS_PER_SECOND).toString()),
+        "${Mms.DATE} >= ? AND (${Mms.DATE} >= ? OR ${Mms._ID} > ?) AND " +
+            "((${Mms.MESSAGE_BOX} = ${BaseMmsColumns.MESSAGE_BOX_INBOX} AND ${Mms.MESSAGE_TYPE} = $RETRIEVE_CONF) OR " +
+            "${Mms.MESSAGE_BOX} = ${BaseMmsColumns.MESSAGE_BOX_SENT})",
+        arrayOf(seconds(scan.paired).toString(), seconds(scan.since).toString(), scan.mms.toString()),
         null,
     ).rows { cursor ->
         val direction = if (cursor.getInt(2) == BaseMmsColumns.MESSAGE_BOX_INBOX) Direction.IN else Direction.OUT
@@ -158,6 +160,9 @@ class PhoneProvider(private val resolver: ContentResolver) : Provider {
 
         /** Picture messages' parts: `Telephony.Mms.Part.CONTENT_URI`, there only from Android 10. */
         val PARTS: Uri = "content://mms/part".toUri()
+
+        /** [ms] in whole seconds, rounded up, as a picture message's time is. */
+        fun seconds(ms: Long) = (ms + MS_PER_SECOND - 1) / MS_PER_SECOND
 
         fun count(stream: InputStream): Long {
             val buffer = ByteArray(DEFAULT_BUFFER_SIZE)

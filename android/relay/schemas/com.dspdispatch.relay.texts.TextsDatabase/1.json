@@ -2,11 +2,11 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "34176653e9e21e9353f6587aab45db3a",
+    "identityHash": "0aa3a1fa8bf1bb8bcf90438f2e43080f",
     "entities": [
       {
         "tableName": "mark",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`phone` TEXT NOT NULL, `paired` INTEGER NOT NULL, `scanned` INTEGER NOT NULL, `id` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`phone` TEXT NOT NULL, `paired` INTEGER NOT NULL, `scanned` INTEGER NOT NULL, `sms` INTEGER NOT NULL, `mms` INTEGER NOT NULL, `id` INTEGER NOT NULL, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "phone",
@@ -27,6 +27,18 @@
             "notNull": true
           },
           {
+            "fieldPath": "sms",
+            "columnName": "sms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mms",
+            "columnName": "mms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
             "fieldPath": "id",
             "columnName": "id",
             "affinity": "INTEGER",
@@ -35,9 +47,7 @@
         ],
         "primaryKey": {
           "autoGenerate": false,
-          "columnNames": [
-            "id"
-          ]
+          "columnNames": ["id"]
         }
       },
       {
@@ -64,9 +74,7 @@
         ],
         "primaryKey": {
           "autoGenerate": false,
-          "columnNames": [
-            "row"
-          ]
+          "columnNames": ["row"]
         }
       },
       {
@@ -112,9 +120,7 @@
         ],
         "primaryKey": {
           "autoGenerate": false,
-          "columnNames": [
-            "key"
-          ]
+          "columnNames": ["key"]
         }
       },
       {
@@ -154,9 +160,7 @@
         ],
         "primaryKey": {
           "autoGenerate": false,
-          "columnNames": [
-            "clientId"
-          ]
+          "columnNames": ["clientId"]
         }
       },
       {
@@ -213,26 +217,20 @@
         ],
         "primaryKey": {
           "autoGenerate": true,
-          "columnNames": [
-            "id"
-          ]
+          "columnNames": ["id"]
         },
         "indices": [
           {
             "name": "index_files_clientId",
             "unique": false,
-            "columnNames": [
-              "clientId"
-            ],
+            "columnNames": ["clientId"],
             "orders": [],
             "createSql": "CREATE INDEX IF NOT EXISTS `index_files_clientId` ON `${TABLE_NAME}` (`clientId`)"
           },
           {
             "name": "index_files_dispatchId",
             "unique": false,
-            "columnNames": [
-              "dispatchId"
-            ],
+            "columnNames": ["dispatchId"],
             "orders": [],
             "createSql": "CREATE INDEX IF NOT EXISTS `index_files_dispatchId` ON `${TABLE_NAME}` (`dispatchId`)"
           }
@@ -241,7 +239,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '34176653e9e21e9353f6587aab45db3a')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '0aa3a1fa8bf1bb8bcf90438f2e43080f')"
     ]
   }
 }

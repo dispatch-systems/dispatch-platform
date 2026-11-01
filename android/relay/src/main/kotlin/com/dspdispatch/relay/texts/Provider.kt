@@ -19,6 +19,12 @@ data class Row(val table: Table, val id: Long, val at: Long, val direction: Dire
 }
 
 /**
+ * Which rows a read goes over, none written before [paired]: those written at or after [since],
+ * and those above [sms] and [mms], the highest row IDs read before, whenever written.
+ */
+data class Scan(val paired: Long, val since: Long, val sms: Long, val mms: Long)
+
+/**
  * A text as the provider holds it: [numbers], the sender of one received or each recipient of
  * one sent, as the provider writes them; its words, and its pictures and files.
  */
@@ -51,10 +57,10 @@ class Unavailable(what: String) : IOException("The texting provider can't read $
  */
 interface Provider {
     /**
-     * The rows of texts written at or after [since], received or sent, oldest first: none still
-     * waiting to be sent, nor a picture message the texting app hasn't downloaded yet.
+     * The rows of texts [scan] goes over, received or sent, oldest first: none still waiting to be
+     * sent, nor a picture message the texting app hasn't downloaded yet.
      */
-    fun rows(since: Long): List<Row>
+    fun rows(scan: Scan): List<Row>
 
     /** The text [row] holds, if it's whole yet. */
     fun read(row: Row): Reading

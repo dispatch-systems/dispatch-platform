@@ -38,8 +38,8 @@ abstract class StoredQueue : Queue {
         keep(mark)
     }
 
-    @Query("SELECT row FROM seen WHERE at >= :since")
-    abstract override suspend fun seen(since: Long): List<String>
+    @Query("SELECT row FROM seen")
+    abstract override suspend fun seen(): List<String>
 
     @Transaction
     override suspend fun read(row: Seen, texts: List<Waiting>, files: List<WaitingFile>) {
@@ -56,8 +56,8 @@ abstract class StoredQueue : Queue {
     abstract override suspend fun later(row: Unread)
 
     @Transaction
-    override suspend fun scanned(at: Long, forget: Long) {
-        scannedAt(at)
+    override suspend fun scanned(mark: Mark, forget: Long) {
+        keep(mark)
         forgetBefore(forget)
     }
 
@@ -111,9 +111,6 @@ abstract class StoredQueue : Queue {
 
     @Insert
     protected abstract suspend fun keepFiles(files: List<WaitingFile>)
-
-    @Query("UPDATE mark SET scanned = :at")
-    protected abstract suspend fun scannedAt(at: Long)
 
     @Query("DELETE FROM seen WHERE at < :before")
     protected abstract suspend fun forgetBefore(before: Long)

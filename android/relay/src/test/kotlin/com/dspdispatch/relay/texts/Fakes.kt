@@ -23,7 +23,7 @@ class MemoryQueue : Queue {
         this.mark = mark
     }
 
-    override suspend fun seen(since: Long) = seen.values.filter { it.at >= since }.map(Seen::row)
+    override suspend fun seen() = seen.keys.toList()
 
     override suspend fun read(row: Seen, texts: List<Waiting>, files: List<WaitingFile>) {
         seen[row.row] = row
@@ -38,8 +38,8 @@ class MemoryQueue : Queue {
         unread.putIfAbsent(row.key, row)
     }
 
-    override suspend fun scanned(at: Long, forget: Long) {
-        mark = mark?.copy(scanned = at)
+    override suspend fun scanned(mark: Mark, forget: Long) {
+        this.mark = mark
         seen.values.removeAll { it.at < forget }
     }
 
@@ -86,7 +86,9 @@ class FakeProvider : Provider {
     /** How many reads failed as the phone didn't allow them. */
     var refused = 0
 
-    override fun rows(since: Long) = (messages.map(Message::row) + writing).filter { it.at >= since }.sortedBy(Row::at)
+    override fun rows(scan: Scan) = (messages.map(Message::row) + writing)
+        .filter { it.at >= scan.paired && (it.at >= scan.since || it.id > if (it.table == Table.SMS) scan.sms else scan.mms) }
+        .sortedBy(Row::at)
 
     override fun read(row: Row): Reading {
         if (row in writing) return Reading.Later

@@ -5,8 +5,8 @@ import com.dspdispatch.relay.dispatch.Direction
 /**
  * Reads the phone's texts into the [queue]: each received, and each sent from its texting app but
  * the app's [own], once, from when the phone paired on. Each read goes back over the texts written
- * since the last one, so a text written while the app was stopped is read at its next start, and
- * over each not whole the last time.
+ * since the last one, so a text written while the app was stopped is read at its next start, over
+ * each not whole the last time, and over each row added since, whatever its time.
  */
 class Inbox(
     private val provider: Provider,
@@ -31,19 +31,21 @@ class Inbox(
     suspend fun read(): Boolean {
         val mark = queue.mark() ?: return true
         val started = now()
-        // A text may come into the provider a while after its time: one sent waits to go, and a
-        // picture message to be downloaded. Looking back a while finds those, and a row whose ID
-        // was used again after one before it was deleted.
+        // A text may come into the provider after its time. A text sent leaves the outbox in its
+        // row, found looking back a while, as is a row whose ID was used again after one before it
+        // was deleted. A picture message downloaded late is a new row, its time when it came,
+        // however long before: found above the highest ID read.
         val since = maxOf(mark.paired, mark.scanned - LOOK_BACK_MS)
-        val seen = queue.seen(since).toHashSet()
+        val rows = provider.rows(Scan(mark.paired, since, mark.sms, mark.mms))
+        val seen = queue.seen().toHashSet()
         val unread = queue.unread()
         val found = unread.associate { it.key to it.found }
         var whole = true
-        for (row in (unread.map(Unread::row) + provider.rows(since)).distinctBy(Row::key)) {
+        for (row in (unread.map(Unread::row) + rows).distinctBy(Row::key)) {
             if (row.key in seen) continue
             whole = read(row, found[row.key] ?: started, started) && whole
         }
-        queue.scanned(started, since)
+        queue.scanned(mark.copy(scanned = started, sms = rows.highest(Table.SMS, mark.sms), mms = rows.highest(Table.MMS, mark.mms)), since)
         return whole
     }
 
@@ -107,6 +109,9 @@ class Inbox(
         private const val LARGEST = 20L * 1024 * 1024
         private const val NAME_MOST = 200
         private const val MIME_MOST = 100
+
+        /** The highest ID of these rows of [table], or of those [read] before. */
+        private fun List<Row>.highest(table: Table, read: Long): Long = filter { it.table == table }.maxOfOrNull(Row::id)?.coerceAtLeast(read) ?: read
 
         /** At most [most] characters of this, counting as Dispatch does. */
         private fun String.limited(most: Int): String =
