@@ -32,20 +32,22 @@ fun Scanner(read: (String) -> Unit, modifier: Modifier = Modifier) {
     val reading = rememberUpdatedState(read)
     val view = remember { PreviewView(context) }
     DisposableEffect(owner) {
+        // Everything here runs on the main thread. Leaving the scanner can come before the camera
+        // is ready: once closed, nothing binds, and a late read is dropped.
+        var closed = false
         val analysis = Executors.newSingleThreadExecutor()
+        val preview = Preview.Builder().build().also { it.surfaceProvider = view.surfaceProvider }
+        val analyzer = ImageAnalysis.Builder()
+            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+            .build()
+            .also { it.setAnalyzer(analysis, QrReader { text -> view.post { if (!closed) reading.value(text) } }) }
         val future = ProcessCameraProvider.getInstance(context)
         future.addListener({
-            val camera = future.get()
-            val preview = Preview.Builder().build().also { it.surfaceProvider = view.surfaceProvider }
-            val analyzer = ImageAnalysis.Builder()
-                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                .build()
-                .also { it.setAnalyzer(analysis, QrReader { text -> view.post { reading.value(text) } }) }
-            camera.unbindAll()
-            camera.bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analyzer)
+            if (!closed) future.get().bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analyzer)
         }, ContextCompat.getMainExecutor(context))
         onDispose {
-            if (future.isDone) future.get().unbindAll()
+            closed = true
+            if (future.isDone) future.get().unbind(preview, analyzer)
             analysis.shutdown()
         }
     }
