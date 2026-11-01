@@ -20,16 +20,18 @@ import com.dspdispatch.relay.setup.Fixes
 import com.dspdispatch.relay.texts.Today
 import com.dspdispatch.relay.ui.CameraScreen
 import com.dspdispatch.relay.ui.ConnectedScreen
+import com.dspdispatch.relay.ui.Page
 import com.dspdispatch.relay.ui.RemovedScreen
 import com.dspdispatch.relay.ui.ScanScreen
 import com.dspdispatch.relay.ui.SetupScreen
 import com.dspdispatch.relay.ui.StartScreen
+import com.dspdispatch.relay.ui.StepScreen
 import kotlinx.coroutines.launch
 
 /**
- * The app's one screen at a time: pairing while unpaired or removed, then Set up, then the
- * relay's state. A pairing link opens it too, as the phone's own camera app offers one from the
- * code's QR.
+ * The app's one screen at a time: pairing while unpaired or removed, then Set up and its guided
+ * walk, then the relay's state, from which a step undone is walked again. A pairing link opens it
+ * too, as the phone's own camera app offers one from the code's QR.
  */
 class MainActivity : ComponentActivity() {
     private var scanning by mutableStateOf(false)
@@ -58,20 +60,25 @@ class MainActivity : ComponentActivity() {
             val link by relay.connection.link.collectAsStateWithLifecycle()
             val attempt by relay.attempting.collectAsStateWithLifecycle()
             val items by relay.setup.items.collectAsStateWithLifecycle()
+            val walk by relay.setup.walk.collectAsStateWithLifecycle()
             val finished by relay.setup.finished.collectAsStateWithLifecycle()
             val today by relay.texts.today.collectAsStateWithLifecycle(Today())
             val mmsWhenBusy by relay.texts.mmsWhenBusy.on.collectAsStateWithLifecycle()
             val pairing = attempt == Attempt.Pairing
             val problem = (attempt as? Attempt.Failed)?.problem
             val now = standing
+            // A walk kept from before Android ended the app shows once the steps are checked again.
+            val place = items?.let { walk?.at(it) }
             when {
-                now is Standing.Pairing && !finished -> SetupScreen(now.paired, items, fixes::apply, relay.setup::finish)
+                now is Standing.Pairing && place != null -> StepScreen(place, fixes::apply, relay.setup::stop)
+                now is Standing.Pairing && walk != null && items == null -> Page {}
+                now is Standing.Pairing && !finished -> SetupScreen(now.paired, ::startWalk)
                 now is Standing.Pairing -> ConnectedScreen(
                     now.paired,
                     link,
                     today,
                     items?.firstOrNull { !it.done },
-                    fixes::apply,
+                    ::startWalk,
                     mmsWhenBusy,
                     relay.texts.mmsWhenBusy::set,
                 )
@@ -101,6 +108,10 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         opened(intent)
+    }
+
+    private fun startWalk() {
+        lifecycleScope.launch { relay.setup.start() }
     }
 
     private fun opened(intent: Intent) {

@@ -11,8 +11,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 
 /**
- * Set up: the steps the app needs of the phone, as last checked, and whether Set up was finished.
- * What only the person can say is done is kept in the app's own storage.
+ * Set up: the steps the app needs of the phone, as last checked, the guided walk through those
+ * undone, and whether Set up was finished. What only the person can say is done, and the walk
+ * under way, are kept in the app's own storage.
  */
 class Setup(private val context: Context) {
     private val prefs = context.getSharedPreferences("setup", Context.MODE_PRIVATE)
@@ -28,16 +29,28 @@ class Setup(private val context: Context) {
     /** Whether Set up was finished, after which the running screen shows instead. */
     val finished: StateFlow<Boolean> = done.asStateFlow()
 
+    private val walking = Walking(object : Walking.Saved {
+        override fun read() = prefs.getString(WALK, null)
+
+        override fun write(text: String?) = prefs.edit { if (text == null) remove(WALK) else putString(WALK, text) }
+    })
+
+    /** The guided Set up under way, if it is, kept across Android ending the app's process. */
+    val walk: StateFlow<Walk?> = walking.walk
+
     /**
      * Checks every step again. With [notify], a step undone and not yet notified is notified, once
      * it can be; a step done again takes its notification away, and is notified again if undone
      * later.
      */
     suspend fun check(notify: Boolean = false): List<Item> {
-        val items = withContext(Dispatchers.IO) {
-            checklist(probe.read({ byHand(makerKey(it)) }, byHand(Step.CHAT_FEATURES.name)))
+        val facts = withContext(Dispatchers.IO) {
+            probe.read({ byHand(makerKey(it)) }, byHand(Step.CHAT_FEATURES.name), prefs.getBoolean(TEXTING_UNRESTRICTED, false))
         }
+        if (facts.texting) textingUnrestricted()
+        val items = checklist(facts)
         checked.value = items
+        walkOn(items)
         val undone = items.filterNot(Item::done).map(Item::step).toSet()
         Step.entries.filterNot(undone::contains).forEach { Notifications.cancelUndone(context, it) }
         val before = prefs.getStringSet(NOTIFIED, emptySet()).orEmpty().mapNotNull { name -> Step.entries.find { it.name == name } }.toSet()
@@ -64,8 +77,40 @@ class Setup(private val context: Context) {
         if (confirmed != now) prefs.edit { putString(key, confirmed.name) }
     }
 
+    /** Starts the guided walk through the steps undone now; Set up is finished at once where none is. */
+    suspend fun start() {
+        walking.start()
+        check()
+    }
+
+    /** Leaves the guided walk, for the screen it started from. */
+    fun stop() = walking.stop()
+
+    /**
+     * Android let the person choose on texting, by its own prompt or by texting allowed, which it
+     * does only once it no longer restricts texting: kept, as Android keeps it from apps.
+     */
+    fun textingUnrestricted() {
+        if (!prefs.getBoolean(TEXTING_UNRESTRICTED, false)) prefs.edit { putBoolean(TEXTING_UNRESTRICTED, true) }
+    }
+
+    /**
+     * Android refused texting without asking: checked again, the walk shows the way through,
+     * Restricted settings once where Android may restrict texting, else App info. Whether a walk
+     * is under way to show it.
+     */
+    suspend fun textingRefused(): Boolean = walking.refused(check())
+
+    /** The person came back from a screen a step opened: after Restricted settings, the walk asks for texting again. */
+    fun back() = walking.back()
+
+    /** Moves the walk on to what [items] has undone; at its end, Set up is finished. */
+    private fun walkOn(items: List<Item>) {
+        if (walking.on(items) && !done.value) finish()
+    }
+
     /** Set up is done: the running screen shows from now on. */
-    fun finish() {
+    private fun finish() {
         prefs.edit { putBoolean(FINISHED, true) }
         done.value = true
     }
@@ -85,6 +130,8 @@ class Setup(private val context: Context) {
     private companion object {
         const val FINISHED = "finished"
         const val NOTIFIED = "notified"
+        const val WALK = "walk"
+        const val TEXTING_UNRESTRICTED = "texting_unrestricted"
     }
 }
 

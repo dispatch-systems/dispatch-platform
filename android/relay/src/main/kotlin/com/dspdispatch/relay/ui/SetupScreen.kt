@@ -1,25 +1,16 @@
 package com.dspdispatch.relay.ui
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -27,10 +18,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -38,108 +28,88 @@ import com.dspdispatch.relay.R
 import com.dspdispatch.relay.pairing.Paired
 import com.dspdispatch.relay.setup.Fix
 import com.dspdispatch.relay.setup.Item
+import com.dspdispatch.relay.setup.Place
 import com.dspdispatch.relay.setup.Step
 
-/** Set up, after pairing: each step the app needs, done or with its fix, then Finish once all are. */
+/** Set up, after pairing: the DSP, and the one button that starts the guided walk. */
 @Composable
-fun SetupScreen(paired: Paired, items: List<Item>?, fix: (Item, Fix) -> Unit, finish: () -> Unit) = Page {
-    Text(
-        stringResource(R.string.set_up),
-        Modifier.padding(bottom = 12.dp),
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.SemiBold,
-    )
-    Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), Arrangement.spacedBy(12.dp)) {
-        Card { DspLine(paired) }
-        if (!items.isNullOrEmpty()) {
-            Card {
-                items.forEachIndexed { index, item ->
-                    if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-                    StepRow(item) { fix(item, it) }
-                }
-            }
-        }
+fun SetupScreen(paired: Paired, start: () -> Unit) = Page {
+    Top()
+    Column(Modifier.weight(1f).fillMaxWidth(), Arrangement.Center, Alignment.CenterHorizontally) {
+        Text(stringResource(R.string.set_up), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        DspLine(paired)
     }
-    Button(
-        finish,
-        Modifier.fillMaxWidth().padding(top = 12.dp).height(48.dp),
-        enabled = items != null && items.all(Item::done),
-    ) {
-        Text(stringResource(R.string.finish))
+    Big(stringResource(R.string.start), filled = true, start, Modifier.fillMaxWidth())
+}
+
+/**
+ * A step of the guided walk, filling the screen: what to do, its place in the walk with the steps
+ * done, and its button opening Android's prompt or screen for it, with Done beside where only the
+ * person can say it's done. Back leaves the walk.
+ */
+@Composable
+fun StepScreen(place: Place, fix: (Item, Fix) -> Unit, back: () -> Unit) = Page {
+    BackHandler(onBack = back)
+    val item = place.item
+    // A walk of one step, as a banner's Fix often is, has no progress to show.
+    if (place.count > 1) {
+        Text(
+            stringResource(R.string.step_of, place.number, place.count),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.titleSmall,
+        )
+        LinearProgressIndicator(
+            { (place.number - 1).toFloat() / place.count },
+            Modifier.fillMaxWidth().padding(top = 10.dp).height(6.dp),
+            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+        )
+    }
+    Column(Modifier.weight(1f).fillMaxWidth(), Arrangement.Center, Alignment.CenterHorizontally) {
+        Text(
+            stringResource(place.heading),
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+    Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(12.dp)) {
+        item.fixes.forEach { each -> Big(stringResource(each.label), filled = each == item.fix, { fix(item, each) }, Modifier.weight(1f)) }
     }
 }
 
-/** A step of Set up undone while running, above the running screen, with its fix. */
+/** A step of Set up undone while running, above the running screen, with Fix opening its guided step. */
 @Composable
-fun UndoneBanner(item: Item, fix: (Fix) -> Unit) {
+fun UndoneBanner(item: Item, fix: () -> Unit) {
     val tones = LocalTones.current
     Surface(Modifier.fillMaxWidth().padding(top = 12.dp), RoundedCornerShape(14.dp), tones.warningSurface) {
         Row(Modifier.padding(start = 14.dp, end = 10.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(item.step.undone), Modifier.weight(1f), color = tones.warning, fontWeight = FontWeight.SemiBold)
-            item.fix?.let { main ->
-                Small(
-                    stringResource(if (main == Fix.CONFIRM) R.string.done else R.string.fix),
-                    filled = false,
-                ) { fix(main) }
+            OutlinedButton(fix, Modifier.height(32.dp), contentPadding = PaddingValues(horizontal = 12.dp)) {
+                Text(stringResource(R.string.fix), fontSize = 13.sp)
             }
         }
     }
 }
 
+/** Set up's large button: filled for the one to tap, outlined beside it. */
 @Composable
-private fun Card(content: @Composable () -> Unit) = Surface(
-    Modifier.fillMaxWidth(),
-    RoundedCornerShape(18.dp),
-    MaterialTheme.colorScheme.surface,
-    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-) {
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) { content() }
+private fun Big(text: String, filled: Boolean, click: () -> Unit, modifier: Modifier) {
+    val sized = modifier.height(BIG_HEIGHT.dp)
+    val label = @Composable { Text(text, style = MaterialTheme.typography.titleMedium) }
+    if (filled) Button(click, sized) { label() } else OutlinedButton(click, sized) { label() }
 }
 
-@Composable
-private fun StepRow(item: Item, fix: (Fix) -> Unit) = Row(
-    Modifier.fillMaxWidth().padding(vertical = 12.dp),
-    Arrangement.spacedBy(8.dp),
-    Alignment.CenterVertically,
-) {
-    Tick(item.done)
-    Text(stringResource(item.step.label), Modifier.weight(1f).padding(start = 4.dp))
-    item.fixes.forEach { each -> Small(stringResource(each.label), filled = each == item.fix) { fix(each) } }
-}
-
-@Composable
-private fun Tick(done: Boolean) {
-    val modifier = Modifier.size(26.dp)
-    if (done) {
-        Box(modifier.background(LocalTones.current.success, CircleShape), Alignment.Center) {
-            Image(painterResource(R.drawable.ic_check), null, Modifier.size(16.dp), colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.surface))
-        }
-    } else {
-        Box(modifier.border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape))
-    }
-}
-
-/** A step's or a banner's button, small beside its label. */
-@Composable
-private fun Small(text: String, filled: Boolean, click: () -> Unit) {
-    val padding = PaddingValues(horizontal = 12.dp)
-    val modifier = Modifier.height(32.dp)
-    if (filled) {
-        Button(click, modifier, contentPadding = padding) { Text(text, fontSize = 13.sp) }
-    } else {
-        OutlinedButton(click, modifier, contentPadding = padding) { Text(text, fontSize = 13.sp) }
-    }
-}
+/** Set up's buttons' height, larger than the app's others so none is missed. */
+private const val BIG_HEIGHT = 56
 
 @Preview
 @Composable
-private fun SetupPreview() = SetupScreen(
-    Paired("https://bh.dispatch.test", "Blue Heron Logistics", "phone_1", "Dispatch", 0),
-    listOf(
-        Item(Step.TEXTING, true, emptyList()),
-        Item(Step.BATTERY, false, listOf(Fix.MAKER_BATTERY, Fix.CONFIRM)),
-        Item(Step.CHAT_FEATURES, false, listOf(Fix.TEXTING_APP)),
-    ),
+private fun SetupPreview() = SetupScreen(Paired("https://bh.dispatch.test", "Blue Heron Logistics", "phone_1", "Dispatch", 0)) {}
+
+@Preview
+@Composable
+private fun StepPreview() = StepScreen(
+    Place(Item(Step.CHAT_FEATURES, false, listOf(Fix.TEXTING_APP, Fix.CONFIRM)), 3, 5),
     { _, _ -> },
     {},
 )

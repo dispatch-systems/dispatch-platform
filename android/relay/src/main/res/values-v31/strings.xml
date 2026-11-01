@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The unused-apps setting as Android 12 to 15 name it. -->
 <resources>
-    <string name="step_unused_apps">Pause app activity if unused off</string>
+    <string name="step_unused_apps">Turn off Pause app activity if unused</string>
     <string name="undone_unused_apps">Pause app activity if unused on</string>
 </resources>
