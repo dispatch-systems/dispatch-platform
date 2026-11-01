@@ -19,7 +19,7 @@ import kotlinx.coroutines.launch
  */
 class SendResults : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        val heard = heard(intent, resultCode, System.currentTimeMillis()) ?: return
+        val heard = heard(context, intent, resultCode, System.currentTimeMillis()) ?: return
         // Kept before Android may stop the app again: goAsync holds it while the write takes the
         // database off the main thread.
         val pending = goAsync()
@@ -32,23 +32,32 @@ class SendResults : BroadcastReceiver() {
         }
     }
 
-    private fun heard(intent: Intent, code: Int, at: Long): Heard? {
+    private fun heard(context: Context, intent: Intent, code: Int, at: Long): Heard? {
         val id = intent.getStringExtra(ID) ?: return null
         val attempt = intent.getLongExtra(ATTEMPT, -1).takeIf { it >= 0 } ?: return null
         val part = intent.getIntExtra(PART, 0)
         return when (intent.action) {
             SMS_SENT -> Heard(id, attempt, part, Event.SENT, Failure.sms(code), null, at)
-            SMS_DELIVERED -> Heard(id, attempt, part, Event.DELIVERED, null, null, at).takeIf { delivered(intent) }
+            SMS_DELIVERED -> Heard(id, attempt, part, Event.DELIVERED, null, null, at).takeIf { delivered(context, intent) }
             MMS_SENT -> Heard(id, attempt, part, Event.SENT, Failure.mms(code) ?: refused(intent), null, at)
             else -> null
         }
     }
 
-    private fun delivered(intent: Intent): Boolean {
+    // Android reports a part delivered as the carrier does: a report that it's still trying keeps
+    // the same PendingIntent for the next. A final one retires it.
+    private fun delivered(context: Context, intent: Intent): Boolean {
         val pdu = intent.getByteArrayExtra(PDU) ?: return false
         val format = intent.getStringExtra(FORMAT) ?: return false
         val status = SmsMessage.createFromPdu(pdu, format)?.status ?: return false
-        return delivered(status, format)
+        val delivery = delivery(status, format)
+        if (delivery != Delivery.PENDING) retire(context, intent)
+        return delivery == Delivery.DELIVERED
+    }
+
+    private fun retire(context: Context, heard: Intent) {
+        val intent = Intent(context, SendResults::class.java).setAction(heard.action).setData(heard.data)
+        PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_NO_CREATE or mutable())?.cancel()
     }
 
     /** Why the carrier refused a picture message Android sent, by its answer, if it did. */
@@ -73,37 +82,66 @@ class SendResults : BroadcastReceiver() {
         private const val FORMAT = "format"
 
         /** What Android sends as [part] of [send] is sent, or fails. */
-        fun sent(context: Context, send: Send, part: Int) = result(context, SMS_SENT, send, part)
+        fun sent(context: Context, send: Send, part: Int) = result(context, SMS_SENT, send, part, once = true)
 
-        /** What Android sends as [part] of [send] is reported delivered. */
-        fun delivered(context: Context, send: Send, part: Int) = result(context, SMS_DELIVERED, send, part)
+        /** What Android sends each time the carrier reports on [part] of [send]'s delivery. */
+        fun delivered(context: Context, send: Send, part: Int) = result(context, SMS_DELIVERED, send, part, once = false)
 
         /** What Android sends as the picture message of [send] is sent, or fails. */
-        fun mmsSent(context: Context, send: Send) = result(context, MMS_SENT, send, 0)
+        fun mmsSent(context: Context, send: Send) = result(context, MMS_SENT, send, 0, once = true)
 
         // Each its own: Android tells PendingIntents apart by their intents' actions and data, not
-        // their extras. Mutable, as Android adds the result's details to it.
-        private fun result(context: Context, action: String, send: Send, part: Int): PendingIntent {
+        // their extras.
+        private fun result(context: Context, action: String, send: Send, part: Int, once: Boolean): PendingIntent {
             val intent = Intent(context, SendResults::class.java)
                 .setAction(action)
                 .setData("relay-send:${send.id}/${send.attempt}/$part".toUri())
                 .putExtra(ID, send.id)
                 .putExtra(ATTEMPT, send.attempt)
                 .putExtra(PART, part)
-            val mutable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
-            return PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_ONE_SHOT or mutable)
+            return PendingIntent.getBroadcast(context, 0, intent, resultFlags(once, Build.VERSION.SDK_INT))
         }
+
+        private fun mutable() = resultFlags(once = false, Build.VERSION.SDK_INT)
     }
 }
 
 /**
- * Whether a delivery report's [status] (`SmsMessage.getStatus`) says the text got there: GSM's
- * TP-Status, done below 0x20; CDMA's error class and message status, no error and delivered.
+ * A result's PendingIntent's flags on Android [sdk]: mutable, as Android adds the result's details
+ * to it, and used [once] unless Android may send it again, as a delivery report it's still trying.
  */
-internal fun delivered(status: Int, format: String): Boolean = if (format == CDMA) {
-    ((status shr CDMA_CLASS_SHIFT) and CDMA_CLASS_BITS) == 0 && ((status shr CDMA_STATUS_SHIFT) and CDMA_STATUS_BITS) == CDMA_DELIVERED
+internal fun resultFlags(once: Boolean, sdk: Int): Int {
+    val mutable = if (sdk >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
+    return if (once) PendingIntent.FLAG_ONE_SHOT or mutable else mutable
+}
+
+/** Where a carrier's report leaves a part's delivery. */
+internal enum class Delivery {
+    DELIVERED,
+
+    /** Still trying: another report follows. */
+    PENDING,
+    FAILED,
+}
+
+/**
+ * Where a delivery report's [status] (`SmsMessage.getStatus`) leaves the part: GSM's TP-Status,
+ * done below 0x20, still trying below 0x40, else failed; CDMA's error class and message status,
+ * delivered with no error, failed for a permanent one, else still trying.
+ */
+internal fun delivery(status: Int, format: String): Delivery = if (format == CDMA) {
+    val error = (status shr CDMA_CLASS_SHIFT) and CDMA_CLASS_BITS
+    when {
+        error == CDMA_PERMANENT -> Delivery.FAILED
+        error == 0 && ((status shr CDMA_STATUS_SHIFT) and CDMA_STATUS_BITS) == CDMA_DELIVERED -> Delivery.DELIVERED
+        else -> Delivery.PENDING
+    }
 } else {
-    (status and BYTE) < GSM_PENDING
+    when (status and BYTE) {
+        in 0 until GSM_PENDING -> Delivery.DELIVERED
+        in GSM_PENDING until GSM_FAILED -> Delivery.PENDING
+        else -> Delivery.FAILED
+    }
 }
 
 private const val CDMA = "3gpp2"
@@ -112,5 +150,7 @@ private const val CDMA_CLASS_BITS = 0x03
 private const val CDMA_STATUS_SHIFT = 16
 private const val CDMA_STATUS_BITS = 0x3F
 private const val CDMA_DELIVERED = 2
+private const val CDMA_PERMANENT = 3
 private const val GSM_PENDING = 0x20
+private const val GSM_FAILED = 0x40
 private const val BYTE = 0xFF

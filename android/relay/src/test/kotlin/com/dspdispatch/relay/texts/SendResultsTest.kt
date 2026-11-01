@@ -1,23 +1,34 @@
 package com.dspdispatch.relay.texts
 
+import android.app.PendingIntent
+import android.os.Build
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SendResultsTest {
     @Test
     fun readsADeliveryReport() {
         // GSM's TP-Status: received, forwarded or replaced; still trying; given up.
-        assertTrue(delivered(0x00, "3gpp"))
-        assertTrue(delivered(0x02, "3gpp"))
-        assertFalse(delivered(0x20, "3gpp"))
-        assertFalse(delivered(0x41, "3gpp"))
-        // CDMA's, shifted past GSM's: no error and delivered; accepted alone; a temporary error.
-        assertTrue(delivered(0x02 shl 16, "3gpp2"))
-        assertFalse(delivered(0x00 shl 16, "3gpp2"))
-        assertFalse(delivered((0x02 shl 24) or (0x02 shl 16), "3gpp2"))
+        assertEquals(Delivery.DELIVERED, delivery(0x00, "3gpp"))
+        assertEquals(Delivery.DELIVERED, delivery(0x02, "3gpp"))
+        assertEquals(Delivery.PENDING, delivery(0x20, "3gpp"))
+        assertEquals(Delivery.FAILED, delivery(0x41, "3gpp"))
+        // CDMA's, shifted past GSM's: no error and delivered; accepted alone; a temporary error;
+        // a permanent one.
+        assertEquals(Delivery.DELIVERED, delivery(0x02 shl 16, "3gpp2"))
+        assertEquals(Delivery.PENDING, delivery(0x00 shl 16, "3gpp2"))
+        assertEquals(Delivery.PENDING, delivery((0x02 shl 24) or (0x02 shl 16), "3gpp2"))
+        assertEquals(Delivery.FAILED, delivery((0x03 shl 24) or (0x02 shl 16), "3gpp2"))
+    }
+
+    @Test
+    fun keepsADeliveryReportsIntentForTheReportAfterOneStillTrying() {
+        // Android sends the same delivery intent for a report it's still trying, then the last.
+        assertEquals(0, resultFlags(once = false, Build.VERSION_CODES.R) and PendingIntent.FLAG_ONE_SHOT)
+        assertEquals(PendingIntent.FLAG_MUTABLE, resultFlags(once = false, Build.VERSION_CODES.S))
+        assertEquals(PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_MUTABLE, resultFlags(once = true, Build.VERSION_CODES.S))
+        assertEquals(PendingIntent.FLAG_ONE_SHOT, resultFlags(once = true, Build.VERSION_CODES.O))
     }
 
     @Test
