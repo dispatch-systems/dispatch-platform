@@ -16,7 +16,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Sends the texts Dispatch has for the phone from its own number, each attempt once: kept as
- * started before anything of it goes, a picture message's files fetched first into [folder].
+ * started before anything of it goes, a picture message's files fetched first into [folder]. While
+ * [mmsWhenBusy], a text that would cross Android's SMS limit goes as a picture message instead.
  */
 class Sender(
     private val dispatch: Dispatch,
@@ -26,6 +27,7 @@ class Sender(
     private val message: PictureMessage,
     private val statuses: Statuses,
     private val folder: File,
+    private val mmsWhenBusy: () -> Boolean,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
     private val answers = Channel<Pair<Paired, Outbox>>(Channel.CONFLATED)
@@ -108,15 +110,33 @@ class Sender(
     private suspend fun sendText(paired: Paired, key: String, text: OutgoingText, send: Send) {
         if (!radio.allowed()) return sends.failed(send, Failure.NOT_ALLOWED, now())
         val line = telephony { radio.line(paired.number, paired.subscription) }.getOrElse { return notSent(send) }
-        if (text.files.isEmpty()) {
-            val parts = telephony { line.divide(send.body) }.getOrElse { return notSent(send) }
-            hand(send, parts.texts.size, parts.joined) { line.sms(send, parts) }
-        } else {
+        if (text.files.isNotEmpty()) {
             val limits = telephony { line.mmsLimits() }.getOrElse { return notSent(send) }
                 ?: return sends.failed(send, Failure.MMS_OFF, now())
-            val pdu = compose(paired, key, limits, text, send) ?: return
-            if (!hand(send, 1, joined = false) { line.mms(send, pdu) }) pdu.delete()
+            return sendMms(paired, key, line, limits, text, send)
         }
+        val parts = telephony { line.divide(send.body) }.getOrElse { return notSent(send) }
+        val busy = busy(line, parts.texts.size)
+        if (busy != null) return sendMms(paired, key, line, busy, text, send)
+        hand(send, parts.texts.size, parts.joined, mms = false) { line.sms(send, parts) }
+    }
+
+    /**
+     * What the carrier of [line] takes of a picture message, when a text of [parts] parts goes as
+     * one: while [mmsWhenBusy], once its parts would cross Android's SMS limit. Null to send it as
+     * SMS, as when the carrier takes no picture messages.
+     */
+    private suspend fun busy(line: Line, parts: Int): MmsLimits? {
+        if (!mmsWhenBusy()) return null
+        val limit = radio.smsLimit()
+        if (!limit.crossedBy(sends.smsParts(limit.since(now())), parts)) return null
+        return telephony { line.mmsLimits() }.getOrNull()
+    }
+
+    /** Sends [text] as a picture message on [line], within the carrier's [limits]. */
+    private suspend fun sendMms(paired: Paired, key: String, line: Line, limits: MmsLimits, text: OutgoingText, send: Send) {
+        val pdu = compose(paired, key, limits, text, send) ?: return
+        if (!hand(send, 1, joined = false, mms = true) { line.mms(send, pdu) }) pdu.delete()
     }
 
     /**
@@ -132,11 +152,12 @@ class Sender(
     private suspend fun notSent(send: Send) = sends.failed(send, Failure.NOT_SENT, now())
 
     /**
-     * Hands [send] to Android in [parts] parts, [joined] as one message or not, by [go], kept as
-     * handed first, so it's never sent twice; answers whether Android took it.
+     * Hands [send] to Android in [parts] parts, [joined] as one message or not, as a picture message
+     * if [mms], by [go], kept as handed first, so it's never sent twice; answers whether Android
+     * took it.
      */
-    private suspend fun hand(send: Send, parts: Int, joined: Boolean, go: () -> Unit): Boolean {
-        sends.handed(send, parts, joined, now())
+    private suspend fun hand(send: Send, parts: Int, joined: Boolean, mms: Boolean, go: () -> Unit): Boolean {
+        sends.handed(send, parts, joined, now(), mms)
         return try {
             go()
             true

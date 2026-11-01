@@ -7,6 +7,9 @@ interface Radio {
     /** Whether the phone lets the app send texts. */
     fun allowed(): Boolean
 
+    /** Android's limit on the SMS parts the app sends, as the phone sets it. */
+    fun smsLimit(): SmsLimit
+
     /**
      * The line to send from: the SIM whose number is [number], the phone's as it paired on
      * [subscription].

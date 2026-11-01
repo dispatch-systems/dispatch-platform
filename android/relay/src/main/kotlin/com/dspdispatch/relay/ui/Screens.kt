@@ -17,12 +17,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -31,6 +33,7 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -63,9 +66,18 @@ fun RemovedScreen(dsp: String, scan: () -> Unit, pairing: Boolean, problem: Int?
     ScanButton(scan, pairing, problem)
 }
 
-/** Paired: the DSP, how the line to it stands, today's texts, and the app's version. */
+/**
+ * Paired: the DSP, how the line to it stands, today's texts, the app's version, and the switch of
+ * [mmsWhenBusy], which [setMmsWhenBusy] turns.
+ */
 @Composable
-fun ConnectedScreen(paired: Paired, link: Link, today: Today) = Page {
+fun ConnectedScreen(
+    paired: Paired,
+    link: Link,
+    today: Today,
+    mmsWhenBusy: Boolean,
+    setMmsWhenBusy: (Boolean) -> Unit,
+) = Page {
     Top()
     Row(Modifier.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(
@@ -91,6 +103,23 @@ fun ConnectedScreen(paired: Paired, link: Link, today: Today) = Page {
         }
     }
     TodayCard(today)
+    SwitchCard(R.string.mms_when_busy, mmsWhenBusy, setMmsWhenBusy)
+}
+
+/** A switch with its [label], [on] or off, which [set] turns: the whole card turns it, read as one. */
+@Composable
+private fun SwitchCard(@StringRes label: Int, on: Boolean, set: (Boolean) -> Unit) = Surface(
+    Modifier.fillMaxWidth().padding(top = 12.dp),
+    RoundedCornerShape(12.dp),
+    MaterialTheme.colorScheme.surfaceVariant,
+) {
+    Row(
+        Modifier.toggleable(on, role = Role.Switch, onValueChange = set).padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(stringResource(label), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+        Switch(on, onCheckedChange = null)
+    }
 }
 
 @Composable
@@ -206,4 +235,6 @@ private fun ConnectedPreview() = ConnectedScreen(
     Paired("https://bh.dispatch.test", "Blue Heron Logistics", "phone_1", "Dispatch", 0),
     Link.Connected(0),
     Today(received = 42, sent = 37, waiting = 0, latest = 0),
+    mmsWhenBusy = true,
+    setMmsWhenBusy = {},
 )

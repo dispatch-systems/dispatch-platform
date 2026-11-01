@@ -18,10 +18,17 @@ abstract class StoredSends : Sends {
         return checkNotNull(find(send.id, send.attempt))
     }
 
-    @Query("UPDATE sends SET handed = :at, parts = :parts, joined = :joined WHERE id = :id AND attempt = :attempt")
-    protected abstract suspend fun handed(id: String, attempt: Long, parts: Int, joined: Boolean, at: Long)
+    @Query("UPDATE sends SET handed = :at, parts = :parts, joined = :joined, mms = :mms WHERE id = :id AND attempt = :attempt")
+    protected abstract suspend fun handed(id: String, attempt: Long, parts: Int, joined: Boolean, mms: Boolean, at: Long)
 
-    override suspend fun handed(send: Send, parts: Int, joined: Boolean, at: Long) = handed(send.id, send.attempt, parts, joined, at)
+    @Transaction
+    override suspend fun handed(send: Send, parts: Int, joined: Boolean, at: Long, mms: Boolean) {
+        handed(send.id, send.attempt, parts, joined, mms, at)
+        if (!mms) keep(SmsParts(send.id, send.attempt, at, parts))
+    }
+
+    @Query("SELECT COALESCE(SUM(parts), 0) FROM sms_parts WHERE at >= :since")
+    abstract override suspend fun smsParts(since: Long): Int
 
     @Transaction
     override suspend fun failed(send: Send, error: String, at: Long) = end(send, SendStatus.FAILED, at, error)
@@ -56,6 +63,7 @@ abstract class StoredSends : Sends {
         forgetSends(before, undelivered)
         forgetReports()
         forgetRows()
+        forgetSmsParts(before)
     }
 
     @Query("SELECT * FROM statuses ORDER BY at, id, attempt LIMIT :most")
@@ -91,6 +99,9 @@ abstract class StoredSends : Sends {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     protected abstract suspend fun keep(row: SendRow)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    protected abstract suspend fun keep(parts: SmsParts)
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     protected abstract suspend fun keepStatus(status: Told)
@@ -131,4 +142,7 @@ abstract class StoredSends : Sends {
         """,
     )
     protected abstract suspend fun forgetRows()
+
+    @Query("DELETE FROM sms_parts WHERE at < :before")
+    protected abstract suspend fun forgetSmsParts(before: Long)
 }

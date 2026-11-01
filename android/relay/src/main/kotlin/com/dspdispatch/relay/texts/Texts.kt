@@ -25,6 +25,9 @@ import kotlinx.coroutines.launch
  * DSP's from the phone, telling it how each went.
  */
 class Texts(private val context: Context, dispatch: Dispatch) {
+    /** The running screen's switch: whether a text near Android's SMS limit goes as a picture message. */
+    val mmsWhenBusy = MmsWhenBusy(context)
+
     private val database = Room.databaseBuilder<TextsDatabase>(context, TextsDatabase.NAME).build()
     private val queue = database.queue()
     private val sends = database.sends()
@@ -42,6 +45,7 @@ class Texts(private val context: Context, dispatch: Dispatch) {
         PictureMessage(PhonePictures),
         statuses,
         File(context.cacheDir, SENDING),
+        mmsWhenBusy.on::value,
     )
 
     // Android said how a text the app sent went: the row it wrote of it may be read for sure now.

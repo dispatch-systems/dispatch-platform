@@ -16,7 +16,7 @@ import kotlinx.coroutines.flow.Flow
 @Database(
     entities = [
         Mark::class, Seen::class, Unread::class, Waiting::class, WaitingFile::class,
-        Send::class, Report::class, SendRow::class, Told::class,
+        Send::class, Report::class, SendRow::class, Told::class, SmsParts::class,
     ],
     version = 1,
 )

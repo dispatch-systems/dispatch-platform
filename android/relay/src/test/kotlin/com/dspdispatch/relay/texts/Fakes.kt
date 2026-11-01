@@ -142,6 +142,7 @@ class FakeProvider : Provider {
 /** Android's texting service, sending nothing: each text handed to it is kept in [handed]. */
 class FakeRadio : Radio {
     var allowed = true
+    var smsLimit = SmsLimit.ANDROID
     var mmsLimits: MmsLimits? = MmsLimits(300 * 1024, Size(1920, 1920))
 
     /** How the carrier splits a text: in parts of this many characters. */
@@ -159,6 +160,8 @@ class FakeRadio : Radio {
     val lines = mutableListOf<String>()
 
     override fun allowed() = allowed
+
+    override fun smsLimit() = smsLimit
 
     override fun line(number: String, subscription: Int): Line {
         lines += number
@@ -206,3 +209,7 @@ class FakePictures(
 
 /** The app's texts database, in memory, on SQLite itself. */
 fun memoryDatabase(): TextsDatabase = Room.inMemoryDatabaseBuilder<TextsDatabase>().setDriver(BundledSQLiteDriver()).build()
+
+/** The app's texts database in [file], on SQLite itself, as it's kept across the app's restarts. */
+fun fileDatabase(file: File): TextsDatabase =
+    Room.databaseBuilder<TextsDatabase>(file.path).setDriver(BundledSQLiteDriver()).build()

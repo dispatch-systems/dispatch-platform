@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.telephony.SmsManager
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -15,6 +16,15 @@ import java.io.File
 class PhoneRadio(private val context: Context) : Radio {
     override fun allowed() =
         ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
+
+    override fun smsLimit() = SmsLimit.of { name ->
+        try {
+            Settings.Global.getString(context.contentResolver, name)
+        } catch (_: SecurityException) {
+            // From Android 12, Android refuses an app a hidden setting it hasn't marked readable.
+            null
+        }
+    }
 
     override fun line(number: String, subscription: Int): Line {
         val chosen = subscription(Phone.subscriptions(context, subscription), number, Phone.textingSubscription())

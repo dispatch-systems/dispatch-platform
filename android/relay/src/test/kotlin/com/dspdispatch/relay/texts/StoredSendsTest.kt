@@ -2,6 +2,8 @@ package com.dspdispatch.relay.texts
 
 import com.dspdispatch.relay.dispatch.Direction
 import com.dspdispatch.relay.dispatch.SendStatus
+import java.io.File
+import java.nio.file.Files
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -117,6 +119,43 @@ class StoredSendsTest {
         assertEquals("only the text still to be delivered", listOf("sms"), listOf("sms", "picture", "delivered").filter { kept(it) })
         sends.forget(AT + 1, AT + 1)
         assertFalse(kept("sms"))
+    }
+
+    @Test
+    fun countsTheSmsPartsHandedAcrossANewPairing() = runTest {
+        handed("long", parts = 3)
+        handed("short")
+        val picture = sends.start(Send("picture", 1, "+14255550199", "Door", AT, mms = true))
+        sends.handed(picture, 1, false, AT)
+        // A text without files that went as a picture message isn't counted either.
+        sends.handed(sends.start(Send("busy", 1, "+14255550199", "Hi", AT)), 1, false, AT, mms = true)
+        assertEquals(4, sends.smsParts(AT))
+        assertEquals(0, sends.smsParts(AT + 1))
+        assertTrue(checkNotNull(sends.find("busy", 1)).mms)
+
+        // Android's count stands as the phone pairs again.
+        database.queue().begin(Mark("phone_2", AT, AT))
+        assertEquals(4, sends.smsParts(AT))
+        sends.forget(AT + 1, AT + 1)
+        assertEquals(0, sends.smsParts(0))
+    }
+
+    @Test
+    fun keepsTheSmsPartsCountAcrossARestart() = runTest {
+        val folder = Files.createTempDirectory("texts").toFile()
+        try {
+            val file = File(folder, TextsDatabase.NAME)
+            fileDatabase(file).run {
+                sends().run { handed(start(Send("long", 1, "+14255550199", "Hi", AT)), 3, true, AT) }
+                close()
+            }
+            fileDatabase(file).run {
+                assertEquals(3, sends().smsParts(AT))
+                close()
+            }
+        } finally {
+            folder.deleteRecursively()
+        }
     }
 
     /** Whether the attempt at [id] is still kept: one forgotten starts again, never handed. */

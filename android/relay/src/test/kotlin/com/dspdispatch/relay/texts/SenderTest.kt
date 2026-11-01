@@ -35,6 +35,7 @@ class SenderTest {
     private val provider = FakeProvider()
     private val own = OwnRows(provider, sends, APP)
     private var clock = 1_793_041_515_000L
+    private var mmsWhenBusy = true
     private lateinit var paired: Paired
 
     private fun sender() = Sender(
@@ -45,6 +46,7 @@ class SenderTest {
         PictureMessage(pictures),
         statuses,
         folder,
+        { mmsWhenBusy },
     ) { clock }
 
     @Before
@@ -250,6 +252,85 @@ class SenderTest {
     }
 
     @Test
+    fun sendsATextAsAPictureMessageOnceItWouldComeNearAndroidsSmsLimit() = runTest {
+        // Room for 8 parts, kept 2 short of Android's 10.
+        radio.smsLimit = SmsLimit(10, WINDOW_MS)
+        radio.partLength = 4
+        sender().send(paired, KEY, Outbox((1..3).map { text("sms_$it", 1, "Gate 441") }))
+        // A long text's parts all count: its third would cross, where a text of two still fits.
+        sender().send(paired, KEY, Outbox(listOf(text("long", 1, "Gate code 4"))))
+        sender().send(paired, KEY, Outbox(listOf(text("short", 1, "Gate 441"))))
+        sender().send(paired, KEY, Outbox(listOf(text("busy", 1, "Hi"))))
+
+        assertEquals(listOf("sms_1", "sms_2", "sms_3", "short"), radio.handed.map { it.first.id })
+        assertEquals(listOf("long", "busy"), radio.pictureMessages.map { it.first.id })
+        assertTrue("the words", radio.pictureMessages.first().second.contains("Gate code 4".toByteArray()))
+        assertEquals(8, sends.smsParts(0))
+        val busy = checkNotNull(sends.find("busy", 1))
+        assertTrue(busy.mms)
+        assertEquals(1, busy.parts)
+        // Settled as any picture message: sent once Android says it went.
+        sender().heard(Heard("busy", 1, 0, Event.SENT, null, null, clock))
+        assertEquals(listOf(Told("busy", 1, SendStatus.SENT, clock)), sends.statuses(10))
+    }
+
+    @Test
+    fun sendsAsSmsAgainOnceThePartsLeaveAndroidsWindow() = runTest {
+        radio.smsLimit = SmsLimit(10, WINDOW_MS)
+        sender().send(paired, KEY, Outbox(listOf(text("long", 1, "x".repeat(8 * 160)))))
+        // Android stamps a part a moment after the app counts it: a minute more, it may count it still.
+        clock += WINDOW_MS + 59_000
+        sender().send(paired, KEY, Outbox(listOf(text("busy", 1, "Hi"))))
+        clock += 1_001
+        sender().send(paired, KEY, Outbox(listOf(text("free", 1, "Hi"))))
+        assertEquals(listOf("long", "free"), radio.handed.map { it.first.id })
+        assertEquals(listOf("busy"), radio.pictureMessages.map { it.first.id })
+    }
+
+    @Test
+    fun sendsAsSmsPastAndroidsLimitWhileTheSwitchIsOff() = runTest {
+        radio.smsLimit = SmsLimit(10, WINDOW_MS)
+        mmsWhenBusy = false
+        sender().send(paired, KEY, Outbox(listOf(text("long", 1, "x".repeat(8 * 160)), text("past", 1, "Hi"))))
+        assertEquals(listOf("long", "past"), radio.handed.map { it.first.id })
+        assertTrue(radio.pictureMessages.isEmpty())
+
+        mmsWhenBusy = true
+        sender().send(paired, KEY, Outbox(listOf(text("busy", 1, "Hi"))))
+        assertEquals(listOf("busy"), radio.pictureMessages.map { it.first.id })
+    }
+
+    @Test
+    fun sendsAsSmsPastAndroidsLimitWhereTheCarrierTakesNoPictureMessages() = runTest {
+        radio.smsLimit = SmsLimit(3, WINDOW_MS)
+        radio.mmsLimits = null
+        sender().send(paired, KEY, Outbox(listOf(text("first", 1, "Hi"), text("past", 1, "Hi"))))
+        assertEquals(listOf("first", "past"), radio.handed.map { it.first.id })
+        assertTrue(sends.statuses(10).isEmpty())
+    }
+
+    @Test
+    fun neverReportsATextSentAsAPictureMessageNearTheLimitAsThePhones() = runTest {
+        // Room for one part.
+        radio.smsLimit = SmsLimit(3, WINDOW_MS)
+        val texts = listOf(text("sms", 1, "Hi"), text("busy", 1, "On my way"), text("unnamed", 1, "Gate code?"))
+        sender().send(paired, KEY, Outbox(texts))
+        assertEquals(listOf("busy", "unnamed"), radio.pictureMessages.map { it.first.id })
+
+        // Android wrote each to the picture messages' table, naming the first's row in its result.
+        val named = mms(3, "On my way", APP)
+        val unnamed = mms(4, "Gate code?")
+        provider.messages += listOf(named, unnamed)
+        val heard = Heard("busy", 1, 0, Event.SENT, null, null, clock, uri = "content://mms/3")
+        sender().heard(heard.copy(row = own.row(heard, "content://mms/3")))
+        assertTrue(sends.wrote(named.row.key))
+        val whose = SentByApp(sends, APP)
+        assertEquals(Whose.DISPATCH, whose.whose(named))
+        assertEquals(Whose.DISPATCH, whose.whose(unnamed))
+        assertEquals("the same words typed on the phone", Whose.PHONE, whose.whose(mms(5, "On my way", TEXTING_APP)))
+    }
+
+    @Test
     fun waitsAgainAtOnceForNothingElseOnceDispatchHearsHowATextWent() = runBlocking {
         val sender = sender()
         assertTrue(measureTime { sender.take(paired, Outbox(emptyList())) } < 1.seconds)
@@ -271,6 +352,10 @@ class SenderTest {
     private fun sms(id: Long, body: String, creator: String = APP) =
         Message(Row(Table.SMS, id, clock + 1_000, Direction.OUT, creator), listOf("(425) 555-0199"), body, emptyList())
 
+    /** A picture message's row of a text sent, as Android writes it, its time in whole seconds. */
+    private fun mms(id: Long, body: String, creator: String? = null) =
+        Message(Row(Table.MMS, id, (clock + 1_000) / 1_000 * 1_000, Direction.OUT, creator), listOf("+14255550199"), body, emptyList())
+
     private fun ByteArray.contains(part: ByteArray) = (0..size - part.size).any { at -> part.indices.all { this[at + it] == part[it] } }
 
     private fun json(code: Int, body: String) =
@@ -279,6 +364,7 @@ class SenderTest {
     private companion object {
         val KEY = "k".repeat(64)
         const val DAY_MS = 24 * 60 * 60 * 1000L
+        const val WINDOW_MS = 30 * 60 * 1000L
         const val APP = "com.dspdispatch.relay"
         const val TEXTING_APP = "com.example.texting"
     }

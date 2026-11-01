@@ -8,9 +8,10 @@ import com.dspdispatch.relay.dispatch.SendStatus
 
 /**
  * An attempt at a text of the outbox, kept from before it's sent so it's sent once: [mms] when it
- * goes as a picture message; [handed] is when Android took it, in [parts] parts, handed [joined] as
- * one message or each its own, and null while its files are still being fetched, when it may start
- * again; [outcome] is whether it was sent or failed, at [finished].
+ * goes as a picture message, as one with files does, and one without near Android's SMS limit;
+ * [handed] is when Android took it, in [parts] parts, handed [joined] as one message or each its
+ * own, and null while its files are still being fetched, when it may start again; [outcome] is
+ * whether it was sent or failed, at [finished].
  */
 @Entity(tableName = "sends", primaryKeys = ["id", "attempt"])
 data class Send(
@@ -90,6 +91,14 @@ data class Report(
     val format: String? = null,
 )
 
+/**
+ * The [parts] of the attempt [attempt] at the text [id] the app handed Android as SMS [at], as
+ * Android counts them against its limit ([SmsLimit]): kept apart from the sends, as a new pairing
+ * leaves Android's count as it was.
+ */
+@Entity(tableName = "sms_parts", primaryKeys = ["id", "attempt"])
+data class SmsParts(val id: String, val attempt: Long, val at: Long, val parts: Int)
+
 /** The provider row ([Row.key]) a send was written to, so it's never reported as the phone's own. */
 @Entity(tableName = "send_rows")
 data class SendRow(@PrimaryKey val row: String, val id: String, val attempt: Long)
@@ -127,8 +136,14 @@ interface Sends {
     /** Keeps [send] as started, unless its attempt already is: answers the attempt as kept. */
     suspend fun start(send: Send): Send
 
-    /** Android took [send], in [parts] parts, handed [joined] as one message or each its own, [at]. */
-    suspend fun handed(send: Send, parts: Int, joined: Boolean, at: Long)
+    /**
+     * Android took [send], in [parts] parts, handed [joined] as one message or each its own, [at],
+     * as a picture message if [mms]; an SMS's parts are counted ([smsParts]).
+     */
+    suspend fun handed(send: Send, parts: Int, joined: Boolean, at: Long, mms: Boolean = send.mms)
+
+    /** How many SMS parts the app handed Android from [since] on, whichever pairing they were for. */
+    suspend fun smsParts(since: Long): Int
 
     /** [send] failed [at], for [error], before Android took it or as it refused it. */
     suspend fun failed(send: Send, error: String, at: Long)
@@ -148,6 +163,7 @@ interface Sends {
     /**
      * Leaves the sends started before [before] that Dispatch heard the end of, or never handed. A
      * text whose delivery may still be reported is kept until it was handed before [undelivered].
+     * The SMS parts handed before [before] are no longer counted.
      */
     suspend fun forget(before: Long, undelivered: Long)
 

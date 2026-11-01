@@ -52,11 +52,12 @@ class MainActivity : ComponentActivity() {
             val link by relay.connection.link.collectAsStateWithLifecycle()
             val attempt by relay.attempting.collectAsStateWithLifecycle()
             val today by relay.texts.today.collectAsStateWithLifecycle(Today())
+            val mmsWhenBusy by relay.texts.mmsWhenBusy.on.collectAsStateWithLifecycle()
             val pairing = attempt == Attempt.Pairing
             val problem = (attempt as? Attempt.Failed)?.problem
             val now = standing
             when {
-                now is Standing.Pairing -> ConnectedScreen(now.paired, link, today)
+                now is Standing.Pairing -> ConnectedScreen(now.paired, link, today, mmsWhenBusy, relay.texts.mmsWhenBusy::set)
                 scanning && !cameraAllowed -> CameraScreen(::askForCamera) { scanning = false }
                 scanning -> ScanScreen(::read) { scanning = false }
                 now is Standing.Removed -> RemovedScreen(now.dsp, ::scan, pairing, problem)
