@@ -28,6 +28,8 @@ class MakerScreensTest {
         val xiaomi = MakerScreens.controls("xiaomi")
         assertEquals(listOf("autostart", "battery_saver"), xiaomi.map(Control::name))
         assertEquals("com.miui.powerkeeper", xiaomi.last().screens.single().substringBefore('/'))
+        // Its battery saver sets one app's policy, so it's told this one; Autostart lists them all.
+        assertEquals(listOf(false, true), xiaomi.map(Control::forTheApp))
     }
 
     @Test

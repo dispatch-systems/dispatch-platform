@@ -10,9 +10,13 @@ data class Action(val pkg: String, val action: String, val extras: Map<String, I
 /**
  * One of a maker's controls over running in the background, by [name], which only the person can
  * say is set: the action the maker documents for it, if any, then the screens that may hold it on
- * its phones, best first, as `package/class`.
+ * its phones, best first, as `package/class`. A screen that sets one app's own policy is told
+ * which ([forTheApp]): its package and label.
  */
-data class Control(val name: String, val screens: List<String>, val action: Action? = null)
+data class Control(val name: String, val screens: List<String>, val action: Action? = null, val forTheApp: Boolean = false)
+
+/** The app a screen [Control.forTheApp] is told to set: its package and the label it shows by. */
+data class ThisApp(val pkg: String, val label: String)
 
 /**
  * The controls phone makers add to keep apps from running in the background, beyond Android's own
@@ -23,7 +27,7 @@ data class Control(val name: String, val screens: List<String>, val action: Acti
 object MakerScreens {
     private val xiaomi = listOf(
         Control("autostart", listOf("com.miui.securitycenter/com.miui.permcenter.autostart.AutoStartManagementActivity")),
-        Control("battery_saver", listOf("com.miui.powerkeeper/com.miui.powerkeeper.ui.HiddenAppsConfigActivity")),
+        Control("battery_saver", listOf("com.miui.powerkeeper/com.miui.powerkeeper.ui.HiddenAppsConfigActivity"), forTheApp = true),
     )
     private val huawei = listOf(
         "com.huawei.systemmanager/com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity",
@@ -109,12 +113,20 @@ object MakerScreens {
      * The controls of [manufacturer]'s this phone has, by name in order, each with the first of
      * its screens that the phone has and lets the app open.
      */
-    fun find(packages: PackageManager, manufacturer: String): Map<String, Intent> = controls(manufacturer)
-        .mapNotNull { control -> control.intents().firstOrNull { it.resolveActivityInfo(packages, 0)?.exported == true }?.let { control.name to it } }
+    fun find(packages: PackageManager, manufacturer: String, app: ThisApp): Map<String, Intent> = controls(manufacturer)
+        .mapNotNull { control -> control.intents(app).firstOrNull { it.resolveActivityInfo(packages, 0)?.exported == true }?.let { control.name to it } }
         .toMap()
 
-    private fun Control.intents(): List<Intent> = listOfNotNull(action?.intent()) +
-        screens.mapNotNull(ComponentName::unflattenFromString).map { Intent().setComponent(it) }
+    private fun Control.intents(app: ThisApp): List<Intent> = listOfNotNull(action?.intent()) +
+        screens.mapNotNull(ComponentName::unflattenFromString).map { screen ->
+            Intent().setComponent(screen).apply {
+                if (forTheApp) putExtra(PACKAGE_NAME, app.pkg).putExtra(PACKAGE_LABEL, app.label)
+            }
+        }
+
+    // As Xiaomi's per-app battery saver takes the app it sets.
+    private const val PACKAGE_NAME = "package_name"
+    private const val PACKAGE_LABEL = "package_label"
 
     private fun Action.intent() = extras.entries.fold(Intent(action).setPackage(pkg)) { intent, (key, value) -> intent.putExtra(key, value) }
 }

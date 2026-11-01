@@ -53,7 +53,11 @@ class Probe(private val context: Context) {
     }
 
     /** The controls the phone's maker adds that open here, by name in order, each with its screen. */
-    fun makerBattery(): Map<String, Intent> = MakerScreens.find(packages, Build.MANUFACTURER)
+    fun makerBattery(): Map<String, Intent> = MakerScreens.find(
+        packages,
+        Build.MANUFACTURER,
+        ThisApp(name, context.applicationInfo.loadLabel(packages).toString()),
+    )
 
     /** The phone's default texting app, where it has one that opens. */
     fun textingApp(): Intent? = Telephony.Sms.getDefaultSmsPackage(context)?.let(packages::getLaunchIntentForPackage)
