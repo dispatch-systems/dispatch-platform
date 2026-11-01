@@ -69,9 +69,9 @@ class Fixes(private val activity: ComponentActivity) {
     private fun details(action: String) = Intent(action, Uri.fromParts("package", name, null))
 
     /** Opens a screen of a step only the person can say is done, which can then be marked done. */
-    private fun openByHand(step: Step, screen: () -> Intent?) {
+    private fun openByHand(step: Step, find: () -> Intent?) {
         activity.lifecycleScope.launch {
-            val intent = withContext(Dispatchers.IO) { screen() } ?: return@launch
+            val intent = withContext(Dispatchers.IO) { find() } ?: return@launch
             setup.opened(step)
             open(intent)
         }

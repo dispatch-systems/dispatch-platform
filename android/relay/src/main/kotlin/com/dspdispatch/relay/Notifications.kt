@@ -56,6 +56,7 @@ object Notifications {
         NotificationManagerCompat.from(context).notify(UNDONE_ID + step.ordinal, notification)
     }
 
+    /** Takes away the notification of [step] undone, if there is one. */
     fun cancelUndone(context: Context, step: Step) = NotificationManagerCompat.from(context).cancel(UNDONE_ID + step.ordinal)
 
     private fun open(context: Context) = PendingIntent.getActivity(

@@ -21,6 +21,7 @@ class Probe(private val context: Context) {
     private val packages = context.packageManager
     private val name = context.packageName
 
+    /** What the phone says of each step now, with what the person has said of those only they can. */
     fun read(makerBatteryByHand: ByHand, chatFeaturesByHand: ByHand): Facts {
         val texting = TEXTING.all(::allowed)
         return Facts(

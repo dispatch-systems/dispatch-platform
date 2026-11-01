@@ -52,6 +52,7 @@ class Setup(private val context: Context) {
     /** The person says a step Android can't report is done. */
     fun confirmed(step: Step) = prefs.edit { putString(step.name, ByHand.DONE.name) }
 
+    /** Set up is done: the running screen shows from now on. */
     fun finish() {
         prefs.edit { putBoolean(FINISHED, true) }
         done.value = true
