@@ -44,6 +44,9 @@ APK_MOST = 200 * 1024 * 1024
 # The largest file of builds taken.
 RELEASED_MOST = 64 * 1024
 
+# A certificate as `apksigner verify --print-certs-pem` prints it, its base64 inside.
+PEM = re.compile(r"-----BEGIN CERTIFICATE-----(.*?)-----END CERTIFICATE-----", re.S)
+
 Run = Callable[[list], bytes]
 
 
@@ -194,8 +197,12 @@ def tool(name: str, env: dict) -> str:
 
 
 def signers(text: str) -> list:
-    """Each signer's certificate SHA-256, as `apksigner verify --print-certs` lists them."""
-    return re.findall(r"^Signer #\d+ certificate SHA-256 digest: ([0-9a-f]{64})$", text, re.M)
+    """Each certificate's SHA-256, once, of those `apksigner verify --print-certs-pem` prints: the
+    certificates themselves, as each version of the tool labels its signers its own way."""
+    return sorted({
+        hashlib.sha256(base64.b64decode("".join(pem.split()))).hexdigest()
+        for pem in PEM.findall(text)
+    })
 
 
 def badging(text: str) -> dict:
@@ -216,7 +223,7 @@ def signed(folder: Path, build: str, certificate: str, env: dict, run: Run = run
     if apk.is_symlink() or apk.stat().st_size != made["size"] or digest(apk) != made["sha256"]:
         raise Refused(f"{made['asset']} differs from {build}.json")
     certificates = signers(
-        run([tool("apksigner", env), "verify", "--print-certs", str(apk)]).decode()
+        run([tool("apksigner", env), "verify", "--print-certs-pem", str(apk)]).decode()
     )
     if certificates != [certificate]:
         raise Refused(f"{made['asset']} is not signed by {build}'s key alone")

@@ -15,7 +15,19 @@ spec.loader.exec_module(relay)
 
 REPOSITORY = "example/relay"
 APK = b"production apk"
-CERT = "c" * 64
+# The signing certificate, as its bytes, and its SHA-256.
+CERTIFICATE = b"the dev certificate"
+CERT = hashlib.sha256(CERTIFICATE).hexdigest()
+
+
+def printed(*certificates: bytes, label: str = "V2 Signer:") -> bytes:
+    """`apksigner verify --print-certs-pem`'s output for an APK signed with `certificates`."""
+    return "".join(
+        f"{label} certificate DN: CN=DSP Dispatch Dev\n"
+        f"-----BEGIN CERTIFICATE-----\n{base64.b64encode(der).decode()}\n"
+        "-----END CERTIFICATE-----\n"
+        for der in certificates
+    ).encode()
 SHA = hashlib.sha256(APK).hexdigest()
 
 
@@ -145,7 +157,7 @@ class RelayCiTests(unittest.TestCase):
         (tools / "apksigner").touch()
         (tools / "aapt2").touch()
         env = {"ANDROID_HOME": str(self.folder / "sdk")}
-        signed = f"Signer #1 certificate SHA-256 digest: {CERT}\n".encode()
+        signed = printed(CERTIFICATE)
         badging = b"package: name='com.dspdispatch.relay.dev' versionCode='812' " \
                   b"versionName='1.4.1-dev.812' platformBuildVersionName='17'\n"
         path = str(apps / made["asset"])
@@ -155,10 +167,15 @@ class RelayCiTests(unittest.TestCase):
             return answers["badging"] if args[1] == "dump" else answers[args[-1]]
 
         self.assertEqual(relay.signed(apps, "dev", CERT, env, commands), made)
+        # Whatever the tool's version calls its signers, and however many schemes sign with the key.
+        for answer in [printed(CERTIFICATE, label="Signer #1"),
+                       printed(CERTIFICATE) + printed(CERTIFICATE, label="V3 Signer:")]:
+            answers[path] = answer
+            self.assertEqual(relay.signed(apps, "dev", CERT, env, commands), made)
         # Another key, a second signer, or another app or version is refused.
-        other_key = f"Signer #1 certificate SHA-256 digest: {'d' * 64}\n".encode()
-        for answer in [other_key,
-                       signed + f"Signer #2 certificate SHA-256 digest: {'d' * 64}\n".encode()]:
+        for answer in [printed(b"another certificate"),
+                       printed(CERTIFICATE, b"another certificate"),
+                       b"Signer #1 certificate SHA-256 digest: " + CERT.encode()]:
             answers[path] = answer
             with self.assertRaises(relay.Refused):
                 relay.signed(apps, "dev", CERT, env, commands)
