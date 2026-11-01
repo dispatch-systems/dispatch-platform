@@ -11,6 +11,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.IntentCompat
 import androidx.lifecycle.lifecycleScope
+import com.dspdispatch.relay.Notifications
 import com.dspdispatch.relay.relay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -46,16 +47,16 @@ class Fixes(private val activity: ComponentActivity) {
             }
             Fix.NOTIFICATION_SETTINGS ->
                 open(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, name))
+            Fix.CHANNEL_SETTINGS -> openBlockedChannel()
             Fix.BATTERY_REQUEST -> open(batteryRequest())
             Fix.APP_INFO -> open(details(Settings.ACTION_APPLICATION_DETAILS_SETTINGS))
             Fix.UNUSED_APPS -> open(IntentCompat.createManageUnusedAppRestrictionsIntent(activity, name))
             Fix.BACKGROUND_DATA -> open(details(Settings.ACTION_IGNORE_BACKGROUND_DATA_RESTRICTIONS_SETTINGS))
             Fix.INSTALL_UPDATES -> open(details(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES))
-            Fix.MAKER_BATTERY -> openByHand(item.step) { setup.probe.makerBattery() }
-            Fix.TEXTING_APP -> openByHand(item.step) { setup.probe.textingApp() }
-            Fix.CONFIRM -> {
-                setup.confirmed(item.step)
-                recheck()
+            Fix.MAKER_BATTERY, Fix.TEXTING_APP -> openByHand(item.step)
+            Fix.CONFIRM -> activity.lifecycleScope.launch {
+                setup.confirm(item.step)
+                setup.check()
             }
         }
     }
@@ -69,11 +70,20 @@ class Fixes(private val activity: ComponentActivity) {
     private fun details(action: String) = Intent(action, Uri.fromParts("package", name, null))
 
     /** Opens a screen of a step only the person can say is done, which can then be marked done. */
-    private fun openByHand(step: Step, find: () -> Intent?) {
+    private fun openByHand(step: Step) {
+        activity.lifecycleScope.launch { setup.open(step)?.let(::open) }
+    }
+
+    /** Opens the settings of the first of the app's notification channels the person blocked. */
+    private fun openBlockedChannel() {
         activity.lifecycleScope.launch {
-            val intent = withContext(Dispatchers.IO) { find() } ?: return@launch
-            setup.opened(step)
-            open(intent)
+            val channel = withContext(Dispatchers.IO) { Notifications.blocked(activity).firstOrNull() }
+            if (channel == null) {
+                setup.check()
+            } else {
+                val settings = Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, name)
+                open(settings.putExtra(Settings.EXTRA_CHANNEL_ID, channel))
+            }
         }
     }
 

@@ -42,18 +42,26 @@ object Notifications {
             .setContentIntent(open(context))
             .build()
 
-    /** Says [step] was undone, where the app may notify. */
-    fun undone(context: Context, step: Step) {
+    /** Says [step] was undone, where the app may notify on Set up's channel; whether it did. */
+    fun undone(context: Context, step: Step): Boolean {
+        val manager = NotificationManagerCompat.from(context)
         val allowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        if (!allowed) return
+        if (!allowed || !manager.areNotificationsEnabled() || SETUP_CHANNEL in blocked(context)) return false
         val notification = NotificationCompat.Builder(context, SETUP_CHANNEL)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(context.getString(step.undone))
             .setAutoCancel(true)
             .setContentIntent(open(context))
             .build()
-        NotificationManagerCompat.from(context).notify(UNDONE_ID + step.ordinal, notification)
+        manager.notify(UNDONE_ID + step.ordinal, notification)
+        return true
+    }
+
+    /** The app's channels the person has blocked, of the relay's and Set up's, by ID. */
+    fun blocked(context: Context): List<String> {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        return listOf(RELAY_CHANNEL, SETUP_CHANNEL).filter { manager.getNotificationChannel(it)?.importance == NotificationManager.IMPORTANCE_NONE }
     }
 
     /** Takes away the notification of [step] undone, if there is one. */

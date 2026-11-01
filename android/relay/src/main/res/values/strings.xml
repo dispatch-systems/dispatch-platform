@@ -28,7 +28,8 @@
     <string name="step_phone_number">Phone number</string>
     <string name="step_notifications">Notifications</string>
     <string name="step_battery">Battery unrestricted</string>
-    <string name="step_unused_apps">Pause app activity if unused off</string>
+    <!-- The unused-apps setting as Android 11 names it, so it can be found; later in values-v31 and values-v36. -->
+    <string name="step_unused_apps">Remove permissions if app isn\'t used off</string>
     <string name="step_background_data">Background data</string>
     <string name="step_restricted_settings">Restricted settings</string>
     <string name="step_chat_features">Chat features off</string>
@@ -37,7 +38,7 @@
     <string name="undone_phone_number">Phone number not allowed</string>
     <string name="undone_notifications">Notifications off</string>
     <string name="undone_battery">Battery restricted</string>
-    <string name="undone_unused_apps">Pause app activity if unused on</string>
+    <string name="undone_unused_apps">Remove permissions if app isn\'t used on</string>
     <string name="undone_background_data">Background data restricted</string>
     <string name="undone_restricted_settings">Settings restricted</string>
     <string name="undone_chat_features">Chat features on</string>

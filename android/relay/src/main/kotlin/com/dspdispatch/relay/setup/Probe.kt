@@ -14,6 +14,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.PackageManagerCompat
 import androidx.core.content.UnusedAppRestrictionsConstants
+import com.dspdispatch.relay.Notifications
 import java.util.concurrent.ExecutionException
 
 /** Reads what the phone says of each step. Its calls reach system services: call it off the main thread. */
@@ -21,8 +22,11 @@ class Probe(private val context: Context) {
     private val packages = context.packageManager
     private val name = context.packageName
 
-    /** What the phone says of each step now, with what the person has said of those only they can. */
-    fun read(makerBatteryByHand: ByHand, chatFeaturesByHand: ByHand): Facts {
+    /**
+     * What the phone says of each step now, with what the person has said of those only they can:
+     * of each maker's control by its name, and of chat features.
+     */
+    fun read(makerBatteryByHand: (String) -> ByHand, chatFeaturesByHand: ByHand): Facts {
         val texting = TEXTING.all(::allowed)
         return Facts(
             texting = texting,
@@ -33,11 +37,11 @@ class Probe(private val context: Context) {
                 null
             },
             notificationsOn = NotificationManagerCompat.from(context).areNotificationsEnabled(),
+            channelsOn = Notifications.blocked(context).isEmpty(),
             backgroundRestricted = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
                 context.getSystemService(ActivityManager::class.java).isBackgroundRestricted,
             ignoringBatteryOptimizations = context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(name),
-            makerBattery = makerBattery() != null,
-            makerBatteryByHand = makerBatteryByHand,
+            makerBattery = makerBattery().keys.map(makerBatteryByHand),
             unusedApps = unusedApps(),
             backgroundData = context.getSystemService(ConnectivityManager::class.java).restrictBackgroundStatus !=
                 ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED,
@@ -48,8 +52,8 @@ class Probe(private val context: Context) {
         )
     }
 
-    /** The phone maker's own battery screen, where it has one that opens. */
-    fun makerBattery(): Intent? = MakerScreens.find(packages, Build.MANUFACTURER)
+    /** The controls the phone's maker adds that open here, by name in order, each with its screen. */
+    fun makerBattery(): Map<String, Intent> = MakerScreens.find(packages, Build.MANUFACTURER)
 
     /** The phone's default texting app, where it has one that opens. */
     fun textingApp(): Intent? = Telephony.Sms.getDefaultSmsPackage(context)?.let(packages::getLaunchIntentForPackage)

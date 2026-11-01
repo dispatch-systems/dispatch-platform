@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The unused-apps setting as Android 16 and later name it. -->
+<resources>
+    <string name="step_unused_apps">Manage app if unused off</string>
+    <string name="undone_unused_apps">Manage app if unused on</string>
+</resources>

@@ -11,10 +11,10 @@ class ChecklistTest {
         phoneNumber = true,
         notificationsAllowed = true,
         notificationsOn = true,
+        channelsOn = true,
         backgroundRestricted = false,
         ignoringBatteryOptimizations = true,
-        makerBattery = false,
-        makerBatteryByHand = ByHand.NONE,
+        makerBattery = emptyList(),
         unusedApps = UnusedApps.OFF,
         backgroundData = true,
         restricted = false,
@@ -56,8 +56,16 @@ class ChecklistTest {
     }
 
     @Test
+    fun `takes notifications as done only once their channels are on too`() {
+        val blocked = allDone.copy(channelsOn = false).item(Step.NOTIFICATIONS)
+        assertEquals(false, blocked.done)
+        assertEquals(listOf(Fix.CHANNEL_SETTINGS), blocked.fixes)
+        assertEquals(Fix.NOTIFICATION_SETTINGS, allDone.copy(notificationsOn = false, channelsOn = false).item(Step.NOTIFICATIONS).fix)
+    }
+
+    @Test
     fun `lifts Android's battery restriction before the maker's`() {
-        val both = allDone.copy(ignoringBatteryOptimizations = false, makerBattery = true)
+        val both = allDone.copy(ignoringBatteryOptimizations = false, makerBattery = listOf(ByHand.NONE))
         assertEquals(listOf(Fix.BATTERY_REQUEST), both.item(Step.BATTERY).fixes)
         val restricted = both.copy(backgroundRestricted = true)
         assertEquals(listOf(Fix.APP_INFO), restricted.item(Step.BATTERY).fixes)
@@ -65,12 +73,22 @@ class ChecklistTest {
 
     @Test
     fun `takes the maker's battery screen as done only once marked done by hand`() {
-        val maker = allDone.copy(makerBattery = true)
+        val maker = allDone.copy(makerBattery = listOf(ByHand.NONE))
         assertEquals(listOf(Fix.MAKER_BATTERY), maker.item(Step.BATTERY).fixes)
-        val opened = maker.copy(makerBatteryByHand = ByHand.OPENED).item(Step.BATTERY)
+        val opened = maker.copy(makerBattery = listOf(ByHand.OPENED)).item(Step.BATTERY)
         assertEquals(listOf(Fix.MAKER_BATTERY, Fix.CONFIRM), opened.fixes)
         assertEquals(Fix.CONFIRM, opened.fix)
-        assertTrue(maker.copy(makerBatteryByHand = ByHand.DONE).item(Step.BATTERY).done)
+        assertTrue(maker.copy(makerBattery = listOf(ByHand.DONE)).item(Step.BATTERY).done)
+    }
+
+    @Test
+    fun `offers each of the maker's controls in turn, done once all are`() {
+        val first = allDone.copy(makerBattery = listOf(ByHand.DONE, ByHand.NONE)).item(Step.BATTERY)
+        assertEquals(false, first.done)
+        assertEquals(listOf(Fix.MAKER_BATTERY), first.fixes)
+        val second = allDone.copy(makerBattery = listOf(ByHand.DONE, ByHand.OPENED)).item(Step.BATTERY)
+        assertEquals(listOf(Fix.MAKER_BATTERY, Fix.CONFIRM), second.fixes)
+        assertTrue(allDone.copy(makerBattery = listOf(ByHand.DONE, ByHand.DONE)).item(Step.BATTERY).done)
     }
 
     @Test

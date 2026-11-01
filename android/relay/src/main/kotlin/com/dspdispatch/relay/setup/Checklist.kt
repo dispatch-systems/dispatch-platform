@@ -22,6 +22,9 @@ enum class Fix(@param:StringRes val label: Int) {
     ASK_PHONE_NUMBER(R.string.allow),
     ASK_NOTIFICATIONS(R.string.allow),
     NOTIFICATION_SETTINGS(R.string.open),
+
+    /** The settings of the first of the app's notification channels the person blocked. */
+    CHANNEL_SETTINGS(R.string.open),
     BATTERY_REQUEST(R.string.allow),
     APP_INFO(R.string.open),
     MAKER_BATTERY(R.string.open),
@@ -47,14 +50,17 @@ enum class UnusedApps { NOT_AVAILABLE, ON, OFF }
 data class Facts(
     val texting: Boolean,
     val phoneNumber: Boolean,
-    /** Android 13+ only: whether the app may notify, and whether its notifications are on. */
+    /**
+     * Android 13+ only: whether the app may notify, whether its notifications are on, and whether
+     * the channels it posts on, the relay's and Set up's, are.
+     */
     val notificationsAllowed: Boolean?,
     val notificationsOn: Boolean,
+    val channelsOn: Boolean,
     val backgroundRestricted: Boolean,
     val ignoringBatteryOptimizations: Boolean,
-    /** Whether the phone's maker adds a battery screen of its own that opens here. */
-    val makerBattery: Boolean,
-    val makerBatteryByHand: ByHand,
+    /** Where each of the controls the phone's maker adds, that open here, stands, in order; none on most phones. */
+    val makerBattery: List<ByHand>,
     val unusedApps: UnusedApps,
     val backgroundData: Boolean,
     /** Whether Android still restricts a setting the app needs; null where it never did. */
@@ -76,9 +82,7 @@ fun checklist(facts: Facts): List<Item> = with(facts) {
     listOfNotNull(
         item(Step.TEXTING, texting, Fix.ASK_TEXTING),
         item(Step.PHONE_NUMBER, phoneNumber, Fix.ASK_PHONE_NUMBER),
-        notificationsAllowed?.let { allowed ->
-            item(Step.NOTIFICATIONS, allowed && notificationsOn, if (allowed) Fix.NOTIFICATION_SETTINGS else Fix.ASK_NOTIFICATIONS)
-        },
+        notificationsAllowed?.let { notifications(it) },
         battery(),
         if (unusedApps == UnusedApps.NOT_AVAILABLE) null else item(Step.UNUSED_APPS, unusedApps == UnusedApps.OFF, Fix.UNUSED_APPS),
         item(Step.BACKGROUND_DATA, backgroundData, Fix.BACKGROUND_DATA),
@@ -88,14 +92,22 @@ fun checklist(facts: Facts): List<Item> = with(facts) {
     )
 }
 
+/** Asked for first, then turned on for the app, then for each of its channels. */
+private fun Facts.notifications(allowed: Boolean): Item = when {
+    !allowed -> item(Step.NOTIFICATIONS, false, Fix.ASK_NOTIFICATIONS)
+    !notificationsOn -> item(Step.NOTIFICATIONS, false, Fix.NOTIFICATION_SETTINGS)
+    else -> item(Step.NOTIFICATIONS, channelsOn, Fix.CHANNEL_SETTINGS)
+}
+
 /**
  * Android's own restriction first, lifted on the app's Battery page where the request can't;
- * then the maker's screen, where it has one, which only the person can say is done.
+ * then each of the maker's controls, where it has them, in turn, which only the person can say is
+ * done.
  */
 private fun Facts.battery(): Item = when {
     backgroundRestricted -> item(Step.BATTERY, false, Fix.APP_INFO)
     !ignoringBatteryOptimizations -> item(Step.BATTERY, false, Fix.BATTERY_REQUEST)
-    makerBattery -> byHand(Step.BATTERY, makerBatteryByHand, Fix.MAKER_BATTERY)
+    makerBattery.isNotEmpty() -> byHand(Step.BATTERY, makerBattery.firstOrNull { it != ByHand.DONE } ?: ByHand.DONE, Fix.MAKER_BATTERY)
     else -> item(Step.BATTERY, true, Fix.BATTERY_REQUEST)
 }
 

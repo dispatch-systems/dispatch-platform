@@ -10,7 +10,8 @@ import com.dspdispatch.relay.relay
 /**
  * Starts the relay again when the phone starts and when the app was updated, while paired. Both
  * let an app start its foreground service from the background, and Android 15's limits on
- * starting one at boot leave out the relay's remote messaging type.
+ * starting one at boot leave out the relay's remote messaging type. Accepted limitation: the
+ * relay starts at the first unlock after a reboot, as neither it nor its storage is Direct Boot aware.
  */
 class StartReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {

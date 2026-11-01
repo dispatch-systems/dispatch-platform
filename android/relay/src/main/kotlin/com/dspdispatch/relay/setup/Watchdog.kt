@@ -13,7 +13,8 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Every 15 minutes while paired, the shortest Android allows: starts the relay again if it isn't
- * running, and checks Set up's steps, notifying a step undone.
+ * running, and checks Set up's steps, notifying a step undone. Accepted limitation: it's best
+ * effort, as Android may run periodic work late and never runs a force-stopped app's.
  */
 class Watchdog(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
