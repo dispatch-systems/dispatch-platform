@@ -1,5 +1,6 @@
 package com.dspdispatch.relay.dispatch
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -40,6 +41,47 @@ data class OutgoingText(
 
 @Serializable
 data class OutgoingFile(val id: String, val name: String, val mime: String, val size: Long)
+
+/** Which way a text went: to the phone, or from it. */
+@Serializable
+enum class Direction {
+    @SerialName("in")
+    IN,
+
+    @SerialName("out")
+    OUT,
+}
+
+/** Texts the phone received or sent from its own texting app, at most `MOST_TEXTS` at once. */
+@Serializable
+data class TextsReport(val texts: List<ReportedText>)
+
+/** A text as the phone reports it, once by [clientId], which is never reused on the phone. */
+@Serializable
+data class ReportedText(
+    val clientId: String,
+    val direction: Direction,
+    val number: String,
+    val body: String,
+    val at: Long,
+    val files: List<ReportedFile> = emptyList(),
+)
+
+/** A picture or file of a reported text, its bytes sent once Dispatch answered the text. */
+@Serializable
+data class ReportedFile(val name: String, val mime: String, val size: Long)
+
+/** Dispatch's IDs of the texts reported, in the order reported. */
+@Serializable
+data class TextsAnswer(val texts: List<TextAnswer>)
+
+/** Dispatch's ID of the text reported as [clientId], and of each of its files in order. */
+@Serializable
+data class TextAnswer(val clientId: String, val id: String, val files: List<String> = emptyList())
+
+/** What Dispatch answers a call that only needs doing. */
+@Serializable
+internal data class Done(val ok: Boolean)
 
 /** How Dispatch refuses a call: the app acts on [error], never the message. */
 @Serializable

@@ -10,6 +10,11 @@
     <string name="offline_since">Offline since %1$s</string>
     <string name="removed">Removed</string>
     <string name="version">Version</string>
+    <string name="today">Today</string>
+    <string name="texts_in">In</string>
+    <string name="texts_out">Out</string>
+    <string name="texts_waiting">Waiting</string>
+    <string name="last_text">Last text</string>
     <string name="pairing_invalid">Code expired or already used</string>
     <string name="pairing_other_server">Code is for another server</string>
     <string name="pairing_not_a_code">Not a pairing code</string>
