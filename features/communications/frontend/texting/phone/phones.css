@@ -49,15 +49,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.phones-update {
-  margin-left: 6px;
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: var(--selection);
-  color: var(--primary);
-  font-size: 11.5px;
-  font-weight: 600;
-}
 .phones-pairing {
   display: flex;
   flex-direction: column;

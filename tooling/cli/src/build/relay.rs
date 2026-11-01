@@ -131,6 +131,9 @@ impl std::error::Error for Unavailable {}
 /// none; a release build fails, as both do on an APK or release unlike the format.
 pub fn pack(root: &Path, runner: &dyn Runner, release: bool) -> Result<()> {
     let packed = root.join(PACKED);
+    // One build at a time packs a checkout, as its `predev` and `pretest` may at once: the next
+    // finds the app already packed, never a folder another is replacing.
+    let _packing = packing(&packed)?;
     match fill(root, &packed, runner) {
         Err(error) if !release && error.is::<Unavailable>() => {
             eprintln!("Warning: {error}. Going on without DSP Dispatch: Relay.");
@@ -138,6 +141,14 @@ pub fn pack(root: &Path, runner: &dyn Runner, release: bool) -> Result<()> {
         }
         done => done,
     }
+}
+/// The checkout's packing lock, held until it's dropped: beside `packed`, which it outlives.
+fn packing(packed: &Path) -> Result<File> {
+    let parent = packed.parent().ok_or("Packed folder parent required")?;
+    fs::create_dir_all(parent)?;
+    let lock = File::create(parent.join(".relay.lock"))?;
+    lock.lock()?;
+    Ok(lock)
 }
 fn fill(root: &Path, packed: &Path, runner: &dyn Runner) -> Result<()> {
     let text = match fs::read_to_string(root.join(RELEASE)) {

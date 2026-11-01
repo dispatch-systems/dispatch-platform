@@ -56,6 +56,12 @@ impl Checkout {
         fs::create_dir_all(&git).unwrap();
         Self::at(temp, git, release)
     }
+    /// Another build in the checkout at `root`, with the Git folder `git`.
+    fn sharing(root: PathBuf, git: PathBuf) -> Self {
+        let mut checkout = Self::at(tempfile::tempdir().unwrap(), git, None);
+        checkout.root = root;
+        checkout
+    }
     /// A worktree of `other`'s repository, sharing its Git folder.
     fn beside(other: &Checkout, release: &str) -> Self {
         Self::at(
@@ -290,4 +296,23 @@ fn builds_in_worktrees_share_the_cache_without_failing_each_other() {
     for (asset, bytes) in APKS {
         assert_eq!(checkout.packed(asset), bytes);
     }
+}
+
+#[test]
+fn builds_in_one_checkout_pack_it_one_at_a_time() {
+    let checkout = Checkout::new(Some(FIXTURE));
+    let other: std::rc::Rc<RefCell<Option<std::thread::JoinHandle<bool>>>> = Default::default();
+    let (root, git) = (checkout.root.clone(), checkout.git.clone());
+    let started = other.clone();
+    // While this build downloads, another in the same checkout starts: it waits its turn, then
+    // finds the app packed, and neither fails.
+    *checkout.meanwhile.borrow_mut() = Some(Box::new(move || {
+        *started.borrow_mut() = Some(std::thread::spawn(move || {
+            let twin = Checkout::sharing(root, git);
+            pack(&twin.root, &twin, false).is_ok()
+        }));
+    }));
+    pack(&checkout.root, &checkout, false).unwrap();
+    assert!(other.borrow_mut().take().unwrap().join().unwrap());
+    assert_eq!(checkout.packed("release.json"), FIXTURE.as_bytes());
 }

@@ -67,9 +67,9 @@ export function PhonesCard(_: { view: DspView }) {
                       <strong>{phone.number ? phoneText(phone.number) : phone.name}</strong>
                       <small>
                         {[phone.name, phone.model, phone.appVersion].filter(Boolean).join(' · ')}
-                        {phone.update && <span className="phones-update">Update</span>}
                       </small>
                     </div>
+                    {phone.update && <Badge value="queued">Update</Badge>}
                     {phone.online ? (
                       <Badge value="ready">Online</Badge>
                     ) : (
