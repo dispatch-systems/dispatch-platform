@@ -1,9 +1,9 @@
 name: Platform checks
 # Every suite on every PR, and again on each push to main: the squash commit the PR became. The
 # `platform` gate is the one required check. On a PR it only judges; on main it also attests and
-# publishes the tested build, which Dev installs and a release stamps. A manual run publishes the
-# build of the commit it ran on the same way, as a release asks for its commit's build. Outside a PR
-# the build of main or a release's branch carries DSP Dispatch: Relay, signed here: Dev's app, and
+# publishes the tested build, which Dev installs. A manual run publishes the build of the commit it
+# ran on the same way, as each release dispatches its own, which it stamps. Outside a PR the build
+# of main or a release's branch carries DSP Dispatch: Relay, signed here: Dev's app, and
 # Production's in a release's run (android/README.md#releases).
 on:
   pull_request:
@@ -570,8 +570,8 @@ jobs:
           key: ${{ steps.restore.outputs.fixture-key }}
   # The one required check. It passes only when every suite passed, the relay apps' builds too
   # wherever they ran, and the build carries the run's own commit and a complete inventory.
-  # Outside a PR it then publishes that build under the commit's name: Dev installs it and a
-  # release stamps it.
+  # Outside a PR it then publishes that build under the commit's name: Dev installs main's, and a
+  # release stamps its own run's.
   platform:
     needs:
       - build

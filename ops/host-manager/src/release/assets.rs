@@ -21,7 +21,7 @@ pub(super) struct Prepared {
     archive_sha256: String,
 }
 
-fn regular(path: &Path) -> Result<()> {
+pub(super) fn regular(path: &Path) -> Result<()> {
     let info = fs::symlink_metadata(path)?;
     require(
         info.is_file() && !info.is_symlink() && info.nlink() == 1 && info.len() <= crate::MAX_BYTES,
@@ -43,7 +43,9 @@ impl Release<'_> {
     fn archive(&self) -> String {
         format!("dispatch-platform-{}.tar.gz", self.version)
     }
-    fn asset_names(&self) -> Vec<String> {
+    /// The runtime's assets, which Production's updater installs: `SHA256SUMS`, last, sums
+    /// the others.
+    fn runtime_assets(&self) -> Vec<String> {
         vec![
             self.archive(),
             "release.json".into(),
@@ -53,12 +55,16 @@ impl Release<'_> {
             "SHA256SUMS".into(),
         ]
     }
+    /// Every asset the release prepared in `directory` attaches: the runtime's, then the app's.
+    fn asset_names(&self, directory: &Path) -> Result<Vec<String>> {
+        Ok([self.runtime_assets(), self.app_assets(directory)?].concat())
+    }
     pub(super) fn prepared(&self, commit: Option<&str>) -> Result<Prepared> {
         self.verify_preparation(&self.output, commit)
     }
     fn verify_preparation(&self, directory: &Path, commit: Option<&str>) -> Result<Prepared> {
         artifact::real_directory(directory)?;
-        let names = self.asset_names();
+        let names = self.runtime_assets();
         for name in &names {
             regular(&directory.join(name))?;
         }
@@ -109,6 +115,7 @@ impl Release<'_> {
                 .is_none_or(|c| *c == prepared.commit),
             "Prepared release commit changed",
         )?;
+        self.app_assets(directory)?;
         Ok(prepared)
     }
     pub(super) fn prepare(&self, commit: &str) -> Result<Prepared> {
@@ -118,8 +125,11 @@ impl Release<'_> {
                 self.output.display()
             ).into());
         }
-        self.full_suite(commit)?;
-        // The full run of this commit published its build.
+        io::private_directory(&self.directory)?;
+        let last = self.released_app()?;
+        let relay = self.relay_version(commit, last.as_ref())?;
+        self.full_suite(commit, &relay)?;
+        // The release's own run of the checks published its build, with Production's app.
         let run = self.checked_source(commit)?;
         let records = io::github(
             self.system,
@@ -132,7 +142,6 @@ impl Release<'_> {
             .filter(|a| a["name"] == format!("dispatch-main-{commit}") && a["expired"] == false)
             .collect();
         require(artifacts.len() == 1, "Verified main artifact unavailable")?;
-        io::private_directory(&self.directory)?;
         // A failed download never creates the final directory. A killed process
         // may leave a private staging directory; retries leave it untouched.
         let staging = tempfile::Builder::new()
@@ -206,17 +215,19 @@ impl Release<'_> {
             None,
             120,
         )?;
-        // CI built the version main's source names; the release publishes those bytes
-        // under its own version, and only once Dev has served them.
+        // CI built the version main's source names; the release publishes those bytes under
+        // its own version, and only once Dev runs the commit. Dev runs main's build of it,
+        // which Production's app alone makes unlike this one, so Dev is held to the commit its
+        // build names rather than the package's digest.
         let candidate = download.path().join("candidate");
-        let built = artifact::manifest(&candidate)?.digest;
         let health: Value = serde_json::from_slice(&self.fetch(&self.origins.dev, "/api/health")?)?;
         require(
-            health["release"] == built,
+            health["source"]["commit"] == commit,
             &format!(
                 "Dev is not serving this commit's build; wait for Dev to install {commit}, or release the commit Dev serves"
             ),
         )?;
+        let app = relay::packed_app(&candidate, commit, &relay, last.as_ref())?;
         let manifest = artifact::stamp(&candidate, commit, &self.version)?;
         artifact::pack(&candidate, &staging.path().join(self.archive()))?;
         fs::copy(
@@ -231,6 +242,7 @@ impl Release<'_> {
             candidate.join("release.json"),
             staging.path().join("release.json"),
         )?;
+        relay::stage(&candidate, staging.path(), app.as_ref())?;
         let prepared = Prepared {
             repository: REPOSITORY.into(),
             commit: commit.into(),
@@ -254,11 +266,11 @@ impl Release<'_> {
         )?;
         fs::write(
             staging.path().join("SHA256SUMS"),
-            checksums(staging.path(), &self.asset_names()[..5])?,
+            checksums(staging.path(), &self.runtime_assets()[..5])?,
         )?;
         download.close()?;
         self.verify_preparation(staging.path(), Some(commit))?;
-        for name in self.asset_names() {
+        for name in self.asset_names(staging.path())? {
             File::open(staging.path().join(name))?.sync_all()?;
         }
         File::open(staging.path())?.sync_all()?;
@@ -319,7 +331,7 @@ impl Release<'_> {
         io::write_json(&receipt, &expected)
     }
     fn verify_assets(&self, release: &Value, allow_missing: bool) -> Result<Vec<String>> {
-        let names = self.asset_names();
+        let names = self.asset_names(&self.output)?;
         let assets = release["assets"]
             .as_array()
             .ok_or("Missing GitHub assets")?;

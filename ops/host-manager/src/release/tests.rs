@@ -17,16 +17,20 @@ struct Fake {
     calls: RefCell<Vec<Vec<String>>>,
     listed: RefCell<Vec<Value>>,
     runs: RefCell<Value>,
+    /// The build the release's own checks publish, and its bytes.
     artifact: RefCell<Value>,
-    download: Vec<u8>,
+    download: RefCell<Vec<u8>>,
     commit: String,
-    digest: String,
+    /// The digest of that build stamped with the release's version, which Production reports.
+    digest: RefCell<String>,
     failure: RefCell<Option<String>>,
     elapsed: Cell<Duration>,
     unhealthy: Cell<bool>,
     health_error: Cell<bool>,
-    /// The build digest Dev reports serving.
+    /// The commit Dev reports serving.
     dev: RefCell<String>,
+    /// Files published releases attach, by their download address.
+    attached: RefCell<BTreeMap<String, Vec<u8>>>,
     /// PR bodies GitHub serves, by number.
     bodies: RefCell<BTreeMap<u64, String>>,
     asset_error: Cell<bool>,
@@ -114,13 +118,23 @@ impl System for Fake {
                 json!({"workflow_runs":self.runs.borrow().clone()})
             } else if endpoint.starts_with("compare/") {
                 json!({"status":*self.comparison.borrow()})
-            } else if endpoint.starts_with("actions/runs/")
-                && endpoint.ends_with("/artifacts?per_page=100")
+            } else if let Some(run) = endpoint
+                .strip_prefix("actions/runs/")
+                .and_then(|s| s.strip_suffix("/artifacts?per_page=100"))
             {
-                // Every full run publishes the build, the dispatched one included.
-                json!({"artifacts":[self.artifact.borrow().clone()]})
+                // Every full run publishes its build: main's push run one without Production's
+                // app, which is never downloaded, and the release's own run the one it stamps.
+                if run == "5" {
+                    json!({"artifacts":[{"id":30,"name":format!("dispatch-main-{}", self.commit),
+                        "expired":false,"size_in_bytes":1,"digest":"sha256:main"}]})
+                } else {
+                    json!({"artifacts":[self.artifact.borrow().clone()]})
+                }
             } else if endpoint == "actions/artifacts/31/zip" {
-                fs::write(output.ok_or("Expected download file")?, &self.download)?;
+                fs::write(
+                    output.ok_or("Expected download file")?,
+                    &*self.download.borrow(),
+                )?;
                 self.maybe_fail("download")?;
                 return Ok(vec![]);
             } else if let Some(run) = endpoint
@@ -246,9 +260,11 @@ impl System for Fake {
         let (status, bytes) = if url == format!("{DEV}/api/health") {
             (
                 200,
-                serde_json::to_vec(&json!({"status":"ready","environment":"dev",
-                "release":*self.dev.borrow()}))?,
+                serde_json::to_vec(&json!({"status":"ready","environment":"preview",
+                "release":"0".repeat(64),"source":{"version":null,"commit":*self.dev.borrow()}}))?,
             )
+        } else if let Some(bytes) = self.attached.borrow().get(url) {
+            (200, bytes.clone())
         } else if url.ends_with("/api/health") {
             if self.health_error.get() {
                 return Err("network unavailable".into());
@@ -256,7 +272,7 @@ impl System for Fake {
             (
                 200,
                 serde_json::to_vec(&json!({"status":"ready","environment":"production",
-                "release":if self.unhealthy.get() { "old" } else { &self.digest }}))?,
+                "release":if self.unhealthy.get() { "old".into() } else { self.digest.borrow().clone() }}))?,
             )
         } else if url == format!("{PRODUCTION}/") {
             (
@@ -296,8 +312,14 @@ fn git(root: &Path, args: &[&str]) -> String {
 }
 /// Merges a PR's change into main through a merge commit.
 fn merge_to_main(root: &Path, name: &str) -> String {
+    merge_change(root, name, name)
+}
+/// Merges a PR named `name` that writes `path` into main through a merge commit.
+fn merge_change(root: &Path, name: &str, path: &str) -> String {
     git(root, &["checkout", "-q", "-b", name, "main"]);
-    fs::write(root.join(name), name).unwrap();
+    let file = root.join(path);
+    fs::create_dir_all(file.parent().unwrap()).unwrap();
+    fs::write(file, name).unwrap();
     git(root, &["add", "."]);
     git(root, &["commit", "-m", name]);
     git(root, &["checkout", "-q", "main"]);
@@ -316,12 +338,43 @@ fn merge_to_main(root: &Path, name: &str) -> String {
     git(root, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
     git(root, &["rev-parse", "HEAD"])
 }
+/// Where DSP Dispatch: Relay's source is in a fixture's history.
+#[derive(Clone, Copy, PartialEq)]
+enum App {
+    /// No `android/` at all.
+    None,
+    /// In `android/` from the first commit, which the released change leaves alone.
+    Unchanged,
+    /// In `android/` from the first commit, and changed by the released change.
+    Changed,
+}
+/// A build of DSP Dispatch: Relay: its entry in `relay.json`, and its APK's bytes.
+struct Apk {
+    entry: Value,
+    bytes: Vec<u8>,
+}
+impl Apk {
+    fn new(build: &str, version: &str, code: u64, commit: &str) -> Self {
+        let bytes = format!("{build} apk {version}").into_bytes();
+        Self {
+            entry: json!({"version":version,"versionCode":code,"commit":commit,
+                "asset":format!("dsp-dispatch-relay-{version}.apk"),
+                "sha256":artifact::hash(&bytes),"size":bytes.len()}),
+            bytes,
+        }
+    }
+    /// Production's build of `version` at `commit`.
+    fn production(version: &str, commit: &str) -> Self {
+        Self::new("production", version, 3, commit)
+    }
+    fn asset(&self) -> String {
+        io::text(&self.entry, "asset")
+    }
+}
 struct Fixture {
     temp: tempfile::TempDir,
     root: PathBuf,
     system: Fake,
-    /// What CI built: the version main's source names, before the release stamps its own.
-    built: artifact::Manifest,
 }
 /// The backend's snapshot of its databases, with the migrations `dsp` has.
 fn databases(dsp: &[&str]) -> String {
@@ -336,13 +389,17 @@ fn databases(dsp: &[&str]) -> String {
 }
 impl Fixture {
     fn new() -> Self {
-        Self::merging(false)
+        Self::merging(false, App::None)
     }
     /// The accepted change brings a migration.
     fn migrating() -> Self {
-        Self::merging(true)
+        Self::merging(true, App::None)
     }
-    fn merging(migration: bool) -> Self {
+    /// The repository has DSP Dispatch: Relay's source, `app` saying where.
+    fn with_app(app: App) -> Self {
+        Self::merging(false, app)
+    }
+    fn merging(migration: bool, app: App) -> Self {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("live");
         fs::create_dir(&root).unwrap();
@@ -364,15 +421,60 @@ impl Fixture {
         let snapshot = root.join("app/tests/backend/snapshots/databases.json");
         fs::create_dir_all(snapshot.parent().unwrap()).unwrap();
         fs::write(&snapshot, databases(&["baseline"])).unwrap();
+        if app != App::None {
+            fs::create_dir_all(root.join("android/relay")).unwrap();
+            fs::write(root.join("android/relay/build.gradle.kts"), "first").unwrap();
+        }
         git(&root, &["add", "."]);
         git(&root, &["commit", "-m", "initial"]);
         if migration {
             fs::write(&snapshot, databases(&["baseline", "accounts"])).unwrap();
         }
-        let commit = merge_to_main(&root, "accepted");
+        let commit = if app == App::Changed {
+            merge_change(&root, "accepted", "android/relay/build.gradle.kts")
+        } else {
+            merge_to_main(&root, "accepted")
+        };
         fs::create_dir_all(root.join("node_modules/.bin")).unwrap();
         fs::write(root.join("node_modules/.bin/tsx"), "fake smoke").unwrap();
-        let candidate = temp.path().join("candidate");
+        let run = json!({"id":5,"run_attempt":1,"head_sha":commit,"event":"push","head_branch":"main",
+            "status":"completed","conclusion":"success","path":WORKFLOW,
+            "head_repository":{"full_name":REPOSITORY},"html_url":"https://example.invalid/run/5"});
+        let system = Fake {
+            calls: RefCell::new(vec![]),
+            listed: RefCell::new(vec![]),
+            runs: RefCell::new(json!([run])),
+            artifact: RefCell::new(Value::Null),
+            download: RefCell::new(vec![]),
+            commit: commit.clone(),
+            digest: RefCell::new(String::new()),
+            failure: RefCell::new(None),
+            elapsed: Cell::new(Duration::ZERO),
+            unhealthy: Cell::new(false),
+            health_error: Cell::new(false),
+            dev: RefCell::new(commit),
+            attached: RefCell::new(BTreeMap::new()),
+            bodies: RefCell::new(BTreeMap::new()),
+            asset_error: Cell::new(false),
+            wrong_tag: Cell::new(false),
+            hide_release_once: Cell::new(false),
+            comparison: RefCell::new("ahead".into()),
+            partial: RefCell::new(BTreeSet::new()),
+            branch: RefCell::new(None),
+            dispatched: Cell::new("success"),
+            restorable: Cell::new(true),
+        };
+        let fixture = Self { temp, root, system };
+        fixture.build(None);
+        fixture
+    }
+    /// Makes the build the release's own checks publish: the runtime, with Dev's relay app
+    /// packed and `production`, Production's, beside it. Answers what CI built: the version
+    /// main's source names, before the release stamps its own.
+    fn build(&self, production: Option<&Apk>) -> artifact::Manifest {
+        let candidate = tempfile::tempdir_in(self.temp.path()).unwrap();
+        let candidate = candidate.path();
+        let commit = &self.system.commit;
         for name in [
             "dashboard/index.html",
             "services/rust/dispatch-backend",
@@ -389,10 +491,21 @@ impl Fixture {
             )
             .unwrap();
         }
-        let built = artifact::write_manifest(&candidate, "0.9.0").unwrap();
+        let packed = candidate.join("dashboard/relay");
+        fs::create_dir_all(&packed).unwrap();
+        let dev = Apk::new("dev", "0.0.1-dev.3", 3, commit);
+        let mut apps = json!({ "dev": dev.entry });
+        for apk in [Some(&dev), production].into_iter().flatten() {
+            fs::write(packed.join(apk.asset()), &apk.bytes).unwrap();
+        }
+        if let Some(production) = production {
+            apps["production"] = production.entry.clone();
+        }
+        fs::write(packed.join("relay.json"), apps.to_string()).unwrap();
+        let built = artifact::write_manifest(candidate, "0.9.0").unwrap();
         let gzip = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
         let mut tar = tar::Builder::new(gzip);
-        tar.append_dir_all(".", &candidate).unwrap();
+        tar.append_dir_all(".", candidate).unwrap();
         let archive = tar.into_inner().unwrap().finish().unwrap();
         let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
         zip.start_file(
@@ -403,44 +516,44 @@ impl Fixture {
         zip.write_all(&archive).unwrap();
         let download = zip.finish().unwrap().into_inner();
         // Production reports the digest of the build stamped with the release's version.
-        let digest = artifact::stamp(&candidate, &commit, "1.0.0")
-            .unwrap()
-            .digest;
-        let run = json!({"id":5,"run_attempt":1,"head_sha":commit,"event":"push","head_branch":"main",
-            "status":"completed","conclusion":"success","path":WORKFLOW,
-            "head_repository":{"full_name":REPOSITORY},"html_url":"https://example.invalid/run/5"});
-        let system = Fake {
-            calls: RefCell::new(vec![]),
-            listed: RefCell::new(vec![]),
-            runs: RefCell::new(json!([run])),
-            artifact: RefCell::new(
-                json!({"id":31,"name":format!("dispatch-main-{commit}"),"expired":false,
-                "size_in_bytes":download.len(),"digest":format!("sha256:{}",artifact::hash(&download))}),
-            ),
-            download,
-            commit: commit.clone(),
-            digest,
-            failure: RefCell::new(None),
-            elapsed: Cell::new(Duration::ZERO),
-            unhealthy: Cell::new(false),
-            health_error: Cell::new(false),
-            dev: RefCell::new(built.digest.clone()),
-            bodies: RefCell::new(BTreeMap::new()),
-            asset_error: Cell::new(false),
-            wrong_tag: Cell::new(false),
-            hide_release_once: Cell::new(false),
-            comparison: RefCell::new("ahead".into()),
-            partial: RefCell::new(BTreeSet::new()),
-            branch: RefCell::new(None),
-            dispatched: Cell::new("success"),
-            restorable: Cell::new(true),
-        };
-        Self {
-            temp,
-            root,
-            system,
-            built,
+        self.system
+            .digest
+            .replace(artifact::stamp(candidate, commit, "1.0.0").unwrap().digest);
+        self.system.artifact.replace(
+            json!({"id":31,"name":format!("dispatch-main-{commit}"),"expired":false,
+            "size_in_bytes":download.len(),"digest":format!("sha256:{}",artifact::hash(&download))}),
+        );
+        self.system.download.replace(download);
+        built
+    }
+    /// Publishes v0.9.0 at the commit before the release's, attaching `app` as Production's
+    /// relay app once it's given.
+    fn released(&self, app: Option<&Apk>) {
+        git(
+            &self.root,
+            &["tag", "v0.9.0", &format!("{}^1", self.system.commit)],
+        );
+        let mut assets = vec![];
+        if let Some(app) = app {
+            let record = json!({ "production": app.entry }).to_string().into_bytes();
+            for (name, bytes) in [
+                ("relay.json".to_owned(), record),
+                (app.asset(), app.bytes.clone()),
+            ] {
+                let url =
+                    format!("https://github.com/{REPOSITORY}/releases/download/v0.9.0/{name}");
+                assets.push(json!({"name":name,"state":"uploaded","size":bytes.len(),
+                    "digest":format!("sha256:{}",artifact::hash(&bytes)),"browser_download_url":url}));
+                self.system.attached.borrow_mut().insert(url, bytes);
+            }
         }
+        self.system.listed.replace(vec![
+            json!({"tag_name":"v0.9.0","draft":false,"prerelease":false,"assets":assets}),
+        ]);
+    }
+    /// The commit before the release's, which v0.9.0 released.
+    fn previous(&self) -> String {
+        git(&self.root, &["rev-parse", "main^1"])
     }
     fn release(&self) -> Release<'_> {
         let options = Options {
@@ -598,12 +711,29 @@ fn release_origins_are_required_canonical_distinct_and_overridable() {
 fn failed_or_pending_newer_checks_never_fall_back_to_older_success() {
     let f = Fixture::new();
     let release = f.release();
+    // Main's push run passed, but only the release's own run counts.
+    assert!(release.checked_source(&f.system.commit).is_err());
+    let mut own = f.system.runs.borrow()[0].clone();
+    own["id"] = json!(6);
+    own["event"] = json!("workflow_dispatch");
+    own["head_branch"] = json!("release-checks/v1.0.0");
+    f.system
+        .runs
+        .borrow_mut()
+        .as_array_mut()
+        .unwrap()
+        .push(own.clone());
+    assert_eq!(release.checked_source(&f.system.commit).unwrap()["id"], 6);
+    // One that skipped the core suite isn't the full suite.
+    f.system.partial.borrow_mut().insert(6);
+    assert!(release.checked_source(&f.system.commit).is_err());
+    f.system.partial.borrow_mut().clear();
     for (status, conclusion) in [
         ("completed", json!("failure")),
         ("in_progress", Value::Null),
     ] {
-        let mut newest = f.system.runs.borrow()[0].clone();
-        newest["id"] = json!(6);
+        let mut newest = own.clone();
+        newest["id"] = json!(7);
         newest["status"] = json!(status);
         newest["conclusion"] = conclusion;
         f.system
@@ -615,8 +745,8 @@ fn failed_or_pending_newer_checks_never_fall_back_to_older_success() {
         assert!(release.checked_source(&f.system.commit).is_err());
         f.system.runs.borrow_mut().as_array_mut().unwrap().pop();
     }
-    let mut skipped = f.system.runs.borrow()[0].clone();
-    skipped["id"] = json!(6);
+    let mut skipped = own;
+    skipped["id"] = json!(7);
     skipped["conclusion"] = json!("skipped");
     f.system
         .runs
@@ -624,7 +754,7 @@ fn failed_or_pending_newer_checks_never_fall_back_to_older_success() {
         .as_array_mut()
         .unwrap()
         .push(skipped);
-    assert_eq!(release.checked_source(&f.system.commit).unwrap()["id"], 5);
+    assert_eq!(release.checked_source(&f.system.commit).unwrap()["id"], 6);
     f.system.comparison.replace("diverged".into());
     assert!(release.prepare(&f.system.commit).is_err());
     assert!(!release.output.exists());
@@ -673,6 +803,7 @@ fn corrupt_saved_assets_and_incomplete_legacy_directories_stop_without_deletion(
         "dispatch-build.tar.gz",
         "attestation.sigstore.jsonl",
         "SHA256SUMS",
+        "relay.json",
     ] {
         let original = fs::read(release.output.join(name)).unwrap();
         fs::write(release.output.join(name), "corrupted").unwrap();
@@ -821,10 +952,10 @@ fn publish_goes_from_main_to_production_and_failed_checks_hold_a_draft() {
     let f = Fixture::new();
     f.draft();
     let release = f.release();
-    f.system.runs.borrow_mut()[0]["conclusion"] = json!("failure");
+    f.system.runs.borrow_mut()[1]["conclusion"] = json!("failure");
     assert!(release.execute(Stage::Publish, None).is_err());
     assert!(!f.system.has_call(&["PATCH"]));
-    f.system.runs.borrow_mut()[0]["conclusion"] = json!("success");
+    f.system.runs.borrow_mut()[1]["conclusion"] = json!("success");
     assert_eq!(
         release.execute(Stage::Publish, None).unwrap()["stage"],
         "complete"
@@ -886,6 +1017,7 @@ fn status_is_read_only_even_for_missing_preparation() {
     f.prepare();
     f.system.calls.borrow_mut().clear();
     let before = fs::read(release.output.join("provenance.json")).unwrap();
+    let journal = fs::read(release.journal_path()).unwrap();
     assert_eq!(
         release.execute(Stage::Status, None).unwrap()["prepared"]["valid"],
         true
@@ -894,7 +1026,7 @@ fn status_is_read_only_even_for_missing_preparation() {
         fs::read(release.output.join("provenance.json")).unwrap(),
         before
     );
-    assert!(!release.journal_path().exists());
+    assert_eq!(fs::read(release.journal_path()).unwrap(), journal);
     assert!(!release.directory.join(".release.lock").exists());
     f.system.health_error.set(true);
     assert!(release.execute(Stage::Status, None).unwrap()["production"]["problem"].is_string());
@@ -954,7 +1086,11 @@ fn a_release_without_a_version_replaces_an_unpublished_one_unless_it_holds_the_s
         "complete"
     );
     assert_eq!(f.system.count(&["gh", "release", "create"]), 1);
-    assert!(!f.system.has_call(&["DELETE"]));
+    let draft = format!("repos/{REPOSITORY}/releases/9");
+    assert!(
+        !f.system
+            .has_call(&["gh", "api", &draft, "--method", "DELETE"])
+    );
     // A draft of an older commit is deleted, its files are set aside, and main's head is
     // released under its version with notes of its own.
     let f = Fixture::new();
@@ -1089,17 +1225,28 @@ fn busy_executable_retry_respects_the_command_deadline() {
 }
 
 #[test]
-fn the_release_publishes_mains_build_under_its_own_version() {
+fn the_release_publishes_its_own_checks_build_under_its_own_version() {
     let f = Fixture::new();
+    let built = f.build(None);
     let prepared = f.prepare();
     let release = f.release();
+    // Main's push run passed, yet only the run the release dispatched counts, and its build is
+    // the one stamped: main's is never downloaded.
+    assert_eq!(f.system.count(&["gh", "workflow", "run"]), 1);
+    let provenance = io::read_json(&release.output.join("provenance.json")).unwrap();
+    assert_eq!(provenance["workflowRun"], 6);
+    assert_eq!(provenance["artifactId"], 31);
+    assert!(
+        !f.system
+            .has_call(&[&format!("repos/{REPOSITORY}/actions/artifacts/30/zip")])
+    );
     let manifest: artifact::Manifest =
         serde_json::from_value(io::read_json(&release.output.join("release.json")).unwrap())
             .unwrap();
     assert_eq!(manifest.version, "1.0.0");
-    assert_eq!(manifest.files, f.built.files);
+    assert_eq!(manifest.files, built.files);
     assert_eq!(manifest.digest, prepared.runtime_digest);
-    assert_ne!(manifest.digest, f.built.digest);
+    assert_ne!(manifest.digest, built.digest);
     let unpacked = f.temp.path().join("unpacked");
     artifact::unpack(
         &release.output.join("dispatch-platform-1.0.0.tar.gz"),
@@ -1302,14 +1449,15 @@ fn missing_notes_are_generated_from_the_merged_prs() {
 }
 
 #[test]
-fn preparation_requires_dev_to_serve_the_build() {
+fn preparation_requires_dev_to_serve_the_commit() {
     let f = Fixture::new();
-    f.system.dev.replace("another build".into());
+    f.system.dev.replace("b".repeat(40));
     let release = f.release();
     let error = release.prepare(&f.system.commit).unwrap_err().to_string();
     assert!(error.contains("Dev is not serving"), "{error}");
     assert!(!release.output.exists());
-    f.system.dev.replace(f.built.digest.clone());
+    // Dev runs main's build of the commit, never the release's, whose digest differs.
+    f.system.dev.replace(f.system.commit.clone());
     assert_eq!(
         release.prepare(&f.system.commit).unwrap().commit,
         f.system.commit
@@ -1317,9 +1465,8 @@ fn preparation_requires_dev_to_serve_the_build() {
 }
 
 #[test]
-fn a_commit_without_a_full_run_gets_one_on_a_temporary_branch_before_preparation() {
+fn every_release_runs_its_own_checks_on_a_temporary_branch_before_preparation() {
     let f = Fixture::new();
-    f.system.partial.borrow_mut().insert(5);
     f.system.dispatched.set("failure");
     let release = f.release();
     io::private_directory(&release.directory).unwrap();
@@ -1334,6 +1481,11 @@ fn a_commit_without_a_full_run_gets_one_on_a_temporary_branch_before_preparation
         f.system.branch.borrow().as_deref(),
         Some(f.system.commit.as_str())
     );
+    // Without android/, there's no app to build or carry.
+    assert!(
+        f.system
+            .has_call(&["--ref", "release-checks/v1.0.0", "-f", "relay-version="])
+    );
     // A rerun awaits that same run instead of starting another.
     assert!(release.execute(Stage::Publish, None).is_err());
     assert_eq!(f.system.count(&["gh", "workflow", "run"]), 1);
@@ -1346,4 +1498,167 @@ fn a_commit_without_a_full_run_gets_one_on_a_temporary_branch_before_preparation
     assert_eq!(f.system.count(&["gh", "workflow", "run"]), 1);
     assert!(f.system.branch.borrow().is_none());
     assert_eq!(release.prepared(None).unwrap().commit, f.system.commit);
+}
+
+/// The names of the assets the release's GitHub record lists.
+fn attached(f: &Fixture) -> Vec<String> {
+    f.system.listed.borrow()[0]["assets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|asset| io::text(asset, "name"))
+        .collect()
+}
+
+#[test]
+fn a_first_app_is_0_0_1_built_by_the_releases_checks_and_attached_with_its_record() {
+    let f = Fixture::with_app(App::Unchanged);
+    f.released(None);
+    let app = Apk::production("0.0.1", &f.system.commit);
+    f.build(Some(&app));
+    let release = f.release();
+    io::private_directory(&release.directory).unwrap();
+    assert_eq!(
+        release.execute(Stage::Publish, None).unwrap()["stage"],
+        "complete"
+    );
+    assert!(f.system.has_call(&["-f", "relay-version=0.0.1"]));
+    let names = attached(&f);
+    assert_eq!(names.len(), 8, "{names:?}");
+    assert!(names.contains(&"relay.json".into()) && names.contains(&app.asset()));
+    // What's attached is the package's own record and Production's APK.
+    let record: Value =
+        serde_json::from_slice(&fs::read(release.output.join("relay.json")).unwrap()).unwrap();
+    assert_eq!(record["production"], app.entry);
+    assert_eq!(
+        fs::read(release.output.join(app.asset())).unwrap(),
+        app.bytes
+    );
+    assert_eq!(
+        fs::read_to_string(release.output.join("notes.md")).unwrap(),
+        "- DSP Dispatch: Relay 0.0.1.\n- Accepted.\n\nIncludes [#8](https://github.com/dispatch-systems/dispatch-platform/pull/8).\n"
+    );
+}
+
+#[test]
+fn a_release_without_app_changes_carries_the_last_released_app() {
+    let f = Fixture::with_app(App::Unchanged);
+    let last = Apk::production("0.0.1", &f.previous());
+    f.released(Some(&last));
+    f.build(Some(&last));
+    let release = f.release();
+    io::private_directory(&release.directory).unwrap();
+    assert_eq!(
+        release.execute(Stage::Publish, None).unwrap()["stage"],
+        "complete"
+    );
+    assert!(f.system.has_call(&["-f", "relay-version="]));
+    let names = attached(&f);
+    assert!(names.contains(&"relay.json".into()) && names.contains(&last.asset()));
+    let notes = fs::read_to_string(release.output.join("notes.md")).unwrap();
+    assert!(!notes.contains("DSP Dispatch: Relay"), "{notes}");
+    // A build carrying anything but exactly the last released app is refused, and nothing is
+    // prepared from it.
+    for carried in ["none", "another version", "another build"] {
+        let f = Fixture::with_app(App::Unchanged);
+        let last = Apk::production("0.0.1", &f.previous());
+        f.released(Some(&last));
+        let other = match carried {
+            "none" => None,
+            "another version" => Some(Apk::production("0.0.2", &f.previous())),
+            _ => Some(Apk::production("0.0.1", &f.system.commit)),
+        };
+        f.build(other.as_ref());
+        let release = f.release();
+        let error = release.prepare(&f.system.commit).unwrap_err().to_string();
+        assert!(
+            error.contains("another DSP Dispatch: Relay"),
+            "{carried}: {error}"
+        );
+        assert!(!release.output.exists());
+    }
+}
+
+#[test]
+fn app_changes_release_its_next_version_as_the_release_bumps() {
+    for (bump, version) in [("patch", "0.0.2"), ("minor", "0.1.0"), ("major", "1.0.0")] {
+        let f = Fixture::with_app(App::Changed);
+        f.released(Some(&Apk::production("0.0.1", &f.previous())));
+        let app = Apk::production(version, &f.system.commit);
+        f.build(Some(&app));
+        let release = Release {
+            bump: bump.into(),
+            ..f.release()
+        };
+        release.prepare(&f.system.commit).unwrap();
+        assert!(
+            f.system
+                .has_call(&["-f", &format!("relay-version={version}")])
+        );
+        assert_eq!(
+            release.app_assets(&release.output).unwrap(),
+            ["relay.json".to_owned(), app.asset()]
+        );
+    }
+    // A build of another version, or from another commit, is refused.
+    let f = Fixture::with_app(App::Changed);
+    f.released(Some(&Apk::production("0.0.1", &f.previous())));
+    for app in [
+        Apk::production("0.0.3", &f.system.commit),
+        Apk::production("0.0.2", &f.previous()),
+    ] {
+        f.build(Some(&app));
+        let release = f.release();
+        let error = release.prepare(&f.system.commit).unwrap_err().to_string();
+        assert!(error.contains("lacks DSP Dispatch: Relay 0.0.2"), "{error}");
+        assert!(!release.output.exists());
+    }
+}
+
+#[test]
+fn the_app_version_is_decided_once_for_its_commit_and_never_at_or_below_the_last_released() {
+    let f = Fixture::with_app(App::Changed);
+    f.released(Some(&Apk::production("0.0.1", &f.previous())));
+    let release = f.release();
+    io::private_directory(&release.directory).unwrap();
+    assert_eq!(release.pin(None).unwrap(), f.system.commit);
+    let last = release.released_app().unwrap();
+    assert_eq!(
+        release
+            .relay_version(&f.system.commit, last.as_ref())
+            .unwrap(),
+        "0.0.2"
+    );
+    // A rerun asks for what was decided, whatever it bumps.
+    let rerun = Release {
+        bump: "major".into(),
+        ..f.release()
+    };
+    assert_eq!(
+        rerun
+            .relay_version(&f.system.commit, last.as_ref())
+            .unwrap(),
+        "0.0.2"
+    );
+    // Another commit is decided again.
+    let later = merge_to_main(&f.root, "later");
+    release.pin(Some(&later)).unwrap();
+    assert_eq!(release.journal().unwrap().relay_version, None);
+    // A version at or below the last released one is refused before any checks run.
+    let mut journal = release.journal().unwrap();
+    journal.relay_version = Some("0.0.1".into());
+    release.save(&journal).unwrap();
+    let error = release.prepare(&later).unwrap_err().to_string();
+    assert!(error.contains("not above 0.0.1"), "{error}");
+    assert!(!f.system.has_call(&["gh", "workflow", "run"]));
+}
+
+#[test]
+fn a_release_record_naming_no_release_of_its_own_is_refused() {
+    let f = Fixture::with_app(App::Unchanged);
+    let mut last = Apk::production("0.0.1", &f.previous());
+    last.entry["asset"] = json!("../dsp-dispatch-relay-0.0.1.apk");
+    f.released(Some(&last));
+    let error = f.release().released_app().unwrap_err().to_string();
+    assert!(error.contains("no Production build of its own"), "{error}");
 }
