@@ -302,12 +302,22 @@ class SenderTest {
     }
 
     @Test
-    fun sendsAsSmsPastAndroidsLimitWhereTheCarrierTakesNoPictureMessages() = runTest {
+    fun failsATextPastAndroidsLimitWhereNoPictureMessageCanGo() = runTest {
+        // Room for one part.
         radio.smsLimit = SmsLimit(3, WINDOW_MS)
         radio.mmsLimits = null
-        sender().send(paired, KEY, Outbox(listOf(text("first", 1, "Hi"), text("past", 1, "Hi"))))
-        assertEquals(listOf("first", "past"), radio.handed.map { it.first.id })
-        assertTrue(sends.statuses(10).isEmpty())
+        sender().send(paired, KEY, Outbox(listOf(text("first", 1, "Hi"), text("mms_off", 1, "Hi"))))
+        // As Android 8's carrier settings, null while its picture message service is away.
+        radio.failing = NullPointerException("carrierConfigValues")
+        sender().send(paired, KEY, Outbox(listOf(text("unprepared", 1, "Hi"))))
+
+        assertEquals(listOf("first"), radio.handed.map { it.first.id })
+        assertTrue(radio.pictureMessages.isEmpty())
+        assertEquals(
+            listOf(Told("mms_off", 1, SendStatus.FAILED, clock, Failure.MMS_OFF), Told("unprepared", 1, SendStatus.FAILED, clock, Failure.NOT_SENT)),
+            sends.statuses(10),
+        )
+        assertEquals(1, sends.smsParts(0))
     }
 
     @Test
