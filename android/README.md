@@ -18,6 +18,11 @@ From this folder, with the SDK at `~/Library/Android/sdk` (`ANDROID_HOME`) and J
 ./gradlew installDevDebug  # the dev app, debug build, on the phone or emulator adb sees
 ```
 
+Every app's tests run on Gradle's Java through `gradle/capped-jdk`, which caps any file they write
+at 1 GB, so a test that writes without end fails on its own write. Their temp folder is the app's
+`build/tmp/test-scratch`, emptied before each run, and they stop after 15 minutes. A test
+never feeds code that writes to disk an input that never ends; one just past the limit proves it.
+
 ## Relay's builds
 
 One app for each server, from the same source and the same commit:

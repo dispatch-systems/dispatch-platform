@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# The Java each app's tests run on (android/build.gradle.kts), under a cap on the size of any file
+# it writes, 1 GB (bash counts in KB), so a test that writes without end fails on its own write.
+# Gradle reads this folder as a Java install and probes it without the test task's environment, so
+# the Java comes from the parent, Gradle's own process, the one the tests would run on without it.
+java=$(readlink /proc/$PPID/exe 2>/dev/null || ps -o comm= -p $PPID)
+ulimit -f 1048576 && exec "$java" "$@"
