@@ -59,6 +59,15 @@ class StoredSendsTest {
         heard(gsm, 0, Event.SENT)
         heard(gsm, 1, Event.SENT, joined = true)
         heard(gsm, 1, Event.DELIVERED, format = "3gpp")
+        // Android says the last part went joined even when one before it failed: its report stands
+        // for the text only once every part's result says it went.
+        val unheard = handed("unheard", parts = 2)
+        heard(unheard, 1, Event.SENT, joined = true)
+        heard(unheard, 1, Event.DELIVERED, format = "3gpp2")
+        val failed = handed("failed", parts = 2)
+        heard(failed, 0, Event.SENT, "No service")
+        heard(failed, 1, Event.SENT, joined = true)
+        heard(failed, 1, Event.DELIVERED, format = "3gpp2")
         assertEquals(listOf("joined"), delivered())
         heard(split, 0, Event.DELIVERED, format = "3gpp2")
         assertEquals(listOf("joined", "split"), delivered())

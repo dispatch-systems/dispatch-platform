@@ -37,7 +37,8 @@ data class Send(
     /**
      * This attempt, and the statuses it moved to, with Android's [reports] of its parts: failed as
      * soon as one part failed, sent once every part was, delivered once every part was. A text
-     * Android says it sent joined is reported delivered on CDMA by its last part's report alone.
+     * Android says it sent joined is reported delivered on CDMA by its last part's report alone, once
+     * every part's result says it went: Android says it of the last part even when one before failed.
      */
     fun settled(reports: List<Report>, at: Long): Pair<Send, List<Told>> {
         if (handed == null) return this to emptyList()
@@ -51,7 +52,7 @@ data class Send(
             statuses += status(outcome, at, error)
         }
         val reached = reports.filter { it.event == Event.DELIVERED }
-        val joined = joined && sent.any(Report::joined)
+        val joined = joined && error == null && sent.size >= parts && sent.any(Report::joined)
         val whole = reached.size >= parts || (joined && reached.any { it.format == CDMA && it.part == parts - 1 })
         if (!delivered && whole) {
             send = send.copy(delivered = true)
