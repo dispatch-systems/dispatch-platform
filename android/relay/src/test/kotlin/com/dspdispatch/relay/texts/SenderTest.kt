@@ -1,6 +1,7 @@
 package com.dspdispatch.relay.texts
 
 import com.dspdispatch.relay.dispatch.Direction
+import com.dspdispatch.relay.dispatch.AppVersion
 import com.dspdispatch.relay.dispatch.Dispatch
 import com.dspdispatch.relay.dispatch.Outbox
 import com.dspdispatch.relay.dispatch.OutgoingFile
@@ -28,7 +29,7 @@ class SenderTest {
     private val database = memoryDatabase()
     private val sends = database.sends()
     private val radio = FakeRadio()
-    private val dispatch = Dispatch(OkHttpClient())
+    private val dispatch = Dispatch(OkHttpClient(), AppVersion("1.4.0", 14))
     private val statuses = Statuses(dispatch, sends)
     private val folder = Files.createTempDirectory("sending").toFile()
     private val pictures = FakePictures { ByteArray(it) }

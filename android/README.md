@@ -43,8 +43,33 @@ unsigned.
 
 Each version is published from the MacBook as a GitHub pre-release of this repository, tagged
 `relay-v<version>`, with both builds' signed APKs: a pre-release is never GitHub's latest
-release, which Production installs. `relay/release.json` names the version published, and
-merged, it's what Dispatch hands out:
+release, which Production installs. From this folder, in a branch's worktree:
+
+```sh
+./publish --dry-run 1.4.0  # builds and checks it all, publishing and changing nothing
+./publish 1.4.0
+```
+
+`./publish` refuses unless signing is configured, the tree is clean, `origin` is this repository,
+`HEAD` is on GitHub, neither the tag nor the branch `publish-relay-v<version>` exists there or
+here, and the version is above the app's. On that branch it commits `versionName` and the next
+`versionCode` in `relay/build.gradle.kts`, builds both release APKs from that commit, checks that
+both are signed with the one key, tags the commit, pushes the branch and the tag, and publishes
+the APKs to the tag's pre-release (`gh release create --verify-tag --prerelease --latest=false`).
+Then it commits `relay/release.json` on the branch, pushes it, and prints the command that opens
+its PR: merged, Dev hands the version out; once a release includes it, Production. A failure
+before publishing leaves nothing behind: the tree, the branch and the tag are as they were, here
+and on GitHub.
+
+Each outbox wait tells the app the version its DSP hands out; one above its own shows Update,
+with a notification. Install downloads it from the DSP, checks its size and SHA-256 against the
+DSP's details and that it's the same app signed with the same key, and installs it with Android's
+`PackageInstaller`. On Android 12+ it asks to install with no one confirming, which Android allows
+an app updating itself (`UPDATE_PACKAGES_WITHOUT_USER_ACTION`); Android decides each time, and
+wherever it asks anyway, as before Android 12 or under its own rules, its confirmation shows, and
+Install shows it again. The relay starts again once it's replaced.
+
+`relay/release.json` names the version published, and merged, it's what Dispatch hands out:
 
 ```json
 {

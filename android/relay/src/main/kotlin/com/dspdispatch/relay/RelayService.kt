@@ -45,7 +45,10 @@ class RelayService : LifecycleService() {
             relaying = lifecycleScope.launch {
                 launch { relay.connection.link.collect { show(paired.dsp, it) } }
                 launch { relay.texts.run(paired, key) }
-                relay.connection.run(paired, key) { relay.texts.send(paired, it) }
+                relay.connection.run(paired, key) { outbox ->
+                    relay.updates.heard(outbox.app)
+                    relay.texts.send(paired, outbox)
+                }
                 relay.pairings.removed(paired)
                 stopSelf()
             }

@@ -11,6 +11,7 @@ import kotlinx.serialization.KSerializer
 import kotlinx.serialization.serializer
 import okhttp3.Call
 import okhttp3.Callback
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -26,10 +27,11 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /**
- * The calls the app makes to its DSP, at `<site>/api/communications/phone/…`. Each answers what
- * Dispatch did, or throws a [Refusal] for an answer refusing it, or an [IOException] for none.
+ * The calls the app makes to its DSP, at `<site>/api/communications/phone/…`, as the app's [own]
+ * version. Each answers what Dispatch did, or throws a [Refusal] for an answer refusing it, or an
+ * [IOException] for none.
  */
-class Dispatch(http: OkHttpClient) {
+class Dispatch(http: OkHttpClient, private val own: AppVersion) {
     // Never a cookie: Dispatch refuses a call carrying one, as a browser's would.
     private val http = http.newBuilder().cookieJar(okhttp3.CookieJar.NO_COOKIES).build()
 
@@ -40,9 +42,28 @@ class Dispatch(http: OkHttpClient) {
     suspend fun pair(site: String, request: PairRequest): PairAnswer =
         http.call(post(site, "pair", wire.encodeToString(request)))
 
-    /** Waits on the outbox for what Dispatch has for this phone to send; checks the phone in. */
-    suspend fun outbox(site: String, key: String): Outbox =
-        waiting.call(Request.Builder().url(address(site, "outbox")).header(AUTHORIZATION, bearer(key)).build())
+    /**
+     * Waits on the outbox for what Dispatch has for this phone to send; checks the phone in, saying
+     * the app's own version.
+     */
+    suspend fun outbox(site: String, key: String): Outbox {
+        val url = address(site, "outbox").toHttpUrl().newBuilder()
+            .addQueryParameter("version", own.version)
+            .addQueryParameter("versionCode", own.versionCode.toString())
+            .build()
+        return waiting.call(Request.Builder().url(url).header(AUTHORIZATION, bearer(key)).build())
+    }
+
+    /** The app's latest version as the DSP hands it out, which anyone at its address may ask. */
+    suspend fun app(site: String): AppDetails = http.call(Request.Builder().url(address(site, "app")).build())
+
+    /** Downloads that version's APK, handing its bytes to [save] as they arrive; answers what it does. */
+    suspend fun <T> apk(site: String, save: (InputStream) -> T): T = withContext(Dispatchers.IO) {
+        http.newCall(Request.Builder().url(address(site, "app/download")).build()).await().use { response ->
+            if (!response.isSuccessful) throw refusal(response, response.body.string())
+            response.body.byteStream().use(save)
+        }
+    }
 
     /** Reports texts the phone received or sent, answering Dispatch's IDs of them and their files. */
     suspend fun texts(site: String, key: String, report: TextsReport): TextsAnswer =

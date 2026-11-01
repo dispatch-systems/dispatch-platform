@@ -25,9 +25,22 @@ data class PairedPhone(val id: String, val name: String)
 @Serializable
 data class PairedDsp(val name: String)
 
-/** The texts Dispatch has for the phone to send, oldest first. */
+/**
+ * The texts Dispatch has for the phone to send, oldest first, and the app's latest version while
+ * the DSP hands one out.
+ */
 @Serializable
-data class Outbox(val texts: List<OutgoingText> = emptyList())
+data class Outbox(val texts: List<OutgoingText> = emptyList(), val app: AppVersion? = null)
+
+/** A version of the app: its name, as people see it, and the `versionCode` Android compares. */
+@Serializable
+data class AppVersion(val version: String, val versionCode: Int)
+
+/** The app's latest version as the DSP hands it out, with its APK's size in bytes and SHA-256. */
+@Serializable
+data class AppDetails(val version: String, val versionCode: Int, val size: Long, val sha256: String) {
+    val app get() = AppVersion(version, versionCode)
+}
 
 /** A text to send from the phone; each [attempt] is sent once, and a later one is new. */
 @Serializable

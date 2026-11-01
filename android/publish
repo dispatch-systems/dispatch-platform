@@ -1,0 +1,192 @@
+#!/usr/bin/env bash
+# Publishes a version of DSP Dispatch: Relay, from the MacBook that holds its signing key:
+#
+#   ./publish <version>            commits the version on a branch of its own, builds both signed
+#                                  APKs from that commit, tags it relay-v<version>, publishes them
+#                                  to that tag's GitHub pre-release, then commits relay/release.json
+#   ./publish --dry-run <version>  builds and checks the same, then publishes and changes nothing
+#
+# The branch it leaves, the version and relay/release.json, goes as a PR: merged, Dev hands the
+# version out; once a release includes it, Production. See README.md, Publishing.
+set -euo pipefail
+
+# Where Dispatch's build downloads the APKs from (dispatch_shared::REPOSITORY).
+REPOSITORY=dispatch-systems/dispatch-platform
+GRADLE_FILE=relay/build.gradle.kts
+RELEASE=relay/release.json
+OUT=build/publish
+
+fail() {
+  echo "publish: $*" >&2
+  exit 1
+}
+
+# What stops publishing, which a dry run only warns of, as it publishes nothing.
+refuse() {
+  if $dry; then
+    echo "publish: warning: $*" >&2
+  else
+    fail "$@"
+  fi
+}
+
+# Whether version $1 is above version $2, each three numbers.
+above() {
+  local a b i
+  IFS=. read -r -a a <<<"$1"
+  IFS=. read -r -a b <<<"$2"
+  for i in 0 1 2; do
+    if ((10#${a[i]} != 10#${b[i]})); then
+      ((10#${a[i]} > 10#${b[i]}))
+      return
+    fi
+  done
+  return 1
+}
+
+dry=false
+if [[ ${1-} == --dry-run ]]; then
+  dry=true
+  shift
+fi
+[[ $# -eq 1 ]] || fail "usage: ./publish [--dry-run] <version>"
+version=$1
+[[ $version =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || fail "version is three numbers, as 1.4.0"
+tag=relay-v$version
+# Named apart from the tag, so neither name is ambiguous to git.
+branch=publish-relay-v$version
+
+cd "$(dirname "$0")"
+export ANDROID_HOME=${ANDROID_HOME:-$HOME/Library/Android/sdk}
+
+# Refused unless the key is there to sign with and the tree holds nothing but what's committed.
+properties=${GRADLE_USER_HOME:-$HOME/.gradle}/gradle.properties
+signing=
+[[ -f $properties ]] && signing=$(sed -n 's/^dispatch\.relay\.signing=//p' "$properties" | tail -n 1)
+[[ -n $signing && -f $signing ]] || fail "signing isn't configured: dispatch.relay.signing in $properties names no file"
+changes=$(git status --porcelain)
+[[ -z $changes ]] || fail "the tree isn't clean: commit or set aside its changes first"
+
+# The branch and the tag go to origin, which must be the repository the release is published to.
+url=$(git config --get remote.origin.url) || fail "no origin to push to"
+[[ $url =~ ^(https://github\.com/|git@github\.com:)$REPOSITORY(\.git)?$ ]] || fail "origin is $url, not $REPOSITORY"
+
+# Built on what GitHub already has, under a tag and a branch that are new, there and here. Each
+# lookup is its own step, so a failed one stops publishing rather than reading as nothing found.
+git fetch --quiet origin
+containing=$(git branch -r --contains HEAD)
+[[ -n $containing ]] || refuse "HEAD isn't on GitHub: push it first"
+taken=$(git ls-remote origin "refs/tags/$tag" "refs/heads/$branch") || fail "couldn't ask GitHub for $tag and $branch"
+[[ $taken != *refs/tags/$tag* ]] || refuse "$tag is already published"
+[[ $taken != *refs/heads/$branch* ]] || refuse "$branch is already on GitHub"
+! git show-ref --quiet --verify "refs/tags/$tag" || refuse "$tag is already a tag here: delete it first"
+! git show-ref --quiet --verify "refs/heads/$branch" || refuse "$branch is already a branch here: delete it first"
+
+code=$(sed -nE 's/^ *versionCode = ([0-9]+)$/\1/p' "$GRADLE_FILE")
+name=$(sed -nE 's/^ *versionName = "([^"]*)"$/\1/p' "$GRADLE_FILE")
+[[ -n $code && -n $name ]] || fail "$GRADLE_FILE has no versionCode and versionName to set"
+above "$version" "$name" || fail "$version isn't above the app's version, $name"
+code=$((code + 1))
+
+set_version() {
+  perl -pi -e "s/^(\s*versionCode = )\d+\$/\${1}$code/; s/^(\s*versionName = )\"[^\"]*\"\$/\${1}\"$version\"/" "$GRADLE_FILE"
+}
+
+# Until it's published, a failure undoes all this did, here and on GitHub: the tree, the branch
+# and the tag are left as they were.
+if start=$(git symbolic-ref --quiet --short HEAD); then
+  back=("$start")
+else
+  back=(--detach "$(git rev-parse HEAD)")
+fi
+pushed=false
+undo() {
+  if $pushed; then
+    git push --quiet --atomic origin --delete "refs/heads/$branch" "refs/tags/$tag" ||
+      echo "publish: delete $branch and $tag from GitHub by hand" >&2
+  fi
+  git switch --quiet --discard-changes "${back[@]}"
+  git branch --quiet -D "$branch" 2>/dev/null || true
+  git tag --delete "$tag" >/dev/null 2>&1 || true
+}
+
+if $dry; then
+  trap 'git checkout --quiet -- "$GRADLE_FILE"' EXIT
+  set_version
+else
+  trap undo EXIT
+  git switch --quiet --create "$branch"
+  set_version
+  git commit --quiet --message "chore(relay): version $version" -- "$GRADLE_FILE"
+fi
+
+echo "Building $version (versionCode $code)…"
+./gradlew --quiet clean :relay:assembleDevRelease :relay:assembleProductionRelease
+
+# Each build's APK, checked to be signed, both with one key, and copied as Dispatch's build names
+# its asset.
+apksigner=$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -name apksigner | sort -V | tail -n 1)
+[[ -n $apksigner ]] || fail "no apksigner in $ANDROID_HOME/build-tools"
+built() {
+  echo "relay/build/outputs/apk/$1/release/relay-$1-release.apk"
+}
+certificate() {
+  "$apksigner" verify --print-certs "$(built "$1")" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p'
+}
+for build in dev production; do
+  [[ -f $(built $build) ]] || fail "$build's release isn't signed: is dispatch.relay.signing's key right?"
+done
+signer=$(certificate dev) || fail "dev's release isn't signed"
+[[ -n $signer && $signer == "$(certificate production)" ]] || fail "the two builds aren't signed with one key"
+dev_asset=dsp-dispatch-relay-dev-$version.apk
+production_asset=dsp-dispatch-relay-$version.apk
+rm -rf "$OUT"
+mkdir -p "$OUT"
+cp "$(built dev)" "$OUT/$dev_asset"
+cp "$(built production)" "$OUT/$production_asset"
+
+# A build's entry in release.json: its asset's name, SHA-256 and size.
+entry() {
+  printf '{\n      "asset": "%s",\n      "sha256": "%s",\n      "size": %s\n    }' \
+    "$1" "$(shasum -a 256 "$OUT/$1" | cut -d ' ' -f 1)" "$(wc -c <"$OUT/$1" | tr -d ' ')"
+}
+release=$(
+  cat <<JSON
+{
+  "version": "$version",
+  "versionCode": $code,
+  "builds": {
+    "dev": $(entry "$dev_asset"),
+    "production": $(entry "$production_asset")
+  }
+}
+JSON
+)
+
+if $dry; then
+  echo "Dry run: built and signed (certificate SHA-256 $signer), in $OUT; nothing published or changed."
+  echo "Would commit $version on $branch, tag it $tag, push both to $REPOSITORY, publish $tag's"
+  echo "pre-release, and commit $RELEASE on $branch:"
+  echo "$release"
+  exit 0
+fi
+
+git tag --annotate "$tag" --message "DSP Dispatch: Relay $version"
+git push --quiet --atomic origin "refs/heads/$branch" "refs/tags/$tag"
+pushed=true
+gh release create "$tag" "$OUT/$dev_asset" "$OUT/$production_asset" \
+  --repo "$REPOSITORY" \
+  --verify-tag \
+  --prerelease \
+  --latest=false \
+  --title "DSP Dispatch: Relay $version" \
+  --notes "versionCode $code, signed with the certificate of SHA-256 $signer." ||
+  fail "publishing failed: check https://github.com/$REPOSITORY/releases for a draft of $tag left behind"
+trap - EXIT
+
+echo "$release" >"$RELEASE"
+git add "$RELEASE"
+git commit --quiet --message "chore(relay): hand out $version"
+git push --quiet origin "$branch" || fail "published $tag, but couldn't push $branch: push it, then open its PR"
+echo "Published $tag. Open $branch's PR: merged, Dev hands $version out; released, Production."
+echo "  gh pr create --repo $REPOSITORY --base main --head $branch --title 'chore(relay): publish $version' --body 'Hands out DSP Dispatch: Relay $version, published as $tag.'"

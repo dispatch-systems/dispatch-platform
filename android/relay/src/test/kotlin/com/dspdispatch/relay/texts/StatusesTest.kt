@@ -1,5 +1,6 @@
 package com.dspdispatch.relay.texts
 
+import com.dspdispatch.relay.dispatch.AppVersion
 import com.dspdispatch.relay.dispatch.Dispatch
 import com.dspdispatch.relay.dispatch.Refusal
 import kotlinx.coroutines.test.runTest
@@ -18,7 +19,7 @@ class StatusesTest {
     private val server = MockWebServer()
     private val database = memoryDatabase()
     private val sends = database.sends()
-    private val statuses = Statuses(Dispatch(OkHttpClient()), sends)
+    private val statuses = Statuses(Dispatch(OkHttpClient(), AppVersion("1.4.0", 14)), sends)
     private lateinit var site: String
 
     @Before

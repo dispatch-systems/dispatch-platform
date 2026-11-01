@@ -1,6 +1,7 @@
 package com.dspdispatch.relay.texts
 
 import com.dspdispatch.relay.dispatch.Direction
+import com.dspdispatch.relay.dispatch.AppVersion
 import com.dspdispatch.relay.dispatch.Dispatch
 import com.dspdispatch.relay.dispatch.Refusal
 import com.dspdispatch.relay.dispatch.TextAnswer
@@ -33,7 +34,7 @@ class ReporterTest {
     private val server = MockWebServer()
     private val queue = MemoryQueue()
     private val provider = FakeProvider()
-    private val reporter = Reporter(Dispatch(OkHttpClient()), queue, provider, Texting { provider.allowed }, EmptyCoroutineContext)
+    private val reporter = Reporter(Dispatch(OkHttpClient(), AppVersion("1.4.0", 14)), queue, provider, Texting { provider.allowed }, EmptyCoroutineContext)
     private lateinit var site: String
 
     @Before

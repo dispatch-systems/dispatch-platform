@@ -17,7 +17,7 @@ import org.junit.Test
 
 class DispatchTest {
     private val server = MockWebServer()
-    private val dispatch = Dispatch(OkHttpClient())
+    private val dispatch = Dispatch(OkHttpClient(), AppVersion("1.4.0", 14))
     private lateinit var site: String
 
     @Before
@@ -71,10 +71,36 @@ class DispatchTest {
             listOf(OutgoingText("text_1", "+14255550199", "On my way", 41, listOf(OutgoingFile("file_1", "door.jpg", "image/jpeg", 48213)))),
             outbox.texts,
         )
+        assertNull(outbox.app)
         val request = server.takeRequest()
         assertEquals("GET", request.method)
         assertEquals("/api/communications/phone/outbox", request.url.encodedPath)
+        assertEquals("1.4.0", request.url.queryParameter("version"))
+        assertEquals("14", request.url.queryParameter("versionCode"))
         assertEquals("Bearer ${"k".repeat(64)}", request.headers["Authorization"])
+    }
+
+    @Test
+    fun hearsTheLatestVersionFromTheOutbox() = runTest {
+        server.enqueue(json(200, """{"texts":[],"app":{"version":"1.4.1","versionCode":15}}"""))
+        assertEquals(AppVersion("1.4.1", 15), dispatch.outbox(site, "k").app)
+    }
+
+    @Test
+    fun asksTheAppsDetailsAndDownloadsItWithoutTheKey() = runTest {
+        val sha256 = "c".repeat(64)
+        server.enqueue(json(200, """{"version":"1.4.1","versionCode":15,"size":3,"sha256":"$sha256"}"""))
+        assertEquals(AppDetails("1.4.1", 15, 3, sha256), dispatch.app(site))
+        server.enqueue(MockResponse.Builder().code(200).body("apk").build())
+        assertEquals("apk", dispatch.apk(site) { it.readBytes().decodeToString() })
+        server.enqueue(json(404, """{"error":"phones_app_not_found","message":"…"}"""))
+        assertEquals("phones_app_not_found", refused { dispatch.apk(site) { it.readBytes() } }.code)
+        val details = server.takeRequest()
+        assertEquals("/api/communications/phone/app", details.url.encodedPath)
+        assertNull(details.headers["Authorization"])
+        val download = server.takeRequest()
+        assertEquals("/api/communications/phone/app/download", download.url.encodedPath)
+        assertNull(download.headers["Authorization"])
     }
 
     @Test

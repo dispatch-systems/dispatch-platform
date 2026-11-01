@@ -12,11 +12,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import com.dspdispatch.relay.pairing.Paired
 import com.dspdispatch.relay.pairing.PairingLink
 import com.dspdispatch.relay.pairing.Standing
 import com.dspdispatch.relay.setup.Fixes
+import com.dspdispatch.relay.setup.Item
+import com.dspdispatch.relay.setup.Step
 import com.dspdispatch.relay.texts.Today
 import com.dspdispatch.relay.ui.CameraScreen
 import com.dspdispatch.relay.ui.ConnectedScreen
@@ -26,6 +31,7 @@ import com.dspdispatch.relay.ui.ScanScreen
 import com.dspdispatch.relay.ui.SetupScreen
 import com.dspdispatch.relay.ui.StartScreen
 import com.dspdispatch.relay.ui.StepScreen
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 
 /**
@@ -55,6 +61,15 @@ class MainActivity : ComponentActivity() {
         scanning = savedInstanceState?.getBoolean(SCANNING) ?: false
         waiting = savedInstanceState?.getString(WAITING)?.let(PairingLink::parse)
         if (savedInstanceState == null) opened(intent)
+        // Android's confirmation of an update, shown while the app is: the person tapped Install.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                relay.installer.confirm.filterNotNull().collect {
+                    relay.installer.asked()
+                    startActivity(it)
+                }
+            }
+        }
         setContent {
             val standing by relay.pairings.standing.collectAsStateWithLifecycle()
             val link by relay.connection.link.collectAsStateWithLifecycle()
@@ -64,6 +79,7 @@ class MainActivity : ComponentActivity() {
             val finished by relay.setup.finished.collectAsStateWithLifecycle()
             val today by relay.texts.today.collectAsStateWithLifecycle(Today())
             val mmsWhenBusy by relay.texts.mmsWhenBusy.on.collectAsStateWithLifecycle()
+            val update by relay.updates.update.collectAsStateWithLifecycle()
             val pairing = attempt == Attempt.Pairing
             val problem = (attempt as? Attempt.Failed)?.problem
             val now = standing
@@ -81,7 +97,8 @@ class MainActivity : ComponentActivity() {
                     ::startWalk,
                     mmsWhenBusy,
                     relay.texts.mmsWhenBusy::set,
-                )
+                    update,
+                ) { install(now.paired, items) }
                 scanning && !cameraAllowed -> CameraScreen(::askForCamera) { scanning = false }
                 scanning -> ScanScreen(::read) { scanning = false }
                 now is Standing.Removed -> RemovedScreen(now.dsp, ::scan, pairing, problem)
@@ -116,6 +133,16 @@ class MainActivity : ComponentActivity() {
 
     private fun opened(intent: Intent) {
         intent.data?.toString()?.let(::read)
+    }
+
+    /**
+     * Installs the newer version from [paired]'s DSP; or first opens Install updates, as Set up's
+     * [items] have it, while Android doesn't let the app install them.
+     */
+    private fun install(paired: Paired, items: List<Item>?) {
+        val notAllowed = items?.firstOrNull { it.step == Step.INSTALL_UPDATES && !it.done }
+        val fix = notAllowed?.fix
+        if (fix != null) fixes.apply(notAllowed, fix) else relay.updates.install(paired.site)
     }
 
     private fun scan() {
