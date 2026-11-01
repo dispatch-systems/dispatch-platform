@@ -102,4 +102,5 @@ dependencies {
     testImplementation(libs.coroutines.test)
     testImplementation(libs.junit)
     testImplementation(libs.okhttp.mockwebserver)
+    testImplementation(libs.sqlite.bundled.jvm)
 }
