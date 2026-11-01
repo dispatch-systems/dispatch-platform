@@ -3,8 +3,11 @@ package com.dspdispatch.relay.setup
 import androidx.annotation.StringRes
 import com.dspdispatch.relay.R
 
-/** What the app needs of the phone to run all day, every day, in the order Set up lists it. */
-enum class Step(@param:StringRes val label: Int, @param:StringRes val undone: Int) {
+/**
+ * What the app needs of the phone to run all day, every day, in the order Set up walks it: its
+ * [heading] as its step shows, and how it reads when [undone].
+ */
+enum class Step(@param:StringRes val heading: Int, @param:StringRes val undone: Int) {
     TEXTING(R.string.step_texting, R.string.undone_texting),
     PHONE_NUMBER(R.string.step_phone_number, R.string.undone_phone_number),
     NOTIFICATIONS(R.string.step_notifications, R.string.undone_notifications),
@@ -84,7 +87,7 @@ data class Facts(
 
 /** One step of Set up: whether it's done, and else what its buttons do, the last the main one. */
 data class Item(val step: Step, val done: Boolean, val fixes: List<Fix>) {
-    /** The main fix, as the running screen's banner offers it. */
+    /** The main fix, its step's primary button. */
     val fix: Fix? get() = fixes.lastOrNull()
 }
 

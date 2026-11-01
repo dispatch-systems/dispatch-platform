@@ -8,11 +8,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 
 /**
- * Set up: the steps the app needs of the phone, as last checked, and whether Set up was finished.
- * What only the person can say is done is kept in the app's own storage.
+ * Set up: the steps the app needs of the phone, as last checked, the guided walk through those
+ * undone, and whether Set up was finished. What only the person can say is done is kept in the
+ * app's own storage.
  */
 class Setup(private val context: Context) {
     private val prefs = context.getSharedPreferences("setup", Context.MODE_PRIVATE)
@@ -28,6 +30,11 @@ class Setup(private val context: Context) {
     /** Whether Set up was finished, after which the running screen shows instead. */
     val finished: StateFlow<Boolean> = done.asStateFlow()
 
+    private val walking = MutableStateFlow<Walk?>(null)
+
+    /** The guided Set up under way, if it is. */
+    val walk: StateFlow<Walk?> = walking.asStateFlow()
+
     /**
      * Checks every step again. With [notify], a step undone and not yet notified is notified, once
      * it can be; a step done again takes its notification away, and is notified again if undone
@@ -38,6 +45,7 @@ class Setup(private val context: Context) {
             checklist(probe.read({ byHand(makerKey(it)) }, byHand(Step.CHAT_FEATURES.name)))
         }
         checked.value = items
+        walkOn(items)
         val undone = items.filterNot(Item::done).map(Item::step).toSet()
         Step.entries.filterNot(undone::contains).forEach { Notifications.cancelUndone(context, it) }
         val before = prefs.getStringSet(NOTIFIED, emptySet()).orEmpty().mapNotNull { name -> Step.entries.find { it.name == name } }.toSet()
@@ -64,8 +72,41 @@ class Setup(private val context: Context) {
         if (confirmed != now) prefs.edit { putString(key, confirmed.name) }
     }
 
+    /** Starts the guided walk through the steps undone now; Set up is finished at once where none is. */
+    suspend fun start() {
+        walking.value = Walk()
+        check()
+    }
+
+    /** Leaves the guided walk, for the screen it started from. */
+    fun stop() {
+        walking.value = null
+    }
+
+    /**
+     * Android refused texting at once. Where it restricts texting, the walk shows Restricted
+     * settings until the person comes back from it; whether it does.
+     */
+    fun textingBlocked(): Boolean {
+        val restricted = checked.value.orEmpty().any { it.step == Step.RESTRICTED_SETTINGS && !it.done }
+        if (restricted) walking.update { it?.copy(blocked = true) }
+        return restricted && walking.value != null
+    }
+
+    /** The person came back from a screen a step opened: after Restricted settings, the walk goes back to Texting. */
+    fun back() {
+        walking.update { it?.copy(blocked = false) }
+    }
+
+    /** Moves the walk on to what [items] has undone; at its end, Set up is finished. */
+    private fun walkOn(items: List<Item>) {
+        var ended = false
+        walking.update { walk -> walk?.next(items).also { ended = walk != null && it == null } }
+        if (ended && !done.value) finish()
+    }
+
     /** Set up is done: the running screen shows from now on. */
-    fun finish() {
+    private fun finish() {
         prefs.edit { putBoolean(FINISHED, true) }
         done.value = true
     }

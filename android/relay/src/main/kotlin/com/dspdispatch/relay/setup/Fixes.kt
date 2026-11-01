@@ -31,11 +31,18 @@ class Fixes(private val activity: ComponentActivity) {
         val refused = results.filterValues { !it }.keys
         // Once a permission is refused for good, Android asks no more and answers at once: App
         // info is then the only place to give it. Android 15+ answers so too for a texting
-        // permission it restricts, whose "Allow restricted settings" is in App info as well.
-        if (refused.isNotEmpty() && refused.none(activity::shouldShowRequestPermissionRationale)) open(details(Settings.ACTION_APPLICATION_DETAILS_SETTINGS))
+        // permission it restricts, whose "Allow restricted settings" is in App info as well: the
+        // walk shows that step, which opens it, in Texting's place.
+        if (refused.isNotEmpty() && refused.none(activity::shouldShowRequestPermissionRationale)) {
+            val restricted = refused.any(Probe.TEXTING::contains) && setup.textingBlocked()
+            if (!restricted) open(details(Settings.ACTION_APPLICATION_DETAILS_SETTINGS))
+        }
         recheck()
     }
-    private val screen = activity.registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { recheck() }
+    private val screen = activity.registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        setup.back()
+        recheck()
+    }
 
     /** Does what [fix] does for [item]. */
     fun apply(item: Item, fix: Fix) {

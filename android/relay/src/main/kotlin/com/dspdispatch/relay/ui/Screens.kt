@@ -71,9 +71,9 @@ fun RemovedScreen(dsp: String, scan: () -> Unit, pairing: Boolean, problem: Int?
  * and the app's version.
  */
 @Composable
-fun ConnectedScreen(paired: Paired, link: Link, today: Today, undone: Item?, fix: (Item, Fix) -> Unit) = Page {
+fun ConnectedScreen(paired: Paired, link: Link, today: Today, undone: Item?, fix: () -> Unit) = Page {
     Top()
-    undone?.let { item -> UndoneBanner(item) { fix(item, it) } }
+    undone?.let { UndoneBanner(it, fix) }
     DspLine(paired)
     Surface(Modifier.fillMaxWidth(), RoundedCornerShape(12.dp), MaterialTheme.colorScheme.surfaceVariant) {
         Column(Modifier.padding(16.dp)) {
@@ -148,8 +148,9 @@ internal fun Page(content: @Composable androidx.compose.foundation.layout.Column
     }
 }
 
+/** The app's mark and name, atop a screen. */
 @Composable
-private fun Top() = Row(verticalAlignment = Alignment.CenterVertically) {
+internal fun Top() = Row(verticalAlignment = Alignment.CenterVertically) {
     Mark(28)
     Text(
         stringResource(R.string.app_name),
@@ -219,5 +220,5 @@ private fun ConnectedPreview() = ConnectedScreen(
     Link.Connected(0),
     Today(received = 42, sent = 37, waiting = 0, latest = 0),
     Item(Step.BATTERY, false, listOf(Fix.BATTERY_REQUEST)),
-    { _, _ -> },
+    {},
 )
