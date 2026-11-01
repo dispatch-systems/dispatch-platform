@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Sets up this clone for developing Dispatch, on Linux or macOS: the Node and Rust it pins, its
 # packages, the browser `dispatchdev shot` drives, its first build and `dispatchdev` on PATH, then
-# the private agent docs, linked where Claude and Codex read them. Run it again at any time: it
-# does only what's missing, and updates the agent docs.
+# the private agent docs, linked into the folder that holds this clone, where sessions start. Run
+# it again at any time: it does only what's missing, and updates the agent docs.
 set -euo pipefail
 cd "$(dirname "$0")"
 shell_path=$PATH
@@ -112,10 +112,13 @@ else
   say "Left $command as it is: move it aside and run setup again to put dispatchdev on PATH."
 fi
 
-# The agent docs: the private dispatch-agents repo, in $DISPATCH_AGENTS or ~/dispatch-agents.
-# Claude reads ~/.claude, Codex ~/.codex and ~/.agents; setup replaces only a link of its own or
-# an empty file there.
+# The agent docs: the private dispatch-agents repo, in $DISPATCH_AGENTS or ~/dispatch-agents,
+# linked into the folder that holds this clone, where every Dispatch session starts: Claude reads
+# its CLAUDE.md and .claude/skills, Codex its AGENTS.md and .agents/skills. Setup replaces only a
+# link or an empty file there, and removes the links into the docs it once made in ~/.claude,
+# ~/.codex and ~/.agents, so sessions elsewhere don't get them.
 agents=${DISPATCH_AGENTS:-$HOME/dispatch-agents}
+sessions=$(dirname "$clone")
 link() {
   mkdir -p "$(dirname "$2")"
   if [[ -L $2 || ! -e $2 || (-f $2 && ! -s $2) ]]; then
@@ -124,6 +127,12 @@ link() {
     say "Left $2 as it is: move it aside and run setup again to link the agent docs there."
   fi
 }
+remove_old_links() {
+  local entry
+  for entry in "$@"; do
+    if [[ -L $entry && $(readlink "$entry") == "$agents"/* ]]; then rm "$entry"; fi
+  done
+}
 if [[ -d $agents/.git ]]; then
   git -C "$agents" pull -q --ff-only || say "Couldn't update $agents; linking it as it is."
 elif ! gh repo clone dispatch-systems/dispatch-agents "$agents" -- -q 2>/dev/null &&
@@ -131,13 +140,15 @@ elif ! gh repo clone dispatch-systems/dispatch-agents "$agents" -- -q 2>/dev/nul
   say "Couldn't clone dispatch-systems/dispatch-agents: the agent docs aren't linked."
 fi
 if [[ -d $agents/skills ]]; then
-  link "$agents/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
-  link "$agents/AGENTS.md" "$HOME/.codex/AGENTS.md"
+  link "$agents/CLAUDE.md" "$sessions/CLAUDE.md"
+  link "$agents/AGENTS.md" "$sessions/AGENTS.md"
   for skill in "$agents"/skills/*/; do
     skill=${skill%/}
-    link "$skill" "$HOME/.claude/skills/${skill##*/}"
-    link "$skill" "$HOME/.agents/skills/${skill##*/}"
+    link "$skill" "$sessions/.claude/skills/${skill##*/}"
+    link "$skill" "$sessions/.agents/skills/${skill##*/}"
   done
+  remove_old_links "$HOME/.claude/CLAUDE.md" "$HOME/.codex/AGENTS.md" "$HOME"/.claude/skills/* \
+    "$HOME"/.agents/skills/*
 fi
 
 command -v gh >/dev/null || say "Install GitHub's gh to open PRs from here."
