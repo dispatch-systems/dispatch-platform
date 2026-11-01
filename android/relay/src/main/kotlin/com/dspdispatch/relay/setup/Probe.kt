@@ -2,7 +2,6 @@ package com.dspdispatch.relay.setup
 
 import android.Manifest
 import android.app.ActivityManager
-import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
@@ -10,7 +9,6 @@ import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.os.Build
 import android.os.PowerManager
-import android.os.Process
 import android.provider.Telephony
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -23,28 +21,31 @@ class Probe(private val context: Context) {
     private val packages = context.packageManager
     private val name = context.packageName
 
-    fun read(makerBatteryByHand: ByHand, chatFeaturesByHand: ByHand) = Facts(
-        texting = TEXTING.all(::allowed),
-        phoneNumber = allowed(Manifest.permission.READ_PHONE_NUMBERS),
-        notificationsAllowed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            allowed(Manifest.permission.POST_NOTIFICATIONS)
-        } else {
-            null
-        },
-        notificationsOn = NotificationManagerCompat.from(context).areNotificationsEnabled(),
-        backgroundRestricted = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
-            context.getSystemService(ActivityManager::class.java).isBackgroundRestricted,
-        ignoringBatteryOptimizations = context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(name),
-        makerBattery = makerBattery() != null,
-        makerBatteryByHand = makerBatteryByHand,
-        unusedApps = unusedApps(),
-        backgroundData = context.getSystemService(ConnectivityManager::class.java).restrictBackgroundStatus !=
-            ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED,
-        restricted = restricted(),
-        textingApp = textingApp() != null,
-        chatFeaturesByHand = chatFeaturesByHand,
-        installUpdates = packages.canRequestPackageInstalls(),
-    )
+    fun read(makerBatteryByHand: ByHand, chatFeaturesByHand: ByHand): Facts {
+        val texting = TEXTING.all(::allowed)
+        return Facts(
+            texting = texting,
+            phoneNumber = allowed(Manifest.permission.READ_PHONE_NUMBERS),
+            notificationsAllowed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                allowed(Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                null
+            },
+            notificationsOn = NotificationManagerCompat.from(context).areNotificationsEnabled(),
+            backgroundRestricted = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
+                context.getSystemService(ActivityManager::class.java).isBackgroundRestricted,
+            ignoringBatteryOptimizations = context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(name),
+            makerBattery = makerBattery() != null,
+            makerBatteryByHand = makerBatteryByHand,
+            unusedApps = unusedApps(),
+            backgroundData = context.getSystemService(ConnectivityManager::class.java).restrictBackgroundStatus !=
+                ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED,
+            restricted = restricted(texting),
+            textingApp = textingApp() != null,
+            chatFeaturesByHand = chatFeaturesByHand,
+            installUpdates = packages.canRequestPackageInstalls(),
+        )
+    }
 
     /** The phone maker's own battery screen, where it has one that opens. */
     fun makerBattery(): Intent? = MakerScreens.find(packages, Build.MANUFACTURER)
@@ -75,13 +76,12 @@ class Probe(private val context: Context) {
     /**
      * Android 15+ restricts the SMS permissions, among other settings, for an app installed from a
      * file, as an APK downloaded in a browser is, until "Allow restricted settings" in its App
-     * info. (Android 13 and 14 restricted only settings this app never asks for: accessibility and
-     * notification access.) Android keeps where the app stands in the
-     * `access_restricted_settings` app op: errored, restricted; ignored, restricted and the
-     * person told so, which shows App info's menu item; allowed, lifted; default, decided by
-     * where the app was installed from.
+     * info, which shows once the person has tried to give one. (Android 13 and 14 restricted only
+     * settings this app never asks for: accessibility and notification access.) Android lets no
+     * app read whether its restriction was lifted, so it stands until texting is allowed, the
+     * only restricted setting the app needs.
      */
-    private fun restricted(): Boolean? {
+    private fun restricted(texting: Boolean): Boolean? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) return null
         // The install sources Android restricts, as its EnhancedConfirmationService has them.
         val fromFile = try {
@@ -91,17 +91,7 @@ class Probe(private val context: Context) {
         } catch (_: PackageManager.NameNotFoundException) {
             false
         }
-        val mode = try {
-            context.getSystemService(AppOpsManager::class.java)
-                .checkOpNoThrow(RESTRICTED_SETTINGS_OP, Process.myUid(), name)
-        } catch (_: IllegalArgumentException) {
-            // A phone whose Android doesn't know the app op: none of its settings is restricted.
-            return null
-        }
-        return when (mode) {
-            AppOpsManager.MODE_ERRORED, AppOpsManager.MODE_IGNORED -> true
-            else -> if (fromFile) mode != AppOpsManager.MODE_ALLOWED else null
-        }
+        return if (fromFile) !texting else null
     }
 
     companion object {
@@ -112,8 +102,5 @@ class Probe(private val context: Context) {
             Manifest.permission.SEND_SMS,
             Manifest.permission.RECEIVE_MMS,
         )
-
-        /** Android's `AppOpsManager.OPSTR_ACCESS_RESTRICTED_SETTINGS`, which it doesn't publish. */
-        private const val RESTRICTED_SETTINGS_OP = "android:access_restricted_settings"
     }
 }

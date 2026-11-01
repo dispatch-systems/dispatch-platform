@@ -52,7 +52,6 @@ class MainActivity : ComponentActivity() {
         scanning = savedInstanceState?.getBoolean(SCANNING) ?: false
         waiting = savedInstanceState?.getString(WAITING)?.let(PairingLink::parse)
         if (savedInstanceState == null) opened(intent)
-        if (relay.pairings.standing.value is Standing.Pairing) RelayService.start(this)
         setContent {
             val standing by relay.pairings.standing.collectAsStateWithLifecycle()
             val link by relay.connection.link.collectAsStateWithLifecycle()
@@ -76,6 +75,8 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         cameraAllowed = allowed(Manifest.permission.CAMERA)
+        // Each time, as the relay's notification shows only once notifications are allowed.
+        if (relay.pairings.standing.value is Standing.Pairing) RelayService.start(this)
         lifecycleScope.launch { relay.setup.check() }
     }
 
