@@ -4,11 +4,11 @@
 use super::*;
 use crate::backend::{
     compose::SLACK,
-    phone,
     support::{self, filed, switch, texted},
     texts::storage::TextStore,
 };
 use dispatch_core::db::now;
+use std::task::Poll;
 
 const TEAM: &str = "T0FIXTURE2";
 
@@ -49,20 +49,29 @@ async fn an_answer_that_went_stays_kept_though_its_writers_access_ended_as_it_we
     let asked = texted(&state, &dsp, "+12535550177", "Can I swap Saturday?", now()).await;
     let conversation = filed(&state, &dsp, &asked).await.id;
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
-    // Communications goes off for the DSP once the answer is queued, as the phone's outbox wakes
-    // for it, and with it their permission: it went and is kept, but nothing of the conversation
-    // is read back to them. The answer goes on only once it's off.
-    let mut outbox = state.topics.subscribe(phone::live::TOPIC, &dsp);
+    // Communications goes off for the DSP once the answer is queued, and with it their permission:
+    // it went and is kept, but nothing of the conversation is read back to them. Each database
+    // call waits in line for a slot, first come first served, and this test holds every slot: the
+    // write that queues the answer waits first, the switch next, and once one slot is let go, the
+    // switch goes right after the queue and before anything the send reads afterwards, which waits
+    // behind it.
+    let mut slots = Vec::new();
+    while let Ok(slot) = state.db_slots.clone().try_acquire_owned() {
+        slots.push(slot);
+    }
     let reference = Reference::Text(conversation.clone());
     let sending = send(&state, &c, support::USE, &reference, "Swap it", &[]);
-    tokio::pin!(sending);
-    tokio::select! {
-        biased;
-        _ = outbox.changed() => {}
-        _ = &mut sending => panic!("it answered before it was queued"),
-    }
-    switch(&state, &dsp, "communications", false).await;
-    assert_eq!(sending.await.unwrap_err().code, "permission_denied");
+    let switching = switch(&state, &dsp, "communications", false);
+    tokio::pin!(sending, switching);
+    std::future::poll_fn(|cx| {
+        assert!(sending.as_mut().poll(cx).is_pending());
+        assert!(switching.as_mut().poll(cx).is_pending());
+        Poll::Ready(())
+    })
+    .await;
+    slots.pop();
+    let ((), sent) = tokio::join!(switching, sending);
+    assert_eq!(sent.unwrap_err().code, "permission_denied");
     let at = dsp.clone();
     let kept = state
         .read(move |db| db.communications_texts(&at, &conversation, None, 10))
