@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.telephony.SmsManager
-import android.telephony.SubscriptionManager
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.dspdispatch.relay.Phone
@@ -16,8 +15,8 @@ class PhoneRadio(private val context: Context) : Radio {
     override fun allowed() =
         ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
 
-    override fun line(number: String): Line {
-        val chosen = subscription(Phone.subscriptions(context), number, SubscriptionManager.getDefaultSmsSubscriptionId())
+    override fun line(number: String, subscription: Int): Line {
+        val chosen = subscription(Phone.subscriptions(context, subscription), number, Phone.textingSubscription())
         return PhoneLine(context, manager(chosen))
     }
 

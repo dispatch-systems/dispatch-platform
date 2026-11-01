@@ -139,7 +139,7 @@ class FakeRadio : Radio {
 
     override fun allowed() = allowed
 
-    override fun line(number: String): Line {
+    override fun line(number: String, subscription: Int): Line {
         lines += number
         return object : Line {
             override fun divide(body: String) = body.chunked(partLength).ifEmpty { listOf("") }

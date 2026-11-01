@@ -7,8 +7,11 @@ interface Radio {
     /** Whether the phone lets the app send texts. */
     fun allowed(): Boolean
 
-    /** The line to send from: the SIM whose number is [number], the phone's as it paired. */
-    fun line(number: String): Line
+    /**
+     * The line to send from: the SIM whose number is [number], the phone's as it paired on
+     * [subscription].
+     */
+    fun line(number: String, subscription: Int): Line
 }
 
 /**

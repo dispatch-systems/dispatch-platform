@@ -84,7 +84,7 @@ class Sender(
 
     private suspend fun sendText(paired: Paired, key: String, text: OutgoingText, send: Send) {
         if (!radio.allowed()) return sends.failed(send, Failure.NOT_ALLOWED, now())
-        val line = radio.line(paired.number)
+        val line = radio.line(paired.number, paired.subscription)
         if (text.files.isEmpty()) {
             val parts = line.divide(send.body)
             hand(send, parts.size) { line.sms(send, parts) }
