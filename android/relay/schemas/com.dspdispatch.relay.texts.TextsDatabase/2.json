@@ -35,9 +35,7 @@
         ],
         "primaryKey": {
           "autoGenerate": false,
-          "columnNames": [
-            "id"
-          ]
+          "columnNames": ["id"]
         }
       },
       {
@@ -64,9 +62,7 @@
         ],
         "primaryKey": {
           "autoGenerate": false,
-          "columnNames": [
-            "row"
-          ]
+          "columnNames": ["row"]
         }
       },
       {
@@ -106,9 +102,7 @@
         ],
         "primaryKey": {
           "autoGenerate": false,
-          "columnNames": [
-            "clientId"
-          ]
+          "columnNames": ["clientId"]
         }
       },
       {
@@ -165,26 +159,20 @@
         ],
         "primaryKey": {
           "autoGenerate": true,
-          "columnNames": [
-            "id"
-          ]
+          "columnNames": ["id"]
         },
         "indices": [
           {
             "name": "index_files_clientId",
             "unique": false,
-            "columnNames": [
-              "clientId"
-            ],
+            "columnNames": ["clientId"],
             "orders": [],
             "createSql": "CREATE INDEX IF NOT EXISTS `index_files_clientId` ON `${TABLE_NAME}` (`clientId`)"
           },
           {
             "name": "index_files_dispatchId",
             "unique": false,
-            "columnNames": [
-              "dispatchId"
-            ],
+            "columnNames": ["dispatchId"],
             "orders": [],
             "createSql": "CREATE INDEX IF NOT EXISTS `index_files_dispatchId` ON `${TABLE_NAME}` (`dispatchId`)"
           }
@@ -254,10 +242,7 @@
         ],
         "primaryKey": {
           "autoGenerate": false,
-          "columnNames": [
-            "id",
-            "attempt"
-          ]
+          "columnNames": ["id", "attempt"]
         }
       },
       {
@@ -296,12 +281,7 @@
         ],
         "primaryKey": {
           "autoGenerate": false,
-          "columnNames": [
-            "id",
-            "attempt",
-            "part",
-            "event"
-          ]
+          "columnNames": ["id", "attempt", "part", "event"]
         }
       },
       {
@@ -329,9 +309,7 @@
         ],
         "primaryKey": {
           "autoGenerate": false,
-          "columnNames": [
-            "row"
-          ]
+          "columnNames": ["row"]
         }
       },
       {
@@ -370,11 +348,7 @@
         ],
         "primaryKey": {
           "autoGenerate": false,
-          "columnNames": [
-            "id",
-            "attempt",
-            "status"
-          ]
+          "columnNames": ["id", "attempt", "status"]
         }
       }
     ],
