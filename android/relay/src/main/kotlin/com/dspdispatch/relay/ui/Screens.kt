@@ -82,14 +82,14 @@ fun ConnectedScreen(
     link: Link,
     today: Today,
     undone: Item?,
-    fix: (Item, Fix) -> Unit,
+    fix: () -> Unit,
     mmsWhenBusy: Boolean,
     setMmsWhenBusy: (Boolean) -> Unit,
     update: Update,
     install: () -> Unit,
 ) = Page {
     Top()
-    undone?.let { item -> UndoneBanner(item) { fix(item, it) } }
+    undone?.let { UndoneBanner(it, fix) }
     UpdateBanner(update, install)
     DspLine(paired)
     Surface(Modifier.fillMaxWidth(), RoundedCornerShape(12.dp), MaterialTheme.colorScheme.surfaceVariant) {
@@ -182,8 +182,9 @@ internal fun Page(content: @Composable androidx.compose.foundation.layout.Column
     }
 }
 
+/** The app's mark and name, atop a screen. */
 @Composable
-private fun Top() = Row(verticalAlignment = Alignment.CenterVertically) {
+internal fun Top() = Row(verticalAlignment = Alignment.CenterVertically) {
     Mark(28)
     Text(
         stringResource(R.string.app_name),
@@ -253,7 +254,7 @@ private fun ConnectedPreview() = ConnectedScreen(
     Link.Connected(0),
     Today(received = 42, sent = 37, waiting = 0, latest = 0),
     Item(Step.BATTERY, false, listOf(Fix.BATTERY_REQUEST)),
-    { _, _ -> },
+    {},
     mmsWhenBusy = true,
     setMmsWhenBusy = {},
     update = Update.Available(AppVersion("1.0.5", 5)),

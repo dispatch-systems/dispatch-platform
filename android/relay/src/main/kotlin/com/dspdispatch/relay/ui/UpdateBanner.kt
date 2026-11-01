@@ -1,12 +1,14 @@
 package com.dspdispatch.relay.ui
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -18,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.dspdispatch.relay.R
 import com.dspdispatch.relay.update.Update
 
@@ -35,7 +38,9 @@ fun UpdateBanner(update: Update, install: () -> Unit) {
                     fontWeight = FontWeight.SemiBold,
                 )
                 when (update) {
-                    is Update.Available, is Update.Confirming -> Small(stringResource(R.string.install), filled = true, click = install)
+                    is Update.Available, is Update.Confirming -> Button(install, Modifier.height(32.dp), contentPadding = PaddingValues(horizontal = 12.dp)) {
+                        Text(stringResource(R.string.install), fontSize = 13.sp)
+                    }
                     is Update.Downloading -> Status(stringResource(R.string.downloading))
                     is Update.Installing -> {
                         CircularProgressIndicator(Modifier.padding(end = 8.dp).size(16.dp), strokeWidth = 2.dp)
