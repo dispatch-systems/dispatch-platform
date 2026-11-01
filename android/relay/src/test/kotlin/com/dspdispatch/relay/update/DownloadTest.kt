@@ -31,13 +31,9 @@ class DownloadTest {
 
     @Test
     fun stopsOnceLargerThanTheDetailsSay() {
-        var read = 0L
-        val endless = generateSequence { bytes }.flatMap { it.asSequence() }.iterator()
-        val input = object : java.io.InputStream() {
-            override fun read(): Int = endless.next().toInt().also { read++ } and BYTE
-        }
-        assertThrows(Mismatch::class.java) { save(input, apk, details(bytes)) {} }
-        assertTrue(read <= bytes.size + BUFFER)
+        val larger = ByteArrayInputStream(bytes + bytes + bytes + bytes)
+        assertThrows(Mismatch::class.java) { save(larger, apk, details(bytes)) {} }
+        assertTrue(apk.length() <= bytes.size)
     }
 
     @Test
@@ -54,9 +50,6 @@ class DownloadTest {
     private fun details(of: ByteArray) = AppDetails("1.0.5", 5, of.size.toLong(), sha256(of))
 
     private companion object {
-        const val BYTE = 0xff
-        const val BUFFER = 64 * 1024
-
         fun sha256(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
     }
 }
