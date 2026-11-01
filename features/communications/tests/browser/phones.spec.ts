@@ -101,7 +101,7 @@ test('Add phone closes once its own code pairs a phone, and a rename asks before
   await expect(asking.getByRole('button')).toHaveText(['Discard changes', 'Save changes']);
 });
 
-test('The card offers the app its DSP hands out: its download, and in Add phone, to install first', async ({
+test('The card offers the app its DSP hands out: its download, an update to an older one, and in Add phone, to install first', async ({
   page,
   dispatch,
 }) => {
@@ -112,9 +112,12 @@ test('The card offers the app its DSP hands out: its download, and in Add phone,
     link: `http://${dispatch.at(demo.memberDsp).host}/api/communications/phone/app/download`,
     picture: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=',
   };
+  // Its stand-in phone runs an older version than that.
   await page.route('**/api/dsp/communications/phones', async (route) => {
     const response = await route.fetch();
-    await route.fulfill({ response, json: { ...((await response.json()) as Phones), app } });
+    const { phones } = (await response.json()) as Phones;
+    const older = phones.map((phone) => ({ ...phone, appVersion: '1.3.0', update: true }));
+    await route.fulfill({ response, json: { phones: older, app } });
   });
   await login(page);
   await openDsp(page, 'Northline Logistics');
@@ -130,6 +133,9 @@ test('The card offers the app its DSP hands out: its download, and in Add phone,
     .getByRole('article')
     .filter({ has: page.getByRole('heading', { name: 'Phones', level: 3 }) });
   await expect(card.getByRole('link', { name: 'Download app' })).toHaveAttribute('href', app.link);
+  await expect(
+    card.getByRole('listitem').filter({ hasText: '(206) 555-0100' }).getByText('Update'),
+  ).toBeVisible();
 
   await card.getByRole('button', { name: 'Add phone' }).click();
   const dialog = page.getByRole('dialog', { name: 'Add phone' });

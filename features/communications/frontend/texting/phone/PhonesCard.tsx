@@ -19,9 +19,10 @@ import './phones.css';
 const POLL = 30_000;
 
 // Communications' card for the DSP's dispatch phones on Settings' DSP Connections: each phone, by
-// its number, with its name, model and the app's version, whether it's online, and renaming or
-// removing it; Add phone, which shows the code that pairs the next one, beside the app to install
-// first; and the app's download, while the DSP's address hands one out.
+// its number, with its name, model and the app's version, tagged Update while the DSP's address
+// hands out a newer one, whether it's online, and renaming or removing it; Add phone, which shows
+// the code that pairs the next one, beside the app to install first; and the app's download, while
+// the DSP's address hands one out.
 
 export function PhonesCard(_: { view: DspView }) {
   const phones = usePhones(POLL);
@@ -66,6 +67,7 @@ export function PhonesCard(_: { view: DspView }) {
                       <strong>{phone.number ? phoneText(phone.number) : phone.name}</strong>
                       <small>
                         {[phone.name, phone.model, phone.appVersion].filter(Boolean).join(' · ')}
+                        {phone.update && <span className="phones-update">Update</span>}
                       </small>
                     </div>
                     {phone.online ? (

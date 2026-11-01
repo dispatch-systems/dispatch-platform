@@ -136,6 +136,11 @@ pub const FEATURE: Feature = Feature {
                     "migrations/dsp/0010_communications_texts_dropped.sql"
                 )),
             },
+            Migration {
+                id: 11,
+                name: "phones_app_version_codes",
+                apply: Code(backend::phone::storage::add_app_version_codes),
+            },
         ],
     }],
     // Its dispatch phones are the DSP's own, managed on DSP Connections.

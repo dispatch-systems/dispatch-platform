@@ -239,10 +239,11 @@ decides ([Texts](#texts)).
 
 - **The card:** on Settings' DSP Connections, for those who manage the DSP's phones or all its
   connections (`connectionPieces`, `dsp`), while Communications is on: each phone, by its number,
-  with its name, model and the app's version, Online once it checked in in the last two minutes,
-  else Offline and for how long, read again every 30 seconds; Rename and Remove in its menu; a
-  name changed and not saved asks "Save changes?", with only Save and Discard, before the dialog
-  closes; closing the browser tab drops it silently. Its routes are refused (`not_found`) while
+  with its name, model and the app's version, tagged Update while that's older than the one the
+  DSP's address hands out, Online once it checked in in the last two minutes, else Offline and
+  for how long, read again every 30 seconds; Rename and Remove in its menu; a name changed and
+  not saved asks "Save changes?", with only Save and Discard, before the dialog closes; closing
+  the browser tab drops it silently. Its routes are refused (`not_found`) while
   Communications is off, though managing all the DSP's connections still lets a member in. With
   none, No phone. **Add phone** shows the code that pairs the next phone, as a QR code its app
   reads and as its eight letters, and how long it lasts; one expired, or replaced by a newer one
@@ -281,7 +282,8 @@ decides ([Texts](#texts)).
   Anyone at the DSP's address, a browser too, reads its latest version's details (version,
   `versionCode`, size and SHA-256) and downloads its APK, as a phone installs it before it's
   paired: the app anyone may download from its GitHub release, and nothing of the DSP's. Each
-  outbox answer carries its latest version, so the app offers to update within a wait.
+  outbox answer carries its latest version, so the app offers to update within a wait, and each
+  wait says the app's own, which Dispatch keeps as the phone's once it changes.
 - **Limits** (`phone::LIMITS`): what one text may carry, a body of 10,000 characters and ten
   pictures of 20 MB each at most, which answering is held to (`compose::TEXT`), and the phones'
   reports, before any of it is kept.

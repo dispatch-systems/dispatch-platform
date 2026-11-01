@@ -39,13 +39,15 @@ const NAME_MOST: usize = 60;
 fn on(c: &Context) -> Result<()> {
     ensure(c.has(crate::FEATURE.switch.id), "not_found", 404)
 }
-fn row(device: &Device, now: i64) -> PhoneRow {
+/// The phone as the card shows it, at `now`, while the server hands out the app of `latest`.
+fn row(device: &Device, now: i64, latest: Option<u32>) -> PhoneRow {
     PhoneRow {
         id: device.id.clone(),
         name: device.name.clone(),
         number: device.number.clone(),
         model: device.model.clone(),
         app_version: device.app_version.clone(),
+        update: latest.is_some_and(|code| device.outdated(code)),
         online: device.online(now),
         last_seen_at: device.last_seen_at,
     }
@@ -56,19 +58,21 @@ pub(super) fn listed(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     on(c)?;
     v::fields(&input.query, &[])?;
     let now = db::now();
+    let latest = app::latest(&db.config);
+    let code = latest.as_ref().map(|app| app.version_code);
     Reply::of(&Phones {
         phones: db
             .phones_devices(c.dsp_id())?
             .iter()
-            .map(|device| row(device, now))
+            .map(|device| row(device, now, code))
             .collect(),
-        app: installed(db, c)?,
+        app: installed(db, c, latest)?,
     })
 }
-/// The app the DSP's phones install, from its own address: none while the server hands none out,
-/// or the DSP has no address of its own for a phone to reach.
-fn installed(db: &Store, c: &Member) -> Result<Option<PhoneApp>> {
-    let (Some(code), Some(app)) = (c.dsp.code.as_deref(), app::latest(&db.config)) else {
+/// The app the DSP's phones install, `latest`, from its own address: none while the server hands
+/// none out, or the DSP has no address of its own for a phone to reach.
+fn installed(db: &Store, c: &Member, latest: Option<app::App>) -> Result<Option<PhoneApp>> {
+    let (Some(code), Some(app)) = (c.dsp.code.as_deref(), latest) else {
         return Ok(None);
     };
     let link = format!("{}{DOWNLOAD}", db.config.dsp_url(code));
@@ -128,7 +132,8 @@ pub(super) fn rename(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
             &format!("{} to {}", before.name, device.name),
         )?;
     }
-    Reply::of(&row(&device, db::now()))
+    let latest = app::latest(&db.config).map(|app| app.version_code);
+    Reply::of(&row(&device, db::now(), latest))
 }
 /// Removes the phone: its key works no more, its texts stay, and those still waiting on it fail,
 /// filed as they fail.

@@ -78,6 +78,13 @@ Waits up to 20 seconds (`WAIT`) for the texts Dispatch has for this phone, and a
 it has any, or with none once the wait ends; it wakes as a text is queued for the phone, and as
 the phone is removed.
 
+- `?version=1.4.0&versionCode=14`: the app's own, which the phone says with each wait, both or
+  neither (an app older than this never says them): `version` at most 40 characters
+  (`VERSION_MOST`), and `versionCode` 1 to 2,100,000,000 (`VERSION_CODE_MOST`, Android's
+  highest). Dispatch keeps them as the phone's app version once they change, and the Phones card
+  tags a phone whose `versionCode` is below the one handed out Update. Else refused
+  `invalid_input` (400).
+
 ```json
 {
   "texts": [

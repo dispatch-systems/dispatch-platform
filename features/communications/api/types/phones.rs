@@ -46,7 +46,10 @@ pub struct PhoneRow {
     /// Its own number, as it said when it paired; empty when it didn't know it.
     pub number: String,
     pub model: String,
+    /// The app's version it runs, as it last said it.
     pub app_version: String,
+    /// Whether that's older than the app the DSP's address hands out, so it has an update.
+    pub update: bool,
     /// Whether it checked in in the last two minutes.
     pub online: bool,
     /// When it last checked in, epoch milliseconds.

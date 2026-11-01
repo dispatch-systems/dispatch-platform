@@ -236,6 +236,29 @@ test("A DSP's address hands out its server's build of the app to anyone, and pho
   assert.equal(outbox.value.texts[0].body, 'Hello');
   assert.deepEqual(outbox.value.app, { version: '1.4.0', versionCode: 14 });
 
+  // It says the app it runs with each wait, kept as its own: one older than the version handed
+  // out has an update. Paired, it said no versionCode.
+  const listed = async () => {
+    const { phones } = await owner.read('/api/dsp/communications/phones');
+    const row = phones.find((p: { id: string }) => p.id === paired.value.phone.id);
+    return [row.appVersion, row.update];
+  };
+  assert.deepEqual(await listed(), ['1.3.0', false]);
+  for (const [version, versionCode, update] of [
+    ['1.3.1', 13, true],
+    ['1.4.0', 14, false],
+  ] as const) {
+    const query = `version=${version}&versionCode=${versionCode}`;
+    const waited = await f.request(`/api/communications/phone/outbox?${query}`, undefined, key);
+    assert.equal(waited.status, 200, waited.body);
+    assert.deepEqual(await listed(), [version, update]);
+  }
+  for (const query of ['version=1.4.1', 'versionCode=15', 'version=1.4.1&versionCode=0']) {
+    const refused = await f.request(`/api/communications/phone/outbox?${query}`, undefined, key);
+    assert.equal(refused.value.error, 'invalid_input', query);
+  }
+  assert.deepEqual(await listed(), ['1.4.0', false]);
+
   // While Communications is off for the DSP, its address hands out nothing.
   const switches = `/api/platform/dsps/${north.id}/features`;
   assert.equal(
