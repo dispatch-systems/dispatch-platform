@@ -239,17 +239,20 @@ decides ([Texts](#texts)).
 
 - **The card:** on Settings' DSP Connections, for those who manage the DSP's phones or all its
   connections (`connectionPieces`, `dsp`), while Communications is on: each phone, by its number,
-  with its name, model and the app's version, Online once it checked in in the last two minutes,
-  else Offline and for how long, read again every 30 seconds; Rename and Remove in its menu; a
-  name changed and not saved asks "Save changes?", with only Save and Discard, before the dialog
-  closes; closing the browser tab drops it silently. Its routes are refused (`not_found`) while
+  with its name, model and the app's version, tagged Update while that's older than the one the
+  DSP's address hands out, Online once it checked in in the last two minutes, else Offline and
+  for how long, read again every 30 seconds; Rename and Remove in its menu; a name changed and
+  not saved asks "Save changes?", with only Save and Discard, before the dialog closes; closing
+  the browser tab drops it silently. Its routes are refused (`not_found`) while
   Communications is off, though managing all the DSP's connections still lets a member in. With
   none, No phone. **Add phone** shows the code that pairs the next phone, as a QR code its app
   reads and as its eight letters, and how long it lasts; one expired, or replaced by a newer one
   as another session makes, gives way to a new one with New code; the dialog closes once its own
   code paired a phone, asked after every three seconds until it paired, was replaced or expired,
   and once more as it runs out. A code needs the DSP's own address, for the phone to reach:
-  without one, `phones_address_required`.
+  without one, `phones_address_required`. While the DSP's address hands out the app
+  (below), **Download app** beside Add phone downloads it, and Add phone puts Install first, its
+  download as a QR code with its name and version (DSP Dispatch: Relay Dev 1.4.0), then Pair.
 - **Pairing:** a code is eight letters of 32 (no 0, O, 1 or I), made by someone who manages the
   DSP's phones, working once, for ten minutes, one at a time: a new one replaces any not used
   yet. Only its SHA-256 is kept, with an ID of its own, by which the card asks how it stands
@@ -262,16 +265,25 @@ decides ([Texts](#texts)).
   refused as `phones_removed`. The texts Dispatch queued that still wait on it fail as it's
   removed, with `phones_removed` as their error, filed as they fail.
 - **Their address:** `/api/communications/phone/…`, at the DSP's own address alone, never from a
-  browser (a request with a cookie is refused), while the DSP is active and Communications is on
-  there (`phones_off` otherwise): pairing by the code, public; every other call by
-  `Authorization: Bearer <key>`, which the route checks itself, as Slack's signed events are
-  checked (public to the server, which no session reaches). A phone waits on its outbox for what
-  Dispatch has for it (woken by its own live channel, `phones`, apart from the page's), reports
-  the texts it receives and sends from its own messaging app, each kept once by its own ID of it,
-  sends their pictures' bytes, fetches those of Dispatch's, and says how each attempt at
-  Dispatch's went. Waiting on the outbox and reporting texts or statuses count as checking in; a
-  file's bytes, either way, don't. Each call, with every payload, unit and limit, is in the
-  [protocol reference](api/phone/README.md) beside the code.
+  browser (a request with a cookie is refused) but for the app, while the DSP is active and
+  Communications is on there (`phones_off` otherwise): pairing by the code, and the app, public;
+  every other call by `Authorization: Bearer <key>`, which the route checks itself, as Slack's
+  signed events are checked (public to the server, which no session reaches). A phone waits on its
+  outbox for what Dispatch has for it (woken by its own live channel, `phones`, apart from the
+  page's), reports the texts it receives and sends from its own messaging app, each kept once by
+  its own ID of it, sends their pictures' bytes, fetches those of Dispatch's, and says how each
+  attempt at Dispatch's went. Waiting on the outbox and reporting texts or statuses count as
+  checking in; a file's bytes, either way, don't. Each call, with every payload, unit and limit,
+  is in the [protocol reference](api/phone/README.md) beside the code.
+- **The app:** DSP Dispatch: Relay, which the DSP's address hands out (`phone::app`), as the
+  build packed it: the version `android/relay/release.json` names, its APKs in the runtime's
+  `dashboard/relay/` ([Android apps](../../android/README.md#publishing)). A preview server, as
+  Dev is, hands out the Dev build, and Production its own; none while the build packed none.
+  Anyone at the DSP's address, a browser too, reads its latest version's details (version,
+  `versionCode`, size and SHA-256) and downloads its APK, as a phone installs it before it's
+  paired: the app anyone may download from its GitHub release, and nothing of the DSP's. Each
+  outbox answer carries its latest version, so the app offers to update within a wait, and each
+  wait says the app's own, which Dispatch keeps as the phone's once it changes.
 - **Limits** (`phone::LIMITS`): what one text may carry, a body of 10,000 characters and ten
   pictures of 20 MB each at most, which answering is held to (`compose::TEXT`), and the phones'
   reports, before any of it is kept.

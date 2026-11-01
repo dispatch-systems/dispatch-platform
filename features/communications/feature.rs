@@ -17,7 +17,7 @@ pub use api::types::{
     ConversationMessages, ConversationState, Conversations, Correspondent, Direction,
     DispatchPhone, Elsewhere, FileStatus, Group, GroupChoice, GroupChoiceKind, GroupChoices,
     GroupEntry, GroupMember, GroupMessages, GroupPeople, GroupPerson, GroupPersonState,
-    GroupProgress, Message, MessageFile, MessageGroup, Pace, PairingStatus, PhonePairing,
+    GroupProgress, Message, MessageFile, MessageGroup, Pace, PairingStatus, PhoneApp, PhonePairing,
     PhonePairingStatus, PhoneRow, Phones, Profile, Reachable, RouteDriver, Sender, SentMessage,
     TextContact, TextContacts, TextStatus, Today, TodaysRoutes, Typing, WaitingMessage, Workday,
     Writing,
@@ -136,6 +136,11 @@ pub const FEATURE: Feature = Feature {
                     "migrations/dsp/0010_communications_texts_dropped.sql"
                 )),
             },
+            Migration {
+                id: 11,
+                name: "phones_app_version_codes",
+                apply: Code(backend::phone::storage::add_app_version_codes),
+            },
         ],
     }],
     // Its dispatch phones are the DSP's own, managed on DSP Connections.
@@ -236,6 +241,7 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         ListPreview,
         ProfileOpens,
         Phones,
+        PhoneApp,
         PhoneRow,
         PhonePairing,
         PhonePairingStatus,

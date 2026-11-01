@@ -1,6 +1,8 @@
 package com.dspdispatch.relay.texts
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NumbersTest {
@@ -26,5 +28,15 @@ class NumbersTest {
         )) {
             assertEquals(raw, taken, Numbers.accepted(raw))
         }
+    }
+
+    @Test
+    fun knowsANumberHoweverItsWritten() {
+        assertTrue(Numbers.same("+14255550199", "(425) 555-0199"))
+        assertTrue(Numbers.same("+1 425 555 0199", "14255550199"))
+        assertTrue(Numbers.same("72166", "72166"))
+        assertFalse(Numbers.same("+14255550199", "+14255550198"))
+        assertFalse(Numbers.same("72166", "+14255572166"))
+        assertFalse(Numbers.same("", ""))
     }
 }

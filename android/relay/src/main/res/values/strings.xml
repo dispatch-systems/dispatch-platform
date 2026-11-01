@@ -15,6 +15,7 @@
     <string name="texts_out">Out</string>
     <string name="texts_waiting">Waiting</string>
     <string name="last_text">Last text</string>
+    <string name="mms_when_busy">Send as MMS when busy</string>
     <string name="pairing_invalid">Code expired or already used</string>
     <string name="pairing_other_server">Code is for another server</string>
     <string name="pairing_not_a_code">Not a pairing code</string>

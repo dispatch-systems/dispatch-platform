@@ -80,6 +80,20 @@
             android:name=".RelayService"
             android:exported="false"
             android:foregroundServiceType="remoteMessaging" />
+        <!-- What Android says of each text the app sent, sent and delivered. -->
+        <receiver
+            android:name=".texts.SendResults"
+            android:exported="false" />
+        <!-- The picture messages the app hands Android to send, which reads them from here. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.mms"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/mms_files" />
+        </provider>
         <receiver
             android:name=".setup.StartReceiver"
             android:exported="true">

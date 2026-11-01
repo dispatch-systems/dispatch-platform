@@ -55,6 +55,7 @@ const wording: Readonly<Record<string, string>> = {
   phones_pairing_invalid: "That code didn't work. Make a new one.",
   phones_removed: 'This phone was removed.',
   phones_off: 'Communications is off for this DSP.',
+  phones_app_not_found: "The app isn't available yet.",
   communications_group_not_found: 'This group is no longer here. Refresh the page.',
   communications_contact_not_found: 'This person is no longer in your Slack workspace.',
   communications_off: 'Communications is off in this Slack workspace.',

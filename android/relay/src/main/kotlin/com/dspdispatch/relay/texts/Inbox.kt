@@ -55,9 +55,16 @@ class Inbox(
      * takes; after a day, only the regular reads try it again.
      */
     private suspend fun read(row: Row, found: Long, now: Long): Boolean {
-        if (row.direction == Direction.OUT && own.sent(row)) return left(row)
         return when (val reading = provider.read(row)) {
             is Reading.Whole -> {
+                if (row.direction == Direction.OUT) {
+                    when (own.whose(reading.message)) {
+                        Whose.DISPATCH -> return left(row)
+                        // Read again by a later read, once Android said how the app's text went.
+                        Whose.UNSURE -> return true
+                        Whose.PHONE -> Unit
+                    }
+                }
                 val texts = reports(reading.message)
                 val reported = Seen(row.key, row.at, row.direction.takeIf { texts.isNotEmpty() })
                 queue.read(reported, texts.map { it.first }, texts.flatMap { it.second })

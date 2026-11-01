@@ -7,7 +7,15 @@ export type PhoneRow = { id: string, name: string,
 /**
  * Its own number, as it said when it paired; empty when it didn't know it.
  */
-number: string, model: string, appVersion: string,
+number: string, model: string,
+/**
+ * The app's version it runs, as it last said it.
+ */
+appVersion: string,
+/**
+ * Whether that's older than the app the DSP's address hands out, so it has an update.
+ */
+update: boolean,
 /**
  * Whether it checked in in the last two minutes.
  */

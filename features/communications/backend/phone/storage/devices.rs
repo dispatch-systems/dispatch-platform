@@ -34,6 +34,12 @@ pub(crate) fn add_pairing_ids(db: &Db) -> Result<()> {
     )?;
     Ok(())
 }
+/// Communications' migration 11: the `versionCode` of the app each phone runs, as it says with
+/// each wait (`app_version_code`), beside its version; none until it says it, as an app older than
+/// that never does.
+pub(crate) fn add_app_version_codes(db: &Db) -> Result<()> {
+    add_column(db, "phones_devices", "app_version_code", "INTEGER")
+}
 
 /// One of the DSP's phones, as kept.
 #[derive(Clone, Debug, PartialEq)]
@@ -43,6 +49,8 @@ pub struct Device {
     pub number: String,
     pub model: String,
     pub app_version: String,
+    /// The `versionCode` of the app it runs, once it said it.
+    pub app_version_code: Option<i64>,
     pub paired_at: i64,
     pub last_seen_at: Option<i64>,
 }
@@ -54,9 +62,19 @@ impl Device {
             number: s(row, "number").into(),
             model: s(row, "model").into(),
             app_version: s(row, "app_version").into(),
+            app_version_code: row["app_version_code"].as_i64(),
             paired_at: n(row, "paired_at"),
             last_seen_at: row["last_seen_at"].as_i64(),
         }
+    }
+    /// Whether it runs `app` already.
+    pub fn runs(&self, app: &AppVersion) -> bool {
+        self.app_version == app.version && self.app_version_code == Some(app.version_code)
+    }
+    /// Whether the app it runs is older than the one of `version_code`.
+    pub fn outdated(&self, version_code: u32) -> bool {
+        self.app_version_code
+            .is_some_and(|code| code < i64::from(version_code))
     }
     pub fn online(&self, now: i64) -> bool {
         self.last_seen_at.is_some_and(|at| now - at <= ONLINE_MS)
@@ -87,6 +105,13 @@ pub struct Pairing<'a> {
     pub app_version: &'a str,
 }
 
+/// The app a phone runs, as it says with each wait: its version, and the `versionCode` Android
+/// compares.
+pub struct AppVersion {
+    pub version: String,
+    pub version_code: i64,
+}
+
 /// What the phone side keeps of the DSP's phones and the code that pairs the next.
 pub trait DeviceStore {
     fn phones_devices(&self, dsp: &str) -> Result<Vec<Device>>;
@@ -95,6 +120,8 @@ pub trait DeviceStore {
     fn phones_device_by_key(&self, dsp: &str, key_sha256: &str) -> Result<Option<Device>>;
     /// Notes that the phone checked in.
     fn phones_seen(&self, dsp: &str, device: &str, at: i64) -> Result<()>;
+    /// Notes the app the phone runs.
+    fn phones_app_version(&self, dsp: &str, device: &str, app: &AppVersion) -> Result<()>;
     fn phones_rename(&self, dsp: &str, id: &str, name: &str) -> Result<Device>;
     /// Removes the phone: its key works no more, and the texts still waiting on it fail, as no
     /// phone would send them. The phone as it was, and the texts that failed.
@@ -159,6 +186,13 @@ impl DeviceStore for Store {
         self.dsp(dsp)?.exec(
             "UPDATE phones_devices SET last_seen_at=?1 WHERE id=?2 AND coalesce(last_seen_at,0)<?1",
             params![at, device],
+        )?;
+        Ok(())
+    }
+    fn phones_app_version(&self, dsp: &str, device: &str, app: &AppVersion) -> Result<()> {
+        self.dsp(dsp)?.exec(
+            "UPDATE phones_devices SET app_version=?, app_version_code=? WHERE id=?",
+            params![app.version, app.version_code, device],
         )?;
         Ok(())
     }

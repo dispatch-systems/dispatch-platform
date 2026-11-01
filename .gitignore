@@ -36,3 +36,6 @@ target/
 
 # Prebuilt CI tools restored by .github/actions/setup-tools.
 .ci-tools/
+
+# DSP Dispatch: Relay's APKs, as `dispatchdev build` packs them for the debug runtime.
+/dashboard/
