@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "9fbdd5b4f88c2a5c374f491c84effa3f",
+    "identityHash": "18f1455afedb4dda828f4c8c7a3ad8d0",
     "entities": [
       {
         "tableName": "mark",
@@ -322,7 +322,7 @@
       },
       {
         "tableName": "send_reports",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `attempt` INTEGER NOT NULL, `part` INTEGER NOT NULL, `event` TEXT NOT NULL, `error` TEXT, `format` TEXT, PRIMARY KEY(`id`, `attempt`, `part`, `event`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `attempt` INTEGER NOT NULL, `part` INTEGER NOT NULL, `event` TEXT NOT NULL, `error` TEXT, `uri` TEXT, `format` TEXT, PRIMARY KEY(`id`, `attempt`, `part`, `event`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -351,6 +351,11 @@
           {
             "fieldPath": "error",
             "columnName": "error",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "uri",
+            "columnName": "uri",
             "affinity": "TEXT"
           },
           {
@@ -434,7 +439,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '9fbdd5b4f88c2a5c374f491c84effa3f')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '18f1455afedb4dda828f4c8c7a3ad8d0')"
     ]
   }
 }

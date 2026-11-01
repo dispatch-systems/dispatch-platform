@@ -82,7 +82,7 @@ class Texts(private val context: Context, dispatch: Dispatch) {
      * [uri] it wrote the text to, where it says.
      */
     suspend fun heard(heard: Heard, uri: String?) {
-        sender.heard(heard.copy(row = uri?.let(::keyAt)))
+        sender.heard(heard.copy(row = uri?.let(::keyAt), uri = uri))
         this.heard.trySend(Unit)
     }
 

@@ -8,8 +8,8 @@ import com.dspdispatch.relay.dispatch.SendStatus
 
 /**
  * An attempt at a text of the outbox, kept from before it's sent so it's sent once: [mms] when it
- * goes as a picture message; [handed] is when Android took it, in [parts] parts, [joined] as one
- * message or each its own, and null while its files are still being fetched, when it may start
+ * goes as a picture message; [handed] is when Android took it, in [parts] parts, handed [joined] as
+ * one message or each its own, and null while its files are still being fetched, when it may start
  * again; [outcome] is whether it was sent or failed, at [finished].
  */
 @Entity(tableName = "sends", primaryKeys = ["id", "attempt"])
@@ -32,8 +32,8 @@ data class Send(
 
     /**
      * This attempt, and the statuses it moved to, with Android's [reports] of its parts: failed as
-     * soon as one part failed, sent once every part was, delivered once every part was. A joined
-     * text's parts on CDMA are reported delivered together, by its last part's report alone.
+     * soon as one part failed, sent once every part was, delivered once every part was. A text
+     * Android sent joined is reported delivered on CDMA by its last part's report alone.
      */
     fun settled(reports: List<Report>, at: Long): Pair<Send, List<Told>> {
         if (handed == null) return this to emptyList()
@@ -47,13 +47,17 @@ data class Send(
             statuses += status(outcome, at, error)
         }
         val reached = reports.filter { it.event == Event.DELIVERED }
-        val whole = reached.size >= parts || (joined && reached.any { it.format == CDMA && it.part == parts - 1 })
+        val whole = reached.size >= parts || (sentJoined(sent) && reached.any { it.format == CDMA && it.part == parts - 1 })
         if (!delivered && whole) {
             send = send.copy(delivered = true)
             statuses += status(SendStatus.DELIVERED, at)
         }
         return send to statuses
     }
+
+    // Handed joined, Android still sends the parts each as a text of its own where the phone can't
+    // join them, writing each to a row of its own: joined once every part was sent, naming one row.
+    private fun sentJoined(sent: List<Report>) = joined && sent.size >= parts && sent.mapNotNull(Report::uri).toSet().size == 1
 
     companion object {
         /** The attempt at [text], started [at]. */
@@ -68,11 +72,20 @@ enum class Event {
 }
 
 /**
- * What Android said of [part] of a send: [error] says why it failed, null when it didn't; [format]
- * is a delivery report's, `3gpp` or `3gpp2`.
+ * What Android said of [part] of a send: [error] says why it failed, null when it didn't; [uri] is
+ * the provider row it says it wrote the text to, as it names it; [format] is a delivery report's,
+ * `3gpp` or `3gpp2`.
  */
 @Entity(tableName = "send_reports", primaryKeys = ["id", "attempt", "part", "event"])
-data class Report(val id: String, val attempt: Long, val part: Int, val event: Event, val error: String? = null, val format: String? = null)
+data class Report(
+    val id: String,
+    val attempt: Long,
+    val part: Int,
+    val event: Event,
+    val error: String? = null,
+    val uri: String? = null,
+    val format: String? = null,
+)
 
 /** The provider row ([Row.key]) a send was written to, so it's never reported as the phone's own. */
 @Entity(tableName = "send_rows")
@@ -86,8 +99,8 @@ data class Told(val id: String, val attempt: Long, val status: SendStatus, val a
 
 /**
  * What Android said of a part of a send, as it reaches the app, possibly after it restarted:
- * [row] is the provider row it was written to ([Row.key]), where Android says, and [format] a
- * delivery report's.
+ * [uri] is the provider row Android says it wrote the text to, as it names it, and [row] that
+ * row's [Row.key]; [format] is a delivery report's.
  */
 data class Heard(
     val id: String,
@@ -98,8 +111,9 @@ data class Heard(
     val row: String?,
     val at: Long,
     val format: String? = null,
+    val uri: String? = null,
 ) {
-    val report get() = Report(id, attempt, part, event, error, format)
+    val report get() = Report(id, attempt, part, event, error, uri, format)
 }
 
 /**
@@ -110,7 +124,7 @@ interface Sends {
     /** Keeps [send] as started, unless its attempt already is: answers the attempt as kept. */
     suspend fun start(send: Send): Send
 
-    /** Android took [send], in [parts] parts, [joined] as one message or each its own, [at]. */
+    /** Android took [send], in [parts] parts, handed [joined] as one message or each its own, [at]. */
     suspend fun handed(send: Send, parts: Int, joined: Boolean, at: Long)
 
     /** [send] failed [at], for [error], before Android took it or as it refused it. */

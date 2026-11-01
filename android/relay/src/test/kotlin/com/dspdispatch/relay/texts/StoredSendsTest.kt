@@ -35,11 +35,17 @@ class StoredSendsTest {
 
     @Test
     fun deliversAJoinedTextOnCdmaByItsLastPartsReport() = runTest {
-        // Android asks a CDMA carrier to report on a joined text's last part only.
+        // Android asks a CDMA carrier to report on a joined text's last part only, and names the
+        // one row it wrote the text to as the last part's sent.
         val joined = handed("joined", parts = 2)
         heard(joined, 0, Event.SENT)
-        heard(joined, 1, Event.SENT)
+        heard(joined, 1, Event.SENT, uri = "content://sms/sent/7")
         heard(joined, 1, Event.DELIVERED, format = "3gpp2")
+        // Handed joined, but sent by Android each as a text of its own, each written to its own row.
+        val split = handed("split", parts = 2)
+        heard(split, 0, Event.SENT, uri = "content://sms/sent/8")
+        heard(split, 1, Event.SENT, uri = "content://sms/sent/9")
+        heard(split, 1, Event.DELIVERED, format = "3gpp2")
         // Each part its own text: each is reported, as on GSM.
         val apart = handed("apart", parts = 2, joined = false)
         heard(apart, 0, Event.SENT)
@@ -49,8 +55,12 @@ class StoredSendsTest {
         heard(gsm, 0, Event.SENT)
         heard(gsm, 1, Event.SENT)
         heard(gsm, 1, Event.DELIVERED, format = "3gpp")
-        assertEquals(listOf("joined"), sends.statuses(10).filter { it.status == SendStatus.DELIVERED }.map(Told::id))
+        assertEquals(listOf("joined"), delivered())
+        heard(split, 0, Event.DELIVERED, format = "3gpp2")
+        assertEquals(listOf("joined", "split"), delivered())
     }
+
+    private suspend fun delivered() = sends.statuses(10).filter { it.status == SendStatus.DELIVERED }.map(Told::id)
 
     @Test
     fun failsASendAsSoonAsAPartFails() = runTest {
@@ -130,8 +140,16 @@ class StoredSendsTest {
         return send
     }
 
-    private suspend fun heard(send: Send, part: Int, event: Event, error: String? = null, row: String? = null, at: Long = AT, format: String? = null) =
-        sends.heard(Heard(send.id, send.attempt, part, event, error, row, at, format))
+    private suspend fun heard(
+        send: Send,
+        part: Int,
+        event: Event,
+        error: String? = null,
+        row: String? = null,
+        at: Long = AT,
+        format: String? = null,
+        uri: String? = null,
+    ) = sends.heard(Heard(send.id, send.attempt, part, event, error, row, at, format, uri))
 
     private companion object {
         const val AT = 1_793_041_515_000L
