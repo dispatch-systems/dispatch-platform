@@ -195,6 +195,25 @@ class UpdatesTest {
     }
 
     @Test
+    fun saysTheDownloadOfTheVersionTheDetailsNameFailed() = runTest {
+        val updates = updates()
+        updates.heard(newest)
+        server.enqueue(json(200, """{"version":"1.0.5","versionCode":5,"size":13,"sha256":"${sha256(bytes)}"}"""))
+        server.enqueue(json(404, """{"error":"phones_app_not_found","message":"…"}"""))
+        updates.install(site)
+        assertEquals(Update.Available(newer, Problem.DOWNLOAD), updates.tried())
+    }
+
+    @Test
+    fun saysTheVersionTheDetailsNameIsNotTheOneDescribed() = runTest {
+        val updates = updates()
+        updates.heard(newest)
+        serve("another apk!!".toByteArray(), sha256 = sha256(bytes), app = newer)
+        updates.install(site)
+        assertEquals(Update.Available(newer, Problem.MISMATCH), updates.tried())
+    }
+
+    @Test
     fun installsNothingOnceTheDspNoLongerHandsOutANewerVersion() = runTest {
         val updates = updates()
         updates.heard(newer)

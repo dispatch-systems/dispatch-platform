@@ -70,6 +70,9 @@ class Updates(
     private var heard = false
     private var installing: Job? = null
 
+    /** The version the try in progress is at, as the banner shows it. */
+    private val trying get() = state.value.app
+
     // An APK left by an update that installed, which ended the process before it was deleted.
     private val cleared = scope.launch(io) { apk.delete() }
 
@@ -101,13 +104,13 @@ class Updates(
             state.value = try {
                 attempt(site)
             } catch (_: Refusal) {
-                after(now.app, Problem.DOWNLOAD)
+                after(trying, Problem.DOWNLOAD)
             } catch (_: IOException) {
-                after(now.app, Problem.DOWNLOAD)
+                after(trying, Problem.DOWNLOAD)
             } catch (_: SerializationException) {
-                after(now.app, Problem.DOWNLOAD)
+                after(trying, Problem.DOWNLOAD)
             } catch (_: Mismatch) {
-                after(now.app, Problem.MISMATCH)
+                after(trying, Problem.MISMATCH)
             } finally {
                 withContext(NonCancellable + io) { apk.delete() }
             }
@@ -124,6 +127,8 @@ class Updates(
             notice.cancel()
             return Update.None
         }
+        // From here the try is at the version the details name, which may not be the one Install offered.
+        state.value = Update.Downloading(app, 0f)
         var percent = 0
         withContext(io) {
             dispatch.apk(site) { input ->
@@ -150,7 +155,7 @@ class Updates(
      * Where a try at [app] that didn't install leaves updating: offering the version the DSP last
      * told of, older or newer, with the try's [problem] only if it's [app]; or nothing, if none.
      */
-    private fun after(app: AppVersion, problem: Problem?): Update {
+    private fun after(app: AppVersion?, problem: Problem?): Update {
         val now = offered ?: return Update.None
         return Update.Available(now, problem.takeIf { now == app })
     }
