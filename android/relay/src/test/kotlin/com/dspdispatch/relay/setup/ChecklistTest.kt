@@ -112,4 +112,13 @@ class ChecklistTest {
     fun `a done step has no fix`() {
         assertNull(allDone.item(Step.BATTERY).fix)
     }
+
+    @Test
+    fun confirmsOnlyAScreenThatWasOpened() {
+        assertEquals(ByHand.DONE, ByHand.OPENED.confirmed())
+        assertEquals(ByHand.DONE, ByHand.DONE.confirmed())
+        // Xiaomi's Autostart opened and confirmed; a second Done lands on its battery saver,
+        // never opened, which stays to do.
+        assertEquals(ByHand.NONE, ByHand.NONE.confirmed())
+    }
 }

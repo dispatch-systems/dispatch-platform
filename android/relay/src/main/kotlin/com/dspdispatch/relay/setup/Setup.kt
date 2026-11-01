@@ -59,7 +59,9 @@ class Setup(private val context: Context) {
     /** The person says the screen of [step] they opened, which Android can't report, is done. */
     suspend fun confirm(step: Step) {
         val key = withContext(Dispatchers.IO) { byHandScreen(step) }?.first ?: return
-        prefs.edit { putString(key, ByHand.DONE.name) }
+        val now = byHand(key)
+        val confirmed = now.confirmed()
+        if (confirmed != now) prefs.edit { putString(key, confirmed.name) }
     }
 
     /** Set up is done: the running screen shows from now on. */

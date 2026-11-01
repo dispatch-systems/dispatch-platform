@@ -38,7 +38,18 @@ enum class Fix(@param:StringRes val label: Int) {
 }
 
 /** Where a step Android can't report stands: never opened, opened, or marked done by hand. */
-enum class ByHand { NONE, OPENED, DONE }
+enum class ByHand {
+    NONE,
+    OPENED,
+    DONE,
+    ;
+
+    /**
+     * What the person saying it's done makes of it: done only once its screen was opened, so a
+     * second tap, before the checklist caught up, never marks a screen never opened.
+     */
+    fun confirmed(): ByHand = if (this == OPENED) DONE else this
+}
 
 /** Whether the phone's unused-app restrictions apply to the app, if the phone has them. */
 enum class UnusedApps { NOT_AVAILABLE, ON, OFF }
