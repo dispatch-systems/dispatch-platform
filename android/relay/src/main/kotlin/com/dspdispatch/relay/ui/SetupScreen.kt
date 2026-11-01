@@ -43,24 +43,27 @@ fun SetupScreen(paired: Paired, start: () -> Unit) = Page {
 }
 
 /**
- * A step of the guided walk, filling the screen: what to do, its place in the walk, and its
- * button opening Android's prompt or screen for it, with Done beside where only the person can
- * say it's done. Back leaves the walk.
+ * A step of the guided walk, filling the screen: what to do, its place in the walk with the steps
+ * done, and its button opening Android's prompt or screen for it, with Done beside where only the
+ * person can say it's done. Back leaves the walk.
  */
 @Composable
 fun StepScreen(place: Place, fix: (Item, Fix) -> Unit, back: () -> Unit) = Page {
     BackHandler(onBack = back)
     val item = place.item
-    Text(
-        stringResource(R.string.step_of, place.number, place.count),
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        style = MaterialTheme.typography.titleSmall,
-    )
-    LinearProgressIndicator(
-        { place.number.toFloat() / place.count },
-        Modifier.fillMaxWidth().padding(top = 10.dp).height(6.dp),
-        trackColor = MaterialTheme.colorScheme.surfaceVariant,
-    )
+    // A walk of one step, as a banner's Fix often is, has no progress to show.
+    if (place.count > 1) {
+        Text(
+            stringResource(R.string.step_of, place.number, place.count),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.titleSmall,
+        )
+        LinearProgressIndicator(
+            { (place.number - 1).toFloat() / place.count },
+            Modifier.fillMaxWidth().padding(top = 10.dp).height(6.dp),
+            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+        )
+    }
     Column(Modifier.weight(1f).fillMaxWidth(), Arrangement.Center, Alignment.CenterHorizontally) {
         Text(
             stringResource(place.heading),
