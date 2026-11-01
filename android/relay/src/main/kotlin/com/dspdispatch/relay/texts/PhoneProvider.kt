@@ -14,7 +14,11 @@ import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.InputStream
 
-/** The phone's texts in Android's own texting provider, `Telephony.Sms` and `Telephony.Mms`. */
+/**
+ * The phone's texts in Android's own texting provider, `Telephony.Sms` and `Telephony.Mms`. From
+ * Android 17 it holds back a text with a one-time code from an app like this one for up to three
+ * hours, accepted: such a text is reported once the provider lets it be read.
+ */
 class PhoneProvider(private val resolver: ContentResolver) : Provider {
     override fun rows(scan: Scan): List<Row> = (smsRows(scan) + mmsRows(scan)).sortedWith(compareBy(Row::at, Row::id))
 
