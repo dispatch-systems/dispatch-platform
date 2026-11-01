@@ -1,4 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">DSP Dispatch: Relay</string>
+    <string name="relay_channel">Relay</string>
+    <string name="scan_code">Scan code</string>
+    <string name="connecting">Connecting</string>
+    <string name="connected">Connected</string>
+    <string name="reconnecting">Reconnecting</string>
+    <string name="since">Since %1$s</string>
+    <string name="offline_since">Offline since %1$s</string>
+    <string name="removed">Removed</string>
+    <string name="version">Version</string>
+    <string name="pairing_invalid">Code expired or already used</string>
+    <string name="pairing_other_server">Code is for another server</string>
+    <string name="pairing_not_a_code">Not a pairing code</string>
+    <string name="pairing_unreachable">Couldn\'t reach Dispatch</string>
+    <string name="pairing_refused">Dispatch refused the code</string>
+    <string name="camera_needed">Camera access needed</string>
+    <string name="allow">Allow</string>
+    <string name="back">Back</string>
 </resources>
