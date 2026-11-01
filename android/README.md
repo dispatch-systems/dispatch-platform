@@ -72,8 +72,9 @@ merged, it's what Dispatch hands out:
   size in bytes.
 
 `dispatchdev build`, which CI's build and `npm run dev` run, fetches each APK from the
-pre-release once, refuses one whose SHA-256 or size differs, and packs both with the file in the
-runtime's `dashboard/relay/`: Dev serves the new version as it installs `main`, and Production
+pre-release once, into a cache every worktree shares, refuses one whose SHA-256 or size differs,
+fetched or kept, and packs both with the file in the runtime's `dashboard/relay/`. A debug build
+that can't download one, as offline, warns and packs none; a release build fails. Dev serves the new version as it installs `main`, and Production
 once a release includes it. Each server hands out its own build, the Dev build on Dev, at every
 DSP's address ([Communications](../features/communications/README.md#dispatch-phones)). Without
 the file, no app is packed or offered. The format's fixture is

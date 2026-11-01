@@ -9,7 +9,9 @@ use super::store;
 use crate::{REPOSITORY, Result, Runner, hex, require};
 use serde::Deserialize;
 use std::{
-    fs,
+    fs::{self, File, OpenOptions},
+    io::Seek,
+    os::unix::fs::{MetadataExt, OpenOptionsExt},
     path::{Path, PathBuf},
 };
 
@@ -111,19 +113,39 @@ fn file_name(name: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
 }
 
+/// An APK the build couldn't download, as offline: a debug build goes on without the app.
+#[derive(Debug)]
+struct Unavailable(String);
+impl std::fmt::Display for Unavailable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+impl std::error::Error for Unavailable {}
+
 /// Packs the APKs the release names in `root`'s `dashboard/relay/`, fetching any not kept yet;
-/// without the release, leaves none packed.
-pub fn pack(root: &Path, runner: &dyn Runner) -> Result<()> {
+/// without the release, leaves none packed. A debug build that can't download one warns and packs
+/// none; a release build fails, as both do on an APK or release unlike the format.
+pub fn pack(root: &Path, runner: &dyn Runner, release: bool) -> Result<()> {
     let packed = root.join(PACKED);
+    match fill(root, &packed, runner) {
+        Err(error) if !release && error.is::<Unavailable>() => {
+            eprintln!("Warning: {error}. Going on without DSP Dispatch: Relay.");
+            gone(&packed)
+        }
+        done => done,
+    }
+}
+fn fill(root: &Path, packed: &Path, runner: &dyn Runner) -> Result<()> {
     let text = match fs::read_to_string(root.join(RELEASE)) {
         Ok(text) => text,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return gone(&packed);
+            return gone(packed);
         }
         Err(error) => return Err(error.into()),
     };
     let release = Release::parse(&text)?;
-    if holds(&packed, &text, &release) {
+    if holds(packed, &text, &release) {
         return Ok(());
     }
     let common = runner.command(
@@ -138,6 +160,8 @@ pub fn pack(root: &Path, runner: &dyn Runner) -> Result<()> {
     )?;
     let cache = Path::new(std::str::from_utf8(&common)?.trim()).join(CACHE);
     store::directory(&cache)?;
+    // Each APK is held open, and locked shared, from the cache until it's copied: another
+    // worktree's build pruning the cache passes it over, and one removed anyway still copies.
     let mut kept = Vec::new();
     for apk in release.apks() {
         kept.push(fetched(&cache, &release, apk, runner)?);
@@ -147,77 +171,99 @@ pub fn pack(root: &Path, runner: &dyn Runner) -> Result<()> {
     let staged = tempfile::Builder::new()
         .prefix(".relay-")
         .tempdir_in(parent)?;
-    for (apk, from) in release.apks().into_iter().zip(&kept) {
-        fs::copy(from, staged.path().join(&apk.asset))?;
+    for (apk, from) in release.apks().into_iter().zip(&mut kept) {
+        from.rewind()?;
+        std::io::copy(from, &mut File::create(staged.path().join(&apk.asset))?)?;
     }
     fs::write(staged.path().join("release.json"), &text)?;
-    gone(&packed)?;
-    fs::rename(staged.keep(), &packed)?;
-    prune(&cache, &kept)?;
+    gone(packed)?;
+    fs::rename(staged.keep(), packed)?;
+    prune(&cache, &release)?;
     println!(
         "Packed DSP Dispatch: Relay {} in {PACKED}.",
         release.version
     );
     Ok(())
 }
-/// Whether `packed` holds exactly this release already: its file as written, and each APK with
-/// its SHA-256.
+/// Whether `packed` holds exactly this release already: its file as written, and each APK as the
+/// release names it.
 fn holds(packed: &Path, text: &str, release: &Release) -> bool {
     let Ok(entries) = fs::read_dir(packed) else {
         return false;
     };
     entries.count() == 3
         && fs::read_to_string(packed.join("release.json")).is_ok_and(|kept| kept == text)
-        && release.apks().iter().all(|apk| {
-            let path = packed.join(&apk.asset);
-            !path.is_symlink() && store::hash(&path).is_ok_and(|hash| hash == apk.sha256)
-        })
+        && release
+            .apks()
+            .iter()
+            .all(|apk| opened(&packed.join(&apk.asset)).is_ok_and(|mut file| alike(&mut file, apk)))
 }
-/// The cache's copy of `apk`, downloaded from its pre-release unless the cache has it: refused
-/// unless it has the SHA-256 and size the release names.
-fn fetched(cache: &Path, release: &Release, apk: &Apk, runner: &dyn Runner) -> Result<PathBuf> {
-    let kept = cache.join(format!("{}.apk", apk.sha256));
-    if !kept.is_symlink() && store::hash(&kept).is_ok_and(|hash| hash == apk.sha256) {
-        fs::File::open(&kept)?
-            .set_times(fs::FileTimes::new().set_modified(std::time::SystemTime::now()))?;
-        return Ok(kept);
+/// The file at `path`, open to read, unless it's a symbolic link.
+fn opened(path: &Path) -> std::io::Result<File> {
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)
+}
+/// Whether `file` is the APK the release names: a regular file of its size and SHA-256.
+fn alike(file: &mut File, apk: &Apk) -> bool {
+    file.metadata()
+        .is_ok_and(|info| info.is_file() && info.len() == apk.size)
+        && file.rewind().is_ok()
+        && store::digest(file).is_ok_and(|hash| hash == apk.sha256)
+}
+/// Where the cache keeps `apk`.
+fn entry(cache: &Path, apk: &Apk) -> PathBuf {
+    cache.join(format!("{}.apk", apk.sha256))
+}
+/// The cache's copy of `apk`, held, downloaded from its pre-release unless the cache has it:
+/// refused unless it's a regular file of the SHA-256 and size the release names.
+fn fetched(cache: &Path, release: &Release, apk: &Apk, runner: &dyn Runner) -> Result<File> {
+    let kept = entry(cache, apk);
+    if let Ok(mut file) = opened(&kept) {
+        file.lock_shared()?;
+        if alike(&mut file, apk) {
+            file.set_times(fs::FileTimes::new().set_modified(std::time::SystemTime::now()))?;
+            return Ok(file);
+        }
     }
-    let arriving = tempfile::Builder::new()
+    let mut arriving = tempfile::Builder::new()
         .prefix(".arriving-")
-        .tempfile_in(cache)?
-        .into_temp_path();
-    let (url, most) = (release.url(apk), apk.size.to_string());
+        .tempfile_in(cache)?;
+    arriving.as_file().lock_shared()?;
+    let url = release.url(apk);
     println!(
         "Fetching DSP Dispatch: Relay {}'s {}.",
         release.version, apk.asset
     );
-    runner.command(
-        &[
-            "curl",
-            "--fail",
-            "--silent",
-            "--show-error",
-            "--location",
-            "--retry",
-            "3",
-            "--max-filesize",
-            &most,
-            "--output",
-            arriving.to_str().ok_or("Invalid cache path")?,
-            &url,
-        ],
-        None,
-        DOWNLOAD_SECONDS,
-    )?;
+    runner
+        .command(
+            &[
+                "curl",
+                "--fail",
+                "--silent",
+                "--show-error",
+                "--location",
+                "--retry",
+                "3",
+                "--max-filesize",
+                &MOST.to_string(),
+                "--output",
+                arriving.path().to_str().ok_or("Invalid cache path")?,
+                &url,
+            ],
+            None,
+            DOWNLOAD_SECONDS,
+        )
+        .map_err(|error| Unavailable(format!("Couldn't download {url}: {error}")))?;
     require(
-        fs::metadata(&arriving)?.len() == apk.size && store::hash(&arriving)? == apk.sha256,
+        alike(arriving.as_file_mut(), apk),
         &format!(
             "{} of relay-v{} differs from {RELEASE}",
             apk.asset, release.version
         ),
     )?;
-    arriving.persist(&kept)?;
-    Ok(kept)
+    Ok(arriving.persist(&kept)?)
 }
 /// Removes what's packed in `packed`, if anything.
 fn gone(packed: &Path) -> Result<()> {
@@ -226,18 +272,38 @@ fn gone(packed: &Path) -> Result<()> {
         _ => Ok(()),
     }
 }
-/// Lets go of the cache's APKs but `kept` and the most recently used, up to `KEEP`.
-fn prune(cache: &Path, kept: &[PathBuf]) -> Result<()> {
+/// Lets go of the cache's APKs but the release's and the most recently used, up to `KEEP`: never
+/// one another build holds, and passing over one already gone.
+fn prune(cache: &Path, release: &Release) -> Result<()> {
+    let ours = release.apks().map(|apk| entry(cache, apk));
     let mut others = Vec::new();
-    for entry in fs::read_dir(cache)? {
-        let path = entry?.path();
-        if path.extension().is_some_and(|e| e == "apk") && !kept.contains(&path) {
-            others.push((fs::metadata(&path)?.modified()?, path));
+    for found in fs::read_dir(cache)? {
+        let path = found?.path();
+        if path.extension().is_some_and(|e| e == "apk")
+            && !ours.contains(&path)
+            && let Ok(info) = path.symlink_metadata()
+            && info.is_file()
+        {
+            others.push((info.modified()?, path));
         }
     }
     others.sort_by(|a, b| b.0.cmp(&a.0));
-    for (_, path) in others.into_iter().skip(KEEP.saturating_sub(kept.len())) {
-        fs::remove_file(path)?;
+    for (_, path) in others.into_iter().skip(KEEP.saturating_sub(ours.len())) {
+        let Ok(file) = opened(&path) else {
+            continue;
+        };
+        // Held by another build, or replaced since it was opened: left alone.
+        let held = file.metadata()?;
+        if file.try_lock().is_err()
+            || !fs::symlink_metadata(&path)
+                .is_ok_and(|now| now.ino() == held.ino() && now.dev() == held.dev())
+        {
+            continue;
+        }
+        match fs::remove_file(&path) {
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => return Err(error.into()),
+            _ => {}
+        }
     }
     Ok(())
 }

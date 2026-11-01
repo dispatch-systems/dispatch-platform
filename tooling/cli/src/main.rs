@@ -571,7 +571,7 @@ fn run() -> Result<()> {
             };
             // The runtime hands out the relay app; the assessment fixture is no runtime.
             if !line.flag("--fixture") {
-                build::relay::pack(&root, &Native)?;
+                build::relay::pack(&root, &Native, line.flag("--release"))?;
             }
             build::build(&root, artifact, &env, &Native)
         }
