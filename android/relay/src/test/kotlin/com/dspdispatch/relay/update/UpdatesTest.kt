@@ -57,6 +57,16 @@ class UpdatesTest {
     }
 
     @Test
+    fun takesAwayTheNotificationOfTheVersionItWasUpdatedTo() = runTest {
+        val updates = updates()
+        updates.heard(own)
+        assertEquals(Update.None, updates.update.value)
+        assertEquals(1, notice.cancelled)
+        updates.heard(own)
+        assertEquals(1, notice.cancelled)
+    }
+
+    @Test
     fun downloadsChecksAndInstallsFromThePairedDsp() = runTest {
         val updates = updates()
         updates.heard(newer)
@@ -137,6 +147,7 @@ class UpdatesTest {
         server.enqueue(json(200, """{"version":"1.0.4","versionCode":4,"size":13,"sha256":"${sha256(bytes)}"}"""))
         updates.install(site)
         assertEquals(Update.None, updates.tried())
+        assertEquals(listOf(newer), notice.shown)
         assertEquals(1, notice.cancelled)
         assertEquals(1, server.requestCount)
     }

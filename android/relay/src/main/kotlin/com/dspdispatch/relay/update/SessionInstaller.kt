@@ -41,7 +41,11 @@ class SessionInstaller(private val context: Context) : Installer {
 
     override suspend fun install(apk: File, confirming: () -> Unit): Outcome {
         val id = try {
-            withContext(Dispatchers.IO) { sessions.createSession(params(apk)) }
+            withContext(Dispatchers.IO) {
+                // A session of an earlier process, which ended before Android answered it.
+                sessions.mySessions.forEach { abandon(it.sessionId) }
+                sessions.createSession(params(apk))
+            }
         } catch (_: IOException) {
             return FAILED
         }

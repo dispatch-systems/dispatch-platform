@@ -61,17 +61,22 @@ class Updates(
     private val state = MutableStateFlow<Update>(Update.None)
     val update: StateFlow<Update> = state.asStateFlow()
 
-    /** The newer version Dispatch last told of, notified once. */
+    /** The newer version Dispatch last told of, notified once; [heard] once it has told. */
     private var offered: AppVersion? = null
+    private var heard = false
     private var installing: Job? = null
 
     // An APK left by an update that installed, which ended the process before it was deleted.
     private val cleared = scope.launch(io) { apk.delete() }
 
-    /** Dispatch's latest version, [app] as the outbox answered it: offered while newer than this app. */
+    /**
+     * Dispatch's latest version, [app] as the outbox answered it: offered while newer than this app.
+     * The first answer takes away the notification of the version this app was updated to.
+     */
     fun heard(app: AppVersion?) {
         val newer = app?.takeIf { it.versionCode > own.versionCode }
-        if (newer == offered) return
+        if (heard && newer == offered) return
+        heard = true
         offered = newer
         if (newer == null) notice.cancel() else notice.show(newer)
         if (installing?.isActive != true) state.value = newer?.let { Update.Available(it) } ?: Update.None
