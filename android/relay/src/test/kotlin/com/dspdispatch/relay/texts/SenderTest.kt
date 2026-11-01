@@ -18,7 +18,6 @@ import okhttp3.OkHttpClient
 import okio.Buffer
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -60,8 +59,8 @@ class SenderTest {
     @Test
     fun sendsEachAttemptOnceEvenAcrossARestart() = runTest {
         val first = text("text_1", 41, "On my way")
-        assertTrue(sender().send(paired, KEY, Outbox(listOf(first))))
-        assertTrue(sender().send(paired, KEY, Outbox(listOf(first))))
+        sender().send(paired, KEY, Outbox(listOf(first)))
+        sender().send(paired, KEY, Outbox(listOf(first)))
         assertEquals(listOf("text_1" to 41L), radio.handed.map { it.first.id to it.first.attempt })
         assertEquals(listOf("+14255550100"), radio.lines)
 
@@ -83,7 +82,7 @@ class SenderTest {
         val picture = byteArrayOf(9, 8, 7, 6)
         server.enqueue(MockResponse.Builder().code(200).body(Buffer().write(picture)).build())
         val text = text("text_1", 1, "Door", OutgoingFile("file_1", "door.jpg", "image/jpeg", 4))
-        assertTrue(sender().send(paired, KEY, Outbox(listOf(text))))
+        sender().send(paired, KEY, Outbox(listOf(text)))
 
         val request = server.takeRequest()
         assertEquals("GET", request.method)
@@ -112,16 +111,24 @@ class SenderTest {
     }
 
     @Test
-    fun triesAPictureMessageAgainWhileItsFileCantBeFetched() = runTest {
-        val text = text("text_1", 1, "", OutgoingFile("file_1", "door.jpg", "image/jpeg", 3))
+    fun triesAPictureMessageAgainWhileItsFileCantBeFetchedSendingTheRest() = runTest {
+        val sender = sender()
+        val picture = text("text_1", 1, "", OutgoingFile("file_1", "door.jpg", "image/jpeg", 3))
+        val outbox = Outbox(listOf(picture, text("text_2", 1, "On my way")))
         server.enqueue(json(503, """{"error":"uploads_busy"}"""))
-        assertFalse(sender().send(paired, KEY, Outbox(listOf(text))))
+        sender.send(paired, KEY, outbox)
+        assertEquals(listOf("text_2"), radio.handed.map { it.first.id })
         assertTrue(radio.pictureMessages.isEmpty())
         assertTrue(sends.statuses(10).isEmpty())
 
+        // Not fetched again until its pause is over.
+        sender.send(paired, KEY, outbox)
+        assertEquals(1, server.requestCount)
+        clock += 60_000
         server.enqueue(MockResponse.Builder().code(200).body(Buffer().write(byteArrayOf(1, 2, 3))).build())
-        assertTrue(sender().send(paired, KEY, Outbox(listOf(text))))
-        assertEquals(1, radio.pictureMessages.size)
+        sender.send(paired, KEY, outbox)
+        assertEquals(listOf("text_1"), radio.pictureMessages.map { it.first.id })
+        assertEquals("each sent once", 1, radio.handed.size)
     }
 
     @Test
@@ -157,7 +164,7 @@ class SenderTest {
         // As Android 8's carrier settings, null while its picture message service is away.
         radio.failing = NullPointerException("carrierConfigValues")
         val picture = text("text_1", 1, "Door", OutgoingFile("file_1", "door.jpg", "image/jpeg", 3))
-        assertTrue(sender().send(paired, KEY, Outbox(listOf(picture, text("text_2", 1, "On my way")))))
+        sender().send(paired, KEY, Outbox(listOf(picture, text("text_2", 1, "On my way"))))
         assertEquals(listOf(Told("text_1", 1, SendStatus.FAILED, clock, Failure.NOT_SENT)), sends.statuses(10))
         assertEquals(listOf("text_2"), radio.handed.map { it.first.id })
     }

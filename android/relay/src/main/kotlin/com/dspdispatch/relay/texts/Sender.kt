@@ -10,7 +10,6 @@ import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -30,6 +29,10 @@ class Sender(
 ) {
     private val answers = Channel<Pair<Paired, Outbox>>(Channel.CONFLATED)
 
+    // The attempts whose files couldn't be fetched, each with how many times in a row and when to
+    // try again. Only the sender's own coroutine touches it.
+    private val retries = mutableMapOf<Pair<String, Long>, Retry>()
+
     /**
      * Takes [outbox], Dispatch's answer to [paired]'s wait, and returns once it's worth waiting
      * again: at once when it holds nothing. A text stays in each answer until Dispatch hears how
@@ -44,11 +47,9 @@ class Sender(
 
     /** Sends the texts of each answer [paired] takes, with its [key], until the coroutine is cancelled. */
     suspend fun run(paired: Paired, key: String) {
-        var failures = 0
         for ((from, outbox) in answers) {
             // An answer to an earlier pairing, whose texts Dispatch failed as it removed the phone.
-            if (from != paired) continue
-            if (send(paired, key, outbox)) failures = 0 else delay(backoff(++failures))
+            if (from == paired) send(paired, key, outbox)
         }
     }
 
@@ -60,23 +61,31 @@ class Sender(
     }
 
     /**
-     * Sends each text of [outbox] that wasn't yet, failing those Android never said more of.
-     * False when a file couldn't be fetched this time: its text goes with a later answer.
+     * Sends each text of [outbox] that wasn't yet, failing those Android never said more of. A
+     * text whose file couldn't be fetched goes with a later answer, after a growing pause of its
+     * own, the others going on.
      */
-    internal suspend fun send(paired: Paired, key: String, outbox: Outbox): Boolean = withContext(Dispatchers.IO) {
+    internal suspend fun send(paired: Paired, key: String, outbox: Outbox) = withContext(Dispatchers.IO) {
         val at = now()
         sends.expire(at - RESULT_WAIT_MS, at).forEach { File(folder, pduName(it.id, it.attempt)).delete() }
         sends.forget(at - KEEP_MS)
+        retries.keys.retainAll(outbox.texts.map { it.id to it.attempt }.toSet())
         try {
             for (text in outbox.texts) {
+                val attempt = text.id to text.attempt
+                val retry = retries[attempt]
+                if (retry != null && now() < retry.at) continue
                 val send = sends.start(Send.of(text, at))
-                if (send.handed == null && send.outcome == null) sendText(paired, key, text, send)
+                if (send.handed != null || send.outcome != null) continue
+                try {
+                    sendText(paired, key, text, send)
+                    retries -= attempt
+                } catch (_: IOException) {
+                    retries[attempt] = Retry.after(retry, now())
+                } catch (_: Refusal) {
+                    retries[attempt] = Retry.after(retry, now())
+                }
             }
-            true
-        } catch (_: IOException) {
-            false
-        } catch (_: Refusal) {
-            false
         } finally {
             statuses.more()
         }
@@ -147,6 +156,17 @@ class Sender(
             return File(folder, pduName(send.id, send.attempt)).apply { writeBytes(bytes) }
         } finally {
             fetched.forEach(File::delete)
+        }
+    }
+
+    /** When to fetch an attempt's files again, after [failures] tries in a row failed. */
+    private class Retry(val failures: Int, val at: Long) {
+        companion object {
+            /** The retry after another failure, at [now], following [last]. */
+            fun after(last: Retry?, now: Long): Retry {
+                val failures = (last?.failures ?: 0) + 1
+                return Retry(failures, now + backoff(failures))
+            }
         }
     }
 
