@@ -7,7 +7,8 @@ in `DISPATCH_RELAY_APPS` ([Android apps](../../android/README.md#releases)).
   only its owner reads, and prints `cert=<SHA-256 of its certificate>` for `$GITHUB_OUTPUT`.
 - `version dev` or `version production <X.Y.Z>`: prints the build's names for `$GITHUB_OUTPUT`:
   `commit`, `code` (its versionCode, the commit count), `name` (its versionName), `next` (the app
-  version after the last released one, which names Dev's builds) and `tree` (`android/`'s).
+  version after the last released one, which names Dev's builds) and `changed` (the last commit
+  that changed `android/`, so a revert is a new build with a higher versionCode).
 - `entry <build> <apk> <folder> <commit> <code> <name>`: copies the build's APK into `folder` as
   its asset, beside `<build>.json`, its entry.
 - `signed <folder> <build> <cert>`: checks the APK in `folder` is the one its entry names, the
@@ -51,10 +52,11 @@ class Refused(Exception):
 
 
 def run(args: list) -> bytes:
-    """`args`' output, refused with the program's name and its own error, never its arguments."""
+    """`args`' output, refused with the program's name and its own error, never its arguments:
+    what it wrote to stderr, or to stdout without any, as keytool does."""
     done = subprocess.run(args, capture_output=True)
     if done.returncode != 0:
-        error = done.stderr.decode(errors="replace").strip()
+        error = (done.stderr.strip() or done.stdout.strip()).decode(errors="replace")
         raise Refused(f"{Path(args[0]).name} failed: {error}")
     return done.stdout
 
@@ -156,7 +158,7 @@ def version(build: str, wanted: Optional[str], repository: str, run: Run = run) 
         "code": str(code),
         "name": name,
         "next": following_version,
-        "tree": run(["git", "rev-parse", "HEAD:android"]).decode().strip(),
+        "changed": run(["git", "log", "-1", "--format=%H", "HEAD", "--", "android"]).decode().strip(),
     }
 
 

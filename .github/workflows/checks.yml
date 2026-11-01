@@ -3,8 +3,8 @@ name: Platform checks
 # `platform` gate is the one required check. On a PR it only judges; on main it also attests and
 # publishes the tested build, which Dev installs and a release stamps. A manual run publishes the
 # build of the commit it ran on the same way, as a release asks for its commit's build. Outside a PR
-# the build carries DSP Dispatch: Relay, signed here: Dev's app always, and Production's in a
-# release's run (android/README.md#releases).
+# the build of main or a release's branch carries DSP Dispatch: Relay, signed here: Dev's app, and
+# Production's in a release's run (android/README.md#releases).
 on:
   pull_request:
   push:
@@ -67,7 +67,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ${{ runner.temp }}/relay-apps
-          key: relay-dev-${{ steps.version.outputs.tree }}-${{ steps.version.outputs.next }}-${{ steps.key.outputs.cert }}
+          key: relay-dev-${{ steps.version.outputs.changed }}-${{ steps.version.outputs.next }}-${{ steps.key.outputs.cert }}
       - if: steps.cache.outputs.cache-hit != 'true'
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
         with:

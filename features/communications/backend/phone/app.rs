@@ -1,7 +1,7 @@
 //! The app this server hands out to the DSP's phones: the latest version of DSP Dispatch: Relay
 //! its build packed, as CI built and signed it, in the runtime's `dashboard/relay/`. A preview
-//! server, as Dev is, hands out Dev's build, which every package carries, and Production its own,
-//! which only a release's package carries. None while the build packed none.
+//! server, as Dev is, hands out Dev's build, which main's and a release's packages carry, and
+//! Production its own, which only a release's package carries. None while the build packed none.
 use dispatch_core::foundation::config::{Config, Environment};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};

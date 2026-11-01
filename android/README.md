@@ -66,11 +66,12 @@ named `0.0.0-local`, clearly no release.
 CI builds and signs both apps (`.github/workflows/checks.yml`, with `tooling/ci/relay.py`):
 
 - **Each commit of `main`:** `relay-dev` builds Dev's app (the `dev` flavor's release build),
-  signed with the Dev key. It builds again only when `android/`'s tree, the next app version or
-  the key changed; otherwise the signed APK of the same inputs comes from the Actions cache, so a
-  change elsewhere never waits on Gradle. `build` packs it in the runtime package, which Dev
-  installs as it does each commit of `main`.
-- **A release:** the release command dispatches the checks for its commit on its branch
+  signed with the Dev key. It builds again for each commit that changes `android/`, a revert
+  too, and when the next app version or the key changes; otherwise the signed APK of the same
+  inputs comes from the Actions cache, while it still holds it, so a change elsewhere rarely waits
+  on Gradle. `build` packs it in the runtime package, which Dev installs as it does each commit
+  of `main`.
+- **A release:** the release command is to dispatch the checks for its commit on its branch
   `release-checks/v<version>`, with `relay-version`, the app version it releases. Given one,
   `relay-production` builds Production's app at that commit, named that version and signed with
   the Production key, and `build` packs it beside Dev's. Empty, as for a release without app
@@ -116,6 +117,9 @@ The format's fixture is `tooling/cli/src/build/relay/relay.json`.
 
 ### What the release command keeps
 
+The release command (`ops/host-manager/src/release/`) doesn't do this yet: until it does, a
+release stamps `main`'s package, which carries no Production app. It is to:
+
 - **Dispatch:** every release runs
   `gh workflow run checks.yml --ref release-checks/v<version> -f relay-version=<X.Y.Z or empty>`,
   since `main`'s package never carries Production's app.
@@ -127,6 +131,11 @@ The format's fixture is `tooling/cli/src/build/relay/relay.json`.
 - **The record:** once an app exists, each published release attaches its package's
   `dashboard/relay/relay.json` and Production's APK, its `asset`, which the next release's run and
   `main`'s Dev builds read.
+- **Its checks:** stamp the run it dispatched, never `main`'s push run, which carries no
+  Production app; refuse a `relay-version` at or below the last released app version; check the
+  package's `production` entry is that version, built at the release's commit; and compare Dev's
+  build, not the whole package, with what Dev serves, since Production's APK makes the release's
+  package unlike Dev's.
 
 ## Updates
 

@@ -64,7 +64,7 @@ class Commands:
 GIT = {
     "git rev-list --count HEAD": b"812\n",
     "git rev-parse HEAD": b"2" * 40 + b"\n",
-    "git rev-parse HEAD:android": b"3" * 40 + b"\n",
+    "git log -1 --format=%H HEAD -- android": b"3" * 40 + b"\n",
 }
 
 
@@ -80,7 +80,7 @@ class RelayCiTests(unittest.TestCase):
         named = relay.version("dev", None, REPOSITORY, Commands({**released("1.4.0"), **GIT}))
         self.assertEqual(named, {
             "commit": "2" * 40, "code": "812", "name": "1.4.1-dev.812", "next": "1.4.1",
-            "tree": "3" * 40,
+            "changed": "3" * 40,
         })
         # Before any release carried the app, the first is 0.0.1: none at all, or one without.
         self.assertEqual(relay.version("dev", None, REPOSITORY, Commands(GIT))["name"],
@@ -121,6 +121,14 @@ class RelayCiTests(unittest.TestCase):
         with self.assertRaises(relay.Refused):
             relay.key(self.folder / "other.p12", {"RELAY_KEYSTORE": "not base64!"}, answers)
 
+    def test_a_failure_reports_the_programs_own_error_and_never_its_arguments(self):
+        for script in ["print('keytool error: no such keystore'); exit(1)",
+                       "import sys; sys.stderr.write('keytool error: no such keystore'); exit(1)"]:
+            with self.assertRaises(relay.Refused) as refused:
+                relay.run([sys.executable, "-c", script, "secret-argument"])
+            self.assertIn("keytool error: no such keystore", str(refused.exception))
+            self.assertNotIn("secret-argument", str(refused.exception))
+
     def test_an_entry_names_its_apk_as_its_asset_and_is_checked_against_it(self):
         apk = self.folder / "relay-dev-release.apk"
         apk.write_bytes(b"dev apk")
@@ -148,21 +156,25 @@ class RelayCiTests(unittest.TestCase):
 
         self.assertEqual(relay.signed(apps, "dev", CERT, env, commands), made)
         # Another key, a second signer, or another app or version is refused.
-        for answer in [signed.replace(b"c", b"d"),
+        other_key = f"Signer #1 certificate SHA-256 digest: {'d' * 64}\n".encode()
+        for answer in [other_key,
                        signed + f"Signer #2 certificate SHA-256 digest: {'d' * 64}\n".encode()]:
             answers[path] = answer
             with self.assertRaises(relay.Refused):
                 relay.signed(apps, "dev", CERT, env, commands)
         answers[path] = signed
-        for other in [badging.replace(b".relay.dev'", b".relay'"), badging.replace(b"812", b"811")]:
+        for other in [badging.replace(b".relay.dev'", b".relay'"),
+                      badging.replace(b"versionCode='812'", b"versionCode='811'"),
+                      badging.replace(b"versionName='1.4.1-dev.812'", b"versionName='1.4.1-dev.811'")]:
             answers["badging"] = other
             with self.assertRaises(relay.Refused):
                 relay.signed(apps, "dev", CERT, env, commands)
         answers["badging"] = badging
-        # So is an APK unlike its entry.
-        (apps / made["asset"]).write_bytes(b"other apk")
-        with self.assertRaises(relay.Refused):
-            relay.signed(apps, "dev", CERT, env, commands)
+        # So is an APK unlike its entry, in its size or, the same size, its bytes.
+        for other in [b"other apk", b"dev apK"]:
+            (apps / made["asset"]).write_bytes(other)
+            with self.assertRaises(relay.Refused):
+                relay.signed(apps, "dev", CERT, env, commands)
 
     def test_a_release_carries_the_last_released_production_build_byte_for_byte(self):
         made = relay.carry(self.folder, REPOSITORY, Commands(released("1.4.0")))
