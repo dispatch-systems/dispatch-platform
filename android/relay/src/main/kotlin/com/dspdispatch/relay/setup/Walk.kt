@@ -6,10 +6,15 @@ import kotlinx.serialization.Serializable
 
 /**
  * The guided Set up under way: the steps it walks, in Set up's order, each undone when it joined,
- * and why Android last refused texting without asking, if it did.
+ * why Android last refused texting without asking, if it did, and whether the person came back
+ * from Restricted settings, which the walk shows only once ([restrictedSettingsOpened]).
  */
 @Serializable
-data class Walk(val steps: List<Step> = emptyList(), val blocked: Blocked? = null) {
+data class Walk(
+    val steps: List<Step> = emptyList(),
+    val blocked: Blocked? = null,
+    val restrictedSettingsOpened: Boolean = false,
+) {
     /**
      * The walk after a check found [items]: with each step undone now that it lacks, and no
      * longer blocked once what blocked texting is gone; null once every step it walks is done.
@@ -18,7 +23,7 @@ data class Walk(val steps: List<Step> = emptyList(), val blocked: Blocked? = nul
         val undone = items.undone()
         // Restricted settings joins no walk: it shows in Texting's place, only while it blocks texting.
         val joined = undone.keys - Step.RESTRICTED_SETTINGS
-        val walk = Walk((steps + joined).distinct().sorted(), blocked?.takeIf { it.stands(undone.keys) })
+        val walk = copy(steps = (steps + joined).distinct().sorted(), blocked = blocked?.takeIf { it.stands(undone.keys) })
         return if (walk.steps.any(undone::containsKey)) walk else null
     }
 
@@ -40,7 +45,7 @@ data class Walk(val steps: List<Step> = emptyList(), val blocked: Blocked? = nul
 
 /** Why Android refused texting without asking, which decides the way through the walk shows. */
 enum class Blocked {
-    /** Android 15+ restricts it: Restricted settings shows in Texting's place until the person is back from it. */
+    /** Android 15+ may restrict it: Restricted settings shows in Texting's place until the person is back from it. */
     RESTRICTED,
 
     /** The person refused it for good: the walk opens App info, where it's given, until it is. */
@@ -52,9 +57,14 @@ enum class Blocked {
         Step.TEXTING in undone && (this != RESTRICTED || Step.RESTRICTED_SETTINGS in undone)
 
     companion object {
-        /** What blocked texting, Android refusing it at once with [items] as checked then. */
-        fun of(items: List<Item>): Blocked =
-            if (items.any { it.step == Step.RESTRICTED_SETTINGS && !it.done }) RESTRICTED else REFUSED
+        /**
+         * What blocked texting, Android refusing it at once with [items] as checked then: Restricted
+         * settings while they may stand, unless the walk already opened them
+         * ([restrictedSettingsOpened]); else the person refused it for good. The app can't read
+         * which it is, so Restricted settings shows once, then the permission's own way through.
+         */
+        fun of(items: List<Item>, restrictedSettingsOpened: Boolean): Blocked =
+            if (!restrictedSettingsOpened && items.any { it.step == Step.RESTRICTED_SETTINGS && !it.done }) RESTRICTED else REFUSED
     }
 }
 

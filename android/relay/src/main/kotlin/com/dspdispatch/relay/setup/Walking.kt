@@ -46,14 +46,15 @@ class Walking(private val saved: Saved) {
      * Android refused texting without asking, with [items] as checked then: the walk shows the way
      * through in Texting's place. Whether a walk is under way to show it.
      */
-    fun refused(items: List<Item>): Boolean = change { it?.copy(blocked = Blocked.of(items)) } != null
+    fun refused(items: List<Item>): Boolean = change { it?.copy(blocked = Blocked.of(items, it.restrictedSettingsOpened)) } != null
 
     /**
      * The person came back from a screen the walk opened. Back from Restricted settings, which no
-     * app can read, texting is asked for again: Android's answer tells whether they were allowed.
+     * app can read, texting is asked for again: Android's answer tells whether they were allowed,
+     * and refused again without asking, the walk shows the permission's own way through.
      */
     fun back() {
-        change { walk -> if (walk?.blocked == Blocked.RESTRICTED) walk.copy(blocked = null) else walk }
+        change { walk -> if (walk?.blocked == Blocked.RESTRICTED) walk.copy(blocked = null, restrictedSettingsOpened = true) else walk }
     }
 
     /** Changes the walk by [to], keeping what it makes; the walk it made. */

@@ -77,7 +77,7 @@ data class Facts(
     val makerBattery: List<ByHand>,
     val unusedApps: UnusedApps,
     val backgroundData: Boolean,
-    /** Whether Android still restricts a setting the app needs; null where it never did. */
+    /** Whether Android may still restrict a setting the app needs, as far as the app can tell; null where it never did. */
     val restricted: Boolean?,
     /** Whether the phone has a texting app to open. */
     val textingApp: Boolean,

@@ -89,8 +89,8 @@ class Probe(private val context: Context) {
      * file, as an APK downloaded in a browser is, until "Allow restricted settings" in its App
      * info, which shows once the person has tried to give one. (Android 13 and 14 restricted only
      * settings this app never asks for: accessibility and notification access.) Android lets no
-     * app read whether it was lifted, so it's taken as lifted once Android let the person choose
-     * on texting ([unrestricted]), which it does only then.
+     * app read whether it was lifted, so it's known lifted only once Android let the person choose
+     * on texting ([unrestricted]), which it does only then; until then it may stand.
      */
     private fun restricted(texting: Boolean, unrestricted: Boolean): Boolean? =
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) null else restriction(fromFile(), texting, unrestricted)
@@ -117,9 +117,10 @@ class Probe(private val context: Context) {
 }
 
 /**
- * Whether Android still restricts texting for the app: only where it was installed [fromFile],
+ * Whether Android may still restrict texting for the app: only where it was installed [fromFile],
  * and only until texting is allowed or Android let the person choose on it, which it does only
- * once it lifted the restriction ([unrestricted]); null where it never did.
+ * once it lifted the restriction ([unrestricted]); null where it never did. Without that record,
+ * as on a phone updated from a build that didn't keep it, whether it was lifted isn't known.
  */
 internal fun restriction(fromFile: Boolean, texting: Boolean, unrestricted: Boolean): Boolean? =
     if (fromFile) !texting && !unrestricted else null

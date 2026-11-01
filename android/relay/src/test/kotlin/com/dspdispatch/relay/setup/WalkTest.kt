@@ -76,7 +76,7 @@ class WalkTest {
     @Test
     fun `opens App info for texting refused for good, after restricted settings were allowed`() {
         val lifted = restrictedPhone.map { if (it.step == Step.RESTRICTED_SETTINGS) done(it.step) else it }
-        val refused = started(restrictedPhone).copy(blocked = Blocked.of(lifted)).next(lifted)!!
+        val refused = started(restrictedPhone).copy(blocked = Blocked.of(lifted, restrictedSettingsOpened = false)).next(lifted)!!
         val place = refused.at(lifted)!!
         assertEquals(Place(undone(Step.TEXTING, Fix.APP_INFO), 1, 3, R.string.step_texting_refused), place)
         // Back from App info with texting still refused, it stays: never Restricted settings.
@@ -86,14 +86,25 @@ class WalkTest {
     @Test
     fun `opens App info for texting refused for good where Android never restricted it`() {
         val items = listOf(undone(Step.TEXTING, Fix.ASK_TEXTING), undone(Step.BATTERY, Fix.BATTERY_REQUEST))
-        val walk = started(items).copy(blocked = Blocked.of(items))
+        val walk = started(items).copy(blocked = Blocked.of(items, restrictedSettingsOpened = false))
         assertEquals(Blocked.REFUSED, walk.blocked)
         assertEquals(R.string.step_texting_refused, walk.at(items)?.heading)
     }
 
     @Test
-    fun `blames restricted settings only while they're restricted`() {
-        assertEquals(Blocked.RESTRICTED, Blocked.of(restrictedPhone))
+    fun `blames restricted settings only while they may be restricted, and only until the walk opened them`() {
+        assertEquals(Blocked.RESTRICTED, Blocked.of(restrictedPhone, restrictedSettingsOpened = false))
+        assertEquals(Blocked.REFUSED, Blocked.of(restrictedPhone, restrictedSettingsOpened = true))
+    }
+
+    @Test
+    fun `opens App info for texting refused at once again after Restricted settings, which may still look restricted`() {
+        val walk = started(restrictedPhone).copy(restrictedSettingsOpened = true)
+        val refused = walk.copy(blocked = Blocked.of(restrictedPhone, walk.restrictedSettingsOpened))
+        val place = Place(undone(Step.TEXTING, Fix.APP_INFO), 1, 3, R.string.step_texting_refused)
+        assertEquals(place, refused.at(restrictedPhone))
+        assertEquals(place, refused.next(restrictedPhone)!!.at(restrictedPhone))
+        assertEquals(true, refused.next(restrictedPhone)!!.restrictedSettingsOpened)
     }
 
     @Test

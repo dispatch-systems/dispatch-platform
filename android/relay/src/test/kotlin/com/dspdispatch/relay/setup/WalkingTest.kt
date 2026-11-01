@@ -109,6 +109,79 @@ class WalkingTest {
         assertEquals(Place(undone(Step.TEXTING, Fix.APP_INFO), 1, 3, R.string.step_texting_refused), place)
     }
 
+    /**
+     * A phone on Android 15+, the app installed from a file and updated in place from a build that
+     * kept no record of texting's restriction, with texting refused for good: as it checks now,
+     * Restricted settings undone, as the app can't tell they were allowed.
+     */
+    private val updated = checklist(
+        Facts(
+            texting = false,
+            phoneNumber = true,
+            notificationsAllowed = true,
+            notificationsOn = true,
+            channelsOn = true,
+            backgroundRestricted = false,
+            ignoringBatteryOptimizations = false,
+            makerBattery = emptyList(),
+            unusedApps = UnusedApps.OFF,
+            backgroundData = true,
+            restricted = restriction(fromFile = true, texting = false, unrestricted = false),
+            textingApp = false,
+            chatFeaturesByHand = ByHand.NONE,
+            installUpdates = true,
+        ),
+    )
+
+    private val permissions = Place(undone(Step.TEXTING, Fix.APP_INFO), 1, 2, R.string.step_texting_refused)
+
+    @Test
+    fun `with no record of texting's restriction, shows Restricted settings once, then Permissions, never looping`() {
+        val walking = Walking(Kept()).apply {
+            start()
+            on(updated)
+            refused(updated)
+        }
+        assertEquals(Step.RESTRICTED_SETTINGS, walking.walk.value?.at(updated)?.item?.step)
+        walking.back()
+        walking.on(updated)
+        assertEquals(Place(updated[0], 1, 2), walking.walk.value?.at(updated))
+        walking.refused(updated)
+        assertEquals(permissions, walking.walk.value?.at(updated))
+        repeat(2) {
+            walking.back()
+            walking.on(updated)
+            assertEquals(permissions, walking.walk.value?.at(updated))
+            walking.refused(updated)
+            assertEquals(permissions, walking.walk.value?.at(updated))
+        }
+    }
+
+    @Test
+    fun `keeps that Restricted settings were opened after Android ends the process`() {
+        val kept = Kept()
+        Walking(kept).apply {
+            start()
+            on(updated)
+            refused(updated)
+            back()
+        }
+        val walking = Walking(kept)
+        walking.on(updated)
+        walking.refused(updated)
+        assertEquals(permissions, walking.walk.value?.at(updated))
+    }
+
+    @Test
+    fun `goes on with a walk kept by the build before, in Restricted settings`() {
+        val walking = Walking(Kept("""{"steps":["TEXTING","BATTERY"],"blocked":"RESTRICTED"}"""))
+        assertEquals(Step.RESTRICTED_SETTINGS, walking.walk.value?.at(updated)?.item?.step)
+        walking.back()
+        walking.on(updated)
+        walking.refused(updated)
+        assertEquals(permissions, walking.walk.value?.at(updated))
+    }
+
     @Test
     fun `reports no end where no walk was under way`() {
         val walking = Walking(Kept())

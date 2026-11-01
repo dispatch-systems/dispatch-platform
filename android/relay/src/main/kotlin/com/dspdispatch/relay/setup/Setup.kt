@@ -96,8 +96,8 @@ class Setup(private val context: Context) {
 
     /**
      * Android refused texting without asking: checked again, the walk shows the way through,
-     * Restricted settings where Android restricts texting, else App info. Whether a walk is under
-     * way to show it.
+     * Restricted settings once where Android may restrict texting, else App info. Whether a walk
+     * is under way to show it.
      */
     suspend fun textingRefused(): Boolean = walking.refused(check())
 
