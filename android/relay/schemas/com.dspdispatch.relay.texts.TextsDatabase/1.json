@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "2ede3dd8f350cac09712f0472e498acd",
+    "identityHash": "9fbdd5b4f88c2a5c374f491c84effa3f",
     "entities": [
       {
         "tableName": "mark",
@@ -243,7 +243,7 @@
       },
       {
         "tableName": "sends",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `attempt` INTEGER NOT NULL, `number` TEXT NOT NULL, `body` TEXT NOT NULL, `started` INTEGER NOT NULL, `handed` INTEGER, `parts` INTEGER NOT NULL, `joined` INTEGER NOT NULL, `outcome` TEXT, `finished` INTEGER, `delivered` INTEGER NOT NULL, PRIMARY KEY(`id`, `attempt`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `attempt` INTEGER NOT NULL, `number` TEXT NOT NULL, `body` TEXT NOT NULL, `started` INTEGER NOT NULL, `mms` INTEGER NOT NULL, `handed` INTEGER, `parts` INTEGER NOT NULL, `joined` INTEGER NOT NULL, `outcome` TEXT, `finished` INTEGER, `delivered` INTEGER NOT NULL, PRIMARY KEY(`id`, `attempt`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -272,6 +272,12 @@
           {
             "fieldPath": "started",
             "columnName": "started",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mms",
+            "columnName": "mms",
             "affinity": "INTEGER",
             "notNull": true
           },
@@ -428,7 +434,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '2ede3dd8f350cac09712f0472e498acd')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '9fbdd5b4f88c2a5c374f491c84effa3f')"
     ]
   }
 }

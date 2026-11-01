@@ -82,7 +82,7 @@ class StoredSendsTest {
         heard(untold, 0, Event.SENT, row = "sms-2")
         handed("unsettled")
         sends.start(Send("fetching", 1, "+14255550199", "", AT))
-        sends.forget(AT + 1)
+        sends.forget(AT + 1, AT + 1)
         assertFalse(sends.wrote("sms-1"))
         assertTrue(sends.wrote("sms-2"))
         assertEquals(listOf("unsettled"), sends.unplaced(0, Long.MAX_VALUE).map(Send::id))
@@ -90,6 +90,27 @@ class StoredSendsTest {
         assertEquals(null, sends.start(Send("fetching", 1, "+14255550199", "", AT + 2)).handed)
         assertEquals(AT + 2, sends.start(Send("fetching", 1, "+14255550199", "", AT + 3)).started)
     }
+
+    @Test
+    fun keepsATextUntilItsDeliveryCantBeReportedAnyMore() = runTest {
+        val sms = handed("sms")
+        heard(sms, 0, Event.SENT)
+        val picture = sends.start(Send("picture", 1, "+14255550199", "Door", AT, mms = true))
+        sends.handed(picture, 1, false, AT)
+        heard(picture, 0, Event.SENT)
+        val delivered = handed("delivered")
+        heard(delivered, 0, Event.SENT)
+        heard(delivered, 0, Event.DELIVERED)
+        sends.told(sends.statuses(10))
+
+        sends.forget(AT + 1, AT)
+        assertEquals("only the text still to be delivered", listOf("sms"), listOf("sms", "picture", "delivered").filter { kept(it) })
+        sends.forget(AT + 1, AT + 1)
+        assertFalse(kept("sms"))
+    }
+
+    /** Whether the attempt at [id] is still kept: one forgotten starts again, never handed. */
+    private suspend fun kept(id: String) = sends.start(Send(id, 1, "+14255550199", "Hi", AT)).handed != null
 
     @Test
     fun countsTodaysTextsSentForDispatch() = runTest {

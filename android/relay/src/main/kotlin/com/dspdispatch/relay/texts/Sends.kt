@@ -7,10 +7,10 @@ import com.dspdispatch.relay.dispatch.ReportedStatus
 import com.dspdispatch.relay.dispatch.SendStatus
 
 /**
- * An attempt at a text of the outbox, kept from before it's sent so it's sent once: [handed] is
- * when Android took it, in [parts] parts, [joined] as one message or each its own, and null while
- * its files are still being fetched, when it may start again; [outcome] is whether it was sent or
- * failed, at [finished].
+ * An attempt at a text of the outbox, kept from before it's sent so it's sent once: [mms] when it
+ * goes as a picture message; [handed] is when Android took it, in [parts] parts, [joined] as one
+ * message or each its own, and null while its files are still being fetched, when it may start
+ * again; [outcome] is whether it was sent or failed, at [finished].
  */
 @Entity(tableName = "sends", primaryKeys = ["id", "attempt"])
 data class Send(
@@ -19,6 +19,7 @@ data class Send(
     val number: String,
     val body: String,
     val started: Long,
+    val mms: Boolean = false,
     val handed: Long? = null,
     val parts: Int = 0,
     val joined: Boolean = false,
@@ -56,7 +57,7 @@ data class Send(
 
     companion object {
         /** The attempt at [text], started [at]. */
-        fun of(text: OutgoingText, at: Long) = Send(text.id, text.attempt, text.number, text.body, at)
+        fun of(text: OutgoingText, at: Long) = Send(text.id, text.attempt, text.number, text.body, at, mms = text.files.isNotEmpty())
     }
 }
 
@@ -121,8 +122,11 @@ interface Sends {
     /** Fails each send Android took before [before] and said nothing more of, [at]; answers them. */
     suspend fun expire(before: Long, at: Long): List<Send>
 
-    /** Leaves the sends started before [before] that Dispatch heard the end of, or never handed. */
-    suspend fun forget(before: Long)
+    /**
+     * Leaves the sends started before [before] that Dispatch heard the end of, or never handed. A
+     * text whose delivery may still be reported is kept until it was handed before [undelivered].
+     */
+    suspend fun forget(before: Long, undelivered: Long)
 
     /** The [most] oldest statuses Dispatch is still to hear. */
     suspend fun statuses(most: Int): List<Told>
@@ -142,3 +146,9 @@ interface Sends {
 
 /** How long Android may take to say how a text it took went; past it, the text failed. */
 internal const val RESULT_WAIT_MS = 10 * 60 * 1000L
+
+/**
+ * How long a carrier may still report a text delivered, failed or sent: as long as it keeps trying
+ * to deliver it to a phone that's off, at most a week for nearly every carrier.
+ */
+internal const val DELIVERY_WAIT_MS = 7 * 24 * 60 * 60 * 1000L

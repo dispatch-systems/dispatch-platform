@@ -68,7 +68,7 @@ class Sender(
     internal suspend fun send(paired: Paired, key: String, outbox: Outbox) = withContext(Dispatchers.IO) {
         val at = now()
         sends.expire(at - RESULT_WAIT_MS, at).forEach { File(folder, pduName(it.id, it.attempt)).delete() }
-        sends.forget(at - KEEP_MS)
+        sends.forget(at - KEEP_MS, at - DELIVERY_WAIT_MS)
         retries.keys.retainAll(outbox.texts.map { it.id to it.attempt }.toSet())
         try {
             for (text in outbox.texts) {

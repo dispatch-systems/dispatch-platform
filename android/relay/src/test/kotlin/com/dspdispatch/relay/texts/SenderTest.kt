@@ -170,6 +170,22 @@ class SenderTest {
     }
 
     @Test
+    fun hearsATextDeliveredLongAfterDispatchHeardHowItWent() = runTest {
+        val sender = sender()
+        sender.send(paired, KEY, Outbox(listOf(text("sent", 1, "On my way"), text("failed", 1, "Gate code?"))))
+        sender.heard(Heard("sent", 1, 0, Event.SENT, null, null, clock))
+        sender.heard(Heard("failed", 1, 0, Event.SENT, "No service", null, clock))
+        sends.told(sends.statuses(10))
+
+        // The recipient's phone off for two days, past how long the inbox looks back.
+        clock += 2 * DAY_MS
+        sender.send(paired, KEY, Outbox(emptyList()))
+        sender.heard(Heard("sent", 1, 0, Event.DELIVERED, null, null, clock, "3gpp"))
+        sender.heard(Heard("failed", 1, 0, Event.DELIVERED, null, null, clock, "3gpp"))
+        assertEquals(listOf("sent", "failed").map { Told(it, 1, SendStatus.DELIVERED, clock) }.toSet(), sends.statuses(10).toSet())
+    }
+
+    @Test
     fun failsATextAndroidNeverSaidMoreOf() = runTest {
         sender().send(paired, KEY, Outbox(listOf(text("text_1", 1, "Hi"))))
         clock += RESULT_WAIT_MS - 1
@@ -205,5 +221,6 @@ class SenderTest {
 
     private companion object {
         val KEY = "k".repeat(64)
+        const val DAY_MS = 24 * 60 * 60 * 1000L
     }
 }

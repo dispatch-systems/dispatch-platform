@@ -52,8 +52,8 @@ abstract class StoredSends : Sends {
     }
 
     @Transaction
-    override suspend fun forget(before: Long) {
-        forgetSends(before)
+    override suspend fun forget(before: Long, undelivered: Long) {
+        forgetSends(before, undelivered)
         forgetReports()
         forgetRows()
     }
@@ -102,14 +102,17 @@ abstract class StoredSends : Sends {
     @Query("SELECT * FROM sends WHERE handed < :before AND outcome IS NULL")
     protected abstract suspend fun stuck(before: Long): List<Send>
 
-    // A send Android took and never settled is failed by expire first, so it's kept until then.
+    // A send Android took and never settled is failed by expire first, so it's kept until then. A
+    // text not yet delivered may be, failed or sent, as long as the carrier keeps trying: picture
+    // messages' deliveries aren't heard.
     @Query(
         """
-        DELETE FROM sends WHERE started < :before AND (outcome IS NOT NULL OR handed IS NULL) AND NOT EXISTS
+        DELETE FROM sends WHERE started < :before AND (outcome IS NOT NULL OR handed IS NULL)
+            AND (delivered OR mms OR handed IS NULL OR handed < :undelivered) AND NOT EXISTS
             (SELECT 1 FROM statuses WHERE statuses.id = sends.id AND statuses.attempt = sends.attempt)
         """,
     )
-    protected abstract suspend fun forgetSends(before: Long)
+    protected abstract suspend fun forgetSends(before: Long, undelivered: Long)
 
     @Query(
         """
