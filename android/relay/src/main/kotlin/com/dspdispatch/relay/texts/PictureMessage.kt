@@ -21,11 +21,14 @@ class PictureMessage(private val pictures: Pictures) {
         val room = limits.most - fixed - files.filterNot(Item::picture).sumOf(Item::size)
         if (room < 0) return null
         val pictures = files.indices.filter { files[it].picture }
+        // One wider or taller than the carrier takes is scaled as a JPEG, which may be larger than
+        // it was: it needs its share of the room, not only its own size.
+        val oversized = pictures.filter { this.pictures.size(attachments[it].file)?.fits(limits.picture) == false }.toSet()
+        val needs = pictures.map { if (it in oversized) room else files[it].size }
         val fitted = files.toMutableList()
-        for ((picture, share) in pictures.zip(allot(room, pictures.map { files[it].size }))) {
-            val file = attachments[picture].file
-            if (files[picture].size <= share && this.pictures.size(file)?.fits(limits.picture) != false) continue
-            val bytes = this.pictures.shrink(file, share.toInt(), limits.picture) ?: return null
+        for ((picture, share) in pictures.zip(allot(room, needs))) {
+            if (picture !in oversized && files[picture].size <= share) continue
+            val bytes = this.pictures.shrink(attachments[picture].file, share.toInt(), limits.picture) ?: return null
             fitted[picture] = Item("${files[picture].name.substringBeforeLast('.')}.jpg", JPEG, bytes.size.toLong()) { bytes }
         }
         return encode(to, body, fitted, transaction, date).takeIf { it.size <= limits.most }

@@ -64,6 +64,18 @@ class PictureMessageTest {
     }
 
     @Test
+    fun givesAPictureScaledToTheCarriersWidthAndHeightTheRoomItNeeds() {
+        // A small PNG, too wide, whose JPEG at the carrier's width is larger than the PNG was.
+        val jpeg = 1_107
+        pictures = FakePictures(mapOf("wide.png" to Size(3_000, 200))) { most -> ByteArray(jpeg).takeIf { most >= jpeg } }
+        val pdu = compose(300_000, file("wide.png", "image/png", 153), file("door.jpg", "image/jpeg", 1_000), within = Size(640, 480))!!
+        assertEquals(listOf("wide.png"), asked.map { it.first })
+        assertTrue("an even share of the room", asked.single().second > 100_000)
+        val text = String(pdu, Charsets.ISO_8859_1)
+        assertTrue("wide.jpg" in text && "wide.png" !in text && "door.jpg" in text)
+    }
+
+    @Test
     fun knowsWhatFitsWithinTheCarriersPictureSizeEitherWayUp() {
         val limit = Size(640, 480)
         assertTrue(Size(640, 480).fits(limit))
