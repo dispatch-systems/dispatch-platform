@@ -45,6 +45,17 @@ class StoredQueueTest {
     }
 
     @Test
+    fun keepsARowToReadAgainUntilItsRead() = runTest {
+        queue.begin(Mark("phone_1", 0, 0))
+        val row = Row(Table.MMS, 5, 10, Direction.IN)
+        queue.later(Unread(row, 20))
+        queue.later(Unread(row, 30))
+        assertEquals(listOf(Unread(row, 20)), queue.unread())
+        queue.read(Seen(row.key, row.at, Direction.IN), emptyList(), emptyList())
+        assertTrue(queue.unread().isEmpty())
+    }
+
+    @Test
     fun countsTodaysTextsAndThoseWaiting() = runTest {
         queue.begin(Mark("phone_1", 0, 0))
         queue.read(Seen("sms-1-50", 50, Direction.IN), listOf(Waiting("sms-1-50", Direction.IN, "(206) 555-0101", "", 50)), emptyList())
@@ -60,11 +71,11 @@ class StoredQueueTest {
         queue.begin(Mark("phone_1", 0, 0))
         queue.read(Seen("sms-1-50", 50, Direction.IN), listOf(Waiting("sms-1-50", Direction.IN, "(206) 555-0101", "", 50)), emptyList())
         queue.read(Seen("sms-2-150", 150, Direction.IN), emptyList(), emptyList())
-        queue.scanned(200, 100)
-        assertEquals(listOf("sms-2-150"), queue.seen(0))
-        assertEquals(200L, queue.mark()?.scanned)
+        queue.scanned(Mark("phone_1", 0, 200, sms = 2, mms = 7), 100)
+        assertEquals(listOf("sms-2-150"), queue.seen())
+        assertEquals(Mark("phone_1", 0, 200, sms = 2, mms = 7), queue.mark())
         queue.begin(Mark("phone_2", 300, 300))
         assertEquals("phone_2", queue.mark()?.phone)
-        assertTrue(queue.seen(0).isEmpty() && queue.waiting(10).isEmpty())
+        assertTrue(queue.seen().isEmpty() && queue.waiting(10).isEmpty())
     }
 }

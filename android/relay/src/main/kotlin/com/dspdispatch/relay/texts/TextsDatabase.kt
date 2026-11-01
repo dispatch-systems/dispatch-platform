@@ -15,7 +15,10 @@ import kotlinx.coroutines.flow.Flow
  * backup. Version 2 added the sends.
  */
 @Database(
-    entities = [Mark::class, Seen::class, Waiting::class, WaitingFile::class, Send::class, Report::class, SendRow::class, Told::class],
+    entities = [
+        Mark::class, Seen::class, Unread::class, Waiting::class, WaitingFile::class,
+        Send::class, Report::class, SendRow::class, Told::class,
+    ],
     version = 2,
     autoMigrations = [AutoMigration(from = 1, to = 2)],
 )
@@ -46,6 +49,7 @@ abstract class StoredQueue : Queue {
     override suspend fun begin(mark: Mark) {
         clearMark()
         clearSeen()
+        clearUnread()
         clearTexts()
         clearFiles()
         clearSends()
@@ -55,19 +59,26 @@ abstract class StoredQueue : Queue {
         keep(mark)
     }
 
-    @Query("SELECT row FROM seen WHERE at >= :since")
-    abstract override suspend fun seen(since: Long): List<String>
+    @Query("SELECT row FROM seen")
+    abstract override suspend fun seen(): List<String>
 
     @Transaction
     override suspend fun read(row: Seen, texts: List<Waiting>, files: List<WaitingFile>) {
         keep(row)
+        leaveUnread(row.row)
         keepTexts(texts)
         keepFiles(files)
     }
 
+    @Query("SELECT * FROM unread")
+    abstract override suspend fun unread(): List<Unread>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    abstract override suspend fun later(row: Unread)
+
     @Transaction
-    override suspend fun scanned(at: Long, forget: Long) {
-        scannedAt(at)
+    override suspend fun scanned(mark: Mark, forget: Long) {
+        keep(mark)
         forgetBefore(forget)
     }
 
@@ -126,9 +137,6 @@ abstract class StoredQueue : Queue {
     @Insert
     protected abstract suspend fun keepFiles(files: List<WaitingFile>)
 
-    @Query("UPDATE mark SET scanned = :at")
-    protected abstract suspend fun scannedAt(at: Long)
-
     @Query("DELETE FROM seen WHERE at < :before")
     protected abstract suspend fun forgetBefore(before: Long)
 
@@ -144,11 +152,17 @@ abstract class StoredQueue : Queue {
     @Query("DELETE FROM files WHERE clientId = :clientId")
     protected abstract suspend fun leaveFiles(clientId: String)
 
+    @Query("DELETE FROM unread WHERE `key` = :key")
+    protected abstract suspend fun leaveUnread(key: String)
+
     @Query("DELETE FROM mark")
     protected abstract suspend fun clearMark()
 
     @Query("DELETE FROM seen")
     protected abstract suspend fun clearSeen()
+
+    @Query("DELETE FROM unread")
+    protected abstract suspend fun clearUnread()
 
     @Query("DELETE FROM texts")
     protected abstract suspend fun clearTexts()

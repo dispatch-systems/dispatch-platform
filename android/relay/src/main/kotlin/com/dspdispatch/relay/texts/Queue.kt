@@ -9,10 +9,18 @@ import com.dspdispatch.relay.dispatch.Direction
 
 /**
  * Where reading the phone's texts stands: for which pairing ([phone], Dispatch's ID of it), from
- * when ([paired]), and when the provider was last read through ([scanned]).
+ * when ([paired]), when the provider was last read through ([scanned]), and the highest row IDs
+ * read of its texts and picture messages ([sms], [mms]).
  */
 @Entity(tableName = "mark")
-data class Mark(val phone: String, val paired: Long, val scanned: Long, @PrimaryKey val id: Int = ONLY) {
+data class Mark(
+    val phone: String,
+    val paired: Long,
+    val scanned: Long,
+    val sms: Long = 0,
+    val mms: Long = 0,
+    @PrimaryKey val id: Int = ONLY,
+) {
     private companion object {
         const val ONLY = 0
     }
@@ -24,6 +32,13 @@ data class Mark(val phone: String, val paired: Long, val scanned: Long, @Primary
  */
 @Entity(tableName = "seen")
 data class Seen(@PrimaryKey val row: String, val at: Long, val direction: Direction?)
+
+/**
+ * A provider row not read whole yet, as a picture message still being written or the provider
+ * away a moment: read again, by itself, from when it was [found] until it is.
+ */
+@Entity(tableName = "unread")
+data class Unread(@Embedded val row: Row, val found: Long, @PrimaryKey val key: String = row.key)
 
 /** A text read and not yet answered by Dispatch, as it's reported. */
 @Entity(tableName = "texts")
@@ -69,14 +84,20 @@ interface Queue {
     /** Starts reading for a new pairing at [mark], leaving behind everything of any before it. */
     suspend fun begin(mark: Mark)
 
-    /** The keys of the rows read that were written at or after [since]. */
-    suspend fun seen(since: Long): List<String>
+    /** The keys of the rows read, kept until they can't come up again. */
+    suspend fun seen(): List<String>
 
-    /** Keeps [row] as read, and the [texts] it's reported as with their [files], at once. */
+    /** Keeps [row] as read, and the [texts] it's reported as with their [files], at once: no longer [unread]. */
     suspend fun read(row: Seen, texts: List<Waiting>, files: List<WaitingFile>)
 
-    /** The provider was read through [at]; rows written before [forget] can't come up again. */
-    suspend fun scanned(at: Long, forget: Long)
+    /** The rows to read again, not whole as they were read. */
+    suspend fun unread(): List<Unread>
+
+    /** Keeps [row] to read again, as found the first time it was. */
+    suspend fun later(row: Unread)
+
+    /** The provider was read through as [mark] has it; rows written before [forget] can't come up again. */
+    suspend fun scanned(mark: Mark, forget: Long)
 
     /** The [most] oldest texts waiting to be reported, with their files. */
     suspend fun waiting(most: Int): List<WaitingText>

@@ -11,6 +11,7 @@ import java.io.InputStream
 class MemoryQueue : Queue {
     var mark: Mark? = null
     val seen = mutableMapOf<String, Seen>()
+    val unread = mutableMapOf<String, Unread>()
     val texts = mutableMapOf<String, Waiting>()
     val files = mutableListOf<WaitingFile>()
     private var nextFile = 1L
@@ -19,21 +20,29 @@ class MemoryQueue : Queue {
 
     override suspend fun begin(mark: Mark) {
         seen.clear()
+        unread.clear()
         texts.clear()
         files.clear()
         this.mark = mark
     }
 
-    override suspend fun seen(since: Long) = seen.values.filter { it.at >= since }.map(Seen::row)
+    override suspend fun seen() = seen.keys.toList()
 
     override suspend fun read(row: Seen, texts: List<Waiting>, files: List<WaitingFile>) {
         seen[row.row] = row
+        unread.remove(row.row)
         texts.forEach { this.texts[it.clientId] = it }
         files.forEach { this.files += it.copy(id = nextFile++) }
     }
 
-    override suspend fun scanned(at: Long, forget: Long) {
-        mark = mark?.copy(scanned = at)
+    override suspend fun unread() = unread.values.toList()
+
+    override suspend fun later(row: Unread) {
+        unread.putIfAbsent(row.key, row)
+    }
+
+    override suspend fun scanned(mark: Mark, forget: Long) {
+        this.mark = mark
         seen.values.removeAll { it.at < forget }
     }
 
@@ -68,13 +77,48 @@ class FakeProvider : Provider {
     /** Rows the texting app is still writing: there, but not read whole yet. */
     val writing = mutableSetOf<Row>()
 
-    override fun rows(since: Long) = (messages.map(Message::row) + writing).filter { it.at >= since }.sortedBy(Row::at)
+    /** Whether the phone lets the app read its texts: reading them while it doesn't fails, as on a phone. */
+    var allowed = true
 
-    override fun read(row: Row) = messages.firstOrNull { it.row == row }
+    /** Parts the provider can't read the next time, as when it crashed a moment before. */
+    val away = mutableSetOf<String>()
 
-    override fun size(uri: String) = bytes[uri]?.size?.toLong()
+    /** Whether Texting is turned off as the next read starts, just after the app saw it on. */
+    var turnedOffAtRead = false
 
-    override fun open(uri: String): InputStream = ByteArrayInputStream(bytes[uri] ?: throw FileNotFoundException(uri))
+    /** How many reads failed as the phone didn't allow them. */
+    var refused = 0
+
+    override fun rows(scan: Scan) = (messages.map(Message::row) + writing)
+        .filter { it.at >= scan.paired && (it.at >= scan.since || it.id > if (it.table == Table.SMS) scan.sms else scan.mms) }
+        .sortedBy(Row::at)
+
+    override fun read(row: Row): Reading {
+        if (row in writing) return Reading.Later
+        val message = messages.firstOrNull { it.row == row } ?: return Reading.Gone
+        return if (message.parts.any { away.remove(it.uri) }) Reading.Later else Reading.Whole(message)
+    }
+
+    override fun size(uri: String): Long? {
+        readable()
+        if (away.remove(uri)) throw Unavailable(uri)
+        return bytes[uri]?.size?.toLong()
+    }
+
+    override fun open(uri: String): InputStream {
+        readable()
+        return ByteArrayInputStream(bytes[uri] ?: throw FileNotFoundException(uri))
+    }
+
+    private fun readable() {
+        if (turnedOffAtRead) {
+            turnedOffAtRead = false
+            allowed = false
+        }
+        if (allowed) return
+        refused++
+        throw SecurityException("Permission Denial: reading the texting provider")
+    }
 }
 
 /** Android's texting service, sending nothing: each text handed to it is kept in [handed]. */

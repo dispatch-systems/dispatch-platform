@@ -7,7 +7,14 @@ import com.dspdispatch.relay.dispatch.TextAnswer
 import com.dspdispatch.relay.dispatch.TextsAnswer
 import com.dspdispatch.relay.dispatch.TextsReport
 import com.dspdispatch.relay.dispatch.wire
+import java.util.concurrent.TimeUnit
+import kotlin.coroutines.EmptyCoroutineContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
@@ -26,7 +33,7 @@ class ReporterTest {
     private val server = MockWebServer()
     private val queue = MemoryQueue()
     private val provider = FakeProvider()
-    private val reporter = Reporter(Dispatch(OkHttpClient()), queue, provider)
+    private val reporter = Reporter(Dispatch(OkHttpClient()), queue, provider, Texting { provider.allowed }, EmptyCoroutineContext)
     private lateinit var site: String
 
     @Before
@@ -84,6 +91,25 @@ class ReporterTest {
     }
 
     @Test
+    fun keepsAFileWhileTheProviderIsAway() = runTest {
+        answered(WaitingFile("mms-1-1", 0, "content://mms/part/1", "door.jpg", "image/jpeg", 3, "file_1"))
+        provider.bytes["content://mms/part/1"] = byteArrayOf(1, 2, 3)
+        provider.away += "content://mms/part/1"
+        try {
+            reporter.upload(site, KEY)
+            fail("Read")
+        } catch (_: Unavailable) {
+        }
+        assertEquals(0, server.requestCount)
+        assertEquals(1, queue.files.size)
+
+        server.enqueue(json(200, """{"ok":true}"""))
+        assertTrue(reporter.upload(site, KEY))
+        assertEquals("/api/communications/phone/files/file_1", server.takeRequest().url.encodedPath)
+        assertTrue(queue.files.isEmpty())
+    }
+
+    @Test
     fun leavesAFileGoneFromThePhoneOrFromDispatch() = runTest {
         answered(WaitingFile("mms-1-1", 0, "content://mms/part/1", "gone.jpg", "image/jpeg", 3, "file_1"))
         answered(WaitingFile("mms-2-2", 0, "content://mms/part/2", "door.jpg", "image/jpeg", 3, "file_2"))
@@ -93,6 +119,39 @@ class ReporterTest {
         assertTrue(reporter.upload(site, KEY))
         assertEquals("/api/communications/phone/files/file_2", server.takeRequest().url.encodedPath)
         assertTrue(queue.files.isEmpty())
+    }
+
+    @Test
+    fun waitsForTextingAfterARestartKeepingItsFile() = runTest {
+        // As the relay starts again: Dispatch answered the text, its file waits, Texting is off.
+        answered(WaitingFile("mms-1-1", 0, "content://mms/part/1", "door.jpg", "image/jpeg", 3, "file_1"))
+        provider.bytes["content://mms/part/1"] = byteArrayOf(1, 2, 3)
+        provider.allowed = false
+        server.enqueue(json(200, """{"ok":true}"""))
+        backgroundScope.launch { reporter.run(site, KEY, Channel()) }
+        delay(HOUR_MS)
+        assertEquals(0, provider.refused)
+        assertEquals(0, server.requestCount)
+        assertEquals(1, queue.files.size)
+
+        provider.allowed = true
+        assertEquals("/api/communications/phone/files/file_1", sent()?.url?.encodedPath)
+    }
+
+    @Test
+    fun waitsForTextingTurnedOffAsAFileIsRead() = runTest {
+        answered(WaitingFile("mms-1-1", 0, "content://mms/part/1", "door.jpg", "image/jpeg", 3, "file_1"))
+        provider.bytes["content://mms/part/1"] = byteArrayOf(1, 2, 3)
+        provider.turnedOffAtRead = true
+        server.enqueue(json(200, """{"ok":true}"""))
+        backgroundScope.launch { reporter.run(site, KEY, Channel()) }
+        delay(HOUR_MS)
+        assertEquals(1, provider.refused)
+        assertEquals(0, server.requestCount)
+        assertEquals(1, queue.files.size)
+
+        provider.allowed = true
+        assertEquals(listOf<Byte>(1, 2, 3), sent()?.body?.toByteArray()?.toList())
     }
 
     @Test
@@ -134,10 +193,14 @@ class ReporterTest {
 
     private suspend fun answered(file: WaitingFile) = queue.read(Seen(file.clientId, 1, Direction.IN), emptyList(), listOf(file))
 
+    /** The next call Dispatch takes, waited for off the test's own thread, which the reporter runs on. */
+    private suspend fun sent() = withContext(Dispatchers.IO) { server.takeRequest(10, TimeUnit.SECONDS) }
+
     private fun json(code: Int, body: String) =
         MockResponse.Builder().code(code).addHeader("Content-Type", "application/json").body(body).build()
 
     private companion object {
         val KEY = "k".repeat(64)
+        const val HOUR_MS = 60 * 60 * 1000L
     }
 }

@@ -9,11 +9,19 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * The DSP this phone is paired with, and as which of its phones: [number] is the phone's own as it
- * paired, empty when Android didn't say, which picks the SIM its texts go out from.
+ * The DSP this phone is paired with, as which of its phones, and when it paired ([at]): [number]
+ * is the phone's own as it paired, empty when Android didn't say, which picks the SIM its texts go
+ * out from.
  */
 @Serializable
-data class Paired(val site: String, val dsp: String, val phoneId: String, val phoneName: String, val number: String = "")
+data class Paired(
+    val site: String,
+    val dsp: String,
+    val phoneId: String,
+    val phoneName: String,
+    val at: Long,
+    val number: String = "",
+)
 
 /** Where the phone stands with its DSP: paired, never paired, or removed by the DSP. */
 sealed interface Standing {

@@ -2,11 +2,11 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "7c431c630238f57057874a61fa6e5e2a",
+    "identityHash": "0aa3a1fa8bf1bb8bcf90438f2e43080f",
     "entities": [
       {
         "tableName": "mark",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`phone` TEXT NOT NULL, `paired` INTEGER NOT NULL, `scanned` INTEGER NOT NULL, `id` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`phone` TEXT NOT NULL, `paired` INTEGER NOT NULL, `scanned` INTEGER NOT NULL, `sms` INTEGER NOT NULL, `mms` INTEGER NOT NULL, `id` INTEGER NOT NULL, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "phone",
@@ -23,6 +23,18 @@
           {
             "fieldPath": "scanned",
             "columnName": "scanned",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sms",
+            "columnName": "sms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mms",
+            "columnName": "mms",
             "affinity": "INTEGER",
             "notNull": true
           },
@@ -63,6 +75,52 @@
         "primaryKey": {
           "autoGenerate": false,
           "columnNames": ["row"]
+        }
+      },
+      {
+        "tableName": "unread",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`found` INTEGER NOT NULL, `key` TEXT NOT NULL, `table` TEXT NOT NULL, `id` INTEGER NOT NULL, `at` INTEGER NOT NULL, `direction` TEXT NOT NULL, PRIMARY KEY(`key`))",
+        "fields": [
+          {
+            "fieldPath": "found",
+            "columnName": "found",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "key",
+            "columnName": "key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "row.table",
+            "columnName": "table",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "row.id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "row.at",
+            "columnName": "at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "row.direction",
+            "columnName": "direction",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": ["key"]
         }
       },
       {
@@ -181,7 +239,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '7c431c630238f57057874a61fa6e5e2a')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '0aa3a1fa8bf1bb8bcf90438f2e43080f')"
     ]
   }
 }

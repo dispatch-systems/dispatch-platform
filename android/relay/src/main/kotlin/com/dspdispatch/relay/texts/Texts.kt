@@ -1,7 +1,6 @@
 package com.dspdispatch.relay.texts
 
 import android.content.Context
-import android.database.sqlite.SQLiteException
 import androidx.room3.Room
 import com.dspdispatch.relay.dispatch.Dispatch
 import com.dspdispatch.relay.dispatch.Outbox
@@ -9,19 +8,16 @@ import com.dspdispatch.relay.pairing.Paired
 import java.io.File
 import java.time.LocalDate
 import java.time.ZoneId
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * Relaying the phone's texts to its DSP: those it receives, and those sent from its texting app,
@@ -34,7 +30,8 @@ class Texts(private val context: Context, dispatch: Dispatch) {
     private val sends = database.sends()
     private val provider = PhoneProvider(context.contentResolver)
     private val inbox = Inbox(provider, queue, SentByApp(sends, context.packageName))
-    private val reporter = Reporter(dispatch, queue, provider)
+    private val texting = Texting { textingAllowed(context) }
+    private val reporter = Reporter(dispatch, queue, provider, texting)
     private val statuses = Statuses(dispatch, sends)
     private val sender = Sender(
         dispatch,
@@ -47,6 +44,7 @@ class Texts(private val context: Context, dispatch: Dispatch) {
 
     // Android said how a text the app sent went: the row it wrote of it may be read for sure now.
     private val heard = Channel<Unit>(Channel.CONFLATED)
+    private val reader = Reader(inbox, texting, merge(changes(context), heard.receiveAsFlow()))
 
     /** Today's texts as they change, a new day from each midnight. */
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -64,25 +62,12 @@ class Texts(private val context: Context, dispatch: Dispatch) {
      * waits at once, and reading the phone's texts once the phone allows it. Runs until cancelled.
      */
     suspend fun run(paired: Paired, key: String): Unit = coroutineScope {
-        inbox.begin(paired.phoneId)
+        inbox.begin(paired.phoneId, paired.at)
         val wake = Channel<Unit>(Channel.CONFLATED)
         launch { reporter.run(paired.site, key, wake) }
         launch { statuses.run(paired.site, key) }
         launch { sender.run(paired, key) }
-        // The setup asks for Texting; the relay runs from pairing, so it waits for it here.
-        while (!textingAllowed(context)) delay(ALLOWED_CHECK_MS)
-        merge(changes(context), heard.receiveAsFlow()).conflate().collect {
-            // The texting app writes a text in steps: read once it's done.
-            delay(SETTLE_MS)
-            try {
-                withContext(Dispatchers.IO) { inbox.read() }
-                wake.trySend(Unit)
-            } catch (_: SecurityException) {
-                // Texting was turned off, which ends the app; nothing to read until it's back.
-            } catch (_: SQLiteException) {
-                // The provider failed this once; its next change reads again.
-            }
-        }
+        reader.run { wake.trySend(Unit) }
     }
 
     /**
@@ -98,9 +83,6 @@ class Texts(private val context: Context, dispatch: Dispatch) {
     }
 
     private companion object {
-        const val ALLOWED_CHECK_MS = 5_000L
-        const val SETTLE_MS = 1_000L
-
         /** Where picture messages' files wait as they're sent (`mms_files.xml`). */
         const val SENDING = "sending"
     }
