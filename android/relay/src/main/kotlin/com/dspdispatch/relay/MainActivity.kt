@@ -75,7 +75,8 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         cameraAllowed = allowed(Manifest.permission.CAMERA)
-        // Each time, as the relay's notification shows only once notifications are allowed.
+        // While shown, Android lets the app start the relay: each time, as it may not run yet, and
+        // its notification shows only once notifications are allowed.
         if (relay.pairings.standing.value is Standing.Pairing) RelayService.start(this)
         lifecycleScope.launch { relay.setup.check() }
     }
