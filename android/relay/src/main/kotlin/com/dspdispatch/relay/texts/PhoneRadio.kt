@@ -34,18 +34,21 @@ class PhoneRadio(private val context: Context) : Radio {
 
 /** A SIM's [Line], each part's result reaching [SendResults]. */
 private class PhoneLine(private val context: Context, private val manager: SmsManager) : Line {
-    override fun divide(body: String): List<String> = manager.divideMessage(body)
+    override fun divide(body: String): Parts {
+        val texts = manager.divideMessage(body)
+        return Parts(texts, joined(texts.size, config()))
+    }
 
     override fun mmsLimits(): MmsLimits? = mmsLimits(config())
 
-    override fun sms(send: Send, parts: List<String>) {
-        val sent = parts.indices.map { SendResults.sent(context, send, it) }
-        val delivered = parts.indices.map { SendResults.delivered(context, send, it) }
-        when {
-            parts.size == 1 -> manager.sendTextMessage(send.number, null, parts.single(), sent.single(), delivered.single())
-            joined(parts.size, config()) ->
-                manager.sendMultipartTextMessage(send.number, null, ArrayList(parts), ArrayList(sent), ArrayList(delivered))
-            else -> parts.indices.forEach { manager.sendTextMessage(send.number, null, parts[it], sent[it], delivered[it]) }
+    override fun sms(send: Send, parts: Parts) {
+        val texts = parts.texts
+        val sent = texts.indices.map { SendResults.sent(context, send, it) }
+        val delivered = texts.indices.map { SendResults.delivered(context, send, it) }
+        if (parts.joined) {
+            manager.sendMultipartTextMessage(send.number, null, ArrayList(texts), ArrayList(sent), ArrayList(delivered))
+        } else {
+            texts.indices.forEach { manager.sendTextMessage(send.number, null, texts[it], sent[it], delivered[it]) }
         }
     }
 

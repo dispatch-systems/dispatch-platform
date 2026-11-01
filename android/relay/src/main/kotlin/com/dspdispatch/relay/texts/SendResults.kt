@@ -38,7 +38,8 @@ class SendResults : BroadcastReceiver() {
         val part = intent.getIntExtra(PART, 0)
         return when (intent.action) {
             SMS_SENT -> Heard(id, attempt, part, Event.SENT, Failure.sms(code), null, at)
-            SMS_DELIVERED -> Heard(id, attempt, part, Event.DELIVERED, null, null, at).takeIf { delivered(context, intent) }
+            SMS_DELIVERED -> Heard(id, attempt, part, Event.DELIVERED, null, null, at, intent.getStringExtra(FORMAT))
+                .takeIf { delivered(context, intent) }
             MMS_SENT -> Heard(id, attempt, part, Event.SENT, Failure.mms(code) ?: refused(intent), null, at)
             else -> null
         }
@@ -144,7 +145,9 @@ internal fun delivery(status: Int, format: String): Delivery = if (format == CDM
     }
 }
 
-private const val CDMA = "3gpp2"
+/** A CDMA delivery report's format, as Android names it (`SmsMessage.FORMAT_3GPP2`, from Android 9). */
+internal const val CDMA = "3gpp2"
+
 private const val CDMA_CLASS_SHIFT = 24
 private const val CDMA_CLASS_BITS = 0x03
 private const val CDMA_STATUS_SHIFT = 16

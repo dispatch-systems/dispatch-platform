@@ -36,7 +36,7 @@ class StatusesTest {
     @Test
     fun tellsDispatchHowEachAttemptWentUntilItAnswers() = runTest {
         val sent = sends.start(Send("text_1", 41, "+14255550199", "On my way", 1))
-        sends.handed(sent, 1, 2)
+        sends.handed(sent, 1, false, 2)
         sends.heard(Heard("text_1", 41, 0, Event.SENT, null, null, 3))
         sends.start(Send("text_2", 7, "+14255550199", "Hi", 1)).let { sends.failed(it, "No service", 4) }
 

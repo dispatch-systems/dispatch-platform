@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "2420e6868d7d2580c9d7ff6bfa34bb9b",
+    "identityHash": "2ede3dd8f350cac09712f0472e498acd",
     "entities": [
       {
         "tableName": "mark",
@@ -243,7 +243,7 @@
       },
       {
         "tableName": "sends",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `attempt` INTEGER NOT NULL, `number` TEXT NOT NULL, `body` TEXT NOT NULL, `started` INTEGER NOT NULL, `handed` INTEGER, `parts` INTEGER NOT NULL, `outcome` TEXT, `finished` INTEGER, `delivered` INTEGER NOT NULL, PRIMARY KEY(`id`, `attempt`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `attempt` INTEGER NOT NULL, `number` TEXT NOT NULL, `body` TEXT NOT NULL, `started` INTEGER NOT NULL, `handed` INTEGER, `parts` INTEGER NOT NULL, `joined` INTEGER NOT NULL, `outcome` TEXT, `finished` INTEGER, `delivered` INTEGER NOT NULL, PRIMARY KEY(`id`, `attempt`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -287,6 +287,12 @@
             "notNull": true
           },
           {
+            "fieldPath": "joined",
+            "columnName": "joined",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
             "fieldPath": "outcome",
             "columnName": "outcome",
             "affinity": "TEXT"
@@ -310,7 +316,7 @@
       },
       {
         "tableName": "send_reports",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `attempt` INTEGER NOT NULL, `part` INTEGER NOT NULL, `event` TEXT NOT NULL, `error` TEXT, PRIMARY KEY(`id`, `attempt`, `part`, `event`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `attempt` INTEGER NOT NULL, `part` INTEGER NOT NULL, `event` TEXT NOT NULL, `error` TEXT, `format` TEXT, PRIMARY KEY(`id`, `attempt`, `part`, `event`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -339,6 +345,11 @@
           {
             "fieldPath": "error",
             "columnName": "error",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "format",
+            "columnName": "format",
             "affinity": "TEXT"
           }
         ],
@@ -417,7 +428,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '2420e6868d7d2580c9d7ff6bfa34bb9b')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '2ede3dd8f350cac09712f0472e498acd')"
     ]
   }
 }

@@ -96,12 +96,12 @@ class Sender(
         val line = telephony { radio.line(paired.number, paired.subscription) }.getOrElse { return notSent(send) }
         if (text.files.isEmpty()) {
             val parts = telephony { line.divide(send.body) }.getOrElse { return notSent(send) }
-            hand(send, parts.size) { line.sms(send, parts) }
+            hand(send, parts.texts.size, parts.joined) { line.sms(send, parts) }
         } else {
             val limits = telephony { line.mmsLimits() }.getOrElse { return notSent(send) }
                 ?: return sends.failed(send, Failure.MMS_OFF, now())
             val pdu = compose(paired, key, limits, text, send) ?: return
-            if (!hand(send, 1) { line.mms(send, pdu) }) pdu.delete()
+            if (!hand(send, 1, joined = false) { line.mms(send, pdu) }) pdu.delete()
         }
     }
 
@@ -118,11 +118,11 @@ class Sender(
     private suspend fun notSent(send: Send) = sends.failed(send, Failure.NOT_SENT, now())
 
     /**
-     * Hands [send] to Android in [parts] parts by [go], kept as handed first, so it's never sent
-     * twice; answers whether Android took it.
+     * Hands [send] to Android in [parts] parts, [joined] as one message or not, by [go], kept as
+     * handed first, so it's never sent twice; answers whether Android took it.
      */
-    private suspend fun hand(send: Send, parts: Int, go: () -> Unit): Boolean {
-        sends.handed(send, parts, now())
+    private suspend fun hand(send: Send, parts: Int, joined: Boolean, go: () -> Unit): Boolean {
+        sends.handed(send, parts, joined, now())
         return try {
             go()
             true

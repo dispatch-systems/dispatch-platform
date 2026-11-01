@@ -20,17 +20,20 @@ interface Radio {
  */
 interface Line {
     /** [body] in the parts the carrier sends it in. */
-    fun divide(body: String): List<String>
+    fun divide(body: String): Parts
 
     /** What the carrier takes of a picture message, or null when it takes none. */
     fun mmsLimits(): MmsLimits?
 
     /** Hands Android [parts] of [send] to send as a text, each reported sent and delivered. */
-    fun sms(send: Send, parts: List<String>)
+    fun sms(send: Send, parts: Parts)
 
     /** Hands Android the picture message of [send], its M-Send.req in [pdu], reported sent. */
     fun mms(send: Send, pdu: File)
 }
+
+/** A text's [texts], in the carrier's parts, sent [joined] as one message, or each as its own. */
+data class Parts(val texts: List<String>, val joined: Boolean)
 
 /**
  * Which of the phone's [subscriptions], each with its number, to text from: the one whose number

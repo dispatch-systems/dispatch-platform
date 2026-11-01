@@ -34,6 +34,25 @@ class StoredSendsTest {
     }
 
     @Test
+    fun deliversAJoinedTextOnCdmaByItsLastPartsReport() = runTest {
+        // Android asks a CDMA carrier to report on a joined text's last part only.
+        val joined = handed("joined", parts = 2)
+        heard(joined, 0, Event.SENT)
+        heard(joined, 1, Event.SENT)
+        heard(joined, 1, Event.DELIVERED, format = "3gpp2")
+        // Each part its own text: each is reported, as on GSM.
+        val apart = handed("apart", parts = 2, joined = false)
+        heard(apart, 0, Event.SENT)
+        heard(apart, 1, Event.SENT)
+        heard(apart, 1, Event.DELIVERED, format = "3gpp2")
+        val gsm = handed("gsm", parts = 2)
+        heard(gsm, 0, Event.SENT)
+        heard(gsm, 1, Event.SENT)
+        heard(gsm, 1, Event.DELIVERED, format = "3gpp")
+        assertEquals(listOf("joined"), sends.statuses(10).filter { it.status == SendStatus.DELIVERED }.map(Told::id))
+    }
+
+    @Test
     fun failsASendAsSoonAsAPartFails() = runTest {
         val send = handed("text_1", parts = 3)
         heard(send, 1, Event.SENT, "No service")
@@ -84,14 +103,14 @@ class StoredSendsTest {
         assertEquals(Today(sent = 1, latest = 70), queue.today(55).first())
     }
 
-    private suspend fun handed(id: String, parts: Int = 1): Send {
+    private suspend fun handed(id: String, parts: Int = 1, joined: Boolean = parts > 1): Send {
         val send = sends.start(Send(id, 1, "+14255550199", "Hi", AT))
-        sends.handed(send, parts, AT)
+        sends.handed(send, parts, joined, AT)
         return send
     }
 
-    private suspend fun heard(send: Send, part: Int, event: Event, error: String? = null, row: String? = null, at: Long = AT) =
-        sends.heard(Heard(send.id, send.attempt, part, event, error, row, at))
+    private suspend fun heard(send: Send, part: Int, event: Event, error: String? = null, row: String? = null, at: Long = AT, format: String? = null) =
+        sends.heard(Heard(send.id, send.attempt, part, event, error, row, at, format))
 
     private companion object {
         const val AT = 1_793_041_515_000L

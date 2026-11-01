@@ -8,8 +8,9 @@ import com.dspdispatch.relay.dispatch.SendStatus
 
 /**
  * An attempt at a text of the outbox, kept from before it's sent so it's sent once: [handed] is
- * when Android took it, in [parts] parts, and null while its files are still being fetched, when
- * it may start again; [outcome] is whether it was sent or failed, at [finished].
+ * when Android took it, in [parts] parts, [joined] as one message or each its own, and null while
+ * its files are still being fetched, when it may start again; [outcome] is whether it was sent or
+ * failed, at [finished].
  */
 @Entity(tableName = "sends", primaryKeys = ["id", "attempt"])
 data class Send(
@@ -20,6 +21,7 @@ data class Send(
     val started: Long,
     val handed: Long? = null,
     val parts: Int = 0,
+    val joined: Boolean = false,
     val outcome: SendStatus? = null,
     val finished: Long? = null,
     val delivered: Boolean = false,
@@ -29,7 +31,8 @@ data class Send(
 
     /**
      * This attempt, and the statuses it moved to, with Android's [reports] of its parts: failed as
-     * soon as one part failed, sent once every part was, delivered once every part was.
+     * soon as one part failed, sent once every part was, delivered once every part was. A joined
+     * text's parts on CDMA are reported delivered together, by its last part's report alone.
      */
     fun settled(reports: List<Report>, at: Long): Pair<Send, List<Told>> {
         if (handed == null) return this to emptyList()
@@ -42,7 +45,9 @@ data class Send(
             send = send.copy(outcome = outcome, finished = at)
             statuses += status(outcome, at, error)
         }
-        if (!delivered && reports.count { it.event == Event.DELIVERED } >= parts) {
+        val reached = reports.filter { it.event == Event.DELIVERED }
+        val whole = reached.size >= parts || (joined && reached.any { it.format == CDMA && it.part == parts - 1 })
+        if (!delivered && whole) {
             send = send.copy(delivered = true)
             statuses += status(SendStatus.DELIVERED, at)
         }
@@ -61,9 +66,12 @@ enum class Event {
     DELIVERED,
 }
 
-/** What Android said of [part] of a send: [error] says why it failed, null when it didn't. */
+/**
+ * What Android said of [part] of a send: [error] says why it failed, null when it didn't; [format]
+ * is a delivery report's, `3gpp` or `3gpp2`.
+ */
 @Entity(tableName = "send_reports", primaryKeys = ["id", "attempt", "part", "event"])
-data class Report(val id: String, val attempt: Long, val part: Int, val event: Event, val error: String? = null)
+data class Report(val id: String, val attempt: Long, val part: Int, val event: Event, val error: String? = null, val format: String? = null)
 
 /** The provider row ([Row.key]) a send was written to, so it's never reported as the phone's own. */
 @Entity(tableName = "send_rows")
@@ -77,7 +85,8 @@ data class Told(val id: String, val attempt: Long, val status: SendStatus, val a
 
 /**
  * What Android said of a part of a send, as it reaches the app, possibly after it restarted:
- * [row] is the provider row it was written to ([Row.key]), where Android says.
+ * [row] is the provider row it was written to ([Row.key]), where Android says, and [format] a
+ * delivery report's.
  */
 data class Heard(
     val id: String,
@@ -87,8 +96,9 @@ data class Heard(
     val error: String?,
     val row: String?,
     val at: Long,
+    val format: String? = null,
 ) {
-    val report get() = Report(id, attempt, part, event, error)
+    val report get() = Report(id, attempt, part, event, error, format)
 }
 
 /**
@@ -99,8 +109,8 @@ interface Sends {
     /** Keeps [send] as started, unless its attempt already is: answers the attempt as kept. */
     suspend fun start(send: Send): Send
 
-    /** Android took [send], in [parts] parts, [at]. */
-    suspend fun handed(send: Send, parts: Int, at: Long)
+    /** Android took [send], in [parts] parts, [joined] as one message or each its own, [at]. */
+    suspend fun handed(send: Send, parts: Int, joined: Boolean, at: Long)
 
     /** [send] failed [at], for [error], before Android took it or as it refused it. */
     suspend fun failed(send: Send, error: String, at: Long)

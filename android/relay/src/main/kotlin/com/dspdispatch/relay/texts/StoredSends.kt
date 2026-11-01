@@ -18,10 +18,10 @@ abstract class StoredSends : Sends {
         return checkNotNull(find(send.id, send.attempt))
     }
 
-    @Query("UPDATE sends SET handed = :at, parts = :parts WHERE id = :id AND attempt = :attempt")
-    protected abstract suspend fun handed(id: String, attempt: Long, parts: Int, at: Long)
+    @Query("UPDATE sends SET handed = :at, parts = :parts, joined = :joined WHERE id = :id AND attempt = :attempt")
+    protected abstract suspend fun handed(id: String, attempt: Long, parts: Int, joined: Boolean, at: Long)
 
-    override suspend fun handed(send: Send, parts: Int, at: Long) = handed(send.id, send.attempt, parts, at)
+    override suspend fun handed(send: Send, parts: Int, joined: Boolean, at: Long) = handed(send.id, send.attempt, parts, joined, at)
 
     @Transaction
     override suspend fun failed(send: Send, error: String, at: Long) {

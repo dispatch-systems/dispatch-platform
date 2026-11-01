@@ -150,16 +150,19 @@ class FakeRadio : Radio {
     override fun line(number: String, subscription: Int): Line {
         lines += number
         return object : Line {
-            override fun divide(body: String) = body.chunked(partLength).ifEmpty { listOf("") }
+            override fun divide(body: String): Parts {
+                val texts = body.chunked(partLength).ifEmpty { listOf("") }
+                return Parts(texts, texts.size > 1)
+            }
 
             override fun mmsLimits(): MmsLimits? {
                 failing?.let { throw it }
                 return mmsLimits
             }
 
-            override fun sms(send: Send, parts: List<String>) {
+            override fun sms(send: Send, parts: Parts) {
                 refusing?.let { throw it }
-                handed += send to parts
+                handed += send to parts.texts
             }
 
             override fun mms(send: Send, pdu: File) {

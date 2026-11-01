@@ -79,7 +79,7 @@ class SentByAppTest {
 
     private suspend fun handed(id: String, number: String, body: String): Send {
         val send = sends.start(Send(id, 1, number, body, AT))
-        sends.handed(send, 1, AT)
+        sends.handed(send, 1, false, AT)
         return send
     }
 
