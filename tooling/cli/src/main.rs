@@ -257,8 +257,8 @@ const COMMANDS: &[Spec] = &[
     spec(
         "build",
         &["build [--release | --fixture]", "      [--cache-key]"],
-        "Build the backend and support worker, with the relay app's APKs that \
-         android/relay/release.json names, or the browser tests' assessment fixture, reusing a \
+        "Build the backend and support worker, with the relay app's APKs CI built in the \
+         folder DISPATCH_RELAY_APPS names, or the browser tests' assessment fixture, reusing a \
          build of identical inputs.",
     )
     .flags(&["--release", "--fixture", "--cache-key"]),
@@ -571,7 +571,8 @@ fn run() -> Result<()> {
             };
             // The runtime hands out the relay app; the assessment fixture is no runtime.
             if !line.flag("--fixture") {
-                build::relay::pack(&root, &Native, line.flag("--release"))?;
+                let apps = std::env::var_os(build::relay::APPS).filter(|apps| !apps.is_empty());
+                build::relay::pack(&root, apps.as_deref().map(std::path::Path::new))?;
             }
             build::build(&root, artifact, &env, &Native)
         }

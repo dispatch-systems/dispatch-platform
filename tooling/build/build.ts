@@ -72,9 +72,9 @@ const manifest = await replaceBuild(out, async (staging) => {
   fs.unlinkSync(assetsFile);
   fs.rmdirSync(path.join(staging, 'dashboard/.vite'));
   await compressAssets(path.join(staging, 'dashboard/assets'));
-  // DSP Dispatch: Relay's APKs, which `dispatchdev build` packed as android/relay/release.json
-  // names them: the server hands out its environment's build. The server serves nothing else
-  // under dashboard/, the only folder installed updaters accept new files in.
+  // DSP Dispatch: Relay's APKs, which `dispatchdev build` packed from CI's builds with
+  // relay.json naming them: the server hands out its environment's build. The server serves
+  // nothing else under dashboard/, the only folder installed updaters accept new files in.
   const relay = path.join(root, 'dashboard/relay');
   if (fs.existsSync(relay))
     fs.cpSync(relay, path.join(staging, 'dashboard/relay'), { recursive: true });

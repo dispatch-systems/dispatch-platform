@@ -1,0 +1,18 @@
+{
+  "dev": {
+    "version": "1.4.1-dev.812",
+    "versionCode": 812,
+    "commit": "2222222222222222222222222222222222222222",
+    "asset": "dsp-dispatch-relay-1.4.1-dev.812.apk",
+    "sha256": "5b48232ef3b90372221ee504641b596b04af023d8d9fc2107db5face7db10f32",
+    "size": 7
+  },
+  "production": {
+    "version": "1.4.0",
+    "versionCode": 790,
+    "commit": "1111111111111111111111111111111111111111",
+    "asset": "dsp-dispatch-relay-1.4.0.apk",
+    "sha256": "b6585ed1f8a655b770d4582fae6d464c0f3513a92232de1e76d06f7f2062a45d",
+    "size": 14
+  }
+}

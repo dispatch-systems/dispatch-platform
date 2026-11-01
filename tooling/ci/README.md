@@ -5,22 +5,24 @@ on each push to `main`, on the squash commit the PR became. `platform` is the on
 check: a PR can merge once it passes. `tooling/ci/checks.ts` runs one of its jobs by name, or
 locally the whole suite in sequence:
 
-| Job             | `npm run check:ci -- …`                    | What it proves                                                                            |
-| --------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| build           | `build`                                    | The runtime packages: the release backend and worker, and the dashboard.                  |
-| checks          | `checks`                                   | Source privacy/secrets, types, formatting, the linter, bundle budget and dashboard logic. |
-| browser ×6      | `browser <n>/6 [spec]`                     | The browser suite against the packaged runtime.                                           |
-| smoke           | `smoke`                                    | The package starts, signs in and serves, as a release asks.                               |
-| core            | `core`                                     | Rust formatting, lints, default tests and compile-only operator probes.                   |
-| api             | `api`                                      | The API tests, the Python tooling tests, the npm audit.                                   |
-| scaffold        | `scaffold`                                 | What every generator writes builds, lints, keeps the rules and passes its Rust tests.     |
-| collectors ×5   | `npm run test:browseros -- --shard <name>` | The native collectors with a real browser.                                                |
-| rust-advisories |                                            | `cargo audit`, denying yanked crates but those `cargo-audit.py` allows.                   |
-| platform        |                                            | The gate: the one required check.                                                         |
+| Job              | `npm run check:ci -- …`                    | What it proves                                                                            |
+| ---------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| build            | `build`                                    | The runtime packages: the release backend and worker, and the dashboard.                  |
+| checks           | `checks`                                   | Source privacy/secrets, types, formatting, the linter, bundle budget and dashboard logic. |
+| browser ×6       | `browser <n>/6 [spec]`                     | The browser suite against the packaged runtime.                                           |
+| smoke            | `smoke`                                    | The package starts, signs in and serves, as a release asks.                               |
+| core             | `core`                                     | Rust formatting, lints, default tests and compile-only operator probes.                   |
+| api              | `api`                                      | The API tests, the Python tooling tests, the npm audit.                                   |
+| scaffold         | `scaffold`                                 | What every generator writes builds, lints, keeps the rules and passes its Rust tests.     |
+| collectors ×5    | `npm run test:browseros -- --shard <name>` | The native collectors with a real browser.                                                |
+| rust-advisories  |                                            | `cargo audit`, denying yanked crates but those `cargo-audit.py` allows.                   |
+| relay-dev        |                                            | Outside a PR, Dev's relay app, signed, for the build to pack (`relay.py`).                |
+| relay-production |                                            | In a release's run that names its app version, Production's relay app, signed.            |
+| platform         |                                            | The gate: the one required check.                                                         |
 
-The gate passes only when every job passed and the package carries the run's own commit and a
-complete inventory (`ci-verify.py`, which runs `dispatch-host ci verify`). Outside a PR it then
-attests the package and publishes it as `dispatch-main-<sha>` for 90 days: the Dev updater
+The gate passes only when every job passed, the relay apps' builds wherever they ran, and the
+package carries the run's own commit and a complete inventory (`ci-verify.py`, which runs
+`dispatch-host ci verify`). Outside a PR it then attests the package and publishes it as `dispatch-main-<sha>` for 90 days: the Dev updater
 installs `main`'s, and a release stamps its version into it. A release of a commit whose build
 expired dispatches a run on a temporary branch at that commit, which publishes it again.
 
@@ -39,8 +41,9 @@ runs none of the local checks and tests (`tooling/cli/src/machine.rs`
 says why): there `check`, `test` and `verify` refuse, and the checks on the PR decide alone.
 `dispatchdev build` builds the package's two executables, the backend and the support worker,
 in one Cargo pass, through a cache keyed by their exact inputs and the compiler's fingerprint,
-and packs the relay app's APKs that `android/relay/release.json` names in `dashboard/relay/`
-([Publishing](../../android/README.md#publishing)), which `npm run build` copies into the package.
+and packs the relay app's APKs CI signed, from the folder `DISPATCH_RELAY_APPS` names, in
+`dashboard/relay/` ([Releases](../../android/README.md#releases)), which `npm run build` copies into
+the package.
 `dispatchdev test` runs the tests a change touches, committed or not, or `--all` of the Rust and
 API tests, one at a time, a line each. Each run builds in a folder of its own under
 `.test-build/`, without incremental data, and deletes it when it ends, with the release build

@@ -127,8 +127,11 @@ test("Only those who manage the DSP's phones or connections see or pair them", a
   assert.equal((await member.post('/api/dsp/communications/phones/pairing')).status, 403);
 });
 
-/** Each build's APK, as a runtime's build packs them. */
-const APKS = { dev: 'dev apk', production: 'production apk' };
+/** Each build: its version and versionCode, and its APK, as a release's package carries them. */
+const BUILDS = {
+  dev: { version: '1.3.1-dev.14', versionCode: 14, apk: 'dev apk' },
+  production: { version: '1.3.0', versionCode: 12, apk: 'production apk' },
+};
 const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
 
 /** A runtime with the app packed in `dashboard/relay/`, as `dispatchdev build` packs it. */
@@ -138,16 +141,17 @@ function packed(t: TestContext) {
   const relay = path.join(runtime, 'dashboard/relay');
   fs.mkdirSync(relay, { recursive: true });
   const builds = Object.fromEntries(
-    Object.entries(APKS).map(([build, bytes]) => {
-      const asset = `dsp-dispatch-relay-${build}-1.4.0.apk`;
-      fs.writeFileSync(path.join(relay, asset), bytes);
-      return [build, { asset, sha256: sha256(bytes), size: bytes.length }];
+    Object.entries(BUILDS).map(([build, { version, versionCode, apk }]) => {
+      const asset = `dsp-dispatch-relay-${version}.apk`;
+      fs.writeFileSync(path.join(relay, asset), apk);
+      const commit = '1'.repeat(40);
+      return [
+        build,
+        { version, versionCode, commit, asset, sha256: sha256(apk), size: apk.length },
+      ];
     }),
   );
-  fs.writeFileSync(
-    path.join(relay, 'release.json'),
-    JSON.stringify({ version: '1.4.0', versionCode: 14, builds }),
-  );
+  fs.writeFileSync(path.join(relay, 'relay.json'), JSON.stringify(builds));
   return runtime;
 }
 /** A GET at the server, its body as bytes. */
@@ -182,7 +186,11 @@ test("A DSP's address hands out its server's build of the app to anyone, and pho
   const { app } = await owner.read('/api/dsp/communications/phones');
   assert.deepEqual(
     [app.name, app.version, app.link],
-    ['DSP Dispatch: Relay Dev', '1.4.0', `http://${at.host}/api/communications/phone/app/download`],
+    [
+      'DSP Dispatch: Relay Dev',
+      '1.3.1-dev.14',
+      `http://${at.host}/api/communications/phone/app/download`,
+    ],
   );
   assert.match(app.picture, /^data:image\/svg\+xml;base64,/);
 
@@ -192,16 +200,19 @@ test("A DSP's address hands out its server's build of the app to anyone, and pho
     const details = await f.request('/api/communications/phone/app', undefined, headers);
     assert.equal(details.status, 200, details.body);
     assert.deepEqual(details.value, {
-      version: '1.4.0',
+      version: '1.3.1-dev.14',
       versionCode: 14,
-      size: APKS.dev.length,
-      sha256: sha256(APKS.dev),
+      size: BUILDS.dev.apk.length,
+      sha256: sha256(BUILDS.dev.apk),
     });
     const download = await fetched(f, '/api/communications/phone/app/download', headers);
     assert.equal(download.status, 200);
     assert.equal(download.headers['content-type'], 'application/vnd.android.package-archive');
-    assert.match(download.headers['content-disposition']!, /dsp-dispatch-relay-dev-1\.4\.0\.apk/);
-    assert.equal(download.body.toString(), APKS.dev);
+    assert.match(
+      download.headers['content-disposition']!,
+      /dsp-dispatch-relay-1\.3\.1-dev\.14\.apk/,
+    );
+    assert.equal(download.body.toString(), BUILDS.dev.apk);
   }
   assert.equal((await f.request('/api/communications/phone/app')).status, 401);
 
@@ -234,7 +245,7 @@ test("A DSP's address hands out its server's build of the app to anyone, and pho
   assert.equal(answered.status, 201, answered.body);
   const outbox = await f.request('/api/communications/phone/outbox', undefined, key);
   assert.equal(outbox.value.texts[0].body, 'Hello');
-  assert.deepEqual(outbox.value.app, { version: '1.4.0', versionCode: 14 });
+  assert.deepEqual(outbox.value.app, { version: '1.3.1-dev.14', versionCode: 14 });
 
   // It says the app it runs with each wait, kept as its own: one older than the version handed
   // out has an update. Paired, it said no versionCode.
@@ -245,8 +256,8 @@ test("A DSP's address hands out its server's build of the app to anyone, and pho
   };
   assert.deepEqual(await listed(), ['1.3.0', false]);
   for (const [version, versionCode, update] of [
-    ['1.3.1', 13, true],
-    ['1.4.0', 14, false],
+    ['1.3.0', 12, true],
+    ['1.3.1-dev.14', 14, false],
   ] as const) {
     const query = `version=${version}&versionCode=${versionCode}`;
     const waited = await f.request(`/api/communications/phone/outbox?${query}`, undefined, key);
@@ -257,7 +268,7 @@ test("A DSP's address hands out its server's build of the app to anyone, and pho
     const refused = await f.request(`/api/communications/phone/outbox?${query}`, undefined, key);
     assert.equal(refused.value.error, 'invalid_input', query);
   }
-  assert.deepEqual(await listed(), ['1.4.0', false]);
+  assert.deepEqual(await listed(), ['1.3.1-dev.14', false]);
 
   // While Communications is off for the DSP, its address hands out nothing.
   const switches = `/api/platform/dsps/${north.id}/features`;

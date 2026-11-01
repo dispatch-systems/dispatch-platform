@@ -276,9 +276,10 @@ decides ([Texts](#texts)).
   checking in; a file's bytes, either way, don't. Each call, with every payload, unit and limit,
   is in the [protocol reference](api/phone/README.md) beside the code.
 - **The app:** DSP Dispatch: Relay, which the DSP's address hands out (`phone::app`), as the
-  build packed it: the version `android/relay/release.json` names, its APKs in the runtime's
-  `dashboard/relay/` ([Android apps](../../android/README.md#publishing)). A preview server, as
-  Dev is, hands out the Dev build, and Production its own; none while the build packed none.
+  build packed it: CI's signed builds, named in `relay.json` beside their APKs in the runtime's
+  `dashboard/relay/` ([Android apps](../../android/README.md#releases)). A preview server, as
+  Dev is, hands out the Dev build, which every package carries, and Production its own, which only
+  a release's package carries; none while the build packed none.
   Anyone at the DSP's address, a browser too, reads its latest version's details (version,
   `versionCode`, size and SHA-256) and downloads its APK, as a phone installs it before it's
   paired: the app anyone may download from its GitHub release, and nothing of the DSP's. Each

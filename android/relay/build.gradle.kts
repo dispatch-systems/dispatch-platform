@@ -1,5 +1,3 @@
-import java.util.Properties
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -8,11 +6,25 @@ plugins {
     alias(libs.plugins.room)
 }
 
-// The key that signs the app's releases lives on the MacBook it's built on, never in the repo:
-// `dispatch.relay.signing` in ~/.gradle/gradle.properties names a properties file holding
-// storeFile, storePassword, keyAlias and keyPassword. Without it, a release builds unsigned.
-val signing = providers.gradleProperty("dispatch.relay.signing").orNull?.let { path ->
-    Properties().apply { file(path).inputStream().use { load(it) } }
+// The version comes from the build, never the source: CI names each one (`relay.versionCode`, the
+// commit count of the built commit on main, and `relay.versionName`). A build without them is
+// clearly no release: versionCode 1, named 0.0.0-local.
+val relayVersionCode = providers.gradleProperty("relay.versionCode").orNull?.toInt() ?: 1
+val relayVersionName = providers.gradleProperty("relay.versionName").orNull ?: "0.0.0-local"
+require(relayVersionCode in 1..2_100_000_000) { "relay.versionCode is 1 to 2,100,000,000" }
+
+// Release builds are signed in CI alone, by the key of the server's GitHub environment, never in
+// the repo: RELAY_KEYSTORE_FILE names a PKCS12 keystore, and RELAY_KEYSTORE_PASSWORD,
+// RELAY_KEY_ALIAS and RELAY_KEY_PASSWORD open it. Without it, a release builds unsigned.
+val signing = providers.environmentVariable("RELAY_KEYSTORE_FILE").orNull?.let { path ->
+    fun required(name: String) = providers.environmentVariable(name).orNull
+        ?: throw GradleException("$name is required with RELAY_KEYSTORE_FILE")
+    mapOf(
+        "storeFile" to path,
+        "storePassword" to required("RELAY_KEYSTORE_PASSWORD"),
+        "keyAlias" to required("RELAY_KEY_ALIAS"),
+        "keyPassword" to required("RELAY_KEY_PASSWORD"),
+    )
 }
 
 android {
@@ -23,8 +35,8 @@ android {
         applicationId = "com.dspdispatch.relay"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = relayVersionCode
+        versionName = relayVersionName
     }
 
     // One app for each server: Dev's to test, Production's for DSPs, each beside the other on a
@@ -47,10 +59,11 @@ android {
     signingConfigs {
         if (signing != null) {
             create("release") {
-                storeFile = file(signing.getProperty("storeFile"))
-                storePassword = signing.getProperty("storePassword")
-                keyAlias = signing.getProperty("keyAlias")
-                keyPassword = signing.getProperty("keyPassword")
+                storeFile = file(signing.getValue("storeFile"))
+                storeType = "pkcs12"
+                storePassword = signing.getValue("storePassword")
+                keyAlias = signing.getValue("keyAlias")
+                keyPassword = signing.getValue("keyPassword")
             }
         }
     }
