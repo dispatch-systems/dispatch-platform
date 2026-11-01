@@ -224,6 +224,39 @@ jobs:
       # generators update the lock offline: fetch the crates it names first.
       - run: cargo fetch --locked
       - run: npm run check:ci -- scaffold
+  # The Android apps in android/: their unit tests, lint (the dev debug and production release
+  # builds) and debug builds, only when a change touches them or this workflow, so any other
+  # change passes it at once. Release builds are signed on the MacBook, never here.
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          # A PR's merge commit or main's squash commit, and its first parent: what it changed.
+          fetch-depth: 2
+      - name: Find whether the Android apps changed
+        id: changed
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          changed=$(git diff --name-only HEAD^ HEAD -- android .github/workflows/checks.yml)
+          if [ "$EVENT" = workflow_dispatch ] || [ -n "$changed" ]; then
+            echo "android=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.changed.outputs.android == 'true'
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        with:
+          distribution: temurin
+          java-version: '21'
+      # Checks the wrapper's jar against Gradle's published checksums, and caches Gradle's own.
+      - if: steps.changed.outputs.android == 'true'
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c
+      - if: steps.changed.outputs.android == 'true'
+        name: Test, lint and build
+        working-directory: android
+        run: ./gradlew test lintDevDebug lintProductionRelease assembleDebug
   # The API tests against a debug backend, the Python tooling tests and the npm audit.
   api:
     runs-on: ubuntu-24.04
@@ -338,7 +371,8 @@ jobs:
   # run's own commit and a complete inventory. Outside a PR it then publishes that build under
   # the commit's name: Dev installs it and a release stamps it.
   platform:
-    needs: [build, checks, browser, smoke, core, api, collectors, rust-advisories, scaffold]
+    needs:
+      [build, checks, browser, smoke, core, api, collectors, rust-advisories, scaffold, android]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5

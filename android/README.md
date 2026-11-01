@@ -1,9 +1,9 @@
 # Android apps
 
 Dispatch's Android apps, in one Gradle build: each app in a folder of its own, and anything they
-come to share in one beside them. Developed on the MacBook, with Android Studio's SDK; CI runs
-their unit tests, lint and debug builds only when a change touches this folder
-(`.github/workflows/android.yml`).
+come to share in one beside them. Developed on the MacBook, with Android Studio's SDK. CI's
+`android` job (`.github/workflows/checks.yml`) runs their unit tests, lint and debug builds when
+a change touches this folder, and passes at once for any other.
 
 - `relay/`: **DSP Dispatch: Relay**, the app on a DSP's dispatch phone. It relays the phone's
   texts and pictures to the DSP's Dispatch and sends Dispatch's from the phone's number, as
@@ -14,8 +14,8 @@ their unit tests, lint and debug builds only when a change touches this folder
 From this folder, with the SDK at `~/Library/Android/sdk` (`ANDROID_HOME`) and Java 21:
 
 ```sh
-./gradlew test lint assembleDebug   # what CI runs
-./gradlew installDevDebug           # the dev app, debug build, on the phone or emulator adb sees
+./gradlew test lintDevDebug lintProductionRelease assembleDebug  # what CI runs
+./gradlew installDevDebug  # the dev app, debug build, on the phone or emulator adb sees
 ```
 
 ## Relay's builds
