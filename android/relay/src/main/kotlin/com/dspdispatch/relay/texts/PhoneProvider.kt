@@ -9,6 +9,7 @@ import android.provider.Telephony.Mms
 import android.provider.Telephony.Sms
 import android.provider.Telephony.TextBasedSmsColumns
 import androidx.core.net.toUri
+import androidx.core.text.HtmlCompat
 import com.dspdispatch.relay.dispatch.Direction
 import java.io.FileNotFoundException
 import java.io.IOException
@@ -88,8 +89,13 @@ class PhoneProvider(private val resolver: ContentResolver) : Provider {
         val numbers = addresses(row)
         val parts = parts(row)
         if (numbers.isEmpty() || parts.isEmpty()) return Reading.Later
-        val body = parts.filter { it.mime == TEXT }.joinToString("\n") { it.text ?: readText(it.uri) }
-        val files = parts.filter { it.mime != TEXT && it.mime != SMIL }.mapNotNull { part ->
+        // A part of words, plain or HTML, is the message's words: Android keeps them in the part's
+        // own row (on Android 8 beside an empty file), else in its file.
+        val body = parts.filter { it.mime in WORDS }.joinToString("\n") { part ->
+            val text = part.text ?: readText(part.uri)
+            if (part.mime == HTML) HtmlCompat.fromHtml(text, HtmlCompat.FROM_HTML_MODE_COMPACT).toString().trim() else text
+        }
+        val files = parts.filter { it.mime !in WORDS && it.mime != SMIL }.mapNotNull { part ->
             size(part.uri)?.let { Part(part.uri, part.name, part.mime, it) }
         }
         return Reading.Whole(Message(row, numbers, body, files))
@@ -104,7 +110,6 @@ class PhoneProvider(private val resolver: ContentResolver) : Provider {
         null,
     ).rows {}.isNotEmpty()
 
-    /** Whether the provider answers for [uri] at all, as it doesn't while it's away. */
     /** Whether the provider answers that it holds nothing at [uri]; not when it can't answer. */
     private fun absent(uri: Uri): Boolean =
         resolver.query(uri, arrayOf(BaseColumns._ID), null, null, null)?.use { it.count == 0 } ?: false
@@ -162,6 +167,8 @@ class PhoneProvider(private val resolver: ContentResolver) : Provider {
         const val INSERT_ADDRESS_TOKEN = "insert-address-token"
 
         const val TEXT = "text/plain"
+        const val HTML = "text/html"
+        val WORDS = setOf(TEXT, HTML)
         const val SMIL = "application/smil"
         const val BYTES = "application/octet-stream"
 
