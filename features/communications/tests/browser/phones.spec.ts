@@ -6,7 +6,7 @@ import {
   login,
   openDsp,
 } from '../../../../core/shell/tests/support/fixtures.js';
-import type { PhonePairing } from '../../api/index.js';
+import type { PhoneApp, PhonePairing, Phones } from '../../api/index.js';
 
 // The seeded DSP has every feature switched on, its demo's stand-in phone paired, and its owner
 // holds every permission.
@@ -99,4 +99,48 @@ test('Add phone closes once its own code pairs a phone, and a rename asks before
   await page.keyboard.press('Escape');
   const asking = page.getByRole('dialog', { name: 'Save changes?' });
   await expect(asking.getByRole('button')).toHaveText(['Discard changes', 'Save changes']);
+});
+
+test('The card offers the app its DSP hands out: its download, and in Add phone, to install first', async ({
+  page,
+  dispatch,
+}) => {
+  // The server's answer, with the app a runtime's build packed in it.
+  const app: PhoneApp = {
+    name: 'DSP Dispatch: Relay Dev',
+    version: '1.4.0',
+    link: `http://${dispatch.at(demo.memberDsp).host}/api/communications/phone/app/download`,
+    picture: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=',
+  };
+  await page.route('**/api/dsp/communications/phones', async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({ response, json: { ...((await response.json()) as Phones), app } });
+  });
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await page
+    .getByRole('navigation', { name: 'Primary navigation' })
+    .getByRole('button', { name: 'Settings', exact: true })
+    .click();
+  await page
+    .getByRole('navigation', { name: 'Settings', exact: true })
+    .getByRole('link', { name: 'Connections', exact: true })
+    .click();
+  const card = page
+    .getByRole('article')
+    .filter({ has: page.getByRole('heading', { name: 'Phones', level: 3 }) });
+  await expect(card.getByRole('link', { name: 'Download app' })).toHaveAttribute('href', app.link);
+
+  await card.getByRole('button', { name: 'Add phone' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Add phone' });
+  const install = dialog.getByRole('region', { name: 'Install' });
+  await expect(
+    install.getByRole('img', { name: 'Download DSP Dispatch: Relay Dev' }),
+  ).toHaveAttribute('src', app.picture);
+  await expect(install).toContainText('DSP Dispatch: Relay Dev 1.4.0');
+  await expect(
+    dialog
+      .getByRole('region', { name: 'Pair' })
+      .getByRole('img', { name: /^Pairing code [A-HJ-NP-Z2-9]{8}$/ }),
+  ).toBeVisible();
 });
