@@ -9,17 +9,31 @@ import androidx.room3.RoomDatabase
 import androidx.room3.Transaction
 import kotlinx.coroutines.flow.Flow
 
-/** The texts queue's storage, in the app's own: nothing of it leaves the phone in a backup. */
-@Database(entities = [Mark::class, Seen::class, Unread::class, Waiting::class, WaitingFile::class], version = 1)
+/**
+ * The texts queue's storage, and the sends', in the app's own: nothing of it leaves the phone in a
+ * backup.
+ */
+@Database(
+    entities = [
+        Mark::class, Seen::class, Unread::class, Waiting::class, WaitingFile::class,
+        Send::class, Report::class, SendRow::class, Told::class, SmsParts::class,
+    ],
+    version = 1,
+)
 abstract class TextsDatabase : RoomDatabase() {
     abstract fun queue(): StoredQueue
+
+    abstract fun sends(): StoredSends
 
     companion object {
         const val NAME = "texts.db"
     }
 }
 
-/** Today's texts so far: received, sent, and the latest one's time; and those waiting to be reported. */
+/**
+ * Today's texts so far: received, and sent, from the phone's texting app or by the app for
+ * Dispatch, and the latest one's time; and those waiting to be reported.
+ */
 data class Today(val received: Int = 0, val sent: Int = 0, val waiting: Int = 0, val latest: Long? = null)
 
 /** The [Queue], kept in the [TextsDatabase]. */
@@ -28,6 +42,7 @@ abstract class StoredQueue : Queue {
     @Query("SELECT * FROM mark LIMIT 1")
     abstract override suspend fun mark(): Mark?
 
+    // The sends are an earlier pairing's too: Dispatch failed their texts as it removed the phone.
     @Transaction
     override suspend fun begin(mark: Mark) {
         clearMark()
@@ -35,6 +50,10 @@ abstract class StoredQueue : Queue {
         clearUnread()
         clearTexts()
         clearFiles()
+        clearSends()
+        clearReports()
+        clearRows()
+        clearStatuses()
         keep(mark)
     }
 
@@ -92,9 +111,13 @@ abstract class StoredQueue : Queue {
     @Query(
         """
         SELECT COUNT(CASE WHEN direction = 'IN' THEN 1 END) AS received,
-            COUNT(CASE WHEN direction = 'OUT' THEN 1 END) AS sent,
+            COUNT(CASE WHEN direction = 'OUT' THEN 1 END)
+                + (SELECT COUNT(*) FROM sends WHERE outcome = 'SENT' AND finished >= :since) AS sent,
             (SELECT COUNT(*) FROM texts) AS waiting,
-            MAX(at) AS latest
+            (SELECT MAX(at) FROM (
+                SELECT at FROM seen WHERE at >= :since AND direction IS NOT NULL
+                UNION ALL SELECT finished FROM sends WHERE outcome = 'SENT' AND finished >= :since
+            )) AS latest
         FROM seen WHERE at >= :since AND direction IS NOT NULL
         """,
     )
@@ -144,4 +167,16 @@ abstract class StoredQueue : Queue {
 
     @Query("DELETE FROM files")
     protected abstract suspend fun clearFiles()
+
+    @Query("DELETE FROM sends")
+    protected abstract suspend fun clearSends()
+
+    @Query("DELETE FROM send_reports")
+    protected abstract suspend fun clearReports()
+
+    @Query("DELETE FROM send_rows")
+    protected abstract suspend fun clearRows()
+
+    @Query("DELETE FROM statuses")
+    protected abstract suspend fun clearStatuses()
 }

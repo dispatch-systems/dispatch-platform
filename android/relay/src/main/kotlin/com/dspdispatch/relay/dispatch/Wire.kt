@@ -92,6 +92,27 @@ data class TextsAnswer(val texts: List<TextAnswer>)
 @Serializable
 data class TextAnswer(val clientId: String, val id: String, val files: List<String> = emptyList())
 
+/** How an attempt at a text of the outbox went, as the phone reports it. */
+@Serializable
+enum class SendStatus {
+    @SerialName("sent")
+    SENT,
+
+    @SerialName("delivered")
+    DELIVERED,
+
+    @SerialName("failed")
+    FAILED,
+}
+
+/** How the attempts at the outbox's texts went, at most `MOST_TEXTS` at once. */
+@Serializable
+data class StatusesReport(val statuses: List<ReportedStatus>)
+
+/** How the [attempt] at the text Dispatch knows as [id] went, at [at]; [error] says why it failed. */
+@Serializable
+data class ReportedStatus(val id: String, val attempt: Long, val status: SendStatus, val at: Long, val error: String? = null)
+
 /** What Dispatch answers a call that only needs doing. */
 @Serializable
 internal data class Done(val ok: Boolean)

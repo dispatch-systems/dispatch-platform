@@ -75,6 +75,7 @@ class MainActivity : ComponentActivity() {
             val items by relay.setup.items.collectAsStateWithLifecycle()
             val finished by relay.setup.finished.collectAsStateWithLifecycle()
             val today by relay.texts.today.collectAsStateWithLifecycle(Today())
+            val mmsWhenBusy by relay.texts.mmsWhenBusy.on.collectAsStateWithLifecycle()
             val update by relay.updates.update.collectAsStateWithLifecycle()
             val pairing = attempt == Attempt.Pairing
             val problem = (attempt as? Attempt.Failed)?.problem
@@ -87,6 +88,8 @@ class MainActivity : ComponentActivity() {
                     today,
                     items?.firstOrNull { !it.done },
                     fixes::apply,
+                    mmsWhenBusy,
+                    relay.texts.mmsWhenBusy::set,
                     update,
                 ) { install(now.paired, items) }
                 scanning && !cameraAllowed -> CameraScreen(::askForCamera) { scanning = false }

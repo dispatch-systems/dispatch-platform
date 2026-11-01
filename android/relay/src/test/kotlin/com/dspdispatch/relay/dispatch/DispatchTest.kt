@@ -1,9 +1,11 @@
 package com.dspdispatch.relay.dispatch
 
+import java.io.File
 import kotlinx.coroutines.test.runTest
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import okhttp3.OkHttpClient
+import okio.Buffer
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -112,6 +114,31 @@ class DispatchTest {
         assertTrue(refused { dispatch.outbox(site, "k") }.passing)
         server.enqueue(MockResponse.Builder().code(502).body("<html>Bad gateway</html>").build())
         assertEquals("http_502", refused { dispatch.outbox(site, "k") }.code)
+    }
+
+    @Test
+    fun downloadsAPictureOfTheOutboxAsItComes() = runTest {
+        val into = File.createTempFile("file", null).apply { deleteOnExit() }
+        server.enqueue(MockResponse.Builder().code(200).body(Buffer().write(byteArrayOf(1, 2, 3))).build())
+        dispatch.download(site, "k".repeat(64), "file_1", into)
+        assertEquals(listOf<Byte>(1, 2, 3), into.readBytes().toList())
+        val request = server.takeRequest()
+        assertEquals("GET", request.method)
+        assertEquals("/api/communications/phone/files/file_1", request.url.encodedPath)
+        assertEquals("Bearer ${"k".repeat(64)}", request.headers["Authorization"])
+
+        server.enqueue(json(404, """{"error":"phones_file_not_found","message":"…"}"""))
+        assertEquals(Refusal.FILE_NOT_FOUND, refused { dispatch.download(site, "k", "file_2", into) }.code)
+    }
+
+    @Test
+    fun reportsHowEachAttemptWent() = runTest {
+        server.enqueue(json(200, """{"ok":true}"""))
+        dispatch.statuses(site, "k", StatusesReport(listOf(ReportedStatus("text_1", 41, SendStatus.DELIVERED, 5))))
+        val request = server.takeRequest()
+        assertEquals("POST", request.method)
+        assertEquals("/api/communications/phone/statuses", request.url.encodedPath)
+        assertEquals("""{"statuses":[{"id":"text_1","attempt":41,"status":"delivered","at":5}]}""", request.body?.utf8())
     }
 
     private suspend fun refused(call: suspend () -> Unit): Refusal {
