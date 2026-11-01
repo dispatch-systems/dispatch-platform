@@ -16,7 +16,7 @@ class InboxTest {
     @Test
     fun readsEachTextOnceFromWhenThePhonePaired() = runTest {
         sms(1, PAIRED - 1, Direction.IN, "(206) 555-0101", "Before pairing")
-        inbox.begin("phone_1")
+        inbox.begin("phone_1", PAIRED)
         sms(2, PAIRED + 10, Direction.IN, "(206) 555-0102", "Gate code?")
         sms(3, PAIRED + 20, Direction.OUT, "(206) 555-0102", "4412")
         read()
@@ -31,14 +31,23 @@ class InboxTest {
     }
 
     @Test
+    fun readsFromWhenThePhonePairedNotWhenTheRelayFirstRan() = runTest {
+        sms(2, PAIRED + 1, Direction.IN, "(206) 555-0102", "Paired a moment ago")
+        clock = PAIRED + 2
+        inbox.begin("phone_1", PAIRED)
+        read()
+        assertEquals(setOf("sms-2-${PAIRED + 1}"), queue.texts.keys)
+    }
+
+    @Test
     fun beginsAgainForANewPairingOnly() = runTest {
-        inbox.begin("phone_1")
+        inbox.begin("phone_1", PAIRED)
         sms(2, PAIRED + 10, Direction.IN, "(206) 555-0102", "Gate code?")
         read()
-        inbox.begin("phone_1")
+        inbox.begin("phone_1", PAIRED)
         assertEquals(1, queue.texts.size)
         clock += HOUR
-        inbox.begin("phone_2")
+        inbox.begin("phone_2", clock)
         assertTrue(queue.texts.isEmpty())
         read()
         assertTrue("a text before the new pairing", queue.texts.isEmpty())
@@ -46,7 +55,7 @@ class InboxTest {
 
     @Test
     fun readsTextsWrittenWhileStoppedAndLateOnesAtItsNextStart() = runTest {
-        inbox.begin("phone_1")
+        inbox.begin("phone_1", PAIRED)
         sms(2, PAIRED + 10, Direction.IN, "(206) 555-0102", "First")
         clock = PAIRED + 3 * HOUR
         read()
@@ -60,7 +69,7 @@ class InboxTest {
 
     @Test
     fun knowsARowWhoseIdWasUsedAgain() = runTest {
-        inbox.begin("phone_1")
+        inbox.begin("phone_1", PAIRED)
         sms(2, PAIRED + 10, Direction.IN, "(206) 555-0102", "Deleted later")
         read()
         provider.messages.clear()
@@ -71,7 +80,7 @@ class InboxTest {
 
     @Test
     fun readsAPictureMessageOnceItsWhole() = runTest {
-        inbox.begin("phone_1")
+        inbox.begin("phone_1", PAIRED)
         val row = Row(Table.MMS, 5, PAIRED + 10, Direction.IN)
         provider.writing += row
         read()
@@ -88,7 +97,7 @@ class InboxTest {
 
     @Test
     fun reportsAGroupTextFromItsSenderAndOneSentToEachRecipient() = runTest {
-        inbox.begin("phone_1")
+        inbox.begin("phone_1", PAIRED)
         mms(6, PAIRED + 10, Direction.IN, listOf("(206) 555-0106"), "To the group")
         mms(7, PAIRED + 20, Direction.OUT, listOf("(206) 555-0106", "(206) 555-0107"), "To both", Part("content://mms/part/3", "map.png", "image/png", 10))
         read()
@@ -102,7 +111,7 @@ class InboxTest {
 
     @Test
     fun leavesOutWhatDispatchWouldRefuseAndTheAppsOwn() = runTest {
-        inbox.begin("phone_1")
+        inbox.begin("phone_1", PAIRED)
         sms(2, PAIRED + 10, Direction.IN, "Carrier", "Your bill is ready")
         sms(3, PAIRED + 20, Direction.OUT, "(206) 555-0103", "Sent for Dispatch")
         ownRows += provider.messages.last().row
@@ -114,7 +123,7 @@ class InboxTest {
 
     @Test
     fun keepsATextWithinWhatDispatchTakes() = runTest {
-        inbox.begin("phone_1")
+        inbox.begin("phone_1", PAIRED)
         val parts = (0..11).map { Part("content://mms/part/$it", "p$it.jpg", "image/jpeg", 1) } +
             Part("content://mms/part/big", "big.mp4", "video/mp4", 21L * 1024 * 1024)
         mms(8, PAIRED + 10, Direction.IN, listOf("(206) 555-0108"), "😀".repeat(10_001), *parts.reversed().toTypedArray())

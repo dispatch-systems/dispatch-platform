@@ -85,7 +85,8 @@ class Relay(private val context: Context) {
             link.site,
             PairRequest(link.code, Phone.number(context), Phone.model, BuildConfig.VERSION_NAME),
         )
-        pairings.save(Paired(link.site.trimEnd('/'), answer.dsp.name, answer.phone.id, answer.phone.name), answer.key)
+        val paired = Paired(link.site.trimEnd('/'), answer.dsp.name, answer.phone.id, answer.phone.name, System.currentTimeMillis())
+        pairings.save(paired, answer.key)
         connection.paired()
         RelayService.start(context)
     }

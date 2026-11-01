@@ -13,11 +13,13 @@ class Inbox(
     private val own: Own,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
-    /** Starts reading for the pairing Dispatch knows as [phone], unless it already did. */
-    suspend fun begin(phone: String) {
+    /**
+     * Starts reading for the pairing Dispatch knows as [phone], unless it already did: from when
+     * it [paired], however long before the relay first ran.
+     */
+    suspend fun begin(phone: String, paired: Long) {
         if (queue.mark()?.phone == phone) return
-        val at = now()
-        queue.begin(Mark(phone, at, at))
+        queue.begin(Mark(phone, paired, paired))
     }
 
     /** Reads the texts written since the last read, keeping each new one to report. */

@@ -44,7 +44,7 @@ class Texts(private val context: Context, dispatch: Dispatch) {
      * waits at once, and reading the phone's texts once the phone allows it. Runs until cancelled.
      */
     suspend fun run(paired: Paired, key: String): Unit = coroutineScope {
-        inbox.begin(paired.phoneId)
+        inbox.begin(paired.phoneId, paired.at)
         val wake = Channel<Unit>(Channel.CONFLATED)
         launch { reporter.run(paired.site, key, wake) }
         // The setup asks for Texting; the relay runs from pairing, so it waits for it here.

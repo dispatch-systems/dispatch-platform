@@ -203,7 +203,7 @@ private fun time(at: Long) = DateFormat.getTimeFormat(LocalContext.current).form
 @Preview
 @Composable
 private fun ConnectedPreview() = ConnectedScreen(
-    Paired("https://bh.dispatch.test", "Blue Heron Logistics", "phone_1", "Dispatch"),
+    Paired("https://bh.dispatch.test", "Blue Heron Logistics", "phone_1", "Dispatch", 0),
     Link.Connected(0),
     Today(received = 42, sent = 37, waiting = 0, latest = 0),
 )
