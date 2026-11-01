@@ -13,16 +13,18 @@ with `{"error": "<code>", "message": "…"}`: the app acts on the code, never th
 ## Who may call
 
 - **Where:** at the DSP's own address alone, while the DSP is active. Anywhere else, or carrying
-  a cookie (as a browser would), a call is refused `sign_in_required` (401). While
-  Communications is off for the DSP, every call is refused `phones_off` (403).
+  a cookie (as a browser would) to any call but the app's, a call is refused `sign_in_required`
+  (401). While Communications is off for the DSP, every call is refused `phones_off` (403).
 - **Pairing** takes the code someone at the DSP showed (`POST /api/communications/phone/pair`),
   and answers the phone's key: 64 hexadecimal letters (`KEY_BYTES` in hexadecimal), given once,
   which the app keeps.
 - **Anything but a read** (`POST`) carries `Origin: <the DSP's address>`, as a page of the DSP's
   address would; without it, it's refused `invalid_origin` (403).
-- **Every call but pairing** carries `Authorization: Bearer <key>`, once. Without it, or with a key no
-  phone holds, it's refused `sign_in_required` (401); once the phone was removed,
-  `phones_removed` (401): its key works no more, so the app pairs again with a new code.
+- **The app itself**, its details and its APK, is anyone's at the DSP's address, cookie or not,
+  as a phone's browser downloads it before it's paired.
+- **Every call but pairing and the app** carries `Authorization: Bearer <key>`, once. Without it,
+  or with a key no phone holds, it's refused `sign_in_required` (401); once the phone was
+  removed, `phones_removed` (401): its key works no more, so the app pairs again with a new code.
 
 ## Presence
 
@@ -89,6 +91,10 @@ the phone is removed.
   ]
 }
 ```
+
+With them, while the server hands out the app, its latest version,
+`"app": { "version": "1.4.0", "versionCode": 14 }`, left out while it hands out none. The app
+offers to update once `versionCode` is above its own ([the app](#get-apicommunicationsphoneapp)).
 
 Each, oldest first, is to send `body` from this phone to `number`, with each file fetched first
 (`GET /api/communications/phone/files/{id}`). A text stays in the outbox until a status of its
@@ -159,6 +165,25 @@ on, waiting to sent to delivered, waiting or sent to failed; sent or failed coun
 text's latest attempt, so a late report of an earlier one never cancels a text tried again; and
 delivered counts from any attempt, as it proves the text got there. A status of a text that
 isn't this phone's is ignored.
+
+### `GET /api/communications/phone/app`
+
+The app's latest version, as this DSP's address hands it out: a preview server's, as Dev's, is
+the Dev build (`com.dspdispatch.relay.dev`), and Production's the Production build
+(`com.dspdispatch.relay`).
+
+```json
+{ "version": "1.4.0", "versionCode": 14, "size": 18350112, "sha256": "<64 hex>" }
+```
+
+`size` and `sha256` are its APK's, which the app checks a download against before it installs it.
+Refused `phones_app_not_found` (404) while the server hands out none.
+
+### `GET /api/communications/phone/app/download`
+
+That version's APK, `application/vnd.android.package-archive`, as a download of its name, which a
+phone fetches to install the app or update it, and which the Phones card links to. Refused
+`phones_app_not_found` (404) while the server hands out none.
 
 ## Failures
 
