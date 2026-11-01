@@ -43,8 +43,29 @@ unsigned.
 
 Each version is published from the MacBook as a GitHub pre-release of this repository, tagged
 `relay-v<version>`, with both builds' signed APKs: a pre-release is never GitHub's latest
-release, which Production installs. `relay/release.json` names the version published, and
-merged, it's what Dispatch hands out:
+release, which Production installs. From this folder, in a branch's worktree:
+
+```sh
+./publish --dry-run 1.4.0  # builds and checks it all, publishing and changing nothing
+./publish 1.4.0
+```
+
+`./publish` refuses unless signing is configured, the tree is clean, `HEAD` is on GitHub (the
+tag marks it), and the version is above the app's. It sets `versionName` and the next
+`versionCode` in `relay/build.gradle.kts`, builds both release APKs, checks that both are signed
+with the one key, publishes them to the pre-release (`gh release create --prerelease
+--latest=false`), and writes `relay/release.json`. Those two files go as a PR: merged, Dev hands
+the version out; once a release includes it, Production. A failure before publishing leaves the
+tree as it was.
+
+Each outbox wait tells the app the version its DSP hands out; one above its own shows Update,
+with a notification. Install downloads it from the DSP, checks its size and SHA-256 against the
+DSP's details and that it's the same app signed with the same key, and installs it with Android's
+`PackageInstaller`: with no one confirming on Android 12+, once the app installed the version
+it's updating from; with Android's confirmation otherwise. The relay starts again once it's
+replaced.
+
+`relay/release.json` names the version published, and merged, it's what Dispatch hands out:
 
 ```json
 {

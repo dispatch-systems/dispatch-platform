@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+# Publishes a version of DSP Dispatch: Relay, from the MacBook that holds its signing key:
+#
+#   ./publish <version>            sets the version, builds both signed APKs, publishes them to the
+#                                  GitHub pre-release relay-v<version>, and writes relay/release.json
+#   ./publish --dry-run <version>  builds and checks the same, then publishes and changes nothing
+#
+# The change it leaves, the version and relay/release.json, goes as a PR: merged, Dev hands the
+# version out; once a release includes it, Production. See README.md, Publishing.
+set -euo pipefail
+
+# Where Dispatch's build downloads the APKs from (dispatch_shared::REPOSITORY).
+REPOSITORY=dispatch-systems/dispatch-platform
+GRADLE_FILE=relay/build.gradle.kts
+RELEASE=relay/release.json
+OUT=build/publish
+
+fail() {
+  echo "publish: $*" >&2
+  exit 1
+}
+
+# What stops publishing, which a dry run only warns of, as it publishes nothing.
+refuse() {
+  if $dry; then
+    echo "publish: warning: $*" >&2
+  else
+    fail "$@"
+  fi
+}
+
+# Whether version $1 is above version $2, each three numbers.
+above() {
+  local a b i
+  IFS=. read -r -a a <<<"$1"
+  IFS=. read -r -a b <<<"$2"
+  for i in 0 1 2; do
+    if ((10#${a[i]} != 10#${b[i]})); then
+      ((10#${a[i]} > 10#${b[i]}))
+      return
+    fi
+  done
+  return 1
+}
+
+dry=false
+if [[ ${1-} == --dry-run ]]; then
+  dry=true
+  shift
+fi
+[[ $# -eq 1 ]] || fail "usage: ./publish [--dry-run] <version>"
+version=$1
+[[ $version =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || fail "version is three numbers, as 1.4.0"
+
+cd "$(dirname "$0")"
+export ANDROID_HOME=${ANDROID_HOME:-$HOME/Library/Android/sdk}
+
+# Refused unless the key is there to sign with and the tree holds nothing but what's committed.
+properties=${GRADLE_USER_HOME:-$HOME/.gradle}/gradle.properties
+signing=$(sed -n 's/^dispatch\.relay\.signing=//p' "$properties" 2>/dev/null | tail -n 1)
+[[ -n $signing && -f $signing ]] || fail "signing isn't configured: dispatch.relay.signing in $properties names no file"
+[[ -z $(git status --porcelain) ]] || fail "the tree isn't clean: commit or set aside its changes first"
+
+# The tag marks the commit the APKs are built from, which GitHub must have.
+git fetch --quiet origin
+[[ -n $(git branch -r --contains HEAD) ]] || refuse "HEAD isn't on GitHub: push it first"
+tag=relay-v$version
+[[ -z $(git ls-remote --tags origin "refs/tags/$tag") ]] || refuse "$tag is already published"
+
+code=$(sed -nE 's/^ *versionCode = ([0-9]+)$/\1/p' "$GRADLE_FILE")
+name=$(sed -nE 's/^ *versionName = "([^"]*)"$/\1/p' "$GRADLE_FILE")
+[[ -n $code && -n $name ]] || fail "$GRADLE_FILE has no versionCode and versionName to set"
+above "$version" "$name" || fail "$version isn't above the app's version, $name"
+code=$((code + 1))
+
+# Until it's published, a failure leaves the tree as it was; a dry run, always.
+trap 'git checkout --quiet -- "$GRADLE_FILE"' EXIT
+perl -pi -e "s/^(\s*versionCode = )\d+\$/\${1}$code/; s/^(\s*versionName = )\"[^\"]*\"\$/\${1}\"$version\"/" "$GRADLE_FILE"
+
+echo "Building $version (versionCode $code)…"
+./gradlew --quiet clean :relay:assembleDevRelease :relay:assembleProductionRelease
+
+# Each build's APK, checked to be signed, both with one key, and copied as Dispatch's build names
+# its asset.
+apksigner=$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -name apksigner | sort -V | tail -n 1)
+[[ -n $apksigner ]] || fail "no apksigner in $ANDROID_HOME/build-tools"
+built() {
+  echo "relay/build/outputs/apk/$1/release/relay-$1-release.apk"
+}
+certificate() {
+  "$apksigner" verify --print-certs "$(built "$1")" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p'
+}
+for build in dev production; do
+  [[ -f $(built $build) ]] || fail "$build's release isn't signed: is dispatch.relay.signing's key right?"
+done
+signer=$(certificate dev) || fail "dev's release isn't signed"
+[[ -n $signer && $signer == "$(certificate production)" ]] || fail "the two builds aren't signed with one key"
+dev_asset=dsp-dispatch-relay-dev-$version.apk
+production_asset=dsp-dispatch-relay-$version.apk
+rm -rf "$OUT"
+mkdir -p "$OUT"
+cp "$(built dev)" "$OUT/$dev_asset"
+cp "$(built production)" "$OUT/$production_asset"
+
+# A build's entry in release.json: its asset's name, SHA-256 and size.
+entry() {
+  printf '{\n      "asset": "%s",\n      "sha256": "%s",\n      "size": %s\n    }' \
+    "$1" "$(shasum -a 256 "$OUT/$1" | cut -d ' ' -f 1)" "$(wc -c <"$OUT/$1" | tr -d ' ')"
+}
+release=$(
+  cat <<JSON
+{
+  "version": "$version",
+  "versionCode": $code,
+  "builds": {
+    "dev": $(entry "$dev_asset"),
+    "production": $(entry "$production_asset")
+  }
+}
+JSON
+)
+
+if $dry; then
+  echo "Dry run: built and signed (certificate SHA-256 $signer), in $OUT; nothing published or changed."
+  echo "Would publish $tag at $(git rev-parse HEAD) to $REPOSITORY, and write $RELEASE:"
+  echo "$release"
+  exit 0
+fi
+
+gh release create "$tag" "$OUT/$dev_asset" "$OUT/$production_asset" \
+  --repo "$REPOSITORY" \
+  --target "$(git rev-parse HEAD)" \
+  --prerelease \
+  --latest=false \
+  --title "DSP Dispatch: Relay $version" \
+  --notes "versionCode $code, signed with the certificate of SHA-256 $signer." ||
+  fail "publishing failed: check https://github.com/$REPOSITORY/releases for a draft of $tag left behind"
+trap - EXIT
+echo "$release" >"$RELEASE"
+echo "Published $tag. Commit $GRADLE_FILE and $RELEASE as a PR: merged, Dev hands $version out; released, Production."
