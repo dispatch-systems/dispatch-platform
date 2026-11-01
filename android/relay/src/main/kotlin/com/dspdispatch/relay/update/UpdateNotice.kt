@@ -13,6 +13,10 @@ class UpdateNotice(private val context: Context) : Notice {
         get() = prefs.getStringSet(NOTIFIED, emptySet()).orEmpty().mapNotNull(String::toIntOrNull).toSet()
         set(versionCodes) = prefs.edit { putStringSet(NOTIFIED, versionCodes.map(Int::toString).toSet()) }
 
+    override var showing: Int?
+        get() = if (prefs.contains(SHOWING)) prefs.getInt(SHOWING, 0) else null
+        set(versionCode) = prefs.edit { if (versionCode == null) remove(SHOWING) else putInt(SHOWING, versionCode) }
+
     override fun show(app: AppVersion) = Notifications.update(context, app.version)
 
     override fun cancel() = Notifications.cancelUpdate(context)
@@ -20,5 +24,6 @@ class UpdateNotice(private val context: Context) : Notice {
     private companion object {
         const val NAME = "updates"
         const val NOTIFIED = "notified_versions"
+        const val SHOWING = "showing_version"
     }
 }

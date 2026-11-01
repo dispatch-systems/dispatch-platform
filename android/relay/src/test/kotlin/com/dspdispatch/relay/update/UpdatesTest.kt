@@ -73,11 +73,26 @@ class UpdatesTest {
         val updates = updates()
         updates.heard(newer)
         updates.heard(newest)
+        assertEquals(newest, notice.visible)
         updates.heard(newer)
         assertEquals(Update.Available(newer), updates.update.value)
         assertEquals(listOf(newer, newest), notice.shown)
+        assertNull(notice.visible)
+        updates.heard(newer)
         updates().heard(newer)
         assertEquals(listOf(newer, newest), notice.shown)
+        assertNull(notice.visible)
+    }
+
+    @Test
+    fun takesAwayAWithdrawnVersionsNotificationThroughARestart() = runTest {
+        updates().heard(newer)
+        updates().heard(newest)
+        val restarted = updates()
+        restarted.heard(newer)
+        assertEquals(Update.Available(newer), restarted.update.value)
+        assertEquals(listOf(newer, newest), notice.shown)
+        assertNull(notice.visible)
     }
 
     @Test
@@ -96,6 +111,8 @@ class UpdatesTest {
 
     @Test
     fun takesAwayTheNotificationOfTheVersionItWasUpdatedTo() = runTest {
+        notice.show(own)
+        notice.showing = own.versionCode
         val updates = updates()
         updates.heard(own)
         assertEquals(Update.None, updates.update.value)
@@ -192,6 +209,8 @@ class UpdatesTest {
         installer.outcome = Outcome.FAILED
         updates.install(site)
         assertEquals(Update.Available(newer, Problem.INSTALL), updates.tried())
+        assertEquals(listOf(newest), notice.shown)
+        assertNull(notice.visible)
     }
 
     @Test
@@ -290,15 +309,20 @@ class UpdatesTest {
     private class FakeNotice : Notice {
         var allowed = true
         val shown = mutableListOf<AppVersion>()
+        var visible: AppVersion? = null
         var cancelled = 0
         override var notified = emptySet<Int>()
+        override var showing: Int? = null
 
         override fun show(app: AppVersion): Boolean {
-            if (allowed) shown += app
-            return allowed
+            if (!allowed) return false
+            shown += app
+            visible = app
+            return true
         }
 
         override fun cancel() {
+            visible = null
             cancelled++
         }
     }

@@ -40,9 +40,13 @@ interface Notice {
     /** The `versionCode`s of the versions notified, kept across restarts. */
     var notified: Set<Int>
 
-    /** Notifies of [app], where the app may notify; whether it did. */
+    /** The `versionCode` of the version last notified, while its notification may be showing; kept across restarts. */
+    var showing: Int?
+
+    /** Notifies of [app], replacing any notification showing, where the app may notify; whether it did. */
     fun show(app: AppVersion): Boolean
 
+    /** Takes away the notification showing, if there is one. */
     fun cancel()
 }
 
@@ -65,9 +69,8 @@ class Updates(
     private val state = MutableStateFlow<Update>(Update.None)
     val update: StateFlow<Update> = state.asStateFlow()
 
-    /** The newer version the DSP last told of, in an outbox answer or a version's details; [heard] once it has told. */
+    /** The newer version the DSP last told of, in an outbox answer or a version's details. */
     private var offered: AppVersion? = null
-    private var heard = false
     private var installing: Job? = null
 
     /** The version the try in progress is at, as the banner shows it. */
@@ -78,17 +81,29 @@ class Updates(
 
     /**
      * Dispatch's latest version, [app] as the outbox answered it: offered while newer than this app,
-     * and notified once ever, or at the next answer while the app may not notify. The first answer
-     * takes away the notification of the version this app was updated to.
+     * and notified once ever, or at the next answer while the app may not notify.
      */
     fun heard(app: AppVersion?) {
         val newer = app?.takeIf { it.versionCode > own.versionCode }
-        if (newer != null && newer.versionCode !in notice.notified && notice.show(newer)) notice.notified += newer.versionCode
-        if (heard && newer == offered) return
-        heard = true
+        if (newer != null && newer.versionCode !in notice.notified && notice.show(newer)) {
+            notice.notified += newer.versionCode
+            notice.showing = newer.versionCode
+        }
+        val changed = newer != offered
+        offer(newer)
+        if (changed && installing?.isActive != true) state.value = newer?.let { Update.Available(it) } ?: Update.None
+    }
+
+    /**
+     * Offers [newer], or nothing, taking away without notifying again the notification of any other
+     * version: one withdrawn, or the one this app was updated to.
+     */
+    private fun offer(newer: AppVersion?) {
         offered = newer
-        if (newer == null) notice.cancel()
-        if (installing?.isActive != true) state.value = newer?.let { Update.Available(it) } ?: Update.None
+        val showing = notice.showing ?: return
+        if (showing == newer?.versionCode) return
+        notice.cancel()
+        notice.showing = null
     }
 
     /**
@@ -122,11 +137,8 @@ class Updates(
         cleared.join()
         val details = dispatch.app(site)
         val app = details.app
-        offered = app.takeIf { it.versionCode > own.versionCode }
-        if (offered == null) {
-            notice.cancel()
-            return Update.None
-        }
+        offer(app.takeIf { it.versionCode > own.versionCode })
+        if (offered == null) return Update.None
         // From here the try is at the version the details name, which may not be the one Install offered.
         state.value = Update.Downloading(app, 0f)
         var percent = 0
