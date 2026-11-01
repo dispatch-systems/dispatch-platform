@@ -13,6 +13,7 @@ import com.dspdispatch.relay.pairing.Pairings
 import com.dspdispatch.relay.setup.Setup
 import com.dspdispatch.relay.texts.Texts
 import com.dspdispatch.relay.update.PackageCheck
+import com.dspdispatch.relay.update.PhoneSessions
 import com.dspdispatch.relay.update.SessionInstaller
 import com.dspdispatch.relay.update.UpdateNotice
 import com.dspdispatch.relay.update.Updates
@@ -51,7 +52,7 @@ class Relay(private val context: Context) {
     val connection = Connection(dispatch)
     val setup = Setup(context)
     val texts = Texts(context, dispatch)
-    val installer = SessionInstaller(context)
+    val installer = SessionInstaller(PhoneSessions(context))
     val updates = Updates(
         dispatch,
         own,

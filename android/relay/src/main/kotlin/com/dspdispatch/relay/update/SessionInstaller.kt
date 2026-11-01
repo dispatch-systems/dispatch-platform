@@ -1,10 +1,7 @@
 package com.dspdispatch.relay.update
 
-import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
-import android.content.pm.PackageManager
-import android.os.Build
 import com.dspdispatch.relay.update.Outcome.FAILED
 import com.dspdispatch.relay.update.Outcome.INSTALLED
 import com.dspdispatch.relay.update.Outcome.REFUSED
@@ -25,8 +22,7 @@ import kotlinx.coroutines.withContext
  * itself; where Android asks anyway, as on older phones or the first update after installing from
  * a file, its confirmation waits in [confirm] for the app's screen to show.
  */
-class SessionInstaller(private val context: Context) : Installer {
-    private val sessions = context.packageManager.packageInstaller
+class SessionInstaller(private val sessions: Sessions) : Installer {
     private val waiting = ConcurrentHashMap<Int, Waiting>()
 
     /** Android's confirmation of the session waiting on it, the last it asked for. */
@@ -41,18 +37,17 @@ class SessionInstaller(private val context: Context) : Installer {
 
     override suspend fun install(apk: File, confirming: () -> Unit): Outcome {
         val id = try {
-            withContext(Dispatchers.IO) {
-                // A session of an earlier process, which ended before Android answered it.
-                sessions.mySessions.forEach { abandon(it.sessionId) }
-                sessions.createSession(params(apk))
-            }
+            withContext(Dispatchers.IO) { sessions.create(apk) }
         } catch (_: IOException) {
+            return FAILED
+        } catch (_: SecurityException) {
+            // The phone doesn't let the app install, or no longer does.
             return FAILED
         }
         val outcome = CompletableDeferred<Outcome>()
         waiting[id] = Waiting(outcome, confirming)
         try {
-            withContext(Dispatchers.IO) { commit(id, apk) }
+            withContext(Dispatchers.IO) { sessions.commit(id, apk) }
             return outcome.await()
         } catch (_: IOException) {
             return FAILED
@@ -61,7 +56,7 @@ class SessionInstaller(private val context: Context) : Installer {
             return FAILED
         } finally {
             waiting.remove(id)
-            if (!outcome.isCompleted) withContext(NonCancellable) { abandon(id) }
+            if (!outcome.isCompleted) withContext(NonCancellable + Dispatchers.IO) { sessions.abandon(id) }
         }
     }
 
@@ -95,35 +90,5 @@ class SessionInstaller(private val context: Context) : Installer {
                 else -> FAILED
             },
         )
-    }
-
-    private fun params(apk: File) = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
-        // Android refuses the session for any other app's APK, as PackageCheck does before it.
-        setAppPackageName(context.packageName)
-        setSize(apk.length())
-        setInstallReason(PackageManager.INSTALL_REASON_USER)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
-        }
-    }
-
-    private fun commit(id: Int, apk: File) = sessions.openSession(id).use { session ->
-        session.openWrite(APK_NAME, 0, apk.length()).use { output ->
-            apk.inputStream().use { it.copyTo(output) }
-            session.fsync(output)
-        }
-        session.commit(InstallReceiver.statusOf(context, id).intentSender)
-    }
-
-    private fun abandon(id: Int) {
-        try {
-            sessions.abandonSession(id)
-        } catch (_: SecurityException) {
-            // Already finished, so gone.
-        }
-    }
-
-    private companion object {
-        const val APK_NAME = "update.apk"
     }
 }
