@@ -31,11 +31,18 @@ class Inbox(
         val seen = queue.seen(since).toHashSet()
         for (row in provider.rows(since)) {
             if (row.key in seen) continue
-            if (row.direction == Direction.OUT && own.sent(row)) {
-                queue.read(Seen(row.key, row.at, null), emptyList(), emptyList())
-                continue
-            }
             val message = provider.read(row) ?: continue
+            if (row.direction == Direction.OUT) {
+                when (own.whose(message)) {
+                    Whose.DISPATCH -> {
+                        queue.read(Seen(row.key, row.at, null), emptyList(), emptyList())
+                        continue
+                    }
+                    // Read again by a later read, once Android said how the app's text went.
+                    Whose.UNSURE -> continue
+                    Whose.PHONE -> Unit
+                }
+            }
             val texts = reports(message)
             val reported = Seen(row.key, row.at, row.direction.takeIf { texts.isNotEmpty() })
             queue.read(reported, texts.map { it.first }, texts.flatMap { it.second })

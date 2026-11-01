@@ -1,5 +1,6 @@
 package com.dspdispatch.relay.dispatch
 
+import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.util.concurrent.TimeUnit
@@ -18,6 +19,8 @@ import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okio.BufferedSink
+import okio.buffer
+import okio.sink
 import okio.source
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -52,6 +55,23 @@ class Dispatch(http: OkHttpClient) {
         http.call<Done>(post(site, "files/$id", Upload(size, open), key))
     }
 
+    /**
+     * Writes into [to] the bytes of the file Dispatch knows as [id], a picture of a text in the
+     * outbox, streamed as they come: it may be 20 MiB.
+     */
+    suspend fun download(site: String, key: String, id: String, to: File) = withContext(Dispatchers.IO) {
+        val request = Request.Builder().url(address(site, "files/$id")).header(AUTHORIZATION, bearer(key)).build()
+        http.newCall(request).await().use { response ->
+            if (!response.isSuccessful) throw refusal(response, response.body.string())
+            to.sink().buffer().use { it.writeAll(response.body.source()) }
+        }
+    }
+
+    /** Reports how the attempts at the outbox's texts went. */
+    suspend fun statuses(site: String, key: String, report: StatusesReport) {
+        http.call<Done>(post(site, "statuses", wire.encodeToString(report), key))
+    }
+
     private fun post(site: String, path: String, json: String, key: String? = null) =
         post(site, path, json.toRequestBody(JSON), key)
 
@@ -80,11 +100,13 @@ class Dispatch(http: OkHttpClient) {
 
     private fun <T> read(response: Response, serializer: KSerializer<T>): T {
         val body = response.body.string()
-        if (!response.isSuccessful) {
-            val code = runCatching { wire.decodeFromString<RefusalAnswer>(body).error }.getOrNull()
-            throw Refusal(response.code, code ?: "http_${response.code}")
-        }
+        if (!response.isSuccessful) throw refusal(response, body)
         return wire.decodeFromString(serializer, body)
+    }
+
+    private fun refusal(response: Response, body: String): Refusal {
+        val code = runCatching { wire.decodeFromString<RefusalAnswer>(body).error }.getOrNull()
+        return Refusal(response.code, code ?: "http_${response.code}")
     }
 
     companion object {

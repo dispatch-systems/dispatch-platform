@@ -91,6 +91,7 @@ dependencies {
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.core.ktx)
     implementation(libs.coroutines.android)
+    implementation(libs.exifinterface)
     implementation(libs.lifecycle.runtime.compose)
     implementation(libs.lifecycle.service)
     implementation(libs.okhttp)

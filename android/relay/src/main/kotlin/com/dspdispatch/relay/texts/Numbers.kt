@@ -10,6 +10,9 @@ object Numbers {
     private const val MOST = 32
     private const val PUNCTUATION = " +-()."
 
+    /** A North American number's digits but its country code. */
+    private const val NATIONAL = 10
+
     /** Whether Dispatch takes [raw], as the provider writes it, as a number. */
     fun accepted(raw: String): Boolean {
         val number = raw.trim()
@@ -23,4 +26,15 @@ object Numbers {
             (digits in 8..15 && plus) ||
             (digits in 3..7 && bare)
     }
+
+    /**
+     * Whether [a] and [b] are the same number, however each is written: their last ten digits, as
+     * one may carry its country code and the other not, or all of a shorter one's.
+     */
+    fun same(a: String, b: String): Boolean {
+        val (first, second) = digitsOf(a) to digitsOf(b)
+        if (first.isEmpty()) return false
+        return if (first.length >= NATIONAL && second.length >= NATIONAL) first.takeLast(NATIONAL) == second.takeLast(NATIONAL) else first == second
+    }
+    private fun digitsOf(number: String) = number.filter { it in '0'..'9' }
 }

@@ -34,27 +34,27 @@ class PhoneProvider(private val resolver: ContentResolver) : Provider {
 
     private fun smsRows(since: Long): List<Row> = resolver.query(
         Sms.CONTENT_URI,
-        arrayOf(Sms._ID, Sms.DATE, Sms.TYPE),
+        arrayOf(Sms._ID, Sms.DATE, Sms.TYPE, Sms.CREATOR),
         "${Sms.DATE} >= ? AND ${Sms.TYPE} IN (${TextBasedSmsColumns.MESSAGE_TYPE_INBOX}, ${TextBasedSmsColumns.MESSAGE_TYPE_SENT})",
         arrayOf(since.toString()),
         null,
     ).rows { cursor ->
         val direction = if (cursor.getInt(2) == TextBasedSmsColumns.MESSAGE_TYPE_INBOX) Direction.IN else Direction.OUT
-        Row(Table.SMS, cursor.getLong(0), cursor.getLong(1), direction)
+        Row(Table.SMS, cursor.getLong(0), cursor.getLong(1), direction, cursor.getString(3))
     }
 
     // A picture message's time is in seconds. One received counts once the texting app has
     // downloaded it, when it holds the message itself and not only word of it.
     private fun mmsRows(since: Long): List<Row> = resolver.query(
         Mms.CONTENT_URI,
-        arrayOf(Mms._ID, Mms.DATE, Mms.MESSAGE_BOX),
+        arrayOf(Mms._ID, Mms.DATE, Mms.MESSAGE_BOX, Mms.CREATOR),
         "${Mms.DATE} >= ? AND ((${Mms.MESSAGE_BOX} = ${BaseMmsColumns.MESSAGE_BOX_INBOX} AND " +
             "${Mms.MESSAGE_TYPE} = $RETRIEVE_CONF) OR ${Mms.MESSAGE_BOX} = ${BaseMmsColumns.MESSAGE_BOX_SENT})",
         arrayOf(((since + MS_PER_SECOND - 1) / MS_PER_SECOND).toString()),
         null,
     ).rows { cursor ->
         val direction = if (cursor.getInt(2) == BaseMmsColumns.MESSAGE_BOX_INBOX) Direction.IN else Direction.OUT
-        Row(Table.MMS, cursor.getLong(0), cursor.getLong(1) * MS_PER_SECOND, direction)
+        Row(Table.MMS, cursor.getLong(0), cursor.getLong(1) * MS_PER_SECOND, direction, cursor.getString(3))
     }
 
     private fun readSms(row: Row): Message? = resolver.query(

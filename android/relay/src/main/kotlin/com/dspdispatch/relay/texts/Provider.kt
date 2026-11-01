@@ -12,10 +12,22 @@ enum class Table(val prefix: String) {
 /**
  * A text's row in the phone's texting provider, received or sent: [id] is the provider's own and
  * may be used again once the row is deleted, so a row is known by [key], its ID with its time.
+ * [creator] is the app that sent it, where the provider says.
  */
-data class Row(val table: Table, val id: Long, val at: Long, val direction: Direction) {
+data class Row(val table: Table, val id: Long, val at: Long, val direction: Direction, val creator: String? = null) {
     val key get() = "${table.prefix}-$id-$at"
+
+    /** The row as Android names it in a send's result, by [rowOf]. */
+    val ref get() = "${table.prefix}-$id"
 }
+
+/** The [Row.ref] of the provider row at [uri], as Android gives it: `content://sms/sent/12`. */
+fun rowOf(uri: String): String? {
+    val (table, id) = ROW_URI.matchEntire(uri)?.destructured ?: return null
+    return "$table-$id"
+}
+
+private val ROW_URI = Regex("content://(${Table.SMS.prefix}|${Table.MMS.prefix})/(?:[a-z]+/)?(\\d+)")
 
 /**
  * A text as the provider holds it: [numbers], the sender of one received or each recipient of

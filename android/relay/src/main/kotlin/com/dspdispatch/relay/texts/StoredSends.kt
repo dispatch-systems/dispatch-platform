@@ -1,0 +1,129 @@
+package com.dspdispatch.relay.texts
+
+import androidx.room3.Dao
+import androidx.room3.Delete
+import androidx.room3.Insert
+import androidx.room3.OnConflictStrategy
+import androidx.room3.Query
+import androidx.room3.Transaction
+import androidx.room3.Update
+import com.dspdispatch.relay.dispatch.SendStatus
+
+/** The [Sends], kept in the [TextsDatabase]. */
+@Dao
+abstract class StoredSends : Sends {
+    @Transaction
+    override suspend fun start(send: Send): Send {
+        keep(send)
+        return checkNotNull(find(send.id, send.attempt))
+    }
+
+    @Query("UPDATE sends SET handed = :at, parts = :parts WHERE id = :id AND attempt = :attempt")
+    protected abstract suspend fun handed(id: String, attempt: Long, parts: Int, at: Long)
+
+    override suspend fun handed(send: Send, parts: Int, at: Long) = handed(send.id, send.attempt, parts, at)
+
+    @Transaction
+    override suspend fun failed(send: Send, error: String, at: Long) {
+        val kept = find(send.id, send.attempt) ?: return
+        if (kept.outcome != null) return
+        update(kept.copy(outcome = SendStatus.FAILED, finished = at))
+        keepStatus(kept.status(SendStatus.FAILED, at, error))
+    }
+
+    @Transaction
+    override suspend fun heard(heard: Heard) {
+        val send = find(heard.id, heard.attempt) ?: return
+        keep(heard.report)
+        if (heard.row != null) keep(SendRow(heard.row, send.id, send.attempt))
+        val (settled, statuses) = send.settled(reports(send.id, send.attempt), heard.at)
+        update(settled)
+        statuses.forEach { keepStatus(it) }
+    }
+
+    @Transaction
+    override suspend fun expire(before: Long, at: Long): List<Send> {
+        val stuck = stuck(before)
+        for (send in stuck) {
+            update(send.copy(outcome = SendStatus.FAILED, finished = at))
+            keepStatus(send.status(SendStatus.FAILED, at, Failure.NO_RESULT))
+        }
+        return stuck
+    }
+
+    @Transaction
+    override suspend fun forget(before: Long) {
+        forgetSends(before)
+        forgetReports()
+        forgetRows()
+    }
+
+    @Query("SELECT * FROM statuses ORDER BY at, id, attempt LIMIT :most")
+    abstract override suspend fun statuses(most: Int): List<Told>
+
+    @Delete
+    abstract override suspend fun told(told: List<Told>)
+
+    @Query("SELECT EXISTS (SELECT 1 FROM send_rows WHERE row = :row)")
+    abstract override suspend fun wrote(row: String): Boolean
+
+    @Query(
+        """
+        SELECT * FROM sends WHERE handed BETWEEN :from AND :to AND NOT EXISTS
+            (SELECT 1 FROM send_rows WHERE send_rows.id = sends.id AND send_rows.attempt = sends.attempt)
+        ORDER BY handed
+        """,
+    )
+    abstract override suspend fun unplaced(from: Long, to: Long): List<Send>
+
+    override suspend fun placed(send: Send, row: String) = keep(SendRow(row, send.id, send.attempt))
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    protected abstract suspend fun keep(send: Send)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    protected abstract suspend fun keep(report: Report)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    protected abstract suspend fun keep(row: SendRow)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    protected abstract suspend fun keepStatus(status: Told)
+
+    @Update
+    protected abstract suspend fun update(send: Send)
+
+    @Query("SELECT * FROM sends WHERE id = :id AND attempt = :attempt")
+    protected abstract suspend fun find(id: String, attempt: Long): Send?
+
+    @Query("SELECT * FROM send_reports WHERE id = :id AND attempt = :attempt")
+    protected abstract suspend fun reports(id: String, attempt: Long): List<Report>
+
+    @Query("SELECT * FROM sends WHERE handed < :before AND outcome IS NULL")
+    protected abstract suspend fun stuck(before: Long): List<Send>
+
+    // A send Android took and never settled is failed by expire first, so it's kept until then.
+    @Query(
+        """
+        DELETE FROM sends WHERE started < :before AND (outcome IS NOT NULL OR handed IS NULL) AND NOT EXISTS
+            (SELECT 1 FROM statuses WHERE statuses.id = sends.id AND statuses.attempt = sends.attempt)
+        """,
+    )
+    protected abstract suspend fun forgetSends(before: Long)
+
+    @Query(
+        """
+        DELETE FROM send_reports WHERE NOT EXISTS
+            (SELECT 1 FROM sends WHERE sends.id = send_reports.id AND sends.attempt = send_reports.attempt)
+        """,
+    )
+    protected abstract suspend fun forgetReports()
+
+    @Query(
+        """
+        DELETE FROM send_rows WHERE NOT EXISTS
+            (SELECT 1 FROM sends WHERE sends.id = send_rows.id AND sends.attempt = send_rows.attempt)
+        """,
+    )
+    protected abstract suspend fun forgetRows()
+}

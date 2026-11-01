@@ -11,7 +11,6 @@ import androidx.lifecycle.lifecycleScope
 import com.dspdispatch.relay.connection.Link
 import com.dspdispatch.relay.pairing.Standing
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -34,12 +33,7 @@ class RelayService : LifecycleService() {
             running = lifecycleScope.launch {
                 launch { relay.connection.link.collect { show(paired.dsp, it) } }
                 launch { relay.texts.run(paired, key) }
-                relay.connection.run(paired, key) { outbox ->
-                    // Sending Dispatch's texts comes with the outbox's sender. Until then a text
-                    // waiting stays in each answer, which comes at once: pause, well within the
-                    // two minutes that keep the phone online, instead of asking again at once.
-                    if (outbox.texts.isNotEmpty()) delay(HELD_MS)
-                }
+                relay.connection.run(paired, key) { relay.texts.send(paired, it) }
                 relay.pairings.removed(paired)
                 stopSelf()
             }
@@ -59,7 +53,6 @@ class RelayService : LifecycleService() {
     }
 
     companion object {
-        private const val HELD_MS = 30_000L
         private val TYPE = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_REMOTE_MESSAGING
         } else {
