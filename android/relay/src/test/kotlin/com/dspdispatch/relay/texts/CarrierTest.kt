@@ -10,10 +10,16 @@ import org.junit.Test
 class CarrierTest {
     @Test
     fun takesAndroidsOwnWhereTheCarrierDoesntSayOrAndroidDidntAnswer() {
-        assertEquals(300 * 1024, mmsMost(null))
-        assertEquals(300 * 1024, mmsMost(config()))
-        assertEquals(600 * 1024, mmsMost(config(SmsManager.MMS_CONFIG_MAX_MESSAGE_SIZE to 600 * 1024)))
-        assertNull(mmsMost(config(SmsManager.MMS_CONFIG_MMS_ENABLED to false)))
+        val own = MmsLimits(300 * 1024, Size(LARGEST_SIDE, LARGEST_SIDE))
+        assertEquals(own, mmsLimits(null))
+        assertEquals(own, mmsLimits(config()))
+        val carriers = config(
+            SmsManager.MMS_CONFIG_MAX_MESSAGE_SIZE to 600 * 1024,
+            SmsManager.MMS_CONFIG_MAX_IMAGE_WIDTH to 640,
+            SmsManager.MMS_CONFIG_MAX_IMAGE_HEIGHT to 480,
+        )
+        assertEquals(MmsLimits(600 * 1024, Size(640, 480)), mmsLimits(carriers))
+        assertNull(mmsLimits(config(SmsManager.MMS_CONFIG_MMS_ENABLED to false)))
     }
 
     @Test

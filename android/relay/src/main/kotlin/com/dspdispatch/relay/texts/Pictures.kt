@@ -4,14 +4,37 @@ import java.io.File
 import kotlin.math.sqrt
 
 /** Scales pictures down to fit a picture message. */
-fun interface Pictures {
-    /** The picture in [file] as a JPEG of at most [most] bytes, or null when it can't be one. */
-    fun shrink(file: File, most: Int): ByteArray?
+interface Pictures {
+    /** The size of the picture in [file], or null when it can't be read as one. */
+    fun size(file: File): Size?
+
+    /** The picture in [file] as a JPEG of at most [most] bytes and within [within], or null when it can't be one. */
+    fun shrink(file: File, most: Int, within: Size): ByteArray?
+}
+
+/** A picture's size, or the largest a carrier takes, in pixels. */
+data class Size(val width: Int, val height: Int) {
+    /** Whether a picture this size fits within [limit], either way up. */
+    fun fits(limit: Size): Boolean {
+        val upright = limit.turnedTo(this)
+        return width <= upright.width && height <= upright.height
+    }
+
+    /** The longest side a picture this size has, scaled down as far as [limit] needs, either way up. */
+    fun longestWithin(limit: Size): Int {
+        val upright = limit.turnedTo(this)
+        val scale = minOf(1.0, upright.width.toDouble() / width, upright.height.toDouble() / height)
+        return (maxOf(width, height) * scale).toInt()
+    }
+
+    // A carrier's limit is for a picture either way up: turned to match it, it's scaled as little
+    // as it can be, as Android's own texting app does.
+    private fun turnedTo(picture: Size) = if ((picture.height > picture.width) != (height > width)) Size(height, width) else this
 }
 
 /**
- * The first of [encode]'s JPEGs, of a picture [longest] pixels on its longest side, within [most]
- * bytes: at its full size or [LARGEST_SIDE], then smaller each time, each in a high quality first.
+ * The first of [encode]'s JPEGs, of a picture at most [longest] pixels on its longest side, within
+ * [most] bytes: at [longest] or [LARGEST_SIDE], then smaller each time, each in a high quality first.
  */
 internal fun fit(most: Int, longest: Int, encode: (side: Int, quality: Int) -> ByteArray): ByteArray? {
     var side = minOf(longest, LARGEST_SIDE)

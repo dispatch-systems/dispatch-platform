@@ -4,14 +4,15 @@ import java.io.File
 import java.nio.file.Files
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PictureMessageTest {
     private val folder = Files.createTempDirectory("files").toFile()
-    private val asked = mutableListOf<Pair<String, Int>>()
-    private val message = PictureMessage { file, most -> ByteArray(most / 2).also { asked += file.name to most } }
+    private var pictures = FakePictures()
+    private val asked get() = pictures.asked.map { it.first to it.second }
 
     @After
     fun clean() {
@@ -47,9 +48,31 @@ class PictureMessageTest {
     @Test
     fun failsWhatCantFit() {
         assertNull(compose(5_000, file("video.mp4", "video/mp4", 10_000)))
-        val wont = PictureMessage { _, _ -> null }
-        val door = file("door.jpg", "image/jpeg", 50_000)
-        assertNull(wont.compose("+14255550199", "", listOf(door), 20_000, "T1", 1))
+        pictures = FakePictures { null }
+        assertNull(compose(20_000, file("door.jpg", "image/jpeg", 50_000)))
+    }
+
+    @Test
+    fun scalesAPictureDownToTheCarriersWidthAndHeightThoughItsBytesFit() {
+        // Android can't read the third's size.
+        pictures = FakePictures(mapOf("wide.jpg" to Size(3_000, 2_000), "tall.jpg" to Size(480, 640)))
+        val files = listOf("wide.jpg", "tall.jpg", "odd.heic").map { file(it, "image/jpeg", 1_000) }
+        val pdu = compose(300_000, *files.toTypedArray(), within = Size(640, 480))!!
+        assertEquals("only the one too large", listOf("wide.jpg" to Size(640, 480)), pictures.asked.map { it.first to it.third })
+        val text = String(pdu, Charsets.ISO_8859_1)
+        assertTrue("either way up, and one Android can't size, as they are", "tall.jpg" in text && "odd.heic" in text)
+    }
+
+    @Test
+    fun knowsWhatFitsWithinTheCarriersPictureSizeEitherWayUp() {
+        val limit = Size(640, 480)
+        assertTrue(Size(640, 480).fits(limit))
+        assertTrue(Size(480, 640).fits(limit))
+        assertFalse(Size(641, 300).fits(limit))
+        assertEquals(640, Size(3_000, 2_000).longestWithin(limit))
+        assertEquals(640, Size(2_000, 3_000).longestWithin(limit))
+        assertEquals("a long one by its short side", 960, Size(4_000, 1_000).longestWithin(Size(1_000, 240)))
+        assertEquals("not scaled up", 300, Size(300, 200).longestWithin(limit))
     }
 
     @Test
@@ -74,8 +97,8 @@ class PictureMessageTest {
         assertEquals(listOf(300 to 85), mutableListOf<Pair<Int, Int>>().also { tried -> fit(1_000_000, 300) { s, q -> tried += s to q; ByteArray(1) } })
     }
 
-    private fun compose(most: Int, vararg files: Attachment) =
-        message.compose("+14255550199", "Door code 4412", files.toList(), most, "T1", 1)
+    private fun compose(most: Int, vararg files: Attachment, within: Size = Size(LARGEST_SIDE, LARGEST_SIDE)) =
+        PictureMessage(pictures).compose("+14255550199", "Door code 4412", files.toList(), MmsLimits(most, within), "T1", 1)
 
     private fun file(name: String, mime: String, size: Int) = Attachment(name, mime, File(folder, name).apply { writeBytes(ByteArray(size)) })
 }

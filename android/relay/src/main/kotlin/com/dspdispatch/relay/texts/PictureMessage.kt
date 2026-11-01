@@ -11,22 +11,24 @@ class Attachment(val name: String, val mime: String, val file: File)
  */
 class PictureMessage(private val pictures: Pictures) {
     /**
-     * The M-Send.req of [body] and [attachments] to [to], at most [most] bytes, or null when they
-     * can't fit: too large a file that isn't a picture, or a picture that won't shrink.
+     * The M-Send.req of [body] and [attachments] to [to], within the carrier's [limits], or null
+     * when they can't fit: too large a file that isn't a picture, or a picture that won't shrink.
+     * A picture Android can't read the size of goes as it is, if its bytes fit.
      */
-    fun compose(to: String, body: String, attachments: List<Attachment>, most: Int, transaction: String, date: Long): ByteArray? {
+    fun compose(to: String, body: String, attachments: List<Attachment>, limits: MmsLimits, transaction: String, date: Long): ByteArray? {
         val files = attachments.map { Item(it.name, it.mime, it.file.length()) { it.file.readBytes() } }
         val fixed = encode(to, body, files.map { it.copy(read = { ByteArray(0) }) }, transaction, date).size + MARGIN
-        val room = most - fixed - files.filterNot(Item::picture).sumOf(Item::size)
+        val room = limits.most - fixed - files.filterNot(Item::picture).sumOf(Item::size)
         if (room < 0) return null
         val pictures = files.indices.filter { files[it].picture }
         val fitted = files.toMutableList()
         for ((picture, share) in pictures.zip(allot(room, pictures.map { files[it].size }))) {
-            if (files[picture].size <= share) continue
-            val bytes = this.pictures.shrink(attachments[picture].file, share.toInt()) ?: return null
+            val file = attachments[picture].file
+            if (files[picture].size <= share && this.pictures.size(file)?.fits(limits.picture) != false) continue
+            val bytes = this.pictures.shrink(file, share.toInt(), limits.picture) ?: return null
             fitted[picture] = Item("${files[picture].name.substringBeforeLast('.')}.jpg", JPEG, bytes.size.toLong()) { bytes }
         }
-        return encode(to, body, fitted, transaction, date).takeIf { it.size <= most }
+        return encode(to, body, fitted, transaction, date).takeIf { it.size <= limits.most }
     }
 
     /** A file as it goes into the message: [read] gives its bytes. */

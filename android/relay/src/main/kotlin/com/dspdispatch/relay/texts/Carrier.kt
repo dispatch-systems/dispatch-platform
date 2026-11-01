@@ -11,13 +11,21 @@ interface CarrierConfig {
     fun number(name: String): Int
 }
 
+/** What a carrier takes of a picture message: at most [most] bytes, each picture within [picture]. */
+data class MmsLimits(val most: Int, val picture: Size)
+
 /**
- * The largest picture message the carrier of [config] takes, in bytes, or null when it takes
- * none: Android's own where it doesn't say, or where Android didn't answer.
+ * What the carrier of [config] takes of a picture message, or null when it takes none: Android's
+ * own where it doesn't say, or where Android didn't answer, and pictures no larger than the app
+ * sends them.
  */
-internal fun mmsMost(config: CarrierConfig?): Int? {
+internal fun mmsLimits(config: CarrierConfig?): MmsLimits? {
     if (config?.flag(SmsManager.MMS_CONFIG_MMS_ENABLED, true) == false) return null
-    return config?.number(SmsManager.MMS_CONFIG_MAX_MESSAGE_SIZE)?.takeIf { it > 0 } ?: DEFAULT_MMS_MOST
+    fun setting(name: String, default: Int) = config?.number(name)?.takeIf { it > 0 } ?: default
+    return MmsLimits(
+        setting(SmsManager.MMS_CONFIG_MAX_MESSAGE_SIZE, DEFAULT_MMS_MOST),
+        Size(setting(SmsManager.MMS_CONFIG_MAX_IMAGE_WIDTH, LARGEST_SIDE), setting(SmsManager.MMS_CONFIG_MAX_IMAGE_HEIGHT, LARGEST_SIDE)),
+    )
 }
 
 /**

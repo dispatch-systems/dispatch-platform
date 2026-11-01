@@ -89,9 +89,9 @@ class Sender(
             val parts = telephony { line.divide(send.body) }.getOrElse { return notSent(send) }
             hand(send, parts.size) { line.sms(send, parts) }
         } else {
-            val most = telephony { line.mmsMost() }.getOrElse { return notSent(send) }
+            val limits = telephony { line.mmsLimits() }.getOrElse { return notSent(send) }
                 ?: return sends.failed(send, Failure.MMS_OFF, now())
-            val pdu = compose(paired, key, most, text, send) ?: return
+            val pdu = compose(paired, key, limits, text, send) ?: return
             if (!hand(send, 1) { line.mms(send, pdu) }) pdu.delete()
         }
     }
@@ -126,9 +126,9 @@ class Sender(
 
     /**
      * The file of [text]'s picture message, its files fetched from Dispatch first and its pictures
-     * scaled to the carrier's largest message; null when it failed.
+     * scaled to the carrier's [limits]; null when it failed.
      */
-    private suspend fun compose(paired: Paired, key: String, most: Int, text: OutgoingText, send: Send): File? {
+    private suspend fun compose(paired: Paired, key: String, limits: MmsLimits, text: OutgoingText, send: Send): File? {
         folder.mkdirs()
         val fetched = text.files.indices.map { File(folder, "${send.id}-${send.attempt}-$it") }
         try {
@@ -142,7 +142,7 @@ class Sender(
             }
             val attachments = text.files.zip(fetched) { file, into -> Attachment(file.name, file.mime, into) }
             val at = now()
-            val bytes = message.compose(send.number, send.body, attachments, most, "T${at.toString(HEX)}", at / MS_PER_SECOND)
+            val bytes = message.compose(send.number, send.body, attachments, limits, "T${at.toString(HEX)}", at / MS_PER_SECOND)
                 ?: return null.also { sends.failed(send, Failure.TOO_LARGE, now()) }
             return File(folder, pduName(send.id, send.attempt)).apply { writeBytes(bytes) }
         } finally {

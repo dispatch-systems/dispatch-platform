@@ -129,7 +129,7 @@ class FakeProvider : Provider {
 /** Android's texting service, sending nothing: each text handed to it is kept in [handed]. */
 class FakeRadio : Radio {
     var allowed = true
-    var mmsMost: Int? = 300 * 1024
+    var mmsLimits: MmsLimits? = MmsLimits(300 * 1024, Size(1920, 1920))
 
     /** How the carrier splits a text: in parts of this many characters. */
     var partLength = 160
@@ -152,9 +152,9 @@ class FakeRadio : Radio {
         return object : Line {
             override fun divide(body: String) = body.chunked(partLength).ifEmpty { listOf("") }
 
-            override fun mmsMost(): Int? {
+            override fun mmsLimits(): MmsLimits? {
                 failing?.let { throw it }
-                return mmsMost
+                return mmsLimits
             }
 
             override fun sms(send: Send, parts: List<String>) {
@@ -167,6 +167,24 @@ class FakeRadio : Radio {
                 pictureMessages += send to pdu.readBytes()
             }
         }
+    }
+}
+
+/**
+ * Pictures as Android would scale them, each [sizes] says, by [shrink]: what each shrinking was
+ * asked is kept in [asked].
+ */
+class FakePictures(
+    private val sizes: Map<String, Size> = emptyMap(),
+    private val shrink: (most: Int) -> ByteArray? = { ByteArray(it / 2) },
+) : Pictures {
+    val asked = mutableListOf<Triple<String, Int, Size>>()
+
+    override fun size(file: File) = sizes[file.name]
+
+    override fun shrink(file: File, most: Int, within: Size): ByteArray? {
+        asked += Triple(file.name, most, within)
+        return shrink(most)
     }
 }
 

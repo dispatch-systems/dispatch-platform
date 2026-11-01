@@ -22,8 +22,8 @@ interface Line {
     /** [body] in the parts the carrier sends it in. */
     fun divide(body: String): List<String>
 
-    /** The largest picture message the carrier takes, in bytes, or null when it takes none. */
-    fun mmsMost(): Int?
+    /** What the carrier takes of a picture message, or null when it takes none. */
+    fun mmsLimits(): MmsLimits?
 
     /** Hands Android [parts] of [send] to send as a text, each reported sent and delivered. */
     fun sms(send: Send, parts: List<String>)

@@ -15,18 +15,22 @@ import java.io.IOException
 
 /** [Pictures] by Android's own decoders, turned upright as the camera that took them said. */
 object PhonePictures : Pictures {
-    override fun shrink(file: File, most: Int): ByteArray? {
+    override fun size(file: File): Size? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(file.path, bounds)
-        val longest = maxOf(bounds.outWidth, bounds.outHeight)
-        if (longest <= 0) return null
+        return Size(bounds.outWidth, bounds.outHeight).takeIf { it.width > 0 && it.height > 0 }
+    }
+
+    override fun shrink(file: File, most: Int, within: Size): ByteArray? {
+        val size = size(file) ?: return null
+        val longest = minOf(size.longestWithin(within), LARGEST_SIDE)
         // Decoded no larger than it's sent: a phone's photo is far larger, and its pixels many.
         var sample = 1
-        while (longest / (sample * 2) >= LARGEST_SIDE) sample *= 2
+        while (maxOf(size.width, size.height) / (sample * 2) >= longest) sample *= 2
         val decoded = BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return null
         val picture = upright(decoded, rotation(file))
         return try {
-            fit(most, maxOf(picture.width, picture.height)) { side, quality -> jpeg(picture, side, quality) }
+            fit(most, minOf(longest, maxOf(picture.width, picture.height))) { side, quality -> jpeg(picture, side, quality) }
         } finally {
             picture.recycle()
         }

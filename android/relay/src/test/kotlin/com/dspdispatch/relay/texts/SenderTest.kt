@@ -31,7 +31,7 @@ class SenderTest {
     private val dispatch = Dispatch(OkHttpClient())
     private val statuses = Statuses(dispatch, sends)
     private val folder = Files.createTempDirectory("sending").toFile()
-    private val shrunk = mutableListOf<Int>()
+    private val pictures = FakePictures { ByteArray(it) }
     private var clock = 1_793_041_515_000L
     private lateinit var paired: Paired
 
@@ -39,7 +39,7 @@ class SenderTest {
         dispatch,
         sends,
         radio,
-        PictureMessage { _, most -> ByteArray(most).also { shrunk += most } },
+        PictureMessage(pictures),
         statuses,
         folder,
     ) { clock }
@@ -93,7 +93,7 @@ class SenderTest {
         assertEquals("text_1", send.id)
         assertTrue("the picture, whole", pdu.contains(picture))
         assertTrue("the words", pdu.contains("Door".toByteArray()))
-        assertTrue(shrunk.isEmpty())
+        assertTrue(pictures.asked.isEmpty())
         // Only the message waits for Android: the picture's bytes are gone.
         assertEquals(listOf("text_1-1.pdu"), folder.list()!!.toList())
         sender().heard(Heard("text_1", 1, 0, Event.SENT, null, "mms-7", clock))
@@ -102,13 +102,13 @@ class SenderTest {
 
     @Test
     fun scalesPicturesToTheCarriersLargestMessage() = runTest {
-        radio.mmsMost = 4_000
+        radio.mmsLimits = MmsLimits(4_000, Size(640, 480))
         server.enqueue(MockResponse.Builder().code(200).body(Buffer().write(ByteArray(10_000))).build())
         sender().send(paired, KEY, Outbox(listOf(text("text_1", 1, "Door", OutgoingFile("file_1", "door.png", "image/png", 10_000)))))
         val pdu = radio.pictureMessages.single().second
         assertTrue(pdu.size <= 4_000)
         assertTrue(pdu.contains("door.jpg".toByteArray()) && pdu.contains("image/jpeg".toByteArray()))
-        assertEquals(1, shrunk.size)
+        assertEquals(Size(640, 480), pictures.asked.single().third)
     }
 
     @Test
@@ -128,10 +128,10 @@ class SenderTest {
     fun failsWhatCantGo() = runTest {
         server.enqueue(json(404, """{"error":"phones_file_not_found"}"""))
         sender().send(paired, KEY, Outbox(listOf(text("gone", 1, "", OutgoingFile("file_1", "door.jpg", "image/jpeg", 3)))))
-        radio.mmsMost = null
+        radio.mmsLimits = null
         sender().send(paired, KEY, Outbox(listOf(text("mms_off", 1, "", OutgoingFile("file_2", "door.jpg", "image/jpeg", 3)))))
         server.enqueue(MockResponse.Builder().code(200).body(Buffer().write(ByteArray(2_000))).build())
-        radio.mmsMost = 1_500
+        radio.mmsLimits = MmsLimits(1_500, Size(640, 480))
         sender().send(paired, KEY, Outbox(listOf(text("too_large", 1, "", OutgoingFile("file_3", "notes.pdf", "application/pdf", 2_000)))))
         radio.refusing = IllegalArgumentException("Invalid destinationAddress")
         sender().send(paired, KEY, Outbox(listOf(text("refused", 1, "Hi"))))

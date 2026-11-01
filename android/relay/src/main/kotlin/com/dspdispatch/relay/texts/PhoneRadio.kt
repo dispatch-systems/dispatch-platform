@@ -36,7 +36,7 @@ class PhoneRadio(private val context: Context) : Radio {
 private class PhoneLine(private val context: Context, private val manager: SmsManager) : Line {
     override fun divide(body: String): List<String> = manager.divideMessage(body)
 
-    override fun mmsMost(): Int? = mmsMost(config())
+    override fun mmsLimits(): MmsLimits? = mmsLimits(config())
 
     override fun sms(send: Send, parts: List<String>) {
         val sent = parts.indices.map { SendResults.sent(context, send, it) }
