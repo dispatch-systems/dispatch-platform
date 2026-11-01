@@ -26,7 +26,8 @@ class Texts(private val context: Context, dispatch: Dispatch) {
     private val queue = Room.databaseBuilder<TextsDatabase>(context, TextsDatabase.NAME).build().queue()
     private val provider = PhoneProvider(context.contentResolver)
     private val inbox = Inbox(provider, queue, Own.NONE)
-    private val reporter = Reporter(dispatch, queue, provider)
+    private val texting = Texting { textingAllowed(context) }
+    private val reporter = Reporter(dispatch, queue, provider, texting)
 
     /** Today's texts as they change, a new day from each midnight. */
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -47,8 +48,7 @@ class Texts(private val context: Context, dispatch: Dispatch) {
         inbox.begin(paired.phoneId, paired.at)
         val wake = Channel<Unit>(Channel.CONFLATED)
         launch { reporter.run(paired.site, key, wake) }
-        // The setup asks for Texting; the relay runs from pairing, so it waits for it here.
-        while (!textingAllowed(context)) delay(ALLOWED_CHECK_MS)
+        texting.await()
         changes(context).collect {
             // The texting app writes a text in steps: read once it's done.
             delay(SETTLE_MS)
@@ -64,7 +64,6 @@ class Texts(private val context: Context, dispatch: Dispatch) {
     }
 
     private companion object {
-        const val ALLOWED_CHECK_MS = 5_000L
         const val SETTLE_MS = 1_000L
     }
 }

@@ -4,6 +4,7 @@ import com.dspdispatch.relay.connection.backoff
 import com.dspdispatch.relay.dispatch.Dispatch
 import com.dspdispatch.relay.dispatch.Refusal
 import java.io.IOException
+import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.delay
@@ -12,9 +13,16 @@ import kotlinx.serialization.SerializationException
 
 /**
  * Reports what the [queue] holds to the phone's DSP: its texts in batches, each until Dispatch
- * answers it, then each file's bytes, streamed from the [provider].
+ * answers it, then each file's bytes, streamed from the [provider] while [texting] allows it,
+ * the provider read on [io].
  */
-class Reporter(private val dispatch: Dispatch, private val queue: Queue, private val provider: Provider) {
+class Reporter(
+    private val dispatch: Dispatch,
+    private val queue: Queue,
+    private val provider: Provider,
+    private val texting: Texting,
+    private val io: CoroutineContext = Dispatchers.IO,
+) {
     // A report Dispatch refuses as it is goes again halved, until the text it refuses is alone.
     private var most = MOST_TEXTS
 
@@ -34,6 +42,9 @@ class Reporter(private val dispatch: Dispatch, private val queue: Queue, private
                 delay(backoff(++failures))
             } catch (_: SerializationException) {
                 // An answer that isn't Dispatch's, as from something between the phone and it.
+                delay(backoff(++failures))
+            } catch (_: SecurityException) {
+                // Texting was turned off as a file was read: it stays, sent once Texting is back.
                 delay(backoff(++failures))
             }
         }
@@ -55,21 +66,29 @@ class Reporter(private val dispatch: Dispatch, private val queue: Queue, private
         return true
     }
 
-    /** Sends the bytes of the oldest file Dispatch waits for, if any. */
+    /** Sends the bytes of the oldest file Dispatch waits for, if any, once Texting lets it read them. */
     internal suspend fun upload(site: String, key: String): Boolean {
         val file = queue.upload() ?: return false
         val id = checkNotNull(file.dispatchId)
+        texting.await()
         // Measured as it's sent: the part may have changed since it was read, and Dispatch fails
         // an upload holding fewer bytes than it said.
-        val size = withContext(Dispatchers.IO) { provider.size(file.uri) }
+        val size = withContext(io) { provider.size(file.uri) }
         if (size != null) {
             try {
-                dispatch.file(site, key, id, size) { provider.open(file.uri) }
+                dispatch.file(site, key, id, size) { opened(file.uri) }
             } catch (refusal: Refusal) {
                 if (refusal.code != Refusal.FILE_NOT_FOUND && refusal.code != Refusal.UPLOAD_TOO_LARGE) throw refusal
             }
         }
         queue.uploaded(file.id)
         return true
+    }
+
+    // Opened on the network's own thread, where anything but an IOException ends the app.
+    private fun opened(uri: String) = try {
+        provider.open(uri)
+    } catch (lost: SecurityException) {
+        throw IOException("Texting was turned off", lost)
     }
 }

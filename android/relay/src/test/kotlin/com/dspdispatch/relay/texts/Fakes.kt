@@ -65,11 +65,36 @@ class FakeProvider : Provider {
     /** Rows the texting app is still writing: there, but not read whole yet. */
     val writing = mutableSetOf<Row>()
 
+    /** Whether the phone lets the app read its texts: reading them while it doesn't fails, as on a phone. */
+    var allowed = true
+
+    /** Whether Texting is turned off as the next read starts, just after the app saw it on. */
+    var turnedOffAtRead = false
+
+    /** How many reads failed as the phone didn't allow them. */
+    var refused = 0
+
     override fun rows(since: Long) = (messages.map(Message::row) + writing).filter { it.at >= since }.sortedBy(Row::at)
 
     override fun read(row: Row) = messages.firstOrNull { it.row == row }
 
-    override fun size(uri: String) = bytes[uri]?.size?.toLong()
+    override fun size(uri: String): Long? {
+        readable()
+        return bytes[uri]?.size?.toLong()
+    }
 
-    override fun open(uri: String): InputStream = ByteArrayInputStream(bytes[uri] ?: throw FileNotFoundException(uri))
+    override fun open(uri: String): InputStream {
+        readable()
+        return ByteArrayInputStream(bytes[uri] ?: throw FileNotFoundException(uri))
+    }
+
+    private fun readable() {
+        if (turnedOffAtRead) {
+            turnedOffAtRead = false
+            allowed = false
+        }
+        if (allowed) return
+        refused++
+        throw SecurityException("Permission Denial: reading the texting provider")
+    }
 }
