@@ -7,6 +7,7 @@ import android.provider.Telephony.BaseMmsColumns
 import android.provider.Telephony.Mms
 import android.provider.Telephony.Sms
 import android.provider.Telephony.TextBasedSmsColumns
+import androidx.core.net.toUri
 import com.dspdispatch.relay.dispatch.Direction
 import java.io.FileNotFoundException
 import java.io.InputStream
@@ -21,15 +22,15 @@ class PhoneProvider(private val resolver: ContentResolver) : Provider {
     }
 
     override fun size(uri: String): Long? = try {
-        resolver.openAssetFileDescriptor(Uri.parse(uri), "r")?.use { file ->
-            file.length.takeIf { it >= 0 } ?: resolver.openInputStream(Uri.parse(uri))?.use(::count)
+        resolver.openAssetFileDescriptor(uri.toUri(), "r")?.use { file ->
+            file.length.takeIf { it >= 0 } ?: resolver.openInputStream(uri.toUri())?.use(::count)
         }
     } catch (_: FileNotFoundException) {
         null
     }
 
     override fun open(uri: String): InputStream =
-        resolver.openInputStream(Uri.parse(uri)) ?: throw FileNotFoundException(uri)
+        resolver.openInputStream(uri.toUri()) ?: throw FileNotFoundException(uri)
 
     private fun smsRows(since: Long): List<Row> = resolver.query(
         Sms.CONTENT_URI,
@@ -134,7 +135,7 @@ class PhoneProvider(private val resolver: ContentResolver) : Provider {
         const val BYTES = "application/octet-stream"
 
         /** Picture messages' parts: `Telephony.Mms.Part.CONTENT_URI`, there only from Android 10. */
-        val PARTS: Uri = Uri.parse("content://mms/part")
+        val PARTS: Uri = "content://mms/part".toUri()
 
         fun count(stream: InputStream): Long {
             val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
