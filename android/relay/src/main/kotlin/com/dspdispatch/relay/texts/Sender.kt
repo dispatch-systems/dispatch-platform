@@ -90,18 +90,23 @@ class Sender(
             hand(send, parts.size) { line.sms(send, parts) }
         } else {
             val pdu = compose(paired, key, line, text, send) ?: return
-            hand(send, 1) { line.mms(send, pdu) }
+            if (!hand(send, 1) { line.mms(send, pdu) }) pdu.delete()
         }
     }
 
-    /** Hands [send] to Android in [parts] parts by [go], kept as handed first, so it's never sent twice. */
-    private suspend fun hand(send: Send, parts: Int, go: () -> Unit) {
+    /**
+     * Hands [send] to Android in [parts] parts by [go], kept as handed first, so it's never sent
+     * twice; answers whether Android took it.
+     */
+    private suspend fun hand(send: Send, parts: Int, go: () -> Unit): Boolean {
         sends.handed(send, parts, now())
-        try {
+        return try {
             go()
+            true
         } catch (_: RuntimeException) {
             // Android refused it as it was handed, as a number it can't send to, so it never went.
             sends.failed(send, Failure.NOT_SENT, now())
+            false
         }
     }
 

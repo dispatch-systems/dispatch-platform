@@ -59,11 +59,13 @@ class Dispatch(http: OkHttpClient) {
      * Writes into [to] the bytes of the file Dispatch knows as [id], a picture of a text in the
      * outbox, streamed as they come: it may be 20 MiB.
      */
-    suspend fun download(site: String, key: String, id: String, to: File) = withContext(Dispatchers.IO) {
+    suspend fun download(site: String, key: String, id: String, to: File) {
         val request = Request.Builder().url(address(site, "files/$id")).header(AUTHORIZATION, bearer(key)).build()
-        http.newCall(request).await().use { response ->
-            if (!response.isSuccessful) throw refusal(response, response.body.string())
-            to.sink().buffer().use { it.writeAll(response.body.source()) }
+        withContext(Dispatchers.IO) {
+            http.newCall(request).await().use { response ->
+                if (!response.isSuccessful) throw refusal(response, response.body.string())
+                to.sink().buffer().use { it.writeAll(response.body.source()) }
+            }
         }
     }
 

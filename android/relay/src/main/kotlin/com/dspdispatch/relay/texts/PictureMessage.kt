@@ -48,7 +48,7 @@ class PictureMessage(private val pictures: Pictures) {
                 part.mime.startsWith(IMAGE) -> "img"
                 part.mime.startsWith("video/") -> "video"
                 part.mime.startsWith("audio/") -> "audio"
-                part.mime.startsWith("text/") -> "text"
+                part.mime == TEXT -> "text"
                 else -> "ref"
             }
             val region = if (element == "text") "Text" else "Image"
