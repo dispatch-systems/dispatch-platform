@@ -5,7 +5,8 @@ import com.dspdispatch.relay.dispatch.Direction
 /**
  * Reads the phone's texts into the [queue]: each received, and each sent from its texting app but
  * the app's [own], once, from when the phone paired on. Each read goes back over the texts written
- * since the last one, so a text written while the app was stopped is read at its next start.
+ * since the last one, so a text written while the app was stopped is read at its next start, and
+ * over each not whole the last time.
  */
 class Inbox(
     private val provider: Provider,
@@ -22,31 +23,54 @@ class Inbox(
         queue.begin(Mark(phone, paired, paired))
     }
 
-    /** Reads the texts written since the last read, keeping each new one to report. */
-    suspend fun read() {
-        val mark = queue.mark() ?: return
+    /**
+     * Reads the texts written since the last read, and those not whole then, keeping each new one
+     * to report. Whether each was whole: one that wasn't is read again by the next read, for
+     * [UNREAD_MS] at most.
+     */
+    suspend fun read(): Boolean {
+        val mark = queue.mark() ?: return true
         val started = now()
         // A text may come into the provider a while after its time: one sent waits to go, and a
         // picture message to be downloaded. Looking back a while finds those, and a row whose ID
         // was used again after one before it was deleted.
         val since = maxOf(mark.paired, mark.scanned - LOOK_BACK_MS)
         val seen = queue.seen(since).toHashSet()
-        for (row in provider.rows(since)) {
+        val unread = queue.unread()
+        val found = unread.associate { it.key to it.found }
+        var whole = true
+        for (row in (unread.map(Unread::row) + provider.rows(since)).distinctBy(Row::key)) {
             if (row.key in seen) continue
-            if (row.direction == Direction.OUT && own.sent(row)) {
-                queue.read(Seen(row.key, row.at, null), emptyList(), emptyList())
-                continue
-            }
-            val message = when (val reading = provider.read(row)) {
-                is Reading.Whole -> reading.message
-                // Not marked read: a later read goes over it again.
-                Reading.Later, Reading.Gone -> continue
-            }
-            val texts = reports(message)
-            val reported = Seen(row.key, row.at, row.direction.takeIf { texts.isNotEmpty() })
-            queue.read(reported, texts.map { it.first }, texts.flatMap { it.second })
+            whole = read(row, found[row.key] ?: started, started) && whole
         }
         queue.scanned(started, since)
+        return whole
+    }
+
+    /** Reads [row], first [found] unread then, at [now]: whether it's done with. */
+    private suspend fun read(row: Row, found: Long, now: Long): Boolean {
+        if (row.direction == Direction.OUT && own.sent(row)) return left(row)
+        return when (val reading = provider.read(row)) {
+            is Reading.Whole -> {
+                val texts = reports(reading.message)
+                val reported = Seen(row.key, row.at, row.direction.takeIf { texts.isNotEmpty() })
+                queue.read(reported, texts.map { it.first }, texts.flatMap { it.second })
+                true
+            }
+            Reading.Gone -> left(row)
+            Reading.Later -> if (now - found >= UNREAD_MS) {
+                left(row)
+            } else {
+                queue.later(Unread(row, found))
+                false
+            }
+        }
+    }
+
+    /** Keeps [row] as read, never reported. */
+    private suspend fun left(row: Row): Boolean {
+        queue.read(Seen(row.key, row.at, null), emptyList(), emptyList())
+        return true
     }
 
     /**
@@ -72,6 +96,9 @@ class Inbox(
     companion object {
         /** How long after its time a text may still come into the provider. */
         const val LOOK_BACK_MS = 24 * 60 * 60 * 1000L
+
+        /** How long a text not whole is read again, from when it was found, before it's left. */
+        const val UNREAD_MS = 24 * 60 * 60 * 1000L
 
         // What Dispatch takes of a text (`LIMITS`, `NAME_MOST`, `MIME_MOST`), in characters as it
         // counts them, each code point one.

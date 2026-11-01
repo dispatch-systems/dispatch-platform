@@ -10,7 +10,7 @@ import androidx.room3.Transaction
 import kotlinx.coroutines.flow.Flow
 
 /** The texts queue's storage, in the app's own: nothing of it leaves the phone in a backup. */
-@Database(entities = [Mark::class, Seen::class, Waiting::class, WaitingFile::class], version = 1)
+@Database(entities = [Mark::class, Seen::class, Unread::class, Waiting::class, WaitingFile::class], version = 1)
 abstract class TextsDatabase : RoomDatabase() {
     abstract fun queue(): StoredQueue
 
@@ -32,6 +32,7 @@ abstract class StoredQueue : Queue {
     override suspend fun begin(mark: Mark) {
         clearMark()
         clearSeen()
+        clearUnread()
         clearTexts()
         clearFiles()
         keep(mark)
@@ -43,9 +44,16 @@ abstract class StoredQueue : Queue {
     @Transaction
     override suspend fun read(row: Seen, texts: List<Waiting>, files: List<WaitingFile>) {
         keep(row)
+        leaveUnread(row.row)
         keepTexts(texts)
         keepFiles(files)
     }
+
+    @Query("SELECT * FROM unread")
+    abstract override suspend fun unread(): List<Unread>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    abstract override suspend fun later(row: Unread)
 
     @Transaction
     override suspend fun scanned(at: Long, forget: Long) {
@@ -122,11 +130,17 @@ abstract class StoredQueue : Queue {
     @Query("DELETE FROM files WHERE clientId = :clientId")
     protected abstract suspend fun leaveFiles(clientId: String)
 
+    @Query("DELETE FROM unread WHERE `key` = :key")
+    protected abstract suspend fun leaveUnread(key: String)
+
     @Query("DELETE FROM mark")
     protected abstract suspend fun clearMark()
 
     @Query("DELETE FROM seen")
     protected abstract suspend fun clearSeen()
+
+    @Query("DELETE FROM unread")
+    protected abstract suspend fun clearUnread()
 
     @Query("DELETE FROM texts")
     protected abstract suspend fun clearTexts()

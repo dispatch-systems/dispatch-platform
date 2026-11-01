@@ -8,6 +8,7 @@ import java.io.InputStream
 class MemoryQueue : Queue {
     var mark: Mark? = null
     val seen = mutableMapOf<String, Seen>()
+    val unread = mutableMapOf<String, Unread>()
     val texts = mutableMapOf<String, Waiting>()
     val files = mutableListOf<WaitingFile>()
     private var nextFile = 1L
@@ -16,6 +17,7 @@ class MemoryQueue : Queue {
 
     override suspend fun begin(mark: Mark) {
         seen.clear()
+        unread.clear()
         texts.clear()
         files.clear()
         this.mark = mark
@@ -25,8 +27,15 @@ class MemoryQueue : Queue {
 
     override suspend fun read(row: Seen, texts: List<Waiting>, files: List<WaitingFile>) {
         seen[row.row] = row
+        unread.remove(row.row)
         texts.forEach { this.texts[it.clientId] = it }
         files.forEach { this.files += it.copy(id = nextFile++) }
+    }
+
+    override suspend fun unread() = unread.values.toList()
+
+    override suspend fun later(row: Unread) {
+        unread.putIfAbsent(row.key, row)
     }
 
     override suspend fun scanned(at: Long, forget: Long) {

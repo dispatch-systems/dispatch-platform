@@ -3,6 +3,7 @@ package com.dspdispatch.relay.texts
 import com.dspdispatch.relay.dispatch.Direction
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -93,6 +94,16 @@ class InboxTest {
             listOf(WaitingFile("mms-5-${PAIRED + 10}", 0, "content://mms/part/9", "door.jpg", "image/jpeg", 48_213, id = 1)),
             queue.files,
         )
+    }
+
+    @Test
+    fun leavesAPictureMessageNeverWritten() = runTest {
+        inbox.begin("phone_1", PAIRED)
+        provider.writing += Row(Table.MMS, 5, PAIRED + 10, Direction.IN)
+        assertFalse(inbox.read())
+        clock += Inbox.UNREAD_MS
+        assertTrue(inbox.read())
+        assertTrue(queue.unread.isEmpty() && queue.texts.isEmpty())
     }
 
     @Test

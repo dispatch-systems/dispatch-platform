@@ -25,6 +25,13 @@ data class Mark(val phone: String, val paired: Long, val scanned: Long, @Primary
 @Entity(tableName = "seen")
 data class Seen(@PrimaryKey val row: String, val at: Long, val direction: Direction?)
 
+/**
+ * A provider row not read whole yet, as a picture message still being written or the provider
+ * away a moment: read again, by itself, from when it was [found] until it is.
+ */
+@Entity(tableName = "unread")
+data class Unread(@Embedded val row: Row, val found: Long, @PrimaryKey val key: String = row.key)
+
 /** A text read and not yet answered by Dispatch, as it's reported. */
 @Entity(tableName = "texts")
 data class Waiting(
@@ -72,8 +79,14 @@ interface Queue {
     /** The keys of the rows read that were written at or after [since]. */
     suspend fun seen(since: Long): List<String>
 
-    /** Keeps [row] as read, and the [texts] it's reported as with their [files], at once. */
+    /** Keeps [row] as read, and the [texts] it's reported as with their [files], at once: no longer [unread]. */
     suspend fun read(row: Seen, texts: List<Waiting>, files: List<WaitingFile>)
+
+    /** The rows to read again, not whole as they were read. */
+    suspend fun unread(): List<Unread>
+
+    /** Keeps [row] to read again, as found the first time it was. */
+    suspend fun later(row: Unread)
 
     /** The provider was read through [at]; rows written before [forget] can't come up again. */
     suspend fun scanned(at: Long, forget: Long)

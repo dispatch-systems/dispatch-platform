@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "7c431c630238f57057874a61fa6e5e2a",
+    "identityHash": "34176653e9e21e9353f6587aab45db3a",
     "entities": [
       {
         "tableName": "mark",
@@ -35,7 +35,9 @@
         ],
         "primaryKey": {
           "autoGenerate": false,
-          "columnNames": ["id"]
+          "columnNames": [
+            "id"
+          ]
         }
       },
       {
@@ -62,7 +64,57 @@
         ],
         "primaryKey": {
           "autoGenerate": false,
-          "columnNames": ["row"]
+          "columnNames": [
+            "row"
+          ]
+        }
+      },
+      {
+        "tableName": "unread",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`found` INTEGER NOT NULL, `key` TEXT NOT NULL, `table` TEXT NOT NULL, `id` INTEGER NOT NULL, `at` INTEGER NOT NULL, `direction` TEXT NOT NULL, PRIMARY KEY(`key`))",
+        "fields": [
+          {
+            "fieldPath": "found",
+            "columnName": "found",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "key",
+            "columnName": "key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "row.table",
+            "columnName": "table",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "row.id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "row.at",
+            "columnName": "at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "row.direction",
+            "columnName": "direction",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "key"
+          ]
         }
       },
       {
@@ -102,7 +154,9 @@
         ],
         "primaryKey": {
           "autoGenerate": false,
-          "columnNames": ["clientId"]
+          "columnNames": [
+            "clientId"
+          ]
         }
       },
       {
@@ -159,20 +213,26 @@
         ],
         "primaryKey": {
           "autoGenerate": true,
-          "columnNames": ["id"]
+          "columnNames": [
+            "id"
+          ]
         },
         "indices": [
           {
             "name": "index_files_clientId",
             "unique": false,
-            "columnNames": ["clientId"],
+            "columnNames": [
+              "clientId"
+            ],
             "orders": [],
             "createSql": "CREATE INDEX IF NOT EXISTS `index_files_clientId` ON `${TABLE_NAME}` (`clientId`)"
           },
           {
             "name": "index_files_dispatchId",
             "unique": false,
-            "columnNames": ["dispatchId"],
+            "columnNames": [
+              "dispatchId"
+            ],
             "orders": [],
             "createSql": "CREATE INDEX IF NOT EXISTS `index_files_dispatchId` ON `${TABLE_NAME}` (`dispatchId`)"
           }
@@ -181,7 +241,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '7c431c630238f57057874a61fa6e5e2a')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '34176653e9e21e9353f6587aab45db3a')"
     ]
   }
 }
