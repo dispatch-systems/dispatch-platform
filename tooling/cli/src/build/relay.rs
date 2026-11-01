@@ -113,6 +113,9 @@ fn file_name(name: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
 }
 
+/// How curl says a download was over `--max-filesize`: its exit code 63.
+const CURL_TOO_LARGE: &str = "curl: (63)";
+
 /// An APK the build couldn't download, as offline: a debug build goes on without the app.
 #[derive(Debug)]
 struct Unavailable(String);
@@ -255,7 +258,18 @@ fn fetched(cache: &Path, release: &Release, apk: &Apk, runner: &dyn Runner) -> R
             None,
             DOWNLOAD_SECONDS,
         )
-        .map_err(|error| Unavailable(format!("Couldn't download {url}: {error}")))?;
+        .map_err(|error| -> Box<dyn std::error::Error + Send + Sync> {
+            // An APK over the most a release may name is unlike its release, not unavailable.
+            if error.to_string().contains(CURL_TOO_LARGE) {
+                format!(
+                    "{} of relay-v{} is larger than {RELEASE} allows",
+                    apk.asset, release.version
+                )
+                .into()
+            } else {
+                Unavailable(format!("Couldn't download {url}: {error}")).into()
+            }
+        })?;
     require(
         alike(arriving.as_file_mut(), apk),
         &format!(

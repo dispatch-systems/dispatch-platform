@@ -44,6 +44,8 @@ struct Checkout {
     tampered: Option<&'static [u8]>,
     /// Whether every download fails, as offline.
     offline: bool,
+    /// Whether every download is over the most a release may name, as curl refuses it.
+    oversized: bool,
     /// What happens while the second APK downloads, once.
     meanwhile: RefCell<Option<Box<dyn FnOnce()>>>,
 }
@@ -75,6 +77,7 @@ impl Checkout {
             fetched: RefCell::new(Vec::new()),
             tampered: None,
             offline: false,
+            oversized: false,
             meanwhile: RefCell::new(None),
         }
     }
@@ -96,6 +99,9 @@ impl Runner for Checkout {
         match args[0] {
             "git" => Ok(self.git.to_str().unwrap().as_bytes().to_vec()),
             "curl" if self.offline => Err("Could not resolve host: github.com".into()),
+            "curl" if self.oversized => {
+                Err("curl --fail --silent failed: curl: (63) Maximum file size exceeded".into())
+            }
             "curl" => {
                 let url = *args.last().unwrap();
                 let output = args[args.iter().position(|a| *a == "--output").unwrap() + 1];
@@ -220,6 +226,13 @@ fn a_debug_build_that_cant_download_goes_on_without_the_app_and_a_release_build_
     // A release unlike the format still fails it.
     checkout.release(&next().replace("1.5.0", "1.5"));
     assert!(pack(&checkout.root, &checkout, false).is_err());
+
+    // And so does an APK larger than any release may name, which curl refuses to download.
+    checkout.offline = false;
+    checkout.oversized = true;
+    checkout.release(&next());
+    let refused = pack(&checkout.root, &checkout, false).unwrap_err();
+    assert!(refused.to_string().contains("is larger than"), "{refused}");
 }
 
 #[test]
