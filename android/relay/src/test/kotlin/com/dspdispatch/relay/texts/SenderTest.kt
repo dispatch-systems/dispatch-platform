@@ -192,144 +192,83 @@ class SenderTest {
     }
 
     @Test
-    fun settlesATextAndroidNeverSaidMoreOfByItsRowInSent() = runTest {
-        val texts = listOf(text("in_sent", 1, "On my way"), text("in_failed", 1, "Gate code?"), text("typed", 1, "Door"))
-        sender().send(paired, KEY, Outbox(texts))
-        // Android's word of each lost, and the app restarted before the inbox read their rows: the
-        // last's words sent from the phone's texting app.
-        val failed = sms(8, "Gate code?")
-        provider.messages += listOf(sms(7, "On my way"), failed, sms(9, "Door", TEXTING_APP))
-        provider.failed += failed.row
-        clock += RESULT_WAIT_MS + 1
-        sender().send(paired, KEY, Outbox(emptyList()))
-        assertEquals(
-            setOf(Told("in_sent", 1, SendStatus.SENT, clock)) +
-                listOf("in_failed", "typed").map { Told(it, 1, SendStatus.FAILED, clock, Failure.NO_RESULT) },
-            sends.statuses(10).toSet(),
-        )
-    }
-
-    @Test
-    fun failsATextWhoseRowIsInFailedThoughItsLastPartSaidItWent() = runTest {
-        radio.partLength = 7
-        val sender = sender()
-        sender.send(paired, KEY, Outbox(listOf(text("text_1", 1, "Gate code 4412"))))
-        // Its first part failed, Android's word of it lost; its last went, naming the row Android
-        // wrote the whole text to, in Failed.
-        val row = sms(7, "Gate code 4412")
-        provider.messages += row
-        provider.failed += row.row
-        val heard = Heard("text_1", 1, 1, Event.SENT, null, null, clock)
-        sender.heard(heard.copy(row = own.row(heard, "content://sms/sent/7")))
-        assertTrue("its row known", sends.wrote(row.row.key))
-        clock += RESULT_WAIT_MS + 1
-        sender.send(paired, KEY, Outbox(emptyList()))
-        assertEquals(listOf(Told("text_1", 1, SendStatus.FAILED, clock, Failure.NO_RESULT)), sends.statuses(10))
-    }
-
-    @Test
-    fun settlesATextSentInPartsApartOnlyByEveryPartsRow() = runTest {
-        radio.partLength = 7
-        val sender = sender()
-        val texts = listOf(text("failed", 1, "Gate code 4412"), text("missing", 1, "Door code 5521"), text("sent", 1, "Dock door 7"))
-        sender.send(paired, KEY, Outbox(texts))
-        // Android sent each part as a text of its own, writing each to a row of its own: each first
-        // part's word heard, each last's lost.
-        val firsts = listOf(sms(7, "Gate co"), sms(9, "Door co"), sms(10, "Dock do"))
-        provider.messages += firsts
-        for ((text, row) in texts.zip(firsts)) {
-            val heard = Heard(text.id, 1, 0, Event.SENT, null, null, clock)
-            sender.heard(heard.copy(row = own.row(heard, "content://sms/sent/${row.row.id}")))
-        }
-        val failed = sms(8, "de 4412")
-        val sent = sms(11, "or 7")
-        provider.messages += listOf(failed, sent)
-        provider.failed += failed.row
-        clock += RESULT_WAIT_MS + 1
-        sender.send(paired, KEY, Outbox(emptyList()))
-        assertEquals(
-            setOf(Told("sent", 1, SendStatus.SENT, clock)) +
-                listOf("failed", "missing").map { Told(it, 1, SendStatus.FAILED, clock, Failure.NO_RESULT) },
-            sends.statuses(10).toSet(),
-        )
-        assertTrue("its last part's row taken", sends.wrote(sent.row.key))
-    }
-
-    @Test
-    fun settlesATextAndroidSaysItSentJoinedByItsOneRow() = runTest {
-        radio.partLength = 7
-        val sender = sender()
-        sender.send(paired, KEY, Outbox(listOf(text("text_1", 1, "Café door 4412"))))
-        // Its first part's word lost; its last said it went joined, naming the row Android wrote the
-        // whole text to, its words as a phone forcing 7-bit texts sends them.
-        val row = sms(7, "Cafe door 4412")
-        provider.messages += row
-        val heard = Heard("text_1", 1, 1, Event.SENT, null, null, clock, joined = true)
-        sender.heard(heard.copy(row = own.row(heard, "content://sms/sent/7")))
-        clock += RESULT_WAIT_MS + 1
-        sender.send(paired, KEY, Outbox(emptyList()))
-        assertEquals(listOf(Told("text_1", 1, SendStatus.SENT, clock)), sends.statuses(10))
-    }
-
-    @Test
-    fun leavesLikeTextsForTheInboxToPlaceBeforeSettlingThem() = runTest {
-        sender().send(paired, KEY, Outbox(listOf(text("first", 1, "On my way"))))
-        clock += 1_000
-        sender().send(paired, KEY, Outbox(listOf(text("second", 1, "On my way"))))
-        // Android's word of both lost, and the app restarted before the inbox read their rows: one
-        // is in Sent, the other in Failed, and nothing says which is which.
-        val sent = sms(7, "On my way")
-        val failed = sms(8, "On my way")
-        provider.messages += listOf(sent, failed)
-        provider.failed += failed.row
-        clock += RESULT_WAIT_MS + 1
-        sender().send(paired, KEY, Outbox(emptyList()))
-        assertTrue("neither settled", sends.statuses(10).isEmpty())
-
-        // The inbox reads the row in Sent, placing it.
-        assertEquals(Whose.DISPATCH, SentByApp(sends, APP).whose(sent))
-        sender().send(paired, KEY, Outbox(emptyList()))
-        assertEquals(
-            setOf(Told("first", 1, SendStatus.SENT, clock), Told("second", 1, SendStatus.FAILED, clock, Failure.NO_RESULT)),
-            sends.statuses(10).toSet(),
-        )
-    }
-
-    @Test
-    fun failsLikeTextsWhoseRowsAreAllInFailed() = runTest {
-        sender().send(paired, KEY, Outbox(listOf(text("first", 1, "Gate code?"), text("second", 1, "Gate code?"))))
-        val rows = listOf(sms(7, "Gate code?"), sms(8, "Gate code?"))
-        provider.messages += rows
-        provider.failed += rows.map(Message::row)
-        clock += RESULT_WAIT_MS + 1
-        sender().send(paired, KEY, Outbox(emptyList()))
-        assertEquals(
-            listOf("first", "second").map { Told(it, 1, SendStatus.FAILED, clock, Failure.NO_RESULT) }.toSet(),
-            sends.statuses(10).toSet(),
-        )
-    }
-
-    @Test
-    fun settlesATextAndroidNeverSaidMoreOfOnlyOnceTheProviderCanSay() = runTest {
+    fun failsATextAndroidNeverSaidMoreOfThoughARowWithItsWordsIsInSent() = runTest {
         sender().send(paired, KEY, Outbox(listOf(text("text_1", 1, "On my way"))))
+        // Android's word of it lost: the app's row with its words in Sent isn't Android's word.
         provider.messages += sms(7, "On my way")
-        provider.answering = false
-        clock += RESULT_WAIT_MS + 1
-        sender().send(paired, KEY, Outbox(emptyList()))
-        assertTrue(sends.statuses(10).isEmpty())
-        provider.answering = true
-        sender().send(paired, KEY, Outbox(emptyList()))
-        assertEquals(listOf(Told("text_1", 1, SendStatus.SENT, clock)), sends.statuses(10))
-    }
-
-    @Test
-    fun failsATextAndroidNeverSaidMoreOf() = runTest {
-        sender().send(paired, KEY, Outbox(listOf(text("text_1", 1, "Hi"))))
         clock += RESULT_WAIT_MS - 1
         sender().send(paired, KEY, Outbox(emptyList()))
         assertTrue(sends.statuses(10).isEmpty())
         clock += 2
         sender().send(paired, KEY, Outbox(emptyList()))
+        assertEquals(listOf(Told("text_1", 1, SendStatus.FAILED, clock, Failure.NO_RESULT)), sends.statuses(10))
+    }
+
+    @Test
+    fun settlesATextAndroidSaysItSentJoinedByTheAppsRowItNamedInSent() = runTest {
+        radio.partLength = 7
+        val sender = sender()
+        val texts = listOf(text("sent", 1, "Café door 4412"), text("failed", 1, "Gate code 4412"), text("unowned", 1, "Dock door 7712"))
+        sender.send(paired, KEY, Outbox(texts))
+        // Each first part's word lost; each last said it went joined, naming the row Android wrote the
+        // whole text to: the app's in Sent, its words as a phone forcing 7-bit texts sends them; in
+        // Failed, as Android says the last part went though one before it failed; in Sent, no app's.
+        val rows = listOf(sms(7, "Cafe door 4412"), sms(8, "Gate code 4412"), sms(9, "Dock door 7712", creator = null))
+        provider.messages += rows
+        provider.failed += rows[1].row
+        for ((text, row) in texts.zip(rows)) {
+            val heard = Heard(text.id, 1, 1, Event.SENT, null, null, clock, joined = true)
+            sender.heard(heard.copy(row = own.row(heard, "content://sms/sent/${row.row.id}")))
+        }
+        clock += RESULT_WAIT_MS + 1
+        sender.send(paired, KEY, Outbox(emptyList()))
+        assertEquals(
+            setOf(Told("sent", 1, SendStatus.SENT, clock)) +
+                listOf("failed", "unowned").map { Told(it, 1, SendStatus.FAILED, clock, Failure.NO_RESULT) },
+            sends.statuses(10).toSet(),
+        )
+    }
+
+    @Test
+    fun settlesLikeTextsEachByItsOwnWordNeverByAnothersRow() = runTest {
+        radio.partLength = 7
+        val sender = sender()
+        val ids = listOf("apart_failed", "apart_sent", "joined_failed", "joined_sent")
+        sender.send(paired, KEY, Outbox(ids.map { text(it, 1, "Gate code 4412") }))
+        // Two Android sent in parts apart, each to rows of its own: each first part's word heard,
+        // naming its row; each last's lost, one's row never written, as where Android failed to, the
+        // other's in Sent.
+        val apart = listOf(sms(7, "Gate co"), sms(9, "Gate co"), sms(10, "de 4412"))
+        // Two it sent joined: each first part's word lost; each last said it went, naming its own row,
+        // one in Failed, the other in Sent.
+        val joined = listOf(sms(11, "Gate code 4412"), sms(12, "Gate code 4412"))
+        provider.messages += apart + joined
+        provider.failed += joined[0].row
+        for ((id, row) in ids.zip(apart.take(2) + joined)) {
+            val last = id.startsWith("joined")
+            val heard = Heard(id, 1, if (last) 1 else 0, Event.SENT, null, null, clock, joined = last)
+            sender.heard(heard.copy(row = own.row(heard, "content://sms/sent/${row.row.id}")))
+        }
+        clock += RESULT_WAIT_MS + 1
+        sender.send(paired, KEY, Outbox(emptyList()))
+        assertEquals(
+            setOf(Told("joined_sent", 1, SendStatus.SENT, clock)) +
+                ids.dropLast(1).map { Told(it, 1, SendStatus.FAILED, clock, Failure.NO_RESULT) },
+            sends.statuses(10).toSet(),
+        )
+    }
+
+    @Test
+    fun failsATextAtTheTimeoutWhileTheProviderCantSay() = runTest {
+        radio.partLength = 7
+        val sender = sender()
+        sender.send(paired, KEY, Outbox(listOf(text("text_1", 1, "Gate code 4412"))))
+        provider.messages += sms(7, "Gate code 4412")
+        val heard = Heard("text_1", 1, 1, Event.SENT, null, null, clock, joined = true)
+        sender.heard(heard.copy(row = own.row(heard, "content://sms/sent/7")))
+        provider.answering = false
+        clock += RESULT_WAIT_MS + 1
+        sender.send(paired, KEY, Outbox(emptyList()))
         assertEquals(listOf(Told("text_1", 1, SendStatus.FAILED, clock, Failure.NO_RESULT)), sends.statuses(10))
     }
 
@@ -442,7 +381,7 @@ class SenderTest {
         OutgoingText(id, "+14255550199", body, attempt, files.toList())
 
     /** The app's row of a text it sent, as Android writes it, just after it was handed. */
-    private fun sms(id: Long, body: String, creator: String = APP) =
+    private fun sms(id: Long, body: String, creator: String? = APP) =
         Message(Row(Table.SMS, id, clock + 1_000, Direction.OUT, creator), listOf("(425) 555-0199"), body, emptyList())
 
     /** A picture message's row of a text sent, as Android writes it, its time in whole seconds. */

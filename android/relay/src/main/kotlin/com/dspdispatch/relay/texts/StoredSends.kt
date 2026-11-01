@@ -72,15 +72,10 @@ abstract class StoredSends : Sends {
     @Delete
     abstract override suspend fun told(told: List<Told>)
 
-    @Query("SELECT row FROM send_rows WHERE id = :id AND attempt = :attempt")
-    protected abstract suspend fun rows(id: String, attempt: Long): List<String>
+    @Query("SELECT row FROM send_reports WHERE id = :id AND attempt = :attempt AND joined AND error IS NULL AND row IS NOT NULL LIMIT 1")
+    protected abstract suspend fun whole(id: String, attempt: Long): String?
 
-    override suspend fun rows(send: Send) = rows(send.id, send.attempt)
-
-    @Query("SELECT EXISTS (SELECT 1 FROM send_reports WHERE id = :id AND attempt = :attempt AND joined)")
-    protected abstract suspend fun joined(id: String, attempt: Long): Boolean
-
-    override suspend fun joined(send: Send) = joined(send.id, send.attempt)
+    override suspend fun whole(send: Send) = whole(send.id, send.attempt)
 
     @Query("SELECT EXISTS (SELECT 1 FROM send_rows WHERE row = :row)")
     abstract override suspend fun wrote(row: String): Boolean

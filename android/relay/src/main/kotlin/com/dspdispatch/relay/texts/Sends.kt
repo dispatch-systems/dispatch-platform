@@ -76,7 +76,7 @@ enum class Event {
 /**
  * What Android said of [part] of a send: [error] says why it failed, null when it didn't; [joined]
  * when Android says it was the last of a text's parts it sent joined, as one message; [format] is
- * a delivery report's, `3gpp` or `3gpp2`.
+ * a delivery report's, `3gpp` or `3gpp2`; [row] is the [Row.key] of the provider row it named.
  */
 @Entity(tableName = "send_reports", primaryKeys = ["id", "attempt", "part", "event"])
 data class Report(
@@ -87,6 +87,7 @@ data class Report(
     val error: String? = null,
     val joined: Boolean = false,
     val format: String? = null,
+    val row: String? = null,
 )
 
 /**
@@ -123,7 +124,7 @@ data class Heard(
     val format: String? = null,
     val joined: Boolean = false,
 ) {
-    val report get() = Report(id, attempt, part, event, error, joined, format)
+    val report get() = Report(id, attempt, part, event, error, joined, format, row)
 }
 
 /**
@@ -153,8 +154,8 @@ interface Sends {
     suspend fun unanswered(before: Long): List<Send>
 
     /**
-     * Settles [send], which Android never said more of, [at], as the provider says: [sent] when
-     * its row is in Sent, else failed. Not if Android said more of it meanwhile.
+     * Settles [send], which Android never said all of, [at]: [sent] when Android's own word says it
+     * went, else failed. Not if Android said more of it meanwhile.
      */
     suspend fun expired(send: Send, sent: Boolean, at: Long)
 
@@ -174,11 +175,11 @@ interface Sends {
     /** The attempt [attempt] at the text [id], if it's kept. */
     suspend fun find(id: String, attempt: Long): Send?
 
-    /** The provider rows ([Row.key]) [send] is known to have been written to. */
-    suspend fun rows(send: Send): List<String>
-
-    /** Whether Android said it sent [send]'s parts joined, as one message ([Report.joined]). */
-    suspend fun joined(send: Send): Boolean
+    /**
+     * The provider row ([Row.key]) Android named as it said it sent [send]'s parts joined, as one
+     * message ([Report.joined]): the row it wrote all of it to. Null when it said no such thing.
+     */
+    suspend fun whole(send: Send): String?
 
     /** Whether a send was written to the provider row [row] ([Row.key]). */
     suspend fun wrote(row: String): Boolean
@@ -193,7 +194,7 @@ interface Sends {
 /** How far the time of a send's provider row may be from its own: a picture message's is in whole seconds. */
 internal const val ROW_SLACK_MS = 60_000L
 
-/** How long Android may take to say how a text it took went; past it, the provider says. */
+/** How long Android may take to say how a text it took went; past it, it's settled by what it said. */
 internal const val RESULT_WAIT_MS = 10 * 60 * 1000L
 
 /**

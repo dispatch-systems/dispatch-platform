@@ -96,14 +96,12 @@ class Sender(
     }
 
     /**
-     * Settles each send Android took over [RESULT_WAIT_MS] before [at] and never said more of, as
-     * the provider holds it now: sent when its row is in Sent, else failed. One the provider can't
-     * say of now is settled with a later answer.
+     * Settles each send Android took over [RESULT_WAIT_MS] before [at] and never said all of: sent
+     * when Android's own word says it went ([OwnRows.sent]), else failed.
      */
     private suspend fun expire(at: Long) {
         for (send in sends.unanswered(at - RESULT_WAIT_MS)) {
-            val sent = own.sent(send) ?: continue
-            sends.expired(send, sent, at)
+            sends.expired(send, own.sent(send), at)
             File(folder, pduName(send.id, send.attempt)).delete()
         }
     }
