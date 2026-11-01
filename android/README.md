@@ -50,13 +50,16 @@ release, which Production installs. From this folder, in a branch's worktree:
 ./publish 1.4.0
 ```
 
-`./publish` refuses unless signing is configured, the tree is clean, `HEAD` is on GitHub (the
-tag marks it), and the version is above the app's. It sets `versionName` and the next
-`versionCode` in `relay/build.gradle.kts`, builds both release APKs, checks that both are signed
-with the one key, publishes them to the pre-release (`gh release create --prerelease
---latest=false`), and writes `relay/release.json`. Those two files go as a PR: merged, Dev hands
-the version out; once a release includes it, Production. A failure before publishing leaves the
-tree as it was.
+`./publish` refuses unless signing is configured, the tree is clean, `origin` is this repository,
+`HEAD` is on GitHub, neither the tag nor the branch `publish-relay-v<version>` exists there or
+here, and the version is above the app's. On that branch it commits `versionName` and the next
+`versionCode` in `relay/build.gradle.kts`, builds both release APKs from that commit, checks that
+both are signed with the one key, tags the commit, pushes the branch and the tag, and publishes
+the APKs to the tag's pre-release (`gh release create --verify-tag --prerelease --latest=false`).
+Then it commits `relay/release.json` on the branch, pushes it, and prints the command that opens
+its PR: merged, Dev hands the version out; once a release includes it, Production. A failure
+before publishing leaves nothing behind: the tree, the branch and the tag are as they were, here
+and on GitHub.
 
 Each outbox wait tells the app the version its DSP hands out; one above its own shows Update,
 with a notification. Install downloads it from the DSP, checks its size and SHA-256 against the

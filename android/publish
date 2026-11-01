@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Publishes a version of DSP Dispatch: Relay, from the MacBook that holds its signing key:
 #
-#   ./publish <version>            sets the version, builds both signed APKs, publishes them to the
-#                                  GitHub pre-release relay-v<version>, and writes relay/release.json
+#   ./publish <version>            commits the version on a branch of its own, builds both signed
+#                                  APKs from that commit, tags it relay-v<version>, publishes them
+#                                  to that tag's GitHub pre-release, then commits relay/release.json
 #   ./publish --dry-run <version>  builds and checks the same, then publishes and changes nothing
 #
-# The change it leaves, the version and relay/release.json, goes as a PR: merged, Dev hands the
+# The branch it leaves, the version and relay/release.json, goes as a PR: merged, Dev hands the
 # version out; once a release includes it, Production. See README.md, Publishing.
 set -euo pipefail
 
@@ -51,6 +52,9 @@ fi
 [[ $# -eq 1 ]] || fail "usage: ./publish [--dry-run] <version>"
 version=$1
 [[ $version =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || fail "version is three numbers, as 1.4.0"
+tag=relay-v$version
+# Named apart from the tag, so neither name is ambiguous to git.
+branch=publish-relay-v$version
 
 cd "$(dirname "$0")"
 export ANDROID_HOME=${ANDROID_HOME:-$HOME/Library/Android/sdk}
@@ -60,13 +64,23 @@ properties=${GRADLE_USER_HOME:-$HOME/.gradle}/gradle.properties
 signing=
 [[ -f $properties ]] && signing=$(sed -n 's/^dispatch\.relay\.signing=//p' "$properties" | tail -n 1)
 [[ -n $signing && -f $signing ]] || fail "signing isn't configured: dispatch.relay.signing in $properties names no file"
-[[ -z $(git status --porcelain) ]] || fail "the tree isn't clean: commit or set aside its changes first"
+changes=$(git status --porcelain)
+[[ -z $changes ]] || fail "the tree isn't clean: commit or set aside its changes first"
 
-# The tag marks the commit the APKs are built from, which GitHub must have.
+# The branch and the tag go to origin, which must be the repository the release is published to.
+url=$(git config --get remote.origin.url) || fail "no origin to push to"
+[[ $url =~ ^(https://github\.com/|git@github\.com:)$REPOSITORY(\.git)?$ ]] || fail "origin is $url, not $REPOSITORY"
+
+# Built on what GitHub already has, under a tag and a branch that are new, there and here. Each
+# lookup is its own step, so a failed one stops publishing rather than reading as nothing found.
 git fetch --quiet origin
-[[ -n $(git branch -r --contains HEAD) ]] || refuse "HEAD isn't on GitHub: push it first"
-tag=relay-v$version
-[[ -z $(git ls-remote --tags origin "refs/tags/$tag") ]] || refuse "$tag is already published"
+containing=$(git branch -r --contains HEAD)
+[[ -n $containing ]] || refuse "HEAD isn't on GitHub: push it first"
+taken=$(git ls-remote origin "refs/tags/$tag" "refs/heads/$branch") || fail "couldn't ask GitHub for $tag and $branch"
+[[ $taken != *refs/tags/$tag* ]] || refuse "$tag is already published"
+[[ $taken != *refs/heads/$branch* ]] || refuse "$branch is already on GitHub"
+! git show-ref --quiet --verify "refs/tags/$tag" || refuse "$tag is already a tag here: delete it first"
+! git show-ref --quiet --verify "refs/heads/$branch" || refuse "$branch is already a branch here: delete it first"
 
 code=$(sed -nE 's/^ *versionCode = ([0-9]+)$/\1/p' "$GRADLE_FILE")
 name=$(sed -nE 's/^ *versionName = "([^"]*)"$/\1/p' "$GRADLE_FILE")
@@ -74,9 +88,37 @@ name=$(sed -nE 's/^ *versionName = "([^"]*)"$/\1/p' "$GRADLE_FILE")
 above "$version" "$name" || fail "$version isn't above the app's version, $name"
 code=$((code + 1))
 
-# Until it's published, a failure leaves the tree as it was; a dry run, always.
-trap 'git checkout --quiet -- "$GRADLE_FILE"' EXIT
-perl -pi -e "s/^(\s*versionCode = )\d+\$/\${1}$code/; s/^(\s*versionName = )\"[^\"]*\"\$/\${1}\"$version\"/" "$GRADLE_FILE"
+set_version() {
+  perl -pi -e "s/^(\s*versionCode = )\d+\$/\${1}$code/; s/^(\s*versionName = )\"[^\"]*\"\$/\${1}\"$version\"/" "$GRADLE_FILE"
+}
+
+# Until it's published, a failure undoes all this did, here and on GitHub: the tree, the branch
+# and the tag are left as they were.
+if start=$(git symbolic-ref --quiet --short HEAD); then
+  back=("$start")
+else
+  back=(--detach "$(git rev-parse HEAD)")
+fi
+pushed=false
+undo() {
+  if $pushed; then
+    git push --quiet --atomic origin --delete "refs/heads/$branch" "refs/tags/$tag" ||
+      echo "publish: delete $branch and $tag from GitHub by hand" >&2
+  fi
+  git switch --quiet --discard-changes "${back[@]}"
+  git branch --quiet -D "$branch" 2>/dev/null || true
+  git tag --delete "$tag" >/dev/null 2>&1 || true
+}
+
+if $dry; then
+  trap 'git checkout --quiet -- "$GRADLE_FILE"' EXIT
+  set_version
+else
+  trap undo EXIT
+  git switch --quiet --create "$branch"
+  set_version
+  git commit --quiet --message "chore(relay): version $version" -- "$GRADLE_FILE"
+fi
 
 echo "Building $version (versionCode $code)…"
 ./gradlew --quiet clean :relay:assembleDevRelease :relay:assembleProductionRelease
@@ -123,19 +165,28 @@ JSON
 
 if $dry; then
   echo "Dry run: built and signed (certificate SHA-256 $signer), in $OUT; nothing published or changed."
-  echo "Would publish $tag at $(git rev-parse HEAD) to $REPOSITORY, and write $RELEASE:"
+  echo "Would commit $version on $branch, tag it $tag, push both to $REPOSITORY, publish $tag's"
+  echo "pre-release, and commit $RELEASE on $branch:"
   echo "$release"
   exit 0
 fi
 
+git tag --annotate "$tag" --message "DSP Dispatch: Relay $version"
+git push --quiet --atomic origin "refs/heads/$branch" "refs/tags/$tag"
+pushed=true
 gh release create "$tag" "$OUT/$dev_asset" "$OUT/$production_asset" \
   --repo "$REPOSITORY" \
-  --target "$(git rev-parse HEAD)" \
+  --verify-tag \
   --prerelease \
   --latest=false \
   --title "DSP Dispatch: Relay $version" \
   --notes "versionCode $code, signed with the certificate of SHA-256 $signer." ||
   fail "publishing failed: check https://github.com/$REPOSITORY/releases for a draft of $tag left behind"
 trap - EXIT
+
 echo "$release" >"$RELEASE"
-echo "Published $tag. Commit $GRADLE_FILE and $RELEASE as a PR: merged, Dev hands $version out; released, Production."
+git add "$RELEASE"
+git commit --quiet --message "chore(relay): hand out $version"
+git push --quiet origin "$branch" || fail "published $tag, but couldn't push $branch: push it, then open its PR"
+echo "Published $tag. Open $branch's PR: merged, Dev hands $version out; released, Production."
+echo "  gh pr create --repo $REPOSITORY --base main --head $branch --title 'chore(relay): publish $version' --body 'Hands out DSP Dispatch: Relay $version, published as $tag.'"
