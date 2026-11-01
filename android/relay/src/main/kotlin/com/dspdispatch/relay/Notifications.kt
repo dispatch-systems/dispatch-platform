@@ -23,11 +23,16 @@ object Notifications {
     private const val UNDONE_ID = 100
     private const val SETUP_CHANNEL = "setup"
 
+    /** A newer version of the app to install. */
+    private const val UPDATE_ID = 2
+    private const val UPDATES_CHANNEL = "updates"
+
     fun channels(context: Context) {
         context.getSystemService(NotificationManager::class.java).createNotificationChannels(
             listOf(
                 NotificationChannel(RELAY_CHANNEL, context.getString(R.string.relay_channel), NotificationManager.IMPORTANCE_LOW),
                 NotificationChannel(SETUP_CHANNEL, context.getString(R.string.setup_channel), NotificationManager.IMPORTANCE_DEFAULT),
+                NotificationChannel(UPDATES_CHANNEL, context.getString(R.string.updates_channel), NotificationManager.IMPORTANCE_DEFAULT),
             ),
         )
     }
@@ -43,26 +48,38 @@ object Notifications {
             .build()
 
     /** Says [step] was undone, where the app may notify on Set up's channel; whether it did. */
-    fun undone(context: Context, step: Step): Boolean {
+    fun undone(context: Context, step: Step): Boolean = post(context, SETUP_CHANNEL, UNDONE_ID + step.ordinal, context.getString(step.undone))
+
+    /** Says [version] of the app is there to install, where the app may notify. */
+    fun update(context: Context, version: String) {
+        post(context, UPDATES_CHANNEL, UPDATE_ID, context.getString(R.string.update_version, version))
+    }
+
+    /** Takes away the notification of a newer version, if there is one. */
+    fun cancelUpdate(context: Context) = NotificationManagerCompat.from(context).cancel(UPDATE_ID)
+
+    /** Posts [title] on [channel] as notification [id], opening the app, where the app may notify there; whether it did. */
+    private fun post(context: Context, channel: String, id: Int, title: String): Boolean {
         val manager = NotificationManagerCompat.from(context)
         val allowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        if (!allowed || !manager.areNotificationsEnabled() || SETUP_CHANNEL in blocked(context)) return false
-        val notification = NotificationCompat.Builder(context, SETUP_CHANNEL)
+        if (!allowed || !manager.areNotificationsEnabled() || isBlocked(context, channel)) return false
+        val notification = NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(context.getString(step.undone))
+            .setContentTitle(title)
             .setAutoCancel(true)
             .setContentIntent(open(context))
             .build()
-        manager.notify(UNDONE_ID + step.ordinal, notification)
+        manager.notify(id, notification)
         return true
     }
 
     /** The app's channels the person has blocked, of the relay's and Set up's, by ID. */
-    fun blocked(context: Context): List<String> {
-        val manager = context.getSystemService(NotificationManager::class.java)
-        return listOf(RELAY_CHANNEL, SETUP_CHANNEL).filter { manager.getNotificationChannel(it)?.importance == NotificationManager.IMPORTANCE_NONE }
-    }
+    fun blocked(context: Context): List<String> = listOf(RELAY_CHANNEL, SETUP_CHANNEL).filter { isBlocked(context, it) }
+
+    private fun isBlocked(context: Context, channel: String) =
+        context.getSystemService(NotificationManager::class.java).getNotificationChannel(channel)?.importance ==
+            NotificationManager.IMPORTANCE_NONE
 
     /** Takes away the notification of [step] undone, if there is one. */
     fun cancelUndone(context: Context, step: Step) = NotificationManagerCompat.from(context).cancel(UNDONE_ID + step.ordinal)

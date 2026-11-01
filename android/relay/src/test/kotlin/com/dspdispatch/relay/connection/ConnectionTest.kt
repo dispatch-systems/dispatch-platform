@@ -1,5 +1,6 @@
 package com.dspdispatch.relay.connection
 
+import com.dspdispatch.relay.dispatch.AppVersion
 import com.dspdispatch.relay.dispatch.Dispatch
 import com.dspdispatch.relay.dispatch.Outbox
 import com.dspdispatch.relay.pairing.Paired
@@ -15,7 +16,7 @@ import org.junit.Test
 class ConnectionTest {
     private val server = MockWebServer()
     private var clock = 1_000L
-    private val connection = Connection(Dispatch(OkHttpClient())) { clock }
+    private val connection = Connection(Dispatch(OkHttpClient(), AppVersion("1.4.0", 14))) { clock }
     private lateinit var paired: Paired
 
     @Before

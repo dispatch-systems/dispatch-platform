@@ -3,6 +3,7 @@ package com.dspdispatch.relay
 import android.content.Context
 import androidx.annotation.StringRes
 import com.dspdispatch.relay.connection.Connection
+import com.dspdispatch.relay.dispatch.AppVersion
 import com.dspdispatch.relay.dispatch.Dispatch
 import com.dspdispatch.relay.dispatch.PairRequest
 import com.dspdispatch.relay.dispatch.Refusal
@@ -11,6 +12,11 @@ import com.dspdispatch.relay.pairing.PairingLink
 import com.dspdispatch.relay.pairing.Pairings
 import com.dspdispatch.relay.setup.Setup
 import com.dspdispatch.relay.texts.Texts
+import com.dspdispatch.relay.update.PackageCheck
+import com.dspdispatch.relay.update.SessionInstaller
+import com.dspdispatch.relay.update.UpdateNotice
+import com.dspdispatch.relay.update.Updates
+import java.io.File
 import java.io.IOException
 import java.net.InetAddress
 import kotlinx.coroutines.CoroutineScope
@@ -35,15 +41,26 @@ sealed interface Attempt {
 
 /** The app's parts, one of each for as long as the app runs (`RelayApp`). */
 class Relay(private val context: Context) {
+    // Pairing outlives the screen that started it: a code works once, so a pairing cancelled
+    // after Dispatch took it would leave a phone no app holds the key of. Installing an update too.
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val own = AppVersion(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE)
+
     val pairings = Pairings(context)
-    val dispatch = Dispatch(http())
+    val dispatch = Dispatch(http(), own)
     val connection = Connection(dispatch)
     val setup = Setup(context)
     val texts = Texts(context, dispatch)
-
-    // Pairing outlives the screen that started it: a code works once, so a pairing cancelled
-    // after Dispatch took it would leave a phone no app holds the key of.
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    val installer = SessionInstaller(context)
+    val updates = Updates(
+        dispatch,
+        own,
+        File(context.cacheDir, UPDATE_APK),
+        PackageCheck(context),
+        installer,
+        UpdateNotice(context),
+        scope,
+    )
     private val attempt = MutableStateFlow<Attempt>(Attempt.None)
     val attempting: StateFlow<Attempt> = attempt.asStateFlow()
 
@@ -98,6 +115,11 @@ class Relay(private val context: Context) {
         // at <code>.localhost, through `adb reverse`.
         if (BuildConfig.DEBUG) dns(LocalDns)
     }.build()
+
+    private companion object {
+        /** Where an update's APK is downloaded to, until Android has it. */
+        const val UPDATE_APK = "update.apk"
+    }
 
     private object LocalDns : Dns {
         override fun lookup(hostname: String): List<InetAddress> =

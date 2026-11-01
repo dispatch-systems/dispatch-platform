@@ -37,11 +37,13 @@ import androidx.compose.ui.unit.dp
 import com.dspdispatch.relay.BuildConfig
 import com.dspdispatch.relay.R
 import com.dspdispatch.relay.connection.Link
+import com.dspdispatch.relay.dispatch.AppVersion
 import com.dspdispatch.relay.pairing.Paired
 import com.dspdispatch.relay.setup.Fix
 import com.dspdispatch.relay.setup.Item
 import com.dspdispatch.relay.setup.Step
 import com.dspdispatch.relay.texts.Today
+import com.dspdispatch.relay.update.Update
 import java.util.Date
 
 /** Never paired: the app's mark and name, and scanning a DSP's pairing code. */
@@ -67,13 +69,22 @@ fun RemovedScreen(dsp: String, scan: () -> Unit, pairing: Boolean, problem: Int?
 }
 
 /**
- * Paired: a step of Set up undone, if one is, the DSP, how the line to it stands, today's texts,
- * and the app's version.
+ * Paired: a step of Set up undone, if one is, a newer version, if there's one, the DSP, how the
+ * line to it stands, today's texts, and the app's version.
  */
 @Composable
-fun ConnectedScreen(paired: Paired, link: Link, today: Today, undone: Item?, fix: (Item, Fix) -> Unit) = Page {
+fun ConnectedScreen(
+    paired: Paired,
+    link: Link,
+    today: Today,
+    undone: Item?,
+    fix: (Item, Fix) -> Unit,
+    update: Update,
+    install: () -> Unit,
+) = Page {
     Top()
     undone?.let { item -> UndoneBanner(item) { fix(item, it) } }
+    UpdateBanner(update, install)
     DspLine(paired)
     Surface(Modifier.fillMaxWidth(), RoundedCornerShape(12.dp), MaterialTheme.colorScheme.surfaceVariant) {
         Column(Modifier.padding(16.dp)) {
@@ -220,4 +231,6 @@ private fun ConnectedPreview() = ConnectedScreen(
     Today(received = 42, sent = 37, waiting = 0, latest = 0),
     Item(Step.BATTERY, false, listOf(Fix.BATTERY_REQUEST)),
     { _, _ -> },
+    Update.Available(AppVersion("1.0.5", 5)),
+    {},
 )

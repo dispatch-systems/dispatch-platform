@@ -121,7 +121,7 @@ private fun Tick(done: Boolean) {
 
 /** A step's or a banner's button, small beside its label. */
 @Composable
-private fun Small(text: String, filled: Boolean, click: () -> Unit) {
+internal fun Small(text: String, filled: Boolean, click: () -> Unit) {
     val padding = PaddingValues(horizontal = 12.dp)
     val modifier = Modifier.height(32.dp)
     if (filled) {

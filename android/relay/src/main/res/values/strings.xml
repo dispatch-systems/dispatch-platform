@@ -48,4 +48,13 @@
     <string name="undone_restricted_settings">Settings restricted</string>
     <string name="undone_chat_features">Chat features on</string>
     <string name="undone_install_updates">Install updates not allowed</string>
+    <string name="updates_channel">Updates</string>
+    <string name="update_version">Update %1$s</string>
+    <string name="install">Install</string>
+    <string name="downloading">Downloading</string>
+    <string name="installing">Installing</string>
+    <string name="update_download_failed">Download failed</string>
+    <string name="update_mismatch">Download didn\'t match</string>
+    <string name="update_not_this_app">Not this app\'s update</string>
+    <string name="update_install_failed">Install failed</string>
 </resources>
