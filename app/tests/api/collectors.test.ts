@@ -87,15 +87,33 @@ test("a collection's schedule is set by those its keeper names, at the revision 
   assert.equal(edited.status, 200, edited.body);
   assert.equal(edited.value.rules[0].id, rule.id);
   assert.deepEqual(edited.value.rules[0].times, ['07:00', '14:00']);
-  // A preview runs what it's sent, unsaved: all day every 30 minutes.
+  // A preview runs what it's sent, unsaved: all day every 30 minutes of the DSP's clock. Across a
+  // change of it, that's 30 minutes of the DSP's clock or of time: 1:30 to 2:00 as the clock falls
+  // back is 90 minutes, and 1:30 to 3:00 as it springs forward is 30.
   const preview = await owner.post('/api/dsp/collectors/paycom/preview', {
     rules: [edited.value.rules[1]].map(({ nextRun: _, lastError: __, ...each }) => each),
   });
   assert.equal(preview.status, 200, preview.body);
   const runs = preview.value.runs.map((run: string) => Date.parse(run));
   assert.equal(runs.length, 5);
-  for (let index = 1; index < runs.length; index++)
-    assert.equal(runs[index] - runs[index - 1], 30 * 60_000);
+  const clock = new Intl.DateTimeFormat('en-US', {
+    timeZone: listed.timezone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  });
+  const minuteOfDay = (at: number) => {
+    const [hour, minute] = clock.format(at).split(':').map(Number);
+    return hour! * 60 + minute!;
+  };
+  for (let index = 1; index < runs.length; index++) {
+    const elapsed = runs[index] - runs[index - 1];
+    const onTheClock = (minuteOfDay(runs[index]) - minuteOfDay(runs[index - 1]) + 1440) % 1440;
+    assert(
+      elapsed === 30 * 60_000 || onTheClock === 30,
+      `${elapsed} ms, ${onTheClock} on the clock`,
+    );
+  }
 
   // Off, every rule waits, and stays off across a restart; on, each runs again.
   const kept = edited.value.rules.map(({ nextRun: _, lastError: __, ...each }: any) => each);
