@@ -153,6 +153,16 @@ class SenderTest {
     }
 
     @Test
+    fun failsOnlyTheTextAndroidFailedToPrepare() = runTest {
+        // As Android 8's carrier settings, null while its picture message service is away.
+        radio.failing = NullPointerException("carrierConfigValues")
+        val picture = text("text_1", 1, "Door", OutgoingFile("file_1", "door.jpg", "image/jpeg", 3))
+        assertTrue(sender().send(paired, KEY, Outbox(listOf(picture, text("text_2", 1, "On my way")))))
+        assertEquals(listOf(Told("text_1", 1, SendStatus.FAILED, clock, Failure.NOT_SENT)), sends.statuses(10))
+        assertEquals(listOf("text_2"), radio.handed.map { it.first.id })
+    }
+
+    @Test
     fun failsATextAndroidNeverSaidMoreOf() = runTest {
         sender().send(paired, KEY, Outbox(listOf(text("text_1", 1, "Hi"))))
         clock += RESULT_WAIT_MS - 1

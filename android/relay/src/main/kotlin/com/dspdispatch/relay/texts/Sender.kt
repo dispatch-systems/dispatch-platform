@@ -84,15 +84,29 @@ class Sender(
 
     private suspend fun sendText(paired: Paired, key: String, text: OutgoingText, send: Send) {
         if (!radio.allowed()) return sends.failed(send, Failure.NOT_ALLOWED, now())
-        val line = radio.line(paired.number, paired.subscription)
+        val line = telephony { radio.line(paired.number, paired.subscription) }.getOrElse { return notSent(send) }
         if (text.files.isEmpty()) {
-            val parts = line.divide(send.body)
+            val parts = telephony { line.divide(send.body) }.getOrElse { return notSent(send) }
             hand(send, parts.size) { line.sms(send, parts) }
         } else {
-            val pdu = compose(paired, key, line, text, send) ?: return
+            val most = telephony { line.mmsMost() }.getOrElse { return notSent(send) }
+                ?: return sends.failed(send, Failure.MMS_OFF, now())
+            val pdu = compose(paired, key, most, text, send) ?: return
             if (!hand(send, 1) { line.mms(send, pdu) }) pdu.delete()
         }
     }
+
+    /**
+     * What [ask] of Android's telephony answers: it may fail as it's asked, as a phone's picture
+     * message service while it's away, which fails that text and leaves the others to go.
+     */
+    private inline fun <T> telephony(ask: () -> T): Result<T> = try {
+        Result.success(ask())
+    } catch (failed: RuntimeException) {
+        Result.failure(failed)
+    }
+
+    private suspend fun notSent(send: Send) = sends.failed(send, Failure.NOT_SENT, now())
 
     /**
      * Hands [send] to Android in [parts] parts by [go], kept as handed first, so it's never sent
@@ -114,8 +128,7 @@ class Sender(
      * The file of [text]'s picture message, its files fetched from Dispatch first and its pictures
      * scaled to the carrier's largest message; null when it failed.
      */
-    private suspend fun compose(paired: Paired, key: String, line: Line, text: OutgoingText, send: Send): File? {
-        val most = line.mmsMost() ?: return null.also { sends.failed(send, Failure.MMS_OFF, now()) }
+    private suspend fun compose(paired: Paired, key: String, most: Int, text: OutgoingText, send: Send): File? {
         folder.mkdirs()
         val fetched = text.files.indices.map { File(folder, "${send.id}-${send.attempt}-$it") }
         try {

@@ -136,6 +136,9 @@ class FakeRadio : Radio {
 
     /** What Android throws as it's handed a text, if anything. */
     var refusing: RuntimeException? = null
+
+    /** What Android throws as it's asked of the carrier's picture messages, if anything. */
+    var failing: RuntimeException? = null
     val handed = mutableListOf<Pair<Send, List<String>>>()
     val pictureMessages = mutableListOf<Pair<Send, ByteArray>>()
 
@@ -149,7 +152,10 @@ class FakeRadio : Radio {
         return object : Line {
             override fun divide(body: String) = body.chunked(partLength).ifEmpty { listOf("") }
 
-            override fun mmsMost() = mmsMost
+            override fun mmsMost(): Int? {
+                failing?.let { throw it }
+                return mmsMost
+            }
 
             override fun sms(send: Send, parts: List<String>) {
                 refusing?.let { throw it }

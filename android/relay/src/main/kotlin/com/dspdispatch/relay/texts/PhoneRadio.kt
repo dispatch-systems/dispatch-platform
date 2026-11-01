@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Bundle
 import android.telephony.SmsManager
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -35,21 +36,16 @@ class PhoneRadio(private val context: Context) : Radio {
 private class PhoneLine(private val context: Context, private val manager: SmsManager) : Line {
     override fun divide(body: String): List<String> = manager.divideMessage(body)
 
-    override fun mmsMost(): Int? {
-        val config = manager.carrierConfigValues
-        if (!config.getBoolean(SmsManager.MMS_CONFIG_MMS_ENABLED, true)) return null
-        return config.getInt(SmsManager.MMS_CONFIG_MAX_MESSAGE_SIZE).takeIf { it > 0 } ?: DEFAULT_MMS_MOST
-    }
+    override fun mmsMost(): Int? = mmsMost(config())
 
     override fun sms(send: Send, parts: List<String>) {
         val sent = parts.indices.map { SendResults.sent(context, send, it) }
         val delivered = parts.indices.map { SendResults.delivered(context, send, it) }
-        // Some carriers take a long text's parts only as texts of their own, not joined as one.
-        val apart = manager.carrierConfigValues.getBoolean(SmsManager.MMS_CONFIG_SEND_MULTIPART_SMS_AS_SEPARATE_MESSAGES, false)
         when {
             parts.size == 1 -> manager.sendTextMessage(send.number, null, parts.single(), sent.single(), delivered.single())
-            apart -> parts.indices.forEach { manager.sendTextMessage(send.number, null, parts[it], sent[it], delivered[it]) }
-            else -> manager.sendMultipartTextMessage(send.number, null, ArrayList(parts), ArrayList(sent), ArrayList(delivered))
+            joined(parts.size, config()) ->
+                manager.sendMultipartTextMessage(send.number, null, ArrayList(parts), ArrayList(sent), ArrayList(delivered))
+            else -> parts.indices.forEach { manager.sendTextMessage(send.number, null, parts[it], sent[it], delivered[it]) }
         }
     }
 
@@ -60,10 +56,18 @@ private class PhoneLine(private val context: Context, private val manager: SmsMa
         manager.sendMultimediaMessage(context, uri, null, null, SendResults.mmsSent(context, send))
     }
 
-    private companion object {
-        /** Android's own when a carrier doesn't say (`MmsConfig`'s maxMessageSize). */
-        const val DEFAULT_MMS_MOST = 300 * 1024
-    }
+    private fun config(): CarrierConfig? = carrierBundle()?.let(::BundleConfig)
+
+    // Android 8 and 9 answer null while their picture message service is away, though the SDK
+    // now says it never does.
+    private fun carrierBundle(): Bundle? = manager.carrierConfigValues
+}
+
+/** A [CarrierConfig] as Android gives it. */
+private class BundleConfig(private val bundle: Bundle) : CarrierConfig {
+    override fun flag(name: String, default: Boolean) = bundle.getBoolean(name, default)
+
+    override fun number(name: String) = bundle.getInt(name)
 }
 
 /** The authority, after the app's ID, of the picture messages handed to Android (`mms_files.xml`). */
