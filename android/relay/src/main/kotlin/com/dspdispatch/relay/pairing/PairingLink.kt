@@ -1,12 +1,16 @@
 package com.dspdispatch.relay.pairing
 
 import java.net.URLDecoder
+import java.net.URLEncoder
 
 /**
  * What a DSP's pairing QR code holds, `dispatch-phone:pair?site=<address>&code=<code>`: the DSP's
  * address, and the one-time code that pairs a phone with it.
  */
 data class PairingLink(val site: String, val code: String) {
+    /** The link as a QR code holds it, which [parse] reads back. */
+    val text get() = "${PREFIX}site=${encode(site)}&code=${encode(code)}"
+
     companion object {
         const val SCHEME = "dispatch-phone"
         private const val PREFIX = "$SCHEME:pair?"
@@ -22,5 +26,7 @@ data class PairingLink(val site: String, val code: String) {
             val code = fields["code"]?.takeIf { it.isNotBlank() } ?: return null
             return PairingLink(site, code)
         }
+
+        private fun encode(value: String) = URLEncoder.encode(value, Charsets.UTF_8.name())
     }
 }

@@ -6,6 +6,7 @@ import mockwebserver3.MockWebServer
 import okhttp3.OkHttpClient
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -51,7 +52,7 @@ class DispatchTest {
         val refusal = refused { dispatch.pair(site, PairRequest("K7Q2M9XA", "", "Pixel", "0.1.0")) }
         assertEquals(401, refusal.status)
         assertEquals(Refusal.PAIRING_INVALID, refusal.code)
-        assertTrue(!refusal.passing && !refusal.unpaired)
+        assertTrue(!refusal.passing && !refusal.removed)
     }
 
     @Test
@@ -77,7 +78,10 @@ class DispatchTest {
     @Test
     fun knowsARemovedPhoneAndAPassingRefusal() = runTest {
         server.enqueue(json(401, """{"error":"phones_removed","message":"…"}"""))
-        assertTrue(refused { dispatch.outbox(site, "k") }.unpaired)
+        assertTrue(refused { dispatch.outbox(site, "k") }.removed)
+        // Dispatch answers this while the DSP is suspended too: the key may work again.
+        server.enqueue(json(401, """{"error":"sign_in_required","message":"…"}"""))
+        assertFalse(refused { dispatch.outbox(site, "k") }.removed)
         server.enqueue(json(503, """{"error":"platform_busy","message":"…"}"""))
         assertTrue(refused { dispatch.outbox(site, "k") }.passing)
         server.enqueue(MockResponse.Builder().code(502).body("<html>Bad gateway</html>").build())

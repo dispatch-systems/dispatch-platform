@@ -5,8 +5,11 @@ class Refusal(val status: Int, val code: String) : Exception("$status $code") {
     /** Whether the same call may simply be made again after a pause. */
     val passing get() = status >= 500 || status == 408 || status == 429
 
-    /** Whether this phone isn't paired with the DSP anymore: it was removed, or its key is unknown. */
-    val unpaired get() = code == PHONES_REMOVED || code == SIGN_IN_REQUIRED
+    /**
+     * Whether the DSP removed this phone, so its key works no more. Not `sign_in_required`: Dispatch
+     * answers that while the DSP is suspended too, and the key works again once it's resumed.
+     */
+    val removed get() = code == PHONES_REMOVED
 
     companion object {
         const val PHONES_REMOVED = "phones_removed"

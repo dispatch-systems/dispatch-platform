@@ -18,6 +18,12 @@ class PairingLinkTest {
     }
 
     @Test
+    fun readsBackWhatItWrites() {
+        val link = PairingLink("http://bh.localhost:5180", "K7Q2 M9XA&x")
+        assertEquals(link, PairingLink.parse(link.text))
+    }
+
+    @Test
     fun refusesWhatIsNotAPairingLink() {
         assertNull(PairingLink.parse("https://bh.dispatch.test"))
         assertNull(PairingLink.parse("dispatch-phone:pair?site=https://bh.dispatch.test"))

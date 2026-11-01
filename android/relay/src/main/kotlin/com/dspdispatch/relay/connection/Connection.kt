@@ -35,8 +35,7 @@ class Connection(private val dispatch: Dispatch, private val now: () -> Long = S
     }
 
     /**
-     * Runs until the DSP no longer knows this phone, then returns: removed, or its key unknown.
-     * Cancelling the coroutine stops it.
+     * Runs until the DSP removes this phone, then returns. Cancelling the coroutine stops it.
      */
     suspend fun run(paired: Paired, key: String, received: suspend (Outbox) -> Unit) {
         var failures = 0
@@ -47,7 +46,7 @@ class Connection(private val dispatch: Dispatch, private val now: () -> Long = S
                 if (state.value !is Link.Connected) state.value = Link.Connected(now())
                 received(outbox)
             } catch (refusal: Refusal) {
-                if (refusal.unpaired) return
+                if (refusal.removed) return
                 failures = unanswered(failures, refusal.code.takeUnless { refusal.passing })
             } catch (_: IOException) {
                 failures = unanswered(failures, null)

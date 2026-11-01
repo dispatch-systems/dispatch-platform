@@ -48,7 +48,19 @@ class ConnectionTest {
         server.enqueue(json(503, """{"error":"platform_busy"}"""))
         server.enqueue(json(503, """{"error":"platform_busy"}"""))
         server.enqueue(json(200, """{"texts":[]}"""))
+        server.enqueue(json(401, """{"error":"phones_removed"}"""))
+        val links = mutableListOf<Link>()
+        connection.run(paired, "key") { links += connection.link.value }
+        assertEquals(listOf<Link>(Link.Connected(1_000)), links)
+        assertEquals(4, server.requestCount)
+    }
+
+    @Test
+    fun keepsItsKeyWhileItsDspIsSuspended() = runTest {
         server.enqueue(json(401, """{"error":"sign_in_required"}"""))
+        server.enqueue(json(401, """{"error":"sign_in_required"}"""))
+        server.enqueue(json(200, """{"texts":[]}"""))
+        server.enqueue(json(401, """{"error":"phones_removed"}"""))
         val links = mutableListOf<Link>()
         connection.run(paired, "key") { links += connection.link.value }
         assertEquals(listOf<Link>(Link.Connected(1_000)), links)

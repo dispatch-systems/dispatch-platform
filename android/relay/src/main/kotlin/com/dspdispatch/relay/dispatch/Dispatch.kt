@@ -2,7 +2,9 @@ package com.dspdispatch.relay.dispatch
 
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.serializer
 import okhttp3.Call
@@ -41,8 +43,10 @@ class Dispatch(http: OkHttpClient) {
             if (key != null) header(AUTHORIZATION, bearer(key))
         }.build()
 
-    private suspend inline fun <reified T> OkHttpClient.call(request: Request): T =
+    // Reading the answer's body blocks on the network too: never on the caller's thread.
+    private suspend inline fun <reified T> OkHttpClient.call(request: Request): T = withContext(Dispatchers.IO) {
         newCall(request).await().use { response -> read(response, serializer<T>()) }
+    }
 
     private fun <T> read(response: Response, serializer: KSerializer<T>): T {
         val body = response.body.string()

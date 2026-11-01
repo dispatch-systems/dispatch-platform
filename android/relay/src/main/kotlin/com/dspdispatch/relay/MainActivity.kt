@@ -13,8 +13,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.lifecycleScope
-import com.dspdispatch.relay.dispatch.Refusal
 import com.dspdispatch.relay.pairing.PairingLink
 import com.dspdispatch.relay.pairing.Standing
 import com.dspdispatch.relay.ui.CameraScreen
@@ -22,9 +20,6 @@ import com.dspdispatch.relay.ui.ConnectedScreen
 import com.dspdispatch.relay.ui.RemovedScreen
 import com.dspdispatch.relay.ui.ScanScreen
 import com.dspdispatch.relay.ui.StartScreen
-import java.io.IOException
-import kotlinx.coroutines.launch
-import kotlinx.serialization.SerializationException
 
 /**
  * The app's one screen at a time: pairing while unpaired or removed, then the relay's state. A
@@ -32,14 +27,13 @@ import kotlinx.serialization.SerializationException
  */
 class MainActivity : ComponentActivity() {
     private var scanning by mutableStateOf(false)
-    private var pairing by mutableStateOf(false)
-    private var problem by mutableStateOf<Int?>(null)
     private var cameraAllowed by mutableStateOf(false)
+
+    /** A link read while the app asks to read the phone's number, which goes with pairing. */
     private var waiting: PairingLink? = null
 
-    // The phone's own number goes to its DSP as it pairs, when Android allows reading it.
     private val numberThenPair = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
-        waiting?.let(::pair)
+        waiting?.let(relay::pair)
         waiting = null
     }
     private val camera = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -49,11 +43,16 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        opened(intent)
+        scanning = savedInstanceState?.getBoolean(SCANNING) ?: false
+        waiting = savedInstanceState?.getString(WAITING)?.let(PairingLink::parse)
+        if (savedInstanceState == null) opened(intent)
         if (relay.pairings.standing.value is Standing.Pairing) RelayService.start(this)
         setContent {
             val standing by relay.pairings.standing.collectAsStateWithLifecycle()
             val link by relay.connection.link.collectAsStateWithLifecycle()
+            val attempt by relay.attempting.collectAsStateWithLifecycle()
+            val pairing = attempt == Attempt.Pairing
+            val problem = (attempt as? Attempt.Failed)?.problem
             val now = standing
             when {
                 now is Standing.Pairing -> ConnectedScreen(now.paired, link)
@@ -70,6 +69,12 @@ class MainActivity : ComponentActivity() {
         cameraAllowed = allowed(Manifest.permission.CAMERA)
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(SCANNING, scanning)
+        waiting?.let { outState.putString(WAITING, it.text) }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         opened(intent)
@@ -80,7 +85,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun scan() {
-        problem = null
+        relay.again()
         scanning = true
         if (!cameraAllowed) askForCamera()
     }
@@ -89,40 +94,22 @@ class MainActivity : ComponentActivity() {
 
     /** What a QR code or a link held: pairs with the DSP it names, if this build pairs with it. */
     private fun read(text: String) {
-        if (pairing || relay.pairings.standing.value is Standing.Pairing) return
+        if (relay.attempting.value == Attempt.Pairing || relay.pairings.standing.value is Standing.Pairing) return
         scanning = false
-        val link = PairingLink.parse(text)
-        problem = when {
-            link == null -> R.string.pairing_not_a_code
-            !Server.THIS_BUILD.accepts(link.site) -> R.string.pairing_other_server
-            else -> null
-        }
-        if (link == null || problem != null) return
+        val link = relay.read(text) ?: return
         if (allowed(Manifest.permission.READ_PHONE_NUMBERS)) {
-            pair(link)
+            relay.pair(link)
         } else {
             waiting = link
             numberThenPair.launch(Manifest.permission.READ_PHONE_NUMBERS)
         }
     }
 
-    private fun pair(link: PairingLink) {
-        pairing = true
-        lifecycleScope.launch {
-            problem = try {
-                relay.pair(link)
-                null
-            } catch (refusal: Refusal) {
-                if (refusal.code == Refusal.PAIRING_INVALID) R.string.pairing_invalid else R.string.pairing_refused
-            } catch (_: IOException) {
-                R.string.pairing_unreachable
-            } catch (_: SerializationException) {
-                R.string.pairing_unreachable
-            }
-            pairing = false
-        }
-    }
-
     private fun allowed(permission: String) =
         ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+
+    private companion object {
+        const val SCANNING = "scanning"
+        const val WAITING = "waiting"
+    }
 }
