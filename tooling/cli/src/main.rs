@@ -257,8 +257,9 @@ const COMMANDS: &[Spec] = &[
     spec(
         "build",
         &["build [--release | --fixture]", "      [--cache-key]"],
-        "Build the backend and support worker, or the browser tests' assessment fixture, \
-         reusing a build of identical inputs.",
+        "Build the backend and support worker, with the relay app's APKs that \
+         android/relay/release.json names, or the browser tests' assessment fixture, reusing a \
+         build of identical inputs.",
     )
     .flags(&["--release", "--fixture", "--cache-key"]),
     spec("help", &["help [<command>]"], "Show this, or one command.").arguments(1),
@@ -568,6 +569,10 @@ fn run() -> Result<()> {
                 (false, true) => &build::FIXTURE,
                 (false, false) => &build::DEBUG,
             };
+            // The runtime hands out the relay app; the assessment fixture is no runtime.
+            if !line.flag("--fixture") {
+                build::relay::pack(&root, &Native)?;
+            }
             build::build(&root, artifact, &env, &Native)
         }
         other => unreachable!("{other} has a spec but no handler"),

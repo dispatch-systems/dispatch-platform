@@ -2,8 +2,9 @@
 //! worker, and for the browser tests' assessment fixture. Schema 4 excluded binaries built before
 //! path remapping; schema 6 keeps test code out of the key; schema 7 adds the worker to the
 //! backend's entry and the CLI library it links to the key, so no entry of the backend alone is
-//! used.
+//! used. Beside them, `relay` packs DSP Dispatch: Relay's APKs into the runtime.
 mod key;
+pub mod relay;
 mod store;
 #[cfg(test)]
 mod tests;
