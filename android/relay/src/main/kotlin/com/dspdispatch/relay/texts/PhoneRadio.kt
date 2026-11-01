@@ -26,7 +26,8 @@ class PhoneRadio(private val context: Context) : Radio {
             val manager = context.getSystemService(SmsManager::class.java)
             return if (subscription == null) manager else manager.createForSubscriptionId(subscription)
         }
-        // Deprecated from Android 12, where the system service and createForSubscriptionId replace them.
+        // Deprecated from Android 12, where the system service and createForSubscriptionId replace
+        // them, used above; before it, the only ways to reach a SIM's SmsManager.
         @Suppress("DEPRECATION")
         return if (subscription == null) SmsManager.getDefault() else SmsManager.getSmsManagerForSubscriptionId(subscription)
     }

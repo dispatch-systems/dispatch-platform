@@ -38,7 +38,9 @@ object Phone {
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE -> (0 until slots).map(SubscriptionManager::getSubscriptionId)
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> {
                 val manager = context.getSystemService(SubscriptionManager::class.java)
-                // Deprecated from Android 14, where getSubscriptionId replaces it.
+                // Deprecated from Android 14, where getSubscriptionId replaces it, used above. On
+                // Android 10 to 13 it's the only way to name a slot's SIM without reading the
+                // phone's state.
                 @Suppress("DEPRECATION")
                 (0 until slots).flatMap { manager.getSubscriptionIds(it)?.toList().orEmpty() }
             }
@@ -51,7 +53,8 @@ object Phone {
     private fun TelephonyManager.slots(): Int = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
         activeModemCount
     } else {
-        // Deprecated from Android 11, where activeModemCount replaces it.
+        // Deprecated from Android 11, where activeModemCount replaces it, used above; before it,
+        // the only way to count the phone's SIM slots.
         @Suppress("DEPRECATION")
         phoneCount
     }
