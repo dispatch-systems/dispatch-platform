@@ -219,7 +219,7 @@ class SenderTest {
         val row = sms(7, "Gate code 4412")
         provider.messages += row
         provider.failed += row.row
-        val heard = Heard("text_1", 1, 1, Event.SENT, null, null, clock, uri = "content://sms/sent/7")
+        val heard = Heard("text_1", 1, 1, Event.SENT, null, null, clock)
         sender.heard(heard.copy(row = own.row(heard, "content://sms/sent/7")))
         assertTrue("its row known", sends.wrote(row.row.key))
         clock += RESULT_WAIT_MS + 1
@@ -332,7 +332,7 @@ class SenderTest {
         val named = mms(3, "On my way", APP)
         val unnamed = mms(4, "Gate code?")
         provider.messages += listOf(named, unnamed)
-        val heard = Heard("busy", 1, 0, Event.SENT, null, null, clock, uri = "content://mms/3")
+        val heard = Heard("busy", 1, 0, Event.SENT, null, null, clock)
         sender().heard(heard.copy(row = own.row(heard, "content://mms/3")))
         assertTrue(sends.wrote(named.row.key))
         val whose = SentByApp(sends, APP)

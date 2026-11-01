@@ -37,7 +37,7 @@ class SendResults : BroadcastReceiver() {
         val attempt = intent.getLongExtra(ATTEMPT, -1).takeIf { it >= 0 } ?: return null
         val part = intent.getIntExtra(PART, 0)
         return when (intent.action) {
-            SMS_SENT -> Heard(id, attempt, part, Event.SENT, Failure.sms(code), null, at)
+            SMS_SENT -> Heard(id, attempt, part, Event.SENT, Failure.sms(code), null, at, joined = intent.getBooleanExtra(SEND_NEXT, false))
             SMS_DELIVERED -> Heard(id, attempt, part, Event.DELIVERED, null, null, at, intent.getStringExtra(FORMAT))
                 .takeIf { delivered(context, intent) }
             MMS_SENT -> Heard(id, attempt, part, Event.SENT, Failure.mms(code) ?: refused(intent), null, at)
@@ -78,7 +78,10 @@ class SendResults : BroadcastReceiver() {
 
         // What Android adds to a result (SMSDispatcher's, and MmsService's). The URI is where it
         // wrote the text in the provider, as it does for an app that isn't the phone's texting app.
+        // SendNextMsg marks the result of the last part of a text sent joined, as one message: it's
+        // never on parts Android sent each as a text of its own, as where the phone can't join them.
         private const val URI = "uri"
+        private const val SEND_NEXT = "SendNextMsg"
         private const val PDU = "pdu"
         private const val FORMAT = "format"
 

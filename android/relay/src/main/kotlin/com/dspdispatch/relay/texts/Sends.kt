@@ -37,7 +37,7 @@ data class Send(
     /**
      * This attempt, and the statuses it moved to, with Android's [reports] of its parts: failed as
      * soon as one part failed, sent once every part was, delivered once every part was. A text
-     * Android sent joined is reported delivered on CDMA by its last part's report alone.
+     * Android says it sent joined is reported delivered on CDMA by its last part's report alone.
      */
     fun settled(reports: List<Report>, at: Long): Pair<Send, List<Told>> {
         if (handed == null) return this to emptyList()
@@ -51,17 +51,14 @@ data class Send(
             statuses += status(outcome, at, error)
         }
         val reached = reports.filter { it.event == Event.DELIVERED }
-        val whole = reached.size >= parts || (sentJoined(sent) && reached.any { it.format == CDMA && it.part == parts - 1 })
+        val joined = joined && sent.any(Report::joined)
+        val whole = reached.size >= parts || (joined && reached.any { it.format == CDMA && it.part == parts - 1 })
         if (!delivered && whole) {
             send = send.copy(delivered = true)
             statuses += status(SendStatus.DELIVERED, at)
         }
         return send to statuses
     }
-
-    // Handed joined, Android still sends the parts each as a text of its own where the phone can't
-    // join them, writing each to a row of its own: joined once every part was sent, naming one row.
-    private fun sentJoined(sent: List<Report>) = joined && sent.size >= parts && sent.mapNotNull(Report::uri).toSet().size == 1
 
     companion object {
         /** The attempt at [text], started [at]. */
@@ -76,9 +73,9 @@ enum class Event {
 }
 
 /**
- * What Android said of [part] of a send: [error] says why it failed, null when it didn't; [uri] is
- * the provider row it says it wrote the text to, as it names it; [format] is a delivery report's,
- * `3gpp` or `3gpp2`.
+ * What Android said of [part] of a send: [error] says why it failed, null when it didn't; [joined]
+ * when Android says it was the last of a text's parts it sent joined, as one message; [format] is
+ * a delivery report's, `3gpp` or `3gpp2`.
  */
 @Entity(tableName = "send_reports", primaryKeys = ["id", "attempt", "part", "event"])
 data class Report(
@@ -87,7 +84,7 @@ data class Report(
     val part: Int,
     val event: Event,
     val error: String? = null,
-    val uri: String? = null,
+    val joined: Boolean = false,
     val format: String? = null,
 )
 
@@ -110,9 +107,9 @@ data class Told(val id: String, val attempt: Long, val status: SendStatus, val a
 }
 
 /**
- * What Android said of a part of a send, as it reaches the app, possibly after it restarted:
- * [uri] is the provider row Android says it wrote the text to, as it names it, and [row] that
- * row's [Row.key]; [format] is a delivery report's.
+ * What Android said of a part of a send, as it reaches the app, possibly after it restarted: [row]
+ * is the [Row.key] of the provider row Android says it wrote the text to; [joined] and [format] as
+ * a [Report]'s.
  */
 data class Heard(
     val id: String,
@@ -123,9 +120,9 @@ data class Heard(
     val row: String?,
     val at: Long,
     val format: String? = null,
-    val uri: String? = null,
+    val joined: Boolean = false,
 ) {
-    val report get() = Report(id, attempt, part, event, error, uri, format)
+    val report get() = Report(id, attempt, part, event, error, joined, format)
 }
 
 /**

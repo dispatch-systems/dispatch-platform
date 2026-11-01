@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "8a0e6b596b123e8a7d9bb28f71722f4d",
+    "identityHash": "4b9f7e21bccfcb502cdf482f2ba92214",
     "entities": [
       {
         "tableName": "mark",
@@ -322,7 +322,7 @@
       },
       {
         "tableName": "send_reports",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `attempt` INTEGER NOT NULL, `part` INTEGER NOT NULL, `event` TEXT NOT NULL, `error` TEXT, `uri` TEXT, `format` TEXT, PRIMARY KEY(`id`, `attempt`, `part`, `event`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `attempt` INTEGER NOT NULL, `part` INTEGER NOT NULL, `event` TEXT NOT NULL, `error` TEXT, `joined` INTEGER NOT NULL, `format` TEXT, PRIMARY KEY(`id`, `attempt`, `part`, `event`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -354,9 +354,10 @@
             "affinity": "TEXT"
           },
           {
-            "fieldPath": "uri",
-            "columnName": "uri",
-            "affinity": "TEXT"
+            "fieldPath": "joined",
+            "columnName": "joined",
+            "affinity": "INTEGER",
+            "notNull": true
           },
           {
             "fieldPath": "format",
@@ -473,7 +474,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '8a0e6b596b123e8a7d9bb28f71722f4d')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '4b9f7e21bccfcb502cdf482f2ba92214')"
     ]
   }
 }

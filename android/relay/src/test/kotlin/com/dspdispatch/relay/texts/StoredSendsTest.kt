@@ -37,16 +37,18 @@ class StoredSendsTest {
 
     @Test
     fun deliversAJoinedTextOnCdmaByItsLastPartsReport() = runTest {
-        // Android asks a CDMA carrier to report on a joined text's last part only, and names the
-        // one row it wrote the text to as the last part's sent.
+        // Android asks a CDMA carrier to report on a joined text's last part only, and says it sent
+        // the text joined with that part's result.
         val joined = handed("joined", parts = 2)
         heard(joined, 0, Event.SENT)
-        heard(joined, 1, Event.SENT, uri = "content://sms/sent/7")
+        heard(joined, 1, Event.SENT, joined = true)
         heard(joined, 1, Event.DELIVERED, format = "3gpp2")
-        // Handed joined, but sent by Android each as a text of its own, each written to its own row.
+        // Handed joined, but sent by Android each as a text of its own, as where the phone can't
+        // join them: none says it went joined, whether their results name a row each, or one, as
+        // when Android couldn't write the other.
         val split = handed("split", parts = 2)
-        heard(split, 0, Event.SENT, uri = "content://sms/sent/8")
-        heard(split, 1, Event.SENT, uri = "content://sms/sent/9")
+        heard(split, 0, Event.SENT)
+        heard(split, 1, Event.SENT)
         heard(split, 1, Event.DELIVERED, format = "3gpp2")
         // Each part its own text: each is reported, as on GSM.
         val apart = handed("apart", parts = 2, joined = false)
@@ -55,7 +57,7 @@ class StoredSendsTest {
         heard(apart, 1, Event.DELIVERED, format = "3gpp2")
         val gsm = handed("gsm", parts = 2)
         heard(gsm, 0, Event.SENT)
-        heard(gsm, 1, Event.SENT)
+        heard(gsm, 1, Event.SENT, joined = true)
         heard(gsm, 1, Event.DELIVERED, format = "3gpp")
         assertEquals(listOf("joined"), delivered())
         heard(split, 0, Event.DELIVERED, format = "3gpp2")
@@ -187,8 +189,8 @@ class StoredSendsTest {
         row: String? = null,
         at: Long = AT,
         format: String? = null,
-        uri: String? = null,
-    ) = sends.heard(Heard(send.id, send.attempt, part, event, error, row, at, format, uri))
+        joined: Boolean = false,
+    ) = sends.heard(Heard(send.id, send.attempt, part, event, error, row, at, format, joined))
 
     private companion object {
         const val AT = 1_793_041_515_000L
