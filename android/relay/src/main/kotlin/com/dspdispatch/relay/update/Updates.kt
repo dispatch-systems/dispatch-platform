@@ -37,7 +37,11 @@ fun interface ApkCheck {
 
 /** The notification that a newer version is offered (`UpdateNotice`). */
 interface Notice {
-    fun show(app: AppVersion)
+    /** The `versionCode` of the version last notified, kept across restarts; 0 before any. */
+    var notified: Int
+
+    /** Notifies of [app], where the app may notify; whether it did. */
+    fun show(app: AppVersion): Boolean
 
     fun cancel()
 }
@@ -61,7 +65,7 @@ class Updates(
     private val state = MutableStateFlow<Update>(Update.None)
     val update: StateFlow<Update> = state.asStateFlow()
 
-    /** The newer version Dispatch last told of, notified once; [heard] once it has told. */
+    /** The newer version Dispatch last told of; [heard] once it has told. */
     private var offered: AppVersion? = null
     private var heard = false
     private var installing: Job? = null
@@ -70,15 +74,17 @@ class Updates(
     private val cleared = scope.launch(io) { apk.delete() }
 
     /**
-     * Dispatch's latest version, [app] as the outbox answered it: offered while newer than this app.
-     * The first answer takes away the notification of the version this app was updated to.
+     * Dispatch's latest version, [app] as the outbox answered it: offered while newer than this app,
+     * and notified once, or at the next answer while the app may not notify. The first answer takes
+     * away the notification of the version this app was updated to.
      */
     fun heard(app: AppVersion?) {
         val newer = app?.takeIf { it.versionCode > own.versionCode }
+        if (newer != null && newer.versionCode != notice.notified && notice.show(newer)) notice.notified = newer.versionCode
         if (heard && newer == offered) return
         heard = true
         offered = newer
-        if (newer == null) notice.cancel() else notice.show(newer)
+        if (newer == null) notice.cancel()
         if (installing?.isActive != true) state.value = newer?.let { Update.Available(it) } ?: Update.None
     }
 

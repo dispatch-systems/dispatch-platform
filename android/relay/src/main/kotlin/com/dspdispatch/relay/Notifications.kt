@@ -50,10 +50,9 @@ object Notifications {
     /** Says [step] was undone, where the app may notify on Set up's channel; whether it did. */
     fun undone(context: Context, step: Step): Boolean = post(context, SETUP_CHANNEL, UNDONE_ID + step.ordinal, context.getString(step.undone))
 
-    /** Says [version] of the app is there to install, where the app may notify. */
-    fun update(context: Context, version: String) {
+    /** Says [version] of the app is there to install, where the app may notify; whether it did. */
+    fun update(context: Context, version: String): Boolean =
         post(context, UPDATES_CHANNEL, UPDATE_ID, context.getString(R.string.update_version, version))
-    }
 
     /** Takes away the notification of a newer version, if there is one. */
     fun cancelUpdate(context: Context) = NotificationManagerCompat.from(context).cancel(UPDATE_ID)

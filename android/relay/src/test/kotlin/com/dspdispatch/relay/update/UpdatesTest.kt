@@ -57,6 +57,32 @@ class UpdatesTest {
     }
 
     @Test
+    fun notifiesOfAVersionOnceThroughARestart() = runTest {
+        updates().heard(newer)
+        val restarted = updates()
+        restarted.heard(newer)
+        assertEquals(Update.Available(newer), restarted.update.value)
+        assertEquals(listOf(newer), notice.shown)
+        val newest = AppVersion("1.0.6", 6)
+        restarted.heard(newest)
+        assertEquals(listOf(newer, newest), notice.shown)
+    }
+
+    @Test
+    fun notifiesOnceTheAppMayNotifyAgain() = runTest {
+        notice.allowed = false
+        val updates = updates()
+        updates.heard(newer)
+        updates.heard(newer)
+        assertEquals(Update.Available(newer), updates.update.value)
+        assertEquals(emptyList<AppVersion>(), notice.shown)
+        notice.allowed = true
+        updates.heard(newer)
+        updates.heard(newer)
+        assertEquals(listOf(newer), notice.shown)
+    }
+
+    @Test
     fun takesAwayTheNotificationOfTheVersionItWasUpdatedTo() = runTest {
         val updates = updates()
         updates.heard(own)
@@ -197,12 +223,16 @@ class UpdatesTest {
         }
     }
 
+    /** The phone's notifications, and the app's storage, which outlive each [Updates] made. */
     private class FakeNotice : Notice {
+        var allowed = true
         val shown = mutableListOf<AppVersion>()
         var cancelled = 0
+        override var notified = 0
 
-        override fun show(app: AppVersion) {
-            shown += app
+        override fun show(app: AppVersion): Boolean {
+            if (allowed) shown += app
+            return allowed
         }
 
         override fun cancel() {
