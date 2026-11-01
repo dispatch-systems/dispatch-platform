@@ -65,6 +65,17 @@ class RelayService : LifecycleService() {
             0
         }
 
-        fun start(context: Context) = ContextCompat.startForegroundService(context, Intent(context, RelayService::class.java))
+        /**
+         * Starts the relay, if Android allows it now. From Android 12 it doesn't while the app is in
+         * the background, as when a pairing ends after its screen closed: the screen starts it
+         * whenever it's shown again.
+         */
+        fun start(context: Context) {
+            try {
+                ContextCompat.startForegroundService(context, Intent(context, RelayService::class.java))
+            } catch (_: IllegalStateException) {
+                // ForegroundServiceStartNotAllowedException, Android 12's: not now.
+            }
+        }
     }
 }
