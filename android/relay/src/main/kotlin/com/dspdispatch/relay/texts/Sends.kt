@@ -65,7 +65,7 @@ enum class Event {
 @Entity(tableName = "send_reports", primaryKeys = ["id", "attempt", "part", "event"])
 data class Report(val id: String, val attempt: Long, val part: Int, val event: Event, val error: String? = null)
 
-/** The provider row ([Row.ref]) a send was written to, so it's never reported as the phone's own. */
+/** The provider row ([Row.key]) a send was written to, so it's never reported as the phone's own. */
 @Entity(tableName = "send_rows")
 data class SendRow(@PrimaryKey val row: String, val id: String, val attempt: Long)
 
@@ -77,7 +77,7 @@ data class Told(val id: String, val attempt: Long, val status: SendStatus, val a
 
 /**
  * What Android said of a part of a send, as it reaches the app, possibly after it restarted:
- * [row] is the provider row it was written to, where Android says.
+ * [row] is the provider row it was written to ([Row.key]), where Android says.
  */
 data class Heard(
     val id: String,
@@ -120,13 +120,13 @@ interface Sends {
     /** Dispatch heard [told]. */
     suspend fun told(told: List<Told>)
 
-    /** Whether a send was written to the provider row [row] ([Row.ref]). */
+    /** Whether a send was written to the provider row [row] ([Row.key]). */
     suspend fun wrote(row: String): Boolean
 
     /** The sends Android took between [from] and [to] whose provider row isn't known. */
     suspend fun unplaced(from: Long, to: Long): List<Send>
 
-    /** [send] was written to the provider row [row] ([Row.ref]). */
+    /** [send] was written to the provider row [row] ([Row.key]). */
     suspend fun placed(send: Send, row: String)
 }
 

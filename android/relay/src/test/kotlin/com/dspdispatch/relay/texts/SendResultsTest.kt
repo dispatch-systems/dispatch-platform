@@ -32,10 +32,10 @@ class SendResultsTest {
 
     @Test
     fun knowsTheRowAndroidWroteATextTo() {
-        assertEquals("sms-12", rowOf("content://sms/sent/12"))
-        assertEquals("sms-12", rowOf("content://sms/12"))
-        assertEquals("mms-34", rowOf("content://mms/sent/34"))
-        assertNull(rowOf("content://sms/sent"))
-        assertNull(rowOf("content://com.android.contacts/contacts/1"))
+        assertEquals(Table.SMS to 12L, rowAt("content://sms/sent/12"))
+        assertEquals(Table.SMS to 12L, rowAt("content://sms/12"))
+        assertEquals(Table.MMS to 34L, rowAt("content://mms/sent/34"))
+        assertNull(rowAt("content://sms/sent"))
+        assertNull(rowAt("content://com.android.contacts/contacts/1"))
     }
 }

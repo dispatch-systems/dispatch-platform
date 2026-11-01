@@ -17,10 +17,32 @@ class SentByAppTest {
     @Test
     fun knowsTheRowAndroidSaidItWroteASendTo() = runTest {
         val send = handed("text_1", "+14255550199", "On my way")
-        sends.heard(Heard(send.id, send.attempt, 0, Event.SENT, null, "sms-7", AT + 1))
-        assertEquals(Whose.DISPATCH, own.whose(sms(7, "(425) 555-0199", "On my way")))
+        val sent = sms(7, "(425) 555-0199", "On my way")
+        sends.heard(Heard(send.id, send.attempt, 0, Event.SENT, null, sent.row.key, AT + 1))
+        assertEquals(Whose.DISPATCH, own.whose(sent))
         // Its own row known, it claims no other, as the phone's texting app sending the same.
         assertEquals(Whose.PHONE, own.whose(sms(8, "(425) 555-0199", "On my way", creator = TEXTING_APP)))
+    }
+
+    @Test
+    fun knowsARowWhoseIdWasUsedAgainIsntTheApps() = runTest {
+        val send = handed("text_1", "+14255550199", "On my way")
+        val sent = sms(7, "(425) 555-0199", "On my way")
+        sends.heard(Heard(send.id, send.attempt, 0, Event.SENT, null, sent.row.key, AT + 1))
+        // Its row deleted, the provider gives its ID to the next text, typed on the phone.
+        val typed = Message(Row(Table.SMS, 7, AT + 60_000, Direction.OUT, TEXTING_APP), listOf("(425) 555-0198"), "Gate code?", emptyList())
+        assertEquals(Whose.PHONE, own.whose(typed))
+        assertEquals(Whose.PHONE, own.whose(typed.copy(row = typed.row.copy(creator = null))))
+    }
+
+    @Test
+    fun takesTheProvidersWordThatAnotherAppSentIt() = runTest {
+        // The app's text not yet placed, as Android hasn't said where it wrote it.
+        handed("text_1", "+14255550199", "On my way")
+        assertEquals(Whose.PHONE, own.whose(sms(7, "(425) 555-0199", "On my way", creator = TEXTING_APP)))
+        assertEquals(Whose.PHONE, own.whose(sms(8, "(425) 555-0199", "Typed on the phone", creator = TEXTING_APP)))
+        assertEquals("still the app's to place", Whose.DISPATCH, own.whose(sms(9, "(425) 555-0199", "On my way", creator = APP)))
+        assertEquals(listOf<Send>(), sends.unplaced(0, Long.MAX_VALUE))
     }
 
     @Test

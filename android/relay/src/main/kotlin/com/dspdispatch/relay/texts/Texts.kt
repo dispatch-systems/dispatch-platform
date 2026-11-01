@@ -1,6 +1,7 @@
 package com.dspdispatch.relay.texts
 
 import android.content.Context
+import android.database.sqlite.SQLiteException
 import androidx.room3.Room
 import com.dspdispatch.relay.dispatch.Dispatch
 import com.dspdispatch.relay.dispatch.Outbox
@@ -76,10 +77,25 @@ class Texts(private val context: Context, dispatch: Dispatch) {
      */
     suspend fun send(paired: Paired, outbox: Outbox) = sender.take(paired, outbox)
 
-    /** Keeps what Android said of a part of a text the app sent, as it says it. */
-    suspend fun heard(heard: Heard) {
-        sender.heard(heard)
+    /**
+     * Keeps what Android said of a part of a text the app sent, as it says it, with the row at
+     * [uri] it wrote the text to, where it says.
+     */
+    suspend fun heard(heard: Heard, uri: String?) {
+        sender.heard(heard.copy(row = uri?.let(::keyAt)))
         this.heard.trySend(Unit)
+    }
+
+    // Known by its time as well as its ID, read now, as the provider uses an ID again once its row
+    // is deleted. A row that can't be read now is placed by its number and words as it's read.
+    private fun keyAt(uri: String): String? = try {
+        provider.key(uri)
+    } catch (_: SecurityException) {
+        null
+    } catch (_: SQLiteException) {
+        null
+    } catch (_: Unavailable) {
+        null
     }
 
     private companion object {

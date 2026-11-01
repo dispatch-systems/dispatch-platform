@@ -33,6 +33,14 @@ class PhoneProvider(private val resolver: ContentResolver) : Provider {
         Reading.Later
     }
 
+    override fun key(uri: String): String? {
+        val (table, id) = rowAt(uri) ?: return null
+        val (content, date) = if (table == Table.SMS) Sms.CONTENT_URI to Sms.DATE else Mms.CONTENT_URI to Mms.DATE
+        val at = resolver.query(Uri.withAppendedPath(content, id.toString()), arrayOf(date), null, null, null)
+            .rows { it.getLong(0) }.firstOrNull() ?: return null
+        return Row(table, id, if (table == Table.MMS) at * MS_PER_SECOND else at, Direction.OUT).key
+    }
+
     // Android answers nothing for a provider that crashed a moment ago, and says a part's not
     // found for one gone as for a provider it can't reach, or one that failed the call: a part's
     // gone only once the provider, answering, holds no such part.

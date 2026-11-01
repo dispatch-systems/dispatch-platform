@@ -17,15 +17,12 @@ enum class Table(val prefix: String) {
  */
 data class Row(val table: Table, val id: Long, val at: Long, val direction: Direction, val creator: String? = null) {
     val key get() = "${table.prefix}-$id-$at"
-
-    /** The row as Android names it in a send's result, by [rowOf]. */
-    val ref get() = "${table.prefix}-$id"
 }
 
-/** The [Row.ref] of the provider row at [uri], as Android gives it: `content://sms/sent/12`. */
-fun rowOf(uri: String): String? {
-    val (table, id) = ROW_URI.matchEntire(uri)?.destructured ?: return null
-    return "$table-$id"
+/** The table and ID of the provider row at [uri], as Android names one in a send's result: `content://sms/sent/12`. */
+fun rowAt(uri: String): Pair<Table, Long>? {
+    val (prefix, id) = ROW_URI.matchEntire(uri)?.destructured ?: return null
+    return Table.entries.first { it.prefix == prefix } to id.toLong()
 }
 
 private val ROW_URI = Regex("content://(${Table.SMS.prefix}|${Table.MMS.prefix})/(?:[a-z]+/)?(\\d+)")
@@ -76,6 +73,9 @@ interface Provider {
 
     /** The text [row] holds, if it's whole yet. */
     fun read(row: Row): Reading
+
+    /** The [Row.key] of the row at [uri], as Android names one in a send's result, or null once it's gone. */
+    fun key(uri: String): String?
 
     /** How many bytes the part at [uri] holds now, or null once it's gone; [Unavailable] if it can't say. */
     fun size(uri: String): Long?

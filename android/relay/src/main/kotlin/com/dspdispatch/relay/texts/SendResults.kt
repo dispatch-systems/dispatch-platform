@@ -25,7 +25,7 @@ class SendResults : BroadcastReceiver() {
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                context.relay.texts.heard(heard)
+                context.relay.texts.heard(heard, intent.getStringExtra(URI))
             } finally {
                 pending.finish()
             }
@@ -36,13 +36,10 @@ class SendResults : BroadcastReceiver() {
         val id = intent.getStringExtra(ID) ?: return null
         val attempt = intent.getLongExtra(ATTEMPT, -1).takeIf { it >= 0 } ?: return null
         val part = intent.getIntExtra(PART, 0)
-        // Where Android wrote the text in the provider, as it does for an app that isn't the
-        // phone's texting app.
-        val row = intent.getStringExtra(URI)?.let(::rowOf)
         return when (intent.action) {
-            SMS_SENT -> Heard(id, attempt, part, Event.SENT, Failure.sms(code), row, at)
+            SMS_SENT -> Heard(id, attempt, part, Event.SENT, Failure.sms(code), null, at)
             SMS_DELIVERED -> Heard(id, attempt, part, Event.DELIVERED, null, null, at).takeIf { delivered(intent) }
-            MMS_SENT -> Heard(id, attempt, part, Event.SENT, Failure.mms(code) ?: refused(intent), row, at)
+            MMS_SENT -> Heard(id, attempt, part, Event.SENT, Failure.mms(code) ?: refused(intent), null, at)
             else -> null
         }
     }
@@ -69,7 +66,8 @@ class SendResults : BroadcastReceiver() {
         private const val ATTEMPT = "attempt"
         private const val PART = "part"
 
-        // What Android adds to a result (SMSDispatcher's, and MmsService's).
+        // What Android adds to a result (SMSDispatcher's, and MmsService's). The URI is where it
+        // wrote the text in the provider, as it does for an app that isn't the phone's texting app.
         private const val URI = "uri"
         private const val PDU = "pdu"
         private const val FORMAT = "format"
