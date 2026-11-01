@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dispatch's mark (core/shell/frontend/runtime/Brand.tsx), 44 of the icon's 108 units, centered
+     in the part every launcher's mask shows. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="1.5714"
+        android:scaleY="1.5714"
+        android:translateX="32"
+        android:translateY="32">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M3 3h9C20 3 25 7.5 25 14s-5 11-13 11H3v-7h6v2h3c4.5 0 7-2.2 7-6s-2.5-6-7-6H9v6H3V3Z" />
+    </group>
+</vector>

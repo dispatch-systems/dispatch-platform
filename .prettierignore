@@ -13,3 +13,8 @@ Cargo.lock
 app/tests/backend/agent_api/
 # What the app's tests hold the whole product to, as `npm run snapshots:update` writes it.
 app/tests/backend/snapshots/
+
+# What Gradle writes as it builds the Android apps.
+android/.gradle/
+android/.kotlin/
+android/**/build/
