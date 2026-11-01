@@ -278,10 +278,11 @@ class SenderTest {
     fun sendsAsSmsAgainOnceThePartsLeaveAndroidsWindow() = runTest {
         radio.smsLimit = SmsLimit(10, WINDOW_MS)
         sender().send(paired, KEY, Outbox(listOf(text("long", 1, "x".repeat(8 * 160)))))
-        // Android stamps a part a moment after the app counts it: a minute more, it may count it still.
-        clock += WINDOW_MS + 59_000
+        // Android stamps a part a moment after the app counts it: a thirtieth of the window more, it
+        // may count it still.
+        clock += WINDOW_MS + 1_999
         sender().send(paired, KEY, Outbox(listOf(text("busy", 1, "Hi"))))
-        clock += 1_001
+        clock += 2
         sender().send(paired, KEY, Outbox(listOf(text("free", 1, "Hi"))))
         assertEquals(listOf("long", "free"), radio.handed.map { it.first.id })
         assertEquals(listOf("busy"), radio.pictureMessages.map { it.first.id })
@@ -364,7 +365,7 @@ class SenderTest {
     private companion object {
         val KEY = "k".repeat(64)
         const val DAY_MS = 24 * 60 * 60 * 1000L
-        const val WINDOW_MS = 30 * 60 * 1000L
+        const val WINDOW_MS = 60_000L
         const val APP = "com.dspdispatch.relay"
         const val TEXTING_APP = "com.example.texting"
     }

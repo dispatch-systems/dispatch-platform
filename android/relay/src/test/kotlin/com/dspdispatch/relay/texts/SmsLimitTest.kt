@@ -14,7 +14,7 @@ class SmsLimitTest {
 
     @Test
     fun takesAndroidsOwnWhereThePhoneDoesntSay() {
-        assertEquals(SmsLimit(30, 30 * 60 * 1000L), SmsLimit.of { null })
+        assertEquals(SmsLimit(30, 60_000), SmsLimit.of { null })
         assertEquals(SmsLimit.ANDROID, SmsLimit.of { "none" })
         assertEquals(SmsLimit.ANDROID, SmsLimit.of { "0" })
         assertEquals(SmsLimit.ANDROID.copy(most = 50), SmsLimit.of(mapOf(SmsLimit.MOST_SETTING to "50")::get))
@@ -32,8 +32,9 @@ class SmsLimitTest {
     }
 
     @Test
-    fun countsAMinutePastTheWindow() {
-        assertEquals(AT - 31 * 60 * 1000L, SmsLimit.ANDROID.since(AT))
+    fun countsAThirtiethOfTheWindowPastIt() {
+        assertEquals(AT - 62_000, SmsLimit.ANDROID.since(AT))
+        assertEquals(AT - 31 * 60_000, SmsLimit(30, 30 * 60_000).since(AT))
     }
 
     private companion object {

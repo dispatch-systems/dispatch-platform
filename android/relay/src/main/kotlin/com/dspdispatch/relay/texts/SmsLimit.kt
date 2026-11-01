@@ -13,21 +13,22 @@ data class SmsLimit(val most: Int, val windowMs: Long) {
     fun crossedBy(counted: Int, parts: Int) = counted + parts > most - MARGIN_PARTS
 
     /**
-     * From when the parts handed count for a text handed [at]: the window, and [SLACK_MS] more, as
-     * Android stamps each part a moment after the app counts it, so keeps it a moment longer.
+     * From when the parts handed count for a text handed [at]: the window, and a [SLACK_SHARE]th of
+     * it more, as Android stamps each part a moment after the app counts it, so keeps it a moment
+     * longer.
      */
-    fun since(at: Long) = at - windowMs - SLACK_MS
+    fun since(at: Long) = at - windowMs - windowMs / SLACK_SHARE
 
     companion object {
-        /** Android's own where the phone doesn't say otherwise (`SmsUsageMonitor`'s defaults). */
-        val ANDROID = SmsLimit(30, 30 * 60 * 1000L)
+        /** Android's own where the phone doesn't say otherwise: `SmsUsageMonitor`'s defaults, 30 a minute. */
+        val ANDROID = SmsLimit(30, 60_000L)
 
         /** The phone's settings of the limit, as `Settings.Global` names them. */
         const val MOST_SETTING = "sms_outgoing_check_max_count"
         const val WINDOW_SETTING = "sms_outgoing_check_interval_ms"
 
         private const val MARGIN_PARTS = 2
-        private const val SLACK_MS = 60_000L
+        private const val SLACK_SHARE = 30
 
         /**
          * The limit as the phone's [setting]s have it, each Android's own where the phone doesn't
