@@ -88,6 +88,7 @@ dependencies {
     implementation(libs.lifecycle.service)
     implementation(libs.okhttp)
     implementation(libs.serialization.json)
+    implementation(libs.work.runtime)
     implementation(libs.zxing.core)
     debugImplementation(libs.compose.ui.tooling)
     testImplementation(libs.coroutines.test)

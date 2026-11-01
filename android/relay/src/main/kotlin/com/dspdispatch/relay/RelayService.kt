@@ -10,6 +10,7 @@ import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import com.dspdispatch.relay.connection.Link
 import com.dspdispatch.relay.pairing.Standing
+import com.dspdispatch.relay.setup.Watchdog
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -19,7 +20,17 @@ import kotlinx.coroutines.launch
  * relaying text messages, which it keeps running beside its notification.
  */
 class RelayService : LifecycleService() {
-    private var running: Job? = null
+    private var relaying: Job? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        running = true
+    }
+
+    override fun onDestroy() {
+        running = false
+        super.onDestroy()
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
@@ -30,8 +41,9 @@ class RelayService : LifecycleService() {
             return START_NOT_STICKY
         }
         show(paired.dsp, relay.connection.link.value)
-        if (running?.isActive != true) {
-            running = lifecycleScope.launch {
+        Watchdog.schedule(this)
+        if (relaying?.isActive != true) {
+            relaying = lifecycleScope.launch {
                 launch { relay.connection.link.collect { show(paired.dsp, it) } }
                 relay.connection.run(paired, key) { outbox ->
                     // Sending Dispatch's texts comes with the outbox's sender. Until then a text
@@ -65,6 +77,24 @@ class RelayService : LifecycleService() {
             0
         }
 
-        fun start(context: Context) = ContextCompat.startForegroundService(context, Intent(context, RelayService::class.java))
+        /** Whether the relay is running in this process. */
+        @Volatile
+        var running = false
+            private set
+
+        /**
+         * Starts the relay, or leaves it running. From the background, Android 12+ lets an app start
+         * its foreground service only in the cases it lists, among them boot, the app's update and
+         * the battery left unrestricted: elsewhere the start is refused, and Set up's battery step
+         * says so.
+         */
+        fun start(context: Context) {
+            try {
+                ContextCompat.startForegroundService(context, Intent(context, RelayService::class.java))
+            } catch (_: IllegalStateException) {
+                // Android 12+'s ForegroundServiceStartNotAllowedException, which older phones
+                // don't know: refused from the background, to try again at the watchdog's next run.
+            }
+        }
     }
 }

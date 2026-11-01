@@ -1,11 +1,17 @@
 package com.dspdispatch.relay
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import com.dspdispatch.relay.setup.Step
 
 /** What the app shows in the phone's notifications. */
 object Notifications {
@@ -13,9 +19,16 @@ object Notifications {
     const val RELAY_ID = 1
     private const val RELAY_CHANNEL = "relay"
 
+    /** A step of Set up undone while the relay runs, one notification each, after the relay's. */
+    private const val UNDONE_ID = 100
+    private const val SETUP_CHANNEL = "setup"
+
     fun channels(context: Context) {
-        context.getSystemService(NotificationManager::class.java).createNotificationChannel(
-            NotificationChannel(RELAY_CHANNEL, context.getString(R.string.relay_channel), NotificationManager.IMPORTANCE_LOW),
+        context.getSystemService(NotificationManager::class.java).createNotificationChannels(
+            listOf(
+                NotificationChannel(RELAY_CHANNEL, context.getString(R.string.relay_channel), NotificationManager.IMPORTANCE_LOW),
+                NotificationChannel(SETUP_CHANNEL, context.getString(R.string.setup_channel), NotificationManager.IMPORTANCE_DEFAULT),
+            ),
         )
     }
 
@@ -28,6 +41,22 @@ object Notifications {
             .setSilent(true)
             .setContentIntent(open(context))
             .build()
+
+    /** Says [step] was undone, where the app may notify. */
+    fun undone(context: Context, step: Step) {
+        val allowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        if (!allowed) return
+        val notification = NotificationCompat.Builder(context, SETUP_CHANNEL)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(context.getString(step.undone))
+            .setAutoCancel(true)
+            .setContentIntent(open(context))
+            .build()
+        NotificationManagerCompat.from(context).notify(UNDONE_ID + step.ordinal, notification)
+    }
+
+    fun cancelUndone(context: Context, step: Step) = NotificationManagerCompat.from(context).cancel(UNDONE_ID + step.ordinal)
 
     private fun open(context: Context) = PendingIntent.getActivity(
         context,
