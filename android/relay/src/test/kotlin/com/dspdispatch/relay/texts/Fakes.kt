@@ -1,6 +1,9 @@
 package com.dspdispatch.relay.texts
 
+import androidx.room3.Room
+import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import java.io.ByteArrayInputStream
+import java.io.File
 import java.io.FileNotFoundException
 import java.io.InputStream
 
@@ -73,3 +76,44 @@ class FakeProvider : Provider {
 
     override fun open(uri: String): InputStream = ByteArrayInputStream(bytes[uri] ?: throw FileNotFoundException(uri))
 }
+
+/** Android's texting service, sending nothing: each text handed to it is kept in [handed]. */
+class FakeRadio : Radio {
+    var allowed = true
+    var mmsMost: Int? = 300 * 1024
+
+    /** How the carrier splits a text: in parts of this many characters. */
+    var partLength = 160
+
+    /** What Android throws as it's handed a text, if anything. */
+    var refusing: RuntimeException? = null
+    val handed = mutableListOf<Pair<Send, List<String>>>()
+    val pictureMessages = mutableListOf<Pair<Send, ByteArray>>()
+
+    /** The number each line was asked for. */
+    val lines = mutableListOf<String>()
+
+    override fun allowed() = allowed
+
+    override fun line(number: String): Line {
+        lines += number
+        return object : Line {
+            override fun divide(body: String) = body.chunked(partLength).ifEmpty { listOf("") }
+
+            override fun mmsMost() = mmsMost
+
+            override fun sms(send: Send, parts: List<String>) {
+                refusing?.let { throw it }
+                handed += send to parts
+            }
+
+            override fun mms(send: Send, pdu: File) {
+                refusing?.let { throw it }
+                pictureMessages += send to pdu.readBytes()
+            }
+        }
+    }
+}
+
+/** The app's texts database, in memory, on SQLite itself. */
+fun memoryDatabase(): TextsDatabase = Room.inMemoryDatabaseBuilder<TextsDatabase>().setDriver(BundledSQLiteDriver()).build()

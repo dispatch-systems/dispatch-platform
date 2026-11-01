@@ -1,0 +1,99 @@
+package com.dspdispatch.relay.texts
+
+import com.dspdispatch.relay.dispatch.Direction
+import com.dspdispatch.relay.dispatch.SendStatus
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runTest
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/** The sends' queries, on SQLite itself. */
+class StoredSendsTest {
+    private val database = memoryDatabase()
+    private val sends = database.sends()
+
+    @After
+    fun close() = database.close()
+
+    @Test
+    fun settlesASendOnceEveryPartIsHeardOf() = runTest {
+        val send = handed("text_1", parts = 2)
+        heard(send, 0, Event.SENT)
+        heard(send, 0, Event.SENT)
+        assertTrue("one part of two", sends.statuses(10).isEmpty())
+        heard(send, 1, Event.DELIVERED)
+        heard(send, 1, Event.SENT)
+        assertEquals(listOf(SendStatus.SENT), sends.statuses(10).map(Told::status))
+        heard(send, 0, Event.DELIVERED)
+        assertEquals(listOf(SendStatus.SENT, SendStatus.DELIVERED), sends.statuses(10).map(Told::status))
+        heard(send, 0, Event.DELIVERED)
+        assertEquals(2, sends.statuses(10).size)
+    }
+
+    @Test
+    fun failsASendAsSoonAsAPartFails() = runTest {
+        val send = handed("text_1", parts = 3)
+        heard(send, 1, Event.SENT, "No service")
+        heard(send, 0, Event.SENT)
+        heard(send, 2, Event.SENT)
+        assertEquals(listOf(Told("text_1", 1, SendStatus.FAILED, AT, "No service")), sends.statuses(10))
+    }
+
+    @Test
+    fun keepsStatusesUntilDispatchHearsThem() = runTest {
+        val first = handed("text_1")
+        val second = handed("text_2")
+        heard(second, 0, Event.SENT)
+        heard(first, 0, Event.SENT, at = AT - 1)
+        val waiting = sends.statuses(10)
+        assertEquals(listOf("text_1", "text_2"), waiting.map(Told::id))
+        sends.told(waiting.take(1))
+        assertEquals(listOf("text_2"), sends.statuses(10).map(Told::id))
+    }
+
+    @Test
+    fun forgetsASendOnlyOnceDispatchHeardItsEnd() = runTest {
+        val told = handed("told")
+        heard(told, 0, Event.SENT, row = "sms-1")
+        sends.told(sends.statuses(10))
+        val untold = handed("untold")
+        heard(untold, 0, Event.SENT, row = "sms-2")
+        handed("unsettled")
+        sends.start(Send("fetching", 1, "+14255550199", "", AT))
+        sends.forget(AT + 1)
+        assertFalse(sends.wrote("sms-1"))
+        assertTrue(sends.wrote("sms-2"))
+        assertEquals(listOf("unsettled"), sends.unplaced(0, Long.MAX_VALUE).map(Send::id))
+        // Never handed, it may start again, as Dispatch has it still.
+        assertEquals(null, sends.start(Send("fetching", 1, "+14255550199", "", AT + 2)).handed)
+        assertEquals(AT + 2, sends.start(Send("fetching", 1, "+14255550199", "", AT + 3)).started)
+    }
+
+    @Test
+    fun countsTodaysTextsSentForDispatch() = runTest {
+        val queue = database.queue()
+        queue.begin(Mark("phone_1", 0, 0))
+        queue.read(Seen("sms-1-50", 50, Direction.OUT), emptyList(), emptyList())
+        queue.read(Seen("sms-2-60", 60, null), emptyList(), emptyList())
+        heard(handed("text_1"), 0, Event.SENT, at = 70)
+        heard(handed("text_2"), 0, Event.SENT, "No service", at = 80)
+        assertEquals(Today(sent = 2, latest = 70), queue.today(10).first())
+        assertEquals(Today(sent = 1, latest = 70), queue.today(55).first())
+    }
+
+    private suspend fun handed(id: String, parts: Int = 1): Send {
+        val send = sends.start(Send(id, 1, "+14255550199", "Hi", AT))
+        sends.handed(send, parts, AT)
+        return send
+    }
+
+    private suspend fun heard(send: Send, part: Int, event: Event, error: String? = null, row: String? = null, at: Long = AT) =
+        sends.heard(Heard(send.id, send.attempt, part, event, error, row, at))
+
+    private companion object {
+        const val AT = 1_793_041_515_000L
+    }
+}

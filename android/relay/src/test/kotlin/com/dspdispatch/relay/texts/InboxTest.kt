@@ -9,9 +9,9 @@ import org.junit.Test
 class InboxTest {
     private val provider = FakeProvider()
     private val queue = MemoryQueue()
-    private val ownRows = mutableSetOf<Row>()
+    private val whose = mutableMapOf<Row, Whose>()
     private var clock = PAIRED
-    private val inbox = Inbox(provider, queue, { it in ownRows }) { clock }
+    private val inbox = Inbox(provider, queue, { whose[it.row] ?: Whose.PHONE }) { clock }
 
     @Test
     fun readsEachTextOnceFromWhenThePhonePaired() = runTest {
@@ -105,11 +105,24 @@ class InboxTest {
         inbox.begin("phone_1")
         sms(2, PAIRED + 10, Direction.IN, "Carrier", "Your bill is ready")
         sms(3, PAIRED + 20, Direction.OUT, "(206) 555-0103", "Sent for Dispatch")
-        ownRows += provider.messages.last().row
+        whose[provider.messages.last().row] = Whose.DISPATCH
         sms(4, PAIRED + 30, Direction.IN, "(206) 555-0104", "Still here")
         read()
         assertEquals(listOf("sms-4-${PAIRED + 30}"), queue.texts.keys.toList())
         assertEquals(3, queue.seen.size)
+    }
+
+    @Test
+    fun readsATextAgainWhileItsNotKnownWhoSentIt() = runTest {
+        inbox.begin("phone_1")
+        sms(3, PAIRED + 20, Direction.OUT, "(206) 555-0103", "Sent by whom?")
+        val row = provider.messages.last().row
+        whose[row] = Whose.UNSURE
+        read()
+        assertTrue(queue.texts.isEmpty() && queue.seen.isEmpty())
+        whose[row] = Whose.PHONE
+        read()
+        assertEquals(listOf(row.key), queue.texts.keys.toList())
     }
 
     @Test
