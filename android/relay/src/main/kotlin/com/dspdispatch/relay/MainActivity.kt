@@ -47,7 +47,6 @@ class MainActivity : ComponentActivity() {
         scanning = savedInstanceState?.getBoolean(SCANNING) ?: false
         waiting = savedInstanceState?.getString(WAITING)?.let(PairingLink::parse)
         if (savedInstanceState == null) opened(intent)
-        if (relay.pairings.standing.value is Standing.Pairing) RelayService.start(this)
         setContent {
             val standing by relay.pairings.standing.collectAsStateWithLifecycle()
             val link by relay.connection.link.collectAsStateWithLifecycle()
@@ -64,6 +63,12 @@ class MainActivity : ComponentActivity() {
                 else -> StartScreen(::scan, pairing, problem)
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // While shown, Android lets the app start the relay: whenever paired, make sure it runs.
+        if (relay.pairings.standing.value is Standing.Pairing) RelayService.start(this)
     }
 
     override fun onResume() {

@@ -1,6 +1,7 @@
 package com.dspdispatch.relay.ui
 
 import android.text.format.DateFormat
+import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -174,6 +175,7 @@ private fun ScanButton(scan: () -> Unit, pairing: Boolean, problem: Int?) = Colu
 /** The scanner, filling the screen, with a way back. */
 @Composable
 fun ScanScreen(read: (String) -> Unit, back: () -> Unit) = Page {
+    BackHandler(onBack = back)
     Scanner(read, Modifier.weight(1f).fillMaxWidth())
     OutlinedButton(back, Modifier.fillMaxWidth().padding(top = 12.dp).height(48.dp)) {
         Text(stringResource(R.string.back))
@@ -183,6 +185,7 @@ fun ScanScreen(read: (String) -> Unit, back: () -> Unit) = Page {
 /** Asks for the camera, which scanning needs. */
 @Composable
 fun CameraScreen(allow: () -> Unit, back: () -> Unit) = Page {
+    BackHandler(onBack = back)
     Column(Modifier.weight(1f).fillMaxWidth(), Arrangement.Center, Alignment.CenterHorizontally) {
         Text(stringResource(R.string.camera_needed), style = MaterialTheme.typography.titleMedium)
     }
