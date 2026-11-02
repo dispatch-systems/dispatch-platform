@@ -4,6 +4,7 @@ import { download } from '../../../../core/shell/frontend/runtime/transfer.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { usePicture } from '../../../../core/shell/frontend/runtime/usePicture.js';
 import { fileStatus, isPhoto, size } from './format.js';
+import { useViewPhoto } from './PhotoViewer.js';
 import './message-body.css';
 
 /** One message: its text, marked if edited in Slack, then its photos and files, read from where
@@ -37,15 +38,21 @@ export function MessageBody({
 }
 
 /**
- * A photo, fetched as it nears view, as the page's own calls are, with the DSP's view; it opens
- * at full size in a tab of its own.
+ * A photo, fetched as it nears view, as the page's own calls are, with the DSP's view; pressed,
+ * it opens over the page at full size.
  */
 function Photo({ photo, address }: { photo: MessageFile; address: (id: string) => string }) {
-  const [box, src, lost] = usePicture<HTMLAnchorElement>(address(photo.id));
+  const [box, src, lost] = usePicture<HTMLButtonElement>(address(photo.id));
+  const view = useViewPhoto();
   return (
-    <a ref={box} className="photo" href={src} target="_blank" rel="noreferrer">
+    <button
+      ref={box}
+      className="photo"
+      disabled={!src}
+      onClick={() => src && view({ name: photo.name, src, url: address(photo.id) })}
+    >
       {src && <img src={src} alt={photo.name} onError={lost} />}
-    </a>
+    </button>
   );
 }
 

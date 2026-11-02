@@ -26,6 +26,9 @@
   --accent: #f0f3f8; /* hover */
   --selection: #edf1fd; /* current navigation item, selected rows */
   --overlay: #10182755; /* behind dialogs and the mobile drawer */
+  --viewer-backdrop: #000d; /* behind a photo shown full size, in either theme */
+  --viewer-foreground: #fff;
+  --viewer-hover: #fff3;
 
   /* Text */
   --foreground: #171b25;
