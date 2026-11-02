@@ -424,7 +424,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
           <UpdateSlack
             workspaces={updating}
             busy={returned.busy}
-            close={texting ? () => showSection('recents') : undefined}
+            close={texting ? () => showSection('messaging') : undefined}
           />
         )}
         {composing && (

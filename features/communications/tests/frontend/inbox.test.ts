@@ -120,10 +120,10 @@ test('each section’s list keeps the server’s order as it changes, with the p
   });
   assert.deepEqual(ids(next), ['e', 'g2', 'a', 'c', 'g1', 'b', 'd']);
   assert.deepEqual([next.revision, next.routes, next.phones], [2, true, [offline]]);
-  // Recents stops at its own last text, written in after Slack's last: those waiting below it
-  // stay, Slack's answered ones go until its texts are read.
-  assert.deepEqual(ids(next, 'recents'), ['c', 'g1', 'n0', 'a', 'g2', 'e']);
-  assert.equal(readsNext(next, 'recents'), 'recents');
+  // Recents (Messaging's ID) stops at its own last text, written in after Slack's last: those
+  // waiting below it stay, Slack's answered ones go until its texts are read.
+  assert.deepEqual(ids(next, 'messaging'), ['c', 'g1', 'n0', 'a', 'g2', 'e']);
+  assert.equal(readsNext(next, 'messaging'), 'messaging');
   // Read in turn, older ones come after the last, each once, groups among them.
   const older = withOlder(
     next,
@@ -144,14 +144,14 @@ test('each section’s list keeps the server’s order as it changes, with the p
     conversations: [texts('n1', 950, 940), texts('n2', 20)],
     groups: [],
   });
-  assert.deepEqual(ids(texted, 'recents'), ['c', 'n1', 'g1', 'n0', 'a', 'g2', 'e']);
-  assert.deepEqual(waitingIn(texted), { recents: 4, routes: 0, slack: 3 });
+  assert.deepEqual(ids(texted, 'messaging'), ['c', 'n1', 'g1', 'n0', 'a', 'g2', 'e']);
+  assert.deepEqual(waitingIn(texted), { messaging: 4, routes: 0, slack: 3 });
   const read = withOlder(
     texted,
     { conversations: [texts('n2', 20)], groups: [], more: false },
-    'recents',
+    'messaging',
   );
-  assert.deepEqual(ids(read, 'recents'), [
+  assert.deepEqual(ids(read, 'messaging'), [
     'c',
     'n1',
     'g1',
@@ -166,7 +166,7 @@ test('each section’s list keeps the server’s order as it changes, with the p
     'h',
     'n2',
   ]);
-  assert.equal(readsNext(read, 'recents'), undefined);
+  assert.equal(readsNext(read, 'messaging'), undefined);
   assert.deepEqual(ids(read), ids(older));
 });
 

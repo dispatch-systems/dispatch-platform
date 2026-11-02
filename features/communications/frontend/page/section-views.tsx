@@ -92,7 +92,7 @@ type SectionView = {
 export const VIEWS: { [S in Section]: SectionView } = {
   // Recents lists Today's Routes' conversations as its read holds them, each driver's under their
   // route, and can text whom the DSP's phones can, while it has texting.
-  recents: {
+  messaging: {
     label: 'Recents',
     icon: <History size={14} aria-hidden="true" />,
     read: (groups) => routeConversations(groups),

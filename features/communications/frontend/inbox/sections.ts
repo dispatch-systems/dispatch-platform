@@ -32,8 +32,9 @@ export type SectionModel = {
 export const SECTIONS = [
   {
     // Recents: every section's conversations and the groups, always; its own, the numbers that
-    // text the DSP's phones, but those blocked.
-    id: 'recents',
+    // text the DSP's phones, but those blocked. By the ID it shipped with as Messaging, which
+    // members' browsers keep.
+    id: 'messaging',
     offered: () => true,
     holds: (conversation) => conversation.kind === 'number' && !conversation.blocked,
     groups: false,

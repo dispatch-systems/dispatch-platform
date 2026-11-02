@@ -11,7 +11,7 @@ import { useFound } from '../shared/useFound.js';
 import type { Draft } from '../slack/groups/GroupDraft.js';
 import { GroupDraftRow, GroupRow } from '../slack/groups/GroupRow.js';
 import { ConversationRow } from './ConversationRow.js';
-import { readsNext, rows as listed, type Row } from './inbox.js';
+import { latestFirst, readsNext, rows as listed, type Row } from './inbox.js';
 import {
   groupsSection,
   lists,
@@ -75,12 +75,11 @@ export function ConversationList({
         searched
           .split(' ')
           .map((each) => searchConversations(typed, sectionNamed(each as Section).listing(team))),
-      ).then((found) => {
-        const conversations = found.flatMap((each) => each.conversations);
-        return found.length > 1
-          ? conversations.sort((a, b) => (b.lastAt ?? 0) - (a.lastAt ?? 0))
-          : conversations;
-      }),
+      ).then((found) =>
+        found.length > 1
+          ? found.flatMap((each) => each.conversations).sort(latestFirst)
+          : found[0]!.conversations,
+      ),
     [typed, searched, team],
   );
   const { found, failed } = useFound(

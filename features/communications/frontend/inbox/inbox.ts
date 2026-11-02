@@ -27,6 +27,9 @@ import {
 /** A row of the list: a conversation, or a group. */
 type Listed = Pick<Conversation, 'id' | 'state' | 'waitingSince'> & { lastAt: number | null };
 
+/** Whether `a` was written in after `b`. */
+const later = (a: Listed, b: Listed) =>
+  a.lastAt !== b.lastAt ? (a.lastAt ?? 0) > (b.lastAt ?? 0) : a.id > b.id;
 /** Whether `a` is listed before `b`. */
 function above(a: Listed, b: Listed) {
   const waits = a.state === 'waiting';
@@ -35,12 +38,10 @@ function above(a: Listed, b: Listed) {
     return a.waitingSince !== b.waitingSince
       ? (a.waitingSince ?? 0) < (b.waitingSince ?? 0)
       : a.id < b.id;
-  return a.lastAt !== b.lastAt ? (a.lastAt ?? 0) > (b.lastAt ?? 0) : a.id > b.id;
+  return later(a, b);
 }
 export const order = (a: Listed, b: Listed) => (a.id === b.id ? 0 : above(a, b) ? -1 : 1);
-/** Whether `a` was written in after `b`, as Recents lists them, waiting or not. */
-const later = (a: Listed, b: Listed) =>
-  a.lastAt !== b.lastAt ? (a.lastAt ?? 0) > (b.lastAt ?? 0) : a.id > b.id;
+/** The latest written in first, waiting or not, as Recents lists them. */
 export const latestFirst = (a: Listed, b: Listed) => (a.id === b.id ? 0 : later(a, b) ? -1 : 1);
 
 /** Whether a conversation is a row of `section`'s list: listed there, not under a group. */
