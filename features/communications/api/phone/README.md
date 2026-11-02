@@ -101,7 +101,7 @@ the phone is removed.
 
 With them, while the server hands out the app, its latest version,
 `"app": { "version": "1.4.0", "versionCode": 14 }`, left out while it hands out none. The app
-offers to update once `versionCode` is above its own ([the app](#get-apicommunicationsphoneapp)).
+updates itself once `versionCode` is above its own ([the app](#get-apicommunicationsphoneapp)).
 
 Each, oldest first, is to send `body` from this phone to `number`, with each file fetched first
 (`GET /api/communications/phone/files/{id}`). A text stays in the outbox until a status of its

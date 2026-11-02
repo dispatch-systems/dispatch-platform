@@ -9,11 +9,11 @@ import java.security.MessageDigest
 class Mismatch(message: String) : Exception(message)
 
 /**
- * Saves the APK [input] streams to [to], telling [progress] the bytes saved so far, and throws a
- * [Mismatch] unless it's [expected]'s size and SHA-256. Stops as soon as it's larger, so a wrong
+ * Saves the APK [input] streams to [to], and throws a [Mismatch] unless it's [expected]'s size and
+ * SHA-256. Stops as soon as it's larger, so a wrong
  * answer never fills the phone. Blocks: call it off the main thread.
  */
-fun save(input: InputStream, to: File, expected: AppDetails, progress: (Long) -> Unit) {
+fun save(input: InputStream, to: File, expected: AppDetails) {
     val digest = MessageDigest.getInstance(SHA_256)
     var saved = 0L
     to.outputStream().use { output ->
@@ -25,7 +25,6 @@ fun save(input: InputStream, to: File, expected: AppDetails, progress: (Long) ->
             if (saved > expected.size) throw Mismatch("Larger than ${expected.size} bytes")
             digest.update(buffer, 0, read)
             output.write(buffer, 0, read)
-            progress(saved)
         }
     }
     if (saved != expected.size) throw Mismatch("$saved bytes of ${expected.size}")

@@ -16,11 +16,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import com.dspdispatch.relay.pairing.Paired
 import com.dspdispatch.relay.pairing.PairingLink
 import com.dspdispatch.relay.pairing.Standing
 import com.dspdispatch.relay.setup.Fixes
-import com.dspdispatch.relay.setup.Item
 import com.dspdispatch.relay.setup.Step
 import com.dspdispatch.relay.texts.Today
 import com.dspdispatch.relay.ui.CameraScreen
@@ -61,7 +59,7 @@ class MainActivity : ComponentActivity() {
         scanning = savedInstanceState?.getBoolean(SCANNING) ?: false
         waiting = savedInstanceState?.getString(WAITING)?.let(PairingLink::parse)
         if (savedInstanceState == null) opened(intent)
-        // Android's confirmation of an update, shown while the app is: the person tapped Install.
+        // Android's confirmation of an update it won't install without the person, shown while the app is.
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 relay.installer.confirm.filterNotNull().collect {
@@ -79,7 +77,6 @@ class MainActivity : ComponentActivity() {
             val finished by relay.setup.finished.collectAsStateWithLifecycle()
             val today by relay.texts.today.collectAsStateWithLifecycle(Today())
             val mmsWhenBusy by relay.texts.mmsWhenBusy.on.collectAsStateWithLifecycle()
-            val update by relay.updates.update.collectAsStateWithLifecycle()
             val pairing = attempt == Attempt.Pairing
             val problem = (attempt as? Attempt.Failed)?.problem
             val now = standing
@@ -97,8 +94,7 @@ class MainActivity : ComponentActivity() {
                     ::startWalk,
                     mmsWhenBusy,
                     relay.texts.mmsWhenBusy::set,
-                    update,
-                ) { install(now.paired, items) }
+                )
                 scanning && !cameraAllowed -> CameraScreen(::askForCamera) { scanning = false }
                 scanning -> ScanScreen(::read) { scanning = false }
                 now is Standing.Removed -> RemovedScreen(now.dsp, ::scan, pairing, problem)
@@ -132,15 +128,18 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun opened(intent: Intent) {
+        if (intent.action == Notifications.UPDATE) return update()
         intent.data?.toString()?.let(::read)
     }
 
     /**
-     * Installs the newer version from [paired]'s DSP; or first opens Install updates, as Set up's
-     * [items] have it, while Android doesn't let the app install them.
+     * The person tapped the update's notification: installs the newer version from the paired DSP,
+     * showing Android's confirmation; or first opens Install updates, as Set up has it, while Android
+     * doesn't let the app install them.
      */
-    private fun install(paired: Paired, items: List<Item>?) {
-        val notAllowed = items?.firstOrNull { it.step == Step.INSTALL_UPDATES && !it.done }
+    private fun update() {
+        val paired = (relay.pairings.standing.value as? Standing.Pairing)?.paired ?: return
+        val notAllowed = relay.setup.items.value?.firstOrNull { it.step == Step.INSTALL_UPDATES && !it.done }
         val fix = notAllowed?.fix
         if (fix != null) fixes.apply(notAllowed, fix) else relay.updates.install(paired.site)
     }

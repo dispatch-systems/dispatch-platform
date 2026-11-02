@@ -23,7 +23,7 @@ object Notifications {
     private const val UNDONE_ID = 100
     private const val SETUP_CHANNEL = "setup"
 
-    /** A newer version of the app to install. */
+    /** A newer version of the app for the person to confirm, which Android won't install without them. */
     private const val UPDATE_ID = 2
     private const val UPDATES_CHANNEL = "updates"
 
@@ -50,15 +50,21 @@ object Notifications {
     /** Says [step] was undone, where the app may notify on Set up's channel; whether it did. */
     fun undone(context: Context, step: Step): Boolean = post(context, SETUP_CHANNEL, UNDONE_ID + step.ordinal, context.getString(step.undone))
 
-    /** Says [version] of the app is there to install, where the app may notify; whether it did. */
+    /** The action of the update's notification: the app opens to show Android's confirmation. */
+    const val UPDATE = "com.dspdispatch.relay.action.UPDATE"
+
+    /** Asks the person to confirm installing [version] of the app, where the app may notify; whether it did. Kept when tapped, until taken away. */
     fun update(context: Context, version: String): Boolean =
-        post(context, UPDATES_CHANNEL, UPDATE_ID, context.getString(R.string.update_version, version))
+        post(context, UPDATES_CHANNEL, UPDATE_ID, context.getString(R.string.update_version, version), UPDATE)
 
     /** Takes away the notification of a newer version, if there is one. */
     fun cancelUpdate(context: Context) = NotificationManagerCompat.from(context).cancel(UPDATE_ID)
 
-    /** Posts [title] on [channel] as notification [id], opening the app, where the app may notify there; whether it did. */
-    private fun post(context: Context, channel: String, id: Int, title: String): Boolean {
+    /**
+     * Posts [title] on [channel] as notification [id], opening the app with [action], where the app
+     * may notify there; whether it did. One with an action is kept when tapped.
+     */
+    private fun post(context: Context, channel: String, id: Int, title: String, action: String? = null): Boolean {
         val manager = NotificationManagerCompat.from(context)
         val allowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
@@ -66,8 +72,8 @@ object Notifications {
         val notification = NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
-            .setAutoCancel(true)
-            .setContentIntent(open(context))
+            .setAutoCancel(action == null)
+            .setContentIntent(open(context, action))
             .build()
         manager.notify(id, notification)
         return true
@@ -83,10 +89,10 @@ object Notifications {
     /** Takes away the notification of [step] undone, if there is one. */
     fun cancelUndone(context: Context, step: Step) = NotificationManagerCompat.from(context).cancel(UNDONE_ID + step.ordinal)
 
-    private fun open(context: Context) = PendingIntent.getActivity(
+    private fun open(context: Context, action: String? = null) = PendingIntent.getActivity(
         context,
         0,
-        Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+        Intent(context, MainActivity::class.java).setAction(action).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
         PendingIntent.FLAG_IMMUTABLE,
     )
 }

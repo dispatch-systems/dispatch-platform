@@ -6,7 +6,6 @@ import java.io.File
 import java.security.MessageDigest
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -22,29 +21,26 @@ class DownloadTest {
 
     @Test
     fun savesTheApkTheDetailsDescribe() {
-        val progress = mutableListOf<Long>()
-        save(ByteArrayInputStream(bytes), apk, details(bytes)) { progress += it }
+        save(ByteArrayInputStream(bytes), apk, details(bytes))
         assertArrayEquals(bytes, apk.readBytes())
-        assertEquals(bytes.size.toLong(), progress.last())
-        assertTrue(progress.zipWithNext().all { (a, b) -> a < b })
     }
 
     @Test
     fun stopsOnceLargerThanTheDetailsSay() {
         val larger = ByteArrayInputStream(bytes + bytes + bytes + bytes)
-        assertThrows(Mismatch::class.java) { save(larger, apk, details(bytes)) {} }
+        assertThrows(Mismatch::class.java) { save(larger, apk, details(bytes)) }
         assertTrue(apk.length() <= bytes.size)
     }
 
     @Test
     fun refusesAShorterDownload() {
-        assertThrows(Mismatch::class.java) { save(ByteArrayInputStream(bytes.copyOf(1_000)), apk, details(bytes)) {} }
+        assertThrows(Mismatch::class.java) { save(ByteArrayInputStream(bytes.copyOf(1_000)), apk, details(bytes)) }
     }
 
     @Test
     fun refusesAnotherApkOfTheSameSize() {
         val other = bytes.copyOf().also { it[0] = (it[0] + 1).toByte() }
-        assertThrows(Mismatch::class.java) { save(ByteArrayInputStream(other), apk, details(bytes)) {} }
+        assertThrows(Mismatch::class.java) { save(ByteArrayInputStream(other), apk, details(bytes)) }
     }
 
     private fun details(of: ByteArray) = AppDetails("1.0.5", 5, of.size.toLong(), sha256(of))
