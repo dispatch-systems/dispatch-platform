@@ -154,11 +154,12 @@
 [data-theme='dark'] :is(.communications, .swatch)[data-team-color='slate'] {
   --bubble-out: #4b5a70;
 }
-/* White, the employees' messages are edged, on a tinted conversation and the box under it. */
+/* White, the employees' messages are the page's cards, edged, on its surface behind the
+   conversation and the box under it. */
 :is(.communications, .swatch)[data-employee-color='white'] {
-  --bubble-in: #fff;
+  --bubble-in: var(--card);
   --bubble-in-edge: var(--border);
-  --thread-surface: #f4f6f9;
+  --thread-surface: var(--surface);
 }
 :is(.communications, .swatch)[data-employee-color='gray'] {
   --bubble-in: #eef1f5;
@@ -173,9 +174,8 @@
   --bubble-in: #e3f3e9;
 }
 [data-theme='dark'] :is(.communications, .swatch)[data-employee-color='white'] {
-  --bubble-in: #1f2735;
-  --bubble-in-edge: #2c3546;
-  --thread-surface: #141922;
+  --bubble-in: var(--surface);
+  --thread-surface: var(--background);
 }
 [data-theme='dark'] :is(.communications, .swatch)[data-employee-color='gray'] {
   --bubble-in: #262f3f;
