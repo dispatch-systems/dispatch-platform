@@ -298,6 +298,7 @@ export function DisplaySettings({ view, refresh }: { view: DspView; refresh: () 
             )}
             <Segments
               label="Times"
+              wide
               value={shown.times}
               options={[
                 ['each_message', 'Each message'],

@@ -27,3 +27,7 @@
   margin-top: calc(var(--gap) * 1.5);
   font-weight: 400;
 }
+/* The day's first, close under the day. */
+.thread .day + .day.pause {
+  margin-top: 2px;
+}
