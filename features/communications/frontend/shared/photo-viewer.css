@@ -7,12 +7,16 @@
   align-items: center;
   justify-content: center;
   padding: 64px 24px 24px;
-  background: #000d;
+  background: var(--viewer-backdrop);
+  container-type: size;
 }
+/* As large as the space inside allows at its own shape (`--shape`, its width over its height),
+   small photos too; until that's known, no larger than it is. */
 .photo-viewer img {
+  width: min(100cqw, 100cqh * var(--shape));
   max-width: 100%;
   max-height: 100%;
-  object-fit: contain;
+  aspect-ratio: var(--shape);
 }
 .photo-viewer-actions {
   position: absolute;
@@ -24,10 +28,10 @@
 .photo-viewer-actions button {
   border: 0;
   background: transparent;
-  color: #fff;
+  color: var(--viewer-foreground);
 }
 .photo-viewer-actions button:hover {
-  background: #fff3;
+  background: var(--viewer-hover);
 }
 @media (max-width: 760px) {
   .photo-viewer {
