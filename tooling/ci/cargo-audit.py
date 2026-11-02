@@ -13,17 +13,7 @@ ALLOWED_YANKED = {}
 
 # Advisories the lockfile may hold, each on one exact version, with why it is safe and when it
 # goes.
-CALAMINE_ZIP = (
-    "only zip 9 fixes it, and calamine, which Cortex reads workbooks with, still needs zip 8 "
-    "(tafia/calamine#742). It is about extracting an archive to disk, which neither Dispatch "
-    "nor calamine does: both read entries in memory, and Dispatch's own zip is 9. Goes once "
-    "calamine moves to zip 9."
-)
-ALLOWED_ADVISORIES = {
-    ("RUSTSEC-2026-0367", "zip", "8.6.0"): CALAMINE_ZIP,
-    ("RUSTSEC-2026-0368", "zip", "8.6.0"): CALAMINE_ZIP,
-    ("RUSTSEC-2026-0369", "zip", "8.6.0"): CALAMINE_ZIP,
-}
+ALLOWED_ADVISORIES = {}
 
 
 def problems(report, allowed=ALLOWED_YANKED, advisories=ALLOWED_ADVISORIES):
