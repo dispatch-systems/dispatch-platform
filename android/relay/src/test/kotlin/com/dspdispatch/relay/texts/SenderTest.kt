@@ -193,6 +193,20 @@ class SenderTest {
     }
 
     @Test
+    fun waitsOnEachTextAndroidTookUntilItSaysHowItWentOrItsWaitIsOver() = runTest {
+        val sender = sender()
+        sender.send(paired, KEY, Outbox(listOf(text("text_1", 1, "On my way"))))
+        clock += 60_000
+        sender.send(paired, KEY, Outbox(listOf(text("text_2", 1, "Gate code?"))))
+        assertEquals(RESULT_WAIT_MS, sender.unanswered())
+        sender.heard(Heard("text_2", 1, 0, Event.SENT, null, null, clock))
+        assertEquals(RESULT_WAIT_MS - 60_000, sender.unanswered())
+        clock += RESULT_WAIT_MS - 60_000
+        assertEquals(null, sender.unanswered())
+        sender.quiet()
+    }
+
+    @Test
     fun failsATextAndroidNeverSaidMoreOfThoughARowWithItsWordsIsInSent() = runTest {
         sender().send(paired, KEY, Outbox(listOf(text("text_1", 1, "On my way"))))
         // Android's word of it lost: the app's row with its words in Sent isn't Android's word.

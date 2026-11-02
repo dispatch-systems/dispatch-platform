@@ -50,6 +50,8 @@ class SessionInstallerTest {
         val committed = mutableListOf<Int>()
         val abandoned = mutableListOf<Int>()
 
+        override fun allowed() = true
+
         override fun create(apk: File): Int {
             refuseCreate?.let { throw it }
             return SESSION

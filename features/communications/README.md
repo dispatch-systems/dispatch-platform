@@ -284,7 +284,7 @@ decides ([Texts](#texts)).
   Anyone at the DSP's address, a browser too, reads its latest version's details (version,
   `versionCode`, size and SHA-256) and downloads its APK, as a phone installs it before it's
   paired: the app anyone may download from its GitHub release, and nothing of the DSP's. Each
-  outbox answer carries its latest version, so the app offers to update within a wait, and each
+  outbox answer carries its latest version, so the app updates itself within a wait, and each
   wait says the app's own, which Dispatch keeps as the phone's once it changes.
 - **Limits** (`phone::LIMITS`): what one text may carry, a body of 10,000 characters and ten
   pictures of 20 MB each at most, which answering is held to (`compose::TEXT`), and the phones'

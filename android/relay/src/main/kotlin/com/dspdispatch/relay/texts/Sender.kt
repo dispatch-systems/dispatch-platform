@@ -10,6 +10,7 @@ import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -37,6 +38,12 @@ class Sender(
     // try again. Only the sender's own coroutine touches it.
     private val retries = mutableMapOf<Pair<String, Long>, Retry>()
 
+    /** Whether an answer's texts are being sent now. */
+    private val sending = MutableStateFlow(false)
+
+    /** How many times Android has said more of a send, to wake [quiet]. */
+    private val answered = MutableStateFlow(0)
+
     /**
      * Takes [outbox], Dispatch's answer to [paired]'s wait, and returns once it's worth waiting
      * again: at once when it holds nothing. A text stays in each answer until Dispatch hears how
@@ -61,7 +68,32 @@ class Sender(
     suspend fun heard(heard: Heard) {
         sends.heard(heard)
         if (heard.event == Event.SENT) File(folder, pduName(heard.id, heard.attempt)).delete()
+        answered.value++
         statuses.more()
+    }
+
+    /**
+     * Returns once no text is mid-send: none being handed to Android, and none it took in the last
+     * [RESULT_WAIT_MS] without saying yet whether it went, as a picture message whose file Android
+     * may still be reading from the app.
+     */
+    suspend fun quiet() {
+        while (true) {
+            sending.first { !it }
+            val last = answered.value
+            val wait = unanswered()
+            if (wait == null && !sending.value) return
+            withTimeoutOrNull(maxOf(wait ?: 0, 1)) { answered.first { it != last } }
+        }
+    }
+
+    /**
+     * How long until the last text Android took in the last [RESULT_WAIT_MS] without saying yet
+     * whether it went is no longer waited on; null if none is.
+     */
+    internal suspend fun unanswered(): Long? {
+        val since = now() - RESULT_WAIT_MS
+        return sends.unanswered(now() + 1).mapNotNull(Send::handed).filter { it > since }.maxOrNull()?.let { it - since }
     }
 
     /**
@@ -70,11 +102,12 @@ class Sender(
      * own, the others going on.
      */
     internal suspend fun send(paired: Paired, key: String, outbox: Outbox) = withContext(Dispatchers.IO) {
-        val at = now()
-        expire(at)
-        sends.forget(at - KEEP_MS, at - DELIVERY_WAIT_MS)
-        retries.keys.retainAll(outbox.texts.map { it.id to it.attempt }.toSet())
+        sending.value = true
         try {
+            val at = now()
+            expire(at)
+            sends.forget(at - KEEP_MS, at - DELIVERY_WAIT_MS)
+            retries.keys.retainAll(outbox.texts.map { it.id to it.attempt }.toSet())
             for (text in outbox.texts) {
                 val attempt = text.id to text.attempt
                 val retry = retries[attempt]
@@ -91,6 +124,7 @@ class Sender(
                 }
             }
         } finally {
+            sending.value = false
             statuses.more()
         }
     }

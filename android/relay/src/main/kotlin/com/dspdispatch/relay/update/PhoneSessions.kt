@@ -10,6 +10,8 @@ import java.io.File
 class PhoneSessions(private val context: Context) : Sessions {
     private val installer = context.packageManager.packageInstaller
 
+    override fun allowed() = context.packageManager.canRequestPackageInstalls()
+
     override fun create(apk: File): Int {
         // A session of an earlier process, which ended before Android answered it.
         installer.mySessions.forEach { abandon(it.sessionId) }

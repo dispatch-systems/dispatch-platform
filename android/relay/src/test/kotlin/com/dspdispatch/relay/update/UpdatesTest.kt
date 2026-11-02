@@ -16,6 +16,7 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -28,7 +29,10 @@ class UpdatesTest {
     private val apk = File.createTempFile("update", ".apk")
     private val installer = FakeInstaller()
     private val notice = FakeNotice()
+    private var quiet = CompletableDeferred(Unit)
+    private val quietAsked = CompletableDeferred<Unit>()
     private var thisApp = true
+    private var clock = 0L
     private lateinit var site: String
 
     @Before
@@ -44,226 +48,182 @@ class UpdatesTest {
     }
 
     @Test
-    fun offersANewerVersionAndNotifiesOnce() = runTest {
+    fun installsANewerVersionOnItsOwnFromThePairedDsp() = runTest {
         val updates = updates()
-        updates.heard(newer)
-        updates.heard(newer)
-        assertEquals(Update.Available(newer), updates.update.value)
-        assertEquals(listOf(newer), notice.shown)
-        updates.heard(own)
-        assertEquals(Update.None, updates.update.value)
-        assertEquals(1, notice.cancelled)
-        updates.heard(null)
-        assertEquals(1, notice.cancelled)
-    }
-
-    @Test
-    fun notifiesOfAVersionOnceThroughARestart() = runTest {
-        updates().heard(newer)
-        val restarted = updates()
-        restarted.heard(newer)
-        assertEquals(Update.Available(newer), restarted.update.value)
-        assertEquals(listOf(newer), notice.shown)
-        restarted.heard(newest)
-        assertEquals(listOf(newer, newest), notice.shown)
-    }
-
-    @Test
-    fun notifiesOfAVersionOnceThroughARollback() = runTest {
-        val updates = updates()
-        updates.heard(newer)
-        updates.heard(newest)
-        assertEquals(newest, notice.visible)
-        updates.heard(newer)
-        assertEquals(Update.Available(newer), updates.update.value)
-        assertEquals(listOf(newer, newest), notice.shown)
-        assertNull(notice.visible)
-        updates.heard(newer)
-        updates().heard(newer)
-        assertEquals(listOf(newer, newest), notice.shown)
-        assertNull(notice.visible)
-    }
-
-    @Test
-    fun takesAwayAWithdrawnVersionsNotificationThroughARestart() = runTest {
-        updates().heard(newer)
-        updates().heard(newest)
-        val restarted = updates()
-        restarted.heard(newer)
-        assertEquals(Update.Available(newer), restarted.update.value)
-        assertEquals(listOf(newer, newest), notice.shown)
-        assertNull(notice.visible)
-    }
-
-    @Test
-    fun notifiesOnceTheAppMayNotifyAgain() = runTest {
-        notice.allowed = false
-        val updates = updates()
-        updates.heard(newer)
-        updates.heard(newer)
-        assertEquals(Update.Available(newer), updates.update.value)
-        assertEquals(emptyList<AppVersion>(), notice.shown)
-        notice.allowed = true
-        updates.heard(newer)
-        updates.heard(newer)
-        assertEquals(listOf(newer), notice.shown)
-    }
-
-    @Test
-    fun takesAwayTheNotificationOfTheVersionItWasUpdatedTo() = runTest {
-        notice.show(own)
-        notice.showing = own.versionCode
-        val updates = updates()
-        updates.heard(own)
-        assertEquals(Update.None, updates.update.value)
-        assertEquals(1, notice.cancelled)
-        updates.heard(own)
-        assertEquals(1, notice.cancelled)
-    }
-
-    @Test
-    fun downloadsChecksAndInstallsFromThePairedDsp() = runTest {
-        val updates = updates()
-        updates.heard(newer)
         serve(bytes)
-        updates.install(site)
-        updates.update.first { it is Update.Downloading }
-        assertEquals(Update.Installing(newer), updates.update.first { it !is Update.Downloading })
+        updates.heard(site, newer)
         assertArrayEquals(bytes, installer.installed.await())
+        assertEquals(Update.Installing(newer), updates.update.first { it is Update.Installing })
         assertEquals("/api/communications/phone/app", server.takeRequest().url.encodedPath)
         val download = server.takeRequest()
         assertEquals("/api/communications/phone/app/download", download.url.encodedPath)
         assertNull(download.headers["Authorization"])
+        assertEquals(emptyList<AppVersion>(), notice.shown)
     }
 
     @Test
-    fun leavesUpdateShowingWhenTheDownloadIsNotTheOneDescribed() = runTest {
+    fun downloadsNothingWhileAndroidDoesNotLetTheAppInstall() = runTest {
+        installer.allowed = false
         val updates = updates()
-        updates.heard(newer)
-        serve("another apk!!".toByteArray(), sha256 = sha256(bytes))
-        updates.install(site)
-        assertEquals(Update.Available(newer, Problem.MISMATCH), updates.tried())
+        updates.heard(site, newer)
+        assertEquals(Update.Available(newer), updates.update.value)
+        assertEquals(0, server.requestCount)
+        installer.allowed = true
+        serve(bytes)
+        updates.heard(site, newer)
+        assertArrayEquals(bytes, installer.installed.await())
+    }
+
+    @Test
+    fun installsOnlyOnceNoTextIsMidSend() = runTest {
+        quiet = CompletableDeferred()
+        val updates = updates()
+        serve(bytes)
+        updates.heard(site, newer)
+        quietAsked.await()
         assertFalse(installer.installed.isCompleted)
-        assertFalse(apk.exists())
+        quiet.complete(Unit)
+        assertArrayEquals(bytes, installer.installed.await())
     }
 
     @Test
-    fun refusesAnApkThatIsNotThisApp() = runTest {
-        thisApp = false
+    fun asksThePersonOnlyOnceAndroidWillNotInstallWithoutThem() = runTest {
+        installer.confirm = true
         val updates = updates()
-        updates.heard(newer)
+        serve(bytes)
+        updates.heard(site, newer)
+        assertEquals(Update.Confirming(newer), updates.update.first { it is Update.Confirming })
+        assertEquals(listOf(newer), notice.shown)
+        assertEquals(newer.versionCode, notice.showing)
+        updates.heard(site, newer)
+        updates.install(site)
+        assertEquals(1, installer.asks)
+        assertEquals(1, installer.installs.size)
+        assertEquals(listOf(newer), notice.shown)
+    }
+
+    @Test
+    fun dropsAWaitingConfirmationForTheVersionTheDspHandsOutNow() = runTest {
+        installer.confirm = true
+        val updates = updates()
+        serve(bytes, app = newest)
+        updates.heard(site, newest)
+        updates.update.first { it is Update.Confirming }
+        serve(bytes, app = newer)
+        updates.heard(site, newer)
+        assertEquals(Update.Confirming(newer), updates.update.first { it == Update.Confirming(newer) })
+        assertTrue(installer.dropped.isCompleted)
+        assertEquals(listOf(newest, newer), notice.shown)
+        assertEquals(1, notice.cancelled)
+    }
+
+    @Test
+    fun takesAwayTheNotificationOfAVersionWithdrawnOrUpdatedTo() = runTest {
+        installer.confirm = true
+        val updates = updates()
+        serve(bytes)
+        updates.heard(site, newer)
+        updates.update.first { it is Update.Confirming }
+        updates.heard(site, own)
+        assertEquals(Update.None, updates.update.value)
+        installer.dropped.await()
+        assertNull(notice.visible)
+        // After the update, the version it asked about is the app's own.
+        notice.show(own)
+        notice.showing = own.versionCode
+        updates().heard(site, own)
+        assertNull(notice.visible)
+        assertNull(notice.showing)
+    }
+
+    @Test
+    fun triesAnUpdateThatDidNotInstallAgainAfterAnHour() = runTest {
+        installer.outcome = Outcome.FAILED
+        val updates = updates()
+        serve(bytes)
+        updates.heard(site, newer)
+        assertEquals(Update.Available(newer, Problem.INSTALL), updates.update.first { it is Update.Available && it.problem != null })
+        clock += Updates.RETRY_MS - 1
+        updates.heard(site, newer)
+        assertEquals(2, server.requestCount)
+        clock += 1
+        installer.outcome = Outcome.INSTALLED
+        serve(bytes)
+        updates.heard(site, newer)
+        assertEquals(Update.Installing(newer), updates.update.first { it is Update.Installing })
+        assertEquals(2, installer.installs.size)
+    }
+
+    @Test
+    fun triesAgainAtOnceWhenThePersonAsksAfterRefusing() = runTest {
+        installer.outcome = Outcome.REFUSED
+        val updates = updates()
+        serve(bytes)
+        updates.heard(site, newer)
+        installer.installed.await()
+        updates.update.first { it == Update.Available(newer) }
+        updates.heard(site, newer)
+        assertEquals(1, installer.installs.size)
+        installer.outcome = Outcome.INSTALLED
         serve(bytes)
         updates.install(site)
-        assertEquals(Update.Available(newer, Problem.NOT_THIS_APP), updates.tried())
-        assertFalse(installer.installed.isCompleted)
+        assertEquals(Update.Installing(newer), updates.update.first { it is Update.Installing })
+        assertEquals(2, installer.installs.size)
+    }
+
+    @Test
+    fun triesAnApkThatIsNotThisAppAgainOnlyForAnotherVersion() = runTest {
+        thisApp = false
+        val updates = updates()
+        serve(bytes)
+        updates.heard(site, newer)
+        assertEquals(Update.Available(newer, Problem.NOT_THIS_APP), updates.update.first { it is Update.Available && it.problem != null })
+        assertTrue(installer.installs.isEmpty())
+        clock += 2 * Updates.RETRY_MS
+        updates.heard(site, newer)
+        updates.install(site)
+        assertEquals(2, server.requestCount)
+        thisApp = true
+        serve(bytes, app = newest)
+        updates.heard(site, newest)
+        assertArrayEquals(bytes, installer.installed.await())
+    }
+
+    @Test
+    fun installsNothingThatIsNotTheDownloadDescribed() = runTest {
+        val updates = updates()
+        serve("another apk!!".toByteArray(), sha256 = sha256(bytes))
+        updates.heard(site, newer)
+        assertEquals(Update.Available(newer, Problem.MISMATCH), updates.update.first { it is Update.Available && it.problem != null })
+        assertTrue(installer.installs.isEmpty())
+        assertFalse(apk.exists())
     }
 
     @Test
     fun saysTheDownloadFailedWhenTheDspRefusesIt() = runTest {
         val updates = updates()
-        updates.heard(newer)
         server.enqueue(json(404, """{"error":"phones_app_not_found","message":"…"}"""))
-        updates.install(site)
-        assertEquals(Update.Available(newer, Problem.DOWNLOAD), updates.tried())
+        updates.heard(site, newer)
+        assertEquals(Update.Available(newer, Problem.DOWNLOAD), updates.update.first { it is Update.Available && it.problem != null })
     }
 
     @Test
-    fun leavesUpdateShowingWhenAndroidFailsOrThePersonRefuses() = runTest {
-        val updates = updates()
-        updates.heard(newer)
-        serve(bytes)
+    fun installsTheVersionTheDetailsNameOverAnEarlierAnswer() = runTest {
         installer.outcome = Outcome.FAILED
-        updates.install(site)
-        assertEquals(Update.Available(newer, Problem.INSTALL), updates.tried())
-        serve(bytes)
-        installer.outcome = Outcome.REFUSED
-        updates.install(site)
-        assertEquals(Update.Available(newer), updates.tried())
-    }
-
-    @Test
-    fun showsAndroidsConfirmationAgainWhileItWaits() = runTest {
         val updates = updates()
-        updates.heard(newer)
-        serve(bytes)
-        installer.confirm = true
-        updates.install(site)
-        assertEquals(Update.Confirming(newer), updates.update.first { it is Update.Confirming })
-        updates.install(site)
-        assertEquals(1, installer.asks)
-        installer.waiting.complete(Outcome.REFUSED)
-        assertEquals(Update.Available(newer), updates.update.first { it is Update.Available })
-    }
-
-    @Test
-    fun offersTheVersionRolledBackToWhenTheConfirmationIsCancelled() = rollBackWhileConfirming(Outcome.REFUSED)
-
-    @Test
-    fun offersTheVersionRolledBackToWithoutTheFailureOfTheOneWithdrawn() = rollBackWhileConfirming(Outcome.FAILED)
-
-    @Test
-    fun offersTheVersionTheDetailsNameOverAnEarlierAnswer() = runTest {
-        val updates = updates()
-        updates.heard(newest)
         serve(bytes, app = newer)
-        installer.outcome = Outcome.FAILED
-        updates.install(site)
-        assertEquals(Update.Available(newer, Problem.INSTALL), updates.tried())
-        assertEquals(listOf(newest), notice.shown)
-        assertNull(notice.visible)
-    }
-
-    @Test
-    fun saysTheDownloadOfTheVersionTheDetailsNameFailed() = runTest {
-        val updates = updates()
-        updates.heard(newest)
-        server.enqueue(json(200, """{"version":"1.0.5","versionCode":5,"size":13,"sha256":"${sha256(bytes)}"}"""))
-        server.enqueue(json(404, """{"error":"phones_app_not_found","message":"…"}"""))
-        updates.install(site)
-        assertEquals(Update.Available(newer, Problem.DOWNLOAD), updates.tried())
-    }
-
-    @Test
-    fun saysTheVersionTheDetailsNameIsNotTheOneDescribed() = runTest {
-        val updates = updates()
-        updates.heard(newest)
-        serve("another apk!!".toByteArray(), sha256 = sha256(bytes), app = newer)
-        updates.install(site)
-        assertEquals(Update.Available(newer, Problem.MISMATCH), updates.tried())
+        updates.heard(site, newest)
+        assertEquals(Update.Available(newer, Problem.INSTALL), updates.update.first { it is Update.Available && it.problem != null })
     }
 
     @Test
     fun installsNothingOnceTheDspNoLongerHandsOutANewerVersion() = runTest {
         val updates = updates()
-        updates.heard(newer)
         server.enqueue(json(200, """{"version":"1.0.4","versionCode":4,"size":13,"sha256":"${sha256(bytes)}"}"""))
-        updates.install(site)
-        assertEquals(Update.None, updates.tried())
-        assertEquals(listOf(newer), notice.shown)
-        assertEquals(1, notice.cancelled)
+        updates.heard(site, newer)
+        assertEquals(Update.None, updates.update.first { it == Update.None })
         assertEquals(1, server.requestCount)
-    }
-
-    /** Installs 1.0.6, and while Android asks to confirm it, the DSP rolls back to 1.0.5; then the try ends in [outcome]. */
-    private fun rollBackWhileConfirming(outcome: Outcome) = runTest {
-        val updates = updates()
-        updates.heard(newest)
-        serve(bytes, app = newest)
-        installer.confirm = true
-        updates.install(site)
-        updates.update.first { it is Update.Confirming }
-        updates.heard(newer)
-        assertEquals(Update.Confirming(newest), updates.update.value)
-        installer.waiting.complete(outcome)
-        assertEquals(Update.Available(newer), updates.update.first { it is Update.Available })
-        updates.heard(newer)
-        assertEquals(Update.Available(newer), updates.update.value)
-    }
-
-    /** Where a try Install started that didn't install leaves updating. */
-    private suspend fun Updates.tried(): Update {
-        update.first { it is Update.Downloading }
-        return update.first { it is Update.Available || it == Update.None }
+        assertTrue(installer.installs.isEmpty())
     }
 
     private fun TestScope.updates() = Updates(
@@ -273,7 +233,12 @@ class UpdatesTest {
         { thisApp },
         installer,
         notice,
+        {
+            quietAsked.complete(Unit)
+            quiet.await()
+        },
         backgroundScope,
+        now = { clock },
     )
 
     private fun serve(apk: ByteArray, sha256: String = sha256(apk), app: AppVersion = newer) {
@@ -286,18 +251,29 @@ class UpdatesTest {
 
     private fun sha256(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
+    /** Android's installer: each APK handed to it, the first [installed]; while it asks the person, a try dropped is [dropped]. */
     private class FakeInstaller : Installer {
+        var allowed = true
         var outcome = Outcome.INSTALLED
         var confirm = false
         var asks = 0
+        val installs = mutableListOf<ByteArray>()
         val installed = CompletableDeferred<ByteArray>()
-        val waiting = CompletableDeferred<Outcome>()
+        val dropped = CompletableDeferred<Unit>()
+
+        override fun allowed() = allowed
 
         override suspend fun install(apk: File, confirming: () -> Unit): Outcome {
-            installed.complete(apk.readBytes())
+            val bytes = apk.readBytes()
+            installs += bytes
+            installed.complete(bytes)
             if (!confirm) return outcome
             confirming()
-            return waiting.await()
+            try {
+                return CompletableDeferred<Outcome>().await()
+            } finally {
+                dropped.complete(Unit)
+            }
         }
 
         override fun askAgain() {
@@ -307,18 +283,14 @@ class UpdatesTest {
 
     /** The phone's notifications, and the app's storage, which outlive each [Updates] made. */
     private class FakeNotice : Notice {
-        var allowed = true
         val shown = mutableListOf<AppVersion>()
         var visible: AppVersion? = null
         var cancelled = 0
-        override var notified = emptySet<Int>()
         override var showing: Int? = null
 
-        override fun show(app: AppVersion): Boolean {
-            if (!allowed) return false
+        override fun show(app: AppVersion) {
             shown += app
             visible = app
-            return true
         }
 
         override fun cancel() {

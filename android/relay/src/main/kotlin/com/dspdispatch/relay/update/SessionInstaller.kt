@@ -56,9 +56,16 @@ class SessionInstaller(private val sessions: Sessions) : Installer {
             return FAILED
         } finally {
             waiting.remove(id)
-            if (!outcome.isCompleted) withContext(NonCancellable + Dispatchers.IO) { sessions.abandon(id) }
+            if (!outcome.isCompleted) {
+                // Dropped, as for a version the DSP no longer hands out: so is its confirmation.
+                pending = null
+                asking.value = null
+                withContext(NonCancellable + Dispatchers.IO) { sessions.abandon(id) }
+            }
         }
     }
+
+    override fun allowed() = sessions.allowed()
 
     override fun askAgain() {
         asking.value = pending

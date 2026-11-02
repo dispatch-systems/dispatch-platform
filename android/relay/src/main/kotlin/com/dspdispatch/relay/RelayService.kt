@@ -46,7 +46,7 @@ class RelayService : LifecycleService() {
                 launch { relay.connection.link.collect { show(paired.dsp, it) } }
                 launch { relay.texts.run(paired, key) }
                 relay.connection.run(paired, key) { outbox ->
-                    relay.updates.heard(outbox.app)
+                    relay.updates.heard(paired.site, outbox.app)
                     relay.texts.send(paired, outbox)
                 }
                 relay.pairings.removed(paired)

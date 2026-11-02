@@ -60,6 +60,7 @@ class Relay(private val context: Context) {
         PackageCheck(context),
         installer,
         UpdateNotice(context),
+        texts::quiet,
         scope,
     )
     private val attempt = MutableStateFlow<Attempt>(Attempt.None)

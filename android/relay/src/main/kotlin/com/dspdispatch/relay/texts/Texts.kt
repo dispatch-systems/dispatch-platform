@@ -82,6 +82,9 @@ class Texts(private val context: Context, dispatch: Dispatch) {
      */
     suspend fun send(paired: Paired, outbox: Outbox) = sender.take(paired, outbox)
 
+    /** Returns once no text is mid-send, for the app to be replaced by its update. */
+    suspend fun quiet() = sender.quiet()
+
     /**
      * Keeps what Android said of a part of a text the app sent, as it says it, with the row at
      * [uri] it wrote the text to, where it says.

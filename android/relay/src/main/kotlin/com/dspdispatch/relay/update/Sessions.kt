@@ -8,6 +8,9 @@ import java.io.File
  * doesn't let the app install, and writing the APK may fail with an [java.io.IOException].
  */
 interface Sessions {
+    /** Whether Android lets the app install, as the person allowed it to ("Allow from this source"). */
+    fun allowed(): Boolean
+
     /** Opens a session installing [apk] as this app, abandoning any an earlier process left; its ID. */
     fun create(apk: File): Int
 
