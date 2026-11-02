@@ -5,19 +5,26 @@ import { slackAttachments } from '../../../api/client.js';
 import { clock, dayLabel, dayOf } from '../../shared/format.js';
 import { Shown } from '../../display/display.js';
 import { Face } from '../../shared/Face.js';
-import { FaceButton, MessageMeta, MessageRun, SenderLine } from '../../shared/MessageRun.js';
-import { DayLabel, ThreadFrame } from '../../shared/ThreadFrame.js';
+import { paused, PAUSE_MS } from '../../conversations/messages.js';
+import {
+  FaceButton,
+  MessageMeta,
+  MessageRun,
+  sameSender,
+  SenderLine,
+} from '../../shared/MessageRun.js';
+import { DayLabel, PauseLabel, ThreadFrame } from '../../shared/ThreadFrame.js';
 import { MessageBody } from '../../shared/MessageBody.js';
 import './group-thread.css';
 
-// A group's messages, in the order written, under the day each was written: the DSP's on the
-// right under whoever sent each, with how far it has gone; each answer on the left under the name
-// of whoever wrote it, which, with their photo, opens their own conversation, as Reply does,
+// A group's messages, in the order written, under the day each was written, or the time after a
+// pause, as the member chose: the DSP's on the right under whoever sent each, named once another
+// sent the DSP's before them that day, with how far it has gone; each answer on the left under
+// the name of whoever wrote it, which, with their photo, opens their own conversation, as Reply does,
 // shown as an answer is pointed at or reached by the keyboard (Tab reaches the name, then Reply).
 
 /** Answers one after another from the same person, within a few minutes, shown together. */
 type Run = { key: string; entries: GroupEntry[] };
-const TOGETHER_MS = 10 * 60_000;
 
 /** The entries under each day they were written, each of the DSP's on its own and the answers in
  * runs by who wrote them. */
@@ -32,7 +39,7 @@ function runs(entries: readonly GroupEntry[], timeZone: string) {
     const together =
       entry.conversationId !== null &&
       last?.conversationId === entry.conversationId &&
-      entry.at - last.at < TOGETHER_MS;
+      entry.at - last.at < PAUSE_MS;
     if (together) run!.entries.push(entry);
     else current.runs.push({ key: entry.id, entries: [entry] });
   }
@@ -63,84 +70,99 @@ export function GroupThread({
 }) {
   const { style, times } = useContext(Shown);
   const plain = style === 'plain';
+  const pauses = !plain && times === 'after_pause';
   return (
     <ThreadFrame items={entries} more={more} readOlder={readOlder}>
       {runs(entries, timeZone).map(({ day, at, runs }) => (
         <Fragment key={day}>
           <DayLabel>{dayLabel(at, timeZone, now)}</DayLabel>
-          {runs.map(({ key, entries: written }) => {
+          {runs.map(({ key, entries: written }, at) => {
             const first = written[0]!;
             const last = written.at(-1)!;
+            const pause = pauses && paused(runs[at - 1]?.entries.at(-1)?.at, first.at) && (
+              <PauseLabel>{clock(first.at, timeZone)}</PauseLabel>
+            );
             if (first.sender) {
               const gone = first.progress && progressText(first.progress);
+              const sentBefore = runs.slice(0, at).findLast((each) => each.entries[0]?.sender)
+                ?.entries[0]?.sender;
               return (
-                <MessageRun
-                  key={key}
-                  direction="out"
-                  face={
-                    <Face
-                      name={first.sender.name}
-                      code={first.sender.code}
-                      photo={first.sender.photo}
-                      size="message"
-                    />
-                  }
-                  sender={
-                    <SenderLine name={first.sender.name} at={plain && clock(first.at, timeZone)} />
-                  }
-                >
-                  <MessageBody message={first} address={slackAttachments.address} />
-                  <MessageMeta time={!plain && clock(first.at, timeZone)}>
-                    {gone && (
-                      <span className={gone.sending ? 'sending' : undefined}>{gone.text}</span>
-                    )}
-                  </MessageMeta>
-                </MessageRun>
+                <Fragment key={key}>
+                  {pause}
+                  <MessageRun
+                    direction="out"
+                    face={
+                      <Face
+                        name={first.sender.name}
+                        code={first.sender.code}
+                        photo={first.sender.photo}
+                        size="message"
+                      />
+                    }
+                    sender={
+                      (plain || !sameSender(sentBefore, first.sender)) && (
+                        <SenderLine
+                          name={first.sender.name}
+                          at={plain && clock(first.at, timeZone)}
+                        />
+                      )
+                    }
+                  >
+                    <MessageBody message={first} address={slackAttachments.address} />
+                    <MessageMeta time={!plain && !pauses && clock(first.at, timeZone)}>
+                      {gone && (
+                        <span className={gone.sending ? 'sending' : undefined}>{gone.text}</span>
+                      )}
+                    </MessageMeta>
+                  </MessageRun>
+                </Fragment>
               );
             }
             const from = first.from;
             const name = from?.name ?? '';
             return (
-              <MessageRun
-                key={key}
-                direction="in"
-                className="answer"
-                // Their name, above the answer, opens it from the keyboard.
-                face={
-                  <FaceButton label={name} onClick={() => reply(first)}>
-                    {from && <Face {...from} size="message" />}
-                  </FaceButton>
-                }
-                sender={
-                  <SenderLine
-                    name={name}
-                    at={plain && clock(first.at, timeZone)}
-                    onClick={() => reply(first)}
-                  />
-                }
-                after={
-                  <button
-                    className="reply-to"
-                    aria-label={`Reply to ${name}`}
-                    onClick={() => reply(first)}
-                  >
-                    <Reply size={13} aria-hidden="true" />
-                    Reply
-                  </button>
-                }
-              >
-                {written.map((entry) => (
-                  <Fragment key={entry.id}>
-                    <MessageBody message={entry} address={slackAttachments.address} />
-                    <MessageMeta
-                      time={!plain && times === 'each_message' && clock(entry.at, timeZone)}
+              <Fragment key={key}>
+                {pause}
+                <MessageRun
+                  direction="in"
+                  className="answer"
+                  // Their name, above the answer, opens it from the keyboard.
+                  face={
+                    <FaceButton label={name} onClick={() => reply(first)}>
+                      {from && <Face {...from} size="message" />}
+                    </FaceButton>
+                  }
+                  sender={
+                    <SenderLine
+                      name={name}
+                      at={plain && clock(first.at, timeZone)}
+                      onClick={() => reply(first)}
                     />
-                  </Fragment>
-                ))}
-                <MessageMeta
-                  time={!plain && times !== 'each_message' && clock(last.at, timeZone)}
-                />
-              </MessageRun>
+                  }
+                  after={
+                    <button
+                      className="reply-to"
+                      aria-label={`Reply to ${name}`}
+                      onClick={() => reply(first)}
+                    >
+                      <Reply size={13} aria-hidden="true" />
+                      Reply
+                    </button>
+                  }
+                >
+                  {written.map((entry) => (
+                    <Fragment key={entry.id}>
+                      <MessageBody message={entry} address={slackAttachments.address} />
+                      <MessageMeta
+                        time={!plain && times === 'each_message' && clock(entry.at, timeZone)}
+                      />
+                    </Fragment>
+                  ))}
+                  <MessageMeta
+                    time={!plain && !pauses && times !== 'each_message' && clock(last.at, timeZone)}
+                  />
+                </MessageRun>
+              </Fragment>
             );
           })}
         </Fragment>

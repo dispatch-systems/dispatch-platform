@@ -1,9 +1,11 @@
-/* A thread's messages, scrolling on their own, and the day each was written above them. */
+/* A thread's messages, scrolling on their own, on its surface as the employees' colour has it,
+   and the day each was written above them, or the time after a pause. */
 .thread {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   padding: calc(var(--pad) - 2px) var(--side) 6px;
+  background: var(--thread-surface);
 }
 .thread > .loading {
   justify-content: center;
@@ -20,4 +22,8 @@
   color: var(--muted-foreground);
   font-size: var(--small-size);
   font-weight: 500;
+}
+.thread .day.pause {
+  margin-top: calc(var(--gap) * 1.5);
+  font-weight: 400;
 }

@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import type { Sender } from '../../api/index.js';
 import './message-run.css';
 
 // A run of messages one after another from the same writer, as a conversation and a group show
@@ -35,6 +36,10 @@ export function MessageRun({
     </div>
   );
 }
+
+/** Whether two of the DSP's runs are by the same sender, so the later one needn't name them. */
+export const sameSender = (a: Sender | null | undefined, b: Sender | null | undefined) =>
+  Boolean(a && b) && a!.userId === b!.userId && a!.phoneId === b!.phoneId && a!.name === b!.name;
 
 /**
  * Whom a run is by: their name, when it began while the messages are plain (`at`), and what else

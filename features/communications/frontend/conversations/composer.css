@@ -3,6 +3,7 @@
   --typed-size: var(--text-size);
   margin: 0;
   padding: 10px var(--side) calc(var(--pad) - 2px);
+  background: var(--thread-surface);
 }
 .composer .box {
   display: flex;

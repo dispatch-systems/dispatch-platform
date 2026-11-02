@@ -304,6 +304,7 @@ export function DisplaySettings({ view, refresh }: { view: DspView; refresh: () 
                 ['each_group', 'Each group'],
                 // A phone has no hover.
                 ...(phone ? [] : [['on_hover', 'On hover'] as const]),
+                ['after_pause', 'After a pause'],
               ]}
               change={(times) => change({ times })}
             />
@@ -344,6 +345,7 @@ export function DisplaySettings({ view, refresh }: { view: DspView; refresh: () 
               of="employee"
               value={shown.employee_color}
               options={[
+                ['white', 'White'],
                 ['gray', 'Gray'],
                 ['blue', 'Blue'],
                 ['warm', 'Warm'],

@@ -2,23 +2,30 @@ import { Fragment, useContext } from 'react';
 import { CircleAlert, RotateCw, Users } from 'lucide-react';
 import type { Conversation, Message, Workday, Writing } from '../../api/index.js';
 import { clock, dayLabel, dayOf, textStatus, workdayLabel } from '../shared/format.js';
-import { runs } from './messages.js';
+import { paused, runs } from './messages.js';
 import { Shown } from '../display/display.js';
 import { Face, SenderFace } from '../shared/Face.js';
 import { KINDS } from './kinds.js';
 import { PartyFace } from './party.js';
 import { MessageBody } from '../shared/MessageBody.js';
-import { FaceButton, MessageMeta, MessageRun, SenderLine } from '../shared/MessageRun.js';
-import { DayLabel, ThreadFrame } from '../shared/ThreadFrame.js';
+import {
+  FaceButton,
+  MessageMeta,
+  MessageRun,
+  sameSender,
+  SenderLine,
+} from '../shared/MessageRun.js';
+import { DayLabel, PauseLabel, ThreadFrame } from '../shared/ThreadFrame.js';
 import type { OpensProfile } from '../shared/usePanel.js';
 import { Switched, WorkdayLine } from '../todays-routes/Workday.js';
 import './thread.css';
 
 // A conversation's messages, in the order written, under the day each was written: the
 // member's on the left beside their photo, which opens their profile, the DSP's on the right
-// under the name and photo of whoever sent them, or the phone's own, and the group one went to,
-// which opens it; and below, those at the DSP writing in it now. Each run's time is under it, or
-// each message's, as the member chose (`Shown`); plain, every run is under its writer's name and
+// under the name and photo of whoever sent them, named once another sent the DSP's before them
+// that day, or the phone's own, and the group one went to, which opens it; and below, those at
+// the DSP writing in it now. Each run's time is under it, or each message's, or above the first
+// after a pause, as the member chose (`Shown`); plain, every run is under its writer's name and
 // time instead. A text the DSP sent says how it went under it, the run's last, or one that
 // failed, with Retry. A driver's work conversation begins each workday with a line across it, with
 // the route and van they drove and the work phone they texted on, earlier days dimmed, and marks
@@ -57,6 +64,7 @@ export function Thread({
   const { address } = KINDS[conversation.kind].attachments;
   const { style, times } = useContext(Shown);
   const plain = style === 'plain';
+  const pauses = !plain && times === 'after_pause';
   const today = dayOf(now, timeZone);
   return (
     <ThreadFrame items={messages} after={writing} more={more} readOlder={readOlder}>
@@ -75,11 +83,19 @@ export function Thread({
           {runs.map(({ key, messages: written }, at) => {
             const first = written[0]!;
             const sender = first.sender;
-            const before = runs[at - 1]?.messages[0]?.number;
+            const previous = runs[at - 1]?.messages;
+            const before = previous?.[0]?.number;
             const switched = workdays && before && first.number && first.number !== before;
+            // The DSP's sender is named once another sent the DSP's before them that day.
+            const sentBefore = runs.slice(0, at).findLast((each) => each.messages[0]?.sender)
+              ?.messages[0]?.sender;
+            const named = plain || (sender && (!sameSender(sentBefore, sender) || first.group));
             return (
               <Fragment key={key}>
                 {switched && <Switched number={first.number!} />}
+                {pauses && paused(previous?.at(-1)?.at, first.at) && (
+                  <PauseLabel>{clock(first.at, timeZone)}</PauseLabel>
+                )}
                 <MessageRun
                   direction={first.direction}
                   face={
@@ -95,7 +111,7 @@ export function Thread({
                     )
                   }
                   sender={
-                    (sender || plain) && (
+                    named && (
                       <SenderLine
                         name={sender?.name ?? person.name}
                         at={plain && clock(first.at, timeZone)}
@@ -117,7 +133,7 @@ export function Thread({
                         <MessageBody message={message} address={address} />
                         <Meta
                           message={message}
-                          time={!plain && (last || times === 'each_message')}
+                          time={!plain && !pauses && (last || times === 'each_message')}
                           status={last || message.status === 'failed'}
                           timeZone={timeZone}
                           retry={retry}

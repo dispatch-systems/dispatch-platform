@@ -3,10 +3,16 @@ import { dayOf } from '../shared/format.js';
 
 // A conversation's messages as the page holds and shows them: kept in the order written as they're
 // read, each read of the latest as it is now; and under the day each was written, in runs by
-// whoever wrote them.
+// whoever wrote them, a pause starting another.
 
-/** How soon after one message the same writer's next is shown with it, in a run. */
-const TOGETHER_MS = 10 * 60_000;
+/** How long without a message is a pause: one writer's messages within it are a run, and with
+ * times after a pause, the first message after one, in a conversation or a group, shows when it
+ * was written above it. */
+export const PAUSE_MS = 10 * 60_000;
+/** Whether a message written `at` comes after a pause: the day's first, or a pause since the one
+ * before it, written `before`. */
+export const paused = (before: number | undefined, at: number) =>
+  before === undefined || at - before >= PAUSE_MS;
 
 /** Messages one after another from the same writer, within a few minutes, shown together. */
 type Run = { key: string; writer: string; messages: Message[] };
@@ -62,7 +68,7 @@ export function runs(messages: readonly Message[], timeZone: string) {
     const current = days.at(-1)!;
     const by = writer(message);
     const run = current.runs.at(-1);
-    if (run?.writer === by && message.at - run.messages.at(-1)!.at < TOGETHER_MS)
+    if (run?.writer === by && message.at - run.messages.at(-1)!.at < PAUSE_MS)
       run.messages.push(message);
     else current.runs.push({ key: message.id, writer: by, messages: [message] });
   }

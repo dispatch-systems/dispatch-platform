@@ -38,18 +38,19 @@ and every other number in Messaging.
   under `communications.use`, on Settings' Display page under Personal: drawn by its own component,
   `frontend/display/`, with a preview of the page beside the choices, and saved as they're made.
   Its values (`MessageDisplay`) are how the page looks to that member, which the page reads with
-  Settings: its text size, line spacing and spacing; the messages across the conversation or in
-  a centred column, bubbles or plain, your team's side, bubbles' shape and width, each message's
-  time or each run's or on hover, photos and your team's names by them; your team's and the
-  employees' colours; the list's width, rows, preview lines, photos and waiting times; the
-  profile beside or over the conversation, its width, its slide, and whether it opens with each
-  conversation; and whether Enter sends. A phone (a touch screen whose shorter side is under
-  500px) has its own of those that apply on one, `phone_<choice>`: no layout, list or profile
-  width, profile beside or kept open, or times on hover; and Enter starts a line there to start.
-  Then, on any screen, how a new message alerts them, under New messages: `sound`, on to start,
-  and `notifications`, off, which turning on asks the browser for, staying off if it refuses, and
-  which shows on only in a browser that has allowed it; left out where the browser can't show
-  one, as a phone's.
+  Settings: its text size, line spacing and spacing; the messages across the conversation or in a
+  centred column, bubbles or plain, your team's side, bubbles' shape and width, each message's
+  time, each run's, on hover, or above the first after a pause of ten minutes, photos and your
+  team's names by them, each where the team's writer changes; your team's and the employees'
+  colours, the employees' white, edged, on a tinted conversation to start; the list's width, rows,
+  preview lines, photos and waiting times; the profile beside or over the conversation, its width,
+  its slide, and whether it opens with each conversation; and whether Enter sends. A phone (a
+  touch screen whose shorter side is under 500px) has its own of those that apply on one,
+  `phone_<choice>`: no layout, list or profile width, profile beside or kept open, or times on
+  hover; and Enter starts a line there to start. Then, on any screen, how a new message alerts
+  them, under New messages: `sound`, on to start, and `notifications`, off, which turning on asks
+  the browser for, staying off if it refuses, and which shows on only in a browser that has
+  allowed it; left out where the browser can't show one, as a phone's.
 - **On every page:** `communications.alerts`, a watcher (`frontend/alerts/`), for those with
   `communications.use`, alerting them to new messages ([New messages](#new-messages)).
 
