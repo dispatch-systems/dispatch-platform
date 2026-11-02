@@ -178,7 +178,8 @@ pub fn answered(
 
 /// The work conversations not waiting on the live day before `before`, of any day, the latest
 /// first, a page of them, and whether there are more: one waiting since a day before it, as
-/// waiting counts only on the live day, among them, done.
+/// waiting counts only on the live day, among them, done. Those waiting on the live day are
+/// listed as waiting, so it reads past as many as wait, for a page of the rest.
 pub fn answered_work(
     db: &Store,
     people: &People,
@@ -186,13 +187,14 @@ pub fn answered_work(
     dsp: &str,
     before: Option<(i64, &str)>,
 ) -> Result<(Vec<Conversation>, bool)> {
-    let mut kept = db.latest_communications_work(dsp, before, PAGE + 1)?;
-    let more = kept.len() > PAGE;
-    kept.truncate(PAGE);
-    let answered = live_day::slated(db, dsp, kept)?
+    let waiting = live_day::waiting(db, dsp)?.len();
+    let kept = db.latest_communications_work(dsp, before, PAGE + 1 + waiting)?;
+    let mut answered: Vec<_> = live_day::slated(db, dsp, kept)?
         .into_iter()
         .filter(|each| each.state != ConversationState::Waiting)
         .collect();
+    let more = answered.len() > PAGE;
+    answered.truncate(PAGE);
     Ok((conversations(db, people, numbers, dsp, answered)?, more))
 }
 

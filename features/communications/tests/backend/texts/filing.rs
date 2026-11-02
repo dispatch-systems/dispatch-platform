@@ -8,7 +8,7 @@ use super::*;
 use crate::backend::{
     changes::ChangeStore,
     inbox,
-    model::ConversationKind,
+    model::{ConversationKind, PAGE},
     phone::{
         self,
         model::{Outgoing, Status},
@@ -210,6 +210,53 @@ async fn a_work_phones_texts_are_the_drivers_whose_latest_phone_it_is_that_day_t
         .map(|each| each.last_at)
         .collect();
     assert_eq!(answered, vec![Some(then(10, 0))]);
+}
+
+#[tokio::test]
+async fn answered_work_conversations_are_listed_past_more_than_a_page_waiting_on_the_live_day() {
+    let (_root, state, dsp) = started();
+    let (zone, day) = today(&state, &dsp).await;
+    let yesterday = day.pred_opt().unwrap();
+    // Yesterday, as saved: Casey had 0101, and a page and one more drivers another work phone
+    // each, none of them held today.
+    let held: Vec<(String, String)> = (0..=PAGE)
+        .map(|n| (format!("driver{n}"), format!("{}", 2_065_520_000 + n)))
+        .chain([("casey".to_owned(), "2065550101".to_owned())])
+        .collect();
+    let of: Vec<(&str, &str)> = (held.iter())
+        .map(|(driver, phone)| (driver.as_str(), phone.as_str()))
+        .collect();
+    let today = day.to_string();
+    phoned(
+        &state,
+        &dsp,
+        Some(&today),
+        Vec::new(),
+        vec![saved(yesterday, &of)],
+    )
+    .await;
+    // Casey texted yesterday; each of the others' phones texts today, and waits.
+    let back = at(zone, yesterday, 18, 0);
+    texted(&state, &dsp, "+12065550101", "Back at the station", back).await;
+    for (n, (_, phone)) in held.iter().take(PAGE + 1).enumerate() {
+        let written = at(zone, day, 8, n as u32);
+        texted(
+            &state,
+            &dsp,
+            &format!("+1{phone}"),
+            "Where do I park?",
+            written,
+        )
+        .await;
+    }
+    // Every one is listed: those waiting, then Casey's, answered, on the first page of the rest.
+    let listed = listed(&state, &dsp).await;
+    assert_eq!(listed.waiting, PAGE + 1);
+    let answered: Vec<_> = (listed.conversations.iter())
+        .filter(|each| each.state != ConversationState::Waiting)
+        .map(|each| each.last_at)
+        .collect();
+    assert_eq!((answered, listed.more_work), (vec![Some(back)], false));
 }
 
 #[tokio::test]
