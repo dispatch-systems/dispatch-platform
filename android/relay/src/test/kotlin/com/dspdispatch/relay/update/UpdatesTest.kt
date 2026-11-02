@@ -92,6 +92,17 @@ class UpdatesTest {
     }
 
     @Test
+    fun asksAfreshForEachConfirmationThroughARestart() = runTest {
+        installer.confirm = true
+        notice.showing = newer.versionCode
+        val updates = updates()
+        serve(bytes)
+        updates.heard(site, newer)
+        updates.update.first { it is Update.Confirming }
+        assertEquals(listOf(newer), notice.shown)
+    }
+
+    @Test
     fun asksAgainOnceTheAppMayNotify() = runTest {
         installer.confirm = true
         notice.allowed = false

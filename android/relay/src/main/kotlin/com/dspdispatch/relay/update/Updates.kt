@@ -185,7 +185,8 @@ class Updates(
             installer.install(apk) {
                 release()
                 state.value = Update.Confirming(app)
-                ask(app)
+                // Posted afresh for each confirmation: one posted before a restart is gone.
+                notice.showing = app.versionCode.takeIf { notice.show(app) }
             }.also { installed = it == Outcome.INSTALLED }
         } finally {
             if (!installed) release()
@@ -198,7 +199,7 @@ class Updates(
         }
     }
 
-    /** Asks the person to confirm installing [app], unless its notification is posted already. */
+    /** Asks the person to confirm installing [app], unless its notification was posted already. */
     private fun ask(app: AppVersion) {
         if (notice.showing != app.versionCode && notice.show(app)) notice.showing = app.versionCode
     }
