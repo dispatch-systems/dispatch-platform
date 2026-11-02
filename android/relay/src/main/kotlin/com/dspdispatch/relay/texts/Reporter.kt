@@ -4,7 +4,6 @@ import com.dspdispatch.relay.connection.backoff
 import com.dspdispatch.relay.dispatch.Dispatch
 import com.dspdispatch.relay.dispatch.Refusal
 import java.io.IOException
-import java.io.InputStream
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.ReceiveChannel
@@ -56,7 +55,7 @@ class Reporter(
 
     /** Reports the oldest texts waiting, if any. */
     internal suspend fun report(site: String, key: String): Boolean {
-        val waiting = queue.waiting(most).map { it.copy(files = it.files.map { file -> shown(file) }) }
+        val waiting = settled(queue.waiting(most))
         val report = batch(waiting)
         if (report.texts.isEmpty()) return false
         val answer = try {
@@ -93,20 +92,31 @@ class Reporter(
     }
 
     /**
-     * [file] as Dispatch is to have it: a picture received as HEIF, which Dispatch's pages can't
-     * show, as a JPEG made of it, once Texting lets its bytes be read; anything else, and one
-     * Android can't make a JPEG of, as it is.
+     * [texts] with each file as it's reported every time: one not yet [WaitingFile.settled] as
+     * Dispatch is to have it, kept so before it's first reported. Dispatch keeps a file as it's
+     * first told of it, though the answer is lost, so it never changes after: not when a JPEG
+     * could be made of it later, nor in another version of the app.
+     */
+    private suspend fun settled(texts: List<WaitingText>): List<WaitingText> {
+        val settled = texts.flatMap(WaitingText::files).filterNot(WaitingFile::settled).associate { it.id to shown(it).copy(settled = true) }
+        if (settled.isEmpty()) return texts
+        queue.settled(settled.values.toList())
+        return texts.map { text -> text.copy(files = text.files.map { settled[it.id] ?: it }) }
+    }
+
+    /**
+     * [file] as Dispatch is to have it: a still picture received as HEIF, which Dispatch's pages
+     * can't show, as a JPEG made of it, once Texting lets its bytes be read; anything else, and
+     * one Android can't make a JPEG of, as it is.
      */
     private suspend fun shown(file: WaitingFile): WaitingFile {
         if (!heif(file.name, file.mime) || !jpegs.possible) return file
         texting.await()
-        val jpeg = withContext(io) {
+        return withContext(io) {
             // A part gone, or grown past what Dispatch takes, goes as it is: its upload finds it so.
             val size = provider.size(file.uri)
-            if (size == null || size > Inbox.LARGEST) null else jpegs.of(file, provider.open(file.uri).use(InputStream::readBytes))
-        } ?: return file
-        queue.converted(jpeg)
-        return jpeg
+            if (size == null || size > Inbox.LARGEST) null else jpegs.of(file) { provider.open(file.uri) }
+        } ?: file
     }
 
     /** Leaves [text], which Dispatch refuses alone, with the JPEGs made of its pictures. */

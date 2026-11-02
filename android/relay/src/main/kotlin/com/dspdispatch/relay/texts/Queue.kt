@@ -1,5 +1,6 @@
 package com.dspdispatch.relay.texts
 
+import androidx.room3.ColumnInfo
 import androidx.room3.Embedded
 import androidx.room3.Entity
 import androidx.room3.Index
@@ -52,7 +53,9 @@ data class Waiting(
 
 /**
  * A picture or file of a text, its bytes still to send: [dispatchId] comes once Dispatch answered
- * its text, at its [position] among the text's files.
+ * its text, at its [position] among the text's files. [settled] once it's to be reported as it is
+ * now, every time: its name, type and size, and the bytes at [uri] sent for them, never change
+ * after, as Dispatch keeps the first it's told of a file.
  */
 @Entity(tableName = "files", indices = [Index("clientId"), Index("dispatchId")])
 data class WaitingFile(
@@ -63,6 +66,8 @@ data class WaitingFile(
     val mime: String,
     val size: Long,
     val dispatchId: String? = null,
+    // A file kept before this was, by an app that made no JPEGs, may have been reported as it is.
+    @ColumnInfo(defaultValue = "1") val settled: Boolean = false,
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
 )
 
@@ -108,8 +113,8 @@ interface Queue {
     /** Leaves [clientId], a text Dispatch refuses alone, and its files, never to be reported. */
     suspend fun refused(clientId: String)
 
-    /** Keeps [file], one waiting, as it's now to be reported and sent, as a JPEG made of the picture it was. */
-    suspend fun converted(file: WaitingFile)
+    /** Keeps [files], each waiting, [WaitingFile.settled] as they're to be reported and sent. */
+    suspend fun settled(files: List<WaitingFile>)
 
     /** The URIs of every file waiting, reported or not. */
     suspend fun uris(): List<String>

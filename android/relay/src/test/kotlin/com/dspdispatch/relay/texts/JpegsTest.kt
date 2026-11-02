@@ -1,5 +1,6 @@
 package com.dspdispatch.relay.texts
 
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.nio.file.Files
 import org.junit.After
@@ -23,10 +24,12 @@ class JpegsTest {
     fun takesHeifPicturesByTheirTypeOrByTheirNameWhenTheTypeSaysOnlyBytes() {
         assertTrue(heif("IMG_0001.HEIC", "image/heic"))
         assertTrue(heif("part-12", "image/heif"))
-        assertTrue(heif("IMG_0001.heic", "image/heic-sequence"))
-        assertTrue(heif("IMG_0001.heif", "image/heif-sequence"))
         assertTrue(heif("IMG_0001.HEIC", "application/octet-stream"))
         assertTrue(heif("IMG_0001.heif", "application/octet-stream"))
+
+        // More than one picture, of which a JPEG would keep one.
+        assertFalse(heif("IMG_0001.heic", "image/heic-sequence"))
+        assertFalse(heif("IMG_0001.heif", "image/heif-sequence"))
 
         assertFalse(heif("door.jpg", "image/jpeg"))
         assertFalse(heif("door.avif", "image/avif"))
@@ -48,9 +51,10 @@ class JpegsTest {
     @Test
     fun keepsAJpegMadeOfAPictureAsItsFilesUntilLetGo() {
         val file = WaitingFile("mms-1-1", 0, "content://mms/part/1", "IMG_0001.HEIC", "image/heic", 731, id = 7)
-        val jpeg = jpegs.of(file, byteArrayOf(1, 2, 3, 4))!!
+        val jpeg = jpegs.of(file, picture(1, 2, 3, 4))!!
 
-        assertEquals(listOf<Byte>(1, 2, 3, 4), pictures.made.single().toList())
+        // Within what Dispatch takes of a file, and larger than a picture message's, as a phone's photo.
+        assertEquals(Triple(listOf<Byte>(1, 2, 3, 4), 20 * 1024 * 1024, 4096), pictures.made.single())
         assertEquals(file.copy(uri = jpeg.uri, name = "IMG_0001.jpg", mime = "image/jpeg", size = 3), jpeg)
         assertTrue(jpegs.holds(jpeg.uri))
         assertFalse(jpegs.holds(file.uri))
@@ -66,18 +70,35 @@ class JpegsTest {
     @Test
     fun makesNoneOfAPictureAndroidCantDecode() {
         val jpegs = Jpegs(File(folder, "jpegs"), FakePictures(jpeg = { null }))
-        assertNull(jpegs.of(WaitingFile("mms-1-1", 0, "content://mms/part/1", "IMG_0001.HEIC", "image/heic", 731, id = 7), byteArrayOf(1)))
+        assertNull(jpegs.of(WaitingFile("mms-1-1", 0, "content://mms/part/1", "IMG_0001.HEIC", "image/heic", 731, id = 7), picture(1)))
         assertFalse(File(folder, "jpegs").exists())
     }
 
     @Test
+    fun makesNoneOfAPictureThePhoneHasntTheMemoryFor() {
+        val jpegs = Jpegs(File(folder, "jpegs"), FakePictures(jpeg = { throw OutOfMemoryError() }))
+        assertNull(jpegs.of(WaitingFile("mms-1-1", 0, "content://mms/part/1", "IMG_0001.HEIC", "image/heic", 731, id = 7), picture(1)))
+        assertFalse(File(folder, "jpegs").exists())
+    }
+
+    @Test
+    fun keepsNothingOfAJpegItCouldntWrite() {
+        // Where the JPEG goes, something that can't be written to, as storage that's full.
+        val blocked = File(folder, "jpegs/7.jpg").apply { mkdirs() }
+        assertNull(jpegs.of(WaitingFile("mms-1-1", 0, "content://mms/part/1", "IMG_0001.HEIC", "image/heic", 731, id = 7), picture(1)))
+        assertFalse(blocked.exists())
+    }
+
+    @Test
     fun letsGoOfEveryJpegButThoseOfFilesWaiting() {
-        val waiting = jpegs.of(WaitingFile("mms-1-1", 0, "content://mms/part/1", "a.heic", "image/heic", 1, id = 1), byteArrayOf(1))!!
-        val left = jpegs.of(WaitingFile("mms-2-2", 0, "content://mms/part/2", "b.heic", "image/heic", 1, id = 2), byteArrayOf(1))!!
+        val waiting = jpegs.of(WaitingFile("mms-1-1", 0, "content://mms/part/1", "a.heic", "image/heic", 1, id = 1), picture(1))!!
+        val left = jpegs.of(WaitingFile("mms-2-2", 0, "content://mms/part/2", "b.heic", "image/heic", 1, id = 2), picture(1))!!
 
         jpegs.keepOnly(listOf(waiting.uri, "content://mms/part/3"))
 
         assertEquals(3L, jpegs.size(waiting.uri))
         assertNull(jpegs.size(left.uri))
     }
+
+    private fun picture(vararg bytes: Byte) = { ByteArrayInputStream(bytes) }
 }

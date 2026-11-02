@@ -3,10 +3,13 @@ package com.dspdispatch.relay.texts
 import androidx.room3.Room
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.dspdispatch.relay.dispatch.Direction
+import java.io.File
+import java.nio.file.Files
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -45,18 +48,44 @@ class StoredQueueTest {
     }
 
     @Test
-    fun keepsAFileAsTheJpegMadeOfIt() = runTest {
+    fun keepsEachFileAsItsSettled() = runTest {
         queue.begin(Mark("phone_1", 0, 0))
         queue.read(
             Seen("mms-1-10", 10, Direction.IN),
             listOf(Waiting("mms-1-10", Direction.IN, "(206) 555-0101", "Door", 10)),
-            listOf(WaitingFile("mms-1-10", 0, "content://mms/part/1", "IMG_0001.HEIC", "image/heic", 731)),
+            listOf(
+                WaitingFile("mms-1-10", 0, "content://mms/part/1", "IMG_0001.HEIC", "image/heic", 731),
+                WaitingFile("mms-1-10", 1, "content://mms/part/2", "door.jpg", "image/jpeg", 5),
+            ),
         )
-        val file = queue.waiting(10).single().files.single()
-        val jpeg = file.copy(uri = "file:/jpegs/${file.id}.jpg", name = "IMG_0001.jpg", mime = "image/jpeg", size = 512)
-        queue.converted(jpeg)
-        assertEquals(listOf(jpeg), queue.waiting(10).single().files)
-        assertEquals(listOf(jpeg.uri), queue.uris())
+        val (heif, door) = queue.waiting(10).single().files.sortedBy(WaitingFile::position)
+        assertFalse(heif.settled || door.settled)
+        val jpeg = heif.copy(uri = "file:/jpegs/${heif.id}.jpg", name = "IMG_0001.jpg", mime = "image/jpeg", size = 512, settled = true)
+        queue.settled(listOf(jpeg, door.copy(settled = true)))
+        assertEquals(listOf(jpeg, door.copy(settled = true)), queue.waiting(10).single().files.sortedBy(WaitingFile::position))
+        assertEquals(setOf(jpeg.uri, door.uri), queue.uris().toSet())
+    }
+
+    @Test
+    fun settlesEachFileAnEarlierAppKeptAsItIs() = runTest {
+        // The earlier app may have reported them already, and Dispatch keeps a file as first reported.
+        val folder = Files.createTempDirectory("texts").toFile()
+        try {
+            val file = File(folder, TextsDatabase.NAME)
+            earlierDatabase(
+                file,
+                1,
+                "INSERT INTO texts VALUES ('mms-1-10', 'IN', '(206) 555-0101', 'Door', 10)",
+                "INSERT INTO files VALUES ('mms-1-10', 0, 'content://mms/part/1', 'IMG_0001.HEIC', 'image/heic', 731, NULL, 1)",
+            )
+            fileDatabase(file).run {
+                val waiting = queue().waiting(10).single().files.single()
+                assertEquals(WaitingFile("mms-1-10", 0, "content://mms/part/1", "IMG_0001.HEIC", "image/heic", 731, settled = true, id = 1), waiting)
+                close()
+            }
+        } finally {
+            folder.deleteRecursively()
+        }
     }
 
     @Test

@@ -1,5 +1,6 @@
 package com.dspdispatch.relay.texts
 
+import androidx.room3.AutoMigration
 import androidx.room3.Dao
 import androidx.room3.Database
 import androidx.room3.Insert
@@ -19,7 +20,8 @@ import kotlinx.coroutines.flow.Flow
         Mark::class, Seen::class, Unread::class, Waiting::class, WaitingFile::class,
         Send::class, Report::class, SendRow::class, Told::class, SmsParts::class,
     ],
-    version = 1,
+    version = 2,
+    autoMigrations = [AutoMigration(from = 1, to = 2)],
 )
 abstract class TextsDatabase : RoomDatabase() {
     abstract fun queue(): StoredQueue
@@ -103,7 +105,7 @@ abstract class StoredQueue : Queue {
     }
 
     @Update
-    abstract override suspend fun converted(file: WaitingFile)
+    abstract override suspend fun settled(files: List<WaitingFile>)
 
     @Query("SELECT uri FROM files")
     abstract override suspend fun uris(): List<String>

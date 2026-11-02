@@ -17,16 +17,23 @@ class Jpegs(private val folder: File, private val pictures: Pictures) : PartByte
     val possible get() = pictures.decodesHeif
 
     /**
-     * [file] as a JPEG made of [picture], its bytes, kept until they're sent: or null when Android
-     * can't make one, or it can't be kept.
+     * [file] as a JPEG made of its picture, read from [picture], kept until it's sent: or null when
+     * Android can't make one, the phone hasn't the memory to, or it can't be kept.
      */
-    fun of(file: WaitingFile, picture: ByteArray): WaitingFile? {
-        val jpeg = pictures.jpeg(picture, Inbox.LARGEST.toInt(), LONGEST_SIDE) ?: return null
+    fun of(file: WaitingFile, picture: () -> InputStream): WaitingFile? {
+        val jpeg = try {
+            pictures.jpeg(picture().use(InputStream::readBytes), Inbox.LARGEST.toInt(), LONGEST_SIDE)
+        } catch (_: OutOfMemoryError) {
+            // A picture too large for what memory the phone has: it goes as it is.
+            null
+        } ?: return null
         val kept = File(folder.absoluteFile, "${file.id}$JPG")
         try {
             folder.mkdirs()
             kept.writeBytes(jpeg)
         } catch (_: IOException) {
+            // Written in part, as when the phone's storage fills: none of it kept.
+            kept.delete()
             return null
         }
         return file.copy(uri = kept.toURI().toString(), name = jpegName(file.name), mime = JPEG, size = jpeg.size.toLong())
@@ -57,8 +64,9 @@ class Jpegs(private val folder: File, private val pictures: Pictures) : PartByte
 }
 
 /**
- * Whether a part named [name], of type [mime], is a HEIF picture: by its type, or by its name
- * when its type says only that it's bytes.
+ * Whether a part named [name], of type [mime], is a still HEIF picture: by its type, or by its
+ * name when its type says only that it's bytes. A HEIF sequence, more than one picture, isn't:
+ * a JPEG would keep only one.
  */
 internal fun heif(name: String, mime: String): Boolean =
     mime in HEIF_TYPES || (mime == BYTES && HEIF_NAME.containsMatchIn(name))
@@ -67,7 +75,7 @@ internal fun heif(name: String, mime: String): Boolean =
 internal fun jpegName(name: String): String =
     HEIF_NAME.replace(name, "").limited(Inbox.NAME_MOST - JPG.length) + JPG
 
-private val HEIF_TYPES = setOf("image/heic", "image/heif", "image/heic-sequence", "image/heif-sequence")
+private val HEIF_TYPES = setOf("image/heic", "image/heif")
 private val HEIF_NAME = Regex("\\.hei[cf]$", RegexOption.IGNORE_CASE)
 private const val BYTES = "application/octet-stream"
 private const val JPEG = "image/jpeg"

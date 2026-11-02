@@ -8,6 +8,7 @@ import com.dspdispatch.relay.dispatch.TextAnswer
 import com.dspdispatch.relay.dispatch.TextsAnswer
 import com.dspdispatch.relay.dispatch.TextsReport
 import com.dspdispatch.relay.dispatch.wire
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.net.URI
 import java.nio.file.Files
@@ -215,7 +216,7 @@ class ReporterTest {
             server.takeRequest().body?.utf8(),
         )
         // Made once, as it was first reported, and kept for each report after.
-        assertEquals(listOf(listOf<Byte>(1, 2, 3, 4)), pictures.made.map(ByteArray::toList))
+        assertEquals(listOf(listOf<Byte>(1, 2, 3, 4)), pictures.made.map { it.first })
 
         assertTrue(reporter.upload(site, KEY))
         val upload = server.takeRequest()
@@ -231,10 +232,137 @@ class ReporterTest {
     }
 
     @Test
+    fun sendsAHeifPictureThePhoneHasntTheMemoryForAsItIs() = runTest {
+        sendsTheHeifPictureAsItIs(FakePictures(jpeg = { throw OutOfMemoryError() }))
+    }
+
+    @Test
     fun sendsAHeifPictureAsItIsBeforeAndroid9() = runTest {
         val pictures = FakePictures(decodesHeif = false, jpeg = { JPEG })
         sendsTheHeifPictureAsItIs(pictures)
         assertTrue(pictures.made.isEmpty())
+    }
+
+    @Test
+    fun keepsAPictureAsItWasFirstReportedThoughAJpegCanBeMadeOfItLater() = runTest {
+        // Where the JPEG goes, something that can't be written to, as storage that's full.
+        val full = File(folder, "jpegs").apply { writeText("") }
+        val reporter = reporter(pictures, full)
+        waiting("mms-1-1", WaitingFile("mms-1-1", 0, "content://mms/part/1", "IMG_0001.HEIC", "image/heic", 4))
+        provider.bytes["content://mms/part/1"] = byteArrayOf(1, 2, 3, 4)
+        // Dispatch keeps the first report, but its answer is lost.
+        server.enqueue(json(503, """{"error":"service_unavailable"}"""))
+        server.enqueue(json(200, """{"texts":[{"clientId":"mms-1-1","id":"text_1","files":["file_1"]}]}"""))
+        server.enqueue(json(200, """{"ok":true}"""))
+
+        try {
+            reporter.report(site, KEY)
+            fail("Not refused")
+        } catch (_: Refusal) {
+        }
+        full.delete()
+        assertTrue(reporter.report(site, KEY))
+        repeat(2) { assertTrue(HEIC in server.takeRequest().body!!.utf8()) }
+        assertEquals(1, pictures.made.size)
+        assertTrue(reporter.upload(site, KEY))
+        assertEquals(listOf<Byte>(1, 2, 3, 4), server.takeRequest().body?.toByteArray()?.toList())
+        assertEquals(0, folder.list()!!.size)
+    }
+
+    @Test
+    fun keepsEachFileAsItWasFirstReportedAcrossARestart() = runTest {
+        val texts = Files.createTempDirectory("texts").toFile()
+        try {
+            val file = File(texts, TextsDatabase.NAME)
+            // The second picture Android can't decode at first, as the phone's short of memory.
+            var decodes = false
+            val pictures = FakePictures(jpeg = { picture -> JPEG.takeIf { decodes || picture[0] == 1.toByte() } })
+            provider.bytes["content://mms/part/1"] = byteArrayOf(1, 2, 3, 4)
+            provider.bytes["content://mms/part/2"] = byteArrayOf(9, 8, 7, 6)
+            server.enqueue(json(503, """{"error":"service_unavailable"}"""))
+            server.enqueue(json(200, """{"texts":[{"clientId":"mms-1-1","id":"text_1","files":["file_1","file_2"]}]}"""))
+            server.enqueue(json(200, """{"ok":true}"""))
+            server.enqueue(json(200, """{"ok":true}"""))
+
+            fileDatabase(file).run {
+                waiting(
+                    "mms-1-1",
+                    WaitingFile("mms-1-1", 0, "content://mms/part/1", "IMG_0001.HEIC", "image/heic", 4),
+                    WaitingFile("mms-1-1", 1, "content://mms/part/2", "IMG_0002.HEIC", "image/heic", 4),
+                    queue = queue(),
+                )
+                try {
+                    reporter(pictures, queue = queue()).report(site, KEY)
+                    fail("Not refused")
+                } catch (_: Refusal) {
+                }
+                close()
+            }
+            decodes = true
+            fileDatabase(file).run {
+                val reporter = reporter(pictures, queue = queue())
+                assertTrue(reporter.report(site, KEY))
+                val files = """"files":[{"name":"IMG_0001.jpg","mime":"image/jpeg","size":3},{"name":"IMG_0002.HEIC","mime":"image/heic","size":4}]"""
+                repeat(2) { assertTrue(files in server.takeRequest().body!!.utf8()) }
+                assertEquals("each made once, before the restart", 2, pictures.made.size)
+                assertTrue(reporter.upload(site, KEY) && reporter.upload(site, KEY))
+                assertEquals(JPEG.toList(), server.takeRequest().body?.toByteArray()?.toList())
+                assertEquals(listOf<Byte>(9, 8, 7, 6), server.takeRequest().body?.toByteArray()?.toList())
+                close()
+            }
+            assertEquals(0, folder.list()!!.size)
+        } finally {
+            texts.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun sendsAPictureAnEarlierAppKeptAsItIs() = runTest {
+        // Reported by the earlier app as it is, its answer lost before the app was updated.
+        val texts = Files.createTempDirectory("texts").toFile()
+        try {
+            val file = File(texts, TextsDatabase.NAME)
+            earlierDatabase(
+                file,
+                1,
+                "INSERT INTO texts VALUES ('mms-1-1', 'IN', '(206) 555-0101', 'Door', 1)",
+                "INSERT INTO files VALUES ('mms-1-1', 0, 'content://mms/part/1', 'IMG_0001.HEIC', 'image/heic', 4, NULL, 1)",
+            )
+            provider.bytes["content://mms/part/1"] = byteArrayOf(1, 2, 3, 4)
+            server.enqueue(json(200, """{"texts":[{"clientId":"mms-1-1","id":"text_1","files":["file_1"]}]}"""))
+            server.enqueue(json(200, """{"ok":true}"""))
+
+            fileDatabase(file).run {
+                val reporter = reporter(pictures, queue = queue())
+                assertTrue(reporter.report(site, KEY))
+                assertTrue(HEIC in server.takeRequest().body!!.utf8())
+                assertTrue(reporter.upload(site, KEY))
+                assertEquals(listOf<Byte>(1, 2, 3, 4), server.takeRequest().body?.toByteArray()?.toList())
+                close()
+            }
+            assertTrue(pictures.made.isEmpty())
+        } finally {
+            texts.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun keepsAFileAsItWasFirstReportedThoughDispatchRefusesTheReport() = runTest {
+        waiting("mms-1-1", WaitingFile("mms-1-1", 0, "content://mms/part/1", "IMG_0001.HEIC", "image/heic", 4))
+        waiting("mms-2-2", WaitingFile("mms-2-2", 0, "content://mms/part/2", "IMG_0002.HEIC", "image/heic", 4))
+        provider.bytes["content://mms/part/1"] = byteArrayOf(1, 2, 3, 4)
+        provider.bytes["content://mms/part/2"] = byteArrayOf(5, 6, 7, 8)
+        // Refused together, then the first alone, which leaves it.
+        server.enqueue(json(400, """{"error":"invalid_input"}"""))
+        server.enqueue(json(400, """{"error":"invalid_input"}"""))
+        server.enqueue(json(200, """{"texts":[{"clientId":"mms-2-2","id":"text_2","files":["file_2"]}]}"""))
+
+        repeat(3) { assertTrue(reporter.report(site, KEY)) }
+        assertTrue(server.takeRequest().body!!.utf8().let { "IMG_0001.jpg" in it && "IMG_0002.jpg" in it })
+        assertTrue("IMG_0001.jpg" in server.takeRequest().body!!.utf8())
+        assertTrue(""""files":[{"name":"IMG_0002.jpg","mime":"image/jpeg","size":3}]""" in server.takeRequest().body!!.utf8())
+        assertEquals("each made once", listOf(listOf<Byte>(1, 2, 3, 4), listOf<Byte>(5, 6, 7, 8)), pictures.made.map { it.first })
+        assertEquals(listOf(queue.files.single().uri), folder.listFiles()!!.map { it.toURI().toString() })
     }
 
     @Test
@@ -250,8 +378,8 @@ class ReporterTest {
     @Test
     fun letsGoOfJpegsOfNoFileWaitingAsItStarts() = runTest {
         val jpegs = Jpegs(folder, pictures)
-        val kept = jpegs.of(WaitingFile("mms-1-1", 0, "content://mms/part/1", "a.heic", "image/heic", 4, id = 1), byteArrayOf(1))!!
-        val left = jpegs.of(WaitingFile("mms-2-2", 0, "content://mms/part/2", "b.heic", "image/heic", 4, id = 2), byteArrayOf(1))!!
+        val kept = jpegs.of(WaitingFile("mms-1-1", 0, "content://mms/part/1", "a.heic", "image/heic", 4, id = 1)) { ByteArrayInputStream(byteArrayOf(1)) }!!
+        val left = jpegs.of(WaitingFile("mms-2-2", 0, "content://mms/part/2", "b.heic", "image/heic", 4, id = 2)) { ByteArrayInputStream(byteArrayOf(1)) }!!
         waiting("mms-1-1", kept)
 
         backgroundScope.launch { reporter.run(site, KEY, Channel()) }
@@ -270,22 +398,22 @@ class ReporterTest {
         server.enqueue(json(200, """{"ok":true}"""))
 
         assertTrue(reporter.report(site, KEY))
-        assertTrue(""""files":[{"name":"IMG_0001.HEIC","mime":"image/heic","size":4}]""" in server.takeRequest().body!!.utf8())
+        assertTrue(""""files":[$HEIC]""" in server.takeRequest().body!!.utf8())
         assertTrue(reporter.upload(site, KEY))
         assertEquals(listOf<Byte>(1, 2, 3, 4), server.takeRequest().body?.toByteArray()?.toList())
         assertEquals(0, folder.list()?.size ?: 0)
     }
 
-    private fun reporter(pictures: Pictures) = Reporter(
+    private fun reporter(pictures: Pictures, jpegs: File = folder, queue: Queue = this.queue) = Reporter(
         Dispatch(OkHttpClient(), AppVersion("1.4.0", 14)),
         queue,
         provider,
         Texting { provider.allowed },
-        Jpegs(folder, pictures),
+        Jpegs(jpegs, pictures),
         EmptyCoroutineContext,
     )
 
-    private suspend fun waiting(clientId: String, vararg files: WaitingFile, number: String = "(206) 555-0101") {
+    private suspend fun waiting(clientId: String, vararg files: WaitingFile, number: String = "(206) 555-0101", queue: Queue = this.queue) {
         val at = clientId.substringAfterLast('-').toLong()
         val body = if (files.isEmpty()) "Gate code?" else "Door"
         queue.read(Seen(clientId, at, Direction.IN), listOf(Waiting(clientId, Direction.IN, number, body, at)), files.toList())
@@ -304,6 +432,9 @@ class ReporterTest {
 
         /** A JPEG made of a picture: how one begins. */
         val JPEG = byteArrayOf(-1, -40, -1)
+
+        /** The HEIF picture `content://mms/part/1` holds, as it's reported as it is. */
+        const val HEIC = """{"name":"IMG_0001.HEIC","mime":"image/heic","size":4}"""
         const val HOUR_MS = 60 * 60 * 1000L
     }
 }

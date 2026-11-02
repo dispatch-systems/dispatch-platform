@@ -133,15 +133,16 @@ The texts the phone received, and those sent from its own messaging app:
   on this phone.
 - `direction`: `in`, to the phone, or `out`, from it. `number`: the other party's. `at`: when it
   was written. `files`: optional, each `name` at most 200 characters and `mime` at most 100
-  (`NAME_MOST`, `MIME_MOST`), with the `size` the phone knows. A picture received as HEIF, as
-  iPhones send them, which browsers don't show, the app reports and sends as a JPEG it makes of
-  it (`image/jpeg`, its name ending `.jpg`); one Android can't decode, as before Android 9, as it
-  is.
+  (`NAME_MOST`, `MIME_MOST`), with the `size` the phone knows. A still picture received as HEIF,
+  as iPhones send them, which browsers don't show, the app reports and sends as a JPEG it makes
+  of it (`image/jpeg`, its name ending `.jpg`); a HEIF sequence, and one Android can't decode, as
+  before Android 9, as it is.
 
 Answers, for each, Dispatch's ID of it and of its files, in the order reported:
 `{ "texts": [ { "clientId": "sms-8812", "id": "…", "files": ["…"] } ] }`. Reporting is
-idempotent: a text reported again by its `clientId` is kept once and answered the same, so the
-app reports until it's answered, then sends each file's bytes.
+idempotent: a text reported again by its `clientId` is kept once and answered the same, its
+files' names and types as first reported, so the app reports until it's answered, each file as
+it first did, then sends each file's bytes.
 
 ### `POST /api/communications/phone/files/{id}`
 

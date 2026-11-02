@@ -7,6 +7,8 @@ import android.graphics.Color
 import android.graphics.ImageDecoder
 import android.graphics.Matrix
 import android.graphics.Paint
+import android.graphics.PixelFormat
+import android.graphics.PorterDuff
 import android.graphics.Rect
 import android.os.Build
 import androidx.core.graphics.createBitmap
@@ -28,7 +30,7 @@ object PhonePictures : Pictures {
 
     override fun shrink(file: File, most: Int, within: Size): ByteArray? {
         val size = size(file) ?: return null
-        val longest = minOf(size.longestWithin(within), LARGEST_SIDE)
+        val longest = size.sentWithin(within)
         // Decoded no larger than it's sent: a phone's photo is far larger, and its pixels many.
         var sample = 1
         while (maxOf(size.width, size.height) / (sample * 2) >= longest) sample *= 2
@@ -49,6 +51,12 @@ object PhonePictures : Pictures {
             ImageDecoder.decodeBitmap(ImageDecoder.createSource(ByteBuffer.wrap(picture))) { decoder, info, _ ->
                 // Drawn on the app's own canvas, which a picture in graphics memory can't be.
                 decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                // On white as it's decoded, as a JPEG has no transparency: made a JPEG as it is,
+                // with no copy of it as large beside it in memory.
+                decoder.setPostProcessor { canvas ->
+                    canvas.drawColor(Color.WHITE, PorterDuff.Mode.DST_OVER)
+                    PixelFormat.OPAQUE
+                }
                 val scale = longest.toDouble() / maxOf(info.size.width, info.size.height)
                 if (scale < 1) {
                     decoder.setTargetSize((info.size.width * scale).toInt().coerceAtLeast(1), (info.size.height * scale).toInt().coerceAtLeast(1))
@@ -77,20 +85,31 @@ object PhonePictures : Pictures {
         return turned
     }
 
-    /** [picture] as a JPEG [side] pixels on its longest side: on white, as a JPEG has no transparency. */
-    private fun jpeg(picture: Bitmap, side: Int, quality: Int): ByteArray {
+    /**
+     * [picture] as a JPEG [side] pixels on its longest side, or null when Android can't make it:
+     * on white, as a JPEG has no transparency.
+     */
+    private fun jpeg(picture: Bitmap, side: Int, quality: Int): ByteArray? {
+        // An opaque picture at its own size is made a JPEG as it is: no copy of it as large.
+        val flat = if (!picture.hasAlpha() && side == maxOf(picture.width, picture.height)) picture else flattened(picture, side)
+        return try {
+            val jpeg = ByteArrayOutputStream()
+            if (flat.compress(Bitmap.CompressFormat.JPEG, quality, jpeg)) jpeg.toByteArray() else null
+        } finally {
+            if (flat != picture) flat.recycle()
+        }
+    }
+
+    /** [picture] drawn on white, [side] pixels on its longest side. */
+    private fun flattened(picture: Bitmap, side: Int): Bitmap {
         val scale = side.toFloat() / maxOf(picture.width, picture.height)
         val width = (picture.width * scale).toInt().coerceAtLeast(1)
         val height = (picture.height * scale).toInt().coerceAtLeast(1)
-        val flat = createBitmap(width, height)
-        Canvas(flat).apply {
-            drawColor(Color.WHITE)
-            drawBitmap(picture, null, Rect(0, 0, width, height), Paint(Paint.FILTER_BITMAP_FLAG))
-        }
-        return try {
-            ByteArrayOutputStream().also { flat.compress(Bitmap.CompressFormat.JPEG, quality, it) }.toByteArray()
-        } finally {
-            flat.recycle()
+        return createBitmap(width, height).also { flat ->
+            Canvas(flat).apply {
+                drawColor(Color.WHITE)
+                drawBitmap(picture, null, Rect(0, 0, width, height), Paint(Paint.FILTER_BITMAP_FLAG))
+            }
         }
     }
 }
