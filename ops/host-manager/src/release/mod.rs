@@ -4,6 +4,7 @@
 mod assets;
 mod backup;
 mod origins;
+mod relay;
 mod workflow;
 
 use crate::{
@@ -23,15 +24,18 @@ use std::{
 };
 
 const HELP: &str = "Dispatch release [publish|status|backup] [X.Y.Z] --root CHECKOUT
-  publish   Release main's head: require the full suite and Dev serving the commit, publish
-            the release and verify Production installs it (the default). A release that
-            brings migrations publishes only after a backup made for it in the last six hours.
+  publish   Release main's head: run its own full checks, which build or carry its
+            Production relay app, require Dev serving the commit, publish the release and
+            verify Production installs it (the default). A release that brings migrations
+            publishes only after a backup made for it in the last six hours.
   status    Inspect GitHub, saved assets and public health without changing release state.
   backup    Back Production up for the release over ssh, stopping it for about a second,
             restore the copy elsewhere and check every database, and record it.
 With no version, publish makes a new release, the latest published version bumped. It sets
 aside any release never published, unless that release already holds the same commit, which
 it continues. A version publishes, or finishes publishing, exactly that release.
+DSP Dispatch: Relay's version goes up, by the same bump, only when the commit changed
+android/ since the last released app; otherwise the release carries that app unchanged.
 Options: --bump patch|minor|major, --commit REV, --notes PATH, --releases PATH
 Origins: --dev-origin HTTPS_ORIGIN --production-origin HTTPS_ORIGIN
   Or set devOrigin and productionOrigin in CHECKOUT/config/release.json.
@@ -125,6 +129,10 @@ struct Journal {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     dev_commit: Option<String>,
     commit: Option<String>,
+    /// The `relay-version` its checks run with, decided once for its commit: DSP Dispatch:
+    /// Relay's Production version it releases, or empty to carry the last released one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    relay_version: Option<String>,
     complete: bool,
 }
 
@@ -150,6 +158,8 @@ struct Release<'a> {
     origins: origins::Origins,
     /// No version was named: a new release, which takes the place of any never published.
     fresh: bool,
+    /// How far a new version goes up: `patch`, `minor` or `major`, the app's too.
+    bump: String,
 }
 
 fn say(message: impl std::fmt::Display) {
@@ -178,6 +188,7 @@ impl<'a> Release<'a> {
         Self {
             notes: options.notes.clone().unwrap_or(release.notes.clone()),
             fresh: options.version.is_none(),
+            bump: options.bump.clone(),
             ..release
         }
     }
@@ -199,6 +210,7 @@ impl<'a> Release<'a> {
             checks_branch: format!("release-checks/v{version}"),
             origins: origins.clone(),
             fresh: false,
+            bump: "patch".into(),
         }
     }
     /// Another version's release in the same directory, with its own notes.
@@ -246,7 +258,11 @@ impl<'a> Release<'a> {
                     .dev_commit
                     .as_ref()
                     .is_none_or(|s| artifact::hex(s, 40))
-                && value.commit.as_ref().is_none_or(|s| artifact::hex(s, 40)),
+                && value.commit.as_ref().is_none_or(|s| artifact::hex(s, 40))
+                && value
+                    .relay_version
+                    .as_deref()
+                    .is_none_or(|s| s.is_empty() || releases::version(s).is_ok()),
             "Invalid release journal",
         )?;
         Ok(value)

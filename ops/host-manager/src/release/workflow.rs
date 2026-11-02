@@ -152,6 +152,8 @@ impl Release<'_> {
                 }
             }
             journal.commit = Some(commit.clone());
+            // The app's version is decided for the commit it's built from.
+            journal.relay_version = None;
             self.save(&journal)?;
         }
         say(format!("Releasing main commit {commit}"));
@@ -170,15 +172,16 @@ impl Release<'_> {
             120,
         )?)
     }
-    /// Writes the release notes from the merged PRs: one line per PR, the first paragraph of
-    /// its Summary section (or of Change, for older PRs), then the list of PRs. A body GitHub
+    /// Writes the release notes from the merged PRs: a line naming DSP Dispatch: Relay's
+    /// version when the release carries a new one, one line per PR, the first paragraph of its
+    /// Summary section (or of Change, for older PRs), then the list of PRs. A body GitHub
     /// cannot serve, or one with neither section, leaves the title instead.
     pub(super) fn generate_notes(&self, commit: &str) -> Result<()> {
         let changes = match self.previous()? {
             Some(previous) => self.changes_after(&previous, commit)?,
             None => vec![],
         };
-        let mut notes = String::new();
+        let mut notes = self.app_note()?.unwrap_or_default();
         for (number, title) in &changes {
             let body = self
                 .command(
@@ -238,37 +241,39 @@ impl Release<'_> {
         };
         Ok(passed("core") && passed("platform"))
     }
-    /// The newest run that passed the full suite on exactly `commit`: its push to main, which
-    /// published the build, or a dispatched run.
+    /// The release's own run of the checks on exactly `commit`, dispatched on its temporary
+    /// branch, if its newest passed the full suite. Main's push run never counts: only a
+    /// release's run builds Production's app.
     pub(super) fn fully_validated(&self, commit: &str) -> Result<Option<Value>> {
         let runs = io::github(
             self.system,
-            &format!("actions/workflows/checks.yml/runs?head_sha={commit}&per_page=100"),
+            &format!(
+                "actions/workflows/checks.yml/runs?event=workflow_dispatch&head_sha={commit}&per_page=100"
+            ),
         )?;
-        for (event, branch) in [("push", Some("main")), ("workflow_dispatch", None)] {
-            if let Some(run) =
-                releases::latest_run(&runs["workflow_runs"], commit, event, branch, false)
-                && releases::passed(run)
-                && self.full_run(run)?
-            {
-                return Ok(Some(run.clone()));
-            }
+        if let Some(run) = releases::latest_run(
+            &runs["workflow_runs"],
+            commit,
+            "workflow_dispatch",
+            Some(&self.checks_branch),
+            false,
+        ) && releases::passed(run)
+            && self.full_run(run)?
+        {
+            return Ok(Some(run.clone()));
         }
         Ok(None)
     }
-    /// Requires the full suite on exactly `commit`. Every push to main runs it, so only a build
-    /// that expired, or a commit main's run never published, gets a run dispatched on a
-    /// temporary branch at the commit and awaited.
-    pub(super) fn full_suite(&self, commit: &str) -> Result<()> {
-        let url = match self.fully_validated(commit)? {
-            Some(run) => io::text(&run, "html_url"),
-            None => self.dispatch_full(commit)?,
-        };
+    /// Requires the full suite on exactly `commit`, in the release's own run: dispatched on a
+    /// temporary branch at the commit with `relay`, the app version it builds (empty to carry
+    /// the last released app), and awaited. A rerun awaits the run already dispatched.
+    pub(super) fn full_suite(&self, commit: &str, relay: &str) -> Result<()> {
+        let url = self.dispatch_full(commit, relay)?;
         say(format!("Full checks: {url}"));
         // The temporary branch only ever serves a dispatched run.
         self.remove_checks_branch()
     }
-    fn dispatch_full(&self, commit: &str) -> Result<String> {
+    fn dispatch_full(&self, commit: &str, relay: &str) -> Result<String> {
         let runs = io::github(
             self.system,
             &format!(
@@ -284,7 +289,7 @@ impl Release<'_> {
         )
         .is_none()
         {
-            say("Nothing ran the full suite on this commit; starting it");
+            say("Starting the release's checks");
             self.checks_branch_at(commit)?;
             self.command(
                 &[
@@ -296,6 +301,8 @@ impl Release<'_> {
                     REPOSITORY,
                     "--ref",
                     &self.checks_branch,
+                    "-f",
+                    &format!("relay-version={relay}"),
                 ],
                 None,
                 120,

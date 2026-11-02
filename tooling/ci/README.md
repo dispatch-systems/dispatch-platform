@@ -23,8 +23,9 @@ locally the whole suite in sequence:
 The gate passes only when every job passed, the relay apps' builds wherever they ran, and the
 package carries the run's own commit and a complete inventory (`ci-verify.py`, which runs
 `dispatch-host ci verify`). Outside a PR it then attests the package and publishes it as `dispatch-main-<sha>` for 90 days: the Dev updater
-installs `main`'s, and a release stamps its version into it. A release of a commit whose build
-expired dispatches a run on a temporary branch at that commit, which publishes it again.
+installs `main`'s, which carries Dev's app. A release dispatches its own run on a temporary branch
+at its commit, which builds or carries Production's app beside Dev's, and stamps its version into
+that run's package ([Android apps](../../android/README.md#releases)).
 
 A PR's newer push cancels its older run; each commit of `main` keeps its own. A failure that
 isn't the change's own gets its failed jobs run again: `gh run rerun <id> --failed`.
