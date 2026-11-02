@@ -144,9 +144,12 @@ test('the history records every database the migrations name', () => {
 test('a feature adds to a database other owners keep only with its own migrations', () => {
   const history: History = JSON.parse(fs.readFileSync(historyFile, 'utf8'));
   const declaredBy = new Map<string, string>();
+  // Only an owner's code declares a database; tooling's and ops' `Self::new("…")` are their own.
   for (const file of files.filter((file) => file.endsWith('.rs'))) {
+    const owner = ownerOf(file);
+    if (!owner) continue;
     for (const match of read(file).matchAll(/\b(?:Kind|Self)::new\(\s*"([a-z_]+)"/g))
-      declaredBy.set(match[1]!, unitOf(ownerOf(file)!));
+      declaredBy.set(match[1]!, unitOf(owner));
   }
   const wrong: string[] = [];
   for (const migration of gathered) {
