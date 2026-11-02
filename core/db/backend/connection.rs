@@ -194,7 +194,7 @@ impl Db {
     /// The names of the columns a query answers with, as it names them.
     pub fn columns(&self, sql: &str) -> Result<Vec<String>> {
         let stmt = self.0.prepare_cached(sql)?;
-        Ok(stmt.column_names().into_iter().map(str::to_owned).collect())
+        Ok(stmt.column_names().map(str::to_owned).collect())
     }
     /// The single number a `SELECT count(*) ...` answers with.
     pub fn count(&self, sql: &str, p: impl Params) -> Result<i64> {

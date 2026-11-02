@@ -119,7 +119,6 @@ impl Store {
                 let mut query = self.platform.0.prepare(select)?;
                 let columns: Vec<String> = query
                     .column_names()
-                    .into_iter()
                     .map(str::to_owned)
                     .collect();
                 let rows: Vec<Vec<rusqlite::types::Value>> = query
