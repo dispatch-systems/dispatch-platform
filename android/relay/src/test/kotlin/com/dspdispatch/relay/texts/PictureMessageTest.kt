@@ -88,6 +88,13 @@ class PictureMessageTest {
     }
 
     @Test
+    fun sendsAPictureAtMostAsLargeAsPhonesShowAPictureMessages() {
+        assertEquals(LARGEST_SIDE, Size(4_000, 3_000).sentWithin(Size(5_000, 5_000)))
+        assertEquals("the carrier's, smaller", 640, Size(4_000, 3_000).sentWithin(Size(640, 480)))
+        assertEquals("not scaled up", 300, Size(300, 200).sentWithin(Size(5_000, 5_000)))
+    }
+
+    @Test
     fun givesEachPictureAnEvenShareOrWhatItNeeds() {
         assertEquals(listOf(100L, 400L, 400L), allot(900, listOf(100, 500, 1_000)))
         assertEquals(listOf(100L, 500L), allot(10_000, listOf(100, 500)))
@@ -103,10 +110,30 @@ class PictureMessageTest {
             ByteArray(side * side * quality / 1_000)
         }!!
         assertTrue(fitted.size <= 200_000)
-        assertEquals(LARGEST_SIDE to 85, sides.first())
+        assertEquals("from the size its caller asks", 4_000 to 85, sides.first())
         assertTrue(sides.zipWithNext().all { (a, b) -> b.first < a.first || b.second < a.second })
         assertNull(fit(10, 4_000) { side, _ -> ByteArray(side) })
-        assertEquals(listOf(300 to 85), mutableListOf<Pair<Int, Int>>().also { tried -> fit(1_000_000, 300) { s, q -> tried += s to q; ByteArray(1) } })
+        assertEquals(listOf(300 to 85), tried(1_000_000, 300))
+        assertEquals("larger than a picture message's, if it fits", listOf(4_096 to 85), tried(20 * 1024 * 1024, 4_096))
+    }
+
+    @Test
+    fun triesASmallPictureAtItsOwnSize() {
+        assertEquals(listOf(128 to 85), tried(1_000_000, 128))
+        assertEquals("never smaller", listOf(128 to 85, 128 to 70), tried(10, 128))
+    }
+
+    @Test
+    fun makesNoJpegWhenAndroidCant() {
+        assertNull(fit(1_000_000, 300) { _, _ -> null })
+    }
+
+    /** Each side and quality [fit] tries, within [most] bytes from [longest], of a JPEG [side] bytes. */
+    private fun tried(most: Int, longest: Int) = mutableListOf<Pair<Int, Int>>().also { tried ->
+        fit(most, longest) { side, quality ->
+            tried += side to quality
+            ByteArray(side)
+        }
     }
 
     private fun compose(most: Int, vararg files: Attachment, within: Size = Size(LARGEST_SIDE, LARGEST_SIDE)) =

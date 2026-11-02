@@ -1,5 +1,6 @@
 package com.dspdispatch.relay.texts
 
+import androidx.room3.AutoMigration
 import androidx.room3.Dao
 import androidx.room3.Database
 import androidx.room3.Insert
@@ -7,6 +8,7 @@ import androidx.room3.OnConflictStrategy
 import androidx.room3.Query
 import androidx.room3.RoomDatabase
 import androidx.room3.Transaction
+import androidx.room3.Update
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -18,7 +20,8 @@ import kotlinx.coroutines.flow.Flow
         Mark::class, Seen::class, Unread::class, Waiting::class, WaitingFile::class,
         Send::class, Report::class, SendRow::class, Told::class, SmsParts::class,
     ],
-    version = 1,
+    version = 2,
+    autoMigrations = [AutoMigration(from = 1, to = 2)],
 )
 abstract class TextsDatabase : RoomDatabase() {
     abstract fun queue(): StoredQueue
@@ -100,6 +103,12 @@ abstract class StoredQueue : Queue {
         leaveText(clientId)
         leaveFiles(clientId)
     }
+
+    @Update
+    abstract override suspend fun settled(files: List<WaitingFile>)
+
+    @Query("SELECT uri FROM files")
+    abstract override suspend fun uris(): List<String>
 
     @Query("SELECT * FROM files WHERE dispatchId IS NOT NULL ORDER BY id LIMIT 1")
     abstract override suspend fun upload(): WaitingFile?

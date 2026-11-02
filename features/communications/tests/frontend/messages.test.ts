@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Message, Sender } from '../../api/index.js';
 import { fresh, runs } from '../../frontend/conversations/messages.js';
+import { isPhoto } from '../../frontend/shared/format.js';
 
 /** A text written `minutes` past 4 PM: from the number a conversation is with, or by `sender`. */
 const text = (id: string, minutes: number, sender: Sender | null = null): Message => {
@@ -66,4 +67,10 @@ test('texts two phones sent from their own apps minutes apart are a run under ea
     day!.runs.map((run) => ids(run.messages)),
     [['t1'], ['t2', 't3']],
   );
+});
+
+test('the page shows pictures of the kinds browsers show, and offers others to download', () => {
+  for (const kind of ['png', 'jpeg', 'gif', 'webp', 'avif']) assert.ok(isPhoto(`image/${kind}`));
+  for (const kind of ['image/heic', 'image/heif', 'image/svg+xml', 'application/pdf'])
+    assert.ok(!isPhoto(kind));
 });

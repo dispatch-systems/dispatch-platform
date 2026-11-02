@@ -117,7 +117,7 @@ export function size(bytes: number) {
   return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
 }
 /** Whether a file is a photo the page shows. */
-export const isPhoto = (mime: string) => /^image\/(png|jpeg|gif|webp)$/.test(mime);
+export const isPhoto = (mime: string) => /^image\/(png|jpeg|gif|webp|avif)$/.test(mime);
 
 /** A message as a row of the list shows it: its text, else what it holds. */
 export function preview(message: Pick<Message, 'text' | 'files'>) {

@@ -35,7 +35,7 @@ class Texts(private val context: Context, dispatch: Dispatch) {
     private val own = OwnRows(provider, sends, context.packageName)
     private val inbox = Inbox(provider, queue, SentByApp(sends, context.packageName))
     private val texting = Texting { textingAllowed(context) }
-    private val reporter = Reporter(dispatch, queue, provider, texting)
+    private val reporter = Reporter(dispatch, queue, provider, texting, Jpegs(File(context.noBackupFilesDir, JPEGS), PhonePictures))
     private val statuses = Statuses(dispatch, sends)
     private val sender = Sender(
         dispatch,
@@ -94,5 +94,8 @@ class Texts(private val context: Context, dispatch: Dispatch) {
     private companion object {
         /** Where picture messages' files wait as they're sent (`mms_files.xml`). */
         const val SENDING = "sending"
+
+        /** Where JPEGs made of pictures received as HEIF wait as they're reported and sent. */
+        const val JPEGS = "jpegs"
     }
 }

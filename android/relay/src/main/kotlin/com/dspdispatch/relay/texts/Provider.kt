@@ -63,11 +63,20 @@ sealed interface Reading {
  */
 class Unavailable(what: String) : IOException("The texting provider can't read $what now")
 
+/** Where the bytes of texts' pictures and files are read, each part by its URI. Calls block: never on the main thread. */
+interface PartBytes {
+    /** How many bytes the part at [uri] holds now, or null once it's gone. */
+    fun size(uri: String): Long?
+
+    /** The bytes of the part at [uri]. */
+    fun open(uri: String): InputStream
+}
+
 /**
  * The phone's texts, as its texting provider holds them, the texting app keeping them. Calls
  * block on the provider: never on the main thread.
  */
-interface Provider {
+interface Provider : PartBytes {
     /**
      * The rows of texts [scan] goes over, received or sent, oldest first: none still waiting to be
      * sent, nor a picture message the texting app hasn't downloaded yet.
@@ -87,8 +96,8 @@ interface Provider {
     fun tried(table: Table, since: Long): List<Tried>
 
     /** How many bytes the part at [uri] holds now, or null once it's gone; [Unavailable] if it can't say. */
-    fun size(uri: String): Long?
+    override fun size(uri: String): Long?
 
     /** The bytes of the part at [uri]; [Unavailable] if they can't be read now. */
-    fun open(uri: String): InputStream
+    override fun open(uri: String): InputStream
 }

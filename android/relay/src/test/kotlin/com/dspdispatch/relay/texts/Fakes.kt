@@ -2,11 +2,16 @@ package com.dspdispatch.relay.texts
 
 import androidx.room3.Room
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
+import androidx.sqlite.execSQL
 import com.dspdispatch.relay.dispatch.Direction
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.InputStream
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /** The [Queue] as [StoredQueue] keeps it, in memory. */
 class MemoryQueue : Queue {
@@ -62,6 +67,13 @@ class MemoryQueue : Queue {
         texts.remove(clientId)
         files.removeAll { it.clientId == clientId }
     }
+
+    override suspend fun settled(files: List<WaitingFile>) {
+        val settled = files.associateBy(WaitingFile::id)
+        this.files.replaceAll { settled[it.id] ?: it }
+    }
+
+    override suspend fun uris() = files.map(WaitingFile::uri)
 
     override suspend fun upload() = files.filter { it.dispatchId != null }.minByOrNull(WaitingFile::id)
 
@@ -191,13 +203,23 @@ class FakeRadio : Radio {
 
 /**
  * Pictures as Android would scale them, each [sizes] says, by [shrink]: what each shrinking was
- * asked is kept in [asked].
+ * asked is kept in [asked]. [decodesHeif] is whether it says Android here decodes HEIF; whatever
+ * it says, each JPEG it's asked for is [jpeg]'s, and what it was asked, the picture and the most
+ * bytes and pixels, is kept in [made].
  */
 class FakePictures(
     private val sizes: Map<String, Size> = emptyMap(),
+    override val decodesHeif: Boolean = true,
+    private val jpeg: (picture: ByteArray) -> ByteArray? = { null },
     private val shrink: (most: Int) -> ByteArray? = { ByteArray(it / 2) },
 ) : Pictures {
     val asked = mutableListOf<Triple<String, Int, Size>>()
+    val made = mutableListOf<Triple<List<Byte>, Int, Int>>()
+
+    override fun jpeg(picture: ByteArray, most: Int, longest: Int): ByteArray? {
+        made += Triple(picture.toList(), most, longest)
+        return jpeg(picture)
+    }
 
     override fun size(file: File) = sizes[file.name]
 
@@ -213,3 +235,21 @@ fun memoryDatabase(): TextsDatabase = Room.inMemoryDatabaseBuilder<TextsDatabase
 /** The app's texts database in [file], on SQLite itself, as it's kept across the app's restarts. */
 fun fileDatabase(file: File): TextsDatabase =
     Room.databaseBuilder<TextsDatabase>(file.path).setDriver(BundledSQLiteDriver()).build()
+
+/**
+ * Writes the app's texts database in [file] as an earlier app kept it, at [version] of its schema
+ * (`schemas/`), holding what [rows] put in it: for the app as it is to open, as after an update.
+ */
+fun earlierDatabase(file: File, version: Int, vararg rows: String) {
+    val schema = Json.parseToJsonElement(File("schemas/${TextsDatabase::class.qualifiedName}/$version.json").readText())
+        .jsonObject.getValue("database").jsonObject
+    val tables = schema.getValue("entities").jsonArray.map { it.jsonObject }.flatMap { table ->
+        val name = table.getValue("tableName").jsonPrimitive.content
+        val indices = table["indices"]?.jsonArray.orEmpty().map { it.jsonObject.getValue("createSql") }
+        (listOf(table.getValue("createSql")) + indices).map { it.jsonPrimitive.content.replace("\${TABLE_NAME}", name) }
+    }
+    val setup = schema.getValue("setupQueries").jsonArray.map { it.jsonPrimitive.content }
+    BundledSQLiteDriver().open(file.path).use { connection ->
+        (tables + setup + "PRAGMA user_version = $version" + rows).forEach(connection::execSQL)
+    }
+}
