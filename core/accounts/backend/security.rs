@@ -2,13 +2,25 @@ use super::*;
 use crate::accounts::api::types::{
     AccountSession, AuthenticatorSetup, PasskeySummary, SecurityStatus,
 };
-use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
+use base64::{
+    Engine,
+    engine::general_purpose::{STANDARD as BASE64, URL_SAFE_NO_PAD},
+};
 use hmac::{Hmac, Mac, digest::KeyInit};
 use qrcode::{QrCode, render::svg};
 use sha1::Sha1;
 use webauthn_rs::prelude::*;
 
 const CHALLENGE_TTL: i64 = 5 * 60000;
+
+/// A passkey's ID as Dispatch stores it: the hash of its credential ID in unpadded URL-safe base64,
+/// quoted as JSON, the form every stored passkey's ID was made from. webauthn-rs writes the
+/// credential ID itself as a list of bytes, which would give each passkey a new ID.
+fn passkey_id(key: &Passkey) -> Result<String> {
+    Ok(crypto::sha(serde_json::to_string(
+        &URL_SAFE_NO_PAD.encode(key.cred_id()),
+    )?))
+}
 
 // A passkey belongs to the address it was made at: the admin's for a platform owner, a DSP's
 // own for its members.
@@ -269,7 +281,7 @@ impl Store {
         let key = webauthn(self, a)?
             .finish_passkey_registration(&credential, &state)
             .map_err(|_| Error::new("passkey_failed", 400))?;
-        let id = crypto::sha(serde_json::to_string(key.cred_id())?);
+        let id = passkey_id(&key)?;
         self.people(a)?.transaction(|| {
             let first = !self.security_status(a)?.enrolled;
             ensure(
@@ -307,7 +319,7 @@ impl Store {
             let mut matched = false;
             for mut key in self.passkeys(a)? {
                 if key.update_credential(&result).is_some() {
-                    let id = crypto::sha(serde_json::to_string(key.cred_id())?);
+                    let id = passkey_id(&key)?;
                     self.people(a)?.exec(
                         "UPDATE account_passkeys SET credential=? WHERE id=? AND user_id=?",
                         params![serde_json::to_string(&key)?, id, a.user.id],

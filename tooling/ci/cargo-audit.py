@@ -13,7 +13,15 @@ ALLOWED_YANKED = {}
 
 # Advisories the lockfile may hold, each on one exact version, with why it is safe and when it
 # goes.
-ALLOWED_ADVISORIES = {}
+WEBAUTHN_RSA = (
+    "rsa has no fixed release. The Marvin attack recovers an RSA private key from the timing of "
+    "decryption with it; webauthn-rs, the only user of rsa here, through crypto-glue, only "
+    "verifies authenticators' RS256 signatures with their public keys, and Dispatch holds no RSA "
+    "private key. Goes once rsa releases a fix or webauthn-rs moves off it."
+)
+ALLOWED_ADVISORIES = {
+    ("RUSTSEC-2023-0071", "rsa", "0.10.0-rc.19"): WEBAUTHN_RSA,
+}
 
 
 def problems(report, allowed=ALLOWED_YANKED, advisories=ALLOWED_ADVISORIES):
