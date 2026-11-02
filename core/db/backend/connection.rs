@@ -142,7 +142,7 @@ impl Db {
     }
     /// Reads rows with a hard bound on SQLite virtual-machine work. The handler belongs to
     /// this connection and is removed before it returns, including after an interrupted query.
-    pub fn all_bounded(&self, sql: &str, p: impl Params, max_ops: u64) -> Result<Vec<Value>> {
+    pub fn all_bounded(&mut self, sql: &str, p: impl Params, max_ops: u64) -> Result<Vec<Value>> {
         const INTERVAL: u64 = 1_000;
         let mut callbacks_left = max_ops.div_ceil(INTERVAL).max(1);
         self.0.progress_handler(
