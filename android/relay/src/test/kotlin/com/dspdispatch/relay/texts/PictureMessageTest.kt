@@ -98,7 +98,7 @@ class PictureMessageTest {
     fun scalesAPictureDownUntilItFits() {
         val sides = mutableListOf<Pair<Int, Int>>()
         // About as a JPEG grows: with its pixels, and its quality.
-        val fitted = fit(200_000, 4_000) { side, quality ->
+        val fitted = fit(200_000, LARGEST_SIDE) { side, quality ->
             sides += side to quality
             ByteArray(side * side * quality / 1_000)
         }!!

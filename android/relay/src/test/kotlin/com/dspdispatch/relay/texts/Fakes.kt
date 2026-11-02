@@ -63,6 +63,12 @@ class MemoryQueue : Queue {
         files.removeAll { it.clientId == clientId }
     }
 
+    override suspend fun converted(file: WaitingFile) {
+        files.replaceAll { if (it.id == file.id) file else it }
+    }
+
+    override suspend fun uris() = files.map(WaitingFile::uri)
+
     override suspend fun upload() = files.filter { it.dispatchId != null }.minByOrNull(WaitingFile::id)
 
     override suspend fun uploaded(id: Long) {
@@ -191,13 +197,22 @@ class FakeRadio : Radio {
 
 /**
  * Pictures as Android would scale them, each [sizes] says, by [shrink]: what each shrinking was
- * asked is kept in [asked].
+ * asked is kept in [asked]. HEIF ones it decodes if [decodesHeif], as [jpeg] makes them JPEGs:
+ * the pictures it was asked to are kept in [made].
  */
 class FakePictures(
     private val sizes: Map<String, Size> = emptyMap(),
+    override val decodesHeif: Boolean = true,
+    private val jpeg: (picture: ByteArray) -> ByteArray? = { null },
     private val shrink: (most: Int) -> ByteArray? = { ByteArray(it / 2) },
 ) : Pictures {
     val asked = mutableListOf<Triple<String, Int, Size>>()
+    val made = mutableListOf<ByteArray>()
+
+    override fun jpeg(picture: ByteArray, most: Int, longest: Int): ByteArray? {
+        made += picture
+        return jpeg(picture)
+    }
 
     override fun size(file: File) = sizes[file.name]
 

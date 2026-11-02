@@ -7,6 +7,7 @@ import androidx.room3.OnConflictStrategy
 import androidx.room3.Query
 import androidx.room3.RoomDatabase
 import androidx.room3.Transaction
+import androidx.room3.Update
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -100,6 +101,12 @@ abstract class StoredQueue : Queue {
         leaveText(clientId)
         leaveFiles(clientId)
     }
+
+    @Update
+    abstract override suspend fun converted(file: WaitingFile)
+
+    @Query("SELECT uri FROM files")
+    abstract override suspend fun uris(): List<String>
 
     @Query("SELECT * FROM files WHERE dispatchId IS NOT NULL ORDER BY id LIMIT 1")
     abstract override suspend fun upload(): WaitingFile?

@@ -4,17 +4,22 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ImageDecoder
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Rect
+import android.os.Build
 import androidx.core.graphics.createBitmap
 import androidx.exifinterface.media.ExifInterface
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
+import java.nio.ByteBuffer
 
 /** [Pictures] by Android's own decoders, turned upright as the camera that took them said. */
 object PhonePictures : Pictures {
+    override val decodesHeif get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+
     override fun size(file: File): Size? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(file.path, bounds)
@@ -33,6 +38,29 @@ object PhonePictures : Pictures {
             fit(most, minOf(longest, maxOf(picture.width, picture.height))) { side, quality -> jpeg(picture, side, quality) }
         } finally {
             picture.recycle()
+        }
+    }
+
+    override fun jpeg(picture: ByteArray, most: Int, longest: Int): ByteArray? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return null
+        // Android's decoder turns the picture upright itself, as its own rotation says: turned by
+        // its EXIF orientation too, which an iPhone's says the same, it would be turned twice.
+        val decoded = try {
+            ImageDecoder.decodeBitmap(ImageDecoder.createSource(ByteBuffer.wrap(picture))) { decoder, info, _ ->
+                // Drawn on the app's own canvas, which a picture in graphics memory can't be.
+                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                val scale = longest.toDouble() / maxOf(info.size.width, info.size.height)
+                if (scale < 1) {
+                    decoder.setTargetSize((info.size.width * scale).toInt().coerceAtLeast(1), (info.size.height * scale).toInt().coerceAtLeast(1))
+                }
+            }
+        } catch (_: IOException) {
+            return null
+        }
+        return try {
+            fit(most, maxOf(decoded.width, decoded.height)) { side, quality -> jpeg(decoded, side, quality) }
+        } finally {
+            decoded.recycle()
         }
     }
 

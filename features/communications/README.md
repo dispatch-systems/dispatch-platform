@@ -220,7 +220,8 @@ who may or may not work for the DSP.
   what it sends while blocked never makes it wait, then or once unblocked; its texts are still
   kept. Its texts as Slack's messages show, the other party's by their face or a phone; the DSP's
   under who wrote each, or the phone's name and mark for one sent from the phone's own messaging
-  app; each picture shown, as the phone keeps it. Under a text the DSP sent, the last of a run or
+  app; each picture shown, as the phone keeps it (PNG, JPEG, GIF, WebP or AVIF; an iPhone's HEIF
+  as the JPEG the phone's app makes of it), any other file a download. Under a text the DSP sent, the last of a run or
   one that failed: Sending, Sent, Delivered, or Not sent with **Retry**.
 - **Writing:** text, with pictures (PNG, JPEG or GIF, by their stated type), as much as one text
   carries (`compose::TEXT`, as the phones hold one to: 10,000 characters and ten pictures of up

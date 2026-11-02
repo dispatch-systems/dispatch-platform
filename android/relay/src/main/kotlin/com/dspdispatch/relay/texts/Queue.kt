@@ -108,6 +108,12 @@ interface Queue {
     /** Leaves [clientId], a text Dispatch refuses alone, and its files, never to be reported. */
     suspend fun refused(clientId: String)
 
+    /** Keeps [file], one waiting, as it's now to be reported and sent, as a JPEG made of the picture it was. */
+    suspend fun converted(file: WaitingFile)
+
+    /** The URIs of every file waiting, reported or not. */
+    suspend fun uris(): List<String>
+
     /** The oldest file whose bytes Dispatch waits for. */
     suspend fun upload(): WaitingFile?
 

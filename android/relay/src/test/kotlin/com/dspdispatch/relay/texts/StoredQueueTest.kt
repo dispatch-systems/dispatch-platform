@@ -45,6 +45,21 @@ class StoredQueueTest {
     }
 
     @Test
+    fun keepsAFileAsTheJpegMadeOfIt() = runTest {
+        queue.begin(Mark("phone_1", 0, 0))
+        queue.read(
+            Seen("mms-1-10", 10, Direction.IN),
+            listOf(Waiting("mms-1-10", Direction.IN, "(206) 555-0101", "Door", 10)),
+            listOf(WaitingFile("mms-1-10", 0, "content://mms/part/1", "IMG_0001.HEIC", "image/heic", 731)),
+        )
+        val file = queue.waiting(10).single().files.single()
+        val jpeg = file.copy(uri = "file:/jpegs/${file.id}.jpg", name = "IMG_0001.jpg", mime = "image/jpeg", size = 512)
+        queue.converted(jpeg)
+        assertEquals(listOf(jpeg), queue.waiting(10).single().files)
+        assertEquals(listOf(jpeg.uri), queue.uris())
+    }
+
+    @Test
     fun keepsARowToReadAgainUntilItsRead() = runTest {
         queue.begin(Mark("phone_1", 0, 0))
         val row = Row(Table.MMS, 5, 10, Direction.IN)

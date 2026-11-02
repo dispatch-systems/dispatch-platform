@@ -115,15 +115,15 @@ class Inbox(
         // counts them, each code point one.
         private const val BODY_MOST = 10_000
         private const val FILES_MOST = 10
-        private const val LARGEST = 20L * 1024 * 1024
-        private const val NAME_MOST = 200
+        internal const val LARGEST = 20L * 1024 * 1024
+        internal const val NAME_MOST = 200
         private const val MIME_MOST = 100
 
         /** The highest ID of these rows of [table], or of those [read] before. */
         private fun List<Row>.highest(table: Table, read: Long): Long = filter { it.table == table }.maxOfOrNull(Row::id)?.coerceAtLeast(read) ?: read
-
-        /** At most [most] characters of this, counting as Dispatch does. */
-        private fun String.limited(most: Int): String =
-            if (codePointCount(0, length) <= most) this else substring(0, offsetByCodePoints(0, most))
     }
 }
+
+/** At most [most] characters of this, counting as Dispatch does. */
+internal fun String.limited(most: Int): String =
+    if (codePointCount(0, length) <= most) this else substring(0, offsetByCodePoints(0, most))

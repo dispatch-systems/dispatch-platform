@@ -133,7 +133,10 @@ The texts the phone received, and those sent from its own messaging app:
   on this phone.
 - `direction`: `in`, to the phone, or `out`, from it. `number`: the other party's. `at`: when it
   was written. `files`: optional, each `name` at most 200 characters and `mime` at most 100
-  (`NAME_MOST`, `MIME_MOST`), with the `size` the phone knows.
+  (`NAME_MOST`, `MIME_MOST`), with the `size` the phone knows. A picture received as HEIF, as
+  iPhones send them, which browsers don't show, the app reports and sends as a JPEG it makes of
+  it (`image/jpeg`, its name ending `.jpg`); one Android can't decode, as before Android 9, as it
+  is.
 
 Answers, for each, Dispatch's ID of it and of its files, in the order reported:
 `{ "texts": [ { "clientId": "sms-8812", "id": "…", "files": ["…"] } ] }`. Reporting is
