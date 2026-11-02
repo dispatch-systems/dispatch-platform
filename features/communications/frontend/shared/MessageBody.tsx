@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { FileText } from 'lucide-react';
 import type { Message, MessageFile } from '../../api/index.js';
 import { download } from '../../../../core/shell/frontend/runtime/transfer.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { usePicture } from '../../../../core/shell/frontend/runtime/usePicture.js';
 import { fileStatus, isPhoto, size } from './format.js';
+import { PhotoViewer } from './PhotoViewer.js';
 import './message-body.css';
 
 /** One message: its text, marked if edited in Slack, then its photos and files, read from where
@@ -37,15 +39,26 @@ export function MessageBody({
 }
 
 /**
- * A photo, fetched as it nears view, as the page's own calls are, with the DSP's view; it opens
- * at full size in a tab of its own.
+ * A photo, fetched as it nears view, as the page's own calls are, with the DSP's view; pressed,
+ * it opens over the page at full size.
  */
 function Photo({ photo, address }: { photo: MessageFile; address: (id: string) => string }) {
-  const [box, src, lost] = usePicture<HTMLAnchorElement>(address(photo.id));
+  const [box, src, lost] = usePicture<HTMLButtonElement>(address(photo.id));
+  const [open, setOpen] = useState(false);
   return (
-    <a ref={box} className="photo" href={src} target="_blank" rel="noreferrer">
-      {src && <img src={src} alt={photo.name} onError={lost} />}
-    </a>
+    <>
+      <button ref={box} className="photo" disabled={!src} onClick={() => setOpen(true)}>
+        {src && <img src={src} alt={photo.name} onError={lost} />}
+      </button>
+      {open && src && (
+        <PhotoViewer
+          name={photo.name}
+          src={src}
+          url={address(photo.id)}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </>
   );
 }
 

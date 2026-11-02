@@ -11,7 +11,7 @@ const PIXEL = Buffer.from(
   'base64',
 );
 
-test('with its phone and no Slack, Communications opens on Messaging, where its texts wait, beside Today’s Routes, with no routes before live route data reads today: a number saved as a contact, asked before a name is left unsaved, answered by text with a picture, blocked into Contacts and unblocked', async ({
+test('with its phone and no Slack, Communications opens on Messaging, where its texts wait, beside Today’s Routes, with no routes before live route data reads today: a number saved as a contact, asked before a name is left unsaved, answered by text with a picture, opened over the page, blocked into Contacts and unblocked', async ({
   page,
 }) => {
   await login(page);
@@ -64,7 +64,12 @@ test('with its phone and no Slack, Communications opens on Messaging, where its 
   await jamie.getByRole('button', { name: 'Attach photos' }).click();
   await (await choosing).setFiles({ name: 'door.png', mimeType: 'image/png', buffer: PIXEL });
   await jamie.getByRole('button', { name: 'Send' }).click();
-  await expect(jamie.getByRole('link', { name: 'door.png' })).toBeVisible();
+  // Pressed, it opens over the page, and Escape closes it.
+  await jamie.getByRole('button', { name: 'door.png' }).click();
+  const viewer = page.getByRole('dialog', { name: 'door.png' });
+  await expect(viewer.getByRole('img', { name: 'door.png' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(viewer).toHaveCount(0);
 
   // Blocked, it leaves Messages for Contacts' Blocked, until it's unblocked.
   await jamie.getByLabel('More').click();
