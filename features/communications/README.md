@@ -607,8 +607,9 @@ Behind `communications.use`:
 
 - `GET /api/dsp/communications`, with `team=<id>` for one workspace's answered conversations
   alone: the conversations waiting, the longest waiting first, and the groups waiting, then the
-  fifty latest answered conversations and groups (one listed under a group is the group's, as
-  its `groupId` says),
+  fifty latest answered conversations and groups of each section, Slack's, the numbers' and,
+  with live route data, the work ones of any day, and whether older are left of each (`more`,
+  `moreTexts`, `moreWork`) (one listed under a group is the group's, as its `groupId` says),
   with the DSP's workspaces (whether it works in each, the address of the app's Messages tab
   there, `chatLink`, whether, on there, it needs updating for what Communications uses,
   `needsUpdate`, and the version of its logo, `logo`, none without one), who is typing, each
@@ -620,8 +621,8 @@ Behind `communications.use`:
   are.
 - `GET …/conversations?q=<name>`, or `?before=<lastAt>:<id>`, with `team=<id>` for one
   workspace's alone, or `kind=number` for the numbers' (`q` a name or a number's digits), or
-  `kind=work` with `q` for work conversations: the fifty conversations found closest to a name,
-  or the answered ones before the last shown.
+  `kind=work` for work conversations: the fifty conversations found closest to a name, or the
+  answered ones before the last shown.
 - `GET …/conversations/{id}`, `?before=<ts>`: a conversation and its fifty latest messages, or
   those before one, in the order written; by text, `ts` is `<at>:<id>`; with whom it's with's
   conversations of each kind (`elsewhere`), for a driver's, their route `today` and each of its

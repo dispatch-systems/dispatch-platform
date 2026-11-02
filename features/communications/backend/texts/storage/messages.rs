@@ -115,6 +115,14 @@ pub trait TextStore {
     fn communications_work_numbers(&self, dsp: &str) -> Result<HashMap<String, Vec<String>>>;
     /// The work conversations waiting by all their texts, whichever day they were written.
     fn waiting_communications_work(&self, dsp: &str) -> Result<Vec<TextConversation>>;
+    /// The work conversations written in, of any day, waiting by their texts or not, the latest
+    /// first, before `before` (when last written in, and the ID), the latest `most`.
+    fn latest_communications_work(
+        &self,
+        dsp: &str,
+        before: Option<(i64, &str)>,
+        most: usize,
+    ) -> Result<Vec<TextConversation>>;
     /// Of the conversations `ids`, those waiting on texts written from `from` on, each with since
     /// when: the first of those after its latest answer, or Done.
     fn communications_waiting_from(
@@ -415,6 +423,20 @@ impl TextStore for Store {
         self.dsp(dsp)?.query_as(
             "SELECT * FROM communications_text_conversations WHERE kind='work' AND state='waiting'",
             [],
+        )
+    }
+    fn latest_communications_work(
+        &self,
+        dsp: &str,
+        before: Option<(i64, &str)>,
+        most: usize,
+    ) -> Result<Vec<TextConversation>> {
+        let (at, id) = before.unwrap_or(END);
+        self.dsp(dsp)?.query_as(
+            "SELECT * FROM communications_text_conversations WHERE kind='work' \
+             AND last_at IS NOT NULL AND (last_at<?1 OR (last_at=?1 AND id<?2)) \
+             ORDER BY last_at DESC,id DESC LIMIT ?3",
+            params![at, id, most as i64],
         )
     }
     fn communications_waiting_from(

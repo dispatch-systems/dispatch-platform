@@ -92,7 +92,7 @@ export function ConversationList({
     <Rows>
       {rows.map((each) =>
         each.kind === 'group' ? (
-          <GroupRow key={each.row.id} group={each.row} {...listing} />
+          <GroupRow key={each.row.id} group={each.row} channel={model.everything} {...listing} />
         ) : (
           <ConversationRow
             key={each.row.id}

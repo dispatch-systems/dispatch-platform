@@ -16,7 +16,7 @@ use crate::api::types::{
 use crate::backend::{
     compose, elsewhere,
     files::FileStatus,
-    model::{ConversationKind, Direction, PAGE},
+    model::{ConversationKind, ConversationState, Direction, PAGE},
     people::People,
     phone::files,
     search, today,
@@ -174,6 +174,43 @@ pub fn answered(
     let more = kept.len() > PAGE;
     kept.truncate(PAGE);
     Ok((conversations(db, people, numbers, dsp, kept)?, more))
+}
+
+/// The work conversations not waiting on the live day before `before`, of any day, the latest
+/// first, a page of them, and whether there are more: one waiting since a day before it, as
+/// waiting counts only on the live day, among them, done.
+pub fn answered_work(
+    db: &Store,
+    people: &People,
+    numbers: &Numbers,
+    dsp: &str,
+    before: Option<(i64, &str)>,
+) -> Result<(Vec<Conversation>, bool)> {
+    let mut kept = db.latest_communications_work(dsp, before, PAGE + 1)?;
+    let more = kept.len() > PAGE;
+    kept.truncate(PAGE);
+    let answered = live_day::slated(db, dsp, kept)?
+        .into_iter()
+        .filter(|each| each.state != ConversationState::Waiting)
+        .collect();
+    Ok((conversations(db, people, numbers, dsp, answered)?, more))
+}
+
+/// The answered work conversations before `before`, the time last written in and the ID.
+pub fn older_work(
+    db: &Store,
+    state: &State,
+    dsp: &str,
+    before: (i64, &str),
+) -> Result<Conversations> {
+    let people = People::read(db, state, dsp)?;
+    let numbers = Numbers::read(db, dsp)?;
+    let (conversations, more) = answered_work(db, &people, &numbers, dsp, Some(before))?;
+    Ok(Conversations {
+        conversations,
+        groups: Vec::new(),
+        more,
+    })
 }
 
 /// The answered numbers' conversations before `before`, the time last written in and the ID.

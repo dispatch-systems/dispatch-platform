@@ -21,7 +21,7 @@ export type SectionModel = {
   everything: boolean;
   /** Where the overview says whether older answered rows of its own are left to read; none for
    * one read whole, by its own read. */
-  more?: 'more' | 'moreTexts';
+  more?: 'more' | 'moreTexts' | 'moreWork';
   /** Where its own conversations are read from and searched: in a section of workspaces, every
    * one's or `team`'s. */
   listing: (team?: string) => Listing;
@@ -45,12 +45,14 @@ export const SECTIONS = [
   },
   {
     // Today's Routes: the drivers on a route today and their work phones, while the DSP has live
-    // route data, listed by its own read (todays-routes/).
+    // route data, listed by its own read (todays-routes/); its work conversations of any day paged
+    // as Recents lists them.
     id: 'routes',
     offered: (inbox) => inbox.routes,
     holds: (conversation) => conversation.kind === 'work',
     groups: false,
     everything: false,
+    more: 'moreWork',
     listing: () => ({ kind: 'work' }),
     workspaces: false,
   },

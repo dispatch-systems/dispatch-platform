@@ -134,6 +134,7 @@ export function sample(now: number) {
     groups: [],
     more: false,
     moreTexts: false,
+    moreWork: false,
     workspaces: [workspace],
     texting: false,
     routes: false,

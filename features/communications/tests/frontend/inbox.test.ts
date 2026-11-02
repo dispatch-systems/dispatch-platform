@@ -84,6 +84,7 @@ test('each section’s list keeps the server’s order as it changes, with the p
     groups: [group('g1', 800)],
     more: true,
     moreTexts: true,
+    moreWork: false,
     workspaces: [],
     texting: true,
     routes: false,

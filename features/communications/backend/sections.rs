@@ -34,7 +34,8 @@ pub struct Section {
 }
 
 /// Today's Routes, while the DSP has live route data: its drivers' conversations waiting on the
-/// live day, found by a name or a work phone's digits, never a page at a time.
+/// live day, and the latest answered of any day, as the page's Recents lists them, whose own list
+/// `texts::todays_routes` reads; found by a name or a work phone's digits.
 pub const TODAYS_ROUTES: Section = Section {
     id: "routes",
     kind: ConversationKind::Work,
@@ -42,15 +43,19 @@ pub const TODAYS_ROUTES: Section = Section {
     waiting: |db, dsp| Ok(live_day::waiting(db, dsp)?.len()),
     listed: |r| {
         let waiting = live_day::waiting(r.db, r.dsp)?;
+        let (answered, more) = reading::answered_work(r.db, r.people, r.numbers, r.dsp, None)?;
         Ok(Listed {
             waiting: reading::conversations(r.db, r.people, r.numbers, r.dsp, waiting)?,
-            ..Listed::default()
+            answered,
+            groups: Vec::new(),
+            more,
         })
     },
     found: |db, state, dsp, query| match (query.team, &query.asked) {
         (None, Asked::Typed(typed)) => {
             reading::search(db, state, dsp, ConversationKind::Work, typed)
         }
+        (None, Asked::Before(before)) => reading::older_work(db, state, dsp, *before),
         _ => Err(Error::new("invalid_input", 400)),
     },
 };

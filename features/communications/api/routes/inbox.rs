@@ -39,7 +39,7 @@ pub(super) fn waiting(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 }
 /// Conversations found by a name typed, `q`, or the answered ones before `before`, of the section
 /// listing `kind`: Slack's by default, of the workspace `team` or every one; the numbers'
-/// (`kind=number`), or the work ones found by a name or digits typed (`kind=work`).
+/// (`kind=number`), or the work ones (`kind=work`).
 pub(super) fn found(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.query, &["q", "team", "before", "kind"])?;
     let typed = optional_text(&input.query, "q", 100)?.trim();

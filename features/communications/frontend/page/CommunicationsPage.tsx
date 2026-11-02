@@ -94,7 +94,12 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const [chosen, choose] = useRemembered('workspace', view.dsp.id, user);
   const [chosenSection, chooseSection] = useRemembered('section', view.dsp.id, user);
   const [chosenView, chooseView] = useRemembered('routes-view', view.dsp.id, user);
-  const { inbox, team, changed, error, refresh, show, showGroup, readOlder } = useInbox(chosen);
+  // Of the workspace chosen while a section of workspaces is chosen, as Slack is; else of every one,
+  // as Recents lists them.
+  const ofWorkspace = SECTIONS.some((each) => each.id === chosenSection && each.workspaces);
+  const { inbox, team, changed, error, refresh, show, showGroup, readOlder } = useInbox(
+    ofWorkspace ? chosen : undefined,
+  );
   // The sections the DSP has, the one chosen shown, else the one the page opened on; with none,
   // Slack's, empty until it's connected.
   const texting = Boolean(inbox?.texting);

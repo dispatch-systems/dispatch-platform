@@ -193,7 +193,8 @@ async fn a_work_phones_texts_are_the_drivers_whose_latest_phone_it_is_that_day_t
         (ConversationKind::Work, None, Some(unheld))
     );
     // Messaging lists none of them: they're Today's Routes', those waiting on the live day
-    // counted, and yesterday's Casey's not.
+    // counted, and yesterday's Casey's not, which is listed among the answered, as Recents lists
+    // them.
     let listed = listed(&state, &dsp).await;
     assert!(
         listed
@@ -202,6 +203,13 @@ async fn a_work_phones_texts_are_the_drivers_whose_latest_phone_it_is_that_day_t
             .all(|each| each.kind == ConversationKind::Work)
     );
     assert_eq!(listed.waiting, 2);
+    let answered: Vec<_> = listed
+        .conversations
+        .iter()
+        .filter(|each| each.state != ConversationState::Waiting)
+        .map(|each| each.last_at)
+        .collect();
+    assert_eq!(answered, vec![Some(then(10, 0))]);
 }
 
 #[tokio::test]

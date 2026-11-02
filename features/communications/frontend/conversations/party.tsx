@@ -49,11 +49,15 @@ export function PartyFace({
       if (!person.code && !conversation.contact) return <PhoneFace size={size} />;
   }
   const face = <Face {...person} size={size} />;
-  if (!channel) return face;
+  return channel ? <ChannelMarked kind={conversation.kind}>{face}</ChannelMarked> : face;
+}
+
+/** A face in Recents, a person's or a group's, marked with where its conversation is. */
+export function ChannelMarked({ kind, children }: { kind: ConversationKind; children: ReactNode }) {
   return (
     <span className="face-channel">
-      {face}
-      <span className="channel-mark">{channels[conversation.kind]}</span>
+      {children}
+      <span className="channel-mark">{channels[kind]}</span>
     </span>
   );
 }

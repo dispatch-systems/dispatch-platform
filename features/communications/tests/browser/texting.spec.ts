@@ -148,7 +148,7 @@ test('Today’s Routes reads before it says No routes, a read that fails says so
   await expect(page.getByText('No routes', { exact: true })).toBeVisible();
 });
 
-test('with Slack too, the sections switch, each with how many wait, stay as chosen, and a link opens its section, the board chosen or not', async ({
+test('with Slack too, the sections switch, each with how many wait, stay as chosen, and a link opens its section unless Recents shows and lists it, the board chosen or not', async ({
   page,
   dispatch,
 }) => {
@@ -214,7 +214,8 @@ test('with Slack too, the sections switch, each with how many wait, stay as chos
   await expect(page.getByRole('region', { name: '(206) 555-0123' })).toBeVisible();
   await expect(recents).toHaveAttribute('aria-selected', 'true');
 
-  // A link to a group opens it in Slack, and one to the text again, Recents.
+  // From Today's Routes, which lists no group, a link to a group opens it in Slack, and one to the
+  // text again, Recents; from Recents, which lists groups too, a link to the group stays there.
   const group = await owner.post('/api/dsp/communications/groups', {
     name: 'Morning wave',
     people: [{ teamId: 'T0FIXTURE1', userId: 'U0FIXJORDAN' }],
@@ -222,11 +223,16 @@ test('with Slack too, the sections switch, each with how many wait, stay as chos
     photos: [],
   });
   expect(group.status, group.body).toBe(201);
-  await page.goto(`/#dsp/${north.id}/communications?group=${group.value.id}`);
+  const toGroup = `/#dsp/${north.id}/communications?group=${group.value.id}`;
+  await sections.getByRole('tab', { name: /Routes/ }).click();
+  await page.goto(toGroup);
   await expect(page.getByRole('region', { name: 'Morning wave' })).toBeVisible();
   await expect(slack).toHaveAttribute('aria-selected', 'true');
   await page.goto(toText);
   await expect(page.getByRole('region', { name: '(425) 555-0199' })).toBeVisible();
+  await expect(recents).toHaveAttribute('aria-selected', 'true');
+  await page.goto(toGroup);
+  await expect(page.getByRole('region', { name: 'Morning wave' })).toBeVisible();
   await expect(recents).toHaveAttribute('aria-selected', 'true');
 });
 
