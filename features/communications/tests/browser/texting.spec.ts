@@ -11,7 +11,7 @@ const PIXEL = Buffer.from(
   'base64',
 );
 
-test('with its phone and no Slack, Communications opens on Messaging, where its texts wait, beside Today’s Routes, with no routes before live route data reads today: a number saved as a contact, asked before a name is left unsaved, answered by text with a picture, opened over the page, blocked into Contacts and unblocked', async ({
+test('with its phone and no Slack, Communications opens on Messaging, where its texts wait, beside Today’s Routes, with no routes before live route data reads today: a number saved as a contact, asked before a name is left unsaved, answered by text with a picture, blocked into Contacts and unblocked', async ({
   page,
 }) => {
   await login(page);
@@ -65,7 +65,9 @@ test('with its phone and no Slack, Communications opens on Messaging, where its 
   await (await choosing).setFiles({ name: 'door.png', mimeType: 'image/png', buffer: PIXEL });
   await jamie.getByRole('button', { name: 'Send' }).click();
   // Pressed, it opens over the page, focus inside it, and Escape closes it, focus back on it.
-  const door = jamie.getByRole('button', { name: 'door.png' });
+  // Named for its picture alone once that loads: shown as a file before then, its size or state
+  // is in its name too.
+  const door = jamie.getByRole('button', { name: 'door.png', exact: true });
   await door.click();
   const viewer = page.getByRole('dialog', { name: 'door.png' });
   await expect(viewer.getByRole('img', { name: 'door.png' })).toBeVisible();
