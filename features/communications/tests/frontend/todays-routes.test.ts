@@ -40,7 +40,7 @@ const driver = (id: string, wave: number | null, conversation?: Conversation): R
   };
 };
 
-test('Today’s Routes lists those waiting first, then each wave by when it starts, then no wave, then work phones nobody held, each with its latest conversation', () => {
+test('Today’s Routes lists its drivers by name, waiting or not, then the work phones nobody held, the latest written in first, each with its latest conversation', () => {
   const routes = {
     day: '2026-10-26',
     // By name, as the server lists them.
@@ -51,19 +51,39 @@ test('Today’s Routes lists those waiting first, then each wave by when it star
       driver('dana', null),
       driver('evan', 920, work('evan', 400)),
     ],
-    phones: [{ ...work('phone', 600), driverId: null }],
+    // The latest written in first, as the server read them.
+    phones: [
+      { ...work('phone1', 600), driverId: null },
+      { ...work('phone2', 550), driverId: null },
+    ],
   };
-  // The list's own copy is the latest: Evan's now waits, and longer than Avery.
-  const listed = [work('evan', 800, 200)];
-  const groups = routeGroups(routeRows(routes, listed)).map(({ heading, rows }) => [
-    heading.kind === 'wave' ? heading.at : heading.kind,
-    rows.map((row) => row.conversation?.id ?? (row.kind === 'driver' ? row.driver.driverId : '')),
+  // The list's own copies are the latest: Evan's now waits, and the second phone was written in
+  // since.
+  const listed = [work('evan', 800, 200), { ...work('phone2', 900, 850), driverId: null }];
+  const groups = routeGroups(routeRows(routes, listed)).map(({ key, rows }) => [
+    key,
+    rows.map((row) => [
+      row.conversation?.id ?? (row.kind === 'driver' ? row.driver.driverId : ''),
+      row.conversation?.state ?? null,
+    ]),
   ]);
   assert.deepEqual(groups, [
-    ['waiting', ['evan', 'avery']],
-    [920, ['blake']],
-    [940, ['casey']],
-    ['no_wave', ['dana']],
-    ['no_driver', ['phone']],
+    [
+      'drivers',
+      [
+        ['avery', 'waiting'],
+        ['blake', null],
+        ['casey', 'responded'],
+        ['dana', null],
+        ['evan', 'waiting'],
+      ],
+    ],
+    [
+      'no_driver',
+      [
+        ['phone2', 'waiting'],
+        ['phone1', 'responded'],
+      ],
+    ],
   ]);
 });

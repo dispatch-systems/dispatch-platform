@@ -53,3 +53,16 @@ export function RouteToday({ today }: { today: Today }) {
     </>
   );
 }
+
+/** A driver's route under their row in a list: its code, their work phone, the stops done and its
+ * pace. */
+export function RouteLine({ today }: { today: Today }) {
+  return (
+    <>
+      {today.route && <RouteCode code={today.route} />}
+      {today.phone && <WorkPhone number={today.phone} />}
+      <Stops today={today} />
+      <PaceMark pace={today.pace} />
+    </>
+  );
+}

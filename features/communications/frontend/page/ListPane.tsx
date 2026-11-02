@@ -10,7 +10,7 @@ import { SearchInput } from '../../../../core/shell/frontend/ui/index.js';
 import type { Target } from '../conversations/target.js';
 import { ConversationList } from '../inbox/ConversationList.js';
 import { waitingIn, type Row } from '../inbox/inbox.js';
-import { sectionNamed, type Section } from '../inbox/sections.js';
+import { groupsSection, lists, sectionNamed, type Section } from '../inbox/sections.js';
 import { Count } from '../shared/Count.js';
 import { Segments } from '../shared/Segments.js';
 import type { Draft } from '../slack/groups/GroupDraft.js';
@@ -22,8 +22,8 @@ import './list-pane.css';
 // The list beside the conversation: its sections, while there are two or more; in a section of
 // workspaces, which it shows, with two or more where Communications works; Search, and what the
 // section shows beside it; and Messages, the conversations, or Contacts, whom the section can
-// reach, whichever Search searches; or the section's own rows, as Today's Routes' (each
-// section's model and view: inbox/sections.ts, section-views.tsx).
+// reach while it can, whichever Search searches; or the section's own rows, as Today's Routes'
+// (each section's model and view: inbox/sections.ts, section-views.tsx).
 
 export function ListPane({
   inbox,
@@ -80,7 +80,6 @@ export function ListPane({
   const name = typed.trim();
   const model = sectionNamed(section);
   const view = VIEWS[section];
-  const contacts = contacting && view.contacts !== undefined;
   // How many wait, in each section and in each workspace: every conversation waiting is listed,
   // those under a group too.
   const waits = waitingIn(inbox);
@@ -100,6 +99,8 @@ export function ListPane({
     routes,
     ...listing,
   };
+  const reachable = view.contacts?.(context);
+  const contacts = contacting && reachable !== undefined;
   return (
     <section className="pane-list" aria-label={contacts ? 'Contacts' : 'Conversations'}>
       <div className="list-tools">
@@ -123,7 +124,7 @@ export function ListPane({
           />
           {view.tools?.(context)}
         </div>
-        {view.contacts && (
+        {reachable !== undefined && (
           <Segments
             label="Show"
             value={contacts ? 'contacts' : 'messages'}
@@ -143,7 +144,7 @@ export function ListPane({
       </div>
       <div className="list-scroll">
         {contacts ? (
-          view.contacts?.(context)
+          reachable
         ) : view.rows && !name ? (
           view.rows(context)
         ) : (
@@ -153,8 +154,10 @@ export function ListPane({
             team={team}
             typed={name}
             waiting={waiting}
-            draft={model.groups ? draft : undefined}
+            draft={lists(section, groupsSection) ? draft : undefined}
             pinned={pinned}
+            read={view.read?.(routes.groups)}
+            below={view.below?.(routes.groups)}
             readOlder={() => readOlder(section)}
             {...listing}
           />

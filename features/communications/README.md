@@ -9,10 +9,10 @@ from the DSP's phone as written. Slack's part works on Slack's own foundation fo
 messages: while it's on in a workspace, Slack no longer answers what's written to the app that
 DSP Messaging is unavailable. Texts come through the DSP's own dispatch phones
 ([Dispatch phones](#dispatch-phones), [Texts](#texts)): drivers' work phones on Today's Routes,
-and every other number in Messaging.
+and every other number's in Recents.
 
 - **Switch:** `communications`, off for every DSP until the platform owner switches it on: its
-  texting with it, as Messaging is part of it, and its phones too. Its code depends on Slack
+  texting with it, as Messaging ([below](#messaging)) is part of it, and its phones too. Its code depends on Slack
   (`depends_on: ["slack"]`), which a build without Slack leaves it out with; for a DSP, it needs
   neither: without Slack on, it hears nothing of Slack, and without a phone paired, nothing of
   texts. A DSP's switch record from when Phones was a feature of its own, `phones`, is left as it
@@ -66,13 +66,15 @@ and every other number in Messaging.
   conversation open is in the address (`?open=<id>`), and a link to one opens it, the page open
   or not.
 - **Sections:** the list's, at its top while there are two or more, each with how many wait in
-  it: **Today's Routes** (Routes on a phone), the drivers on a route today and their work phones,
-  while the DSP has live route data ([Today's Routes](#todays-routes)); **Messaging**, the numbers
-  that text the DSP's phones, always, empty until a phone is paired and texted; and **Slack**, its
+  it: **Recents**, always, every other section's conversations and groups and the numbers that
+  text the DSP's phones ([Messaging](#messaging)), counting everyone waiting; **Today's Routes**
+  (Routes on a phone or beside two others), the drivers on a route today and their work phones,
+  while the DSP has live route data ([Today's Routes](#todays-routes)); and **Slack**, its
   workspaces' direct messages and the groups it messaged, while it has a workspace. The one shown
   is remembered in the browser for each member at each DSP; until one is chosen, the page opens
-  on the first that lists a conversation as it first reads, else the first (Today's Routes lists
-  only those waiting); a conversation or group opened, as from a link, shows its section.
+  on the first that lists a conversation as it first reads, else the first; a conversation or
+  group opened, as from a link, shows its section, unless the one shown lists it too, as Recents
+  does; choosing a section leaves open what it lists.
 - **Phones offline:** in the heading, a chip for each of the DSP's dispatch phones that isn't
   online, with how long since it was last seen, by its name when the DSP has several (Phone
   offline · 14m), as the overview and each update bring them.
@@ -86,9 +88,13 @@ and every other number in Messaging.
 - **Messages:** Waiting, the longest waiting first, each with how long it has, amber from 15
   minutes and red from 30, and a check, shown as it's pointed at or reached by the keyboard
   beside the conversation, that marks it done without a reply; then Responded, the latest
-  first, each with the photo of whoever at the DSP answered last; older ones read as the list
-  is scrolled to its end. Each shows who it's with, by their photo, when they last wrote, and
-  what was written last, or who at the DSP is writing in it.
+  first; older ones read as the list is scrolled to its end. Each shows who it's with, by their
+  photo, when they last wrote, and what was written last, under the first name of whoever at the
+  DSP wrote it, or who at the DSP is writing in it. In Recents, every section's, under the day
+  each was last written in (Today, Yesterday, then the day), the latest first, waiting or not,
+  each face marked with where it is (Today's Routes, by text, or Slack), a driver's with their
+  route as Today's Routes shows it; down to where the first of the sections it pages stops, the
+  next of them read as it's scrolled to its end; and Search finds them in every section.
 - **Contacts:** everyone the DSP can message, A to Z under each first letter: their photo, name
   and role, and with every workspace shown, the one they're in; how long they've waited, or
   when they last wrote. Each opens their conversation, or starts one, as New message does.
@@ -124,7 +130,7 @@ and every other number in Messaging.
   the DSP's workspaces: while the DSP has none, and no phone paired, Connect Slack takes the
   inbox's place; while a workspace where Communications is on hasn't approved all it uses
   (`needsUpdate`), Update Slack covers the page while it shows Slack, not the sidebar, with no
-  way to close it but to Messaging; each such workspace with Update and Copy
+  way to close it but to Recents while the DSP texts; each such workspace with Update and Copy
   link (its own install link, for whoever approves apps in that Slack), until an update brings
   the workspaces with none needing it, within twenty seconds. Connecting or updating from here
   comes back here from Slack, which finishes it. Everyone else sees the page as it is, empty
@@ -140,8 +146,7 @@ stay; the next day's drivers fill it as its live reads start.
   itineraries, the one with the most stops), and their work conversation once they have one;
   each driver gone from the day's list, once their conversation was written in today; and each
   work phone nobody had that texted today, as itself (Work phone 5521).
-- **The list:** Waiting first, the longest waiting first; then each wave by when it starts, its
-  drivers by name; then the drivers with no wave (No wave); then the work phones nobody had (No
+- **The list:** the drivers by name, A to Z, waiting or not; then the work phones nobody had (No
   driver), the latest written in first. Each row as a conversation's in the other sections, and
   under it the driver's route code, the work phone they have now by its last four digits, a bar
   of the stops done, `98/168`, in the colour of its pace, and its pace but on time: Behind, At
@@ -155,7 +160,7 @@ stay; the next day's drivers fill it as its live reads start.
   leaves what's open.
 - **Search** finds work conversations, across days, by a driver's name or the digits of any work
   phone they texted on.
-- **Fresh:** read when it shows, again every minute while the page is in view
+- **Fresh:** read when it or Recents shows, again every minute while the page is in view
   (`ROUTES_READ_MS`), as live reads say nothing as they come, at once when an update changes a
   work conversation, and as the page comes back into view or the browser back online, a read that
   failed tried again, as the dashboard's reads are. Until a read answers, loading, or offline or
@@ -199,15 +204,15 @@ any of their IDs.
 
 ## Messaging
 
-The numbers that text the DSP's phones: drivers' own phones and any other number, from people
-who may or may not work for the DSP.
+The numbers that text the DSP's phones, in Recents: drivers' own phones and any other number,
+from people who may or may not work for the DSP.
 
 - **Who:** each number's conversation is with the person Driver Match has that phone number for,
   by its last ten digits (of several, one who hasn't left first, then by name), by their name and
   photo; else by the name the DSP saved for it; else the number, `(425) 555-0199`, by a phone.
-- **Messages:** as Slack's, Waiting then Responded, with Search finding them by name, misspelt or
+- **Messages:** in Recents, among every section's, with Search finding them by name, misspelt or
   not, or by a number's digits; a blocked number's isn't listed.
-- **Contacts:** everyone Driver Match has a phone number for who hasn't left, by their first, and
+- **Contacts:** Recents', while the DSP texts: everyone Driver Match has a phone number for who hasn't left, by their first, and
   every number the DSP saved a name for, each number once, A to Z, each with its number and how
   long it has waited or when it was last written in, opening its conversation or starting one;
   found by a name or digits typed. Then **Blocked**, each number blocked with Unblock.
@@ -503,7 +508,7 @@ which conversation is kept in memory alone, each for six seconds after their pag
 
 ## New messages
 
-A new message from an employee, or a text to the DSP's phones that Messaging or Today's Routes
+A new message from an employee, or a text to the DSP's phones that Recents or Today's Routes
 lists, alerts each
 member with `communications.use` as they chose in Message display: a short chime (`sound`), and the browser's notification (`notifications`), titled
 with who wrote it and saying what, as the list shows it, which brings Dispatch to the front and
@@ -542,7 +547,7 @@ the page's layout and the variables its parts draw by.
   whom a message goes to), and what opens one (`target.ts`).
 - `slack/`, with `groups/`: Slack's contacts and workspaces, New message, Copy chat link and
   setting Slack up; messaging a group.
-- `texting/`: Messaging's contacts, a number's actions and Save contact, and phones offline;
+- `texting/`: Recents' text contacts, a number's actions and Save contact, and phones offline;
   `texting/phone/`, the phones' card on DSP Connections, Add phone and Rename phone.
 - `todays-routes/`: Today's Routes' read, list and board, a route's facts, a driver's workdays,
   Pick driver and No work phone.
@@ -553,9 +558,10 @@ the page's layout and the variables its parts draw by.
 
 Where to add:
 
-- **A section:** its model in `inbox/sections.ts` (whether the DSP has it, which conversations it
-  holds, how it pages and where it's read and searched) and its view in `page/section-views.tsx`
-  (label, icon, contacts, its own rows, what's beside Search, a board), both by its ID, which
+- **A section:** its model in `inbox/sections.ts` (whether the DSP has it, which conversations are
+  its own, whether it lists every section's, how it pages and where it's read and searched) and
+  its view in `page/section-views.tsx` (label, icon, contacts, its own rows, what's beside Search,
+  a board), both by its ID, which
   members' browsers keep once it ships. A section another feature supplies needs a slot core owns.
 - **A kind of conversation:** its kind in the API, then `conversations/kinds.ts`, its party in
   `party.tsx` and `parties.tsx`, its section's `holds`, and its chip in `ElsewhereChips.tsx`.
