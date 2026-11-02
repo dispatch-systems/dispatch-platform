@@ -29,8 +29,10 @@ class UpdatesTest {
     private val apk = File.createTempFile("update", ".apk")
     private val installer = FakeInstaller()
     private val notice = FakeNotice()
+    private val holds = FakeHolds()
     private var quiet = CompletableDeferred(Unit)
     private val quietAsked = CompletableDeferred<Unit>()
+    private var released = 0
     private var thisApp = true
     private var clock = 0L
     private lateinit var site: String
@@ -75,8 +77,9 @@ class UpdatesTest {
     }
 
     @Test
-    fun installsOnlyOnceNoTextIsMidSend() = runTest {
+    fun installsOnlyOnceNoTextIsMidSendHoldingSendingBackUntilAndroidAsks() = runTest {
         quiet = CompletableDeferred()
+        installer.confirm = true
         val updates = updates()
         serve(bytes)
         updates.heard(site, newer)
@@ -84,6 +87,25 @@ class UpdatesTest {
         assertFalse(installer.installed.isCompleted)
         quiet.complete(Unit)
         assertArrayEquals(bytes, installer.installed.await())
+        updates.update.first { it is Update.Confirming }
+        assertEquals(1, released)
+    }
+
+    @Test
+    fun asksAgainOnceTheAppMayNotify() = runTest {
+        installer.confirm = true
+        notice.allowed = false
+        val updates = updates()
+        serve(bytes)
+        updates.heard(site, newer)
+        updates.update.first { it is Update.Confirming }
+        assertNull(notice.showing)
+        updates.heard(site, newer)
+        assertEquals(emptyList<AppVersion>(), notice.shown)
+        notice.allowed = true
+        updates.heard(site, newer)
+        updates.heard(site, newer)
+        assertEquals(listOf(newer), notice.shown)
     }
 
     @Test
@@ -143,8 +165,10 @@ class UpdatesTest {
         serve(bytes)
         updates.heard(site, newer)
         assertEquals(Update.Available(newer, Problem.INSTALL), updates.update.first { it is Update.Available && it.problem != null })
+        assertEquals(1, released)
         clock += Updates.RETRY_MS - 1
         updates.heard(site, newer)
+        updates().heard(site, newer)
         assertEquals(2, server.requestCount)
         clock += 1
         installer.outcome = Outcome.INSTALLED
@@ -182,6 +206,7 @@ class UpdatesTest {
         clock += 2 * Updates.RETRY_MS
         updates.heard(site, newer)
         updates.install(site)
+        updates().heard(site, newer)
         assertEquals(2, server.requestCount)
         thisApp = true
         serve(bytes, app = newest)
@@ -217,6 +242,25 @@ class UpdatesTest {
     }
 
     @Test
+    fun saysTheDownloadOfTheVersionTheDetailsNameFailed() = runTest {
+        val updates = updates()
+        server.enqueue(json(200, """{"version":"1.0.5","versionCode":5,"size":13,"sha256":"${sha256(bytes)}"}"""))
+        server.enqueue(json(404, """{"error":"phones_app_not_found","message":"…"}"""))
+        updates.heard(site, newest)
+        assertEquals(Update.Available(newer, Problem.DOWNLOAD), updates.update.first { it is Update.Available && it.problem != null })
+        assertEquals(Hold(newer.versionCode, Updates.RETRY_MS), holds.hold)
+    }
+
+    @Test
+    fun saysTheVersionTheDetailsNameIsNotTheOneDescribed() = runTest {
+        val updates = updates()
+        serve("another apk!!".toByteArray(), sha256 = sha256(bytes), app = newer)
+        updates.heard(site, newest)
+        assertEquals(Update.Available(newer, Problem.MISMATCH), updates.update.first { it is Update.Available && it.problem != null })
+        assertEquals(Hold(newer.versionCode, Updates.RETRY_MS), holds.hold)
+    }
+
+    @Test
     fun installsNothingOnceTheDspNoLongerHandsOutANewerVersion() = runTest {
         val updates = updates()
         server.enqueue(json(200, """{"version":"1.0.4","versionCode":4,"size":13,"sha256":"${sha256(bytes)}"}"""))
@@ -233,10 +277,12 @@ class UpdatesTest {
         { thisApp },
         installer,
         notice,
+        holds,
         {
             quietAsked.complete(Unit)
             quiet.await()
         },
+        { released++ },
         backgroundScope,
         now = { clock },
     )
@@ -283,19 +329,27 @@ class UpdatesTest {
 
     /** The phone's notifications, and the app's storage, which outlive each [Updates] made. */
     private class FakeNotice : Notice {
+        var allowed = true
         val shown = mutableListOf<AppVersion>()
         var visible: AppVersion? = null
         var cancelled = 0
         override var showing: Int? = null
 
-        override fun show(app: AppVersion) {
+        override fun show(app: AppVersion): Boolean {
+            if (!allowed) return false
             shown += app
             visible = app
+            return true
         }
 
         override fun cancel() {
             visible = null
             cancelled++
         }
+    }
+
+    /** The app's storage of the update held back, which outlives each [Updates] made. */
+    private class FakeHolds : Holds {
+        override var hold: Hold? = null
     }
 }

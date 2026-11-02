@@ -44,21 +44,30 @@ interface Notice {
     /** The `versionCode` of the version last asked about, while its notification may be showing; kept across restarts. */
     var showing: Int?
 
-    /** Asks the person to confirm installing [app], replacing any notification showing, where the app may notify. */
-    fun show(app: AppVersion)
+    /** Asks the person to confirm installing [app], replacing any notification showing, where the app may notify; whether it did. */
+    fun show(app: AppVersion): Boolean
 
     /** Takes away the notification showing, if there is one. */
     fun cancel()
 }
 
+/** A version whose last try didn't install, and when to try it again: never, for one that isn't this app. */
+data class Hold(val versionCode: Int, val until: Long?)
+
+/** The update held back from trying again (`StoredHold`): kept across restarts. */
+interface Holds {
+    var hold: Hold?
+}
+
 /**
  * Updating the app, at [own] version, from its DSP, on its own: each newer version Dispatch tells
  * of is downloaded to [apk], checked against the DSP's details and that it's this app, signed as it
- * is, and, once no text is mid-send ([quiet]), installed by Android with no one confirming, which
- * replaces the app and restarts it. Where Android asks the person to confirm it anyway, its
- * [notice] asks them, until it's installed or the DSP no longer hands it out. A try that fails is
- * tried again after [RETRY_MS]; one at an APK that isn't this app only once the DSP hands out
- * another. Its calls come on the main thread; a try runs in [scope].
+ * is, and, once no text is mid-send, with sending held back ([hold], until [release]), installed by
+ * Android with no one confirming, which replaces the app and restarts it. Where Android asks the
+ * person to confirm it anyway, sending goes on and its [notice] asks them, until it's installed or
+ * the DSP no longer hands it out. A try that fails is held ([holds]) for [RETRY_MS]; one at an APK
+ * that isn't this app until the DSP hands out another. Its calls come on the main thread; a try
+ * runs in [scope].
  */
 class Updates(
     private val dispatch: Dispatch,
@@ -67,7 +76,9 @@ class Updates(
     private val check: ApkCheck,
     private val installer: Installer,
     private val notice: Notice,
-    private val quiet: suspend () -> Unit,
+    private val holds: Holds,
+    private val hold: suspend () -> Unit,
+    private val release: () -> Unit,
     private val scope: CoroutineScope,
     private val io: CoroutineContext = Dispatchers.IO,
     private val now: () -> Long = System::currentTimeMillis,
@@ -79,11 +90,6 @@ class Updates(
     private var offered: AppVersion? = null
     private var installing: Job? = null
 
-    /** The version whose last try didn't install, and when to try it again: never, for one that isn't this app. */
-    private var held: Held? = null
-
-    private data class Held(val versionCode: Int, val until: Long?)
-
     /** The version the try in progress is at. */
     private val trying get() = state.value.app
 
@@ -94,14 +100,15 @@ class Updates(
      * Dispatch's latest version, [app] as the outbox of [site], the DSP the phone is paired with,
      * answered it: tried at once while newer than this app and Android lets the app install, unless
      * its last try is held. A confirmation still waiting on a version the DSP no longer hands out is
-     * dropped for the one it does.
+     * dropped for the one it does; one whose notification couldn't be posted is asked again.
      */
     fun heard(site: String, app: AppVersion?) {
         val newer = app?.takeIf { it.versionCode > own.versionCode }
         val changed = newer != offered
         offer(newer)
         if (installing?.isActive == true) {
-            if (!changed || state.value !is Update.Confirming) return
+            val confirming = state.value as? Update.Confirming ?: return
+            if (!changed) return ask(confirming.app)
             installing?.cancel()
         }
         if (changed) state.value = newer?.let { Update.Available(it) } ?: Update.None
@@ -116,12 +123,12 @@ class Updates(
     fun install(site: String) {
         if (state.value is Update.Confirming) return installer.askAgain()
         val app = offered ?: return
-        if (installing?.isActive == true || held == Held(app.versionCode, null)) return
+        if (installing?.isActive == true || holds.hold == Hold(app.versionCode, null)) return
         start(site)
     }
 
     private fun due(app: AppVersion): Boolean {
-        val last = held ?: return true
+        val last = holds.hold ?: return true
         return last.versionCode != app.versionCode || (last.until != null && now() >= last.until)
     }
 
@@ -170,13 +177,18 @@ class Updates(
         state.value = Update.Downloading(app)
         withContext(io) { dispatch.apk(site) { input -> save(input, apk, details) } }
         if (!withContext(io) { check.isThisApp(apk) }) return failed(app, Problem.NOT_THIS_APP)
-        // Installing ends the process: never while a text is mid-send.
-        quiet()
-        state.value = Update.Installing(app)
-        val outcome = installer.install(apk) {
-            state.value = Update.Confirming(app)
-            notice.show(app)
-            notice.showing = app.versionCode
+        // Installing ends the process: never while a text is mid-send, nor while one starts.
+        var installed = false
+        val outcome = try {
+            hold()
+            state.value = Update.Installing(app)
+            installer.install(apk) {
+                release()
+                state.value = Update.Confirming(app)
+                ask(app)
+            }.also { installed = it == Outcome.INSTALLED }
+        } finally {
+            if (!installed) release()
         }
         return when (outcome) {
             // Android replaces the app, ending this process; the new one starts the relay again.
@@ -186,13 +198,18 @@ class Updates(
         }
     }
 
+    /** Asks the person to confirm installing [app], unless its notification is posted already. */
+    private fun ask(app: AppVersion) {
+        if (notice.showing != app.versionCode && notice.show(app)) notice.showing = app.versionCode
+    }
+
     /**
      * Where a try at [app] that didn't install, for [problem] or refused by the person, leaves
      * updating: held, then offering the version the DSP last told of, older or newer, with the
      * try's [problem] only if it's [app]; or nothing, if none.
      */
     private fun failed(app: AppVersion?, problem: Problem?): Update {
-        if (app != null) held = Held(app.versionCode, if (problem == Problem.NOT_THIS_APP) null else now() + RETRY_MS)
+        if (app != null) holds.hold = Hold(app.versionCode, if (problem == Problem.NOT_THIS_APP) null else now() + RETRY_MS)
         val now = offered ?: return Update.None
         return Update.Available(now, problem.takeIf { now == app })
     }

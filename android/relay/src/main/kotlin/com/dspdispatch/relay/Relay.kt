@@ -15,6 +15,7 @@ import com.dspdispatch.relay.texts.Texts
 import com.dspdispatch.relay.update.PackageCheck
 import com.dspdispatch.relay.update.PhoneSessions
 import com.dspdispatch.relay.update.SessionInstaller
+import com.dspdispatch.relay.update.StoredHold
 import com.dspdispatch.relay.update.UpdateNotice
 import com.dspdispatch.relay.update.Updates
 import java.io.File
@@ -60,7 +61,9 @@ class Relay(private val context: Context) {
         PackageCheck(context),
         installer,
         UpdateNotice(context),
-        texts::quiet,
+        StoredHold(context),
+        texts::hold,
+        texts::release,
         scope,
     )
     private val attempt = MutableStateFlow<Attempt>(Attempt.None)

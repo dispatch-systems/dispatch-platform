@@ -53,17 +53,16 @@ object Notifications {
     /** The action of the update's notification: the app opens to show Android's confirmation. */
     const val UPDATE = "com.dspdispatch.relay.action.UPDATE"
 
-    /** Asks the person to confirm installing [version] of the app, where the app may notify. */
-    fun update(context: Context, version: String) {
+    /** Asks the person to confirm installing [version] of the app, where the app may notify; whether it did. Kept when tapped, until taken away. */
+    fun update(context: Context, version: String): Boolean =
         post(context, UPDATES_CHANNEL, UPDATE_ID, context.getString(R.string.update_version, version), UPDATE)
-    }
 
     /** Takes away the notification of a newer version, if there is one. */
     fun cancelUpdate(context: Context) = NotificationManagerCompat.from(context).cancel(UPDATE_ID)
 
     /**
      * Posts [title] on [channel] as notification [id], opening the app with [action], where the app
-     * may notify there; whether it did.
+     * may notify there; whether it did. One with an action is kept when tapped.
      */
     private fun post(context: Context, channel: String, id: Int, title: String, action: String? = null): Boolean {
         val manager = NotificationManagerCompat.from(context)
@@ -73,7 +72,7 @@ object Notifications {
         val notification = NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
-            .setAutoCancel(true)
+            .setAutoCancel(action == null)
             .setContentIntent(open(context, action))
             .build()
         manager.notify(id, notification)

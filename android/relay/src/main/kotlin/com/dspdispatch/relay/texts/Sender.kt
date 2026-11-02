@@ -12,6 +12,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -38,10 +40,10 @@ class Sender(
     // try again. Only the sender's own coroutine touches it.
     private val retries = mutableMapOf<Pair<String, Long>, Retry>()
 
-    /** Whether an answer's texts are being sent now. */
-    private val sending = MutableStateFlow(false)
+    /** Held while an answer's texts are sent, and while the app's update replaces it ([hold]). */
+    private val gate = Mutex()
 
-    /** How many times Android has said more of a send, to wake [quiet]. */
+    /** How many times Android has said more of a send, to wake [hold]. */
     private val answered = MutableStateFlow(0)
 
     /**
@@ -73,18 +75,23 @@ class Sender(
     }
 
     /**
-     * Returns once no text is mid-send: none being handed to Android, and none it took in the last
-     * [RESULT_WAIT_MS] without saying yet whether it went, as a picture message whose file Android
-     * may still be reading from the app.
+     * Holds sending back, once no text is mid-send, until [release]d: none being handed to Android,
+     * and none it took in the last [RESULT_WAIT_MS] without saying yet whether it went, as a picture
+     * message whose file Android may still be reading from the app. For the app to be replaced.
      */
-    suspend fun quiet() {
+    suspend fun hold() {
         while (true) {
-            sending.first { !it }
             val last = answered.value
-            val wait = unanswered()
-            if (wait == null && !sending.value) return
-            withTimeoutOrNull(maxOf(wait ?: 0, 1)) { answered.first { it != last } }
+            gate.lock(UPDATE)
+            val wait = unanswered() ?: return
+            gate.unlock(UPDATE)
+            withTimeoutOrNull(wait) { answered.first { it != last } }
         }
+    }
+
+    /** Lets sending go on, if [hold] held it back. */
+    fun release() {
+        if (gate.holdsLock(UPDATE)) gate.unlock(UPDATE)
     }
 
     /**
@@ -102,7 +109,10 @@ class Sender(
      * own, the others going on.
      */
     internal suspend fun send(paired: Paired, key: String, outbox: Outbox) = withContext(Dispatchers.IO) {
-        sending.value = true
+        gate.withLock { sendEach(paired, key, outbox) }
+    }
+
+    private suspend fun sendEach(paired: Paired, key: String, outbox: Outbox) {
         try {
             val at = now()
             expire(at)
@@ -124,7 +134,6 @@ class Sender(
                 }
             }
         } finally {
-            sending.value = false
             statuses.more()
         }
     }
@@ -248,6 +257,9 @@ class Sender(
     }
 
     private companion object {
+        /** The owner of [gate] while the app's update holds sending back. */
+        val UPDATE = Any()
+
         /** How long an answer holding only texts under way waits before the next. */
         const val HOLD_MS = 5_000L
 

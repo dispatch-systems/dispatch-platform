@@ -203,7 +203,8 @@ class SenderTest {
         assertEquals(RESULT_WAIT_MS - 60_000, sender.unanswered())
         clock += RESULT_WAIT_MS - 60_000
         assertEquals(null, sender.unanswered())
-        sender.quiet()
+        sender.hold()
+        sender.release()
     }
 
     @Test
