@@ -193,7 +193,9 @@ for (const variant of ['phone', 'reduced motion', 'unavailable artwork'] as cons
     expect((await fromPage(page, '/api/session')).status).toBe(401);
     if (variant !== 'unavailable artwork')
       expect(assets.filter((url) => /MemberProfileCompletion-/.test(url))).toEqual([]);
-    else expect(failedArtwork).toBe(1);
+    // Tried and refused: a browser fetches it once, or twice when it preloads it and, the preload
+    // having failed, fetches it again to import it.
+    else expect(failedArtwork).toBeGreaterThan(0);
     if (variant === 'phone')
       expect(
         assets.filter((url) => /member-profile-map|login-van|renderer-.*\.js/.test(url)),
