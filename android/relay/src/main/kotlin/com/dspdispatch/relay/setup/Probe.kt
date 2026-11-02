@@ -2,6 +2,7 @@ package com.dspdispatch.relay.setup
 
 import android.Manifest
 import android.app.ActivityManager
+import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
@@ -69,6 +70,7 @@ class Probe(private val context: Context) {
 
     /** Android 11+ only, as Android's own setting; Play services' backport to older phones is left out. */
     private fun unusedApps(): UnusedApps {
+        if (managed()) return UnusedApps.NOT_AVAILABLE
         val status = try {
             PackageManagerCompat.getUnusedAppRestrictionsStatus(context).get()
         } catch (_: ExecutionException) {
@@ -82,6 +84,17 @@ class Probe(private val context: Context) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) UnusedApps.OFF else UnusedApps.NOT_AVAILABLE
             else -> UnusedApps.NOT_AVAILABLE
         }
+    }
+
+    /**
+     * Whether a device owner manages the phone, as an organization's device management does: Android
+     * then exempts every app from its unused-app restrictions and locks the setting off, unless
+     * the phone is a lender's, which no app but the owner may ask (Android's permission controller,
+     * `isPackageHibernationExemptBySystem`).
+     */
+    private fun managed(): Boolean {
+        val policy = context.getSystemService(DevicePolicyManager::class.java) ?: return false
+        return policy.activeAdmins.orEmpty().any { policy.isDeviceOwnerApp(it.packageName) }
     }
 
     /**
