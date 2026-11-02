@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
 import { Loading } from '../../../../core/shell/frontend/ui/index.js';
 import { More } from './More.js';
+import { PhotoViewing } from './PhotoViewer.js';
 import './thread-frame.css';
 
 // The messages of a conversation or a group, scrolling on their own: kept at the latest as more
@@ -51,7 +52,9 @@ export function ThreadFrame({
   return (
     <div className="thread" ref={scroller} onScroll={scrolled}>
       {more && <More read={readOlder} />}
-      <div className="thread-messages">{children}</div>
+      <div className="thread-messages">
+        <PhotoViewing>{children}</PhotoViewing>
+      </div>
     </div>
   );
 }

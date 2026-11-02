@@ -1,11 +1,10 @@
-import { useState } from 'react';
 import { FileText } from 'lucide-react';
 import type { Message, MessageFile } from '../../api/index.js';
 import { download } from '../../../../core/shell/frontend/runtime/transfer.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { usePicture } from '../../../../core/shell/frontend/runtime/usePicture.js';
 import { fileStatus, isPhoto, size } from './format.js';
-import { PhotoViewer } from './PhotoViewer.js';
+import { useViewPhoto } from './PhotoViewer.js';
 import './message-body.css';
 
 /** One message: its text, marked if edited in Slack, then its photos and files, read from where
@@ -44,21 +43,16 @@ export function MessageBody({
  */
 function Photo({ photo, address }: { photo: MessageFile; address: (id: string) => string }) {
   const [box, src, lost] = usePicture<HTMLButtonElement>(address(photo.id));
-  const [open, setOpen] = useState(false);
+  const view = useViewPhoto();
   return (
-    <>
-      <button ref={box} className="photo" disabled={!src} onClick={() => setOpen(true)}>
-        {src && <img src={src} alt={photo.name} onError={lost} />}
-      </button>
-      {open && src && (
-        <PhotoViewer
-          name={photo.name}
-          src={src}
-          url={address(photo.id)}
-          onClose={() => setOpen(false)}
-        />
-      )}
-    </>
+    <button
+      ref={box}
+      className="photo"
+      disabled={!src}
+      onClick={() => src && view({ name: photo.name, src, url: address(photo.id) })}
+    >
+      {src && <img src={src} alt={photo.name} onError={lost} />}
+    </button>
   );
 }
 

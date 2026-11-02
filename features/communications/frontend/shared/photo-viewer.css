@@ -18,6 +18,15 @@
   max-height: 100%;
   aspect-ratio: var(--shape);
 }
+/* A download that failed, across the top beside the buttons. */
+.photo-viewer .error {
+  position: absolute;
+  top: 12px;
+  right: 108px;
+  left: 12px;
+  margin: 0;
+  background: var(--background);
+}
 .photo-viewer-actions {
   position: absolute;
   top: 12px;
