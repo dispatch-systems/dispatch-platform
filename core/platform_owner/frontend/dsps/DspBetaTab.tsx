@@ -147,31 +147,33 @@ function AddTesters({
     });
   return (
     <Modal title="Add beta tester" onClose={onClose}>
-      <SearchInput
-        label="Search members"
-        placeholder="Search members"
-        value={query}
-        onChange={setQuery}
-      />
-      <ul className="dsp-tester-choices" aria-label="Members">
-        {listed.map((member) => (
-          <li key={member.id}>
-            <label>
-              <input
-                type="checkbox"
-                checked={Boolean(member.testerSince) || chosen.has(member.id)}
-                disabled={Boolean(member.testerSince)}
-                onChange={(event) => choose(member.id, event.target.checked)}
-              />
-              <span className="dsp-person">
-                <strong>{member.name}</strong>
-                <small>{member.email}</small>
-              </span>
-              <small>{member.testerSince ? 'Tester' : member.role}</small>
-            </label>
-          </li>
-        ))}
-      </ul>
+      <div className="dsp-add-testers">
+        <SearchInput
+          label="Search members"
+          placeholder="Search members"
+          value={query}
+          onChange={setQuery}
+        />
+        <ul className="dsp-tester-choices" aria-label="Members">
+          {listed.map((member) => (
+            <li key={member.id}>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={Boolean(member.testerSince) || chosen.has(member.id)}
+                  disabled={Boolean(member.testerSince)}
+                  onChange={(event) => choose(member.id, event.target.checked)}
+                />
+                <span className="dsp-person">
+                  <strong>{member.name}</strong>
+                  <small>{member.email}</small>
+                </span>
+                <small>{member.testerSince ? 'Tester' : member.role}</small>
+              </label>
+            </li>
+          ))}
+        </ul>
+      </div>
       <div className="form-actions">
         <button type="button" onClick={onClose}>
           Cancel

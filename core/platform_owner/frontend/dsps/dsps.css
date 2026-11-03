@@ -398,8 +398,11 @@
   overflow-y: auto;
   list-style: none;
 }
+.dsp-add-testers .search {
+  width: 100%;
+}
 .dsp-tester-choices label {
-  display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 12px;
   padding: 8px 4px;
