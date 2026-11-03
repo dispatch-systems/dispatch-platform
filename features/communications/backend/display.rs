@@ -37,6 +37,7 @@ const BUBBLE_SHAPE: Options = &[
 const PHONE_TIMES: Options = &[
     (Times::EachMessage.as_str(), "Each message"),
     (Times::EachGroup.as_str(), "Each group"),
+    (Times::AfterPause.as_str(), "After a pause"),
 ];
 const TEAM_COLOR: Options = &[
     (TeamColor::Blue.as_str(), "Blue"),
@@ -47,6 +48,7 @@ const TEAM_COLOR: Options = &[
     (TeamColor::Slate.as_str(), "Slate"),
 ];
 const EMPLOYEE_COLOR: Options = &[
+    (EmployeeColor::White.as_str(), "White"),
     (EmployeeColor::Gray.as_str(), "Gray"),
     (EmployeeColor::Blue.as_str(), "Blue"),
     (EmployeeColor::Warm.as_str(), "Warm"),
@@ -67,7 +69,7 @@ pub const DISPLAY: Section = section(
     "Message display",
     "communications.use",
     &[
-        number("text_size", "Text size", 12, 20, Some(14)).unit("px"),
+        number("text_size", "Text size", 12, 20, Some(15)).unit("px"),
         choice(
             "line_spacing",
             "Line spacing",
@@ -82,9 +84,9 @@ pub const DISPLAY: Section = section(
                 (MessageLayout::Full.as_str(), "Full width"),
                 (MessageLayout::Centred.as_str(), "Centred"),
             ],
-            MessageLayout::Full.as_str(),
+            MessageLayout::Centred.as_str(),
         ),
-        number("column_width", "Column width", 600, 1200, Some(800)).unit("px"),
+        number("column_width", "Column width", 600, 1200, Some(720)).unit("px"),
         choice("style", "Style", STYLE, MessageStyle::Bubbles.as_str()),
         choice(
             "team_side",
@@ -106,8 +108,9 @@ pub const DISPLAY: Section = section(
                 (Times::EachMessage.as_str(), "Each message"),
                 (Times::EachGroup.as_str(), "Each group"),
                 (Times::OnHover.as_str(), "On hover"),
+                (Times::AfterPause.as_str(), "After a pause"),
             ],
-            Times::EachGroup.as_str(),
+            Times::AfterPause.as_str(),
         ),
         toggle("message_photos", "Photos", true),
         toggle("team_names", "Team names", true),
@@ -121,7 +124,7 @@ pub const DISPLAY: Section = section(
             "employee_color",
             "Employees' color",
             EMPLOYEE_COLOR,
-            EmployeeColor::Gray.as_str(),
+            EmployeeColor::White.as_str(),
         ),
         choice(
             "list_width",

@@ -3,6 +3,7 @@
   padding: 0.55em 0.95em;
   border-radius: var(--bubble-radius);
   background: var(--bubble-in);
+  box-shadow: 0 0 0 1px var(--bubble-in-edge);
   font-size: var(--text-size);
   line-height: var(--line);
   white-space: pre-wrap;
@@ -10,6 +11,7 @@
 }
 .msg-group.out .bubble {
   background: var(--bubble-out);
+  box-shadow: none;
   color: var(--bubble-out-foreground);
 }
 .bubble .edited {
@@ -83,6 +85,7 @@
   padding: 0;
   border-radius: 0;
   background: none;
+  box-shadow: none;
   color: var(--foreground);
 }
 .communications[data-style='plain'] .photo {

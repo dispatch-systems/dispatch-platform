@@ -9,15 +9,18 @@ export function Segments<T extends string>({
   value,
   options,
   change,
+  wide = false,
 }: {
   label: string;
   value: T;
   options: readonly (readonly [T, string])[];
   change: (value: T) => void;
+  /** Under its label, for more choices than fit beside it. */
+  wide?: boolean;
 }) {
   const id = useId();
   return (
-    <div className="settings-field">
+    <div className={wide ? 'settings-field settings-wide' : 'settings-field'}>
       <span id={id}>{label}</span>
       <Choice labelledBy={id} value={value} options={options} change={change} />
     </div>

@@ -500,16 +500,19 @@ test('on a wide screen a bubble is as wide as chosen, plain lines stay readable,
   const casey = page.getByRole('region', { name: 'Casey Rivera' });
   const bubble = casey.getByText(long);
   const width = async () => (await bubble.boundingBox())!.width;
+  // Across the whole conversation, not in a centred column.
+  const wide = { layout: 'full' };
+  await display(wide, /--column-width: 100%/);
   const usual = await width();
-  await display({ bubble_width: 90 }, /--bubble-width: 90%/);
+  await display({ ...wide, bubble_width: 90 }, /--bubble-width: 90%/);
   expect(await width()).toBeGreaterThan(usual);
-  await display({ bubble_width: 50 }, /--bubble-width: 50%/);
+  await display({ ...wide, bubble_width: 50 }, /--bubble-width: 50%/);
   expect(await width()).toBeLessThan(usual);
-  await display({ bubble_width: 70, style: 'plain' }, /--bubble-width: 70%/);
+  await display({ ...wide, bubble_width: 70, style: 'plain' }, /--bubble-width: 70%/);
   await expect(look).toHaveAttribute('data-style', 'plain');
   expect(await width()).toBeLessThanOrEqual(usual + 1);
 
-  // At 14px the profile is a column of its own beside the conversation; at 20px the list and the
+  // At 15px the profile is a column of its own beside the conversation; at 20px the list and the
   // profile grow with the text, and the profile goes over the conversation, which keeps its room.
   const profile = page.getByRole('dialog', { name: 'Casey Rivera' });
   const opened = async () => {
@@ -530,16 +533,16 @@ test('on a wide screen a bubble is as wide as chosen, plain lines stay readable,
     const panel = (await profile.boundingBox())!;
     return { beside: thread.x + thread.width <= panel.x + 1, width: panel.width };
   };
-  await display({ style: 'bubbles' }, /--text-size: 14px/);
+  await display({ style: 'bubbles' }, /--text-size: 15px/);
   await expect(look).toHaveAttribute('data-style', 'bubbles');
-  const listAt14 = (await list.boundingBox())!.width;
-  const at14 = await opened();
-  expect(at14.beside).toBe(true);
+  const listAt15 = (await list.boundingBox())!.width;
+  const at15 = await opened();
+  expect(at15.beside).toBe(true);
   await display({ text_size: 20 }, /--text-size: 20px/);
-  expect((await list.boundingBox())!.width).toBeGreaterThan(listAt14);
+  expect((await list.boundingBox())!.width).toBeGreaterThan(listAt15);
   const at20 = await opened();
   expect(at20.beside).toBe(false);
-  expect(at20.width).toBeGreaterThan(at14.width);
+  expect(at20.width).toBeGreaterThan(at15.width);
 
   // Settings shows the profile's width as drawn, and saves the width it's chosen as at 14px.
   await page.getByRole('button', { name: 'Display' }).click();
@@ -622,8 +625,8 @@ test.describe('on a phone', () => {
     await expect(box).toHaveValue('');
     await expect(casey.getByText('Cam takes Sunday')).toBeVisible();
 
-    // The same member on a desktop's screen keeps the desktop's text size.
+    // The same member on a desktop's screen keeps the desktop's text size, its default.
     await page.setViewportSize({ width: 1280, height: 800 });
-    await expect(asked).toHaveCSS('font-size', '14px');
+    await expect(asked).toHaveCSS('font-size', '15px');
   });
 });

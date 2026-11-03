@@ -11,7 +11,6 @@ button.sender {
   align-self: center;
   gap: 6px;
   min-height: 30px;
-  margin-bottom: calc(var(--small-size) * 1.5 + 2px);
   padding: 0 11px;
   border: 0;
   border-radius: 15px;
@@ -19,6 +18,10 @@ button.sender {
   font-size: var(--small-size);
   font-weight: 600;
   box-shadow: 0 2px 6px var(--shadow-color);
+}
+/* Above the answer's time, while one shows under it. */
+.msg-group:has(> .stack > .meta:last-child) > .reply-to {
+  margin-bottom: calc(var(--small-size) * 1.5 + 2px);
 }
 @container communications (width >= 680px) {
   .msg-group.answer:hover .reply-to,

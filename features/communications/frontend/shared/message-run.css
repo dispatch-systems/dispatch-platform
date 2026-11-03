@@ -9,9 +9,8 @@
 .msg-group.out {
   flex-direction: row-reverse;
 }
-/* By the last of a run, above its time. */
-.msg-group > .face,
-.msg-group > .face-button {
+/* By the last of a run, above its time while one shows under it. */
+.msg-group:has(> .stack > .meta:last-child) > :is(.face, .face-button) {
   margin-bottom: calc(var(--small-size) * 1.5 + 2px);
 }
 .face-button {
@@ -42,14 +41,14 @@
   font-size: var(--small-size);
   font-weight: 600;
 }
-/* The last of a run, by its writer's photo. */
+/* The last of a run, by its writer's photo, whether its time shows under it or not. */
 .msg-group {
   --tail: min(var(--bubble-radius), calc(var(--text-size) * 0.43));
 }
-.msg-group.in .stack > :nth-last-child(2) {
+.msg-group.in .stack > :nth-last-child(1 of :not(.meta)) {
   border-bottom-left-radius: var(--tail);
 }
-.msg-group.out .stack > :nth-last-child(2) {
+.msg-group.out .stack > :nth-last-child(1 of :not(.meta)) {
   border-bottom-right-radius: var(--tail);
 }
 .meta {
@@ -71,7 +70,7 @@
 .communications[data-team-side='left'] .msg-group.out .stack {
   align-items: flex-start;
 }
-.communications[data-team-side='left'] .msg-group.out .stack > :nth-last-child(2) {
+.communications[data-team-side='left'] .msg-group.out .stack > :nth-last-child(1 of :not(.meta)) {
   border-bottom-right-radius: var(--bubble-radius);
   border-bottom-left-radius: var(--tail);
 }

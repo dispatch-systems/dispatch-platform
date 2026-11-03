@@ -51,6 +51,6 @@ enter_sends: boolean,
  */
 sound: boolean, notifications: boolean, phone_text_size: number, phone_line_spacing: LineSpacing, phone_spacing: Spacing, phone_style: MessageStyle, phone_team_side: TeamSide, phone_bubble_shape: BubbleShape, phone_bubble_width: number,
 /**
- * Each message's or each run's: a phone has no hover.
+ * Each message's, each run's or after a pause: a phone has no hover.
  */
 phone_times: Times, phone_message_photos: boolean, phone_team_names: boolean, phone_team_color: TeamColor, phone_employee_color: EmployeeColor, phone_list_rows: ListRows, phone_list_preview: ListPreview, phone_list_photos: boolean, phone_waiting_time: boolean, phone_profile_slide: boolean, phone_enter_sends: boolean, };

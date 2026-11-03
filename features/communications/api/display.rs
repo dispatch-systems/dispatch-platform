@@ -60,7 +60,7 @@ pub struct MessageDisplay {
     pub phone_bubble_shape: BubbleShape,
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub phone_bubble_width: i64,
-    /// Each message's or each run's: a phone has no hover.
+    /// Each message's, each run's or after a pause: a phone has no hover.
     pub phone_times: Times,
     pub phone_message_photos: bool,
     pub phone_team_names: bool,
@@ -107,7 +107,12 @@ text_enum! {
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     #[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]
-    pub enum Times { EachMessage => "each_message", EachGroup => "each_group", OnHover => "on_hover", }
+    pub enum Times {
+        EachMessage => "each_message",
+        EachGroup => "each_group",
+        OnHover => "on_hover",
+        AfterPause => "after_pause",
+    }
 }
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -124,7 +129,13 @@ text_enum! {
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     #[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]
-    pub enum EmployeeColor { Gray => "gray", Blue => "blue", Warm => "warm", Green => "green", }
+    pub enum EmployeeColor {
+        White => "white",
+        Gray => "gray",
+        Blue => "blue",
+        Warm => "warm",
+        Green => "green",
+    }
 }
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]

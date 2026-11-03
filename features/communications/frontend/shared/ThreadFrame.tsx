@@ -5,7 +5,8 @@ import { PhotoViewing } from './PhotoViewer.js';
 import './thread-frame.css';
 
 // The messages of a conversation or a group, scrolling on their own: kept at the latest as more
-// come, or where they were as older ones come above, which are read as its top nears (`More`).
+// come, or where they were as older ones come above, which are read as its top nears (`More`);
+// and what goes between them: the day they were written, and the time after a pause.
 
 /** How near its end it still counts as at the latest, in pixels. */
 const LATEST_PX = 80;
@@ -67,4 +68,9 @@ export function ThreadPending({ failed }: { failed: boolean }) {
 /** The day the messages under it were written. */
 export function DayLabel({ children }: { children: ReactNode }) {
   return <div className="day">{children}</div>;
+}
+
+/** When the messages under it were written, after a pause (`paused`, messages.ts). */
+export function PauseLabel({ children }: { children: ReactNode }) {
+  return <div className="day pause">{children}</div>;
 }

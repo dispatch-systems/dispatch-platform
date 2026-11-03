@@ -22,6 +22,8 @@
    rules, with their widths and Message display's choices, are in the stylesheet beside it. */
 .communications {
   --bubble-in: #eef1f5;
+  --bubble-in-edge: transparent;
+  --thread-surface: transparent;
   --bubble-out: #2055ed;
   --bubble-out-foreground: #fff;
   --late: var(--destructive);
@@ -152,6 +154,13 @@
 [data-theme='dark'] :is(.communications, .swatch)[data-team-color='slate'] {
   --bubble-out: #4b5a70;
 }
+/* White, the employees' messages are the page's cards, edged, on its surface behind the
+   conversation and the box under it. */
+:is(.communications, .swatch)[data-employee-color='white'] {
+  --bubble-in: var(--card);
+  --bubble-in-edge: var(--border);
+  --thread-surface: var(--surface);
+}
 :is(.communications, .swatch)[data-employee-color='gray'] {
   --bubble-in: #eef1f5;
 }
@@ -163,6 +172,10 @@
 }
 :is(.communications, .swatch)[data-employee-color='green'] {
   --bubble-in: #e3f3e9;
+}
+[data-theme='dark'] :is(.communications, .swatch)[data-employee-color='white'] {
+  --bubble-in: var(--surface);
+  --thread-surface: var(--background);
 }
 [data-theme='dark'] :is(.communications, .swatch)[data-employee-color='gray'] {
   --bubble-in: #262f3f;
