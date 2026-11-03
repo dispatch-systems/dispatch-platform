@@ -625,8 +625,8 @@ test.describe('on a phone', () => {
     await expect(box).toHaveValue('');
     await expect(casey.getByText('Cam takes Sunday')).toBeVisible();
 
-    // The same member on a desktop's screen keeps the desktop's text size.
+    // The same member on a desktop's screen keeps the desktop's text size, its default.
     await page.setViewportSize({ width: 1280, height: 800 });
-    await expect(asked).toHaveCSS('font-size', '14px');
+    await expect(asked).toHaveCSS('font-size', '15px');
   });
 });
