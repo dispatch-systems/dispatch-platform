@@ -6,14 +6,14 @@ import { lastFour } from '../shared/format.js';
 import './elsewhere-chips.css';
 
 // Whom a conversation is with's conversation of each kind: their work conversation, by the work
-// phone they hold now; their own number's, in Messaging; and their Slack one. As chips under its
-// head, the one open marked and each other that waits with a dot; each opens its conversation,
-// or starts one.
+// phone they hold now; their own number's, their personal phone; and their Slack one. As chips
+// under its head, the one open marked and each other that waits with a dot; each opens its
+// conversation, or starts one.
 
 /** What a chip says of a conversation of each kind. */
 const shown: Record<ConversationKind, { icon: ReactNode; label: string }> = {
   work: { icon: <Smartphone aria-hidden="true" />, label: 'Work' },
-  number: { icon: <Phone aria-hidden="true" />, label: 'Messaging' },
+  number: { icon: <Phone aria-hidden="true" />, label: 'Personal' },
   slack: { icon: <SlackLogo size={13} />, label: 'Slack' },
 };
 
