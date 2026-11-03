@@ -59,6 +59,10 @@ test('with its phone and no Slack, Communications opens on Recents, where its te
   await jamie.getByLabel('Message').fill('See you Monday at 7');
   await jamie.getByLabel('Message').press('Enter');
   await expect(jamie.getByText('Delivered')).toBeVisible();
+  // Recents lists the texts still waiting under Waiting, above it, now answered, under Today.
+  const headings = list.getByRole('heading');
+  await expect(headings.first()).toHaveText(/^Waiting/);
+  await expect(headings.nth(1)).toHaveText('Today');
   // A picture goes by text too, kept by the phone, and shows as sent.
   const choosing = page.waitForEvent('filechooser');
   await jamie.getByRole('button', { name: 'Attach photos' }).click();
