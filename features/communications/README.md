@@ -169,7 +169,7 @@ stay; the next day's drivers fill it as its live reads start.
   Routes, the list or the board, and nowhere else.
 - **A driver's conversation:** under its head, their route code, van and the work phone they have
   now, and how long it has waited; chips to their conversation of each kind, Work (by the work
-  phone they have), Messaging (by their own number) and Slack, each marked with a dot while it
+  phone they have), Personal (by their own number) and Slack, each marked with a dot while it
   waits, opening it or starting it ([Elsewhere](#elsewhere)). Each workday begins with a line
   across it, Today · Sun, Oct 25, Yesterday, or the date, with that day's route and van and the
   work phone its first text went through; earlier days dimmed; and where they texted from
