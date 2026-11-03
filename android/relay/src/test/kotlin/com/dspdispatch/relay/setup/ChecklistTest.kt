@@ -18,7 +18,7 @@ class ChecklistTest {
         unusedApps = UnusedApps.OFF,
         backgroundData = true,
         restricted = false,
-        textingApp = true,
+        textingApp = SAMSUNG_MESSAGES,
         chatFeaturesByHand = ByHand.DONE,
         installUpdates = true,
     )
@@ -34,7 +34,7 @@ class ChecklistTest {
 
     @Test
     fun `leaves out the steps a phone's Android doesn't have`() {
-        val older = allDone.copy(notificationsAllowed = null, unusedApps = UnusedApps.NOT_AVAILABLE, restricted = null, textingApp = false)
+        val older = allDone.copy(notificationsAllowed = null, unusedApps = UnusedApps.NOT_AVAILABLE, restricted = null, textingApp = null)
         assertEquals(
             listOf(Step.TEXTING, Step.PHONE_NUMBER, Step.BATTERY, Step.BACKGROUND_DATA, Step.INSTALL_UPDATES),
             checklist(older).map(Item::step),
@@ -92,6 +92,12 @@ class ChecklistTest {
     }
 
     @Test
+    fun `leaves out chat features where the texting app is Google Messages`() {
+        val google = allDone.copy(textingApp = "com.google.android.apps.messaging", chatFeaturesByHand = ByHand.NONE)
+        assertTrue(checklist(google).none { it.step == Step.CHAT_FEATURES })
+    }
+
+    @Test
     fun `takes chat features as done only once marked done by hand`() {
         assertEquals(listOf(Fix.TEXTING_APP), allDone.copy(chatFeaturesByHand = ByHand.NONE).item(Step.CHAT_FEATURES).fixes)
         assertEquals(
@@ -122,3 +128,5 @@ class ChecklistTest {
         assertEquals(ByHand.NONE, ByHand.NONE.confirmed())
     }
 }
+
+private const val SAMSUNG_MESSAGES = "com.samsung.android.messaging"

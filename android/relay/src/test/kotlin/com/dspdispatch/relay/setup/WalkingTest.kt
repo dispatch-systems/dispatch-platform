@@ -127,7 +127,7 @@ class WalkingTest {
             unusedApps = UnusedApps.OFF,
             backgroundData = true,
             restricted = restriction(fromFile = true, texting = false, unrestricted = false),
-            textingApp = false,
+            textingApp = null,
             chatFeaturesByHand = ByHand.NONE,
             installUpdates = true,
         ),

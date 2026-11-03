@@ -79,8 +79,8 @@ data class Facts(
     val backgroundData: Boolean,
     /** Whether Android may still restrict a setting the app needs, as far as the app can tell; null where it never did. */
     val restricted: Boolean?,
-    /** Whether the phone has a texting app to open. */
-    val textingApp: Boolean,
+    /** The package of the phone's default texting app, where it has one that opens. */
+    val textingApp: String?,
     val chatFeaturesByHand: ByHand,
     val installUpdates: Boolean,
 )
@@ -101,7 +101,7 @@ fun checklist(facts: Facts): List<Item> = with(facts) {
         if (unusedApps == UnusedApps.NOT_AVAILABLE) null else item(Step.UNUSED_APPS, unusedApps == UnusedApps.OFF, Fix.UNUSED_APPS),
         item(Step.BACKGROUND_DATA, backgroundData, Fix.BACKGROUND_DATA),
         restricted?.let { item(Step.RESTRICTED_SETTINGS, !it, Fix.APP_INFO) },
-        if (textingApp) byHand(Step.CHAT_FEATURES, chatFeaturesByHand, Fix.TEXTING_APP) else null,
+        chatFeatures(),
         item(Step.INSTALL_UPDATES, installUpdates, Fix.INSTALL_UPDATES),
     )
 }
@@ -124,6 +124,16 @@ private fun Facts.battery(): Item = when {
     makerBattery.isNotEmpty() -> byHand(Step.BATTERY, makerBattery.firstOrNull { it != ByHand.DONE } ?: ByHand.DONE, Fix.MAKER_BATTERY)
     else -> item(Step.BATTERY, true, Fix.BATTERY_REQUEST)
 }
+
+/**
+ * Chat features off in the texting app, which only the person can say is done; not asked of Google
+ * Messages, which writes its chats into Android's texting provider as picture messages, where the
+ * relay reads them. Another app may keep its chats to itself.
+ */
+private fun Facts.chatFeatures(): Item? =
+    if (textingApp == null || textingApp == GOOGLE_MESSAGES) null else byHand(Step.CHAT_FEATURES, chatFeaturesByHand, Fix.TEXTING_APP)
+
+private const val GOOGLE_MESSAGES = "com.google.android.apps.messaging"
 
 private fun item(step: Step, done: Boolean, fix: Fix) = Item(step, done, if (done) emptyList() else listOf(fix))
 

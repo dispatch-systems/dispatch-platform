@@ -49,7 +49,7 @@ class Probe(private val context: Context) {
             backgroundData = context.getSystemService(ConnectivityManager::class.java).restrictBackgroundStatus !=
                 ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED,
             restricted = restricted(texting, textingUnrestricted),
-            textingApp = textingApp() != null,
+            textingApp = Telephony.Sms.getDefaultSmsPackage(context)?.takeIf { packages.getLaunchIntentForPackage(it) != null },
             chatFeaturesByHand = chatFeaturesByHand,
             installUpdates = packages.canRequestPackageInstalls(),
         )
