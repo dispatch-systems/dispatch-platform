@@ -2,7 +2,10 @@
 export type { PlatformHealth } from './generated/PlatformHealth';
 export type { MailMessage } from '../../accounts/api/generated/MailMessage';
 export type { DspFeatures } from './generated/DspFeatures';
-export type { DspHidden } from './generated/DspHidden';
+export type { DspVisibility } from './generated/DspVisibility';
+export type { Visibility } from './generated/Visibility';
+export type { BetaMember } from './generated/BetaMember';
+export type { DspBetaTesters } from './generated/DspBetaTesters';
 export type { FeatureChange } from './generated/FeatureChange';
 export type { FeatureState } from './generated/FeatureState';
 export type { DspFeatureReport } from './generated/DspFeatureReport';

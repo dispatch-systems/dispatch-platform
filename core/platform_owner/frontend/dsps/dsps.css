@@ -226,26 +226,54 @@
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
 }
-/* The eye: whether the DSP's members see it. Hidden, it still runs. */
-.dsp-eye {
+/* Who sees it: the DSP's members, its beta testers alone, or none of them. Either way it runs.
+   A feature every DSP has keeps the space, so the rows' notes line up. */
+.dsp-sight {
   display: inline-flex;
+  width: 86px;
+  flex-shrink: 0;
+}
+.dsp-sight[role='radiogroup'] {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.dsp-sight button {
+  display: inline-flex;
+  flex: 1;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  height: 26px;
   min-height: 0;
   padding: 0;
   border: 0;
-  border-radius: var(--radius);
+  border-radius: 0;
   background: transparent;
   color: var(--muted-foreground);
-  flex-shrink: 0;
 }
-button.dsp-eye:hover {
+.dsp-sight button + button {
+  border-left: 1px solid var(--border);
+}
+.dsp-sight button:hover:not(:disabled) {
   background: var(--accent);
   color: var(--foreground);
 }
-.dsp-eye[aria-pressed='true'] {
+.dsp-sight button[aria-checked='true'] {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.dsp-sight button[data-sight='beta'][aria-checked='true'] {
+  background: var(--selection);
+  color: var(--primary);
+}
+.dsp-sight button[data-sight='hidden'][aria-checked='true'] {
+  background: var(--warning-surface);
+  color: var(--warning);
+}
+.dsp-feature-row small[data-sight='beta'] {
+  color: var(--primary);
+}
+.dsp-feature-row small[data-sight='hidden'] {
   color: var(--warning);
 }
 .dsp-parts {
@@ -312,6 +340,79 @@ button.dsp-eye:hover {
 .dsp-feature-row input[role='switch']:disabled {
   opacity: 0.5;
   cursor: default;
+}
+/* Beta testers: what is in beta at the DSP, then who tests it. */
+.dsp-beta-features {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dsp-beta-features li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--selection);
+  font-size: 13px;
+}
+.dsp-beta-features svg {
+  color: var(--primary);
+}
+.dsp-beta-features small,
+.dsp-beta-none {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.dsp-beta-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 6px;
+}
+.dsp-features .dsp-beta-head .dsp-group {
+  padding: 0;
+}
+.dsp-tester small {
+  margin-left: 0;
+  min-width: 96px;
+}
+.dsp-person {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.dsp-person small {
+  overflow-wrap: anywhere;
+}
+.dsp-tester-choices {
+  display: grid;
+  max-height: 320px;
+  margin: 12px 0 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.dsp-tester-choices label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 4px;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.dsp-tester-choices label:hover {
+  background: var(--accent);
+}
+.dsp-tester-choices small,
+.dsp-person small {
+  font-size: 12px;
+  color: var(--muted-foreground);
 }
 .dsp-switch-effects {
   display: grid;

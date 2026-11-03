@@ -10,16 +10,19 @@ pub(crate) mod routes {
 pub fn typescript(cfg: &ts_rs::Config) -> crate::Typescript {
     crate::typescript!(
         cfg,
+        types::BetaMember,
         types::BrowserAdmission,
         types::BrowserHealth,
+        types::DspBetaTesters,
         types::DspFeatureReport,
         types::DspFeatures,
-        types::DspHidden,
+        types::DspVisibility,
         types::FeatureChange,
         types::FeatureState,
         types::MailHealth,
         types::PlatformHealth,
         types::TransportHealth,
+        types::Visibility,
     )
 }
 

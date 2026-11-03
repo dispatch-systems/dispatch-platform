@@ -203,12 +203,13 @@ test('the platform hides a feature from a DSP, and only the Platform Owner view 
   const pane = page.getByRole('region', { name: 'Northline Logistics', exact: true });
   await pane.getByRole('tab', { name: 'Features', exact: true }).click();
   const uniforms = pane.getByRole('switch', { name: 'Uniform Inventory', exact: true });
-  const hide = pane.getByRole('button', { name: 'Hide Uniform Inventory from the DSP' });
-  const show = pane.getByRole('button', { name: 'Show Uniform Inventory to the DSP' });
+  const sight = pane.getByRole('radiogroup', { name: 'Who sees Uniform Inventory' });
+  const hide = sight.getByRole('radio', { name: 'Hidden' });
+  const show = sight.getByRole('radio', { name: 'Shown' });
   // What every DSP has is always shown, and a connection has nothing to show.
   for (const name of ['Home Page', 'Team & Roles', 'Settings', 'Cortex', 'Paycom'])
-    await expect(pane.getByRole('button', { name: `Hide ${name} from the DSP` })).toHaveCount(0);
-  await expect(hide).toHaveAttribute('aria-pressed', 'false');
+    await expect(pane.getByRole('radiogroup', { name: `Who sees ${name}` })).toHaveCount(0);
+  await expect(show).toBeChecked();
 
   const context = await browser.newContext();
   const member = await context.newPage();
@@ -218,7 +219,7 @@ test('the platform hides a feature from a DSP, and only the Platform Owner view 
 
   // Hidden, it stays on, and the member's next request finds it gone.
   await hide.click();
-  await expect(show).toHaveAttribute('aria-pressed', 'true');
+  await expect(hide).toBeChecked();
   await expect(uniforms).toBeChecked();
   // Its row: the list item holding its own switch.
   const row = pane
@@ -251,9 +252,57 @@ test('the platform hides a feature from a DSP, and only the Platform Owner view 
   await list.getByRole('button', { name: /Northline Logistics/ }).click();
   await pane.getByRole('tab', { name: 'Features', exact: true }).click();
   await show.click();
-  await expect(hide).toHaveAttribute('aria-pressed', 'false');
+  await expect(show).toBeChecked();
   await member.getByRole('link', { name: 'Home Page', exact: true }).click();
   await member.getByRole('link', { name: 'Timecard', exact: true }).click();
   await expect(memberLink).toBeVisible();
+  await context.close();
+});
+
+test('the platform puts a feature in beta at a DSP, and only the testers it adds see it', async ({
+  page,
+  browser,
+}) => {
+  await login(page);
+  const list = page.getByRole('region', { name: 'DSPs', exact: true });
+  await list.getByRole('button', { name: /Northline Logistics/ }).click();
+  const pane = page.getByRole('region', { name: 'Northline Logistics', exact: true });
+  await pane.getByRole('tab', { name: 'Features', exact: true }).click();
+  const sight = pane.getByRole('radiogroup', { name: 'Who sees Uniform Inventory' });
+  const context = await browser.newContext();
+  const member = await context.newPage();
+  await login(member, 'member@dispatch.test');
+  const memberLink = member.getByRole('link', { name: 'Uniform Inventory', exact: true });
+  await expect(memberLink).toBeVisible();
+  // Its next request finds it gone, once it is in beta and they don't test it.
+  const refresh = async () => {
+    await member.getByRole('link', { name: 'Timecard', exact: true }).click();
+    await member.getByRole('link', { name: 'Home Page', exact: true }).click();
+  };
+
+  await sight.getByRole('radio', { name: 'Beta' }).click();
+  await expect(sight.getByRole('radio', { name: 'Beta' })).toBeChecked();
+  await refresh();
+  await expect(memberLink).toHaveCount(0);
+
+  // Its Beta testers tab lists what is in beta, and adds the member as a tester.
+  await pane.getByRole('tab', { name: 'Beta testers', exact: true }).click();
+  await expect(pane.getByRole('region', { name: 'In beta' })).toContainText('Uniform Inventory');
+  const testers = pane.getByRole('region', { name: 'Testers' });
+  await testers.getByRole('button', { name: 'Add tester' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Add beta tester' });
+  await dialog.getByPlaceholder('Search members').fill('jordan');
+  await dialog.getByRole('checkbox').check();
+  await dialog.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(testers).toContainText('Jordan Ellis');
+  await refresh();
+  await expect(memberLink).toBeVisible();
+
+  // Removed, they lose it again.
+  await testers.getByRole('button', { name: 'Remove Jordan Ellis' }).click();
+  await expect(testers).not.toContainText('Jordan Ellis');
+  await refresh();
+  await expect(memberLink).toHaveCount(0);
   await context.close();
 });

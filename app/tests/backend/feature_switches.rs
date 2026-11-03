@@ -1,5 +1,9 @@
 //! Feature switches over the catalog of every registered feature's pages and tabs.
-use dispatch_core::{db::Store, platform_owner::api::types::DspFeatures, tenancy::catalog::*};
+use dispatch_core::{
+    db::Store,
+    platform_owner::api::types::{DspFeatures, Visibility},
+    tenancy::catalog::*,
+};
 
 /// What a DSP has that it could be without: its features less the mandatory ones.
 fn switched(db: &Store, dsp: &str) -> Vec<String> {
@@ -224,7 +228,7 @@ fn a_hidden_feature_keeps_running_out_of_its_members_sight() {
     let (_root, db, owner, dsp) = new_dsp();
     db.set_feature(&dsp, "timecard", true, &owner).unwrap();
     let shown = |db: &Store| -> Vec<String> {
-        db.shown_features(&dsp)
+        db.shown_features(&dsp, false)
             .unwrap()
             .into_iter()
             .filter(|id| !find(id).is_some_and(|f| f.mandatory))
@@ -234,10 +238,12 @@ fn a_hidden_feature_keeps_running_out_of_its_members_sight() {
     assert_eq!(shown(&db), everything);
     // A hidden tab goes from sight alone; a hidden page takes its tabs.
     let tab = db
-        .show_feature(&dsp, "timecard.employees", false, &owner)
+        .set_visibility(&dsp, "timecard.employees", Visibility::Hidden, &owner)
         .unwrap();
     assert_eq!(tab.hidden, ["timecard.employees"]);
-    let page = db.show_feature(&dsp, "timecard", false, &owner).unwrap();
+    let page = db
+        .set_visibility(&dsp, "timecard", Visibility::Hidden, &owner)
+        .unwrap();
     assert_eq!(page.hidden, ["timecard", "timecard.employees"]);
     assert_eq!(shown(&db), ["paycom", "cortex"]);
     // Everything stays as switched, for the work that runs in the background.
@@ -248,18 +254,24 @@ fn a_hidden_feature_keeps_running_out_of_its_members_sight() {
     db.set_feature(&dsp, "timecard", false, &owner).unwrap();
     db.set_feature(&dsp, "timecard", true, &owner).unwrap();
     assert_eq!(shown(&db), ["paycom", "cortex"]);
-    let back = db.show_feature(&dsp, "timecard", true, &owner).unwrap();
+    let back = db
+        .set_visibility(&dsp, "timecard", Visibility::Shown, &owner)
+        .unwrap();
     assert_eq!(back.hidden, ["timecard.employees"]);
     assert!(!shown(&db).contains(&"timecard.employees".to_owned()));
     // What every DSP has, and a connection, are never hidden.
     let every = mandatory();
     let every = every.first().expect("a feature every DSP has");
-    let refused = db.show_feature(&dsp, every, false, &owner).unwrap_err();
+    let refused = db
+        .set_visibility(&dsp, every, Visibility::Hidden, &owner)
+        .unwrap_err();
     assert_eq!(
         (refused.code.as_str(), refused.status),
         ("feature_mandatory", 409)
     );
-    let refused = db.show_feature(&dsp, "cortex", false, &owner).unwrap_err();
+    let refused = db
+        .set_visibility(&dsp, "cortex", Visibility::Hidden, &owner)
+        .unwrap_err();
     assert_eq!(
         (refused.code.as_str(), refused.status),
         ("invalid_input", 400)
@@ -267,9 +279,61 @@ fn a_hidden_feature_keeps_running_out_of_its_members_sight() {
     // A part that isn't switched on can be hidden, and is no more on for it.
     db.set_feature(&dsp, "timecard.daily", false, &owner)
         .unwrap();
-    db.show_feature(&dsp, "timecard.daily", false, &owner)
+    db.set_visibility(&dsp, "timecard.daily", Visibility::Hidden, &owner)
         .unwrap();
     assert!(!db.feature_enabled(&dsp, "timecard.daily").unwrap());
+}
+
+#[cfg(feature = "timecard")]
+#[test]
+fn a_page_in_beta_is_its_testers_alone_with_its_parts_and_their_permissions() {
+    let (_root, db, owner, dsp) = new_dsp();
+    db.set_feature(&dsp, "timecard", true, &owner).unwrap();
+    let seen = |db: &Store, tester: bool| -> Vec<String> {
+        db.shown_features(&dsp, tester)
+            .unwrap()
+            .into_iter()
+            .filter(|id| !find(id).is_some_and(|f| f.mandatory))
+            .collect()
+    };
+    let everything = switched(&db, &dsp);
+    // A part in beta goes from its members' sight alone, and its testers see it.
+    let part = db
+        .set_visibility(&dsp, "timecard.employees", Visibility::Beta, &owner)
+        .unwrap();
+    assert_eq!(
+        (part.hidden, part.beta),
+        (vec![], vec!["timecard.employees".to_owned()])
+    );
+    assert!(!seen(&db, false).contains(&"timecard.employees".to_owned()));
+    assert_eq!(seen(&db, true), everything);
+    // A page in beta takes its parts from its members; its testers have the page and its
+    // parts, with every permission they own and what those include.
+    db.set_visibility(&dsp, "timecard", Visibility::Beta, &owner)
+        .unwrap();
+    assert_eq!(seen(&db, false), ["paycom", "cortex"]);
+    assert_eq!(seen(&db, true), everything);
+    let mut held = db.beta_permissions(&dsp, &seen(&db, true)).unwrap();
+    held.sort();
+    let mut owned: Vec<String> = catalog()
+        .iter()
+        .filter(|f| f.id == "timecard" || f.kind == Kind::Sub("timecard"))
+        .flat_map(|f| f.permissions.iter().map(|p| (*p).to_owned()))
+        .collect();
+    owned.sort();
+    assert_eq!(held, owned);
+    // A part hidden on its own stays hidden from its testers too.
+    db.set_visibility(&dsp, "timecard.employees", Visibility::Hidden, &owner)
+        .unwrap();
+    assert!(!seen(&db, true).contains(&"timecard.employees".to_owned()));
+    // Nothing in beta, a tester holds nothing more.
+    db.set_visibility(&dsp, "timecard", Visibility::Shown, &owner)
+        .unwrap();
+    assert!(
+        db.beta_permissions(&dsp, &seen(&db, true))
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[test]
@@ -301,7 +365,8 @@ fn when_a_feature_came_on_is_known_while_it_is_on_and_never_early() {
     let on = db.feature_on_since(&dsp, optional).unwrap().unwrap();
     assert!((before..=dispatch_core::db::now()).contains(&on));
     // Hiding it counts as later, never earlier.
-    db.show_feature(&dsp, optional, false, &owner).unwrap();
+    db.set_visibility(&dsp, optional, Visibility::Hidden, &owner)
+        .unwrap();
     assert!(db.feature_on_since(&dsp, optional).unwrap().unwrap() >= on);
     // Off, it has none.
     db.set_feature(&dsp, optional, false, &owner).unwrap();

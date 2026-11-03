@@ -26,7 +26,8 @@
       [20, "dsp_directories", "code"],
       [21, "agent_tools", "code"],
       [22, "agent_tool_levels", "code"],
-      [23, "ai_support", "6f9081123765772b"]
+      [23, "ai_support", "6f9081123765772b"],
+      [24, "feature_beta", "code"]
     ],
     "owned": [
       ["slack", 1, "slack_teams", "35ab8bb0ffb56fd6"]
@@ -63,7 +64,8 @@
       [10, "documents_files", "9a5cddc24f08a790"],
       [11, "documents_people", "fb130ca99f140d80"],
       [12, "accounts", "3b90671344bd46dd"],
-      [13, "schedule_rules", "75f9e9840423f306"]
+      [13, "schedule_rules", "75f9e9840423f306"],
+      [14, "beta_testers", "784fce94ff618581"]
     ],
     "owned": [
       ["driver_match", 1, "open_sources", "02b0e6057d57f3fb"],

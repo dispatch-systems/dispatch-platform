@@ -72,6 +72,7 @@ pub const TABLES: Tables = &[
             "users",
             "memberships",
             "roles",
+            "beta_testers",
             "sessions",
             "session_metadata",
             "session_security",
@@ -189,6 +190,11 @@ const PLATFORM: &[Migration] = &[
             "../../support/migrations/platform/0023_ai_support.sql"
         )),
     },
+    Migration {
+        id: 24,
+        name: "feature_beta",
+        apply: Code(feature_beta),
+    },
 ];
 const JOBS: &[Migration] = &[
     Migration {
@@ -292,6 +298,13 @@ const DSP: &[Migration] = &[
             "../../collection/migrations/dsp/0013_schedule_rules.sql"
         )),
     },
+    Migration {
+        id: 14,
+        name: "beta_testers",
+        apply: Sql(include_str!(
+            "../../tenancy/migrations/dsp/0014_beta_testers.sql"
+        )),
+    },
 ];
 // When each live day's stop began: once it has, the day reads no more and its stop is
 // finished first, after a restart too (`collection/backend/readers`).
@@ -317,6 +330,16 @@ fn feature_shown(db: &Db) -> Result<()> {
         "dsp_features",
         "shown",
         "INTEGER NOT NULL DEFAULT 1 CHECK (shown IN (0, 1))",
+    )
+}
+/// Whether a feature hidden from a DSP's members is in beta there: its beta testers see it.
+/// Stored as hidden as well, so a release before beta keeps it from everyone else.
+fn feature_beta(db: &Db) -> Result<()> {
+    add_column(
+        db,
+        "dsp_features",
+        "beta",
+        "INTEGER NOT NULL DEFAULT 0 CHECK (beta IN (0, 1))",
     )
 }
 // Each DSP's short code, which names its address, in lowercase: none until it is set up.

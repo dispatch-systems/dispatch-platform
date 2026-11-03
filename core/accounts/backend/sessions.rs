@@ -157,7 +157,7 @@ impl Store {
         // An ordinary member learns whether they belong to a DSP, never whether a
         // caller-supplied DSP id exists. Resolve their grant first so an absent DSP
         // and an existing DSP outside their membership have the same answer.
-        let (dsp, grant) = if !a.user.platform_owner {
+        let (dsp, mut grant) = if !a.user.platform_owner {
             let grant = self
                 .grant(&a.user.id, id)?
                 .ok_or_else(|| Error::new("permission_denied", 403))?;
@@ -183,11 +183,19 @@ impl Store {
             (dsp, grant)
         };
         // The platform owner's own view sees what is hidden from the DSP; everyone else,
-        // its owners and a role a platform owner looks through included, only what is shown.
+        // its owners and a role a platform owner looks through included, only what is shown,
+        // and what is in beta there only if they are one of its beta testers, who hold all of
+        // it as well as what their role holds.
         let features = if a.user.platform_owner && a.preview.is_none() {
             self.features(&dsp.id)?
         } else {
-            self.shown_features(&dsp.id)?
+            let tester = !a.user.platform_owner && self.beta_tester(&dsp.id, &a.user.id)?;
+            let features = self.shown_features(&dsp.id, tester)?;
+            if tester {
+                let beta = self.beta_permissions(&dsp.id, &features)?;
+                grant.permissions = crate::tenancy::roles::with(&grant.permissions, &beta);
+            }
+            features
         };
         let c = Context {
             auth: a.clone(),

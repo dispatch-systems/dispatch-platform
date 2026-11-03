@@ -14,7 +14,7 @@ use crate::{
     ensure, job_statuses,
     manifest::{self, registry},
     platform_owner::api::types::{
-        DspFeatureReport, DspFeatures, DspHidden, FeatureChange, FeatureState,
+        DspFeatureReport, DspFeatures, DspVisibility, FeatureChange, FeatureState, Visibility,
     },
     tenancy::api::types::DspStatus,
 };
@@ -258,10 +258,18 @@ impl FromRow for FeatureState {
         Ok(Self {
             feature: row.get("feature")?,
             enabled: row.get("enabled")?,
-            shown: row.get("shown")?,
+            visibility: visibility(row.get("shown")?, row.get("beta")?),
             changed_at: row.get("changed_at")?,
             changed_by: row.get("changed_by")?,
         })
+    }
+}
+/// A feature's visibility as `dsp_features` stores it: one in beta is stored hidden as well.
+fn visibility(shown: bool, beta: bool) -> Visibility {
+    match (shown, beta) {
+        (true, _) => Visibility::Shown,
+        (false, true) => Visibility::Beta,
+        (false, false) => Visibility::Hidden,
     }
 }
 impl Store {
@@ -270,62 +278,127 @@ impl Store {
     pub fn features(&self, dsp: &str) -> Result<Vec<String>> {
         Ok(effective(&self.switches(dsp)?))
     }
-    /// What the DSP's members see of its features: what it has, less what the platform owner
-    /// hides from them, a hidden page's parts with it. A hidden feature keeps running.
-    pub fn shown_features(&self, dsp: &str) -> Result<Vec<String>> {
-        let hidden = self.hidden_features(dsp)?;
-        let shown = |id: &str| !hidden.iter().any(|h| h == id);
+    /// What one of the DSP's people sees of its features: what it has, less what the platform
+    /// owner hides from its members and, unless they are one of its beta testers, what is in
+    /// beta there; a page's parts go with it. Either keeps running.
+    pub fn shown_features(&self, dsp: &str, tester: bool) -> Result<Vec<String>> {
+        let unshown = self.unshown_features(dsp)?;
+        let seen = |id: &str| match unshown.iter().find(|(u, _)| u == id) {
+            None => true,
+            Some((_, visibility)) => tester && *visibility == Visibility::Beta,
+        };
         Ok(self
             .features(dsp)?
             .into_iter()
             .filter(|id| {
-                shown(id)
+                seen(id)
                     && match find(id).map(|f| f.kind) {
-                        Some(Kind::Sub(page)) => shown(page),
+                        Some(Kind::Sub(page)) => seen(page),
                         _ => true,
                     }
             })
             .collect())
     }
-    /// The optional features and parts the platform owner hides from the DSP's members, in
-    /// catalog order.
-    fn hidden_features(&self, dsp: &str) -> Result<Vec<String>> {
-        let rows: Vec<(String,)> = self.platform.query_as(
-            "SELECT feature FROM dsp_features WHERE dsp_id=? AND shown=0",
+    /// What a beta tester holds besides their role's: every permission of what they see that
+    /// is in beta, a page's parts' with the page's, and what each of those includes.
+    pub fn beta_permissions(&self, dsp: &str, seen: &[String]) -> Result<Vec<String>> {
+        let beta: Vec<String> = self
+            .unshown_features(dsp)?
+            .into_iter()
+            .filter(|(_, visibility)| *visibility == Visibility::Beta)
+            .map(|(id, _)| id)
+            .collect();
+        let in_beta = |id: &str| beta.iter().any(|b| b == id);
+        let held: Vec<String> = seen
+            .iter()
+            .filter_map(|id| find(id))
+            .filter(|f| {
+                in_beta(f.id)
+                    || match f.kind {
+                        Kind::Sub(page) => in_beta(page),
+                        _ => false,
+                    }
+            })
+            .flat_map(|f| f.permissions.iter().map(|p| (*p).to_owned()))
+            .collect();
+        Ok(super::roles::granting(&held))
+    }
+    /// The optional features and parts the DSP's members don't all see, each hidden from them
+    /// or in beta there, in catalog order.
+    fn unshown_features(&self, dsp: &str) -> Result<Vec<(String, Visibility)>> {
+        let rows: Vec<(String, bool)> = self.platform.query_as(
+            "SELECT feature,beta FROM dsp_features WHERE dsp_id=? AND shown=0",
             [dsp],
         )?;
         Ok(catalog()
             .iter()
             .filter(|f| !f.mandatory && f.kind != Kind::Connection)
-            .filter(|f| rows.iter().any(|(id,)| id == f.id))
-            .map(|f| f.id.to_owned())
+            .filter_map(|f| {
+                rows.iter()
+                    .find(|(id, _)| id == f.id)
+                    .map(|(_, beta)| (f.id.to_owned(), visibility(false, *beta)))
+            })
             .collect())
     }
-    /// Hides an optional feature or part from the DSP's members, or shows it to them again.
-    /// Whatever it runs keeps running, and whether it is on stays as it is; the platform
-    /// owner's own view still sees it. Audited; open views expire.
-    pub fn show_feature(&self, dsp: &str, id: &str, shown: bool, actor: &str) -> Result<DspHidden> {
+    /// What the DSP's members don't all see, by who sees it.
+    fn dsp_visibility(&self, dsp: &str) -> Result<DspVisibility> {
+        let unshown = self.unshown_features(dsp)?;
+        let those = |wanted: Visibility| {
+            unshown
+                .iter()
+                .filter(|(_, visibility)| *visibility == wanted)
+                .map(|(id, _)| id.clone())
+                .collect()
+        };
+        Ok(DspVisibility {
+            hidden: those(Visibility::Hidden),
+            beta: those(Visibility::Beta),
+        })
+    }
+    /// Shows an optional feature or part to the DSP's members, puts it in beta there for its
+    /// beta testers alone, or hides it from them all. Whatever it runs keeps running, and
+    /// whether it is on stays as it is; the platform owner's own view still sees it. Audited;
+    /// open views expire.
+    pub fn set_visibility(
+        &self,
+        dsp: &str,
+        id: &str,
+        visibility: Visibility,
+        actor: &str,
+    ) -> Result<DspVisibility> {
         let feature = find(id).ok_or_else(|| crate::Error::new("feature_not_found", 404))?;
         ensure(!feature.mandatory, "feature_mandatory", 409)?;
         ensure(feature.kind != Kind::Connection, "invalid_input", 400)?;
         self.platform.transaction(|| {
             self.find_dsp(dsp)?;
-            let was = !self.hidden_features(dsp)?.iter().any(|h| h == id);
-            if was != shown {
+            let was = self
+                .unshown_features(dsp)?
+                .into_iter()
+                .find(|(u, _)| u == id)
+                .map_or(Visibility::Shown, |(_, visibility)| visibility);
+            if was != visibility {
                 let on = self.switches(dsp)?.iter().any(|e| e == id);
                 self.platform.exec(
-                    "INSERT INTO dsp_features(dsp_id,feature,enabled,shown,changed_by,changed_at) \
-                     VALUES (?1,?2,?3,?4,?5,?6) ON CONFLICT(dsp_id,feature) DO UPDATE SET \
-                     shown=?4,changed_by=?5,changed_at=?6",
-                    params![dsp, id, on, shown, actor, iso()],
+                    "INSERT INTO dsp_features(dsp_id,feature,enabled,shown,beta,changed_by,changed_at) \
+                     VALUES (?1,?2,?3,?4,?5,?6,?7) ON CONFLICT(dsp_id,feature) DO UPDATE SET \
+                     shown=?4,beta=?5,changed_by=?6,changed_at=?7",
+                    params![
+                        dsp,
+                        id,
+                        on,
+                        visibility == Visibility::Shown,
+                        visibility == Visibility::Beta,
+                        actor,
+                        iso()
+                    ],
                 )?;
                 self.audit_with(
                     Some(actor),
                     Some(dsp),
-                    if shown {
-                        "dsp.feature_shown"
-                    } else {
-                        "dsp.feature_hidden"
+                    match visibility {
+                        Visibility::Shown => "dsp.feature_shown",
+                        Visibility::Beta => "dsp.feature_beta",
+                        Visibility::Hidden => "dsp.feature_hidden",
                     },
                     id,
                     Some(&feature.name()),
@@ -335,9 +408,7 @@ impl Store {
                 self.platform
                     .exec("UPDATE dsps SET revision=revision+1 WHERE id=?", [dsp])?;
             }
-            Ok(DspHidden {
-                hidden: self.hidden_features(dsp)?,
-            })
+            self.dsp_visibility(dsp)
         })
     }
     /// Every feature switched on, in catalog order: the mandatory ones whatever is stored. A
@@ -426,7 +497,7 @@ impl Store {
     pub fn feature_report(&self, dsp: &str) -> Result<DspFeatureReport> {
         let row = self.find_dsp(dsp)?;
         let stored: Vec<FeatureState> = self.platform.query_as(
-            "SELECT f.feature,f.enabled,f.shown,f.changed_at,u.first_name||' '||u.last_name changed_by \
+            "SELECT f.feature,f.enabled,f.shown,f.beta,f.changed_at,u.first_name||' '||u.last_name changed_by \
              FROM dsp_features f LEFT JOIN users u ON u.id=f.changed_by WHERE f.dsp_id=?",
             [dsp],
         )?;
@@ -439,13 +510,17 @@ impl Store {
                     .cloned()
                     .map(|state| FeatureState {
                         enabled: state.enabled || f.mandatory,
-                        shown: state.shown || f.mandatory || f.kind == Kind::Connection,
+                        visibility: if f.mandatory || f.kind == Kind::Connection {
+                            Visibility::Shown
+                        } else {
+                            state.visibility
+                        },
                         ..state
                     })
                     .unwrap_or(FeatureState {
                         feature: f.id.to_owned(),
                         enabled: f.default,
-                        shown: true,
+                        visibility: Visibility::Shown,
                         changed_at: None,
                         changed_by: None,
                     })

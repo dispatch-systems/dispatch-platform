@@ -1,11 +1,13 @@
 import { api, useCachedData, useData } from '../../shell/frontend/runtime/api.js';
 import type {
   AuditPage,
+  DspBetaTesters,
   DspFeatureReport,
   DspFeatures,
-  DspHidden,
+  DspVisibility,
   MailMessage,
   PlatformHealth,
+  Visibility,
 } from './index.js';
 import type { DspProfile, DspSummary } from '../../accounts/api/index.js';
 import type { Feature } from '../../tenancy/api/index.js';
@@ -22,9 +24,17 @@ export const useDspFeatures = (dspId: string) =>
 /** Switches one feature and whatever depends on it; the answer lists every switch. */
 export const setDspFeature = (dspId: string, feature: Feature, enabled: boolean) =>
   api<DspFeatures>(dspFeatures(dspId), { feature, enabled });
-/** Hides a feature from the DSP's members, or shows it again; it keeps running either way. */
-export const showDspFeature = (dspId: string, feature: Feature, shown: boolean) =>
-  api<DspHidden>(`${dspFeatures(dspId)}/shown`, { feature, shown });
+/** Shows a feature to the DSP's members, puts it in beta there, or hides it from them; it keeps
+ * running either way. */
+export const setDspVisibility = (dspId: string, feature: Feature, visibility: Visibility) =>
+  api<DspVisibility>(`${dspFeatures(dspId)}/visibility`, { feature, visibility });
+const betaTesters = (dspId: string) => `/api/platform/dsps/${dspId}/beta-testers`;
+/** The DSP's people, its beta testers among them. */
+export const useDspBetaTesters = (dspId: string) => useData<DspBetaTesters>(betaTesters(dspId));
+export const addBetaTesters = (dspId: string, users: string[]) =>
+  api<DspBetaTesters>(betaTesters(dspId), { users });
+export const removeBetaTester = (dspId: string, user: string) =>
+  api<DspBetaTesters>(`${betaTesters(dspId)}/${user}/remove`, {});
 /** Hides the AI Support button from the DSP's members, or shows it to them again. */
 export const showDspAiSupport = (dspId: string, shown: boolean) =>
   api<DspProfile>(`/api/platform/dsps/${dspId}/ai-support`, { shown });
