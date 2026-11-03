@@ -32,7 +32,12 @@ more: boolean,
  * Whether older answered numbers' conversations are left to read, with
  * `conversations?kind=number&before=`.
  */
-moreTexts: boolean, workspaces: Array<CommunicationsWorkspace>,
+moreTexts: boolean,
+/**
+ * Whether older answered work conversations are left to read, with
+ * `conversations?kind=work&before=`.
+ */
+moreWork: boolean, workspaces: Array<CommunicationsWorkspace>,
 /**
  * Whether Messaging is offered: always, empty until a phone is paired and texted.
  */

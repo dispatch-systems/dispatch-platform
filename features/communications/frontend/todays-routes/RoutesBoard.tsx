@@ -4,7 +4,7 @@ import { clock, listTime, preview } from '../shared/format.js';
 import { rowKey, waits, type RouteGroup, type RouteRow } from './todays-routes.js';
 import { Face, SenderFace } from '../shared/Face.js';
 import { PartyFace } from '../conversations/party.js';
-import { headingText, RoutesState, type RoutesRead } from './headings.js';
+import { groupHeading, RoutesState, type RoutesRead } from './headings.js';
 import { PaceMark, RouteCode, Stops, WorkPhone } from './RouteFacts.js';
 import { typingNote } from '../shared/format.js';
 import { Wait } from '../shared/Wait.js';
@@ -53,11 +53,13 @@ export function RoutesBoard({
             <tbody>
               {groups.map((group) => (
                 <Fragment key={group.key}>
-                  <tr className="board-group">
-                    <th colSpan={9} scope="colgroup">
-                      {headingText(group.heading, timeZone)} · {group.rows.length}
-                    </th>
-                  </tr>
+                  {groupHeading(group) && (
+                    <tr className="board-group">
+                      <th colSpan={9} scope="colgroup">
+                        {groupHeading(group)} · {group.rows.length}
+                      </th>
+                    </tr>
+                  )}
                   {group.rows.map((row) => (
                     <BoardRow
                       key={rowKey(row)}

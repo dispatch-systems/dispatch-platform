@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import type { Conversation, Writing } from '../../api/index.js';
 import { listTime, preview, typingNote } from '../shared/format.js';
-import { SenderFace } from '../shared/Face.js';
 import { PartyFace } from '../conversations/party.js';
 import { ListRow } from '../shared/ListRow.js';
 import { Name } from '../shared/Name.js';
@@ -10,8 +9,9 @@ import type { Listing } from './listing.js';
 import './conversation-row.css';
 
 /**
- * A conversation in the list: who it's with, when they last wrote, and what was written last, or
- * who at the DSP is writing in it; while it waits, how long it has, and Done.
+ * A conversation in the list: who it's with, their face marked with where it is while `channel`,
+ * when they last wrote, and what was written last, under the first name of whoever at the DSP
+ * wrote it, or who at the DSP is writing in it; while it waits, how long it has, and Done.
  */
 export function ConversationRow({
   conversation,
@@ -21,9 +21,12 @@ export function ConversationRow({
   now,
   select,
   done,
+  channel,
   below,
 }: Pick<Listing, 'open' | 'typing' | 'timeZone' | 'now' | 'select' | 'done'> & {
   conversation: Conversation;
+  /** Whether its face says where it is, as in a list of every section's. */
+  channel?: boolean;
   /** What else the row shows, under what was written last. */
   below?: ReactNode;
 }) {
@@ -33,7 +36,7 @@ export function ConversationRow({
     <ListRow
       selected={open === conversation.id}
       waits={waits}
-      face={<PartyFace conversation={conversation} size="list" />}
+      face={<PartyFace conversation={conversation} size="list" channel={channel} />}
       name={<Name name={person.name} matched={conversation.matched} />}
       time={conversation.lastAt !== null && listTime(conversation.lastAt, timeZone, now)}
       wait={
@@ -47,8 +50,8 @@ export function ConversationRow({
     />
   );
 }
-/** What was written last in a conversation, under who at the DSP wrote it, or who is writing in it
- * now. */
+/** What was written last in a conversation, under the first name of whoever at the DSP wrote it,
+ * or who is writing in it now. */
 function LastWritten({
   conversation,
   typing,
@@ -59,10 +62,11 @@ function LastWritten({
   const writing = typing.filter((writer) => writer.conversationId === conversation.id);
   if (writing.length) return <span className="preview typing-note">{typingNote(writing)}</span>;
   const { last } = conversation;
+  const writer = last?.sender?.name.split(' ')[0];
   return (
-    <>
-      {last?.sender && <SenderFace sender={last.sender} size="sender" />}
-      <span className="preview">{last ? preview(last) : ''}</span>
-    </>
+    <span className="preview">
+      {writer && <span className="preview-writer">{writer}: </span>}
+      {last ? preview(last) : ''}
+    </span>
   );
 }

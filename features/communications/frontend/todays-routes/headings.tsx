@@ -2,26 +2,15 @@ import type { ReactNode } from 'react';
 import { Route } from 'lucide-react';
 import type { TodaysRoutes } from '../../api/index.js';
 import { DataState } from '../../../../core/shell/frontend/ui/index.js';
-import { clock } from '../shared/format.js';
-import type { RouteHeading } from './todays-routes.js';
+import type { RouteGroup } from './todays-routes.js';
 import './headings.css';
 
 // How Today's Routes names its groups, in the list and on the board, and what it shows as its read
 // stands: loading, paused or offline, why it failed, or nobody on it.
 
-/** What a group of rows is called: Waiting, its wave by when it starts, No wave, or No driver. */
-export function headingText(heading: RouteHeading, timeZone: string) {
-  switch (heading.kind) {
-    case 'waiting':
-      return 'Waiting';
-    case 'wave':
-      return clock(heading.at, timeZone);
-    case 'no_wave':
-      return 'No wave';
-    case 'no_driver':
-      return 'No driver';
-  }
-}
+/** What a group of rows is called: the drivers nothing, the work phones nobody held No driver. */
+export const groupHeading = (group: RouteGroup) =>
+  group.key === 'no_driver' ? 'No driver' : undefined;
 
 /** Today's Routes with nobody on it. */
 export function NoRoutes() {

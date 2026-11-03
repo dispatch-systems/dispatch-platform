@@ -68,6 +68,9 @@
 .convo.waits .line1 strong {
   font-weight: 650;
 }
+.convo .preview-writer {
+  font-weight: 550;
+}
 .convo.waits .preview {
   color: var(--foreground);
 }
@@ -120,7 +123,10 @@
 }
 
 /* As the member chose in Message display: no photos in the list. */
-.communications[data-hide~='list-photos'] .pane-list .convo-open > :is(.face, .group-faces) {
+.communications[data-hide~='list-photos']
+  .pane-list
+  .convo-open
+  > :is(.face, .face-channel, .group-faces) {
   display: none;
 }
 /* The list's rows closer together, and each one's last message on no line or two. */

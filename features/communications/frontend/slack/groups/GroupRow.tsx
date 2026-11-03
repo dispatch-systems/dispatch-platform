@@ -1,5 +1,6 @@
 import { Users } from 'lucide-react';
 import type { Group } from '../../../api/index.js';
+import { ChannelMarked } from '../../conversations/party.js';
 import type { Listing } from '../../inbox/listing.js';
 import { listTime, preview } from '../../shared/format.js';
 import { ListRow } from '../../shared/ListRow.js';
@@ -9,8 +10,8 @@ import { GroupFaces } from './GroupFaces.js';
 import './group-row.css';
 
 /**
- * A group in the list: two of its people, its name and how many it went to, when it was last
- * written in, and what was, with its writer's first name. While anything under it waits, how
+ * A group in the list: two of its people, marked as Slack's while `channel`, its name and how many
+ * it went to, when it was last written in, and what was, with its writer's first name. While anything under it waits, how
  * long the longest has, and a check that marks all of it done.
  */
 export function GroupRow({
@@ -20,7 +21,12 @@ export function GroupRow({
   now,
   openGroup,
   doneGroup,
-}: Listing & { group: Group }) {
+  channel = false,
+}: Listing & {
+  group: Group;
+  /** Whether its faces say where it is, as in a list of every section's. */
+  channel?: boolean;
+}) {
   const waits = group.state === 'waiting';
   const last = group.last;
   const writer = last?.sender?.name ?? last?.from?.name ?? '';
@@ -29,7 +35,15 @@ export function GroupRow({
       className="group"
       selected={open === group.id}
       waits={waits}
-      face={<GroupFaces faces={group.faces} size="list" />}
+      face={
+        channel ? (
+          <ChannelMarked kind="slack">
+            <GroupFaces faces={group.faces} size="list" />
+          </ChannelMarked>
+        ) : (
+          <GroupFaces faces={group.faces} size="list" />
+        )
+      }
       name={
         <>
           {group.name}

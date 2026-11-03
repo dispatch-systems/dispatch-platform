@@ -28,6 +28,9 @@ pub struct Communications {
     /// Whether older answered numbers' conversations are left to read, with
     /// `conversations?kind=number&before=`.
     pub more_texts: bool,
+    /// Whether older answered work conversations are left to read, with
+    /// `conversations?kind=work&before=`.
+    pub more_work: bool,
     pub workspaces: Vec<CommunicationsWorkspace>,
     /// Whether Messaging is offered: always, empty until a phone is paired and texted.
     pub texting: bool,

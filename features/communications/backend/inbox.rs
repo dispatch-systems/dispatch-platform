@@ -46,7 +46,8 @@ pub fn overview(
             .iter()
             .any(|(section, listed)| section.id == of.id && listed.more)
     };
-    let (more_slack, more_texts) = (more(&SLACK), more(&MESSAGING));
+    let (more_slack, more_texts, more_work) =
+        (more(&SLACK), more(&MESSAGING), more(&TODAYS_ROUTES));
     let (texting, routes) = (has(&MESSAGING), has(&TODAYS_ROUTES));
     let mut waiting = Vec::new();
     let (mut answered, mut listed_groups) = (Vec::new(), Vec::new());
@@ -62,6 +63,7 @@ pub fn overview(
         groups: listed_groups,
         more: more_slack,
         more_texts,
+        more_work,
         workspaces: conversations::workspaces(db, dsp)?,
         texting,
         routes,

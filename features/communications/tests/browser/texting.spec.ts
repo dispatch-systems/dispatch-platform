@@ -11,22 +11,22 @@ const PIXEL = Buffer.from(
   'base64',
 );
 
-test('with its phone and no Slack, Communications opens on Messaging, where its texts wait, beside Today’s Routes, with no routes before live route data reads today: a number saved as a contact, asked before a name is left unsaved, answered by text with a picture, blocked into Contacts and unblocked', async ({
+test('with its phone and no Slack, Communications opens on Recents, where its texts wait, beside Today’s Routes, with no routes before live route data reads today: a number saved as a contact, asked before a name is left unsaved, answered by text with a picture, blocked into Contacts and unblocked', async ({
   page,
 }) => {
   await login(page);
   await openDsp(page, 'Northline Logistics');
   await page.getByRole('link', { name: 'Communications' }).click();
-  // It opens on the first section with conversations: Messaging, past Today's Routes.
+  // It opens on Recents, the first section, which lists the texts.
   const sections = page.getByRole('tablist', { name: 'Sections' });
-  const messaging = sections.getByRole('tab', { name: /Messaging/ });
-  await expect(messaging).toHaveAttribute('aria-selected', 'true');
+  const recents = sections.getByRole('tab', { name: /Recents/ });
+  await expect(recents).toHaveAttribute('aria-selected', 'true');
   await sections.getByRole('tab', { name: "Today's Routes" }).click();
   await expect(page.getByText('No routes', { exact: true })).toBeVisible();
   // Nothing of Slack.
   await expect(sections.getByRole('tab', { name: /Slack/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Connect Slack' })).toHaveCount(0);
-  await messaging.click();
+  await recents.click();
   const list = page.getByRole('region', { name: 'Conversations' });
   const stranger = list.getByRole('listitem').filter({ hasText: '(425) 555-0199' });
   await expect(stranger).toContainText('Hi is this dispatch? I start Monday');
@@ -106,7 +106,7 @@ test('Today’s Routes reads before it says No routes, a read that fails says so
     await route.continue();
   });
   await page.getByRole('link', { name: 'Communications' }).click();
-  // It opens on Messaging, where the DSP's texts wait; Today's Routes reads as it shows.
+  // It opens on Recents, where the DSP's texts wait, which reads Today's Routes as it shows.
   const sections = page.getByRole('tablist', { name: 'Sections' });
   await sections.getByRole('tab', { name: "Today's Routes" }).click();
   const list = page.getByRole('region', { name: 'Conversations' });
@@ -115,21 +115,28 @@ test('Today’s Routes reads before it says No routes, a read that fails says so
   release();
   await expect(page.getByText('No routes', { exact: true })).toBeVisible();
 
-  // Read again, as it is each time it shows, it fails: Today's Routes says so, Messaging doesn't.
+  // Read again, as the page comes back into view, it fails: Today's Routes says so, Recents
+  // doesn't.
   await page.unroute('**/api/dsp/communications/routes');
   await page.route('**/api/dsp/communications/routes', (route) =>
     route.fulfill({ status: 500, json: { error: 'internal', message: 'Something went wrong.' } }),
   );
-  await sections.getByRole('tab', { name: /Messaging/ }).click();
-  await sections.getByRole('tab', { name: "Today's Routes" }).click();
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
   await expect(list.getByRole('alert')).toHaveText('Something went wrong.');
-  await sections.getByRole('tab', { name: /Messaging/ }).click();
+  await sections.getByRole('tab', { name: /Recents/ }).click();
   await expect(list).toContainText('(425) 555-0199');
   await expect(page.getByRole('alert')).toHaveCount(0);
 
-  // Opened again on Messaging, as chosen, then offline before Today's Routes was ever read: it says
-  // it'll read on reconnecting, never No routes, and reads once back online.
+  // Opened again on Recents, as chosen, then offline while Today's Routes' first read is on its
+  // way: it says it'll read on reconnecting, never No routes, and shows the day once that read
+  // answers back online.
   await page.unroute('**/api/dsp/communications/routes');
+  let answer!: () => void;
+  const answered = new Promise<void>((resolve) => (answer = resolve));
+  await page.route('**/api/dsp/communications/routes', async (route) => {
+    await answered;
+    await route.continue();
+  });
   await page.reload();
   await expect(list).toContainText('(425) 555-0199');
   await page.context().setOffline(true);
@@ -137,10 +144,11 @@ test('Today’s Routes reads before it says No routes, a read that fails says so
   await expect(list.getByRole('status')).toContainText('offline');
   await expect(page.getByText('No routes', { exact: true })).toHaveCount(0);
   await page.context().setOffline(false);
+  answer();
   await expect(page.getByText('No routes', { exact: true })).toBeVisible();
 });
 
-test('with Slack too, the sections switch, each with how many wait, stay as chosen, and a link opens its section, the board chosen or not', async ({
+test('with Slack too, the sections switch, each with how many wait, stay as chosen, and a link opens its section unless Recents shows and lists it, the board chosen or not', async ({
   page,
   dispatch,
 }) => {
@@ -168,20 +176,22 @@ test('with Slack too, the sections switch, each with how many wait, stay as chos
   await openDsp(page, 'Northline Logistics');
   await page.getByRole('link', { name: 'Communications' }).click();
   const sections = page.getByRole('tablist', { name: 'Sections' });
-  const messaging = sections.getByRole('tab', { name: /Messaging/ });
+  const recents = sections.getByRole('tab', { name: /Recents/ });
   const slack = sections.getByRole('tab', { name: /Slack/ });
-  await expect(messaging).toHaveText('Messaging3');
+  // Recents counts everyone waiting: the texts and Slack's.
+  await expect(recents).toHaveText('Recents4');
   await expect(slack).toHaveText('Slack1');
   const list = page.getByRole('region', { name: 'Conversations' });
-  await messaging.click();
+  await recents.click();
   await expect(list).toContainText('(425) 555-0199');
+  await expect(list.getByRole('listitem').filter({ hasText: 'Jordan Ellis' })).toBeVisible();
   await slack.click();
   await expect(list.getByRole('listitem').filter({ hasText: 'Jordan Ellis' })).toBeVisible();
   await expect(list).not.toContainText('(425) 555-0199');
   await page.reload();
   await expect(slack).toHaveAttribute('aria-selected', 'true');
 
-  // A link to a text, as a new one's notification is, opens it in Messaging.
+  // A link to a text, as a new one's notification is, opens it in Recents.
   const { conversations } = await owner.read('/api/dsp/communications');
   const text = (conversations as { id: string; number: string | null }[]).find(
     (each) => each.number === '+14255550199',
@@ -189,7 +199,7 @@ test('with Slack too, the sections switch, each with how many wait, stay as chos
   const toText = `/#dsp/${north.id}/communications?open=${text.id}`;
   await page.goto(toText);
   await expect(page.getByRole('region', { name: '(425) 555-0199' })).toBeVisible();
-  await expect(messaging).toHaveAttribute('aria-selected', 'true');
+  await expect(recents).toHaveAttribute('aria-selected', 'true');
 
   // With the board chosen in Today's Routes (Routes, beside two others), a link to one the list
   // doesn't show, as a conversation just started, still opens it, in its section.
@@ -202,9 +212,10 @@ test('with Slack too, the sections switch, each with how many wait, stay as chos
   expect(started.status, started.body).toBe(200);
   await page.goto(`/#dsp/${north.id}/communications?open=${started.value.id}`);
   await expect(page.getByRole('region', { name: '(206) 555-0123' })).toBeVisible();
-  await expect(messaging).toHaveAttribute('aria-selected', 'true');
+  await expect(recents).toHaveAttribute('aria-selected', 'true');
 
-  // A link to a group opens it in Slack, and one to the text again, Messaging.
+  // From Today's Routes, which lists no group, a link to a group opens it in Slack, and one to the
+  // text again, Recents; from Recents, which lists groups too, a link to the group stays there.
   const group = await owner.post('/api/dsp/communications/groups', {
     name: 'Morning wave',
     people: [{ teamId: 'T0FIXTURE1', userId: 'U0FIXJORDAN' }],
@@ -212,12 +223,17 @@ test('with Slack too, the sections switch, each with how many wait, stay as chos
     photos: [],
   });
   expect(group.status, group.body).toBe(201);
-  await page.goto(`/#dsp/${north.id}/communications?group=${group.value.id}`);
+  const toGroup = `/#dsp/${north.id}/communications?group=${group.value.id}`;
+  await sections.getByRole('tab', { name: /Routes/ }).click();
+  await page.goto(toGroup);
   await expect(page.getByRole('region', { name: 'Morning wave' })).toBeVisible();
   await expect(slack).toHaveAttribute('aria-selected', 'true');
   await page.goto(toText);
   await expect(page.getByRole('region', { name: '(425) 555-0199' })).toBeVisible();
-  await expect(messaging).toHaveAttribute('aria-selected', 'true');
+  await expect(recents).toHaveAttribute('aria-selected', 'true');
+  await page.goto(toGroup);
+  await expect(page.getByRole('region', { name: 'Morning wave' })).toBeVisible();
+  await expect(recents).toHaveAttribute('aria-selected', 'true');
 });
 
 test('the section switch keeps its three tabs on one line, each whole, whichever of Settings and Communications opens first', async ({
@@ -260,7 +276,7 @@ test('the section switch keeps its three tabs on one line, each whole, whichever
   await inLine();
 });
 
-test('with Slack needing an update, Messaging still works, and Update Slack covers Slack alone until closed', async ({
+test('with Slack needing an update, Recents still works, and Update Slack covers Slack alone until closed', async ({
   page,
   dispatch,
 }) => {
@@ -282,7 +298,7 @@ test('with Slack needing an update, Messaging still works, and Update Slack cove
   await page.getByRole('link', { name: 'Communications' }).click();
   const update = page.getByRole('dialog', { name: 'Update Slack' });
   const sections = page.getByRole('tablist', { name: 'Sections' });
-  await sections.getByRole('tab', { name: /Messaging/ }).click();
+  await sections.getByRole('tab', { name: /Recents/ }).click();
   const stranger = page
     .getByRole('region', { name: 'Conversations' })
     .getByRole('listitem')
@@ -292,12 +308,12 @@ test('with Slack needing an update, Messaging still works, and Update Slack cove
   await stranger.getByRole('button').first().click();
   await expect(page.getByRole('region', { name: '(425) 555-0199' })).toBeVisible();
 
-  // Slack waits on the update; closed, Messaging shows again.
+  // Slack waits on the update; closed, Recents shows again.
   await sections.getByRole('tab', { name: /Slack/ }).click();
   await expect(update.getByRole('listitem')).toHaveText(/Operations/);
   await update.getByRole('button', { name: 'Close dialog' }).click();
   await expect(update).toHaveCount(0);
-  await expect(sections.getByRole('tab', { name: /Messaging/ })).toHaveAttribute(
+  await expect(sections.getByRole('tab', { name: /Recents/ })).toHaveAttribute(
     'aria-selected',
     'true',
   );

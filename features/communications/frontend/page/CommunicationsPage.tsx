@@ -21,6 +21,7 @@ import { dockAt, pageLook, Shown, useDisplay } from '../display/display.js';
 import { rows, waitingIn, type Row } from '../inbox/inbox.js';
 import {
   groupsSection,
+  lists,
   openingSection,
   sectionNamed,
   sectionOf,
@@ -47,13 +48,13 @@ import { useRemembered } from './useRemembered.js';
 import { useTodaysRoutes } from '../todays-routes/useTodaysRoutes.js';
 import { ViewToggle, type RoutesView } from '../todays-routes/ViewToggle.js';
 
-// The Communications page: the DSP's conversations, in sections: Today's Routes, the drivers on a
-// route today and their work phones, while it has live route data; Messaging, the numbers that
-// text its phones, always, empty until a phone is paired and texted; and Slack, with the members
-// of its Slack workspaces, and the groups it messaged, while it has one. In each, those waiting on
-// an answer first, or everyone it can message, in Slack of every workspace or one; and the
-// conversation or group open beside them, or a message to a group being written, all kept up to
-// date as they change; or Today's Routes as a board across the page. A chip in the heading for
+// The Communications page: the DSP's conversations, in sections: Recents, every section's, the
+// latest written in first, and the numbers that text its phones, always; Today's Routes, the
+// drivers on a route today and their work phones, while it has live route data; and Slack, with
+// the members of its Slack workspaces, and the groups it messaged, while it has one. In each but
+// Recents, those waiting on an answer first, or everyone it can message, in Slack of every
+// workspace or one; and the conversation or group open beside them, or a message to a group being
+// written, all kept up to date as they change; or Today's Routes as a board across the page. A chip in the heading for
 // each of its phones offline. Those who manage the DSP's connections connect Slack here while it
 // has neither a workspace nor a phone, and, while Slack shows, update it while a workspace hasn't
 // approved what Communications uses.
@@ -93,7 +94,12 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const [chosen, choose] = useRemembered('workspace', view.dsp.id, user);
   const [chosenSection, chooseSection] = useRemembered('section', view.dsp.id, user);
   const [chosenView, chooseView] = useRemembered('routes-view', view.dsp.id, user);
-  const { inbox, team, changed, error, refresh, show, showGroup, readOlder } = useInbox(chosen);
+  // Of the workspace chosen while a section of workspaces is chosen, as Slack is; else of every one,
+  // as Recents lists them.
+  const ofWorkspace = SECTIONS.some((each) => each.id === chosenSection && each.workspaces);
+  const { inbox, team, changed, error, refresh, show, showGroup, readOlder } = useInbox(
+    ofWorkspace ? chosen : undefined,
+  );
   // The sections the DSP has, the one chosen shown, else the one the page opened on; with none,
   // Slack's, empty until it's connected.
   const texting = Boolean(inbox?.texting);
@@ -112,7 +118,12 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
     'slack';
   const model = sectionNamed(section);
   const shows = VIEWS[section];
-  const todays = useTodaysRoutes(section === 'routes', changed, inbox);
+  // Read while Today's Routes or Recents, which lists its conversations, shows.
+  const todays = useTodaysRoutes(
+    sections.includes('routes') && lists(section, 'routes'),
+    changed,
+    inbox,
+  );
   // Grouped again only as Today's Routes or the list answers anew, not as the page draws again.
   const todaysRoutes = todays.read?.value;
   const routeList = useMemo(
@@ -162,7 +173,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   };
   const working = inbox?.workspaces.filter((workspace) => workspace.on) ?? [];
   const listedTeam = model.workspaces ? team : undefined;
-  const shownRows = inbox ? rows(inbox, section, listedTeam) : [];
+  const shownRows = inbox ? rows(inbox, section, listedTeam, shows.read?.(routeList)) : [];
   // Today's Routes as a board across the page, as the member chose, but one pane at a time, and
   // while nothing is open: what opens, from a row, a link or a chip, shows in the list, and the
   // board comes back once nothing is.
@@ -238,21 +249,22 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
       (currentGroup && !currentGroup.teamIds.includes(team ?? ''));
     if (team && elsewhere && !drafting) closed();
   };
-  // Choosing a section leaves what's open in another, for the first of the one chosen.
+  // Choosing a section leaves what's open that it doesn't list, for the first of the one chosen.
   const showSection = (next: Section) => {
     chooseSection(next);
-    const elsewhere = current ? sectionOf(current) !== next : next !== groupsSection;
+    const elsewhere = !lists(next, current ? sectionOf(current) : groupsSection);
     if (elsewhere && (current || currentGroup || drafting)) closed();
   };
-  // What opens shows its section, once as it opens, as by a link: a group Slack's, a conversation
-  // its own. What was open last is forgotten once nothing is, so it shows its section again.
+  // What opens shows its section, once as it opens, as by a link, unless the one shown lists it
+  // too, as Recents does: a group Slack's, a conversation its own. What was open last is forgotten
+  // once nothing is, so it shows its section again.
   const placed = useRef<string>(undefined);
   const shown = currentGroup ?? current;
   const shownIn = currentGroup ? groupsSection : current && sectionOf(current);
   useEffect(() => {
     if (placed.current === shown?.id) return;
     placed.current = shown?.id;
-    if (shownIn && shownIn !== section && sections.includes(shownIn)) chooseSection(shownIn);
+    if (shownIn && !lists(section, shownIn) && sections.includes(shownIn)) chooseSection(shownIn);
   }, [shown, shownIn, section, sections, chooseSection]);
   // Today's Routes as the page reads it, which its list and its board show.
   const routes: RoutesShown = {

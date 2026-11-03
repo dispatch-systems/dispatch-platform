@@ -13,7 +13,7 @@ import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import { sectionNamed, type Section } from './sections.js';
 import {
   lastAnswered,
-  moreIn,
+  readsNext,
   shownWorkspace,
   updated,
   withConversation,
@@ -140,12 +140,14 @@ export function useInbox(chosen?: string) {
     [change],
   );
   const [reading, setReading] = useState(false);
-  /** Reads the answered conversations and groups of `section` older than the last listed. */
+  /** Reads the answered conversations and groups older than the last listed of the section that
+   * `shown`'s list reads next: its own, or in Recents the one it stops at. */
   const readOlder = useCallback(
-    async (section: Section) => {
+    async (shown: Section) => {
       const listed = current.current;
-      const last = listed && lastAnswered(listed, section);
-      if (!listed || !moreIn(listed, section) || !last || reading) return;
+      const section = listed && readsNext(listed, shown);
+      const last = section && lastAnswered(listed, section);
+      if (!listed || !section || !last || reading) return;
       setReading(true);
       try {
         const asked = scope.current;

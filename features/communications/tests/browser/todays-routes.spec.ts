@@ -1,3 +1,4 @@
+import type { Page } from '@playwright/test';
 import {
   test,
   expect,
@@ -113,6 +114,14 @@ async function reading(dispatch: Dispatch, hours: number) {
   };
 }
 
+/** Today's Routes shown, past Recents, which the page opens on. */
+async function routesShown(page: Page) {
+  await page
+    .getByRole('tablist', { name: 'Sections' })
+    .getByRole('tab', { name: /Routes/ })
+    .click();
+}
+
 test('Today’s Routes lists the day’s drivers on the board and in the list, and opens a driver’s conversation from each', async ({
   page,
   dispatch,
@@ -120,6 +129,7 @@ test('Today’s Routes lists the day’s drivers on the board and in the list, a
   const northline = await reading(dispatch, underWay());
   await login(page);
   await page.goto(northline.page);
+  await routesShown(page);
 
   // The board: each driver on their route and work phone.
   await page.getByRole('button', { name: 'Board' }).click();
@@ -168,6 +178,7 @@ test('a driver’s work conversation keeps what’s being written while they hol
   );
   await page.goto(northline.page);
   const routes = await during;
+  await routesShown(page);
   await page
     .getByRole('region', { name: 'Conversations' })
     .getByRole('button', { name: /Fixture Driver/ })
@@ -225,6 +236,7 @@ test('a driver’s progress stays as it was last read, though another driver’s
   const northline = await reading(dispatch, underWay());
   await login(page);
   await page.goto(northline.page);
+  await routesShown(page);
   const list = page.getByRole('region', { name: 'Conversations' });
   await list.getByRole('button', { name: /Fixture Driver/ }).click();
   const conversation = page.getByRole('region', { name: 'Fixture Driver' });

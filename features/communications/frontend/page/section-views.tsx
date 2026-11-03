@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Phone, Route } from 'lucide-react';
+import { History, Route } from 'lucide-react';
 import type {
   Communications,
   CommunicationsWorkspace,
@@ -12,16 +12,22 @@ import type { Section } from '../inbox/sections.js';
 import { ContactList } from '../slack/ContactList.js';
 import { TextContactList } from '../texting/TextContactList.js';
 import { RoutesBoard } from '../todays-routes/RoutesBoard.js';
+import { RouteLine } from '../todays-routes/RouteFacts.js';
 import { RoutesList } from '../todays-routes/RoutesList.js';
 import type { RoutesRead } from '../todays-routes/headings.js';
-import type { RouteGroup, RouteRow } from '../todays-routes/todays-routes.js';
+import {
+  routeConversations,
+  routesToday,
+  type RouteGroup,
+  type RouteRow,
+} from '../todays-routes/todays-routes.js';
 import { ViewToggle, type RoutesView } from '../todays-routes/ViewToggle.js';
 
 // How each of the list's sections shows, defined once, keyed by the IDs inbox/sections.ts defines
 // them by, so a section added there needs its view here: its label and icon on the switch; whom
-// it can reach, under Contacts; its own rows in place of Messages, and what shows beside Search;
-// and a board across the page, which the member can choose in place of the list. The page owns
-// which section shows, what's open and how the page is laid out.
+// it can reach, under Contacts, while it can; its own rows in place of Messages, and what shows
+// beside Search; and a board across the page, which the member can choose in place of the list.
+// The page owns which section shows, what's open and how the page is laid out.
 
 /** Today's Routes as the page reads it, in its groups, and how its read stands; choosing a row of
  * it; the driver whose conversation is open; and its view, while the board can show. */
@@ -65,10 +71,16 @@ export type BoardContext = Pick<ListContext, 'typing' | 'timeZone' | 'now' | 'ro
 type SectionView = {
   label: ReactNode;
   icon: ReactNode;
-  /** Whom it can reach, under Contacts beside Messages; none for a section without. */
-  contacts?: (context: ListContext) => ReactNode;
+  /** Whom it can reach, under Contacts beside Messages; none for a section without, or while it
+   * can reach nobody. */
+  contacts?: (context: ListContext) => ReactNode | undefined;
   /** Its own rows while nothing is searched, in place of Messages. */
   rows?: (context: ListContext) => ReactNode;
+  /** Conversations its Messages list that the page's list may not hold yet, as Today's Routes'
+   * read, in its groups, holds them. */
+  read?: (groups: readonly RouteGroup[]) => readonly Conversation[];
+  /** What a conversation's row in its Messages shows under what was written last. */
+  below?: (groups: readonly RouteGroup[]) => (conversation: Conversation) => ReactNode;
   /** The first conversation its own rows list, which opens beside the list. */
   first?: (groups: readonly RouteGroup[]) => Conversation | undefined;
   /** What shows beside Search. */
@@ -78,6 +90,32 @@ type SectionView = {
 };
 
 export const VIEWS: { [S in Section]: SectionView } = {
+  // Recents lists Today's Routes' conversations as its read holds them, each driver's under their
+  // route, and can text whom the DSP's phones can, while it has texting.
+  messaging: {
+    label: 'Recents',
+    icon: <History size={14} aria-hidden="true" />,
+    read: (groups) => routeConversations(groups),
+    below: (groups) => {
+      const today = routesToday(groups);
+      return (conversation) => {
+        const route = today.get(conversation.id);
+        return route && <RouteLine today={route} />;
+      };
+    },
+    contacts: ({ typed, inbox, current, timeZone, now, reach, show }) =>
+      inbox.texting ? (
+        <TextContactList
+          typed={typed}
+          revision={inbox.revision}
+          current={current}
+          timeZone={timeZone}
+          now={now}
+          reach={reach}
+          show={show}
+        />
+      ) : undefined,
+  },
   // On a phone, or with all three in a narrow list, Today's Routes goes by Routes.
   routes: {
     label: (
@@ -113,21 +151,6 @@ export const VIEWS: { [S in Section]: SectionView } = {
         timeZone={timeZone}
         now={now}
         choose={routes.choose}
-      />
-    ),
-  },
-  messaging: {
-    label: 'Messaging',
-    icon: <Phone size={14} aria-hidden="true" />,
-    contacts: ({ typed, inbox, current, timeZone, now, reach, show }) => (
-      <TextContactList
-        typed={typed}
-        revision={inbox.revision}
-        current={current}
-        timeZone={timeZone}
-        now={now}
-        reach={reach}
-        show={show}
       />
     ),
   },

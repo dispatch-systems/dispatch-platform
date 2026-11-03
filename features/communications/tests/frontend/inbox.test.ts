@@ -10,7 +10,14 @@ import type {
   GroupChoice,
   Reachable,
 } from '../../api/index.js';
-import { rows, shownWorkspace, updated, withOlder } from '../../frontend/inbox/inbox.js';
+import {
+  readsNext,
+  rows,
+  shownWorkspace,
+  updated,
+  waitingIn,
+  withOlder,
+} from '../../frontend/inbox/inbox.js';
 import type { Section } from '../../frontend/inbox/sections.js';
 import { elsewhereNow } from '../../frontend/conversations/elsewhere.js';
 import { groupName, recipients, type Pick } from '../../frontend/slack/groups/groups.js';
@@ -63,7 +70,7 @@ const texts = (id: string, at: number, since: number | null = null): Conversatio
 const ids = (inbox: Communications, section: Section = 'slack') =>
   rows(inbox, section).map((each) => each.row.id);
 
-test('each section’s list keeps the server’s order as it changes, with the phones and Today’s Routes as each update brings them, and leaves its older answered ones to be read in turn', () => {
+test('each section’s list keeps the server’s order as it changes, with the phones and Today’s Routes as each update brings them, and leaves its older answered ones to be read in turn; Recents lists every section’s, the latest written in first, down to where the first of them to stop stops', () => {
   const inbox: Communications = {
     revision: 1,
     waiting: 2,
@@ -77,6 +84,7 @@ test('each section’s list keeps the server’s order as it changes, with the p
     groups: [group('g1', 800)],
     more: true,
     moreTexts: true,
+    moreWork: false,
     workspaces: [],
     texting: true,
     routes: false,
@@ -113,6 +121,10 @@ test('each section’s list keeps the server’s order as it changes, with the p
   });
   assert.deepEqual(ids(next), ['e', 'g2', 'a', 'c', 'g1', 'b', 'd']);
   assert.deepEqual([next.revision, next.routes, next.phones], [2, true, [offline]]);
+  // Recents (Messaging's ID) stops at its own last text, written in after Slack's last: those
+  // waiting below it stay, Slack's answered ones go until its texts are read.
+  assert.deepEqual(ids(next, 'messaging'), ['c', 'g1', 'n0', 'a', 'g2', 'e']);
+  assert.equal(readsNext(next, 'messaging'), 'messaging');
   // Read in turn, older ones come after the last, each once, groups among them.
   const older = withOlder(
     next,
@@ -125,20 +137,37 @@ test('each section’s list keeps the server’s order as it changes, with the p
   );
   assert.deepEqual(ids(older), ['e', 'g2', 'a', 'c', 'g1', 'b', 'd', 'g0', 'f', 'h']);
   assert.equal(older.more, false);
-  // Messaging's go on from its own last answered, whatever Slack's has read.
+  // Texts go on from their own last answered, whatever Slack's has read; Recents counts
+  // everyone waiting, those under a group too.
   const texted = updated(older, {
     ...older,
     reset: false,
     conversations: [texts('n1', 950, 940), texts('n2', 20)],
     groups: [],
   });
-  assert.deepEqual(ids(texted, 'messaging'), ['n1', 'n0']);
+  assert.deepEqual(ids(texted, 'messaging'), ['c', 'n1', 'g1', 'n0', 'a', 'g2', 'e']);
+  assert.deepEqual(waitingIn(texted), { messaging: 4, routes: 0, slack: 3 });
   const read = withOlder(
     texted,
     { conversations: [texts('n2', 20)], groups: [], more: false },
     'messaging',
   );
-  assert.deepEqual(ids(read, 'messaging'), ['n1', 'n0', 'n2']);
+  assert.deepEqual(ids(read, 'messaging'), [
+    'c',
+    'n1',
+    'g1',
+    'n0',
+    'b',
+    'd',
+    'g0',
+    'a',
+    'f',
+    'g2',
+    'e',
+    'h',
+    'n2',
+  ]);
+  assert.equal(readsNext(read, 'messaging'), undefined);
   assert.deepEqual(ids(read), ids(older));
 });
 

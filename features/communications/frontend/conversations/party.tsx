@@ -1,5 +1,9 @@
-import type { Conversation } from '../../api/index.js';
+import type { ReactNode } from 'react';
+import { Phone, Route } from 'lucide-react';
+import type { Conversation, ConversationKind } from '../../api/index.js';
+import { SlackLogo } from '../../../slack/frontend/index.js';
 import { Face, PhoneFace, type Size } from '../shared/Face.js';
+import './party.css';
 
 /**
  * Whom a conversation is with, as the page shows them: a member of a workspace, a number, a
@@ -18,9 +22,25 @@ export function partyOf(conversation: Conversation): Party {
   }
 }
 
-/** Whom a conversation is with, as large as where they're shown: their face, or a phone for a
- * number no one is known by and a work phone nobody held. */
-export function PartyFace({ conversation, size }: { conversation: Conversation; size: Size }) {
+/** Where a conversation is, as its face is marked in Recents: Today's Routes, by text, or Slack. */
+const channels: Record<ConversationKind, ReactNode> = {
+  work: <Route aria-hidden="true" />,
+  number: <Phone aria-hidden="true" />,
+  slack: <SlackLogo size={10} />,
+};
+
+/** Whom a conversation is with, as large as where they're shown: their face, marked with where
+ * the conversation is while `channel`, or a phone for a number no one is known by and a work phone
+ * nobody held, which say so themselves. */
+export function PartyFace({
+  conversation,
+  size,
+  channel = false,
+}: {
+  conversation: Conversation;
+  size: Size;
+  channel?: boolean;
+}) {
   const { with: person } = conversation;
   switch (partyOf(conversation)) {
     case 'work_phone':
@@ -28,5 +48,16 @@ export function PartyFace({ conversation, size }: { conversation: Conversation; 
     case 'number':
       if (!person.code && !conversation.contact) return <PhoneFace size={size} />;
   }
-  return <Face {...person} size={size} />;
+  const face = <Face {...person} size={size} />;
+  return channel ? <ChannelMarked kind={conversation.kind}>{face}</ChannelMarked> : face;
+}
+
+/** A face in Recents, a person's or a group's, marked with where its conversation is. */
+export function ChannelMarked({ kind, children }: { kind: ConversationKind; children: ReactNode }) {
+  return (
+    <span className="face-channel">
+      {children}
+      <span className="channel-mark">{channels[kind]}</span>
+    </span>
+  );
 }

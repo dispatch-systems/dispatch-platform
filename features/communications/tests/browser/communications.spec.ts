@@ -12,7 +12,7 @@ import { connect, event, fromSlack, install } from '../../../slack/tests/support
 // mode's Slack sends the browser straight back from installing, to the first of its workspaces
 // no DSP has: Operations, where Jordan Ellis and Morgan Lane are members. These are Slack's, so
 // each is at Summit Delivery, which has no phone and no texts (texting.spec.ts has Northline,
-// which texts). The page opens on the first section with conversations, Slack once one is there.
+// which texts). The page opens on Recents, the first section, once Slack has a conversation.
 
 /** Slack's section chosen in this browser, as Summit's owner would have it, for a test whose page
  * opens before Slack has a conversation to open on. */
@@ -254,16 +254,19 @@ test('with two workspaces, each by its logo or initials, the lists show the one 
   await login(page);
   await openDsp(page, 'Summit Delivery');
   await page.getByRole('link', { name: 'Communications' }).click();
-  // Nothing chosen in this browser, it opens on Slack, the first section with conversations,
-  // though Today's Routes and Messaging come before it.
+  // Nothing chosen in this browser, it opens on Recents, which lists both workspaces'; Slack
+  // shows one of them.
   const sections = page.getByRole('tablist', { name: 'Sections' });
-  await expect(sections.getByRole('tab', { name: /Slack/ })).toHaveAttribute(
+  await expect(sections.getByRole('tab', { name: /Recents/ })).toHaveAttribute(
     'aria-selected',
     'true',
   );
   const list = page.getByRole('region', { name: 'Conversations' });
   const jordan = list.getByRole('listitem').filter({ hasText: 'Jordan Ellis' });
   const cameron = list.getByRole('listitem').filter({ hasText: 'Cameron Hayes' });
+  await expect(jordan).toBeVisible();
+  await expect(cameron).toBeVisible();
+  await sections.getByRole('tab', { name: /Slack/ }).click();
   await expect(jordan).toBeVisible();
   await expect(cameron).toBeVisible();
   // Each workspace by its logo, or the first letters of its name without one.

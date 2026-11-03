@@ -1,8 +1,9 @@
-import { useCallback } from 'react';
-import type { Communications } from '../../api/index.js';
+import { Fragment, useCallback, type ReactNode } from 'react';
+import type { Communications, Conversation } from '../../api/index.js';
 import { searchConversations } from '../../api/client.js';
 import { Loading } from '../../../../core/shell/frontend/ui/index.js';
 import { PartyFace } from '../conversations/party.js';
+import { dayLabel, dayOf } from '../shared/format.js';
 import { ListEmpty, ListHead, Rows } from '../shared/List.js';
 import { ListRow } from '../shared/ListRow.js';
 import { More } from '../shared/More.js';
@@ -10,16 +11,25 @@ import { useFound } from '../shared/useFound.js';
 import type { Draft } from '../slack/groups/GroupDraft.js';
 import { GroupDraftRow, GroupRow } from '../slack/groups/GroupRow.js';
 import { ConversationRow } from './ConversationRow.js';
-import { moreIn, rows as listed, type Row } from './inbox.js';
-import { groupsSection, sectionNamed, sectionOf, type Section } from './sections.js';
+import { latestFirst, readsNext, rows as listed, type Row } from './inbox.js';
+import {
+  groupsSection,
+  lists,
+  sectionNamed,
+  sectionOf,
+  SECTIONS,
+  type Section,
+} from './sections.js';
 import type { Listing } from './listing.js';
 
 // Messages: a section's conversations, and in Slack's the groups, of every workspace or the one
-// chosen, those waiting on an answer, then those answered; or the conversations found by a name
-// typed, misspelt or not, or in Messaging by a number. A conversation listed under a group is the
-// group's row. The message being written to a group is at the top while it's written, and what's
-// open at the top while the list doesn't show it, as one New message or Contacts opened before it
-// holds a message.
+// chosen, those waiting on an answer, then those answered; in Recents every section's, each face
+// marked with where it is, under the day each was last written in, the latest first; or the
+// conversations found by a name typed, misspelt or not, or by a number, in Recents in every
+// section, the latest written in first. A conversation listed under a group is the group's row.
+// The message being written to a group is at the top while it's written, and what's open at the
+// top while the list doesn't show it, as one New message or Contacts opened before it holds a
+// message.
 
 export function ConversationList({
   inbox,
@@ -29,11 +39,17 @@ export function ConversationList({
   waiting: waitingPeople,
   draft,
   pinned,
+  read,
+  below,
   readOlder,
   ...listing
 }: Listing & {
   inbox: Communications;
   section: Section;
+  /** Conversations read elsewhere the list may not hold yet, as Today's Routes' read does. */
+  read?: readonly Conversation[];
+  /** What else a conversation's row shows, under what was written last, as a driver's route. */
+  below?: (conversation: Conversation) => ReactNode;
   /** The workspace chosen, if one is. */
   team?: string;
   /** What's typed in Search, trimmed. */
@@ -46,12 +62,25 @@ export function ConversationList({
   pinned?: Row;
   readOlder: () => void;
 }) {
+  const model = sectionNamed(section);
+  // What Search searches: the section's own, or in Recents every section the DSP has.
+  const searched = (
+    model.everything
+      ? SECTIONS.filter((each) => each.offered(inbox)).map((each) => each.id)
+      : [section]
+  ).join(' ');
   const search = useCallback(
     () =>
-      searchConversations(typed, sectionNamed(section).listing(team)).then(
-        (found) => found.conversations,
+      Promise.all(
+        searched
+          .split(' ')
+          .map((each) => searchConversations(typed, sectionNamed(each as Section).listing(team))),
+      ).then((found) =>
+        found.length > 1
+          ? found.flatMap((each) => each.conversations).sort(latestFirst)
+          : found[0]!.conversations,
       ),
-    [typed, section, team],
+    [typed, searched, team],
   );
   const { found, failed } = useFound(
     typed ? search : undefined,
@@ -63,9 +92,15 @@ export function ConversationList({
     <Rows>
       {rows.map((each) =>
         each.kind === 'group' ? (
-          <GroupRow key={each.row.id} group={each.row} {...listing} />
+          <GroupRow key={each.row.id} group={each.row} channel={model.everything} {...listing} />
         ) : (
-          <ConversationRow key={each.row.id} conversation={each.row} {...listing} />
+          <ConversationRow
+            key={each.row.id}
+            conversation={each.row}
+            channel={model.everything}
+            below={below?.(each.row)}
+            {...listing}
+          />
         ),
       )}
     </Rows>
@@ -78,14 +113,12 @@ export function ConversationList({
       <Loading />
     );
   }
-  const shown = listed(inbox, section, team);
-  const waiting = shown.filter((each) => each.row.state === 'waiting');
-  const answered = shown.filter((each) => each.row.state !== 'waiting');
+  const shown = listed(inbox, section, team, read);
   const pinnedShown =
     pinned &&
     (pinned.kind === 'group'
-      ? section === groupsSection && (!team || pinned.row.teamIds.includes(team))
-      : sectionOf(pinned.row) === section && (!team || pinned.row.teamId === team));
+      ? lists(section, groupsSection) && (!team || pinned.row.teamIds.includes(team))
+      : lists(section, sectionOf(pinned.row)) && (!team || pinned.row.teamId === team));
   return (
     <>
       {draft && (
@@ -108,19 +141,47 @@ export function ConversationList({
         ) : (
           list([pinned])
         ))}
-      {waiting.length > 0 && (
-        <>
-          <ListHead count={waitingPeople}>Waiting</ListHead>
-          {list(waiting)}
-        </>
+      {(model.everything ? byDay(shown, listing) : byState(shown, waitingPeople)).map(
+        ({ key, label, count, rows }) => (
+          <Fragment key={key}>
+            <ListHead count={count}>{label}</ListHead>
+            {list(rows)}
+          </Fragment>
+        ),
       )}
-      {answered.length > 0 && (
-        <>
-          <ListHead>Responded</ListHead>
-          {list(answered)}
-        </>
-      )}
-      {moreIn(inbox, section) && <More read={readOlder} />}
+      {readsNext(inbox, section) && <More read={readOlder} />}
     </>
   );
+}
+
+/** A list's rows under their headings, with how many people wait under Waiting. */
+type Headed = { key: string; label: string; count?: number; rows: Row[] };
+/** Those waiting, then those answered. */
+function byState(shown: readonly Row[], waiting: number): Headed[] {
+  const headed = [
+    {
+      key: 'waiting',
+      label: 'Waiting',
+      count: waiting,
+      rows: shown.filter((each) => each.row.state === 'waiting'),
+    },
+    {
+      key: 'responded',
+      label: 'Responded',
+      rows: shown.filter((each) => each.row.state !== 'waiting'),
+    },
+  ];
+  return headed.filter((each) => each.rows.length > 0);
+}
+/** Under the day each was last written in: Today, Yesterday, then by the day. */
+function byDay(shown: readonly Row[], { timeZone, now }: Pick<Listing, 'timeZone' | 'now'>) {
+  const headed: Headed[] = [];
+  for (const each of shown) {
+    const at = each.row.lastAt ?? now;
+    const key = dayOf(at, timeZone);
+    const last = headed.at(-1);
+    if (last?.key === key) last.rows.push(each);
+    else headed.push({ key, label: dayLabel(at, timeZone, now), rows: [each] });
+  }
+  return headed;
 }
