@@ -301,7 +301,10 @@ test('a feature hidden from a DSP keeps running, out of sight of all but the pla
   };
   assert.deepEqual(await state('uniforms'), [true, 'shown']);
   assert.equal((await member.post(url, { feature: 'uniforms', visibility: 'hidden' })).status, 403);
-  assert.equal((await platform.post(url, { feature: 'nothing', visibility: 'hidden' })).status, 404);
+  assert.equal(
+    (await platform.post(url, { feature: 'nothing', visibility: 'hidden' })).status,
+    404,
+  );
   assert.equal((await platform.post(url, { feature: 'uniforms' })).status, 400);
   assert.equal((await platform.post(url, { feature: 'uniforms', visibility: 'some' })).status, 400);
   // What every DSP has is always shown, and a connection has nothing to show.

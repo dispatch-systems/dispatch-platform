@@ -126,8 +126,7 @@ function AddTesters({
   const [chosen, setChosen] = useState<ReadonlySet<string>>(new Set());
   const words = query.trim().toLowerCase();
   const listed = members.filter(
-    (member) =>
-      !words || `${member.name} ${member.email}`.toLowerCase().includes(words),
+    (member) => !words || `${member.name} ${member.email}`.toLowerCase().includes(words),
   );
   const adding = useAction(
     async () => {
