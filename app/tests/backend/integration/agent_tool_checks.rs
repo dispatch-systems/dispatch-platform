@@ -3,7 +3,10 @@
 //! or not; one about several DSPs reads only those with them on; and one that changes something
 //! does so only for a key allowed to change with it, recorded in the activity log as made by
 //! the platform owner, through the agent.
-use dispatch_core::testing::{audit_actions, audits, bootstrapped, platform_owner};
+use dispatch_core::{
+    platform_owner::api::types::Visibility,
+    testing::{audit_actions, audits, bootstrapped, platform_owner},
+};
 use dispatch_mcp::{
     Caller, KeyStore,
     api::types::ToolLevel,
@@ -203,7 +206,10 @@ async fn a_tool_runs_only_where_every_feature_it_needs_is_on_hidden_or_not() {
     // Hidden from the DSP's members, it still runs for agents.
     let (state_, north_, owner_) = (state.clone(), north.clone(), owner.clone());
     state_
-        .run(move |db| db.show_feature(&north_, "dvic", false, &owner_).map(|_| ()))
+        .run(move |db| {
+            db.set_visibility(&north_, "dvic", Visibility::Hidden, &owner_)
+                .map(|_| ())
+        })
         .await
         .unwrap();
     assert!(call(&state, &reader, "inspect", Some(&north)).await.is_ok());

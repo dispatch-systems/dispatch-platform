@@ -282,11 +282,13 @@ impl Store {
             } else {
                 OwnerStatus::Missing
             };
-            // A member's list never names what is hidden from them.
+            // A member's list never names what is hidden from them, nor what is in beta there
+            // unless they test it.
             let features = if platform {
                 self.features(&dsp.id)?
             } else {
-                self.shown_features(&dsp.id)?
+                let tester = opened && self.beta_tester(&dsp.id, &a.user.id)?;
+                self.shown_features(&dsp.id, tester)?
             };
             let mut summary = DspSummary {
                 features,

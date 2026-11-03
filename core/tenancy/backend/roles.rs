@@ -54,6 +54,14 @@ pub static IMPLIED: LazyLock<Vec<(&'static str, &'static str)>> = LazyLock::new(
 pub fn granting(permissions: &[String]) -> Vec<String> {
     granting_by(&IMPLIED, permissions)
 }
+/// `held` and `more`, in the role sheet's order.
+pub fn with(held: &[String], more: &[String]) -> Vec<String> {
+    PERMISSIONS
+        .iter()
+        .filter(|p| held.iter().chain(more).any(|v| v == *p))
+        .map(|p| (*p).to_owned())
+        .collect()
+}
 /// `granting`, by the pairs of `implied`: what each grants directly.
 fn granting_by(implied: &[(&str, &str)], permissions: &[String]) -> Vec<String> {
     let mut all = permissions.to_vec();

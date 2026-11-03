@@ -1,5 +1,6 @@
 CREATE TABLE account_passkeys ( id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, credential TEXT NOT NULL, name TEXT NOT NULL, created_at INTEGER NOT NULL );
 CREATE TABLE authenticator_apps ( user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, secret TEXT NOT NULL, created_at INTEGER NOT NULL, last_counter INTEGER NOT NULL DEFAULT -1 );
+CREATE TABLE beta_testers ( user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, added_at TEXT NOT NULL );
 CREATE TABLE "collection_schedules" ( id TEXT PRIMARY KEY, name TEXT NOT NULL, collection TEXT NOT NULL, cadence TEXT NOT NULL CHECK(cadence IN ('interval','daily')), interval_minutes INTEGER, local_time TEXT NOT NULL, anchor INTEGER NOT NULL, enabled INTEGER NOT NULL CHECK(enabled IN (0,1)), next_run TEXT, revision INTEGER NOT NULL DEFAULT 1, last_error TEXT, created_at TEXT NOT NULL , days INTEGER NOT NULL DEFAULT 127 CHECK (days BETWEEN 1 AND 127), times TEXT CHECK (times IS NULL OR json_valid(times)), until_time TEXT, position INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE communications_blocked ( number TEXT PRIMARY KEY, blocked_by TEXT NOT NULL, blocked_at INTEGER NOT NULL );
 CREATE TABLE communications_changes ( revision INTEGER PRIMARY KEY, conversation_id TEXT NOT NULL );

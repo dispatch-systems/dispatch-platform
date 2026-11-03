@@ -107,6 +107,24 @@ const phrases: AuditPhrases = {
     ' to ',
     strong(e.dspName ?? 'a DSP'),
   ],
+  'dsp.feature_beta': (e) => [
+    'put ',
+    strong(featureLabel(e.detail)),
+    ' in beta at ',
+    strong(e.dspName ?? 'a DSP'),
+  ],
+  'dsp.beta_tester_added': (e) => [
+    'added ',
+    strong(e.target ?? 'a member'),
+    ' as a beta tester at ',
+    strong(e.dspName ?? 'a DSP'),
+  ],
+  'dsp.beta_tester_removed': (e) => [
+    'removed ',
+    strong(e.target ?? 'a member'),
+    ' as a beta tester at ',
+    strong(e.dspName ?? 'a DSP'),
+  ],
   'dsp.ai_support_hidden': (e) => ['hid AI Support from ', strong(e.dspName ?? 'a DSP')],
   'dsp.ai_support_shown': (e) => ['showed AI Support to ', strong(e.dspName ?? 'a DSP')],
   'dsp.code_changed': (e) => [
@@ -230,6 +248,7 @@ const spoken = new Set([
   'dsp.feature_disabled',
   'dsp.feature_hidden',
   'dsp.feature_shown',
+  'dsp.feature_beta',
   'dsp.ai_support_hidden',
   'dsp.ai_support_shown',
   'settings.changed',

@@ -10,7 +10,7 @@ use crate::{
         events::{self, PeopleChanged},
         registry,
     },
-    platform_owner::api::types::{BrowserHealth, DspFeatures, PlatformHealth},
+    platform_owner::api::types::{BrowserHealth, DspFeatures, PlatformHealth, Visibility},
     server::{
         http::{
             input::{Input, Reply, optional},
@@ -50,9 +50,24 @@ pub fn routes() -> Vec<Route> {
             set_feature,
         ),
         write(
-            "/api/platform/dsps/{id}/features/shown",
+            "/api/platform/dsps/{id}/features/visibility",
             PlatformOwner,
-            show_feature,
+            set_visibility,
+        ),
+        read(
+            "/api/platform/dsps/{id}/beta-testers",
+            PlatformOwner,
+            beta_testers,
+        ),
+        write(
+            "/api/platform/dsps/{id}/beta-testers",
+            PlatformOwner,
+            add_beta_testers,
+        ),
+        write(
+            "/api/platform/dsps/{id}/beta-testers/{user}/remove",
+            PlatformOwner,
+            remove_beta_tester,
         ),
         write(
             "/api/platform/dsps/{id}/ai-support",
@@ -214,13 +229,34 @@ fn dsp_features(db: &Store, _: &User, input: &Input) -> Result<Reply> {
     Reply::of(&db.feature_report(input.param("id"))?)
 }
 
-/// Hides a feature from the DSP's members, or shows it again; it keeps running either way.
-fn show_feature(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
+/// Shows a feature to the DSP's members, puts it in beta there, or hides it from them; it
+/// keeps running either way.
+fn set_visibility(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
     let b = &input.body;
-    v::fields(b, &["feature", "shown"])?;
+    v::fields(b, &["feature", "visibility"])?;
     let feature = v::text(b, "feature", 1, 40)?;
-    let shown = v::boolean(b, "shown")?;
-    Reply::of(&db.show_feature(input.param("id"), feature, shown, owner.actor())?)
+    let visibility: Visibility = serde_json::from_value(b["visibility"].clone())?;
+    Reply::of(&db.set_visibility(input.param("id"), feature, visibility, owner.actor())?)
+}
+
+/// The DSP's people, its beta testers among them.
+fn beta_testers(db: &Store, _: &User, input: &Input) -> Result<Reply> {
+    Reply::of(&db.beta_testers(input.param("id"))?)
+}
+
+/// Makes some of the DSP's people its beta testers, by their accounts' IDs.
+fn add_beta_testers(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
+    let b = &input.body;
+    v::fields(b, &["users"])?;
+    let users: Vec<String> = serde_json::from_value(b["users"].clone())?;
+    v::ids(&users, 500)?;
+    Reply::of(&db.add_beta_testers(input.param("id"), &users, owner.actor())?)
+}
+
+/// Stops one of the DSP's people testing what is in beta there.
+fn remove_beta_tester(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
+    v::fields(&input.body, &[])?;
+    Reply::of(&db.remove_beta_tester(input.param("id"), input.param("user"), owner.actor())?)
 }
 
 /// Hides the AI Support button from the DSP's members, or shows it to them again.

@@ -1,11 +1,11 @@
 import { useRef, useState } from 'react';
-import { ChevronRight, Eye, EyeOff, Plug, Sparkles } from 'lucide-react';
+import { ChevronRight, Eye, EyeOff, Plug, Sparkles, UserCheck } from 'lucide-react';
 import type { DspSummary } from '../../../accounts/api/index.js';
-import type { DspFeatureReport, DspFeatures } from '../../api/index.js';
+import type { DspFeatureReport, DspFeatures, Visibility } from '../../api/index.js';
 import {
   setDspFeature,
+  setDspVisibility,
   showDspAiSupport,
-  showDspFeature,
   useDspFeatures,
 } from '../../api/client.js';
 import {
@@ -23,15 +23,26 @@ import { previewSwitch, sideEffects, switchLabel } from './switches.js';
 
 const pages = featureCatalog.filter((f): f is PageEntry => f.kind === 'page');
 const connections = featureCatalog.filter((f): f is ConnectionEntry => f.kind === 'connection');
+// Who among the DSP's people sees an optional feature, and how each choice reads.
+const sights = [
+  ['shown', 'Shown', Eye],
+  ['beta', 'Beta', UserCheck],
+  ['hidden', 'Hidden', EyeOff],
+] as const;
+const seenBy: Record<Visibility, string> = {
+  shown: 'shown to',
+  beta: 'in beta at',
+  hidden: 'hidden from',
+};
 
 // Every feature, a row each with its switch, and the parts of one with any under it when it
 // is opened; then the connections. A mandatory feature or part shows its switch on and greyed
 // out: every DSP has it. A part can't be switched while its feature is off, and shows off;
 // switching the feature back on brings each part back as it was. A switch acts at once; one
-// that takes other features with it asks first. The eye beside an optional one hides it from
-// the DSP's members while it keeps running, as the Platform Owner view still shows it; a
-// hidden feature hides its parts too. Above them, AI Support: switching it off hides only its
-// button from the DSP's members, and the platform owner keeps it.
+// that takes other features with it asks first. Beside an optional one, who sees it: the
+// DSP's members, its beta testers alone, or none of them while it keeps running, as the
+// Platform Owner view still shows it; its parts go with it. Above them, AI Support: switching
+// it off hides only its button from the DSP's members, and the platform owner keeps it.
 export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () => void }) {
   const { data, error, refresh } = useDspFeatures(dsp.id);
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
@@ -52,8 +63,8 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
         ? data.features.filter((state) => state.enabled).map((state) => state.feature)
         : dsp.features;
   const switched = (id: string) => enabled.includes(id);
-  const hidden = (feature: FeatureEntry) =>
-    data?.features.some((state) => state.feature === feature.id && !state.shown) ?? false;
+  const visibility = (feature: FeatureEntry): Visibility =>
+    data?.features.find((state) => state.feature === feature.id)?.visibility ?? 'shown';
   // What the DSP has: a part only while its feature is on too.
   const has = (feature: FeatureEntry) =>
     switched(feature.id) && (feature.kind !== 'sub' || switched(feature.page));
@@ -72,14 +83,11 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
     { success: (feature, on) => `${switchLabel(feature)} switched ${on ? 'on' : 'off'}` },
   );
   const seeing = useAction(
-    async (feature: FeatureEntry, shown: boolean) => {
-      await showDspFeature(dsp.id, feature.id, shown);
+    async (feature: FeatureEntry, to: Visibility) => {
+      await setDspVisibility(dsp.id, feature.id, to);
       done();
     },
-    {
-      success: (feature, shown) =>
-        `${switchLabel(feature)} ${shown ? 'shown to' : 'hidden from'} ${dsp.name}`,
-    },
+    { success: (feature, to) => `${switchLabel(feature)} ${seenBy[to]} ${dsp.name}` },
   );
   const supporting = useAction(
     async (shown: boolean) => {
@@ -89,28 +97,39 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
     },
     { success: (shown) => `AI Support ${shown ? 'shown to' : 'hidden from'} ${dsp.name}` },
   );
-  // What every DSP has is always shown; an optional one can be hidden.
-  const eye = (feature: FeatureEntry) =>
+  // What every DSP has is always shown; an optional one can be in beta, or hidden.
+  const sight = (feature: FeatureEntry) =>
     feature.mandatory ? (
-      <span className="dsp-eye" aria-hidden="true" />
+      <span className="dsp-sight" aria-hidden="true" />
     ) : (
-      <button
-        className="dsp-eye"
-        aria-pressed={hidden(feature)}
-        aria-label={`${hidden(feature) ? 'Show' : 'Hide'} ${switchLabel(feature)} ${
-          hidden(feature) ? 'to' : 'from'
-        } the DSP`}
-        title={hidden(feature) ? 'Hidden from the DSP: it keeps running' : 'Shown to the DSP'}
-        disabled={!data || seeing.busy}
-        onClick={() => void seeing.run(feature, hidden(feature))}
-      >
-        {hidden(feature) ? (
-          <EyeOff size={16} aria-hidden="true" />
-        ) : (
-          <Eye size={16} aria-hidden="true" />
-        )}
-      </button>
+      <span className="dsp-sight" role="radiogroup" aria-label={`Who sees ${switchLabel(feature)}`}>
+        {sights.map(([to, label, Icon]) => (
+          <button
+            key={to}
+            data-sight={to}
+            role="radio"
+            aria-checked={visibility(feature) === to}
+            aria-label={label}
+            title={label}
+            disabled={!data || seeing.busy}
+            onClick={() => {
+              if (visibility(feature) !== to) void seeing.run(feature, to);
+            }}
+          >
+            <Icon size={16} aria-hidden="true" />
+          </button>
+        ))}
+      </span>
     );
+  // What a row says of who sees it, when that isn't everyone.
+  const sightNote = (feature: FeatureEntry) =>
+    feature.mandatory
+      ? 'Every DSP'
+      : visibility(feature) === 'hidden'
+        ? 'Hidden from DSP'
+        : visibility(feature) === 'beta'
+          ? 'Beta'
+          : '';
   const toggle = (feature: FeatureEntry, on: boolean) => {
     const preview = previewSwitch(enabled, feature.id, on);
     // Alone, or already as asked: no question to ask.
@@ -158,7 +177,7 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
             <Sparkles size={16} aria-hidden="true" />
             <strong>AI Support</strong>
             <small>{supportShown ? '' : 'Hidden from DSP'}</small>
-            <span className="dsp-eye" aria-hidden="true" />
+            <span className="dsp-sight" aria-hidden="true" />
           </li>
         </ul>
       </section>
@@ -187,16 +206,13 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
                   {control(page)}
                   {Icon && <Icon size={16} aria-hidden="true" />}
                   <strong>{page.label}</strong>
-                  <small>
-                    {page.mandatory
-                      ? 'Every DSP'
-                      : hidden(page)
-                        ? 'Hidden from DSP'
-                        : parts.length && has(page)
-                          ? `${parts.filter(has).length} of ${parts.length} parts`
-                          : ''}
+                  <small data-sight={visibility(page)}>
+                    {sightNote(page) ||
+                      (parts.length && has(page)
+                        ? `${parts.filter(has).length} of ${parts.length} parts`
+                        : '')}
                   </small>
-                  {eye(page)}
+                  {sight(page)}
                 </div>
                 {shown && (
                   <ul className="dsp-parts" aria-label={`${page.label}'s parts`}>
@@ -204,16 +220,10 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
                       <li key={part.id} className={`dsp-feature-row ${has(part) ? '' : 'off'}`}>
                         {control(part, !has(page))}
                         <strong>{part.label}</strong>
-                        <small>
-                          {part.mandatory
-                            ? 'Every DSP'
-                            : hidden(part)
-                              ? 'Hidden from DSP'
-                              : part.tab
-                                ? 'Tab'
-                                : ''}
+                        <small data-sight={visibility(part)}>
+                          {sightNote(part) || (part.tab ? 'Tab' : '')}
                         </small>
-                        {eye(part)}
+                        {sight(part)}
                       </li>
                     ))}
                   </ul>

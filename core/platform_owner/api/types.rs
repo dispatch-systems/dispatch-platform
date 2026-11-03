@@ -57,7 +57,19 @@ pub struct FeatureChange {
     pub feature: String,
     pub enabled: bool,
 }
-/// One feature of a DSP: whether it has it, whether its members see it, and who last changed
+/// Who among a DSP's people sees one of its features while it is on: all of them, as their
+/// roles allow; only its beta testers, who hold all of it; or none, as the platform owner alone
+/// still does. Whatever it runs keeps running either way.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/platform_owner/api/generated/"))]
+#[serde(rename_all = "lowercase")]
+pub enum Visibility {
+    Shown,
+    Beta,
+    Hidden,
+}
+/// One feature of a DSP: whether it has it, who among its people sees it, and who last changed
 /// either and when.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -66,8 +78,7 @@ pub struct FeatureChange {
 pub struct FeatureState {
     pub feature: String,
     pub enabled: bool,
-    /// Whether the DSP's members see it, while it is on: the platform owner may hide one.
-    pub shown: bool,
+    pub visibility: Visibility,
     pub changed_at: Option<String>,
     pub changed_by: Option<String>,
 }
@@ -83,12 +94,35 @@ pub struct DspFeatureReport {
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub active_jobs: i64,
 }
-/// What a DSP's members don't see of its features, after one was hidden or shown.
+/// What a DSP's members don't all see of its features, after one was shown, put in beta or
+/// hidden: what is hidden from them, and what only its beta testers see.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "core/platform_owner/api/generated/"))]
-pub struct DspHidden {
+pub struct DspVisibility {
     pub hidden: Vec<String>,
+    pub beta: Vec<String>,
+}
+/// One of a DSP's people, as its Beta testers tab lists them: their role, and since when they
+/// have tested what is in beta there, if they do.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/platform_owner/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct BetaMember {
+    /// Their account's ID.
+    pub id: String,
+    pub name: String,
+    pub email: String,
+    pub role: String,
+    pub tester_since: Option<String>,
+}
+/// A DSP's people, its beta testers among them.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/platform_owner/api/generated/"))]
+pub struct DspBetaTesters {
+    pub members: Vec<BetaMember>,
 }
 /// A DSP's features after a switch: what it has now, and what the switch changed.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
