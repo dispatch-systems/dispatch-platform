@@ -8,17 +8,14 @@ import { nodeTests, pythonTests, type Command } from './execution-plan.js';
 import { workspaceCrates } from './workspace.js';
 
 // One job of the platform checks, or locally the whole suite in sequence. CI runs each mode
-// on its own runner: `build` packages the runtime, and the modes that need it download that
-// package into `.build` first.
+// on its own runner: `build` packages the runtime, and the modes that test it, `browser` and
+// `smoke`, download that package into `.build` first.
 const mode = process.argv[2] ?? 'full';
 const modes = ['full', 'build', 'checks', 'browser', 'core', 'api', 'smoke', 'scaffold'];
 if (!modes.includes(mode)) throw new Error('Unknown validation mode');
 const started = Date.now();
 const failures: string[] = [];
-const dashboardCommand = nodeTests('dashboard', {
-  concurrency: 1,
-  env: { DISPATCH_TEST_BINARY: '.build/services/rust/dispatch-backend' },
-});
+const dashboardCommand = nodeTests('dashboard', { concurrency: 1 });
 const coreCommand = nodeTests('core', { concurrency: os.availableParallelism() });
 const pythonCommands = [pythonTests('rules'), pythonTests('integration')];
 /**
@@ -50,7 +47,6 @@ const checkCommands: Command[] = [
   { name: 'check', command: 'npm', args: ['run', 'check'] },
   { name: 'format:check', command: 'npm', args: ['run', 'format:check'] },
   { name: 'lint', command: 'npm', args: ['run', 'lint'] },
-  { name: 'test:artifact', command: 'npm', args: ['run', 'test:artifact'] },
   dashboardCommand,
 ];
 // Coverage tests inspect the same commands the runners execute, without starting servers,
@@ -94,9 +90,16 @@ const npm = (name: string, ...args: string[]) =>
   run(name, 'npm', ['run', name, ...(args.length ? ['--', ...args] : [])]);
 const execute = ({ name, command, args, env }: Command) =>
   run(name, command, args, env ? { ...process.env, ...env } : process.env);
-/** Source privacy, types, formatting, bundle budget and dashboard logic against `.build`. */
+/** Source privacy, types, formatting, the linter and dashboard logic. */
 function checks() {
   return Promise.all(checkCommands.map(execute));
+}
+/**
+ * The package in `.build`: it starts, signs in and serves, and its manifest, build paths,
+ * caching and bundle budgets hold.
+ */
+function smoke() {
+  return Promise.all([npm('test:smoke'), npm('test:artifact')]);
 }
 /**
  * The pinned browser, from the cache when the job restored it. In CI its system packages
@@ -188,14 +191,14 @@ else if (mode === 'checks') await checks();
 else if (mode === 'browser') await browser();
 else if (mode === 'core') await core();
 else if (mode === 'api') await api();
-else if (mode === 'smoke') await npm('test:smoke');
+else if (mode === 'smoke') await smoke();
 else if (mode === 'scaffold') await npm('check:scaffold');
 else {
   // Locally, in sequence: CI's jobs share one machine here, and Cargo's build lock.
   await core();
   if (!failures.length) await api();
   if (!failures.length) await npm('build');
-  if (!failures.length) await npm('test:smoke');
+  if (!failures.length) await smoke();
   if (!failures.length) await checks();
   if (!failures.length && (await installBrowsers())) await npm('test:ui');
   if (!failures.length) await npm('test:browseros');

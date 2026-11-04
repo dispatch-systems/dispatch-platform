@@ -390,7 +390,7 @@ impl Release<'_> {
     /// run already dispatched.
     pub(super) fn full_suite(&self, commit: &str, relay: &str) -> Result<()> {
         let url = self.dispatch_full(commit, relay)?;
-        say(format!("Full checks: {url}"));
+        say(format!("Checks passed: {url}"));
         // The temporary branch only ever serves a dispatched run.
         self.remove_checks_branch()
     }
@@ -444,7 +444,7 @@ impl Release<'_> {
         let run = self.checks(commit, "workflow_dispatch", Some(&self.checks_branch), true)?;
         require(
             self.full_run(&run, commit)?,
-            "The dispatched checks did not run the full suite",
+            "The dispatched checks skipped suites main's checks did not pass for the commit",
         )?;
         Ok(io::text(&run, "html_url"))
     }

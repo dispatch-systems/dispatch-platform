@@ -264,28 +264,6 @@ jobs:
           path: dispatch-dev.tar.gz
           if-no-files-found: error
           retention-days: 2
-  # Types, formatting, the bundle budget and the dashboard logic tests, against the package.
-  # The bundle test verifies the package through the host tool, which setup-tools restores.
-  checks:
-    needs: build
-    if: ${{ !cancelled() && needs.build.result == 'success' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup-tools
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: 26.13.0
-          cache: npm
-      - run: npm ci --ignore-scripts
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
-        with:
-          name: ${{ needs.build.outputs.candidate }}
-      - run: mkdir .build && tar -xzf dispatch-dev.tar.gz -C .build
-      - run: npm run check:ci -- checks
   # The browser suite in six shards of about equal time, three workers each, every test with
   # its own server, port, database and mail. Failed shards upload their traces. A release's run
   # that names main's skips it: its package differs from main's only by the relay apps it packs,
@@ -376,7 +354,10 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
   # The packaged runtime starts, signs in and serves: what a release's smoke test asks of the
-  # same bytes, so a release never finds out first. It speaks HTTP only, so it needs no browser.
+  # same bytes, so a release never finds out first. Beside it, the package's own test checks
+  # its manifest through the host tool, which setup-tools restores, its build paths, caching
+  # and bundle budgets. Both speak HTTP only, so it needs no browser. A release's run that
+  # names main's runs it too: the package it publishes is its own.
   smoke:
     needs: build
     if: ${{ !cancelled() && needs.build.result == 'success' }}
@@ -397,6 +378,21 @@ jobs:
           name: ${{ needs.build.outputs.candidate }}
       - run: mkdir .build && tar -xzf dispatch-dev.tar.gz -C .build
       - run: npm run check:ci -- smoke
+  # Source privacy, types, formatting, the linter and the dashboard logic tests.
+  checks:
+    if: ${{ !inputs.tested-run }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 26.13.0
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run check:ci -- checks
   # Rust formatting, lints and tests.
   core:
     if: ${{ !inputs.tested-run }}
@@ -625,7 +621,7 @@ jobs:
               exit 1
             fi
             echo "The source's suites passed in $(echo "$tested" | jq -r .html_url)"
-            skippable='["relay-dev", "relay-production", "core", "api", "collectors", "scaffold", "browser"]'
+            skippable='["relay-dev", "relay-production", "checks", "core", "api", "collectors", "scaffold", "browser"]'
           fi
           failed=$(echo "$RESULTS" | jq -r --argjson skippable "$skippable" 'to_entries[]
             | select(.value.result != "success")
