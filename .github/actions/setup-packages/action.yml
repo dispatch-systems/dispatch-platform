@@ -1,0 +1,36 @@
+name: Node and packages
+description: >-
+  The Node `.node-version` pins and the workspace's packages: node_modules restored whole when
+  main's caches workflow saved one for this lockfile, `npm ci` otherwise.
+inputs:
+  install:
+    description: Also install the workspace's packages.
+    default: 'true'
+  save:
+    description: Save node_modules after a fresh install. Only main's caches workflow does.
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      with:
+        node-version-file: .node-version
+    # Installed with --ignore-scripts, the packages are the lockfile's files and nothing else, so
+    # a copy keyed by the lockfile and the Node version is what `npm ci` would write.
+    - name: Restore the installed packages
+      id: modules
+      if: inputs.install == 'true'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: node_modules
+        key: dispatch-node-modules-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.node-version', 'package-lock.json') }}
+    - name: Install the packages
+      if: inputs.install == 'true' && steps.modules.outputs.cache-hit != 'true'
+      shell: bash
+      run: npm ci --ignore-scripts
+    - name: Save the installed packages
+      if: inputs.install == 'true' && inputs.save == 'true' && steps.modules.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: node_modules
+        key: ${{ steps.modules.outputs.cache-primary-key }}

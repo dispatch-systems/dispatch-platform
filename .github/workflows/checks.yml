@@ -281,11 +281,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: 26.13.0
-          cache: npm
-      - run: npm ci --ignore-scripts
+      - uses: ./.github/actions/setup-packages
       # The browser's system packages install in the background while the rest of the job
       # sets up, and the suite waits for them. The runner image already has the libraries
       # Chromium needs, so only what Playwright finds missing installs, less the fonts it adds
@@ -368,11 +364,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-tools
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: 26.13.0
-          cache: npm
-      - run: npm ci --ignore-scripts
+      - uses: ./.github/actions/setup-packages
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: ${{ needs.build.outputs.candidate }}
@@ -387,11 +379,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: 26.13.0
-          cache: npm
-      - run: npm ci --ignore-scripts
+      - uses: ./.github/actions/setup-packages
       - run: npm run check:ci -- checks
   # Rust formatting, lints and tests.
   core:
