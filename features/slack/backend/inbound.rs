@@ -79,7 +79,7 @@ async fn on_interaction(_bot: &Bot, _kind: &str, _action: &str, _payload: &Value
 pub async fn events(state: Arc<State>, request: Request) -> Response {
     let sent = match received(&state, request, EVENTS_PATH).await {
         Ok(body) => serde_json::from_slice::<Value>(&body),
-        Err(refused) => return refused,
+        Err(refused) => return middleware::failure(refused),
     };
     let Ok(sent) = sent else {
         return middleware::failure(Error::new("invalid_input", 400));
@@ -166,7 +166,7 @@ pub async fn interactions(state: Arc<State>, request: Request) -> Response {
         Ok(body) => url::form_urlencoded::parse(&body)
             .find(|(key, _)| key == "payload")
             .and_then(|(_, payload)| serde_json::from_str::<Value>(&payload).ok()),
-        Err(refused) => return refused,
+        Err(refused) => return middleware::failure(refused),
     };
     let Some(payload) = payload else {
         return middleware::failure(Error::new("invalid_input", 400));
@@ -236,13 +236,13 @@ async fn received(
     state: &State,
     request: Request,
     pattern: &'static str,
-) -> std::result::Result<Bytes, Response> {
+) -> std::result::Result<Bytes, Error> {
     let (parts, body) = request.into_parts();
-    middleware::address(state, &parts, pattern).map_err(middleware::failure)?;
-    let slack = Slack::of(&state.config).map_err(middleware::failure)?;
-    let body = middleware::bytes(body).await.map_err(middleware::failure)?;
+    middleware::address(state, &parts, pattern)?;
+    let slack = Slack::of(&state.config)?;
+    let body = middleware::bytes(body).await?;
     if !signed(slack.signing_secret(), &parts.headers, &body, now() / 1000) {
-        return Err(middleware::failure(Error::new("slack_unsigned", 401)));
+        return Err(Error::new("slack_unsigned", 401));
     }
     Ok(body)
 }
