@@ -48,9 +48,9 @@ class PruneTest(unittest.TestCase):
             *entries("dispatch-fixture-Linux-X64-ubuntu24-{:02d}ee", 1, 2),
             *entries("dispatch-rust-binary-debug-Linux-X64-{}dd", 1, 2, 3, 4, 5),
             *entries("dispatch-rust-binary-release-Linux-X64-{}dd", 1, 2, 3, 4, 5),
-            # No kind: binaries keyed before their profile was, Gradle's own, and whatever comes
-            # next.
+            # Binaries keyed before their profile was: nothing looks them up.
             *entries("dispatch-rust-binary-Linux-X64-{}bb", 1, 2, 3),
+            # No kind: Gradle's own, and whatever comes next.
             *entries("gradle-transforms-v2-{}cc", 1, 2, 3),
         ]
         deleted = [cache.key for cache in caches.superseded(listed, NOW)]
@@ -63,7 +63,10 @@ class PruneTest(unittest.TestCase):
             f"codeql-overlay-base-database-1-58b1deea8a9e87c1-javascript-2.27.4-{'b' * 40}-41771-1",
             "dispatch-tools-Linux-X64-ubuntu24-01ee",
             "dispatch-rust-binary-debug-Linux-X64-1dd",
+            "dispatch-rust-binary-Linux-X64-1bb",
             "v0-rust-2026-W45-dispatch-release-Linux-x64-019b21e0-00000002",
+            "dispatch-rust-binary-Linux-X64-2bb",
+            "dispatch-rust-binary-Linux-X64-3bb",
             "v0-rust-2026-W45-dispatch-debug-Linux-x64-019b21e0-00000005",
         ])
 

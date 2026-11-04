@@ -125,7 +125,8 @@ jobs:
   tools:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # A new generation of the debug cache compiles every dependency for each of the Rust jobs.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -178,6 +179,14 @@ jobs:
         with:
           path: .ci-tools/fixture/
           key: ${{ steps.restore.outputs.fixture-key }}
+      # The fixture's build alone left clippy re-checking every dependency, the tests and the
+      # capacity shard compiling those it doesn't use, in every run: whenever the debug cache is
+      # new, what each of them compiles goes in too (`check:ci -- cache`).
+      - uses: ./.github/actions/setup-packages
+        if: steps.debug-cache.outputs.cache-hit != 'true'
+      - name: Fill the debug cache with what the Rust jobs compile
+        if: steps.debug-cache.outputs.cache-hit != 'true'
+        run: npm run check:ci -- cache
       # The release tools above were built in the same target directory, and the debug cache
       # saves what it holds when the job ends: only the debug build belongs in it.
       - name: Leave the release build out of the debug cache

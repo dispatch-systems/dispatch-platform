@@ -11,7 +11,7 @@ import { workspaceCrates } from './workspace.js';
 // on its own runner: `build` packages the runtime, and the modes that test it, `browser` and
 // `smoke`, download that package into `.build` first.
 const mode = process.argv[2] ?? 'full';
-const modes = ['full', 'build', 'checks', 'browser', 'core', 'api', 'smoke', 'scaffold'];
+const modes = ['full', 'build', 'checks', 'browser', 'core', 'api', 'smoke', 'scaffold', 'cache'];
 if (!modes.includes(mode)) throw new Error('Unknown validation mode');
 // core and scaffold each run as two jobs side by side, their lints and their tests; without
 // a part, both.
@@ -203,6 +203,25 @@ async function browser() {
 async function core() {
   for (const command of rustCommands) if (!(await execute(command))) break;
 }
+/**
+ * What the Rust jobs compile, none of it run: clippy and the probes, the tests, the capacity
+ * shard's host tests (`browseros-check.py`), which build one package with its own features, and
+ * the debug build. Main's caches workflow runs it when it fills Cargo's debug cache, so each of
+ * those jobs finds its dependencies built.
+ */
+async function cache() {
+  const builds: Command[] = [
+    ...rustLint.filter(({ name }) => name !== 'rustfmt'),
+    { name: 'Rust test build', command: 'cargo', args: ['test', '--locked', '--no-run'] },
+    {
+      name: 'host test build',
+      command: 'cargo',
+      args: ['test', '--locked', '--test', 'browseros_host', '--no-run'],
+    },
+    { name: 'debug build', command: 'tooling/cli/dispatchdev', args: ['build'] },
+  ];
+  for (const command of builds) if (!(await execute(command))) break;
+}
 /** The API tests against a debug backend, with the Python tooling tests and the npm audit. */
 async function api() {
   const python = (async () => {
@@ -221,6 +240,7 @@ else if (mode === 'core') await core();
 else if (mode === 'api') await api();
 else if (mode === 'smoke') await smoke();
 else if (mode === 'scaffold') await npm('check:scaffold', ...(part ? [`--${part}`] : []));
+else if (mode === 'cache') await cache();
 else {
   // Locally, in sequence: CI's jobs share one machine here, and Cargo's build lock.
   await core();
