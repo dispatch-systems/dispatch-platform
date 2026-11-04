@@ -1811,15 +1811,15 @@ fn a_release_record_naming_no_release_of_its_own_is_refused() {
 
 #[test]
 fn the_release_finds_gh_in_local_bin_without_a_login_shell() {
-    let home = Path::new("/home/dispatch");
+    let home = Path::new("/srv/dispatch");
     // Plain ssh's PATH lacks it; a login shell's already has it.
     assert_eq!(
         search_path(OsStr::new("/usr/bin:/bin"), home),
-        Some("/home/dispatch/.local/bin:/usr/bin:/bin".into())
+        Some("/srv/dispatch/.local/bin:/usr/bin:/bin".into())
     );
     assert_eq!(
         search_path(
-            OsStr::new("/usr/local/bin:/home/dispatch/.local/bin:/usr/bin"),
+            OsStr::new("/usr/local/bin:/srv/dispatch/.local/bin:/usr/bin"),
             home
         ),
         None
