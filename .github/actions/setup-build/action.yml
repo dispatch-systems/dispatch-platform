@@ -20,12 +20,7 @@ outputs:
 runs:
   using: composite
   steps:
-    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-      with:
-        node-version: 26.13.0
-        cache: npm
-    - run: npm ci --ignore-scripts
-      shell: bash
+    - uses: ./.github/actions/setup-packages
     - run: rustup show active-toolchain
       shell: bash
     - name: Identify reusable release binaries

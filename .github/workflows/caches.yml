@@ -1,8 +1,9 @@
 name: Shared caches
 # Only main's caches reach every branch: a PR's run saves caches only that PR reads. This
 # refills, on every push to main, everything the platform checks only restore, and nothing
-# waits on it. Early each Monday it fills the week's new generation of Cargo's caches
-# (setup-tools), so the week's first run does not compile from nothing.
+# waits on it; then it deletes main's caches that newer ones replaced. Early each Monday it
+# fills the week's new generation of Cargo's caches (setup-tools), so the week's first run does
+# not compile from nothing.
 on:
   push:
     branches: [main]
@@ -19,6 +20,18 @@ env:
   CARGO_PROFILE_DEV_DEBUG: '0'
   CARGO_PROFILE_TEST_DEBUG: '0'
 jobs:
+  # The workspace's packages as `npm ci` installs them, which every job restores instead.
+  packages:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-packages
+        with:
+          save: 'true'
   browsers:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
@@ -35,16 +48,11 @@ jobs:
         with:
           path: ~/.cache/ms-playwright/
           key: ${{ steps.keys.outputs.playwright-key }}
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      - uses: ./.github/actions/setup-packages
         if: steps.playwright.outputs.cache-hit != 'true'
-        with:
-          node-version: 26.13.0
-          cache: npm
       - name: Download the pinned Playwright browser
         if: steps.playwright.outputs.cache-hit != 'true'
-        run: |
-          npm ci --ignore-scripts
-          npx playwright install chromium
+        run: npx playwright install chromium
       - name: Save the pinned Playwright browser
         if: steps.playwright.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
@@ -146,3 +154,24 @@ jobs:
         run: |
           target=$(cargo metadata --locked --no-deps --format-version=1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
           rm -rf "$target/release"
+  # Once the others saved theirs, main's older caches of each kind go, and closed PRs' caches
+  # (tooling/ci/caches.py), so the repository stays under GitHub's 10 GB and nothing current is
+  # evicted for them.
+  prune:
+    needs: [packages, browsers, release-binary, tools]
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
+    permissions:
+      actions: write
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          sparse-checkout: tooling/ci/caches.py
+          sparse-checkout-cone-mode: false
+      - name: Delete the caches newer ones replaced
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tooling/ci/caches.py prune
