@@ -74,9 +74,14 @@ debug = false
 
 # Unoptimised, one password hash takes about half a second against 22 ms in release, and the
 # API and collector tests sign in hundreds of times against a debug backend. Only the hashing
-# crates are optimised; debug assertions stay on everywhere.
+# crates are optimised for speed; debug assertions stay on everywhere.
 [profile.dev.package.argon2]
 opt-level = 3
 
 [profile.dev.package.blake2]
+opt-level = 3
+
+# rustls's crypto, built from C, maps its sources' paths out of what it builds only when
+# optimised, as in release; unoptimised, its error messages name this machine's Cargo folder.
+[profile.dev.package.aws-lc-sys]
 opt-level = 3
