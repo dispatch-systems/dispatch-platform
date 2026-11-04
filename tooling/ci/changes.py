@@ -7,7 +7,9 @@ A suite runs unless every file the PR changes is of a kind it never reads:
   only for them and for CI's own files.
 - `docs`: Markdown outside `services/`, whose skills the support worker ships. The rules in the
   api job and the generators in the scaffold job read Markdown, so those two still run.
-- `frontend`: a `frontend/` folder's code, which no collector's native test reaches.
+- `frontend`: a `frontend/` folder's code, which no collector's native test reaches and no Rust
+  reads, but for the owners' manifests (`frontend/feature.ts`) and the list of them
+  (`app/frontend/features.ts`), which the backend's export test writes.
 - Anything else, CI's own files included, is read by every suite.
 
 Outside a pull request every suite runs: `main`'s run of each commit is complete, and Dev
@@ -25,7 +27,7 @@ import sys
 
 # Each suite but android's, and the kinds of file it never reads.
 INERT = {
-    "core": {"android", "docs"},
+    "core": {"android", "docs", "frontend"},
     "api": {"android"},
     "scaffold": {"android"},
     "collectors": {"android", "docs", "frontend"},
@@ -41,7 +43,10 @@ def kind(path: str) -> str:
         return "ci"
     if path.endswith(".md") and not path.startswith("services/"):
         return "docs"
-    if "frontend" in path.split("/")[:-1]:
+    folders, name = path.split("/")[:-1], path.split("/")[-1]
+    if "frontend" in folders and not (
+        (folders[-1] == "frontend" and name == "feature.ts") or path == "app/frontend/features.ts"
+    ):
         return "frontend"
     return "other"
 
@@ -61,14 +66,15 @@ def needed(paths: list[str] | None, pull_request: bool) -> tuple[dict[str, bool]
 
 def changed() -> list[str] | None:
     """The paths the checked-out commit changes, or None when git can't say."""
+    # NUL-separated, so git writes each path as it is rather than quoting an unusual one.
     done = subprocess.run(
-        ["git", "diff", "--name-only", "--no-renames", "HEAD^1", "HEAD"],
+        ["git", "diff", "--name-only", "--no-renames", "-z", "HEAD^1", "HEAD"],
         capture_output=True, text=True,
     )
     if done.returncode != 0:
         print(f"Could not read the change, so every suite runs: {done.stderr.strip()}", file=sys.stderr)
         return None
-    return done.stdout.splitlines()
+    return [path for path in done.stdout.split("\0") if path]
 
 
 def main(argv: list[str]) -> None:

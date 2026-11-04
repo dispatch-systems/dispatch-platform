@@ -22,8 +22,8 @@ locally the whole suite in sequence:
 | platform         |                                            | The gate: the one required check.                                                         |
 
 On a PR, `changes.py` skips a suite when every file the change touches is of a kind it never
-reads: the Android apps, Markdown outside `services/`, or for the collectors a `frontend/`
-folder; the Android apps' job runs only for them and for CI's own files, on a push to `main`
+reads: the Android apps, Markdown outside `services/`, or, for core and the collectors, a
+`frontend/` folder's code but the owners' manifests; the Android apps' job runs only for them and for CI's own files, on a push to `main`
 too. Anything it can't read runs every suite. core, api and scaffold, the longest jobs, decide
 for themselves instead of waiting for it, and pass without running when not needed; the gate
 accepts any other suite skipped only where `changes` said so, and its summary names each job's

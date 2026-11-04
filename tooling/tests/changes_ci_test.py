@@ -1,5 +1,8 @@
 import importlib.util
 from pathlib import Path
+import subprocess
+import sys
+import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -19,8 +22,11 @@ class NeededTest(unittest.TestCase):
         for paths, suites in [
             (["android/relay/build.gradle.kts"], {"android"}),
             (["README.md", "features/dvic/README.md"], {"api", "scaffold"}),
-            (["features/dvic/frontend/DvicPage.tsx"], EVERY - {"collectors", "android"}),
-            (["app/frontend/main.tsx", "README.md"], EVERY - {"collectors", "android"}),
+            (["features/dvic/frontend/DvicPage.tsx"], EVERY - {"core", "collectors", "android"}),
+            (["app/frontend/main.tsx", "README.md"], EVERY - {"core", "collectors", "android"}),
+            # The backend's export test writes the manifests' list from the manifests.
+            (["features/dvic/frontend/feature.ts"], EVERY - {"android"}),
+            (["app/frontend/features.ts"], EVERY - {"android"}),
             (["android/README.md", "README.md"], {"android", "api", "scaffold"}),
             # The support worker ships its skills' Markdown.
             (["services/support-worker/hermes/skills/dispatch-context/SKILL.md"], EVERY - {"android"}),
@@ -40,6 +46,29 @@ class NeededTest(unittest.TestCase):
         for pull_request in (True, False):
             self.assertRuns(None, EVERY, pull_request)
             self.assertRuns([], EVERY, pull_request)
+
+
+class ChangedTest(unittest.TestCase):
+    def test_reads_a_path_git_would_quote(self):
+        with tempfile.TemporaryDirectory() as root:
+            git = lambda *args: subprocess.run(
+                ["git", "-c", "user.name=t", "-c", "user.email=t@t", *args],
+                cwd=root, check=True, capture_output=True,
+            )
+            git("init", "-q")
+            Path(root, "README.md").write_text("one")
+            git("add", "-A")
+            git("commit", "-qm", "base")
+            Path(root, "android").mkdir()
+            Path(root, "android", "réponse.json").write_text("{}")
+            git("add", "-A")
+            git("commit", "-qm", "change")
+            printed = subprocess.run(
+                [sys.executable, str(ROOT / "tooling/ci/changes.py"), "pull_request"],
+                cwd=root, check=True, capture_output=True, text=True,
+            ).stdout.splitlines()
+        self.assertIn("android=true", printed)
+        self.assertIn("changed=android", printed)
 
 
 if __name__ == "__main__":
