@@ -13,7 +13,8 @@ older ones only take room `main`'s current caches need. The tools, fixture and e
 more, keyed by sources a branch may still have; the debug ones, the largest, four. Past those, an
 entry anything read in the last day stays too: `main` back on an older lockfile, or an open PR on
 one, still uses it. CodeQL's are the exception: `main` only writes them, and GitHub counts the
-write as a read, so a day's analyses, one a push, would all stay for a day. A key of no kind
+write as a read, so a day's analyses, one a push, would all stay for a day. The executables'
+keys before they named their profile keep none: nothing looks them up any more. A key of no kind
 below is never touched.
 
 A PR's runs save caches only it reads, under its merge ref. `pr-caches.yml` deletes them when it
@@ -51,6 +52,7 @@ KINDS = {
     "tools": (re.compile(rf"dispatch-(tools|fixture)-{OS}-([a-z0-9]+)-[0-9a-f]+"), 10, True),
     "binaries": (re.compile(rf"dispatch-rust-binary-release-{OS}-[0-9a-f]+"), 10, True),
     "debug binaries": (re.compile(rf"dispatch-rust-binary-debug-{OS}-[0-9a-f]+"), 4, True),
+    "unnamed binaries": (re.compile(rf"dispatch-rust-binary-{OS}-[0-9a-f]+"), 0, False),
 }
 
 Run = Callable[[list], str]
