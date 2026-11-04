@@ -69,12 +69,8 @@ export function SidebarPanels({
     const { leaving, midway, returns } = panels.slide;
     // Where a panel on screen is, in sidebar widths: the one shown before at rest, unless a
     // slide was under way, which stops where it is.
-    const at = (panel: HTMLElement) => {
-      if (!midway) return 0;
-      const now = parseFloat(getComputedStyle(panel).translate) || 0;
-      for (const moving of panel.getAnimations()) moving.cancel();
-      return now;
-    };
+    const at = (panel: HTMLElement) =>
+      midway ? parseFloat(getComputedStyle(panel).translate) || 0 : 0;
     const out = leaving.map(({ panel }) => {
       const element = elements.current.get(place(panel))!;
       return { element, from: at(element) };
@@ -87,6 +83,11 @@ export function SidebarPanels({
       : panels.shown
         ? Math.max(...leavingAt) + 100
         : Math.min(...leavingAt) - 100;
+    // Their earlier moves stop, even with no slide under way: when one ends in the render this
+    // one starts in, the panels it held out are still on the page, and one of them coming back
+    // would be held out again once in.
+    for (const element of [into, ...out.map(({ element }) => element)])
+      for (const moving of element.getAnimations()) moving.cancel();
     // With reduced motion, the panel shown takes the others' place at once.
     const timing = matchMedia('(prefers-reduced-motion: reduce)').matches
       ? { ...slide, duration: 0 }
