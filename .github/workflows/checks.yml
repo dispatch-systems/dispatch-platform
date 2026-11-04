@@ -360,6 +360,8 @@ jobs:
         with:
           name: ${{ needs.build.outputs.candidate }}
       - run: mkdir .build && tar -xzf dispatch-dev.tar.gz -C .build
+      - uses: ./.github/actions/setup-rust
+        if: steps.tools.outputs.fixture-hit != 'true'
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         if: steps.tools.outputs.fixture-hit != 'true'
         with:
@@ -402,6 +404,10 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-tools
+        id: tools
+      # The host tool the package's test runs builds with Cargo when its cache missed.
+      - uses: ./.github/actions/setup-rust
+        if: steps.tools.outputs.tools-hit != 'true'
       - uses: ./.github/actions/setup-packages
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
@@ -631,6 +637,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+      - uses: ./.github/actions/setup-rust
       - name: Cache audit tool
         id: audit-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
@@ -657,6 +664,8 @@ jobs:
         id: restore
         with:
           fixture: 'true'
+      - uses: ./.github/actions/setup-rust
+        if: steps.restore.outputs.tools-hit != 'true' || steps.restore.outputs.fixture-hit != 'true'
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         if: steps.restore.outputs.tools-hit != 'true'
         with:
@@ -777,6 +786,10 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-tools
+        id: tools
+      # The host tool the verification runs builds with Cargo when its cache missed.
+      - uses: ./.github/actions/setup-rust
+        if: steps.tools.outputs.tools-hit != 'true'
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: ${{ needs.build.outputs.candidate }}

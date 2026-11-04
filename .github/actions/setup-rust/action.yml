@@ -1,0 +1,43 @@
+name: Rust toolchain
+description: >-
+  The toolchain rust-toolchain.toml pins, with its components: restored whole when main's caches
+  workflow saved it for this pin, installed by rustup otherwise.
+inputs:
+  save:
+    description: Save the toolchain after a fresh install. Only main's caches workflow does.
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    # rustup names a toolchain's folder by its channel and the host, and records the manifest it
+    # installed from beside it; with both restored, the install below has nothing to download.
+    - name: Identify the pinned toolchain
+      id: pin
+      shell: bash
+      run: |
+        channel=$(sed -nE 's/^channel = "([^"]+)"$/\1/p' rust-toolchain.toml)
+        test -n "$channel"
+        echo "channel=$channel" >> "$GITHUB_OUTPUT"
+    - name: Restore the pinned toolchain
+      id: toolchain
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: |
+          ~/.rustup/toolchains/${{ steps.pin.outputs.channel }}-*
+          ~/.rustup/update-hashes/${{ steps.pin.outputs.channel }}-*
+        key: dispatch-rust-toolchain-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml') }}
+    # Installs what rust-toolchain.toml names, or finds it installed. Explicit: a toolchain that
+    # rustup installs on first use, as any cargo command would, is deprecated.
+    - name: Install the pinned toolchain
+      shell: bash
+      run: |
+        rustup toolchain install --no-self-update
+        rustup show active-toolchain
+    - name: Save the pinned toolchain
+      if: inputs.save == 'true' && steps.toolchain.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: |
+          ~/.rustup/toolchains/${{ steps.pin.outputs.channel }}-*
+          ~/.rustup/update-hashes/${{ steps.pin.outputs.channel }}-*
+        key: ${{ steps.toolchain.outputs.cache-primary-key }}
