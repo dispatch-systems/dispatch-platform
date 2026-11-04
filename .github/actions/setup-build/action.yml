@@ -79,9 +79,12 @@ runs:
       run: |
         export CARGO_PROFILE_RELEASE_LTO=false
         echo "CARGO_PROFILE_RELEASE_LTO=false" >> "$GITHUB_ENV"
+        set -o pipefail
         key=$(tooling/cli/dispatchdev build --release --cache-key | sed -n 's/^key=//p')
-        test -n "$key"
-        echo "DISPATCH_CI_RUST_KEY=$key" >> "$GITHUB_ENV"
+        # No key: the inputs can't use the binary cache, and Cargo builds them as it is.
+        if [ -n "$key" ]; then
+          echo "DISPATCH_CI_RUST_KEY=$key" >> "$GITHUB_ENV"
+        fi
     - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
       if: steps.binary-cache.outputs.cache-hit != 'true' || inputs.dependencies == 'true'
       with:
