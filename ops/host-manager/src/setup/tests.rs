@@ -165,7 +165,7 @@ impl Fixture {
             first: "First Name".into(),
             last: "Last Name".into(),
             provider: if production { "native" } else { "fixture" }.into(),
-            sandbox: production.then(|| Path::new("/bin/true").canonicalize().unwrap()),
+            sandbox: production.then(|| Path::new("/usr/bin/true").canonicalize().unwrap()),
             archive,
             commit: production.then(|| COMMIT.into()),
             version: production.then(|| "1.0.0".into()),
