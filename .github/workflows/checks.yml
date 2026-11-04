@@ -4,7 +4,9 @@ name: Platform checks
 # publishes the tested build, which Dev installs. A manual run publishes the build of the commit it
 # ran on the same way, as each release dispatches its own, which it stamps. Outside a PR the build
 # of main or a release's branch carries DSP Dispatch: Relay, signed here: Dev's app, and
-# Production's in a release's run (android/README.md#releases).
+# Production's in a release's run (android/README.md#releases). A release's run that names main's
+# passed push run of its commit (`tested-run`) skips the suites that tested the commit's source
+# there, and builds, checks and smoke-tests the package it publishes.
 on:
   pull_request:
   push:
@@ -13,6 +15,10 @@ on:
     inputs:
       relay-version:
         description: "Production's relay app version this release builds, as 0.0.1; empty carries the last released one"
+        type: string
+        default: ''
+      tested-run:
+        description: "Main's passed push run of these checks on the same commit, whose source suites this run skips"
         type: string
         default: ''
 permissions:
@@ -281,10 +287,12 @@ jobs:
       - run: mkdir .build && tar -xzf dispatch-dev.tar.gz -C .build
       - run: npm run check:ci -- checks
   # The browser suite in six shards of about equal time, three workers each, every test with
-  # its own server, port, database and mail. Failed shards upload their traces.
+  # its own server, port, database and mail. Failed shards upload their traces. A release's run
+  # that names main's skips it: its package differs from main's only by the relay apps it packs,
+  # which no browser test opens.
   browser:
     needs: build
-    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    if: ${{ !cancelled() && needs.build.result == 'success' && !inputs.tested-run }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
@@ -391,6 +399,7 @@ jobs:
       - run: npm run check:ci -- smoke
   # Rust formatting, lints and tests.
   core:
+    if: ${{ !inputs.tested-run }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -407,6 +416,7 @@ jobs:
   # What every generator writes, made in a copy of the checkout: it builds, passes clippy,
   # TypeScript, the linter and the rules, and its Rust tests and agent tools' tests pass.
   scaffold:
+    if: ${{ !inputs.tested-run }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -425,6 +435,8 @@ jobs:
   # The Android apps in android/: their unit tests, lint (the dev debug and production release
   # builds) and debug builds, only when a change touches them or this workflow, so any other
   # change passes it at once. Release builds are signed only in relay-dev and relay-production.
+  # A dispatched run always runs it, a release's that names main's too: main's run of the commit
+  # tested the apps only if the commit changed them.
   android:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -457,6 +469,7 @@ jobs:
         run: ./gradlew test lintDevDebug lintProductionRelease assembleDebug
   # The API tests against a debug backend, the Python tooling tests and the npm audit.
   api:
+    if: ${{ !inputs.tested-run }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -472,6 +485,7 @@ jobs:
       - run: npm run check:ci -- api
   # The native collectors against their fixtures, with a real isolated browser.
   collectors:
+    if: ${{ !inputs.tested-run }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
@@ -491,7 +505,8 @@ jobs:
       - name: Native collector verification
         run: npm run test:browseros -- --shard ${{ matrix.shard }}
   # `cargo audit`, denying every warning but the yanked versions `cargo-audit.py` allows, each
-  # with its reason.
+  # with its reason. A release's run that names main's audits again: advisories come out by the
+  # day, not by the commit.
   rust-advisories:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -566,7 +581,9 @@ jobs:
           path: .ci-tools/fixture/
           key: ${{ steps.restore.outputs.fixture-key }}
   # The one required check. It passes only when every suite passed, the relay apps' builds too
-  # wherever they ran, and the build carries the run's own commit and a complete inventory.
+  # wherever they ran, and the build carries the run's own commit and a complete inventory. In a
+  # release's run that names main's, the source's suites passed there: GitHub must answer that the
+  # run it names is main's passed push run of these checks on the same commit.
   # Outside a PR it then publishes that build under the commit's name: Dev installs main's, and a
   # release stamps its own run's.
   platform:
@@ -590,11 +607,29 @@ jobs:
       - name: Require every suite
         env:
           RESULTS: ${{ toJSON(needs) }}
+          TESTED_RUN: ${{ inputs.tested-run }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           # The relay apps' builds alone may be skipped: they run outside PRs, Production's in a
-          # release's run.
-          failed=$(echo "$RESULTS" | jq -r 'to_entries[] | select(.value.result != "success")
-            | select(.value.result != "skipped" or (.key | IN("relay-dev", "relay-production") | not))
+          # release's run. So may the source's suites, in a release's run naming main's.
+          skippable='["relay-dev", "relay-production"]'
+          if [ -n "$TESTED_RUN" ]; then
+            if ! [[ "$TESTED_RUN" =~ ^[1-9][0-9]*$ ]] ||
+              ! tested=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$TESTED_RUN") ||
+              ! echo "$tested" | jq -e --arg sha "$GITHUB_SHA" --arg repository "$GITHUB_REPOSITORY" '
+                .event == "push" and .head_branch == "main" and .head_sha == $sha
+                and .path == ".github/workflows/checks.yml"
+                and .head_repository.full_name == $repository
+                and .status == "completed" and .conclusion == "success"' > /dev/null; then
+              echo "Run $TESTED_RUN is not main's passed push run of these checks on $GITHUB_SHA"
+              exit 1
+            fi
+            echo "The source's suites passed in $(echo "$tested" | jq -r .html_url)"
+            skippable='["relay-dev", "relay-production", "core", "api", "collectors", "scaffold", "browser"]'
+          fi
+          failed=$(echo "$RESULTS" | jq -r --argjson skippable "$skippable" 'to_entries[]
+            | select(.value.result != "success")
+            | select(.value.result != "skipped" or (.key | IN($skippable[]) | not))
             | "\(.key): \(.value.result)"')
           if [ -n "$failed" ]; then
             echo "Suites that did not pass:"
