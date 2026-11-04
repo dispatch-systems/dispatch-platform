@@ -587,7 +587,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      # The tests' sandbox installs from apt while the rest sets up.
+      # The tests' sandbox installs from apt while the rest sets up. It runs no action, so it
+      # can't race the setup's own for the same one.
       - id: sandbox
         background: true
         uses: ./.github/actions/setup-support-sandbox
@@ -620,10 +621,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      # The isolated browser installs from apt while the rest sets up.
-      - id: browseros
-        background: true
-        uses: ./.github/actions/setup-browseros
       - uses: ./.github/actions/setup-tools
       # The debug backend and worker the debug job or main's run saved; the capacity shard also
       # compiles the host's tests, so it keeps Cargo's dependency cache beside them.
@@ -633,7 +630,9 @@ jobs:
           save: 'false'
           binaries: 'true'
           dependencies: ${{ matrix.shard == 'capacity' }}
-      - wait: browseros
+      # Not in the background: it restores its package with actions/cache, as the steps above do,
+      # and two steps preparing the same action at once fail.
+      - uses: ./.github/actions/setup-browseros
       - name: Native collector verification
         run: npm run test:browseros -- --shard ${{ matrix.shard }}
   # `cargo audit`, denying every warning but the yanked versions `cargo-audit.py` allows, each
