@@ -9,7 +9,8 @@ pinned Playwright browser and BrowserOS package; the installed packages and npm'
 they install from; the pinned Rust toolchain; CodeQL's overlay database, which only a pull
 request's analysis would read, while CodeQL analyses `main` alone; the CI tools and assessment
 fixture; the exact release and debug backend and worker; and the scaffold jobs' sccache, whose
-newest alone stays. The two newest of each other kind stay, so a branch still on the lockfile
+newest alone stays, whatever its last read: each main run restores the one before it, which then
+looks in use, and a day's would all stay. The two newest of each other kind stay, so a branch still on the lockfile
 `main` just left keeps its cache; older ones only take room `main`'s current caches need. The tools, fixture and executables keep
 more, keyed by sources a branch may still have; the debug ones, the largest, four. Past those, an
 entry anything read in the last day stays too: `main` back on an older lockfile, or an open PR on
@@ -55,7 +56,7 @@ KINDS = {
     "binaries": (re.compile(rf"dispatch-rust-binary-release-{OS}-[0-9a-f]+"), 10, True),
     "debug binaries": (re.compile(rf"dispatch-rust-binary-debug-{OS}-[0-9a-f]+"), 4, True),
     "unnamed binaries": (re.compile(rf"dispatch-rust-binary-{OS}-[0-9a-f]+"), 0, False),
-    "sccache": (re.compile(rf"dispatch-sccache-([a-z-]+)-{OS}-[0-9]+"), 1, True),
+    "sccache": (re.compile(rf"dispatch-sccache-([a-z-]+)-{OS}-[0-9]+"), 1, False),
 }
 
 Run = Callable[[list], str]

@@ -97,6 +97,21 @@ class PruneTest(unittest.TestCase):
             ],
         )
 
+    def test_keeps_only_the_newest_sccache_of_each_job_whatever_read_it(self):
+        # Each main run restores the snapshot before it, then saves its own the same day.
+        listed = [
+            *entries("dispatch-sccache-scaffold-Linux-X64-4190{}", 17, 18, 19, read=20),
+            *entries("dispatch-sccache-scaffold-lint-Linux-X64-4190{}", 18, 19, read=20),
+        ]
+        self.assertEqual(
+            [cache.key for cache in caches.superseded(listed, NOW)],
+            [
+                "dispatch-sccache-scaffold-Linux-X64-419017",
+                "dispatch-sccache-scaffold-Linux-X64-419018",
+                "dispatch-sccache-scaffold-lint-Linux-X64-419018",
+            ],
+        )
+
     def test_deletes_closed_prs_caches(self):
         listed = [
             *entries("dispatch-tools-Linux-X64-ubuntu24-{}ee", 1, 2, ref="refs/pull/7/merge"),
