@@ -491,7 +491,7 @@ impl Release<'_> {
         }
         Ok(())
     }
-    fn remove_checks_branch(&self) -> Result<()> {
+    pub(super) fn remove_checks_branch(&self) -> Result<()> {
         if self.checks_ref()?.is_some() {
             self.command(
                 &[

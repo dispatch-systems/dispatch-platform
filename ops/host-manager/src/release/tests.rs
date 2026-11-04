@@ -43,8 +43,8 @@ struct Fake {
     /// Runs that skipped the core suite: a dispatched run naming main's run of its commit, or
     /// one that validated less than the full suite.
     partial: RefCell<BTreeSet<u64>>,
-    /// Where the temporary checks branch points on GitHub.
-    branch: RefCell<Option<String>>,
+    /// Where each temporary checks branch points on GitHub, by name.
+    branches: RefCell<BTreeMap<String, String>>,
     /// The conclusion a dispatched run reaches.
     dispatched: Cell<&'static str>,
     /// Whether every database in Production's restored backup checks out.
@@ -109,7 +109,6 @@ impl System for Fake {
                 .unwrap_or("")
                 .to_owned()
         };
-        let checks_ref = "refs/heads/release-checks/v1.0.0";
         if args.starts_with(&["gh", "api", "graphql"]) {
             require(
                 format!("{}/{}", field("owner"), field("name")) == REPOSITORY,
@@ -182,27 +181,42 @@ impl System for Fake {
                 } else {
                     json!([])
                 }
-            } else if endpoint == "git/matching-refs/heads/release-checks/v1.0.0" {
+            } else if let Some(prefix) = endpoint.strip_prefix("git/matching-refs/heads/") {
+                // GitHub answers every branch whose name starts with the one asked for.
                 let refs: Vec<_> = self
-                    .branch
+                    .branches
                     .borrow()
                     .iter()
-                    .map(|sha| json!({"ref":checks_ref,"object":{"type":"commit","sha":sha}}))
+                    .filter(|(name, _)| name.starts_with(prefix))
+                    .map(|(name, sha)| {
+                        json!({"ref":format!("refs/heads/{name}"),"object":{"type":"commit","sha":sha}})
+                    })
                     .collect();
                 json!(refs)
             } else if endpoint == "git/refs" {
-                require(field("ref") == checks_ref, "Unexpected branch")?;
-                require(self.branch.borrow().is_none(), "Reference already exists")?;
-                self.branch.replace(Some(field("sha")));
-                json!({ "ref": checks_ref })
-            } else if endpoint == "git/refs/heads/release-checks/v1.0.0" {
+                let reference = field("ref");
+                let name = reference
+                    .strip_prefix("refs/heads/")
+                    .filter(|name| name.starts_with("release-checks/"))
+                    .ok_or("Unexpected branch")?
+                    .to_owned();
+                require(
+                    !self.branches.borrow().contains_key(&name),
+                    "Reference already exists",
+                )?;
+                self.branches.borrow_mut().insert(name, field("sha"));
+                json!({ "ref": reference })
+            } else if let Some(name) = endpoint.strip_prefix("git/refs/heads/") {
                 if args.contains(&"DELETE") {
-                    self.branch.take().ok_or("Reference does not exist")?;
+                    self.branches
+                        .borrow_mut()
+                        .remove(name)
+                        .ok_or("Reference does not exist")?;
                     return Ok(vec![]);
                 }
                 require(args.contains(&"PATCH"), "Unexpected branch update")?;
-                self.branch.replace(Some(field("sha")));
-                json!({ "ref": checks_ref })
+                self.branches.borrow_mut().insert(name.into(), field("sha"));
+                json!({ "ref": format!("refs/heads/{name}") })
             } else if endpoint == "releases/9" && args.contains(&"DELETE") {
                 self.listed.borrow_mut().retain(|r| r["id"] != 9);
                 return Ok(vec![]);
@@ -217,11 +231,17 @@ impl System for Fake {
             }
         } else if args.starts_with(&["gh", "workflow", "run", "checks.yml"]) {
             let reference = args[args.iter().position(|s| *s == "--ref").unwrap() + 1];
+            // The relay-production environment allows only a release's branches.
             require(
-                format!("refs/heads/{reference}") == checks_ref,
+                reference.starts_with("release-checks/v"),
                 "Unexpected dispatch",
             )?;
-            let sha = self.branch.borrow().clone().ok_or("No such ref")?;
+            let sha = self
+                .branches
+                .borrow()
+                .get(reference)
+                .cloned()
+                .ok_or("No such ref")?;
             let mut runs = self.runs.borrow_mut();
             let runs = runs.as_array_mut().unwrap();
             let id = runs.iter().filter_map(|r| r["id"].as_u64()).max().unwrap() + 1;
@@ -246,7 +266,7 @@ impl System for Fake {
         } else if args.starts_with(&["gh", "attestation", "verify"]) {
             Value::Null
         } else if args.starts_with(&["gh", "release", "create"]) {
-            self.listed.replace(vec![json!({"id":9,"tag_name":"v1.0.0","draft":true,"prerelease":false,
+            self.listed.replace(vec![json!({"id":9,"tag_name":args[3],"draft":true,"prerelease":false,
                 "target_commitish":self.commit,"html_url":"https://example.invalid/release","assets":[]})]);
             self.maybe_fail("create-draft")?;
             Value::Null
@@ -557,7 +577,7 @@ impl Fixture {
             hide_release_once: Cell::new(false),
             comparison: RefCell::new("ahead".into()),
             partial: RefCell::new(BTreeSet::new()),
-            branch: RefCell::new(None),
+            branches: RefCell::new(BTreeMap::new()),
             dispatched: Cell::new("success"),
             restorable: Cell::new(true),
             production: RefCell::new(json!({"failure":null,"gh":true,"service":"active",
@@ -787,6 +807,10 @@ fn legacy_cli_defaults_and_explicit_stages_are_validated_before_effects() {
             .unwrap()
             .stage,
         Stage::Publish
+    );
+    assert_eq!(
+        parse(&["dry-run", "--root", "/checkout"]).unwrap().stage,
+        Stage::DryRun
     );
     for args in [
         vec!["publish", "bad", "--root", "/checkout"],
@@ -1202,6 +1226,9 @@ fn unpublished_releases_are_those_after_the_latest_published_one_never_published
     let f = Fixture::new();
     let release = f.release();
     assert!(unpublished(&release.directory, &[]).unwrap().is_empty());
+    // A dry run's draft is never a release's.
+    let dry = json!({"tag_name":format!("v2.0.0-dry-{}", &f.system.commit[..8]),"draft":true});
+    assert!(unpublished(&release.directory, &[dry]).unwrap().is_empty());
     io::private_directory(&release.directory).unwrap();
     release.record_commit(&f.system.commit).unwrap();
     let draft = json!({"tag_name":"v2.0.0","draft":true});
@@ -1745,8 +1772,8 @@ fn every_release_runs_its_own_checks_on_a_temporary_branch_before_preparation() 
     assert!(error.contains("Checks ended with failure"), "{error}");
     assert!(!release.output.exists());
     assert_eq!(
-        f.system.branch.borrow().as_deref(),
-        Some(f.system.commit.as_str())
+        f.system.branches.borrow().get("release-checks/v1.0.0"),
+        Some(&f.system.commit)
     );
     // Without android/, there's no app to build or carry.
     assert!(
@@ -1763,7 +1790,7 @@ fn every_release_runs_its_own_checks_on_a_temporary_branch_before_preparation() 
         "complete"
     );
     assert_eq!(f.system.count(&["gh", "workflow", "run"]), 1);
-    assert!(f.system.branch.borrow().is_none());
+    assert!(f.system.branches.borrow().is_empty());
     assert_eq!(release.prepared(None).unwrap().commit, f.system.commit);
 }
 
@@ -1796,6 +1823,112 @@ fn the_releases_checks_reuse_mains_suites_only_once_mains_run_of_the_commit_pass
                 .iter()
                 .flatten()
                 .any(|arg| arg.starts_with("tested-run="))
+        );
+    }
+}
+
+#[test]
+fn a_dry_run_rehearses_the_release_only_path_then_leaves_no_trace_of_itself() {
+    let f = Fixture::with_app(App::Changed);
+    f.released(Some(&Apk::production("0.0.1", &f.previous())));
+    let app = Apk::production("0.0.2", &f.system.commit);
+    f.build(Some(&app));
+    // Production is out of reach, and a dry run never needs it.
+    f.system.health_error.set(true);
+    let release = f.release();
+    let result = release.execute(Stage::DryRun, None).unwrap();
+    assert_eq!(result["stage"], "dry-run");
+    // Its own checks ran on a branch of its own, with the inputs the release's would have.
+    let tag = format!("v1.0.0-dry-{}", &f.system.commit[..8]);
+    let branch = format!("release-checks/{tag}");
+    assert!(f.system.has_call(&[
+        "--ref",
+        &branch,
+        "-f",
+        "relay-version=0.0.2",
+        "-f",
+        "tested-run=5"
+    ]));
+    // Their package was prepared, smoke-checked and drafted under the dry run's tag with every
+    // asset, Production's app among them.
+    assert!(f.system.has_call(&["--smoke-only"]));
+    assert!(f.system.has_call(&["gh", "release", "create", &tag]));
+    let assets = result["verified"]["draftAssets"].as_array().unwrap();
+    assert_eq!(assets.len(), 8, "{assets:?}");
+    assert!(assets.contains(&json!(app.asset())));
+    // Then its draft and branch are gone, nothing was published, and Production was never asked.
+    assert!(
+        !f.system
+            .listed
+            .borrow()
+            .iter()
+            .any(|r| r["tag_name"] == tag)
+    );
+    assert!(f.system.branches.borrow().is_empty());
+    assert!(!f.system.has_call(&["-F", "draft=false"]));
+    assert!(!f.system.calls.borrow().iter().any(|c| c[0] == "ssh"));
+    // Beside the release lock, nothing is left: no journal, notes or preparation.
+    let left: BTreeSet<_> = fs::read_dir(&release.directory)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+        .collect();
+    assert_eq!(
+        left,
+        BTreeSet::from([".release.lock".into(), "dry-run".into()])
+    );
+    assert_eq!(
+        fs::read_dir(release.directory.join("dry-run"))
+            .unwrap()
+            .count(),
+        0
+    );
+    // The release then runs its own checks and publishes as though there had been no dry run.
+    f.system.health_error.set(false);
+    assert_eq!(
+        release.execute(Stage::Publish, None).unwrap()["stage"],
+        "complete"
+    );
+    assert!(f.system.has_call(&[
+        "--ref",
+        "release-checks/v1.0.0",
+        "-f",
+        "relay-version=0.0.2"
+    ]));
+    assert_eq!(f.system.count(&["gh", "workflow", "run"]), 2);
+}
+
+#[test]
+fn a_dry_run_that_fails_midway_still_deletes_its_draft_branch_and_files() {
+    for (failure, refusal) in [
+        ("checks", "Checks ended with failure"),
+        ("upload", "Injected upload interruption"),
+    ] {
+        let f = Fixture::new();
+        if failure == "checks" {
+            f.system.dispatched.set("failure");
+        } else {
+            f.system.fail("upload");
+        }
+        let release = f.release();
+        let error = release
+            .execute(Stage::DryRun, None)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains(refusal), "{error}");
+        // The failed checks left their branch, or the failed upload its draft: all are gone.
+        assert!(f.system.has_call(&["gh", "workflow", "run"]));
+        assert_eq!(
+            f.system.has_call(&["gh", "release", "create"]),
+            failure == "upload"
+        );
+        assert!(f.system.listed.borrow().is_empty(), "{failure}");
+        assert!(f.system.branches.borrow().is_empty(), "{failure}");
+        assert_eq!(
+            fs::read_dir(release.directory.join("dry-run"))
+                .unwrap()
+                .count(),
+            0,
+            "{failure}"
         );
     }
 }

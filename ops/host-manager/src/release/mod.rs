@@ -3,6 +3,7 @@
 //! truth; the small local journal only pins intent across process interruptions.
 mod assets;
 mod backup;
+mod dry_run;
 mod origins;
 mod production;
 mod relay;
@@ -26,7 +27,7 @@ use std::{
     time::Duration,
 };
 
-const HELP: &str = "Dispatch release [publish|status|backup] [X.Y.Z] --root CHECKOUT
+const HELP: &str = "Dispatch release [publish|status|backup|dry-run] [X.Y.Z] --root CHECKOUT
   publish   Release main's head: run its own full checks, which build or carry its
             Production relay app, require Dev serving the commit, publish the release once
             Production can take it, verify Production installs it and report what its log
@@ -40,6 +41,9 @@ const HELP: &str = "Dispatch release [publish|status|backup] [X.Y.Z] --root CHEC
   status    Inspect GitHub, saved assets and public health without changing release state.
   backup    Back Production up for the release over ssh, stopping it for about a second,
             restore the copy elsewhere and check every database, and record it.
+  dry-run   Rehearse what only a release runs, for the commit publish would release: its own
+            checks, the package, the smoke check and a verified GitHub draft, then delete the
+            draft, its checks branch and its files. It never publishes or touches Production.
 With no version, publish makes a new release, the latest published version bumped. It sets
 aside any release never published, unless that release already holds the same commit, which
 it continues. A version publishes, or finishes publishing, exactly that release.
@@ -55,6 +59,7 @@ enum Stage {
     Publish,
     Status,
     Backup,
+    DryRun,
 }
 
 struct Options {
@@ -90,6 +95,7 @@ impl Options {
             "publish" => Some(Stage::Publish),
             "status" => Some(Stage::Status),
             "backup" => Some(Stage::Backup),
+            "dry-run" => Some(Stage::DryRun),
             _ => None,
         }) {
             value.stage = stage;
@@ -382,6 +388,9 @@ impl<'a> Release<'a> {
         let _lock = ReleaseLock(lock);
         if stage == Stage::Backup {
             return self.backup();
+        }
+        if stage == Stage::DryRun {
+            return self.dry_run(requested);
         }
         self.git(&["fetch", "--tags", "origin", "main"], None, 300)?;
         if self.fresh {
