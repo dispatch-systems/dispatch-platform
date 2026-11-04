@@ -1,4 +1,5 @@
 use super::*;
+use std::collections::BTreeMap;
 
 /// The PRs in the log, as number and title: a squash commit names its PR in the `(#N)`
 /// suffix of its subject, and a merge commit from before squash merges in its
@@ -22,15 +23,102 @@ fn merged_changes(log: &str) -> Result<Vec<(u64, String)>> {
         .collect())
 }
 
-/// A PR title as a release note reads it: without the `type(scope):` prefix, capitalized.
-fn plain_title(title: &str) -> String {
-    let prefix = regex::Regex::new(r"^[a-z]+(\([^)]*\))?!?: ").unwrap();
-    let title = prefix.replace(title, "");
-    let mut chars = title.chars();
+/// A PR title's `type(scope):` prefix, capturing its type and scope.
+fn prefix() -> regex::Regex {
+    regex::Regex::new(r"^([a-z]+)(?:\(([^)]*)\))?!?: ").unwrap()
+}
+fn capitalized(text: &str) -> String {
+    let mut chars = text.chars();
     match chars.next() {
         Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
         None => String::new(),
     }
+}
+/// A PR title as a release note reads it: without the `type(scope):` prefix, capitalized.
+fn plain_title(title: &str) -> String {
+    capitalized(&prefix().replace(title, ""))
+}
+
+/// Where a PR goes in the release notes, in their order.
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+enum Area {
+    /// Under the heading its scope names.
+    Scope(String),
+    /// Under the general heading: a PR with no scope.
+    General,
+    /// Only counted: a change to tooling, CI, tests, dependencies, or the release and host tools.
+    Counted,
+}
+const COUNTED_TYPES: [&str; 5] = ["ci", "test", "build", "chore", "docs"];
+const COUNTED_SCOPES: [&str; 5] = ["tooling", "ci", "deps", "release", "host"];
+/// A PR's area, from its title's `type(scope):` prefix.
+fn area(title: &str) -> Area {
+    let Some(prefix) = prefix().captures(title) else {
+        return Area::General;
+    };
+    let scope = prefix.get(2).map(|scope| scope.as_str());
+    if COUNTED_TYPES.contains(&&prefix[1]) || scope.is_some_and(|s| COUNTED_SCOPES.contains(&s)) {
+        return Area::Counted;
+    }
+    scope.map_or(Area::General, |scope| Area::Scope(scope.into()))
+}
+/// A scope as a heading, in words: `driver-match` reads Driver Match, an acronym in capitals.
+fn heading(scope: &str) -> String {
+    scope
+        .split('-')
+        .map(|word| match word {
+            "dvic" | "mcp" => word.to_uppercase(),
+            _ => capitalized(word),
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// The release notes for the merged PRs, as number, title and the body GitHub served: `app`,
+/// the line naming DSP Dispatch: Relay's new version, first; then a heading per area, scopes
+/// in order before the general one, with a line per PR, the first paragraph of its Summary
+/// section (or of Change, for older PRs) or else its title; then the count of changes to
+/// tooling, CI, tests and dependencies; then the list of every PR.
+fn release_notes(
+    app: Option<String>,
+    pulls: &[(u64, String, Option<String>)],
+    tag: &str,
+) -> String {
+    let mut areas = BTreeMap::<Area, Vec<String>>::new();
+    for (_, title, body) in pulls {
+        let line = match body.as_deref().and_then(change_summary) {
+            Some(summary) => summary,
+            None => format!("{}.", plain_title(title).trim_end_matches('.')),
+        };
+        areas.entry(area(title)).or_default().push(line);
+    }
+    let section = |name: &str, lines: &[String]| {
+        let lines: Vec<_> = lines.iter().map(|line| format!("- {line}")).collect();
+        format!("## {name}\n\n{}", lines.join("\n"))
+    };
+    let mut blocks: Vec<String> = app.into_iter().collect();
+    blocks.extend(areas.into_iter().map(|(area, lines)| match area {
+        Area::Scope(scope) => section(&heading(&scope), &lines),
+        Area::General => section("General", &lines),
+        Area::Counted => match lines.len() {
+            1 => "Plus 1 change to tooling, CI, tests and dependencies.".into(),
+            n => format!("Plus {n} changes to tooling, CI, tests and dependencies."),
+        },
+    }));
+    let links: Vec<_> = pulls
+        .iter()
+        .map(|(number, ..)| format!("[#{number}](https://github.com/{REPOSITORY}/pull/{number})"))
+        .collect();
+    blocks.push(match links.len() {
+        0 => format!("Release {tag}."),
+        1 => format!("Includes {}.", links[0]),
+        n => format!(
+            "Includes {} and {}.",
+            links[..n - 1].join(", "),
+            links[n - 1]
+        ),
+    });
+    blocks.join("\n\n") + "\n"
 }
 
 /// The first paragraph of a PR body's Summary section, or of its Change section for a body
@@ -172,58 +260,71 @@ impl Release<'_> {
             120,
         )?)
     }
-    /// Writes the release notes from the merged PRs: a line naming DSP Dispatch: Relay's
-    /// version when the release carries a new one, one line per PR, the first paragraph of its
-    /// Summary section (or of Change, for older PRs), then the list of PRs. A body GitHub
-    /// cannot serve, or one with neither section, leaves the title instead.
+    /// Writes the release notes from the PRs merged since the last release, with the title and
+    /// body GitHub serves for each. A PR GitHub doesn't serve keeps the title its commit names.
     pub(super) fn generate_notes(&self, commit: &str) -> Result<()> {
         let changes = match self.previous()? {
             Some(previous) => self.changes_after(&previous, commit)?,
             None => vec![],
         };
-        let mut notes = self.app_note()?.unwrap_or_default();
-        for (number, title) in &changes {
-            let body = self
+        let numbers: Vec<_> = changes.iter().map(|(number, _)| *number).collect();
+        let served = self.pull_requests(&numbers)?;
+        let pulls: Vec<_> = changes
+            .into_iter()
+            .map(|(number, title)| match served.get(&number) {
+                Some((title, body)) => (number, title.clone(), Some(body.clone())),
+                None => (number, title, None),
+            })
+            .collect();
+        fs::write(
+            &self.notes,
+            release_notes(self.app_note()?, &pulls, &self.tag),
+        )?;
+        Ok(())
+    }
+    /// Each PR's title and body, by number, a hundred PRs to a query. A query GitHub fails,
+    /// such as one naming a number that isn't a PR, leaves its PRs out.
+    fn pull_requests(&self, numbers: &[u64]) -> Result<BTreeMap<u64, (String, String)>> {
+        let (owner, name) = REPOSITORY.split_once('/').ok_or("Invalid repository")?;
+        let mut pulls = BTreeMap::new();
+        for batch in numbers.chunks(100) {
+            let fields: Vec<_> = batch
+                .iter()
+                .map(|number| format!("p{number}: pullRequest(number: {number}) {{ title body }}"))
+                .collect();
+            let query = format!(
+                "query($owner: String!, $name: String!) {{ repository(owner: $owner, name: $name) {{ {} }} }}",
+                fields.join(" ")
+            );
+            let Some(answer) = self
                 .command(
                     &[
                         "gh",
-                        "pr",
-                        "view",
-                        &number.to_string(),
-                        "--repo",
-                        REPOSITORY,
-                        "--json",
-                        "body",
-                        "--jq",
-                        ".body",
+                        "api",
+                        "graphql",
+                        "-f",
+                        &format!("query={query}"),
+                        "-f",
+                        &format!("owner={owner}"),
+                        "-f",
+                        &format!("name={name}"),
                     ],
                     None,
-                    60,
+                    120,
                 )
-                .ok();
-            let line = match body.as_deref().and_then(change_summary) {
-                Some(summary) => summary,
-                None => format!("{}.", plain_title(title).trim_end_matches('.')),
+                .ok()
+                .and_then(|answer| serde_json::from_str::<Value>(&answer).ok())
+            else {
+                continue;
             };
-            notes.push_str(&format!("- {line}\n"));
+            for number in batch {
+                let pull = &answer["data"]["repository"][format!("p{number}")];
+                if let (Some(title), Some(body)) = (pull["title"].as_str(), pull["body"].as_str()) {
+                    pulls.insert(*number, (title.to_owned(), body.to_owned()));
+                }
+            }
         }
-        let links: Vec<_> = changes
-            .iter()
-            .map(|(number, _)| {
-                format!("[#{number}](https://github.com/{REPOSITORY}/pull/{number})")
-            })
-            .collect();
-        match links.len() {
-            0 => notes.push_str(&format!("Release {}.\n", self.tag)),
-            1 => notes.push_str(&format!("\nIncludes {}.\n", links[0])),
-            n => notes.push_str(&format!(
-                "\nIncludes {} and {}.\n",
-                links[..n - 1].join(", "),
-                links[n - 1]
-            )),
-        }
-        fs::write(&self.notes, notes)?;
-        Ok(())
+        Ok(pulls)
     }
     /// Whether `run` ran the whole suite: its `core` job ran, which a scoped run of the
     /// former workflow skipped, and its `platform` gate ran, which a partial manual run skips.
@@ -478,6 +579,53 @@ mod tests {
         assert_eq!(
             change_summary("## Summary\n\n## Change\n\nFrom change.\n").as_deref(),
             Some("From change.")
+        );
+    }
+    #[test]
+    fn notes_group_prs_by_area_and_count_tooling_ci_and_test_changes() {
+        let summary = |text: &str| Some(format!("## Summary\n\n{text}\n\n## Change\n\nMore.\n"));
+        let pulls = [
+            (8, "fix(host): keep the lock".into(), None),
+            (7, "feat(driver-match): match drivers by phone".into(), None),
+            (
+                6,
+                "ci: cache the build".into(),
+                summary("CI caches the build."),
+            ),
+            (5, "fix(communications): keep a reply's draft".into(), None),
+            (4, "feat: one record of every driver".into(), None),
+            (3, "test(communications): wait on the reply".into(), None),
+            (2, "fix(dvic): open on the latest day".into(), None),
+            (
+                1,
+                "feat(communications): list waiting conversations first".into(),
+                summary("Recents lists waiting conversations first."),
+            ),
+        ];
+        let link = |n: u64| format!("[#{n}](https://github.com/{REPOSITORY}/pull/{n})");
+        assert_eq!(
+            release_notes(
+                Some("- DSP Dispatch: Relay 0.0.2.".into()),
+                &pulls,
+                "v1.0.0"
+            ),
+            format!(
+                "- DSP Dispatch: Relay 0.0.2.\n\n\
+                 ## Communications\n\n- Keep a reply's draft.\n- Recents lists waiting conversations first.\n\n\
+                 ## Driver Match\n\n- Match drivers by phone.\n\n\
+                 ## DVIC\n\n- Open on the latest day.\n\n\
+                 ## General\n\n- One record of every driver.\n\n\
+                 Plus 3 changes to tooling, CI, tests and dependencies.\n\n\
+                 Includes {}, {}, {}, {}, {}, {}, {} and {}.\n",
+                link(8),
+                link(7),
+                link(6),
+                link(5),
+                link(4),
+                link(3),
+                link(2),
+                link(1)
+            )
         );
     }
 }

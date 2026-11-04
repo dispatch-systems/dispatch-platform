@@ -263,6 +263,6 @@ impl Release<'_> {
             .journal()?
             .relay_version
             .filter(|version| !version.is_empty())
-            .map(|version| format!("- DSP Dispatch: Relay {version}.\n")))
+            .map(|version| format!("- DSP Dispatch: Relay {version}.")))
     }
 }
