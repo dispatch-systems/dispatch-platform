@@ -39,8 +39,6 @@ jobs:
     environment: relay-dev
     permissions:
       contents: read
-    outputs:
-      apps: ${{ steps.apps.outputs.name }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -111,13 +109,12 @@ jobs:
         with:
           path: ${{ runner.temp }}/relay-apps
           key: ${{ steps.cache.outputs.cache-primary-key }}
-      - id: apps
-        run: echo "name=relay-dev-${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: ${{ steps.apps.outputs.name }}
+          name: relay-dev-apps
           path: ${{ runner.temp }}/relay-apps
           if-no-files-found: error
+          overwrite: true
           retention-days: 2
       - name: Remove the signing key
         if: always()
@@ -130,8 +127,6 @@ jobs:
     environment: relay-production
     permissions:
       contents: read
-    outputs:
-      apps: ${{ steps.apps.outputs.name }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -184,13 +179,12 @@ jobs:
         env:
           CERT: ${{ steps.key.outputs.cert }}
         run: python3 tooling/ci/relay.py signed "$RUNNER_TEMP/relay-apps" production "$CERT"
-      - id: apps
-        run: echo "name=relay-production-${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: ${{ steps.apps.outputs.name }}
+          name: relay-production-apps
           path: ${{ runner.temp }}/relay-apps
           if-no-files-found: error
+          overwrite: true
           retention-days: 2
       - name: Remove the signing key
         if: always()
@@ -224,15 +218,18 @@ jobs:
         with:
           profile: release
           save: 'false'
+      # The relay apps go by fixed names, each attempt replacing the last, not by job outputs:
+      # GitHub drops an output that holds a secret's value, and the relay environments hold
+      # secrets that match words of these names.
       - if: needs.relay-dev.result == 'success'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: ${{ needs.relay-dev.outputs.apps }}
+          name: relay-dev-apps
           path: ${{ runner.temp }}/relay-apps
       - if: needs.relay-production.result == 'success'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: ${{ needs.relay-production.outputs.apps }}
+          name: relay-production-apps
           path: ${{ runner.temp }}/relay-apps
       - name: Carry the released Production relay app
         if: github.event_name == 'workflow_dispatch' && inputs.relay-version == ''
