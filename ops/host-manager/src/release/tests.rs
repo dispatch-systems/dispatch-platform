@@ -33,8 +33,8 @@ struct Fake {
     dev: RefCell<String>,
     /// Files published releases attach, by their download address.
     attached: RefCell<BTreeMap<String, Vec<u8>>>,
-    /// PR bodies GitHub serves, by number.
-    bodies: RefCell<BTreeMap<u64, String>>,
+    /// The PRs GitHub serves, their title and body, by number.
+    pulls: RefCell<BTreeMap<u64, Value>>,
     asset_error: Cell<bool>,
     wrong_tag: Cell<bool>,
     hide_release_once: Cell<bool>,
@@ -102,15 +102,24 @@ impl System for Fake {
                 .to_owned()
         };
         let checks_ref = "refs/heads/release-checks/v1.0.0";
-        if args[0] == "gh" && args[1] == "pr" && args[2] == "view" {
-            let number: u64 = args[3].parse()?;
-            return Ok(self
-                .bodies
-                .borrow()
-                .get(&number)
-                .ok_or("no such pull request")?
-                .clone()
-                .into_bytes());
+        if args.starts_with(&["gh", "api", "graphql"]) {
+            require(
+                format!("{}/{}", field("owner"), field("name")) == REPOSITORY,
+                "Wrong repository",
+            )?;
+            let asked = regex::Regex::new(r"(\w+): pullRequest\(number: (\d+)\)")?;
+            let mut repository = serde_json::Map::new();
+            for pull in asked.captures_iter(&field("query")) {
+                let number: u64 = pull[2].parse()?;
+                // GitHub fails the whole query when one number isn't a PR it has.
+                let served = self.pulls.borrow().get(&number).cloned().ok_or(format!(
+                    "gh: Could not resolve to a PullRequest with the number of {number}."
+                ))?;
+                repository.insert(pull[1].into(), served);
+            }
+            return Ok(serde_json::to_vec(
+                &json!({"data":{"repository":repository}}),
+            )?);
         }
         let value = if args[0] == "gh" && args[1] == "api" {
             let endpoint = args[2]
@@ -367,6 +376,37 @@ fn merge_change(root: &Path, name: &str, path: &str) -> String {
     git(root, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
     git(root, &["rev-parse", "HEAD"])
 }
+/// Squash-merges a PR into main for each title, numbered from 1, in one `git fast-import`;
+/// answers main's new head.
+fn squash_merges(root: &Path, titles: &[String]) -> String {
+    let mut stream = String::new();
+    for (index, title) in titles.iter().enumerate() {
+        let message = format!("{title} (#{})", index + 1);
+        let parent = if index == 0 {
+            "from refs/heads/main^0\n"
+        } else {
+            ""
+        };
+        stream.push_str(&format!(
+            "commit refs/heads/main\ncommitter Test <test@dispatch.test> 0 +0000\ndata {}\n{message}\n{parent}\n",
+            message.len()
+        ));
+    }
+    let mut import = std::process::Command::new("git")
+        .args(["fast-import", "--quiet"])
+        .current_dir(root)
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    import
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(stream.as_bytes())
+        .unwrap();
+    assert!(import.wait().unwrap().success());
+    git(root, &["rev-parse", "main"])
+}
 /// Where DSP Dispatch: Relay's source is in a fixture's history.
 #[derive(Clone, Copy, PartialEq)]
 enum App {
@@ -483,7 +523,7 @@ impl Fixture {
             health_error: Cell::new(false),
             dev: RefCell::new(commit),
             attached: RefCell::new(BTreeMap::new()),
-            bodies: RefCell::new(BTreeMap::new()),
+            pulls: RefCell::new(BTreeMap::new()),
             asset_error: Cell::new(false),
             wrong_tag: Cell::new(false),
             hide_release_once: Cell::new(false),
@@ -1455,9 +1495,10 @@ fn missing_notes_are_generated_from_the_merged_prs() {
             json!({"tag_name":"v0.9.0","draft":false,"prerelease":false}),
         ]);
         if served {
-            f.system.bodies.borrow_mut().insert(
+            f.system.pulls.borrow_mut().insert(
                 8,
-                "Problem\n\nIt broke.\n\nChange\n\nThe accepted change.\nIn one paragraph.\n\nMore.\n\nVerification\n\nTests.\n".into(),
+                json!({"title":"feat(communications): accept the change",
+                    "body":"Problem\n\nIt broke.\n\nChange\n\nThe accepted change.\nIn one paragraph.\n\nMore.\n\nVerification\n\nTests.\n"}),
             );
         }
         let release = f.release();
@@ -1465,12 +1506,13 @@ fn missing_notes_are_generated_from_the_merged_prs() {
         let prepared = release.prepare(&f.system.commit).unwrap();
         release.ensure_draft(&prepared).unwrap();
         let notes = fs::read_to_string(&release.notes).unwrap();
+        // GitHub's title and body, or without them the title the merge commit names.
         assert_eq!(
             notes,
             if served {
-                "- The accepted change. In one paragraph.\n\nIncludes [#8](https://github.com/dispatch-systems/dispatch-platform/pull/8).\n"
+                "## Communications\n\n- The accepted change. In one paragraph.\n\nIncludes [#8](https://github.com/dispatch-systems/dispatch-platform/pull/8).\n"
             } else {
-                "- Accepted.\n\nIncludes [#8](https://github.com/dispatch-systems/dispatch-platform/pull/8).\n"
+                "## General\n\n- Accepted.\n\nIncludes [#8](https://github.com/dispatch-systems/dispatch-platform/pull/8).\n"
             }
         );
         assert_eq!(
@@ -1485,6 +1527,35 @@ fn missing_notes_are_generated_from_the_merged_prs() {
     assert_eq!(
         fs::read_to_string(&f.release().notes).unwrap(),
         "Release notes\n"
+    );
+}
+
+#[test]
+fn notes_fetch_their_prs_a_hundred_to_a_query() {
+    let f = Fixture::new();
+    git(&f.root, &["tag", "v0.9.0", "main"]);
+    f.system.listed.replace(vec![
+        json!({"tag_name":"v0.9.0","draft":false,"prerelease":false}),
+    ]);
+    let titles: Vec<_> = (1..=250)
+        .map(|n| format!("feat(slack): change {n}"))
+        .collect();
+    let head = squash_merges(&f.root, &titles);
+    for n in 1..=250 {
+        f.system.pulls.borrow_mut().insert(
+            n,
+            json!({"title":titles[n as usize - 1],"body":format!("## Summary\n\nSummary {n}.\n")}),
+        );
+    }
+    let release = f.release();
+    io::private_directory(&release.directory).unwrap();
+    release.generate_notes(&head).unwrap();
+    assert_eq!(f.system.count(&["gh", "api", "graphql"]), 3);
+    let lines: Vec<_> = (1..=250).rev().map(|n| format!("- Summary {n}.")).collect();
+    assert!(
+        fs::read_to_string(&release.notes)
+            .unwrap()
+            .starts_with(&format!("## Slack\n\n{}\n\nIncludes ", lines.join("\n")))
     );
 }
 
@@ -1576,7 +1647,7 @@ fn a_first_app_is_0_0_1_built_by_the_releases_checks_and_attached_with_its_recor
     );
     assert_eq!(
         fs::read_to_string(release.output.join("notes.md")).unwrap(),
-        "- DSP Dispatch: Relay 0.0.1.\n- Accepted.\n\nIncludes [#8](https://github.com/dispatch-systems/dispatch-platform/pull/8).\n"
+        "- DSP Dispatch: Relay 0.0.1.\n\n## General\n\n- Accepted.\n\nIncludes [#8](https://github.com/dispatch-systems/dispatch-platform/pull/8).\n"
     );
 }
 
