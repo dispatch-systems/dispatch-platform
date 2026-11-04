@@ -47,6 +47,12 @@ struct Fake {
     dispatched: Cell<&'static str>,
     /// Whether every database in Production's restored backup checks out.
     restorable: Cell<bool>,
+    /// What Production reports of itself before a release publishes.
+    production: RefCell<Value>,
+    /// The Slack app manifest Production makes before the release installs, and after.
+    slack: RefCell<(Value, Value)>,
+    /// The warnings and errors Production's service logs once the release is published.
+    log: RefCell<Vec<Value>>,
 }
 impl Fake {
     fn fail(&self, point: &str) {
@@ -254,14 +260,24 @@ impl System for Fake {
             let script = args.last().unwrap();
             return Ok(if script.contains("dispatch-backend backup") {
                 json!({"destination":"/srv/dispatch/backups/2026-10-14-091500-before-v1.0.0","files":12}).to_string()
-            } else {
-                assert!(script.contains("dispatch-backend\" restore"));
+            } else if script.contains("dispatch-backend\" restore") {
                 let failed: &[&str] = if self.restorable.get() { &[] } else { &["platform.sqlite"] };
                 format!(
                     "{}\n{}\n",
                     json!({"target":"/run/user/1000/dispatch-restore-check-x/r","files":12}),
                     json!({"databases":4,"failed":failed})
                 )
+            } else if script.contains("production-update-failure.json") {
+                let mut report = self.production.borrow().clone();
+                report["slackManifest"] = self.slack.borrow().0.clone();
+                report.to_string()
+            } else {
+                assert!(script.contains("journalctl --user -u dispatch-production.service"));
+                self.maybe_fail("log")?;
+                let log = self.log.borrow();
+                let level = |name: &str| log.iter().filter(|e| e["level"] == name).count();
+                json!({"warn":level("warn"),"error":level("error"),"events":*log,
+                    "slackManifest":self.slack.borrow().1}).to_string()
             }
             .into_bytes());
         } else {
@@ -447,6 +463,8 @@ impl Fixture {
         } else {
             merge_to_main(&root, "accepted")
         };
+        let slack = json!({"display_information":{"name":"Dispatch"},
+            "oauth_config":{"scopes":{"bot":["chat:write"]}}});
         let run = json!({"id":5,"run_attempt":1,"head_sha":commit,"event":"push","head_branch":"main",
             "status":"completed","conclusion":"success","path":WORKFLOW,
             "head_repository":{"full_name":REPOSITORY},"html_url":"https://example.invalid/run/5"});
@@ -474,6 +492,10 @@ impl Fixture {
             branch: RefCell::new(None),
             dispatched: Cell::new("success"),
             restorable: Cell::new(true),
+            production: RefCell::new(json!({"failure":null,"gh":true,"service":"active",
+                "timer":"active","health":"ready","free":50u64 << 30,"running":0})),
+            slack: RefCell::new((slack.clone(), slack)),
+            log: RefCell::new(vec![]),
         };
         let fixture = Self { temp, root, system };
         fixture.build(None);
@@ -1383,11 +1405,11 @@ fn migrations_publish_only_after_a_recent_production_backup_that_restores() {
     release.backup().unwrap();
     release.publish(&prepared).unwrap();
     assert!(published());
-    // Every Production step went over ssh, and the backup starts the service and its
-    // updates again whatever happens.
+    // Every Production step went over ssh, each backup with its restore and the check before
+    // publishing, and the backup starts the service and its updates again whatever happens.
     let calls = f.system.calls.borrow();
     let ssh: Vec<_> = calls.iter().filter(|c| c[0] == "ssh").collect();
-    assert_eq!(ssh.len(), 6);
+    assert_eq!(ssh.len(), 7);
     assert!(ssh.iter().any(|c| {
         let script = c.last().unwrap();
         script.contains("systemctl --user stop dispatch-production.service")
@@ -1412,7 +1434,13 @@ fn a_release_without_migrations_needs_no_backup() {
         .borrow_mut()
         .push(json!({"tag_name":"v0.9.0","draft":false,"prerelease":false}));
     f.release().publish(&prepared).unwrap();
-    assert!(!f.system.calls.borrow().iter().any(|c| c[0] == "ssh"));
+    assert!(
+        !f.system
+            .calls
+            .borrow()
+            .iter()
+            .any(|c| c[0] == "ssh" && c.last().unwrap().contains("dispatch-backend backup"))
+    );
 }
 
 #[test]
@@ -1777,4 +1805,129 @@ fn a_release_record_naming_no_release_of_its_own_is_refused() {
     f.released(Some(&last));
     let error = f.release().released_app().unwrap_err().to_string();
     assert!(error.contains("no Production build of its own"), "{error}");
+}
+
+#[test]
+fn the_release_finds_gh_in_local_bin_without_a_login_shell() {
+    let home = Path::new("/srv/dispatch");
+    // Plain ssh's PATH lacks it; a login shell's already has it.
+    assert_eq!(
+        search_path(OsStr::new("/usr/bin:/bin"), home),
+        Some("/srv/dispatch/.local/bin:/usr/bin:/bin".into())
+    );
+    assert_eq!(
+        search_path(
+            OsStr::new("/usr/local/bin:/srv/dispatch/.local/bin:/usr/bin"),
+            home
+        ),
+        None
+    );
+}
+
+#[test]
+fn production_problems_hold_publication_until_fixed_and_rerun() {
+    let f = Fixture::new();
+    f.draft();
+    let release = f.release();
+    let ready = f.system.production.replace(json!({
+        "failure":{"since":"2026-11-03T22:00:00Z","attempts":4,
+            "error":"Production's updater needs /usr/local/bin/gh"},
+        "gh":false,"service":"failed","timer":"inactive",
+        "health":"HTTP Error 503: Service Unavailable","free":1u64 << 30,"running":2}));
+    let refused = release
+        .execute(Stage::Publish, None)
+        .unwrap_err()
+        .to_string();
+    for problem in [
+        "failed since 2026-11-03T22:00:00Z (4 attempts): Production's updater needs /usr/local/bin/gh",
+        "no executable /usr/local/bin/gh",
+        "dispatch-production.service is failed",
+        "dispatch-production-update.timer is inactive",
+        "answered HTTP Error 503: Service Unavailable",
+        "has 1.0 GB free",
+        "Collections are running on Production (2)",
+    ] {
+        assert!(refused.contains(problem), "{problem}: {refused}");
+    }
+    assert!(!f.system.has_call(&["-F", "draft=false"]));
+    // Fixed, the same command picks up at publication.
+    f.system.production.replace(ready);
+    f.system.calls.borrow_mut().clear();
+    assert_eq!(
+        release.execute(Stage::Publish, None).unwrap()["stage"],
+        "complete"
+    );
+    assert!(f.system.has_call(&["-F", "draft=false"]));
+    assert!(!f.system.has_call(&["--smoke-only"]));
+    assert!(!f.system.has_call(&["gh", "release", "create"]));
+}
+
+#[test]
+fn production_log_warnings_errors_and_failed_migrations_are_reported_after_the_install() {
+    let f = Fixture::new();
+    f.system.log.replace(vec![
+        json!({"at":"2026-09-21T00:00:40Z","level":"warn","event":"slack.refused",
+            "fields":{"method":"chat.postMessage"}}),
+        json!({"at":"2026-09-21T00:00:41Z","level":"error","event":"storage.migration_failed",
+            "fields":{"kind":"dsp","id":7,"name":"routes","owner":"routes"}}),
+    ]);
+    let release = f.release();
+    io::private_directory(&release.directory).unwrap();
+    fs::write(&release.notes, "Notes").unwrap();
+    let result = release.execute(Stage::Publish, None).unwrap();
+    // Already published, the release completes and reports them.
+    assert_eq!(result["stage"], "complete");
+    assert!(release.journal().unwrap().complete);
+    let log = &result["productionLog"];
+    assert_eq!((&log["errors"], &log["warnings"]), (&json!(1), &json!(1)));
+    assert_eq!(
+        log["migrationFailures"],
+        json!(["dsp routes migration 7 routes"])
+    );
+    assert_eq!(log["events"], json!(*f.system.log.borrow()));
+    // Read from its publication, which Production installs after, so from the new runtime's
+    // first start.
+    assert!(f.system.calls.borrow().iter().any(|c| {
+        c[0] == "ssh"
+            && c.last()
+                .unwrap()
+                .contains("journalctl --user -u dispatch-production.service --since @1789948800 ")
+    }));
+    // A log it can't read doesn't fail the release either.
+    let f = Fixture::new();
+    f.system.fail("log");
+    let release = f.release();
+    io::private_directory(&release.directory).unwrap();
+    fs::write(&release.notes, "Notes").unwrap();
+    let result = release.execute(Stage::Publish, None).unwrap();
+    assert_eq!(result["stage"], "complete");
+    assert!(result["productionLog"]["problem"].is_string());
+}
+
+#[test]
+fn a_slack_app_the_release_changes_is_saved_to_paste_into_slack() {
+    let saved = |release: &Release| release.directory.join("v1.0.0-slack-manifest.json");
+    // Unchanged, the release says nothing of Slack.
+    let f = Fixture::new();
+    let release = f.release();
+    io::private_directory(&release.directory).unwrap();
+    fs::write(&release.notes, "Notes").unwrap();
+    let result = release.execute(Stage::Publish, None).unwrap();
+    assert!(result.get("slackManifest").is_none(), "{result}");
+    assert!(!saved(&release).exists());
+    // Changed, the one Production makes after the install is saved beside the notes, even
+    // when a rerun is what sees Production install it.
+    let f = Fixture::new();
+    let changed = json!({"display_information":{"name":"Dispatch"},
+        "oauth_config":{"scopes":{"bot":["chat:write","im:write"]}}});
+    f.system.slack.borrow_mut().1 = changed.clone();
+    f.system.unhealthy.set(true);
+    let release = f.release();
+    io::private_directory(&release.directory).unwrap();
+    fs::write(&release.notes, "Notes").unwrap();
+    assert!(release.execute(Stage::Publish, None).is_err());
+    f.system.unhealthy.set(false);
+    let result = release.execute(Stage::Publish, None).unwrap();
+    assert_eq!(result["slackManifest"], json!(saved(&release)));
+    assert_eq!(io::read_json(&saved(&release)).unwrap(), changed);
 }
