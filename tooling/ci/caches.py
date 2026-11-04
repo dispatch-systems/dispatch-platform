@@ -6,9 +6,8 @@ GitHub keeps 10 GB of caches a repository and past that evicts the least recentl
 they hold. Each kind below is saved again whenever its inputs change, and only its newest entries
 are read: Cargo's dependency caches, of this week's generation and the current lockfile; the
 pinned Playwright browser and BrowserOS package; the installed packages; the pinned Rust
-toolchain; CodeQL's overlay
-database, which only a pull request's analysis would read, while CodeQL analyses `main` alone;
-the CI tools and assessment fixture; and the exact release and debug backend and worker. The two
+toolchain; CodeQL's overlay database, which only a pull request's analysis would read, while
+CodeQL analyses `main` alone; the CI tools and assessment fixture; and the exact release and debug backend and worker. The two
 newest of each kind stay, so a branch still on the lockfile `main` just left keeps its cache;
 older ones only take room `main`'s current caches need. The tools, fixture and executables keep
 more, keyed by sources a branch may still have; the debug ones, the largest, four. Past those, an
