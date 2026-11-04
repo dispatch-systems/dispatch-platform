@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Deletes `main`'s caches that newer ones of the same kind replaced (`caches.yml`).
+"""Deletes `main`'s caches that newer ones of the same kind replaced, and closed PRs' caches
+(`caches.yml`).
 
 GitHub keeps 10 GB of caches a repository and past that evicts the least recently used, whatever
 they hold. Each kind below is saved again whenever its inputs change, and only its newest entries
@@ -9,14 +10,21 @@ database, which only a pull request's analysis would read, while CodeQL analyses
 and the CI tools and assessment fixture. The two newest of each kind stay, so a branch still on
 the lockfile `main` just left keeps its cache; older ones only take room `main`'s current caches
 need. The tools and fixture keep ten, being small and keyed by sources a branch may still have.
-A key of no kind below is never touched.
+Past those, an entry anything read in the last day stays too: `main` back on an older lockfile, or
+an open PR on one, still uses it. A key of no kind below is never touched.
 
-- `prune [--dry-run]`: deletes each kind's older entries on `main`, a line for each.
+A PR's runs save caches only it reads, under its merge ref. `pr-caches.yml` deletes them when it
+closes; this deletes any its runs saved after that, once GitHub answers that it is closed.
+
+- `prune [--dry-run]`: deletes each kind's older entries on `main`, and closed PRs' caches, a line
+  for each.
 """
 from __future__ import annotations
 
 import argparse
 from collections import defaultdict
+from datetime import datetime, timedelta, timezone
+import json
 import os
 import re
 import subprocess
@@ -24,6 +32,9 @@ import sys
 from typing import Callable, NamedTuple
 
 REF = "refs/heads/main"
+PULL = re.compile(r"refs/pull/(\d+)/merge")
+# An entry read this recently is in use, whatever its kind's newer entries.
+RECENT = timedelta(days=1)
 OS = r"([A-Za-z0-9]+-[A-Za-z0-9]+)"
 # Each kind's pattern, its groups naming what makes two entries the same kind, and how many of it
 # stay.
@@ -42,7 +53,13 @@ Run = Callable[[list], str]
 class Cache(NamedTuple):
     id: int
     key: str
+    ref: str
     created: str
+    accessed: str
+
+
+def moment(text: str) -> datetime:
+    return datetime.fromisoformat(text.replace("Z", "+00:00"))
 
 
 def kind(key: str) -> tuple[str, int] | None:
@@ -55,19 +72,30 @@ def kind(key: str) -> tuple[str, int] | None:
     return None
 
 
-def superseded(caches: list[Cache]) -> list[Cache]:
-    """The entries of each kind past the newest it keeps, oldest first."""
+def superseded(caches: list[Cache], now: datetime) -> list[Cache]:
+    """`main`'s entries of each kind past the newest it keeps and unread for a day, oldest first."""
     kinds = defaultdict(list)
     for cache in caches:
         found = kind(cache.key)
-        if found:
+        if cache.ref == REF and found:
             kinds[found].append(cache)
     older = [
         cache
         for (_, keep), entries in kinds.items()
         for cache in sorted(entries, key=lambda each: each.created, reverse=True)[keep:]
+        if now - moment(cache.accessed) > RECENT
     ]
     return sorted(older, key=lambda each: each.created)
+
+
+def closed(caches: list[Cache], state: Callable[[int], str | None]) -> list[Cache]:
+    """The caches of PRs whose state is `closed`; a PR whose state is unknown keeps its own."""
+    numbers = {int(match[1]) for cache in caches if (match := PULL.fullmatch(cache.ref))}
+    shut = {number for number in numbers if state(number) == "closed"}
+    return [
+        cache for cache in caches
+        if (match := PULL.fullmatch(cache.ref)) and int(match[1]) in shut
+    ]
 
 
 def run(args: list) -> str:
@@ -78,20 +106,27 @@ def run(args: list) -> str:
 
 
 def listed(repository: str, run: Run = run) -> list[Cache]:
-    """`main`'s caches."""
-    out = run([
-        "gh", "api", "--paginate",
-        f"repos/{repository}/actions/caches?ref={REF}&per_page=100",
-        "--jq", ".actions_caches[] | [.id, .key, .created_at] | @tsv",
-    ])
+    """Every ref's caches. Read as JSON, since a PR's workflows choose its caches' keys."""
+    pages = json.loads(run([
+        "gh", "api", "--paginate", "--slurp", f"repos/{repository}/actions/caches?per_page=100",
+    ]))
     return [
-        Cache(int(id), key, created)
-        for id, key, created in (line.split("\t") for line in out.splitlines() if line)
+        Cache(int(cache["id"]), cache["key"], cache["ref"], cache["created_at"],
+              cache["last_accessed_at"])
+        for page in pages
+        for cache in page["actions_caches"]
     ]
 
 
 def prune(repository: str, dry_run: bool, run: Run = run) -> None:
-    for cache in superseded(listed(repository, run)):
+    def state(number: int) -> str | None:
+        try:
+            return run(["gh", "api", f"repos/{repository}/pulls/{number}", "--jq", ".state"]).strip()
+        except RuntimeError:
+            return None
+
+    caches = listed(repository, run)
+    for cache in [*superseded(caches, datetime.now(timezone.utc)), *closed(caches, state)]:
         if not dry_run:
             try:
                 run(["gh", "api", "-X", "DELETE", f"repos/{repository}/actions/caches/{cache.id}"])
@@ -99,7 +134,7 @@ def prune(repository: str, dry_run: bool, run: Run = run) -> None:
                 # GitHub may have evicted it since it was listed.
                 if "HTTP 404" not in str(error):
                     raise
-        print(f"{'Would delete' if dry_run else 'Deleted'} {cache.key} ({cache.created})")
+        print(f"{'Would delete' if dry_run else 'Deleted'} {cache.id} on {cache.ref} ({cache.created})")
 
 
 def main(argv=None) -> None:

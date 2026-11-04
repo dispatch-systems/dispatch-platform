@@ -1,6 +1,7 @@
 name: PR caches
 # A PR's runs save caches only that PR reads. Once it closes nothing reads them again, so they go
-# at once instead of holding room main's caches need until GitHub evicts them. It runs as
+# at once instead of holding room main's caches need until GitHub evicts them; any its runs save
+# after this, caches.py prune deletes on main's next refill. It runs as
 # pull_request_target, from main's copy of this file: GitHub runs no pull_request workflow for a
 # PR with conflicts, and this reads nothing of the PR but its number.
 on:
@@ -19,17 +20,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REF: refs/pull/${{ github.event.pull_request.number }}/merge
-        # Listed whole before any goes: a deletion shifts the later pages.
+        # Listed whole before any goes, as a deletion shifts the later pages, and by id alone: the
+        # PR's workflows chose the keys, which may hold anything.
         run: |
-          listed=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/caches?ref=$REF&per_page=100" \
-            --jq '.actions_caches[] | "\(.id)\t\(.key)"')
-          [ -n "$listed" ] || exit 0
-          echo "$listed" |
-            while IFS=$'\t' read -r id key; do
-              # GitHub may have evicted it since it was listed.
-              if gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" --silent; then
-                echo "Deleted $key"
-              else
-                echo "Could not delete $key"
-              fi
-            done
+          ids=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/caches?ref=$REF&per_page=100" \
+            --jq '.actions_caches[].id')
+          for id in $ids; do
+            [[ "$id" =~ ^[0-9]+$ ]] || exit 1
+            # GitHub may have evicted it since it was listed.
+            if gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" --silent; then
+              echo "Deleted cache $id"
+            else
+              echo "Could not delete cache $id"
+            fi
+          done

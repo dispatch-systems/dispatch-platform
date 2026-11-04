@@ -1,6 +1,8 @@
 import contextlib
+from datetime import datetime, timezone
 import importlib.util
 import io
+import json
 from pathlib import Path
 import unittest
 
@@ -11,9 +13,18 @@ spec.loader.exec_module(caches)
 Cache = caches.Cache
 
 
-def entries(key: str, *days: int) -> list:
-    """`key`'s entries saved on each of `days`, `{}` in `key` taking the day."""
-    return [Cache(day, key.format(day), f"2026-11-{day:02d}T00:00:00Z") for day in days]
+# A day after the last of them: every entry below was last read more than a day ago.
+NOW = datetime(2026, 11, 20, tzinfo=timezone.utc)
+
+
+def entries(key: str, *days: int, ref: str = "refs/heads/main", read: int = 0) -> list:
+    """`key`'s entries on `ref` saved on each of `days`, `{}` in `key` taking the day, each last
+    read when saved or on day `read`."""
+    return [
+        Cache(day, key.format(day), ref, f"2026-11-{day:02d}T00:00:00Z",
+              f"2026-11-{max(day, read):02d}T00:00:00Z")
+        for day in days
+    ]
 
 
 class PruneTest(unittest.TestCase):
@@ -37,7 +48,7 @@ class PruneTest(unittest.TestCase):
             *entries("dispatch-rust-binary-Linux-X64-{}bb", 1, 2, 3),
             *entries("gradle-transforms-v2-{}cc", 1, 2, 3),
         ]
-        deleted = [cache.key for cache in caches.superseded(listed)]
+        deleted = [cache.key for cache in caches.superseded(listed, NOW)]
         self.assertEqual(deleted, [
             "v0-rust-2026-W45-dispatch-release-Linux-x64-019b21e0-00000001",
             "dispatch-playwright-Linux-X64-1.61.0",
@@ -48,22 +59,45 @@ class PruneTest(unittest.TestCase):
             "v0-rust-2026-W45-dispatch-debug-Linux-x64-019b21e0-00000005",
         ])
 
-    def test_reads_main_alone_and_deletes_by_id(self):
+    def test_keeps_what_was_read_lately_and_other_refs_caches(self):
+        listed = [
+            # Main back on its first lockfile read it today, and a PR the second yesterday.
+            *entries("dispatch-node-modules-Linux-X64-{}aa", 1, read=20),
+            *entries("dispatch-node-modules-Linux-X64-{}aa", 2, read=19),
+            *entries("dispatch-node-modules-Linux-X64-{}aa", 3, 4, 5),
+            *entries("dispatch-node-modules-Linux-X64-{}aa", 1, 2, 3, ref="refs/heads/release-checks/v1"),
+        ]
+        self.assertEqual(
+            [cache.key for cache in caches.superseded(listed, NOW)],
+            ["dispatch-node-modules-Linux-X64-3aa"],
+        )
+
+    def test_deletes_closed_prs_caches(self):
+        listed = [
+            *entries("dispatch-tools-Linux-X64-ubuntu24-{}ee", 1, 2, ref="refs/pull/7/merge"),
+            *entries("dispatch-tools-Linux-X64-ubuntu24-{}ee", 3, ref="refs/pull/8/merge"),
+            *entries("dispatch-tools-Linux-X64-ubuntu24-{}ee", 4, ref="refs/pull/9/merge"),
+        ]
+        states = {7: "closed", 8: "open", 9: None}
+        self.assertEqual([cache.id for cache in caches.closed(listed, states.get)], [1, 2])
+
+    def test_reads_every_cache_as_json_and_deletes_by_id(self):
         calls = []
+        # A PR's workflow chose this key, line breaks and all.
+        forged = {"id": 5, "key": "owned\n2\tforged", "ref": "refs/pull/7/merge",
+                  "created_at": "2026-11-01T00:00:00Z", "last_accessed_at": "2026-11-01T00:00:00Z"}
+        listing = [{"actions_caches": [forged]}]
 
         def run(args):
             calls.append(args)
             if "--paginate" in args:
-                return "".join(
-                    f"{cache.id}\t{cache.key}\t{cache.created}\n"
-                    for cache in entries("dispatch-browseros-{}dd", 1, 2, 3)
-                )
-            return ""
+                return json.dumps(listing)
+            return "closed\n" if args[2].endswith("/pulls/7") else ""
 
         with contextlib.redirect_stdout(io.StringIO()):
             caches.prune("example/repo", dry_run=False, run=run)
-        self.assertIn("ref=refs/heads/main", calls[0][3])
-        self.assertEqual(calls[1:], [["gh", "api", "-X", "DELETE", "repos/example/repo/actions/caches/1"]])
+        self.assertEqual(calls[-1], ["gh", "api", "-X", "DELETE", "repos/example/repo/actions/caches/5"])
+        self.assertEqual(sum("DELETE" in call for call in calls), 1)
 
 
 if __name__ == "__main__":

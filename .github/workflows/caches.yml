@@ -154,8 +154,9 @@ jobs:
         run: |
           target=$(cargo metadata --locked --no-deps --format-version=1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
           rm -rf "$target/release"
-  # Once the others saved theirs, main's older caches of each kind go (tooling/ci/caches.py),
-  # so the repository stays under GitHub's 10 GB and nothing current is evicted for them.
+  # Once the others saved theirs, main's older caches of each kind go, and closed PRs' caches
+  # (tooling/ci/caches.py), so the repository stays under GitHub's 10 GB and nothing current is
+  # evicted for them.
   prune:
     needs: [packages, browsers, release-binary, tools]
     if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
