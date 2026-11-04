@@ -283,7 +283,7 @@ impl System for Fake {
             // Production, by its backend's own words.
             let script = args.last().unwrap();
             return Ok(if script.contains("dispatch-upgrade-check-XXXXXX") {
-                "/home/dispatch/dispatch-platform/tmp/dispatch-upgrade-check-x\n".into()
+                "/srv/dispatch/dispatch-platform/tmp/dispatch-upgrade-check-x\n".into()
             } else if script.contains("rm -rf -- ") {
                 String::new()
             } else if script.contains("upgrade-check") {
@@ -294,7 +294,7 @@ impl System for Fake {
                 let failed: &[&str] = if self.restorable.get() { &[] } else { &["platform.sqlite"] };
                 format!(
                     "{}\n{}\n",
-                    json!({"target":"/home/dispatch/dispatch-platform/tmp/dispatch-restore-check-x/r","files":12}),
+                    json!({"target":"/srv/dispatch/dispatch-platform/tmp/dispatch-restore-check-x/r","files":12}),
                     json!({"databases":4,"failed":failed})
                 )
             } else if script.contains("production-update-failure.json") {
@@ -485,7 +485,7 @@ struct Fixture {
 }
 /// What the release's backend reports of a copy of Production's backup that started cleanly.
 fn rehearsed() -> Value {
-    json!({"root":"/home/dispatch/dispatch-platform/tmp/dispatch-upgrade-check-x/root","databases":2,
+    json!({"root":"/srv/dispatch/dispatch-platform/tmp/dispatch-upgrade-check-x/root","databases":2,
         "migrations":{"dsp":1,"platform":1},"carryOverFailures":[],"errors":[],"stopped":null})
 }
 /// The backend's snapshot of its databases, with the migrations `dsp` has.
@@ -1665,7 +1665,7 @@ fn migrations_publish_only_once_a_copy_of_productions_backup_starts_under_the_re
         c[0] == "ssh"
             && c.last()
                 .unwrap()
-                .contains("rm -rf -- /home/dispatch/dispatch-platform/tmp/dispatch-upgrade-check-x")
+                .contains("rm -rf -- /srv/dispatch/dispatch-platform/tmp/dispatch-upgrade-check-x")
     };
     assert_eq!(tried.iter().filter(|c| removed(c)).count(), 2);
     assert!(tried.iter().rposition(|c| removed(c)) > tried.iter().rposition(|c| rehearsal(c)));
@@ -1674,7 +1674,7 @@ fn migrations_publish_only_once_a_copy_of_productions_backup_starts_under_the_re
     assert!(copied[copied.len() - 2].ends_with("/services/rust/dispatch-backend"));
     assert_eq!(
         copied.last().unwrap(),
-        "dispatch-production:/home/dispatch/dispatch-platform/tmp/dispatch-upgrade-check-x/dispatch-backend"
+        "dispatch-production:/srv/dispatch/dispatch-platform/tmp/dispatch-upgrade-check-x/dispatch-backend"
     );
     // One that starts, though it logs an error Production logs at each start already, lets it
     // publish once Production, checked again after it, can take it; it isn't rehearsed again
