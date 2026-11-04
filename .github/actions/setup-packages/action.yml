@@ -16,16 +16,29 @@ runs:
       with:
         node-version-file: .node-version
     # Installed with --ignore-scripts, the packages are the lockfile's files and nothing else, so
-    # a copy keyed by the lockfile and the Node version is what `npm ci` would write. The manifest
-    # is in the key too: `npm ci` refuses one the lockfile doesn't match, and a restored copy
-    # would hide that.
+    # a copy keyed by the lockfile and the Node version is what `npm ci` would write. The
+    # manifest's dependency fields are in the key too: `npm ci` refuses a manifest the lockfile
+    # doesn't match, and a restored copy would hide that. Its scripts and version aren't: they
+    # change what nothing installs.
+    - name: Identify the installed packages
+      id: inputs
+      if: inputs.install == 'true'
+      shell: bash
+      run: |
+        set -o pipefail
+        dependencies=$(jq -cS '{dependencies, devDependencies, optionalDependencies,
+          peerDependencies, peerDependenciesMeta, bundleDependencies, bundledDependencies,
+          overrides, workspaces, engines}' package.json)
+        key=$({ sha256sum .node-version package-lock.json; printf '%s' "$dependencies" | sha256sum; } |
+          sha256sum | cut -d' ' -f1)
+        echo "key=$key" >> "$GITHUB_OUTPUT"
     - name: Restore the installed packages
       id: modules
       if: inputs.install == 'true'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       with:
         path: node_modules
-        key: dispatch-node-modules-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.node-version', 'package.json', 'package-lock.json') }}
+        key: dispatch-node-modules-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.key }}
     - name: Install the packages
       if: inputs.install == 'true' && steps.modules.outputs.cache-hit != 'true'
       shell: bash
