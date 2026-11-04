@@ -7,15 +7,21 @@ inputs:
   save:
     description: Allow this job to maintain the cache on main.
     default: 'true'
+  binaries:
+    description: >-
+      Restore the debug backend and support worker that main built from the same Rust inputs,
+      in place of Cargo's dependency cache: for a job whose only Rust build is theirs. Release
+      builds always do.
+    default: 'false'
   reuse-binary:
-    description: Restore the exact release binaries instead of compiling them.
+    description: Restore the exact binaries instead of compiling them.
     default: 'true'
 outputs:
   binary-key:
-    description: Exact Rust input key for the release binaries.
+    description: Exact Rust input key for the profile's backend and support worker.
     value: ${{ steps.binary-key.outputs.key }}
   binary-hit:
-    description: Whether the exact release binaries were restored.
+    description: Whether the exact binaries were restored.
     value: ${{ steps.binary-cache.outputs.cache-hit }}
 runs:
   using: composite
@@ -23,12 +29,18 @@ runs:
     - uses: ./.github/actions/setup-packages
     - run: rustup show active-toolchain
       shell: bash
-    - name: Identify reusable release binaries
+    - name: Identify reusable binaries
       id: binary-key
-      if: inputs.profile == 'release'
+      if: inputs.profile == 'release' || inputs.binaries == 'true'
       shell: bash
+      env:
+        PROFILE: ${{ inputs.profile }}
       run: |
-        tooling/cli/dispatchdev build --release --cache-key >> "$GITHUB_OUTPUT"
+        if [ "$PROFILE" = release ]; then
+          tooling/cli/dispatchdev build --release --cache-key >> "$GITHUB_OUTPUT"
+        else
+          tooling/cli/dispatchdev build --cache-key >> "$GITHUB_OUTPUT"
+        fi
         echo "DISPATCH_CI_RUST_CACHE=$GITHUB_WORKSPACE/.ci-rust-cache" >> "$GITHUB_ENV"
     - name: Bind the selected Rust inputs
       if: steps.binary-key.outputs.key != ''
@@ -36,13 +48,13 @@ runs:
       env:
         BINARY_KEY: ${{ steps.binary-key.outputs.key }}
       run: echo "DISPATCH_CI_RUST_KEY=$BINARY_KEY" >> "$GITHUB_ENV"
-    - name: Restore exact release binaries
+    - name: Restore exact binaries
       id: binary-cache
       if: steps.binary-key.outputs.key != '' && inputs.reuse-binary == 'true'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       with:
         path: .ci-rust-cache/
-        key: dispatch-rust-binary-${{ runner.os }}-${{ runner.arch }}-${{ steps.binary-key.outputs.key }}
+        key: dispatch-rust-binary-${{ inputs.profile }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.binary-key.outputs.key }}
     - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
       if: steps.binary-cache.outputs.cache-hit != 'true'
       with:

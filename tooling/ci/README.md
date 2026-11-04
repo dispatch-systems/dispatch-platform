@@ -11,9 +11,12 @@ locally the whole suite in sequence:
 | checks           | `checks`                                   | Source privacy/secrets, types, formatting, the linter and dashboard logic.                |
 | browser ×6       | `browser <n>/6 [spec]`                     | The browser suite against the packaged runtime.                                           |
 | smoke            | `smoke`                                    | The package's manifest, build paths and budgets, and that it starts, signs in and serves. |
-| core             | `core`                                     | Rust formatting, lints, default tests and compile-only operator probes.                   |
+| core-lint        | `core lint`                                | Rust formatting, lints and compile-only operator probes.                                  |
+| core             | `core tests`                               | The Rust tests.                                                                           |
+| debug            |                                            | The debug backend and worker, built once for api and the collectors.                      |
 | api              | `api`                                      | The API tests, the Python tooling tests, the npm audit.                                   |
-| scaffold         | `scaffold`                                 | What every generator writes builds, lints, keeps the rules and passes its Rust tests.     |
+| scaffold-lint    | `scaffold lint`                            | What every generator writes builds, lints and keeps the rules.                            |
+| scaffold         | `scaffold tests`                           | What every generator writes passes its Rust tests and its agent tools' tests.             |
 | collectors ×6    | `npm run test:browseros -- --shard <name>` | The native collectors with a real browser.                                                |
 | rust-advisories  |                                            | `cargo audit`, denying yanked crates but those `cargo-audit.py` allows.                   |
 | relay-dev        |                                            | Outside a PR, Dev's relay app, signed, for the build to pack (`relay.py`).                |
@@ -23,11 +26,17 @@ locally the whole suite in sequence:
 
 On a PR, `changes.py` skips a suite when every file the change touches is of a kind it never
 reads: the Android apps, Markdown outside `services/`, or, for core and the collectors, a
-`frontend/` folder's code but the owners' manifests; the Android apps' job runs only for them and for CI's own files, on a push to `main`
-too. Anything it can't read runs every suite. core, api and scaffold, the longest jobs, decide
-for themselves instead of waiting for it, and pass without running when not needed; the gate
-accepts any other suite skipped only where `changes` said so, and its summary names each job's
-result and what the change touched.
+`frontend/` folder's code but the owners' manifests; the Android apps' job runs only for them and
+for CI's own files, on a push to `main` too. Anything it can't read runs every suite. core,
+scaffold and their -lint jobs, the longest, decide for themselves instead of waiting for it, and
+pass without running when not needed; the gate accepts any other suite skipped only where
+`changes` said so, and its summary names each job's result and what the change touched.
+
+The debug backend and worker are built once a run: by the `debug` job, when `changes` finds the
+change reaches what they compile from, and saved for api and the collectors to restore through
+`dispatchdev build`'s exact-input cache. Otherwise `debug` skips, and they restore the build
+`main`'s own run saved, without waiting for one. Only the capacity shard, which also compiles the
+host's tests, builds its own.
 
 The gate passes only when every job passed, the relay apps' builds wherever they ran, and the
 package carries the run's own commit and a complete inventory (`ci-verify.py`, which runs
@@ -35,8 +44,8 @@ package carries the run's own commit and a complete inventory (`ci-verify.py`, w
 installs `main`'s, which carries Dev's app. A release dispatches its own run on a temporary branch
 at its commit, which builds or carries Production's app beside Dev's, and stamps its version into
 that run's package ([Android apps](../../android/README.md#releases)). Once `main`'s push run of
-the commit passed, the release names it (`tested-run`), and its run skips checks, core, api,
-collectors, scaffold and browser, the suites that tested the source there, and keeps build and
+the commit passed, the release names it (`tested-run`), and its run skips checks, core-lint,
+core, debug, api, collectors, scaffold-lint, scaffold and browser, the suites that tested the source there, and keeps build and
 smoke, which test its own package; the gate accepts them skipped only once GitHub answers that the
 named run is `main`'s passed push run of the same commit.
 
@@ -80,14 +89,16 @@ changes, and a whole pass is kept for the committed tree it ran on, so the same 
 again at once; `--plan` only names them.
 
 Caches: only `main`'s reach every branch, since a PR's run saves caches only that PR reads.
-`caches.yml` refreshes them on every push to `main`: the release executables keyed by
-their inputs, the CI and host tools, the assessment fixture, the Playwright browser, the
+`caches.yml` refreshes them on every push to `main`: the release executables keyed by their
+Rust inputs, which the build job restores instead of compiling when a branch's Rust is `main`'s
+(`main`'s run of the `debug` job saves the debug ones), the CI and host tools, the assessment fixture, the Playwright browser, the
 BrowserOS package and the installed packages, which every job restores through
 `.github/actions/setup-packages` instead of running `npm ci`. A run's own `tools` job builds
 what its inputs lack for the jobs that start later in that run. GitHub keeps 10 GB of caches
 and evicts the least recently used past that, so once `main`'s are saved, `caches.py prune`
 deletes those newer ones of the same kind replaced and nothing read for a day, and closed PRs'
-caches; `pr-caches.yml` deletes a PR's own as soon as it closes.
+caches; `pr-caches.yml` deletes a PR's own as soon as it closes. A build job that compiled keeps
+Cargo's `--timings` report of where the compile spent its time as an artifact.
 
 `tooling/cli/dispatchdev` runs a restored copy only on CI and only from the
 workspace's own `.ci-tools` directory. Anywhere else it builds the binary once for each

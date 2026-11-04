@@ -13,6 +13,13 @@ import { workspaceCrates } from './workspace.js';
 const mode = process.argv[2] ?? 'full';
 const modes = ['full', 'build', 'checks', 'browser', 'core', 'api', 'smoke', 'scaffold'];
 if (!modes.includes(mode)) throw new Error('Unknown validation mode');
+// core and scaffold each run as two jobs side by side, their lints and their tests; without
+// a part, both.
+const part = ['core', 'scaffold'].includes(mode)
+  ? process.argv.slice(3).find((arg) => !arg.startsWith('--'))
+  : undefined;
+if (part !== undefined && !['lint', 'tests'].includes(part))
+  throw new Error('Unknown part: lint or tests');
 const started = Date.now();
 const failures: string[] = [];
 const dashboardCommand = nodeTests('dashboard', { concurrency: 1 });
@@ -27,8 +34,14 @@ const probing = workspaceCrates(path.resolve(import.meta.dirname, '../..'))
   .filter(({ features }) => features.includes('operator-probes'))
   .map(({ name }) => name)
   .sort();
-const rustCommands: Command[] = [
-  { name: 'check:rust', command: 'npm', args: ['run', 'check:rust'] },
+/** Rust formatting and lints, and the operator probes compiled without running. */
+const rustLint: Command[] = [
+  { name: 'rustfmt', command: 'cargo', args: ['fmt', '--check'] },
+  {
+    name: 'clippy',
+    command: 'cargo',
+    args: ['clippy', '--locked', '--all-targets', '--', '-D', 'warnings'],
+  },
   {
     name: 'operator probe compilation',
     command: 'cargo',
@@ -42,6 +55,9 @@ const rustCommands: Command[] = [
     ],
   },
 ];
+const rustTests: Command[] = [{ name: 'Rust tests', command: 'cargo', args: ['test', '--locked'] }];
+const rustCommands =
+  part === 'lint' ? rustLint : part === 'tests' ? rustTests : [...rustLint, ...rustTests];
 const checkCommands: Command[] = [
   { name: 'check:privacy', command: 'npm', args: ['run', 'check:privacy'] },
   { name: 'check', command: 'npm', args: ['run', 'check'] },
@@ -171,7 +187,7 @@ async function browser() {
     ...(only.length ? ['--pass-with-no-tests', ...only] : []),
   );
 }
-/** Rust formatting, lints and tests: `npm run check:rust` compiles what it checks. */
+/** Rust formatting, lints and tests, or the part `part` names. */
 async function core() {
   for (const command of rustCommands) if (!(await execute(command))) break;
 }
@@ -192,7 +208,7 @@ else if (mode === 'browser') await browser();
 else if (mode === 'core') await core();
 else if (mode === 'api') await api();
 else if (mode === 'smoke') await smoke();
-else if (mode === 'scaffold') await npm('check:scaffold');
+else if (mode === 'scaffold') await npm('check:scaffold', ...(part ? [`--${part}`] : []));
 else {
   // Locally, in sequence: CI's jobs share one machine here, and Cargo's build lock.
   await core();

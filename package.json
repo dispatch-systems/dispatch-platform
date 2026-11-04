@@ -34,7 +34,7 @@
     "test:app": "tsx tooling/testing/owner-tests.ts app",
     "predev": "tooling/cli/dispatchdev build",
     "pretest": "tooling/cli/dispatchdev build",
-    "check:rust": "cargo fmt --check && cargo clippy --locked --all-targets -- -D warnings && cargo test --locked",
+    "check:rust": "tsx tooling/ci/checks.ts core",
     "agents:signin": "tsx tooling/agent-evals/signin.ts",
     "mail:types": "node services/cloudflare-mail/generate-types.mjs",
     "generate": "tsx tooling/scaffold/cli.ts generate",

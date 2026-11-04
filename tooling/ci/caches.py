@@ -7,11 +7,12 @@ they hold. Each kind below is saved again whenever its inputs change, and only i
 are read: Cargo's dependency caches, of this week's generation and the current lockfile; the
 pinned Playwright browser and BrowserOS package; the installed packages; CodeQL's overlay
 database, which only a pull request's analysis would read, while CodeQL analyses `main` alone;
-and the CI tools and assessment fixture. The two newest of each kind stay, so a branch still on
-the lockfile `main` just left keeps its cache; older ones only take room `main`'s current caches
-need. The tools and fixture keep ten, being small and keyed by sources a branch may still have.
-Past those, an entry anything read in the last day stays too: `main` back on an older lockfile, or
-an open PR on one, still uses it. A key of no kind below is never touched.
+the CI tools and assessment fixture; and the exact release and debug backend and worker. The two
+newest of each kind stay, so a branch still on the lockfile `main` just left keeps its cache;
+older ones only take room `main`'s current caches need. The tools, fixture and executables keep
+more, keyed by sources a branch may still have; the debug ones, the largest, four. Past those, an
+entry anything read in the last day stays too: `main` back on an older lockfile, or an open PR on
+one, still uses it. A key of no kind below is never touched.
 
 A PR's runs save caches only it reads, under its merge ref. `pr-caches.yml` deletes them when it
 closes; this deletes any its runs saved after that, once GitHub answers that it is closed.
@@ -45,6 +46,8 @@ KINDS = {
     "packages": (re.compile(rf"dispatch-node-modules-{OS}-[0-9a-f]+"), 2),
     "codeql": (re.compile(r"codeql-overlay-base-database-\d+-[0-9a-f]+-([a-z]+)-[0-9.]+-[0-9a-f]+-\d+-\d+"), 2),
     "tools": (re.compile(rf"dispatch-(tools|fixture)-{OS}-([a-z0-9]+)-[0-9a-f]+"), 10),
+    "binaries": (re.compile(rf"dispatch-rust-binary-release-{OS}-[0-9a-f]+"), 10),
+    "debug binaries": (re.compile(rf"dispatch-rust-binary-debug-{OS}-[0-9a-f]+"), 4),
 }
 
 Run = Callable[[list], str]

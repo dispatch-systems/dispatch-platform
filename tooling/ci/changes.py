@@ -18,7 +18,14 @@ ship only in a release, which builds and tests them again. Every suite runs when
 can't be read: this fails open. A pull request's checkout is GitHub's merge commit and a push's
 is the commit itself, so the first parent is the base either changes.
 
-Prints `<suite>=true|false` for each suite and `changed=<kinds>` for `$GITHUB_OUTPUT`.
+It also says whether the debug backend and worker need building for the run (`debug`): only when
+a PR changes what they compile from, as `dispatchdev build`'s key reads it
+(`tooling/cli/src/build/key.rs`). Otherwise `main`'s build, which `main`'s own run saves, is the
+same, and the jobs that use it restore it without waiting. Should this list fall behind the key's,
+a job finds no build of its inputs and builds its own: slower, never wrong.
+
+Prints `<suite>=true|false` for each suite, `debug=true|false`, and `changed=<kinds>` for
+`$GITHUB_OUTPUT`.
 """
 from __future__ import annotations
 
@@ -34,6 +41,24 @@ INERT = {
     "browser": {"android", "docs"},
 }
 SUITES = [*INERT, "android"]
+# What the package's debug build compiles from: the workspace's files and its crates' folders, but
+# frontend code, tests, and the development CLI's own entry point and launcher.
+RUST_FILES = {
+    "Cargo.toml",
+    "Cargo.lock",
+    "rust-toolchain.toml",
+    "rust-toolchain",
+    "tooling/build/rustc-remap.py",
+    "ops/launchers/runtime_artifact.py",
+    "ops/launchers/update-dev.py",
+    "ops/launchers/update-production.py",
+    "ops/launchers/support-collection.py",
+    "ops/systemd/dispatch-support-worker.service",
+}
+RUST_ROOTS = (
+    "app/", "core/", "collectors/", "features/", "mcp/", "ops/host-manager/",
+    "services/support-worker/", "tooling/cli/", "tooling/shared/", ".cargo/",
+)
 
 
 def kind(path: str) -> str:
@@ -64,6 +89,25 @@ def needed(paths: list[str] | None, pull_request: bool) -> tuple[dict[str, bool]
     return suites, kinds
 
 
+def compiled(path: str) -> bool:
+    """Whether the debug backend and worker compile from `path`."""
+    parts = path.split("/")
+    if path in RUST_FILES:
+        return True
+    return (
+        path.startswith(RUST_ROOTS)
+        and not {"frontend", "node_modules", "tests"} & set(parts[:-1])
+        and not path.endswith((".ts", ".tsx", ".mts", ".cts", ".css"))
+        and path not in ("tooling/cli/src/main.rs", "tooling/cli/dispatchdev")
+    )
+
+
+def rebuilds(paths: list[str] | None, pull_request: bool) -> bool:
+    """Whether the run builds the debug backend and worker: outside a PR always, to save `main`'s;
+    on one, when it changes what they compile from, or when its change is unknown."""
+    return not pull_request or not paths or any(compiled(path) for path in paths)
+
+
 def changed() -> list[str] | None:
     """The paths the checked-out commit changes, or None when git can't say."""
     # NUL-separated, so git writes each path as it is rather than quoting an unusual one.
@@ -83,6 +127,7 @@ def main(argv: list[str]) -> None:
     suites, kinds = needed(paths, pull_request=event == "pull_request")
     for suite in SUITES:
         print(f"{suite}={'true' if suites[suite] else 'false'}")
+    print(f"debug={'true' if rebuilds(paths, event == 'pull_request') else 'false'}")
     print(f"changed={' '.join(kinds) if kinds else 'all'}")
 
 

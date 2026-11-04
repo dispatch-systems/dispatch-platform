@@ -12,7 +12,9 @@ import { make, repositoryRoot as root } from './scaffold.js';
 // new` would, and writes what is generated from them; then it holds the copy to clippy,
 // TypeScript, the linter, the rules and the new owners' own tests. The copy builds in this
 // checkout's target folder, so the dependencies' builds are reused. `--keep` keeps the copy.
-// The CI scaffold job runs it.
+// `--lint` runs only clippy, TypeScript, the linter and the rules, `--tests` only the tests: CI's
+// scaffold-lint and scaffold jobs, side by side.
+const only = (['--lint', '--tests'] as const).find((flag) => process.argv.includes(flag));
 
 /** What it makes, each as `dispatchdev new <kind> ...` would: the order matters, a keeper needs
  * its collector first and a tool its feature. */
@@ -154,7 +156,7 @@ async function check(copied: string, logs: string) {
   if (!(await generate(copied, { say })).ok) return false;
   // The app's people test reads every kind of data from a new DSP: the queries written above.
   const people = ['cargo', 'test', '--locked', '-p', 'dispatch-backend', '--lib', '--', 'people::'];
-  if (!(await step('people', people, copied, logs))) return false;
+  if (only !== '--lint' && !(await step('people', people, copied, logs))) return false;
   for (const args of ADDED) {
     await make(piece, [...args, '--root', copied]);
     say(`ok            add ${args.join(' ')}`);
@@ -179,7 +181,7 @@ async function check(copied: string, logs: string) {
   const crates = owners
     .filter((dir) => fs.existsSync(path.join(copied, dir, 'Cargo.toml')))
     .map((dir) => `dispatch-${path.basename(dir).replace(/_/g, '-')}`);
-  const steps: [string, string[]][] = [
+  const lint: [string, string[]][] = [
     [
       'clippy',
       ['cargo', 'clippy', '--locked', '--workspace', '--all-targets', '--', '-D', 'warnings'],
@@ -216,9 +218,12 @@ async function check(copied: string, logs: string) {
         ...rules,
       ],
     ],
+  ];
+  const tests: [string, string[]][] = [
     ['owner tests', ['cargo', 'test', '--locked', ...crates.flatMap((crate) => ['-p', crate])]],
     ['tool tests', ['cargo', 'test', '--locked', '-p', 'dispatch-mcp', '--', 'smoke_']],
   ];
+  const steps = only === '--lint' ? lint : only === '--tests' ? tests : [...lint, ...tests];
   for (const [name, command] of steps) if (!(await step(name, command, copied, logs))) return false;
   return true;
 }

@@ -47,6 +47,7 @@ jobs:
       collectors: ${{ steps.changes.outputs.collectors }}
       browser: ${{ steps.changes.outputs.browser }}
       android: ${{ steps.changes.outputs.android }}
+      debug: ${{ steps.changes.outputs.debug }}
       changed: ${{ steps.changes.outputs.changed }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -274,6 +275,15 @@ jobs:
             export DISPATCH_RELAY_APPS="$RUNNER_TEMP/relay-apps"
           fi
           npm run check:ci -- build
+      # Where the release compile spent its time, when it compiled.
+      - name: Preserve the compile's timings
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: dispatch-release-timings-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/cargo-timings/
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Package the runtime
         id: candidate
         run: |
@@ -409,8 +419,30 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-packages
       - run: npm run check:ci -- checks
-  # Rust formatting, lints and tests. Like api and scaffold, among the longest jobs, it decides
-  # for itself whether the change needs it, instead of waiting for the changes job.
+  # Rust formatting and lints, and the operator probes compiled without running, beside core's
+  # tests. Like core and the scaffold jobs, among the longest, it decides for itself whether the
+  # change needs it, instead of waiting for the changes job.
+  core-lint:
+    if: ${{ !inputs.tested-run }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - uses: ./.github/actions/changes
+        id: changes
+      - if: steps.changes.outputs.core == 'true'
+        uses: ./.github/actions/setup-tools
+      - if: steps.changes.outputs.core == 'true'
+        uses: ./.github/actions/setup-build
+        with:
+          profile: debug
+          save: 'false'
+      - if: steps.changes.outputs.core == 'true'
+        run: npm run check:ci -- core lint
+  # The Rust tests. A release's checks find a full run by this job's name.
   core:
     if: ${{ !inputs.tested-run }}
     runs-on: ubuntu-24.04
@@ -432,9 +464,34 @@ jobs:
           profile: debug
           save: 'false'
       - if: steps.changes.outputs.core == 'true'
-        run: npm run check:ci -- core
-  # What every generator writes, made in a copy of the checkout: it builds, passes clippy,
-  # TypeScript, the linter and the rules, and its Rust tests and agent tools' tests pass.
+        run: npm run check:ci -- core tests
+  # What every generator writes, made in a copy of the checkout: scaffold-lint holds it to
+  # clippy, TypeScript, the linter and the rules, and scaffold runs its Rust tests and agent
+  # tools' tests, side by side.
+  scaffold-lint:
+    if: ${{ !inputs.tested-run }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - uses: ./.github/actions/changes
+        id: changes
+      - if: steps.changes.outputs.scaffold == 'true'
+        uses: ./.github/actions/setup-tools
+      - if: steps.changes.outputs.scaffold == 'true'
+        uses: ./.github/actions/setup-build
+        with:
+          profile: debug
+          save: 'false'
+      # Each week's Rust cache starts empty until the caches workflow refills it, and the
+      # generators update the lock offline: fetch the crates it names first.
+      - if: steps.changes.outputs.scaffold == 'true'
+        run: cargo fetch --locked
+      - if: steps.changes.outputs.scaffold == 'true'
+        run: npm run check:ci -- scaffold lint
   scaffold:
     if: ${{ !inputs.tested-run }}
     runs-on: ubuntu-24.04
@@ -458,7 +515,7 @@ jobs:
       - if: steps.changes.outputs.scaffold == 'true'
         run: cargo fetch --locked
       - if: steps.changes.outputs.scaffold == 'true'
-        run: npm run check:ci -- scaffold
+        run: npm run check:ci -- scaffold tests
   # The Android apps in android/: their unit tests, lint (the dev debug and production release
   # builds) and debug builds, only when a change touches them or CI's own files (the changes
   # job), so any other change skips it. Release builds are signed only in relay-dev and
@@ -482,33 +539,63 @@ jobs:
       - name: Test, lint and build
         working-directory: android
         run: ./gradlew test lintDevDebug lintProductionRelease assembleDebug
-  # The API tests against a debug backend, the Python tooling tests and the npm audit.
+  # The debug backend and worker, built once for the run when the change reaches what they
+  # compile from (the changes job), and saved for api and the collectors, which restore it
+  # instead of each building their own. Otherwise they restore main's, which main's own run of
+  # this job saved.
+  debug:
+    needs: changes
+    if: ${{ !inputs.tested-run && needs.changes.outputs.debug == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-tools
+      - uses: ./.github/actions/setup-build
+        id: tools
+        with:
+          profile: debug
+          save: 'false'
+          binaries: 'true'
+      - name: Build the debug backend and support worker
+        if: steps.tools.outputs.binary-hit != 'true'
+        run: tooling/cli/dispatchdev build
+      - name: Save the debug backend and support worker
+        if: steps.tools.outputs.binary-key != '' && steps.tools.outputs.binary-hit != 'true' && hashFiles('.ci-rust-cache/**/sha256') != ''
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .ci-rust-cache/
+          key: dispatch-rust-binary-debug-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.binary-key }}
+  # The API tests against the debug backend, the Python tooling tests and the npm audit.
   api:
-    if: ${{ !inputs.tested-run }}
+    needs: [changes, debug]
+    if: >-
+      ${{ !cancelled() && !inputs.tested-run && needs.changes.outputs.api == 'true' &&
+      (needs.debug.result == 'success' || needs.debug.result == 'skipped') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-          fetch-depth: 2
-      - uses: ./.github/actions/changes
-        id: changes
-      - if: steps.changes.outputs.api == 'true'
-        uses: ./.github/actions/setup-support-sandbox
-      - if: steps.changes.outputs.api == 'true'
-        uses: ./.github/actions/setup-tools
-      - if: steps.changes.outputs.api == 'true'
-        uses: ./.github/actions/setup-build
+      - uses: ./.github/actions/setup-support-sandbox
+      - uses: ./.github/actions/setup-tools
+      # Its only Rust build is the debug backend and worker, which the debug job or main's run
+      # saved.
+      - uses: ./.github/actions/setup-build
         with:
           profile: debug
           save: 'false'
-      - if: steps.changes.outputs.api == 'true'
-        run: npm run check:ci -- api
+          binaries: 'true'
+      - run: npm run check:ci -- api
   # The native collectors against their fixtures, with a real isolated browser.
   collectors:
-    needs: changes
-    if: ${{ !inputs.tested-run && needs.changes.outputs.collectors == 'true' }}
+    needs: [changes, debug]
+    if: >-
+      ${{ !cancelled() && !inputs.tested-run && needs.changes.outputs.collectors == 'true' &&
+      (needs.debug.result == 'success' || needs.debug.result == 'skipped') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
@@ -520,10 +607,13 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-tools
+      # The debug backend and worker the debug job or main's run saved; the capacity shard also
+      # compiles the host's tests, so it keeps Cargo's cache and builds its own.
       - uses: ./.github/actions/setup-build
         with:
           profile: debug
           save: 'false'
+          binaries: ${{ matrix.shard != 'capacity' }}
       - uses: ./.github/actions/setup-browseros
       - name: Native collector verification
         run: npm run test:browseros -- --shard ${{ matrix.shard }}
@@ -616,10 +706,13 @@ jobs:
       - checks
       - browser
       - smoke
+      - core-lint
       - core
+      - debug
       - api
       - collectors
       - rust-advisories
+      - scaffold-lint
       - scaffold
       - android
       - relay-dev
@@ -649,24 +742,26 @@ jobs:
               exit 1
             fi
             echo "The source's suites passed in $(echo "$tested" | jq -r .html_url)"
-            skippable='["relay-dev", "relay-production", "checks", "core", "api", "collectors", "scaffold", "browser"]'
+            skippable='["relay-dev", "relay-production", "checks", "core-lint", "core", "debug", "api", "collectors", "scaffold-lint", "scaffold", "browser"]'
           fi
-          # Each job and what it came to, a suite the change can't reach as not needed: core, api
-          # and scaffold pass without running it, and the others skip.
+          # Each job and what it came to, a suite the change can't reach as not needed: core's and
+          # scaffold's jobs pass without running it, and the others skip. A -lint job follows its
+          # suite.
           {
             echo "Changed: $(echo "$RESULTS" | jq -r '.changes.outputs.changed // "unknown"')"
             echo
             echo "| Job | Result |"
             echo "| --- | --- |"
             echo "$RESULTS" | jq -r '.changes.outputs as $needed | to_entries[]
-              | "| \(.key) | \(if $needed[.key] == "false" then "not needed" else .value.result end) |"'
+              | "| \(.key) | \(if $needed[.key | sub("-lint$"; "")] == "false" then "not needed"
+                else .value.result end) |"'
           } >> "$GITHUB_STEP_SUMMARY"
           # A suite skips only where the changes job said the change can't reach it.
           failed=$(echo "$RESULTS" | jq -r --argjson skippable "$skippable" '
             .changes.outputs as $needed | to_entries[]
             | select(.value.result != "success")
             | select(.value.result != "skipped"
-              or (((.key | IN($skippable[])) or $needed[.key] == "false") | not))
+              or (((.key | IN($skippable[])) or $needed[.key | sub("-lint$"; "")] == "false") | not))
             | "\(.key): \(.value.result)"')
           if [ -n "$failed" ]; then
             echo "Suites that did not pass:"
