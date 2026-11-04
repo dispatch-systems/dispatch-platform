@@ -4,7 +4,7 @@
 //! snapshot of its databases, which its tests keep in step with every migration, SQL or code.
 use super::*;
 
-/// Where Production is reached for its backup.
+/// Where Production is reached.
 const PRODUCTION_HOST: &str = "dispatch-production";
 /// Every database's migrations, as the backend's tests keep them.
 const SNAPSHOT: &str = "app/tests/backend/snapshots/databases.json";
@@ -89,15 +89,31 @@ print(json.dumps({{"databases":len(found),"failed":failed}}))' "$work/r""#
     )
 }
 /// The JSON line of a command's output holding `field`.
-fn reported(output: &str, field: &str) -> Result<Value> {
+pub(super) fn reported(output: &str, field: &str) -> Result<Value> {
     output
         .lines()
         .filter_map(|line| serde_json::from_str::<Value>(line.trim()).ok())
         .find(|value| !value[field].is_null())
-        .ok_or_else(|| format!("Production's backup reported no {field}").into())
+        .ok_or_else(|| format!("Production reported no {field}").into())
 }
 
 impl Release<'_> {
+    /// Runs `script` on Production over ssh, answering what it printed.
+    pub(super) fn on_production(&self, script: &str, timeout: u64) -> Result<String> {
+        self.command(
+            &[
+                "ssh",
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                "ConnectTimeout=10",
+                PRODUCTION_HOST,
+                &remote(script),
+            ],
+            None,
+            timeout,
+        )
+    }
     fn backup_path(&self) -> PathBuf {
         self.directory.join(format!(".{}-backup.json", self.tag))
     }
@@ -160,21 +176,7 @@ impl Release<'_> {
     /// `release backup`: backs Production up, restores the copy elsewhere and checks every
     /// database, then records it for the release.
     pub(super) fn backup(&self) -> Result<Value> {
-        let ssh = |script: &str| -> Result<String> {
-            self.command(
-                &[
-                    "ssh",
-                    "-o",
-                    "BatchMode=yes",
-                    "-o",
-                    "ConnectTimeout=10",
-                    PRODUCTION_HOST,
-                    &remote(script),
-                ],
-                None,
-                900,
-            )
-        };
+        let ssh = |script: &str| self.on_production(script, 900);
         say("Backing up Production; it stops for about a second");
         let taken = reported(&ssh(&backup_script(&self.version))?, "destination")?;
         let destination = io::text(&taken, "destination");

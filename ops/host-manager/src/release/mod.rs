@@ -4,6 +4,7 @@
 mod assets;
 mod backup;
 mod origins;
+mod production;
 mod relay;
 mod workflow;
 
@@ -17,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeSet,
+    ffi::{OsStr, OsString},
     fs::{self, OpenOptions},
     os::unix::fs::OpenOptionsExt,
     path::{Path, PathBuf},
@@ -25,9 +27,10 @@ use std::{
 
 const HELP: &str = "Dispatch release [publish|status|backup] [X.Y.Z] --root CHECKOUT
   publish   Release main's head: run its own full checks, which build or carry its
-            Production relay app, require Dev serving the commit, publish the release and
-            verify Production installs it (the default). A release that brings migrations
-            publishes only after a backup made for it in the last six hours.
+            Production relay app, require Dev serving the commit, publish the release once
+            Production can take it, verify Production installs it and report what its log
+            shows (the default). A release that brings migrations publishes only after a
+            backup made for it in the last six hours.
   status    Inspect GitHub, saved assets and public health without changing release state.
   backup    Back Production up for the release over ssh, stopping it for about a second,
             restore the copy elsewhere and check every database, and record it.
@@ -369,13 +372,17 @@ impl<'a> Release<'a> {
         self.record_commit(&prepared.commit)?;
         let release = self.publish(&prepared)?;
         self.verify_production(&prepared, &release)?;
+        let (log, slack) = self.check_installed(&release)?;
         self.clean()?;
         let mut journal = self.journal()?;
         journal.complete = true;
         self.save(&journal)?;
-        Ok(
-            json!({"version":self.version,"stage":"complete","release":release["html_url"],"runtimeDigest":prepared.runtime_digest}),
-        )
+        let mut result = json!({"version":self.version,"stage":"complete","release":release["html_url"],
+            "runtimeDigest":prepared.runtime_digest,"productionLog":log});
+        if let Some(saved) = slack {
+            result["slackManifest"] = json!(saved);
+        }
+        Ok(result)
     }
     fn status(&self) -> Result<Value> {
         let prepared = if self.output.try_exists()? {
@@ -486,10 +493,28 @@ fn unpublished(directory: &Path, listed: &[Value]) -> Result<BTreeSet<String>> {
     Ok(found)
 }
 
+/// PATH with `home`'s `.local/bin` first, where Dev keeps `gh`, when `path` lacks it: a login
+/// shell puts it there, and plain ssh doesn't.
+fn search_path(path: &OsStr, home: &Path) -> Option<OsString> {
+    let local = home.join(".local/bin");
+    let mut paths: Vec<_> = std::env::split_paths(path).collect();
+    if paths.contains(&local) {
+        return None;
+    }
+    paths.insert(0, local);
+    std::env::join_paths(paths).ok()
+}
+
 pub fn run(args: &[String], system: &dyn System) -> Result<Value> {
     if args.iter().any(|s| matches!(s.as_str(), "--help" | "-h")) {
         println!("{HELP}");
         return Ok(Value::Null);
+    }
+    if let (Some(path), Some(home)) = (std::env::var_os("PATH"), std::env::var_os("HOME"))
+        && let Some(path) = search_path(&path, Path::new(&home))
+    {
+        // SAFETY: the release sets it before it runs a command or starts a thread.
+        unsafe { std::env::set_var("PATH", path) };
     }
     let options = Options::parse(args)?;
     let common = String::from_utf8(system.command(

@@ -567,6 +567,7 @@ impl Release<'_> {
         // as must a release published since this one was prepared that its app no longer follows.
         self.checked_source(&prepared.commit)?;
         self.app_follows()?;
+        self.check_production()?;
         self.api(
             &format!("releases/{}", release["id"]),
             &[
