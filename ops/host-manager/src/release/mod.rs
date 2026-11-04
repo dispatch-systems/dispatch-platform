@@ -32,8 +32,9 @@ const HELP: &str = "Dispatch release [publish|status|backup] [X.Y.Z] --root CHEC
             Production can take it, verify Production installs it and report what its log
             shows (the default). A release that brings migrations publishes only after a
             backup made for it in the last six hours.
-            --backup takes that backup when it's missing, as backup does, then publishes. It
-            stops Production for about a second, so pass it only with the owner's approval.
+            --backup takes that backup when it's missing, as backup does, once Production
+            passes its checks, then publishes. It stops Production for about a second, so pass
+            it only with the owner's approval.
             --after COMMIT first waits for Dev to serve COMMIT, then hands the release to the
             host tool Dev installed with it, when that isn't the one running.
   status    Inspect GitHub, saved assets and public health without changing release state.
@@ -395,7 +396,7 @@ impl<'a> Release<'a> {
         // Publication can only consume complete, revalidated preparation.
         let prepared = self.prepared(None)?;
         self.record_commit(&prepared.commit)?;
-        let release = self.publish(&prepared)?;
+        let (release, backup) = self.publish(&prepared)?;
         self.verify_production(&prepared, &release)?;
         let (log, slack) = self.check_installed(&release)?;
         self.clean()?;
@@ -406,6 +407,10 @@ impl<'a> Release<'a> {
             "runtimeDigest":prepared.runtime_digest,"productionLog":log});
         if let Some(saved) = slack {
             result["slackManifest"] = json!(saved);
+        }
+        if let Some(backup) = backup {
+            result["backup"] =
+                json!({"destination":backup["destination"],"databases":backup["databases"]});
         }
         Ok(result)
     }

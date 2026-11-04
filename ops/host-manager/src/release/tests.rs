@@ -1476,7 +1476,8 @@ fn migrations_publish_only_after_a_recent_production_backup_that_restores() {
     release.publish(&prepared).unwrap();
     assert!(published());
     // Every Production step went over ssh, each backup with its restore and the check before
-    // publishing, and the backup starts the service and its updates again whatever happens.
+    // publishing, which no refusal reached, and the backup starts the service and its updates
+    // again whatever happens.
     let calls = f.system.calls.borrow();
     let ssh: Vec<_> = calls.iter().filter(|c| c[0] == "ssh").collect();
     assert_eq!(ssh.len(), 7);
@@ -1489,24 +1490,44 @@ fn migrations_publish_only_after_a_recent_production_backup_that_restores() {
 }
 
 #[test]
-fn publishing_with_backup_backs_production_up_at_the_migrations_gate_and_carries_on() {
+fn publishing_with_backup_backs_production_up_once_it_can_take_the_release() {
     let f = Fixture::migrating();
     f.draft_after_v0_9_0();
     let release = Release {
         take_backup: true,
         ..f.release()
     };
-    // Under the lock the release holds, which kept `release backup` out until it stopped.
+    let backed_up =
+        || {
+            f.system.calls.borrow().iter().position(|c| {
+                c[0] == "ssh" && c.last().unwrap().contains("dispatch-backend backup")
+            })
+        };
+    // Never while a collection runs, which stopping Production for the copy would interrupt.
+    f.system.production.borrow_mut()["running"] = json!(1);
+    let refused = release
+        .execute(Stage::Publish, None)
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("Collections are running"), "{refused}");
+    assert_eq!(backed_up(), None);
+    // Once it finished, under the lock the release holds, which kept `release backup` out, and
+    // before publication; the result names it.
+    f.system.production.borrow_mut()["running"] = json!(0);
+    let result = release.execute(Stage::Publish, None).unwrap();
+    assert_eq!(result["stage"], "complete");
     assert_eq!(
-        release.execute(Stage::Publish, None).unwrap()["stage"],
-        "complete"
+        result["backup"],
+        json!({"destination":"/srv/dispatch/backups/2026-10-14-091500-before-v1.0.0",
+            "databases":4})
     );
-    let calls = f.system.calls.borrow();
-    let restored = calls
+    let published = f
+        .system
+        .calls
+        .borrow()
         .iter()
-        .position(|c| c[0] == "ssh" && c.last().unwrap().contains("dispatch-backend\" restore"));
-    let published = calls.iter().position(|c| c.contains(&"draft=false".into()));
-    assert!(restored.unwrap() < published.unwrap());
+        .position(|c| c.contains(&"draft=false".into()));
+    assert!(backed_up().unwrap() < published.unwrap());
 }
 
 #[test]
