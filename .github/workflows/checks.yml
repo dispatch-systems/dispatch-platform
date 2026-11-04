@@ -589,6 +589,9 @@ jobs:
           profile: debug
           save: 'false'
           binaries: 'true'
+      # The generators' tests update the lock offline: fetch the crates it names, which Cargo's
+      # cache held before the restored binaries replaced it.
+      - run: cargo fetch --locked
       - run: npm run check:ci -- api
   # The native collectors against their fixtures, with a real isolated browser.
   collectors:
