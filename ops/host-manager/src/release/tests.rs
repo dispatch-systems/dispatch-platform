@@ -1538,12 +1538,12 @@ fn migrations_publish_only_after_a_recent_production_backup_that_restores() {
     release.backup().unwrap();
     release.publish(&prepared).unwrap();
     assert!(published());
-    // Every Production step went over ssh, each backup with its restore, the check before
-    // publishing, which no refusal reached, and the rehearsal's three, and the backup starts the
-    // service and its updates again whatever happens.
+    // Every Production step went over ssh, each backup with its restore, the rehearsal's three
+    // and the checks before publishing on either side of it, which no refusal reached, and the
+    // backup starts the service and its updates again whatever happens.
     let calls = f.system.calls.borrow();
     let ssh: Vec<_> = calls.iter().filter(|c| c[0] == "ssh").collect();
-    assert_eq!(ssh.len(), 10);
+    assert_eq!(ssh.len(), 11);
     assert!(ssh.iter().any(|c| {
         let script = c.last().unwrap();
         script.contains("systemctl --user stop dispatch-production.service")
@@ -1677,14 +1677,18 @@ fn migrations_publish_only_once_a_copy_of_productions_backup_starts_under_the_re
         "dispatch-production:/home/dispatch/dispatch-platform/tmp/dispatch-upgrade-check-x/dispatch-backend"
     );
     // One that starts, though it logs an error Production logs at each start already, lets it
-    // publish, after it, and isn't rehearsed again for the same commit and backup; the
-    // release's result reports it.
+    // publish once Production, checked again after it, can take it; it isn't rehearsed again
+    // for the same commit and backup, and the release's result reports it.
     let mut started = rehearsed();
     started["errors"] = logged("accounts.diverged", json!({"dspId":"dsp_1"}));
     f.system.rehearsal.replace(started.clone());
     release.publish(&prepared).unwrap();
     let done = calls();
-    assert!(at(&done, &published).unwrap() > done.iter().rposition(|c| rehearsal(c)).unwrap());
+    let checked = done.iter().rposition(|c| {
+        c[0] == "ssh" && c.last().unwrap().contains("production-update-failure.json")
+    });
+    assert!(done.iter().rposition(|c| rehearsal(c)) < checked);
+    assert!(checked < at(&done, &published));
     release.rehearse(&prepared).unwrap();
     assert_eq!(rehearsals(), 3);
     let result = release.execute(Stage::Publish, None).unwrap();

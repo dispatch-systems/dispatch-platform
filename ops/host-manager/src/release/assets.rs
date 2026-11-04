@@ -575,7 +575,11 @@ impl Release<'_> {
         // Only once Production can take the release, so stopping it for the copy never
         // interrupts a collection, fills a short disk or lands on a failing updater.
         let backup = needs_backup.then(|| self.backup()).transpose()?;
-        self.rehearse(prepared)?;
+        // A rehearsal takes minutes, so Production is checked again after one, next to
+        // publication.
+        if self.rehearse(prepared)? {
+            self.check_production()?;
+        }
         self.api(
             &format!("releases/{}", release["id"]),
             &[

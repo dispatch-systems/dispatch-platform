@@ -34,10 +34,10 @@ chmod 700 "$work/dispatch-backend"
 impl Release<'_> {
     /// Before a release that brings migrations publishes, once Production has its backup:
     /// starts a copy of that backup with the release's backend, refusing publication, with what
-    /// failed, unless it starts with every carry-over done.
-    pub(super) fn rehearse(&self, prepared: &assets::Prepared) -> Result<()> {
+    /// failed, unless it starts with every carry-over done. Answers whether it rehearsed now.
+    pub(super) fn rehearse(&self, prepared: &assets::Prepared) -> Result<bool> {
         if self.new_migrations(&prepared.commit)?.is_empty() {
-            return Ok(());
+            return Ok(false);
         }
         let destination = io::text(&io::read_json(&self.backup_path())?, "destination");
         let receipt = self.output.join(REHEARSED);
@@ -51,7 +51,7 @@ impl Release<'_> {
                 "{} already started on a copy of Production's backup {destination}",
                 self.tag
             ));
-            return Ok(());
+            return Ok(false);
         }
         let build = tempfile::Builder::new()
             .prefix("dispatch-release-rehearsal-")
@@ -155,7 +155,8 @@ impl Release<'_> {
             &json!({"commit":prepared.commit,"runtimeDigest":prepared.runtime_digest,
                 "backup":destination,"databases":found["databases"],"migrations":migrations,
                 "errors":found["errors"]}),
-        )
+        )?;
+        Ok(true)
     }
     /// The rehearsal that passed for this release, as kept beside it; none without migrations.
     pub(super) fn rehearsal(&self) -> Result<Option<Value>> {
