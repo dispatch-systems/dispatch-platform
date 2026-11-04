@@ -49,6 +49,8 @@ struct Fake {
     dispatched: Cell<&'static str>,
     /// Whether every database in Production's restored backup checks out.
     restorable: Cell<bool>,
+    /// What the release's backend reports of starting a copy of Production's backup.
+    rehearsal: RefCell<Value>,
     /// What Production reports of itself before a release publishes.
     production: RefCell<Value>,
     /// The Slack app manifest Production makes before the release installs, and after.
@@ -275,10 +277,18 @@ impl System for Fake {
             Value::Null
         } else if args.starts_with(&["git", "fetch"]) {
             Value::Null
+        } else if args[0] == "scp" {
+            return Ok(vec![]);
         } else if args[0] == "ssh" {
             // Production, by its backend's own words.
             let script = args.last().unwrap();
-            return Ok(if script.contains("dispatch-backend backup") {
+            return Ok(if script.contains("dispatch-upgrade-check-XXXXXX") {
+                "/run/user/1000/dispatch-upgrade-check-x\n".into()
+            } else if script.contains("rm -rf -- ") {
+                String::new()
+            } else if script.contains("upgrade-check") {
+                format!("{}\n", self.rehearsal.borrow())
+            } else if script.contains("dispatch-backend backup") {
                 json!({"destination":"/srv/dispatch/backups/2026-10-14-091500-before-v1.0.0","files":12}).to_string()
             } else if script.contains("dispatch-backend\" restore") {
                 let failed: &[&str] = if self.restorable.get() { &[] } else { &["platform.sqlite"] };
@@ -473,6 +483,11 @@ struct Fixture {
     root: PathBuf,
     system: Fake,
 }
+/// What the release's backend reports of a copy of Production's backup that started cleanly.
+fn rehearsed() -> Value {
+    json!({"root":"/run/user/1000/dispatch-upgrade-check-x/root","databases":2,
+        "migrations":{"dsp":1,"platform":1},"carryOverFailures":[],"errors":[],"stopped":null})
+}
 /// The backend's snapshot of its databases, with the migrations `dsp` has.
 fn databases(dsp: &[&str]) -> String {
     let migrations: Vec<Value> = dsp
@@ -560,6 +575,7 @@ impl Fixture {
             branch: RefCell::new(None),
             dispatched: Cell::new("success"),
             restorable: Cell::new(true),
+            rehearsal: RefCell::new(rehearsed()),
             production: RefCell::new(json!({"failure":null,"gh":true,"service":"active",
                 "timer":"active","health":"ready","free":50u64 << 30,"running":0})),
             slack: RefCell::new((slack.clone(), slack)),
@@ -1522,12 +1538,12 @@ fn migrations_publish_only_after_a_recent_production_backup_that_restores() {
     release.backup().unwrap();
     release.publish(&prepared).unwrap();
     assert!(published());
-    // Every Production step went over ssh, each backup with its restore and the check before
-    // publishing, which no refusal reached, and the backup starts the service and its updates
-    // again whatever happens.
+    // Every Production step went over ssh, each backup with its restore, the check before
+    // publishing, which no refusal reached, and the rehearsal's three, and the backup starts the
+    // service and its updates again whatever happens.
     let calls = f.system.calls.borrow();
     let ssh: Vec<_> = calls.iter().filter(|c| c[0] == "ssh").collect();
-    assert_eq!(ssh.len(), 7);
+    assert_eq!(ssh.len(), 10);
     assert!(ssh.iter().any(|c| {
         let script = c.last().unwrap();
         script.contains("systemctl --user stop dispatch-production.service")
@@ -1578,16 +1594,93 @@ fn publishing_with_backup_backs_production_up_once_it_can_take_the_release() {
 }
 
 #[test]
-fn a_release_without_migrations_needs_no_backup() {
+fn a_release_without_migrations_needs_no_backup_or_rehearsal() {
     let f = Fixture::new();
     let prepared = f.draft_after_v0_9_0();
     f.release().publish(&prepared).unwrap();
-    assert!(
-        !f.system
-            .calls
-            .borrow()
-            .iter()
-            .any(|c| c[0] == "ssh" && c.last().unwrap().contains("dispatch-backend backup"))
+    assert!(!f.system.calls.borrow().iter().any(|c| {
+        let script = c.last().unwrap();
+        c[0] == "scp"
+            || (c[0] == "ssh"
+                && (script.contains("dispatch-backend backup") || script.contains("upgrade-check")))
+    }));
+}
+
+#[test]
+fn migrations_publish_only_once_a_copy_of_productions_backup_starts_under_the_release() {
+    let f = Fixture::migrating();
+    let prepared = f.draft_after_v0_9_0();
+    let release = f.release();
+    release.backup().unwrap();
+    let calls = || f.system.calls.borrow().clone();
+    let at = |calls: &[Vec<String>], found: &dyn Fn(&[String]) -> bool| {
+        calls.iter().position(|c| found(c))
+    };
+    let rehearsal = |c: &[String]| c[0] == "ssh" && c.last().unwrap().contains("upgrade-check \"");
+    let rehearsals = || calls().iter().filter(|c| rehearsal(c)).count();
+    let published = |c: &[String]| c.iter().any(|word| word == "draft=false");
+    let logged = |event: &str, fields: Value| json!([{"at":"2026-10-14T09:20:00Z","level":"error","event":event,"fields":fields}]);
+    // A copy that stops on a migration, or that starts with a carry-over failed, holds
+    // publication, naming what failed, and the folder it ran in goes, as it does whatever
+    // happens.
+    let mut stopped = rehearsed();
+    stopped["stopped"] = json!("migration_failed");
+    stopped["errors"] = logged(
+        "storage.migration_failed",
+        json!({"kind":"dsp","id":2,"name":"accounts"}),
+    );
+    let mut carried = rehearsed();
+    let section = json!({"dspId":"dsp_1","section":"routes.retention","error":"operation_failed"});
+    carried["carryOverFailures"] = json!([section]);
+    carried["errors"] = logged("settings.carry_over_failed", section);
+    for (report, named) in [
+        (
+            stopped,
+            "it stopped with migration_failed\n- storage.migration_failed {\"kind\":\"dsp\"",
+        ),
+        (carried, r#"- settings.carry_over_failed {"dspId":"dsp_1""#),
+    ] {
+        f.system.rehearsal.replace(report);
+        let refused = release.publish(&prepared).unwrap_err().to_string();
+        assert!(refused.contains(named), "{named}: {refused}");
+    }
+    let tried = calls();
+    assert!(at(&tried, &published).is_none());
+    let removed = |c: &[String]| {
+        c[0] == "ssh"
+            && c.last()
+                .unwrap()
+                .contains("rm -rf -- /run/user/1000/dispatch-upgrade-check-x")
+    };
+    assert_eq!(tried.iter().filter(|c| removed(c)).count(), 2);
+    assert!(tried.iter().rposition(|c| removed(c)) > tried.iter().rposition(|c| rehearsal(c)));
+    // What starts there is the release's own backend, copied into that folder.
+    let copied = tried.iter().find(|c| c[0] == "scp").unwrap();
+    assert!(copied[copied.len() - 2].ends_with("/services/rust/dispatch-backend"));
+    assert_eq!(
+        copied.last().unwrap(),
+        "dispatch-production:/run/user/1000/dispatch-upgrade-check-x/dispatch-backend"
+    );
+    // One that starts, though it logs an error Production logs at each start already, lets it
+    // publish, after it, and isn't rehearsed again for the same commit and backup; the
+    // release's result reports it.
+    let mut started = rehearsed();
+    started["errors"] = logged("accounts.diverged", json!({"dspId":"dsp_1"}));
+    f.system.rehearsal.replace(started.clone());
+    release.publish(&prepared).unwrap();
+    let done = calls();
+    assert!(at(&done, &published).unwrap() > done.iter().rposition(|c| rehearsal(c)).unwrap());
+    release.rehearse(&prepared).unwrap();
+    assert_eq!(rehearsals(), 3);
+    let result = release.execute(Stage::Publish, None).unwrap();
+    let reported = &result["upgradeRehearsal"];
+    assert_eq!(
+        (&reported["migrations"], &reported["errors"]),
+        (&started["migrations"], &started["errors"])
+    );
+    assert_eq!(
+        reported["backup"],
+        "/srv/dispatch/backups/2026-10-14-091500-before-v1.0.0"
     );
 }
 

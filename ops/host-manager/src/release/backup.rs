@@ -5,7 +5,7 @@
 use super::*;
 
 /// Where Production is reached.
-const PRODUCTION_HOST: &str = "dispatch-production";
+pub(super) const PRODUCTION_HOST: &str = "dispatch-production";
 /// Every database's migrations, as the backend's tests keep them.
 const SNAPSHOT: &str = "app/tests/backend/snapshots/databases.json";
 /// How long a backup stands for the release: Production keeps changing after it.
@@ -114,7 +114,7 @@ impl Release<'_> {
             timeout,
         )
     }
-    fn backup_path(&self) -> PathBuf {
+    pub(super) fn backup_path(&self) -> PathBuf {
         self.directory.join(format!(".{}-backup.json", self.tag))
     }
     /// The migrations `commit` brings since the latest published release: none before the

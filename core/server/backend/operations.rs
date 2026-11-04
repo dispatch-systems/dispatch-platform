@@ -2,7 +2,7 @@ use crate::{
     Error, Result,
     db::{self, Store, iso, n, s},
     ensure,
-    foundation::{config::Config, crypto},
+    foundation::{config::Config, crypto, observability},
     manifest::registry,
 };
 use fs2::FileExt;
@@ -14,18 +14,20 @@ const CANCEL_RESTORED: &str = concat!(
     crate::job_statuses!(active)
 );
 use std::{
-    collections::HashSet,
+    collections::{BTreeMap, HashSet},
     fs::{self, File, OpenOptions},
     os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
-    path::Path,
+    path::{Path, PathBuf},
 };
+/// The file every server and operation locks in the platform's root, left there once made.
+const LOCK: &str = ".platform.lock";
 pub struct Lock {
     _file: File,
 }
 impl Lock {
     pub fn acquire(root: &Path) -> Result<Self> {
         db::private_dir(root)?;
-        let path = root.join(".platform.lock");
+        let path = root.join(LOCK);
         db::private_file(&path, true)?;
         let file = OpenOptions::new()
             .read(true)
@@ -427,6 +429,91 @@ pub fn status(config: &Config) -> Result<Value> {
     Ok(
         json!({"environment":config.environment,"runtime":"rust","dsps":db.all("SELECT name,environment,status FROM dsps",[])?}),
     )
+}
+
+/// What `serve` does once its state opened its store and before it listens: refuses a platform
+/// with no active owner, then ends the jobs and browser runs the last server left.
+pub fn recover(db: &Store) -> Result<()> {
+    ensure(has_active_owner(db)?, "run_bootstrap_before_starting", 503)?;
+    db.recover_jobs(true)?;
+    clean_browser_runs(&db.config)
+}
+
+/// Starts the platform restored at `root` as `serve` does before it listens, under this binary
+/// and `config` but at `root`: every database brought up to its migrations, with what carries
+/// over at startup, and what the last server left recovered (`State::store`, `recover`). It
+/// serves nothing and runs no job, reader or mailer, and reads and writes only under `root`. A
+/// root a server ever started on holds its lock file and is refused, so only a copy is ever
+/// changed. Answers what it found, with how startup ended: how many databases it migrated, the
+/// migrations applied by kind of database, each carry-over that failed, every error startup
+/// logged, and the error that stopped it, as a failed migration does.
+pub fn upgrade_check(config: &Config, root: &Path) -> Result<(Value, Result<()>)> {
+    ensure(
+        root.is_absolute() && !root.join(LOCK).try_exists()?,
+        "upgrade_check_restored_copy_required",
+        409,
+    )?;
+    let config = Config {
+        root: root.into(),
+        ..config.clone()
+    };
+    let before = migrations_recorded(root)?;
+    let (started, events) = observability::recorded(|| recover(&crate::State::store(&config)?));
+    let after = migrations_recorded(root)?;
+    let databases = after
+        .iter()
+        .filter(|(path, count)| before.get(*path).is_none_or(|was| was < count))
+        .count();
+    let mut migrations = BTreeMap::<&str, u64>::new();
+    for event in events
+        .iter()
+        .filter(|e| e["event"] == "storage.migration_applied")
+    {
+        *migrations.entry(s(&event["fields"], "kind")).or_default() += 1;
+    }
+    let carried: Vec<&Value> = events
+        .iter()
+        .filter(|e| e["event"] == "settings.carry_over_failed")
+        .map(|e| &e["fields"])
+        .collect();
+    let errors: Vec<&Value> = events.iter().filter(|e| e["level"] == "error").collect();
+    let report = json!({"root":root,"databases":databases,"migrations":migrations,
+        "carryOverFailures":carried,"errors":errors,
+        "stopped":started.as_ref().err().map(|error| &error.code)});
+    Ok((report, started))
+}
+/// How many migrations each database under `root` records, by its path.
+fn migrations_recorded(root: &Path) -> Result<BTreeMap<PathBuf, i64>> {
+    let mut found = BTreeMap::new();
+    let mut folders = vec![root.to_path_buf()];
+    while let Some(folder) = folders.pop() {
+        for entry in fs::read_dir(folder)? {
+            let entry = entry?;
+            let path = entry.path();
+            if entry.file_type()?.is_dir() {
+                folders.push(path);
+            } else if path
+                .extension()
+                .is_some_and(|extension| extension == "sqlite")
+            {
+                let db = rusqlite::Connection::open_with_flags(
+                    &path,
+                    rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+                )?;
+                let mut count = 0;
+                for table in ["schema_migrations", "owner_migrations"] {
+                    if table_exists(&db, table)? {
+                        count +=
+                            db.query_row(&format!("SELECT count(*) FROM {table}"), [], |row| {
+                                row.get::<_, i64>(0)
+                            })?;
+                    }
+                }
+                found.insert(path, count);
+            }
+        }
+    }
+    Ok(found)
 }
 
 /// The environment lock proves no previous core can own these ephemeral runs.

@@ -71,6 +71,14 @@ pub async fn run() -> Result<()> {
         println!("{}", operations::directories(&config)?);
         return Ok(());
     }
+    // Beside the running server, whose lock it leaves alone: it starts a restored copy at the
+    // root it names, never the configured one, and fails as that start fails.
+    if command == "upgrade-check" {
+        ensure(args.len() == 2, "usage_upgrade_check_restored_root", 400)?;
+        let (report, started) = operations::upgrade_check(&config, Path::new(&args[1]))?;
+        println!("{report}");
+        return started;
+    }
     // Without the platform lock: each family of commands says why it needs none.
     let mut families = registry()
         .features
@@ -89,21 +97,7 @@ pub async fn run() -> Result<()> {
                 503,
             )?;
             let state = dispatch_core::State::new(config.clone())?;
-            state
-                .run(|db| {
-                    ensure(
-                        operations::has_active_owner(db)?,
-                        "run_bootstrap_before_starting",
-                        503,
-                    )
-                })
-                .await?;
-            state
-                .run(|db| {
-                    db.recover_jobs(true)?;
-                    operations::clean_browser_runs(&db.config)
-                })
-                .await?;
+            state.run(operations::recover).await?;
             let listener =
                 tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, config.port)).await?;
             let (stop, receiver) = tokio::sync::watch::channel(false);
