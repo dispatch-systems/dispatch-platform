@@ -552,14 +552,15 @@ impl Release<'_> {
         ));
         Ok(release)
     }
-    pub(super) fn publish(&self, prepared: &Prepared) -> Result<Value> {
+    /// Publishes the verified draft, answering the release and the backup this run took.
+    pub(super) fn publish(&self, prepared: &Prepared) -> Result<(Value, Option<Value>)> {
         let release = self.listed_release()?.ok_or("No draft exists to publish")?;
         self.verify_identity(&release, prepared)?;
         if release["draft"] == false {
             self.verify_assets(&release, false)?;
-            return Ok(release);
+            return Ok((release, None));
         }
-        self.require_backup(&prepared.commit)?;
+        let needs_backup = self.require_backup(&prepared.commit)?;
         self.checked_source(&prepared.commit)?;
         self.smoke(prepared)?;
         let release = self.ensure_draft(prepared)?;
@@ -568,6 +569,9 @@ impl Release<'_> {
         self.checked_source(&prepared.commit)?;
         self.app_follows()?;
         self.check_production()?;
+        // Only once Production can take the release, so stopping it for the copy never
+        // interrupts a collection, fills a short disk or lands on a failing updater.
+        let backup = needs_backup.then(|| self.backup()).transpose()?;
         self.api(
             &format!("releases/{}", release["id"]),
             &[
@@ -587,7 +591,7 @@ impl Release<'_> {
         self.verify_identity(&release, prepared)?;
         self.verify_assets(&release, false)?;
         say(format!("Published {}", io::text(&release, "html_url")));
-        Ok(release)
+        Ok((release, backup))
     }
     fn fetch(&self, origin: &str, path: &str) -> Result<Vec<u8>> {
         let response = self

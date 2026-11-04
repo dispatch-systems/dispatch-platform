@@ -135,11 +135,12 @@ impl Release<'_> {
             .map(|(migration, _)| migration.clone())
             .collect())
     }
-    /// Refuses to publish migrations until Production has a recent backup that restores.
-    pub(super) fn require_backup(&self, commit: &str) -> Result<()> {
+    /// Refuses to publish migrations until Production has a recent backup that restores,
+    /// answering whether `--backup` takes it once Production can take the release.
+    pub(super) fn require_backup(&self, commit: &str) -> Result<bool> {
         let migrations = self.new_migrations(commit)?;
         if migrations.is_empty() {
-            return Ok(());
+            return Ok(false);
         }
         let recorded = self
             .backup_path()
@@ -156,25 +157,33 @@ impl Release<'_> {
                 "Production was backed up to {} and it restored",
                 backup.destination
             ));
-            return Ok(());
+            return Ok(false);
+        }
+        if self.take_backup {
+            say(format!(
+                "{} brings migrations ({}), so Production is backed up once it can take the \
+                 release",
+                self.tag,
+                migrations.join(", ")
+            ));
+            return Ok(true);
         }
         Err(format!(
-            "{} brings migrations ({}). Production needs a backup that restores first{}: run \
-             `release backup {}` with the same options, which stops Production for about a \
-             second, then rerun.",
+            "{} brings migrations ({}). Production needs a backup that restores first{}: rerun \
+             with `--backup`, which takes it and stops Production for about a second.",
             self.tag,
             migrations.join(", "),
             if recorded.is_some() {
                 ", and the last one is older than six hours"
             } else {
                 ""
-            },
-            self.version
+            }
         )
         .into())
     }
-    /// `release backup`: backs Production up, restores the copy elsewhere and checks every
-    /// database, then records it for the release.
+    /// `release backup`, or `publish --backup` once Production can take the release: backs
+    /// Production up, restores the copy elsewhere and checks every database, then records it
+    /// for the release.
     pub(super) fn backup(&self) -> Result<Value> {
         let ssh = |script: &str| self.on_production(script, 900);
         say("Backing up Production; it stops for about a second");
