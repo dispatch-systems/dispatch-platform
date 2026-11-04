@@ -25,7 +25,10 @@ package carries the run's own commit and a complete inventory (`ci-verify.py`, w
 `dispatch-host ci verify`). Outside a PR it then attests the package and publishes it as `dispatch-main-<sha>` for 90 days: the Dev updater
 installs `main`'s, which carries Dev's app. A release dispatches its own run on a temporary branch
 at its commit, which builds or carries Production's app beside Dev's, and stamps its version into
-that run's package ([Android apps](../../android/README.md#releases)).
+that run's package ([Android apps](../../android/README.md#releases)). Once `main`'s push run of
+the commit passed, the release names it (`tested-run`), and its run skips core, api, collectors,
+scaffold and browser, the suites that tested the source there; the gate accepts them skipped only
+once GitHub answers that the named run is `main`'s passed push run of the same commit.
 
 A PR's newer push cancels its older run; each commit of `main` keeps its own. A failure that
 isn't the change's own gets its failed jobs run again: `gh run rerun <id> --failed`.

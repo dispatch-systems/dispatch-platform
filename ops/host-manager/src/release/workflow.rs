@@ -225,25 +225,41 @@ impl Release<'_> {
         fs::write(&self.notes, notes)?;
         Ok(())
     }
-    /// Whether `run` ran the whole suite: its `core` job ran, which a scoped run of the
-    /// former workflow skipped, and its `platform` gate ran, which a partial manual run skips.
-    fn full_run(&self, run: &Value) -> Result<bool> {
+    /// Whether `run` validated the whole suite on `commit`: its `platform` gate passed, which a
+    /// partial manual run skips, and its `core` job passed, which a scoped run of the former
+    /// workflow skipped, or was skipped for main's push run of the commit, which passed it.
+    fn full_run(&self, run: &Value, commit: &str) -> Result<bool> {
         let jobs = io::github(
             self.system,
             &format!("actions/runs/{}/jobs?filter=latest&per_page=100", run["id"]),
         )?;
-        let passed = |name: &str| {
+        let ended = |name: &str, conclusion: &str| {
             jobs["jobs"]
                 .as_array()
                 .into_iter()
                 .flatten()
-                .any(|job| job["name"] == name && job["conclusion"] == "success")
+                .any(|job| job["name"] == name && job["conclusion"] == conclusion)
         };
-        Ok(passed("core") && passed("platform"))
+        Ok(ended("platform", "success")
+            && (ended("core", "success")
+                || (ended("core", "skipped") && self.tested(commit)?.is_some())))
+    }
+    /// Main's push run of the checks on exactly `commit`, if its newest passed: every suite ran
+    /// on the commit there, so the release's own run skips those that test its source.
+    fn tested(&self, commit: &str) -> Result<Option<Value>> {
+        let runs = io::github(
+            self.system,
+            &format!("actions/workflows/checks.yml/runs?event=push&head_sha={commit}&per_page=100"),
+        )?;
+        Ok(
+            releases::latest_run(&runs["workflow_runs"], commit, "push", Some("main"), false)
+                .filter(|run| releases::passed(run))
+                .cloned(),
+        )
     }
     /// The release's own run of the checks on exactly `commit`, dispatched on its temporary
-    /// branch, if its newest passed the full suite. Main's push run never counts: only a
-    /// release's run builds Production's app.
+    /// branch, if its newest passed the full suite, or the package's checks on main's passed
+    /// suites. Main's push run alone never counts: only a release's run builds Production's app.
     pub(super) fn fully_validated(&self, commit: &str) -> Result<Option<Value>> {
         let runs = io::github(
             self.system,
@@ -258,7 +274,7 @@ impl Release<'_> {
             Some(&self.checks_branch),
             false,
         ) && releases::passed(run)
-            && self.full_run(run)?
+            && self.full_run(run, commit)?
         {
             return Ok(Some(run.clone()));
         }
@@ -266,7 +282,9 @@ impl Release<'_> {
     }
     /// Requires the full suite on exactly `commit`, in the release's own run: dispatched on a
     /// temporary branch at the commit with `relay`, the app version it builds (empty to carry
-    /// the last released app), and awaited. A rerun awaits the run already dispatched.
+    /// the last released app), and awaited. Once main's push run of the commit passed, the
+    /// release's run names it and builds, packs and checks the package alone. A rerun awaits the
+    /// run already dispatched.
     pub(super) fn full_suite(&self, commit: &str, relay: &str) -> Result<()> {
         let url = self.dispatch_full(commit, relay)?;
         say(format!("Full checks: {url}"));
@@ -289,29 +307,40 @@ impl Release<'_> {
         )
         .is_none()
         {
-            say("Starting the release's checks");
+            let tested = self.tested(commit)?;
+            let relay = format!("relay-version={relay}");
+            let reused = tested
+                .as_ref()
+                .map(|run| format!("tested-run={}", run["id"]));
+            let mut command = vec![
+                "gh",
+                "workflow",
+                "run",
+                "checks.yml",
+                "--repo",
+                REPOSITORY,
+                "--ref",
+                &self.checks_branch,
+                "-f",
+                &relay,
+            ];
+            if let Some(reused) = &reused {
+                command.extend(["-f", reused]);
+            }
+            say(match &tested {
+                Some(run) => format!(
+                    "Starting the release's checks, reusing the suites main's checks passed: {}",
+                    io::text(run, "html_url")
+                ),
+                None => "Starting the release's checks".into(),
+            });
             self.checks_branch_at(commit)?;
-            self.command(
-                &[
-                    "gh",
-                    "workflow",
-                    "run",
-                    "checks.yml",
-                    "--repo",
-                    REPOSITORY,
-                    "--ref",
-                    &self.checks_branch,
-                    "-f",
-                    &format!("relay-version={relay}"),
-                ],
-                None,
-                120,
-            )?;
+            self.command(&command, None, 120)?;
         }
         // A failure stays for inspection; rerunning its failed jobs lets this resume.
         let run = self.checks(commit, "workflow_dispatch", Some(&self.checks_branch), true)?;
         require(
-            self.full_run(&run)?,
+            self.full_run(&run, commit)?,
             "The dispatched checks did not run the full suite",
         )?;
         Ok(io::text(&run, "html_url"))

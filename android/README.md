@@ -133,9 +133,12 @@ app into each release:
   be above it, and a carried app still exactly it.
 - **Its checks:** every release runs
   `gh workflow run checks.yml --ref release-checks/v<version> -f relay-version=<X.Y.Z or empty>`
-  and stamps that run's package, never `main`'s push run's, which carries no Production app. The
-  package's `production` entry must be that version, built at the release's commit, or when
-  carrying, exactly the last release's entry, with its APK as the entry names it.
+  and stamps that run's package, never `main`'s push run's, which carries no Production app. Once
+  `main`'s push run of the commit passed, it adds `-f tested-run=<that run's id>`: the release's
+  run skips the suites that tested the commit's source there, and still builds the apps, packs,
+  checks and smoke-tests the package. The package's `production` entry must be that version,
+  built at the release's commit, or when carrying, exactly the last release's entry, with its APK
+  as the entry names it.
 - **Dev:** the release needs Dev serving its commit, by the commit Dev's health reports, not the
   package's digest: Dev runs `main`'s build of the commit, which Production's app makes unlike
   the release's, and its own Dev app may be built again in the release's run.

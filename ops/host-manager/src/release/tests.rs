@@ -39,7 +39,8 @@ struct Fake {
     wrong_tag: Cell<bool>,
     hide_release_once: Cell<bool>,
     comparison: RefCell<String>,
-    /// Runs that skipped the core suite, so validated less than the full suite.
+    /// Runs that skipped the core suite: a dispatched run naming main's run of its commit, or
+    /// one that validated less than the full suite.
     partial: RefCell<BTreeSet<u64>>,
     /// Where the temporary checks branch points on GitHub.
     branch: RefCell<Option<String>>,
@@ -208,6 +209,9 @@ impl System for Fake {
             let mut runs = self.runs.borrow_mut();
             let runs = runs.as_array_mut().unwrap();
             let id = runs.iter().filter_map(|r| r["id"].as_u64()).max().unwrap() + 1;
+            if !field("tested-run").is_empty() {
+                self.partial.borrow_mut().insert(id);
+            }
             runs.push(
                 json!({"id":id,"run_attempt":1,"head_sha":sha,"event":"workflow_dispatch",
                 "head_branch":reference,"status":"completed","conclusion":self.dispatched.get(),
@@ -761,9 +765,12 @@ fn failed_or_pending_newer_checks_never_fall_back_to_older_success() {
         .unwrap()
         .push(own.clone());
     assert_eq!(release.checked_source(&f.system.commit).unwrap()["id"], 6);
-    // One that skipped the core suite isn't the full suite.
+    // One that skipped the core suite counts only while main's push run of the commit passed it.
     f.system.partial.borrow_mut().insert(6);
+    assert_eq!(release.checked_source(&f.system.commit).unwrap()["id"], 6);
+    f.system.runs.borrow_mut()[0]["conclusion"] = json!("failure");
     assert!(release.checked_source(&f.system.commit).is_err());
+    f.system.runs.borrow_mut()[0]["conclusion"] = json!("success");
     f.system.partial.borrow_mut().clear();
     for (status, conclusion) in [
         ("completed", json!("failure")),
@@ -1538,6 +1545,39 @@ fn every_release_runs_its_own_checks_on_a_temporary_branch_before_preparation() 
     assert_eq!(f.system.count(&["gh", "workflow", "run"]), 1);
     assert!(f.system.branch.borrow().is_none());
     assert_eq!(release.prepared(None).unwrap().commit, f.system.commit);
+}
+
+#[test]
+fn the_releases_checks_reuse_mains_suites_only_once_mains_run_of_the_commit_passed() {
+    // Main's push run of the commit passed: the release's run names it, skipping the suites it
+    // passed, and is still the run whose package the release stamps.
+    let f = Fixture::new();
+    f.prepare();
+    assert!(
+        f.system
+            .has_call(&["-f", "relay-version=", "-f", "tested-run=5"])
+    );
+    let provenance = io::read_json(&f.release().output.join("provenance.json")).unwrap();
+    assert_eq!(provenance["workflowRun"], 6);
+    // While main's run is still going, or once it failed, the release's run runs every suite.
+    for (status, conclusion) in [
+        ("in_progress", Value::Null),
+        ("completed", json!("failure")),
+    ] {
+        let f = Fixture::new();
+        f.system.runs.borrow_mut()[0]["status"] = json!(status);
+        f.system.runs.borrow_mut()[0]["conclusion"] = conclusion;
+        f.prepare();
+        assert_eq!(f.system.count(&["gh", "workflow", "run"]), 1);
+        assert!(
+            !f.system
+                .calls
+                .borrow()
+                .iter()
+                .flatten()
+                .any(|arg| arg.starts_with("tested-run="))
+        );
+    }
 }
 
 /// The names of the assets the release's GitHub record lists.
