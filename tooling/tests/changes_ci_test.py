@@ -32,6 +32,18 @@ class NeededTest(unittest.TestCase):
             (["services/support-worker/hermes/skills/dispatch-context/SKILL.md"], EVERY - {"android"}),
             # Only a folder named frontend holds frontend code.
             (["features/dvic/backend/frontend.rs"], EVERY - {"android"}),
+            # TypeScript and CSS elsewhere, tests and tools: no Rust reads them.
+            (
+                ["features/dvic/tests/api/dvic.test.ts", "tooling/scaffold/cli.ts", "vite.config.ts"],
+                EVERY - {"core", "android"},
+            ),
+            # But the bindings the backend's export test generates, and what the core job runs.
+            (["features/dvic/api/generated/Dvic.ts"], EVERY - {"android"}),
+            (["mcp/api/generated/tools.ts"], EVERY - {"android"}),
+            (["tooling/ci/checks.ts"], EVERY - {"android"}),
+            (["tooling/testing/ci-tools.ts"], EVERY - {"android"}),
+            # Embedded scripts are JavaScript, which collectors compile in.
+            (["collectors/cortex/scripts/timecard.js"], EVERY - {"android"}),
             (["features/dvic/backend/dvic.rs", "android/app/x.kt"], EVERY),
             (["tooling/ci/changes.py"], EVERY),
             ([".github/workflows/checks.yml"], EVERY),

@@ -10,6 +10,12 @@ A suite runs unless every file the PR changes is of a kind it never reads:
 - `frontend`: a `frontend/` folder's code, which no collector's native test reaches and no Rust
   reads, but for the owners' manifests (`frontend/feature.ts`) and the list of them
   (`app/frontend/features.ts`), which the backend's export test writes.
+- `script`: TypeScript and CSS outside those folders, such as the owners' API, browser and
+  native tests and the tooling's scripts. Rust never compiles them (`dispatchdev build`'s key
+  leaves them out on the same ground), and its tests read none but the API bindings it
+  generates into `api/generated/`, which stay `other`, so only the Rust suite, core, skips them.
+  CI's own scripts, `tooling/ci/` and `tooling/testing/`, which say what the core job runs,
+  stay `other` too.
 - Anything else, CI's own files included, is read by every suite.
 
 Outside a pull request every suite runs: `main`'s run of each commit is complete, and Dev
@@ -34,7 +40,7 @@ import sys
 
 # Each suite but android's, and the kinds of file it never reads.
 INERT = {
-    "core": {"android", "docs", "frontend"},
+    "core": {"android", "docs", "frontend", "script"},
     "api": {"android"},
     "scaffold": {"android"},
     "collectors": {"android", "docs", "frontend"},
@@ -69,10 +75,18 @@ def kind(path: str) -> str:
     if path.endswith(".md") and not path.startswith("services/"):
         return "docs"
     folders, name = path.split("/")[:-1], path.split("/")[-1]
-    if "frontend" in folders and not (
-        (folders[-1] == "frontend" and name == "feature.ts") or path == "app/frontend/features.ts"
-    ):
+    manifest = (folders[-1:] == ["frontend"] and name == "feature.ts") or (
+        path == "app/frontend/features.ts"
+    )
+    if "frontend" in folders and not manifest:
         return "frontend"
+    if (
+        path.endswith((".ts", ".tsx", ".mts", ".cts", ".css"))
+        and not manifest
+        and "/api/generated/" not in f"/{path}"
+        and not path.startswith(("tooling/ci/", "tooling/testing/"))
+    ):
+        return "script"
     return "other"
 
 
