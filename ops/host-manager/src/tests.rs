@@ -526,6 +526,16 @@ impl Fixture {
         );
         release
     }
+    /// Production installed release v0.1.1 and keeps v0.1.0 as its previous runtime.
+    fn installed_new(&self) -> Value {
+        let release = self.production_release();
+        self.system.reply(
+            &format!("https://api.github.com/repos/{REPOSITORY}/releases/tags/v0.1.1"),
+            vec![release.clone()],
+        );
+        self.updater().activate(&self.candidate, &self.new).unwrap();
+        release
+    }
     /// GitHub's latest release is v0.1.0, the one Production runs.
     fn running_latest(&self) {
         self.system.reply(
@@ -1454,6 +1464,88 @@ fn production_failed_release_is_not_retried_and_latest_hint_never_authorizes_an_
     f.system.responses.borrow_mut().remove(&url);
     u.run_locked().unwrap();
     f.assert_old();
+}
+#[test]
+fn production_rolls_back_to_the_release_it_ran_before_and_stays_until_another_is_published() {
+    let f = Fixture::new(Environment::Production);
+    let u = f.updater();
+    let release = f.installed_new();
+    assert_eq!(
+        u.rollback().unwrap(),
+        json!({"status":"rolled_back","from":"0.1.1","to":"0.1.0","digest":f.old_manifest.digest})
+    );
+    f.assert_old();
+    // The newer runtime is kept in its place.
+    assert_eq!(artifact::verify(&u.previous, None).unwrap(), f.new_manifest);
+    assert_eq!(f.system.actions(), ["stop", "start", "stop", "start"]);
+    // Still the latest, the release rolled back from is not installed again.
+    let latest = format!("https://api.github.com/repos/{REPOSITORY}/releases/latest");
+    f.system.reply(&latest, vec![release.clone()]);
+    u.run_locked().unwrap();
+    f.assert_old();
+    assert_eq!(f.system.actions().len(), 4);
+    // A release published after it installs as any does.
+    let mut next = release;
+    next["id"] = json!(43);
+    f.system.reply(&latest, vec![next]);
+    u.run_locked().unwrap();
+    assert_eq!(artifact::verify(&u.active, None).unwrap(), f.new_manifest);
+}
+#[test]
+fn a_rollback_whose_older_release_fails_its_health_check_leaves_production_as_it_was() {
+    let f = Fixture::new(Environment::Production);
+    let u = f.updater();
+    f.installed_new();
+    // Only the newer release answers healthy.
+    f.system.health.replace(Some(json!({"status":"ready","release":f.new_manifest.digest,"runtime":"rust","environment":"production"})));
+    let error = u.rollback().unwrap_err().to_string();
+    assert!(
+        error.contains("Rolling back to 0.1.0 failed, so Production is back on 0.1.1"),
+        "{error}"
+    );
+    assert_eq!(artifact::verify(&u.active, None).unwrap(), f.new_manifest);
+    assert_eq!(artifact::verify(&u.previous, None).unwrap(), f.old_manifest);
+    assert!(!u.receipt.exists());
+    assert_eq!(
+        f.system.actions(),
+        ["stop", "start", "stop", "start", "stop", "start"]
+    );
+}
+#[test]
+fn production_rolls_back_only_to_an_older_verified_runtime_and_never_while_its_updater_runs() {
+    use fs2::FileExt;
+    for (mode, refusal) in [
+        (
+            "none",
+            "Production keeps no previous release to roll back to",
+        ),
+        ("tampered", "Artifact file verification failed"),
+        (
+            "rolled back",
+            "previous release, 0.1.1, is not older than the 0.1.0",
+        ),
+        ("busy", "Production's updater is running"),
+    ] {
+        let f = Fixture::new(Environment::Production);
+        let u = f.updater();
+        if mode != "none" {
+            f.installed_new();
+        }
+        let lock = fs::File::create(u.platform.join("production-update.lock")).unwrap();
+        match mode {
+            "tampered" => fs::write(u.previous.join("dashboard/index.html"), "tampered").unwrap(),
+            "rolled back" => {
+                u.rollback().unwrap();
+            }
+            "busy" => lock.lock_exclusive().unwrap(),
+            _ => {}
+        }
+        let (active, actions) = (artifact::manifest(&u.active).unwrap(), f.system.actions());
+        let error = u.rollback().unwrap_err().to_string();
+        assert!(error.contains(refusal), "{mode}: {error}");
+        assert_eq!(artifact::manifest(&u.active).unwrap(), active, "{mode}");
+        assert_eq!(f.system.actions(), actions, "{mode}");
+    }
 }
 
 #[test]
