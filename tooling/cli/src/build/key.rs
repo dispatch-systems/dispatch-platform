@@ -54,15 +54,20 @@ pub fn frontend(path: &Path) -> bool {
             .and_then(|extension| extension.to_str())
             .is_some_and(|extension| ["ts", "tsx", "mts", "cts", "css"].contains(&extension))
 }
-/// Every file under `dir` but frontend code, judged by its path inside the checkout at `root`:
-/// the checkout's own path may name any folder.
+/// Every file under `dir` but frontend code and Python's bytecode, judged by its path inside the
+/// checkout at `root`: the checkout's own path may name any folder. Bytecode is written by running
+/// a script, such as a test importing the support worker's, never compiled in, so a build the
+/// tests run beside keeps its key.
 fn walk(root: &Path, dir: &Path, files: &mut BTreeSet<PathBuf>) -> Result<()> {
     if !dir.is_dir() {
         return Ok(());
     }
     for entry in fs::read_dir(dir)? {
         let path = entry?.path();
-        if frontend(path.strip_prefix(root).unwrap_or(&path)) && !path.is_symlink() {
+        if (frontend(path.strip_prefix(root).unwrap_or(&path))
+            || path.file_name().is_some_and(|name| name == "__pycache__"))
+            && !path.is_symlink()
+        {
             continue;
         }
         if path.is_symlink() || !path.is_dir() {

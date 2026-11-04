@@ -555,8 +555,17 @@ fn run() -> Result<()> {
             let root = line.root()?;
             let env = std::env::vars().collect();
             if line.flag("--cache-key") {
-                let key = if line.flag("--release") && build::eligible(&root, &env, true)? {
-                    build::key(&root, "release", &env, &Native)?
+                // The backend and worker's entry: CI restores it in place of building them.
+                if line.flag("--fixture") {
+                    return Err("The assessment fixture's entry has no --cache-key.".into());
+                }
+                let profile = if line.flag("--release") {
+                    "release"
+                } else {
+                    "debug"
+                };
+                let key = if build::eligible(&root, &env, true)? {
+                    build::key(&root, profile, &env, &Native)?
                 } else {
                     String::new()
                 };

@@ -44,7 +44,10 @@ class PruneTest(unittest.TestCase):
             # The tools keep ten, each kind and image apart.
             *entries("dispatch-tools-Linux-X64-ubuntu24-{:02d}ee", *range(1, 12)),
             *entries("dispatch-fixture-Linux-X64-ubuntu24-{:02d}ee", 1, 2),
-            # No kind: the exact binaries, Gradle's own, and whatever comes next.
+            *entries("dispatch-rust-binary-debug-Linux-X64-{}dd", 1, 2, 3, 4, 5),
+            *entries("dispatch-rust-binary-release-Linux-X64-{}dd", 1, 2, 3, 4, 5),
+            # No kind: binaries keyed before their profile was, Gradle's own, and whatever comes
+            # next.
             *entries("dispatch-rust-binary-Linux-X64-{}bb", 1, 2, 3),
             *entries("gradle-transforms-v2-{}cc", 1, 2, 3),
         ]
@@ -55,6 +58,7 @@ class PruneTest(unittest.TestCase):
             "dispatch-node-modules-Linux-X64-1aa",
             f"codeql-overlay-base-database-1-58b1deea8a9e87c1-javascript-2.27.4-{'b' * 40}-41771-1",
             "dispatch-tools-Linux-X64-ubuntu24-01ee",
+            "dispatch-rust-binary-debug-Linux-X64-1dd",
             "v0-rust-2026-W45-dispatch-release-Linux-x64-019b21e0-00000002",
             "v0-rust-2026-W45-dispatch-debug-Linux-x64-019b21e0-00000005",
         ])

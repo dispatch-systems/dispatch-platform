@@ -48,6 +48,25 @@ class NeededTest(unittest.TestCase):
             self.assertRuns([], EVERY, pull_request)
 
 
+class RebuildsTest(unittest.TestCase):
+    def test_a_pr_builds_the_debug_backend_only_for_what_it_compiles_from(self):
+        for paths, builds in [
+            (["features/dvic/backend/dvic.rs"], True),
+            (["Cargo.lock"], True),
+            (["ops/launchers/update-dev.py"], True),
+            (["services/support-worker/hermes/skills/dispatch-context/SKILL.md"], True),
+            (["features/dvic/frontend/DvicPage.tsx", "features/dvic/api/client.ts"], False),
+            (["features/dvic/tests/backend/dvic.rs", "tooling/cli/src/main.rs"], False),
+            (["README.md", "android/relay/build.gradle.kts", ".github/workflows/checks.yml"], False),
+        ]:
+            self.assertEqual(changes.rebuilds(paths, pull_request=True), builds, paths)
+
+    def test_builds_it_outside_a_pr_or_for_an_unknown_change(self):
+        self.assertTrue(changes.rebuilds(["README.md"], pull_request=False))
+        self.assertTrue(changes.rebuilds(None, pull_request=True))
+        self.assertTrue(changes.rebuilds([], pull_request=True))
+
+
 class ChangedTest(unittest.TestCase):
     def test_reads_a_path_git_would_quote(self):
         with tempfile.TemporaryDirectory() as root:

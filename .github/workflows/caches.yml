@@ -93,7 +93,7 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: .ci-rust-cache/
-          key: dispatch-rust-binary-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.binary-key }}
+          key: dispatch-rust-binary-release-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.binary-key }}
   # The CI and host tools and the assessment fixture, built from main's inputs so every
   # branch whose inputs match restores them instead of compiling.
   tools:

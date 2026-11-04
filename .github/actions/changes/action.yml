@@ -15,6 +15,9 @@ outputs:
     value: ${{ steps.decide.outputs.browser }}
   android:
     value: ${{ steps.decide.outputs.android }}
+  debug:
+    description: Whether the run builds the debug backend and worker rather than restore main's.
+    value: ${{ steps.decide.outputs.debug }}
   changed:
     description: The kinds of file the change touched, or `all` outside a pull request.
     value: ${{ steps.decide.outputs.changed }}

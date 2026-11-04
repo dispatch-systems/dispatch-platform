@@ -34,11 +34,13 @@ pub struct Artifact {
 pub const RELEASE: Artifact = Artifact {
     profile: "release",
     name: "release backend and support worker",
+    // `--timings` reports where the compile spent its time, in the target's cargo-timings.
     args: &[
         "cargo",
         "build",
         "--locked",
         "--release",
+        "--timings",
         "-p",
         "dispatch-backend",
         "-p",
@@ -119,7 +121,8 @@ fn build_with_limit(
 ) -> Result<()> {
     let (profile, name, args) = (artifact.profile, artifact.name, artifact.args);
     let release = profile == "release";
-    let ci = release && ci_enabled(root, env);
+    // CI restores the backend and worker's entry, of either profile, from its own cache.
+    let ci = matches!(profile, "release" | "debug") && ci_enabled(root, env);
     let (folder, env) = if release {
         (root.join("target"), env.clone())
     } else {

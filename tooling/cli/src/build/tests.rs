@@ -215,6 +215,8 @@ fn every_rust_and_embedded_launcher_input_is_fingerprinted_but_dashboard_is_not(
         "core/db/tests/support/common.rs",
         "tooling/cli/src/main.rs",
         "tooling/cli/dispatchdev",
+        // Python's bytecode of a script the worker ships, written by running it.
+        "services/support-worker/hermes/plugin/__pycache__/__init__.cpython-312.pyc",
     ] {
         let path = f.root.join(name);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -500,22 +502,37 @@ fn cache_pruning_keeps_busy_entries_and_lock_identity_survives_deletion() {
 }
 #[test]
 fn ci_cache_needs_explicit_location_and_current_receipt_key() {
-    let mut f = Fixture::new();
-    f.env.insert("CI".into(), "true".into());
-    assert!(!eligible(&f.root, &f.env, false).unwrap());
-    assert!(eligible(&f.root, &f.env, true).unwrap());
-    assert!(!ci_enabled(&f.root, &f.env));
-    f.env.insert(
-        "DISPATCH_CI_RUST_CACHE".into(),
-        f.root.join(".ci-rust-cache").to_str().unwrap().into(),
-    );
-    assert!(ci_enabled(&f.root, &f.env));
-    build(&f.root, &RELEASE, &f.env, &f).unwrap();
-    build(&f.root, &RELEASE, &f.env, &f).unwrap();
-    assert_eq!(f.builds.get(), 1);
-    f.env.insert("DISPATCH_CI_RUST_KEY".into(), "wrong".into());
-    assert!(build(&f.root, &RELEASE, &f.env, &f).is_err());
-    assert_eq!(f.builds.get(), 1);
+    for artifact in [&RELEASE, &DEBUG] {
+        let mut f = Fixture::new();
+        f.env.insert("CI".into(), "true".into());
+        assert!(!eligible(&f.root, &f.env, false).unwrap());
+        assert!(eligible(&f.root, &f.env, true).unwrap());
+        assert!(!ci_enabled(&f.root, &f.env));
+        build(&f.root, artifact, &f.env, &f).unwrap();
+        build(&f.root, artifact, &f.env, &f).unwrap();
+        assert_eq!(
+            f.builds.get(),
+            2,
+            "without its location, CI builds every time"
+        );
+        f.env.insert(
+            "DISPATCH_CI_RUST_CACHE".into(),
+            f.root.join(".ci-rust-cache").to_str().unwrap().into(),
+        );
+        assert!(ci_enabled(&f.root, &f.env));
+        build(&f.root, artifact, &f.env, &f).unwrap();
+        build(&f.root, artifact, &f.env, &f).unwrap();
+        assert_eq!(f.builds.get(), 3);
+        assert!(
+            f.root
+                .join(".ci-rust-cache")
+                .join(key(&f.root, artifact.profile, &f.env, &f).unwrap())
+                .is_dir()
+        );
+        f.env.insert("DISPATCH_CI_RUST_KEY".into(), "wrong".into());
+        assert!(build(&f.root, artifact, &f.env, &f).is_err());
+        assert_eq!(f.builds.get(), 3);
+    }
 }
 #[test]
 fn runner_image_builds_share_entries_but_the_toolchain_and_distribution_do_not() {
