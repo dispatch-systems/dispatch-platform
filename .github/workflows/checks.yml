@@ -484,7 +484,8 @@ jobs:
         run: npm run check:ci -- core tests
   # What every generator writes, made in a copy of the checkout: scaffold-lint holds it to
   # clippy, TypeScript, the linter and the rules, and scaffold runs its Rust tests and agent
-  # tools' tests, side by side.
+  # tools' tests, side by side. The copy's path isn't the checkout's, so Cargo keeps none of its
+  # crates between runs: both compile through sccache, whose cache main's run keeps.
   scaffold-lint:
     if: ${{ !inputs.tested-run }}
     runs-on: ubuntu-24.04
@@ -515,7 +516,11 @@ jobs:
         run: npm run check:ci -- scaffold lint
       - if: always() && steps.changes.outputs.scaffold == 'true'
         run: sccache --show-stats
-      - if: always() && steps.changes.outputs.scaffold == 'true'
+      # Main's run saves what it compiled for the PRs that start from it; caches.py keeps the
+      # newest.
+      - if: >-
+          always() && steps.changes.outputs.scaffold == 'true' && github.event_name == 'push' &&
+          github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ~/.cache/sccache
@@ -550,7 +555,11 @@ jobs:
         run: npm run check:ci -- scaffold tests
       - if: always() && steps.changes.outputs.scaffold == 'true'
         run: sccache --show-stats
-      - if: always() && steps.changes.outputs.scaffold == 'true'
+      # Main's run saves what it compiled for the PRs that start from it; caches.py keeps the
+      # newest.
+      - if: >-
+          always() && steps.changes.outputs.scaffold == 'true' && github.event_name == 'push' &&
+          github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ~/.cache/sccache
