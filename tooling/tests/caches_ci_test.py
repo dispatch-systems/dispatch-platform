@@ -70,10 +70,20 @@ class PruneTest(unittest.TestCase):
             *entries("dispatch-node-modules-Linux-X64-{}aa", 2, read=19),
             *entries("dispatch-node-modules-Linux-X64-{}aa", 3, 4, 5),
             *entries("dispatch-node-modules-Linux-X64-{}aa", 1, 2, 3, ref="refs/heads/release-checks/v1"),
+            # CodeQL's, which only main's analyses write, saved today: the write is all that
+            # read them.
+            *entries(
+                "codeql-overlay-base-database-1-58b1deea8a9e87c1-javascript-2.27.4-"
+                f"{'b' * 40}-4177{{}}-1",
+                1, 2, 3, read=20,
+            ),
         ]
         self.assertEqual(
             [cache.key for cache in caches.superseded(listed, NOW)],
-            ["dispatch-node-modules-Linux-X64-3aa"],
+            [
+                f"codeql-overlay-base-database-1-58b1deea8a9e87c1-javascript-2.27.4-{'b' * 40}-41771-1",
+                "dispatch-node-modules-Linux-X64-3aa",
+            ],
         )
 
     def test_deletes_closed_prs_caches(self):

@@ -96,8 +96,9 @@ BrowserOS package and the installed packages, which every job restores through
 `.github/actions/setup-packages` instead of running `npm ci`. A run's own `tools` job builds
 what its inputs lack for the jobs that start later in that run. GitHub keeps 10 GB of caches
 and evicts the least recently used past that, so once `main`'s are saved, `caches.py prune`
-deletes those newer ones of the same kind replaced and nothing read for a day, and closed PRs'
-caches; `pr-caches.yml` deletes a PR's own as soon as it closes. A build job that compiled keeps
+deletes those newer ones of the same kind replaced and nothing read for a day, CodeQL's
+whatever their last read, since only `main`'s analyses write them and nothing reads them, and
+closed PRs' caches; `pr-caches.yml` deletes a PR's own as soon as it closes. A build job that compiled keeps
 Cargo's `--timings` report of where the compile spent its time as an artifact.
 
 `tooling/cli/dispatchdev` runs a restored copy only on CI and only from the

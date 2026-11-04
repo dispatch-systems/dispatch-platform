@@ -12,7 +12,9 @@ newest of each kind stay, so a branch still on the lockfile `main` just left kee
 older ones only take room `main`'s current caches need. The tools, fixture and executables keep
 more, keyed by sources a branch may still have; the debug ones, the largest, four. Past those, an
 entry anything read in the last day stays too: `main` back on an older lockfile, or an open PR on
-one, still uses it. A key of no kind below is never touched.
+one, still uses it. CodeQL's are the exception: `main` only writes them, and GitHub counts the
+write as a read, so a day's analyses, one a push, would all stay for a day. A key of no kind
+below is never touched.
 
 A PR's runs save caches only it reads, under its merge ref. `pr-caches.yml` deletes them when it
 closes; this deletes any its runs saved after that, once GitHub answers that it is closed.
@@ -37,17 +39,17 @@ PULL = re.compile(r"refs/pull/(\d+)/merge")
 # An entry read this recently is in use, whatever its kind's newer entries.
 RECENT = timedelta(days=1)
 OS = r"([A-Za-z0-9]+-[A-Za-z0-9]+)"
-# Each kind's pattern, its groups naming what makes two entries the same kind, and how many of it
-# stay.
+# Each kind's pattern, its groups naming what makes two entries the same kind, how many of it
+# stay, and whether anything reads its older entries: only then does a recent read keep one.
 KINDS = {
-    "rust": (re.compile(rf"v\d+-rust-\d{{4}}-W\d{{2}}-(dispatch-[a-z]+)-{OS}-[0-9a-f]+-[0-9a-f]+"), 2),
-    "playwright": (re.compile(rf"dispatch-playwright-{OS}-[0-9.]+"), 2),
-    "browseros": (re.compile(r"dispatch-browseros-[0-9a-f]+"), 2),
-    "packages": (re.compile(rf"dispatch-node-modules-{OS}-[0-9a-f]+"), 2),
-    "codeql": (re.compile(r"codeql-overlay-base-database-\d+-[0-9a-f]+-([a-z]+)-[0-9.]+-[0-9a-f]+-\d+-\d+"), 2),
-    "tools": (re.compile(rf"dispatch-(tools|fixture)-{OS}-([a-z0-9]+)-[0-9a-f]+"), 10),
-    "binaries": (re.compile(rf"dispatch-rust-binary-release-{OS}-[0-9a-f]+"), 10),
-    "debug binaries": (re.compile(rf"dispatch-rust-binary-debug-{OS}-[0-9a-f]+"), 4),
+    "rust": (re.compile(rf"v\d+-rust-\d{{4}}-W\d{{2}}-(dispatch-[a-z]+)-{OS}-[0-9a-f]+-[0-9a-f]+"), 2, True),
+    "playwright": (re.compile(rf"dispatch-playwright-{OS}-[0-9.]+"), 2, True),
+    "browseros": (re.compile(r"dispatch-browseros-[0-9a-f]+"), 2, True),
+    "packages": (re.compile(rf"dispatch-node-modules-{OS}-[0-9a-f]+"), 2, True),
+    "codeql": (re.compile(r"codeql-overlay-base-database-\d+-[0-9a-f]+-([a-z]+)-[0-9.]+-[0-9a-f]+-\d+-\d+"), 2, False),
+    "tools": (re.compile(rf"dispatch-(tools|fixture)-{OS}-([a-z0-9]+)-[0-9a-f]+"), 10, True),
+    "binaries": (re.compile(rf"dispatch-rust-binary-release-{OS}-[0-9a-f]+"), 10, True),
+    "debug binaries": (re.compile(rf"dispatch-rust-binary-debug-{OS}-[0-9a-f]+"), 4, True),
 }
 
 Run = Callable[[list], str]
@@ -65,18 +67,19 @@ def moment(text: str) -> datetime:
     return datetime.fromisoformat(text.replace("Z", "+00:00"))
 
 
-def kind(key: str) -> tuple[str, int] | None:
-    """The kind `key` is one entry of, with what tells its entries apart, and how many of it
-    stay; None for any other key."""
-    for name, (pattern, keep) in KINDS.items():
+def kind(key: str) -> tuple[str, int, bool] | None:
+    """The kind `key` is one entry of, with what tells its entries apart, how many of it stay,
+    and whether its older entries are read; None for any other key."""
+    for name, (pattern, keep, read) in KINDS.items():
         match = pattern.fullmatch(key)
         if match:
-            return " ".join([name, *match.groups()]), keep
+            return " ".join([name, *match.groups()]), keep, read
     return None
 
 
 def superseded(caches: list[Cache], now: datetime) -> list[Cache]:
-    """`main`'s entries of each kind past the newest it keeps and unread for a day, oldest first."""
+    """`main`'s entries of each kind past the newest it keeps and, for a kind anything reads,
+    unread for a day, oldest first."""
     kinds = defaultdict(list)
     for cache in caches:
         found = kind(cache.key)
@@ -84,9 +87,9 @@ def superseded(caches: list[Cache], now: datetime) -> list[Cache]:
             kinds[found].append(cache)
     older = [
         cache
-        for (_, keep), entries in kinds.items()
+        for (_, keep, read), entries in kinds.items()
         for cache in sorted(entries, key=lambda each: each.created, reverse=True)[keep:]
-        if now - moment(cache.accessed) > RECENT
+        if not read or now - moment(cache.accessed) > RECENT
     ]
     return sorted(older, key=lambda each: each.created)
 
