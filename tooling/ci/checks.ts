@@ -55,7 +55,19 @@ const rustLint: Command[] = [
     ],
   },
 ];
-const rustTests: Command[] = [{ name: 'Rust tests', command: 'cargo', args: ['test', '--locked'] }];
+/**
+ * The Rust tests: nextest (`nextest.py`) runs every test program's tests side by side, where
+ * `cargo test` runs one program after another, and reports every failure rather than stopping
+ * at the first program with one. The doctests, which nextest can't run, follow.
+ */
+const rustTests: Command[] = [
+  {
+    name: 'Rust tests',
+    command: 'python3',
+    args: ['tooling/ci/nextest.py', 'run', '--locked', '--no-fail-fast'],
+  },
+  { name: 'Rust doctests', command: 'cargo', args: ['test', '--locked', '--doc'] },
+];
 const rustCommands =
   part === 'lint' ? rustLint : part === 'tests' ? rustTests : [...rustLint, ...rustTests];
 const checkCommands: Command[] = [
