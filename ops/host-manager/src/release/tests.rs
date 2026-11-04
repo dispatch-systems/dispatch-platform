@@ -1228,13 +1228,11 @@ fn busy_executable_retry_respects_the_command_deadline() {
         .unwrap();
     let error = Native
         .command(&[executable.path().to_str().unwrap()], None, 0, None)
-        .unwrap_err();
-    assert_eq!(
-        error
-            .downcast_ref::<std::io::Error>()
-            .unwrap()
-            .raw_os_error(),
-        Some(libc::ETXTBSY)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.ends_with(&std::io::Error::from_raw_os_error(libc::ETXTBSY).to_string()),
+        "{error}"
     );
 }
 

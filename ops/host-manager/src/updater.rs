@@ -36,6 +36,9 @@ impl Environment {
 /// How many attempts in a row, ten seconds apart on Dev's timer, fail before waiting for Dev
 /// stops: past one that a moment's network trouble explains.
 const FAILED_ATTEMPTS: u64 = 3;
+/// The `gh` Production verifies releases with, by its root-owned path, so a user-writable `gh`
+/// earlier on PATH can't fake `gh attestation verify`.
+pub const GH: &str = "/usr/local/bin/gh";
 /// What the checks say about a commit Dev could install.
 enum Checked {
     /// A passed run and the build it published.
@@ -67,8 +70,8 @@ pub struct Updater<'a> {
     pub previous: PathBuf,
     pub receipt: PathBuf,
     pub status_file: PathBuf,
-    /// Dev's update that keeps failing, and why. The status says what Dev last installed,
-    /// which a failing update leaves as it was, so a stalled Dev would otherwise read ready.
+    /// The update that keeps failing, and why. The status says what was last installed, which
+    /// a failing update leaves as it was, so a stalled environment would otherwise read ready.
     pub failure_file: PathBuf,
     pub environment: Environment,
     pub system: &'a dyn System,
@@ -416,19 +419,19 @@ impl<'a> Updater<'a> {
         else {
             return Ok(());
         };
-        if self.environment == Environment::Production {
-            self.recover()?;
-            return self.update_production();
-        }
-        let result = self.recover().and_then(|()| self.update_dev());
-        let recorded = self.record_dev_update(&result);
-        result.and(recorded)
+        let result = self.recover().and_then(|()| match self.environment {
+            Environment::Dev => self.update_dev().map(|()| true),
+            Environment::Production => self.update_production(),
+        });
+        let recorded = self.record_update(&result);
+        result.map(drop).and(recorded)
     }
-    /// Keeps a failing update's error, from its first attempt, until one gets through.
-    fn record_dev_update(&self, result: &Result<()>) -> Result<()> {
+    /// Keeps a failing update's error, from its first attempt, until one gets through. A tick
+    /// that tried nothing, `Ok(false)`, leaves it as it was.
+    fn record_update(&self, result: &Result<bool>) -> Result<()> {
         match result {
-            Ok(()) if self.failure_file.exists() => io::remove_receipt(&self.failure_file),
-            Ok(()) => Ok(()),
+            Ok(true) if self.failure_file.exists() => io::remove_receipt(&self.failure_file),
+            Ok(_) => Ok(()),
             Err(error) => {
                 let previous = io::read_json(&self.failure_file).unwrap_or(Value::Null);
                 let now = chrono::Utc::now().to_rfc3339();
@@ -445,8 +448,8 @@ impl<'a> Updater<'a> {
         }
     }
     /// Wait until Dev runs `commit`, or a later commit of its branch that contains it, and
-    /// confirm it is live: recorded ready, the checkout clean on it, the recorded runtime
-    /// installed, the service active and healthy.
+    /// confirm it is live: recorded ready, the checkout clean on it, the recorded runtime and
+    /// its host tool installed, the service active and healthy.
     pub fn wait(&self, commit: &str, timeout: u64) -> Result<Value> {
         require(
             self.environment == Environment::Dev,
@@ -499,6 +502,12 @@ impl<'a> Updater<'a> {
         require(
             status["digest"] == manifest.digest,
             "Runtime differs from the one the updater installed",
+        )?;
+        // Dev swaps in the runtime's host tool a moment after it reports ready, and what runs
+        // next, such as a release, would otherwise run the previous one.
+        require(
+            !management::drift(self)?,
+            "Host tool differs from the installed runtime",
         )?;
         self.service("is-active")?;
         require(
@@ -612,16 +621,22 @@ impl<'a> Updater<'a> {
             &json!({"tag":release["tag_name"],"digest":current.digest,"checkedAt":self.system.now()}),
         )
     }
-    fn update_production(&self) -> Result<()> {
+    /// Whether this tick tried: not while it waits out the delay after a failed attempt.
+    fn update_production(&self) -> Result<bool> {
+        // Checked on every tick, so a missing tool is reported before a release needs it.
+        require(
+            self.system.executable(Path::new(GH)),
+            &format!("Production's updater needs {GH}"),
+        )?;
         // Nothing new since the last full check: the recorded digest tells, so the runtime is
         // hashed again only once there may be something to do, at least every ten minutes.
         if self.settled(&artifact::manifest(&self.active)?.digest) {
-            return Ok(());
+            return Ok(true);
         }
         let retry = self.platform.join("production-update-retry.json");
         let pending = io::read_json(&retry).unwrap_or(Value::Null);
         if self.system.now() < pending["retryAt"].as_f64().unwrap_or(f64::NEG_INFINITY) {
-            return Ok(());
+            return Ok(false);
         }
         let result = self.install_latest();
         if result.is_ok() {
@@ -639,7 +654,7 @@ impl<'a> Updater<'a> {
                 eprintln!("Retry delay was not recorded: {error}");
             }
         }
-        result
+        result.map(|()| true)
     }
     fn install_latest(&self) -> Result<()> {
         let current = artifact::verify(&self.active, None)?;
@@ -749,7 +764,7 @@ impl<'a> Updater<'a> {
         )?;
         self.system.command(
             &[
-                "/usr/local/bin/gh",
+                GH,
                 "attestation",
                 "verify",
                 build_archive.to_str().ok_or("Invalid build archive path")?,

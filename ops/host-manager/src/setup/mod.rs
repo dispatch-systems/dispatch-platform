@@ -6,7 +6,7 @@ use crate::{
     Result, artifact,
     io::{self, System},
     management, releases, require,
-    updater::Environment,
+    updater::{Environment, GH},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -200,6 +200,14 @@ pub fn run(args: &[String], system: &dyn System) -> Result<()> {
 }
 fn initialize(options: &Options, system: &dyn System) -> Result<()> {
     options.validate()?;
+    // Setup runs unprivileged, so it can't install the root-owned `gh` the updater verifies
+    // releases with.
+    require(
+        !options.production || system.executable(Path::new(GH)),
+        &format!(
+            "Production's updater needs {GH}: install it with sudo install -m 0755 \"$(command -v gh)\" {GH}"
+        ),
+    )?;
     io::private_directory(&options.root)?;
     let runtime = options.root.join(".runtime");
     io::private_directory(&runtime)?;

@@ -1,6 +1,6 @@
 use super::*;
 use crate::io::{Native, Response, System};
-use crate::updater::{Environment, Updater};
+use crate::updater::{Environment, GH, Updater};
 use serde_json::{Value, json};
 use std::{
     cell::{Cell, RefCell},
@@ -158,6 +158,8 @@ struct Fake {
     health: RefCell<Option<Value>>,
     fail_start: Cell<bool>,
     bad_health: Cell<bool>,
+    /// `/usr/local/bin/gh` is missing, as an OS update once left it.
+    no_gh: Cell<bool>,
     elapsed: Cell<Duration>,
     root: RefCell<Option<(PathBuf, Environment)>>,
 }
@@ -287,6 +289,10 @@ impl System for Fake {
             body: Box::new(Cursor::new(serde_json::to_vec(&value)?)),
         })
     }
+    fn executable(&self, path: &Path) -> bool {
+        assert_eq!(path, Path::new(GH));
+        !self.no_gh.get()
+    }
     fn now(&self) -> f64 {
         1000.0 + self.elapsed.get().as_secs_f64()
     }
@@ -321,9 +327,10 @@ fn artifact(root: &Path, commit: &str, version: &str, host: bool) -> artifact::M
     fs::create_dir_all(root.join("services/rust")).unwrap();
     fs::create_dir_all(root.join("tooling")).unwrap();
     fs::write(root.join("dashboard/index.html"), version).unwrap();
+    // Each build has its own host tool.
     fs::write(
         root.join("services/rust/dispatch-backend"),
-        "#!/bin/sh\necho '{\"hostManagement\":1}'\n",
+        format!("#!/bin/sh\necho '{{\"hostManagement\":1}}' # {version}\n"),
     )
     .unwrap();
     fs::write(
@@ -518,6 +525,19 @@ impl Fixture {
             vec![json!({"status":"ahead"})],
         );
         release
+    }
+    /// GitHub's latest release is v0.1.0, the one Production runs.
+    fn running_latest(&self) {
+        self.system.reply(
+            &format!("https://api.github.com/repos/{REPOSITORY}/releases/latest"),
+            vec![json!({"id":41,"tag_name":"v0.1.0","draft":false,"prerelease":false,"immutable":true,"published_at":"2026-09-21T00:00:00Z","assets":[]})],
+        );
+        self.system.reply(
+            &format!("https://github.com/{REPOSITORY}/releases/latest"),
+            vec![json!(format!(
+                "https://github.com/{REPOSITORY}/releases/tag/v0.1.0"
+            ))],
+        );
     }
 }
 #[test]
@@ -829,6 +849,23 @@ fn waiting_for_dev_confirms_the_commit_or_a_later_one_is_live() {
     assert!(u.wait("not-a-commit", 20).is_err());
 }
 #[test]
+fn waiting_for_dev_ends_only_once_it_runs_the_host_tool_of_the_build_it_installed() {
+    let f = Fixture::new(Environment::Dev);
+    let u = f.updater();
+    artifact(&u.active, &f.old, "0.1.0", true);
+    management::install(&u).unwrap();
+    artifact(&f.candidate, &f.new, "0.1.1", true);
+    // Activated, Dev reports the build ready a moment before it swaps in the build's host tool.
+    u.activate(&f.candidate, &f.new).unwrap();
+    let error = u.wait(&f.new, 20).unwrap_err().to_string();
+    assert!(
+        error.contains("Host tool differs from the installed runtime"),
+        "{error}"
+    );
+    management::refresh(&u).unwrap();
+    assert_eq!(u.wait(&f.new, 20).unwrap()["commit"], json!(f.new));
+}
+#[test]
 fn a_failing_dev_update_says_why_until_one_gets_through() {
     let f = Fixture::new(Environment::Dev);
     let u = f.updater();
@@ -1055,7 +1092,7 @@ fn downloaded_size_digest_and_tag_ancestry_are_enforced() {
     }
 }
 #[test]
-fn a_failing_production_install_waits_longer_between_attempts() {
+fn a_failing_production_install_says_why_and_waits_longer_between_attempts() {
     let f = Fixture::new(Environment::Production);
     let latest = format!("https://api.github.com/repos/{REPOSITORY}/releases/latest");
     let mut broken = f.production_release();
@@ -1064,13 +1101,16 @@ fn a_failing_production_install_waits_longer_between_attempts() {
     let u = f.updater();
     let retry = u.platform.join("production-update-retry.json");
     for (failures, delay) in [(1, 60), (2, 120), (3, 240), (4, 480), (5, 600), (6, 600)] {
-        assert!(u.run_locked().is_err());
+        let error = u.run_locked().unwrap_err().to_string();
         let record = io::read_json(&retry).unwrap();
         assert_eq!(record["failures"], json!(failures));
         assert_eq!(record["retryAt"], json!(f.system.now() + delay as f64));
-        // Until then a check asks GitHub nothing, so it cannot fail.
+        // Until then a check asks GitHub nothing, so it cannot fail, and the failure stays.
         f.system.sleep(Duration::from_secs(delay - 1));
         u.run_locked().unwrap();
+        let failure = io::read_json(&u.failure_file).unwrap();
+        assert_eq!(failure["attempts"], json!(failures));
+        assert_eq!(failure["error"], json!(error));
         f.system.sleep(Duration::from_secs(1));
     }
     f.assert_old();
@@ -1078,22 +1118,14 @@ fn a_failing_production_install_waits_longer_between_attempts() {
     f.system.reply(&latest, vec![f.production_release()]);
     u.run_locked().unwrap();
     assert!(!retry.exists());
+    assert!(!u.failure_file.exists());
     assert_eq!(artifact::verify(&u.active, None).unwrap().version, "0.1.1");
 }
 #[test]
 fn production_hashes_its_runtime_only_when_there_may_be_something_to_do() {
     let f = Fixture::new(Environment::Production);
     let u = f.updater();
-    f.system.reply(
-        &format!("https://api.github.com/repos/{REPOSITORY}/releases/latest"),
-        vec![json!({"id":41,"tag_name":"v0.1.0","draft":false,"prerelease":false,"immutable":true,"published_at":"2026-09-21T00:00:00Z","assets":[]})],
-    );
-    f.system.reply(
-        &format!("https://github.com/{REPOSITORY}/releases/latest"),
-        vec![json!(format!(
-            "https://github.com/{REPOSITORY}/releases/tag/v0.1.0"
-        ))],
-    );
+    f.running_latest();
     u.run_locked().unwrap();
     // A changed file goes unhashed while the last full check is under ten minutes old, then
     // the next full check finds it.
@@ -1105,6 +1137,26 @@ fn production_hashes_its_runtime_only_when_there_may_be_something_to_do() {
         error.contains("Artifact file verification failed"),
         "{error}"
     );
+}
+#[test]
+fn production_without_its_gh_fails_every_tick_and_says_so_until_it_is_back() {
+    let f = Fixture::new(Environment::Production);
+    let u = f.updater();
+    // Its last full check found nothing to do, so a tick would otherwise end there.
+    f.running_latest();
+    u.run_locked().unwrap();
+    f.system.no_gh.set(true);
+    for attempt in 1..=2 {
+        let error = u.run_locked().unwrap_err().to_string();
+        assert_eq!(error, "Production's updater needs /usr/local/bin/gh");
+        let failure = io::read_json(&u.failure_file).unwrap();
+        assert_eq!(failure["attempts"], attempt);
+        assert_eq!(failure["error"], json!(error));
+    }
+    assert!(f.system.actions().is_empty());
+    f.system.no_gh.set(false);
+    u.run_locked().unwrap();
+    assert!(!u.failure_file.exists());
 }
 #[test]
 fn installed_management_survives_old_runtime_and_source_rollback() {
