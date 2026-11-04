@@ -3,8 +3,11 @@ use serde_json::Value;
 use std::{
     fs::{self, File},
     io::{Read, Write},
-    os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt},
-    path::Path,
+    os::unix::{
+        fs::{DirBuilderExt, MetadataExt, OpenOptionsExt},
+        process::CommandExt,
+    },
+    path::{Path, PathBuf},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -52,6 +55,18 @@ pub trait System {
     fn sleep(&self, duration: Duration) {
         std::thread::sleep(duration);
     }
+    /// The program this process runs, to read. Linux keeps it at /proc/self/exe even once the
+    /// file it started from is replaced, as Dev's updater replaces its host tool.
+    fn current_exe(&self) -> Result<PathBuf> {
+        if cfg!(target_os = "linux") {
+            return Ok("/proc/self/exe".into());
+        }
+        Ok(std::env::current_exe()?)
+    }
+    /// Replaces this process with `program` run with `args`, returning only when it can't.
+    fn exec(&self, _program: &Path, _args: &[&str]) -> std::io::Error {
+        std::io::Error::other("Execution unavailable")
+    }
 }
 pub struct Native;
 impl System for Native {
@@ -73,6 +88,10 @@ impl System for Native {
         input: &[u8],
     ) -> Result<()> {
         dispatch_shared::process::isolated(args, cwd, 120, env, input)
+    }
+
+    fn exec(&self, program: &Path, args: &[&str]) -> std::io::Error {
+        std::process::Command::new(program).args(args).exec()
     }
 
     fn request(&self, url: &str, head: bool, follow: bool, timeout: u64) -> Result<Response> {

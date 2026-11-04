@@ -135,7 +135,8 @@ impl Release<'_> {
             .map(|(migration, _)| migration.clone())
             .collect())
     }
-    /// Refuses to publish migrations until Production has a recent backup that restores.
+    /// Refuses to publish migrations until Production has a recent backup that restores, or
+    /// with `--backup` takes it.
     pub(super) fn require_backup(&self, commit: &str) -> Result<()> {
         let migrations = self.new_migrations(commit)?;
         if migrations.is_empty() {
@@ -158,23 +159,30 @@ impl Release<'_> {
             ));
             return Ok(());
         }
+        if self.take_backup {
+            say(format!(
+                "{} brings migrations ({}), so Production is backed up first",
+                self.tag,
+                migrations.join(", ")
+            ));
+            self.backup()?;
+            return Ok(());
+        }
         Err(format!(
-            "{} brings migrations ({}). Production needs a backup that restores first{}: run \
-             `release backup {}` with the same options, which stops Production for about a \
-             second, then rerun.",
+            "{} brings migrations ({}). Production needs a backup that restores first{}: rerun \
+             with `--backup`, which takes it and stops Production for about a second.",
             self.tag,
             migrations.join(", "),
             if recorded.is_some() {
                 ", and the last one is older than six hours"
             } else {
                 ""
-            },
-            self.version
+            }
         )
         .into())
     }
-    /// `release backup`: backs Production up, restores the copy elsewhere and checks every
-    /// database, then records it for the release.
+    /// `release backup`, or `publish --backup` at its gate: backs Production up, restores the
+    /// copy elsewhere and checks every database, then records it for the release.
     pub(super) fn backup(&self) -> Result<Value> {
         let ssh = |script: &str| self.on_production(script, 900);
         say("Backing up Production; it stops for about a second");

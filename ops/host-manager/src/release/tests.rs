@@ -1,5 +1,6 @@
 const DEV: &str = "https://dev.dispatch.test";
 const PRODUCTION: &str = "https://dispatch.test";
+const RUNNING: &str = "the host tool the release runs as";
 use super::*;
 use crate::io::{Native, Response};
 use std::{
@@ -53,6 +54,12 @@ struct Fake {
     slack: RefCell<(Value, Value)>,
     /// The warnings and errors Production's service logs once the release is published.
     log: RefCell<Vec<Value>>,
+    /// The runtime Dev's updater installed, which Dev's service reports to it.
+    dev_runtime: RefCell<String>,
+    /// The host tool the release runs as.
+    exe: PathBuf,
+    /// The program and arguments the release handed itself over to.
+    handover: RefCell<Vec<String>>,
 }
 impl Fake {
     fn fail(&self, point: &str) {
@@ -280,6 +287,8 @@ impl System for Fake {
                     "slackManifest":self.slack.borrow().1}).to_string()
             }
             .into_bytes());
+        } else if args[0] == "systemctl" {
+            return Ok(vec![]);
         } else {
             return Native.command(args, cwd, timeout, output);
         };
@@ -291,6 +300,12 @@ impl System for Fake {
                 200,
                 serde_json::to_vec(&json!({"status":"ready","environment":"preview",
                 "release":"0".repeat(64),"source":{"version":null,"commit":*self.dev.borrow()}}))?,
+            )
+        } else if url == "http://127.0.0.1:5180/api/health" {
+            (
+                200,
+                serde_json::to_vec(&json!({"status":"ready","environment":"preview",
+                "release":*self.dev_runtime.borrow()}))?,
             )
         } else if let Some(bytes) = self.attached.borrow().get(url) {
             (200, bytes.clone())
@@ -327,6 +342,15 @@ impl System for Fake {
     }
     fn sleep(&self, duration: Duration) {
         self.elapsed.set(self.elapsed.get() + duration);
+    }
+    fn current_exe(&self) -> Result<PathBuf> {
+        Ok(self.exe.clone())
+    }
+    fn exec(&self, program: &Path, args: &[&str]) -> std::io::Error {
+        let mut handover = vec![program.display().to_string()];
+        handover.extend(args.iter().map(|s| s.to_string()));
+        self.handover.replace(handover);
+        std::io::Error::other("Handed over")
     }
 }
 fn git(root: &Path, args: &[&str]) -> String {
@@ -496,6 +520,9 @@ impl Fixture {
                 "timer":"active","health":"ready","free":50u64 << 30,"running":0})),
             slack: RefCell::new((slack.clone(), slack)),
             log: RefCell::new(vec![]),
+            dev_runtime: RefCell::new(String::new()),
+            exe: temp.path().join("dispatch-host"),
+            handover: RefCell::new(vec![]),
         };
         let fixture = Self { temp, root, system };
         fixture.build(None);
@@ -605,6 +632,8 @@ impl Fixture {
                 dev: DEV.into(),
                 production: PRODUCTION.into(),
             },
+            backup: false,
+            after: None,
         };
         Release::new(
             &self.system,
@@ -645,6 +674,57 @@ impl Fixture {
         release.ensure_draft(&prepared).unwrap();
         prepared
     }
+    /// Drafts the release after v0.9.0, published at the commit before its own, which GitHub
+    /// lists after the draft.
+    fn draft_after_v0_9_0(&self) -> assets::Prepared {
+        let previous = json!({"tag_name":"v0.9.0","draft":false,"prerelease":false});
+        git(
+            &self.root,
+            &["tag", "v0.9.0", &format!("{}^1", self.system.commit)],
+        );
+        self.system.listed.replace(vec![previous.clone()]);
+        let prepared = self.draft();
+        self.system.listed.borrow_mut().push(previous);
+        prepared
+    }
+    /// Makes the checkout Dev's as its updater leaves it, reporting `status` for the release
+    /// commit, with `tool` as the host tool its build brings, installed. The release runs as
+    /// `RUNNING`.
+    fn dev(&self, status: &str, tool: &str) {
+        fs::set_permissions(&self.root, fs::Permissions::from_mode(0o700)).unwrap();
+        let origin = format!("https://github.com/{REPOSITORY}.git");
+        git(&self.root, &["config", "remote.origin.url", &origin]);
+        fs::write(self.root.join(".git/info/exclude"), "/.build\n/.runtime\n").unwrap();
+        io::private_directory(&self.root.join("config")).unwrap();
+        fs::write(
+            self.root.join("config/updater.json"),
+            json!({"service":"dispatch-dev.service","healthUrl":"http://127.0.0.1:5180/api/health"})
+                .to_string(),
+        )
+        .unwrap();
+        let dev = Updater::new(&self.root, Environment::Dev, &self.system).unwrap();
+        let info = json!({"commit":self.system.commit,"hostManagement":1}).to_string();
+        for (name, bytes) in [
+            ("dashboard/index.html", "dashboard"),
+            ("services/rust/dispatch-backend", tool),
+            ("tooling/build-info.json", &info),
+        ] {
+            fs::create_dir_all(dev.active.join(name).parent().unwrap()).unwrap();
+            fs::write(dev.active.join(name), bytes).unwrap();
+        }
+        let runtime = artifact::write_manifest(&dev.active, "0.9.0")
+            .unwrap()
+            .digest;
+        io::private_directory(&management::directory(&dev)).unwrap();
+        fs::write(management::directory(&dev).join("dispatch-host"), tool).unwrap();
+        io::write_json(
+            &dev.status_file,
+            &json!({"status":status,"commit":self.system.commit,"digest":runtime}),
+        )
+        .unwrap();
+        self.system.dev_runtime.replace(runtime);
+        fs::write(&self.system.exe, RUNNING).unwrap();
+    }
 }
 
 #[test]
@@ -671,6 +751,8 @@ fn legacy_cli_defaults_and_explicit_stages_are_validated_before_effects() {
         vec!["status"],
         vec!["--root", "/a", "--bump", "bad"],
         vec!["--root", "/a", "--dev-commit", "HEAD"],
+        vec!["status", "--root", "/a", "--backup"],
+        vec!["backup", "1.0.0", "--root", "/a", "--after", "HEAD"],
     ] {
         assert!(parse(&args).is_err());
     }
@@ -1351,24 +1433,12 @@ fn a_release_needs_something_new_on_main_since_the_previous_one() {
 #[test]
 fn migrations_publish_only_after_a_recent_production_backup_that_restores() {
     let f = Fixture::migrating();
-    git(
-        &f.root,
-        &["tag", "v0.9.0", &format!("{}^1", f.system.commit)],
-    );
-    f.system.listed.replace(vec![
-        json!({"tag_name":"v0.9.0","draft":false,"prerelease":false}),
-    ]);
-    let prepared = f.draft();
-    // The draft is listed first, beside the release before it.
-    f.system
-        .listed
-        .borrow_mut()
-        .push(json!({"tag_name":"v0.9.0","draft":false,"prerelease":false}));
+    let prepared = f.draft_after_v0_9_0();
     let release = f.release();
     let published = || f.system.has_call(&["-F", "draft=false"]);
     let refused = release.publish(&prepared).unwrap_err().to_string();
     assert!(refused.contains("(dsp migration 2 accounts)"), "{refused}");
-    assert!(refused.contains("`release backup 1.0.0`"), "{refused}");
+    assert!(refused.contains("rerun with `--backup`"), "{refused}");
     assert!(!published());
     // A backup whose restored databases don't all check out proves nothing.
     f.system.restorable.set(false);
@@ -1419,20 +1489,30 @@ fn migrations_publish_only_after_a_recent_production_backup_that_restores() {
 }
 
 #[test]
+fn publishing_with_backup_backs_production_up_at_the_migrations_gate_and_carries_on() {
+    let f = Fixture::migrating();
+    f.draft_after_v0_9_0();
+    let release = Release {
+        take_backup: true,
+        ..f.release()
+    };
+    // Under the lock the release holds, which kept `release backup` out until it stopped.
+    assert_eq!(
+        release.execute(Stage::Publish, None).unwrap()["stage"],
+        "complete"
+    );
+    let calls = f.system.calls.borrow();
+    let restored = calls
+        .iter()
+        .position(|c| c[0] == "ssh" && c.last().unwrap().contains("dispatch-backend\" restore"));
+    let published = calls.iter().position(|c| c.contains(&"draft=false".into()));
+    assert!(restored.unwrap() < published.unwrap());
+}
+
+#[test]
 fn a_release_without_migrations_needs_no_backup() {
     let f = Fixture::new();
-    git(
-        &f.root,
-        &["tag", "v0.9.0", &format!("{}^1", f.system.commit)],
-    );
-    f.system.listed.replace(vec![
-        json!({"tag_name":"v0.9.0","draft":false,"prerelease":false}),
-    ]);
-    let prepared = f.draft();
-    f.system
-        .listed
-        .borrow_mut()
-        .push(json!({"tag_name":"v0.9.0","draft":false,"prerelease":false}));
+    let prepared = f.draft_after_v0_9_0();
     f.release().publish(&prepared).unwrap();
     assert!(
         !f.system
@@ -1502,6 +1582,54 @@ fn preparation_requires_dev_to_serve_the_commit() {
         release.prepare(&f.system.commit).unwrap().commit,
         f.system.commit
     );
+}
+
+#[test]
+fn publishing_after_a_commit_waits_for_dev_to_serve_it_first() {
+    let f = Fixture::new();
+    let commit = f.system.commit.clone();
+    let publish = || f.publish(&["--after", &commit, "--bump", "major"]);
+    // Dev still waits for main's checks on it: the wait ends naming it, and nothing else ran.
+    f.dev("waiting_for_checks", RUNNING);
+    let error = publish().unwrap_err().to_string();
+    assert!(
+        error.contains(&format!("Dev did not install {commit} within")),
+        "{error}"
+    );
+    assert!(f.system.calls.borrow().is_empty());
+    // Once Dev serves it with the host tool already running, that tool releases it.
+    f.dev("ready", RUNNING);
+    assert_eq!(publish().unwrap()["stage"], "complete");
+    assert!(f.system.handover.borrow().is_empty());
+}
+
+#[test]
+fn publishing_after_a_commit_hands_the_release_to_the_host_tool_dev_installed_with_it() {
+    let f = Fixture::new();
+    let commit = f.system.commit.clone();
+    f.dev("ready", "the host tool main's head brings");
+    assert!(f.publish(&["--after", &commit, "--bump", "major"]).is_err());
+    let installed = f.root.join(".runtime/management/dispatch-host");
+    let root = f.root.to_str().unwrap();
+    assert_eq!(
+        *f.system.handover.borrow(),
+        [
+            installed.to_str().unwrap(),
+            "host",
+            "release",
+            "publish",
+            "--bump",
+            "major",
+            "--root",
+            root,
+            "--dev-origin",
+            DEV,
+            "--production-origin",
+            PRODUCTION
+        ]
+    );
+    // The new tool does the release: this one did none of it.
+    assert!(!f.system.calls.borrow().iter().any(|c| c[0] == "gh"));
 }
 
 #[test]

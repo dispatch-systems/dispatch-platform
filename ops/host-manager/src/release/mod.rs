@@ -11,7 +11,8 @@ mod workflow;
 use crate::{
     REPOSITORY, Result, artifact,
     io::{self, System},
-    releases, require,
+    management, releases, require,
+    updater::{Environment, Updater},
 };
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
@@ -31,6 +32,10 @@ const HELP: &str = "Dispatch release [publish|status|backup] [X.Y.Z] --root CHEC
             Production can take it, verify Production installs it and report what its log
             shows (the default). A release that brings migrations publishes only after a
             backup made for it in the last six hours.
+            --backup takes that backup when it's missing, as backup does, then publishes. It
+            stops Production for about a second, so pass it only with the owner's approval.
+            --after COMMIT first waits for Dev to serve COMMIT, then hands the release to the
+            host tool Dev installed with it, when that isn't the one running.
   status    Inspect GitHub, saved assets and public health without changing release state.
   backup    Back Production up for the release over ssh, stopping it for about a second,
             restore the copy elsewhere and check every database, and record it.
@@ -60,6 +65,10 @@ struct Options {
     notes: Option<PathBuf>,
     releases: Option<PathBuf>,
     origins: origins::Origins,
+    /// `--backup`: publish takes the backup its migrations need when it has none recent.
+    backup: bool,
+    /// `--after`: the commit Dev must serve before the release starts.
+    after: Option<String>,
 }
 impl Options {
     fn parse(args: &[String]) -> Result<Self> {
@@ -72,6 +81,8 @@ impl Options {
             notes: None,
             releases: None,
             origins: origins::Origins::default(),
+            backup: false,
+            after: None,
         };
         let mut iter = args.iter().peekable();
         if let Some(stage) = iter.peek().and_then(|s| match s.as_str() {
@@ -92,7 +103,8 @@ impl Options {
                 | "--notes"
                 | "--releases"
                 | "--dev-origin"
-                | "--production-origin" => {
+                | "--production-origin"
+                | "--after" => {
                     require(seen.insert(arg), "Duplicate release option")?;
                     let next = iter.next().ok_or("Release option needs a value")?;
                     require(!next.starts_with('-'), "Release option needs a value")?;
@@ -100,11 +112,16 @@ impl Options {
                         "--root" => value.root = std::path::absolute(next)?,
                         "--bump" => value.bump = next.clone(),
                         "--commit" => value.commit = Some(next.clone()),
+                        "--after" => value.after = Some(next.clone()),
                         "--notes" => value.notes = Some(std::path::absolute(next)?),
                         "--dev-origin" => value.origins.dev = next.clone(),
                         "--production-origin" => value.origins.production = next.clone(),
                         _ => value.releases = Some(std::path::absolute(next)?),
                     }
+                }
+                "--backup" => {
+                    require(seen.insert(arg), "Duplicate release option")?;
+                    value.backup = true;
                 }
                 _ => {
                     require(value.version.is_none(), "Unexpected release argument")?;
@@ -114,6 +131,10 @@ impl Options {
             }
         }
         require(value.root.is_absolute(), "--root CHECKOUT is required")?;
+        require(
+            value.stage == Stage::Publish || (!value.backup && value.after.is_none()),
+            "--backup and --after apply only to publish",
+        )?;
         value.origins = origins::Origins::load(&value.root, value.origins)?;
         require(
             matches!(value.bump.as_str(), "patch" | "minor" | "major"),
@@ -163,6 +184,8 @@ struct Release<'a> {
     fresh: bool,
     /// How far a new version goes up: `patch`, `minor` or `major`, the app's too.
     bump: String,
+    /// Publishing takes the backup its migrations need when it has none recent.
+    take_backup: bool,
 }
 
 fn say(message: impl std::fmt::Display) {
@@ -192,6 +215,7 @@ impl<'a> Release<'a> {
             notes: options.notes.clone().unwrap_or(release.notes.clone()),
             fresh: options.version.is_none(),
             bump: options.bump.clone(),
+            take_backup: options.backup,
             ..release
         }
     }
@@ -214,6 +238,7 @@ impl<'a> Release<'a> {
             origins: origins.clone(),
             fresh: false,
             bump: "patch".into(),
+            take_backup: false,
         }
     }
     /// Another version's release in the same directory, with its own notes.
@@ -505,6 +530,44 @@ fn search_path(path: &OsStr, home: &Path) -> Option<OsString> {
     std::env::join_paths(paths).ok()
 }
 
+/// How long `--after` waits for Dev to serve its commit: main's checks run on it first, then
+/// Dev installs it.
+const DEV_INSTALLS: u64 = 1800;
+
+/// `--after`: waits until Dev serves `commit` with the host tool its build brings, then hands
+/// the release, its arguments less `--after`, to that tool when it isn't the one running: Dev
+/// replaces its tool on each install, and one already running stays the one it started as.
+fn after(commit: &str, args: &[String], options: &Options, system: &dyn System) -> Result<()> {
+    let dev = Updater::new(&options.root, Environment::Dev, system).map_err(|error| {
+        format!("--after waits for Dev, so --root must be Dev's checkout: {error}")
+    })?;
+    say(format!("Waiting for Dev to serve {commit}"));
+    dev.wait(commit, DEV_INSTALLS)?;
+    let installed = management::directory(&dev).join("dispatch-host");
+    if artifact::file_hash(&installed)? == artifact::file_hash(&system.current_exe()?)? {
+        return Ok(());
+    }
+    say(format!(
+        "Dev installed a new host tool with it; handing the release to {}",
+        installed.display()
+    ));
+    let mut forwarded = vec!["host", "release"];
+    let mut rest = args.iter();
+    while let Some(arg) = rest.next() {
+        if arg == "--after" {
+            rest.next();
+        } else {
+            forwarded.push(arg);
+        }
+    }
+    let error = system.exec(&installed, &forwarded);
+    Err(format!(
+        "Dev's host tool {} didn't start: {error}",
+        installed.display()
+    )
+    .into())
+}
+
 pub fn run(args: &[String], system: &dyn System) -> Result<Value> {
     if args.iter().any(|s| matches!(s.as_str(), "--help" | "-h")) {
         println!("{HELP}");
@@ -517,6 +580,9 @@ pub fn run(args: &[String], system: &dyn System) -> Result<Value> {
         unsafe { std::env::set_var("PATH", path) };
     }
     let options = Options::parse(args)?;
+    if let Some(commit) = &options.after {
+        after(commit, args, &options, system)?;
+    }
     let common = String::from_utf8(system.command(
         &[
             "git",
