@@ -26,6 +26,9 @@ pub struct Config {
     /// Whether passwords are tried without a limit, as on a preview, whose checkers sign in
     /// again and again: only with fixture providers, while developing.
     pub unlimited_sign_in: bool,
+    /// Whether a test may move the live readers' clock on, rather than wait for each read's
+    /// slot (`collection::readers::move_clock`): only with fixture providers, while developing.
+    pub movable_clock: bool,
     pub browser_capacity: usize,
     pub dashboard: PathBuf,
     pub browseros: PathBuf,
@@ -119,6 +122,7 @@ impl Config {
             fixture: provider == "fixture",
             fixture_url: env::var("DISPATCH_FIXTURE_PROVIDER_URL").ok(),
             unlimited_sign_in: variable("DISPATCH_FIXTURE_UNLIMITED_SIGN_IN", "0") == "1",
+            movable_clock: variable("DISPATCH_FIXTURE_MOVABLE_CLOCK", "0") == "1",
             browser_capacity: 2,
             dashboard: bundle.join("dashboard"),
             browseros: PathBuf::from(variable(
@@ -204,6 +208,11 @@ impl Config {
         )?;
         ensure(
             !c.unlimited_sign_in || (c.development && c.fixture),
+            "fixture_forbidden",
+            403,
+        )?;
+        ensure(
+            !c.movable_clock || (c.development && c.fixture),
             "fixture_forbidden",
             403,
         )?;

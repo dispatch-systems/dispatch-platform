@@ -61,6 +61,12 @@ section that sets the reader's schedule (`Section::reader`), worded as the Colle
 a collection's runs (`frontend/live-reading.tsx`), from `GET /api/dsp/live-readers/{reader}`,
 under that section's permission.
 
+A test server started with `DISPATCH_FIXTURE_MOVABLE_CLOCK=1`, which only a development server
+with fixture providers accepts, lets its platform owner move the readers' clock on to an
+instant, never back (`POST /api/platform/live-readers/clock`, `readers::move_clock`): each task
+waiting for a time steps again at once, so a test reads at each slot rather than wait for it.
+Any other server refuses to move it (`fixture_forbidden`).
+
 A hook's browser (`ProviderBrowser`) is opened as a job's is, through the same limits on
 browsers and memory, under the reader's feature's authority: refused while that feature is
 off for the DSP or the DSP is inactive, and closed as the reader stops for the DSP, so what a
