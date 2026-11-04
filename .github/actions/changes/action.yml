@@ -1,0 +1,30 @@
+name: Changes
+description: >-
+  Which suites this run needs (tooling/ci/changes.py): on a pull request, those its change can
+  reach; every suite otherwise. The checkout needs depth 2, for the merge commit's base.
+outputs:
+  core:
+    value: ${{ steps.decide.outputs.core }}
+  api:
+    value: ${{ steps.decide.outputs.api }}
+  scaffold:
+    value: ${{ steps.decide.outputs.scaffold }}
+  collectors:
+    value: ${{ steps.decide.outputs.collectors }}
+  browser:
+    value: ${{ steps.decide.outputs.browser }}
+  android:
+    value: ${{ steps.decide.outputs.android }}
+  changed:
+    description: The kinds of file the change touched, or `all` outside a pull request.
+    value: ${{ steps.decide.outputs.changed }}
+runs:
+  using: composite
+  steps:
+    - id: decide
+      shell: bash
+      env:
+        EVENT: ${{ github.event_name }}
+      run: |
+        set -o pipefail
+        python3 tooling/ci/changes.py "$EVENT" | tee -a "$GITHUB_OUTPUT"
