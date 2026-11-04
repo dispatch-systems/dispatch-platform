@@ -80,7 +80,7 @@ mkdir "$dest/config"; cp -p "$public/config/"* "$dest/config/""#
 fn restore_script(destination: &str) -> String {
     format!(
         r#"set -eu; umask 077
-work=$(mktemp -d "${{XDG_RUNTIME_DIR:-/tmp}}/dispatch-restore-check-XXXXXX"); trap 'rm -rf "$work"' EXIT
+mkdir -p -m 700 "$HOME/dispatch-platform/tmp"; work=$(mktemp -d "$HOME/dispatch-platform/tmp/dispatch-restore-check-XXXXXX"); trap 'rm -rf "$work"' EXIT
 "$HOME/dispatch-platform/public/live/services/rust/dispatch-backend" restore "{destination}" "$work/r"
 python3 -c 'import json,pathlib,sqlite3,sys
 found=sorted(pathlib.Path(sys.argv[1]).rglob("*.sqlite"))

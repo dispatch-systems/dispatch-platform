@@ -1,6 +1,6 @@
 //! A release that brings migrations is rehearsed before it publishes, on Production, where the
 //! data stays: the release's own backend restores the copy of Production's backup it recorded
-//! into a private temporary folder there, and starts it as Production would start the release,
+//! into a private temporary folder on its disk, and starts it as Production would start the release,
 //! under Production's configuration, without serving it (`dispatch-backend upgrade-check`).
 //! Production's service is never stopped or touched; the folder is all that changes there,
 //! and it's removed whatever happens. A copy that doesn't start, or starts with a carry-over
@@ -12,9 +12,10 @@ use std::os::unix::fs::PermissionsExt;
 
 /// What the release keeps of the rehearsal that passed.
 const REHEARSED: &str = "upgrade-rehearsal.json";
-/// Makes the private folder a rehearsal runs in on Production, printing where.
-const FOLDER: &str =
-    r#"set -eu; umask 077; mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/dispatch-upgrade-check-XXXXXX""#;
+/// Makes the private folder a rehearsal runs in on Production's disk, where a copy of its data
+/// fits as the data grows, printing where.
+const FOLDER: &str = r#"set -eu; umask 077; mkdir -p -m 700 "$HOME/dispatch-platform/tmp"
+mktemp -d "$HOME/dispatch-platform/tmp/dispatch-upgrade-check-XXXXXX""#;
 
 /// Restores the backup at `destination` into `work`, beside the release's backend copied
 /// there, and starts the copy with it under Production's configuration, printing what it found,
@@ -65,7 +66,7 @@ impl Release<'_> {
         let work = self.on_production(FOLDER, 60)?;
         require(
             work.starts_with('/')
-                && work.contains("/dispatch-upgrade-check-")
+                && work.contains("/dispatch-platform/tmp/dispatch-upgrade-check-")
                 && work
                     .chars()
                     .all(|c| c.is_ascii_alphanumeric() || "/-_.".contains(c)),
