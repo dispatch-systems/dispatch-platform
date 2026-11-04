@@ -508,7 +508,18 @@ jobs:
       - if: steps.changes.outputs.scaffold == 'true'
         run: cargo fetch --locked
       - if: steps.changes.outputs.scaffold == 'true'
+        uses: ./.github/actions/setup-sccache
+        with:
+          job: scaffold-lint
+      - if: steps.changes.outputs.scaffold == 'true'
         run: npm run check:ci -- scaffold lint
+      - if: always() && steps.changes.outputs.scaffold == 'true'
+        run: sccache --show-stats
+      - if: always() && steps.changes.outputs.scaffold == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: ~/.cache/sccache
+          key: dispatch-sccache-scaffold-lint-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}
   scaffold:
     if: ${{ !inputs.tested-run }}
     runs-on: ubuntu-24.04
@@ -532,7 +543,18 @@ jobs:
       - if: steps.changes.outputs.scaffold == 'true'
         run: cargo fetch --locked
       - if: steps.changes.outputs.scaffold == 'true'
+        uses: ./.github/actions/setup-sccache
+        with:
+          job: scaffold
+      - if: steps.changes.outputs.scaffold == 'true'
         run: npm run check:ci -- scaffold tests
+      - if: always() && steps.changes.outputs.scaffold == 'true'
+        run: sccache --show-stats
+      - if: always() && steps.changes.outputs.scaffold == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: ~/.cache/sccache
+          key: dispatch-sccache-scaffold-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}
   # The Android apps in android/: their unit tests, lint (the dev debug and production release
   # builds) and debug builds, only when a change touches them or CI's own files (the changes
   # job), so any other change skips it. Release builds are signed only in relay-dev and
