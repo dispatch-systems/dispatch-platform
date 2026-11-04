@@ -46,11 +46,13 @@ enum Area {
     Scope(String),
     /// Under the general heading: a PR with no scope.
     General,
-    /// Only counted: a change to tooling, CI, tests, dependencies, or the release and host tools.
+    /// Only counted: a change to tooling, CI, tests, dependencies or how the code is arranged,
+    /// or to the release and host tools.
     Counted,
 }
-const COUNTED_TYPES: [&str; 5] = ["ci", "test", "build", "chore", "docs"];
+const COUNTED_TYPES: [&str; 7] = ["ci", "test", "build", "chore", "docs", "refactor", "ops"];
 const COUNTED_SCOPES: [&str; 5] = ["tooling", "ci", "deps", "release", "host"];
+const COUNTED: &str = "tooling, CI, tests, dependencies and code structure";
 /// A PR's area, from its title's `type(scope):` prefix.
 fn area(title: &str) -> Area {
     let Some(prefix) = prefix().captures(title) else {
@@ -78,7 +80,7 @@ fn heading(scope: &str) -> String {
 /// the line naming DSP Dispatch: Relay's new version, first; then a heading per area, scopes
 /// in order before the general one, with a line per PR, the first paragraph of its Summary
 /// section (or of Change, for older PRs) or else its title; then the count of changes to
-/// tooling, CI, tests and dependencies; then the list of every PR.
+/// tooling, CI, tests, dependencies and code structure; then the list of every PR.
 fn release_notes(
     app: Option<String>,
     pulls: &[(u64, String, Option<String>)],
@@ -101,8 +103,8 @@ fn release_notes(
         Area::Scope(scope) => section(&heading(&scope), &lines),
         Area::General => section("General", &lines),
         Area::Counted => match lines.len() {
-            1 => "Plus 1 change to tooling, CI, tests and dependencies.".into(),
-            n => format!("Plus {n} changes to tooling, CI, tests and dependencies."),
+            1 => format!("Plus 1 change to {COUNTED}."),
+            n => format!("Plus {n} changes to {COUNTED}."),
         },
     }));
     let links: Vec<_> = pulls
@@ -585,6 +587,12 @@ mod tests {
     fn notes_group_prs_by_area_and_count_tooling_ci_and_test_changes() {
         let summary = |text: &str| Some(format!("## Summary\n\n{text}\n\n## Change\n\nMore.\n"));
         let pulls = [
+            (
+                10,
+                "refactor(communications): split the composer".into(),
+                None,
+            ),
+            (9, "ops: run Dev from its own checkout".into(), None),
             (8, "fix(host): keep the lock".into(), None),
             (7, "feat(driver-match): match drivers by phone".into(), None),
             (
@@ -615,8 +623,10 @@ mod tests {
                  ## Driver Match\n\n- Match drivers by phone.\n\n\
                  ## DVIC\n\n- Open on the latest day.\n\n\
                  ## General\n\n- One record of every driver.\n\n\
-                 Plus 3 changes to tooling, CI, tests and dependencies.\n\n\
-                 Includes {}, {}, {}, {}, {}, {}, {} and {}.\n",
+                 Plus 5 changes to tooling, CI, tests, dependencies and code structure.\n\n\
+                 Includes {}, {}, {}, {}, {}, {}, {}, {}, {} and {}.\n",
+                link(10),
+                link(9),
                 link(8),
                 link(7),
                 link(6),
