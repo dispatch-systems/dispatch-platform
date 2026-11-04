@@ -215,6 +215,8 @@ fn every_rust_and_embedded_launcher_input_is_fingerprinted_but_dashboard_is_not(
         "core/db/tests/support/common.rs",
         "tooling/cli/src/main.rs",
         "tooling/cli/dispatchdev",
+        // Python's bytecode of a script the worker ships, written by running it.
+        "services/support-worker/hermes/plugin/__pycache__/__init__.cpython-312.pyc",
     ] {
         let path = f.root.join(name);
         fs::create_dir_all(path.parent().unwrap()).unwrap();

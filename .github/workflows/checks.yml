@@ -608,12 +608,13 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-tools
       # The debug backend and worker the debug job or main's run saved; the capacity shard also
-      # compiles the host's tests, so it keeps Cargo's cache and builds its own.
+      # compiles the host's tests, so it keeps Cargo's dependency cache beside them.
       - uses: ./.github/actions/setup-build
         with:
           profile: debug
           save: 'false'
-          binaries: ${{ matrix.shard != 'capacity' }}
+          binaries: 'true'
+          dependencies: ${{ matrix.shard == 'capacity' }}
       - uses: ./.github/actions/setup-browseros
       - name: Native collector verification
         run: npm run test:browseros -- --shard ${{ matrix.shard }}

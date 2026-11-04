@@ -35,8 +35,8 @@ pass without running when not needed; the gate accepts any other suite skipped o
 The debug backend and worker are built once a run: by the `debug` job, when `changes` finds the
 change reaches what they compile from, and saved for api and the collectors to restore through
 `dispatchdev build`'s exact-input cache. Otherwise `debug` skips, and they restore the build
-`main`'s own run saved, without waiting for one. Only the capacity shard, which also compiles the
-host's tests, builds its own.
+`main`'s own run saved, without waiting for one. The capacity shard, which also compiles the
+host's tests, restores Cargo's dependency cache too.
 
 The gate passes only when every job passed, the relay apps' builds wherever they ran, and the
 package carries the run's own commit and a complete inventory (`ci-verify.py`, which runs

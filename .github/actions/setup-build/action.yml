@@ -13,6 +13,11 @@ inputs:
       in place of Cargo's dependency cache: for a job whose only Rust build is theirs. Release
       builds always do.
     default: 'false'
+  dependencies:
+    description: >-
+      Restore Cargo's dependency cache even when the exact binaries were restored: for a job that
+      compiles more besides.
+    default: 'false'
   reuse-binary:
     description: Restore the exact binaries instead of compiling them.
     default: 'true'
@@ -56,7 +61,7 @@ runs:
         path: .ci-rust-cache/
         key: dispatch-rust-binary-${{ inputs.profile }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.binary-key.outputs.key }}
     - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
-      if: steps.binary-cache.outputs.cache-hit != 'true'
+      if: steps.binary-cache.outputs.cache-hit != 'true' || inputs.dependencies == 'true'
       with:
         prefix-key: ${{ env.DISPATCH_RUST_CACHE }}
         shared-key: dispatch-${{ inputs.profile }}
