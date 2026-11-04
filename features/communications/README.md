@@ -91,9 +91,9 @@ and every other number's in Recents.
   beside the conversation, that marks it done without a reply; then Responded, the latest
   first; older ones read as the list is scrolled to its end. Each shows who it's with, by their
   photo, when they last wrote, and what was written last, under the first name of whoever at the
-  DSP wrote it, or who at the DSP is writing in it. In Recents, every section's, under the day
-  each was last written in (Today, Yesterday, then the day), the latest first, waiting or not,
-  each face marked with where it is (Today's Routes, by text, or Slack), a driver's with their
+  DSP wrote it, or who at the DSP is writing in it. In Recents, every section's, Waiting, then
+  those answered under the day each was last written in (Today, Yesterday, then the day), the
+  latest written in first under each, each face marked with where it is (Today's Routes, by text, or Slack), a driver's with their
   route as Today's Routes shows it; down to where the first of the sections it pages stops, the
   next of them read as it's scrolled to its end; and Search finds them in every section.
 - **Contacts:** everyone the DSP can message, A to Z under each first letter: their photo, name
