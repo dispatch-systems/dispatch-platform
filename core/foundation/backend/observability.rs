@@ -21,11 +21,28 @@ tokio::task_local! {
     pub(crate) static REQUEST_TRACE: RequestTrace;
 }
 
+std::thread_local! {
+    /// The events this thread logged while `recorded` runs.
+    static RECORDED: std::cell::RefCell<Option<Vec<Value>>> = const { std::cell::RefCell::new(None) };
+}
+
 pub fn event(level: &str, event: &str, fields: Value) {
-    eprintln!(
-        "{}",
-        json!({"at":crate::db::iso(),"level":level,"event":event,"fields":fields})
-    );
+    let line = json!({"at":crate::db::iso(),"level":level,"event":event,"fields":fields});
+    RECORDED.with_borrow_mut(|recorded| {
+        if let Some(recorded) = recorded {
+            recorded.push(line.clone());
+        }
+    });
+    eprintln!("{line}");
+}
+
+/// Runs `work`, answering what it answers and each event it logged on this thread, as logged:
+/// what a command reports of its own work, such as an error it logged and went on from.
+pub fn recorded<T>(work: impl FnOnce() -> T) -> (T, Vec<Value>) {
+    let outer = RECORDED.replace(Some(Vec::new()));
+    let answer = work();
+    let events = RECORDED.replace(outer).unwrap_or_default();
+    (answer, events)
 }
 
 /// What the request log names a request by until its route reads it, for core's own paths

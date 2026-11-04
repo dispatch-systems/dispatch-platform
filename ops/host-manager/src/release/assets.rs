@@ -286,6 +286,19 @@ impl Release<'_> {
         ));
         Ok(prepared)
     }
+    /// Unpacks the prepared runtime into `build`, checked to be the one prepared, answering
+    /// where its backend is, ready to run.
+    pub(super) fn unpack_prepared(&self, prepared: &Prepared, build: &Path) -> Result<PathBuf> {
+        artifact::unpack(&self.output.join(self.archive()), build)?;
+        let manifest = artifact::verify(build, Some(&prepared.commit))?;
+        require(
+            manifest.digest == prepared.runtime_digest && manifest.version == self.version,
+            "Archive differs from prepared manifest",
+        )?;
+        let backend = build.join("services/rust/dispatch-backend");
+        fs::set_permissions(&backend, fs::Permissions::from_mode(0o700))?;
+        Ok(backend)
+    }
     fn smoke_receipt(&self, prepared: &Prepared) -> Value {
         json!({"commit":prepared.commit,"runtimeDigest":prepared.runtime_digest,"archiveSha256":prepared.archive_sha256})
     }
@@ -338,17 +351,7 @@ impl Release<'_> {
             tsx.is_file(),
             "The release commit's Node packages hold no tsx for the smoke check",
         )?;
-        let build = temporary.path().join(".build");
-        artifact::unpack(&self.output.join(self.archive()), &build)?;
-        let manifest = artifact::verify(&build, Some(&prepared.commit))?;
-        require(
-            manifest.digest == prepared.runtime_digest && manifest.version == self.version,
-            "Archive differs from prepared manifest",
-        )?;
-        fs::set_permissions(
-            build.join("services/rust/dispatch-backend"),
-            fs::Permissions::from_mode(0o700),
-        )?;
+        self.unpack_prepared(prepared, &temporary.path().join(".build"))?;
         self.command(
             &[
                 tsx.to_str().ok_or("Invalid Node path")?,
@@ -572,6 +575,11 @@ impl Release<'_> {
         // Only once Production can take the release, so stopping it for the copy never
         // interrupts a collection, fills a short disk or lands on a failing updater.
         let backup = needs_backup.then(|| self.backup()).transpose()?;
+        // A rehearsal takes minutes, so Production is checked again after one, next to
+        // publication.
+        if self.rehearse(prepared)? {
+            self.check_production()?;
+        }
         self.api(
             &format!("releases/{}", release["id"]),
             &[

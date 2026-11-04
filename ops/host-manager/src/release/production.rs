@@ -64,7 +64,7 @@ print(json.dumps({{"warn":sum(e["level"]=="warn" for e in found),"error":sum(e["
 "events":found[:100],"slackManifest":json.loads(sys.argv[1])}}))' "$manifest""#
     )
 }
-fn count(n: u64, word: &str) -> String {
+pub(super) fn count(n: u64, word: &str) -> String {
     format!("{n} {word}{}", if n == 1 { "" } else { "s" })
 }
 fn gigabytes(bytes: u64) -> String {

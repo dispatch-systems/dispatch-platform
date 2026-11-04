@@ -126,3 +126,7 @@ mod snapshot;
 #[cfg(feature = "default")]
 #[path = "../tests/backend/tables.rs"]
 mod tables;
+#[cfg(test)]
+#[cfg(all(feature = "timecard", feature = "routes"))]
+#[path = "../tests/backend/upgrade_check.rs"]
+mod upgrade_check;

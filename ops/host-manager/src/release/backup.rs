@@ -5,7 +5,7 @@
 use super::*;
 
 /// Where Production is reached.
-const PRODUCTION_HOST: &str = "dispatch-production";
+pub(super) const PRODUCTION_HOST: &str = "dispatch-production";
 /// Every database's migrations, as the backend's tests keep them.
 const SNAPSHOT: &str = "app/tests/backend/snapshots/databases.json";
 /// How long a backup stands for the release: Production keeps changing after it.
@@ -80,7 +80,7 @@ mkdir "$dest/config"; cp -p "$public/config/"* "$dest/config/""#
 fn restore_script(destination: &str) -> String {
     format!(
         r#"set -eu; umask 077
-work=$(mktemp -d "${{XDG_RUNTIME_DIR:-/tmp}}/dispatch-restore-check-XXXXXX"); trap 'rm -rf "$work"' EXIT
+mkdir -p -m 700 "$HOME/dispatch-platform/tmp"; work=$(mktemp -d "$HOME/dispatch-platform/tmp/dispatch-restore-check-XXXXXX"); trap 'rm -rf "$work"' EXIT
 "$HOME/dispatch-platform/public/live/services/rust/dispatch-backend" restore "{destination}" "$work/r"
 python3 -c 'import json,pathlib,sqlite3,sys
 found=sorted(pathlib.Path(sys.argv[1]).rglob("*.sqlite"))
@@ -114,7 +114,7 @@ impl Release<'_> {
             timeout,
         )
     }
-    fn backup_path(&self) -> PathBuf {
+    pub(super) fn backup_path(&self) -> PathBuf {
         self.directory.join(format!(".{}-backup.json", self.tag))
     }
     /// The migrations `commit` brings since the latest published release: none before the

@@ -6,6 +6,7 @@ mod backup;
 mod dry_run;
 mod origins;
 mod production;
+mod rehearsal;
 mod relay;
 mod workflow;
 
@@ -32,7 +33,8 @@ const HELP: &str = "Dispatch release [publish|status|backup|dry-run] [X.Y.Z] --r
             Production relay app, require Dev serving the commit, publish the release once
             Production can take it, verify Production installs it and report what its log
             shows (the default). A release that brings migrations publishes only after a
-            backup made for it in the last six hours.
+            backup made for it in the last six hours, and once a copy of that backup starts
+            under the release's backend on Production.
             --backup takes that backup when it's missing, as backup does, once Production
             passes its checks, then publishes. It stops Production for about a second, so pass
             it only with the owner's approval.
@@ -413,7 +415,8 @@ impl<'a> Release<'a> {
         journal.complete = true;
         self.save(&journal)?;
         let mut result = json!({"version":self.version,"stage":"complete","release":release["html_url"],
-            "runtimeDigest":prepared.runtime_digest,"productionLog":log});
+            "runtimeDigest":prepared.runtime_digest,"productionLog":log,
+            "upgradeRehearsal":self.rehearsal()?});
         if let Some(saved) = slack {
             result["slackManifest"] = json!(saved);
         }

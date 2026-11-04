@@ -69,17 +69,7 @@ impl State {
         Self::initialize(config, browser::Manager::with_verified_runtime(runtime))
     }
     fn initialize(config: config::Config, browsers: browser::Manager) -> Result<Arc<Self>> {
-        crate::manifest::registry().check_env(&config)?;
-        let store = db::Store::initialize(config.clone())?;
-        for dsp in store.platform.all(
-            "SELECT id FROM dsps WHERE status IN ('active','suspended')",
-            [],
-        )? {
-            for provider in registry::Provider::all() {
-                store.collector(db::s(&dsp, "id"), provider)?.exec("UPDATE connections SET \
-                    status='error',error='verification_expired' WHERE status IN ('signing_in','needs_verification')",[])?;
-            }
-        }
+        let store = Self::store(&config)?;
         let agents = match manifest::registry().agents {
             Some(agents) => Some((agents.state)(&store)?),
             None => None,
@@ -106,6 +96,24 @@ impl State {
             presence: presence::Presence::default(),
             agents,
         }))
+    }
+    /// The store a server starts from: its configuration checked, then every database brought
+    /// up to this binary's migrations with what carries over at startup (`Store::initialize`),
+    /// and each sign-in left waiting on a code ended, as the browser that held it went with the
+    /// last server. `upgrade-check` opens a restored copy with it too.
+    pub fn store(config: &config::Config) -> Result<db::Store> {
+        crate::manifest::registry().check_env(config)?;
+        let store = db::Store::initialize(config.clone())?;
+        for dsp in store.platform.all(
+            "SELECT id FROM dsps WHERE status IN ('active','suspended')",
+            [],
+        )? {
+            for provider in registry::Provider::all() {
+                store.collector(db::s(&dsp, "id"), provider)?.exec("UPDATE connections SET \
+                    status='error',error='verification_expired' WHERE status IN ('signing_in','needs_verification')",[])?;
+            }
+        }
+        Ok(store)
     }
     pub async fn run<T: Send + 'static>(
         self: &Arc<Self>,
