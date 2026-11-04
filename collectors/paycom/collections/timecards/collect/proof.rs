@@ -52,12 +52,12 @@ pub(super) fn pick(from: &[usize], count: usize) -> Vec<usize> {
     }
     let mut random = [0u8; 8 * Direct::SAMPLE * 4];
     let drawn = getrandom::fill(&mut random).is_ok();
-    for (index, bytes) in random.chunks_exact(8).enumerate() {
+    for (index, bytes) in random.as_chunks::<8>().0.iter().enumerate() {
         if chosen.len() == count.min(from.len()) {
             break;
         }
         let position = if drawn {
-            u64::from_le_bytes(bytes.try_into().expect("eight bytes")) as usize
+            u64::from_le_bytes(*bytes) as usize
         } else {
             index
         };

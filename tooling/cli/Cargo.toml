@@ -4,7 +4,7 @@
 name = "dispatchdev-cli"
 version = "0.0.0"
 edition = "2024"
-rust-version = "1.94"
+rust-version = "1.99"
 publish = false
 license = "FSL-1.1-ALv2"
 

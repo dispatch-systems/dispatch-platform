@@ -92,7 +92,9 @@ fn jpeg(bytes: &[u8]) -> Result<Option<Picture>, &'static str> {
         PixelFormat::CMYK32 => (
             3,
             pixels
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .flat_map(|cmyk| {
                     let ink = |channel: u8| {
                         let (paper, black) = (255 - u32::from(channel), 255 - u32::from(cmyk[3]));

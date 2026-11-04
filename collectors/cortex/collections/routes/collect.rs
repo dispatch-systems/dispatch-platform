@@ -185,7 +185,7 @@ impl CaptureBudget {
     }
     pub(super) fn add(&self, bytes: usize) -> Result<()> {
         self.0
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |total| {
+            .try_update(Ordering::SeqCst, Ordering::SeqCst, |total| {
                 add_capture_bytes(total, bytes).ok()
             })
             .map(|_| ())
