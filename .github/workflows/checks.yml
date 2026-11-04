@@ -360,6 +360,8 @@ jobs:
         with:
           name: ${{ needs.build.outputs.candidate }}
       - run: mkdir .build && tar -xzf dispatch-dev.tar.gz -C .build
+      - uses: ./.github/actions/setup-rust
+        if: steps.tools.outputs.fixture-hit != 'true'
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         if: steps.tools.outputs.fixture-hit != 'true'
         with:
@@ -402,6 +404,10 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-tools
+        id: tools
+      # The host tool the package's test runs builds with Cargo when its cache missed.
+      - uses: ./.github/actions/setup-rust
+        if: steps.tools.outputs.tools-hit != 'true'
       - uses: ./.github/actions/setup-packages
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
@@ -780,6 +786,10 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-tools
+        id: tools
+      # The host tool the verification runs builds with Cargo when its cache missed.
+      - uses: ./.github/actions/setup-rust
+        if: steps.tools.outputs.tools-hit != 'true'
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: ${{ needs.build.outputs.candidate }}
