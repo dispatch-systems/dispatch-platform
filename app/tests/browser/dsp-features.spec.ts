@@ -274,10 +274,11 @@ test('the platform puts a feature in beta at a DSP, and only the testers it adds
   await login(member, 'member@dispatch.test');
   const memberLink = member.getByRole('link', { name: 'Uniform Inventory', exact: true });
   await expect(memberLink).toBeVisible();
-  // Its next request finds it gone, once it is in beta and they don't test it.
+  // Its next request finds it gone, once it is in beta and they don't test it: Timecard's,
+  // opened last, as leaving a page drops its requests unanswered.
   const refresh = async () => {
-    await member.getByRole('link', { name: 'Timecard', exact: true }).click();
     await member.getByRole('link', { name: 'Home Page', exact: true }).click();
+    await member.getByRole('link', { name: 'Timecard', exact: true }).click();
   };
 
   await sight.getByRole('radio', { name: 'Beta' }).click();
