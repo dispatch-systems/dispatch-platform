@@ -29,11 +29,13 @@ inputs:
     default: 'true'
 outputs:
   binary-key:
-    description: Exact Rust input key for the profile's backend and support worker.
-    value: ${{ steps.binary-key.outputs.key }}
+    description: >-
+      Exact Rust input key for the profile's backend and support worker, as this job builds
+      them: without LTO on a pull request that compiles them so.
+    value: ${{ steps.no-lto.outputs.key || steps.binary-key.outputs.key }}
   binary-hit:
-    description: Whether the exact binaries were restored.
-    value: ${{ steps.binary-cache.outputs.cache-hit }}
+    description: Whether the exact binaries were restored, main's or the pull request's own.
+    value: ${{ steps.binary-cache.outputs.cache-hit == 'true' || steps.no-lto-binary.outputs.cache-hit == 'true' }}
 runs:
   using: composite
   steps:
@@ -84,9 +86,21 @@ runs:
         # No key: the inputs can't use the binary cache, and Cargo builds them as it is.
         if [ -n "$key" ]; then
           echo "DISPATCH_CI_RUST_KEY=$key" >> "$GITHUB_ENV"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
         fi
+    # A later push of the pull request whose Rust inputs are the same restores the build its
+    # earlier run saved (the build job saves it), as the debug job's are.
+    - name: Restore the pull request's own build without LTO
+      id: no-lto-binary
+      if: steps.no-lto.outputs.key != ''
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: .ci-rust-cache/
+        key: dispatch-rust-binary-release-${{ runner.os }}-${{ runner.arch }}-${{ steps.no-lto.outputs.key }}
     - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
-      if: steps.binary-cache.outputs.cache-hit != 'true' || inputs.dependencies == 'true'
+      if: >-
+        (steps.binary-cache.outputs.cache-hit != 'true' &&
+        steps.no-lto-binary.outputs.cache-hit != 'true') || inputs.dependencies == 'true'
       with:
         prefix-key: ${{ env.DISPATCH_RUST_CACHE }}
         shared-key: dispatch-${{ steps.no-lto.outcome == 'success' && 'nolto' || inputs.profile }}

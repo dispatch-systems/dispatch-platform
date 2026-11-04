@@ -92,7 +92,9 @@ again at once; `--plan` only names them.
 Caches: only `main`'s reach every branch, since a PR's run saves caches only that PR reads.
 `caches.yml` refreshes them on every push to `main`: the release executables keyed by their
 Rust inputs, which the build job restores instead of compiling when a branch's Rust is `main`'s
-(`main`'s run of the `debug` job saves the debug ones), the CI and host tools, the assessment fixture, the Playwright browser, the
+(`main`'s run of the `debug` job saves the debug ones; a PR whose Rust isn't builds its release
+executables without LTO and saves them for its own later pushes whose Rust is the same), the CI
+and host tools, the assessment fixture, the Playwright browser, the
 BrowserOS package and the installed packages, which every job restores through
 `.github/actions/setup-packages` instead of running `npm ci`. A run's own `tools` job builds
 what its inputs lack for the jobs that start later in that run. GitHub keeps 10 GB of caches
