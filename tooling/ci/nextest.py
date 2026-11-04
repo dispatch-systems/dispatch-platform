@@ -72,7 +72,9 @@ def archive(pin: dict, key: str, folder: Path) -> bytes:
 
 
 def unpack(data: bytes, folder: Path) -> Path:
-    """The archive's one executable, written to `folder`."""
+    """The archive's one executable, written to `folder`: whole under another name, then renamed
+    over the last one, so a run already executing that one keeps it, and two runs starting
+    together each execute a complete file."""
     with tempfile.TemporaryFile() as staged:
         staged.write(data)
         staged.seek(0)
@@ -80,9 +82,12 @@ def unpack(data: bytes, folder: Path) -> Path:
             member = package.getmember(NAME)
             if not member.isfile():
                 raise SystemExit("cargo-nextest archive has no regular executable")
-            executable = folder / NAME
-            executable.write_bytes(package.extractfile(member).read())
-    executable.chmod(0o700)
+            contents = package.extractfile(member).read()
+    with tempfile.NamedTemporaryFile(dir=folder, delete=False) as written:
+        written.write(contents)
+    os.chmod(written.name, 0o700)
+    executable = folder / NAME
+    os.replace(written.name, executable)
     return executable
 
 
