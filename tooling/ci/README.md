@@ -94,7 +94,8 @@ Caches: only `main`'s reach every branch, since a PR's run saves caches only tha
 Rust inputs, which the build job restores instead of compiling when a branch's Rust is `main`'s
 (`main`'s run of the `debug` job saves the debug ones), the CI and host tools, the assessment fixture, the Playwright browser, the
 BrowserOS package and the installed packages, which every job restores through
-`.github/actions/setup-packages` instead of running `npm ci`. A run's own `tools` job builds
+`.github/actions/setup-packages` instead of running `npm ci` (on a miss, `npm ci` installs from
+npm's download cache, which `main` keeps for its lockfile). A run's own `tools` job builds
 what its inputs lack for the jobs that start later in that run. GitHub keeps 10 GB of caches
 and evicts the least recently used past that, so once `main`'s are saved, `caches.py prune`
 deletes those newer ones of the same kind replaced and nothing read for a day, CodeQL's

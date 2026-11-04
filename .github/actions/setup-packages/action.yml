@@ -1,13 +1,16 @@
 name: Node and packages
 description: >-
   The Node `.node-version` pins and the workspace's packages: node_modules restored whole when
-  main's caches workflow saved one for this lockfile, `npm ci` otherwise.
+  main's caches workflow saved one for this lockfile, `npm ci` from npm's download cache
+  otherwise.
 inputs:
   install:
     description: Also install the workspace's packages.
     default: 'true'
   save:
-    description: Save node_modules after a fresh install. Only main's caches workflow does.
+    description: >-
+      Save node_modules, and npm's download cache, after a fresh install. Only main's caches
+      workflow does.
     default: 'false'
 runs:
   using: composite
@@ -37,8 +40,25 @@ runs:
       with:
         path: node_modules
         key: dispatch-node-modules-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.key }}
+    # A miss installs from npm's download cache, of this lockfile or the newest main saved: npm
+    # checks every package against the lockfile's integrity hash, so an older lockfile's cache
+    # only saves downloads. Without it, `npm ci` fetched every package, 28-47 s a job against
+    # 4-6 s from the cache. Main's caches workflow keeps one for its lockfile, installing again
+    # to fill it when it has none, so a PR changing the lockfile finds one ready.
+    - name: Restore npm's download cache
+      id: downloads
+      if: >-
+        inputs.install == 'true' &&
+        (steps.modules.outputs.cache-hit != 'true' || inputs.save == 'true')
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: ~/.npm
+        key: dispatch-npm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
+        restore-keys: dispatch-npm-${{ runner.os }}-${{ runner.arch }}-
     - name: Install the packages
-      if: inputs.install == 'true' && steps.modules.outputs.cache-hit != 'true'
+      if: >-
+        inputs.install == 'true' && (steps.modules.outputs.cache-hit != 'true' ||
+        (inputs.save == 'true' && steps.downloads.outputs.cache-hit != 'true'))
       shell: bash
       run: npm ci --ignore-scripts
     - name: Save the installed packages
@@ -47,3 +67,11 @@ runs:
       with:
         path: node_modules
         key: ${{ steps.modules.outputs.cache-primary-key }}
+    - name: Save npm's download cache
+      if: >-
+        inputs.install == 'true' && inputs.save == 'true' &&
+        steps.downloads.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: ~/.npm
+        key: ${{ steps.downloads.outputs.cache-primary-key }}
