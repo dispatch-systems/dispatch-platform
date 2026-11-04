@@ -36,6 +36,7 @@ class PruneTest(unittest.TestCase):
             *entries("v0-rust-2026-W46-dispatch-debug-Linux-x64-019b21e0-0000000{}", 7),
             *entries("dispatch-playwright-Linux-X64-1.6{}.0", 1, 2, 3),
             *entries("dispatch-node-modules-Linux-X64-{}aa", 1, 2, 3),
+            *entries("dispatch-rust-toolchain-Linux-X64-{}ff", 1, 2, 3),
             *entries(
                 "codeql-overlay-base-database-1-58b1deea8a9e87c1-javascript-2.27.4-"
                 f"{'b' * 40}-4177{{}}-1",
@@ -56,6 +57,7 @@ class PruneTest(unittest.TestCase):
             "v0-rust-2026-W45-dispatch-release-Linux-x64-019b21e0-00000001",
             "dispatch-playwright-Linux-X64-1.61.0",
             "dispatch-node-modules-Linux-X64-1aa",
+            "dispatch-rust-toolchain-Linux-X64-1ff",
             f"codeql-overlay-base-database-1-58b1deea8a9e87c1-javascript-2.27.4-{'b' * 40}-41771-1",
             "dispatch-tools-Linux-X64-ubuntu24-01ee",
             "dispatch-rust-binary-debug-Linux-X64-1dd",

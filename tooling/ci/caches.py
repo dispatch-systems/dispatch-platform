@@ -5,7 +5,8 @@
 GitHub keeps 10 GB of caches a repository and past that evicts the least recently used, whatever
 they hold. Each kind below is saved again whenever its inputs change, and only its newest entries
 are read: Cargo's dependency caches, of this week's generation and the current lockfile; the
-pinned Playwright browser and BrowserOS package; the installed packages; CodeQL's overlay
+pinned Playwright browser and BrowserOS package; the installed packages; the pinned Rust
+toolchain; CodeQL's overlay
 database, which only a pull request's analysis would read, while CodeQL analyses `main` alone;
 the CI tools and assessment fixture; and the exact release and debug backend and worker. The two
 newest of each kind stay, so a branch still on the lockfile `main` just left keeps its cache;
@@ -46,6 +47,7 @@ KINDS = {
     "playwright": (re.compile(rf"dispatch-playwright-{OS}-[0-9.]+"), 2, True),
     "browseros": (re.compile(r"dispatch-browseros-[0-9a-f]+"), 2, True),
     "packages": (re.compile(rf"dispatch-node-modules-{OS}-[0-9a-f]+"), 2, True),
+    "toolchain": (re.compile(rf"dispatch-rust-toolchain-{OS}-[0-9a-f]+"), 2, True),
     "codeql": (re.compile(r"codeql-overlay-base-database-\d+-[0-9a-f]+-([a-z]+)-[0-9.]+-[0-9a-f]+-\d+-\d+"), 2, False),
     "tools": (re.compile(rf"dispatch-(tools|fixture)-{OS}-([a-z0-9]+)-[0-9a-f]+"), 10, True),
     "binaries": (re.compile(rf"dispatch-rust-binary-release-{OS}-[0-9a-f]+"), 10, True),

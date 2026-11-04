@@ -32,8 +32,7 @@ runs:
   using: composite
   steps:
     - uses: ./.github/actions/setup-packages
-    - run: rustup show active-toolchain
-      shell: bash
+    - uses: ./.github/actions/setup-rust
     - name: Identify reusable binaries
       id: binary-key
       if: inputs.profile == 'release' || inputs.binaries == 'true'
