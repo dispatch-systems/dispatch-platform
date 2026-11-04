@@ -597,7 +597,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup-support-sandbox
+      # The tests' sandbox installs from apt while the rest sets up. It runs no action, so it
+      # can't race the setup's own for the same one.
+      - id: sandbox
+        background: true
+        uses: ./.github/actions/setup-support-sandbox
       - uses: ./.github/actions/setup-tools
       # Its only Rust build is the debug backend and worker, which the debug job or main's run
       # saved.
@@ -609,6 +613,7 @@ jobs:
       # The generators' tests update the lock offline: fetch the crates it names, which Cargo's
       # cache held before the restored binaries replaced it.
       - run: cargo fetch --locked
+      - wait: sandbox
       - run: npm run check:ci -- api
   # The native collectors against their fixtures, with a real isolated browser.
   collectors:
@@ -635,6 +640,8 @@ jobs:
           save: 'false'
           binaries: 'true'
           dependencies: ${{ matrix.shard == 'capacity' }}
+      # Not in the background: it restores its package with actions/cache, as the steps above do,
+      # and two steps preparing the same action at once fail.
       - uses: ./.github/actions/setup-browseros
       - name: Native collector verification
         run: npm run test:browseros -- --shard ${{ matrix.shard }}
