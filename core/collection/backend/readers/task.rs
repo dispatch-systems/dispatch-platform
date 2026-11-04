@@ -4,7 +4,7 @@
 //! within its slot. Its next slot is the first after its last read ended, as that read's record
 //! keeps it, so started again it goes on as it would have.
 use super::{
-    Reading, WAITING, now,
+    MOVED, Reading, WAITING, now,
     plan::{Day, Plan, Step},
     records,
 };
@@ -61,6 +61,7 @@ pub(super) async fn run(task: Task, mut plans: watch::Receiver<Option<Plan>>) {
     };
     // What the reader holds for the day being read.
     let mut held: Option<(NaiveDate, Box<dyn Any + Send>)> = None;
+    let mut moves = MOVED.subscribe();
     loop {
         task.busy();
         let Some(plan) = *plans.borrow_and_update() else {
@@ -83,6 +84,8 @@ pub(super) async fn run(task: Task, mut plans: watch::Receiver<Option<Plan>>) {
                 tokio::select! {
                     _ = tokio::time::sleep(wait) => {}
                     changed = plans.changed() => if changed.is_err() { return },
+                    // A test moved the clock on, perhaps past the time it waits for.
+                    _ = moves.changed() => {}
                 }
             }
             Step::Stop(date) => {

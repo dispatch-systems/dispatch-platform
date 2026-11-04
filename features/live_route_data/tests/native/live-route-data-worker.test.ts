@@ -13,7 +13,8 @@ const EVERY = 5 * MINUTE;
 // again, which reads with the application's signatures, the site renewing the session's cookie
 // meanwhile: the reader it hands back carries the renewed session, so the read after it reads
 // natively again, with no browser. Once the DSP's credentials are replaced, that reader goes
-// with the sign-in it came from: nothing is asked with its session again.
+// with the sign-in it came from: nothing is asked with its session again. The test moves the
+// readers' clock on to each read's slot, rather than wait for it.
 test(
   'Live Route Data reads natively with the reader its browser hands back, and the session the browser ends with',
   { skip: process.env.DISPATCH_TEST_NATIVE !== '1', timeout: 420000 },
@@ -30,6 +31,7 @@ test(
         DISPATCH_FIXTURE_PROVIDER_URL: site.url,
         // Today is the site's day, wherever the clock is.
         DISPATCH_FIXTURE_TODAY: day,
+        DISPATCH_FIXTURE_MOVABLE_CLOCK: '1',
         DISPATCH_BWRAP_EXECUTABLE:
           process.env.DISPATCH_BWRAP_EXECUTABLE ?? '/usr/local/libexec/dispatch-dev/bwrap',
       },
@@ -87,17 +89,20 @@ test(
       by: [...new Set(site.requests.slice(since.requests).map(({ by }) => by))],
     });
     const now = () => ({ documents: site.documents.length, requests: site.requests.length });
-    const local = (at: number) => new Date(at + ahead * 3_600_000).toISOString().slice(11, 16);
-    // Starts the window an interval before the minute after the next quarter, its next slot.
-    const section = 'live_route_data.collection';
-    const readSoon = async () => {
-      const slot = Math.ceil((Date.now() + 15_000) / MINUTE) * MINUTE;
-      const settings = await owner.read('/api/dsp/settings');
-      const { revision } = settings.sections.find((s: { id: string }) => s.id === section);
-      const values = { start: local(slot - EVERY), stop: '23:59' };
-      const moved = await owner.post(`/api/dsp/settings/${section}`, { values, revision });
+
+    // Its window opens at 08:00 where the DSP is, a whole number of hours from UTC, and reads
+    // every five minutes. The readers' clock moved on to the next five minutes, its first read
+    // is at a slot, and each after it comes as the test moves the clock on to the next.
+    let slot = Math.ceil(Date.now() / EVERY) * EVERY;
+    const moveTo = async (at: number) => {
+      const moved = await owner.post('/api/platform/live-readers/clock', { at });
       assert.equal(moved.status, 200, moved.body);
     };
+    const nextSlot = async () => {
+      slot += EVERY;
+      await moveTo(slot);
+    };
+    await moveTo(slot);
 
     // Switched on inside its window, it reads at once: its browser reads natively.
     const switched = await owner.post(`/api/platform/dsps/${dsp.id}/features`, {
@@ -109,7 +114,7 @@ test(
     assert.deepEqual(await read(1), ['browser', 'routes_native']);
     // The reader that browser handed back reads the next with its key: no browser, no page.
     let since = now();
-    await readSoon();
+    await nextSlot();
     assert.deepEqual(await read(2), ['routes_native']);
     assert.deepEqual(asked(since), { documents: [], by: ['native'] });
 
@@ -118,7 +123,7 @@ test(
     site.keyed = false;
     site.newKey();
     site.renewing = true;
-    await readSoon();
+    await nextSlot();
     assert.deepEqual(await read(3), ['browser', 'routes_native_no_key', 'routes_signed']);
     assert.equal(site.renewing, false);
     assert.ok(site.refused.length > 0);
@@ -126,7 +131,7 @@ test(
     // key and reads natively, with no browser.
     site.keyed = true;
     since = now();
-    await readSoon();
+    await nextSlot();
     assert.deepEqual(await read(4), ['routes_native']);
     assert.deepEqual(asked(since), {
       documents: [{ path: '/operations/execution/itineraries', browser: false }],
@@ -142,7 +147,7 @@ test(
     });
     assert.equal(replaced.value.status, 'ready', replaced.body);
     const asking = site.sessions.length;
-    await readSoon();
+    await nextSlot();
     await until(async () => reads().length >= 5, 2 * MINUTE);
     assert.deepEqual(
       site.sessions.slice(asking).filter(({ cookie }) => cookie === old),

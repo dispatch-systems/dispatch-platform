@@ -11,15 +11,20 @@ const credentials = {
   securityAnswers: ['00123', 'two', 'three', 'four', 'five'],
 };
 
-// Core's own routes: a DSP's connections, and the platform owner's list of every DSP's jobs.
-// The jobs a feature mounts are tested with that feature; the Collectors page's schedules, which
-// need a feature's collections, in app/tests/api/collectors.test.ts.
-test("a DSP's connections check and encrypt credentials, and only the platform owner lists every job", async (t) => {
+// Core's own routes: a DSP's connections, the platform owner's list of every DSP's jobs, and
+// the live readers' clock. The jobs a feature mounts are tested with that feature; the
+// Collectors page's schedules, which need a feature's collections, in
+// app/tests/api/collectors.test.ts; the clock moved, with Live Route Data's native test.
+test("a DSP's connections check and encrypt credentials, only the platform owner lists every job, and the readers' clock moves only where a test may move it", async (t) => {
   const f = await fixture();
   t.after(f.close);
   const owner = await f.client();
   const member = await f.client('member@dispatch.test');
   assert.equal((await member.get('/api/platform/jobs')).status, 403);
+  // A server that doesn't let its test move the readers' clock, as Production never does,
+  // refuses to move it, even for its platform owner.
+  const moved = await owner.post('/api/platform/live-readers/clock', { at: Date.now() + 60_000 });
+  assert.equal(moved.value.error, 'fixture_forbidden', moved.body);
   const north = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
   await member.select(north.id);
   assert.equal((await member.get('/api/dsp/connections')).status, 403);

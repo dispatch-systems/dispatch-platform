@@ -31,7 +31,7 @@ use serde_json::json;
 use std::{
     collections::HashMap,
     sync::{
-        Arc,
+        Arc, LazyLock,
         atomic::{AtomicI64, Ordering},
     },
     time::Duration,
@@ -83,11 +83,19 @@ impl Reading {
     }
 }
 
-/// The time now, in milliseconds since the epoch, as the readers wait for it: the system's,
-/// moved on as the runtime's timers are, so a wait for a slot ends when it's due by the same
-/// clock. They're one clock unless the runtime's time is paused, as a test's is, which moves
-/// only the timers on.
+/// How far a test has moved the readers' clock on, in milliseconds (`move_clock`): none unless
+/// a test server's test moved it. Each task waiting for a time watches it.
+static MOVED: LazyLock<watch::Sender<i64>> = LazyLock::new(|| watch::Sender::new(0));
+
+/// The time now, in milliseconds since the epoch, as the readers wait for it: `timed`, and as
+/// far as a test moved it on (`move_clock`).
 fn now() -> i64 {
+    timed() + *MOVED.borrow()
+}
+/// The system's time, moved on as the runtime's timers are, so a wait for a slot ends when it's
+/// due by the same clock. They're one clock unless the runtime's time is paused, as a test's
+/// is, which moves only the timers on.
+fn timed() -> i64 {
     let timers = tokio::time::Instant::now().into_std();
     let system = std::time::Instant::now();
     let ahead = match timers.checked_duration_since(system) {
@@ -95,6 +103,21 @@ fn now() -> i64 {
         None => -(system.duration_since(timers).as_millis() as i64),
     };
     db::now() + ahead
+}
+
+/// Moves the readers' clock on to `at`, in milliseconds since the epoch, never back: each task
+/// waiting for a time steps again at once, so one whose slot `at` reaches reads. Only a test
+/// server lets its test move it (`Config::movable_clock`), to read at each slot rather than
+/// wait for it.
+pub fn move_clock(at: i64) {
+    let ahead = at - timed();
+    MOVED.send_if_modified(|moved| {
+        let later = ahead > *moved;
+        if later {
+            *moved = ahead;
+        }
+        later
+    });
 }
 
 /// A DSP's reading under way.
