@@ -26,7 +26,7 @@ pub fn run(args: &[String]) -> Result<()> {
     }
     if args.is_empty() || args.iter().any(|a| a == "--help" || a == "-h") {
         println!(
-            "Dispatch host management: capabilities | release --help | artifact <inventory|write|verify|unpack|actions|download> ... | <dev|production> --root PATH [--verify|--verify-management|--install-management] | dev --root PATH --wait COMMIT [--timeout SECONDS]"
+            "Dispatch host management: capabilities | release --help | artifact <inventory|write|verify|unpack|actions|download> ... | <dev|production> --root PATH [--verify|--verify-management|--install-management] | production --root PATH --rollback | dev --root PATH --wait COMMIT [--timeout SECONDS]"
         );
         return Ok(());
     }
@@ -85,7 +85,7 @@ pub fn run(args: &[String]) -> Result<()> {
                         require(root.is_none(), "Duplicate root")?;
                         root = Some(*iter.next().ok_or("Root required")?);
                     }
-                    "--verify" | "--verify-management" | "--install-management" => {
+                    "--verify" | "--verify-management" | "--install-management" | "--rollback" => {
                         require(mode == "update", "Choose one operation")?;
                         mode = arg;
                     }
@@ -110,14 +110,12 @@ pub fn run(args: &[String]) -> Result<()> {
                 environment,
                 &Native,
             )?;
-            if mode == "--wait" {
-                let live = updater.wait(commit.unwrap_or(""), timeout.unwrap_or(900))?;
-                println!("{live}");
-                return Ok(());
-            }
             match mode {
+                "--wait" => updater.wait(commit.unwrap_or(""), timeout.unwrap_or(900))?,
+                "--rollback" => updater.rollback()?,
                 "--verify" => {
                     updater.verify()?;
+                    Value::Null
                 }
                 "--verify-management" => {
                     updater.verify()?;
@@ -125,11 +123,17 @@ pub fn run(args: &[String]) -> Result<()> {
                         !management::drift(&updater)?,
                         "Installed host updater differs from the active runtime",
                     )?;
+                    Value::Null
                 }
-                "--install-management" => management::install_bundle(&updater)?,
-                _ => updater.run_locked()?,
+                "--install-management" => {
+                    management::install_bundle(&updater)?;
+                    Value::Null
+                }
+                _ => {
+                    updater.run_locked()?;
+                    Value::Null
+                }
             }
-            Value::Null
         }
         _ => return Err("Unknown host command; use --help".into()),
     };

@@ -379,28 +379,13 @@ impl<'a> Updater<'a> {
             json!({"oldDigest":old.digest,"newDigest":manifest.digest})
         };
         io::write_json(&self.receipt, &record)?;
-        let activation = (|| -> Result<()> {
-            self.service("stop")?;
-            if let Some(current) = &current {
-                self.clean_checkout()?;
-                require(
-                    self.git(&["rev-parse", "HEAD"])? == *current,
-                    "Checkout changed during update",
-                )?;
-            }
-            fs::rename(&self.active, &self.previous)?;
-            fs::rename(candidate, &self.active)?;
-            if current.is_some() {
-                self.git(&["merge", "--ff-only", commit])?;
-            }
-            self.service("start")?;
-            require(
-                self.healthy(&manifest.digest, 40),
-                "New runtime failed health check",
-            )?;
-            self.status("ready", &manifest, json!({"commit":commit}))?;
-            io::remove_receipt(&self.receipt)
-        })();
+        let activation = self.switch(
+            candidate,
+            &manifest,
+            current.as_deref().map(|current| (current, commit)),
+            "ready",
+            json!({"commit":commit}),
+        );
         if let Err(error) = activation {
             self.recover()?;
             crate::support::refresh(self);
@@ -409,14 +394,118 @@ impl<'a> Updater<'a> {
         crate::support::refresh(self);
         Ok(())
     }
-    pub fn run_locked(&self) -> Result<()> {
-        // Another run of this environment holds the lock: this one has nothing to do.
-        let Some(_lock) = io::ExclusiveLock::try_acquire(
+    /// With the receipt written, stops the service, makes `candidate` the active runtime and
+    /// the active one the previous, and starts it; once it is healthy on `manifest`, records
+    /// `state` with `extra` and removes the receipt. On Dev the checkout moves with it, from
+    /// the first commit of `checkout` to the second. A failure leaves the receipt to `recover`.
+    fn switch(
+        &self,
+        candidate: &Path,
+        manifest: &Manifest,
+        checkout: Option<(&str, &str)>,
+        state: &str,
+        extra: Value,
+    ) -> Result<()> {
+        self.service("stop")?;
+        if let Some((current, _)) = checkout {
+            self.clean_checkout()?;
+            require(
+                self.git(&["rev-parse", "HEAD"])? == current,
+                "Checkout changed during update",
+            )?;
+        }
+        fs::rename(&self.active, &self.previous)?;
+        fs::rename(candidate, &self.active)?;
+        if let Some((_, commit)) = checkout {
+            self.git(&["merge", "--ff-only", commit])?;
+        }
+        self.service("start")?;
+        require(
+            self.healthy(&manifest.digest, 40),
+            "New runtime failed health check",
+        )?;
+        self.status(state, manifest, extra)?;
+        io::remove_receipt(&self.receipt)
+    }
+    /// Puts Production back on the release it ran before, which it keeps as its previous
+    /// runtime, for a release that installed healthy but is wrong. The two swap, so the newer
+    /// one is kept in turn, and its release is recorded as failed: the updater stays off it
+    /// and installs the next one published.
+    pub fn rollback(&self) -> Result<Value> {
+        require(
+            self.environment == Environment::Production,
+            "Only Production rolls back",
+        )?;
+        let _lock = self
+            .lock()?
+            .ok_or("Production's updater is running; try again once it finishes")?;
+        self.recover()?;
+        let current = artifact::verify(&self.active, None)?;
+        require(
+            self.previous.try_exists()?,
+            "Production keeps no previous release to roll back to",
+        )?;
+        let older = artifact::verify(&self.previous, None)?;
+        require(
+            releases::version(&older.version)? < releases::version(&current.version)?,
+            &format!(
+                "Production's previous release, {}, is not older than the {} it runs",
+                older.version, current.version
+            ),
+        )?;
+        let release =
+            releases::public_github(self.system, &format!("releases/tags/v{}", current.version))?;
+        require(
+            releases::release_version(&release)? == current.version && release["id"].is_u64(),
+            "GitHub's release differs from the one Production runs",
+        )?;
+        let candidate = self.runtime.join("rollback");
+        fs::rename(&self.previous, &candidate)?;
+        let switched = io::write_json(
+            &self.receipt,
+            &json!({"oldDigest":current.digest,"newDigest":older.digest}),
+        )
+        .and_then(|()| {
+            self.switch(
+                &candidate,
+                &older,
+                None,
+                "rolled_back",
+                json!({"failedReleaseId":release["id"],"failedDigest":current.digest}),
+            )
+        });
+        if let Err(error) = switched {
+            // Recovery removes the runtime it finds active, so the older one moves aside first
+            // and is kept as the previous again.
+            if !candidate.try_exists()? {
+                fs::rename(&self.active, &candidate)?;
+            }
+            self.recover()?;
+            fs::rename(&candidate, &self.previous)?;
+            return Err(format!(
+                "Rolling back to {} failed, so Production is back on {}: {error}",
+                older.version, current.version
+            )
+            .into());
+        }
+        Ok(json!({
+            "status": "rolled_back",
+            "from": current.version,
+            "to": older.version,
+            "digest": older.digest,
+        }))
+    }
+    /// The updater's lock, or `None` while another run of it holds it.
+    fn lock(&self) -> Result<Option<io::ExclusiveLock>> {
+        io::ExclusiveLock::try_acquire(
             &self
                 .platform
                 .join(format!("{}-update.lock", self.environment.name())),
-        )?
-        else {
+        )
+    }
+    pub fn run_locked(&self) -> Result<()> {
+        // Another run of this environment holds the lock: this one has nothing to do.
+        let Some(_lock) = self.lock()? else {
             return Ok(());
         };
         let result = self.recover().and_then(|()| match self.environment {
