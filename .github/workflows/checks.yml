@@ -461,7 +461,11 @@ jobs:
           fetch-depth: 2
       - uses: ./.github/actions/changes
         id: changes
+      # The tests' sandbox installs from apt while the tools set up and the tests compile; only
+      # the tests' run needs it.
       - if: steps.changes.outputs.core == 'true'
+        id: sandbox
+        background: true
         uses: ./.github/actions/setup-support-sandbox
       - if: steps.changes.outputs.core == 'true'
         uses: ./.github/actions/setup-tools
@@ -470,6 +474,8 @@ jobs:
         with:
           profile: debug
           save: 'false'
+      - if: steps.changes.outputs.core == 'true'
+        wait: sandbox
       - if: steps.changes.outputs.core == 'true'
         run: npm run check:ci -- core tests
   # What every generator writes, made in a copy of the checkout: scaffold-lint holds it to
@@ -587,7 +593,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup-support-sandbox
+      # The tests' sandbox installs from apt while the rest sets up.
+      - id: sandbox
+        background: true
+        uses: ./.github/actions/setup-support-sandbox
       - uses: ./.github/actions/setup-tools
       # Its only Rust build is the debug backend and worker, which the debug job or main's run
       # saved.
@@ -599,6 +608,7 @@ jobs:
       # The generators' tests update the lock offline: fetch the crates it names, which Cargo's
       # cache held before the restored binaries replaced it.
       - run: cargo fetch --locked
+      - wait: sandbox
       - run: npm run check:ci -- api
   # The native collectors against their fixtures, with a real isolated browser.
   collectors:
@@ -616,6 +626,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+      # The isolated browser installs from apt while the rest sets up.
+      - id: browseros
+        background: true
+        uses: ./.github/actions/setup-browseros
       - uses: ./.github/actions/setup-tools
       # The debug backend and worker the debug job or main's run saved; the capacity shard also
       # compiles the host's tests, so it keeps Cargo's dependency cache beside them.
@@ -625,7 +639,7 @@ jobs:
           save: 'false'
           binaries: 'true'
           dependencies: ${{ matrix.shard == 'capacity' }}
-      - uses: ./.github/actions/setup-browseros
+      - wait: browseros
       - name: Native collector verification
         run: npm run test:browseros -- --shard ${{ matrix.shard }}
   # `cargo audit`, denying every warning but the yanked versions `cargo-audit.py` allows, each
