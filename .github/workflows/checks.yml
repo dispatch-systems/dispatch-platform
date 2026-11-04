@@ -1,6 +1,6 @@
 name: Platform checks
-# Every suite on every PR, and again on each push to main: the squash commit the PR became. The
-# `platform` gate is the one required check. On a PR it only judges; on main it also attests and
+# Every suite a PR's change can reach on the PR (the changes job), and every suite again on each
+# push to main: the squash commit the PR became. The `platform` gate is the one required check. On a PR it only judges; on main it also attests and
 # publishes the tested build, which Dev installs. A manual run publishes the build of the commit it
 # ran on the same way, as each release dispatches its own, which it stamps. Outside a PR the build
 # of main or a release's branch carries DSP Dispatch: Relay, signed here: Dev's app, and
@@ -34,6 +34,32 @@ env:
   CARGO_PROFILE_DEV_DEBUG: '0'
   CARGO_PROFILE_TEST_DEBUG: '0'
 jobs:
+  # Which suites the change can reach (tooling/ci/changes.py): on a PR, a suite skips when every
+  # changed file is of a kind it never reads; outside a PR every suite runs but the Android apps',
+  # which follow the change. Its checkout holds only the script and the two commits' trees.
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      core: ${{ steps.changes.outputs.core }}
+      api: ${{ steps.changes.outputs.api }}
+      scaffold: ${{ steps.changes.outputs.scaffold }}
+      collectors: ${{ steps.changes.outputs.collectors }}
+      browser: ${{ steps.changes.outputs.browser }}
+      android: ${{ steps.changes.outputs.android }}
+      changed: ${{ steps.changes.outputs.changed }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+          filter: blob:none
+          sparse-checkout: |
+            .github/actions/changes
+            tooling/ci/changes.py
+          sparse-checkout-cone-mode: false
+      - uses: ./.github/actions/changes
+        id: changes
   # DSP Dispatch: Relay's Dev app at this commit, a release build signed with the Dev key, for the
   # build to pack: on each commit of main, and in a dispatched run on main or a release's branch,
   # the branches the relay-dev environment allows. Built again only when android/, the app version
@@ -269,8 +295,10 @@ jobs:
   # that names main's skips it: its package differs from main's only by the relay apps it packs,
   # which no browser test opens.
   browser:
-    needs: build
-    if: ${{ !cancelled() && needs.build.result == 'success' && !inputs.tested-run }}
+    needs: [build, changes]
+    if: >-
+      ${{ !cancelled() && needs.build.result == 'success' && !inputs.tested-run &&
+      needs.changes.outputs.browser == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
@@ -381,7 +409,8 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-packages
       - run: npm run check:ci -- checks
-  # Rust formatting, lints and tests.
+  # Rust formatting, lints and tests. Like api and scaffold, among the longest jobs, it decides
+  # for itself whether the change needs it, instead of waiting for the changes job.
   core:
     if: ${{ !inputs.tested-run }}
     runs-on: ubuntu-24.04
@@ -390,13 +419,20 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup-support-sandbox
-      - uses: ./.github/actions/setup-tools
-      - uses: ./.github/actions/setup-build
+          fetch-depth: 2
+      - uses: ./.github/actions/changes
+        id: changes
+      - if: steps.changes.outputs.core == 'true'
+        uses: ./.github/actions/setup-support-sandbox
+      - if: steps.changes.outputs.core == 'true'
+        uses: ./.github/actions/setup-tools
+      - if: steps.changes.outputs.core == 'true'
+        uses: ./.github/actions/setup-build
         with:
           profile: debug
           save: 'false'
-      - run: npm run check:ci -- core
+      - if: steps.changes.outputs.core == 'true'
+        run: npm run check:ci -- core
   # What every generator writes, made in a copy of the checkout: it builds, passes clippy,
   # TypeScript, the linter and the rules, and its Rust tests and agent tools' tests pass.
   scaffold:
@@ -407,48 +443,43 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup-tools
-      - uses: ./.github/actions/setup-build
+          fetch-depth: 2
+      - uses: ./.github/actions/changes
+        id: changes
+      - if: steps.changes.outputs.scaffold == 'true'
+        uses: ./.github/actions/setup-tools
+      - if: steps.changes.outputs.scaffold == 'true'
+        uses: ./.github/actions/setup-build
         with:
           profile: debug
           save: 'false'
       # Each week's Rust cache starts empty until the caches workflow refills it, and the
       # generators update the lock offline: fetch the crates it names first.
-      - run: cargo fetch --locked
-      - run: npm run check:ci -- scaffold
+      - if: steps.changes.outputs.scaffold == 'true'
+        run: cargo fetch --locked
+      - if: steps.changes.outputs.scaffold == 'true'
+        run: npm run check:ci -- scaffold
   # The Android apps in android/: their unit tests, lint (the dev debug and production release
-  # builds) and debug builds, only when a change touches them or this workflow, so any other
-  # change passes it at once. Release builds are signed only in relay-dev and relay-production.
-  # A dispatched run always runs it, a release's that names main's too: main's run of the commit
-  # tested the apps only if the commit changed them.
+  # builds) and debug builds, only when a change touches them or CI's own files (the changes
+  # job), so any other change skips it. Release builds are signed only in relay-dev and
+  # relay-production. A dispatched run always runs it, a release's that names main's too: main's
+  # run of the commit tested the apps only if the commit changed them.
   android:
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-          # A PR's merge commit or main's squash commit, and its first parent: what it changed.
-          fetch-depth: 2
-      - name: Find whether the Android apps changed
-        id: changed
-        env:
-          EVENT: ${{ github.event_name }}
-        run: |
-          changed=$(git diff --name-only HEAD^ HEAD -- android .github/workflows/checks.yml)
-          if [ "$EVENT" = workflow_dispatch ] || [ -n "$changed" ]; then
-            echo "android=true" >> "$GITHUB_OUTPUT"
-          fi
-      - if: steps.changed.outputs.android == 'true'
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
         with:
           distribution: temurin
           java-version: '21'
       # Checks the wrapper's jar against Gradle's published checksums, and caches Gradle's own.
-      - if: steps.changed.outputs.android == 'true'
-        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c
-      - if: steps.changed.outputs.android == 'true'
-        name: Test, lint and build
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c
+      - name: Test, lint and build
         working-directory: android
         run: ./gradlew test lintDevDebug lintProductionRelease assembleDebug
   # The API tests against a debug backend, the Python tooling tests and the npm audit.
@@ -460,16 +491,24 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup-support-sandbox
-      - uses: ./.github/actions/setup-tools
-      - uses: ./.github/actions/setup-build
+          fetch-depth: 2
+      - uses: ./.github/actions/changes
+        id: changes
+      - if: steps.changes.outputs.api == 'true'
+        uses: ./.github/actions/setup-support-sandbox
+      - if: steps.changes.outputs.api == 'true'
+        uses: ./.github/actions/setup-tools
+      - if: steps.changes.outputs.api == 'true'
+        uses: ./.github/actions/setup-build
         with:
           profile: debug
           save: 'false'
-      - run: npm run check:ci -- api
+      - if: steps.changes.outputs.api == 'true'
+        run: npm run check:ci -- api
   # The native collectors against their fixtures, with a real isolated browser.
   collectors:
-    if: ${{ !inputs.tested-run }}
+    needs: changes
+    if: ${{ !inputs.tested-run && needs.changes.outputs.collectors == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
@@ -572,6 +611,7 @@ jobs:
   # release stamps its own run's.
   platform:
     needs:
+      - changes
       - build
       - checks
       - browser
@@ -594,7 +634,7 @@ jobs:
           TESTED_RUN: ${{ inputs.tested-run }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          # The relay apps' builds alone may be skipped: they run outside PRs, Production's in a
+          # The relay apps' builds may be skipped: they run outside PRs, Production's in a
           # release's run. So may the source's suites, in a release's run naming main's.
           skippable='["relay-dev", "relay-production"]'
           if [ -n "$TESTED_RUN" ]; then
@@ -611,9 +651,22 @@ jobs:
             echo "The source's suites passed in $(echo "$tested" | jq -r .html_url)"
             skippable='["relay-dev", "relay-production", "checks", "core", "api", "collectors", "scaffold", "browser"]'
           fi
-          failed=$(echo "$RESULTS" | jq -r --argjson skippable "$skippable" 'to_entries[]
+          # Each job and what it came to, a suite the change can't reach as not needed: core, api
+          # and scaffold pass without running it, and the others skip.
+          {
+            echo "Changed: $(echo "$RESULTS" | jq -r '.changes.outputs.changed // "unknown"')"
+            echo
+            echo "| Job | Result |"
+            echo "| --- | --- |"
+            echo "$RESULTS" | jq -r '.changes.outputs as $needed | to_entries[]
+              | "| \(.key) | \(if $needed[.key] == "false" then "not needed" else .value.result end) |"'
+          } >> "$GITHUB_STEP_SUMMARY"
+          # A suite skips only where the changes job said the change can't reach it.
+          failed=$(echo "$RESULTS" | jq -r --argjson skippable "$skippable" '
+            .changes.outputs as $needed | to_entries[]
             | select(.value.result != "success")
-            | select(.value.result != "skipped" or (.key | IN($skippable[]) | not))
+            | select(.value.result != "skipped"
+              or (((.key | IN($skippable[])) or $needed[.key] == "false") | not))
             | "\(.key): \(.value.result)"')
           if [ -n "$failed" ]; then
             echo "Suites that did not pass:"

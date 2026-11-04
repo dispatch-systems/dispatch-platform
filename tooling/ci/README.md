@@ -1,8 +1,8 @@
 # CI tooling
 
-`.github/workflows/checks.yml` is the whole pipeline. It runs every suite on every PR, and again
-on each push to `main`, on the squash commit the PR became. `platform` is the one required
-check: a PR can merge once it passes. `tooling/ci/checks.ts` runs one of its jobs by name, or
+`.github/workflows/checks.yml` is the whole pipeline. It runs every suite a PR's change can
+reach on the PR, and every suite again on each push to `main`, on the squash commit the PR
+became. `platform` is the one required check: a PR can merge once it passes. `tooling/ci/checks.ts` runs one of its jobs by name, or
 locally the whole suite in sequence:
 
 | Job              | `npm run check:ci -- …`                    | What it proves                                                                            |
@@ -18,7 +18,16 @@ locally the whole suite in sequence:
 | rust-advisories  |                                            | `cargo audit`, denying yanked crates but those `cargo-audit.py` allows.                   |
 | relay-dev        |                                            | Outside a PR, Dev's relay app, signed, for the build to pack (`relay.py`).                |
 | relay-production |                                            | In a release's run that names its app version, Production's relay app, signed.            |
+| changes          |                                            | Which suites the change can reach (`changes.py`).                                         |
 | platform         |                                            | The gate: the one required check.                                                         |
+
+On a PR, `changes.py` skips a suite when every file the change touches is of a kind it never
+reads: the Android apps, Markdown outside `services/`, or for the collectors a `frontend/`
+folder; the Android apps' job runs only for them and for CI's own files, on a push to `main`
+too. Anything it can't read runs every suite. core, api and scaffold, the longest jobs, decide
+for themselves instead of waiting for it, and pass without running when not needed; the gate
+accepts any other suite skipped only where `changes` said so, and its summary names each job's
+result and what the change touched.
 
 The gate passes only when every job passed, the relay apps' builds wherever they ran, and the
 package carries the run's own commit and a complete inventory (`ci-verify.py`, which runs
