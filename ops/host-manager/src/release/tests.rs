@@ -234,6 +234,11 @@ impl System for Fake {
                 .push(record);
             self.maybe_fail("upload")?;
             Value::Null
+        } else if args.starts_with(&["npm", "ci"]) {
+            let bin = cwd.unwrap().join("node_modules/.bin");
+            fs::create_dir_all(&bin)?;
+            fs::write(bin.join("tsx"), "fake smoke")?;
+            Value::Null
         } else if args[0].ends_with("/tsx") {
             self.maybe_fail("smoke")?;
             assert!(
@@ -414,7 +419,6 @@ impl Fixture {
         git(&root, &["init", "-b", "main"]);
         git(&root, &["config", "user.name", "Test"]);
         git(&root, &["config", "user.email", "test@dispatch.test"]);
-        fs::write(root.join(".gitignore"), "/node_modules\n").unwrap();
         let source = Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .unwrap()
@@ -443,8 +447,6 @@ impl Fixture {
         } else {
             merge_to_main(&root, "accepted")
         };
-        fs::create_dir_all(root.join("node_modules/.bin")).unwrap();
-        fs::write(root.join("node_modules/.bin/tsx"), "fake smoke").unwrap();
         let run = json!({"id":5,"run_attempt":1,"head_sha":commit,"event":"push","head_branch":"main",
             "status":"completed","conclusion":"success","path":WORKFLOW,
             "head_repository":{"full_name":REPOSITORY},"html_url":"https://example.invalid/run/5"});
@@ -994,7 +996,6 @@ fn publication_response_loss_and_production_failure_resume_without_republishing_
         f.system.unhealthy.set(false);
         f.system.asset_error.set(false);
         f.system.calls.borrow_mut().clear();
-        fs::remove_dir_all(f.root.join("node_modules")).unwrap();
         assert_eq!(
             release.execute(Stage::Publish, None).unwrap()["stage"],
             "complete"

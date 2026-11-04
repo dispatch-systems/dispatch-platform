@@ -296,15 +296,48 @@ impl Release<'_> {
         if receipt.try_exists()? && io::read_json(&receipt)? == expected {
             return Ok(());
         }
-        let tsx = self.root.join("node_modules/.bin/tsx");
-        require(
-            tsx.is_file(),
-            "Install this checkout's Node packages for the release smoke check",
-        )?;
         let temporary = tempfile::Builder::new()
             .prefix("dispatch-release-smoke-")
             .permissions(fs::Permissions::from_mode(0o700))
             .tempdir()?;
+        // The check runs from the commit's own source, with the Node packages its lockfile
+        // names installed beside it: the checkout has none, and only its updater changes it.
+        let source = temporary.path().join("source");
+        let exported = temporary.path().join("source.tar");
+        let exported_path = exported.to_str().ok_or("Invalid export path")?;
+        self.command(
+            &[
+                "git",
+                "archive",
+                "--output",
+                exported_path,
+                &prepared.commit,
+            ],
+            None,
+            120,
+        )?;
+        fs::create_dir(&source)?;
+        self.command(
+            &[
+                "tar",
+                "-xf",
+                exported_path,
+                "-C",
+                source.to_str().ok_or("Invalid source path")?,
+            ],
+            None,
+            120,
+        )?;
+        self.command(
+            &["npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund"],
+            Some(&source),
+            600,
+        )?;
+        let tsx = source.join("node_modules/.bin/tsx");
+        require(
+            tsx.is_file(),
+            "The release commit's Node packages hold no tsx for the smoke check",
+        )?;
         let build = temporary.path().join(".build");
         artifact::unpack(&self.output.join(self.archive()), &build)?;
         let manifest = artifact::verify(&build, Some(&prepared.commit))?;
@@ -319,7 +352,7 @@ impl Release<'_> {
         self.command(
             &[
                 tsx.to_str().ok_or("Invalid Node path")?,
-                self.root
+                source
                     .join("tooling/testing/browser-check.ts")
                     .to_str()
                     .ok_or("Invalid smoke path")?,
