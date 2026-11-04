@@ -4,11 +4,12 @@
 GitHub keeps 10 GB of caches a repository and past that evicts the least recently used, whatever
 they hold. Each kind below is saved again whenever its inputs change, and only its newest entries
 are read: Cargo's dependency caches, of this week's generation and the current lockfile; the
-pinned Playwright browser and BrowserOS package; the installed packages; and CodeQL's overlay
-database, which only a pull request's analysis would read, while CodeQL analyses `main` alone.
-The two newest of each kind stay, so a branch still on the lockfile `main` just left keeps its
-cache; older ones only take room `main`'s current caches need. A key of no kind below is never
-touched.
+pinned Playwright browser and BrowserOS package; the installed packages; CodeQL's overlay
+database, which only a pull request's analysis would read, while CodeQL analyses `main` alone;
+and the CI tools and assessment fixture. The two newest of each kind stay, so a branch still on
+the lockfile `main` just left keeps its cache; older ones only take room `main`'s current caches
+need. The tools and fixture keep ten, being small and keyed by sources a branch may still have.
+A key of no kind below is never touched.
 
 - `prune [--dry-run]`: deletes each kind's older entries on `main`, a line for each.
 """
@@ -23,14 +24,16 @@ import sys
 from typing import Callable, NamedTuple
 
 REF = "refs/heads/main"
-KEEP = 2
-# Each kind's pattern, its groups naming what makes two entries the same kind.
+OS = r"([A-Za-z0-9]+-[A-Za-z0-9]+)"
+# Each kind's pattern, its groups naming what makes two entries the same kind, and how many of it
+# stay.
 KINDS = {
-    "rust": re.compile(r"v\d+-rust-\d{4}-W\d{2}-(dispatch-[a-z]+)-([A-Za-z0-9]+-[A-Za-z0-9]+)-[0-9a-f]+-[0-9a-f]+"),
-    "playwright": re.compile(r"dispatch-playwright-([A-Za-z0-9]+-[A-Za-z0-9]+)-[0-9.]+"),
-    "browseros": re.compile(r"dispatch-browseros-[0-9a-f]+"),
-    "packages": re.compile(r"dispatch-node-modules-([A-Za-z0-9]+-[A-Za-z0-9]+)-[0-9a-f]+"),
-    "codeql": re.compile(r"codeql-overlay-base-database-\d+-[0-9a-f]+-([a-z]+)-[0-9.]+-[0-9a-f]+-\d+-\d+"),
+    "rust": (re.compile(rf"v\d+-rust-\d{{4}}-W\d{{2}}-(dispatch-[a-z]+)-{OS}-[0-9a-f]+-[0-9a-f]+"), 2),
+    "playwright": (re.compile(rf"dispatch-playwright-{OS}-[0-9.]+"), 2),
+    "browseros": (re.compile(r"dispatch-browseros-[0-9a-f]+"), 2),
+    "packages": (re.compile(rf"dispatch-node-modules-{OS}-[0-9a-f]+"), 2),
+    "codeql": (re.compile(r"codeql-overlay-base-database-\d+-[0-9a-f]+-([a-z]+)-[0-9.]+-[0-9a-f]+-\d+-\d+"), 2),
+    "tools": (re.compile(rf"dispatch-(tools|fixture)-{OS}-([a-z0-9]+)-[0-9a-f]+"), 10),
 }
 
 Run = Callable[[list], str]
@@ -42,17 +45,18 @@ class Cache(NamedTuple):
     created: str
 
 
-def kind(key: str) -> str | None:
-    """The kind `key` is one entry of, with what tells its entries apart; None for any other."""
-    for name, pattern in KINDS.items():
+def kind(key: str) -> tuple[str, int] | None:
+    """The kind `key` is one entry of, with what tells its entries apart, and how many of it
+    stay; None for any other key."""
+    for name, (pattern, keep) in KINDS.items():
         match = pattern.fullmatch(key)
         if match:
-            return " ".join([name, *match.groups()])
+            return " ".join([name, *match.groups()]), keep
     return None
 
 
 def superseded(caches: list[Cache]) -> list[Cache]:
-    """The entries of each kind past its `KEEP` newest, oldest first."""
+    """The entries of each kind past the newest it keeps, oldest first."""
     kinds = defaultdict(list)
     for cache in caches:
         found = kind(cache.key)
@@ -60,8 +64,8 @@ def superseded(caches: list[Cache]) -> list[Cache]:
             kinds[found].append(cache)
     older = [
         cache
-        for entries in kinds.values()
-        for cache in sorted(entries, key=lambda each: each.created, reverse=True)[KEEP:]
+        for (_, keep), entries in kinds.items()
+        for cache in sorted(entries, key=lambda each: each.created, reverse=True)[keep:]
     ]
     return sorted(older, key=lambda each: each.created)
 

@@ -1,8 +1,10 @@
 name: PR caches
 # A PR's runs save caches only that PR reads. Once it closes nothing reads them again, so they go
-# at once instead of holding room main's caches need until GitHub evicts them.
+# at once instead of holding room main's caches need until GitHub evicts them. It runs as
+# pull_request_target, from main's copy of this file: GitHub runs no pull_request workflow for a
+# PR with conflicts, and this reads nothing of the PR but its number.
 on:
-  pull_request:
+  pull_request_target:
     types: [closed]
 permissions:
   actions: write
@@ -10,8 +12,6 @@ concurrency:
   group: pr-caches-${{ github.event.pull_request.number }}
 jobs:
   delete:
-    # A fork's PR gets a token that can't delete; its caches age out on their own.
-    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -19,9 +19,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REF: refs/pull/${{ github.event.pull_request.number }}/merge
+        # Listed whole before any goes: a deletion shifts the later pages.
         run: |
-          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/caches?ref=$REF&per_page=100" \
-            --jq '.actions_caches[] | "\(.id)\t\(.key)"' |
+          listed=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/caches?ref=$REF&per_page=100" \
+            --jq '.actions_caches[] | "\(.id)\t\(.key)"')
+          [ -n "$listed" ] || exit 0
+          echo "$listed" |
             while IFS=$'\t' read -r id key; do
               # GitHub may have evicted it since it was listed.
               if gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" --silent; then

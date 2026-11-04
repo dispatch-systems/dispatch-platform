@@ -17,7 +17,7 @@ def entries(key: str, *days: int) -> list:
 
 
 class PruneTest(unittest.TestCase):
-    def test_deletes_only_what_two_newer_of_the_same_kind_replaced(self):
+    def test_deletes_only_what_newer_ones_of_the_same_kind_replaced(self):
         listed = [
             *entries("v0-rust-2026-W45-dispatch-release-Linux-x64-019b21e0-0000000{}", 1, 4, 2, 3),
             # Debug's entries are another kind: release's newer ones replace none of them.
@@ -30,7 +30,10 @@ class PruneTest(unittest.TestCase):
                 f"{'b' * 40}-4177{{}}-1",
                 1, 2, 3,
             ),
-            # No kind: the exact binaries and tools, Gradle's own, and whatever comes next.
+            # The tools keep ten, each kind and image apart.
+            *entries("dispatch-tools-Linux-X64-ubuntu24-{:02d}ee", *range(1, 12)),
+            *entries("dispatch-fixture-Linux-X64-ubuntu24-{:02d}ee", 1, 2),
+            # No kind: the exact binaries, Gradle's own, and whatever comes next.
             *entries("dispatch-rust-binary-Linux-X64-{}bb", 1, 2, 3),
             *entries("gradle-transforms-v2-{}cc", 1, 2, 3),
         ]
@@ -40,6 +43,7 @@ class PruneTest(unittest.TestCase):
             "dispatch-playwright-Linux-X64-1.61.0",
             "dispatch-node-modules-Linux-X64-1aa",
             f"codeql-overlay-base-database-1-58b1deea8a9e87c1-javascript-2.27.4-{'b' * 40}-41771-1",
+            "dispatch-tools-Linux-X64-ubuntu24-01ee",
             "v0-rust-2026-W45-dispatch-release-Linux-x64-019b21e0-00000002",
             "v0-rust-2026-W45-dispatch-debug-Linux-x64-019b21e0-00000005",
         ])

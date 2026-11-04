@@ -77,8 +77,10 @@ BrowserOS package and the installed packages, which every job restores through
 `.github/actions/setup-packages` instead of running `npm ci`. A run's own `tools` job builds
 what its inputs lack for the jobs that start later in that run. GitHub keeps 10 GB of caches
 and evicts the least recently used past that, so once `main`'s are saved, `caches.py prune`
-deletes those newer ones of the same kind replaced, keeping each kind's two newest, and
-`pr-caches.yml` deletes a PR's own when it closes. `tooling/cli/dispatchdev` runs a restored copy only on CI and only from the
+deletes those newer ones of the same kind replaced, and `pr-caches.yml` deletes a PR's own when
+it closes.
+
+`tooling/cli/dispatchdev` runs a restored copy only on CI and only from the
 workspace's own `.ci-tools` directory. Anywhere else it builds the binary once for each
 version of its source, beside the repository's shared Git data, for every worktree to reuse.
 

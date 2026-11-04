@@ -16,14 +16,16 @@ runs:
       with:
         node-version-file: .node-version
     # Installed with --ignore-scripts, the packages are the lockfile's files and nothing else, so
-    # a copy keyed by the lockfile and the Node version is what `npm ci` would write.
+    # a copy keyed by the lockfile and the Node version is what `npm ci` would write. The manifest
+    # is in the key too: `npm ci` refuses one the lockfile doesn't match, and a restored copy
+    # would hide that.
     - name: Restore the installed packages
       id: modules
       if: inputs.install == 'true'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       with:
         path: node_modules
-        key: dispatch-node-modules-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.node-version', 'package-lock.json') }}
+        key: dispatch-node-modules-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.node-version', 'package.json', 'package-lock.json') }}
     - name: Install the packages
       if: inputs.install == 'true' && steps.modules.outputs.cache-hit != 'true'
       shell: bash
