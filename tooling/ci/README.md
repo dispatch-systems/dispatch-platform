@@ -12,7 +12,7 @@ locally the whole suite in sequence:
 | browser ×6       | `browser <n>/6 [spec]`                     | The browser suite against the packaged runtime.                                           |
 | smoke            | `smoke`                                    | The package's manifest, build paths and budgets, and that it starts, signs in and serves. |
 | core-lint        | `core lint`                                | Rust formatting, lints and compile-only operator probes.                                  |
-| core             | `core tests`                               | The Rust tests.                                                                           |
+| core             | `core tests`                               | The Rust tests, through nextest (`nextest.py`), and the doctests.                         |
 | debug            |                                            | The debug backend and worker, built once for api and the collectors.                      |
 | api              | `api`                                      | The API tests, the Python tooling tests, the npm audit.                                   |
 | scaffold-lint    | `scaffold lint`                            | What every generator writes builds, lints and keeps the rules.                            |

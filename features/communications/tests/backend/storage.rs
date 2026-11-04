@@ -35,7 +35,7 @@ fn sent(ts: &str, at: i64) -> Sent<'_> {
 
 #[test]
 fn a_conversation_waits_from_the_members_first_unanswered_message_until_answered_or_done() {
-    testing::install(&[], &[&crate::FEATURE]);
+    crate::backend::support::install();
     let (_root, store, dsp) = testing::bootstrapped();
     let kept = store
         .keep_communications_message(&dsp, &written("100.000001", 100_000, "Flat tire"))
@@ -105,7 +105,7 @@ fn a_conversation_waits_from_the_members_first_unanswered_message_until_answered
 
 #[test]
 fn an_edit_keeps_only_the_latest_text() {
-    testing::install(&[], &[&crate::FEATURE]);
+    crate::backend::support::install();
     let (_root, store, dsp) = testing::bootstrapped();
     store
         .keep_communications_message(&dsp, &written("100.000001", 100_000, "Van 12 is out"))
