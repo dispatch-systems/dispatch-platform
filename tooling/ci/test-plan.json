@@ -24,14 +24,14 @@
     "cortex": [
       "collectors/cortex/tests/native/cortex-worker.test.ts",
       "collectors/cortex/tests/native/cortex-weekly-scorecard-worker.test.ts",
-      "collectors/cortex/tests/native/cortex-vans-worker.test.ts",
-      "features/live_route_data/tests/native/live-route-data-worker.test.ts"
+      "collectors/cortex/tests/native/cortex-vans-worker.test.ts"
     ],
     "cortex-meals": [
       "collectors/cortex/tests/native/cortex-meals-worker.test.ts",
       "collectors/cortex/tests/native/cortex-routes-worker.test.ts",
       "features/timecard/tests/native/meal-sync-worker.test.ts"
     ],
+    "live-route-data": ["features/live_route_data/tests/native/live-route-data-worker.test.ts"],
     "capacity": [
       "app/tests/native/multi-dsp-browser.test.ts",
       "app/tests/native/collection-throughput.test.ts"
