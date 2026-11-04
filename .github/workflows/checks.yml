@@ -223,10 +223,10 @@ jobs:
         if: always()
         run: rm -f "$RUNNER_TEMP/relay.p12"
   # Packages the runtime: the release backend and support worker, built together or from the
-  # exact-input cache when their sources are unchanged, and the dashboard from Vite, with the
-  # relay apps signed above, or in a release's run without a new Production app, the one the
-  # latest release carries. Everything that tests the runtime downloads this package instead of
-  # building again.
+  # exact-input cache when their sources are unchanged, on a PR whose sources aren't main's
+  # without LTO (setup-build), and the dashboard from Vite, with the relay apps signed above, or
+  # in a release's run without a new Production app, the one the latest release carries.
+  # Everything that tests the runtime downloads this package instead of building again.
   build:
     needs: [relay-dev, relay-production]
     # Once the relay apps are built, or skipped, as on a PR, where it starts at once.
@@ -251,6 +251,7 @@ jobs:
         with:
           profile: release
           save: 'false'
+          pull-request-lto: 'false'
       # The relay apps go by fixed names, each attempt replacing the last, not by job outputs:
       # GitHub drops an output that holds a secret's value, and the relay environments hold
       # secrets that match words of these names.

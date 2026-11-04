@@ -21,6 +21,12 @@ inputs:
   reuse-binary:
     description: Restore the exact binaries instead of compiling them.
     default: 'true'
+  pull-request-lto:
+    description: >-
+      On a pull request, compile a release build without main's exact binaries with link-time
+      optimisation, as main and releases do. 'false' compiles it without, from the dependency
+      cache main's caches workflow keeps for that: for a job whose release build is only tested.
+    default: 'true'
 outputs:
   binary-key:
     description: Exact Rust input key for the profile's backend and support worker.
@@ -59,10 +65,27 @@ runs:
       with:
         path: .ci-rust-cache/
         key: dispatch-rust-binary-${{ inputs.profile }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.binary-key.outputs.key }}
+    # Thin LTO optimises the backend across every crate as one, the longest part of its compile
+    # by far. A PR's build only feeds its own tests, which main's run of the merged commit
+    # repeats on the optimised build Dev installs, so it compiles without, from the dependency
+    # cache built the same way: LTO changes how every dependency compiles. The binaries' key
+    # reads the setting, so they are never taken for main's.
+    - name: Compile a pull request's release build without LTO
+      id: no-lto
+      if: >-
+        inputs.profile == 'release' && inputs.pull-request-lto == 'false' &&
+        github.event_name == 'pull_request' && steps.binary-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        export CARGO_PROFILE_RELEASE_LTO=false
+        echo "CARGO_PROFILE_RELEASE_LTO=false" >> "$GITHUB_ENV"
+        key=$(tooling/cli/dispatchdev build --release --cache-key | sed -n 's/^key=//p')
+        test -n "$key"
+        echo "DISPATCH_CI_RUST_KEY=$key" >> "$GITHUB_ENV"
     - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
       if: steps.binary-cache.outputs.cache-hit != 'true' || inputs.dependencies == 'true'
       with:
         prefix-key: ${{ env.DISPATCH_RUST_CACHE }}
-        shared-key: dispatch-${{ inputs.profile }}
+        shared-key: dispatch-${{ steps.no-lto.outcome == 'success' && 'nolto' || inputs.profile }}
         cache-bin: 'false'
         save-if: ${{ inputs.save == 'true' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
