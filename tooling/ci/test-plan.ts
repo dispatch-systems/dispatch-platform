@@ -23,8 +23,8 @@ export function allTests(roots = testRoots) {
 }
 /**
  * Dashboard logic: every owner's `tests/frontend/`, and the rule about the dashboard's
- * structure. The checks job runs these against the packaged build, by file name, so a new
- * feature's frontend tests run without a list to add them to.
+ * structure. The checks job runs these by file name, so a new feature's frontend tests run
+ * without a list to add them to.
  */
 export const dashboardTests = allTests()
   .filter(

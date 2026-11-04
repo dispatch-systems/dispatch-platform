@@ -8,9 +8,9 @@ locally the whole suite in sequence:
 | Job              | `npm run check:ci -- …`                    | What it proves                                                                            |
 | ---------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------- |
 | build            | `build`                                    | The runtime packages: the release backend and worker, and the dashboard.                  |
-| checks           | `checks`                                   | Source privacy/secrets, types, formatting, the linter, bundle budget and dashboard logic. |
+| checks           | `checks`                                   | Source privacy/secrets, types, formatting, the linter and dashboard logic.                |
 | browser ×6       | `browser <n>/6 [spec]`                     | The browser suite against the packaged runtime.                                           |
-| smoke            | `smoke`                                    | The package starts, signs in and serves, as a release asks.                               |
+| smoke            | `smoke`                                    | The package's manifest, build paths and budgets, and that it starts, signs in and serves. |
 | core             | `core`                                     | Rust formatting, lints, default tests and compile-only operator probes.                   |
 | api              | `api`                                      | The API tests, the Python tooling tests, the npm audit.                                   |
 | scaffold         | `scaffold`                                 | What every generator writes builds, lints, keeps the rules and passes its Rust tests.     |
@@ -26,9 +26,10 @@ package carries the run's own commit and a complete inventory (`ci-verify.py`, w
 installs `main`'s, which carries Dev's app. A release dispatches its own run on a temporary branch
 at its commit, which builds or carries Production's app beside Dev's, and stamps its version into
 that run's package ([Android apps](../../android/README.md#releases)). Once `main`'s push run of
-the commit passed, the release names it (`tested-run`), and its run skips core, api, collectors,
-scaffold and browser, the suites that tested the source there; the gate accepts them skipped only
-once GitHub answers that the named run is `main`'s passed push run of the same commit.
+the commit passed, the release names it (`tested-run`), and its run skips checks, core, api,
+collectors, scaffold and browser, the suites that tested the source there, and keeps build and
+smoke, which test its own package; the gate accepts them skipped only once GitHub answers that the
+named run is `main`'s passed push run of the same commit.
 
 A PR's newer push cancels its older run; each commit of `main` keeps its own. A failure that
 isn't the change's own gets its failed jobs run again: `gh run rerun <id> --failed`.

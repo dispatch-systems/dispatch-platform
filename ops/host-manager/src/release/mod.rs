@@ -29,12 +29,13 @@ use std::{
 };
 
 const HELP: &str = "Dispatch release [publish|status|backup|dry-run] [X.Y.Z] --root CHECKOUT
-  publish   Release main's head: run its own full checks, which build or carry its
-            Production relay app, require Dev serving the commit, publish the release once
-            Production can take it, verify Production installs it and report what its log
-            shows (the default). A release that brings migrations publishes only after a
-            backup made for it in the last six hours, and once a copy of that backup starts
-            under the release's backend on Production.
+  publish   Release main's head: run its own checks, which build or carry its Production
+            relay app and reuse the tests main's checks passed for the commit, require Dev
+            serving the commit, publish the release once Production can take it, verify
+            Production installs it and report what its log shows (the default). A release
+            that brings migrations publishes only after a backup made for it in the last six
+            hours, and once a copy of that backup starts under the release's backend on
+            Production.
             --backup takes that backup when it's missing, as backup does, once Production
             passes its checks, then publishes. It stops Production for about a second, so pass
             it only with the owner's approval.
