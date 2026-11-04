@@ -558,6 +558,7 @@ fn a_newer_releases_schedule_and_job_wait_untouched_for_it() {
 /// attempt counted it: an earlier run, or a later one that failed, counts for nothing.
 #[test]
 fn a_collection_counts_what_its_latest_successful_run_brought() {
+    crate::install();
     let (_root, db, id) = setup();
     let counts = || {
         db.scheduled_collection(&id, Scheduled::named("paycom").unwrap(), false)
