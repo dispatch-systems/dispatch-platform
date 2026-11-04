@@ -42,6 +42,15 @@ fn hex_accepts_only_lowercase_digits_of_the_exact_length() {
 }
 
 #[test]
+fn a_program_that_cannot_start_is_named() {
+    let error = Native
+        .command(&["dispatch-missing-program"], None, 1)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("dispatch-missing-program"), "{error}");
+}
+
+#[test]
 fn native_runner_bounds_output_timeout_and_honors_cwd() {
     let temp = tempfile::tempdir().unwrap();
     let bytes = Native.command(&["pwd"], Some(temp.path()), 1).unwrap();

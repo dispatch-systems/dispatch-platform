@@ -79,7 +79,7 @@ fn execute(
             {
                 std::thread::sleep(Duration::from_millis(10));
             }
-            Err(error) => return Err(error.into()),
+            Err(error) => return Err(format!("Cannot run {}: {error}", args[0]).into()),
         }
     };
     let status = loop {

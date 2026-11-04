@@ -12,6 +12,7 @@ struct Fake {
     stale: Cell<bool>,
     wrong_origin: Cell<bool>,
     tracked_private: Cell<bool>,
+    no_gh: Cell<bool>,
 }
 impl System for Fake {
     fn command(
@@ -64,6 +65,10 @@ impl System for Fake {
     }
     fn request(&self, _url: &str, _head: bool, _follow: bool, _timeout: u64) -> Result<Response> {
         panic!("Setup must not contact services")
+    }
+    fn executable(&self, path: &Path) -> bool {
+        assert_eq!(path, Path::new(GH));
+        !self.no_gh.get()
     }
     fn bootstrap(
         &self,
@@ -285,6 +290,18 @@ fn invalid_origin_owner_sandbox_and_existing_state_cannot_bootstrap() {
             );
         }
     }
+}
+#[test]
+fn production_setup_without_the_updaters_gh_says_how_to_install_it_and_changes_nothing() {
+    let f = Fixture::new(true);
+    f.system.no_gh.set(true);
+    let error = initialize(&f.options, &f.system).unwrap_err().to_string();
+    assert!(
+        error.contains(r#"sudo install -m 0755 "$(command -v gh)" /usr/local/bin/gh"#),
+        "{error}"
+    );
+    assert!(!f.options.root.join(".runtime").exists());
+    assert_eq!(f.system.bootstraps.get(), 0);
 }
 #[test]
 fn dev_setup_requires_clean_current_source_and_verified_runtime() {

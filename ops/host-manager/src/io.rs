@@ -13,8 +13,8 @@ pub struct Response {
     pub location: Option<String>,
     pub body: Box<dyn Read>,
 }
-/// The only host effects. Tests supply services/network/time while retaining real
-/// directories, archives, process entry points, receipts and advisory locks.
+/// The only host effects. Tests supply services/network/time and the host's tools while
+/// retaining real directories, archives, process entry points, receipts and advisory locks.
 pub trait System {
     fn command(
         &self,
@@ -33,6 +33,12 @@ pub trait System {
         Err("Bootstrap execution unavailable".into())
     }
     fn request(&self, url: &str, head: bool, follow: bool, timeout: u64) -> Result<Response>;
+    /// Whether this process can run the program at `path`.
+    fn executable(&self, path: &Path) -> bool {
+        path.is_file()
+            && std::ffi::CString::new(path.as_os_str().as_encoded_bytes())
+                .is_ok_and(|path| unsafe { libc::access(path.as_ptr(), libc::X_OK) } == 0)
+    }
     fn now(&self) -> f64 {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
