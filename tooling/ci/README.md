@@ -102,8 +102,11 @@ what its inputs lack for the jobs that start later in that run. GitHub keeps 10 
 and evicts the least recently used past that, so once `main`'s are saved, `caches.py prune`
 deletes those newer ones of the same kind replaced and nothing read for a day, CodeQL's
 whatever their last read, since only `main`'s analyses write them and nothing reads them, and
-closed PRs' caches; `pr-caches.yml` deletes a PR's own as soon as it closes. A build job that compiled keeps
-Cargo's `--timings` report of where the compile spent its time as an artifact.
+closed PRs' caches; `pr-caches.yml` deletes a PR's own as soon as it closes. A build job that
+compiled keeps Cargo's `--timings` report of where the compile spent its time as an artifact. The
+scaffold jobs compile a copy of the checkout, whose crates Cargo can't keep between runs, through
+sccache (`.github/actions/setup-sccache`): `tooling/build/rustc-remap.py` compiles through it
+whenever it is on PATH, and main's run saves its cache, one entry a job.
 
 `tooling/cli/dispatchdev` runs a restored copy only on CI and only from the
 workspace's own `.ci-tools` directory. Anywhere else it builds the binary once for each
