@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type {
   CommunicationsWorkspace,
   Conversation,
@@ -25,16 +25,20 @@ import { PartyFace, partyOf } from './party.js';
 import { Profile } from './Profile.js';
 import type { Target } from './target.js';
 import { Thread } from './Thread.js';
+import { TypingLine } from './TypingLine.js';
+import { useReplied } from './replied.js';
 import type { ConversationReads } from './reads.js';
 import type { Drafts } from './drafts.js';
 import { useConversation } from './useConversation.js';
 
 // The conversation open: who it's with, the workspace it's in while there are several, the number
 // it texts, or a driver's route today and the work phone they hold, and, while it waits, how long
-// and Done; what can be done with its number, or with a work phone nobody held, Pick driver; their
-// conversations of other kinds, as chips; its messages; and writing in it, by text through the
-// DSP's phones, or for a driver holding no work phone, their other conversations instead. On a
-// phone it takes the page, with a way back to the list. In Slack, or a driver's, who it's with, or
+// and Done, else Next waiting; what can be done with its number, or with a work phone nobody held,
+// Pick driver; their conversations of other kinds, as chips; its messages; and writing in it, by
+// text through the DSP's phones, or for a driver holding no work phone, their other conversations
+// instead; above the box, who else at the DSP is writing in it, and before sending, whether one of
+// them replied since the member started writing. On a phone it takes the page, with a way back to
+// the list. In Slack, or a driver's, who it's with, or
 // their photo by their messages, opens their profile over it, or beside it on a wide page
 // (`docked`).
 
@@ -50,6 +54,7 @@ export function ConversationPane({
   seen,
   reads,
   typing,
+  me,
   timeZone,
   now,
   show,
@@ -58,6 +63,7 @@ export function ConversationPane({
   openGroup,
   todays,
   open,
+  next,
 }: {
   id: string;
   /** The conversation as the list has it, which the page's own writes and each update keep. */
@@ -79,6 +85,8 @@ export function ConversationPane({
   /** The conversations the page has read, which it shows from as it opens. */
   reads: ConversationReads;
   typing: readonly Writing[];
+  /** The member's own account, whose messages are no teammate's reply. */
+  me: string;
   timeZone: string;
   now: number;
   /** Shows the conversation in the list as the page's own writes left it. */
@@ -93,6 +101,8 @@ export function ConversationPane({
   todays?: TodaysRead;
   /** Opens another conversation, as whom it's with's of another kind, or starts it. */
   open: (target: Target) => void;
+  /** Next waiting: opens the one waiting longest of the section shown, while another waits. */
+  next?: () => void;
 }) {
   const {
     opened,
@@ -161,6 +171,16 @@ export function ConversationPane({
     if (conversation) read.show(conversation, await retryText(id, failed.id));
   });
   const writing = typing.filter((writer) => writer.conversationId === id);
+  // Its latest read's messages, and its last as the latest update brings it, which may be newer:
+  // never older ones read since, which are no teammate's reply.
+  const last = conversation?.last;
+  const known = useMemo(
+    () => opened && (last ? [...opened.lastRead, last] : opened.lastRead),
+    [opened, last],
+  );
+  const replied = useReplied(known, me);
+  // Asked to show a teammate's reply, the thread goes to its latest.
+  const [latest, setLatest] = useState(0);
   const person = conversation?.with;
   const about: ReactNode = shown && party?.about(shown);
   // The profile, and what opened it, which focus goes back to as it closes: the photo by the
@@ -185,6 +205,7 @@ export function ConversationPane({
         opens={opens}
         back={back}
         done={{ busy: done.busy, run: () => void done.run() }}
+        next={next}
         actions={shown && party?.actions?.(shown)}
       />
       <ElsewhereChips elsewhere={elsewhere} current={id} go={go} />
@@ -213,7 +234,7 @@ export function ConversationPane({
           more={opened.more}
           readOlder={readOlder}
           olderFailed={olderFailed}
-          writing={writing}
+          latest={latest}
           timeZone={timeZone}
           now={now}
           profile={profiled?.fromPhoto ? opens : undefined}
@@ -236,6 +257,12 @@ export function ConversationPane({
           to={about && number ? lastFour(number) : undefined}
           send={async (text, photos) => sent(await sendMessage(id, text, photos))}
           typing={() => void sayTyping(id).catch(() => undefined)}
+          above={<TypingLine writing={writing} />}
+          replied={{
+            check: replied.check,
+            seen: replied.seen,
+            show: () => setLatest((shown) => shown + 1),
+          }}
         />
       )}
     </section>

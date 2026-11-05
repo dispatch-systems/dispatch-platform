@@ -20,7 +20,7 @@ import { prefetchRouteData } from '../../../../core/shell/frontend/runtime/route
 import { settingsPage } from '../../../../core/shell/frontend/runtime/slots.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { dockAt, pageLook, Shown, useDisplay } from '../display/display.js';
-import { rows, waitingIn, type Row } from '../inbox/inbox.js';
+import { nextWaiting, rows, waitingIn, type Row } from '../inbox/inbox.js';
 import {
   groupsSection,
   lists,
@@ -50,6 +50,7 @@ import { useInbox } from '../inbox/useInbox.js';
 import { useLayout } from './useLayout.js';
 import { useNow } from './useNow.js';
 import { useRemembered } from './useRemembered.js';
+import { useShortcuts } from './useShortcuts.js';
 import { useTodaysRoutes } from '../todays-routes/useTodaysRoutes.js';
 import { ViewToggle, type RoutesView } from '../todays-routes/ViewToggle.js';
 
@@ -68,8 +69,9 @@ import { ViewToggle, type RoutesView } from '../todays-routes/ViewToggle.js';
 // kept in the address (`?open=`, `?group=`): a link to one opens it, in its section, the page open
 // or not; one pane at a time, one opened from the list is a step of the browser's history, so Back
 // goes back to the list. What's written in each and not sent is kept while the page is open, and
-// in the browser's tab (`drafts`). It looks as the member chose in Settings' Message display, which
-// Display opens.
+// in the browser's tab (`drafts`). Once what's open is answered, Next waiting opens the one waiting
+// longest of the section shown; and on a desktop, keys move about it (`useShortcuts`). It looks as
+// the member chose in Settings' Message display, which Display opens.
 
 /** What the pane shows: a conversation or a group, by its ID, or a message being written to a
  * group. */
@@ -246,6 +248,13 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
     }, cacheLimits.preloadDelayMs);
     return () => clearTimeout(later);
   }, [reads, waitingFirst, changed]);
+  // Once what's open is answered, Next waiting opens the one waiting longest of those shown.
+  const waitingNext = nextWaiting(shownRows, open ?? group);
+  const next =
+    waitingNext &&
+    (() =>
+      waitingNext.kind === 'group' ? openGroup(waitingNext.row.id) : select(waitingNext.row.id));
+  useShortcuts(page, layout !== undefined && layout !== 'phone');
   // While Slack shows: each update brings the workspaces as they are, so it goes once Slack is
   // updated.
   const updating =
@@ -459,6 +468,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
                   show={showGroup}
                   back={closed}
                   closed={closed}
+                  next={next}
                   reply={(entry) => {
                     if (entry.conversationId) select(entry.conversationId);
                   }}
@@ -481,6 +491,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
                   seen={seen}
                   reads={reads}
                   typing={inbox.typing.writing}
+                  me={user}
                   timeZone={timeZone}
                   now={now}
                   show={show}
@@ -489,6 +500,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
                   openGroup={openGroup}
                   todays={todays.read}
                   open={go}
+                  next={next}
                 />
               ) : (
                 <section className="pane-thread" aria-label="Conversation" />

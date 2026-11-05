@@ -50,9 +50,11 @@ pub(super) async fn file_out(state: Arc<State>, input: Input, access: Phone) -> 
         .await?;
     let file = file.ok_or_else(|| Error::new("phones_file_not_found", 404))?;
     let sha256 = file
+        .file
         .sha256
+        .as_deref()
         .ok_or_else(|| Error::new("phones_file_not_found", 404))?;
-    let reply = files::answer(&state, &dsp, &sha256, &file.file.name, &file.file.mime).await?;
+    let reply = files::answer(&state, &dsp, sha256, &file.file.name, &file.file.mime).await?;
     let asked = input.clone();
     state.read(move |db| access.authorize(db, &asked)).await?;
     Ok(reply)

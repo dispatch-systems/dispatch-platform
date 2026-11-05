@@ -137,13 +137,17 @@ impl Stopped {
         if LiveDay::read(db, dsp)?.is_some() {
             return Ok(None);
         }
-        let Some((_, day)) = after_stop(db, dsp, at)? else {
-            return Ok(None);
-        };
+        match after_stop(db, dsp, at)? {
+            Some((_, day)) => Self::of(db, dsp, &day.to_string()),
+            None => Ok(None),
+        }
+    }
+    /// `day`, as stopped, while Routes is on for the DSP.
+    fn of(db: &Store, dsp: &str, day: &str) -> Result<Option<Self>> {
         Ok(routes::for_dsp(db, dsp)?.map(|reader| Self {
             reader,
             source: reader.source().as_str().to_owned(),
-            day: day.to_string(),
+            day: day.to_owned(),
         }))
     }
     /// The work phone each driver had at the stop, by their ID, as `LiveDay::phones` has them that
@@ -303,13 +307,23 @@ pub fn watched(db: &Store, dsp: &str, at: i64) -> Result<Option<Watched>> {
     })
 }
 /// Keeps what `watched` found; once the two hours after a stop pass, notes changed the work
-/// conversations that waited, so the pages waiting on changes hear they don't.
+/// conversations waiting, and the drivers' who had a work phone at the stop, so the pages waiting
+/// on changes hear they don't wait, nor have it, any more.
 pub fn keep(db: &Store, dsp: &str, watched: &Watched) -> Result<()> {
     match watched {
         Watched::Live(day) => db.live_communications_day(dsp, day),
         Watched::Ended { day, at } => db.ended_communications_day(dsp, day, *at),
         Watched::Over { day, from } => db.dsp(dsp)?.transaction(|| {
-            db.changed_communications_work(dsp, *from)?;
+            db.changed_communications_waiting(dsp, *from)?;
+            let held: Vec<(String, String)> = match Stopped::of(db, dsp, day)? {
+                Some(stopped) => (stopped.phones(db, dsp)?.into_keys())
+                    .map(|driver| (stopped.source.clone(), driver))
+                    .collect(),
+                None => Vec::new(),
+            };
+            if !held.is_empty() {
+                db.changed_communications_drivers(dsp, Some(&held))?;
+            }
             db.over_communications_day(dsp, day)
         }),
     }

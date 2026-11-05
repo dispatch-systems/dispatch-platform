@@ -67,14 +67,7 @@
 .communications button.round:hover:not(:disabled) {
   background: var(--accent);
 }
-.communications button.round.send {
-  background: var(--primary);
-  color: var(--primary-foreground);
-}
-.communications button.round.send:disabled {
-  opacity: 0.4;
-}
-/* Sending to a group, as how many it goes to. */
+/* Sending, by its word, or to a group, as how many it goes to. */
 .communications button.send-to {
   gap: 6px;
   flex-shrink: 0;
@@ -95,6 +88,28 @@
 }
 .communications button.send-to:disabled {
   opacity: 0.4;
+}
+/* A teammate's reply since the member started writing, asked about before sending. */
+.composer .replied {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 8px 8px 8px 14px;
+  border-radius: calc(var(--radius) + 4px);
+  background: var(--warning-surface);
+  font-size: var(--ui-size);
+}
+.composer .replied strong {
+  flex: 1;
+  min-width: max-content;
+  color: var(--warning);
+  font-weight: 650;
+}
+.composer .replied button {
+  min-height: calc(var(--field-height) - 4px);
+  font-size: var(--ui-size);
 }
 .composer .adding {
   display: flex;
@@ -144,19 +159,23 @@
   .composer {
     padding: 8px 10px 10px;
   }
-  /* A message to a group gets the box's width, with attaching and sending under it. */
-  .composer .box.writing {
+  /* A message to a group, or a box with Quick replies by its word, gets the box's width, with
+     attaching and sending under it. */
+  .composer .box.writing,
+  .composer .box:has(.quick-replies) {
     flex-wrap: wrap;
     align-items: center;
     padding: 8px;
     border-radius: 22px;
   }
-  .composer .box.writing textarea {
+  .composer .box.writing textarea,
+  .composer .box:has(.quick-replies) textarea {
     order: -1;
     flex-basis: 100%;
     padding: 2px 8px 6px;
   }
-  .composer .box.writing .send-to {
+  .composer .box.writing .send-to,
+  .composer .box:has(.quick-replies) .send-to {
     margin-left: auto;
   }
 }

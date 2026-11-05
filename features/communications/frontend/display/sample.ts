@@ -56,6 +56,7 @@ export function sample(now: number) {
     files: [],
     group: null,
     status: null,
+    error: null,
     number: null,
     moved: false,
   });

@@ -51,6 +51,14 @@ and every other number's in Recents.
   them, under New messages: `sound`, on to start, and `notifications`, off, which turning on asks
   the browser for, staying off if it refuses, and which shows on only in a browser that has
   allowed it; left out where the browser can't show one, as a phone's.
+  And `communications.quick_replies` (Quick replies), the DSP's, under `communications.use`, so
+  anyone who uses Communications edits them, on Communications' own page under Features: drawn by
+  its own component, `frontend/replies/`, as a list of texts is none of Settings' kinds of value.
+  Up to 30 short replies, each up to 500 characters, in their order, each in a box of its own with
+  Remove, Add reply under them, and Save, which leaves out the empty ones; before the page moves
+  on with them unsaved it asks "Save changes?", Save or Discard, and closing the tab drops them
+  silently; a save over another session's since is refused
+  (`settings_changed_reload_before_saving`) and the list read again.
 - **On every page:** `communications.alerts`, a watcher (`frontend/alerts/`), for those with
   `communications.use`, alerting them to new messages ([New messages](#new-messages)), and to the
   DSP's phones as each goes down; and `communications.phones`, a watcher drawing a banner atop
@@ -89,9 +97,10 @@ and every other number's in Recents.
   reads as every one once the workspace is no longer one of two or more where it works. Then
   Search, and Messages or Contacts, whichever Search searches, by a name, misspelt or not,
   marking the letters that matched.
-- **Messages:** Waiting, the longest waiting first, each with how long it has, amber from 15
-  minutes and red from 30, and a check, shown as it's pointed at or reached by the keyboard
-  beside the conversation, that marks it done without a reply; then Responded, the latest
+- **Messages:** Waiting, the longest waiting first, each with how long it has in plain words, "31
+  min", "2 hr", "3 days" (read aloud in full, "Waiting 31 minutes"), amber from 15 minutes and red
+  from 30, and beside it a check, Done named for whom it's with, that marks it done without a
+  reply; then Responded, the latest
   first; older ones read as the list is scrolled to its end, and once a read of them failed, as
   Try again is pressed. Each shows who it's with, by their
   photo, when they last wrote, and what was written last, under the first name of whoever at the
@@ -104,15 +113,28 @@ and every other number's in Recents.
   and role, and with every workspace shown, the one they're in; how long they've waited, or
   when they last wrote. Each opens their conversation, or starts one, as New message does.
 - **A conversation:** who it's with, the workspace it's in while there are several, and, while
-  it waits, how long and Done; its messages under the day each was written, the member's beside
+  it waits, how long, "Waiting 31 min", and Done, by its word on a phone too; once it's answered,
+  by Done or a send, **Next waiting**, while another of the section shown waits, which opens the
+  one waiting longest, a group's too, never by itself; its messages under the day each was written, the member's beside
   their photo, the DSP's under the name and photo of whoever sent them, each edited in Slack
   marked Edited, a reply in one of its threads in its place among them, photos shown and other
   files to download, or why one isn't kept; older ones read as it's scrolled to its start, and
-  once a read of them failed, as Try again is pressed; and those at the DSP writing in it now. A
-  read that failed says why, with Try again. Writing in it: text, with photos attached (the
-  paperclip), as much as one message carries as the conversation's read says (`limits`), which
-  what's refused says too, and nothing until it's read; Enter to send; while writing, teammates
-  see it. What's written and not sent is kept, each conversation's and each group's, while the
+  once a read of them failed, as Try again is pressed. A read that failed says why, with Try
+  again. Right above its box, however its messages are scrolled, who else at the DSP is writing
+  in it, "Keisha is typing…", said to a screen reader as it changes. Writing in it: text, with
+  photos added (Add photo), as much as one message carries as the conversation's read says
+  (`limits`), which what's refused says too, and nothing until it's read; **Quick replies**,
+  beside the smiley while the DSP has some, on a phone under the field with attaching and Send,
+  opens them, and the one chosen goes in where the writer was, as an emoji does, never sent by
+  itself, in a group's box too; Enter or **Send** to send; while writing, teammates see it. Where a teammate, or the phone itself, wrote in it since
+  the member started writing, since it opened with what they'd written, or since they last
+  answered this, Send asks first, above the box: "Keisha just replied", with **Send anyway** and
+  **Cancel**, which keeps what's written and shows the reply. It's told from what the page holds,
+  the latest read's messages and the last each update brings, never older ones read since, by
+  which were held, not when each was written; a reply once held counts until the member answers
+  it or starts a new draft, as an empty box gains text or a photo, which also puts the question
+  away (`frontend/conversations/replied.ts`).
+  What's written and not sent is kept, each conversation's and each group's, while the
   page is open and in the browser's tab for each member at each DSP, so it's there again as it
   opens again, after a reload too (`frontend/conversations/drafts.ts`); the photos go as it
   closes. Sent, what was written and photos added while it went stay, and the conversation shows
@@ -137,6 +159,11 @@ and every other number's in Recents.
 - **New message** finds whom to write to by name, misspelt or not, and opens their
   conversation, or opens a direct message with them, kept at the top of the list until it holds
   a message. With nothing typed, Message a group comes first.
+- **Keys,** on a desktop, but while a field is written in, or with Ctrl, Alt or ⌘ held: J and K
+  open the next and the previous row of the list, or its first with none open; N presses Next
+  waiting and E Done, in the head of what's open, each naming its key (`aria-keyshortcuts`, and
+  its title); / goes to Search; and Escape leaves the field written in. Keys pressed in a dialog
+  are its own (`frontend/shared/shortcuts.ts`, `frontend/page/useShortcuts.ts`).
 - **Display** opens the member's own Message display in Settings, which the page looks as, with
   either section.
 - **Copy chat link** copies the address that opens the app's Messages tab in a workspace where
@@ -167,10 +194,11 @@ next day's drivers fill it as its live reads start.
 - **The list:** the drivers by name, A to Z, waiting or not; then the work phones nobody had (No
   driver), the latest written in first. Each row as a conversation's in the other sections, and
   under it the driver's route code, the work phone they have now by its last four digits, a bar
-  of the stops done, `98/168`, in the colour of its pace, and its pace but on time: Behind, At
-  risk (Amazon's `BEHIND`, `AT_RISK`), or Done, every stop of it. A driver without a conversation
+  of the stops done, `98/168` (read aloud "98 of 168 stops", as the board and the profile show
+  it), in the colour of its pace, and its pace but on time: Behind, At risk (Amazon's `BEHIND`,
+  `AT_RISK`), or Done, every stop of it. A driver without a conversation
   yet opens one, to text them first.
-- **The board:** beside Search, the list or the board, remembered in the browser for each member
+- **The board:** beside Search, List or Board, each by its word, remembered in the browser for each member
   at each DSP, and not offered one pane at a time: the same groups as a table across the page,
   each driver a line of route, wave, van, work phone, stops and pace, and the last text with how
   long it has waited or when. It shows while nothing is open: one chosen there, or opened by a
@@ -183,7 +211,10 @@ next day's drivers fill it as its live reads start.
   work conversation, and as the page comes back into view or the browser back online, a read that
   failed tried again, as the dashboard's reads are. Until a read answers, loading, or offline or
   paused, as the dashboard's pages say it, never No routes; a read that fails says why in Today's
-  Routes, the list or the board, and nowhere else.
+  Routes, the list or the board, and nowhere else. A driver's work conversation open shows only
+  with one of the two (opening it shows Today's Routes, unless Recents shows; choosing another
+  section closes it), so its route, van, stops and pace follow this read, as an update changes
+  it only as their work phone does.
 - **A driver's conversation:** under its head, their route code, van and the work phone they have
   now, and how long it has waited; chips to their conversation of each kind, Work (by the work
   phone they have), Personal (by their own number) and Slack, each marked with a dot while it
@@ -243,14 +274,15 @@ from people who may or may not work for the DSP.
   characters, shared by everyone at the DSP. A driver picked or a name changed is never left
   unsaved without Save changes? asking to save or discard it, and Escape closes it with focus
   back on its button. Its menu: **Remove from** whoever the number was added to, **Copy
-  number** and **Block** or **Unblock**. A number blocked leaves Messages and the counts, and
+  number** and **Block**, once asked "Block (425) 555-0199?", or **Unblock**. A number blocked leaves Messages and the counts, and
   what it sends while blocked never makes it wait, then or once unblocked; its texts are still
   kept. Its texts as Slack's messages show, the other party's by their face or a phone; the DSP's
   under who wrote each, or the phone's name and mark for one sent from the phone's own messaging
   app; each picture shown, as the phone keeps it (PNG, JPEG, GIF, WebP or AVIF; an iPhone's HEIF
   photo as the JPEG the phone's app makes of it), any other file a download. Under a text the DSP sent, the last of a run or
-  one that failed: Sending, Sent, Delivered, or Not sent with **Retry**, but in a conversation it
-  moved to.
+  one that failed: Sending, Sent, Delivered, or Not sent with why, where it's known, and
+  **Retry**, but in a conversation it moved to: Phone offline (`phones_offline`, or the phone's
+  `expired`), Phone removed (`phones_removed`), or the phone's own words, as "No service".
 - **Writing:** text, with pictures (PNG, JPEG or GIF, by their stated type), as much as one text
   carries (`compose::TEXT`, as the phones hold one to: 10,000 characters and ten pictures of up
   to 20 MB each), Enter to send, the number's last four digits beside it while the
@@ -292,7 +324,10 @@ decides ([Texts](#texts)).
   DSP's address from the QR code (`dispatch-phone:pair?site=<address>&code=<code>`) and trades
   it, with its own number, model and the app's version, for a key: 32 random bytes in
   hexadecimal, of which only the SHA-256 is kept. The first phone is named Dispatch, the next
-  Phone 2 and so on, until renamed.
+  Phone 2 and so on, until renamed. A code tried is told right or wrong by a read, so a wrong one
+  never takes the write lock, and counts against the address it came from and the DSP, in the
+  server's memory for ten minutes: past ten from an address, or a hundred at a DSP from every
+  address, each is refused `rate_limited`, a right code too, until they're older.
 - **How it stands:** each phone says it with each wait on its outbox ([its
   protocol](api/phone/README.md#how-the-phone-stands-with-each-wait)): its Set up steps undone,
   whether it may read and send texts, its default texting app, its SIM, what waits on it to go, picture messages not
@@ -320,7 +355,8 @@ decides ([Texts](#texts)).
   page's), reports the texts it receives and sends from its own messaging app, each kept once by
   its own ID of it, sends their pictures' bytes, fetches those of Dispatch's, and says how each
   attempt at Dispatch's went. Waiting on the outbox and reporting texts or statuses count as
-  checking in; a file's bytes, either way, don't. Each call, with every payload, unit and limit,
+  checking in, noted at most every thirty seconds (`SEEN_MS`), as bookkeeping no cached read
+  depends on; a file's bytes, either way, don't. Each call, with every payload, unit and limit,
   is in the [protocol reference](api/phone/README.md) beside the code.
 - **The app:** DSP Dispatch: Relay, which the DSP's address hands out (`phone::app`), as the
   build packed it: CI's signed builds, named in `relay.json` beside their APKs in the runtime's
@@ -358,10 +394,10 @@ queues a text for a phone.
   once both are committed. A text that can't be placed as it comes, as reading where it belongs
   failed, is kept all the same, waiting to be filed (no conversation yet, and since when it
   couldn't be placed, logged as `communications_texts_failed` with its DSP and text), and every
-  minute's upkeep places those waiting, oldest first, each on its own; one still waiting ten
-  minutes after it first couldn't be is placed under its number, as on a day Routes can't read,
-  and its day noted to be filed again (below), which moves it where it belongs once Routes can
-  say. Where it's placed:
+  minute's upkeep places those waiting, oldest first, each on its own, writing only while one
+  waits; one still waiting ten minutes after it first couldn't be is placed under its number, as
+  on a day Routes can't read, and its day noted to be filed again (below), which moves it where it
+  belongs once Routes can say. Where it's placed:
   - **A work phone's**, a driver's: a number `+1` and ten digits, as Routes' work phones are, is
     filed by the day it was written, where the DSP is, under the driver whose latest work phone
     it is that day, by their ID of the source naming the drivers, as Routes reads the day
@@ -391,8 +427,8 @@ queues a text for a phone.
   that a restart cuts short, is filed again by every minute's upkeep, the earliest four noted
   first, each on its own, while Routes is on, until each is done. Today's are filed again every
   minute too, so a change nothing heard, as while Communications was off, is repaired by the next
-  pass, a failure logged with its day; an earlier day's only as Routes says it changed, or as it's
-  noted.
+  pass, which writes only once one belongs elsewhere, a failure logged with its day; an earlier
+  day's only as Routes says it changed, or as it's noted.
 - **Waiting:** as a Slack conversation's: a text in after the latest text out that didn't fail,
   and not covered by a Done. Done marks each text in it covers, those up to the latest the page
   showed, which stays handled wherever it's filed again, never handling a text it didn't cover. A
@@ -405,9 +441,12 @@ queues a text for a phone.
   Communications first saw it (`communications_live_days`), as it hears today's route data change
   or by the next minute's upkeep, never after the day itself ended, as for a day a stop never
   saved. Each time today's route data changes, the work conversations waiting by their texts are
-  noted changed, so the pages waiting on changes hear the day begin or end, and so is every
-  driver's, so one open hears their work phone change, or none shown any more; and so are they
-  as the two hours after the stop pass, so the pages hear them stop waiting.
+  noted changed as the live day began or ended, so the pages waiting on changes hear it, and each
+  driver's whose work phone changed since the server last heard (`LiveDay::phones`), so one open
+  hears it, or none shown any more: kept in its memory, so every driver's on the first change
+  since it started. As the two hours after the stop pass, so are the work conversations waiting,
+  and the conversation of each driver who had a work phone at the stop, so the pages hear them
+  stop waiting, and that phone go.
 - **Answering:** what someone at the DSP writes goes as written, nothing added, from the phone that
   last texted that number, else the one seen last, one online before any offline, with its
   pictures, kept by the phone side as they're added, the adder's alone until they go, and none of
@@ -612,7 +651,8 @@ not; nothing reaches a browser closed, as nothing is pushed.
 the page's layout and the variables its parts draw by.
 
 - `page/`: the page, which section shows, what's open (in the address) and the layout; the
-  section switch and the list's frame; and how each section shows (`section-views.tsx`).
+  section switch and the list's frame; how each section shows (`section-views.tsx`); and its keys
+  (`useShortcuts.ts`).
 - `inbox/`: the conversations and groups as they change (`inbox.ts`, `useInbox.ts`), the list of
   them and its rows, and the sections, each defined once (`sections.ts`).
 - `conversations/`: the conversation open, its thread, composer and profile; each kind of
@@ -628,8 +668,9 @@ the page's layout and the variables its parts draw by.
 - `todays-routes/`: Today's Routes' read, list and board, a route's facts, a driver's workdays,
   Pick driver and No work phone.
 - `shared/`: what any of them draws with: faces, a list's rows and headings, a contact's row, a
-  message's body and runs, a thread's frame, a pane's head, the side panel, and how the page
-  words things (`format.ts`).
+  message's body and runs, a thread's frame, a pane's head, the side panel, how the page words
+  things (`format.ts`), and what each key does (`shortcuts.ts`).
+- `replies/`: the DSP's quick replies, in the composer and in Settings.
 - `alerts/` and `display/`: new messages' alerts on every page, and Message display.
 
 Where to add:
@@ -690,6 +731,10 @@ Behind `communications.use`:
   there, `chatLink`, whether, on there, it needs updating for what Communications uses,
   `needsUpdate`, and the version of its logo, `logo`, none without one), who is typing, each
   with their person and photo, and the latest change (`revision`).
+- `GET …/quick-replies`: the DSP's quick replies, in their order, and their `revision`;
+  `POST …/quick-replies`, `{replies, revision}`: keeps them, each trimmed, as the revision they
+  were read at, refused past 30, one empty or over 500 characters (`invalid_input`), or once
+  another save passed it (409 `settings_changed_reload_before_saving`).
 - `GET …/waiting`: how many conversations wait, and since when each has, for the sidebar; the
   latest message from whom each is with (`latest`: the conversation, the group it's listed under,
   their name and the message), for alerts; and the DSP's phones an app holds, each online or not,
@@ -802,11 +847,12 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   `communications_live_days` (each day live route data was seen holding, when it was first seen
   not to, and whether the pages heard the two hours after end) and, on each text waiting to be
   filed, since when it couldn't be placed (`phones_texts.unfiled_since`), and on each Dispatch
-  sent, the conversation it was queued in (`phones_texts.queued_in`). The phone side's, as
-  Phones made them before Communications adopted them (its migrations 7 and 8, which find them
-  made on a database Phones migrated, and leave Phones' own records of its migrations as they
-  were): `phones_devices` (each phone, by its key's SHA-256, and how it last said it stands,
-  `health`, migration 14), `phones_pairings` (the code that pairs the
+  sent, the conversation it was queued in (`phones_texts.queued_in`). The DSP's quick replies,
+  with their revision, in its `settings` table under `communications.quick_replies`. The phone
+  side's, as Phones made them before Communications adopted them (its migrations 7 and 8, which
+  find them made on a database Phones migrated, and leave Phones' own records of its migrations
+  as they were): `phones_devices` (each phone, by its key's SHA-256, and how it last said it
+  stands, `health`, migration 14), `phones_pairings` (the code that pairs the
   next, by its SHA-256, with its ID and when a newer one replaced it), `phones_texts` (each text,
   with its phone, direction, origin, the other party's number, how one Dispatch sent went, each
   attempt at it, and its latest change), `phones_files` (each text's pictures and files, and those

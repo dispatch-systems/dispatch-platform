@@ -34,7 +34,7 @@ use dispatch_core::{
     db::{Store, now},
     ensure,
     manifest::{Maintenance, Upkeep},
-    server::http::route::Dsp,
+    server::{cache::DataDomain, http::route::Dsp},
 };
 use dispatch_slack::kit::{self, Bot, Queue};
 use serde_json::json;
@@ -327,6 +327,7 @@ impl Queue for Deliveries {
     const BATCH: usize = 1;
     const CLAIM_MS: i64 = CLAIM_MS;
     const FAILED: &'static str = FAILED;
+    const CHANGES: Option<DataDomain> = Some(DOMAIN);
 
     fn due(db: &Store, dsp: &str, at: i64, most: usize) -> Result<Vec<Due>> {
         if !db.feature_enabled(dsp, crate::FEATURE.name)? {

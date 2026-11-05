@@ -145,11 +145,20 @@ pub trait TextStore {
     ) -> Result<Vec<(String, i64)>>;
     /// Notes changed, for the pages waiting on changes, each work conversation waiting by its
     /// texts written in from `from` on, as whether it waits counts only on the live day, which
-    /// began or ended; and every driver's, texted in or not, as the work phone they have may have
-    /// changed, one they had before as much as one they have now.
-    fn changed_communications_work(&self, dsp: &str, from: i64) -> Result<()>;
+    /// began or ended: whether any was.
+    fn changed_communications_waiting(&self, dsp: &str, from: i64) -> Result<bool>;
+    /// Notes changed, for the pages waiting on changes, the conversation of each of `drivers`, by
+    /// the source naming them and their ID, or every driver's with none, texted in or not, as the
+    /// work phone they have changed: whether any was.
+    fn changed_communications_drivers(
+        &self,
+        dsp: &str,
+        drivers: Option<&[(String, String)]>,
+    ) -> Result<bool>;
     /// The conversation texts filed so would be in, made with no text if it's new.
     fn open_communications_text(&self, dsp: &str, filed: &Filed) -> Result<TextConversation>;
+    /// The conversation texts filed so are in, once it's made.
+    fn communications_filed(&self, dsp: &str, filed: &Filed) -> Result<Option<String>>;
     /// Marks the conversation done without an answer, as the member `by`, while it waits, and
     /// each text in it the Done covers, which stays so wherever it's filed again: those up to
     /// `seen`, the latest the member was shown (when written and the ID), else every one. Whether
@@ -496,19 +505,30 @@ impl TextStore for Store {
             params![from, serde_json::to_string(ids)?],
         )
     }
-    fn changed_communications_work(&self, dsp: &str, from: i64) -> Result<()> {
+    fn changed_communications_waiting(&self, dsp: &str, from: i64) -> Result<bool> {
         let db = self.dsp(dsp)?;
-        db.transaction(|| {
-            let changed: Vec<(String,)> = db.query_as(
-                "SELECT id FROM communications_text_conversations WHERE kind='work' \
-                 AND (driver_id IS NOT NULL OR (state='waiting' AND last_at>=?1))",
-                [from],
-            )?;
-            for (id,) in changed {
-                changed_conversation(&db, &id)?;
-            }
-            Ok(())
-        })
+        changed(
+            &db,
+            "SELECT id FROM communications_text_conversations WHERE kind='work' \
+             AND state='waiting' AND last_at>=?",
+            [from],
+        )
+    }
+    fn changed_communications_drivers(
+        &self,
+        dsp: &str,
+        drivers: Option<&[(String, String)]>,
+    ) -> Result<bool> {
+        let drivers = drivers.map(serde_json::to_string).transpose()?;
+        let db = self.dsp(dsp)?;
+        changed(
+            &db,
+            "SELECT id FROM communications_text_conversations WHERE kind='work' \
+             AND driver_id IS NOT NULL AND (?1 IS NULL OR (source,driver_id) IN \
+             (SELECT json_extract(value,'$[0]'),json_extract(value,'$[1]') \
+             FROM json_each(?1)))",
+            [drivers],
+        )
     }
     fn open_communications_text(&self, dsp: &str, filed: &Filed) -> Result<TextConversation> {
         let db = self.dsp(dsp)?;
@@ -520,6 +540,10 @@ impl TextStore for Store {
             )?
             .ok_or_else(|| Error::new("communications_conversation_not_found", 404))
         })
+    }
+    fn communications_filed(&self, dsp: &str, filed: &Filed) -> Result<Option<String>> {
+        let db = self.dsp(dsp)?;
+        found(&db, filed)
     }
     fn mark_communications_text_done(
         &self,
@@ -553,25 +577,14 @@ impl TextStore for Store {
 
 /// The conversation a text filed so is in, made if it's new: its ID.
 fn conversation(db: &Db, filed: &Filed) -> Result<String> {
+    if let Some(id) = found(db, filed)? {
+        return Ok(id);
+    }
     let (kind, source, driver, number) = match filed {
         Filed::Driver { source, id } => ("work", Some(source), Some(id), None),
         Filed::WorkPhone(number) => ("work", None, None, Some(number)),
         Filed::Number(number) => ("number", None, None, Some(number)),
     };
-    let found: Option<(String,)> = match (source, driver) {
-        (Some(source), Some(driver)) => db.one_as(
-            "SELECT id FROM communications_text_conversations WHERE source=? AND driver_id=?",
-            [source, driver],
-        )?,
-        _ => db.one_as(
-            "SELECT id FROM communications_text_conversations \
-             WHERE kind=? AND number=? AND driver_id IS NULL",
-            params![kind, number],
-        )?,
-    };
-    if let Some((id,)) = found {
-        return Ok(id);
-    }
     let id = crypto::id(TEXT_PREFIX)?;
     db.exec(
         "INSERT INTO communications_text_conversations (id,kind,source,driver_id,number) \
@@ -579,6 +592,32 @@ fn conversation(db: &Db, filed: &Filed) -> Result<String> {
         params![id, kind, source, driver, number],
     )?;
     Ok(id)
+}
+/// The conversation a text filed so is in, once it's made: its ID.
+fn found(db: &Db, filed: &Filed) -> Result<Option<String>> {
+    let sql = "SELECT id FROM communications_text_conversations \
+               WHERE kind=? AND number=? AND driver_id IS NULL";
+    let found: Option<(String,)> = match filed {
+        Filed::Driver { source, id } => db.one_as(
+            "SELECT id FROM communications_text_conversations WHERE source=? AND driver_id=?",
+            [source, id],
+        )?,
+        Filed::WorkPhone(number) => db.one_as(sql, params!["work", number])?,
+        Filed::Number(number) => db.one_as(sql, params!["number", number])?,
+    };
+    Ok(found.map(|(id,)| id))
+}
+
+/// Notes changed, for the pages waiting on changes, each conversation `sql` reads the ID of:
+/// whether any was.
+fn changed(db: &Db, sql: &str, params: impl Params) -> Result<bool> {
+    db.transaction(|| {
+        let changed: Vec<(String,)> = db.query_as(sql, params)?;
+        for (id,) in &changed {
+            changed_conversation(db, id)?;
+        }
+        Ok(!changed.is_empty())
+    })
 }
 
 /// The conversation the text `id` is filed in, if it's filed.

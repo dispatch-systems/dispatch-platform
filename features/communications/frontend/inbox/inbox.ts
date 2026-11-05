@@ -212,3 +212,9 @@ export function rows(
     .sort((a, b) => latestFirst(a.row, b.row));
 }
 export type Row = ReturnType<typeof rows>[number];
+/** What Next waiting opens of `shown`, the rows of the section shown: the one waiting longest, but
+ * `open`, the one just answered; none while no other waits. */
+export const nextWaiting = (shown: readonly Row[], open?: string) =>
+  shown
+    .filter(({ row }) => row.state === 'waiting' && row.id !== open)
+    .sort((a, b) => order(a.row, b.row))[0];

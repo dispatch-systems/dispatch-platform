@@ -11,6 +11,7 @@ import type {
   Reachable,
 } from '../../api/index.js';
 import {
+  nextWaiting,
   readsNext,
   rows,
   shownWorkspace,
@@ -179,6 +180,38 @@ test('each section’s list keeps the server’s order as it changes, with the p
   assert.deepEqual(ids(read), ids(older));
 });
 
+test('Next waiting opens the one waiting longest of the section shown, but the one open, wherever the list has it, and nothing once no other waits', () => {
+  const inbox: Communications = {
+    revision: 1,
+    waiting: 4,
+    conversations: [
+      conversation('slack-latest', 900, 700),
+      conversation('slack-longest', 400, 100),
+      texts('text', 800, 150),
+      conversation('answered', 950),
+    ],
+    groups: [group('group', 600, 200)],
+    more: false,
+    moreTexts: false,
+    moreWork: false,
+    workspaces: [],
+    texting: true,
+    routes: false,
+    phones: [],
+    typing: { version: 0, writing: [] },
+  };
+  const next = (section: Section, open?: string) => nextWaiting(rows(inbox, section), open)?.row.id;
+  // Recents lists the latest written in first; Next waiting goes by how long each has waited.
+  assert.equal(ids(inbox, 'messaging')[0], 'answered');
+  assert.equal(next('messaging', 'answered'), 'slack-longest');
+  assert.equal(next('messaging', 'slack-longest'), 'text');
+  // Slack's lists its own and the groups alone.
+  assert.equal(next('slack', 'slack-longest'), 'group');
+  // Of rows where only the one open waits, there's none.
+  const [answered, latest] = rows(inbox, 'messaging');
+  assert.equal(nextWaiting([answered!, latest!], 'slack-latest'), undefined);
+});
+
 test('a send’s answer shows as the server had it, unless an update brought the conversation written in since', () => {
   const inbox: Communications = {
     revision: 1,
@@ -308,12 +341,15 @@ test('the letters that matched are marked by the runs the server counts, UTF-16 
   );
 });
 
-test('a wait turns amber at 15 minutes and red at 30', () => {
+test('a wait reads in plain words, in full aloud, and turns amber at 15 minutes and red at 30', () => {
   const minutes = (count: number) => waited(0, count * 60_000);
-  assert.deepEqual(minutes(14), { label: '14m', tone: '' });
-  assert.deepEqual(minutes(15), { label: '15m', tone: 'slow' });
-  assert.deepEqual(minutes(30), { label: '30m', tone: 'late' });
-  assert.deepEqual(minutes(125), { label: '2h', tone: 'late' });
+  assert.deepEqual(minutes(1), { label: '1 min', spoken: '1 minute', tone: '' });
+  assert.deepEqual(minutes(14), { label: '14 min', spoken: '14 minutes', tone: '' });
+  assert.deepEqual(minutes(15), { label: '15 min', spoken: '15 minutes', tone: 'slow' });
+  assert.deepEqual(minutes(30), { label: '30 min', spoken: '30 minutes', tone: 'late' });
+  assert.deepEqual(minutes(125), { label: '2 hr', spoken: '2 hours', tone: 'late' });
+  assert.deepEqual(minutes(24 * 60), { label: '1 day', spoken: '1 day', tone: 'late' });
+  assert.deepEqual(minutes(3 * 24 * 60 + 5), { label: '3 days', spoken: '3 days', tone: 'late' });
 });
 
 test('the workspace chosen is shown while it is one of two or more where it works, else every one', () => {

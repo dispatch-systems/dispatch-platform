@@ -5,7 +5,7 @@
 //! their conversations of other kinds.
 use super::{
     live_day::{self, LiveDay, Stopped},
-    model::{Text, TextConversation},
+    model::{Text, TextConversation, TextStatus},
     numbers::Numbers,
     storage::TextStore,
     workdays,
@@ -14,7 +14,7 @@ use crate::api::types::{
     Conversation, ConversationMessages, Conversations, Message, MessageFile, Sender,
 };
 use crate::backend::{
-    compose, elsewhere,
+    bytes, compose, elsewhere,
     files::FileStatus,
     model::{ConversationKind, ConversationState, Direction, PAGE},
     people::People,
@@ -102,7 +102,8 @@ pub fn conversations(
 }
 
 /// `kept` as the page reads them: the DSP's under who sent each, by their account, or the phone's
-/// own, under its name, with each picture and file, and how one Dispatch sent went.
+/// own, under its name, with each picture and file, and how one Dispatch sent went, and why it
+/// failed.
 pub fn messages(people: &People, numbers: &Numbers, kept: Vec<Text>) -> Vec<Message> {
     kept.into_iter()
         .map(|text| (text.moved(), text))
@@ -132,6 +133,7 @@ pub fn messages(people: &People, numbers: &Numbers, kept: Vec<Text>) -> Vec<Mess
                     } else {
                         FileStatus::Waiting
                     },
+                    version: file.sha256.as_deref().map(bytes::version),
                 })
                 .collect(),
             direction: text.direction,
@@ -141,6 +143,9 @@ pub fn messages(people: &People, numbers: &Numbers, kept: Vec<Text>) -> Vec<Mess
             in_thread: false,
             group: None,
             moved,
+            error: text
+                .error
+                .filter(|_| text.status == Some(TextStatus::Failed)),
             status: text.status,
             number: Some(text.number),
         })
@@ -400,8 +405,14 @@ pub fn message(db: &Store, state: &State, dsp: &str, id: &str) -> Result<Message
 
 /// A text's picture or file, `id`, as the phone side keeps it, for the member `c`, whose access is
 /// checked again once it's read: it may have ended while it was.
-pub async fn file(state: &Arc<State>, c: &Context, access: Dsp, id: &str) -> Result<Reply> {
-    let file = files::shown(state, &c.dsp.id, id, &c.auth.user.id)
+pub async fn file(
+    state: &Arc<State>,
+    c: &Context,
+    access: Dsp,
+    id: &str,
+    version: Option<&str>,
+) -> Result<Reply> {
+    let file = files::shown(state, &c.dsp.id, id, &c.auth.user.id, version)
         .await?
         .ok_or_else(|| Error::new("communications_file_not_found", 404))?;
     let asked = c.clone();

@@ -30,8 +30,9 @@ with `{"error": "<code>", "message": "…"}`: the app acts on the code, never th
 
 A phone is online while it checked in within the last two minutes (`ONLINE_MS`). Waiting on the
 outbox, reporting texts and reporting statuses check in, and pairing counts as the first; sending
-or fetching a file's bytes doesn't. So the app waits on its outbox again as each wait ends, which
-keeps it online.
+or fetching a file's bytes doesn't. Dispatch notes a check-in at most every thirty seconds
+(`SEEN_MS`), so when it last saw a phone may be that much earlier. So the app waits on its outbox
+again as each wait ends, which keeps it online.
 
 ## Limits
 
@@ -70,7 +71,10 @@ keeps it online.
 Answers `{ "key": "<64 hex>", "phone": { "id", "name" }, "dsp": { "name" } }`: the phone is
 named Dispatch, or Phone 2 and so on, until someone renames it. A code works once, for ten
 minutes, and only while no newer one replaced it: else `phones_pairing_invalid` (401), and
-someone at the DSP makes a new one.
+someone at the DSP makes a new one. Once an address tried ten wrong codes in ten minutes
+(`ADDRESS_GUESSES`), or the DSP was tried with a hundred from every address (`DSP_GUESSES`),
+pairing there is refused `rate_limited` (429), a right code too, until the oldest are ten minutes
+old.
 
 ### `GET /api/communications/phone/outbox`
 
@@ -224,7 +228,7 @@ How the attempts at the outbox's texts went:
 
 - `id` and `attempt`: as the outbox gave them. `status`: `sent`, `delivered` or `failed`, and
   `at`, when it was. `error`: why it failed, at most 500 characters (`ERROR_MOST`), kept with
-  `failed` alone.
+  `failed` alone and shown as written beside Not sent, so a few plain words, as "No service".
 
 Answers `{ "ok": true }`. Reporting is idempotent, and order doesn't matter: a status only moves
 on, waiting to sent to delivered, waiting or sent to failed; sent or failed counts only for the

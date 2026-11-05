@@ -105,6 +105,8 @@ pub struct Reply {
     value: Payload,
     status: u16,
     cookie: Option<String>,
+    /// Whether the browser keeps it: see [`Reply::kept`].
+    kept: bool,
 }
 impl Reply {
     pub fn json(value: Value) -> Self {
@@ -119,6 +121,7 @@ impl Reply {
             value: Payload::Encoded(Bytes::from(serde_json::to_vec(value)?)),
             status,
             cookie: None,
+            kept: false,
         })
     }
     pub fn ok() -> Self {
@@ -129,6 +132,7 @@ impl Reply {
             value: Payload::Value(value),
             status,
             cookie: None,
+            kept: false,
         }
     }
     /// JSON already serialized by a trusted response producer, never raw request input.
@@ -137,6 +141,7 @@ impl Reply {
             value: Payload::Encoded(value),
             status: 200,
             cookie: None,
+            kept: false,
         }
     }
     /// A document made by the server, never request input, that a client saves as `name`.
@@ -145,6 +150,7 @@ impl Reply {
             value: Payload::File(content_type, name, body),
             status: 200,
             cookie: None,
+            kept: false,
         }
     }
     /// A file a client saves as `name`, streamed as `body` arrives: of `content_type`, and
@@ -159,6 +165,7 @@ impl Reply {
             value: Payload::Download(content_type.to_owned(), name.to_owned(), length, body),
             status: 200,
             cookie: None,
+            kept: false,
         }
     }
     /// A picture of `content_type` for the page to show, which the browser keeps: its address
@@ -169,6 +176,7 @@ impl Reply {
             value: Payload::Picture(content_type.to_owned(), body),
             status: 200,
             cookie: None,
+            kept: false,
         }
     }
     /// A `302 Found` to `location`, which the server built from what it validated.
@@ -177,6 +185,7 @@ impl Reply {
             value: Payload::Redirect(location),
             status: 302,
             cookie: None,
+            kept: false,
         }
     }
     /// `{"ok":true}` that also starts the browser's session.
@@ -205,6 +214,13 @@ impl Reply {
     }
     pub fn cookie(mut self, cookie: String) -> Self {
         self.cookie = Some(cookie);
+        self
+    }
+    /// Kept by the browser, as its address names the version of what it answers, so another
+    /// version comes at another address. Kept apart for each view of a DSP, since the view
+    /// decides who may see it, and a view is its session's alone.
+    pub fn kept(mut self) -> Self {
+        self.kept = true;
         self
     }
 }
@@ -269,6 +285,17 @@ impl IntoResponse for Reply {
             && let Ok(value) = cookie.parse()
         {
             response.headers_mut().insert("set-cookie", value);
+        }
+        if self.kept {
+            let headers = response.headers_mut();
+            headers.insert(
+                axum::http::header::CACHE_CONTROL,
+                axum::http::HeaderValue::from_static("private, max-age=31536000, immutable"),
+            );
+            headers.insert(
+                axum::http::header::VARY,
+                axum::http::HeaderValue::from_static("X-Dispatch-View"),
+            );
         }
         response
     }

@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Message, Sender } from '../../api/index.js';
 import { fresh, runs } from '../../frontend/conversations/messages.js';
-import { isPhoto } from '../../frontend/shared/format.js';
+import { Replies, repliedText } from '../../frontend/conversations/replied.js';
+import { isPhoto, whyNotSent } from '../../frontend/shared/format.js';
 
 /** A text written `minutes` past 4 PM: from the number a conversation is with, or by `sender`. */
 const text = (id: string, minutes: number, sender: Sender | null = null): Message => {
@@ -19,6 +20,7 @@ const text = (id: string, minutes: number, sender: Sender | null = null): Messag
     files: [],
     group: null,
     status: null,
+    error: null,
     number: '+14255550199',
     moved: false,
   };
@@ -74,4 +76,55 @@ test('the page shows pictures of the kinds browsers show, and offers others to d
   for (const kind of ['png', 'jpeg', 'gif', 'webp', 'avif']) assert.ok(isPhoto(`image/${kind}`));
   for (const kind of ['image/heic', 'image/heif', 'image/svg+xml', 'application/pdf'])
     assert.ok(!isPhoto(kind));
+});
+
+test('Send asks first once a teammate or the phone wrote what the page didn’t hold as the member started writing', () => {
+  const me = { ...phone('', 'Dana Cole'), userId: 'user_dana', phoneId: null };
+  const keisha = { ...phone('', 'Keisha Brown'), userId: 'user_keisha', phoneId: null };
+  const replies = new Replies('user_dana');
+  const read = [text('asked', 10), text('mine', 11, me)];
+  // Told the member saw it before it's read, it waits for the read to count from.
+  replies.seen();
+  replies.hold(read);
+  // Nothing since, or only the member's own, or the employee writing again: it sends.
+  assert.equal(replies.check(), undefined);
+  replies.hold([...read, text('mine again', 12, me)]);
+  replies.hold([...read, text('again', 13)]);
+  assert.equal(replies.check(), undefined);
+  // A teammate's answer, as an update's last message, the latest of them by when.
+  replies.hold([...read, text('on it', 14, keisha)]);
+  assert.equal(replies.check(), 'Keisha just replied');
+  // The next update's last is the employee's, before the conversation is read again: the reply
+  // is still news.
+  replies.hold([...read, text('thanks', 15)]);
+  assert.equal(replies.check(), 'Keisha just replied');
+  // Seen, it's no news, nor once the read that holds it comes.
+  replies.seen();
+  assert.equal(replies.check(), undefined);
+  replies.hold([...read, text('on it', 14, keisha), text('thanks', 15)]);
+  assert.equal(replies.check(), undefined);
+  // Typed on the phone itself, by the phone's name.
+  replies.hold([...read, text('ok', 16, phone('phone_1', 'Dispatch 2'))]);
+  assert.equal(replies.check(), 'Dispatch 2 just replied');
+  // A teammate without a name on their account.
+  assert.equal(repliedText(text('ok', 17, { ...keisha, name: '' })), 'Someone just replied');
+});
+
+test('a first text stamped minutes ahead by its phone doesn’t hide a teammate’s reply', () => {
+  const keisha = { ...phone('', 'Keisha Brown'), userId: 'user_keisha', phoneId: null };
+  const replies = new Replies('user_dana');
+  const first = text('back on route', 45);
+  replies.hold([first]);
+  replies.hold([first, text('calling them', 16, keisha)]);
+  assert.equal(replies.check(), 'Keisha just replied');
+});
+
+test('a text that failed says why in a few words: the server’s codes worded, the phone’s as it wrote them', () => {
+  assert.equal(whyNotSent('phones_offline'), 'Phone offline');
+  assert.equal(whyNotSent('expired'), 'Phone offline');
+  assert.equal(whyNotSent('phones_removed'), 'Phone removed');
+  assert.equal(whyNotSent('No service'), 'No service');
+  // None, or a code the page doesn't know, says nothing beside Not sent.
+  assert.equal(whyNotSent(null), '');
+  assert.equal(whyNotSent('phones_something_new'), '');
 });

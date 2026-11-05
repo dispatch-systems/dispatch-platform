@@ -10,6 +10,7 @@ import {
   Popover,
 } from '../../../../../core/shell/frontend/ui/index.js';
 import { removePhone, usePhones } from '../../../api/client.js';
+import { waited } from '../../shared/format.js';
 import type { PhoneHealth, PhoneRow } from '../../../api/index.js';
 import { PairDialog } from './PairDialog.js';
 import { RenameDialog } from './RenameDialog.js';
@@ -170,15 +171,7 @@ function Attention({ health }: { health: PhoneHealth }) {
   );
 }
 
-/** How long a phone has been offline: "Offline · 14m", "Offline · 3h", "Offline · 2d". */
+/** How long a phone has been offline: "Offline · 14 min", "Offline · 3 hr", "Offline · 2 days". */
 function offline(lastSeenAt: number | null) {
-  if (lastSeenAt === null) return 'Offline';
-  const minutes = Math.max(1, Math.floor((Date.now() - lastSeenAt) / 60_000));
-  const ago =
-    minutes < 60
-      ? `${minutes}m`
-      : minutes < 24 * 60
-        ? `${Math.floor(minutes / 60)}h`
-        : `${Math.floor(minutes / (24 * 60))}d`;
-  return `Offline · ${ago}`;
+  return lastSeenAt === null ? 'Offline' : `Offline · ${waited(lastSeenAt).label}`;
 }

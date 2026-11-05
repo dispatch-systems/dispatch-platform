@@ -8,6 +8,7 @@
 use super::*;
 use crate::ConversationState;
 use crate::backend::{
+    changes::ChangeStore,
     phone::{
         model::{EXPIRY_MS, PHONE_OFFLINE, Status},
         storage::FileStore,
@@ -70,7 +71,8 @@ async fn an_answer_that_failed_leaves_it_waiting_and_retry_sends_it_again() {
         state.read(move |db| Ok(one(db, &shared, &at, &id)?.state))
     };
 
-    // The phone fails to send it: the answer shows so, under who wrote it, and it still waits.
+    // The phone fails to send it: the answer shows so, why, under who wrote it, and it still
+    // waits.
     let answer = send(
         &state,
         &c,
@@ -97,8 +99,12 @@ async fn an_answer_that_failed_leaves_it_waiting_and_retry_sends_it_again() {
         .await
         .unwrap();
     assert_eq!(
-        (failed.status, failed.sender.unwrap().name.as_str()),
-        (Some(TextStatus::Failed), "Test Owner")
+        (
+            failed.status,
+            failed.error.as_deref(),
+            failed.sender.unwrap().name.as_str()
+        ),
+        (Some(TextStatus::Failed), Some("No service"), "Test Owner")
     );
     assert_eq!(state_of().await.unwrap(), ConversationState::Waiting);
 
@@ -107,8 +113,8 @@ async fn an_answer_that_failed_leaves_it_waiting_and_retry_sends_it_again() {
         .await
         .unwrap();
     assert_eq!(
-        (again.id, again.status),
-        (failed.id, Some(TextStatus::Waiting))
+        (again.id, again.status, again.error),
+        (failed.id, Some(TextStatus::Waiting), None)
     );
     assert_eq!(state_of().await.unwrap(), ConversationState::Responded);
     // Another conversation's text isn't this one's to send again.
@@ -286,7 +292,7 @@ async fn a_picture_keeps_nothing_once_its_adders_access_ended_while_its_bytes_ca
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(first.sha256.as_deref(), Some(bytes[0].as_str()));
+    assert_eq!(first.file.sha256.as_deref(), Some(bytes[0].as_str()));
 }
 
 #[tokio::test]
@@ -328,7 +334,8 @@ async fn an_answer_carries_as_much_as_a_text_does_not_what_slacks_does() {
 #[tokio::test]
 async fn a_drivers_answer_goes_to_the_work_phone_they_had_at_the_stop_for_two_hours_after_it() {
     let (_root, state, dsp) = support::started();
-    stopped_at(&state, &dsp, now() - HALF_HOUR_MS).await;
+    let stop = now() - HALF_HOUR_MS;
+    stopped_at(&state, &dsp, stop).await;
     let asked = texted(&state, &dsp, "+12065550101", "Locked out of the van", now()).await;
     let conversation = filed(&state, &dsp, &asked).await.id;
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
@@ -358,6 +365,21 @@ async fn a_drivers_answer_goes_to_the_work_phone_they_had_at_the_stop_for_two_ho
         .map(|(to, _, _)| to)
         .collect();
     assert_eq!(went, ["+12065550101"]);
+    // Answered, it doesn't wait; still, as the two hours end, a page with it open hears the phone go.
+    let at = dsp.clone();
+    let before = state
+        .read(move |db| db.communications_revision(&at))
+        .await
+        .unwrap();
+    watch_live_day(&state, &dsp, stop + AFTER_STOP_MS)
+        .await
+        .unwrap();
+    let at = dsp.clone();
+    let (changed, _) = state
+        .read(move |db| db.communications_changed_since(&at, before))
+        .await
+        .unwrap();
+    assert!(changed.unwrap().contains(&conversation));
 
     // Two and a half hours after it, Avery has no work phone to be answered at.
     stopped_at(&state, &dsp, now() - AFTER_STOP_MS - HALF_HOUR_MS).await;

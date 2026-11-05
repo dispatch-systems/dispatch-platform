@@ -20,6 +20,9 @@ use serde_json::Value;
 /// How lately a phone must have checked in to be online: twice the longest it waits on Dispatch,
 /// and then some.
 pub const ONLINE_MS: i64 = 2 * 60 * 1000;
+/// How often a phone checking in is noted: at most once in this long, so its last check-in kept
+/// lags by no more than this and a wait, well within `ONLINE_MS`.
+pub const SEEN_MS: i64 = 30 * 1000;
 /// How long a pairing code works.
 pub const PAIRING_MS: i64 = 10 * 60 * 1000;
 
@@ -96,6 +99,11 @@ impl Device {
     pub fn online(&self, now: i64) -> bool {
         self.last_seen_at.is_some_and(|at| now - at <= ONLINE_MS)
     }
+    /// Whether its checking in at `now` is noted (`phones_seen`): once `SEEN_MS` passed since the
+    /// last that was.
+    pub fn noting(&self, now: i64) -> bool {
+        self.last_seen_at.is_none_or(|at| now - at >= SEEN_MS)
+    }
     /// How the phone reads in the activity log: its name, and its number once it said it.
     pub fn logged(&self) -> String {
         if self.number.is_empty() {
@@ -162,6 +170,8 @@ pub trait DeviceStore {
         pairing: &Pairing,
         at: i64,
     ) -> Result<Device>;
+    /// Whether the code `code_sha256` pairs a phone at `at`: not used, replaced or expired.
+    fn phones_pairing_open(&self, dsp: &str, code_sha256: &str, at: i64) -> Result<bool>;
     /// Lets go of the pairing codes expired, never used.
     fn phones_tidy_pairings(&self, dsp: &str, at: i64) -> Result<()>;
     /// Whether the key `key_sha256` was a phone's that was removed.
@@ -338,6 +348,13 @@ impl DeviceStore for Store {
         drop(db);
         self.phones_device(dsp, &id)?
             .ok_or_else(|| Error::new("phones_not_found", 404))
+    }
+    fn phones_pairing_open(&self, dsp: &str, code_sha256: &str, at: i64) -> Result<bool> {
+        Ok(self.dsp(dsp)?.count(
+            "SELECT count(*) FROM phones_pairings WHERE code_sha256=? \
+             AND used_at IS NULL AND replaced_at IS NULL AND expires_at>?",
+            params![code_sha256, at],
+        )? > 0)
     }
     fn phones_tidy_pairings(&self, dsp: &str, at: i64) -> Result<()> {
         self.dsp(dsp)?.exec(

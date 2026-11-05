@@ -71,14 +71,22 @@
 }
 
 @container communications (width < 680px) {
+  /* Who it's with keeps most of the line; what can be done with it goes under them, at the end,
+     where it doesn't fit beside them. */
   .thread-head {
+    flex-wrap: wrap;
+    row-gap: 8px;
     padding: 10px 12px;
   }
-  /* Done, its mark alone, leaving who it's with the room. */
-  .thread-head .actions button > span {
-    display: none;
+  .thread-head .who {
+    flex: 1 1 auto;
+    min-width: 55%;
+  }
+  .thread-head .actions {
+    margin-left: auto;
   }
   .thread-head .actions button {
+    white-space: nowrap;
     padding-inline: 10px;
   }
   .thread-head .back {

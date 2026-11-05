@@ -21,8 +21,9 @@ import type { Changed } from '../../inbox/useInbox.js';
 import { usePanel } from '../../shared/usePanel.js';
 
 // A group open: its people's faces, its name, how many it went to, which opens who they are, and,
-// while anything under it waits, how long and Done, for all of them; the DSP's messages to it and
-// the answers; and writing to all of them again. On a phone it takes the page, with a way back.
+// while anything under it waits, how long and Done, for all of them, else Next waiting; the DSP's
+// messages to it and the answers; and writing to all of them again. On a phone it takes the page,
+// with a way back.
 
 export function GroupPane({
   id,
@@ -39,6 +40,7 @@ export function GroupPane({
   closed,
   reply,
   open,
+  next,
 }: {
   id: string;
   /** The group as the list has it, which the page's own writes and each update keep. */
@@ -62,6 +64,8 @@ export function GroupPane({
   reply: (entry: GroupEntry) => void;
   /** Opens one of its people's conversation. */
   open: (person: GroupPerson) => void;
+  /** Next waiting: opens the one waiting longest of the section shown, while another waits. */
+  next?: () => void;
 }) {
   const { opened, error, gone, readOlder, olderFailed, retry, ...read } = useGroup(id, changed);
   useEffect(() => {
@@ -100,6 +104,7 @@ export function GroupPane({
         opens={people.opens}
         back={back}
         done={{ busy: done.busy, run: () => void done.run() }}
+        next={next}
       />
       {people.drawn && group && (
         <GroupPeople

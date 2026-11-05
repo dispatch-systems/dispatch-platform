@@ -1,4 +1,4 @@
-/* How Today's Routes shows: the list or the board, as two segments. */
+/* How Today's Routes shows: the list or the board, as two segments, each by its word. */
 .view-toggle {
   display: inline-flex;
   flex-shrink: 0;
@@ -9,9 +9,10 @@
 }
 .view-toggle button {
   justify-content: center;
-  width: calc(var(--field-height) - 2px);
+  gap: 6px;
   min-height: calc(var(--field-height) - 6px);
-  padding: 0;
+  padding: 0 10px;
+  font-size: var(--ui-size);
   border: 0;
   border-radius: var(--radius);
   background: transparent;

@@ -2,6 +2,11 @@
 import type { FileStatus } from "./FileStatus";
 
 /**
- * A photo or file attached to a message, which `files/{id}` serves once it's kept.
+ * A photo or file attached to a message, which `files/{id}` serves once it's kept: at
+ * `files/{id}?v={version}`, the browser keeps it.
  */
-export type MessageFile = { id: string, name: string, mime: string, size: number, status: FileStatus, };
+export type MessageFile = { id: string, name: string, mime: string, size: number, status: FileStatus,
+/**
+ * The version of its bytes, once it's kept.
+ */
+version: string | null, };

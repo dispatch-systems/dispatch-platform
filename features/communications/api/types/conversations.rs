@@ -105,6 +105,10 @@ pub struct Message {
     pub group: Option<MessageGroup>,
     /// How a text Dispatch sent went.
     pub status: Option<TextStatus>,
+    /// Why a text Dispatch sent failed, while it has: the server's code, `phones_offline` or
+    /// `phones_removed`, or the phone's own words for it, as `expired` or "No service", at most
+    /// 500 characters as the phone side keeps it. None when it didn't say.
+    pub error: Option<String>,
     /// The other party's number, for a text: in a driver's conversation, the work phone it went
     /// through.
     pub number: Option<String>,
@@ -160,7 +164,8 @@ pub struct SentMessage {
     pub message: Message,
 }
 
-/// A photo or file attached to a message, which `files/{id}` serves once it's kept.
+/// A photo or file attached to a message, which `files/{id}` serves once it's kept: at
+/// `files/{id}?v={version}`, the browser keeps it.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(
@@ -175,6 +180,8 @@ pub struct MessageFile {
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub size: i64,
     pub status: FileStatus,
+    /// The version of its bytes, once it's kept.
+    pub version: Option<String>,
 }
 
 /// `GET /api/dsp/communications/conversations`: the fifty conversations found by name closest
