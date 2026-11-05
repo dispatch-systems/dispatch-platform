@@ -4,6 +4,8 @@ CREATE TABLE driver_days ( publication_id TEXT NOT NULL REFERENCES route_publica
 CREATE TABLE drivers ( transporter_id TEXT PRIMARY KEY, first_name TEXT, last_name TEXT, initials TEXT, work_phone TEXT, person_type TEXT NOT NULL CHECK(json_valid(person_type)), company_id TEXT, first_seen_day TEXT NOT NULL, last_seen_day TEXT NOT NULL );
 CREATE TABLE itineraries ( publication_id TEXT NOT NULL REFERENCES route_publications(id) ON DELETE CASCADE, day TEXT NOT NULL, itinerary_id TEXT NOT NULL, transporter_id TEXT NOT NULL, driver_name TEXT NOT NULL, route_code TEXT, route_id TEXT, company_id TEXT, vin TEXT, service_type TEXT, execution_status TEXT, progress_status TEXT, planned_departure_at INTEGER, departed_at INTEGER, started_at INTEGER, wave_start_at INTEGER, session_end_at INTEGER, projected_completion_at INTEGER, last_stop_at INTEGER, block_minutes INTEGER, total_locations INTEGER, completed_locations INTEGER, total_packages INTEGER, delivered INTEGER, remaining INTEGER, undeliverable INTEGER, stops_impacted INTEGER, packages_impacted INTEGER, breaks_secs INTEGER, overtime_secs INTEGER, stop_completion_rate REAL, breaks TEXT NOT NULL CHECK(json_valid(breaks)), planned_breaks TEXT NOT NULL CHECK(json_valid(planned_breaks)), summary TEXT NOT NULL CHECK(json_valid(summary)), rescue_actions TEXT, sequence_edits TEXT, pause_events TEXT, work_phone TEXT, PRIMARY KEY(publication_id,itinerary_id) );
 CREATE TABLE owner_migrations (owner TEXT NOT NULL, id INTEGER NOT NULL, name TEXT NOT NULL, applied_at INTEGER NOT NULL, PRIMARY KEY(owner, id));
+CREATE TABLE route_days_noted ( id INTEGER PRIMARY KEY CHECK (id = 1), last INTEGER NOT NULL );
+CREATE TABLE route_days_untold ( id INTEGER PRIMARY KEY, day TEXT NOT NULL );
 CREATE TABLE route_publications ( id TEXT PRIMARY KEY, job_id TEXT NOT NULL UNIQUE, day TEXT NOT NULL, station TEXT NOT NULL, service_area_id TEXT NOT NULL, provider TEXT NOT NULL, timezone TEXT NOT NULL, mode TEXT NOT NULL CHECK(mode IN ('final','snapshot')), started_at TEXT NOT NULL, collected_at TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 0 CHECK(active IN (0,1)), route_count INTEGER NOT NULL, itinerary_count INTEGER NOT NULL, stop_count INTEGER NOT NULL, task_count INTEGER NOT NULL, adapter_version INTEGER NOT NULL );
 CREATE TABLE route_raw ( publication_id TEXT NOT NULL REFERENCES route_publications(id) ON DELETE CASCADE, name TEXT NOT NULL, encoding TEXT NOT NULL CHECK(encoding='gzip'), raw_bytes INTEGER NOT NULL, body BLOB NOT NULL, PRIMARY KEY(publication_id,name) );
 CREATE TABLE route_retention ( id INTEGER PRIMARY KEY CHECK(id=1), days INTEGER CHECK(days IS NULL OR days BETWEEN 30 AND 3650), changed_by TEXT, changed_at TEXT NOT NULL );
@@ -24,6 +26,7 @@ CREATE INDEX driver_days_driver_day ON driver_days(transporter_id, day);
 CREATE INDEX drivers_last_seen ON drivers(last_seen_day);
 CREATE INDEX itineraries_day_driver ON itineraries(day,transporter_id);
 CREATE INDEX itineraries_work_phone ON itineraries(work_phone) WHERE work_phone IS NOT NULL;
+CREATE INDEX route_days_untold_day ON route_days_untold (day, id);
 CREATE INDEX route_publications_day ON route_publications(day,collected_at DESC);
 CREATE INDEX routes_day ON routes(day,route_code);
 CREATE INDEX stops_address ON stops(address_id);

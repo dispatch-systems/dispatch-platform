@@ -4,14 +4,15 @@
 //! it's queued, with how it went, under the full name of whoever wrote it, as a Slack answer is
 //! (`sent_by`). A number's conversation, and a work phone's nobody had, answer their number; a
 //! driver's, the work phone they have now, as live route data says or Pick driver picked them for
-//! (`LiveDay::phones`), and none while they have none. Its pictures are kept by the phone side as
+//! (`LiveDay::phones`), or for the two hours after the stop the one they had then
+//! (`Stopped::phones`), and none while they have none. Its pictures are kept by the phone side as
 //! they're added, its adder's alone until they go with it, and none of one kept should the adder's
 //! access end while its bytes come. One that failed is sent again with Retry, from the phone a new
-//! text would go from. Either is queued, and filed, in the write that checks where it goes and that
-//! the member may still send it, so no handoff, stop or change of their access comes between.
-use super::{
-    filing, live_day::LiveDay, numbers::work_number, reading::message, storage::TextStore,
-};
+//! text would go from, only from the conversation it was written in, kept as it's queued: one filed
+//! elsewhere, as with a work phone handed to another driver, never is. Either is queued, and filed,
+//! in the write that checks where it goes and that the member may still send it, so no handoff,
+//! stop or change of their access comes between.
+use super::{filing, live_day, numbers::work_number, reading::message, storage::TextStore};
 use crate::{
     api::types::{CommunicationsUpload, Message},
     backend::{
@@ -57,6 +58,7 @@ pub async fn send(
             by: c.auth.user.id.clone(),
         };
         let sent = outbox::send(db, &c.dsp.id, &outgoing, now())?.id;
+        db.queued_communications_text(&c.dsp.id, &sent, &at)?;
         Ok((sent.clone(), vec![sent]))
     })
     .await?;
@@ -69,16 +71,14 @@ pub async fn send(
 }
 
 /// Where a text written in the conversation `id` goes: a number's own number, or a work phone's
-/// nobody had; for a driver's, the work phone they have now, refused while they have none.
+/// nobody had; for a driver's, the work phone they have now (`live_day::phones_now`), refused while
+/// they have none.
 fn recipient(db: &Store, dsp: &str, id: &str) -> Result<String> {
     let conversation = db
         .communications_text_conversation(dsp, id)?
         .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
     let phone = match (&conversation.driver, conversation.kind) {
-        (Some((source, driver)), _) => match LiveDay::read(db, dsp)? {
-            Some(live) if live.source == *source => live.phones(db, dsp)?.remove(driver),
-            _ => None,
-        },
+        (Some((source, driver)), _) => live_day::phones_now(db, dsp, source)?.remove(driver),
         (None, ConversationKind::Slack) => None,
         (None, _) => {
             return conversation
@@ -91,13 +91,15 @@ fn recipient(db: &Store, dsp: &str, id: &str) -> Result<String> {
         .ok_or_else(|| Error::new("communications_no_work_phone", 409))
 }
 
-/// Refuses the text `text` unless it's the conversation `id`'s and goes where a text written there
-/// now would: not to a work phone its driver no longer has, which may be another's since.
+/// Refuses the text `text` unless it's the conversation `id`'s, still the one it was queued in,
+/// and goes where a text written there now would: not to a work phone its driver no longer has,
+/// which may be another's since.
 fn goes_now(db: &Store, dsp: &str, id: &str, text: &str) -> Result<()> {
     let text = db
         .communications_text(dsp, text)?
         .filter(|text| text.conversation.as_deref() == Some(id))
         .ok_or_else(|| Error::new("communications_message_not_found", 404))?;
+    ensure(!text.moved(), "communications_text_moved", 409)?;
     ensure(
         recipient(db, dsp, id)? == text.number,
         "communications_work_phone_changed",

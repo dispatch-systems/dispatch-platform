@@ -44,4 +44,9 @@ error: string | null,
  * The other party's number, for a text: in a driver's conversation, the work phone it went
  * through.
  */
-number: string | null, };
+number: string | null,
+/**
+ * Whether a text Dispatch sent was queued in another conversation than this, as a work phone
+ * handed to another driver takes its day's texts with it: it isn't sent again from here.
+ */
+moved: boolean, };

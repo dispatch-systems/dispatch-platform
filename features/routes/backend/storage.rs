@@ -273,11 +273,13 @@ impl RoutesStore for Store {
     /// the day's read now.
     fn publish_routes(&self, id: &str, job: &str, staged: &Staged) -> Result<bool> {
         let routes = &*self.routes_db(id)?;
-        let current = publish_day(routes, job, staged, work_phones::Stored::default())?;
-        if current {
-            changed::note(id, &staged.day);
-        }
-        Ok(current)
+        routes.transaction(|| {
+            let current = publish_day(routes, job, staged, work_phones::Stored::default())?;
+            if current {
+                changed::note(routes, &staged.day)?;
+            }
+            Ok(current)
+        })
     }
     /// Retires the days a DSP's retention window has passed: they become inactive, and
     /// `sweep_routes` deletes them in small steps. Addresses and drivers last seen before
@@ -370,9 +372,9 @@ impl RoutesStore for Store {
                         publication
                     ],
                 )?;
+                changed::note(&db, day)?;
                 Ok(())
             })?;
-            changed::note(id, s(row, "day"));
             let fresh = db
                 .one(
                     "SELECT id,day,mode,station,collected_at,route_count,itinerary_count,stop_count,task_count \

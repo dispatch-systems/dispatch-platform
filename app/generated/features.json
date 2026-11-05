@@ -126,8 +126,10 @@
         "communications_group_people",
         "communications_group_uploads",
         "communications_groups",
+        "communications_live_days",
         "communications_messages",
         "communications_picked",
+        "communications_refiling",
         "communications_replies",
         "communications_text_conversations",
         "phones_attempts",
@@ -704,6 +706,10 @@
         {
           "id": 11,
           "name": "drop_work_phones"
+        },
+        {
+          "id": 12,
+          "name": "days_untold"
         }
       ],
       "routelive": [
@@ -794,6 +800,8 @@
         "driver_days",
         "drivers",
         "itineraries",
+        "route_days_noted",
+        "route_days_untold",
         "route_publications",
         "route_raw",
         "route_retention",

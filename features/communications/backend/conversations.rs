@@ -119,6 +119,7 @@ pub fn messages(
             status: None,
             error: None,
             number: None,
+            moved: false,
         })
         .collect())
 }

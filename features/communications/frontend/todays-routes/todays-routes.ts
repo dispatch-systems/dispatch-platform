@@ -80,9 +80,11 @@ export type TodaysRead = Answered<TodaysRoutes>;
 /**
  * A driver's route today and the work phone they hold now, one source for all that shows them:
  * whichever of two reads answered last, Today's Routes' (`todays`), as it's read every minute
- * while it shows, or their conversation's (`read`), as each change to it is. Today's Routes'
- * says none once the day is over, and the conversation's own stands for a driver it doesn't list.
- * A read failing, or another driver's change, leaves each as it last answered.
+ * while it shows, or their conversation's (`read`), as each change to it is. Once the day is
+ * over, as Today's Routes lists none, the conversation's own stands, as it does for a driver Today's
+ * Routes doesn't list: the work phone they had at the stop, for the two hours after, then none, each
+ * as the server notes their conversation changed. A read failing, or another driver's change,
+ * leaves each as it last answered.
  */
 export function driverToday(
   driverId: string | null,
@@ -91,6 +93,6 @@ export function driverToday(
 ): Today | null {
   const own = read?.value ?? null;
   if (!todays || (read && read.at > todays.at)) return own;
-  if (todays.value.day === null) return null;
+  if (todays.value.day === null) return own;
   return todays.value.drivers.find((each) => each.driverId === driverId)?.today ?? own;
 }

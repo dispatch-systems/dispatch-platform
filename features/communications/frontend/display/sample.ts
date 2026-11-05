@@ -58,6 +58,7 @@ export function sample(now: number) {
     status: null,
     error: null,
     number: null,
+    moved: false,
   });
   const messages = [
     message('m1', 'Morning. Van 208 won’t start, battery’s dead I think', 33),

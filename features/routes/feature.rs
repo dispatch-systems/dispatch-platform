@@ -73,6 +73,8 @@ pub const FEATURE: Feature = Feature {
                 "unknown_stops",
                 "staged_addresses",
                 "staged_drivers",
+                "route_days_untold",
+                "route_days_noted",
                 // The window chosen before Settings kept it, read once to move it there.
                 "route_retention",
             ],
@@ -164,6 +166,11 @@ pub const FEATURE: Feature = Feature {
                     apply: Sql(include_str!(
                         "migrations/routedata/0011_drop_work_phones.sql"
                     )),
+                },
+                Migration {
+                    id: 12,
+                    name: "days_untold",
+                    apply: Sql(include_str!("migrations/routedata/0012_days_untold.sql")),
                 },
             ],
         },

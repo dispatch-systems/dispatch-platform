@@ -37,6 +37,7 @@ const waits = (conversation: string, id: string, group: string | null = null): W
     files: [],
     group: null,
     number: null,
+    moved: false,
   },
 });
 
