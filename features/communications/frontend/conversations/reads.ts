@@ -43,6 +43,9 @@ type Entry = {
   sent: Map<string, number>;
 };
 
+/** Whether reading before opening may go on: the page in view, on a connection that allows it. */
+const warmable = () => canPrefetch() && !document.hidden;
+
 /** `kept` workdays with those `read`, each day once, as last read. */
 const withDays = (kept: readonly Workday[], read: readonly Workday[]) => [
   ...kept.filter((day) => !read.some((each) => each.day === day.day)),
@@ -104,7 +107,7 @@ export class ConversationReads {
    * under way: optional, so not on a slow or metered connection, at low priority, and a few at a
    * time, those asked longest ago left once too many wait. */
   warm(id: string) {
-    if (!canPrefetch() || document.hidden || !this.stale(id)) return;
+    if (!warmable() || !this.stale(id)) return;
     this.warming.delete(id);
     this.warming.add(id);
     for (const waiting of this.warming) {
@@ -168,6 +171,9 @@ export class ConversationReads {
   }
   /** Reads the next conversations waiting to be read before they're opened, while too few are. */
   private warmNext() {
+    // Hidden, or on a connection that's become slow or metered, those waiting are let go: pointing
+    // at a row or the next update asks again.
+    if (!warmable()) return this.warming.clear();
     for (const id of this.warming) {
       if (this.warmed >= WARMING) return;
       this.warming.delete(id);
