@@ -21,7 +21,8 @@ class StatusesTest {
     private val server = MockWebServer()
     private val database = memoryDatabase()
     private val sends = database.sends()
-    private val statuses = Statuses(Dispatch(OkHttpClient(), AppVersion("1.4.0", 14)), sends)
+    private val failed = mutableListOf<Pair<String, Long>>()
+    private val statuses = Statuses(Dispatch(OkHttpClient(), AppVersion("1.4.0", 14)), sends) { error, at -> failed += error to at }
     private lateinit var site: String
 
     @Before
@@ -42,6 +43,8 @@ class StatusesTest {
         sends.handed(sent, 1, false, 2)
         sends.heard(Heard("text_1", 41, 0, Event.SENT, null, null, 3))
         sends.start(Send("text_2", 7, "+14255550199", "Hi", 1)).let { sends.failed(it, "No service", 4) }
+        // Past its time to start, Dispatch's own doing: not why a text last failed to send.
+        sends.start(Send("text_3", 2, "+14255550199", "Hi", 1)).let { sends.failed(it, Failure.EXPIRED, 5) }
 
         server.enqueue(json(503, """{"error":"platform_busy"}"""))
         try {
@@ -50,8 +53,10 @@ class StatusesTest {
         } catch (refusal: Refusal) {
             assertTrue(refusal.passing)
         }
-        assertEquals(2, sends.statuses(10).size)
+        assertEquals(3, sends.statuses(10).size)
         assertEquals(0, statuses.told.value)
+        // Why the latest failed is noted as it's told, whether or not Dispatch answers.
+        assertEquals("No service" to 4L, failed.last())
 
         server.enqueue(json(200, """{"ok":true}"""))
         assertTrue(statuses.tell(site, KEY))
@@ -62,7 +67,8 @@ class StatusesTest {
         assertEquals(site.trimEnd('/'), request.headers["Origin"])
         assertEquals(
             """{"statuses":[{"id":"text_1","attempt":41,"status":"sent","at":3},""" +
-                """{"id":"text_2","attempt":7,"status":"failed","at":4,"error":"No service"}]}""",
+                """{"id":"text_2","attempt":7,"status":"failed","at":4,"error":"No service"},""" +
+                """{"id":"text_3","attempt":2,"status":"failed","at":5,"error":"expired"}]}""",
             request.body?.utf8(),
         )
         assertEquals(1, statuses.told.value)

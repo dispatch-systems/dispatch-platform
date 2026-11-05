@@ -3,6 +3,7 @@ package com.dspdispatch.relay.texts
 import com.dspdispatch.relay.connection.backoff
 import com.dspdispatch.relay.dispatch.Dispatch
 import com.dspdispatch.relay.dispatch.Refusal
+import com.dspdispatch.relay.dispatch.SendStatus
 import com.dspdispatch.relay.dispatch.StatusesReport
 import java.io.IOException
 import kotlinx.coroutines.channels.Channel
@@ -14,9 +15,10 @@ import kotlinx.serialization.SerializationException
 
 /**
  * Tells the phone's DSP how the attempts at its texts went, in batches, each kept on the phone
- * until Dispatch answers it.
+ * until Dispatch answers it; why the latest that failed did goes to [failed] as it's told, but
+ * one past its time to start, which Dispatch gave.
  */
-class Statuses(private val dispatch: Dispatch, private val sends: Sends) {
+class Statuses(private val dispatch: Dispatch, private val sends: Sends, private val failed: (error: String, at: Long) -> Unit) {
     private val wake = Channel<Unit>(Channel.CONFLATED)
     private val answered = MutableStateFlow(0)
 
@@ -58,6 +60,8 @@ class Statuses(private val dispatch: Dispatch, private val sends: Sends) {
         // within the 64 KiB a call carries.
         val waiting = sends.statuses(most)
         if (waiting.isEmpty()) return false
+        waiting.filter { it.status == SendStatus.FAILED && it.error != Failure.EXPIRED }
+            .lastOrNull { it.error != null }?.let { failed(it.error.orEmpty(), it.at) }
         try {
             dispatch.statuses(site, key, StatusesReport(waiting.map(Told::reported)))
         } catch (refusal: Refusal) {

@@ -167,3 +167,52 @@ test('The card offers the app its DSP hands out: its download, an update to an o
       .getByRole('img', { name: /^Pairing code [A-HJ-NP-Z2-9]{8}$/ }),
   ).toBeVisible();
 });
+
+test('the banner of a phone down follows it on every page, with alerts off', async ({
+  page,
+  dispatch,
+}) => {
+  // Neither a chime nor a notification: nothing reads what waits for alerts.
+  const owner = await dispatch.client();
+  const north = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
+  await owner.select(north.id);
+  const { sections } = await owner.read('/api/dsp/settings');
+  const display = sections.find(
+    (section: { id: string }) => section.id === 'communications.display',
+  );
+  const quiet = await owner.post('/api/dsp/settings/communications.display', {
+    values: { sound: false, notifications: false },
+    revision: display.revision,
+  });
+  expect(quiet.status, quiet.body).toBe(200);
+  // The DSP's phone as the server answers it, sending or not.
+  let cantSend = false;
+  await page.route('**/api/dsp/communications/waiting', async (route) => {
+    const response = await route.fetch();
+    const phone = {
+      id: 'phone_x',
+      name: 'Dispatch',
+      online: true,
+      lastSeenAt: Date.now(),
+      cantSend,
+    };
+    await route.fulfill({ response, json: { ...(await response.json()), phones: [phone] } });
+  });
+  await page.clock.install();
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await page
+    .getByRole('navigation', { name: 'Primary navigation' })
+    .getByRole('button', { name: 'Settings', exact: true })
+    .click();
+  await expect(page.getByRole('navigation', { name: 'Settings', exact: true })).toBeVisible();
+  const banner = page.getByText("Dispatch phone can't send texts");
+  await expect(banner).toHaveCount(0);
+  // It stops sending while Settings stays open, then sends again.
+  cantSend = true;
+  await page.clock.runFor(30_000);
+  await expect(banner).toBeVisible();
+  cantSend = false;
+  await page.clock.runFor(30_000);
+  await expect(banner).toHaveCount(0);
+});
