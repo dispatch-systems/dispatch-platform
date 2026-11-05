@@ -1,7 +1,8 @@
 //! A code reads the same however it's typed, and only a code of its letters is one. A code tried is
 //! told right or wrong by a read, writing nothing; an address, and a DSP, that guessed too many
-//! wrong wait, a right code too, however many of its guesses answer together.
-use super::{ADDRESS_GUESSES, DSP_GUESSES, kept, new_code, opens};
+//! wrong wait, a right code too, however many of its guesses answer together, and however many other
+//! addresses guessed lately.
+use super::{ADDRESS_GUESSES, DSP_GUESSES, Guessed, MOST_ADDRESSES, Tried, kept, new_code, opens};
 use crate::backend::{
     phone::storage::DeviceStore,
     support::{cached, started, unwritten},
@@ -128,4 +129,22 @@ async fn guesses_from_an_address_answering_together_count_against_it_all_the_sam
         "{answers:?}"
     );
     assert_eq!(count("rate_limited"), 1, "the rest waits: {answers:?}");
+}
+
+#[test]
+fn a_new_address_is_counted_though_every_address_remembered_guessed_lately() {
+    let mut guessed = Guessed::default();
+    let at = 1_800_000_000_000;
+    for each in 0..MOST_ADDRESSES {
+        guessed.wrong(&format!("10.0.{}.{}", each / 256, each % 256), "dsp_a", at);
+    }
+    for _ in 0..ADDRESS_GUESSES {
+        guessed.wrong("198.51.100.9", "dsp_b", at + 1);
+    }
+    assert!(
+        guessed
+            .waits(Tried::Address("198.51.100.9"), at + 2)
+            .is_err()
+    );
+    assert_eq!(guessed.addresses.len(), MOST_ADDRESSES);
 }

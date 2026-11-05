@@ -31,8 +31,9 @@ const GUESSES_MS: i64 = 10 * 60 * 1000;
 /// addresses would. Either is a few of the 32^8 codes there are.
 pub const ADDRESS_GUESSES: usize = 10;
 pub const DSP_GUESSES: usize = 100;
-/// Addresses remembered at once; past it, those quiet for `GUESSES_MS` are forgotten first, and a
-/// new one isn't counted while none is.
+/// Addresses remembered at once; past it, those quiet for `GUESSES_MS` are forgotten first, else
+/// the one quiet longest, so a new one is always counted: a guesser forgotten so is still held by
+/// `DSP_GUESSES`.
 const MOST_ADDRESSES: usize = 2_000;
 
 /// A new code: eight of `LETTERS`.
@@ -126,14 +127,22 @@ impl Guessed {
     }
     /// Counts a wrong code the address `ip` tried at the DSP `dsp`, at `at`.
     fn wrong(&mut self, ip: &str, dsp: &str, at: i64) {
-        let crowded = self.addresses.len() >= MOST_ADDRESSES && !self.addresses.contains_key(ip);
-        if crowded {
+        if self.addresses.len() >= MOST_ADDRESSES && !self.addresses.contains_key(ip) {
             self.addresses
                 .retain(|_, wrong| wrong.back().is_some_and(|latest| *latest > at - GUESSES_MS));
+            let quietest = (self.addresses.len() >= MOST_ADDRESSES)
+                .then(|| {
+                    self.addresses
+                        .iter()
+                        .min_by_key(|(_, wrong)| wrong.back().copied())
+                })
+                .flatten()
+                .map(|(address, _)| address.clone());
+            if let Some(quietest) = quietest {
+                self.addresses.remove(&quietest);
+            }
         }
-        if !crowded || self.addresses.len() < MOST_ADDRESSES {
-            count(self.addresses.entry(ip.to_owned()).or_default(), at);
-        }
+        count(self.addresses.entry(ip.to_owned()).or_default(), at);
         count(self.dsps.entry(dsp.to_owned()).or_default(), at);
     }
 }
