@@ -357,7 +357,7 @@ test('with Slack needing an update, Recents still works, and Update Slack covers
   );
 });
 
-test('a teammate typing shows above the box, and their reply since the member started writing is asked about before sending, also once an earlier send ends, and sent anyway only once it can go', async ({
+test('a teammate typing shows above the box, and their reply since the member started writing, with text or a photo, is asked about before sending, also once an earlier send ends, until the draft starts again, and sent anyway only once it can go', async ({
   page,
   dispatch,
 }) => {
@@ -420,12 +420,31 @@ test('a teammate typing shows above the box, and their reply since the member st
   const asking = conversation.getByRole('alert');
   await expect(asking).toContainText('just replied');
 
-  // Send anyway goes only as Send would: not with nothing to send.
+  // Send anyway goes only as Send would: not with nothing to send. Written anew, the draft
+  // starts again, no longer asked about, and Send sends it.
   const anyway = asking.getByRole('button', { name: 'Send anyway' });
   await box.fill('');
   await expect(anyway).toBeDisabled();
-  await box.fill('The gate code is 4412');
+  await box.fill('Gate code is 4412');
+  await expect(asking).toHaveCount(0);
+  await send.click();
+  await expect(conversation.getByText('Gate code is 4412')).toBeVisible();
+  await expect(asking).toHaveCount(0);
+
+  // A photo starts a draft too: a reply before its caption is still asked about, and it goes
+  // anyway.
+  const choosing = page.waitForEvent('filechooser');
+  await conversation.getByRole('button', { name: 'Add photo' }).click();
+  await (await choosing).setFiles({ name: 'gate.png', mimeType: 'image/png', buffer: PIXEL });
+  const again = await teammate.post(`/api/dsp/communications/conversations/${id}/messages`, {
+    text: 'Sending them a photo too',
+  });
+  expect(again.status).toBe(201);
+  await expect(conversation.getByText('Sending them a photo too')).toBeVisible();
+  await box.fill('This gate');
+  await send.click();
+  await expect(asking).toContainText('just replied');
   await anyway.click();
   await expect(asking).toHaveCount(0);
-  await expect(conversation.getByText('The gate code is 4412')).toBeVisible();
+  await expect(conversation.getByText('This gate')).toBeVisible();
 });

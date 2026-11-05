@@ -104,6 +104,8 @@ export function Composer({
   const [photos, setPhotos] = useState<Added[]>([]);
   // A teammate's reply, as it reads, asked about before sending.
   const [asking, setAsking] = useState<string>();
+  // The photos of a send under way, which are no part of what's written meanwhile.
+  const going = useRef<ReadonlySet<string>>(new Set());
   const picker = useRef<HTMLInputElement>(null);
   const field = useRef<HTMLTextAreaElement>(null);
   const said = useRef(0);
@@ -151,6 +153,14 @@ export function Composer({
     refocus.current = finePointer();
     writing(next);
   };
+  // A draft starts as an empty box gains text or a photo, beside what's going: what a teammate's
+  // reply counts from, and what was asked about before is no longer the question.
+  const starts = () => {
+    const empty = !text.trim() && photos.every((photo) => going.current.has(photo.key));
+    if (!empty) return;
+    replied?.seen();
+    setAsking(undefined);
+  };
   const remove = (key: string) => {
     const photo = added.current.find((each) => each.key === key);
     photo?.controller.abort();
@@ -166,6 +176,7 @@ export function Composer({
       return fail(`Photos must be ${bytesText(limits.largest)} or smaller.`);
     if (photos.length + chosen.length > limits.photos)
       return fail(`Add up to ${limits.photos} photos.`);
+    if (chosen.length) starts();
     const adding = chosen.map((file) => ({
       key: randomId(),
       file,
@@ -187,7 +198,8 @@ export function Composer({
       );
   };
   const send = useAction(async () => {
-    const going = new Set(photos.map((photo) => photo.key));
+    const sent = new Set(photos.map((photo) => photo.key));
+    going.current = sent;
     // What goes leaves the box at once; what's written and photos added while it goes stay.
     drafts.sending(draft, text);
     caret.current = undefined;
@@ -199,9 +211,11 @@ export function Composer({
     } catch (cause) {
       drafts.failed(draft, text);
       throw cause;
+    } finally {
+      going.current = new Set();
     }
     for (const photo of photos) URL.revokeObjectURL(photo.shown);
-    setPhotos((now) => now.filter((photo) => !going.has(photo.key)));
+    setPhotos((now) => now.filter((photo) => !sent.has(photo.key)));
     said.current = 0;
   });
   const uploading = photos.some((photo) => !photo.uploaded);
@@ -211,8 +225,8 @@ export function Composer({
   // Sends, unless a teammate replied since the member started writing: that's asked first.
   const go = () => {
     const reply = replied?.check();
-    if (reply) setAsking(reply);
-    else void send.run();
+    setAsking(reply);
+    if (!reply) void send.run();
   };
   // Answered: sent anyway, only once it can go as Send would, or not.
   const answer = (sending: boolean) => {
@@ -223,7 +237,7 @@ export function Composer({
     else replied?.show();
   };
   const writing = (value: string) => {
-    if (!text.trim() && value.trim()) replied?.seen();
+    if (value.trim()) starts();
     drafts.write(draft, value);
     if (typing && value.trim() && Date.now() - said.current > TYPING_MS) {
       said.current = Date.now();

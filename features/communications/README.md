@@ -118,7 +118,8 @@ and every other number's in Recents.
   **Cancel**, which keeps what's written and shows the reply. It's told from what the page holds,
   the latest read's messages and the last each update brings, never older ones read since, by
   which were held, not when each was written; a reply once held counts until the member answers
-  it or starts writing again (`frontend/conversations/replied.ts`).
+  it or starts a new draft, as an empty box gains text or a photo, which also puts the question
+  away (`frontend/conversations/replied.ts`).
   What's written and not sent is kept, each conversation's and each group's, while the
   page is open and in the browser's tab for each member at each DSP, so it's there again as it
   opens again, after a reload too (`frontend/conversations/drafts.ts`); the photos go as it
