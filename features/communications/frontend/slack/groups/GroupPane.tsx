@@ -10,6 +10,7 @@ import { ErrorBox } from '../../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../../core/shell/frontend/runtime/useAction.js';
 import { peopleText } from './groups.js';
 import { Composer } from '../../conversations/Composer.js';
+import type { Drafts } from '../../conversations/drafts.js';
 import { GroupFaces } from './GroupFaces.js';
 import { GroupPeople } from './GroupPeople.js';
 import { GroupThread } from './GroupThread.js';
@@ -28,6 +29,7 @@ export function GroupPane({
   listed,
   workspaces,
   docked,
+  drafts,
   seen,
   changed,
   timeZone,
@@ -44,6 +46,8 @@ export function GroupPane({
   workspaces: readonly CommunicationsWorkspace[];
   /** Whether its people, open, are a column of their own beside it. */
   docked: boolean;
+  /** What's written to each group, kept by the page. */
+  drafts: Drafts;
   /** Tells the page of the group as read, which pins one the list doesn't hold. */
   seen: (group: Group) => void;
   changed: Changed;
@@ -59,7 +63,7 @@ export function GroupPane({
   /** Opens one of its people's conversation. */
   open: (person: GroupPerson) => void;
 }) {
-  const { opened, error, gone, readOlder, ...read } = useGroup(id, changed);
+  const { opened, error, gone, readOlder, olderFailed, retry, ...read } = useGroup(id, changed);
   useEffect(() => {
     if (gone) closed();
   }, [gone, closed]);
@@ -72,7 +76,7 @@ export function GroupPane({
     (workspace) => workspace.on && group?.teamIds.includes(workspace.teamId),
   );
   const done = useAction(async () => {
-    const after = await markGroupDone(id);
+    const after = await markGroupDone(id, opened?.entries.at(-1) ?? group?.last);
     read.show(after);
     show(after);
   });
@@ -118,15 +122,18 @@ export function GroupPane({
           entries={opened.entries}
           more={opened.more}
           readOlder={readOlder}
+          olderFailed={olderFailed}
           timeZone={timeZone}
           now={now}
           reply={reply}
         />
       ) : (
-        <ThreadPending failed={Boolean(error)} />
+        <ThreadPending failed={Boolean(error)} retry={retry} />
       )}
       {group && (
         <Composer
+          drafts={drafts}
+          draft={`group:${id}`}
           limits={opened?.limits}
           attachments={slackAttachments}
           placeholder={`Message all ${group.people}`}

@@ -6,12 +6,13 @@ use crate::backend::{
         LIMITS,
         model::Direction,
         numbers::{NUMBER_MOST, normal},
-        storage::{Kept, MOST_TEXTS, Reported, ReportedFile, TextStore},
+        storage::{Kept, MOST_TEXTS, Reported, ReportedFile, TextStore, written},
     },
     texts::filing,
 };
 use dispatch_core::{
     Error, Result, State,
+    db::now,
     foundation::validate as v,
     server::http::{
         input::{Input, Reply},
@@ -45,6 +46,7 @@ struct Report {
 /// app, each once, and files those new.
 pub(super) async fn texts(state: Arc<State>, input: Input, access: Phone) -> Result<Reply> {
     v::fields(&input.body, &["texts"])?;
+    let received = now();
     let reported = input.body["texts"]
         .as_array()
         .filter(|texts| !texts.is_empty() && texts.len() <= MOST_TEXTS)
@@ -53,6 +55,13 @@ pub(super) async fn texts(state: Arc<State>, input: Input, access: Phone) -> Res
         .map(reported)
         .collect::<Result<Vec<_>>>()?;
     let caller = checked_in(&state, &input, access).await?;
+    let reported: Vec<Reported> = reported
+        .into_iter()
+        .map(|text| Reported {
+            at: written(text.at, caller.device.paired_at, received),
+            ..text
+        })
+        .collect();
     let asked = input.clone();
     let kept = filing::changing(&state, &caller.dsp, move |db| {
         let caller = access.authorize(db, &asked)?;

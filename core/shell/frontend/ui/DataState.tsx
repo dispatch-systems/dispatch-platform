@@ -29,7 +29,11 @@ export function DataState<T>({
       {data !== undefined ? (
         children(data)
       ) : failure ? (
-        retry && <button onClick={retry}>Retry loading</button>
+        retry && (
+          <button type="button" onClick={retry}>
+            Retry loading
+          </button>
+        )
       ) : availability !== 'ready' ? (
         <p className="notice" role="status">
           {availability === 'offline'

@@ -10,6 +10,7 @@ import com.dspdispatch.relay.dispatch.TextsReport
 import com.dspdispatch.relay.dispatch.wire
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.io.IOException
 import java.net.URI
 import java.nio.file.Files
 import java.util.concurrent.TimeUnit
@@ -146,6 +147,26 @@ class ReporterTest {
         assertTrue(queue.files.isEmpty())
         assertTrue(unexpected.single().cause is IllegalArgumentException)
         assertEquals(listOf("file_2", "file_3"), List(2) { server.takeRequest().url.encodedPath.substringAfterLast('/') })
+    }
+
+    @Test
+    fun keepsAFileWhileTheProvidersDatabaseFailsAMoment() = runTest {
+        answered(WaitingFile("mms-1-1", 0, "content://mms/part/1", "door.jpg", "image/jpeg", 3, "file_1"))
+        provider.bytes["content://mms/part/1"] = byteArrayOf(1, 2, 3)
+        // Opened as it's sent, on the network's own thread.
+        provider.failingOnce += "content://mms/part/1"
+        try {
+            reporter.upload(site, KEY)
+            fail("Sent")
+        } catch (_: IOException) {
+        }
+        assertEquals(1, queue.files.size)
+        assertTrue(unexpected.isEmpty())
+
+        server.enqueue(json(200, """{"ok":true}"""))
+        assertTrue(reporter.upload(site, KEY))
+        assertTrue(queue.files.isEmpty())
+        assertEquals(listOf<Byte>(1, 2, 3), server.takeRequest().body?.toByteArray()?.toList())
     }
 
     @Test

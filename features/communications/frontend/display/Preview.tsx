@@ -1,6 +1,7 @@
 import { useId, useMemo, useRef } from 'react';
 import { slackAttachments } from '../../api/client.js';
 import { Composer } from '../conversations/Composer.js';
+import { Drafts } from '../conversations/drafts.js';
 import { ListPane } from '../page/ListPane.js';
 import { roleText } from '../shared/format.js';
 import { PartyFace } from '../conversations/party.js';
@@ -17,6 +18,8 @@ import { sample } from './sample.js';
 // conversation where the page would have it. A picture: nothing in it can be used.
 
 const nothing = () => undefined;
+/** What its box holds: nothing, as nothing is written in it. */
+const drafts = new Drafts('', '');
 
 export function Preview({
   display,
@@ -73,6 +76,7 @@ export function Preview({
                 choose={nothing}
                 current={open}
                 readOlder={nothing}
+                olderFailed={false}
                 reach={() => Promise.resolve()}
                 show={nothing}
                 open={open.id}
@@ -118,6 +122,7 @@ export function Preview({
                   messages={messages}
                   more={false}
                   readOlder={nothing}
+                  olderFailed={false}
                   writing={[]}
                   timeZone={timeZone}
                   now={now}
@@ -125,6 +130,8 @@ export function Preview({
                   openGroup={nothing}
                 />
                 <Composer
+                  drafts={drafts}
+                  draft="preview"
                   placeholder={`Message ${open.with.name.split(' ')[0]}`}
                   writable
                   limits={limits}

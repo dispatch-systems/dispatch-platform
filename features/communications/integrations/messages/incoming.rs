@@ -15,11 +15,16 @@ use dispatch_slack::kit::{self, Bot};
 use serde_json::{Value, json};
 use std::{collections::HashMap, sync::Arc};
 
-/// The time Slack's `ts` names, in milliseconds: seconds, a point, then microseconds.
+/// The time Slack's `ts` names, in milliseconds: seconds, a point, then microseconds. None for
+/// one that isn't, or is past what milliseconds hold.
 pub fn millis(ts: &str) -> Option<i64> {
     let (seconds, micros) = ts.split_once('.').unwrap_or((ts, "0"));
     let micros = format!("{micros:0<6}");
-    Some(seconds.parse::<i64>().ok()? * 1000 + micros.get(..3)?.parse::<i64>().ok()?)
+    seconds
+        .parse::<i64>()
+        .ok()?
+        .checked_mul(1000)?
+        .checked_add(micros.get(..3)?.parse::<i64>().ok()?)
 }
 /// Slack's `ts` for the time `at`, in milliseconds.
 pub fn ts(at: i64) -> String {

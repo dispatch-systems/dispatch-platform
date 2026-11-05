@@ -43,7 +43,7 @@ class SenderTest {
     private val unexpected = mutableListOf<Throwable>()
     private lateinit var paired: Paired
 
-    private fun sender() = Sender(
+    private fun sender(sends: Sends = this.sends) = Sender(
         dispatch,
         sends,
         own,
@@ -174,6 +174,20 @@ class SenderTest {
         assertTrue(radio.pictureMessages.isEmpty())
         assertEquals(mapOf("late" to Failure.EXPIRED, "slow" to Failure.EXPIRED), sends.statuses(10).associate { it.id to it.error })
         assertTrue(folder.list()!!.isEmpty())
+    }
+
+    @Test
+    fun neverHandsAndroidATextThatPassedItsTimeAsItWasKeptHanded() = runTest {
+        // The phone's database busy a while as the text is kept handed.
+        val busy = object : Sends by sends {
+            override suspend fun handed(send: Send, parts: Int, joined: Boolean, at: Long, mms: Boolean) {
+                clock += 2_000
+                sends.handed(send, parts, joined, at, mms)
+            }
+        }
+        sender(busy).send(paired, KEY, Outbox(listOf(text("text_1", 1, "On my way").copy(expires = clock + 1_000))))
+        assertTrue(radio.handed.isEmpty())
+        assertEquals(listOf(Told("text_1", 1, SendStatus.FAILED, clock, Failure.EXPIRED)), sends.statuses(10))
     }
 
     @Test

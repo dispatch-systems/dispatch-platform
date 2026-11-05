@@ -17,7 +17,8 @@ use crate::{
 use dispatch_core::{Error, Result, State, db::Store, ensure};
 
 /// Picks `driver`, one of today's drivers, as having the work phone of the conversation `id`
-/// today, as the member `by`: the driver's conversation, where the phone's texts of today are now.
+/// today, as the member `by` at `at`: the driver's conversation, where the phone's texts of today
+/// are now.
 pub fn pick(
     db: &Store,
     state: &State,
@@ -25,6 +26,7 @@ pub fn pick(
     id: &str,
     driver: &str,
     by: &str,
+    at: i64,
 ) -> Result<Conversation> {
     let conversation = db
         .communications_text_conversation(dsp, id)?
@@ -45,7 +47,7 @@ pub fn pick(
         source: live.source,
         id: driver.to_owned(),
     };
-    db.pick_communications_driver(dsp, &phone, &live.day, &picked, by)?;
+    db.pick_communications_driver(dsp, &phone, &live.day, &picked, by, at)?;
     filing::refiled(db, dsp)?;
     let theirs = db.open_communications_text(dsp, &picked)?;
     live::changed(state, dsp);

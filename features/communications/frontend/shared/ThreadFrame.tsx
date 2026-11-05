@@ -1,12 +1,13 @@
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
 import { Loading } from '../../../../core/shell/frontend/ui/index.js';
-import { More } from './More.js';
+import { More, TryAgain } from './More.js';
 import { PhotoViewing } from './PhotoViewer.js';
 import './thread-frame.css';
 
 // The messages of a conversation or a group, scrolling on their own: kept at the latest as more
 // come, or where they were as older ones come above, which are read as its top nears (`More`);
-// and what goes between them: the day they were written, and the time after a pause.
+// and what goes between them: the day they were written, and the time after a pause. A read that
+// failed is read again as Try again is pressed.
 
 /** How near its end it still counts as at the latest, in pixels. */
 const LATEST_PX = 80;
@@ -16,6 +17,7 @@ export function ThreadFrame({
   after,
   more,
   readOlder,
+  olderFailed,
   children,
 }: {
   /** What it shows, in the order written: as they change, it keeps its place. */
@@ -24,6 +26,8 @@ export function ThreadFrame({
   after?: readonly unknown[];
   more: boolean;
   readOlder: () => void;
+  /** Whether the latest read of older ones failed. */
+  olderFailed: boolean;
   children: ReactNode;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
@@ -52,7 +56,7 @@ export function ThreadFrame({
   };
   return (
     <div className="thread" ref={scroller} onScroll={scrolled}>
-      {more && <More read={readOlder} />}
+      {more && <More read={readOlder} failed={olderFailed} />}
       <div className="thread-messages">
         <PhotoViewing>{children}</PhotoViewing>
       </div>
@@ -60,9 +64,9 @@ export function ThreadFrame({
   );
 }
 
-/** In a thread's place until it's read: loading, or nothing once it `failed`. */
-export function ThreadPending({ failed }: { failed: boolean }) {
-  return <div className="thread">{!failed && <Loading />}</div>;
+/** In a thread's place until it's read: loading, or once it `failed`, Try again. */
+export function ThreadPending({ failed, retry }: { failed: boolean; retry: () => void }) {
+  return <div className="thread">{failed ? <TryAgain retry={retry} /> : <Loading />}</div>;
 }
 
 /** The day the messages under it were written. */

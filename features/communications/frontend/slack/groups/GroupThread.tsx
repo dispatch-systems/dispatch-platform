@@ -56,6 +56,7 @@ export function GroupThread({
   entries,
   more,
   readOlder,
+  olderFailed,
   timeZone,
   now,
   reply,
@@ -63,6 +64,8 @@ export function GroupThread({
   entries: readonly GroupEntry[];
   more: boolean;
   readOlder: () => void;
+  /** Whether the latest read of older ones failed. */
+  olderFailed: boolean;
   timeZone: string;
   now: number;
   /** Opens the conversation of whoever wrote an answer. */
@@ -72,7 +75,7 @@ export function GroupThread({
   const plain = style === 'plain';
   const pauses = !plain && times === 'after_pause';
   return (
-    <ThreadFrame items={entries} more={more} readOlder={readOlder}>
+    <ThreadFrame items={entries} more={more} readOlder={readOlder} olderFailed={olderFailed}>
       {runs(entries, timeZone).map(({ day, at, runs }) => (
         <Fragment key={day}>
           <DayLabel>{dayLabel(at, timeZone, now)}</DayLabel>

@@ -247,7 +247,12 @@ fn team(query: &Value) -> Result<Option<String>> {
 }
 /// Where a page of the latest-first left off, `before=<time>:<id>`: none for the first page.
 fn before(query: &Value) -> Result<Option<(i64, String)>> {
-    let before = optional_text(query, "before", 100)?;
+    place(query, "before")
+}
+/// A place among messages listed by when each was written and their ID, `<time>:<id>`, as `key`
+/// names it: none without one.
+fn place(value: &Value, key: &str) -> Result<Option<(i64, String)>> {
+    let before = optional_text(value, key, 100)?;
     if before.is_empty() {
         return Ok(None);
     }

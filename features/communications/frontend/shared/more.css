@@ -1,4 +1,8 @@
-/* What reads more as it nears view. */
+/* What reads more as it nears view, or once a read failed, reads again as it's pressed. */
 .more {
   height: 1px;
+}
+.try-again {
+  display: block;
+  margin: var(--gap) auto;
 }

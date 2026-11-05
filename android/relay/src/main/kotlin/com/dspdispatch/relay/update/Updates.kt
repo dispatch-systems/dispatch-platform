@@ -1,6 +1,7 @@
 package com.dspdispatch.relay.update
 
 import com.dspdispatch.relay.connection.Unexpected
+import com.dspdispatch.relay.dispatch.AppDetails
 import com.dspdispatch.relay.dispatch.AppVersion
 import com.dspdispatch.relay.dispatch.Dispatch
 import com.dspdispatch.relay.dispatch.Refusal
@@ -157,16 +158,16 @@ class Updates(
 
     /**
      * Tries the version offered from [site], after any try still ending, a confirmation dropped. Its
-     * APK is kept only once whole, this app's, and not installed, for the next try at its version.
+     * APK is kept for the next try at its version, through any failure but its own: let go of once
+     * it's not whole, not this app, installed, or of a version the DSP no longer hands out.
      */
     private fun start(site: String) {
         val previous = installing
         installing = scope.launch {
             previous?.cancelAndJoin()
             offered?.let { state.value = Update.Downloading(it) }
-            var keep = false
             state.value = try {
-                attempt(site) { keep = true }
+                attempt(site)
             } catch (_: Refusal) {
                 failed(trying, Problem.DOWNLOAD)
             } catch (_: IOException) {
@@ -176,34 +177,31 @@ class Updates(
             } catch (_: Mismatch) {
                 failed(trying, Problem.MISMATCH)
             } catch (cancelled: CancellationException) {
+                // Dropped for a version the DSP hands out now.
+                letGo()
                 throw cancelled
             } catch (error: Exception) {
                 // Never ending the app, to fail the same way as it starts again.
                 unexpected.happened("Updating the app", error)
                 failed(trying, Problem.INSTALL)
-            } finally {
-                if (!keep) withContext(NonCancellable + io) { apk.delete() }
             }
         }
     }
 
     /**
      * Downloads, checks and installs the version the DSP hands out now, from the APK kept by a try
-     * before if it's that version's; where that leaves updating. Says to [keep] the APK once Android
-     * didn't install it.
+     * before if it's that version's; where that leaves updating.
      */
-    private suspend fun attempt(site: String, keep: () -> Unit): Update {
+    private suspend fun attempt(site: String): Update {
         cleared.join()
         val details = dispatch.app(site)
         val app = details.app
         offer(app.takeIf { it.versionCode > own.versionCode })
-        if (offered == null) return Update.None
+        if (offered == null) return Update.None.also { letGo() }
         // From here the try is at the version the details name, which may not be the one heard of.
         state.value = Update.Downloading(app)
-        withContext(io) {
-            if (!saved(apk, details)) dispatch.apk(site) { input -> save(input, apk, details) }
-        }
-        if (!withContext(io) { check.isThisApp(apk) }) return failed(app, Problem.NOT_THIS_APP)
+        if (!withContext(io) { saved(apk, details) }) download(site, details)
+        if (!withContext(io) { check.isThisApp(apk) }) return failed(app, Problem.NOT_THIS_APP).also { letGo() }
         // Installing ends the process: never while a text is mid-send, nor while one starts.
         var installed = false
         val outcome = try {
@@ -218,13 +216,28 @@ class Updates(
         } finally {
             if (!installed) release()
         }
-        if (!installed) keep()
+        if (installed) letGo()
         return when (outcome) {
             // Android replaces the app, ending this process; the new one starts the relay again.
             Outcome.INSTALLED -> Update.Installing(app)
             Outcome.REFUSED -> failed(app, null)
             Outcome.FAILED -> failed(app, Problem.INSTALL)
         }
+    }
+
+    /** Downloads the APK [details] describes from [site]: none of it kept, unless it's whole. */
+    private suspend fun download(site: String, details: AppDetails) {
+        try {
+            withContext(io) { dispatch.apk(site) { input -> save(input, apk, details) } }
+        } catch (failed: Throwable) {
+            letGo()
+            throw failed
+        }
+    }
+
+    /** Lets go of the APK: not whole, not this app, installed, or of no version to try. */
+    private suspend fun letGo() {
+        withContext(NonCancellable + io) { apk.delete() }
     }
 
     /** Asks the person to confirm installing [app], unless its notification was posted already. */

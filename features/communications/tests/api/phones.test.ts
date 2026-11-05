@@ -348,6 +348,8 @@ test("A DSP's address hands out its server's build of the app to anyone, and pho
   assert.equal(answered.status, 201, answered.body);
   const outbox = await f.request('/api/communications/phone/outbox', undefined, key);
   assert.equal(outbox.value.texts[0].body, 'Hello');
+  // Never started ten minutes after it was queued.
+  assert.equal(outbox.value.texts[0].expires, answered.value.message.at + 10 * 60 * 1000);
   assert.deepEqual(outbox.value.app, { version: '1.3.1-dev.14', versionCode: 14 });
 
   // It says the app it runs with each wait, kept as its own: one older than the version handed

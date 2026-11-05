@@ -10,6 +10,7 @@ import {
   hashQuery,
   navigate,
   parseHash,
+  pushHashQuery,
   replaceHashQuery,
   settingsHash,
 } from '../../../../core/shell/frontend/runtime/navigation.js';
@@ -31,11 +32,13 @@ import {
 } from '../inbox/sections.js';
 import { routeGroups, routeRows, rowTarget } from '../todays-routes/todays-routes.js';
 import { started, type Target } from '../conversations/target.js';
+import { draftsOf } from '../conversations/drafts.js';
 import { memberTarget } from '../slack/members.js';
 import { ConversationPane } from '../conversations/ConversationPane.js';
 import { useConversationReads } from '../conversations/useConversation.js';
 import { CopyChatLink } from '../slack/CopyChatLink.js';
 import { GroupDraft, type Draft } from '../slack/groups/GroupDraft.js';
+import type { Pick } from '../slack/groups/groups.js';
 import { GroupPane } from '../slack/groups/GroupPane.js';
 import { ListPane } from './ListPane.js';
 import { NewMessage } from '../slack/NewMessage.js';
@@ -63,13 +66,21 @@ import { ViewToggle, type RoutesView } from '../todays-routes/ViewToggle.js';
 // The section shown, and Today's Routes' view, are remembered for each member; until they choose
 // one, the page opens on the first section with conversations. The conversation or group open is
 // kept in the address (`?open=`, `?group=`): a link to one opens it, in its section, the page open
-// or not. It looks as the member chose in Settings' Message display, which Display opens.
+// or not; one pane at a time, one opened from the list is a step of the browser's history, so Back
+// goes back to the list. What's written in each and not sent is kept while the page is open, and
+// in the browser's tab (`drafts`). It looks as the member chose in Settings' Message display, which
+// Display opens.
 
 /** What the pane shows: a conversation or a group, by its ID, or a message being written to a
  * group. */
 type Opened = { conversation?: string; group?: string; drafting?: true };
 /** How many of the first waiting are read before they're opened. */
 const WARMED = 3;
+/** What a step of the browser's history holds when it opened from the list, one pane at a time,
+ * so closing it goes back to the list, not to whatever came before, as a notification's link. */
+const FROM_LIST = 'communicationsFromList';
+/** Whether the step of the browser's history now opened from the list. */
+const fromList = () => (history.state as Record<string, unknown> | null)?.[FROM_LIST] === true;
 /** What the address says is open. */
 function addressed(): Opened {
   const query = hashQuery();
@@ -101,9 +112,8 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   // Of the workspace chosen while a section of workspaces is chosen, as Slack is; else of every one,
   // as Recents lists them.
   const ofWorkspace = SECTIONS.some((each) => each.id === chosenSection && each.workspaces);
-  const { inbox, team, changed, error, refresh, show, showGroup, readOlder } = useInbox(
-    ofWorkspace ? chosen : undefined,
-  );
+  const { inbox, team, changed, error, refresh, show, showGroup, readOlder, olderFailed } =
+    useInbox(ofWorkspace ? chosen : undefined);
   // The conversations read, kept so each opens at once once read, and read before they're opened.
   const reads = useConversationReads(view.dsp.id, changed);
   const warm = useCallback((id: string) => reads.warm(id), [reads]);
@@ -150,26 +160,52 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const reading = open || group || drafting;
   const [pinned, setPinned] = useState<Row>();
   const [composing, setComposing] = useState(false);
+  const drafts = useMemo(() => draftsOf(view.dsp.id, user), [view.dsp.id, user]);
+  // Whom a message to a group is to, kept as another opens, and what the list's row says of it.
+  const [picks, setPicks] = useState<Pick[]>([]);
   const [draft, setDraft] = useState<Draft>({ name: '', people: 0 });
   const now = useNow();
-  const opening = useCallback((next: Opened) => {
+  // How many times what's open changed, or one to start was chosen, as one started opens only if
+  // nothing else did meanwhile.
+  const turns = useRef(0);
+  const phone = layout === 'phone';
+  /** Shows what `next` names. */
+  const adopt = useCallback((next: Opened) => {
+    turns.current++;
     setOpened(next);
     // One pinned to the top of the list goes once another is open.
     setPinned((kept) => (kept?.row.id === (next.conversation ?? next.group) ? kept : undefined));
-    replaceHashQuery(
-      next.conversation ? { open: next.conversation } : next.group ? { group: next.group } : {},
-    );
   }, []);
-  // A link to a conversation or a group, as a new message's notification is, opens it here.
+  /** Shows what `next` names, and keeps it in the address: one pane at a time, opened from the
+   * list, as a step of the browser's history, and closed, by going back that step. */
+  const opening = useCallback(
+    (next: Opened) => {
+      const query: Record<string, string> = next.conversation
+        ? { open: next.conversation }
+        : next.group
+          ? { group: next.group }
+          : {};
+      const shows = Boolean(next.conversation || next.group);
+      if (phone && shows && !reading) pushHashQuery(query, { [FROM_LIST]: true });
+      else if (phone && !shows && !next.drafting && fromList()) history.back();
+      else replaceHashQuery(query);
+      adopt(next);
+    },
+    [adopt, phone, reading],
+  );
+  // The address moved, by Back or Forward, or a link to a conversation or a group, as a new
+  // message's notification is: what it names opens here, and one pane at a time, with nothing
+  // named, the list.
   useEffect(() => {
     const followed = () => {
       const next = addressed();
-      if (parseHash(location.hash).page === 'communications' && (next.conversation || next.group))
-        opening(next);
+      if (parseHash(location.hash).page !== 'communications') return;
+      const shows = Boolean(next.conversation || next.group);
+      if (shows || phone) adopt(next);
     };
     addEventListener('hashchange', followed);
     return () => removeEventListener('hashchange', followed);
-  }, [opening]);
+  }, [adopt, phone]);
   const select = useCallback((id?: string) => opening({ conversation: id }), [opening]);
   const openGroup = useCallback((id: string) => opening({ group: id }), [opening]);
   const closed = useCallback(() => opening({}), [opening]);
@@ -215,9 +251,11 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const updating =
     manages && model.workspaces ? (inbox?.workspaces.filter((each) => each.needsUpdate) ?? []) : [];
   const done = useAction(async (conversation: Conversation) =>
-    show(await markDone(conversation.id)),
+    show(await markDone(conversation.id, conversation.last)),
   );
-  const doneGroup = useAction(async (listed: Group) => showGroup(await markGroupDone(listed.id)));
+  const doneGroup = useAction(async (listed: Group) =>
+    showGroup(await markGroupDone(listed.id, listed.last)),
+  );
   // What's open, as last read, is pinned to the top of the list while the list doesn't show it:
   // a conversation holding no message yet, as New message opens it, one listed under a group, or
   // one older than those listed.
@@ -227,13 +265,16 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   );
   const seenGroup = useCallback((listed: Group) => setPinned({ kind: 'group', row: listed }), []);
   // What a target names, opened: a conversation there is, or one started, pinned until it holds
-  // a message.
+  // a message, unless something else was opened, or another chosen, while it started.
   const reach = async (target: Target) => {
     if (target.kind === 'conversation') select(target.id);
     else {
+      const turn = ++turns.current;
       const begun = await started(target);
-      setPinned({ kind: 'conversation', row: begun });
-      select(begun.id);
+      if (turns.current === turn) {
+        setPinned({ kind: 'conversation', row: begun });
+        select(begun.id);
+      }
     }
     setComposing(false);
   };
@@ -374,6 +415,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
                 pinned={unlisted}
                 current={current}
                 readOlder={readOlder}
+                olderFailed={olderFailed}
                 reach={reach}
                 show={show}
                 open={open ?? group}
@@ -390,9 +432,14 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
                 <GroupDraft
                   workspaces={working}
                   timeZone={timeZone}
+                  drafts={drafts}
+                  picks={picks}
+                  pick={setPicks}
                   back={closed}
                   drafted={setDraft}
                   sent={(sent) => {
+                    setPicks([]);
+                    setDraft({ name: '', people: 0 });
                     showGroup(sent);
                     openGroup(sent.id);
                   }}
@@ -404,6 +451,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
                   listed={listedGroup}
                   workspaces={inbox.workspaces}
                   docked={docked}
+                  drafts={drafts}
                   seen={seenGroup}
                   changed={changed}
                   timeZone={timeZone}
@@ -429,6 +477,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
                   texting={inbox.texting}
                   docked={docked}
                   kept={kept}
+                  drafts={drafts}
                   seen={seen}
                   reads={reads}
                   typing={inbox.typing.writing}
@@ -460,7 +509,6 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
             reach={reach}
             group={() => {
               setComposing(false);
-              setDraft({ name: '', people: 0 });
               chooseSection(groupsSection);
               opening({ drafting: true });
             }}

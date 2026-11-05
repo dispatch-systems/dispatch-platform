@@ -17,7 +17,8 @@ export function useConversationReads(dsp: string, changed: Changed) {
 /**
  * The open conversation and its messages, as the page's `reads` hold it: at once as last read, if
  * it was, and read when it opens unless no update changed it since, and again each time an update
- * changes it; older ones as they're asked for, fifty at a time. `gone` once it's no longer there.
+ * changes it, or as asked again once a read failed (`retry`); older ones as they're asked for,
+ * fifty at a time. `gone` once it's no longer there.
  */
 export function useConversation(reads: ConversationReads, id: string) {
   const held = useSyncExternalStore(
@@ -31,9 +32,10 @@ export function useConversation(reads: ConversationReads, id: string) {
   const readOlder = useCallback(() => {
     if (!older) void reads.readOlder(id);
   }, [reads, id, older]);
+  const retry = useCallback(() => reads.open(id), [reads, id]);
   const show = useCallback(
     (conversation: Conversation, message?: Message) => reads.show(conversation, message),
     [reads],
   );
-  return { ...held, readOlder, show };
+  return { ...held, readOlder, retry, show };
 }

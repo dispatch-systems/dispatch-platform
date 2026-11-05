@@ -247,6 +247,14 @@ pub fn before(value: &str) -> Result<&str> {
     ensure(valid, "invalid_input", 400)?;
     Ok(value)
 }
+/// The latest message a member was shown, as Done names it (`seen`), its `ts` in Slack as
+/// `before` reads one: when it was written, and the `ts`, which places it among those of that
+/// millisecond.
+pub fn seen(value: &str) -> Result<(i64, &str)> {
+    let ts = before(value)?;
+    let at = messages::incoming::millis(ts).ok_or_else(|| Error::new("invalid_input", 400))?;
+    Ok((at, ts))
+}
 /// The conversation `id` and its latest messages, or those before the one Slack knows as
 /// `before`, with whom it's with's conversations of each kind.
 pub fn opened(

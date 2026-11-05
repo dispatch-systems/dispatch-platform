@@ -1,5 +1,6 @@
 package com.dspdispatch.relay.texts
 
+import android.database.SQLException
 import com.dspdispatch.relay.connection.Unexpected
 import com.dspdispatch.relay.connection.backoff
 import com.dspdispatch.relay.dispatch.Dispatch
@@ -137,6 +138,9 @@ class Reporter(
         read()
     } catch (lost: SecurityException) {
         throw IOException("Texting was turned off", lost)
+    } catch (away: SQLException) {
+        // The provider's database failing a moment, as it may across Binder: the file is still there.
+        throw IOException("The texting provider failed", away)
     } catch (failed: RuntimeException) {
         throw Unreadable(failed)
     }

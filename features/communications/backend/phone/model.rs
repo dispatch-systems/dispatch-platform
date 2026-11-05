@@ -10,6 +10,12 @@ use serde::{Deserialize, Serialize};
 pub const ID_MOST: usize = 64;
 /// Why a text Dispatch queued failed when its phone was removed before it went: its `error`.
 pub const PHONE_REMOVED: &str = "phones_removed";
+/// Why a text Dispatch queued failed when it still waited at its expiry on its phone, offline: its
+/// `error`.
+pub const PHONE_OFFLINE: &str = "phones_offline";
+/// How long a text Dispatch queued, or tried again, may wait for its phone to start it, in
+/// milliseconds: past it, the phone never does.
+pub const EXPIRY_MS: i64 = 10 * 60 * 1000;
 
 /// One of the DSP's dispatch phones.
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -116,8 +122,8 @@ pub struct Text {
     /// How one Dispatch sent went; none for one the phone reported.
     pub status: Option<Status>,
     pub status_at: Option<i64>,
-    /// Why it failed: as the phone said, or `PHONE_REMOVED` for one whose phone was removed
-    /// before it went.
+    /// Why it failed: as the phone said, `PHONE_REMOVED` for one whose phone was removed before
+    /// it went, or `PHONE_OFFLINE` for one still waiting at its expiry on its phone, offline.
     pub error: Option<String>,
     pub files: Vec<File>,
     /// Its latest change, after every one before it: a text changes as it comes, as Dispatch
@@ -164,7 +170,7 @@ pub struct File {
 #[derive(Clone, Debug)]
 pub struct Outgoing {
     /// The phone to send it from; none for the one that last texted `to`, else the one seen
-    /// last.
+    /// last, one online before any offline.
     pub phone: Option<String>,
     /// The number to send it to.
     pub to: String,

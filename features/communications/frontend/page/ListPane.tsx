@@ -37,6 +37,7 @@ export function ListPane({
   pinned,
   current,
   readOlder,
+  olderFailed,
   reach,
   show,
   routes,
@@ -61,6 +62,8 @@ export function ListPane({
   /** The conversation open, as last read. */
   current?: Conversation;
   readOlder: (section: Section) => void;
+  /** Whether the latest read of older ones failed. */
+  olderFailed: boolean;
   /** Opens the conversation with a contact, or starts one. */
   reach: (target: Target) => Promise<void>;
   /** Shows a conversation as the page's own writes left it. */
@@ -160,6 +163,7 @@ export function ListPane({
             read={view.read?.(routes.groups)}
             below={view.below?.(routes.groups)}
             readOlder={() => readOlder(section)}
+            olderFailed={olderFailed}
             {...listing}
           />
         )}

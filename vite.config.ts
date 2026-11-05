@@ -11,6 +11,9 @@ export default defineConfig({
     outDir: '../../.build/dashboard',
     emptyOutDir: true,
     sourcemap: false,
+    // Every library the dashboard bundles, with its license's text, served beside them as the
+    // font's is (INTER-LICENSE.txt), as their licenses ask copies to carry.
+    license: { fileName: 'assets/THIRD-PARTY-LICENSES.txt' },
     rolldownOptions: {
       output: {
         // An owner's lazily loaded entry is `<owner>/frontend/index.ts`: name its chunk after

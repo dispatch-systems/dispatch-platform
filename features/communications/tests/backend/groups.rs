@@ -5,11 +5,13 @@
 //! hold someone each; and what a message to a group may carry is offered with them, as Slack's.
 use super::*;
 use crate::api::types::ComposeLimits;
+use crate::api::types::GroupEntry;
 use crate::backend::{
     compose::SLACK,
     inbox,
     model::ConversationState,
     reply,
+    storage::{CommunicationsStore, Written},
     support::{self, DRIVERS, USE},
 };
 use crate::integrations::messages::ID;
@@ -23,7 +25,7 @@ use dispatch_routes_contract::RouteDay;
 use dispatch_slack::{kit, testing as slack};
 use serde_json::json;
 use std::{collections::BTreeMap, sync::Arc};
-use storage::GroupStore;
+use storage::{Delivered, GroupStore, Member, Writing};
 
 const DRIVERS_TEAM: &str = "T0FIXTURE2";
 const OPERATIONS: &str = "T0FIXTURE1";
@@ -272,11 +274,30 @@ async fn answers_are_the_groups_until_the_dsp_writes_to_them_alone() {
     support::writes(&state, &dsp, DRIVERS_TEAM, "U0FIXJORDAN", "On it").await;
     let jordan = with(&state, &dsp, DRIVERS_TEAM, "U0FIXJORDAN").await;
     assert_eq!(jordan.group.as_deref(), Some(later.id.as_str()));
+    let marked = |seen: Option<(i64, String)>| {
+        let (shared, at, id) = (state.clone(), dsp.clone(), later.id.clone());
+        state.read(move |db| {
+            let seen = seen.as_ref().map(|(at, id)| (*at, id.as_str()));
+            done(db, &shared, &at, &id, "someone", seen)
+        })
+    };
+    // Done covers only what was shown: shown up to before "On it", Jordan still waits; shown up
+    // to it, as the group shows it, they're done.
+    let shown = jordan.waiting_since.unwrap() - 1;
+    assert_eq!(
+        marked(Some((shown, String::new()))).await.unwrap().state,
+        ConversationState::Waiting
+    );
     let (shared, at, id) = (state.clone(), dsp.clone(), later.id.clone());
-    let marked = state
-        .read(move |db| done(db, &shared, &at, &id, "someone"))
+    let on_it = state
+        .read(move |db| opened(db, &shared, &at, &id, None))
         .await
+        .unwrap()
+        .entries
+        .pop()
         .unwrap();
+    assert_eq!(on_it.text, "On it");
+    let marked = marked(Some((on_it.at, on_it.id))).await.unwrap();
     assert_eq!(marked.state, ConversationState::Responded);
     let jordan = with(&state, &dsp, DRIVERS_TEAM, "U0FIXJORDAN").await;
     assert_eq!(jordan.state, ConversationState::Done);
@@ -300,6 +321,102 @@ async fn answers_are_the_groups_until_the_dsp_writes_to_them_alone() {
         .map(|each| each.id.as_str())
         .collect();
     assert_eq!(groups, [later.id.as_str(), group.id.as_str()]);
+}
+
+#[tokio::test]
+async fn a_groups_answers_of_one_millisecond_are_shown_and_marked_done_in_slacks_order() {
+    let (_root, state, bot) = support::connected(DRIVERS_TEAM).await;
+    let dsp = bot.dsp.clone();
+    let by = owner(&state, &dsp).await.auth.user.id;
+    // A group delivered to Casey and Jordan at 100.000, both answering at 100.123: Casey first by
+    // Slack's `ts`, their IDs, random, made to say otherwise.
+    let at = dsp.clone();
+    let group = state
+        .run(move |db| {
+            let people = [
+                ("U0FIXCASEY", "Casey Rivera"),
+                ("U0FIXJORDAN", "Jordan Ellis"),
+            ];
+            let members: Vec<Member> = people
+                .iter()
+                .map(|(user, name)| Member {
+                    team: DRIVERS_TEAM.into(),
+                    user: (*user).into(),
+                    name: (*name).into(),
+                })
+                .collect();
+            let writing = Writing {
+                text: "Pick up your vests",
+                by: &by,
+                name: "Test Owner",
+                initials: None,
+                photos: &[],
+            };
+            let group = db.create_communications_group(&at, "Drivers", &members, &writing)?;
+            for due in db.due_communications_deliveries(&at, i64::MAX, 10)? {
+                let channel = format!("D{}", &due.user[1..]);
+                let delivered = Delivered {
+                    channel: &channel,
+                    ts: "100.000001",
+                    at: 100_000,
+                    photos: &[],
+                };
+                db.deliver_communications_message(&at, &due, "Driver", &delivered)?;
+            }
+            let answers = [
+                ("U0FIXCASEY", "Casey Rivera", "100.123100", "Copy", "f"),
+                ("U0FIXJORDAN", "Jordan Ellis", "100.123900", "On it", "0"),
+            ];
+            for (user, name, ts, text, id) in answers {
+                let written = Written {
+                    team: DRIVERS_TEAM.into(),
+                    user: user.into(),
+                    channel: format!("D{}", &user[1..]),
+                    name: name.into(),
+                    ts: ts.into(),
+                    thread_ts: None,
+                    text: text.into(),
+                    at: 100_123,
+                    edited_at: None,
+                    files: Vec::new(),
+                };
+                db.keep_communications_message(&at, &written)?;
+                db.dsp(&at)?.exec(
+                    "UPDATE communications_messages SET id=? WHERE ts=? AND direction='in'",
+                    rusqlite::params![format!("msg_{}", id.repeat(32)), ts],
+                )?;
+            }
+            Ok(group.id)
+        })
+        .await
+        .unwrap();
+    let (shared, at, id) = (state.clone(), dsp.clone(), group.clone());
+    let answers: Vec<GroupEntry> = state
+        .read(move |db| Ok(opened(db, &shared, &at, &id, None)?.entries))
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|entry| entry.conversation_id.is_some())
+        .collect();
+    let marked = |seen: &GroupEntry| {
+        let (shared, at, id) = (state.clone(), dsp.clone(), group.clone());
+        let seen = (seen.at, seen.id.clone());
+        state.read(move |db| done(db, &shared, &at, &id, "someone", Some((seen.0, &seen.1))))
+    };
+    let waits = |user| {
+        let (state, dsp) = (state.clone(), dsp.clone());
+        async move { with(&state, &dsp, DRIVERS_TEAM, user).await.state }
+    };
+
+    // Shown in Slack's order; Done as far as Casey's leaves Jordan's waiting, and as far as
+    // Jordan's covers both.
+    let texts: Vec<_> = answers.iter().map(|entry| entry.text.as_str()).collect();
+    assert_eq!(texts, ["Copy", "On it"]);
+    marked(&answers[0]).await.unwrap();
+    assert_eq!(waits("U0FIXCASEY").await, ConversationState::Done);
+    assert_eq!(waits("U0FIXJORDAN").await, ConversationState::Waiting);
+    marked(&answers[1]).await.unwrap();
+    assert_eq!(waits("U0FIXJORDAN").await, ConversationState::Done);
 }
 
 #[tokio::test(start_paused = true)]
