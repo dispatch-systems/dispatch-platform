@@ -102,6 +102,12 @@ class FakeProvider : Provider {
     /** Parts the provider can't read the next time, as when it crashed a moment before. */
     val away = mutableSetOf<String>()
 
+    /** Parts whose bytes fail to open in a way the provider doesn't say they may, every time. */
+    val broken = mutableSetOf<String>()
+
+    /** Rows the provider fails on in a way it doesn't say it may, every time. */
+    val failing = mutableSetOf<Row>()
+
     /** Whether Texting is turned off as the next read starts, just after the app saw it on. */
     var turnedOffAtRead = false
 
@@ -113,6 +119,7 @@ class FakeProvider : Provider {
         .sortedBy(Row::at)
 
     override fun read(row: Row): Reading {
+        if (row in failing) throw IllegalStateException("Couldn't read row 0, col -1 from CursorWindow")
         if (row in writing) return Reading.Later
         val message = messages.firstOrNull { it.row == row } ?: return Reading.Gone
         return if (message.parts.any { away.remove(it.uri) }) Reading.Later else Reading.Whole(message)
@@ -137,6 +144,7 @@ class FakeProvider : Provider {
 
     override fun open(uri: String): InputStream {
         readable()
+        if (uri in broken) throw IllegalArgumentException("Unknown URI $uri")
         return ByteArrayInputStream(bytes[uri] ?: throw FileNotFoundException(uri))
     }
 

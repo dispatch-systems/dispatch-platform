@@ -2,6 +2,8 @@ package com.dspdispatch.relay.texts
 
 import android.content.Context
 import androidx.room3.Room
+import com.dspdispatch.relay.connection.Logcat
+import com.dspdispatch.relay.connection.keepRunning
 import com.dspdispatch.relay.dispatch.Dispatch
 import com.dspdispatch.relay.dispatch.Outbox
 import com.dspdispatch.relay.pairing.Paired
@@ -33,9 +35,9 @@ class Texts(private val context: Context, dispatch: Dispatch) {
     private val sends = database.sends()
     private val provider = PhoneProvider(context.contentResolver)
     private val own = OwnRows(provider, sends, context.packageName)
-    private val inbox = Inbox(provider, queue, SentByApp(sends, context.packageName))
+    private val inbox = Inbox(provider, queue, SentByApp(sends, context.packageName), Logcat)
     private val texting = Texting { textingAllowed(context) }
-    private val reporter = Reporter(dispatch, queue, provider, texting, Jpegs(File(context.noBackupFilesDir, JPEGS), PhonePictures))
+    private val reporter = Reporter(dispatch, queue, provider, texting, Jpegs(File(context.noBackupFilesDir, JPEGS), PhonePictures), Logcat)
     private val statuses = Statuses(dispatch, sends)
     private val sender = Sender(
         dispatch,
@@ -46,6 +48,7 @@ class Texts(private val context: Context, dispatch: Dispatch) {
         statuses,
         File(context.cacheDir, SENDING),
         mmsWhenBusy.on::value,
+        Logcat,
     )
 
     // Android said how a text the app sent went: the row it wrote of it may be read for sure now.
@@ -65,15 +68,16 @@ class Texts(private val context: Context, dispatch: Dispatch) {
 
     /**
      * Relays the texts of [paired], with its [key], from when it paired: reporting whatever
-     * waits at once, and reading the phone's texts once the phone allows it. Runs until cancelled.
+     * waits at once, and reading the phone's texts once the phone allows it. Runs until cancelled,
+     * each of its loops on through an error it didn't expect, the others going on meanwhile.
      */
     suspend fun run(paired: Paired, key: String): Unit = coroutineScope {
         inbox.begin(paired.phoneId, paired.at)
         val wake = Channel<Unit>(Channel.CONFLATED)
-        launch { reporter.run(paired.site, key, wake) }
-        launch { statuses.run(paired.site, key) }
-        launch { sender.run(paired, key) }
-        reader.run { wake.trySend(Unit) }
+        launch { keepRunning("Reporting texts", Logcat) { reporter.run(paired.site, key, wake) } }
+        launch { keepRunning("Reporting statuses", Logcat) { statuses.run(paired.site, key) } }
+        launch { keepRunning("Sending texts", Logcat) { sender.run(paired, key) } }
+        keepRunning("Reading texts", Logcat) { reader.run { wake.trySend(Unit) } }
     }
 
     /**

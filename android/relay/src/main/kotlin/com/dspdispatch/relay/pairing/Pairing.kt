@@ -3,6 +3,8 @@ package com.dspdispatch.relay.pairing
 import android.content.Context
 import android.telephony.SubscriptionManager
 import androidx.core.content.edit
+import com.dspdispatch.relay.connection.backoff
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -45,8 +47,22 @@ class Pairings(context: Context) {
     /** Where the phone stands now, as it changes. */
     val standing: StateFlow<Standing> = state.asStateFlow()
 
-    /** The key the phone calls its DSP with, while it's paired. */
-    fun key(): String? = prefs.getString(KEY, null)?.let(Vault::open)
+    /**
+     * The key the phone calls its DSP with, while it's paired; null once it's lost for good, as
+     * after the keystore lost what sealed it. Read again after a growing pause while the keystore
+     * can't be read.
+     */
+    suspend fun key(): String? {
+        val sealed = prefs.getString(KEY, null) ?: return null
+        var failures = 0
+        while (true) {
+            try {
+                return Vault.open(sealed)
+            } catch (_: Vault.Unreachable) {
+                delay(backoff(++failures))
+            }
+        }
+    }
 
     fun save(paired: Paired, key: String) {
         prefs.edit {
@@ -70,10 +86,20 @@ class Pairings(context: Context) {
         val paired = prefs.getString(PAIRED, null)?.let { runCatching { Json.decodeFromString<Paired>(it) }.getOrNull() }
         val removed = prefs.getString(REMOVED, null)
         return when {
-            paired != null && key() != null -> Standing.Pairing(paired)
+            paired != null && !lost() -> Standing.Pairing(paired)
             removed != null -> Standing.Removed(removed)
             else -> Standing.Unpaired
         }
+    }
+
+    /**
+     * Whether the key is gone for good, or was never kept. Not while the keystore can't be read
+     * just now: the phone stays paired, and the relay reads its key again.
+     */
+    private fun lost(): Boolean = try {
+        prefs.getString(KEY, null)?.let(Vault::open) == null
+    } catch (_: Vault.Unreachable) {
+        false
     }
 
     private companion object {

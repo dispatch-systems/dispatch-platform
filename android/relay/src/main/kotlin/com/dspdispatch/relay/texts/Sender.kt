@@ -1,5 +1,6 @@
 package com.dspdispatch.relay.texts
 
+import com.dspdispatch.relay.connection.Unexpected
 import com.dspdispatch.relay.connection.backoff
 import com.dspdispatch.relay.dispatch.Dispatch
 import com.dspdispatch.relay.dispatch.OutgoingText
@@ -8,6 +9,7 @@ import com.dspdispatch.relay.dispatch.Refusal
 import com.dspdispatch.relay.pairing.Paired
 import java.io.File
 import java.io.IOException
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,7 +23,8 @@ import kotlinx.coroutines.withTimeoutOrNull
  * Sends the texts Dispatch has for the phone from its own number, each attempt once: kept as
  * started before anything of it goes, a picture message's files fetched first into [folder]. While
  * [mmsWhenBusy], a text that would cross Android's SMS limit goes as a picture message instead, or
- * fails where the carrier takes none.
+ * fails where the carrier takes none. One past its time to start ([OutgoingText.expires]) fails,
+ * never handed to Android, as does one failing in a way nothing expected, told to [unexpected].
  */
 class Sender(
     private val dispatch: Dispatch,
@@ -32,6 +35,7 @@ class Sender(
     private val statuses: Statuses,
     private val folder: File,
     private val mmsWhenBusy: () -> Boolean,
+    private val unexpected: Unexpected,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
     private val answers = Channel<Pair<Paired, Outbox>>(Channel.CONFLATED)
@@ -106,7 +110,7 @@ class Sender(
     /**
      * Sends each text of [outbox] that wasn't yet, settling those Android never said more of. A
      * text whose file couldn't be fetched goes with a later answer, after a growing pause of its
-     * own, the others going on.
+     * own, the others going on; it fails once its files couldn't be fetched [MOST_FETCHES] times.
      */
     internal suspend fun send(paired: Paired, key: String, outbox: Outbox) = withContext(Dispatchers.IO) {
         gate.withLock { sendEach(paired, key, outbox) }
@@ -128,14 +132,36 @@ class Sender(
                     sendText(paired, key, text, send)
                     retries -= attempt
                 } catch (_: IOException) {
-                    retries[attempt] = Retry.after(retry, now())
+                    unfetched(send, retry)
                 } catch (_: Refusal) {
-                    retries[attempt] = Retry.after(retry, now())
+                    unfetched(send, retry)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    // It fails alone, the others going on: Dispatch hears so, rather than hand it again
+                    // with each answer.
+                    unexpected.happened("Sending a text", error)
+                    retries -= attempt
+                    sends.failed(send, Failure.NOT_SENT, now())
                 }
             }
         } finally {
             statuses.more()
         }
+    }
+
+    /**
+     * [send]'s files couldn't be fetched, again after [last]: tried again after a growing pause, or
+     * failed once tried [MOST_FETCHES] times.
+     */
+    private suspend fun unfetched(send: Send, last: Retry?) {
+        val retry = Retry.after(last, now())
+        if (retry.failures < MOST_FETCHES) {
+            retries[send.id to send.attempt] = retry
+            return
+        }
+        retries -= send.id to send.attempt
+        sends.failed(send, Failure.FILE_UNAVAILABLE, now())
     }
 
     /**
@@ -150,6 +176,7 @@ class Sender(
     }
 
     private suspend fun sendText(paired: Paired, key: String, text: OutgoingText, send: Send) {
+        if (expired(text, send)) return
         if (!radio.allowed()) return sends.failed(send, Failure.NOT_ALLOWED, now())
         val line = telephony { radio.line(paired.number, paired.subscription) }.getOrElse { return notSent(send) }
         if (text.files.isEmpty()) {
@@ -184,10 +211,21 @@ class Sender(
         return limits ?: null.also { sends.failed(send, Failure.MMS_OFF, now()) }
     }
 
-    /** Sends [text] as a picture message on [line], within the carrier's [limits]. */
+    /**
+     * Sends [text] as a picture message on [line], within the carrier's [limits], unless fetching its
+     * files took it past its time.
+     */
     private suspend fun sendMms(paired: Paired, key: String, line: Line, limits: MmsLimits, text: OutgoingText, send: Send) {
         val pdu = compose(paired, key, limits, text, send) ?: return
-        if (!hand(send, 1, joined = false, mms = true) { line.mms(send, pdu) }) pdu.delete()
+        if (expired(text, send) || !hand(send, 1, joined = false, mms = true) { line.mms(send, pdu) }) pdu.delete()
+    }
+
+    /** Whether [text] is past its time to start, by the phone's clock: [send] failed if so. */
+    private suspend fun expired(text: OutgoingText, send: Send): Boolean {
+        val expires = text.expires ?: return false
+        if (now() <= expires) return false
+        sends.failed(send, Failure.EXPIRED, now())
+        return true
     }
 
     /**
@@ -237,8 +275,12 @@ class Sender(
             }
             val attachments = text.files.zip(fetched) { file, into -> Attachment(file.name, file.mime, into) }
             val at = now()
-            val bytes = message.compose(send.number, send.body, attachments, limits, "T${at.toString(HEX)}", at / MS_PER_SECOND)
-                ?: return null.also { sends.failed(send, Failure.TOO_LARGE, now()) }
+            val bytes = try {
+                message.compose(send.number, send.body, attachments, limits, "T${at.toString(HEX)}", at / MS_PER_SECOND)
+            } catch (_: OutOfMemoryError) {
+                // A picture too large for what memory the phone has to scale it.
+                null
+            } ?: return null.also { sends.failed(send, Failure.TOO_LARGE, now()) }
             return File(folder, pduName(send.id, send.attempt)).apply { writeBytes(bytes) }
         } finally {
             fetched.forEach(File::delete)
@@ -262,6 +304,9 @@ class Sender(
 
         /** How long an answer holding only texts under way waits before the next. */
         const val HOLD_MS = 5_000L
+
+        /** How many times in a row a text's files may fail to be fetched before it fails. */
+        const val MOST_FETCHES = 5
 
         /** How long a send is kept: its text's row may be read as long as the inbox looks back. */
         const val KEEP_MS = Inbox.LOOK_BACK_MS + RESULT_WAIT_MS
