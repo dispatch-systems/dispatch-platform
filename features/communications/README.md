@@ -369,11 +369,10 @@ queues a text for a phone.
   last texted that number, else the one seen last, one online before any offline, with its
   pictures, kept by the phone side as they're added, the adder's alone until they go, and none of
   one kept should the adder's access end while its bytes come. A number's conversation, and a work
-  phone's nobody had, answer their number; a driver's, the work phone they have now: their latest
-  of today, as live route data reads it, but one that's another driver's latest too, which is no
-  one driver's; else one they were picked for today (Pick driver) that's no one driver's latest,
-  as its texts are filed under them; refused while they have none
-  (`communications_no_work_phone`). Today's Routes and their Work chip show the same phone. Filed
+  phone's nobody had, answer their number; a driver's, the work phone they have now: one they were
+  picked for today (Pick driver) that's no one driver's latest, as its texts are filed under them;
+  else their latest of today, as live route data reads it, but one that's another driver's latest
+  too, which is no one driver's; refused while they have none (`communications_no_work_phone`). Today's Routes and their Work chip show the same phone. Filed
   as it's queued, under the full name of whoever sent it (`sent_by`), taken as it's first filed,
   however it was sent. Retry sends again one Dispatch sent that failed, from the phone a new text
   to its number would go from (`phones_none` while none is paired), and only where a text written
@@ -748,7 +747,9 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   next, by its SHA-256, with its ID and when a newer one replaced it), `phones_texts` (each text,
   with its phone, direction, origin, the other party's number, how one Dispatch sent went, each
   attempt at it, and its latest change), `phones_files` (each text's pictures and files, and those
-  added for one not sent yet) and `phones_change` (the last change given); the files' bytes in
+  added for one not sent yet) and `phones_change` (the last change given); and its own,
+  `phones_attempts` (each earlier attempt at a text Dispatch sent, by the phone it was given to,
+  kept as Retry queues the next: migration 12); the files' bytes in
   the DSP's data, `data/phones/files/`, by their SHA-256, which backups keep. In either folder
   (`bytes`), bytes arrive beside those kept, and take their place, and are let go, only under the
   platform's write lock with the files that keep them. Kept until the DSP is deleted, as the rest.

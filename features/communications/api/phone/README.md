@@ -184,9 +184,10 @@ How the attempts at the outbox's texts went:
 Answers `{ "ok": true }`. Reporting is idempotent, and order doesn't matter: a status only moves
 on, waiting to sent to delivered, waiting or sent to failed; sent or failed counts only for the
 text's latest attempt, so a late report of an earlier one never cancels a text tried again;
-delivered counts from any attempt, as it proves the text got there; and sent counts after a
-failure only Dispatch's own `phones_offline`, as the phone sent it after all. A status of a text
-that isn't this phone's is ignored.
+delivered counts from any attempt, as it proves the text got there, from the phone it waits on
+or, for an earlier attempt Retry moved to another phone, the phone that had it; and sent counts
+after a failure only Dispatch's own `phones_offline`, as the phone sent it after all. A status of
+a text that isn't this phone's is ignored.
 
 ### `GET /api/communications/phone/app`
 
