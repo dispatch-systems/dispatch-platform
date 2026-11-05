@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { LoaderCircle, Search, Smile } from 'lucide-react';
-import { Popover } from '../../../../core/shell/frontend/ui/index.js';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Search, Smile } from 'lucide-react';
+import { DataState, Popover } from '../../../../core/shell/frontend/ui/index.js';
 import { useFeedback } from '../../../../core/shell/frontend/runtime/feedback.js';
 import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import { ListEmpty } from '../shared/List.js';
@@ -57,6 +57,8 @@ export function EmojiPicker({
 function Emojis({ pick }: { pick: (emoji: string) => void }) {
   const { fail } = useFeedback();
   const [categories, setCategories] = useState<Category[]>();
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [typed, setTyped] = useState('');
   const [tone, setTone] = useState(readTone);
   // As they were when it opened, so what shows doesn't move under the pointer while picking.
@@ -67,12 +69,20 @@ function Emojis({ pick }: { pick: (emoji: string) => void }) {
     let live = true;
     loadEmoji().then(
       (loaded) => live && setCategories(loaded),
-      (cause: unknown) => live && fail(messageOf(cause)),
+      (cause: unknown) => {
+        if (!live) return;
+        setFailed(true);
+        fail(messageOf(cause));
+      },
     );
     return () => {
       live = false;
     };
-  }, [fail]);
+  }, [fail, attempt]);
+  const retry = () => {
+    setFailed(false);
+    setAttempt((count) => count + 1);
+  };
 
   const byEmoji = useMemo(
     () =>
@@ -83,14 +93,22 @@ function Emojis({ pick }: { pick: (emoji: string) => void }) {
     const used = recent.flatMap((emoji) => byEmoji.get(emoji) ?? []);
     return [...(used.length ? [{ ...RECENT, emoji: used }] : []), ...(categories ?? [])];
   }, [recent, byEmoji, categories]);
-  const found = typed.trim() && categories ? search(categories, typed) : undefined;
+  const found = useMemo(
+    () => (typed.trim() && categories ? search(categories, typed) : undefined),
+    [categories, typed],
+  );
   const shown = at ?? sections[0]?.key;
 
-  const choose = (emoji: Emoji) => {
-    pick(inTone(emoji, tone));
+  // The same for every emoji, whatever's written, so the grids aren't drawn again as it changes.
+  const latest = useRef({ pick, tone });
+  useLayoutEffect(() => {
+    latest.current = { pick, tone };
+  });
+  const choose = useCallback((emoji: Emoji) => {
+    latest.current.pick(inTone(emoji, latest.current.tone));
     const used = readRecent().filter((each) => each !== emoji.emoji);
     remember(RECENT_KEY, [emoji.emoji, ...used].slice(0, RECENT_COUNT).join(' '));
-  };
+  }, []);
   const chooseTone = (next: Tone) => {
     setTone(next);
     remember(TONE_KEY, String(next));
@@ -112,21 +130,6 @@ function Emojis({ pick }: { pick: (emoji: string) => void }) {
     const current = sections.findLast((section) => section.offsetTop <= top) ?? sections[0];
     if (current) setAt(current.dataset.category);
   };
-  const grid = (emoji: readonly Emoji[]) => (
-    <div className="emoji-grid">
-      {emoji.map((each) => (
-        <button
-          key={each.emoji}
-          type="button"
-          title={each.label}
-          aria-label={each.label}
-          onClick={() => choose(each)}
-        >
-          {inTone(each, tone)}
-        </button>
-      ))}
-    </div>
-  );
 
   return (
     <>
@@ -163,23 +166,40 @@ function Emojis({ pick }: { pick: (emoji: string) => void }) {
           </button>
         ))}
       </div>
-      <div ref={list} className="emoji-list" onScroll={found ? undefined : scrolled}>
-        {!categories ? (
-          <LoaderCircle className="spin" size={20} aria-label="Loading" />
-        ) : found ? (
-          found.length ? (
-            grid(found)
-          ) : (
-            <ListEmpty>No matches</ListEmpty>
-          )
-        ) : (
-          sections.map((section) => (
-            <section key={section.key} data-category={section.key} aria-label={section.label}>
-              <h4>{section.label}</h4>
-              {grid(section.emoji)}
-            </section>
-          ))
-        )}
+      <div
+        ref={list}
+        className="emoji-list"
+        onScroll={found ? undefined : scrolled}
+        onKeyDown={(event) => {
+          const next = neighbour(event.currentTarget, event.key);
+          if (!next) return;
+          event.preventDefault();
+          next.focus();
+        }}
+      >
+        <DataState data={categories} failed={failed} retry={retry}>
+          {() =>
+            found ? (
+              found.length ? (
+                <Grid emoji={found} tone={tone} choose={choose} stop />
+              ) : (
+                <ListEmpty>No matches</ListEmpty>
+              )
+            ) : (
+              sections.map((section) => (
+                <section key={section.key} data-category={section.key} aria-label={section.label}>
+                  <h4>{section.label}</h4>
+                  <Grid
+                    emoji={section.emoji}
+                    tone={tone}
+                    choose={choose}
+                    stop={section.key === shown}
+                  />
+                </section>
+              ))
+            )
+          }
+        </DataState>
       </div>
       <div className="emoji-tones" role="radiogroup" aria-label="Skin tone">
         {TONES.map((each) => (
@@ -198,6 +218,64 @@ function Emojis({ pick }: { pick: (emoji: string) => void }) {
       </div>
     </>
   );
+}
+
+/**
+ * Emoji to pick from, in `tone`. Tab reaches the first of the grid that's the `stop`, the
+ * category shown or what was found, and the arrow keys go from there (`neighbour`).
+ */
+const Grid = memo(function Grid({
+  emoji,
+  tone,
+  choose,
+  stop,
+}: {
+  emoji: readonly Emoji[];
+  tone: Tone;
+  choose: (emoji: Emoji) => void;
+  stop: boolean;
+}) {
+  return (
+    <div className="emoji-grid">
+      {emoji.map((each, n) => (
+        <button
+          key={each.emoji}
+          type="button"
+          tabIndex={stop && n === 0 ? 0 : -1}
+          title={each.label}
+          aria-label={each.label}
+          onClick={() => choose(each)}
+        >
+          {inTone(each, tone)}
+        </button>
+      ))}
+    </div>
+  );
+});
+
+/**
+ * The emoji the arrow key `key` goes to from the one focused in `list`: the one before or after,
+ * or in the row above or below, the nearest across; none for another key, or past the end.
+ */
+function neighbour(list: HTMLElement, key: string) {
+  const buttons = [...list.querySelectorAll<HTMLButtonElement>('.emoji-grid button')];
+  const from = buttons.indexOf(document.activeElement as HTMLButtonElement);
+  if (from < 0) return undefined;
+  if (key === 'ArrowLeft') return buttons[from - 1];
+  if (key === 'ArrowRight') return buttons[from + 1];
+  if (key !== 'ArrowUp' && key !== 'ArrowDown') return undefined;
+  const places = buttons.map((button) => ({ button, place: button.getBoundingClientRect() }));
+  const here = places[from]!.place;
+  const down = key === 'ArrowDown';
+  const tops = places
+    .map(({ place }) => place.top)
+    .filter((top) => (down ? top > here.top + 1 : top < here.top - 1));
+  if (!tops.length) return undefined;
+  const top = down ? Math.min(...tops) : Math.max(...tops);
+  const across = ({ place }: { place: DOMRect }) => Math.abs(place.left - here.left);
+  return places
+    .filter(({ place }) => place.top === top)
+    .reduce((nearest, each) => (across(each) < across(nearest) ? each : nearest)).button;
 }
 
 /** What each skin tone shows as. */

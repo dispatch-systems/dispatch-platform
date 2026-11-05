@@ -18,14 +18,18 @@
   color: var(--popover-foreground);
   box-shadow: 0 10px 30px #0004;
 }
-.emoji-panel button {
+.emoji-tabs button,
+.emoji-grid button,
+.emoji-tones button {
   min-height: 0;
   padding: 0;
   border: 0;
   border-radius: 8px;
   background: transparent;
 }
-.emoji-panel button:hover:not(:disabled) {
+.emoji-tabs button:hover:not(:disabled),
+.emoji-grid button:hover,
+.emoji-tones button:hover {
   background: var(--accent);
 }
 .emoji-search {
@@ -77,10 +81,10 @@
   overscroll-behavior: contain;
   padding: 0 8px 8px;
 }
-.emoji-list > .spin {
-  display: block;
+/* Loading, or what loads it again after it failed. */
+.emoji-list > .loading,
+.emoji-list > button {
   margin: 40px auto;
-  color: var(--muted-foreground);
 }
 .emoji-list h4 {
   padding: 10px 4px 4px;
