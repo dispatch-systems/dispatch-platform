@@ -41,8 +41,8 @@ use dispatch_core::{
         events,
         people::{Person, PersonRole, Source, SourceInfo},
     },
-    server::http::route::Dsp,
-    testing,
+    server::{cache::Scope, http::route::Dsp},
+    settings, testing,
 };
 use dispatch_routes_contract::{DayPhones, DriverPhone, RouteDataChanged, RouteDay};
 use dispatch_slack::{kit::Bot, testing as slack};
@@ -51,7 +51,7 @@ use serde_json::json;
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, atomic::Ordering},
 };
 
 /// Reading the DSP's conversations and answering them.
@@ -77,6 +77,25 @@ pub fn started() -> (impl Drop, Arc<State>, String) {
     let config = store.config.clone();
     drop(store);
     (root, State::new(config).unwrap(), dsp)
+}
+/// Keeps a read of the DSP's in the server's read cache, as Settings keeps its answer, which every
+/// write to the DSP's data evicts but reviewed bookkeeping and a collection's live pages: whether
+/// it's kept still, once asked, so nothing since wrote to the DSP's data.
+pub fn cached(state: &Arc<State>, dsp: &str) -> impl Fn() -> bool + use<> {
+    let read = |state: &State, dsp: &str, value: u8| {
+        state
+            .read_cache
+            .read(
+                Scope::tenant(settings::CACHED, dsp),
+                "kept".into(),
+                state.data_revision.load(Ordering::Relaxed),
+                || Ok(value),
+            )
+            .unwrap()
+    };
+    read(state, dsp, 1);
+    let (state, dsp) = (state.clone(), dsp.to_owned());
+    move || read(&state, &dsp, 2) == 1
 }
 /// Where the DSP's Slack photos' and files' bytes are kept, made private as Communications makes
 /// it.

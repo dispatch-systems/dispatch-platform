@@ -1,5 +1,6 @@
 //! The DSP's phones, against a real store in a temporary directory: pairing by a code, once, while
-//! it lasts, and a removed phone's key working no more, nor its texts still waiting.
+//! it lasts; checking in, noted at most every half minute, online throughout; and a removed phone's
+//! key working no more, nor its texts still waiting.
 use super::*;
 use crate::backend::phone::{
     model::{PHONE_REMOVED, Status},
@@ -51,6 +52,33 @@ fn a_code_pairs_one_phone_once_while_it_lasts() {
     db.phones_remove(&dsp, &second.id, 22_000).unwrap();
     assert_eq!(db.phones_device_by_key(&dsp, "key-2").unwrap(), None);
     assert!(db.phones_key_removed(&dsp, "key-2").unwrap());
+}
+
+#[test]
+fn a_phone_waiting_on_its_outbox_is_noted_at_most_every_half_minute_and_online_throughout() {
+    let (_root, db, dsp) = store();
+    let device = paired(&db, &dsp, "key", "2065550100");
+    let phone = || db.phones_device(&dsp, &device.id).unwrap().unwrap();
+    // It checks in as each twenty-second wait on its outbox ends, for ten minutes: noted only once
+    // half a minute passed since it last was, and online until it checks in again.
+    let waits: Vec<i64> = (1..=30).map(|n| device.paired_at + n * 20_000).collect();
+    let mut noted = vec![device.paired_at];
+    for &at in &waits {
+        assert!(
+            phone().online(at - 1),
+            "online just before checking in at {at}"
+        );
+        if phone().noting(at) {
+            db.phones_seen(&dsp, &device.id, at).unwrap();
+            noted.push(at);
+        }
+    }
+    assert!(noted.windows(2).all(|two| two[1] - two[0] >= SEEN_MS));
+    assert!(noted.len() < waits.len(), "fewer writes than check-ins");
+    // Once it stops, offline within two minutes of its last check-in, as the card says.
+    let last = *waits.last().unwrap();
+    assert!(phone().online(last + ONLINE_MS - SEEN_MS));
+    assert!(!phone().online(last + ONLINE_MS + 1));
 }
 
 #[test]
