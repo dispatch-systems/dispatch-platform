@@ -9,7 +9,7 @@ import { DspBetaTab } from './DspBetaTab.js';
 import { DspFeaturesTab } from './DspFeaturesTab.js';
 import { dspState, stateLabels } from './status.js';
 
-export type DspAction = 'view' | 'code' | 'enable' | 'retry' | 'restore' | 'remove' | 'disable';
+export type DspAction = 'view' | 'code' | 'enable' | 'retry' | 'disable';
 
 // The chosen DSP: its facts, its features, its beta testers and what the platform may do to it.
 export function DspDetail({
@@ -26,23 +26,16 @@ export function DspDetail({
 }) {
   const [tab, setTab] = useUpdateState('dsp-tab', 'details');
   const state = dspState(dsp);
-  const removed = dsp.profile.removed;
-  const viewable = dsp.status === 'active' && !removed;
+  const viewable = dsp.status === 'active';
   const actions: [DspAction, string, boolean][] = [
     ['view', 'View', viewable],
     [
       'code',
       dsp.code ? 'Change short code' : 'Set short code',
-      !removed && ['active', 'suspended'].includes(dsp.status),
+      ['active', 'suspended'].includes(dsp.status),
     ],
-    ['restore', 'Restore DSP', removed],
     ['retry', 'Retry', dsp.status === 'failed'],
-    ['enable', 'Enable DSP', dsp.status === 'suspended' && !removed],
-    [
-      'remove',
-      'Remove DSP',
-      !dsp.permanent && !removed && ['active', 'suspended'].includes(dsp.status),
-    ],
+    ['enable', 'Enable DSP', dsp.status === 'suspended' && !dsp.permanent],
     ['disable', 'Disable DSP', dsp.status === 'active' && !dsp.permanent],
   ];
   // The View button stands on its own; the menu holds everything else.

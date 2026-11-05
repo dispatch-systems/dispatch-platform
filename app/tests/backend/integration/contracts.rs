@@ -65,9 +65,9 @@ fn old_page_read_counters_default_without_losing_recorded_timings() {
 fn partial_profiles_keep_defaults_and_reject_mistyped_flags() {
     let profile: DspProfile = serde_json::from_value(json!({"stationCode":"DEMO1"})).unwrap();
     assert_eq!(profile.station_code, "DEMO1");
-    assert!(!profile.setup_required && !profile.removed && !profile.support_visible);
+    assert!(!profile.setup_required && !profile.support_visible);
     assert!(profile.abbreviation.is_empty());
     for value in [json!("false"), json!(0), Value::Null] {
-        assert!(serde_json::from_value::<DspProfile>(json!({"removed":value})).is_err());
+        assert!(serde_json::from_value::<DspProfile>(json!({"setupRequired":value})).is_err());
     }
 }

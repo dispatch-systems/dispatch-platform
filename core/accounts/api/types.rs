@@ -285,7 +285,6 @@ pub struct DspProfile {
     pub abbreviation: String,
     pub station_code: String,
     pub setup_required: bool,
-    pub removed: bool,
     pub support_visible: bool,
     /// The platform owner hid the AI Support button from this DSP's members.
     pub ai_support_hidden: bool,

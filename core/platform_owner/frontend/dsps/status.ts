@@ -9,7 +9,7 @@ export const stateLabels: Record<DspState, string> = {
   disabled: 'Disabled',
 };
 export const dspState = (dsp: DspSummary): DspState =>
-  dsp.profile.removed || dsp.status === 'suspended' || dsp.status === 'failed'
+  dsp.status === 'suspended' || dsp.status === 'failed'
     ? 'disabled'
     : dsp.ownerStatus === 'active'
       ? 'online'

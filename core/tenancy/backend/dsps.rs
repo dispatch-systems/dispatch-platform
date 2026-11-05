@@ -174,7 +174,13 @@ impl Store {
         )?;
         Ok(named.into_iter().collect())
     }
-    /// The DSPs whose data is kept up: every active or suspended one.
+    /// The IDs of the DSPs this backend serves, those whose upkeep runs: a disabled one's waits
+    /// until it's enabled.
+    pub fn served_ids(&self) -> Result<Vec<String>> {
+        Ok(self.served_dsps()?.into_iter().map(|dsp| dsp.id).collect())
+    }
+    /// The DSPs whose data is kept: every active or disabled one, brought up to date as the
+    /// server starts. Upkeep that acts for a DSP goes over the served ones (`served_ids`).
     pub fn kept_dsps(&self) -> Result<Vec<String>> {
         let dsps: Vec<(String,)> = self.platform.query_as(
             "SELECT id FROM dsps WHERE status IN ('active','suspended')",
@@ -418,33 +424,34 @@ impl Store {
         )?;
         Ok(())
     }
-    pub fn set_status(&self, id: &str, status: DspStatus, actor: &str) -> Result<Dsp> {
+    /// Disables the DSP, or enables it again. Nothing acts for a disabled DSP and nobody signs
+    /// in to it, so disabling it signs its people out; enabling it runs its schedules from now
+    /// on. What it had switched on and connected stays as it was. Either wakes the scheduler and
+    /// the live readers, so they stop or start at once. A permanent DSP is never disabled.
+    pub fn set_enabled(&self, id: &str, enabled: bool, actor: &str) -> Result<Dsp> {
         let dsp = self.find_dsp(id)?;
         ensure(!dsp.permanent, "permanent_dev_required", 409)?;
-        ensure(
-            status != DspStatus::Active || !self.profile(id)?.removed,
-            "restore_removed_dsp_first",
-            409,
-        )?;
-        ensure(
-            [DspStatus::Active, DspStatus::Suspended].contains(&dsp.status),
-            "dsp_unavailable",
-            409,
-        )?;
-        self.platform.exec(
-            "UPDATE dsps SET status=?,revision=revision+1 WHERE id=?",
-            params![status, id],
-        )?;
-        self.audit(
-            Some(actor),
-            Some(id),
-            if status == DspStatus::Active {
-                "dsp.resumed"
+        let (from, to, action) = if enabled {
+            (DspStatus::Suspended, DspStatus::Active, "dsp.resumed")
+        } else {
+            (DspStatus::Active, DspStatus::Suspended, "dsp.suspended")
+        };
+        ensure(dsp.status == from, "dsp_unavailable", 409)?;
+        let people = self.dsp(id)?;
+        self.across(&people, || {
+            self.platform.exec(
+                "UPDATE dsps SET status=?,revision=revision+1 WHERE id=?",
+                params![to, id],
+            )?;
+            if enabled {
+                self.retime_schedules(id, &dsp.timezone)?;
             } else {
-                "dsp.suspended"
-            },
-            "",
-        )?;
+                people.exec("DELETE FROM sessions", [])?;
+            }
+            self.audit(Some(actor), Some(id), action, "")
+        })?;
+        self.schedules_moved();
+        self.readers_moved();
         self.find_dsp(id)
     }
     /// Whether `profile` can set `id` up: the abbreviation is the DSP's short code, which
