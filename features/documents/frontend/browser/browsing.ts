@@ -71,9 +71,10 @@ export type Asked =
 /**
  * A change the page shows before the folder it's in is read again with it: made, uploaded,
  * renamed, moved or trashed in `folder`. Something being made has a stand-in's ID until Google
- * makes it; something moved goes `to` a folder, or the top. Once Google confirmed it, it shows
- * until a reading of the folder does, or a while, and a move counts in the cards of the folders
- * it left and went into until they're read again (`counted`).
+ * makes it; something moved goes `to` a folder, or the top, from a search's results when
+ * `searched`, whose `folder` is then the one searched, not the one it was in. Once Google
+ * confirmed it, it shows until a reading of the folder does, or a while, and a move counts in the
+ * cards of the folders it left and went into until they're read again (`counted`).
  */
 export type Pending = {
   key: string;
@@ -83,6 +84,7 @@ export type Pending = {
   to?: string;
   settled?: number;
   counted?: boolean;
+  searched?: boolean;
 };
 export const SETTLING_MS = 30_000;
 /** Something Google moved, and the folder it was in: `null` for the top. */
@@ -120,10 +122,16 @@ export function overlaid(
   const latest = (id: string) =>
     here.findLast((each) => each.change !== 'made' && each.item.id === id);
   // A reading is one moment of Google's: a move it already holds, out of the folder read or
-  // into it, its cards count too, whether or not Google has answered the move yet.
+  // into it, its cards count too, whether or not Google has answered the move yet. Only a move
+  // from a folder, the one thing pending for its item, says so by where the item is: one from a
+  // search left a folder the reading may not show, and a move and its undo, one place.
   const listed = (id: string) => items.some((item) => item.id === id);
+  const alone = (each: Pending) =>
+    here.filter((other) => other.change === 'moved' && other.item.id === each.item.id).length === 1;
   const held = (each: Pending) =>
     !searching &&
+    !each.searched &&
+    alone(each) &&
     (each.folder === folder ? !listed(each.item.id) : each.to === folder && listed(each.item.id));
   // A folder's card counts what moved in or out of it until it's read again.
   const counted = (item: DocumentsItem) => {
