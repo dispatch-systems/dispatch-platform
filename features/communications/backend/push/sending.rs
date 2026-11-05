@@ -77,7 +77,7 @@ pub fn message(dsp: &str, waiting: &WaitingMessage, address: &str) -> Vec<u8> {
 }
 
 /// A message, `text` and `files`, as a row of the list shows it (`shared/format.ts`'s
-/// `preview`): its text, else what it holds. Both are held to `tests/previews.json`.
+/// `preview`): its text, else what it holds. Both are held to `tests/frontend/previews.json`.
 pub fn preview(text: &str, files: &[MessageFile]) -> String {
     if !text.trim().is_empty() {
         return text.to_owned();

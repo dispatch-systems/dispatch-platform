@@ -243,7 +243,7 @@ async fn a_push_tried_again_goes_only_if_its_member_is_still_told() {
 #[test]
 fn a_push_previews_a_message_as_the_list_does() {
     let cases: Vec<serde_json::Value> =
-        serde_json::from_str(include_str!("../../previews.json")).unwrap();
+        serde_json::from_str(include_str!("../../frontend/previews.json")).unwrap();
     for each in cases {
         let files: Vec<MessageFile> = each["files"]
             .as_array()
