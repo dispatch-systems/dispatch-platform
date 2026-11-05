@@ -43,7 +43,7 @@ pub(crate) fn add_pairing_ids(db: &Db) -> Result<()> {
 pub(crate) fn add_app_version_codes(db: &Db) -> Result<()> {
     add_column(db, "phones_devices", "app_version_code", "INTEGER")
 }
-/// Communications' migration 12: how each phone last said it stands (`health`), as JSON, with
+/// Communications' migration 13: how each phone last said it stands (`health`), as JSON, with
 /// each wait; none until it says it, as an app older than that never does.
 pub(crate) fn add_health(db: &Db) -> Result<()> {
     add_column(db, "phones_devices", "health", "TEXT")

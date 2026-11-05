@@ -142,7 +142,7 @@ pub const FEATURE: Feature = Feature {
                 apply: Code(backend::phone::storage::add_app_version_codes),
             },
             Migration {
-                id: 12,
+                id: 13,
                 name: "phones_health",
                 apply: Code(backend::phone::storage::add_health),
             },
