@@ -30,6 +30,7 @@
 }
 .emoji-search {
   display: flex;
+  flex-direction: row;
   flex-shrink: 0;
   align-items: center;
   gap: 6px;
@@ -43,6 +44,7 @@
   flex: 1;
   min-width: 0;
   height: calc(32px * var(--scale));
+  min-height: 0;
   padding: 0;
   border: 0;
   background: transparent;
@@ -79,11 +81,6 @@
   display: block;
   margin: 40px auto;
   color: var(--muted-foreground);
-}
-/* A category off screen isn't drawn until it's scrolled to. */
-.emoji-list section {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 300px;
 }
 .emoji-list h4 {
   padding: 10px 4px 4px;
