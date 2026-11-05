@@ -98,14 +98,25 @@ pub fn cached(state: &Arc<State>, dsp: &str) -> impl Fn() -> bool + use<> {
     let (state, dsp) = (state.clone(), dsp.to_owned());
     move || read(&state, &dsp, 2) == 1
 }
-/// What `work` comes to, finished while the test holds the server's transition lock shared, as a
-/// read does: a write, bookkeeping too, waits on it, so finishing proves it took none. One that
-/// waits fails the test once ten seconds pass, rather than hanging it.
+/// What `work` comes to, finished while a thread of the test's holds the server's transition lock
+/// shared, as a read does: a write, bookkeeping too, waits on it, so finishing proves it took none.
+/// One that waits fails the test once ten seconds pass, rather than hanging it.
 pub async fn unwritten<T>(state: &Arc<State>, work: impl Future<Output = T>) -> T {
-    let _shared = state.transition.read().unwrap();
-    tokio::time::timeout(Duration::from_secs(10), work)
+    let (held, holding) = std::sync::mpsc::channel();
+    let (release, released) = std::sync::mpsc::channel::<()>();
+    let shared = Arc::clone(state);
+    let holder = std::thread::spawn(move || {
+        let _shared = shared.transition.read().unwrap();
+        held.send(()).unwrap();
+        let _ = released.recv();
+    });
+    holding.recv().unwrap();
+    let done = tokio::time::timeout(Duration::from_secs(10), work)
         .await
-        .expect("it waited to write")
+        .expect("it waited to write");
+    drop(release);
+    holder.join().unwrap();
+    done
 }
 /// Where the DSP's Slack photos' and files' bytes are kept, made private as Communications makes
 /// it.
