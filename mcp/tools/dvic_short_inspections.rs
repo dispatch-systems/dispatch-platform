@@ -95,7 +95,7 @@ pub struct Inspection {
     pub driver: String,
     /// The driver's Amazon transporter ID.
     pub driver_id: String,
-    /// CV, CDV or SV: 90 seconds is the minimum for the first two, 300 for a step van.
+    /// CV, CDV, EDV or SV: 90 seconds is the minimum for the first three, 300 for a step van.
     pub vehicle_type: String,
     pub vin: String,
     pub duration_seconds: f64,
