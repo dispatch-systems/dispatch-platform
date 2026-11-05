@@ -5,6 +5,7 @@ import { saveSettings, useSettings } from '../../../../core/settings/api/client.
 import { ApiError } from '../../../../core/shell/frontend/runtime/api.js';
 import { dataCache } from '../../../../core/shell/frontend/runtime/data-cache.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
+import { usePushKey } from '../../api/client.js';
 import type { MessageDisplay } from '../../api/index.js';
 import { Choice, Segments, Sketch, Slider, Swatches, Switch, Tiles } from './controls.js';
 import {
@@ -25,7 +26,8 @@ import {
 import { ACTUAL_LEAST, frame } from './frame.js';
 import { Preview } from './Preview.js';
 import { autosave } from './saving.js';
-import { canNotify, notifying } from '../alerts/notices.js';
+import { allowed as notificationsAllowed, canNotify } from '../alerts/notices.js';
+import { canPush } from '../alerts/push.js';
 import '../communications.css';
 import './display.css';
 
@@ -147,11 +149,14 @@ export function DisplaySettings({ view, refresh }: { view: DspView; refresh: () 
     list: widths(shown).list,
     page,
   });
-  // Notifications are on only where this browser may show them, which turning them on asks.
-  const [allowed, setAllowed] = useState(notifying);
+  // Notifications are offered where this browser shows them from the page, or from pushes the
+  // server sends, and on only where it allows them, which turning them on asks.
+  const { data: push } = usePushKey();
+  const offered = canNotify() || (canPush() && Boolean(push?.key));
+  const [allowed, setAllowed] = useState(notificationsAllowed);
   const notifications = async (on: boolean) => {
     if (on) {
-      const answer = notifying() ? 'granted' : await Notification.requestPermission();
+      const answer = notificationsAllowed() ? 'granted' : await Notification.requestPermission();
       setAllowed(answer === 'granted');
       if (answer !== 'granted') return;
     }
@@ -499,7 +504,7 @@ export function DisplaySettings({ view, refresh }: { view: DspView; refresh: () 
               on={choices.values.sound}
               change={(sound) => choices.change({ sound })}
             />
-            {canNotify() && (
+            {offered && (
               <Switch
                 label="Notifications"
                 on={choices.values.notifications && allowed}

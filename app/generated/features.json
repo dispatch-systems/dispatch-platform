@@ -40,7 +40,8 @@
         3600,
         60,
         60,
-        3600
+        3600,
+        60
       ],
       "on": [
         {
@@ -83,6 +84,9 @@
         "POST /api/dsp/communications/uploads",
         "GET /api/dsp/communications/files/{id}",
         "GET /api/dsp/communications/workspaces/{team}/logo",
+        "GET /api/dsp/communications/push",
+        "POST /api/dsp/communications/push",
+        "POST /api/dsp/communications/push/remove",
         "GET /communications/initials/1/{name}",
         "GET /api/dsp/communications/phones",
         "POST /api/dsp/communications/phones/pairing",
@@ -99,7 +103,11 @@
         "POST /api/communications/phone/statuses"
       ],
       "exposes": [],
-      "env": [],
+      "env": [
+        [
+          "VAPID_PRIVATE_KEY"
+        ]
+      ],
       "settings": [
         "communications.display"
       ]
@@ -120,6 +128,7 @@
         "communications_groups",
         "communications_messages",
         "communications_picked",
+        "communications_push",
         "communications_text_conversations",
         "phones_attempts",
         "phones_change",

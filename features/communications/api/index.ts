@@ -46,6 +46,7 @@ export type { PhonePairing } from './generated/PhonePairing';
 export type { PhonePairingStatus } from './generated/PhonePairingStatus';
 export type { PhoneRow } from './generated/PhoneRow';
 export type { Phones } from './generated/Phones';
+export type { PushKey } from './generated/PushKey';
 export type { Profile } from './generated/Profile';
 export type { ProfileOpens } from './generated/ProfileOpens';
 export type { Reachable } from './generated/Reachable';

@@ -50,7 +50,8 @@ and every other number's in Recents.
   hover; and Enter starts a line there to start. Then, on any screen, how a new message alerts
   them, under New messages: `sound`, on to start, and `notifications`, off, which turning on asks
   the browser for, staying off if it refuses, and which shows on only in a browser that has
-  allowed it; left out where the browser can't show one, as a phone's.
+  allowed it; offered where the browser shows one from the page, or can be pushed to while the
+  server pushes (as a phone's can: [New messages](#new-messages)), and left out elsewhere.
 - **On every page:** `communications.alerts`, a watcher (`frontend/alerts/`), for those with
   `communications.use`, alerting them to new messages ([New messages](#new-messages)).
 
@@ -546,7 +547,7 @@ lists, alerts each
 member with `communications.use` as they chose in Message display: a short chime (`sound`), and the browser's notification (`notifications`), titled
 with who wrote it and saying what, as the list shows it, which brings Dispatch to the front and
 opens the conversation. On any page, while Dispatch is open in a tab of their browser, in view or
-not; nothing reaches a browser closed, as nothing is pushed.
+not; and with it closed, or on a phone, as a push (**Pushed**, below).
 
 - **What's new:** a message a conversation waits on that the member's tabs hadn't seen there
   (`waiting`'s `latest`), as one starting to wait or another in one waiting; never the DSP's own,
@@ -562,8 +563,22 @@ not; nothing reaches a browser closed, as nothing is pushed.
   under, while the window is in view and focused.
 - **Sound** plays once the member has clicked or pressed a key in the page, as browsers ask: the
   chime is made as it plays (Web Audio), two soft notes, and rests between chimes.
-- **A phone's browser** shows notifications only from a service worker or a Home Screen app, so
-  there Notifications isn't offered.
+- **Pushed:** a browser the member has Notifications on in, and allows them, is subscribed with its
+  push service (Web Push) under the server's key, and kept as theirs, as each tab of theirs opens
+  and as they change it; one subscribed under another key is subscribed again, and turning
+  Notifications off lets go of it. Each message new in what waits, as above, as the server reads it
+  again on each change to the DSP's conversations, goes to each browser kept of each member who
+  holds `communications.use` and has Notifications on then, titled with who wrote it, saying what
+  as the list shows it, and opening the conversation; never the DSP's own. What waited when the
+  server began watching the DSP goes nowhere. Pushes go in the background, a few at once, each
+  within ten seconds, one that fails tried once more; a browser its push service no longer knows
+  (404, 410), or of a member who no longer holds `communications.use` or turned Notifications off,
+  is let go of. Dispatch's service worker (`app/frontend/public/service-worker.js`) shows a push,
+  unless a window of Dispatch is focused there, which alerts itself; where it serves the page, the
+  page's own notifications go through it too, under the message's tag, so a push of one shown
+  already takes its place. On a phone, pushes are its only notifications: Android's browser shows
+  them, and an iPhone's only for Dispatch added to its Home Screen (the web app manifest,
+  `app/frontend/public/assets/manifest.webmanifest`).
 
 ## The page's code
 
@@ -589,7 +604,8 @@ the page's layout and the variables its parts draw by.
 - `shared/`: what any of them draws with: faces, a list's rows and headings, a contact's row, a
   message's body and runs, a thread's frame, a pane's head, the side panel, and how the page
   words things (`format.ts`).
-- `alerts/` and `display/`: new messages' alerts on every page, and Message display.
+- `alerts/` and `display/`: new messages' alerts on every page, and pushes to the browser
+  (`push.ts`); and Message display.
 
 Where to add:
 
@@ -714,6 +730,11 @@ Behind `communications.use`:
   (`seen`, the latest of its messages and answers the page showed, `<at>:<id>` as `before` names
   one), for each conversation listed under it that waits, covering only what was written up to
   it.
+- `GET …/push`: the key the server's pushes are signed with, which a browser subscribes with
+  (`key`), none while it pushes nothing; `POST …/push` (`endpoint`, `keys`: `p256dh`, `auth`)
+  keeps the browser a subscription names as the member's, at a push service browsers use
+  (Chrome's, Firefox's, Safari's or Edge's) alone, and `POST …/push/remove` (`endpoint`) lets go
+  of the member's own.
 - `POST …/uploads?name=&type=`: a photo for a message not sent yet, as its bytes.
 - `GET …/files/{id}`: a photo or file attached to a message.
 - `GET …/workspaces/{team}/logo?v=<logo>`: a workspace's logo, the copy Slack keeps of it, read
@@ -755,7 +776,9 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   (migration 9, which copied each from `communications_texts`, since dropped),
   `communications_contacts` (the names saved for numbers, by whom and when),
   `communications_blocked` (the numbers blocked, by whom and when) and `communications_picked`
-  (the driver picked for a work phone on a day, by whom and when). The phone side's, as Phones
+  (the driver picked for a work phone on a day, by whom and when). For pushes,
+  `communications_push` (each browser a member is told in, by where its pushes go, with the keys
+  they're encrypted for: migration 16), kept until it's let go of. The phone side's, as Phones
   made them before Communications adopted them (its migrations 7 and 8, which find them made on a
   database Phones migrated, and leave Phones' own records of its migrations as they were):
   `phones_devices` (each phone, by its key's SHA-256), `phones_pairings` (the code that pairs the
@@ -780,11 +803,20 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   keeps, as bytes sent again in place of others and a removal that failed leave, and of bytes left
   arriving an hour, as a restart leaves, each on its own; and of codes expired. Each of these jobs
   runs on its own too: one that fails, logged as `phones_tidy_failed` with its DSP and job, leaves
-  the rest to run, and is tried again the next hour.
+  the rest to run, and is tried again the next hour. And every minute, while the server pushes,
+  each DSP with Communications on and a browser kept is watched for what to push, as after a
+  restart; one whose pushes fail is logged as `communications_push_failed` with its DSP, and one a
+  push service refused twice as `communications_push_refused` with its status, never its address.
 - **Fixture mode** never calls Slack: Slack's fixture answers what Slack itself calls, and
   `integrations/messages/fixture.rs` what only Communications does. Each member's direct
   message with the app is `D` and the rest of their ID, and holds what the app posted there, as
   Slack lists it; Jordan Ellis's holds what they wrote while Dispatch wasn't listening, for
   catching up: a message, a photo, a question with a reply in its thread, the app's own answer,
-  and one from before 2026.
-- **Server environment:** none of its own.
+  and one from before 2026. Nor a push service: `backend/push/fixture.rs` keeps what would be
+  pushed for the server's run; an address whose last part begins `gone` or `missing` answers as
+  one its browser let go of, and `busy` refuses its first push.
+- **Server environment:** `VAPID_PRIVATE_KEY` (`DISPATCH_DEV_…` on Dev, `DISPATCH_PRODUCTION_…`
+  on Production): the private key of the server's own key pair its pushes are signed with, 32
+  bytes in base64url, as `npx web-push generate-vapid-keys` prints one; its public key follows from
+  it. Without one the server pushes nothing, but in fixture mode, which makes a pair for its run;
+  one that isn't a key is logged as `communications_push_key_invalid`, and nothing is pushed.

@@ -114,7 +114,7 @@ pub fn router(state: Arc<State>) -> Router {
 async fn fallback(AxumState(state): AxumState<Arc<State>>, request: Request) -> Response {
     let path = request.uri().path();
     let asset = [Method::GET, Method::HEAD].contains(request.method())
-        && (path == "/" || path.starts_with("/assets/"));
+        && (path == "/" || path == "/service-worker.js" || path.starts_with("/assets/"));
     if asset {
         return assets::serve(&state, request.method(), path, request.headers())
             .unwrap_or_else(middleware::failure);

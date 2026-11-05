@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import http from 'node:http';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -303,4 +304,37 @@ test('a DSP’s texts are its own: listed by number, answered through its phone 
     refused.map((each) => each.status),
     refused.map(() => 403),
   );
+});
+
+test('a browser is kept to be pushed to only at a push service browsers use, with its own keys', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const owner = await f.client();
+  await owner.select(owner.session.dsps[0].id);
+  // In fixture mode the server makes a key pair for its run, and offers its public key.
+  const { key } = await owner.read(`${route}/push`);
+  assert.match(key, /^B[\w-]{86}$/);
+
+  // A browser's keys: its public key on P-256, and its secret.
+  const browser = crypto.createECDH('prime256v1');
+  const keys = {
+    p256dh: browser.generateKeys().toString('base64url'),
+    auth: crypto.randomBytes(16).toString('base64url'),
+  };
+  const keep = (endpoint: string, given = keys) =>
+    owner.post(`${route}/push`, { endpoint, keys: given });
+  // Pushes never go to an address of the member's choosing, as one inside the server's network.
+  for (const elsewhere of [
+    'https://dispatch.example.com/push/1',
+    'http://fcm.googleapis.com/fcm/send/1',
+    'https://fcm.googleapis.com:8443/fcm/send/1',
+    'https://fcm.googleapis.com.example.com/fcm/send/1',
+  ])
+    assert.equal((await keep(elsewhere)).status, 400, elsewhere);
+  // Nor are keys kept that aren't a browser's.
+  const endpoint = 'https://fcm.googleapis.com/fcm/send/api-browser';
+  assert.equal((await keep(endpoint, { ...keys, p256dh: keys.auth })).status, 400);
+  assert.equal((await keep(endpoint)).status, 200);
+  assert.equal((await keep('https://web.push.apple.com/api-phone')).status, 200);
+  assert.equal((await owner.post(`${route}/push/remove`, { endpoint })).status, 200);
 });

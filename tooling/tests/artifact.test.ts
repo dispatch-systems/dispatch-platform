@@ -214,6 +214,10 @@ test(
     );
     const font = await fetch(f.env.DISPATCH_ORIGIN + '/assets/inter.woff2');
     assert.equal(font.headers.get('cache-control'), 'public, no-cache');
+    // The service worker, at the root, so it serves every page; browsers that registered it
+    // keep its address.
+    const worker = await fetch(f.env.DISPATCH_ORIGIN + '/service-worker.js');
+    assert.equal(worker.headers.get('content-type'), 'text/javascript; charset=utf-8');
     assert.equal((await f.request('/api/session')).headers.get('cache-control'), 'no-store');
     assert.equal(JSON.parse(f.cli(['status'])).runtime, 'rust');
     const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-bad-artifact-'));

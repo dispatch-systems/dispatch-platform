@@ -46,7 +46,14 @@ pub struct Asset {
 // Artifacts are immutable for the process lifetime. Deployment restarts the core.
 // Load once so both GET and HEAD need no filesystem work on the request path.
 pub fn assets(root: &std::path::Path, release: &str) -> Result<HashMap<String, Asset>> {
-    let mut files = vec![("/".to_owned(), root.join("index.html"))];
+    // The service worker serves the pages of the address it's at and below: it's at the root.
+    let mut files = vec![
+        ("/".to_owned(), root.join("index.html")),
+        (
+            "/service-worker.js".to_owned(),
+            root.join("service-worker.js"),
+        ),
+    ];
     let directory = root.join("assets");
     if directory.is_dir() {
         for entry in std::fs::read_dir(directory)? {
@@ -116,6 +123,7 @@ pub fn assets(root: &std::path::Path, release: &str) -> Result<HashMap<String, A
             "png" => "image/png",
             "glb" => "model/gltf-binary",
             "woff2" => "font/woff2",
+            "webmanifest" => "application/manifest+json",
             _ => "application/octet-stream",
         };
         result.insert(
@@ -136,7 +144,7 @@ pub fn assets(root: &std::path::Path, release: &str) -> Result<HashMap<String, A
     }
     Ok(result)
 }
-/// `GET` and `HEAD` of `/` and `/assets/*`, with an ETag so browsers revalidate cheaply.
+/// `GET` and `HEAD` of `/`, `/service-worker.js` and `/assets/*`, with an ETag so browsers revalidate cheaply.
 pub fn serve(state: &State, method: &Method, path: &str, headers: &HeaderMap) -> Result<Response> {
     ensure(
         !path.contains("..") && !path.contains('%') && !path.contains('\\'),

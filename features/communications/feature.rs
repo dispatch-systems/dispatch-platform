@@ -18,9 +18,9 @@ pub use api::types::{
     DispatchPhone, Elsewhere, FileStatus, Group, GroupChoice, GroupChoiceKind, GroupChoices,
     GroupEntry, GroupMember, GroupMessages, GroupPeople, GroupPerson, GroupPersonState,
     GroupProgress, Message, MessageFile, MessageGroup, Pace, PairingStatus, PhoneApp, PhonePairing,
-    PhonePairingStatus, PhoneRow, Phones, Profile, Reachable, RouteDriver, Sender, SentMessage,
-    TextContact, TextContacts, TextPeople, TextStatus, Today, TodaysRoutes, Typing, WaitingMessage,
-    Workday, Writing,
+    PhonePairingStatus, PhoneRow, Phones, Profile, PushKey, Reachable, RouteDriver, Sender,
+    SentMessage, TextContact, TextContacts, TextPeople, TextStatus, Today, TodaysRoutes, Typing,
+    WaitingMessage, Workday, Writing,
 };
 
 use dispatch_core::db::{
@@ -71,6 +71,7 @@ pub const FEATURE: Feature = Feature {
             "phones_attempts",
             "phones_files",
             "phones_change",
+            "communications_push",
         ],
     )],
     own_migrations: &[OwnMigrations {
@@ -155,20 +156,30 @@ pub const FEATURE: Feature = Feature {
                 name: "communications_done_places",
                 apply: Code(backend::storage::add_done_places),
             },
+            // Each browser a member is told of new messages in, with Dispatch closed.
+            Migration {
+                id: 16,
+                name: "communications_push",
+                apply: Sql(include_str!("migrations/dsp/0016_communications_push.sql")),
+            },
         ],
     }],
     // Its dispatch phones are the DSP's own, managed on DSP Connections.
     dsp_connection: true,
+    // The key pair its pushes to members' browsers are signed with (VAPID).
+    env: &[&[backend::push::webpush::KEY]],
     // Catching up on what Dispatch didn't hear of, hourly and as the server starts; downloading
     // what members attach, sending what's due to go to groups' people, filing texts waiting to be
     // filed, and filing today's again where they belong now, every minute; and letting go of
-    // photos and the phones' pictures never sent, bytes no file keeps and codes expired, hourly.
+    // photos and the phones' pictures never sent, bytes no file keeps and codes expired, hourly;
+    // and watching each DSP whose members are told in a browser for what to push.
     maintenance: &[
         integrations::messages::catch_up::MAINTENANCE,
         backend::files::MAINTENANCE,
         backend::groups::send::MAINTENANCE,
         backend::texts::filing::MAINTENANCE,
         backend::phone::tidy::MAINTENANCE,
+        backend::push::MAINTENANCE,
     ],
     // A development DSP's stand-in phone, and the texts it received.
     demo: Some(backend::phone::demo::demo),
@@ -197,6 +208,7 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         DispatchPhone,
         CommunicationsWaiting,
         WaitingMessage,
+        PushKey,
         CommunicationsWorkspace,
         Conversation,
         ConversationKind,

@@ -3,7 +3,6 @@ import type { SettingsAnswer } from '../../../../core/settings/api/index.js';
 import { dataCache } from '../../../../core/shell/frontend/runtime/data-cache.js';
 import {
   hashQuery,
-  navigate,
   pageHash,
   parseHash,
 } from '../../../../core/shell/frontend/runtime/navigation.js';
@@ -55,9 +54,7 @@ export function alertMember(access: () => Watching) {
     if (!chosen.notifications) return;
     for (const each of fresh) {
       const opens = pageHash(access(), 'communications', { open: each.conversationId });
-      notify(each.from, preview(each.message), () => {
-        if (opens) navigate(opens);
-      });
+      notify(each.from, preview(each.message), each.message.id, opens);
     }
   };
   return lead(`dispatch-communications-alerts:${dsp}:${user}`, (ends) => {

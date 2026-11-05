@@ -27,10 +27,13 @@ chrono-tz = "0.10"
 flate2 = "1"
 fs2 = "0.4"
 getrandom = "0.4"
+hkdf = "0.13"
 hmac = "0.13"
 libc = "0.2"
 icu_collator = "2"
 sha2 = "0.11"
+# Web Push's keys and signatures: the P-256 that WebAuthn already builds.
+p256 = { version = "0.14", default-features = false, features = ["alloc", "ecdh", "ecdsa"] }
 subtle = "2"
 url = "2"
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "cookies", "form", "gzip", "http2", "json", "query", "rustls", "stream"] }
