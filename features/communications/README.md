@@ -59,8 +59,8 @@ and every other number's in Recents.
 ## The page
 
 - **Communications** in the sidebar, for those with `communications.use`, with how many
-  conversations wait beside it, Slack's and the numbers' texts (`waiting`, read every 30 seconds while the page is closed, and
-  as the number changes while it's open). The page fills the window, however wide (`fills`),
+  conversations wait beside it, Slack's and the numbers' texts (`waiting`, as the banner of phones down reads it, every 30 seconds
+  on every page, and as the number changes while it's open). The page fills the window, however wide (`fills`),
   the list beside the conversation open, each scrolling on its own, and everything on it grows
   with the page's own width, smoothly, from a laptop's to an ultrawide's, then stops (a
   container query on the page). On a wide page, the messages and the box under them keep to a
@@ -299,8 +299,9 @@ decides ([Texts](#texts)).
   more, or says it can't send texts (Android doesn't let it, or it has no SIM): a banner atop every
   page says so to those with `communications.use` (Dispatch phone offline for 25 min, or by its
   name while the DSP has several; Dispatch phone can't send texts), linking to the card for those
-  who may open it, gone as soon as it's back. It reads the phones with `waiting`, as the sidebar
-  and the alerts do, never on its own, and again as the page's updates see them change. The tab
+  who may open it, gone as soon as it's back. It reads them with `waiting`, every 30 seconds on
+  every page, whatever the member chose for alerts, which the sidebar's count shows too, and again
+  as the page's updates see them change. The tab
   alerting the member of new messages notifies them too, once as each goes down, as they chose
   Notifications in Message display; one down already as the tab first looks notifies no one.
 - **Removed:** a phone removed keeps its texts; its key works no more, and its next call is

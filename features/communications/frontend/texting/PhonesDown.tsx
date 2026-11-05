@@ -5,12 +5,15 @@ import { useNow } from '../page/useNow.js';
 import { down, phonesCard } from './phones-down.js';
 import './phones-down.css';
 
+/** How often what waits, the phones with it, is read again. */
+const POLL_MS = 30_000;
+
 // A banner atop every page while one of the DSP's phones is down, linking to the phones' card for
-// whoever manages them. It reads the phones as the sidebar's count reads what waits, and as the
-// alerts read it, never on its own.
+// whoever manages them. Mounted on every page for whoever has Communications, it reads what waits,
+// with the phones, every 30 seconds, for the sidebar's count too, which follows what it read.
 
 export function PhonesDown(access: Watching) {
-  const { data } = useCommunicationsWaiting(-1);
+  const { data } = useCommunicationsWaiting(POLL_MS);
   const now = useNow();
   const downs = down(data?.phones ?? [], now);
   if (downs.length === 0) return null;
