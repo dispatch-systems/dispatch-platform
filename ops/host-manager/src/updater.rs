@@ -11,8 +11,29 @@ use std::{
     io::Write,
     os::unix::fs::{OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
-    time::Duration,
+    time::{Duration, SystemTime},
 };
+
+/// How long a release's backup of Production is kept: what's deleted from Production is gone from
+/// every backup within 30 days, as from its nightly ones.
+const RELEASE_BACKUPS_KEPT: Duration = Duration::from_secs(30 * 24 * 60 * 60);
+
+/// Lets go of the backups in `folder` that releases took before `now` less `RELEASE_BACKUPS_KEPT`:
+/// each a folder of its own, named for the release it was taken before. Anything else stays.
+pub fn expire_release_backups(folder: &Path, now: SystemTime) -> Result<()> {
+    let Ok(entries) = fs::read_dir(folder) else {
+        return Ok(());
+    };
+    for entry in entries {
+        let entry = entry?;
+        let taken = entry.file_name().to_string_lossy().contains("-before-v")
+            && entry.file_type()?.is_dir();
+        if taken && entry.metadata()?.modified()? + RELEASE_BACKUPS_KEPT < now {
+            fs::remove_dir_all(entry.path())?;
+        }
+    }
+    Ok(())
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Environment {
@@ -510,7 +531,10 @@ impl<'a> Updater<'a> {
         };
         let result = self.recover().and_then(|()| match self.environment {
             Environment::Dev => self.update_dev().map(|()| true),
-            Environment::Production => self.update_production(),
+            Environment::Production => self.update_production().and_then(|updated| {
+                expire_release_backups(&self.root.with_file_name("backups"), SystemTime::now())?;
+                Ok(updated)
+            }),
         });
         let recorded = self.record_update(&result);
         result.map(drop).and(recorded)

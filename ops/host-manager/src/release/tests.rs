@@ -2481,32 +2481,3 @@ fn a_slack_app_the_release_changes_is_saved_to_paste_into_slack() {
     assert_eq!(result["slackManifest"], json!(saved(&release)));
     assert_eq!(io::read_json(&saved(&release)).unwrap(), changed);
 }
-
-#[test]
-fn release_backups_go_once_taken_over_30_days_ago() {
-    let home = tempfile::tempdir().unwrap();
-    let backups = home.path().join("dispatch-platform/backups");
-    let made = |name: &str, days: u64| {
-        let path = backups.join(name);
-        std::fs::create_dir_all(path.join("data")).unwrap();
-        let at = std::time::SystemTime::now() - Duration::from_secs(days * 24 * 60 * 60);
-        std::fs::File::open(&path)
-            .unwrap()
-            .set_modified(at)
-            .unwrap();
-        path
-    };
-    let old = made("2026-09-01-091500-before-v1.0.0", 31);
-    let recent = made("2026-10-14-091500-before-v1.1.0", 29);
-    let other = made("kept-by-hand", 90);
-    let ran = std::process::Command::new("bash")
-        .args(["--noprofile", "--norc", "-c", backup::KEPT_BACKUPS])
-        .env("HOME", home.path())
-        .status()
-        .unwrap();
-    assert!(ran.success());
-    assert_eq!(
-        (old.exists(), recent.exists(), other.exists()),
-        (false, true, true)
-    );
-}

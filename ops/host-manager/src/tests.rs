@@ -9,7 +9,7 @@ use std::{
     io::Cursor,
     os::unix::fs::{PermissionsExt, symlink},
     path::{Path, PathBuf},
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 #[test]
@@ -1566,4 +1566,24 @@ fn isolated_production_service_preserves_activation_and_rollback() {
         .map(|call| call[3].as_str())
         .collect();
     assert_eq!(actions, ["stop", "start", "stop", "start"]);
+}
+
+#[test]
+fn release_backups_go_once_taken_over_30_days_ago() {
+    let backups = tempfile::tempdir().unwrap();
+    let made = |name: &str, days: u64| {
+        let path = backups.path().join(name);
+        fs::create_dir_all(path.join("data")).unwrap();
+        let at = SystemTime::now() - Duration::from_secs(days * 24 * 60 * 60);
+        fs::File::open(&path).unwrap().set_modified(at).unwrap();
+        path
+    };
+    let old = made("2026-09-01-091500-before-v1.0.0", 31);
+    let recent = made("2026-10-14-091500-before-v1.1.0", 29);
+    let other = made("kept-by-hand", 90);
+    crate::updater::expire_release_backups(backups.path(), SystemTime::now()).unwrap();
+    assert_eq!(
+        (old.exists(), recent.exists(), other.exists()),
+        (false, true, true)
+    );
 }
