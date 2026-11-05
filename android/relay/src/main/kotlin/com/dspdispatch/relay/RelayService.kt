@@ -47,7 +47,7 @@ class RelayService : LifecycleService() {
         if (relaying?.isActive != true) {
             relaying = lifecycleScope.launch {
                 launch { relay.connection.link.collect { show(paired.dsp, it) } }
-                // Null once the keystore lost what sealed it, which only pairing again mends.
+                // Null once the keystore lost what sealed it: the pairing's forgotten, to pair again.
                 val key = relay.pairings.key() ?: return@launch stopSelf()
                 launch { keepRunning("Relaying texts", Logcat) { relay.texts.run(paired, key) } }
                 keepRunning("Waiting on the outbox", Logcat) {

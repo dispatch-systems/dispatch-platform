@@ -17,14 +17,14 @@ import javax.crypto.spec.GCMParameterSpec
  * Keeps a secret encrypted by a key of Android's keystore, which never leaves it: what's written
  * to the app's storage is useless anywhere else.
  */
-internal object Vault {
+internal object Vault : Locks {
     private const val STORE = "AndroidKeyStore"
     private const val ALIAS = "pairing"
     private const val CIPHER = "AES/GCM/NoPadding"
     private const val TAG_BITS = 128
     private const val IV_BYTES = 12
 
-    fun seal(secret: String): String {
+    override fun seal(secret: String): String {
         val cipher = Cipher.getInstance(CIPHER).apply { init(Cipher.ENCRYPT_MODE, key() ?: made()) }
         return Base64.encodeToString(cipher.iv + cipher.doFinal(secret.toByteArray()), Base64.NO_WRAP)
     }
@@ -33,7 +33,7 @@ internal object Vault {
      * The secret [seal] sealed, or null once it can never be read, as after the keystore lost its
      * key; [Unreachable] while the keystore can't be read just now, as it's still starting.
      */
-    fun open(sealed: String): String? = opened {
+    override fun open(sealed: String): String? = opened {
         val bytes = Base64.decode(sealed, Base64.NO_WRAP)
         val key = key() ?: return@opened null
         val cipher = Cipher.getInstance(CIPHER).apply {
