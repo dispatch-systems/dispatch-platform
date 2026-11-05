@@ -403,6 +403,8 @@ export function Shell({
             />
           </Suspense>
         )}
+        {/* What runs on every page of the DSP open, anew for another, a banner atop the page. */}
+        {view && <Watchers key={view.dsp.id} session={session} view={view} />}
         <header className="topbar">
           <button
             className="mobile-menu icon-button"
@@ -437,8 +439,6 @@ export function Shell({
           {openedAction.render({ session, view, onClose: () => setAccountAction(undefined) })}
         </Suspense>
       )}
-      {/* What runs on every page of the DSP open, anew for another. */}
-      {view && <Watchers key={view.dsp.id} session={session} view={view} />}
     </div>
   );
 }

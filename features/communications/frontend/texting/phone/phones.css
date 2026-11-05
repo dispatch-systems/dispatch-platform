@@ -49,6 +49,12 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.phones-attention {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 4px;
+}
 .phones-pairing {
   display: flex;
   flex-direction: column;

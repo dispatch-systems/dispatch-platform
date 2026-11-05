@@ -93,7 +93,13 @@ test('each section’s list keeps the server’s order as it changes, with the p
     typing: { version: 0, writing: [] },
   };
   // The phone went offline, and live route data began.
-  const offline = { id: 'phone', name: 'Dispatch', online: false, lastSeenAt: 900 };
+  const offline = {
+    id: 'phone',
+    name: 'Dispatch',
+    online: false,
+    lastSeenAt: 900,
+    cantSend: false,
+  };
   const next = updated(inbox, {
     revision: 2,
     reset: false,

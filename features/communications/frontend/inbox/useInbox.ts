@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Communications, Conversation, Group } from '../../api/index.js';
+import type { Communications, Conversation, DispatchPhone, Group } from '../../api/index.js';
 import {
   getCommunications,
   getCommunicationsUpdates,
@@ -44,9 +44,12 @@ export function useInbox(chosen?: string) {
   const current = useRef<Communications | undefined>(undefined);
   const scope = useRef<string | undefined>(undefined);
   const change = useCallback((next: Communications) => {
-    // The sidebar's count reads again as the page first reads how many wait, and once that
-    // changes.
-    if (current.current?.waiting !== next.waiting)
+    // The sidebar's count, and every page's banner of the phones down, read again as the page
+    // first reads how many wait and how the phones stand, and once either changes.
+    if (
+      current.current?.waiting !== next.waiting ||
+      standing(current.current?.phones) !== standing(next.phones)
+    )
       dataCache.invalidate((key) => key === waitingUrl);
     current.current = next;
     setInbox(next);
@@ -165,3 +168,7 @@ export function useInbox(chosen?: string) {
   );
   return { inbox, team, changed, error, refresh, show, showGroup, readOlder };
 }
+
+/** How the DSP's phones stand, as every page's banner reads it: each online, or able to send. */
+const standing = (phones: readonly DispatchPhone[] | undefined) =>
+  phones?.map((phone) => `${phone.id}:${phone.online}:${phone.cantSend}`).join() ?? '';

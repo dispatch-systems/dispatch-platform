@@ -10,17 +10,20 @@ import {
   Popover,
 } from '../../../../../core/shell/frontend/ui/index.js';
 import { removePhone, usePhones } from '../../../api/client.js';
-import type { PhoneRow } from '../../../api/index.js';
+import type { PhoneHealth, PhoneRow } from '../../../api/index.js';
 import { PairDialog } from './PairDialog.js';
 import { RenameDialog } from './RenameDialog.js';
 import './phones.css';
 
 /** How often the card reads the DSP's phones again, as they check in. */
 const POLL = 30_000;
+/** How many texts waiting to go on a phone need attention: fewer go within a moment. */
+const BACKLOG = 10;
 
 // Communications' card for the DSP's dispatch phones on Settings' DSP Connections: each phone, by
 // its number, with its name, model and the app's version, tagged Update while the DSP's address
-// hands out a newer one, whether it's online, and renaming or removing it; Add phone, which shows
+// hands out a newer one, whether it's online, what needs attention on it as it last said it
+// stands, and renaming or removing it; Add phone, which shows
 // the code that pairs the next one, beside the app to install first; and the app's download, while
 // the DSP's address hands one out.
 
@@ -68,6 +71,7 @@ export function PhonesCard(_: { view: DspView }) {
                       <small>
                         {[phone.name, phone.model, phone.appVersion].filter(Boolean).join(' · ')}
                       </small>
+                      {phone.health && <Attention health={phone.health} />}
                     </div>
                     {phone.update && <Badge value="queued">Update</Badge>}
                     {phone.online ? (
@@ -136,6 +140,32 @@ export function PhonesCard(_: { view: DspView }) {
         </ConfirmDialog>
       )}
     </article>
+  );
+}
+
+/** What needs attention on a phone, as it last said it stands: nothing while all's well. */
+function Attention({ health }: { health: PhoneHealth }) {
+  const pictures = health.undownloaded === 1 ? 'picture' : 'pictures';
+  const needs = (
+    [
+      [health.cantSend, 'failed', "Can't send texts"],
+      [health.cantRead, 'failed', "Can't read texts"],
+      [health.noSim, 'failed', 'No SIM'],
+      [health.noSignal, 'queued', 'No signal'],
+      [health.setupUndone, 'queued', 'Setup not finished'],
+      [health.waiting >= BACKLOG, 'queued', `${health.waiting} texts waiting to go`],
+      [health.undownloaded > 0, 'queued', `${health.undownloaded} ${pictures} not downloaded`],
+    ] satisfies [needed: boolean, tone: string, label: string][]
+  ).filter(([needed]) => needed);
+  if (needs.length === 0) return null;
+  return (
+    <span className="phones-attention">
+      {needs.map(([, tone, label]) => (
+        <Badge key={label} value={tone}>
+          {label}
+        </Badge>
+      ))}
+    </span>
   );
 }
 
