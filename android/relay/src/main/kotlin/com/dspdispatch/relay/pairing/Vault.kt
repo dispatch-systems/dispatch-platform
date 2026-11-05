@@ -7,7 +7,6 @@ import android.util.Base64
 import java.io.IOException
 import java.security.GeneralSecurityException
 import java.security.KeyStore
-import java.security.ProviderException
 import java.security.UnrecoverableEntryException
 import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
@@ -56,7 +55,8 @@ internal object Vault {
         throw Unreachable(failed)
     } catch (failed: IOException) {
         throw Unreachable(failed)
-    } catch (failed: ProviderException) {
+    } catch (failed: RuntimeException) {
+        // As the keystore's own ProviderException: read as the app starts, it never ends the app.
         throw Unreachable(failed)
     }
 
