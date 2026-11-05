@@ -709,7 +709,7 @@ fn a_number_added_is_the_persons_and_follows_them_into_a_merge() {
     };
 
     people::add_phone(&db, &context, &tony, "+12065550188").unwrap();
-    assert_eq!(holder("(206) 555-0188"), [tony.clone()]);
+    assert_eq!(holder("(206) 555-0188"), [tony.as_str()]);
     let everyone = people::read(&db, &id).unwrap();
     let theirs = everyone.person(&tony).unwrap();
     assert_eq!(theirs.added_phones, ["+12065550188"]);
@@ -731,7 +731,7 @@ fn a_number_added_is_the_persons_and_follows_them_into_a_merge() {
     );
 
     db.merge_people(&context, &tony, &antonio).unwrap();
-    assert_eq!(holder("2065550188"), [antonio.clone()]);
+    assert_eq!(holder("2065550188"), [antonio.as_str()]);
     assert_eq!(
         db.person_details(&id, &antonio).unwrap().added_phones,
         ["+12065550188"]
@@ -741,7 +741,7 @@ fn a_number_added_is_the_persons_and_follows_them_into_a_merge() {
     let taylor = code(&before, AMAZON, "TTAYLOR");
     let stale = people::remove_phone(&db, &context, &taylor, "2065550188").unwrap_err();
     assert_eq!(stale.code, "person_changed");
-    assert_eq!(holder("2065550188"), [antonio.clone()]);
+    assert_eq!(holder("2065550188"), [antonio.as_str()]);
     // Their code before the merge still names them.
     people::remove_phone(&db, &context, &tony, "206-555-0188").unwrap();
     assert!(holder("2065550188").is_empty());
