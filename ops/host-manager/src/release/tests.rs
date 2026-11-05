@@ -474,6 +474,8 @@ enum App {
     Unchanged,
     /// In `android/` from the first commit, and changed by the released change.
     Changed,
+    /// In `android/` from the first commit, where the released change edits only Markdown.
+    Notes,
 }
 /// A build of DSP Dispatch: Relay: its entry in `relay.json`, and its APK's bytes.
 struct Apk {
@@ -561,10 +563,10 @@ impl Fixture {
         if migration {
             fs::write(&snapshot, databases(&["baseline", "accounts"])).unwrap();
         }
-        let commit = if app == App::Changed {
-            merge_change(&root, "accepted", "android/relay/build.gradle.kts")
-        } else {
-            merge_to_main(&root, "accepted")
+        let commit = match app {
+            App::Changed => merge_change(&root, "accepted", "android/relay/build.gradle.kts"),
+            App::Notes => merge_change(&root, "accepted", "android/relay/README.md"),
+            App::None | App::Unchanged => merge_to_main(&root, "accepted"),
         };
         let slack = json!({"display_information":{"name":"Dispatch"},
             "oauth_config":{"scopes":{"bot":["chat:write"]}}});
@@ -2087,7 +2089,8 @@ fn a_first_app_is_0_0_1_built_by_the_releases_checks_and_attached_with_its_recor
 
 #[test]
 fn a_release_without_app_changes_carries_the_last_released_app() {
-    let f = Fixture::with_app(App::Unchanged);
+    // Markdown in android/ isn't part of the app: phones aren't sent an update for it.
+    let f = Fixture::with_app(App::Notes);
     let last = Apk::production("0.0.1", &f.previous());
     f.released(Some(&last));
     f.build(Some(&last));
