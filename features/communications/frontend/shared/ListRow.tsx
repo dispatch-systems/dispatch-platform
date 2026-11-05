@@ -18,6 +18,7 @@ export function ListRow({
   line,
   below,
   open,
+  warm,
   done,
 }: {
   /** What kind of row it is, beside `convo`. */
@@ -34,13 +35,21 @@ export function ListRow({
   line?: ReactNode;
   below?: ReactNode;
   open: () => void;
+  /** Reads what it opens before it's opened, as it's pointed at or reached. */
+  warm?: () => void;
   /** Marks it done, while it waits. */
   done?: () => void;
 }) {
   const classes = ['convo', className, selected && 'selected', waits && 'waits'];
   return (
     <li className={classes.filter(Boolean).join(' ')}>
-      <button className="convo-open" aria-current={selected || undefined} onClick={open}>
+      <button
+        className="convo-open"
+        aria-current={selected || undefined}
+        onClick={open}
+        onPointerEnter={warm}
+        onFocus={warm}
+      >
         {face}
         <span className="convo-body">
           <span className="line1">

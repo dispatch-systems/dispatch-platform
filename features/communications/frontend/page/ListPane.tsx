@@ -71,6 +71,7 @@ export function ListPane({
   timeZone: string;
   now: number;
   select: (id: string) => void;
+  warm: (id: string) => void;
   openGroup: (id: string) => void;
   done: (conversation: Conversation) => void;
   doneGroup: (group: Group) => void;

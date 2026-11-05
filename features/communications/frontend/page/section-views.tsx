@@ -59,6 +59,8 @@ export type ListContext = {
   reach: (target: Target) => Promise<void>;
   /** Shows a conversation as the page's own writes left it. */
   show: (conversation: Conversation) => void;
+  /** Reads a conversation before it's opened, as its row is pointed at or reached. */
+  warm: (id: string) => void;
   done: (conversation: Conversation) => void;
   routes: RoutesShown;
 };
@@ -125,7 +127,7 @@ export const VIEWS: { [S in Section]: SectionView } = {
       </>
     ),
     icon: <Route size={14} aria-hidden="true" />,
-    rows: ({ routes, open, typing, timeZone, now, done }) => (
+    rows: ({ routes, open, typing, timeZone, now, warm, done }) => (
       <RoutesList
         groups={routes.groups}
         read={routes.read}
@@ -135,6 +137,7 @@ export const VIEWS: { [S in Section]: SectionView } = {
         timeZone={timeZone}
         now={now}
         choose={routes.choose}
+        warm={warm}
         done={done}
       />
     ),
