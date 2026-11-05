@@ -191,14 +191,14 @@ pub trait CommunicationsStore {
         sent: &Sent,
     ) -> Result<Message>;
     /// Marks the conversation done without an answer, as the member `by`, while it waits, covering
-    /// what was written up to `seen`, when the latest message the member was shown was, else up to
-    /// now: whether it was waiting.
+    /// what was written up to `seen`, the latest message the member was shown, when it was written
+    /// and its `ts`, else up to now: whether it was waiting.
     fn mark_communications_done(
         &self,
         dsp: &str,
         conversation: &str,
         by: &str,
-        seen: Option<i64>,
+        seen: Option<(i64, &str)>,
     ) -> Result<bool>;
     /// The conversations waiting, the longest waiting first.
     fn waiting_communications(&self, dsp: &str) -> Result<Vec<Conversation>>;
@@ -403,14 +403,18 @@ impl CommunicationsStore for Store {
         dsp: &str,
         conversation: &str,
         by: &str,
-        seen: Option<i64>,
+        seen: Option<(i64, &str)>,
     ) -> Result<bool> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             let marked = db.exec(
                 "UPDATE communications_conversations SET done_at=max(coalesce(done_at,-1),?),\
                  done_by=? WHERE id=? AND state='waiting'",
-                params![covered(seen), by, conversation],
+                params![
+                    covered(&db, conversation, seen, Place::Ts)?,
+                    by,
+                    conversation
+                ],
             )?;
             if marked > 0 {
                 settle(&db, conversation)?;
@@ -613,11 +617,40 @@ pub(crate) fn sent_out(
 /// message to a group answers no one. It's listed under the group the DSP's latest message to
 /// them went to, while all it waits on answers a message to a group: nothing they wrote before
 /// one, since the DSP last wrote to them alone, still waits.
-/// Up to when a Done covers a conversation's messages: those written up to `seen`, when the latest
-/// one its member was shown was, else up to now; never later than now.
-pub(crate) fn covered(seen: Option<i64>) -> i64 {
+/// How a page places the messages of one millisecond after one another: by Slack's `ts`, as a
+/// conversation does, or by their ID, as a group does its messages and answers.
+#[derive(Clone, Copy)]
+pub(crate) enum Place {
+    Ts,
+    Id,
+}
+/// Up to when, in milliseconds, a Done covers the conversation `conversation`'s messages: up to
+/// `seen`, the latest message its member was shown, when it was written and its place among those
+/// of that millisecond (`place`), else up to now, never later. A millisecond less while one of the
+/// member's came in that millisecond after it, so that one still waits, and with it the
+/// conversation, since then.
+pub(crate) fn covered(
+    db: &Db,
+    conversation: &str,
+    seen: Option<(i64, &str)>,
+    place: Place,
+) -> Result<i64> {
     let at = now();
-    seen.map_or(at, |seen| seen.min(at))
+    let Some((seen, last)) = seen.filter(|(seen, _)| *seen < at) else {
+        return Ok(at);
+    };
+    let after = match place {
+        Place::Ts => "ts>?3",
+        Place::Id => "id>?3",
+    };
+    let unseen = db.count(
+        &format!(
+            "SELECT count(*) FROM communications_messages WHERE conversation_id=?1 \
+             AND direction='in' AND at=?2 AND {after}"
+        ),
+        params![conversation, seen, last],
+    )? > 0;
+    Ok(seen - i64::from(unseen))
 }
 pub(crate) fn settle(db: &Db, conversation: &str) -> Result<()> {
     settle_with(db, conversation, Vec::new())

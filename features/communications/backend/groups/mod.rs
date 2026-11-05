@@ -288,15 +288,16 @@ pub fn people(db: &Store, state: &State, dsp: &str, id: &str) -> Result<GroupPeo
 }
 
 /// Marks done every conversation listed under the group `id` that waits, as the member `by`,
-/// covering only what they were shown: what was written up to `seen`, when the latest of its
-/// messages and answers shown was, else everything. The group, as the list reads it.
+/// covering only what they were shown: what was written up to `seen`, the latest of its messages
+/// and answers shown, when it was written and its ID, else everything. The group, as the list reads
+/// it.
 pub fn done(
     db: &Store,
     state: &State,
     dsp: &str,
     id: &str,
     by: &str,
-    seen: Option<i64>,
+    seen: Option<(i64, &str)>,
 ) -> Result<Group> {
     db.communications_group(dsp, id)?
         .ok_or_else(|| Error::new("communications_group_not_found", 404))?;

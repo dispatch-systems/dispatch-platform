@@ -276,10 +276,11 @@ async fn answers_are_the_groups_until_the_dsp_writes_to_them_alone() {
         let (shared, at, id) = (state.clone(), dsp.clone(), later.id.clone());
         state.read(move |db| done(db, &shared, &at, &id, "someone", seen))
     };
-    // Done covers only what was shown: shown up to before "On it", Jordan still waits.
-    let shown = jordan.waiting_since.unwrap() - 1;
+    // Done covers only what was shown: shown up to before "On it", in its millisecond, Jordan
+    // still waits.
+    let shown = jordan.waiting_since.unwrap();
     assert_eq!(
-        marked(Some(shown)).await.unwrap().state,
+        marked(Some((shown, ""))).await.unwrap().state,
         ConversationState::Waiting
     );
     let marked = marked(None).await.unwrap();

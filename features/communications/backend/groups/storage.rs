@@ -5,7 +5,7 @@
 use crate::backend::{
     changes::changed_conversation,
     model::ConversationState,
-    storage::{Message, Sent, covered, opened, sent_out, settle, settle_with},
+    storage::{Message, Place, Sent, covered, opened, sent_out, settle, settle_with},
 };
 use dispatch_core::{
     Error, Result,
@@ -240,14 +240,14 @@ pub trait GroupStore {
         group: &str,
     ) -> Result<Vec<(String, String, i64)>>;
     /// Marks each conversation listed under the group done, as the member `by`, while it waits,
-    /// covering what was written up to `seen`, when the latest message the member was shown was,
-    /// else up to now: how many were.
+    /// covering what was written up to `seen`, the latest of its messages and answers the member
+    /// was shown, when it was written and its ID, else up to now: how many were.
     fn mark_communications_group_done(
         &self,
         dsp: &str,
         group: &str,
         by: &str,
-        seen: Option<i64>,
+        seen: Option<(i64, &str)>,
     ) -> Result<usize>;
     /// The group messages due to go to one of their people by `at`, the longest due first, `most`
     /// at most.
@@ -573,7 +573,7 @@ impl GroupStore for Store {
         dsp: &str,
         group: &str,
         by: &str,
-        seen: Option<i64>,
+        seen: Option<(i64, &str)>,
     ) -> Result<usize> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
@@ -585,7 +585,11 @@ impl GroupStore for Store {
                 db.exec(
                     "UPDATE communications_conversations SET done_at=max(coalesce(done_at,-1),?),\
                      done_by=? WHERE id=?",
-                    params![covered(seen), by, conversation],
+                    params![
+                        covered(&db, conversation, seen, Place::Id)?,
+                        by,
+                        conversation
+                    ],
                 )?;
                 settle(&db, conversation)?;
             }

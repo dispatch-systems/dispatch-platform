@@ -698,8 +698,9 @@ Behind `communications.use`:
 - `GET …/groups/{id}/people`: who it went to, who first sent it and when, and where it stands
   with each.
 - `POST …/groups/{id}/messages` (`text`, `photos`), to the same people; `POST …/groups/{id}/done`
-  (`seen`, when the latest of its messages and answers the page showed was written), for each
-  conversation listed under it that waits, covering only what was written up to then.
+  (`seen`, the latest of its messages and answers the page showed, `<at>:<id>` as `before` names
+  one), for each conversation listed under it that waits, covering only what was written up to
+  it.
 - `POST …/uploads?name=&type=`: a photo for a message not sent yet, as its bytes.
 - `GET …/files/{id}`: a photo or file attached to a message.
 - `GET …/workspaces/{team}/logo?v=<logo>`: a workspace's logo, the copy Slack keeps of it, read

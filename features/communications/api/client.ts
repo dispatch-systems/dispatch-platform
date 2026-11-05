@@ -253,7 +253,10 @@ export const messageGroup = (id: string, text: string, photos: string[] = []) =>
 /** Marks done every conversation listed under a group that waits, as far as `seen`, the latest of
  * its messages and answers shown. */
 export const markGroupDone = (id: string, seen?: GroupEntry | null) =>
-  api<Group>(`${communicationsUrl}/groups/${id}/done`, seen ? { seen: seen.at } : {});
+  api<Group>(
+    `${communicationsUrl}/groups/${id}/done`,
+    seen ? { seen: `${seen.at}:${seen.id}` } : {},
+  );
 /** The DSP's phones, as those who manage them or all its connections see them. */
 export const phonesUrl = `${communicationsUrl}/phones`;
 /** The DSP's phones, read again every `poll` milliseconds, as they check in. */
