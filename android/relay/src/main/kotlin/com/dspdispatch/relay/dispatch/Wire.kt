@@ -26,11 +26,12 @@ data class PairedPhone(val id: String, val name: String)
 data class PairedDsp(val name: String)
 
 /**
- * The texts Dispatch has for the phone to send, oldest first, and the app's latest version while
- * the DSP hands one out.
+ * The texts Dispatch has for the phone to send, oldest first; the videos the phone keeps that
+ * someone is playing, by Dispatch's IDs of them, whose bytes it sends; and the app's latest version
+ * while the DSP hands one out.
  */
 @Serializable
-data class Outbox(val texts: List<OutgoingText> = emptyList(), val app: AppVersion? = null)
+data class Outbox(val texts: List<OutgoingText> = emptyList(), val wanted: List<String> = emptyList(), val app: AppVersion? = null)
 
 /** A version of the app: its name, as people see it, and the `versionCode` Android compares. */
 @Serializable
@@ -84,9 +85,12 @@ data class ReportedText(
     val files: List<ReportedFile> = emptyList(),
 )
 
-/** A picture or file of a reported text, its bytes sent once Dispatch answered the text. */
+/**
+ * A picture or file of a reported text, its bytes sent once Dispatch answered the text; a video
+ * [onPhone] stays on the phone, only the picture of its first frame sent, its bytes once asked for.
+ */
 @Serializable
-data class ReportedFile(val name: String, val mime: String, val size: Long)
+data class ReportedFile(val name: String, val mime: String, val size: Long, val onPhone: Boolean = false)
 
 /** Dispatch's IDs of the texts reported, in the order reported. */
 @Serializable

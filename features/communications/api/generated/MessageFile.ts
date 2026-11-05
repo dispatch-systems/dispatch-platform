@@ -3,10 +3,15 @@ import type { FileStatus } from "./FileStatus";
 
 /**
  * A photo or file attached to a message, which `files/{id}` serves once it's kept: at
- * `files/{id}?v={version}`, the browser keeps it.
+ * `files/{id}?v={version}`, the browser keeps it. A text's video kept on its phone has a picture
+ * of its first frame at `files/{id}/preview` once `preview`.
  */
 export type MessageFile = { id: string, name: string, mime: string, size: number, status: FileStatus,
 /**
  * The version of its bytes, once it's kept.
  */
-version: string | null, };
+version: string | null,
+/**
+ * Whether the picture of its first frame is kept, for a text's video kept on its phone.
+ */
+preview: boolean, };

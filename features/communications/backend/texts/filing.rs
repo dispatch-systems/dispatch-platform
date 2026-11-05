@@ -7,8 +7,9 @@
 //! places under its number, as a day Routes can't read does (`overdue`). It files again the days
 //! whose filing again failed, the earliest first (`noted`), and today's, as its route data may have
 //! changed unheard (`reconcile`); keeps when the live day ends, so work conversations wait the two
-//! hours after, and the pages hear them stop (`watch_live_day`); and fails the answers still
-//! waiting on an offline phone at their expiry (`expire`).
+//! hours after, and the pages hear them stop (`watch_live_day`); fails the answers still waiting
+//! on an offline phone at their expiry (`expire`); and lets go of the bytes of videos kept on their
+//! phone an hour after they came (`let_go_fetched`).
 //!
 //! A work phone passes from driver to driver, so a text with one is filed by the day it was
 //! written, where the DSP is, or in the two hours after a stop that run past midnight by the day
@@ -41,7 +42,10 @@ use super::{
 };
 use crate::backend::{
     live,
-    phone::storage::{MOST_TEXTS, TextStore as _},
+    phone::{
+        model::FETCHED_MS,
+        storage::{FileStore as _, MOST_TEXTS, TextStore as _},
+    },
     sender,
     storage::DOMAIN,
 };
@@ -74,7 +78,8 @@ const MOST_REFILING: usize = 4;
 
 /// Every minute, each DSP's texts waiting to be filed, those waiting too long under their number,
 /// the days whose filing again failed and today's filed again where they belong now; the live
-/// day's end kept; and its answers still waiting on an offline phone failed once they expire.
+/// day's end kept; its answers still waiting on an offline phone failed once they expire; and the
+/// bytes of videos their phone sent an hour before let go of.
 pub const MAINTENANCE: Maintenance = Maintenance {
     every: Duration::from_secs(60),
     run: pass,
@@ -163,6 +168,9 @@ fn pass(state: Arc<State>, _: bool) -> Upkeep {
                     }
                     if let Err(error) = expire(&state, &dsp, now()).await {
                         failed("communications_texts_expire_failed", &error, of());
+                    }
+                    if let Err(error) = let_go_fetched(&state, &dsp, now() - FETCHED_MS).await {
+                        failed("communications_texts_fetched_failed", &error, of());
                     }
                 }
             }
@@ -300,6 +308,24 @@ pub async fn expire(state: &Arc<State>, dsp: &str, at: i64) -> Result<()> {
     let at_dsp = dsp.to_owned();
     changing(state, dsp, move |db| {
         Ok(((), db.phones_expire(&at_dsp, at)?))
+    })
+    .await
+}
+
+/// Lets go of the bytes of the videos kept on their phone that came before `before`, each text
+/// filed as its video goes back to its phone, so the pages showing it hear: written only once one
+/// has.
+pub async fn let_go_fetched(state: &Arc<State>, dsp: &str, before: i64) -> Result<()> {
+    let asked = dsp.to_owned();
+    if !state
+        .read(move |db| db.phones_fetched_before(&asked, before))
+        .await?
+    {
+        return Ok(());
+    }
+    let at = dsp.to_owned();
+    changing(state, dsp, move |db| {
+        Ok(((), db.phones_let_go_fetched(&at, before)?))
     })
     .await
 }

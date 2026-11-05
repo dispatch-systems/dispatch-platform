@@ -165,7 +165,8 @@ pub struct SentMessage {
 }
 
 /// A photo or file attached to a message, which `files/{id}` serves once it's kept: at
-/// `files/{id}?v={version}`, the browser keeps it.
+/// `files/{id}?v={version}`, the browser keeps it. A text's video kept on its phone has a picture
+/// of its first frame at `files/{id}/preview` once `preview`.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(
@@ -182,6 +183,8 @@ pub struct MessageFile {
     pub status: FileStatus,
     /// The version of its bytes, once it's kept.
     pub version: Option<String>,
+    /// Whether the picture of its first frame is kept, for a text's video kept on its phone.
+    pub preview: bool,
 }
 
 /// `GET /api/dsp/communications/conversations`: the fifty conversations found by name closest

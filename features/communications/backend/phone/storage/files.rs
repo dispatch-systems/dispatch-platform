@@ -1,11 +1,13 @@
 //! The texts' pictures and files, each by the SHA-256 of its bytes: one a phone reported, waiting
 //! for its bytes, and one someone at the DSP added for a text not sent yet, theirs alone until it
-//! goes. The bytes themselves are `phone::files`'.
-use super::next_change;
-use crate::backend::phone::model::File;
+//! goes. A video a phone reported may stay on it (`on_phone`), with a picture of its first frame,
+//! its bytes sent only once someone plays it, and kept an hour (`FETCHED_MS`). The bytes
+//! themselves are `phone::files`'.
+use super::{devices::ONLINE_MS, next_change};
+use crate::backend::phone::model::{FETCH_WAIT_MS, File};
 use dispatch_core::{
     Error, Result,
-    db::{Store, n, s},
+    db::{Db, Store, migrations::add_column, n, s},
     foundation::crypto,
 };
 use rusqlite::params;
@@ -17,11 +19,41 @@ pub struct ReportedFile {
     pub name: String,
     pub mime: String,
     pub size: i64,
+    /// Whether its phone keeps its bytes, a video's, until someone plays it.
+    pub on_phone: bool,
+}
+
+/// How asking for a video kept on its phone stands.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Wanting {
+    /// Its bytes are kept already.
+    Kept,
+    /// Asked: its phone, online, is told with its next wait.
+    Asked,
+    /// Its phone isn't online to send it.
+    Offline,
+    /// Its phone has it no more.
+    Gone,
+}
+
+/// Communications' migration 16: a video a phone keeps until someone plays it (`on_phone`), with
+/// the picture of its first frame (`preview_sha256`); when someone last asked for it (`wanted_at`)
+/// and its phone was last told (`handed_at`); when its bytes came (`fetched_at`); and when its
+/// phone said it has it no more (`gone_at`).
+pub(crate) fn add_on_phone(db: &Db) -> Result<()> {
+    add_column(db, "phones_files", "on_phone", "INTEGER NOT NULL DEFAULT 0")?;
+    add_column(db, "phones_files", "preview_sha256", "TEXT")?;
+    add_column(db, "phones_files", "wanted_at", "INTEGER")?;
+    add_column(db, "phones_files", "handed_at", "INTEGER")?;
+    add_column(db, "phones_files", "fetched_at", "INTEGER")?;
+    add_column(db, "phones_files", "gone_at", "INTEGER")
 }
 
 /// A picture or file as kept, with whom it's for.
 pub struct StoredFile {
     pub file: File,
+    /// Where the picture of its first frame is, for a video its phone keeps.
+    pub preview_sha256: Option<String>,
     pub text_id: Option<String>,
     pub added_by: Option<String>,
 }
@@ -29,8 +61,9 @@ pub struct StoredFile {
 /// What the phone side keeps of the texts' pictures and files.
 pub trait FileStore {
     /// Keeps the bytes of a file a phone reported, by their SHA-256, and their size as they
-    /// arrived, whatever the report said: refused as `phones_file_not_found` for one not of its
-    /// own texts. Answers the text it's of.
+    /// arrived, whatever the report said, at `at`: a video's phone has it after all, should it
+    /// have said otherwise. Refused as `phones_file_not_found` for one not of its own texts.
+    /// Answers the text it's of.
     fn phones_file_arrived(
         &self,
         dsp: &str,
@@ -38,7 +71,35 @@ pub trait FileStore {
         id: &str,
         sha256: &str,
         size: i64,
+        at: i64,
     ) -> Result<String>;
+    /// Keeps the picture of the first frame of a video the phone `device` reported and keeps, by
+    /// its SHA-256: it has it after all, should it have said otherwise. Refused as
+    /// `phones_file_not_found` for one not of its own texts kept on it. Answers the text it's of.
+    fn phones_preview_arrived(
+        &self,
+        dsp: &str,
+        device: &str,
+        id: &str,
+        sha256: &str,
+    ) -> Result<String>;
+    /// Notes, at `at`, that the phone `device` has the video `id` it kept no more: refused as
+    /// `phones_file_not_found` for one not of its own texts kept on it. Answers the text it's of.
+    fn phones_file_gone(&self, dsp: &str, device: &str, id: &str, at: i64) -> Result<String>;
+    /// Asks, at `at`, for the bytes of the video `id` its phone keeps, of a text: none for no
+    /// such file. Asked while its phone was told of it within `FETCH_WAIT_MS`, and is sending it,
+    /// it isn't asked again.
+    fn phones_want_file(&self, dsp: &str, id: &str, at: i64) -> Result<Option<Wanting>>;
+    /// The videos kept on the phone `device` someone asked for since `since`, whose bytes haven't
+    /// come, and that it hasn't been told of since they were asked for.
+    fn phones_wanted(&self, dsp: &str, device: &str, since: i64) -> Result<Vec<String>>;
+    /// Notes the phone was told of the videos `ids` at `at`.
+    fn phones_handed(&self, dsp: &str, ids: &[String], at: i64) -> Result<()>;
+    /// Whether the bytes of any video kept on its phone came before `before`.
+    fn phones_fetched_before(&self, dsp: &str, before: i64) -> Result<bool>;
+    /// Lets go of the bytes of the videos kept on their phone that came before `before`, which
+    /// upkeep then lets go of once no file keeps them. Answers the texts they're of.
+    fn phones_let_go_fetched(&self, dsp: &str, before: i64) -> Result<Vec<String>>;
     /// Keeps a picture someone added for a text not sent yet.
     fn phones_add_file(
         &self,
@@ -71,28 +132,127 @@ impl FileStore for Store {
         id: &str,
         sha256: &str,
         size: i64,
+        at: i64,
     ) -> Result<String> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
-            let file = db
-                .one(
-                    "SELECT f.text_id FROM phones_files f \
-                     JOIN phones_texts t ON t.id=f.text_id \
-                     WHERE f.id=? AND t.device_id=? AND t.origin='phone'",
-                    params![id, device],
-                )?
-                .ok_or_else(|| Error::new("phones_file_not_found", 404))?;
+            let text = reported(&db, device, id, false)?;
             db.exec(
-                "UPDATE phones_files SET sha256=?, size=? WHERE id=?",
-                params![sha256, size, id],
+                "UPDATE phones_files SET sha256=?, size=?, \
+                 fetched_at=CASE WHEN on_phone=1 THEN ? END, wanted_at=NULL, handed_at=NULL, \
+                 gone_at=NULL WHERE id=?",
+                params![sha256, size, at, id],
             )?;
-            let text = s(&file, "text_id").to_owned();
-            let change = next_change(&db)?;
-            db.exec(
-                "UPDATE phones_texts SET change=? WHERE id=?",
-                params![change, text],
-            )?;
+            changed(&db, std::slice::from_ref(&text))?;
             Ok(text)
+        })
+    }
+    fn phones_preview_arrived(
+        &self,
+        dsp: &str,
+        device: &str,
+        id: &str,
+        sha256: &str,
+    ) -> Result<String> {
+        let db = self.dsp(dsp)?;
+        db.transaction(|| {
+            let text = reported(&db, device, id, true)?;
+            db.exec(
+                "UPDATE phones_files SET preview_sha256=?, gone_at=NULL WHERE id=?",
+                params![sha256, id],
+            )?;
+            changed(&db, std::slice::from_ref(&text))?;
+            Ok(text)
+        })
+    }
+    fn phones_file_gone(&self, dsp: &str, device: &str, id: &str, at: i64) -> Result<String> {
+        let db = self.dsp(dsp)?;
+        db.transaction(|| {
+            let text = reported(&db, device, id, true)?;
+            db.exec(
+                "UPDATE phones_files SET gone_at=coalesce(gone_at,?), wanted_at=NULL, \
+                 handed_at=NULL WHERE id=?",
+                params![at, id],
+            )?;
+            changed(&db, std::slice::from_ref(&text))?;
+            Ok(text)
+        })
+    }
+    fn phones_want_file(&self, dsp: &str, id: &str, at: i64) -> Result<Option<Wanting>> {
+        let db = self.dsp(dsp)?;
+        db.transaction(|| {
+            let Some(file) = db.one(
+                "SELECT f.sha256, f.on_phone, f.gone_at, d.last_seen_at FROM phones_files f \
+                 JOIN phones_texts t ON t.id=f.text_id \
+                 JOIN phones_devices d ON d.id=t.device_id WHERE f.id=?",
+                [id],
+            )?
+            else {
+                return Ok(None);
+            };
+            let online = file["last_seen_at"]
+                .as_i64()
+                .is_some_and(|seen| seen >= at - ONLINE_MS);
+            let wanting = if file["sha256"].is_string() {
+                Wanting::Kept
+            } else if n(&file, "on_phone") == 0 {
+                return Ok(None);
+            } else if file["gone_at"].is_i64() {
+                Wanting::Gone
+            } else if !online {
+                Wanting::Offline
+            } else {
+                db.exec(
+                    "UPDATE phones_files SET wanted_at=?1 WHERE id=?2 AND NOT \
+                     coalesce(handed_at>=wanted_at AND handed_at>?3,0)",
+                    params![at, id, at - FETCH_WAIT_MS],
+                )?;
+                Wanting::Asked
+            };
+            Ok(Some(wanting))
+        })
+    }
+    fn phones_wanted(&self, dsp: &str, device: &str, since: i64) -> Result<Vec<String>> {
+        Ok(self
+            .dsp(dsp)?
+            .all(
+                "SELECT f.id FROM phones_files f JOIN phones_texts t ON t.id=f.text_id \
+                 WHERE t.device_id=? AND f.on_phone=1 AND f.sha256 IS NULL \
+                 AND f.gone_at IS NULL AND f.wanted_at>=? \
+                 AND f.wanted_at>coalesce(f.handed_at,0) ORDER BY f.wanted_at,f.id",
+                params![device, since],
+            )?
+            .iter()
+            .map(|row| s(row, "id").to_owned())
+            .collect())
+    }
+    fn phones_handed(&self, dsp: &str, ids: &[String], at: i64) -> Result<()> {
+        self.dsp(dsp)?.exec(
+            "UPDATE phones_files SET handed_at=? WHERE id IN (SELECT value FROM json_each(?))",
+            params![at, serde_json::to_string(ids)?],
+        )?;
+        Ok(())
+    }
+    fn phones_fetched_before(&self, dsp: &str, before: i64) -> Result<bool> {
+        Ok(self.dsp(dsp)?.count(
+            "SELECT count(*) FROM phones_files WHERE on_phone=1 AND fetched_at<?",
+            [before],
+        )? > 0)
+    }
+    fn phones_let_go_fetched(&self, dsp: &str, before: i64) -> Result<Vec<String>> {
+        let db = self.dsp(dsp)?;
+        db.transaction(|| {
+            let texts: Vec<String> = db
+                .all(
+                    "UPDATE phones_files SET sha256=NULL, fetched_at=NULL \
+                     WHERE on_phone=1 AND fetched_at<? RETURNING text_id",
+                    [before],
+                )?
+                .iter()
+                .map(|row| s(row, "text_id").to_owned())
+                .collect();
+            changed(&db, &texts)?;
+            Ok(texts)
         })
     }
     fn phones_add_file(
@@ -116,6 +276,9 @@ impl FileStore for Store {
             size: file.size,
             kept: true,
             sha256: Some(sha256.to_owned()),
+            on_phone: false,
+            preview: false,
+            gone: false,
         })
     }
     fn phones_file(&self, dsp: &str, id: &str) -> Result<Option<StoredFile>> {
@@ -124,6 +287,7 @@ impl FileStore for Store {
             .one("SELECT * FROM phones_files WHERE id=?", [id])?
             .map(|row| StoredFile {
                 file: file_of(&row),
+                preview_sha256: row["preview_sha256"].as_str().map(str::to_owned),
                 text_id: row["text_id"].as_str().map(str::to_owned),
                 added_by: row["added_by"].as_str().map(str::to_owned),
             }))
@@ -151,16 +315,17 @@ impl FileStore for Store {
         Ok(())
     }
     fn phones_bytes_kept(&self, dsp: &str, sha256: &str) -> Result<bool> {
-        Ok(self
-            .dsp(dsp)?
-            .count("SELECT count(*) FROM phones_files WHERE sha256=?", [sha256])?
-            > 0)
+        Ok(self.dsp(dsp)?.count(
+            "SELECT count(*) FROM phones_files WHERE sha256=?1 OR preview_sha256=?1",
+            [sha256],
+        )? > 0)
     }
     fn phones_kept_bytes(&self, dsp: &str) -> Result<Vec<String>> {
         Ok(self
             .dsp(dsp)?
             .all(
-                "SELECT DISTINCT sha256 FROM phones_files WHERE sha256 IS NOT NULL",
+                "SELECT sha256 FROM phones_files WHERE sha256 IS NOT NULL \
+                 UNION SELECT preview_sha256 FROM phones_files WHERE preview_sha256 IS NOT NULL",
                 [],
             )?
             .iter()
@@ -194,7 +359,33 @@ fn file_of(row: &Value) -> File {
         size: n(row, "size"),
         kept: row["sha256"].is_string(),
         sha256: row["sha256"].as_str().map(str::to_owned),
+        on_phone: n(row, "on_phone") == 1,
+        preview: row["preview_sha256"].is_string(),
+        gone: row["gone_at"].is_i64(),
     }
+}
+/// The text of the file `id` the phone `device` reported, kept on it if `on_phone`: refused as
+/// `phones_file_not_found` for none.
+fn reported(db: &Db, device: &str, id: &str, on_phone: bool) -> Result<String> {
+    let file = db
+        .one(
+            "SELECT f.text_id FROM phones_files f JOIN phones_texts t ON t.id=f.text_id \
+             WHERE f.id=? AND t.device_id=? AND t.origin='phone' AND (f.on_phone=1 OR NOT ?)",
+            params![id, device, on_phone],
+        )?
+        .ok_or_else(|| Error::new("phones_file_not_found", 404))?;
+    Ok(s(&file, "text_id").to_owned())
+}
+/// Marks the texts `texts` changed, as their files did.
+fn changed(db: &Db, texts: &[String]) -> Result<()> {
+    for text in texts {
+        let change = next_change(db)?;
+        db.exec(
+            "UPDATE phones_texts SET change=? WHERE id=?",
+            params![change, text],
+        )?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

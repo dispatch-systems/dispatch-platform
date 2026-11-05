@@ -8,14 +8,15 @@ use crate::backend::{
     phone::{
         app::{self, App},
         live,
-        model::{EXPIRY_MS, ID_MOST, Status, Text},
-        storage::{AppVersion, DeviceStore, MOST_TEXTS, StatusReport, TextStore},
+        model::{EXPIRY_MS, ID_MOST, Status, Text, WANT_MS},
+        storage::{AppVersion, DeviceStore, FileStore, MOST_TEXTS, StatusReport, TextStore},
     },
     storage::DOMAIN,
     texts::filing,
 };
 use dispatch_core::{
     Error, Result, State,
+    db::now,
     foundation::validate as v,
     server::http::{
         input::{Input, Reply, query_number},
@@ -35,11 +36,14 @@ const VERSION_CODE_MOST: usize = 2_100_000_000;
 
 /// The texts Dispatch has for the phone, each to send from its number to `number`, with its
 /// pictures to fetch first, never started once it `expires`. A text tried again comes again with a
-/// later `attempt`, and a later expiry. With them, the app's latest version, while the server hands
+/// later `attempt`, and a later expiry. With them, the videos the phone keeps that someone is
+/// playing, by their IDs, whose bytes it sends; and the app's latest version, while the server hands
 /// one out, so the app offers to update within a wait.
 #[derive(Serialize)]
 struct Outbox {
     texts: Vec<Outgoing>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    wanted: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     app: Option<Latest>,
 }
@@ -96,8 +100,9 @@ impl Outgoing {
         }
     }
 }
-/// Waits, up to twenty seconds, for texts Dispatch has for the phone: checking in, as it does, and
-/// noting the app it runs and how it says it stands once either changed.
+/// Waits, up to twenty seconds, for texts Dispatch has for the phone, or videos it keeps that someone
+/// is playing, each handed out once each time it's asked for: checking in, as it does, and noting
+/// the app it runs and how it says it stands once either changed.
 pub(super) async fn outbox(state: Arc<State>, input: Input, access: Phone) -> Result<Reply> {
     v::fields(&input.query, &["version", "versionCode"])?;
     let running = running(&input.query)?;
@@ -126,21 +131,34 @@ pub(super) async fn outbox(state: Arc<State>, input: Input, access: Phone) -> Re
         .clone()
         .try_acquire_owned()
         .map_err(|_| Error::new("platform_busy", 503))?;
-    // Subscribed before reading, so a text queued between the read and the wait still wakes it.
+    // Subscribed before reading, so a text queued, or a video asked for, between the read and the
+    // wait still wakes it.
     let mut listener = state.topics.subscribe(live::TOPIC, &caller.dsp);
     let until = tokio::time::Instant::now() + WAIT;
     loop {
         let asked = input.clone();
-        let (texts, app) = state
+        let (texts, wanted, app) = state
             .read(move |db| {
                 let caller = access.authorize(db, &asked)?;
                 let texts = db.phones_outbox(&caller.dsp, &caller.device.id)?;
-                Ok((texts, app::latest(&db.config)))
+                let wanted = db.phones_wanted(&caller.dsp, &caller.device.id, now() - WANT_MS)?;
+                Ok((texts, wanted, app::latest(&db.config)))
             })
             .await?;
-        if !texts.is_empty() || tokio::time::Instant::now() >= until {
+        if !wanted.is_empty() {
+            let (asked, handed) = (input.clone(), wanted.clone());
+            // Bookkeeping: no cached read depends on when a video was handed out.
+            state
+                .run_bookkeeping(move |db| {
+                    let caller = access.authorize(db, &asked)?;
+                    db.phones_handed(&caller.dsp, &handed, now())
+                })
+                .await?;
+        }
+        if !texts.is_empty() || !wanted.is_empty() || tokio::time::Instant::now() >= until {
             return Reply::of(&Outbox {
                 texts: texts.into_iter().map(Outgoing::of).collect(),
+                wanted,
                 app: app.map(Latest::of),
             });
         }

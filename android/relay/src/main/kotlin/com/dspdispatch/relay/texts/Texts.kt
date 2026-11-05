@@ -41,6 +41,7 @@ class Texts(private val context: Context, dispatch: Dispatch, private val lapses
     private val texting = Texting { textingAllowed(context) }
     private val reporter = Reporter(dispatch, queue, provider, texting, Jpegs(File(context.noBackupFilesDir, JPEGS), PhonePictures), lapses)
     private val statuses = Statuses(dispatch, sends, lapses::failed)
+    private val fetches = Fetches(dispatch, queue, provider, texting)
     private val radio = PhoneRadio(context)
     private val sender = Sender(
         dispatch,
@@ -80,16 +81,20 @@ class Texts(private val context: Context, dispatch: Dispatch, private val lapses
         launch { keepRunning("Reporting texts", lapses) { reporter.run(paired.site, key, wake) } }
         launch { keepRunning("Reporting statuses", lapses) { statuses.run(paired.site, key) } }
         launch { keepRunning("Sending texts", lapses) { sender.run(paired, key) } }
+        launch { keepRunning("Sending videos", lapses) { fetches.run(paired.site, key) } }
         keepRunning("Reading texts", lapses) {
             reader.run({ radio.relayed(paired.number, paired.subscription) }) { wake.trySend(Unit) }
         }
     }
 
     /**
-     * Sends what [outbox], Dispatch's answer to [paired]'s wait, holds, and returns once it's worth
-     * waiting again.
+     * Sends what [outbox], Dispatch's answer to [paired]'s wait, holds, the videos it asks for
+     * beside it, and returns once it's worth waiting again.
      */
-    suspend fun send(paired: Paired, outbox: Outbox) = sender.take(paired, outbox)
+    suspend fun send(paired: Paired, outbox: Outbox) {
+        fetches.ask(outbox.wanted)
+        sender.take(paired, outbox)
+    }
 
     /** Whether Android lets the app send texts. */
     fun sending() = radio.allowed()

@@ -393,3 +393,117 @@ test("A DSP's address hands out its server's build of the app to anyone, and pho
   const off = await f.request('/api/communications/phone/app', undefined, at);
   assert.equal(off.value.error, 'phones_off');
 });
+
+test('A video stays on its phone, its first frame shown, until someone plays it', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const owner = await f.client();
+  const north = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
+  await owner.select(north.id);
+  const at = f.at(demo.memberDsp);
+  const pairing = await owner.post('/api/dsp/communications/phones/pairing');
+  const paired = await f.request(
+    '/api/communications/phone/pair',
+    { code: pairing.value.code, number: '', model: 'Pixel 8a', version: '1.4.0' },
+    at,
+  );
+  const key = { ...at, authorization: `Bearer ${paired.value.key}` };
+  const text = {
+    clientId: 'mms-1',
+    direction: 'in',
+    number: '4255550143',
+    body: 'Defect',
+    at: Date.now(),
+    files: [{ name: 'defect.mp4', mime: 'video/mp4', size: 4, onPhone: true }],
+  };
+  const reported = await f.request('/api/communications/phone/texts', { texts: [text] }, key);
+  assert.equal(reported.status, 200, reported.body);
+  const [video] = reported.value.texts[0].files;
+  /** Sends `bytes` as the phone sends a file's, to `path` at its DSP's address. */
+  const send = (path: string, bytes: number[]) =>
+    new Promise<number>((resolve, reject) => {
+      const body = Buffer.from(bytes);
+      http
+        .request(
+          `${f.env.DISPATCH_ORIGIN}${path}`,
+          {
+            method: 'POST',
+            headers: {
+              ...key,
+              'content-type': 'application/octet-stream',
+              'content-length': String(body.length),
+            },
+          },
+          (response) => {
+            response.resume();
+            response.on('end', () => resolve(response.statusCode!));
+          },
+        )
+        .on('error', reject)
+        .end(body);
+    });
+  const jpeg = [0xff, 0xd8, 0xff, 0xd9];
+  const mp4 = [0, 0, 0, 0x18];
+  assert.equal(await send(`/api/communications/phone/files/${video}/preview`, jpeg), 200);
+
+  const route = '/api/dsp/communications';
+  let conversation = '';
+  await until(async () => {
+    const listed: { id: string; number?: string }[] = (await owner.read(route)).conversations;
+    conversation = listed.find((each) => each.number === '+14255550143')?.id ?? '';
+    return conversation !== '';
+  });
+  const file = async () =>
+    (await owner.read(`${route}/conversations/${conversation}`)).messages[0].files[0];
+  assert.deepEqual([(await file()).status, (await file()).preview], ['on_phone', true]);
+  const bytes = async (path: string) => {
+    const response = await f.raw(path, undefined, owner.headers);
+    return [response.status, [...new Uint8Array(await response.arrayBuffer())]];
+  };
+  assert.deepEqual(await bytes(`${route}/texts/files/${video}/preview`), [200, jpeg]);
+  assert.equal(
+    (await f.raw(`${route}/texts/files/${video}`, undefined, owner.headers)).status,
+    404,
+  );
+
+  // Played: its phone's next wait hands it out, and playing waits for the bytes it sends.
+  const fetch = () => owner.post(`${route}/texts/files/${video}/fetch`);
+  const played = fetch();
+  const outbox = await f.request('/api/communications/phone/outbox', undefined, key);
+  assert.deepEqual(outbox.value.wanted, [video]);
+  assert.equal(await send(`/api/communications/phone/files/${video}`, mp4), 200);
+  assert.deepEqual((await played).value, { kept: true });
+  assert.equal((await file()).status, 'kept');
+  assert.deepEqual(await bytes(`${route}/texts/files/${video}`), [200, mp4]);
+  assert.deepEqual((await fetch()).value, { kept: true });
+
+  // A picture whose bytes the phone sends is no video it keeps.
+  const picture = await f.request(
+    '/api/communications/phone/texts',
+    {
+      texts: [
+        {
+          ...text,
+          clientId: 'mms-2',
+          files: [{ name: 'door.jpg', mime: 'image/jpeg', size: 4 }],
+        },
+      ],
+    },
+    key,
+  );
+  const [door] = picture.value.texts[0].files;
+  assert.equal(await send(`/api/communications/phone/files/${door}/preview`, jpeg), 404);
+  assert.equal((await owner.post(`${route}/texts/files/${door}/fetch`)).status, 404);
+
+  // Once its phone has it no more, playing it says so.
+  const another = await f.request(
+    '/api/communications/phone/texts',
+    { texts: [{ ...text, clientId: 'mms-3' }] },
+    key,
+  );
+  const [lost] = another.value.texts[0].files;
+  const gone = await f.request(`/api/communications/phone/files/${lost}/gone`, {}, key);
+  assert.equal(gone.status, 200, gone.body);
+  const refused = await owner.post(`${route}/texts/files/${lost}/fetch`);
+  assert.deepEqual([refused.status, refused.value.error], [410, 'phones_file_gone']);
+});
