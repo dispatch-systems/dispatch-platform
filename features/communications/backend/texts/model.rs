@@ -76,6 +76,17 @@ pub struct Text {
     pub error: Option<String>,
     /// Its pictures and files, as the phone side keeps them.
     pub files: Vec<File>,
+    /// The conversation one Dispatch sent was filed in as it was queued: none for one queued
+    /// before Communications kept it (migration 15).
+    pub queued_in: Option<String>,
+}
+impl Text {
+    /// Whether it's filed in another conversation than the one it was queued in.
+    pub fn moved(&self) -> bool {
+        self.queued_in
+            .as_ref()
+            .is_some_and(|queued| self.conversation.as_ref() != Some(queued))
+    }
 }
 /// A text from its row, its files read after (`files` empty).
 impl FromRow for Text {
@@ -93,6 +104,7 @@ impl FromRow for Text {
             status: row.get("status")?,
             error: row.get("error")?,
             files: Vec::new(),
+            queued_in: row.get("queued_in")?,
         })
     }
 }

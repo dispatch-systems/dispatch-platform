@@ -4,7 +4,7 @@
 //! the live day (`live_day`); a driver's comes with their route today, each workday's route, and
 //! their conversations of other kinds.
 use super::{
-    live_day::{self, LiveDay},
+    live_day::{self, LiveDay, Stopped},
     model::{Text, TextConversation},
     numbers::Numbers,
     storage::TextStore,
@@ -25,7 +25,7 @@ use dispatch_core::manifest::people::Person;
 use dispatch_core::{
     Error, Result, State,
     accounts::Context,
-    db::Store,
+    db::{Store, now},
     server::http::{input::Reply, route::Dsp},
 };
 use std::{collections::HashMap, sync::Arc};
@@ -105,7 +105,8 @@ pub fn conversations(
 /// own, under its name, with each picture and file, and how one Dispatch sent went.
 pub fn messages(people: &People, numbers: &Numbers, kept: Vec<Text>) -> Vec<Message> {
     kept.into_iter()
-        .map(|text| Message {
+        .map(|text| (text.moved(), text))
+        .map(|(moved, text)| Message {
             id: text.id.clone(),
             ts: place(&text),
             sender: (text.direction == Direction::Out).then(|| match &text.sent_by {
@@ -139,6 +140,7 @@ pub fn messages(people: &People, numbers: &Numbers, kept: Vec<Text>) -> Vec<Mess
             edited_at: None,
             in_thread: false,
             group: None,
+            moved,
             status: text.status,
             number: Some(text.number),
         })
@@ -300,7 +302,8 @@ pub fn like(typed: &str, name: &str, numbers: &[String]) -> Option<(f64, Vec<(u3
 }
 
 /// The conversation `id` and its latest texts, or those before `before`; a driver's with their
-/// route today and each workday's; and whom it's with's conversations of each kind.
+/// route today, or for the two hours after the stop the day's and the work phone they had then,
+/// and each workday's; and whom it's with's conversations of each kind.
 pub fn opened(
     db: &Store,
     state: &State,
@@ -318,11 +321,16 @@ pub fn opened(
     }
     let (today, workdays) = match &kept.driver {
         Some((source, driver)) => {
+            let ids = std::slice::from_ref(driver);
             let today = match LiveDay::read(db, dsp)? {
-                Some(live) if live.source == *source => {
-                    today::of_drivers(db, dsp, &live, std::slice::from_ref(driver))?
-                }
-                _ => None,
+                Some(live) if live.source == *source => today::of_drivers(db, dsp, &live, ids)?,
+                Some(_) => None,
+                None => match Stopped::read(db, dsp, now())? {
+                    Some(stopped) if stopped.source == *source => {
+                        today::of_stopped(db, dsp, &stopped, ids)?
+                    }
+                    _ => None,
+                },
             };
             (today, workdays::of(db, dsp, source, driver, &read)?)
         }

@@ -117,6 +117,7 @@ pub fn messages(
             edited_at: message.edited_at,
             status: None,
             number: None,
+            moved: false,
         })
         .collect())
 }

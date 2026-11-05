@@ -1,7 +1,7 @@
 //! A work conversation waits only on texts written on the live day: counted while live route data
 //! holds today, from what came before its first read, and for two hours after the stop, as it
 //! empties; then done with, the pages hearing it.
-use super::AFTER_STOP_MS;
+use super::{AFTER_STOP_MS, waits_from};
 use crate::ConversationState;
 use crate::backend::{
     changes::ChangeStore,
@@ -106,6 +106,12 @@ async fn a_work_text_half_an_hour_after_the_stop_waits_and_counts_until_two_hour
     assert_eq!(counted(&state, &dsp).await, 1);
 
     // As the two hours end, it stops waiting, which a page with it open hears.
+    let (at, end) = (dsp.clone(), stop + AFTER_STOP_MS);
+    let waits = state
+        .read(move |db| Ok((waits_from(db, &at, end - 1)?, waits_from(db, &at, end)?)))
+        .await
+        .unwrap();
+    assert!(matches!(waits, (Some(_), None)), "{waits:?}");
     let at = dsp.clone();
     let before = state
         .read(move |db| db.communications_revision(&at))

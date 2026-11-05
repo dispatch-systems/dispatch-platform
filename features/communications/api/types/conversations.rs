@@ -108,6 +108,9 @@ pub struct Message {
     /// The other party's number, for a text: in a driver's conversation, the work phone it went
     /// through.
     pub number: Option<String>,
+    /// Whether a text Dispatch sent was queued in another conversation than this, as a work phone
+    /// handed to another driver takes its day's texts with it: it isn't sent again from here.
+    pub moved: bool,
 }
 
 /// The group a message went to: its ID and name.

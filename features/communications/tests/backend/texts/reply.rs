@@ -2,8 +2,9 @@
 //! it on the page, as much as a text carries; one that fails leaves the conversation waiting, and
 //! Retry sends it again. Neither goes to a work phone that isn't the driver's alone now, even as it
 //! changed hands once it was asked for, nor once its writer's access ended, each checked in the
-//! write that queues it. A picture added for one keeps nothing once its adder's access ended while
-//! its bytes came.
+//! write that queues it. For two hours after the stop, a driver is answered at the work phone they
+//! had then. Retry sends a text again only from the conversation it was queued in. A picture added
+//! for one keeps nothing once its adder's access ended while its bytes came.
 use super::*;
 use crate::ConversationState;
 use crate::backend::{
@@ -12,11 +13,39 @@ use crate::backend::{
         storage::FileStore,
     },
     support::{self, filed, phoned, phones, read_live, reported, saved, switch, texted, today},
-    texts::{filing::expire, model::TextStatus, reading, reading::one, storage::TextStore},
+    texts::{
+        filing::{expire, watch_live_day},
+        live_day::AFTER_STOP_MS,
+        model::TextStatus,
+        reading,
+        reading::one,
+        storage::TextStore,
+    },
 };
 use axum::body::Bytes;
 use dispatch_core::{db::now, server::http::upload::Upload};
 use futures_util::{StreamExt, stream};
+
+/// Thirty minutes, in milliseconds.
+const HALF_HOUR_MS: i64 = 30 * 60 * 1000;
+
+/// Avery, A1, has the work phone 0101 today, as live route data reads it, until the stop at `stop`,
+/// as Communications first sees it, and the day is saved with it theirs.
+async fn stopped_at(state: &Arc<State>, dsp: &str, stop: i64) {
+    let day = today(state, dsp).await.1;
+    let avery = &[("A1", "2065550101")];
+    phoned(
+        state,
+        dsp,
+        Some(&day.to_string()),
+        phones(avery),
+        Vec::new(),
+    )
+    .await;
+    read_live(dsp, None, Vec::new());
+    watch_live_day(state, dsp, stop).await.unwrap();
+    phoned(state, dsp, None, Vec::new(), vec![saved(day, avery)]).await;
+}
 
 #[tokio::test]
 async fn an_answer_that_failed_leaves_it_waiting_and_retry_sends_it_again() {
@@ -152,8 +181,12 @@ async fn retry_refuses_a_drivers_answer_once_the_work_phone_it_went_to_is_not_th
         retried().await.unwrap_err().code,
         "communications_no_work_phone"
     );
-    // Then the stop saves the day with 0101 Avery's again, and live route data empties: Avery has
-    // no work phone now.
+    // Then the day stopped two and a half hours ago, saved with 0101 Avery's again: the two hours
+    // after are over, and Avery has no work phone now.
+    read_live(&dsp, None, Vec::new());
+    watch_live_day(&state, &dsp, now() - AFTER_STOP_MS - HALF_HOUR_MS)
+        .await
+        .unwrap();
     let theirs = saved(day, &[("A1", "2065550101")]);
     phoned(&state, &dsp, None, Vec::new(), vec![theirs]).await;
     assert_eq!(
@@ -289,5 +322,94 @@ async fn an_answer_carries_as_much_as_a_text_does_not_what_slacks_does() {
         support::sent(&state, &dsp).await.len(),
         2,
         "only those within a text's limits went"
+    );
+}
+
+#[tokio::test]
+async fn a_drivers_answer_goes_to_the_work_phone_they_had_at_the_stop_for_two_hours_after_it() {
+    let (_root, state, dsp) = support::started();
+    stopped_at(&state, &dsp, now() - HALF_HOUR_MS).await;
+    let asked = texted(&state, &dsp, "+12065550101", "Locked out of the van", now()).await;
+    let conversation = filed(&state, &dsp, &asked).await.id;
+    let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+    let phone = || {
+        let (shared, at, id) = (state.clone(), dsp.clone(), conversation.clone());
+        state.read(move |db| {
+            let opened = reading::opened(db, &shared, &at, &id, None)?;
+            Ok(opened.today.and_then(|today| today.phone))
+        })
+    };
+
+    // Half an hour after the stop, the page has the box, and the answer goes to 0101.
+    assert_eq!(phone().await.unwrap().as_deref(), Some("+12065550101"));
+    send(
+        &state,
+        &c,
+        support::USE,
+        &conversation,
+        "Spare key at the desk",
+        &[],
+    )
+    .await
+    .unwrap();
+    let went: Vec<String> = support::sent(&state, &dsp)
+        .await
+        .into_iter()
+        .map(|(to, _, _)| to)
+        .collect();
+    assert_eq!(went, ["+12065550101"]);
+
+    // Two and a half hours after it, Avery has no work phone to be answered at.
+    stopped_at(&state, &dsp, now() - AFTER_STOP_MS - HALF_HOUR_MS).await;
+    assert_eq!(phone().await.unwrap(), None);
+    let refused = send(&state, &c, support::USE, &conversation, "Still there?", &[]).await;
+    assert_eq!(refused.unwrap_err().code, "communications_no_work_phone");
+}
+
+#[tokio::test]
+async fn retry_refuses_a_text_moved_with_its_work_phone_to_another_drivers_conversation() {
+    let (_root, state, dsp) = support::started();
+    let (_, day) = today(&state, &dsp).await;
+    let today = day.to_string();
+    // Avery has 0101 and texts; the answer through it fails.
+    phoned(
+        &state,
+        &dsp,
+        Some(&today),
+        phones(&[("A1", "2065550101")]),
+        Vec::new(),
+    )
+    .await;
+    let asked = texted(&state, &dsp, "+12065550101", "Which van?", now()).await;
+    let avery = filed(&state, &dsp, &asked).await.id;
+    let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+    let failed = send(&state, &c, support::USE, &avery, "Van 214", &[])
+        .await
+        .unwrap();
+    reported(&state, &dsp, &failed.id, Status::Failed).await;
+
+    // The phone is handed to Blake: the day's texts with it, the failed answer among them, are
+    // Blake's now, which the page shows without Retry, and Retry there is refused.
+    phoned(
+        &state,
+        &dsp,
+        Some(&today),
+        phones(&[("B2", "2065550101")]),
+        Vec::new(),
+    )
+    .await;
+    let blake = filed(&state, &dsp, &failed.id).await.id;
+    assert_ne!(blake, avery);
+    let (shared, at, id) = (state.clone(), dsp.clone(), failed.id.clone());
+    let shown = state
+        .read(move |db| reading::message(db, &shared, &at, &id))
+        .await
+        .unwrap();
+    assert!(shown.moved);
+    let refused = retry(&state, &c, support::USE, &blake, &failed.id).await;
+    assert_eq!(refused.unwrap_err().code, "communications_text_moved");
+    assert!(
+        support::sent(&state, &dsp).await.is_empty(),
+        "never sent again"
     );
 }

@@ -20,6 +20,7 @@ const text = (id: string, minutes: number, sender: Sender | null = null): Messag
     group: null,
     status: null,
     number: '+14255550199',
+    moved: false,
   };
 };
 /** The DSP's phone `id`, called `name`, sending from its own messaging app. */

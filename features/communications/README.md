@@ -156,8 +156,9 @@ and every other number's in Recents.
 
 The drivers on a route today, while live route data holds today, and the work phones they text
 from. At the stop, as live route data empties, it lists nobody (No routes), and the conversations
-stay, the work ones waiting two hours more ([Waiting](#texts)); the next day's drivers fill it as
-its live reads start.
+stay, the work ones waiting two hours more ([Waiting](#texts)), each driver's answered at the work
+phone they had at the stop, which their conversation shows, with the day's route, until then; the
+next day's drivers fill it as its live reads start.
 
 - **Who:** each driver its routes name today, with their route as last read live (of several
   itineraries, the one with the most stops), and their work conversation once they have one;
@@ -248,7 +249,8 @@ from people who may or may not work for the DSP.
   under who wrote each, or the phone's name and mark for one sent from the phone's own messaging
   app; each picture shown, as the phone keeps it (PNG, JPEG, GIF, WebP or AVIF; an iPhone's HEIF
   photo as the JPEG the phone's app makes of it), any other file a download. Under a text the DSP sent, the last of a run or
-  one that failed: Sending, Sent, Delivered, or Not sent with **Retry**.
+  one that failed: Sending, Sent, Delivered, or Not sent with **Retry**, but in a conversation it
+  moved to.
 - **Writing:** text, with pictures (PNG, JPEG or GIF, by their stated type), as much as one text
   carries (`compose::TEXT`, as the phones hold one to: 10,000 characters and ten pictures of up
   to 20 MB each), Enter to send, the number's last four digits beside it while the
@@ -383,11 +385,14 @@ queues a text for a phone.
   data changed (`routes.data_changed`, which names the day), every text of that day, both ways,
   is filed again where it belongs now: a text that came before the day's first live read goes to
   the driver whose phone a read then names. A day Routes can't read keeps its texts where they
-  are. A day whose filing again fails, logged as `communications_texts_refile_failed` with its
-  DSP and day, is noted (`communications_refiling`), and every minute's upkeep files the noted
-  days again, the earliest four first, each on its own, until each is done. Today's are filed
-  again every minute too, so a change nothing heard, as while Communications was off, is repaired
-  by the next pass; an earlier day's only as Routes says it changed, or as it's noted.
+  are. Each day heard of is noted first (`communications_refiling`), and let go once its texts
+  are filed again, but while Routes is off for the DSP, which says nothing of it; so one whose
+  filing again fails, logged as `communications_texts_refile_failed` with its DSP and day, or
+  that a restart cuts short, is filed again by every minute's upkeep, the earliest four noted
+  first, each on its own, while Routes is on, until each is done. Today's are filed again every
+  minute too, so a change nothing heard, as while Communications was off, is repaired by the next
+  pass, a failure logged with its day; an earlier day's only as Routes says it changed, or as it's
+  noted.
 - **Waiting:** as a Slack conversation's: a text in after the latest text out that didn't fail,
   and not covered by a Done. Done marks each text in it covers, those up to the latest the page
   showed, which stays handled wherever it's filed again, never handling a text it didn't cover. A
@@ -410,11 +415,17 @@ queues a text for a phone.
   phone's nobody had, answer their number; a driver's, the work phone they have now: one they were
   picked for today (Pick driver) that's no one driver's latest, as its texts are filed under them;
   else their latest of today, as live route data reads it, but one that's another driver's latest
-  too, which is no one driver's; refused while they have none (`communications_no_work_phone`). Today's Routes and their Work chip show the same phone. Filed
+  too, which is no one driver's; for the two hours after the stop, the work phone they had then,
+  as the day saved reads it, alike; refused while they have none, as once those two hours pass
+  (`communications_no_work_phone`). Today's Routes and their Work chip show the same phone, and
+  their conversation, for those two hours, the one they had at the stop. Filed
   as it's queued, under the full name of whoever sent it (`sent_by`), taken as it's first filed,
-  however it was sent. Retry sends again one Dispatch sent that failed, from the phone a new text
-  to its number would go from (`phones_none` while none is paired), and only where a text written
-  now would go: in a driver's, refused while they have no work phone
+  however it was sent, which keeps the conversation it was queued in (`queued_in`). Retry sends
+  again one Dispatch sent that failed, from the phone a new text to its number would go from
+  (`phones_none` while none is paired), only in the conversation it was queued in, refused once
+  it's filed in another (`communications_text_moved`), as with a work phone handed to another
+  driver, which takes the day's texts with it; and only where a text written now would go: in a
+  driver's, refused while they have no work phone
   (`communications_no_work_phone`) or have another (`communications_work_phone_changed`), as the
   one it went to may be another driver's since. Either is queued, and filed, in the write that
   checks where it goes and the member's access (`phone::outbox`), so a handoff, the stop or a
@@ -790,7 +801,8 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   `communications_refiling` (each day still to be filed again, and since when),
   `communications_live_days` (each day live route data was seen holding, when it was first seen
   not to, and whether the pages heard the two hours after end) and, on each text waiting to be
-  filed, since when it couldn't be placed (`phones_texts.unfiled_since`). The phone side's, as
+  filed, since when it couldn't be placed (`phones_texts.unfiled_since`), and on each Dispatch
+  sent, the conversation it was queued in (`phones_texts.queued_in`). The phone side's, as
   Phones made them before Communications adopted them (its migrations 7 and 8, which find them
   made on a database Phones migrated, and leave Phones' own records of its migrations as they
   were): `phones_devices` (each phone, by its key's SHA-256, and how it last said it stands,

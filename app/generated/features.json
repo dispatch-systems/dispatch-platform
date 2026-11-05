@@ -697,6 +697,10 @@
         {
           "id": 11,
           "name": "drop_work_phones"
+        },
+        {
+          "id": 12,
+          "name": "days_untold"
         }
       ],
       "routelive": [
@@ -787,6 +791,7 @@
         "driver_days",
         "drivers",
         "itineraries",
+        "route_days_untold",
         "route_publications",
         "route_raw",
         "route_retention",

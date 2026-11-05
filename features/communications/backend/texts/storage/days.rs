@@ -84,8 +84,10 @@ impl DayStore for Store {
 /// (`communications_refiling`: each day, YYYY-MM-DD in the DSP's time, and when it was first
 /// noted); each day live route data was seen holding (`communications_live_days`: when it was
 /// first seen not to, none while it does, and whether the pages heard the two hours after end,
-/// `over`); and, on each text waiting to be filed, since when placing it failed
-/// (`phones_texts.unfiled_since`). Each step is taken only if it wasn't.
+/// `over`); and, on each text, since when placing it failed while it waits to be filed
+/// (`phones_texts.unfiled_since`), and the conversation one Dispatch sent was filed in as it was
+/// queued, which Retry sends it again from (`phones_texts.queued_in`). Each step is taken only if
+/// it wasn't.
 pub(crate) fn add_days(db: &Db) -> Result<()> {
     db.exec(
         "CREATE TABLE IF NOT EXISTS communications_refiling (day TEXT PRIMARY KEY, \
@@ -97,5 +99,6 @@ pub(crate) fn add_days(db: &Db) -> Result<()> {
          ended_at INTEGER, over INTEGER NOT NULL DEFAULT 0)",
         [],
     )?;
-    add_column(db, "phones_texts", "unfiled_since", "INTEGER")
+    add_column(db, "phones_texts", "unfiled_since", "INTEGER")?;
+    add_column(db, "phones_texts", "queued_in", "TEXT")
 }

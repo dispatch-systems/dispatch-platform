@@ -5,7 +5,7 @@
 //! changes, nor while Routes is off; a blocked number's out of the list, never waiting on what it
 //! sent while blocked. A text that can't be filed as it comes is kept, and filed by the next upkeep,
 //! else, ten minutes on, under its number; a day whose filing again failed is filed again by the
-//! upkeep until it's done.
+//! upkeep until it's done, though Routes was off meanwhile.
 use super::*;
 use crate::backend::{
     changes::ChangeStore,
@@ -782,8 +782,16 @@ async fn a_saved_days_texts_go_where_they_belong_by_the_next_upkeep_once_filing_
         ConversationKind::Number
     );
 
-    // Once the day can be read, the next upkeep files it again, though nothing says it changed.
+    // Once the day can be read, an upkeep while Routes is off says nothing of it; the next once it's
+    // on again files it again, though nothing says it changed.
     failing(&dsp, false);
+    switch(&state, &dsp, "driving", false).await;
+    (MAINTENANCE.run)(state.clone(), false).await;
+    switch(&state, &dsp, "driving", true).await;
+    assert_eq!(
+        filed(&state, &dsp, &late).await.kind,
+        ConversationKind::Number
+    );
     (MAINTENANCE.run)(state.clone(), false).await;
     assert_eq!(filed(&state, &dsp, &late).await.driver, driver("avery"));
 }

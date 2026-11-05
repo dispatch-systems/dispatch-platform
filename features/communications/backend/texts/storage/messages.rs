@@ -1,9 +1,10 @@
 //! Each conversation by text and the texts filed in it, and whether each conversation waits, kept
 //! beside its texts each time they change. A text is the phone side's row of it (`phones_texts`),
 //! on which this keeps the conversation it's filed in (`conversation_id`, none while it waits to
-//! be, and since when placing it failed while it waits), the name its sender was shown by as it was
-//! filed, whether its number was blocked as it came, and the Done that covered it; the rest of the
-//! row, and the text's files, are the phone side's (`phone::storage`).
+//! be, and since when placing it failed while it waits), the conversation one Dispatch sent was
+//! queued in, the name its sender was shown by as it was filed, whether its number was blocked as
+//! it came, and the Done that covered it; the rest of the row, and the text's files, are the phone
+//! side's (`phone::storage`).
 use crate::backend::{
     changes::changed_conversation,
     model::{ConversationState, TEXT_PREFIX},
@@ -91,7 +92,7 @@ pub trait TextStore {
     ) -> Result<Vec<Unfiled>>;
     /// Files the text `id`, waiting to be, as `filed`, sent by someone at the DSP shown by
     /// `sender_name`, as their name stands now: one with a number of its own as blocked while its
-    /// number is. The conversation it's in. Where a text is filed is decided again only as its
+    /// number is; one Dispatch sent kept as queued in it (`queued_in`). The conversation it's in. Where a text is filed is decided again only as its
     /// day's route data changes (`refile_communications_texts`).
     fn place_communications_text(
         &self,
@@ -367,9 +368,11 @@ impl TextStore for Store {
                 }
                 Filed::Driver { .. } | Filed::WorkPhone(_) => false,
             };
+            // One Dispatch sent is placed as it's queued: where it's sent again from.
             let placed = db.exec(
-                "UPDATE phones_texts SET conversation_id=?,sender_name=?,blocked=? \
-                 WHERE id=? AND conversation_id IS NULL",
+                "UPDATE phones_texts SET conversation_id=?1,sender_name=?2,blocked=?3,\
+                 queued_in=CASE origin WHEN 'dispatch' THEN ?1 END \
+                 WHERE id=?4 AND conversation_id IS NULL",
                 params![conversation, sender_name, blocked, id],
             )?;
             ensure(placed == 1, "communications_message_not_found", 404)?;

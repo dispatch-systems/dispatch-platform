@@ -176,7 +176,8 @@ export function Thread({
 
 /**
  * Under a message: when it was written, while `time` says to show it, and, while `status` says
- * to, how a text the DSP sent went: Not sent, with Retry, once it failed.
+ * to, how a text the DSP sent went: Not sent, with Retry, once it failed, but in a conversation
+ * it moved to.
  */
 function Meta({
   message,
@@ -200,7 +201,7 @@ function Meta({
             <CircleAlert size={12} aria-hidden="true" />
             {textStatus.failed}
           </span>
-          {retry && (
+          {retry && !message.moved && (
             <>
               {' · '}
               <button className="retry" onClick={() => retry(message)}>
