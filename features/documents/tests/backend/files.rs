@@ -1,4 +1,5 @@
-//! A DSP disabled while Google renews its access token, whose Drive is reached no more.
+//! A DSP disabled while Google renews its access token, whose Drive is reached no more; and a
+//! deleted DSP's pictures, forgotten.
 use super::*;
 use crate::backend::{
     drive::DOC,
@@ -28,4 +29,27 @@ async fn a_dsp_disabled_while_its_token_is_renewed_makes_nothing_in_its_drive() 
     let google = Google::of(&state.config).unwrap();
     let made = google.inside(ACCOUNT, &folder).await.unwrap();
     assert!(!made.iter().any(|item| item.name == "Made while disabled"));
+}
+
+#[test]
+fn a_deleted_dsps_pictures_are_forgotten_and_no_other_dsps() {
+    // What each DSP's Documents showed of a file.
+    for dsp in ["dsp_deleted", "dsp_other"] {
+        let now = Instant::now();
+        let shown = Shown {
+            link: format!("fixture:{dsp}"),
+            given: now,
+            shown: now,
+        };
+        PICTURES
+            .lock()
+            .unwrap()
+            .insert((dsp.to_owned(), "file".to_owned()), shown);
+    }
+    connection::forgotten("dsp_deleted");
+    assert!(shown("dsp_deleted", "file").is_none());
+    assert_eq!(
+        shown("dsp_other", "file").unwrap().link,
+        "fixture:dsp_other"
+    );
 }

@@ -69,6 +69,13 @@ struct Shown {
 const PICTURE_LINK_LASTS: Duration = Duration::from_secs(60 * 60);
 /// The most links kept across every DSP; past them, a card keeps its drawing.
 const PICTURE_LINKS: usize = 20_000;
+/// Forgets the pictures the DSP's Documents showed, as once it's deleted.
+pub fn forget_pictures(dsp: &str) {
+    PICTURES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .retain(|(shown_by, _), _| shown_by != dsp);
+}
 /// The picture of the file `id`, when the DSP's Documents showed it within the hour.
 fn shown(dsp: &str, id: &str) -> Option<Shown> {
     PICTURES
