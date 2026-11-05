@@ -33,11 +33,12 @@ import { useConversation } from './useConversation.js';
 
 // The conversation open: who it's with, the workspace it's in while there are several, the number
 // it texts, or a driver's route today and the work phone they hold, and, while it waits, how long
-// and Done; what can be done with its number, or with a work phone nobody held, Pick driver; their
-// conversations of other kinds, as chips; its messages; and writing in it, by text through the
-// DSP's phones, or for a driver holding no work phone, their other conversations instead; above
-// the box, who else at the DSP is writing in it, and before sending, whether one of them replied
-// since the member started writing. On a phone it takes the page, with a way back to the list. In Slack, or a driver's, who it's with, or
+// and Done, else Next waiting; what can be done with its number, or with a work phone nobody held,
+// Pick driver; their conversations of other kinds, as chips; its messages; and writing in it, by
+// text through the DSP's phones, or for a driver holding no work phone, their other conversations
+// instead; above the box, who else at the DSP is writing in it, and before sending, whether one of
+// them replied since the member started writing. On a phone it takes the page, with a way back to
+// the list. In Slack, or a driver's, who it's with, or
 // their photo by their messages, opens their profile over it, or beside it on a wide page
 // (`docked`).
 
@@ -62,6 +63,7 @@ export function ConversationPane({
   openGroup,
   todays,
   open,
+  next,
 }: {
   id: string;
   /** The conversation as the list has it, which the page's own writes and each update keep. */
@@ -99,6 +101,8 @@ export function ConversationPane({
   todays?: TodaysRead;
   /** Opens another conversation, as whom it's with's of another kind, or starts it. */
   open: (target: Target) => void;
+  /** Next waiting: opens the one waiting longest of the section shown, while another waits. */
+  next?: () => void;
 }) {
   const {
     opened,
@@ -201,6 +205,7 @@ export function ConversationPane({
         opens={opens}
         back={back}
         done={{ busy: done.busy, run: () => void done.run() }}
+        next={next}
         actions={shown && party?.actions?.(shown)}
       />
       <ElsewhereChips elsewhere={elsewhere} current={id} go={go} />

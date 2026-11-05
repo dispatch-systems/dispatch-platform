@@ -159,19 +159,23 @@
   .composer {
     padding: 8px 10px 10px;
   }
-  /* A message to a group gets the box's width, with attaching and sending under it. */
-  .composer .box.writing {
+  /* A message to a group, or a box with Quick replies by its word, gets the box's width, with
+     attaching and sending under it. */
+  .composer .box.writing,
+  .composer .box:has(.quick-replies) {
     flex-wrap: wrap;
     align-items: center;
     padding: 8px;
     border-radius: 22px;
   }
-  .composer .box.writing textarea {
+  .composer .box.writing textarea,
+  .composer .box:has(.quick-replies) textarea {
     order: -1;
     flex-basis: 100%;
     padding: 2px 8px 6px;
   }
-  .composer .box.writing .send-to {
+  .composer .box.writing .send-to,
+  .composer .box:has(.quick-replies) .send-to {
     margin-left: auto;
   }
 }

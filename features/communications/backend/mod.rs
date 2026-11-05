@@ -28,7 +28,8 @@
 //!   answering by text; `phone`, the phones themselves, pairing them, the texts they relay and
 //!   Dispatch's queued for them, and their bytes, knowing nothing of conversations.
 //! - `text`: Slack's markup, as Communications keeps and sends text.
-//! - `display`: how the page looks to each member, their own in Settings.
+//! - `display`: how the page looks to each member, their own in Settings; `quick_replies`, the
+//!   DSP's short answers to put in what's written, edited in Settings by anyone who uses it.
 pub(crate) mod bytes;
 pub(crate) mod changes;
 pub(crate) mod compose;
@@ -46,6 +47,7 @@ pub(crate) mod model;
 pub(crate) mod people;
 pub(crate) mod phone;
 pub(crate) mod profile;
+pub(crate) mod quick_replies;
 pub(crate) mod reply;
 pub(crate) mod search;
 pub(crate) mod sections;

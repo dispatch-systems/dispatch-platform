@@ -1,0 +1,75 @@
+/* Quick replies in the composer: its button by its word beside the smiley, on a phone under the
+   field with attaching (composer.css); the replies over the thread at the box's left edge, on a
+   phone across the composer. */
+.communications button.quick-replies-button {
+  gap: 6px;
+  height: var(--round-size);
+  min-height: var(--round-size);
+  padding: 0 10px 0 8px;
+  border: 0;
+  border-radius: calc(var(--round-size) / 2);
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: var(--ui-size);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.communications button.quick-replies-button:hover:not(:disabled),
+.communications button.quick-replies-button[aria-expanded='true'] {
+  background: var(--accent);
+}
+.quick-replies-panel {
+  position: absolute;
+  bottom: 100%;
+  left: var(--side);
+  z-index: 20;
+  width: min(calc(360px * var(--scale)), calc(100% - 2 * var(--side)));
+  max-height: min(calc(360px * var(--scale)), 50vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: 0 10px 30px #0004;
+}
+.quick-replies-panel ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.quick-replies-panel button {
+  display: block;
+  width: 100%;
+  min-height: calc(40px * var(--scale));
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-size: var(--ui-size);
+  font-weight: 500;
+  text-align: left;
+  white-space: normal;
+}
+/* A long one shows its first two lines. */
+.quick-replies-panel button span {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.quick-replies-panel button:hover,
+.quick-replies-panel button:focus-visible {
+  background: var(--accent);
+}
+
+@container communications (width < 680px) {
+  .quick-replies-panel {
+    left: 0;
+    width: 100%;
+    border-width: 1px 0 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
