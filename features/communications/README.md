@@ -573,11 +573,13 @@ not; and with it closed, or on a phone, as a push (**Pushed**, below).
   server began watching the DSP goes nowhere. Pushes go in the background, a few at once, each
   within ten seconds, one that fails tried once more; a browser its push service no longer knows
   (404, 410), or of a member who no longer holds `communications.use` or turned Notifications off,
-  is let go of. Dispatch's service worker (`app/frontend/public/service-worker.js`) shows a push,
-  unless a window of Dispatch is focused there, which alerts itself; where it serves the page, the
-  page's own notifications go through it too, under the message's tag, so a push of one shown
-  already takes its place. On a phone, pushes are its only notifications: Android's browser shows
-  them, and an iPhone's only for Dispatch added to its Home Screen (the web app manifest,
+  is let go of. Dispatch's service worker (`app/frontend/public/service-worker.js`) shows every
+  push, as browsers ask, penalising one that shows nothing; one arriving while a window of Dispatch
+  is focused there, which alerts itself, is shown silently and closed at once, or left to the
+  page's own notification of it. Where the worker serves the page, the page's notifications go
+  through it, under the message's tag, so a push of one shown already takes its place. On a
+  phone, pushes are its only notifications: Android's browser shows them, and an iPhone's only for
+  Dispatch added to its Home Screen (the web app manifest,
   `app/frontend/public/assets/manifest.webmanifest`).
 
 ## The page's code
