@@ -19,6 +19,8 @@ pub trait DayStore {
     fn refiled_communications_day(&self, dsp: &str, day: &str) -> Result<()>;
     /// The latest day live route data was seen holding, and since when it hasn't.
     fn communications_live_day(&self, dsp: &str) -> Result<Option<LiveKept>>;
+    /// `day`, YYYY-MM-DD, as live route data was seen holding it, and since when it hasn't.
+    fn communications_live_day_on(&self, dsp: &str, day: &str) -> Result<Option<LiveKept>>;
     /// Keeps that live route data holds `day`: again, too, once it was seen not to.
     fn live_communications_day(&self, dsp: &str, day: &str) -> Result<()>;
     /// Keeps that live route data held `day` until `at`, unless it was kept ending already.
@@ -56,6 +58,12 @@ impl DayStore for Store {
             )?
             .pop())
     }
+    fn communications_live_day_on(&self, dsp: &str, day: &str) -> Result<Option<LiveKept>> {
+        self.dsp(dsp)?.one_as(
+            "SELECT day,ended_at,over FROM communications_live_days WHERE day=?",
+            [day],
+        )
+    }
     fn live_communications_day(&self, dsp: &str, day: &str) -> Result<()> {
         self.dsp(dsp)?.exec(
             "INSERT INTO communications_live_days (day) VALUES (?) \
@@ -85,7 +93,7 @@ impl DayStore for Store {
 /// noted); each day live route data was seen holding (`communications_live_days`: when it was
 /// first seen not to, none while it does, and whether the pages heard the two hours after end,
 /// `over`); and, on each text, since when placing it failed while it waits to be filed
-/// (`phones_texts.unfiled_since`), and the conversation one Dispatch sent was filed in as it was
+/// (`phones_texts.unfiled_since`), and the conversation one Dispatch sent was written in as it was
 /// queued, which Retry sends it again from (`phones_texts.queued_in`). Each step is taken only if
 /// it wasn't.
 pub(crate) fn add_days(db: &Db) -> Result<()> {

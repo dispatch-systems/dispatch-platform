@@ -6,7 +6,7 @@ use crate::ConversationState;
 use crate::backend::{
     changes::ChangeStore,
     inbox,
-    support::{at, filed, phoned, phones, read_live, saved, started, texted, today},
+    support::{at, failing, filed, phoned, phones, read_live, saved, started, texted, today},
     texts::{filing::watch_live_day, reading},
 };
 use dispatch_core::{State, db::now};
@@ -105,7 +105,8 @@ async fn a_work_text_half_an_hour_after_the_stop_waits_and_counts_until_two_hour
     assert_eq!(waiting, ConversationState::Waiting);
     assert_eq!(counted(&state, &dsp).await, 1);
 
-    // As the two hours end, it stops waiting, which a page with it open hears.
+    // As the two hours end, it stops waiting, which a page with it open hears, though Routes can't
+    // read the day then.
     let (at, end) = (dsp.clone(), stop + AFTER_STOP_MS);
     let waits = state
         .read(move |db| Ok((waits_from(db, &at, end - 1)?, waits_from(db, &at, end)?)))
@@ -117,6 +118,7 @@ async fn a_work_text_half_an_hour_after_the_stop_waits_and_counts_until_two_hour
         .read(move |db| db.communications_revision(&at))
         .await
         .unwrap();
+    failing(&dsp, true);
     watch_live_day(&state, &dsp, stop + AFTER_STOP_MS)
         .await
         .unwrap();

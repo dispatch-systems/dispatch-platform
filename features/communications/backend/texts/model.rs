@@ -76,7 +76,7 @@ pub struct Text {
     pub error: Option<String>,
     /// Its pictures and files, as the phone side keeps them.
     pub files: Vec<File>,
-    /// The conversation one Dispatch sent was filed in as it was queued: none for one queued
+    /// The conversation one Dispatch sent was written in, as it was queued: none for one queued
     /// before Communications kept it (migration 16).
     pub queued_in: Option<String>,
 }

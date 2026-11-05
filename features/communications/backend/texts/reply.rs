@@ -8,10 +8,10 @@
 //! (`Stopped::phones`), and none while they have none. Its pictures are kept by the phone side as
 //! they're added, its adder's alone until they go with it, and none of one kept should the adder's
 //! access end while its bytes come. One that failed is sent again with Retry, from the phone a new
-//! text would go from, only from the conversation it was queued in: one filed elsewhere since, as
-//! with a work phone handed to another driver, never is. Either is queued, and filed, in the write
-//! that checks where it goes and that the member may still send it, so no handoff, stop or change
-//! of their access comes between.
+//! text would go from, only from the conversation it was written in, kept as it's queued: one filed
+//! elsewhere, as with a work phone handed to another driver, never is. Either is queued, and filed,
+//! in the write that checks where it goes and that the member may still send it, so no handoff,
+//! stop or change of their access comes between.
 use super::{filing, live_day, numbers::work_number, reading::message, storage::TextStore};
 use crate::{
     api::types::{CommunicationsUpload, Message},
@@ -58,6 +58,7 @@ pub async fn send(
             by: c.auth.user.id.clone(),
         };
         let sent = outbox::send(db, &c.dsp.id, &outgoing, now())?.id;
+        db.queued_communications_text(&c.dsp.id, &sent, &at)?;
         Ok((sent.clone(), vec![sent]))
     })
     .await?;

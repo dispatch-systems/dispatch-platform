@@ -137,17 +137,13 @@ impl Stopped {
         if LiveDay::read(db, dsp)?.is_some() {
             return Ok(None);
         }
-        match after_stop(db, dsp, at)? {
-            Some((_, day)) => Self::of(db, dsp, &day.to_string()),
-            None => Ok(None),
-        }
-    }
-    /// `day`, as stopped, while Routes is on for the DSP.
-    fn of(db: &Store, dsp: &str, day: &str) -> Result<Option<Self>> {
+        let Some((_, day)) = after_stop(db, dsp, at)? else {
+            return Ok(None);
+        };
         Ok(routes::for_dsp(db, dsp)?.map(|reader| Self {
             reader,
             source: reader.source().as_str().to_owned(),
-            day: day.to_owned(),
+            day: day.to_string(),
         }))
     }
     /// The work phone each driver had at the stop, by their ID, as `LiveDay::phones` has them that
@@ -255,6 +251,18 @@ pub fn waits_from(db: &Store, dsp: &str, at: i64) -> Result<Option<i64>> {
         None => Ok(None),
     }
 }
+/// When the two hours after the day before `day` stopped end, in `zone`, while they run into
+/// `day`, past its midnight: none else.
+pub fn after_stop_into(db: &Store, dsp: &str, zone: Tz, day: NaiveDate) -> Result<Option<i64>> {
+    let Some(before) = day.pred_opt() else {
+        return Ok(None);
+    };
+    let Some(kept) = db.communications_live_day_on(dsp, &before.to_string())? else {
+        return Ok(None);
+    };
+    let until = ended(zone, before, kept.ended_at, i64::MAX)? + AFTER_STOP_MS;
+    Ok((until > began(zone, day)?).then_some(until))
+}
 /// The day live route data held last, in the DSP's `zone`, while at `at` the two hours after it
 /// ended last.
 fn after_stop(db: &Store, dsp: &str, at: i64) -> Result<Option<(Tz, NaiveDate)>> {
@@ -307,23 +315,16 @@ pub fn watched(db: &Store, dsp: &str, at: i64) -> Result<Option<Watched>> {
     })
 }
 /// Keeps what `watched` found; once the two hours after a stop pass, notes changed the work
-/// conversations waiting, and the drivers' who had a work phone at the stop, so the pages waiting
-/// on changes hear they don't wait, nor have it, any more.
+/// conversations waiting, and every driver's, as one may have had a work phone at the stop, so the
+/// pages waiting on changes hear they don't wait, nor have it, any more: from Communications' own
+/// conversations alone, so Routes failing to read the day never holds it up.
 pub fn keep(db: &Store, dsp: &str, watched: &Watched) -> Result<()> {
     match watched {
         Watched::Live(day) => db.live_communications_day(dsp, day),
         Watched::Ended { day, at } => db.ended_communications_day(dsp, day, *at),
         Watched::Over { day, from } => db.dsp(dsp)?.transaction(|| {
             db.changed_communications_waiting(dsp, *from)?;
-            let held: Vec<(String, String)> = match Stopped::of(db, dsp, day)? {
-                Some(stopped) => (stopped.phones(db, dsp)?.into_keys())
-                    .map(|driver| (stopped.source.clone(), driver))
-                    .collect(),
-                None => Vec::new(),
-            };
-            if !held.is_empty() {
-                db.changed_communications_drivers(dsp, Some(&held))?;
-            }
+            db.changed_communications_drivers(dsp, None)?;
             db.over_communications_day(dsp, day)
         }),
     }

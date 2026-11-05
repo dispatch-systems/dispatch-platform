@@ -20,8 +20,8 @@ use crate::backend::{
     },
     storage::DOMAIN,
     support::{
-        self, DRIVERS, at, cached, failing, filed, phoned, phones, route, routed, saved, started,
-        switch, texted, today, unwritten,
+        self, DRIVERS, at, cached, failing, filed, moved, phoned, phones, route, routed, saved,
+        started, switch, texted, today, unwritten,
     },
     texts::{contacts, reading, reply, storage::TextStore},
 };
@@ -53,17 +53,6 @@ async fn block(
         .await
         .unwrap();
     (after.blocked, after.state)
-}
-/// Moves the DSP to `zone`, as its owner might on Settings.
-async fn moved(state: &Arc<State>, dsp: &str, zone: Tz) {
-    let dsp = dsp.to_owned();
-    state
-        .run(move |db| {
-            let name = db.find_dsp(&dsp)?.name;
-            db.keep_dsp_profile(&dsp, &name, zone.name(), None, None)
-        })
-        .await
-        .unwrap();
 }
 /// Whose a driver's conversation is, by their ID of the stand-in's source.
 fn driver(id: &str) -> Option<(String, String)> {

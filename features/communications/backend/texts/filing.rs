@@ -11,7 +11,8 @@
 //! waiting on an offline phone at their expiry (`expire`).
 //!
 //! A work phone passes from driver to driver, so a text with one is filed by the day it was
-//! written, where the DSP is, under the driver whose latest work phone that day it is, by their ID
+//! written, where the DSP is, or in the two hours after a stop that run past midnight by the day
+//! stopped (`day_of`), under the driver whose latest work phone that day it is, by their ID
 //! of the source naming the drivers, as Routes reads the day (`day_phones`): live route data's while
 //! it holds that day, else historical route data's. The whole day's texts with a number go to that
 //! driver, both ways, so a phone handed to another driver takes the day's conversation with it.
@@ -568,6 +569,8 @@ struct Filer<'a> {
     picked: HashMap<String, HashMap<String, Filed>>,
     /// Whether each number, by its ten digits, was ever a work phone.
     work_phones: HashMap<String, bool>,
+    /// When the two hours after the day before each day stopped end, while they run into it.
+    after_stop: HashMap<NaiveDate, Option<i64>>,
 }
 /// A day's work phones, as Routes reads them: the driver each is the latest phone of, by its ten
 /// digits, with the source naming them; none for one that's two drivers' latest, and no one's.
@@ -605,6 +608,7 @@ impl<'a> Filer<'a> {
             days: HashMap::new(),
             picked: HashMap::new(),
             work_phones: HashMap::new(),
+            after_stop: HashMap::new(),
         })
     }
     /// Where a text with `number`, written at `at`, is filed: under the driver whose latest work
@@ -616,7 +620,7 @@ impl<'a> Filer<'a> {
         let Some(ten) = ten_digits(number) else {
             return Ok(Some(Filed::Number(number.to_owned())));
         };
-        let day = clock::day(self.zone, at).to_string();
+        let day = self.day_of(at)?.to_string();
         let Some(phones) = self.phones(&day)? else {
             return Ok(None);
         };
@@ -658,6 +662,20 @@ impl<'a> Filer<'a> {
             true => Filed::WorkPhone(number.to_owned()),
             false => Filed::Number(number.to_owned()),
         }))
+    }
+    /// The day a text written at `at` is filed by: its own, where the DSP is, but in the two hours
+    /// after a stop that run past midnight, the day stopped, as a driver is answered then at the
+    /// work phone they had at the stop (`live_day::Stopped`), so the answer is theirs too.
+    fn day_of(&mut self, at: i64) -> Result<NaiveDate> {
+        let day = clock::day(self.zone, at);
+        if !self.after_stop.contains_key(&day) {
+            let until = live_day::after_stop_into(self.db, self.dsp, self.zone, day)?;
+            self.after_stop.insert(day, until);
+        }
+        Ok(match self.after_stop[&day] {
+            Some(until) if at < until => day.pred_opt().unwrap_or(day),
+            _ => day,
+        })
     }
     /// Whether Routes can say anything of `day`: live route data holds it, or historical route data
     /// is on for the DSP.
