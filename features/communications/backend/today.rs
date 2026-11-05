@@ -2,9 +2,14 @@
 //! `amazon_fleet`), when its wave starts, its stops and how many are done, and how it keeps up;
 //! with the work phone they have now. From live route data while it holds today
 //! (`live_route_data`), else as Routes has read today so far (`driver_routes`), with no work
-//! phone. Of a driver's several itineraries, the one with the most stops, as a rescue they drove
+//! phone; a driver's conversation, for the two hours after the stop, shows the day stopped, with
+//! the work phone they had then (`of_stopped`). Of a driver's several itineraries, the one with the most stops, as a rescue they drove
 //! too has fewer. Each feature is asked only while it's on for the DSP.
-use super::texts::{live_day::LiveDay, numbers::work_number, zone};
+use super::texts::{
+    live_day::{LiveDay, Stopped},
+    numbers::work_number,
+    zone,
+};
 use crate::api::types::Today;
 use dispatch_core::{Result, db::Store, foundation::clock, manifest::people::Person, text_enum};
 use dispatch_routes_contract::{self as routes, RouteDay};
@@ -144,6 +149,31 @@ pub fn of_drivers(db: &Store, dsp: &str, live: &LiveDay, ids: &[String]) -> Resu
         &vans,
         phone.as_ref().map(|each| each.phone.as_str()),
     )))
+}
+
+/// The route the driver holding `ids` of the stopped day's source drove that day, and the work
+/// phone they had at the stop (`Stopped::phones`), that of the first of them with one, if they
+/// have either.
+pub fn of_stopped(
+    db: &Store,
+    dsp: &str,
+    stopped: &Stopped,
+    ids: &[String],
+) -> Result<Option<Today>> {
+    let ids = self::ids(ids);
+    if ids.is_empty() {
+        return Ok(None);
+    }
+    let day = stopped.day.as_str();
+    let driven = busiest(
+        stopped.reader.routes(db, dsp, &ids, day, day)?.routes,
+        driver,
+    );
+    let route = driven.values().max_by_key(|route| route.stops);
+    let mut phones = stopped.phones(db, dsp)?;
+    let phone = ids.iter().find_map(|id| phones.remove(id));
+    let vans = vans(db, dsp, route.and_then(|route| route.vin.as_ref()))?;
+    Ok(known(shown(route, &vans, phone.as_deref())))
 }
 
 /// `today`, while it says anything.

@@ -2,21 +2,54 @@
 //! it on the page, as much as a text carries; one that fails leaves the conversation waiting, and
 //! Retry sends it again. Neither goes to a work phone that isn't the driver's alone now, even as it
 //! changed hands once it was asked for, nor once its writer's access ended, each checked in the
-//! write that queues it. A picture added for one keeps nothing once its adder's access ended while
-//! its bytes came.
+//! write that queues it. For two hours after the stop, a driver is answered at the work phone they
+//! had then. Retry sends a text again only from the conversation it was queued in. A picture added
+//! for one keeps nothing once its adder's access ended while its bytes came.
 use super::*;
 use crate::ConversationState;
 use crate::backend::{
+    changes::ChangeStore,
     phone::{
         model::{EXPIRY_MS, PHONE_OFFLINE, Status},
         storage::FileStore,
     },
-    support::{self, filed, phoned, phones, read_live, reported, saved, switch, texted, today},
-    texts::{filing::expire, model::TextStatus, reading, reading::one, storage::TextStore},
+    support::{
+        self, at, filed, moved, phoned, phones, read_live, reported, saved, switch, texted, today,
+    },
+    texts::{
+        filing::{expire, watch_live_day},
+        live_day::AFTER_STOP_MS,
+        model::TextStatus,
+        reading,
+        reading::one,
+        storage::TextStore,
+    },
 };
 use axum::body::Bytes;
+use chrono_tz::Tz;
 use dispatch_core::{db::now, server::http::upload::Upload};
 use futures_util::{StreamExt, stream};
+
+/// Thirty minutes, in milliseconds.
+const HALF_HOUR_MS: i64 = 30 * 60 * 1000;
+
+/// Avery, A1, has the work phone 0101 today, as live route data reads it, until the stop at `stop`,
+/// as Communications first sees it, and the day is saved with it theirs.
+async fn stopped_at(state: &Arc<State>, dsp: &str, stop: i64) {
+    let day = today(state, dsp).await.1;
+    let avery = &[("A1", "2065550101")];
+    phoned(
+        state,
+        dsp,
+        Some(&day.to_string()),
+        phones(avery),
+        Vec::new(),
+    )
+    .await;
+    read_live(dsp, None, Vec::new());
+    watch_live_day(state, dsp, stop).await.unwrap();
+    phoned(state, dsp, None, Vec::new(), vec![saved(day, avery)]).await;
+}
 
 #[tokio::test]
 async fn an_answer_that_failed_leaves_it_waiting_and_retry_sends_it_again() {
@@ -157,8 +190,12 @@ async fn retry_refuses_a_drivers_answer_once_the_work_phone_it_went_to_is_not_th
         retried().await.unwrap_err().code,
         "communications_no_work_phone"
     );
-    // Then the stop saves the day with 0101 Avery's again, and live route data empties: Avery has
-    // no work phone now.
+    // Then the day stopped two and a half hours ago, saved with 0101 Avery's again: the two hours
+    // after are over, and Avery has no work phone now.
+    read_live(&dsp, None, Vec::new());
+    watch_live_day(&state, &dsp, now() - AFTER_STOP_MS - HALF_HOUR_MS)
+        .await
+        .unwrap();
     let theirs = saved(day, &[("A1", "2065550101")]);
     phoned(&state, &dsp, None, Vec::new(), vec![theirs]).await;
     assert_eq!(
@@ -295,4 +332,205 @@ async fn an_answer_carries_as_much_as_a_text_does_not_what_slacks_does() {
         2,
         "only those within a text's limits went"
     );
+}
+
+#[tokio::test]
+async fn a_drivers_answer_goes_to_the_work_phone_they_had_at_the_stop_for_two_hours_after_it() {
+    let (_root, state, dsp) = support::started();
+    let stop = now() - HALF_HOUR_MS;
+    stopped_at(&state, &dsp, stop).await;
+    let asked = texted(&state, &dsp, "+12065550101", "Locked out of the van", now()).await;
+    let conversation = filed(&state, &dsp, &asked).await.id;
+    let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+    let phone = || {
+        let (shared, at, id) = (state.clone(), dsp.clone(), conversation.clone());
+        state.read(move |db| {
+            let opened = reading::opened(db, &shared, &at, &id, None)?;
+            Ok(opened.today.and_then(|today| today.phone))
+        })
+    };
+
+    // Half an hour after the stop, the page has the box, and the answer goes to 0101.
+    assert_eq!(phone().await.unwrap().as_deref(), Some("+12065550101"));
+    send(
+        &state,
+        &c,
+        support::USE,
+        &conversation,
+        "Spare key at the desk",
+        &[],
+    )
+    .await
+    .unwrap();
+    let went: Vec<String> = support::sent(&state, &dsp)
+        .await
+        .into_iter()
+        .map(|(to, _, _)| to)
+        .collect();
+    assert_eq!(went, ["+12065550101"]);
+    // Answered, it doesn't wait; still, as the two hours end, a page with it open hears the phone go.
+    let at = dsp.clone();
+    let before = state
+        .read(move |db| db.communications_revision(&at))
+        .await
+        .unwrap();
+    watch_live_day(&state, &dsp, stop + AFTER_STOP_MS)
+        .await
+        .unwrap();
+    let at = dsp.clone();
+    let (changed, _) = state
+        .read(move |db| db.communications_changed_since(&at, before))
+        .await
+        .unwrap();
+    assert!(changed.unwrap().contains(&conversation));
+
+    // Two and a half hours after it, Avery has no work phone to be answered at.
+    stopped_at(&state, &dsp, now() - AFTER_STOP_MS - HALF_HOUR_MS).await;
+    assert_eq!(phone().await.unwrap(), None);
+    let refused = send(&state, &c, support::USE, &conversation, "Still there?", &[]).await;
+    assert_eq!(refused.unwrap_err().code, "communications_no_work_phone");
+}
+
+#[tokio::test]
+async fn retry_refuses_a_text_moved_with_its_work_phone_to_another_drivers_conversation() {
+    let (_root, state, dsp) = support::started();
+    let (_, day) = today(&state, &dsp).await;
+    let today = day.to_string();
+    // Avery has 0101 and texts; the answer through it fails.
+    phoned(
+        &state,
+        &dsp,
+        Some(&today),
+        phones(&[("A1", "2065550101")]),
+        Vec::new(),
+    )
+    .await;
+    let asked = texted(&state, &dsp, "+12065550101", "Which van?", now()).await;
+    let avery = filed(&state, &dsp, &asked).await.id;
+    let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+    let failed = send(&state, &c, support::USE, &avery, "Van 214", &[])
+        .await
+        .unwrap();
+    reported(&state, &dsp, &failed.id, Status::Failed).await;
+
+    // The phone is handed to Blake: the day's texts with it, the failed answer among them, are
+    // Blake's now, which the page shows without Retry, and Retry there is refused.
+    phoned(
+        &state,
+        &dsp,
+        Some(&today),
+        phones(&[("B2", "2065550101")]),
+        Vec::new(),
+    )
+    .await;
+    let blake = filed(&state, &dsp, &failed.id).await.id;
+    assert_ne!(blake, avery);
+    let (shared, at, id) = (state.clone(), dsp.clone(), failed.id.clone());
+    let shown = state
+        .read(move |db| reading::message(db, &shared, &at, &id))
+        .await
+        .unwrap();
+    assert!(shown.moved);
+    let refused = retry(&state, &c, support::USE, &blake, &failed.id).await;
+    assert_eq!(refused.unwrap_err().code, "communications_text_moved");
+    assert!(
+        support::sent(&state, &dsp).await.is_empty(),
+        "never sent again"
+    );
+}
+
+#[tokio::test]
+async fn an_answer_after_midnight_in_the_two_hours_after_a_late_stop_is_the_drivers_it_answers() {
+    let (_root, state, dsp) = support::started();
+    // The DSP's clocks show a few minutes past midnight now, whatever the hour where the test runs.
+    let hour = chrono::Timelike::hour(&chrono::Utc::now()) as i32;
+    let ahead = if hour <= 12 { -hour } else { 24 - hour };
+    let zone: Tz = match ahead {
+        0 => "Etc/GMT".to_owned(),
+        _ if ahead > 0 => format!("Etc/GMT-{ahead}"),
+        _ => format!("Etc/GMT+{}", -ahead),
+    }
+    .parse()
+    .unwrap();
+    moved(&state, &dsp, zone).await;
+    let yesterday = today(&state, &dsp).await.1.pred_opt().unwrap();
+    let (late, stop) = (at(zone, yesterday, 23, 0), at(zone, yesterday, 23, 30));
+
+    // Yesterday, Avery had 0101 and texted at 11 PM, unanswered as the day stopped at 11:30.
+    let avery = &[("A1", "2065550101")];
+    read_live(&dsp, Some(&yesterday.to_string()), phones(avery));
+    watch_live_day(&state, &dsp, late).await.unwrap();
+    let asked = texted(&state, &dsp, "+12065550101", "Locked out of the van", late).await;
+    let conversation = filed(&state, &dsp, &asked).await.id;
+    read_live(&dsp, None, Vec::new());
+    watch_live_day(&state, &dsp, stop).await.unwrap();
+    phoned(
+        &state,
+        &dsp,
+        None,
+        Vec::new(),
+        vec![saved(yesterday, avery)],
+    )
+    .await;
+
+    // Answered after midnight, the answer goes to 0101, in Avery's conversation, which waits no
+    // more.
+    let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+    let answer = send(
+        &state,
+        &c,
+        support::USE,
+        &conversation,
+        "Spare key at the desk",
+        &[],
+    )
+    .await
+    .unwrap();
+    assert_eq!(filed(&state, &dsp, &answer.id).await.id, conversation);
+    let (shared, at_dsp, id) = (state.clone(), dsp.clone(), conversation.clone());
+    let standing = state
+        .read(move |db| Ok(one(db, &shared, &at_dsp, &id)?.state))
+        .await
+        .unwrap();
+    assert_eq!(standing, ConversationState::Responded);
+}
+
+#[tokio::test]
+async fn retry_refuses_an_answer_filed_as_it_went_in_another_conversation_than_it_was_written_in() {
+    let (_root, state, dsp) = support::started();
+    let (_, day) = today(&state, &dsp).await;
+    let today = day.to_string();
+    // 0101 was Blake's work phone yesterday; today nobody has it yet, and it texts: its own.
+    let yesterday = saved(day.pred_opt().unwrap(), &[("B2", "2065550101")]);
+    phoned(&state, &dsp, Some(&today), Vec::new(), vec![yesterday]).await;
+    let asked = texted(&state, &dsp, "+12065550101", "Whose van is 208?", now()).await;
+    let own = filed(&state, &dsp, &asked).await.id;
+
+    // A read gives it Avery, while its own conversation is still open: an answer written there goes
+    // to 0101, filed as it goes under Avery.
+    phoned(
+        &state,
+        &dsp,
+        Some(&today),
+        phones(&[("A1", "2065550101")]),
+        Vec::new(),
+    )
+    .await;
+    let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+    let failed = send(&state, &c, support::USE, &own, "Ask at the desk", &[])
+        .await
+        .unwrap();
+    reported(&state, &dsp, &failed.id, Status::Failed).await;
+    let avery = filed(&state, &dsp, &failed.id).await.id;
+    assert_ne!(avery, own);
+
+    // Shown moved in Avery's conversation, where Retry is refused.
+    let (shared, at_dsp, id) = (state.clone(), dsp.clone(), failed.id.clone());
+    let shown = state
+        .read(move |db| reading::message(db, &shared, &at_dsp, &id))
+        .await
+        .unwrap();
+    assert!(shown.moved);
+    let refused = retry(&state, &c, support::USE, &avery, &failed.id).await;
+    assert_eq!(refused.unwrap_err().code, "communications_text_moved");
 }

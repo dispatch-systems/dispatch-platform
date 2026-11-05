@@ -48,6 +48,7 @@ const wording: Readonly<Record<string, string>> = {
   communications_message_not_found: 'This text is no longer here. Refresh the page.',
   communications_no_work_phone: 'This driver has no work phone now.',
   communications_work_phone_changed: 'This driver has another work phone now.',
+  communications_text_moved: 'Moved to another conversation.',
   communications_routes_over: "Today's routes are over.",
   communications_driver_not_found: "This driver isn't on today's routes.",
   driver_match_phone_taken: "This number is already someone else's.",

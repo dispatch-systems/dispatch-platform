@@ -142,6 +142,17 @@ pub fn at(zone: Tz, day: NaiveDate, hour: u32, minute: u32) -> i64 {
         .unwrap()
         .timestamp_millis()
 }
+/// Moves the DSP to `zone`, as its owner might on Settings.
+pub async fn moved(state: &Arc<State>, dsp: &str, zone: Tz) {
+    let dsp = dsp.to_owned();
+    state
+        .run(move |db| {
+            let name = db.find_dsp(&dsp)?.name;
+            db.keep_dsp_profile(&dsp, &name, zone.name(), None, None)
+        })
+        .await
+        .unwrap();
+}
 /// The conversation the text `id` is filed in.
 pub async fn filed(state: &Arc<State>, dsp: &str, id: &str) -> TextConversation {
     let (dsp, id) = (dsp.to_owned(), id.to_owned());

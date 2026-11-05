@@ -75,6 +75,10 @@ pub fn zone(db: &Store, dsp: &str) -> Result<Tz> {
         .parse()
         .map_err(|_| Error::new("invalid_timezone", 400))
 }
+/// `day`, YYYY-MM-DD: refused otherwise, as `invalid_date`.
+pub fn date(day: &str) -> Result<NaiveDate> {
+    NaiveDate::parse_from_str(day, "%Y-%m-%d").map_err(|_| Error::new("invalid_date", 400))
+}
 /// When `day` began in `zone`, in milliseconds: its first instant, at midnight, or where clocks
 /// went forward over midnight, at the first minute they showed after; a day they skipped whole
 /// began as the next did.

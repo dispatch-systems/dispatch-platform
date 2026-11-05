@@ -192,7 +192,8 @@ pub struct DriverPhone {
 /// after `people.changed` when a live read or a save names drivers anew. A collected or reprocessed
 /// day is published once Routes hears `collection.succeeded` of its collection, before the features
 /// after it in the registry hear it, or by the next minute's upkeep, whichever is first: until then
-/// it's noted only in the server's memory, so a restart before then publishes none.
+/// it's noted in Routes' storage, so one a restart cuts short is published by the next upkeep: a
+/// day may be published again, never not at all.
 #[derive(Clone, Debug)]
 pub struct RouteDataChanged {
     /// The day whose route data changed, YYYY-MM-DD in the DSP's own time.

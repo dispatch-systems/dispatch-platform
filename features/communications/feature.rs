@@ -70,6 +70,8 @@ pub const FEATURE: Feature = Feature {
             "communications_contacts",
             "communications_blocked",
             "communications_picked",
+            "communications_refiling",
+            "communications_live_days",
             "phones_devices",
             "phones_pairings",
             "phones_texts",
@@ -182,11 +184,18 @@ pub const FEATURE: Feature = Feature {
                 name: "phones_files_on_phone",
                 apply: Code(backend::phone::storage::add_on_phone),
             },
-            // Each browser a member is told of new messages in, with Dispatch closed.
+            // The days still to file again, when each live day ended, and since when each text
+            // waiting to be filed couldn't be placed.
             Migration {
                 id: 17,
+                name: "communications_days",
+                apply: Code(backend::texts::storage::add_days),
+            },
+            // Each browser a member is told of new messages in, with Dispatch closed.
+            Migration {
+                id: 18,
                 name: "communications_push",
-                apply: Sql(include_str!("migrations/dsp/0017_communications_push.sql")),
+                apply: Sql(include_str!("migrations/dsp/0018_communications_push.sql")),
             },
         ],
     }],
@@ -196,10 +205,10 @@ pub const FEATURE: Feature = Feature {
     env: &[&[backend::push::webpush::KEY]],
     // Catching up on what Dispatch didn't hear of, hourly and as the server starts; downloading
     // what members attach, keeping answers that went to Slack unkept, sending what's due to go to
-    // groups' people, filing texts waiting to be filed, filing today's again where they belong
-    // now, and letting go of the videos phones sent an hour before, every minute; and letting go
-    // of photos and the phones' pictures never sent, bytes no file keeps and codes expired, hourly;
-    // and watching each DSP whose members are told in a browser for what to push.
+    // groups' people, filing texts waiting to be filed, filing the days noted and today's again
+    // where they belong now, and letting go of the videos phones sent an hour before, every minute;
+    // and letting go of photos and the phones' pictures never sent, bytes no file keeps and codes
+    // expired, hourly; and watching each DSP whose members are told in a browser for what to push.
     maintenance: &[
         integrations::messages::catch_up::MAINTENANCE,
         backend::files::MAINTENANCE,

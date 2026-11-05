@@ -79,9 +79,10 @@ it is live route data, in a database of its own, `routelive`.
   list's `backendTime` changes read by read; each time live route data is emptied, of the day it
   held, or today once it holds none; once a read of a day saved becomes its read; and
   once a day's work phones are extracted. A collection, and a reprocess, change a day where nothing
-  is at hand to tell of it, so the day is noted in the server's memory (`backend/changed.rs`) and
-  told once Routes hears its collection succeeded (`collection.succeeded`), or by the next minute's
-  upkeep, whichever is first; a restart before then tells of none.
+  is at hand to tell of it, so the day is noted in the write that keeps it (`route_days_untold`,
+  `backend/changed.rs`) and told once Routes hears its collection succeeded
+  (`collection.succeeded`), or by the next minute's upkeep, whichever is first, then let go: a
+  restart before then, or while telling, leaves it to the next upkeep.
 - **Schedule:** the DSP's own rules, none made for it, set on Settings' Collectors page behind
   `routes.manage` (its keeper's `schedules`, which offers the choice), through core's
   `/api/dsp/collectors/routes` routes. Each rule reads one day of its choosing, its Day:
@@ -106,9 +107,11 @@ it is live route data, in a database of its own, `routelive`.
   Historical route data, in `routedata`: each day's read with its route list,
   itineraries, stops, tasks, breaks and unknown stops, and every response compressed; the
   addresses and drivers the days share, as the last read to become its day's read sent them
-  (each read's are staged with it until then). The holds on work phones that Routes kept before
-  each day's work phones were its itineraries' (`work_phones` in both, `work_phones_shown` in live
-  route data) are dropped by a migration of each.
+  (each read's are staged with it until then); and the days changed not told of yet
+  (`route_days_untold`, each note by an ID `route_days_noted` never gives again, migration 12).
+  The holds on work phones that Routes kept before each day's work phones were its itineraries'
+  (`work_phones` in both, `work_phones_shown` in live route data) are dropped by a migration of
+  each.
 - **Retention:** from 30 to 3,650 days, or every day. Hourly, data past the window is retired,
   and then deleted in small steps, so the lock is never held long.
 - **Settings:** `routes.retention`, "Route data", on the shared Data page

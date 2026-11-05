@@ -3,13 +3,17 @@
 //! keeps or changes it (`changing`), so a text and its conversation never disagree; the pages
 //! waiting on its conversation hear once both are committed. A text that can't be placed yet, as
 //! reading where it belongs failed, stays kept, waiting to be filed, and every minute's upkeep
-//! places those waiting (`unfiled`); it files today's again too, as its route data may have
-//! changed unheard (`reconcile`), fails the answers still waiting on an offline phone at their
-//! expiry (`expire`), and lets go of the bytes of videos kept on their phone an hour after they
-//! came (`let_go_fetched`).
+//! places those waiting (`unfiled`); one still waiting ten minutes after it first couldn't be, it
+//! places under its number, as a day Routes can't read does (`overdue`). It files again the days
+//! whose filing again failed, the earliest first (`noted`), and today's, as its route data may have
+//! changed unheard (`reconcile`); keeps when the live day ends, so work conversations wait the two
+//! hours after, and the pages hear them stop (`watch_live_day`); fails the answers still waiting
+//! on an offline phone at their expiry (`expire`); and lets go of the bytes of videos kept on their
+//! phone an hour after they came (`let_go_fetched`).
 //!
 //! A work phone passes from driver to driver, so a text with one is filed by the day it was
-//! written, where the DSP is, under the driver whose latest work phone that day it is, by their ID
+//! written, where the DSP is, or in the two hours after a stop that run past midnight by the day
+//! stopped (`day_of`), under the driver whose latest work phone that day it is, by their ID
 //! of the source naming the drivers, as Routes reads the day (`day_phones`): live route data's while
 //! it holds that day, else historical route data's. The whole day's texts with a number go to that
 //! driver, both ways, so a phone handed to another driver takes the day's conversation with it.
@@ -23,14 +27,17 @@
 //! coming, never moves it. A day's route data changes as it goes on, and may reach historical route
 //! data after its texts, as a text a phone relayed late; so a day's texts are filed again each time
 //! Routes says its route data changed (`RouteDataChanged`): today's, the pages waiting on changes
-//! hearing of the work conversations waiting as the live day, which they wait only on, begins or
-//! ends, and of each driver's whose work phone changed (`work_changed`).
+//! hearing of the work conversations waiting as the live day, which they wait only on and the two
+//! hours after it, begins or ends, and of each driver's whose work phone changed (`work_changed`).
+//! Each day heard of is noted first, and let go once filed again while Routes can say anything of
+//! it, so one that fails, or that a restart cuts short, is filed again by the upkeep until it's
+//! done.
 use super::{
-    began,
-    live_day::LiveDay,
+    began, date,
+    live_day::{self, LiveDay},
     model::{Filed, Unfiled},
     numbers::ten_digits,
-    storage::{PickStore, TextStore},
+    storage::{DayStore, PickStore, TextStore},
     zone,
 };
 use crate::backend::{
@@ -53,7 +60,7 @@ use dispatch_core::{
 use dispatch_routes_contract::{
     self as routes, DayPhones, DriverPhone, DriverRoutes, LiveRouteData, RouteDataChanged,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 use std::{
     collections::{BTreeSet, HashMap},
     sync::{Arc, LazyLock, Mutex, MutexGuard},
@@ -63,10 +70,16 @@ use std::{
 /// Two days, in milliseconds: how far back the work conversations today's texts may wait in are
 /// looked for, further than a day can be long.
 const TWO_DAYS_MS: i64 = 2 * 24 * 60 * 60 * 1000;
+/// Ten minutes, in milliseconds: how long a text waits to be filed, once placing it first failed,
+/// before it's placed under its number (`overdue`).
+pub const UNFILED_MS: i64 = 10 * 60 * 1000;
+/// The most days whose filing again failed one upkeep files again.
+const MOST_REFILING: usize = 4;
 
-/// Every minute, each DSP's texts waiting to be filed, and today's filed again where they belong
-/// now; its answers still waiting on an offline phone failed once they expire; and the bytes of
-/// videos their phone sent an hour before let go of.
+/// Every minute, each DSP's texts waiting to be filed, those waiting too long under their number,
+/// the days whose filing again failed and today's filed again where they belong now; the live
+/// day's end kept; its answers still waiting on an offline phone failed once they expire; and the
+/// bytes of videos their phone sent an hour before let go of.
 pub const MAINTENANCE: Maintenance = Maintenance {
     every: Duration::from_secs(60),
     run: pass,
@@ -96,13 +109,29 @@ pub async fn changing<T: Send + 'static>(
     }
     Ok(answer)
 }
-/// Routes says the DSP's route data of a day changed: files that day's texts again.
+/// Routes says the DSP's route data of a day changed: notes the day to be filed again, then files
+/// its texts again, which lets go of it, so one that fails, or that a restart cuts short, is filed
+/// again by the upkeep.
 pub fn refile(state: Arc<State>, dsp: String, changed: RouteDataChanged) -> Upkeep {
     Box::pin(async move {
+        let of = || json!({"dsp": dsp, "day": changed.day});
+        if let Err(error) = note(&state, &dsp, &changed.day).await {
+            failed("communications_texts_refile_failed", &error, of());
+        }
         if let Err(error) = refile_day(&state, &dsp, &changed.day).await {
-            failed("communications_texts_refile_failed", &error);
+            failed("communications_texts_refile_failed", &error, of());
         }
     })
+}
+/// Notes `day`, YYYY-MM-DD in the DSP's time, to be filed again by the upkeep: never one that
+/// isn't a day.
+async fn note(state: &Arc<State>, dsp: &str, day: &str) -> Result<()> {
+    let (at, day) = (dsp.to_owned(), date(day)?.to_string());
+    state
+        .run_scoped(dsp, DOMAIN, move |db| {
+            db.note_communications_refiling(&at, &day, now())
+        })
+        .await
 }
 
 fn pass(state: Arc<State>, _: bool) -> Upkeep {
@@ -121,27 +150,39 @@ fn pass(state: Arc<State>, _: bool) -> Upkeep {
         match on {
             Ok(dsps) => {
                 for dsp in dsps {
+                    let of = || json!({"dsp": dsp});
                     if let Err(error) = unfiled(&state, &dsp).await {
-                        failed("communications_texts_failed", &error);
+                        failed("communications_texts_failed", &error, of());
+                    }
+                    if let Err(error) = overdue(&state, &dsp, now()).await {
+                        failed("communications_texts_failed", &error, of());
+                    }
+                    if let Err(error) = noted(&state, &dsp).await {
+                        failed("communications_texts_refile_failed", &error, of());
                     }
                     if let Err(error) = reconcile(&state, &dsp).await {
-                        failed("communications_texts_refile_failed", &error);
+                        failed("communications_texts_refile_failed", &error, of());
+                    }
+                    if let Err(error) = watch_live_day(&state, &dsp, now()).await {
+                        failed("communications_texts_live_day_failed", &error, of());
                     }
                     if let Err(error) = expire(&state, &dsp, now()).await {
-                        failed("communications_texts_expire_failed", &error);
+                        failed("communications_texts_expire_failed", &error, of());
                     }
                     if let Err(error) = let_go_fetched(&state, &dsp, now() - FETCHED_MS).await {
-                        failed("communications_texts_fetched_failed", &error);
+                        failed("communications_texts_fetched_failed", &error, of());
                     }
                 }
             }
-            Err(error) => failed("communications_texts_failed", &error),
+            Err(error) => failed("communications_texts_failed", &error, json!({})),
         }
     })
 }
 
-fn failed(event: &'static str, error: &Error) {
-    observability::event("error", event, json!({"error": error.code}));
+/// Logs `event`, with `error`'s code beside what it was of, `of`: the DSP, and the text or day.
+fn failed(event: &'static str, error: &Error, mut of: Value) {
+    of["error"] = json!(error.code);
+    observability::event("error", event, of);
 }
 
 /// Files the DSP's texts waiting to be, oldest first, a page in each write, then wakes the pages
@@ -172,6 +213,84 @@ pub async fn unfiled(state: &Arc<State>, dsp: &str) -> Result<()> {
         }
         after = last;
     }
+}
+
+/// Places the DSP's texts that couldn't be placed for `UNFILED_MS` by `at` under their number,
+/// as a day Routes can't read does (`unread`), the oldest page of them, noting each one's day to
+/// be filed again, which moves it where it belongs once Routes can say: written only once one has
+/// waited so long.
+pub async fn overdue(state: &Arc<State>, dsp: &str, at: i64) -> Result<()> {
+    let (asked, since) = (dsp.to_owned(), at - UNFILED_MS);
+    if state
+        .read(move |db| db.overdue_communications_texts(&asked, since, 1))
+        .await?
+        .is_empty()
+    {
+        return Ok(());
+    }
+    let at_dsp = dsp.to_owned();
+    changing(state, dsp, move |db| {
+        let texts = db.overdue_communications_texts(&at_dsp, since, MOST_TEXTS)?;
+        // The day each is of, to be filed again, while the DSP's timezone can be read.
+        let zone = zone(db, &at_dsp).ok();
+        let mut senders = HashMap::new();
+        for text in &texts {
+            let sender = sender_name(db, &mut senders, text.sent_by.as_deref())?;
+            let filed = unread(db, &at_dsp, &text.number);
+            db.place_communications_text(&at_dsp, &text.id, &filed, sender.as_deref())?;
+            if let Some(zone) = zone {
+                let day = clock::day(zone, text.at).to_string();
+                db.note_communications_refiling(&at_dsp, &day, at)?;
+            }
+        }
+        Ok(((), texts.into_iter().map(|text| text.id).collect()))
+    })
+    .await
+}
+/// Files again the days noted to be, the earliest `MOST_REFILING`, each on its own, while Routes
+/// is on for the DSP: one that fails again is logged, and stays noted for the next upkeep.
+async fn noted(state: &Arc<State>, dsp: &str) -> Result<()> {
+    let asked = dsp.to_owned();
+    let days = state
+        .read(move |db| match routes::for_dsp(db, &asked)? {
+            Some(_) => db.communications_refiling(&asked, MOST_REFILING),
+            None => Ok(Vec::new()),
+        })
+        .await?;
+    for day in days {
+        if let Err(error) = refile_day(state, dsp, &day).await {
+            let of = json!({"dsp": dsp, "day": day});
+            failed("communications_texts_refile_failed", &error, of);
+        }
+    }
+    Ok(())
+}
+/// Keeps what changed of the DSP's live day at `at` (`live_day::watched`), as it began or ended;
+/// once the two hours after it ended pass, wakes the pages waiting on the work conversations that
+/// don't wait any more. Written only once something changed.
+pub async fn watch_live_day(state: &Arc<State>, dsp: &str, at: i64) -> Result<()> {
+    let asked = dsp.to_owned();
+    if state
+        .read(move |db| live_day::watched(db, &asked, at))
+        .await?
+        .is_none()
+    {
+        return Ok(());
+    }
+    let at_dsp = dsp.to_owned();
+    let over = state
+        .run_scoped(dsp, DOMAIN, move |db| {
+            let Some(watched) = live_day::watched(db, &at_dsp, at)? else {
+                return Ok(false);
+            };
+            live_day::keep(db, &at_dsp, &watched)?;
+            Ok(matches!(watched, live_day::Watched::Over { .. }))
+        })
+        .await?;
+    if over {
+        live::changed(state, dsp);
+    }
+    Ok(())
 }
 
 /// Fails the answers waiting past their expiry at `at` on a phone offline then, as
@@ -220,17 +339,18 @@ fn file(db: &Store, dsp: &str, ids: &[String]) -> Result<bool> {
     }
     let waiting = db.unfiled_communications_texts_of(dsp, ids)?;
     if !waiting.is_empty() {
-        place(db, dsp, &waiting);
+        place(db, dsp, &waiting)?;
     }
     db.settle_communications_texts(dsp, ids)
 }
 /// Places each of `texts`, waiting to be filed, where it belongs, under the name its sender, if
 /// someone at the DSP, is shown by as it's placed: each on its own, so one that can't be yet, as
-/// reading what says where failed, is logged and waits for the next upkeep, the rest placed.
-fn place(db: &Store, dsp: &str, texts: &[Unfiled]) {
+/// reading what says where failed, is logged, kept as unplaced since now (`unplaced`), and waits
+/// for the next upkeep, the rest placed.
+fn place(db: &Store, dsp: &str, texts: &[Unfiled]) -> Result<()> {
     let mut filer = match Filer::new(db, dsp) {
         Ok(filer) => filer,
-        Err(error) => return failed("communications_texts_failed", &error),
+        Err(error) => return unplaced(db, dsp, texts, &error),
     };
     let mut senders = HashMap::new();
     for text in texts {
@@ -239,26 +359,58 @@ fn place(db: &Store, dsp: &str, texts: &[Unfiled]) {
             db.place_communications_text(dsp, &text.id, &filed, sender.as_deref())
         });
         if let Err(error) = placed {
-            failed("communications_texts_failed", &error);
+            unplaced(db, dsp, std::slice::from_ref(text), &error)?;
         }
+    }
+    Ok(())
+}
+/// Logs that `texts` couldn't be placed, as `error` says, and keeps that they couldn't since now,
+/// but those that couldn't before, which keep since when.
+fn unplaced(db: &Store, dsp: &str, texts: &[Unfiled], error: &Error) -> Result<()> {
+    for text in texts {
+        let of = json!({"dsp": dsp, "text": text.id});
+        failed("communications_texts_failed", error, of);
+    }
+    let ids: Vec<String> = texts.iter().map(|text| text.id.clone()).collect();
+    db.unplaced_communications_texts(dsp, &ids, now())
+}
+/// Where a text with `number` goes while where it belongs can't be read: under the work phone's own
+/// conversation while Routes says it ever was one, else the number's, as when Routes can't say.
+fn unread(db: &Store, dsp: &str, number: &str) -> Filed {
+    let ever = |ten: String| match routes::for_dsp(db, dsp)? {
+        Some(routes) => routes.ever_work_phone(db, dsp, &ten),
+        None => Ok(false),
+    };
+    match ten_digits(number).map(ever) {
+        Some(Ok(true)) => Filed::WorkPhone(number.to_owned()),
+        _ => Filed::Number(number.to_owned()),
     }
 }
 
-/// Files every text of `day`, YYYY-MM-DD in the DSP's time, again, where it belongs now, then wakes
-/// the pages waiting on what changed. Today's, noting changed the work conversations whose live day
-/// or work phone changed (`work_changed`). A day Routes can't read keeps its texts where they are.
+/// Files every text of `day`, YYYY-MM-DD in the DSP's time, again, where it belongs now, letting go
+/// of the day as noted to be but while Routes is off, which says nothing of it, then wakes the
+/// pages waiting on what changed. Today's, keeping what changed of the live day
+/// (`live_day::watched`), and noting changed the work conversations whose live day or work phone
+/// changed (`work_changed`). A day Routes can't read keeps its texts where they are.
 pub async fn refile_day(state: &Arc<State>, dsp: &str, day: &str) -> Result<()> {
-    let day =
-        NaiveDate::parse_from_str(day, "%Y-%m-%d").map_err(|_| Error::new("invalid_date", 400))?;
+    let day = date(day)?;
     let at = dsp.to_owned();
     let changed = state
         .run_scoped(dsp, DOMAIN, move |db| {
-            let mut filer = Filer::new(db, &at)?;
-            let moved = !refiled_by(db, &at, &mut filer, day)?.is_empty();
-            if day == clock::today(filer.zone) {
-                return Ok(work_changed(db, &at)? || moved);
-            }
-            Ok(moved)
+            db.dsp(&at)?.transaction(|| {
+                let mut filer = Filer::new(db, &at)?;
+                let moved = !refiled_by(db, &at, &mut filer, day)?.is_empty();
+                if filer.reads(&day.to_string()) {
+                    db.refiled_communications_day(&at, &day.to_string())?;
+                }
+                if day != clock::today(filer.zone) {
+                    return Ok(moved);
+                }
+                if let Some(watched) = live_day::watched(db, &at, now())? {
+                    live_day::keep(db, &at, &watched)?;
+                }
+                Ok(work_changed(db, &at)? || moved)
+            })
         })
         .await?;
     if changed {
@@ -330,18 +482,28 @@ fn work_changed(db: &Store, dsp: &str) -> Result<bool> {
 }
 /// Files every text of today, the DSP's day, again, where it belongs now, as its route data may have
 /// changed unheard: while Communications was off, or as a hearing failed. Written only once one
-/// belongs elsewhere, and wakes the pages waiting on its conversations only once one moved.
+/// belongs elsewhere, and wakes the pages waiting on its conversations only once one moved; one
+/// that fails is logged with the day.
 pub async fn reconcile(state: &Arc<State>, dsp: &str) -> Result<()> {
     let asked = dsp.to_owned();
     if state.read(move |db| misfiled(db, &asked)).await?.is_empty() {
         return Ok(());
     }
     let at = dsp.to_owned();
-    let moved = state
-        .run_scoped(dsp, DOMAIN, move |db| refiled(db, &at))
+    let today = state
+        .read(move |db| Ok(clock::today(zone(db, &at)?).to_string()))
         .await?;
-    if moved {
-        live::changed(state, dsp);
+    let at = dsp.to_owned();
+    match state
+        .run_scoped(dsp, DOMAIN, move |db| refiled(db, &at))
+        .await
+    {
+        Ok(true) => live::changed(state, dsp),
+        Ok(false) => {}
+        Err(error) => {
+            let of = json!({"dsp": dsp, "day": today});
+            failed("communications_texts_refile_failed", &error, of);
+        }
     }
     Ok(())
 }
@@ -433,6 +595,8 @@ struct Filer<'a> {
     picked: HashMap<String, HashMap<String, Filed>>,
     /// Whether each number, by its ten digits, was ever a work phone.
     work_phones: HashMap<String, bool>,
+    /// When the two hours after the day before each day stopped end, while they run into it.
+    after_stop: HashMap<NaiveDate, Option<i64>>,
 }
 /// A day's work phones, as Routes reads them: the driver each is the latest phone of, by its ten
 /// digits, with the source naming them; none for one that's two drivers' latest, and no one's.
@@ -470,6 +634,7 @@ impl<'a> Filer<'a> {
             days: HashMap::new(),
             picked: HashMap::new(),
             work_phones: HashMap::new(),
+            after_stop: HashMap::new(),
         })
     }
     /// Where a text with `number`, written at `at`, is filed: under the driver whose latest work
@@ -481,7 +646,7 @@ impl<'a> Filer<'a> {
         let Some(ten) = ten_digits(number) else {
             return Ok(Some(Filed::Number(number.to_owned())));
         };
-        let day = clock::day(self.zone, at).to_string();
+        let day = self.day_of(at)?.to_string();
         let Some(phones) = self.phones(&day)? else {
             return Ok(None);
         };
@@ -523,6 +688,25 @@ impl<'a> Filer<'a> {
             true => Filed::WorkPhone(number.to_owned()),
             false => Filed::Number(number.to_owned()),
         }))
+    }
+    /// The day a text written at `at` is filed by: its own, where the DSP is, but in the two hours
+    /// after a stop that run past midnight, the day stopped, as a driver is answered then at the
+    /// work phone they had at the stop (`live_day::Stopped`), so the answer is theirs too.
+    fn day_of(&mut self, at: i64) -> Result<NaiveDate> {
+        let day = clock::day(self.zone, at);
+        if !self.after_stop.contains_key(&day) {
+            let until = live_day::after_stop_into(self.db, self.dsp, self.zone, day)?;
+            self.after_stop.insert(day, until);
+        }
+        Ok(match self.after_stop[&day] {
+            Some(until) if at < until => day.pred_opt().unwrap_or(day),
+            _ => day,
+        })
+    }
+    /// Whether Routes can say anything of `day`: live route data holds it, or historical route data
+    /// is on for the DSP.
+    fn reads(&self, day: &str) -> bool {
+        self.routes.is_some() || (self.live.is_some() && self.live_day.as_deref() == Some(day))
     }
     /// Each driver's latest work phone on `day`: live route data's while it holds that day, else
     /// historical route data's; none while neither is on for the DSP, or it can't read the day.
