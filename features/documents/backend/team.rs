@@ -141,6 +141,8 @@ pub async fn sync(state: &Arc<State>, dsp: &str) -> Result<Vec<Share>> {
     let mut mail: Vec<String> = Vec::new();
     // Where the folder is shared with each member, for the files shared with them too.
     let mut addresses: Vec<String> = Vec::new();
+    // Why Google was asked nothing more: the DSP disabled meanwhile.
+    let mut stopped = None;
     for member in &wanted {
         let before = people.iter().find(|person| person.user == member.user);
         let linked = before.and_then(|person| person.linked.clone());
@@ -157,9 +159,22 @@ pub async fn sync(state: &Arc<State>, dsp: &str) -> Result<Vec<Share>> {
             person.sharing = Sharing::Shared;
         } else {
             // A share at an address they moved on from goes.
-            if let Some((_, old)) = person.shared.take() {
+            if let Some((_, old)) = person.shared.clone() {
+                if let Err(error) = active(state, dsp).await {
+                    stopped = Some(error);
+                    break;
+                }
                 drive.google.unshare(&drive.access, &folder, &old).await?;
                 shares.retain(|share| share.id != old);
+                person.shared = None;
+            }
+            if let Err(error) = active(state, dsp).await {
+                // Only the share at their old address was taken back, if any.
+                if before.is_some_and(|before| before != &person) {
+                    changed.push(person);
+                }
+                stopped = Some(error);
+                break;
             }
             match drive.google.share(&drive.access, &folder, &target).await? {
                 Ok(id) => {
@@ -189,24 +204,32 @@ pub async fn sync(state: &Arc<State>, dsp: &str) -> Result<Vec<Share>> {
             changed.push(person);
         }
     }
-    let gone: Vec<Person> = people
+    // Those who left, once the folder is taken back from them.
+    let mut gone: Vec<Person> = Vec::new();
+    let left = people
         .into_iter()
-        .filter(|person| !wanted.iter().any(|member| member.user == person.user))
-        .collect();
-    for person in &gone {
+        .filter(|person| !wanted.iter().any(|member| member.user == person.user));
+    for person in left {
+        if stopped.is_some() {
+            break;
+        }
         if let Some((_, id)) = &person.shared {
+            if let Err(error) = active(state, dsp).await {
+                stopped = Some(error);
+                break;
+            }
             drive.google.unshare(&drive.access, &folder, id).await?;
             shares.retain(|share| &share.id != id);
         }
+        gone.push(person);
     }
     let at = dsp.to_owned();
     let origin = state.config.origin.clone();
     let dev = state.config.env().is_preview();
+    // What Google made is kept, the DSP disabled meanwhile or not: the next sync once it's
+    // enabled goes on from there.
     state
         .run(move |db| {
-            // Disabled meanwhile, it keeps what it had, and the next sync once it's enabled
-            // finds the folder's shares as they are.
-            db.ensure_dsp_active(&at)?;
             for person in &changed {
                 db.save_documents_person(&at, person)?;
             }
@@ -219,8 +242,20 @@ pub async fn sync(state: &Arc<State>, dsp: &str) -> Result<Vec<Share>> {
             Ok(())
         })
         .await?;
+    if let Some(error) = stopped {
+        return Err(error);
+    }
     share_files(state, dsp, &drive, &addresses).await?;
     Ok(shares)
+}
+
+/// Whether Google may still be asked anything for the DSP: not once it's disabled, though a
+/// sync began before (`dsp_unavailable`).
+async fn active(state: &Arc<State>, dsp: &str) -> Result<()> {
+    let at = dsp.to_owned();
+    state
+        .read(move |db| db.ensure_dsp_active(&at).map(drop))
+        .await
 }
 
 /// Shares each file someone else owns that Documents holds a shortcut to with everyone the
@@ -255,6 +290,7 @@ async fn share_files(
         if missing.is_empty() {
             continue;
         }
+        active(state, dsp).await?;
         // Its owner may not let the account see who has it, or share it on.
         let Ok(shares) = drive.google.shares(&drive.access, file).await else {
             continue;
@@ -269,6 +305,7 @@ async fn share_files(
             if has {
                 continue;
             }
+            active(state, dsp).await?;
             let share = match drive.google.share(&drive.access, file, email).await {
                 Ok(Ok(share)) => share,
                 Err(error) if error.code == "google_connection_broken" => return Err(error),
@@ -298,6 +335,7 @@ async fn share_files(
         if targets.contains(&shared.file) && wanted.contains(&shared.email) {
             continue;
         }
+        active(state, dsp).await?;
         match drive
             .google
             .unshare(&drive.access, &shared.file, &shared.share)

@@ -563,7 +563,7 @@ impl Google {
         email: &str,
     ) -> Result<std::result::Result<String, Refused>> {
         if let Self::Fixture = self {
-            return fixture(access, |drive| {
+            let shared = fixture(access, |drive| {
                 // Fixture mode's Google knows no account at example.net.
                 if email.ends_with("@example.net") {
                     return Ok(Err(Refused::NoGoogleAccount));
@@ -585,6 +585,9 @@ impl Google {
                 shares.push(share.clone());
                 Ok(Ok(share.id))
             });
+            #[cfg(test)]
+            fixture_shared(id);
+            return shared;
         }
         let response = HTTP
             .post(format!("{FILES}/{id}/permissions"))
@@ -1238,6 +1241,30 @@ pub fn fixture_hidden(access: &str) -> Result<Vec<Item>> {
 /// Whether fixture mode's Drive has the file, out of the trash.
 pub fn fixture_has(access: &str, id: &str) -> Result<bool> {
     fixture(access, |drive| Ok(drive.files.contains_key(id)))
+}
+
+/// What a test has happen once fixture mode's Google next shares the file or folder `id`, by
+/// ID: as someone disabling the DSP between two shares.
+#[cfg(test)]
+static ON_SHARE: LazyLock<Mutex<BTreeMap<String, OnShare>>> = LazyLock::new(Default::default);
+#[cfg(test)]
+type OnShare = Box<dyn FnOnce() + Send>;
+#[cfg(test)]
+pub fn fixture_on_share(id: &str, then: impl FnOnce() + Send + 'static) {
+    ON_SHARE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(id.to_owned(), Box::new(then));
+}
+#[cfg(test)]
+fn fixture_shared(id: &str) {
+    let then = ON_SHARE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .remove(id);
+    if let Some(then) = then {
+        then();
+    }
 }
 
 #[cfg(test)]

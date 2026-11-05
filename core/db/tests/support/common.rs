@@ -257,6 +257,19 @@ pub fn platform_owner(db: &Store) -> String {
     s(&user, "id").to_owned()
 }
 
+/// Adds `first` at `email` to the DSP as one of its owners, as nothing but a test does: with no
+/// invitation. Their user ID.
+pub fn owner_of(db: &Store, dsp: &str, email: &str, first: &str) -> Result<String> {
+    let user = db.create_user(Some(dsp), email, first, "Owner", "test-password-long")?;
+    let id = crate::foundation::crypto::id("mem")?;
+    db.dsp(dsp)?.exec(
+        "INSERT INTO memberships(id,user_id,dsp_id,role,role_id) \
+         SELECT ?,?,?,'owner',id FROM roles WHERE dsp_id=? AND system=1",
+        [id.as_str(), &user.id, dsp, dsp],
+    )?;
+    Ok(user.id)
+}
+
 /// Renames a DSP and moves it to `timezone`, as nothing but a test does: no audit, and
 /// its schedules keep their deadlines.
 pub fn set_dsp(db: &Store, dsp: &str, name: &str, timezone: &str) -> Result<()> {

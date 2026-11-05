@@ -11,3 +11,7 @@ pub(crate) mod service;
 pub(crate) mod storage;
 pub(crate) mod team;
 pub(crate) mod tree;
+
+#[cfg(test)]
+#[path = "../tests/backend/support.rs"]
+pub(crate) mod support;
