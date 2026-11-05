@@ -1,18 +1,20 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { saveQuickReplies, useQuickReplies } from '../../api/client.js';
 import { ApiError } from '../../../../core/shell/frontend/runtime/api.js';
 import { useFeedback } from '../../../../core/shell/frontend/runtime/feedback.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
-import { useUnsavedEdits } from '../../../../core/shell/frontend/runtime/useUnsavedEdits.js';
+import { useLeaveGuard, type Leave } from '../../../../core/shell/frontend/runtime/leave.js';
 import { randomId } from '../../../../core/shell/frontend/lib/random-id.js';
-import { DataState, ErrorBox } from '../../../../core/shell/frontend/ui/index.js';
+import { DataState, ErrorBox, Modal } from '../../../../core/shell/frontend/ui/index.js';
 import './quick-replies-settings.css';
 
 // Settings' Quick replies, on Communications' own page: the DSP's short answers, edited by anyone
 // who uses Communications, each in a box of its own, added and removed, then saved together, the
 // empty ones left out. Edits begin at the list as it was read: once another session has saved it
-// since, a save of them is refused and the list is read again.
+// since, a save of them is refused and the list is read again. Edits not saved are never just
+// lost as the page moves on: it asks "Save changes?" with only Save and Discard, as the role sheet
+// does, and stays where a save fails. Closing the browser tab drops them silently.
 
 /** The most a DSP keeps, and the most characters each holds, as the server allows. */
 export const MOST_REPLIES = 30;
@@ -51,12 +53,13 @@ export function QuickRepliesSettings() {
     },
     { inline: true },
   );
-  const unsaved = useUnsavedEdits({
-    what: 'Quick replies',
-    dirty,
-    saveable: !save.busy,
-    save: () => save.run(),
+  // Where the page was going when it asked, while it asks.
+  const [moving, setMoving] = useState<() => void>();
+  const guard = useRef<Leave | null>(null);
+  useEffect(() => {
+    guard.current = (then) => (dirty ? setMoving(() => then) : then());
   });
+  useLeaveGuard(guard);
   return (
     <section className="settings-section quick-replies-settings" aria-labelledby="quick-replies">
       <h2 id="quick-replies">Quick replies</h2>
@@ -116,7 +119,34 @@ export function QuickRepliesSettings() {
           </form>
         )}
       </DataState>
-      {unsaved.asking}
+      {moving && (
+        <Modal title="Save changes?" dismissible={false} onClose={() => {}} above>
+          <div className="form-actions">
+            <button
+              type="button"
+              onClick={() => {
+                setMoving(undefined);
+                setEdits(undefined);
+                moving();
+              }}
+            >
+              Discard changes
+            </button>
+            <button
+              type="button"
+              className="primary"
+              disabled={save.busy}
+              onClick={async () => {
+                const saved = await save.run();
+                setMoving(undefined);
+                if (saved) moving();
+              }}
+            >
+              Save changes
+            </button>
+          </div>
+        </Modal>
+      )}
     </section>
   );
 }

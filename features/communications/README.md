@@ -55,8 +55,9 @@ and every other number's in Recents.
   anyone who uses Communications edits them, on Communications' own page under Features: drawn by
   its own component, `frontend/replies/`, as a list of texts is none of Settings' kinds of value.
   Up to 30 short replies, each up to 500 characters, in their order, each in a box of its own with
-  Remove, Add reply under them, and Save, which leaves out the empty ones; it asks before the page
-  moves on with them unsaved, and a save over another session's since is refused
+  Remove, Add reply under them, and Save, which leaves out the empty ones; before the page moves
+  on with them unsaved it asks "Save changes?", Save or Discard, and closing the tab drops them
+  silently; a save over another session's since is refused
   (`settings_changed_reload_before_saving`) and the list read again.
 - **On every page:** `communications.alerts`, a watcher (`frontend/alerts/`), for those with
   `communications.use`, alerting them to new messages ([New messages](#new-messages)), and to the
