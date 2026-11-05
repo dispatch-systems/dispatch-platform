@@ -5,7 +5,7 @@ use crate::{
     backend::{
         push::{
             self,
-            storage::{PushStore, Subscription},
+            storage::{Address, PushStore, Subscription},
             webpush,
         },
         storage::DOMAIN,
@@ -15,7 +15,7 @@ use dispatch_core::{
     Error, Result, State,
     db::Store,
     ensure,
-    foundation::validate as v,
+    foundation::{config::Site, validate as v},
     server::http::{
         input::{Input, Reply},
         route::{Dsp, Grant, Member},
@@ -62,11 +62,18 @@ pub(super) async fn subscribe(state: Arc<State>, input: Input, access: Dsp) -> R
         v::text(keys, "auth", 1, 50)?,
     );
     ensure(webpush::keys_valid(p256dh, auth), "invalid_input", 400)?;
+    // Where it was subscribed, whose directory holds the member's account.
+    let address = match input.site {
+        Site::Admin => Address::Admin,
+        Site::Dsp(_) => Address::Dsp,
+        Site::Invite => return Err(Error::new("invalid_input", 400)),
+    };
     let subscription = Subscription {
         endpoint,
         user: c.actor().to_owned(),
         p256dh: p256dh.to_owned(),
         auth: auth.to_owned(),
+        address,
     };
     let dsp = c.dsp.id.clone();
     state

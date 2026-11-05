@@ -40,7 +40,7 @@ export function choices(settings: SettingsAnswer | undefined) {
 }
 
 /** The conversation or group open on Communications' page, while it's in front of the member. */
-function inFront(): InFront {
+export function inFront(): InFront {
   if (document.visibilityState !== 'visible' || !document.hasFocus()) return {};
   if (parseHash(location.hash).page !== 'communications') return {};
   const query = hashQuery();

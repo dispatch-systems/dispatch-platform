@@ -3,14 +3,17 @@
 //! (`storage`); each message new in what waits, as the page's alerts see it (`inbox::waiting`'s
 //! `latest`: one starting a conversation waiting or arriving in one waiting, never the DSP's own),
 //! goes to each of those browsers of each member who may be told of it now, titled with who wrote
-//! it, saying what as the list shows it, and opening the conversation (`sending`). The browser's
-//! service worker shows it, unless a window of Dispatch is focused there, which alerts itself.
+//! it, saying what as the list shows it, and opening the conversation at the address the browser
+//! was subscribed at (`sending`). The browser's service worker shows it, but quietly where a page
+//! of Dispatch in front says it alerts of it itself.
 //!
 //! A DSP with a browser kept is watched from the minute's upkeep, or once one is kept, for as long
 //! as the server runs: each change to its conversations (`live::TOPIC`) has what waits read again,
-//! and what's new in it since the last read pushed, in the background. What waited when the
-//! watching began tells no one. A member no longer holding Use Communications, or who turned
-//! Notifications off, has their browsers let go of as a message would go to them.
+//! and what's new in it since the last read pushed, apart from the change, a batch at a time. What
+//! waited when the watching began tells no one. Who may be told is decided as a message goes, as a
+//! session of theirs at that address would be let in (`Store::may`): a member whose account, role
+//! or DSP no longer lets them use Communications, or who turned Notifications off, has their
+//! browsers let go of.
 pub(crate) mod fixture;
 pub(crate) mod sending;
 pub(crate) mod storage;
@@ -21,7 +24,7 @@ use crate::api::{display::MessageDisplay, types::WaitingMessage};
 use dispatch_core::{
     Result, State,
     db::Store,
-    foundation::observability,
+    foundation::{config::Site, observability},
     manifest::{Maintenance, Upkeep},
     settings,
 };
@@ -31,7 +34,7 @@ use std::{
     sync::{Arc, LazyLock, Mutex},
     time::Duration,
 };
-use storage::{PushStore, Subscription};
+use storage::{Address, PushStore, Subscription};
 
 /// Every minute, each DSP with a browser kept is watched, as after a restart.
 pub const MAINTENANCE: Maintenance = Maintenance {
@@ -92,23 +95,19 @@ pub fn watch(state: &Arc<State>, dsp: &str) {
 }
 
 /// Reads what waits in the DSP as it first does and once each change since, pushing what's new
-/// in the background.
+/// before it reads again: changes while a batch goes are read together after it.
 async fn watching(state: &Arc<State>, dsp: &str) {
     // Subscribed before the first read, so a change while it reads still wakes it.
     let mut wakes = state.topics.subscribe(live::TOPIC, dsp);
     let (mut seen, mut revision) = (None, None);
     loop {
-        match look(state, dsp, &mut seen, &mut revision).await {
-            Ok(new) if !new.is_empty() => {
-                let (state, dsp) = (state.clone(), dsp.to_owned());
-                tokio::spawn(async move {
-                    if let Err(error) = tell(&state, &dsp, new).await {
-                        failed(&dsp, &error);
-                    }
-                });
-            }
-            Ok(_) => {}
-            Err(error) => failed(dsp, &error),
+        let told = match look(state, dsp, &mut seen, &mut revision).await {
+            Ok(new) if !new.is_empty() => tell(state, dsp, new).await,
+            Ok(_) => Ok(()),
+            Err(error) => Err(error),
+        };
+        if let Err(error) = told {
+            failed(dsp, &error);
         }
         if wakes.changed().await.is_err() {
             return;
@@ -174,31 +173,28 @@ fn fresh(
 /// letting go of those of a member who may not.
 async fn tell(state: &Arc<State>, dsp: &str, new: Vec<WaitingMessage>) -> Result<()> {
     let at = dsp.to_owned();
-    let (told, untold, address) = state
+    let (told, untold, code) = state
         .read(move |db| {
+            let code = db.find_dsp(&at)?.code;
             let mut decided = HashMap::new();
             let (mut told, mut untold) = (Vec::new(), Vec::new());
             for subscription in db.communications_pushes(&at)? {
-                let told_them = match decided.get(&subscription.user) {
-                    Some(told) => *told,
+                let whom = (subscription.user.clone(), subscription.address);
+                let tells = match decided.get(&whom) {
+                    Some(tells) => *tells,
                     None => {
-                        let told = tells(db, &at, &subscription.user)?;
-                        decided.insert(subscription.user.clone(), told);
-                        told
+                        let tells = tells(db, &at, code.as_deref(), &subscription)?;
+                        decided.insert(whom, tells);
+                        tells
                     }
                 };
-                if told_them {
+                if tells {
                     told.push(subscription);
                 } else {
                     untold.push(subscription.endpoint);
                 }
             }
-            let dsp = db.find_dsp(&at)?;
-            let address = match dsp.code {
-                Some(code) => format!("{}/#", db.config.dsp_url(&code)),
-                None => format!("{}/#dsp/{at}/", db.config.origin),
-            };
-            Ok((told, untold, address))
+            Ok((told, untold, code))
         })
         .await?;
     if !untold.is_empty() {
@@ -207,25 +203,39 @@ async fn tell(state: &Arc<State>, dsp: &str, new: Vec<WaitingMessage>) -> Result
             .run_bookkeeping(move |db| db.drop_communications_pushes(&at, &untold))
             .await?;
     }
+    // Where each push opens: the DSP's page at the address its browser was subscribed at.
+    let config = &state.config;
+    let opens = |address: Address| match (address, &code) {
+        (Address::Dsp, Some(code)) => format!("{}/#", config.dsp_url(code)),
+        _ => format!("{}/#dsp/{dsp}/", config.origin),
+    };
     let pushes: Vec<(Subscription, Vec<u8>)> = new
         .iter()
         .flat_map(|message| {
-            let push = sending::message(message, &address);
-            told.iter()
-                .map(move |subscription| (subscription.clone(), push.clone()))
+            let pushes: HashMap<Address, Vec<u8>> = [Address::Admin, Address::Dsp]
+                .into_iter()
+                .map(|address| (address, sending::message(dsp, message, &opens(address))))
+                .collect();
+            told.iter().map(move |subscription| {
+                (subscription.clone(), pushes[&subscription.address].clone())
+            })
         })
         .collect();
     sending::send(state, dsp, pushes).await
 }
 
-/// Whether `user` is told of the DSP's new messages: with Notifications on, an active platform
-/// owner, who holds every permission, or a member whose role holds Use Communications.
-fn tells(db: &Store, dsp: &str, user: &str) -> Result<bool> {
-    let holds = db.active_platform_owner(user)?.is_some()
-        || db.grant(user, dsp)?.is_some_and(|grant| {
-            grant.owner || grant.permissions.iter().any(|permission| permission == USE)
-        });
-    Ok(holds && settings::read_member::<MessageDisplay>(db, dsp, user, &DISPLAY)?.notifications)
+/// Whether the member whose browser `subscription` names is told of the DSP's new messages: with
+/// Notifications on, as one who may use Communications there now, signed in where they subscribed
+/// it.
+fn tells(db: &Store, dsp: &str, code: Option<&str>, subscription: &Subscription) -> Result<bool> {
+    let site = match (subscription.address, code) {
+        (Address::Admin, _) => Site::Admin,
+        (Address::Dsp, Some(code)) => Site::Dsp(code.to_owned()),
+        (Address::Dsp, None) => return Ok(false),
+    };
+    let user = &subscription.user;
+    Ok(db.may(user, &site, dsp, USE)?
+        && settings::read_member::<MessageDisplay>(db, dsp, user, &DISPLAY)?.notifications)
 }
 
 #[cfg(test)]

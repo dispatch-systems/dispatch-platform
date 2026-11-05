@@ -1,5 +1,6 @@
 //! Who is pushed what: each message new in what waits, to each browser of each member who may be
-//! told of it, once; and the browsers let go of once they can't be told.
+//! told of it, once, opening where it was subscribed; the browsers let go of once they can't be
+//! told; and pushes going a few at once, however many batches go.
 use super::*;
 use crate::backend::{
     reply,
@@ -20,17 +21,23 @@ async fn notifications(state: &Arc<State>, dsp: &str, user: &str, on: bool, revi
         .await
         .unwrap();
 }
-/// Keeps the browser at `endpoint` as `user`'s, under keys fixture mode's push services don't read.
+/// The browser at `endpoint`, `user`'s, subscribed at `address`, under keys fixture mode's push
+/// services don't read.
+fn browser(user: &str, endpoint: &str, address: Address) -> Subscription {
+    Subscription {
+        endpoint: endpoint.to_owned(),
+        user: user.to_owned(),
+        p256dh: "browser-key".to_owned(),
+        auth: "browser-secret".to_owned(),
+        address,
+    }
+}
+/// Keeps the browser at `endpoint` as `user`'s, subscribed at the admin's address.
 async fn keep(state: &Arc<State>, dsp: &str, user: &str, endpoint: &str) {
-    let (dsp, subscription) = (
-        dsp.to_owned(),
-        Subscription {
-            endpoint: endpoint.to_owned(),
-            user: user.to_owned(),
-            p256dh: "browser-key".to_owned(),
-            auth: "browser-secret".to_owned(),
-        },
-    );
+    keep_at(state, dsp, user, endpoint, Address::Admin).await;
+}
+async fn keep_at(state: &Arc<State>, dsp: &str, user: &str, endpoint: &str, address: Address) {
+    let (dsp, subscription) = (dsp.to_owned(), browser(user, endpoint, address));
     state
         .run(move |db| db.keep_communications_push(&dsp, &subscription))
         .await
@@ -82,11 +89,15 @@ async fn each_message_new_in_what_waits_goes_to_each_browser_of_each_member_told
         assert_eq!(pushed[0]["title"], "Casey Rivera");
         assert_eq!(pushed[0]["body"], "Where do I park?");
         assert_eq!(pushed[0]["tag"], message.last().unwrap().id);
-        let url = pushed[0]["url"].as_str().unwrap();
-        assert!(
-            url.ends_with(&format!("communications?open={}", conversation.id)),
-            "{url}"
+        // Opening the conversation at the admin's address, where they subscribed, for a page in
+        // front to tell as this DSP's.
+        let opens = format!(
+            "{}/#dsp/{dsp}/communications?open={}",
+            state.config.origin, conversation.id
         );
+        assert_eq!(pushed[0]["url"], opens);
+        assert_eq!(pushed[0]["dsp"], dsp);
+        assert_eq!(pushed[0]["conversation"], conversation.id);
     }
 
     // Read again, nothing is new; nor is the DSP's answer.
@@ -114,13 +125,15 @@ async fn browsers_are_let_go_of_once_they_cant_be_told() {
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
     let owner = c.actor().to_owned();
     notifications(&state, &dsp, &owner, true, 0).await;
-    // A browser whose push service is busy at first, one it let go of, and one of someone who
-    // isn't the DSP's member.
+    // A browser whose push service is busy at first, one it let go of, one they subscribed at
+    // the DSP's own address, where their account isn't, and one of someone who isn't the DSP's.
     let busy = "https://fcm.googleapis.com/fcm/send/busy-desk";
     let gone = "https://fcm.googleapis.com/fcm/send/gone-desk";
+    let elsewhere = "https://fcm.googleapis.com/fcm/send/elsewhere-desk";
     let stranger = "https://fcm.googleapis.com/fcm/send/stranger-desk";
     keep(&state, &dsp, &owner, busy).await;
     keep(&state, &dsp, &owner, gone).await;
+    keep_at(&state, &dsp, &owner, elsewhere, Address::Dsp).await;
     keep(
         &state,
         &dsp,
@@ -141,8 +154,9 @@ async fn browsers_are_let_go_of_once_they_cant_be_told() {
     tell(&state, &dsp, new).await.unwrap();
     // The busy one's, tried again, went; the others went nowhere, and are let go of.
     assert_eq!(fixture::pushed(busy).len(), 1);
-    assert!(fixture::pushed(gone).is_empty());
-    assert!(fixture::pushed(stranger).is_empty());
+    for nowhere in [gone, elsewhere, stranger] {
+        assert!(fixture::pushed(nowhere).is_empty(), "{nowhere}");
+    }
     assert_eq!(kept(&state, &dsp).await, [busy]);
 
     // Notifications turned off, their browsers are let go of as the next message would go.
@@ -150,7 +164,41 @@ async fn browsers_are_let_go_of_once_they_cant_be_told() {
     support::writes(&state, &dsp, TEAM, "U0FIXCASEY", "Hello?").await;
     let new = look(&state, &dsp, &mut seen, &mut revision).await.unwrap();
     assert_eq!(new.len(), 1);
+    tell(&state, &dsp, new.clone()).await.unwrap();
+    assert_eq!(fixture::pushed(busy).len(), 1);
+    assert!(kept(&state, &dsp).await.is_empty());
+
+    // On again, but with Communications off for the DSP, which no session of theirs could use.
+    notifications(&state, &dsp, &owner, true, 2).await;
+    keep(&state, &dsp, &owner, busy).await;
+    support::switch(&state, &dsp, crate::FEATURE.switch.id, false).await;
     tell(&state, &dsp, new).await.unwrap();
     assert_eq!(fixture::pushed(busy).len(), 1);
     assert!(kept(&state, &dsp).await.is_empty());
+}
+
+#[tokio::test(start_paused = true)]
+async fn pushes_go_a_few_at_once_however_many_batches_go() {
+    let (_root, state, bot) = support::connected(TEAM).await;
+    let dsp = bot.dsp.clone();
+    // Two batches of browsers whose push services take a second each, going together.
+    let batch = |from: usize| -> Vec<(Subscription, Vec<u8>)> {
+        (from..from + sending::AT_ONCE)
+            .map(|n| {
+                let endpoint = format!("https://fcm.googleapis.com/fcm/send/slow-{n}");
+                (browser("user", &endpoint, Address::Admin), b"{}".to_vec())
+            })
+            .collect()
+    };
+    let (first, second) = tokio::join!(
+        sending::send(&state, &dsp, batch(0)),
+        sending::send(&state, &dsp, batch(100)),
+    );
+    first.unwrap();
+    second.unwrap();
+    assert!(fixture::most_answering() <= sending::AT_ONCE);
+    for n in (0..sending::AT_ONCE).chain(100..100 + sending::AT_ONCE) {
+        let endpoint = format!("https://fcm.googleapis.com/fcm/send/slow-{n}");
+        assert_eq!(fixture::pushed(&endpoint).len(), 1, "{endpoint}");
+    }
 }

@@ -1,7 +1,7 @@
 //! Each push: what it says (`message`), as the browser's service worker shows it, and sending it
-//! to each browser, a few at once, each within ten seconds, one that fails tried once more a few
-//! seconds later. A browser its push service no longer knows (404, 410) is let go of. Fixture mode
-//! sends none: its push services are `fixture`'s.
+//! to each browser, a few at once across the server, each within ten seconds, one that fails
+//! tried once more a few seconds later. A browser its push service no longer knows (404, 410) is
+//! let go of. Fixture mode sends none: its push services are `fixture`'s.
 use super::{
     fixture,
     storage::{PushStore, Subscription},
@@ -15,9 +15,11 @@ use std::{
     sync::{Arc, LazyLock},
     time::Duration,
 };
+use tokio::sync::Semaphore;
 
-/// How many pushes go at once.
-const AT_ONCE: usize = 8;
+/// How many pushes go at once, of every DSP's batches together.
+pub const AT_ONCE: usize = 8;
+static TURNS: Semaphore = Semaphore::const_new(AT_ONCE);
 /// How long a push service has to answer.
 const TIMEOUT: Duration = Duration::from_secs(10);
 /// How long after a push fails it's tried again, once.
@@ -48,10 +50,12 @@ pub enum Answer {
     Failed(Option<u16>),
 }
 
-/// What a push of `waiting` says, the conversation it opens at the DSP's `address` (up to its
-/// page's name): titled with who wrote it, saying what as the list shows it, and tagged with the
-/// message, so the page's own notification of it takes its place rather than showing twice.
-pub fn message(waiting: &WaitingMessage, address: &str) -> Vec<u8> {
+/// What a push of `waiting`, in the DSP `dsp`, says: titled with who wrote it, saying what as the
+/// list shows it, opening the conversation at `address` (the DSP's page, up to its name), and
+/// tagged with the message, so the page's own notification of it takes its place rather than
+/// showing twice. The DSP, conversation and group it's of are for a page in front to say whether
+/// it alerts of it itself.
+pub fn message(dsp: &str, waiting: &WaitingMessage, address: &str) -> Vec<u8> {
     let opens = url::form_urlencoded::Serializer::new(String::new())
         .append_pair("open", &waiting.conversation_id)
         .finish();
@@ -60,6 +64,9 @@ pub fn message(waiting: &WaitingMessage, address: &str) -> Vec<u8> {
         "body": cut(&preview(&waiting.message), BODY_MOST),
         "url": format!("{address}communications?{opens}"),
         "tag": waiting.message.id,
+        "dsp": dsp,
+        "conversation": waiting.conversation_id,
+        "group": waiting.group_id,
     })
     .to_string()
     .into_bytes()
@@ -136,15 +143,19 @@ pub async fn send(
     Ok(())
 }
 
-/// Sends `message` to the browser `subscription` names, encrypted for it and signed by `vapid`.
+/// Sends `message` to the browser `subscription` names, encrypted for it and signed by `vapid`,
+/// in its turn among every push going.
 async fn deliver(
     vapid: &Vapid,
     fixture: bool,
     subscription: &Subscription,
     message: &[u8],
 ) -> Answer {
+    let Ok(_turn) = TURNS.acquire().await else {
+        return Answer::Failed(None);
+    };
     if fixture {
-        return fixture::deliver(&subscription.endpoint, message);
+        return fixture::deliver(&subscription.endpoint, message).await;
     }
     // Both were checked as it was kept: either failing now, it can't be pushed to.
     let (Ok(endpoint), Ok(body)) = (

@@ -605,23 +605,29 @@ not; and with it closed, or on a phone, as a push (**Pushed**, below).
 - **Sound** plays once the member has clicked or pressed a key in the page, as browsers ask: the
   chime is made as it plays (Web Audio), two soft notes, and rests between chimes.
 - **Pushed:** a browser the member has Notifications on in, and allows them, is subscribed with its
-  push service (Web Push) under the server's key, and kept as theirs, as each tab of theirs opens
-  and as they change it; one subscribed under another key is subscribed again, and turning
-  Notifications off lets go of it. Each message new in what waits, as above, as the server reads it
-  again on each change to the DSP's conversations, goes to each browser kept of each member who
-  holds `communications.use` and has Notifications on then, titled with who wrote it, saying what
-  as the list shows it, and opening the conversation; never the DSP's own. What waited when the
-  server began watching the DSP goes nowhere. Pushes go in the background, a few at once, each
-  within ten seconds, one that fails tried once more; a browser its push service no longer knows
-  (404, 410), or of a member who no longer holds `communications.use` or turned Notifications off,
-  is let go of. Dispatch's service worker (`app/frontend/public/service-worker.js`) shows every
-  push, as browsers ask, penalising one that shows nothing; one arriving while a window of Dispatch
-  is focused there, which alerts itself, is shown silently and closed at once, or left to the
-  page's own notification of it. Where the worker serves the page, the page's notifications go
-  through it, under the message's tag, so a push of one shown already takes its place. On a
-  phone, pushes are its only notifications: Android's browser shows them, and an iPhone's only for
-  Dispatch added to its Home Screen (the web app manifest,
-  `app/frontend/public/assets/manifest.webmanifest`).
+  push service (Web Push) under the server's key, once its service worker is active, and kept as
+  theirs at the DSP, with the address it was subscribed at, as each tab of theirs opens and as they
+  change it; one subscribed under another key is subscribed again. A browser has one subscription
+  for its address, which each DSP opened there shares, as a platform owner opens many at the
+  admin's: turning Notifications off at one lets go of it there, and the browser lets go of it once
+  no DSP it remembers keeping it wants it. Each message new in what waits, as above, as the server
+  reads it again on each change to the DSP's conversations, goes to each browser kept of each
+  member who has Notifications on and may use Communications there then, as a session of theirs at
+  the address they subscribed at would (their account, role, the DSP and its features as now),
+  titled with who wrote it, saying what as the list shows it, and opening the conversation at that
+  address; never the DSP's own. What waited when the server began watching the DSP goes nowhere.
+  Pushes go apart from the change, a batch at a time for each DSP, eight at once across the
+  server, each within ten seconds, one that fails tried once more; a browser its push service no
+  longer knows (404, 410), or of a member who may no longer be told, is let go of. Dispatch's
+  service worker (`app/frontend/public/service-worker.js`) shows every push, as browsers ask,
+  penalising one that shows nothing. It first asks each window of Dispatch in front there whether
+  it alerts of it itself: one that does, of its own DSP, with its conversation or group open or
+  showing notifications from the page, has it shown silently and closed at once, or left to the
+  page's own notification of it; no such answer within a second, it stays shown. Where the worker
+  serves the page, the page's notifications go through it, under the message's tag, so a push of
+  one shown already takes its place. On a phone, pushes are its only notifications: Android's
+  browser shows them, and an iPhone's only for Dispatch added to its Home Screen (the web app
+  manifest, `app/frontend/public/assets/manifest.webmanifest`).
 
 ## The page's code
 
@@ -776,9 +782,9 @@ Behind `communications.use`:
   it.
 - `GET …/push`: the key the server's pushes are signed with, which a browser subscribes with
   (`key`), none while it pushes nothing; `POST …/push` (`endpoint`, `keys`: `p256dh`, `auth`)
-  keeps the browser a subscription names as the member's, at a push service browsers use
-  (Chrome's, Firefox's, Safari's or Edge's) alone, and `POST …/push/remove` (`endpoint`) lets go
-  of the member's own.
+  keeps the browser a subscription names as the member's, subscribed at the address the request
+  came to, at a push service browsers use (Chrome's, Firefox's, Safari's or Edge's) alone, and
+  `POST …/push/remove` (`endpoint`) lets go of the member's own at the DSP.
 - `POST …/uploads?name=&type=`: a photo for a message not sent yet, as its bytes.
 - `GET …/files/{id}`: a photo or file attached to a message.
 - `GET …/workspaces/{team}/logo?v=<logo>`: a workspace's logo, the copy Slack keeps of it, read
@@ -822,7 +828,8 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   `communications_blocked` (the numbers blocked, by whom and when) and `communications_picked`
   (the driver picked for a work phone on a day, by whom and when). For pushes,
   `communications_push` (each browser a member is told in, by where its pushes go, with the keys
-  they're encrypted for: migration 15), kept until it's let go of. The phone side's, as Phones
+  they're encrypted for and the address it was subscribed at: migration 15), kept until it's let
+  go of. The phone side's, as Phones
   made them before Communications adopted them (its migrations 7 and 8, which find them made on a
   database Phones migrated, and leave Phones' own records of its migrations as they were):
   `phones_devices` (each phone, by its key's SHA-256, and how it last said it stands, `health`,

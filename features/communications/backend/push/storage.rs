@@ -2,8 +2,18 @@
 //! to it goes, its endpoint.
 use dispatch_core::{
     Result,
-    db::{Store, now},
+    db::{FromRow, Row, Store, now},
+    text_enum,
 };
+
+text_enum! {
+    /// The address a browser was subscribed at: the admin's, as a platform owner's, or the DSP's
+    /// own, as its members'; its directory holds the member's account, and a push opens there.
+    pub enum Address {
+        Admin => "admin",
+        Dsp => "dsp",
+    }
+}
 
 /// A browser a member is told in, as its push service subscribed it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -14,6 +24,19 @@ pub struct Subscription {
     /// base64url: what its pushes are encrypted for.
     pub p256dh: String,
     pub auth: String,
+    pub address: Address,
+}
+
+impl FromRow for Subscription {
+    fn from_row(row: &Row<'_>) -> Result<Self> {
+        Ok(Self {
+            endpoint: row.get("endpoint")?,
+            user: row.get("user_id")?,
+            p256dh: row.get("p256dh")?,
+            auth: row.get("auth")?,
+            address: row.get("site")?,
+        })
+    }
 }
 
 /// What Communications keeps of the browsers its members are told in.
@@ -37,12 +60,14 @@ impl PushStore for Store {
             user,
             p256dh,
             auth,
+            address,
         } = subscription;
         self.dsp(dsp)?.exec(
-            "INSERT INTO communications_push (endpoint,user_id,p256dh,auth,created_at) \
-             VALUES (?,?,?,?,?) ON CONFLICT (endpoint) DO UPDATE SET user_id=excluded.user_id,\
-             p256dh=excluded.p256dh,auth=excluded.auth,created_at=excluded.created_at",
-            rusqlite::params![endpoint, user, p256dh, auth, now()],
+            "INSERT INTO communications_push (endpoint,user_id,p256dh,auth,site,created_at) \
+             VALUES (?,?,?,?,?,?) ON CONFLICT (endpoint) DO UPDATE SET user_id=excluded.user_id,\
+             p256dh=excluded.p256dh,auth=excluded.auth,site=excluded.site,\
+             created_at=excluded.created_at",
+            rusqlite::params![endpoint, user, p256dh, auth, address, now()],
         )?;
         Ok(())
     }
@@ -54,19 +79,11 @@ impl PushStore for Store {
         Ok(())
     }
     fn communications_pushes(&self, dsp: &str) -> Result<Vec<Subscription>> {
-        let rows: Vec<(String, String, String, String)> = self.dsp(dsp)?.query_as(
-            "SELECT endpoint,user_id,p256dh,auth FROM communications_push ORDER BY user_id,endpoint",
+        self.dsp(dsp)?.query_as(
+            "SELECT endpoint,user_id,p256dh,auth,site FROM communications_push \
+             ORDER BY user_id,endpoint",
             [],
-        )?;
-        Ok(rows
-            .into_iter()
-            .map(|(endpoint, user, p256dh, auth)| Subscription {
-                endpoint,
-                user,
-                p256dh,
-                auth,
-            })
-            .collect())
+        )
     }
     fn drop_communications_pushes(&self, dsp: &str, endpoints: &[String]) -> Result<()> {
         let db = self.dsp(dsp)?;
