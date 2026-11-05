@@ -19,10 +19,9 @@ pub struct ReportedFile {
     pub size: i64,
 }
 
-/// A picture or file as kept, with where its bytes are.
+/// A picture or file as kept, with whom it's for.
 pub struct StoredFile {
     pub file: File,
-    pub sha256: Option<String>,
     pub text_id: Option<String>,
     pub added_by: Option<String>,
 }
@@ -125,7 +124,6 @@ impl FileStore for Store {
             .one("SELECT * FROM phones_files WHERE id=?", [id])?
             .map(|row| StoredFile {
                 file: file_of(&row),
-                sha256: row["sha256"].as_str().map(str::to_owned),
                 text_id: row["text_id"].as_str().map(str::to_owned),
                 added_by: row["added_by"].as_str().map(str::to_owned),
             }))

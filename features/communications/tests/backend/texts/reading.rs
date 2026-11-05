@@ -47,7 +47,7 @@ async fn a_texts_picture_is_refused_once_the_members_access_ended_while_the_phon
     let (at_dsp, id) = (dsp.clone(), added.id.clone());
     let bytes = state
         .read(move |db| {
-            let sha256 = db.phones_file(&at_dsp, &id)?.unwrap().sha256.unwrap();
+            let sha256 = db.phones_file(&at_dsp, &id)?.unwrap().file.sha256.unwrap();
             Ok(kept(db, &at_dsp).join(sha256))
         })
         .await

@@ -71,10 +71,10 @@ pub async fn shown(
         return Ok(None);
     };
     let theirs = stored.text_id.is_some() || stored.added_by.as_deref() == Some(viewer);
-    match stored.sha256 {
+    match &stored.file.sha256 {
         Some(sha256) if theirs => {
-            let reply = answer(state, dsp, &sha256, &stored.file.name, &stored.file.mime).await?;
-            Ok(Some(bytes::as_asked(reply, version, &sha256)))
+            let reply = answer(state, dsp, sha256, &stored.file.name, &stored.file.mime).await?;
+            Ok(Some(bytes::as_asked(reply, version, sha256)))
         }
         _ => Ok(None),
     }
