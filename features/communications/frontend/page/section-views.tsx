@@ -7,6 +7,7 @@ import type {
   Writing,
 } from '../../api/index.js';
 import { SlackLogo } from '../../../slack/frontend/index.js';
+import { places } from '../conversations/party.js';
 import type { Target } from '../conversations/target.js';
 import type { Section } from '../inbox/sections.js';
 import { ContactList } from '../slack/ContactList.js';
@@ -17,7 +18,7 @@ import { RoutesList } from '../todays-routes/RoutesList.js';
 import type { RoutesRead } from '../todays-routes/headings.js';
 import {
   routeConversations,
-  routesToday,
+  routeToday,
   type RouteGroup,
   type RouteRow,
 } from '../todays-routes/todays-routes.js';
@@ -92,17 +93,18 @@ type SectionView = {
 };
 
 export const VIEWS: { [S in Section]: SectionView } = {
-  // Recents lists Today's Routes' conversations as its read holds them, each driver's under their
-  // route, and can text whom the DSP's phones can, while it has texting.
+  // Recents lists Today's Routes' conversations as its read holds them, each with a driver on a
+  // route today under their route and where it is, and can text whom the DSP's phones can, while
+  // it has texting.
   messaging: {
     label: 'Recents',
     icon: <History size={14} aria-hidden="true" />,
     read: (groups) => routeConversations(groups),
     below: (groups) => {
-      const today = routesToday(groups);
+      const routeOf = routeToday(groups);
       return (conversation) => {
-        const route = today.get(conversation.id);
-        return route && <RouteLine today={route} />;
+        const today = routeOf(conversation);
+        return today && <RouteLine today={today} place={places[conversation.kind]} />;
       };
     },
     contacts: ({ typed, inbox, current, timeZone, now, reach, show }) =>

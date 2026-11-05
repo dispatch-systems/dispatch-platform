@@ -28,6 +28,12 @@ const channels: Record<ConversationKind, ReactNode> = {
   number: <Phone aria-hidden="true" />,
   slack: <SlackLogo size={10} />,
 };
+/** Where a conversation is, as a driver's route under its row in Recents says. */
+export const places: Record<ConversationKind, string> = {
+  work: 'Work',
+  number: 'Personal',
+  slack: 'Slack',
+};
 
 /** Whom a conversation is with, as large as where they're shown: their face, marked with where
  * the conversation is while `channel`, or a phone for a number no one is known by and a work phone
