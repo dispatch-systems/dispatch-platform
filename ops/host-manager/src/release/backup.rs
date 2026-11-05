@@ -10,6 +10,9 @@ pub(super) const PRODUCTION_HOST: &str = "dispatch-production";
 const SNAPSHOT: &str = "app/tests/backend/snapshots/databases.json";
 /// How long a backup stands for the release: Production keeps changing after it.
 const BACKUP_LASTS: f64 = 6.0 * 60.0 * 60.0;
+/// Lets go of releases' backups taken over 30 days ago, as Production's nightly backups are, so
+/// what's deleted from Production is gone from every backup within 30 days.
+pub(super) const KEPT_BACKUPS: &str = r#"find "$HOME/dispatch-platform/backups" -mindepth 1 -maxdepth 1 -type d -name '*-before-v*' -mmin +43200 -exec rm -rf {} +"#;
 
 /// What the release recorded of its backup.
 #[derive(Serialize, Deserialize)]
@@ -60,7 +63,8 @@ fn remote(script: &str) -> String {
     )
 }
 /// Copies Production's databases and configuration, with the service and its updates stopped
-/// for the copy and started again whatever happens.
+/// for the copy and started again whatever happens, then, the copy made, lets go of those past
+/// `KEPT_BACKUPS`.
 fn backup_script(version: &str) -> String {
     format!(
         r#"set -eu; umask 077
@@ -72,7 +76,8 @@ trap 'systemctl --user start dispatch-production.service dispatch-production-upd
 systemctl --user stop dispatch-production.service
 (set -a; . "$public/config/platform.env"; set +a; cd "$public/live"
  ./services/rust/dispatch-backend backup "$dest")
-mkdir "$dest/config"; cp -p "$public/config/"* "$dest/config/""#
+mkdir "$dest/config"; cp -p "$public/config/"* "$dest/config/"
+{KEPT_BACKUPS}"#
     )
 }
 /// Restores the backup at `destination` into a folder of its own and checks every database

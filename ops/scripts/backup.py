@@ -18,8 +18,10 @@ REMOTE_REPOSITORIES = ("azure:", "b2:", "gs:", "rclone:", "rest:", "s3:", "sftp:
 # grouped by host and tag, not by path, for retention to see them as one series.
 SNAPSHOTS = ("--host", "dispatch-production", "--tag", "dispatch-production")
 # The last snapshot of each day for 30 days before the newest, so what's deleted from Production, a
-# DSP deleted included, is gone from its backups within 30 days.
-RETENTION = ("--group-by", "host,tags", "--keep-within-daily", "30d", "--prune")
+# DSP deleted included, is gone from its backups within 30 days: counted in days, not snapshots, so
+# days without one keep nothing longer, and pruned to the last byte no snapshot keeps.
+RETENTION = ("--group-by", "host,tags", "--keep-within-daily", "30d", "--prune",
+             "--max-unused", "0")
 
 
 def absolute_path(environment, name):
