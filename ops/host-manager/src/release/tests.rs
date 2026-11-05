@@ -2349,7 +2349,9 @@ fn publication_waits_up_to_ten_minutes_for_collections_running_on_production() {
         "complete"
     );
     assert!(f.system.has_call(&["-F", "draft=false"]));
-    assert!(f.system.elapsed.get() >= finish);
+    // It goes ahead within one check of their finishing.
+    let poll = Duration::from_secs(30);
+    assert!((finish..finish + poll).contains(&f.system.elapsed.get()));
     // Ones still running after it refuse publication.
     let f = Fixture::new();
     f.draft();
@@ -2364,7 +2366,8 @@ fn publication_waits_up_to_ten_minutes_for_collections_running_on_production() {
         refused.contains("Collections are running on Production (1)"),
         "{refused}"
     );
-    assert!(f.system.elapsed.get() - started >= Duration::from_secs(10 * 60));
+    let wait = Duration::from_secs(10 * 60);
+    assert!((wait..wait + poll).contains(&(f.system.elapsed.get() - started)));
     assert!(!f.system.has_call(&["-F", "draft=false"]));
 }
 
