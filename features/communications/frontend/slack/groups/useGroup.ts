@@ -28,14 +28,17 @@ type Opened = {
 
 /**
  * The group open, with the DSP's messages to it and their answers: the latest as it opens, again
- * each time an update changes it, and older ones as they're asked for, fifty at a time. `gone`
- * once it's no longer there.
+ * each time an update changes it, or as asked again once a read failed (`retry`), and older ones
+ * as they're asked for, fifty at a time, after one failed only as asked again. `gone` once it's no
+ * longer there.
  */
 export function useGroup(id: string, changed: Changed) {
   const [opened, setOpened] = useState<Opened>();
   const [error, setError] = useState('');
   const [gone, setGone] = useState(false);
   const [older, setOlder] = useState(false);
+  const [olderFailed, setOlderFailed] = useState(false);
+  const [tries, setTries] = useState(0);
   const kept = useRef<Opened | undefined>(undefined);
   const keep = useCallback((next: Opened) => {
     kept.current = next;
@@ -69,13 +72,18 @@ export function useGroup(id: string, changed: Changed) {
         else setError(messageOf(cause));
       },
     );
-  }, [id, changed, keep]);
+  }, [id, changed, tries, keep]);
+  const retry = useCallback(() => {
+    setError('');
+    setTries((n) => n + 1);
+  }, []);
 
   /** Reads the fifty entries before the first shown. */
   const readOlder = useCallback(async () => {
     const shown = kept.current;
     if (!shown?.more || older || !shown.entries[0]) return;
     setOlder(true);
+    setOlderFailed(false);
     try {
       const page = await getGroup(shown.id, shown.entries[0]);
       const now = kept.current;
@@ -83,6 +91,7 @@ export function useGroup(id: string, changed: Changed) {
         keep({ ...now, entries: joined(now.entries, page.entries), more: page.more });
     } catch (cause) {
       setError(messageOf(cause));
+      setOlderFailed(true);
     } finally {
       setOlder(false);
     }
@@ -96,5 +105,13 @@ export function useGroup(id: string, changed: Changed) {
     },
     [keep],
   );
-  return { opened: opened?.id === id ? opened : undefined, error, gone, readOlder, show };
+  return {
+    opened: opened?.id === id ? opened : undefined,
+    error,
+    gone,
+    readOlder,
+    olderFailed,
+    retry,
+    show,
+  };
 }

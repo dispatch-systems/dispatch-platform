@@ -12,6 +12,11 @@ use super::*;
 const FREE_SPACE: u64 = 2 * 1024 * 1024 * 1024;
 /// What the release found on Production before publishing, kept beside the release.
 const CHECKED: &str = "production-check.json";
+/// How long a release waits for collections running on Production to finish before refusing.
+/// Most finish within minutes; one waiting on someone's verification may not.
+const COLLECTIONS_WAIT: Duration = Duration::from_secs(10 * 60);
+/// How often Production is checked again while collections run there.
+const COLLECTIONS_POLL: Duration = Duration::from_secs(30);
 /// The event a migration that failed logs.
 const MIGRATION_FAILED: &str = "storage.migration_failed";
 
@@ -85,78 +90,105 @@ fn migration(fields: &Value) -> String {
     )
 }
 
+/// What keeps Production from taking a release, as `check_script` found it, but the collections
+/// running there, which the release waits out.
+fn problems(found: &Value) -> Vec<String> {
+    let mut problems = vec![];
+    if !found["failure"].is_null() {
+        let failure = &found["failure"];
+        problems.push(format!(
+            "Production's updater has failed since {} ({} attempts): {}. Fix that on \
+             Production, then rerun once its next update succeeds, which removes \
+             public/data/platform/production-update-failure.json",
+            io::text(failure, "since"),
+            failure["attempts"],
+            io::text(failure, "error")
+        ));
+    }
+    if found["gh"] != true {
+        problems.push(
+            "Production has no executable /usr/local/bin/gh, which its updater verifies \
+             each release with: install it there, owned by root, then rerun"
+                .into(),
+        );
+    }
+    for (field, what, unit) in [
+        ("service", "service", "dispatch-production.service"),
+        ("timer", "update timer", "dispatch-production-update.timer"),
+    ] {
+        let state = found[field]
+            .as_str()
+            .filter(|state| !state.is_empty())
+            .unwrap_or("unknown");
+        if state != "active" {
+            problems.push(format!(
+                "Production's {what} {unit} is {state}: start it with `systemctl --user \
+                 start {unit}`, then rerun"
+            ));
+        }
+    }
+    let health = found["health"].as_str().unwrap_or("no status");
+    if health != "ready" {
+        problems.push(format!(
+            "Production's own health check (http://127.0.0.1:5180/api/health) answered \
+             {health}, not ready: read `journalctl --user -u dispatch-production` there, fix \
+             it, then rerun"
+        ));
+    }
+    let free = found["free"].as_u64().unwrap_or(0);
+    if free < FREE_SPACE {
+        problems.push(format!(
+            "Production's disk has {} free, under the {} the release keeps for an install: \
+             clear space, such as old copies in ~/dispatch-platform/backups, then rerun",
+            gigabytes(free),
+            gigabytes(FREE_SPACE)
+        ));
+    }
+    problems
+}
+
 impl Release<'_> {
     /// Refuses to publish while Production couldn't take the release, naming each problem and
-    /// what to do about it. What it found is kept for after the install.
+    /// what to do about it. Collections running there, which installing would interrupt, are
+    /// waited out for up to `COLLECTIONS_WAIT` when nothing else is wrong. What it found is kept
+    /// for after the install.
     pub(super) fn check_production(&self) -> Result<()> {
         say("Checking Production before publishing");
-        let found = backup::reported(&self.on_production(&check_script(), 120)?, "service")?;
-        let mut problems = vec![];
-        if !found["failure"].is_null() {
-            let failure = &found["failure"];
-            problems.push(format!(
-                "Production's updater has failed since {} ({} attempts): {}. Fix that on \
-                 Production, then rerun once its next update succeeds, which removes \
-                 public/data/platform/production-update-failure.json",
-                io::text(failure, "since"),
-                failure["attempts"],
-                io::text(failure, "error")
-            ));
-        }
-        if found["gh"] != true {
-            problems.push(
-                "Production has no executable /usr/local/bin/gh, which its updater verifies \
-                 each release with: install it there, owned by root, then rerun"
-                    .into(),
-            );
-        }
-        for (field, what, unit) in [
-            ("service", "service", "dispatch-production.service"),
-            ("timer", "update timer", "dispatch-production-update.timer"),
-        ] {
-            let state = found[field]
-                .as_str()
-                .filter(|state| !state.is_empty())
-                .unwrap_or("unknown");
-            if state != "active" {
+        let deadline = self.system.monotonic() + COLLECTIONS_WAIT;
+        let mut waiting = false;
+        let found = loop {
+            let found = backup::reported(&self.on_production(&check_script(), 120)?, "service")?;
+            let mut problems = problems(&found);
+            let running = found["running"].as_u64().unwrap_or(0);
+            if running > 0 && problems.is_empty() && self.system.monotonic() < deadline {
+                if !waiting {
+                    say(format!(
+                        "Waiting up to {} minutes for {} on Production to finish",
+                        COLLECTIONS_WAIT.as_secs() / 60,
+                        count(running, "running collection")
+                    ));
+                    waiting = true;
+                }
+                self.system.sleep(COLLECTIONS_POLL);
+                continue;
+            }
+            if running > 0 {
                 problems.push(format!(
-                    "Production's {what} {unit} is {state}: start it with `systemctl --user \
-                     start {unit}`, then rerun"
+                    "Collections are running on Production ({running}), which installing would \
+                     interrupt: rerun once they finish"
                 ));
             }
-        }
-        let health = found["health"].as_str().unwrap_or("no status");
-        if health != "ready" {
-            problems.push(format!(
-                "Production's own health check (http://127.0.0.1:5180/api/health) answered \
-                 {health}, not ready: read `journalctl --user -u dispatch-production` there, fix \
-                 it, then rerun"
-            ));
-        }
+            if !problems.is_empty() {
+                return Err(format!(
+                    "Production can't take {} yet:\n- {}",
+                    self.tag,
+                    problems.join("\n- ")
+                )
+                .into());
+            }
+            break found;
+        };
         let free = found["free"].as_u64().unwrap_or(0);
-        if free < FREE_SPACE {
-            problems.push(format!(
-                "Production's disk has {} free, under the {} the release keeps for an install: \
-                 clear space, such as old copies in ~/dispatch-platform/backups, then rerun",
-                gigabytes(free),
-                gigabytes(FREE_SPACE)
-            ));
-        }
-        let running = found["running"].as_u64().unwrap_or(0);
-        if running > 0 {
-            problems.push(format!(
-                "Collections are running on Production ({running}), which installing would \
-                 interrupt: rerun once they finish"
-            ));
-        }
-        if !problems.is_empty() {
-            return Err(format!(
-                "Production can't take {} yet:\n- {}",
-                self.tag,
-                problems.join("\n- ")
-            )
-            .into());
-        }
         io::write_json(&self.output.join(CHECKED), &found)?;
         say(format!(
             "Production can take the release, with {} free",

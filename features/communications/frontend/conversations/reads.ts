@@ -4,6 +4,7 @@ import { ApiError } from '../../../../core/shell/frontend/runtime/api.js';
 import { canPrefetch } from '../../../../core/shell/frontend/runtime/prefetch.js';
 import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import type { Changed } from '../inbox/useInbox.js';
+import { newer } from '../inbox/inbox.js';
 import { fresh, joined } from './messages.js';
 
 // The conversations the page has read, kept while it's open, so one opened again shows at once:
@@ -18,8 +19,15 @@ export type Opened = Omit<ConversationMessages, 'messages'> & {
   messages: Message[];
   readAt: number;
 };
-/** A conversation as the page holds it: as read, why it couldn't be, or that it's no longer there. */
-export type Held = { opened?: Opened; error: string; gone: boolean; older: boolean };
+/** A conversation as the page holds it: as read, why it couldn't be, or that it's no longer there;
+ * and whether a read of older ones is under way, or the latest failed. */
+export type Held = {
+  opened?: Opened;
+  error: string;
+  gone: boolean;
+  older: boolean;
+  olderFailed: boolean;
+};
 
 /** How many conversations it keeps: a dispatcher's morning's worth, each at most a page or a few. */
 const KEPT = 40;
@@ -27,7 +35,13 @@ const KEPT = 40;
  * preloads do. */
 const WARMING = 2;
 const WARM_WAITING = 6;
-const nothing: Held = { opened: undefined, error: '', gone: false, older: false };
+const nothing: Held = {
+  opened: undefined,
+  error: '',
+  gone: false,
+  older: false,
+  olderFailed: false,
+};
 
 type Entry = {
   held: Held;
@@ -121,7 +135,7 @@ export class ConversationReads {
     const entry = this.entries.get(id);
     const shown = entry?.held.opened;
     if (!entry || !shown?.more || entry.held.older || !shown.messages[0]) return;
-    this.hold(id, { ...entry.held, older: true });
+    this.hold(id, { ...entry.held, older: true, olderFailed: false });
     // A read of the latest shown before the page comes may have filed some of its messages in
     // another conversation: the page is then from before, and is read again while it's in view.
     const since = entry.turns.shown;
@@ -139,7 +153,9 @@ export class ConversationReads {
           },
         });
     } catch (cause) {
-      if (this.entries.get(id) === entry) this.hold(id, { ...entry.held, error: messageOf(cause) });
+      // Read again only as asked again, never at once.
+      if (this.entries.get(id) === entry)
+        this.hold(id, { ...entry.held, error: messageOf(cause), olderFailed: true });
     } finally {
       if (this.entries.get(id) === entry) this.hold(id, { ...this.held(id), older: false });
     }
@@ -154,7 +170,7 @@ export class ConversationReads {
       ...entry.held,
       opened: {
         ...now,
-        conversation,
+        conversation: newer(now.conversation, conversation),
         messages: message ? joined(now.messages, [message]) : now.messages,
       },
     });

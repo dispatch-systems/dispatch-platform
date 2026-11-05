@@ -646,4 +646,44 @@ test.describe('on a phone', () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await expect(asked).toHaveCSS('font-size', '15px');
   });
+
+  test('a conversation opened from the list is a step after it, so the phone’s Back goes back to the list, and what’s written in it is there again as it opens again, after a reload too', async ({
+    page,
+    dispatch,
+  }) => {
+    const owner = await dispatch.client();
+    const summit = (owner.session.dsps as { id: string; name: string }[]).find(
+      (dsp) => dsp.name === 'Summit Delivery',
+    )!;
+    await owner.select(summit.id);
+    expect((await connect(owner, 'T0FIXTURE2')).status).toBe(200);
+    const written = await fromSlack(
+      dispatch,
+      '/slack/events',
+      event('T0FIXTURE2', {
+        type: 'message',
+        channel_type: 'im',
+        channel: 'D0FIXCASEY',
+        user: 'U0FIXCASEY',
+        text: 'Where do I park?',
+        ts: (Date.now() / 1000).toFixed(6),
+      }),
+    );
+    expect(written.status).toBe(200);
+
+    await login(page);
+    await page.goto(`/#dsp/${summit.id}/communications`);
+    const list = page.getByRole('region', { name: 'Conversations' });
+    const casey = page.getByRole('region', { name: 'Casey Rivera' });
+    await list.getByRole('button', { name: /^Casey Rivera/ }).click();
+    await expect(page).toHaveURL(/\/communications\?open=/);
+    await casey.getByLabel('Message').fill('Behind the van');
+    await page.goBack();
+    await expect(page).toHaveURL(/\/communications$/);
+    await expect(casey).toHaveCount(0);
+    await list.getByRole('button', { name: /^Casey Rivera/ }).click();
+    await expect(casey.getByLabel('Message')).toHaveValue('Behind the van');
+    await page.reload();
+    await expect(casey.getByLabel('Message')).toHaveValue('Behind the van');
+  });
 });

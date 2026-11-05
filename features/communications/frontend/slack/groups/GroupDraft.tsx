@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from 'react';
 import { ArrowLeft, Check, X } from 'lucide-react';
 import type {
   CommunicationsWorkspace,
@@ -27,6 +35,7 @@ import {
   type Pick,
 } from './groups.js';
 import { Composer } from '../../conversations/Composer.js';
+import type { Drafts } from '../../conversations/drafts.js';
 import { Face } from '../../shared/Face.js';
 import { roleText } from '../../shared/format.js';
 import { Name } from '../../shared/Name.js';
@@ -36,7 +45,8 @@ import './group-draft.css';
 
 // Messaging a group: whom to, picked in To by a name, someone's or a group's, or from the groups
 // below it, each a chip; then the message, sent to each of them once. Today's groups, those on a
-// route and each wave; Roles; and with two or more workspaces, Everyone and each workspace's.
+// route and each wave; Roles; and with two or more workspaces, Everyone and each workspace's. What's
+// picked and written is kept by the page until it's sent, as another is opened meanwhile.
 
 /** What the list's draft row shows of what's being written: whom to, and how many. */
 export type Draft = { name: string; people: number };
@@ -44,6 +54,9 @@ export type Draft = { name: string; people: number };
 export function GroupDraft({
   workspaces,
   timeZone,
+  drafts,
+  picks,
+  pick: setPicks,
   back,
   drafted,
   sent,
@@ -51,6 +64,11 @@ export function GroupDraft({
   /** The workspaces Communications works in. */
   workspaces: readonly CommunicationsWorkspace[];
   timeZone: string;
+  /** What's written in each box, kept by the page. */
+  drafts: Drafts;
+  /** Whom it's to, as picked, kept by the page. */
+  picks: readonly Pick[];
+  pick: Dispatch<SetStateAction<Pick[]>>;
   back: () => void;
   /** Tells the list's draft row whom it's to. */
   drafted: (draft: Draft) => void;
@@ -62,7 +80,6 @@ export function GroupDraft({
   useEffect(() => {
     getGroupChoices().then(setChoices, (cause) => setFailed(messageOf(cause)));
   }, []);
-  const [picks, setPicks] = useState<Pick[]>([]);
   const people = useMemo(
     () => new Map((choices?.people ?? []).map((person) => [person.key, person])),
     [choices],
@@ -141,6 +158,8 @@ export function GroupDraft({
         )}
       </div>
       <Composer
+        drafts={drafts}
+        draft="group"
         limits={choices?.limits}
         attachments={slackAttachments}
         placeholder="Message"

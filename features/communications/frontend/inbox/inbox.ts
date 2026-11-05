@@ -162,11 +162,18 @@ export function withOlder(
     ...merged({ ...inbox, [more]: false }, older.conversations, older.groups),
   };
 }
+/** `written`, as one of the page's own writes answered it, unless `kept` was written in since, as
+ * by a message an update brought while the write went. */
+export const newer = (kept: Conversation | undefined, written: Conversation) =>
+  kept && (kept.lastAt ?? 0) > (written.lastAt ?? 0) ? kept : written;
 /** The list with a conversation as one of the page's own writes left it. */
 export const withConversation = (
   inbox: Communications,
   conversation: Conversation,
-): Communications => ({ ...inbox, ...merged(inbox, [conversation], []) });
+): Communications => {
+  const kept = inbox.conversations.find((each) => each.id === conversation.id);
+  return { ...inbox, ...merged(inbox, [newer(kept, conversation)], []) };
+};
 /** The list with a group as one of the page's own writes left it. */
 export const withGroup = (inbox: Communications, group: Group): Communications => ({
   ...inbox,
