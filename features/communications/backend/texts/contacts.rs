@@ -1,10 +1,11 @@
 //! Whom the DSP can text, and what someone at the DSP does with a number. Messaging's Contacts
-//! lists everyone Driver Match has a phone number for who hasn't left, by their first, and every
+//! lists everyone Driver Match has a phone number for who hasn't left, by each of them, and every
 //! number the DSP saved a name for, each number once, by name, with its conversation if it has
 //! one; then the numbers blocked. A name typed, misspelt or not, finds them as it finds
 //! conversations; digits typed, by their number. A number's conversation, where a text to it
 //! written now is filed, or one of today's drivers', is opened to text it first, and a number saved
-//! under a name, shared at the DSP, or blocked, or unblocked.
+//! under a name, shared at the DSP, or added to a person Driver Match knows, or taken off them, or
+//! blocked, or unblocked.
 use super::{
     filing,
     live_day::LiveDay,
@@ -14,10 +15,17 @@ use super::{
     storage::{ContactStore, TextStore},
 };
 use crate::{
-    api::types::{Conversation, TextContact, TextContacts},
+    api::types::{Conversation, TextContact, TextContacts, TextPeople},
     backend::{live, people::People, phone::numbers::normal},
 };
-use dispatch_core::{Error, Result, State, db::Store, ensure, foundation::names};
+use dispatch_core::{
+    Error, Result, State,
+    accounts::Context,
+    db::Store,
+    ensure,
+    foundation::names,
+    manifest::people::{add_phone, remove_phone},
+};
 use std::collections::{HashMap, HashSet};
 
 /// How many are listed with nothing typed, at most.
@@ -54,7 +62,7 @@ pub fn contacts(db: &Store, state: &State, dsp: &str, typed: Option<&str>) -> Re
         .everyone()
         .iter()
         .filter(|person| !person.role.left())
-        .filter_map(|person| person.phones.iter().find_map(|phone| normal(phone)));
+        .flat_map(|person| person.phones.iter().filter_map(|phone| normal(phone)));
     for number in theirs.chain(numbers.contacts().map(str::to_owned)) {
         if !numbers.blocked(&number) && seen.insert(number.clone()) {
             listed.push(number);
@@ -127,6 +135,41 @@ pub fn save_contact(
 ) -> Result<Conversation> {
     let number = numbered(db, dsp, id)?;
     db.save_communications_contact(dsp, &number, name, by)?;
+    live::changed(state, dsp);
+    one(db, state, dsp, id)
+}
+
+/// Everyone Driver Match knows who hasn't left, by name, whom a number can be added to.
+pub fn addable(db: &Store, state: &State, dsp: &str) -> Result<TextPeople> {
+    let people = People::read(db, state, dsp)?;
+    Ok(TextPeople {
+        people: people
+            .everyone()
+            .iter()
+            .filter(|person| !person.role.left())
+            .map(People::known)
+            .collect(),
+    })
+}
+
+/// Adds the number of the conversation `id` to the person `code`'s, as the member `c` decided,
+/// or with `added` false takes it off them, refused once it's someone else's.
+pub fn add_to_person(
+    db: &Store,
+    state: &State,
+    c: &Context,
+    id: &str,
+    code: &str,
+    added: bool,
+) -> Result<Conversation> {
+    let dsp = c.dsp.id.as_str();
+    let number = numbered(db, dsp, id)?;
+    if added {
+        add_phone(db, c, code, &number)?;
+    } else {
+        remove_phone(db, c, code, &number)?;
+    }
+    db.communications_number_changed(dsp, &number)?;
     live::changed(state, dsp);
     one(db, state, dsp, id)
 }

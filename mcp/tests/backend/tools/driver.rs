@@ -73,6 +73,7 @@ fn person(code: &str, name: &str, ids: &[(&'static SourceInfo, &[&str])]) -> Per
             .collect(),
         emails: vec![],
         phones: vec![],
+        added_phones: Vec::new(),
         confirmed: false,
         photo: None,
     }

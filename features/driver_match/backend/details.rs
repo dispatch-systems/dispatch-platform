@@ -1,8 +1,9 @@
-//! One person in full, for their sheet: what they appear in, their last fourteen days and
-//! every decision about them.
+//! One person in full, for their sheet: what they appear in, their last fourteen days, every
+//! decision about them and the phone numbers someone added to theirs.
 use super::codes::valid_code;
 use super::gather::gather;
 use super::person::shown_name;
+use super::phones;
 use super::sources::Key;
 use super::{IdRow, surviving};
 use crate::api::types::{
@@ -75,12 +76,14 @@ pub(super) fn details(store: &Store, dsp: &str, code: &str) -> Result<PersonDeta
             .and_then(|ids| shown_name(ids, &gathered.found))
     };
     let history = history(store, dsp, &code, &keys, &gathered.found, named)?;
+    let added_phones = phones::added_to(store, dsp, &code)?;
     Ok(PersonDetails {
         person,
         appears,
         dates,
         days,
         history,
+        added_phones,
     })
 }
 

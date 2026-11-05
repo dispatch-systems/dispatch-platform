@@ -2,9 +2,10 @@
 //! for any feature that shows people or uses what is known of them. A contract core keeps, as
 //! its people helpers use it: the feature that tells people apart exposes it, and
 //! `people::everyone` and `people::photo` ask it, answering nothing in a build without one. It
-//! tells people apart again when it hears `events::PeopleChanged`.
+//! tells people apart again when it hears `events::PeopleChanged`, and keeps the phone numbers
+//! someone at the DSP adds to a person (`people::add_phone`).
 use super::{Photo, Source};
-use crate::{Result, db::Store, foundation::names, text_enum};
+use crate::{Error, Result, accounts::Context, db::Store, foundation::names, text_enum};
 use serde::Serialize;
 use std::collections::BTreeMap;
 
@@ -21,6 +22,20 @@ pub trait Directory: Sync {
     /// The photo of the person `code` names: the one their `Person` names the version of. A
     /// merged person's code answers for whoever kept their IDs.
     fn photo(&self, store: &Store, dsp: &str, code: &str) -> Result<Option<Photo>>;
+    /// Adds the phone number `number` to the person `code`'s, as the member `c` decided: it tells
+    /// who texts from it, and joins no one to anyone. Refused while anyone has it already. A
+    /// directory that keeps no numbers of its own refuses it.
+    fn add_phone(&self, store: &Store, c: &Context, code: &str, number: &str) -> Result<()> {
+        let _ = (store, c, code, number);
+        Err(Error::new("not_found", 404))
+    }
+    /// Takes the phone number `number` off the person `code`, whom someone added it to, as the
+    /// member `c` decided: refused once it's someone else's. The numbers their sources have
+    /// stay.
+    fn remove_phone(&self, store: &Store, c: &Context, code: &str, number: &str) -> Result<()> {
+        let _ = (store, c, code, number);
+        Err(Error::new("not_found", 404))
+    }
 }
 
 text_enum! {
@@ -100,9 +115,12 @@ pub struct Person {
     pub title: Option<PersonTitle>,
     /// Every ID they hold, by its source, the first linked first.
     pub ids: BTreeMap<Source, Vec<String>>,
-    /// The email addresses and phone numbers their sources have for them, as written.
+    /// The email addresses and phone numbers their sources have for them, as written, and after
+    /// their sources' numbers, those someone at the DSP added.
     pub emails: Vec<String>,
     pub phones: Vec<String>,
+    /// The phone numbers someone at the DSP added to theirs, as `phones` writes them.
+    pub added_phones: Vec<String>,
     /// Whether someone confirmed who they are, rather than a match.
     pub confirmed: bool,
     /// The version of their photo, which changes when the photo does: `people::photo` serves
@@ -197,6 +215,16 @@ impl Everyone {
     pub fn by_phone(&self, number: &str) -> Vec<&Person> {
         dialed(number).map_or_else(Vec::new, |number| self.dialing(&number))
     }
+    /// Whoever someone at the DSP added the phone number `number` to, as `by_phone` tells
+    /// numbers apart.
+    pub fn added(&self, number: &str) -> Option<&Person> {
+        self.by_phone(number).into_iter().find(|person| {
+            person
+                .added_phones
+                .iter()
+                .any(|added| same_phone(added, number))
+        })
+    }
     /// Whoever has the number `dialed` wrote, by name.
     fn dialing(&self, dialed: &str) -> Vec<&Person> {
         self.phones.get(dialed).map_or_else(Vec::new, |having| {
@@ -246,6 +274,10 @@ impl Everyone {
             .collect();
         if exact.len() == 1 { exact } else { named }
     }
+}
+/// Whether two phone numbers are one, as the directory tells them apart (`Everyone::by_phone`).
+pub fn same_phone(a: &str, b: &str) -> bool {
+    dialed(a).is_some_and(|a| dialed(b).as_ref() == Some(&a))
 }
 /// A phone number as two are told apart: its last `PHONE_DIGITS_COMPARED` digits, without its
 /// country code or punctuation; none with fewer than `FEWEST_PHONE_DIGITS`.

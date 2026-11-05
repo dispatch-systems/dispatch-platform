@@ -58,6 +58,7 @@ pub fn conversations(
             number: None,
             driver_id: None,
             contact: false,
+            added: false,
             blocked: false,
             state: conversation.state,
             waiting_since: conversation.waiting_since,

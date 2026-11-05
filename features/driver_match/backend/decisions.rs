@@ -15,8 +15,9 @@ use dispatch_core::{
 use rusqlite::params;
 
 /// Makes two people one: `code`'s IDs move to `into`, and `code` leads to `into` from now
-/// on. Whom `code` was kept apart from, `into` is kept apart from, and the role someone gave
-/// `code` goes to `into` unless they have one, audited with the merge.
+/// on. Whom `code` was kept apart from, `into` is kept apart from, the role someone gave `code`
+/// goes to `into` unless they have one, audited with the merge, and the numbers someone added to
+/// `code` go to `into`.
 pub(super) fn merge(store: &Store, c: &Context, code: &str, into: &str) -> Result<()> {
     ensure(
         valid_code(code) && valid_code(into) && code != into,
@@ -64,6 +65,10 @@ pub(super) fn merge(store: &Store, c: &Context, code: &str, into: &str) -> Resul
             params![into, code],
         )? == 1;
         db.exec("DELETE FROM person_roles WHERE code=?", [code])?;
+        db.exec(
+            "UPDATE person_phones SET code=?1 WHERE code=?2",
+            params![into, code],
+        )?;
         Ok(given.filter(|_| moved))
     })?;
     drop(db);
@@ -233,7 +238,7 @@ fn given_role(db: &Db, code: &str) -> Result<Option<GivenRole>> {
 
 /// Answers whether `code` is a person who still holds their IDs; a decision about anyone
 /// else was made on what has since changed.
-fn current(db: &Db, code: &str) -> Result<()> {
+pub(super) fn current(db: &Db, code: &str) -> Result<()> {
     ensure(
         db.count(
             "SELECT count(*) FROM people WHERE code=? AND merged_into IS NULL",
@@ -257,7 +262,7 @@ fn apart(db: &Db, a: &str, b: &str, at: &str, actor: Option<&str>) -> Result<()>
 
 /// Audits a decision about the person `code`: `detail` says what happened by codes, and
 /// `target` names the codes the activity log puts today's names to.
-fn audited(
+pub(super) fn audited(
     store: &Store,
     c: &Context,
     action: &str,

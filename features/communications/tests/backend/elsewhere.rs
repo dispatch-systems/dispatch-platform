@@ -23,6 +23,7 @@ async fn the_work_chip_goes_to_the_id_with_a_work_phone_now_not_an_earlier_alias
         ids: BTreeMap::from([(DRIVERS, vec!["A1".into(), "A2".into()])]),
         emails: Vec::new(),
         phones: vec!["(253) 555-0177".into()],
+        added_phones: Vec::new(),
         confirmed: true,
         photo: None,
     };
@@ -81,6 +82,7 @@ async fn many_ids(state: &Arc<State>, dsp: &str) -> (Person, String, String) {
         ids: BTreeMap::from([(DRIVERS, ids.clone())]),
         emails: Vec::new(),
         phones: vec!["(253) 555-0177".into()],
+        added_phones: Vec::new(),
         confirmed: true,
         photo: None,
     };

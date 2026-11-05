@@ -77,6 +77,7 @@ fn person(code: &str, name: &str, phone: &str) -> Person {
         ids: BTreeMap::new(),
         emails: Vec::new(),
         phones: vec![phone.into()],
+        added_phones: Vec::new(),
         confirmed: true,
         photo: None,
     }

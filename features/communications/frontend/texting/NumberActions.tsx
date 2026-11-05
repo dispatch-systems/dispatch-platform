@@ -1,20 +1,24 @@
-import { Copy, Ellipsis, Phone, PhoneOff } from 'lucide-react';
-import type { Conversation } from '../../api/index.js';
-import { blockNumber } from '../../api/client.js';
+import { Copy, Ellipsis, Phone, PhoneOff, UserMinus } from 'lucide-react';
+import type { Conversation, RouteDriver } from '../../api/index.js';
+import { blockNumber, removeFromPerson } from '../../api/client.js';
 import { toClipboard } from '../../../../core/shell/frontend/runtime/clipboard.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { Popover } from '../../../../core/shell/frontend/ui/index.js';
 import { SaveContact } from './SaveContact.js';
 import './number-actions.css';
 
-// What someone at the DSP does with the number a conversation texts: save a name for it, shared
-// with everyone at the DSP, while Driver Match knows no one by it; copy it; block or unblock it.
+// What someone at the DSP does with the number a conversation texts: add it to a driver or save a
+// name for it, shared with everyone at the DSP, while Driver Match knows no one by it; take it off
+// the driver it was added to; copy it; block or unblock it.
 
 export function NumberActions({
   conversation,
+  drivers,
   show,
 }: {
   conversation: Conversation;
+  /** Today's drivers, listed first to add the number to. */
+  drivers: readonly RouteDriver[];
   /** Shows the conversation as the page's own writes left it. */
   show: (conversation: Conversation) => void;
 }) {
@@ -24,9 +28,14 @@ export function NumberActions({
   const block = useAction(async (blocked: boolean) =>
     show(await blockNumber(conversation.id, blocked)),
   );
+  const remove = useAction(async (code: string) =>
+    show(await removeFromPerson(conversation.id, code)),
+  );
   return (
     <>
-      {!conversation.with.code && <SaveContact conversation={conversation} show={show} />}
+      {!conversation.with.code && (
+        <SaveContact conversation={conversation} drivers={drivers} show={show} />
+      )}
       <Popover
         className="number-menu"
         triggerClassName="number-menu-button"
@@ -37,6 +46,12 @@ export function NumberActions({
           <Copy size={15} />
           Copy number
         </button>
+        {conversation.added && conversation.with.code && (
+          <button onClick={() => void remove.run(conversation.with.code!)}>
+            <UserMinus size={15} />
+            Remove from {conversation.with.name}
+          </button>
+        )}
         {conversation.blocked ? (
           <button onClick={() => void block.run(false)}>
             <Phone size={15} />

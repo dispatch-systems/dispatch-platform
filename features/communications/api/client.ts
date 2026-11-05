@@ -29,6 +29,7 @@ import type {
   Profile,
   SentMessage,
   TextContacts,
+  TextPeople,
   TodaysRoutes,
 } from './index.js';
 
@@ -46,6 +47,8 @@ const wording: Readonly<Record<string, string>> = {
   communications_work_phone_changed: 'This driver has another work phone now.',
   communications_routes_over: "Today's routes are over.",
   communications_driver_not_found: "This driver isn't on today's routes.",
+  driver_match_phone_taken: "This number is already someone else's.",
+  person_changed: 'This person changed. Refresh the page and try again.',
   phones_none: 'No phone is paired to send from.',
   phones_not_found: "That phone isn't paired anymore. Refresh the page.",
   phones_text_not_found: "That text can't be sent again.",
@@ -158,6 +161,15 @@ export const retryText = (id: string, message: string) =>
 /** Saves a name for the number a conversation texts. */
 export const saveContact = (id: string, name: string) =>
   api<Conversation>(`${communicationsUrl}/conversations/${id}/contact`, { name });
+/** Adds the number a conversation texts to the person `code`'s. */
+export const addToPerson = (id: string, code: string) =>
+  api<Conversation>(`${communicationsUrl}/conversations/${id}/person`, { code });
+/** Takes the number a conversation texts off the person `code`, whom it was added to. */
+export const removeFromPerson = (id: string, code: string) =>
+  api<Conversation>(`${communicationsUrl}/conversations/${id}/person/remove`, { code });
+/** Everyone Driver Match knows who hasn't left, whom a number can be added to, read while Save
+ * contact is open. */
+export const useTextPeople = () => useCachedData<TextPeople>(`${communicationsUrl}/texts/people`);
 /** Blocks the number a conversation texts, or unblocks it. */
 export const blockNumber = (id: string, blocked: boolean) =>
   api<Conversation>(

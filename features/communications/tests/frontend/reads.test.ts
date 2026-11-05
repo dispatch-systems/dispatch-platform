@@ -13,6 +13,7 @@ const read = (id: string): ConversationMessages => ({
     number: '+14255550199',
     driverId: null,
     contact: false,
+    added: false,
     blocked: false,
     with: { userId: null, name: id, code: null, role: null, title: null, photo: null },
     state: 'responded',

@@ -218,15 +218,19 @@ from people who may or may not work for the DSP.
   photo; else by the name the DSP saved for it; else the number, `(425) 555-0199`, by a phone.
 - **Messages:** in Recents, among every section's, with Search finding them by name, misspelt or
   not, or by a number's digits; a blocked number's isn't listed.
-- **Contacts:** Recents', while the DSP texts: everyone Driver Match has a phone number for who hasn't left, by their first, and
+- **Contacts:** Recents', while the DSP texts: everyone Driver Match has a phone number for who hasn't left, by each number they have, and
   every number the DSP saved a name for, each number once, A to Z, each with its number and how
   long it has waited or when it was last written in, opening its conversation or starting one;
   found by a name or digits typed. Then **Blocked**, each number blocked with Unblock.
 - **A conversation:** who it's with, their number while it isn't their name, and while it waits
   how long and Done; **Save contact** (Edit contact once saved), while Driver Match knows no one
-  by the number: a name, up to 80 characters, shared by everyone at the DSP, never left changed
-  and unsaved without Save changes? asking to save or discard it, and closed by Escape with focus
-  back on its button; its menu, **Copy
+  by the number: **Add to driver**, the number added to someone Driver Match knows who hasn't
+  left, today's drivers first, found by name, so its texts are theirs everywhere people are shown
+  (`people::add_phone`: Driver Match keeps it, beside their sources' numbers; one person may have
+  several, and each number keeps its own conversation); or **New contact**, a name, up to 80
+  characters, shared by everyone at the DSP. A driver picked or a name changed is never left
+  unsaved without Save changes? asking to save or discard it, and Escape closes it with focus
+  back on its button. Its menu: **Remove from** whoever the number was added to, **Copy
   number** and **Block** or **Unblock**. A number blocked leaves Messages and the counts, and
   what it sends while blocked never makes it wait, then or once unblocked; its texts are still
   kept. Its texts as Slack's messages show, the other party's by their face or a phone; the DSP's
@@ -566,7 +570,8 @@ the page's layout and the variables its parts draw by.
   whom a message goes to), and what opens one (`target.ts`).
 - `slack/`, with `groups/`: Slack's contacts and workspaces, New message, Copy chat link and
   setting Slack up; messaging a group.
-- `texting/`: Recents' text contacts, a number's actions and Save contact, and phones offline;
+- `texting/`: Recents' text contacts, a number's actions and Save contact (Add to driver or a
+  name), and phones offline;
   `texting/phone/`, the phones' card on DSP Connections, Add phone and Rename phone.
 - `todays-routes/`: Today's Routes' read, list and board, a route's facts, a driver's workdays,
   Pick driver and No work phone.
