@@ -54,7 +54,7 @@ fn pass(state: Arc<State>, due: bool) -> Upkeep {
         for dsp in dsps {
             let at = dsp.clone();
             let tidied = state
-                .run_scoped(dsp.clone(), DOMAIN, move |db| {
+                .run_serving(dsp.clone(), DOMAIN, move |db| {
                     let_go(db, &at, db::now() - UNSENT_MS);
                     Ok(())
                 })

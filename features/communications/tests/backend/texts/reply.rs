@@ -130,7 +130,8 @@ async fn an_answer_that_failed_leaves_it_waiting_and_retry_sends_it_again() {
 }
 
 #[tokio::test]
-async fn an_answer_its_offline_phone_never_came_for_fails_as_it_expires_and_it_waits_again() {
+async fn an_answer_its_offline_phone_never_came_for_fails_as_it_expires_and_it_waits_again_unless_disabled()
+ {
     let (_root, state, dsp) = support::started();
     let asked = texted(&state, &dsp, "+12535550177", "Which door?", now() - 60_000).await;
     let conversation = filed(&state, &dsp, &asked).await.id;
@@ -145,6 +146,16 @@ async fn an_answer_its_offline_phone_never_came_for_fails_as_it_expires_and_it_w
         .await
         .unwrap();
     assert_eq!(state_of().await.unwrap(), ConversationState::Responded);
+    // Disabled as the minute's upkeep came to it, nothing of it changes until it's enabled.
+    let status = |status: &'static str| {
+        let at = dsp.clone();
+        state.run(move |db| dispatch_core::testing::set_dsp_status(db, &at, status))
+    };
+    status("suspended").await.unwrap();
+    let refused = expire(&state, &dsp, now() + EXPIRY_MS).await;
+    assert_eq!(refused.unwrap_err().code, "dsp_unavailable");
+    assert_eq!(state_of().await.unwrap(), ConversationState::Responded);
+    status("active").await.unwrap();
     expire(&state, &dsp, now() + EXPIRY_MS).await.unwrap();
     let (at, id) = (dsp.clone(), answer.id.clone());
     let failed = state

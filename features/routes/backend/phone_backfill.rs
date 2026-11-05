@@ -48,7 +48,7 @@ pub(super) async fn extract(state: &Arc<State>, dsp: &str) -> Result<()> {
         };
         let (d, publication) = (dsp.to_owned(), s(&row, "id").to_owned());
         let kept = state
-            .run_scoped(dsp, DOMAIN, move |db| {
+            .run_serving(dsp, DOMAIN, move |db| {
                 let routes = db.routes_db(&d)?;
                 routes.transaction(|| {
                     // Still the day's read, shaped as it was read: one since, or a reprocess, wins.

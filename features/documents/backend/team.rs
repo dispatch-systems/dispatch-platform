@@ -204,6 +204,9 @@ pub async fn sync(state: &Arc<State>, dsp: &str) -> Result<Vec<Share>> {
     let dev = state.config.env().is_preview();
     state
         .run(move |db| {
+            // Disabled meanwhile, it keeps what it had, and the next sync once it's enabled
+            // finds the folder's shares as they are.
+            db.ensure_dsp_active(&at)?;
             for person in &changed {
                 db.save_documents_person(&at, person)?;
             }

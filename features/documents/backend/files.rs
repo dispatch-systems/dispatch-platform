@@ -86,11 +86,12 @@ pub(crate) struct Drive {
     pub access: String,
 }
 /// The DSP's connection as Dispatch keeps it, with its refresh token: none once it's gone or
-/// broken.
+/// broken, nor while the DSP is disabled, so nothing reaches its Drive then.
 async fn connected(state: &Arc<State>, dsp: &str) -> Result<(Connection, String)> {
     let at = dsp.to_owned();
     let (connection, refresh) = state
         .read(move |db| {
+            db.ensure_dsp_active(&at)?;
             Ok((
                 db.documents_connection(&at)?,
                 db.documents_refresh_token(&at)?,

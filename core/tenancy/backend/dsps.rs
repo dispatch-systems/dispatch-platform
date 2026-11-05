@@ -149,11 +149,18 @@ impl Store {
         }
         Ok(())
     }
-    /// A DSP that may collect: active, and of the environment this backend serves.
+    /// A DSP that may collect, or have anything else act for it: active, and of the environment
+    /// this backend serves. Work in the background checks it again in the turn it acts in, so
+    /// work begun before the DSP was disabled does nothing after.
     pub fn ensure_dsp_active(&self, id: &str) -> Result<Dsp> {
         let dsp = self.find_dsp(id)?;
         ensure(self.serves(&dsp), "dsp_unavailable", 409)?;
         Ok(dsp)
+    }
+    /// Whether this backend serves the DSP `id`, as `ensure_dsp_active` asks: for upkeep to pass
+    /// over one disabled since the pass began.
+    pub fn serves_dsp(&self, id: &str) -> Result<bool> {
+        Ok(self.serves(&self.find_dsp(id)?))
     }
     pub fn serves(&self, dsp: &Dsp) -> bool {
         dsp.status == DspStatus::Active && dsp.environment == self.config.env()

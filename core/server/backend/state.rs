@@ -168,6 +168,23 @@ impl State {
         self.database(true, CacheChange::Tenant(dsp.into(), domain), f)
             .await
     }
+    /// A write in the DSP's data by work acting for it, as upkeep, as `run_scoped`: made only
+    /// while this backend serves the DSP, checked in the same turn, so work begun before the DSP
+    /// was disabled changes nothing of it after (`dsp_unavailable`).
+    pub async fn run_serving<T: Send + 'static>(
+        self: &Arc<Self>,
+        dsp: impl Into<String>,
+        domain: cache::DataDomain,
+        f: impl FnOnce(&db::Store) -> Result<T> + Send + 'static,
+    ) -> Result<T> {
+        let dsp = dsp.into();
+        let at = dsp.clone();
+        self.run_scoped(dsp, domain, move |db| {
+            db.ensure_dsp_active(&at)?;
+            f(db)
+        })
+        .await
+    }
     /// Runs a claimed job's work. Its database calls wait their turn for up to a minute, where
     /// a request's are turned away with `platform_busy` after two seconds: a job has no one to
     /// try again for it, and a refusal would cost it an attempt.

@@ -30,13 +30,13 @@ fn failed(dsp: Option<&str>, error: &Error) {
 }
 
 // Reading every collection takes the shared lock; only the writes take the platform lock,
-// briefly.
+// briefly, and only while the DSP is still served.
 async fn assign(state: &Arc<State>, dsp: String) -> Result<()> {
     let reading = dsp.clone();
     let found = state.read(move |db| db.read_pass(&reading)).await?;
     let tenant = dsp.clone();
     state
-        .run_scoped(dsp, super::DOMAIN, move |db| db.write_pass(&tenant, found))
+        .run_serving(dsp, super::DOMAIN, move |db| db.write_pass(&tenant, found))
         .await?;
     Ok(())
 }

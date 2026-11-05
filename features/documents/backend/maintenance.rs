@@ -44,7 +44,8 @@ fn follow(state: Arc<State>, due: bool) -> Upkeep {
                     let selected = dsp.clone();
                     let changed = state
                         .read(move |db| {
-                            Ok(db.feature_enabled(&selected, "documents")?
+                            Ok(db.serves_dsp(&selected)?
+                                && db.feature_enabled(&selected, "documents")?
                                 && db
                                     .documents_connection(&selected)?
                                     .is_some_and(|c| !c.broken)
@@ -87,7 +88,8 @@ fn check(state: Arc<State>, due: bool) -> Upkeep {
                     let selected = dsp.clone();
                     let token = state
                         .read(move |db| {
-                            if db.feature_enabled(&selected, "documents")?
+                            if db.serves_dsp(&selected)?
+                                && db.feature_enabled(&selected, "documents")?
                                 && db
                                     .documents_connection(&selected)?
                                     .is_some_and(|c| !c.broken)
