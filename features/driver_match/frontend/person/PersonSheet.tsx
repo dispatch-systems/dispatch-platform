@@ -65,7 +65,9 @@ export function PersonSheet({
               <RolePicker key={data.person.given ?? ''} person={data.person} />
             )}
             <SheetIds person={data.person} today={today} onSplit={setSplitting} />
-            {data.addedPhones.length > 0 && <AddedPhones phones={data.addedPhones} />}
+            {data.addedPhones.length > 0 && (
+              <AddedPhones code={data.person.code} phones={data.addedPhones} />
+            )}
             <Appears data={data} />
             {data.days.length > 0 && (
               <section className="driver-sheet-section" aria-labelledby="driver-days">
@@ -105,8 +107,8 @@ export function PersonSheet({
 }
 
 /** The phone numbers someone added to theirs, beside their sources', each taken off by Remove. */
-function AddedPhones({ phones }: { phones: string[] }) {
-  const remove = useAction(removePhone, {
+function AddedPhones({ code, phones }: { code: string; phones: string[] }) {
+  const remove = useAction((phone: string) => removePhone(code, phone), {
     inline: true,
     success: (phone) => `${phoneText(phone)} is removed`,
   });

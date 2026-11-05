@@ -193,10 +193,11 @@ pub fn photo(store: &Store, dsp: &str, code: &str) -> Result<Option<Photo>> {
 pub fn add_phone(store: &Store, c: &Context, code: &str, number: &str) -> Result<()> {
     directory()?.add_phone(store, c, code, number)
 }
-/// Takes the phone number `number` off whoever someone added it to, as the member `c` decided,
-/// through the directory; refused in a build without one.
-pub fn remove_phone(store: &Store, c: &Context, number: &str) -> Result<()> {
-    directory()?.remove_phone(store, c, number)
+/// Takes the phone number `number` off the person `code`, whom someone added it to, as the member
+/// `c` decided, through the directory: refused once it's someone else's, and in a build without
+/// one.
+pub fn remove_phone(store: &Store, c: &Context, code: &str, number: &str) -> Result<()> {
+    directory()?.remove_phone(store, c, code, number)
 }
 /// The build's directory, or `not_found` without one.
 fn directory() -> Result<&'static dyn Directory> {

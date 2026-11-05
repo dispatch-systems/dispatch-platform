@@ -29,10 +29,11 @@ pub trait Directory: Sync {
         let _ = (store, c, code, number);
         Err(Error::new("not_found", 404))
     }
-    /// Takes the phone number `number` off whoever someone added it to, as the member `c`
-    /// decided; the numbers their sources have stay.
-    fn remove_phone(&self, store: &Store, c: &Context, number: &str) -> Result<()> {
-        let _ = (store, c, number);
+    /// Takes the phone number `number` off the person `code`, whom someone added it to, as the
+    /// member `c` decided: refused once it's someone else's. The numbers their sources have
+    /// stay.
+    fn remove_phone(&self, store: &Store, c: &Context, code: &str, number: &str) -> Result<()> {
+        let _ = (store, c, code, number);
         Err(Error::new("not_found", 404))
     }
 }

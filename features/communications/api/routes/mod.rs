@@ -96,6 +96,11 @@ pub fn routes() -> Vec<Route> {
             texts::add_to_person,
         ),
         write(
+            "/api/dsp/communications/conversations/{id}/person/remove",
+            USE,
+            texts::remove_from_person,
+        ),
+        write(
             "/api/dsp/communications/conversations/{id}/block",
             USE,
             texts::block,

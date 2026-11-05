@@ -84,14 +84,24 @@ pub(super) fn add(store: &Store, c: &Context, code: &str, number: &str) -> Resul
     )
 }
 
-/// Takes `number` off whoever someone added it to, however it's written, as the member `c`
-/// decided; `not_found` when no one has it added.
-pub(super) fn remove(store: &Store, c: &Context, number: &str) -> Result<()> {
+/// Takes `number` off the person `code`, whom someone added it to, however it's written, as the
+/// member `c` decided: `not_found` when no one has it added, and `person_changed` once it's
+/// someone else's, as a sheet or conversation read before it moved shows it as `code`'s. A merged
+/// code answers for whoever kept their IDs.
+pub(super) fn remove(store: &Store, c: &Context, code: &str, number: &str) -> Result<()> {
+    ensure(valid_code(code), "invalid_input", 400)?;
     let dsp = c.dsp.id.as_str();
     let everyone = Directory.everyone(store, dsp)?;
     let person = everyone
         .added(number)
         .ok_or_else(|| Error::new("not_found", 404))?;
+    ensure(
+        everyone
+            .person(code)
+            .is_some_and(|chosen| chosen.code == person.code),
+        "person_changed",
+        409,
+    )?;
     let code = person.code.clone();
     // The number as it was added, which `added` found it by.
     let removed: Vec<String> = person

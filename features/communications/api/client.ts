@@ -161,10 +161,12 @@ export const retryText = (id: string, message: string) =>
 /** Saves a name for the number a conversation texts. */
 export const saveContact = (id: string, name: string) =>
   api<Conversation>(`${communicationsUrl}/conversations/${id}/contact`, { name });
-/** Adds the number a conversation texts to the person `code`'s, or with `null` takes it off
- * whoever it was added to. */
-export const addToPerson = (id: string, code: string | null) =>
+/** Adds the number a conversation texts to the person `code`'s. */
+export const addToPerson = (id: string, code: string) =>
   api<Conversation>(`${communicationsUrl}/conversations/${id}/person`, { code });
+/** Takes the number a conversation texts off the person `code`, whom it was added to. */
+export const removeFromPerson = (id: string, code: string) =>
+  api<Conversation>(`${communicationsUrl}/conversations/${id}/person/remove`, { code });
 /** Everyone Driver Match knows who hasn't left, whom a number can be added to, read while Save
  * contact is open. */
 export const useTextPeople = () => useCachedData<TextPeople>(`${communicationsUrl}/texts/people`);

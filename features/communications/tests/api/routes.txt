@@ -36,6 +36,7 @@ POST /api/dsp/communications/conversations/{id}/driver Dsp("communications.use")
 POST /api/dsp/communications/conversations/{id}/messages Dsp("communications.use") Async
 POST /api/dsp/communications/conversations/{id}/messages/{message}/retry Dsp("communications.use") Async
 POST /api/dsp/communications/conversations/{id}/person Dsp("communications.use") Write
+POST /api/dsp/communications/conversations/{id}/person/remove Dsp("communications.use") Write
 POST /api/dsp/communications/conversations/{id}/typing Dsp("communications.use") Async
 POST /api/dsp/communications/conversations/{id}/unblock Dsp("communications.use") Scoped(DataDomain("communications"))
 POST /api/dsp/communications/groups Dsp("communications.use") Async

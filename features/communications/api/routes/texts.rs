@@ -4,7 +4,7 @@
 use super::texting_id;
 use crate::backend::{model::Reference, phone::numbers::NUMBER_MOST, texts};
 use dispatch_core::{
-    Error, Result, State,
+    Result, State,
     db::Store,
     ensure,
     foundation::validate as v,
@@ -45,22 +45,25 @@ pub(super) fn save_contact(db: &Store, c: &Member, input: &Input) -> Result<Repl
         c.actor(),
     )?)
 }
-/// Adds the number of a conversation by text to the person `code`'s, or with `null` takes it off
-/// whoever someone added it to.
+/// Adds the number of a conversation by text to the person `code`'s.
 pub(super) fn add_to_person(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    person(db, c, input, true)
+}
+/// Takes the number of a conversation by text off the person `code`, whom it was added to.
+pub(super) fn remove_from_person(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    person(db, c, input, false)
+}
+fn person(db: &Store, c: &Member, input: &Input, added: bool) -> Result<Reply> {
     v::fields(&input.body, &["code"])?;
     let conversation = texted(input)?;
-    let code = match input.body.get("code") {
-        Some(serde_json::Value::Null) => None,
-        Some(_) => Some(v::text(&input.body, "code", 6, 6)?),
-        None => return Err(Error::new("invalid_input", 400)),
-    };
+    let code = v::text(&input.body, "code", 6, 6)?;
     Reply::of(&texts::contacts::add_to_person(
         db,
         c.state,
         c,
         &conversation,
         code,
+        added,
     )?)
 }
 /// Everyone Driver Match knows who hasn't left, whom a number can be added to.

@@ -63,6 +63,7 @@
         "POST /api/dsp/communications/conversations/{id}/messages/{message}/retry",
         "POST /api/dsp/communications/conversations/{id}/contact",
         "POST /api/dsp/communications/conversations/{id}/person",
+        "POST /api/dsp/communications/conversations/{id}/person/remove",
         "POST /api/dsp/communications/conversations/{id}/block",
         "POST /api/dsp/communications/conversations/{id}/unblock",
         "POST /api/dsp/communications/texts/conversations",

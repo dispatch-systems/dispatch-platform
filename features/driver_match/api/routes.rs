@@ -96,11 +96,16 @@ fn give_role(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     db.give_role(c, v::text(b, "code", 6, 6)?, given)?;
     Ok(Reply::ok())
 }
-/// The phone number `phone` someone added to a person is taken off them.
+/// The phone number `phone` someone added to `code` is taken off them.
 fn remove_phone(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     let b = &input.body;
-    v::fields(b, &["phone"])?;
-    people::remove_phone(db, c, v::text(b, "phone", 1, 32)?)?;
+    v::fields(b, &["code", "phone"])?;
+    people::remove_phone(
+        db,
+        c,
+        v::text(b, "code", 6, 6)?,
+        v::text(b, "phone", 1, 32)?,
+    )?;
     Ok(Reply::ok())
 }
 fn apart(db: &Store, c: &Member, input: &Input) -> Result<Reply> {

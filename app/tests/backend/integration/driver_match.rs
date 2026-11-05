@@ -737,9 +737,15 @@ fn a_number_added_is_the_persons_and_follows_them_into_a_merge() {
         ["+12065550188"]
     );
 
-    people::remove_phone(&db, &context, "206-555-0188").unwrap();
+    // Taken off someone it isn't theirs, as a sheet read before it moved does, it stays.
+    let taylor = code(&before, AMAZON, "TTAYLOR");
+    let stale = people::remove_phone(&db, &context, &taylor, "2065550188").unwrap_err();
+    assert_eq!(stale.code, "person_changed");
+    assert_eq!(holder("2065550188"), [antonio.clone()]);
+    // Their code before the merge still names them.
+    people::remove_phone(&db, &context, &tony, "206-555-0188").unwrap();
     assert!(holder("2065550188").is_empty());
-    let again = people::remove_phone(&db, &context, "2065550188").unwrap_err();
+    let again = people::remove_phone(&db, &context, &antonio, "2065550188").unwrap_err();
     assert_eq!(again.code, "not_found");
 }
 

@@ -48,8 +48,8 @@ impl people::Directory for Directory {
     fn add_phone(&self, store: &Store, c: &Context, code: &str, number: &str) -> Result<()> {
         phones::add(store, c, code, number)
     }
-    fn remove_phone(&self, store: &Store, c: &Context, number: &str) -> Result<()> {
-        phones::remove(store, c, number)
+    fn remove_phone(&self, store: &Store, c: &Context, code: &str, number: &str) -> Result<()> {
+        phones::remove(store, c, code, number)
     }
 }
 

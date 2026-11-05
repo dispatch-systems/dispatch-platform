@@ -153,19 +153,21 @@ pub fn addable(db: &Store, state: &State, dsp: &str) -> Result<TextPeople> {
 }
 
 /// Adds the number of the conversation `id` to the person `code`'s, as the member `c` decided,
-/// or with none takes it off whoever someone added it to.
+/// or with `added` false takes it off them, refused once it's someone else's.
 pub fn add_to_person(
     db: &Store,
     state: &State,
     c: &Context,
     id: &str,
-    code: Option<&str>,
+    code: &str,
+    added: bool,
 ) -> Result<Conversation> {
     let dsp = c.dsp.id.as_str();
     let number = numbered(db, dsp, id)?;
-    match code {
-        Some(code) => add_phone(db, c, code, &number)?,
-        None => remove_phone(db, c, &number)?,
+    if added {
+        add_phone(db, c, code, &number)?;
+    } else {
+        remove_phone(db, c, code, &number)?;
     }
     db.communications_number_changed(dsp, &number)?;
     live::changed(state, dsp);

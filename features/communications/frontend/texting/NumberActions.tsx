@@ -1,6 +1,6 @@
 import { Copy, Ellipsis, Phone, PhoneOff, UserMinus } from 'lucide-react';
 import type { Conversation, RouteDriver } from '../../api/index.js';
-import { addToPerson, blockNumber } from '../../api/client.js';
+import { blockNumber, removeFromPerson } from '../../api/client.js';
 import { toClipboard } from '../../../../core/shell/frontend/runtime/clipboard.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { Popover } from '../../../../core/shell/frontend/ui/index.js';
@@ -28,7 +28,9 @@ export function NumberActions({
   const block = useAction(async (blocked: boolean) =>
     show(await blockNumber(conversation.id, blocked)),
   );
-  const remove = useAction(async () => show(await addToPerson(conversation.id, null)));
+  const remove = useAction(async (code: string) =>
+    show(await removeFromPerson(conversation.id, code)),
+  );
   return (
     <>
       {!conversation.with.code && (
@@ -44,8 +46,8 @@ export function NumberActions({
           <Copy size={15} />
           Copy number
         </button>
-        {conversation.added && (
-          <button onClick={() => void remove.run()}>
+        {conversation.added && conversation.with.code && (
+          <button onClick={() => void remove.run(conversation.with.code!)}>
             <UserMinus size={15} />
             Remove from {conversation.with.name}
           </button>

@@ -20,8 +20,8 @@ type Saving = 'driver' | 'contact';
  * Save contact, or Edit contact once a name is saved: the number added to someone Driver Match
  * knows, today's drivers first, or a name saved for it. It closes on Cancel, Escape (focus going
  * back to the button), a press anywhere else or the button again. A driver picked or a name
- * changed and not saved is never just closed: it asks "Save changes?" with only Save and Discard
- * first, as the role sheet does.
+ * changed and not saved, in either tab, is never just closed: it asks "Save changes?" with only
+ * Save and Discard first, as the role sheet does, saving the open tab's, else the other's.
  */
 export function SaveContact({
   conversation,
@@ -39,16 +39,23 @@ export function SaveContact({
   const [picked, setPicked] = useState<Correspondent>();
   const [name, setName] = useState(saved);
   const [confirming, setConfirming] = useState(false);
-  const changed = saving === 'driver' ? picked !== undefined : name.trim() !== saved;
+  // Each tab's draft, kept while the other is open, so neither is lost unasked.
+  const dirty: Record<Saving, boolean> = {
+    driver: picked !== undefined,
+    contact: name.trim() !== saved,
+  };
+  const changed = dirty.driver || dirty.contact;
+  // What Save changes? saves: the open tab's draft, else the other's.
+  const unsaved: Saving = dirty[saving] ? saving : saving === 'driver' ? 'contact' : 'driver';
   const closed = () => {
     setOpen(false);
     setPicked(undefined);
     setConfirming(false);
   };
   const leave = () => (changed ? setConfirming(true) : closed());
-  const save = useAction(async () => {
+  const save = useAction(async (which: Saving) => {
     show(
-      saving === 'driver'
+      which === 'driver'
         ? await addToPerson(conversation.id, picked!.code!)
         : await saveContact(conversation.id, name.trim()),
     );
@@ -56,7 +63,8 @@ export function SaveContact({
   });
   // Its words, which on a phone only its mark shows.
   const label = conversation.contact ? 'Edit contact' : 'Save contact';
-  const saveable = (saving === 'driver' ? Boolean(picked) : Boolean(name.trim())) && !save.busy;
+  const saveable = (which: Saving) =>
+    (which === 'driver' ? Boolean(picked) : Boolean(name.trim())) && !save.busy;
   return (
     <>
       <Popover
@@ -82,7 +90,7 @@ export function SaveContact({
             className="contact-form"
             onSubmit={(event) => {
               event.preventDefault();
-              if (saveable) void save.run();
+              if (saveable(saving)) void save.run(saving);
             }}
           >
             <Segments
@@ -111,7 +119,7 @@ export function SaveContact({
               <button type="button" onClick={leave}>
                 Cancel
               </button>
-              <button type="submit" className="primary" disabled={!saveable}>
+              <button type="submit" className="primary" disabled={!saveable(saving)}>
                 {saving === 'driver' ? 'Add' : 'Save'}
               </button>
             </div>
@@ -127,9 +135,9 @@ export function SaveContact({
             <button
               type="button"
               className="primary"
-              disabled={!saveable}
+              disabled={!saveable(unsaved)}
               onClick={async () => {
-                if (!(await save.run())) setConfirming(false);
+                if (!(await save.run(unsaved))) setConfirming(false);
               }}
             >
               Save changes
