@@ -14,6 +14,12 @@ import urllib.parse
 
 
 REMOTE_REPOSITORIES = ("azure:", "b2:", "gs:", "rclone:", "rest:", "s3:", "sftp:", "swift:")
+# Production's snapshots, which every run tags alike: each snapshots a folder of its own, so they're
+# grouped by host and tag, not by path, for retention to see them as one series.
+SNAPSHOTS = ("--host", "dispatch-production", "--tag", "dispatch-production")
+# The last snapshot of each day for 30 days before the newest, so what's deleted from Production, a
+# DSP deleted included, is gone from its backups within 30 days.
+RETENTION = ("--group-by", "host,tags", "--keep-within-daily", "30d", "--prune")
 
 
 def absolute_path(environment, name):
@@ -148,8 +154,7 @@ def backup(settings):
         os.chmod(working, 0o700)
         run_backend(settings, ["backup", source])
         result = run(
-            [settings.restic, "backup", "--json", "--host", "dispatch-production",
-             "--tag", "dispatch-production", source],
+            [settings.restic, "backup", "--json", *SNAPSHOTS, source],
             environment=restic_env, capture=True,
         )
         identifier = snapshot_id(result.stdout)
@@ -174,12 +179,20 @@ def backup(settings):
         shutil.rmtree(working)
 
 
+def retain(settings):
+    """Lets go of the snapshots past `RETENTION`: run only once a new one restored."""
+    run([settings.restic, "forget", *SNAPSHOTS, *RETENTION],
+        environment=restic_environment(settings))
+
+
 def main():
     step = "configuration"
     try:
         settings = Settings()
         step = "backup_and_restore_drill"
         backup(settings)
+        step = "retention"
+        retain(settings)
         print(json.dumps({"event": "production.backup_verified"}, separators=(",", ":")))
     except (OSError, ValueError, subprocess.SubprocessError):
         # Repository locations, credentials, paths and command output stay out of the journal.
