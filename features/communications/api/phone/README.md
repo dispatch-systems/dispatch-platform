@@ -212,9 +212,12 @@ phone fetches to install the app or update it, and which the Phones card links t
 
 A call that fails without an answer, or with a `5xx`, is safe to make again: reports and statuses
 are idempotent, and a file's bytes replace themselves. The app tries again with a growing pause,
-and gives up on nothing: a text only fails once its phone says so; once it's removed, when every
-text waiting on it fails with `phones_removed` as its error; or once it expires on a phone
-offline, with `phones_offline`.
+and gives up only on what Dispatch would refuse again however often it's sent: a text or status
+refused alone, and a file's bytes refused but while the DSP or Communications is away
+(`sign_in_required`, `phones_off`) or for `upload_incomplete`. A text only fails once its phone
+says so, as after its pictures couldn't be fetched five times in a row or past its `expires`
+(`expired`); once it's removed, when every text waiting on it fails with `phones_removed` as its
+error; or once it expires on a phone offline, with `phones_offline`.
 
 Pairing alone isn't safe to make again. Its code works once, and Dispatch keeps only the SHA-256
 of the key it answers, so a pairing whose answer was lost may have paired a phone whose key was

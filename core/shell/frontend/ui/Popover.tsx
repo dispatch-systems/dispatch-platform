@@ -81,6 +81,8 @@ type PanelProps = Opener & {
   onRequestClose: () => void;
   /** The panel's class: it is a dialog, named as its trigger is. */
   panelClassName: string;
+  /** Whether its trigger can't be pressed. */
+  disabled?: boolean;
 };
 
 /**
@@ -197,6 +199,7 @@ function Panel({
   onRequestOpen,
   onRequestClose,
   panelClassName,
+  disabled,
 }: PanelProps) {
   const root = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
@@ -230,7 +233,9 @@ function Panel({
     <div ref={root} className={className}>
       <button
         ref={button}
+        type="button"
         className={triggerClassName}
+        disabled={disabled}
         aria-label={label}
         aria-expanded={open}
         onClick={() => (open ? onRequestClose() : onRequestOpen())}

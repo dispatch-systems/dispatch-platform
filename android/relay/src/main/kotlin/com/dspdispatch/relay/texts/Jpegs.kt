@@ -26,6 +26,11 @@ class Jpegs(private val folder: File, private val pictures: Pictures) : PartByte
         } catch (_: OutOfMemoryError) {
             // A picture too large for what memory the phone has: it goes as it is.
             null
+        } catch (lost: SecurityException) {
+            throw lost
+        } catch (_: RuntimeException) {
+            // A picture Android fails on in a way it doesn't say it may: it goes as it is too.
+            null
         } ?: return null
         val kept = File(folder.absoluteFile, "${file.id}$JPG")
         try {

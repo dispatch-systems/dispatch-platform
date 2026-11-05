@@ -4,8 +4,10 @@ import com.dspdispatch.relay.dispatch.AppVersion
 import com.dspdispatch.relay.dispatch.Dispatch
 import com.dspdispatch.relay.dispatch.Refusal
 import kotlinx.coroutines.test.runTest
+import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
+import mockwebserver3.RecordedRequest
 import okhttp3.OkHttpClient
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -65,6 +67,25 @@ class StatusesTest {
         )
         assertEquals(1, statuses.told.value)
         assertFalse(statuses.tell(site, KEY))
+    }
+
+    @Test
+    fun leavesAStatusDispatchRefusesAloneAndTellsTheRest() = runTest {
+        for ((at, id) in listOf("text_1", "text_bad", "text_3").withIndex()) {
+            sends.start(Send(id, 1, "+14255550199", "Hi", 1)).let { sends.failed(it, "No service", at.toLong()) }
+        }
+        val told = mutableListOf<String>()
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val ids = Regex(""""id":"(\w+)"""").findAll(request.body!!.utf8()).map { it.groupValues[1] }.toList()
+                if ("text_bad" in ids) return json(400, """{"error":"invalid_input"}""")
+                told += ids
+                return json(200, """{"ok":true}""")
+            }
+        }
+        while (statuses.tell(site, KEY)) continue
+        assertEquals(listOf("text_1", "text_3"), told)
+        assertTrue(sends.statuses(10).isEmpty())
     }
 
     private fun json(code: Int, body: String) =
