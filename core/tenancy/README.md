@@ -42,4 +42,7 @@ feature declares (`deleting`); then one transaction deletes every row of it in t
 database, each feature's and the agents' with core's, frees its short code and notes the delete
 in `dsp_deletions`; then its jobs and its folder go, and the note with them. A delete the server
 stopped partway through is finished by the next upkeep pass, as it starts too. A DSP's folder is
-made only as it's provisioned, so nothing makes it again once it's gone.
+made only as it's provisioned, so nothing makes it again once it's gone, and what's written of
+it elsewhere after, as its readers' records or agents' calls, finds it gone in the same turn and
+is never written. What another DSP holds of the people they shared, or who once belonged there,
+stays: their accounts, its log of them, and the invitations they sent there.
