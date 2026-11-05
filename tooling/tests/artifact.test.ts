@@ -42,6 +42,12 @@ test(
       fs.readFileSync(path.join(artifact, 'dashboard/LICENSE.txt'), 'utf8'),
       fs.readFileSync('LICENSE', 'utf8'),
     );
+    // Its dashboard serves the licenses of the libraries it bundles beside them.
+    const notices = await fetch(
+      new URL('/assets/THIRD-PARTY-LICENSES.txt', f.env.DISPATCH_ORIGIN!),
+    );
+    assert.equal(notices.status, 200);
+    assert.match(await notices.text(), /^## react - \S+ \(MIT\)\n\nMIT License\n\nCopyright/m);
     const { commit } = JSON.parse(
       fs.readFileSync(path.join(artifact, 'tooling/build-info.json'), 'utf8'),
     );
