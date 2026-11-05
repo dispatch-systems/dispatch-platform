@@ -13,11 +13,40 @@ mod delivery;
 pub mod templates;
 pub use delivery::mailer;
 
+/// Whether a waiting message of the outbox goes now: not while the DSP it names is disabled. It
+/// stays, unsent, and goes once the DSP is enabled; an invitation of one is discarded instead
+/// (`discard_stale`).
+const SENDABLE: &str =
+    "(dsp_id IS NULL OR dsp_id NOT IN (SELECT id FROM dsps WHERE status='suspended'))";
+
+/// The mail to send now, resets first, `most` at most, once what no longer stands is
+/// discarded: none held for a disabled DSP (`SENDABLE`).
+pub fn due(db: &Store, most: usize) -> Result<Vec<serde_json::Value>> {
+    discard_stale(db)?;
+    db.platform.all(
+        &format!(
+            "SELECT id,encrypted_message,attempts FROM outbox \
+             WHERE status='pending' AND available_at<=? AND {SENDABLE} \
+             ORDER BY CASE kind WHEN 'reset' THEN 0 ELSE 1 END,available_at LIMIT ?"
+        ),
+        params![db::now(), most as i64],
+    )
+}
+/// Whether the message `id`, picked to send, still goes: its DSP may have been disabled since.
+pub fn sendable(db: &Store, id: &str) -> Result<bool> {
+    Ok(db
+        .platform
+        .one(
+            &format!("SELECT 1 FROM outbox WHERE id=? AND {SENDABLE}"),
+            [id],
+        )?
+        .is_some())
+}
+
 /// Never send an expired, revoked or already consumed grant. Bound retained content. A
 /// notice about a connected app goes only to someone who is still an active platform owner,
-/// and what a feature writes a member only while the member's account is active. Nothing goes
-/// for a disabled DSP. What a message is for lives in the directory of the DSP it names, or the
-/// platform's.
+/// and what a feature writes a member only while the member's account is active. What a
+/// message is for lives in the directory of the DSP it names, or the platform's.
 pub fn discard_stale(db: &Store) -> Result<()> {
     db.platform.exec(
         "DELETE FROM outbox WHERE (status<>'pending' AND created_at<?1) OR \
@@ -46,9 +75,9 @@ pub fn discard_stale(db: &Store) -> Result<()> {
     Ok(())
 }
 
-/// Whether what a waiting message is for still stands: an open invitation, an unused reset
-/// of an active account, an active platform owner for a notice, and an active account for
-/// what a feature writes, each of a DSP still active when it names one.
+/// Whether what a waiting message is for still stands: an open invitation of an active DSP,
+/// an unused reset of an active account, an active platform owner for a notice, and an
+/// active account for what a feature writes.
 fn current(
     db: &Store,
     kind: Option<&str>,
@@ -60,14 +89,14 @@ fn current(
         db.find_dsp(dsp)
             .is_ok_and(|found| found.status == crate::tenancy::api::types::DspStatus::Active)
     };
-    // A DSP disabled, without its database, or no longer there, holds nothing a message is
-    // for.
-    let people = |dsp: Option<&str>| match dsp {
-        Some(dsp) if !active(dsp) => None,
-        dsp => db.directory(dsp).ok(),
-    };
+    // A DSP without its database, or no longer there, holds nothing a message is for.
+    let people = |dsp: Option<&str>| db.directory(dsp).ok();
     Ok(match kind {
-        Some("invitation") => match (invitation, dsp.and_then(|dsp| people(Some(dsp)))) {
+        Some("invitation") => match (
+            invitation,
+            dsp.filter(|dsp| active(dsp))
+                .and_then(|dsp| people(Some(dsp))),
+        ) {
             (Some(hash), Some(people)) => people
                 .one(
                     "SELECT 1 FROM invitations WHERE hash=? AND used_at IS NULL AND expires_at>?",
