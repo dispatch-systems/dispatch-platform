@@ -76,7 +76,7 @@ fn a_database_phones_migrated_upgrades_with_its_phone_its_waiting_text_and_its_p
     let fetched = db
         .phones_outgoing_file(&dsp, &phone.id, &picture.id)
         .unwrap()
-        .and_then(|file| file.sha256)
+        .and_then(|file| file.file.sha256)
         .expect("its picture, kept");
     let read = std::fs::read(kept(&db, &dsp).join(fetched)).unwrap();
     assert_eq!(read, bytes);

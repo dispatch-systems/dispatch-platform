@@ -10,7 +10,7 @@ use dispatch_core::{
     db::{self, Store},
     ensure,
     foundation::crypto,
-    server::http::upload::Upload,
+    server::http::{input::Reply, upload::Upload},
 };
 use futures_util::{Stream, StreamExt, stream};
 use sha2::{Digest, Sha256};
@@ -202,6 +202,21 @@ impl Folder {
             return Ok(None);
         };
         Ok(Some(Reading::of(file).await))
+    }
+}
+
+/// The version of the bytes `sha256` names, as an address carries it so the browser keeps them:
+/// enough of it that no two of a DSP's bytes share one.
+pub fn version(sha256: &str) -> String {
+    sha256.chars().take(16).collect()
+}
+/// `reply`, the bytes `sha256`, kept by the browser when the address asked for their version,
+/// `asked`: another version comes at another address.
+pub fn as_asked(reply: Reply, asked: Option<&str>, sha256: &str) -> Reply {
+    if asked.is_some_and(|asked| asked == version(sha256)) {
+        reply.kept()
+    } else {
+        reply
     }
 }
 

@@ -42,23 +42,28 @@ export function MessageBody({
  * it opens over the page at full size.
  */
 function Photo({ photo, address }: { photo: MessageFile; address: (id: string) => string }) {
-  const [box, src, lost] = usePicture<HTMLButtonElement>(address(photo.id));
+  const url = versioned(photo, address);
+  const [box, src, lost] = usePicture<HTMLButtonElement>(url);
   const view = useViewPhoto();
   return (
     <button
       ref={box}
       className="photo"
       disabled={!src}
-      onClick={() => src && view({ name: photo.name, src, url: address(photo.id) })}
+      onClick={() => src && view({ name: photo.name, src, url })}
     >
       {src && <img src={src} alt={photo.name} onError={lost} />}
     </button>
   );
 }
 
+/** Where `file` is read from, at the version of its bytes, so the browser keeps it. */
+const versioned = (file: MessageFile, address: (id: string) => string) =>
+  file.version ? `${address(file.id)}?v=${file.version}` : address(file.id);
+
 /** A file that isn't a photo, or one Dispatch doesn't keep: its name, and its size or why. */
 function Attached({ file, address }: { file: MessageFile; address: (id: string) => string }) {
-  const save = useAction(() => download(address(file.id)));
+  const save = useAction(() => download(versioned(file, address)));
   const about = (
     <>
       <FileText size={18} aria-hidden="true" />
