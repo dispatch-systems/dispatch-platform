@@ -266,6 +266,21 @@ test('a DSP’s texts are its own: listed by number, answered through its phone 
   const kept = await f.raw(`${route}/texts/files/${picture}`, undefined, owner.headers);
   assert.equal(kept.status, 200);
   assert.deepEqual([...new Uint8Array(await kept.arrayBuffer())], png);
+  // At the version of its bytes the browser keeps it, for this view alone; at any other, it asks
+  // again each time, so other bytes are never shown at an address kept for these.
+  const version: string = pictured.value.message.files[0].version;
+  const cached = (answer: Response) =>
+    [answer.status, answer.headers.get('cache-control'), answer.headers.get('vary')] as const;
+  assert.deepEqual(
+    cached(await f.raw(`${route}/texts/files/${picture}?v=${version}`, undefined, owner.headers)),
+    [200, 'private, max-age=31536000, immutable', 'X-Dispatch-View'],
+  );
+  assert.equal(
+    (await f.raw(`${route}/texts/files/${picture}?v=0000`, undefined, owner.headers)).headers.get(
+      'cache-control',
+    ),
+    'no-store',
+  );
 
   // Today's Routes lists nobody until live route data reads today, and a number's conversation
   // has no driver to pick.
@@ -279,6 +294,7 @@ test('a DSP’s texts are its own: listed by number, answered through its phone 
   assert.equal((await owner.post(`${route}/conversations/${asked.id}/block`)).status, 404);
   assert.equal((await owner.post(`${route}/conversations/${asked.id}/driver`, driver)).status, 404);
   assert.equal((await owner.get(`${route}/texts/files/${picture}`)).status, 404);
+  assert.equal((await owner.get(`${route}/texts/files/${picture}?v=${version}`)).status, 404);
   const { contacts } = await owner.read(`${route}/texts/contacts`);
   assert.equal(
     contacts.some((each: { person: { name: string } }) => each.person.name === 'New hire'),

@@ -116,6 +116,7 @@ impl FileStore for Store {
             mime: file.mime.clone(),
             size: file.size,
             kept: true,
+            sha256: Some(sha256.to_owned()),
         })
     }
     fn phones_file(&self, dsp: &str, id: &str) -> Result<Option<StoredFile>> {
@@ -194,6 +195,7 @@ fn file_of(row: &Value) -> File {
         mime: s(row, "mime").into(),
         size: n(row, "size"),
         kept: row["sha256"].is_string(),
+        sha256: row["sha256"].as_str().map(str::to_owned),
     }
 }
 

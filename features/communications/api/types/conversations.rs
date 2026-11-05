@@ -157,7 +157,8 @@ pub struct SentMessage {
     pub message: Message,
 }
 
-/// A photo or file attached to a message, which `files/{id}` serves once it's kept.
+/// A photo or file attached to a message, which `files/{id}` serves once it's kept: at
+/// `files/{id}?v={version}`, the browser keeps it.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(
@@ -172,6 +173,8 @@ pub struct MessageFile {
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub size: i64,
     pub status: FileStatus,
+    /// The version of its bytes, once it's kept.
+    pub version: Option<String>,
 }
 
 /// `GET /api/dsp/communications/conversations`: the fifty conversations found by name closest

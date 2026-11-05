@@ -9,7 +9,7 @@ use dispatch_core::{
     ensure,
     foundation::validate as v,
     server::http::{
-        input::{Input, Reply, optional_text},
+        input::{Input, Reply, optional, optional_text},
         route::{Dsp, Grant, Member},
         upload::Upload,
     },
@@ -119,13 +119,14 @@ pub(super) fn text_contacts(db: &Store, c: &Member, input: &Input) -> Result<Rep
     let typed = (!typed.is_empty()).then_some(typed);
     Reply::of(&texts::contacts::contacts(db, c.state, c.dsp_id(), typed)?)
 }
-/// A text's picture or file, as the phone side keeps it.
+/// A text's picture or file, as the phone side keeps it, kept by the browser at its version, `v`.
 pub(super) async fn text_file(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
-    v::fields(&input.query, &[])?;
+    v::fields(&input.query, &["v"])?;
+    let version = optional(&input.query, "v", |q, key| v::text(q, key, 1, 64))?;
     let wanted = texting_id(input.param("id"))?;
-    texts::reading::file(&state, &c, access, &wanted).await
+    texts::reading::file(&state, &c, access, &wanted, version).await
 }
 /// Keeps a picture added for a text not sent yet, as the phone side keeps it: its `name` and
 /// `type` in the query.

@@ -104,6 +104,9 @@ pub struct File {
     pub size: i64,
     /// Whether its bytes are kept; a phone's come after its text.
     pub kept: bool,
+    /// Its bytes' SHA-256, once they're kept.
+    #[serde(skip)]
+    pub sha256: Option<String>,
 }
 
 /// A text to send.
