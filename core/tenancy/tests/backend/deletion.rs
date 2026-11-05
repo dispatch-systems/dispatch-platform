@@ -1,8 +1,10 @@
 //! A delete cut short once the DSP's rows are gone holds nothing up: the server starts again
-//! without the DSP, and its first upkeep finishes what the delete left. And a delete leaves
-//! what another DSP holds of the people they shared, or who once belonged there.
+//! without the DSP, and its first upkeep finishes what the delete left. A delete leaves what
+//! another DSP holds of the people they shared, or who once belonged there; and takes the mail
+//! development captured for the DSP, with none captured after.
 use super::*;
-use crate::testing;
+use crate::{db::now, foundation::crypto, testing};
+use rusqlite::params;
 
 fn dsp_named(db: &Store, name: &str) -> String {
     let (id,): (String,) = db
@@ -148,5 +150,63 @@ fn a_deleted_dsp_takes_nothing_another_dsp_holds_of_people_it_shared_or_had() {
             .count("SELECT count(*) FROM users WHERE id='usr_shared'", [])
             .unwrap(),
         1
+    );
+}
+
+#[tokio::test]
+async fn a_deleted_dsps_captured_mail_goes_and_none_is_captured_after() {
+    testing::install(&[], &[]);
+    let (_root, db) = testing::seeded();
+    let (north, summit) = (
+        dsp_named(&db, "Northline Logistics"),
+        dsp_named(&db, "Summit Delivery"),
+    );
+    let owner = testing::platform_owner(&db);
+    // Mail picked to send: Northline's, Summit's and the platform's own captured, and another
+    // of Northline's still on its way as Northline is deleted.
+    let mail = [
+        ("mail_north", Some(&north)),
+        ("mail_late", Some(&north)),
+        ("mail_summit", Some(&summit)),
+        ("mail_platform", None),
+    ];
+    let mut picked = Vec::new();
+    for (id, dsp) in mail {
+        let message = crypto::encrypt(&db.key, id, &json!({"to": "member@dispatch.test"}));
+        db.platform
+            .exec(
+                "INSERT INTO outbox(id,encrypted_message,available_at,created_at,dsp_id) \
+                 VALUES (?1,?2,?3,?3,?4)",
+                params![id, message.unwrap(), now(), dsp],
+            )
+            .unwrap();
+        let row = db.platform.one(
+            "SELECT id,encrypted_message,attempts FROM outbox WHERE id=?",
+            [id],
+        );
+        picked.push(row.unwrap().unwrap());
+    }
+    let late = picked.remove(1);
+    for row in &picked {
+        mail::capture(&db, row).unwrap().unwrap().unwrap();
+    }
+
+    testing::set_dsp_status(&db, &north, "suspended").unwrap();
+    db.delete_dsp(&north, "Northline Logistics", &owner)
+        .unwrap();
+    let state = crate::State::new(db.config.clone()).unwrap();
+    finish(&state).await;
+    assert!(mail::capture(&db, &late).unwrap().is_none());
+    let captured = std::fs::read_dir(db.config.platform().join("development-mail")).unwrap();
+    let mut captured: Vec<String> = captured
+        .map(|file| file.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    captured.sort();
+    assert_eq!(
+        captured,
+        [
+            format!("{summit}.mail_summit.json"),
+            "mail_platform.json".to_owned()
+        ]
     );
 }

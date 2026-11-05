@@ -6,8 +6,9 @@
 //! given back first, best effort. One transaction then deletes every row of it in the
 //! platform's database, its own row included, and notes the delete in `dsp_deletions`: from
 //! then on nothing finds the DSP, and startup no longer looks for its folder. `finish` deletes
-//! what it kept elsewhere, its jobs and its folder, and lets the note go once all of it has
-//! gone. A delete cut short is finished by the next upkeep pass, as the server starts too.
+//! what it kept elsewhere, its jobs, the mail development captured for it and its folder, and
+//! lets the note go once all of it has gone. A delete cut short is finished by the next upkeep
+//! pass, as the server starts too.
 use crate::{
     Error, Result, State,
     db::{Store, iso},
@@ -92,7 +93,8 @@ pub async fn revoke(state: &Arc<State>, dsp: &str) {
 }
 
 /// Finishes deleting each DSP whose rows are gone, one at a time: its jobs and what its live
-/// readers recorded, then its folder, then the note that it was still to do. What fails is
+/// readers recorded, then the mail development captured for it and its folder, then the note
+/// that it was still to do. What fails is
 /// logged, and the next pass tries it again.
 pub async fn finish(state: &Arc<State>) {
     static FINISHING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
@@ -119,9 +121,13 @@ async fn finish_one(state: &Arc<State>, dsp: &str) -> Result<()> {
     let aside = state
         .run_bookkeeping(move |db| db.set_folder_aside(&at))
         .await?;
-    tokio::task::spawn_blocking(move || remove(&aside))
-        .await
-        .map_err(|_| Error::new("operation_failed", 500))??;
+    let (config, at) = (state.config.clone(), dsp.to_owned());
+    tokio::task::spawn_blocking(move || {
+        mail::forget_captured(&config, &at)?;
+        remove(&aside)
+    })
+    .await
+    .map_err(|_| Error::new("operation_failed", 500))??;
     let at = dsp.to_owned();
     state
         .run_bookkeeping(move |db| {

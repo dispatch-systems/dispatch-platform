@@ -40,9 +40,10 @@ The platform owner deletes a disabled DSP for good, never the permanent one, by 
 (`deletion`). What it connected outside Dispatch is given back first, best effort, as each
 feature declares (`deleting`); then one transaction deletes every row of it in the platform's
 database, each feature's and the agents' with core's, frees its short code and notes the delete
-in `dsp_deletions`; then its jobs and its folder go, and the note with them. A delete the server
-stopped partway through is finished by the next upkeep pass, as it starts too. A DSP's folder is
-made only as it's provisioned, so nothing makes it again once it's gone, and what's written of
-it elsewhere after, as its readers' records or agents' calls, finds it gone in the same turn and
-is never written. What another DSP holds of the people they shared, or who once belonged there,
+in `dsp_deletions`; then its jobs, the mail development captured for it and its folder go,
+and the note with them. A delete the server stopped partway through is finished by the next
+upkeep pass, as it starts too. A DSP's folder is made only as it's provisioned, so nothing makes
+it again once it's gone, and what's written of it elsewhere after, as its readers' records,
+agents' calls, a browser's sign-in lease or captured mail, finds it gone in the same turn and is
+never written. What another DSP holds of the people they shared, or who once belonged there,
 stays: their accounts, its log of them, and the invitations they sent there.
