@@ -22,10 +22,11 @@
 //! coming, never moves it. A day's route data changes as it goes on, and may reach historical route
 //! data after its texts, as a text a phone relayed late; so a day's texts are filed again each time
 //! Routes says its route data changed (`RouteDataChanged`): today's, the pages waiting on changes
-//! hearing of the work conversations waiting, which wait only on the live day, and of every
-//! driver's, whose phone may have changed.
+//! hearing of the work conversations waiting as the live day, which they wait only on, begins or
+//! ends, and of each driver's whose work phone changed (`work_changed`).
 use super::{
     began,
+    live_day::LiveDay,
     model::{Filed, Unfiled},
     numbers::ten_digits,
     storage::{PickStore, TextStore},
@@ -51,7 +52,7 @@ use dispatch_routes_contract::{
 use serde_json::json;
 use std::{
     collections::{BTreeSet, HashMap},
-    sync::Arc,
+    sync::{Arc, LazyLock, Mutex, MutexGuard},
     time::Duration,
 };
 
@@ -137,7 +138,16 @@ fn failed(event: &'static str, error: &Error) {
 
 /// Files the DSP's texts waiting to be, oldest first, a page in each write, then wakes the pages
 /// waiting on what changed: one that can't be placed yet waits for the next pass, after the rest.
+/// Written only once one waits.
 pub async fn unfiled(state: &Arc<State>, dsp: &str) -> Result<()> {
+    let asked = dsp.to_owned();
+    if state
+        .read(move |db| db.unfiled_communications_texts(&asked, None, 1))
+        .await?
+        .is_empty()
+    {
+        return Ok(());
+    }
     let mut after: Option<(i64, String)> = None;
     loop {
         let (at, from) = (dsp.to_owned(), after.take());
@@ -209,9 +219,8 @@ fn place(db: &Store, dsp: &str, texts: &[Unfiled]) {
 }
 
 /// Files every text of `day`, YYYY-MM-DD in the DSP's time, again, where it belongs now, then wakes
-/// the pages waiting on what changed. Today's, noting changed the work conversations waiting, as
-/// the live day may have begun or ended, and every driver's, texted in or not, as the phone they
-/// have may have changed. A day Routes can't read keeps its texts where they are.
+/// the pages waiting on what changed. Today's, noting changed the work conversations whose live day
+/// or work phone changed (`work_changed`). A day Routes can't read keeps its texts where they are.
 pub async fn refile_day(state: &Arc<State>, dsp: &str, day: &str) -> Result<()> {
     let day =
         NaiveDate::parse_from_str(day, "%Y-%m-%d").map_err(|_| Error::new("invalid_date", 400))?;
@@ -219,12 +228,11 @@ pub async fn refile_day(state: &Arc<State>, dsp: &str, day: &str) -> Result<()> 
     let changed = state
         .run_scoped(dsp, DOMAIN, move |db| {
             let mut filer = Filer::new(db, &at)?;
-            let moved = refiled_by(db, &at, &mut filer, day)?;
+            let moved = !refiled_by(db, &at, &mut filer, day)?.is_empty();
             if day == clock::today(filer.zone) {
-                db.changed_communications_work(&at, now() - TWO_DAYS_MS)?;
-                return Ok(true);
+                return Ok(work_changed(db, &at)? || moved);
             }
-            Ok(!moved.is_empty())
+            Ok(moved)
         })
         .await?;
     if changed {
@@ -232,10 +240,76 @@ pub async fn refile_day(state: &Arc<State>, dsp: &str, day: &str) -> Result<()> 
     }
     Ok(())
 }
+/// The live day as the pages waiting on changes last heard it, by DSP: kept in memory, so a server
+/// started since heard nothing yet.
+#[derive(Default)]
+struct Heard {
+    /// The day live route data held, YYYY-MM-DD.
+    day: Option<String>,
+    /// The work phone each driver had then, by the source naming them and their ID.
+    phones: HashMap<(String, String), String>,
+}
+impl Heard {
+    /// The DSP's live day, as it is now.
+    fn now(db: &Store, dsp: &str) -> Result<Self> {
+        let Some(live) = LiveDay::read(db, dsp)? else {
+            return Ok(Self::default());
+        };
+        let phones = live
+            .phones(db, dsp)?
+            .into_iter()
+            .map(|(driver, phone)| ((live.source.clone(), driver), phone))
+            .collect();
+        Ok(Self {
+            day: Some(live.day),
+            phones,
+        })
+    }
+}
+fn heard() -> MutexGuard<'static, HashMap<String, Heard>> {
+    static HEARD: LazyLock<Mutex<HashMap<String, Heard>>> = LazyLock::new(Default::default);
+    HEARD.lock().unwrap_or_else(|poison| poison.into_inner())
+}
+/// Notes changed, for the pages waiting on changes, the work conversations today's route data
+/// changing changed, since the pages last heard it: as the live day began or ended, those waiting
+/// by their texts, as whether they wait counts only on the live day; and each driver's whose work
+/// phone changed (`LiveDay::phones`), one they had before as much as one they have now, so one open
+/// hears it, or none shown any more. Every driver's while what they had isn't known, as since the
+/// server started. Inside the write that refiles today's texts: whether any was.
+fn work_changed(db: &Store, dsp: &str) -> Result<bool> {
+    let current = Heard::now(db, dsp)?;
+    // Taken out until this is noted, so a failure leaves it unknown.
+    let before = heard().remove(dsp);
+    let waiting = match &before {
+        Some(before) if before.day == current.day => false,
+        _ => db.changed_communications_waiting(dsp, now() - TWO_DAYS_MS)?,
+    };
+    let drivers = match &before {
+        Some(before) => {
+            let changed: Vec<(String, String)> = before
+                .phones
+                .keys()
+                .chain(current.phones.keys())
+                .filter(|driver| before.phones.get(*driver) != current.phones.get(*driver))
+                .cloned()
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect();
+            !changed.is_empty() && db.changed_communications_drivers(dsp, Some(&changed))?
+        }
+        None => db.changed_communications_drivers(dsp, None)?,
+    };
+    heard().insert(dsp.to_owned(), current);
+    Ok(waiting || drivers)
+}
 /// Files every text of today, the DSP's day, again, where it belongs now, as its route data may have
-/// changed unheard: while Communications was off, or as a hearing failed. Wakes the pages waiting on
-/// its conversations only once one moved.
+/// changed unheard: while Communications was off, or as a hearing failed. Written only once one
+/// belongs elsewhere, and wakes the pages waiting on its conversations only once one moved.
 pub async fn reconcile(state: &Arc<State>, dsp: &str) -> Result<()> {
+    let asked = dsp.to_owned();
+    if state.read(move |db| misfiled(db, &asked)).await?.is_empty() {
+        return Ok(());
+    }
     let at = dsp.to_owned();
     let moved = state
         .run_scoped(dsp, DOMAIN, move |db| refiled(db, &at))
@@ -247,29 +321,52 @@ pub async fn reconcile(state: &Arc<State>, dsp: &str) -> Result<()> {
 }
 /// Files every text of today, the DSP's day, again, where it belongs now: whether any moved.
 pub fn refiled(db: &Store, dsp: &str) -> Result<bool> {
+    let moves = misfiled(db, dsp)?;
+    Ok(!db.refile_communications_texts(dsp, &moves)?.is_empty())
+}
+/// Each text of today, the DSP's day, filed elsewhere than it belongs now, with where it does.
+fn misfiled(db: &Store, dsp: &str) -> Result<Vec<(String, Filed)>> {
     let mut filer = Filer::new(db, dsp)?;
     let today = clock::today(filer.zone);
-    Ok(!refiled_by(db, dsp, &mut filer, today)?.is_empty())
+    elsewhere(db, dsp, &mut filer, today)
 }
-/// Files every text of `day` again, from when it began until the next day did, where `filer` says
-/// it belongs now: the conversations changed. One whose place can't be told yet stays where it is.
+/// Files every text of `day` again where `filer` says it belongs now: the conversations changed.
 fn refiled_by(
     db: &Store,
     dsp: &str,
     filer: &mut Filer,
     day: NaiveDate,
 ) -> Result<BTreeSet<String>> {
+    let moves = elsewhere(db, dsp, filer, day)?;
+    db.refile_communications_texts(dsp, &moves)
+}
+/// Each text of `day`, from when it began until the next day did, filed elsewhere than `filer`
+/// says it belongs now, with where it does. One whose place can't be told yet stays where it is.
+fn elsewhere(
+    db: &Store,
+    dsp: &str,
+    filer: &mut Filer,
+    day: NaiveDate,
+) -> Result<Vec<(String, Filed)>> {
     let next = day
         .succ_opt()
         .ok_or_else(|| Error::new("invalid_date", 400))?;
     let (from, to) = (began(filer.zone, day)?, began(filer.zone, next)?);
+    let mut conversations: HashMap<Filed, Option<String>> = HashMap::new();
     let mut moves = Vec::new();
     for text in db.communications_texts_between(dsp, from, to)? {
-        if let Some(filed) = filer.filed(&text.number, text.at)? {
+        let Some(filed) = filer.filed(&text.number, text.at)? else {
+            continue;
+        };
+        if !conversations.contains_key(&filed) {
+            let found = db.communications_filed(dsp, &filed)?;
+            conversations.insert(filed.clone(), found);
+        }
+        if conversations[&filed] != text.conversation {
             moves.push((text.id, filed));
         }
     }
-    db.refile_communications_texts(dsp, &moves)
+    Ok(moves)
 }
 
 /// Where a text with `number` written now belongs, as filing would place it: what someone at the

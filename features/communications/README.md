@@ -208,7 +208,10 @@ stay; the next day's drivers fill it as its live reads start.
   work conversation, and as the page comes back into view or the browser back online, a read that
   failed tried again, as the dashboard's reads are. Until a read answers, loading, or offline or
   paused, as the dashboard's pages say it, never No routes; a read that fails says why in Today's
-  Routes, the list or the board, and nowhere else.
+  Routes, the list or the board, and nowhere else. A driver's work conversation open shows only
+  with one of the two (opening it shows Today's Routes, unless Recents shows; choosing another
+  section closes it), so its route, van, stops and pace follow this read, as an update changes
+  it only as their work phone does.
 - **A driver's conversation:** under its head, their route code, van and the work phone they have
   now, and how long it has waited; chips to their conversation of each kind, Work (by the work
   phone they have), Personal (by their own number) and Slack, each marked with a dot while it
@@ -318,7 +321,10 @@ decides ([Texts](#texts)).
   DSP's address from the QR code (`dispatch-phone:pair?site=<address>&code=<code>`) and trades
   it, with its own number, model and the app's version, for a key: 32 random bytes in
   hexadecimal, of which only the SHA-256 is kept. The first phone is named Dispatch, the next
-  Phone 2 and so on, until renamed.
+  Phone 2 and so on, until renamed. A code tried is told right or wrong by a read, so a wrong one
+  never takes the write lock, and counts against the address it came from and the DSP, in the
+  server's memory for ten minutes: past ten from an address, or a hundred at a DSP from every
+  address, each is refused `rate_limited`, a right code too, until they're older.
 - **How it stands:** each phone says it with each wait on its outbox ([its
   protocol](api/phone/README.md#how-the-phone-stands-with-each-wait)): its Set up steps undone,
   whether it may read and send texts, its default texting app, its SIM, what waits on it to go, picture messages not
@@ -346,7 +352,8 @@ decides ([Texts](#texts)).
   page's), reports the texts it receives and sends from its own messaging app, each kept once by
   its own ID of it, sends their pictures' bytes, fetches those of Dispatch's, and says how each
   attempt at Dispatch's went. Waiting on the outbox and reporting texts or statuses count as
-  checking in; a file's bytes, either way, don't. Each call, with every payload, unit and limit,
+  checking in, noted at most every thirty seconds (`SEEN_MS`), as bookkeeping no cached read
+  depends on; a file's bytes, either way, don't. Each call, with every payload, unit and limit,
   is in the [protocol reference](api/phone/README.md) beside the code.
 - **The app:** DSP Dispatch: Relay, which the DSP's address hands out (`phone::app`), as the
   build packed it: CI's signed builds, named in `relay.json` beside their APKs in the runtime's
@@ -383,7 +390,7 @@ queues a text for a phone.
   and each conversation a change touched keeps whether it waits; the pages waiting on it hear
   once both are committed. A text that can't be placed as it comes, as reading where it belongs
   failed, is kept all the same, waiting to be filed (no conversation yet), and every minute's
-  upkeep places those waiting, oldest first, each on its own. Where it's placed:
+  upkeep places those waiting, oldest first, each on its own, writing only while one waits. Where it's placed:
   - **A work phone's**, a driver's: a number `+1` and ten digits, as Routes' work phones are, is
     filed by the day it was written, where the DSP is, under the driver whose latest work phone
     it is that day, by their ID of the source naming the drivers, as Routes reads the day
@@ -408,8 +415,8 @@ queues a text for a phone.
   is filed again where it belongs now: a text that came before the day's first live read goes to
   the driver whose phone a read then names. A day Routes can't read keeps its texts where they
   are. Today's are filed again every minute too, so a change nothing heard, as while
-  Communications was off or a hearing failed, is repaired by the next pass; an earlier day's only
-  as Routes says it changed.
+  Communications was off or a hearing failed, is repaired by the next pass, which writes only once
+  one belongs elsewhere; an earlier day's only as Routes says it changed.
 - **Waiting:** as a Slack conversation's: a text in after the latest text out that didn't fail,
   and not covered by a Done. Done marks each text in it covers, those up to the latest the page
   showed, which stays handled wherever it's filed again, never handling a text it didn't cover. A
@@ -419,8 +426,10 @@ queues a text for a phone.
   day's first live read; so at the stop, as live route data empties, none waits or counts, and
   the next day starts afresh. Each
   time today's route data changes, the work conversations waiting by their texts are noted
-  changed, so the pages waiting on changes hear the day begin or end, and so is every driver's,
-  so one open hears their work phone change, or none shown any more.
+  changed as the live day began or ended, so the pages waiting on changes hear it, and each
+  driver's whose work phone changed since the server last heard (`LiveDay::phones`), so one open
+  hears it, or none shown any more: kept in its memory, so every driver's on the first change
+  since it started.
 - **Answering:** what someone at the DSP writes goes as written, nothing added, from the phone that
   last texted that number, else the one seen last, one online before any offline, with its
   pictures, kept by the phone side as they're added, the adder's alone until they go, and none of

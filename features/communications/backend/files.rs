@@ -19,7 +19,10 @@ use dispatch_core::{
     db::{FromRow, Row, Store, now},
     foundation::{crypto, observability},
     manifest::{Maintenance, Upkeep},
-    server::http::upload::{UPLOAD_LIMIT, Upload},
+    server::{
+        cache::DataDomain,
+        http::upload::{UPLOAD_LIMIT, Upload},
+    },
 };
 use dispatch_slack::kit::{self, Bot, Bytestream, Queue};
 use rusqlite::params;
@@ -351,6 +354,7 @@ impl Queue for Downloads {
     const BATCH: usize = 20;
     const CLAIM_MS: i64 = 30 * 60 * 1000;
     const FAILED: &'static str = FAILED;
+    const CHANGES: Option<DataDomain> = Some(DOMAIN);
 
     fn due(db: &Store, dsp: &str, at: i64, most: usize) -> Result<Vec<Due>> {
         if !db.feature_enabled(dsp, crate::FEATURE.name)? {

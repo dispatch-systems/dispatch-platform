@@ -34,7 +34,7 @@ use dispatch_core::{
     db::{self, Store},
 };
 use model::{Limits, Phone};
-use storage::DeviceStore;
+use storage::{Device, DeviceStore};
 
 /// What one text may carry either way: as answering is held to, and a phone's reports. A
 /// picture's most is as much as a phone sends in one text and more.
@@ -52,6 +52,16 @@ pub fn phones(db: &Store, dsp: &str) -> Result<Vec<Phone>> {
         .iter()
         .map(|device| device.phone(now))
         .collect())
+}
+
+/// Notes the DSP's phone `device`, as read in this write, checked in at `at`, once `SEEN_MS` passed
+/// since it last was: another call of the phone's alongside may have noted it since this one first
+/// read it. Inside a write.
+pub fn seen(db: &Store, dsp: &str, device: &Device, at: i64) -> Result<()> {
+    if device.noting(at) {
+        db.phones_seen(dsp, &device.id, at)?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

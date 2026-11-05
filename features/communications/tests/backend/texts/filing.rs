@@ -3,7 +3,9 @@
 //! phone it is the day each was written, today's or a saved day's, and a day's again as its route
 //! data changes, both ways, while Routes can read the day, and only then: never as how one went
 //! changes, nor while Routes is off; a blocked number's out of the list, never waiting on what it
-//! sent while blocked. A text that can't be filed as it comes is kept, and filed by the next upkeep.
+//! sent while blocked. A driver's conversation changes as their work phone does, and only then. A
+//! text that can't be filed as it comes is kept, and filed by the next upkeep, which writes nothing
+//! while nothing waits or moves.
 use super::*;
 use crate::backend::{
     changes::ChangeStore,
@@ -17,8 +19,8 @@ use crate::backend::{
     },
     storage::DOMAIN,
     support::{
-        self, DRIVERS, at, failing, filed, phoned, phones, route, routed, saved, started, switch,
-        texted, today,
+        self, DRIVERS, at, cached, failing, filed, phoned, phones, route, routed, saved, started,
+        switch, texted, today, unwritten,
     },
     texts::{contacts, reading, reply, storage::TextStore},
 };
@@ -633,28 +635,34 @@ async fn a_drivers_work_conversation_changes_as_their_work_phone_changes_with_no
     let (_root, state, dsp) = started();
     let (zone, day) = today(&state, &dsp).await;
     let today = day.to_string();
-    // Avery drives CX14 today, with no work phone, and their conversation is opened, empty.
+    // Avery drives CX14 today, with no work phone, and Blake CX15 with 0303; their conversations
+    // are opened, empty.
     routed(
         &dsp,
-        vec![route(
-            &today,
-            "A1",
-            "CX14",
-            "1FTVAN214",
-            120,
-            at(zone, day, 9, 20),
-        )],
+        vec![
+            route(&today, "A1", "CX14", "1FTVAN214", 120, at(zone, day, 9, 20)),
+            route(&today, "B1", "CX15", "1FTVAN215", 110, at(zone, day, 9, 20)),
+        ],
     );
-    phoned(&state, &dsp, Some(&today), Vec::new(), Vec::new()).await;
-    let (shared, at_dsp) = (state.clone(), dsp.clone());
-    let avery = state
-        .run(move |db| contacts::open_driver(db, &shared, &at_dsp, "A1"))
-        .await
-        .unwrap()
-        .id;
-    // Whether each change of the day's work phones is heard by a page with it open.
+    const BLAKES: (&str, &str) = ("B1", "2065550303");
+    phoned(&state, &dsp, Some(&today), phones(&[BLAKES]), Vec::new()).await;
+    let open = |driver: &'static str| {
+        let (state, dsp) = (state.clone(), dsp.clone());
+        async move {
+            let shared = state.clone();
+            state
+                .run(move |db| contacts::open_driver(db, &shared, &dsp, driver))
+                .await
+                .unwrap()
+                .id
+        }
+    };
+    let (avery, blake) = (open("A1").await, open("B1").await);
+    // Which of their conversations a page with them open hears change, as the day's work phones
+    // change.
     let heard = |of: &'static [(&'static str, &'static str)]| {
-        let (state, dsp, avery, today) = (state.clone(), dsp.clone(), avery.clone(), today.clone());
+        let (state, dsp, today) = (state.clone(), dsp.clone(), today.clone());
+        let (avery, blake) = (avery.clone(), blake.clone());
         async move {
             let at = dsp.clone();
             let before = state
@@ -666,14 +674,43 @@ async fn a_drivers_work_conversation_changes_as_their_work_phone_changes_with_no
                 .read(move |db| db.communications_changed_since(&dsp, before))
                 .await
                 .unwrap();
-            changed.unwrap().contains(&avery)
+            let changed = changed.expect("within the changes kept");
+            (changed.contains(&avery), changed.contains(&blake))
         }
     };
 
-    assert!(heard(&[("A1", "2065550101")]).await);
-    assert!(heard(&[("A1", "2065550202")]).await);
-    // Routes shows them with none: they have none now, which a page with it open hears too.
-    assert!(heard(&[]).await);
+    assert_eq!(heard(&[("A1", "2065550101"), BLAKES]).await, (true, false));
+    assert_eq!(heard(&[("A1", "2065550202"), BLAKES]).await, (true, false));
+    // Routes shows Avery with none: they have none now, which a page with it open hears too.
+    assert_eq!(heard(&[BLAKES]).await, (true, false));
+    // Nothing changed: neither hears anything.
+    assert_eq!(heard(&[BLAKES]).await, (false, false));
+}
+
+#[tokio::test]
+async fn an_upkeep_with_nothing_to_file_or_expire_writes_nothing() {
+    let (_root, state, dsp) = started();
+    let (zone, day) = today(&state, &dsp).await;
+    // Avery has 0101 today, and texted on it, filed under them as it came.
+    phoned(
+        &state,
+        &dsp,
+        Some(&day.to_string()),
+        phones(&[("A1", "2065550101")]),
+        Vec::new(),
+    )
+    .await;
+    texted(
+        &state,
+        &dsp,
+        "+12065550101",
+        "At the station",
+        at(zone, day, 9, 0),
+    )
+    .await;
+    let kept = cached(&state, &dsp);
+    unwritten(&state, (MAINTENANCE.run)(state.clone(), false)).await;
+    assert!(kept(), "the DSP's cached reads were evicted");
 }
 
 #[tokio::test]
