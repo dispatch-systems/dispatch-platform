@@ -206,6 +206,15 @@ fn a_text_goes_from_the_phone_that_last_texted_its_number_one_online_first() {
     db.phones_seen(&dsp, &second.id, 400_000).unwrap();
     let retried = db.phones_retry(&dsp, &online.id, 400_000).unwrap();
     assert_eq!(retried.phone, second.id);
+    // The first had the earlier attempt: its delivery report of it still counts.
+    let delivered = StatusReport {
+        status: Status::Delivered,
+        at: 400_001,
+        ..failed
+    };
+    assert!(db.phones_status(&dsp, &first.id, &delivered).unwrap());
+    let went = db.phones_text(&dsp, &online.id).unwrap().unwrap();
+    assert_eq!(went.status, Some(Status::Delivered));
     // Pictures go only with the text of who added them, once.
     let file = ReportedFile {
         name: "door.jpg".into(),

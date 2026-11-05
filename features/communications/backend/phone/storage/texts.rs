@@ -79,8 +79,9 @@ pub trait TextStore {
     /// status only moves on, waiting to sent to delivered, waiting or sent to failed, and to
     /// delivered from any other, as a delivery report proves it got there; and to sent from
     /// failed as `PHONE_OFFLINE`, as the phone sent it after all. Sent or failed counts only for
-    /// the latest attempt, so a late report of an earlier one never cancels the text tried again.
-    /// Answers whether it moved.
+    /// the latest attempt, so a late report of an earlier one never cancels the text tried again;
+    /// delivered, for any attempt of the phone the text waits on, or an earlier attempt of the
+    /// phone that had it. Answers whether it moved.
     fn phones_status(&self, dsp: &str, device: &str, report: &StatusReport) -> Result<bool>;
     fn phones_text(&self, dsp: &str, id: &str) -> Result<Option<Text>>;
     /// Queues `outgoing` from the phone it names, else the one that last texted its number, else
@@ -179,15 +180,17 @@ impl TextStore for Store {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             let found = db.one(
-                "SELECT status,attempt,error FROM phones_texts \
-                 WHERE id=? AND device_id=? AND origin='dispatch'",
-                params![report.id, device],
+                "SELECT status,attempt,error,device_id=?2 AS current FROM phones_texts t \
+                 WHERE id=?1 AND origin='dispatch' AND (device_id=?2 OR EXISTS (\
+                 SELECT 1 FROM phones_attempts a WHERE a.text_id=t.id AND a.device_id=?2 \
+                 AND a.attempt=?3))",
+                params![report.id, device, report.attempt],
             )?;
             let Some(found) = found else {
                 return Ok(false);
             };
             let from = parse_status(s(&found, "status"));
-            let latest = found["attempt"].as_i64() == Some(report.attempt);
+            let latest = n(&found, "current") == 1 && n(&found, "attempt") == report.attempt;
             // Failed as its phone was offline, the phone may yet have sent it before it heard.
             let offline = from == Some(Status::Failed) && s(&found, "error") == PHONE_OFFLINE;
             let moves = match report.status {
@@ -283,8 +286,14 @@ impl TextStore for Store {
                     [id],
                 )?
                 .ok_or_else(|| Error::new("phones_text_not_found", 404))?;
-            // A new attempt, from the phone a new text to its number would go from.
+            // A new attempt, from the phone a new text to its number would go from; the one
+            // before kept by the phone that had it, whose delivery report of it still counts.
             let device = sender(&db, s(&found, "number"), at)?;
+            db.exec(
+                "INSERT INTO phones_attempts (text_id,attempt,device_id) \
+                 SELECT id,attempt,device_id FROM phones_texts WHERE id=?",
+                [id],
+            )?;
             let change = next_change(&db)?;
             db.exec(
                 "UPDATE phones_texts SET device_id=?1, status='waiting', status_at=?2, \

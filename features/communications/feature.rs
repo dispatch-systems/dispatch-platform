@@ -68,6 +68,7 @@ pub const FEATURE: Feature = Feature {
             "phones_devices",
             "phones_pairings",
             "phones_texts",
+            "phones_attempts",
             "phones_files",
             "phones_change",
         ],
@@ -140,6 +141,13 @@ pub const FEATURE: Feature = Feature {
                 id: 11,
                 name: "phones_app_version_codes",
                 apply: Code(backend::phone::storage::add_app_version_codes),
+            },
+            // Each earlier attempt at a text, by the phone it was given to, as Retry may move a
+            // text to another phone.
+            Migration {
+                id: 12,
+                name: "phones_attempts",
+                apply: Sql(include_str!("migrations/dsp/0012_phones_attempts.sql")),
             },
         ],
     }],
