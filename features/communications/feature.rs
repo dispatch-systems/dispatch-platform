@@ -17,10 +17,10 @@ pub use api::types::{
     ConversationMessages, ConversationState, Conversations, Correspondent, Direction,
     DispatchPhone, Elsewhere, FileStatus, Group, GroupChoice, GroupChoiceKind, GroupChoices,
     GroupEntry, GroupMember, GroupMessages, GroupPeople, GroupPerson, GroupPersonState,
-    GroupProgress, Message, MessageFile, MessageGroup, Pace, PairingStatus, PhoneApp, PhoneHealth,
-    PhonePairing, PhonePairingStatus, PhoneRow, Phones, Profile, PushKey, Reachable, RouteDriver,
-    Sender, SentMessage, TextContact, TextContacts, TextPeople, TextStatus, Today, TodaysRoutes,
-    Typing, WaitingMessage, Workday, Writing,
+    GroupProgress, Message, MessageFile, MessageGroup, NotSent, Pace, PairingStatus, PhoneApp,
+    PhoneHealth, PhonePairing, PhonePairingStatus, PhoneRow, Phones, Profile, PushKey,
+    QuickReplies, Reachable, RouteDriver, Sender, SentMessage, TextContact, TextContacts,
+    TextPeople, TextStatus, Today, TodaysRoutes, Typing, WaitingMessage, Workday, Writing,
 };
 
 use dispatch_core::db::{
@@ -45,8 +45,12 @@ pub const FEATURE: Feature = Feature {
         perm("communications.use", "Use Communications", 95),
         perm("phones.manage", "Manage Phones", 150),
     ],
-    // How the page looks to each member, their own, on Settings' Display page.
-    settings: &[backend::display::DISPLAY],
+    // How the page looks to each member, their own, on Settings' Display page; and the DSP's
+    // quick replies, on its own page.
+    settings: &[
+        backend::display::DISPLAY,
+        backend::quick_replies::QUICK_REPLIES,
+    ],
     routes: api::routes::routes,
     domains: &[backend::storage::DOMAIN],
     tables: &[(
@@ -61,6 +65,7 @@ pub const FEATURE: Feature = Feature {
             "communications_group_messages",
             "communications_deliveries",
             "communications_group_uploads",
+            "communications_replies",
             "communications_text_conversations",
             "communications_contacts",
             "communications_blocked",
@@ -162,11 +167,19 @@ pub const FEATURE: Feature = Feature {
                 name: "phones_health",
                 apply: Code(backend::phone::storage::add_health),
             },
-            // Each browser a member is told of new messages in, with Dispatch closed.
+            // Each answer noted before it goes to Slack.
             Migration {
                 id: 15,
+                name: "communications_replies",
+                apply: Sql(include_str!(
+                    "migrations/dsp/0015_communications_replies.sql"
+                )),
+            },
+            // Each browser a member is told of new messages in, with Dispatch closed.
+            Migration {
+                id: 16,
                 name: "communications_push",
-                apply: Sql(include_str!("migrations/dsp/0015_communications_push.sql")),
+                apply: Sql(include_str!("migrations/dsp/0016_communications_push.sql")),
             },
         ],
     }],
@@ -175,13 +188,15 @@ pub const FEATURE: Feature = Feature {
     // The key pair its pushes to members' browsers are signed with (VAPID).
     env: &[&[backend::push::webpush::KEY]],
     // Catching up on what Dispatch didn't hear of, hourly and as the server starts; downloading
-    // what members attach, sending what's due to go to groups' people, filing texts waiting to be
-    // filed, and filing today's again where they belong now, every minute; and letting go of
-    // photos and the phones' pictures never sent, bytes no file keeps and codes expired, hourly;
-    // and watching each DSP whose members are told in a browser for what to push.
+    // what members attach, keeping answers that went to Slack unkept, sending what's due to go to
+    // groups' people, filing texts waiting to be filed, and filing today's again where they belong
+    // now, every minute; and letting go of photos and the phones' pictures never sent, bytes no
+    // file keeps and codes expired, hourly; and watching each DSP whose members are told in a
+    // browser for what to push.
     maintenance: &[
         integrations::messages::catch_up::MAINTENANCE,
         backend::files::MAINTENANCE,
+        backend::reply::MAINTENANCE,
         backend::groups::send::MAINTENANCE,
         backend::texts::filing::MAINTENANCE,
         backend::phone::tidy::MAINTENANCE,
@@ -254,6 +269,7 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         GroupPeople,
         GroupPerson,
         GroupPersonState,
+        NotSent,
         GroupChoices,
         Reachable,
         GroupMember,
@@ -280,5 +296,6 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         PhonePairing,
         PhonePairingStatus,
         PairingStatus,
+        QuickReplies,
     )
 }

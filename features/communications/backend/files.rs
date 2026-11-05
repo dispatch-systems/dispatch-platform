@@ -128,23 +128,34 @@ pub trait FileStore {
     ) -> Result<String>;
     /// Claims the photos `ids` names that the member `by` added for a message not sent yet, in
     /// their order, until `until`, while their message goes to Slack: refused if any isn't one,
-    /// or another message is being sent with it.
+    /// another message is being sent with it, or an answer noted on its way to Slack other than
+    /// `noted` carries it.
     fn claim_communications_uploads(
         &self,
         dsp: &str,
         by: &str,
         ids: &[String],
         until: i64,
+        noted: Option<&str>,
     ) -> Result<Vec<File>>;
     /// Lets go of the photos `ids` names, claimed for a message Slack didn't take.
     fn release_communications_uploads(&self, dsp: &str, ids: &[String]) -> Result<()>;
     /// Lets go of the photos added before `before` for a message never sent, but one going with
-    /// a message now, whose bytes upkeep then lets go of once no file keeps them.
+    /// a message now, or carried by an answer noted on its way to Slack, whose bytes upkeep then
+    /// lets go of once no file keeps them.
     fn forget_unsent_communications(&self, dsp: &str, before: i64) -> Result<()>;
     /// Whether any file is kept by the SHA-256 `sha256`.
     fn communications_bytes_kept(&self, dsp: &str, sha256: &str) -> Result<bool>;
     /// The SHA-256 of every bytes a file keeps.
     fn communications_kept_bytes(&self, dsp: &str) -> Result<Vec<String>>;
+}
+/// The query for the photos the answers noted on their way to Slack carry, theirs until each is
+/// settled, as Slack may have them: but the one noted as `but`, a parameter or `NULL`.
+pub(crate) fn noted_photos(but: &str) -> String {
+    format!(
+        "SELECT json_extract(photo.value,'$[0]') FROM communications_replies, \
+         json_each(communications_replies.photos) photo WHERE communications_replies.id IS NOT {but}"
+    )
 }
 impl FileStore for Store {
     fn communications_file(&self, dsp: &str, id: &str) -> Result<Option<File>> {
@@ -188,14 +199,19 @@ impl FileStore for Store {
         by: &str,
         ids: &[String],
         until: i64,
+        noted: Option<&str>,
     ) -> Result<Vec<File>> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             let found: Vec<File> = db.query_as(
-                "SELECT * FROM communications_files WHERE id IN (SELECT value FROM json_each(?)) \
-                 AND uploaded_by=? AND message_id IS NULL AND group_message_id IS NULL \
-                 AND coalesce(claimed_until,0)<=?",
-                params![serde_json::to_string(ids)?, by, now()],
+                &format!(
+                    "SELECT * FROM communications_files \
+                     WHERE id IN (SELECT value FROM json_each(?1)) AND uploaded_by=?2 \
+                     AND message_id IS NULL AND group_message_id IS NULL \
+                     AND coalesce(claimed_until,0)<=?3 AND id NOT IN ({})",
+                    noted_photos("?4")
+                ),
+                params![serde_json::to_string(ids)?, by, now(), noted],
             )?;
             let claimed = ids
                 .iter()
@@ -225,10 +241,15 @@ impl FileStore for Store {
         Ok(())
     }
     fn forget_unsent_communications(&self, dsp: &str, before: i64) -> Result<()> {
-        // Not one going to Slack with a message now, nor a group message's.
+        // Not one going to Slack with a message now, nor a group message's, nor one an answer
+        // noted on its way to Slack carries, which Slack may have.
         self.dsp(dsp)?.exec(
-            "DELETE FROM communications_files WHERE message_id IS NULL \
-             AND group_message_id IS NULL AND added_at<? AND coalesce(claimed_until,0)<?",
+            &format!(
+                "DELETE FROM communications_files WHERE message_id IS NULL \
+                 AND group_message_id IS NULL AND added_at<? AND coalesce(claimed_until,0)<? \
+                 AND id NOT IN ({})",
+                noted_photos("NULL")
+            ),
             params![before, now()],
         )?;
         Ok(())

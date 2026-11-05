@@ -30,8 +30,12 @@ export function MessageAlerts(access: Watching) {
   useEffect(() => (sound ? readyOnUse() : undefined), [sound]);
   useEffect(() => (on ? alertMember(() => latest.current) : undefined), [on, dsp, user]);
   useEffect(() => {
-    // Not followed now, as offline, it's followed as the next tab opens.
-    if (pushed !== undefined) followPush(pushed, dsp).catch(() => {});
+    if (pushed === undefined) return;
+    // Ended as the page moves on to another DSP or member, or they choose again; not followed
+    // now, as offline, it's followed as the next tab opens.
+    const ends = new AbortController();
+    followPush(pushed, dsp, ends.signal).catch(() => {});
+    return () => ends.abort();
   }, [pushed, dsp, user]);
   useEffect(
     () => answerWorker((push) => alertsInFront(push, dsp, inFront(), notifies.current)),

@@ -27,7 +27,7 @@ fn pass(state: Arc<State>, due: bool) -> Upkeep {
         }
         for dsp in work::dsps(&state, FAILED).await {
             if let Err(error) = catch_up(&state, &dsp).await {
-                work::failed(FAILED, &error);
+                work::failed(FAILED, Some(&dsp), &error);
             }
         }
     })

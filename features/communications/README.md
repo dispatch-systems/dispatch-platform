@@ -52,6 +52,14 @@ and every other number's in Recents.
   the browser for, staying off if it refuses, and which shows on only in a browser that has
   allowed it; offered where the browser shows one from the page, or can be pushed to while the
   server pushes (as a phone's can: [New messages](#new-messages)), and left out elsewhere.
+  And `communications.quick_replies` (Quick replies), the DSP's, under `communications.use`, so
+  anyone who uses Communications edits them, on Communications' own page under Features: drawn by
+  its own component, `frontend/replies/`, as a list of texts is none of Settings' kinds of value.
+  Up to 30 short replies, each up to 500 characters, in their order, each in a box of its own with
+  Remove, Add reply under them, and Save, which leaves out the empty ones; before the page moves
+  on with them unsaved it asks "Save changes?", Save or Discard, and closing the tab drops them
+  silently; a save over another session's since is refused
+  (`settings_changed_reload_before_saving`) and the list read again.
 - **On every page:** `communications.alerts`, a watcher (`frontend/alerts/`), for those with
   `communications.use`, alerting them to new messages ([New messages](#new-messages)), and to the
   DSP's phones as each goes down; and `communications.phones`, a watcher drawing a banner atop
@@ -106,7 +114,9 @@ and every other number's in Recents.
   and role, and with every workspace shown, the one they're in; how long they've waited, or
   when they last wrote. Each opens their conversation, or starts one, as New message does.
 - **A conversation:** who it's with, the workspace it's in while there are several, and, while
-  it waits, how long, "Waiting 31 min", and Done, by its word on a phone too; its messages under the day each was written, the member's beside
+  it waits, how long, "Waiting 31 min", and Done, by its word on a phone too; once it's answered,
+  by Done or a send, **Next waiting**, while another of the section shown waits, which opens the
+  one waiting longest, a group's too, never by itself; its messages under the day each was written, the member's beside
   their photo, the DSP's under the name and photo of whoever sent them, each edited in Slack
   marked Edited, a reply in one of its threads in its place among them, photos shown and other
   files to download, or why one isn't kept; older ones read as it's scrolled to its start, and
@@ -114,8 +124,10 @@ and every other number's in Recents.
   again. Right above its box, however its messages are scrolled, who else at the DSP is writing
   in it, "Keisha is typing…", said to a screen reader as it changes. Writing in it: text, with
   photos added (Add photo), as much as one message carries as the conversation's read says
-  (`limits`), which what's refused says too, and nothing until it's read; Enter or **Send** to
-  send; while writing, teammates see it. Where a teammate, or the phone itself, wrote in it since
+  (`limits`), which what's refused says too, and nothing until it's read; **Quick replies**,
+  beside the smiley while the DSP has some, on a phone under the field with attaching and Send,
+  opens them, and the one chosen goes in where the writer was, as an emoji does, never sent by
+  itself, in a group's box too; Enter or **Send** to send; while writing, teammates see it. Where a teammate, or the phone itself, wrote in it since
   the member started writing, since it opened with what they'd written, or since they last
   answered this, Send asks first, above the box: "Keisha just replied", with **Send anyway** and
   **Cancel**, which keeps what's written and shows the reply. It's told from what the page holds,
@@ -148,6 +160,11 @@ and every other number's in Recents.
 - **New message** finds whom to write to by name, misspelt or not, and opens their
   conversation, or opens a direct message with them, kept at the top of the list until it holds
   a message. With nothing typed, Message a group comes first.
+- **Keys,** on a desktop, but while a field is written in, or with Ctrl, Alt or ⌘ held: J and K
+  open the next and the previous row of the list, or its first with none open; N presses Next
+  waiting and E Done, in the head of what's open, each naming its key (`aria-keyshortcuts`, and
+  its title); / goes to Search; and Escape leaves the field written in. Keys pressed in a dialog
+  are its own (`frontend/shared/shortcuts.ts`, `frontend/page/useShortcuts.ts`).
 - **Display** opens the member's own Message display in Settings, which the page looks as, with
   either section.
 - **Copy chat link** copies the address that opens the app's Messages tab in a workspace where
@@ -463,12 +480,18 @@ in their own direct message with the app, and their answers come back together.
   need be (`im:write`), under the sender's full name and photo as an answer goes
   (`chat:write.customize`), its photos uploaded once to each workspace (`files:write`). Slack
   asking Dispatch to slow down (429, Retry-After) is waited out as long as it says, up to two
-  minutes, and beyond that tried again two minutes later; a try that fails is tried again after a
-  minute, five and fifteen, then given up; one to a workspace where Communications no longer
-  works, or someone no longer in it, isn't sent at all. Each is kept until it's sent or given up,
-  so sending picks up after a restart, from the pass every minute; a try that may have posted
-  before the server stopped looks for its post in their direct message first (`im:history`), by
-  the metadata each post carries, and keeps it rather than send a second.
+  minutes, and beyond that tried again two minutes later; one to a workspace where Slack needs
+  updating or reconnecting waits, uncounted, five minutes at a time; a try that fails is tried
+  again after a minute, five and fifteen, then given up; one to a workspace where Communications
+  no longer works, or someone no longer in it, isn't sent at all. None goes out more than two
+  hours after it was written, as while Communications was off: a wave running late has moved on,
+  so it's given up as too late, or as what it waited on, when that was Slack: no post starts
+  past then, a photo's post tried again or a token renewed first included, and a post doesn't
+  wait on Slack asking it to slow down. Each is kept until it's sent or
+  given up, so sending picks up after a restart, from the pass every minute; a try that may have
+  posted before the server stopped looks for its post in their direct message first
+  (`im:history`, every page since), by the metadata each post carries, and keeps it rather than
+  send a second, even past the two hours.
 - **The group** is listed among the conversations: two of its people's faces, its name and how
   many it went to, and the latest answer under its writer's first name, or the DSP's message. It
   waits while any conversation listed under it waits, by the longest wait, with a check that
@@ -489,7 +512,8 @@ in their own direct message with the app, and their answers come back together.
   opens it.
 - **Its people,** in the profile's place: the group, who first sent it and when, and each of its
   people with what they do and whether they replied, or its latest message is sending, was sent
-  or wasn't, each opening their own conversation.
+  or wasn't and why (Not sent: too late, Slack needs updating, Slack disconnected, Communications
+  off in Slack, no longer in Slack, Slack refused it), each opening their own conversation.
 
 ## Messages in
 
@@ -504,7 +528,13 @@ in their own direct message with the app, and their answers come back together.
   Slack ID.
 - **Edits:** a member editing a message in Slack replaces its text, and marks it edited; nothing
   of what it said before is kept, logged or read. Slack changing a message itself, as to show a
-  link's preview, isn't an edit.
+  link's preview, isn't an edit. An edit Slack tells of before its message, as when keeping the
+  message failed and is tried again, keeps the message as edited, and the message told of after
+  doesn't change it back. A message kept is edited while Communications works there, though it
+  was sent before Communications was last switched on.
+- **Told of:** what Slack tells of is kept once Slack has its answer; keeping it is tried again a
+  second, five and thirty seconds after it fails, then left to catching up, the failure logged as
+  `communications_heard_failed` with its DSP and code alone.
 - **Deletions:** a message deleted in Slack stays.
 - **Photos and files:** downloaded from Slack into Dispatch, kept in the DSP's own data
   (`data/communications/files/`, by their bytes' SHA-256), so they outlive Slack. Each is tried
@@ -537,6 +567,22 @@ in their own direct message with the app, and their answers come back together.
 - **Answering:** a message someone at the DSP writes, up to 3,000 characters, with up to ten
   photos (PNG, JPEG or GIF, up to 20 MB each), goes to the member's direct message
   (`chat.postMessage`) as written: escaped, so Slack shows what was typed.
+- **Kept once, never posted twice:** each message is noted as its writer's access is checked,
+  just before it goes to Slack, held for ten minutes by the try posting it, longer than its post
+  takes, Slack asking it to slow down included; its post carries the note's ID as Slack's message
+  metadata. Once Slack has it, it's kept, waiting its turn for the database rather than turned
+  away busy, and its note cleared. One Slack may have taken that wasn't kept, as when the server
+  stopped between, is looked for in the direct message (`im:history`, every page since it was
+  noted) by its note's ID: by the pass every minute, once no try holds it, which keeps it if
+  it's there and clears the note if not, while Communications works in its workspace, however
+  long that takes; or at once when its writer sends the same message, with the same photos,
+  there again, which then keeps that post rather than post a second, or, not finding it, tries
+  again under the same note, so whichever try Slack took is found. Each claims the note first:
+  sent again while another try of it is under way, it's refused (`communications_reply_sending`),
+  and upkeep leaves a note a resend holds; a first try notes it in the same write that finds
+  none, so two begun together share it. Its photos are kept while it's noted, however long, and
+  no other message takes them. A note names its conversation without a foreign key, so a release
+  before this one can still forget a conversation with no message; upkeep clears a note left so.
 - **Under whose name:** the full name on the writer's Dispatch account, and their Slack profile
   photo (`chat:write.customize`), read from the member of the DSP's workspaces with their email
   address, the conversation's workspace first (`users.info`): Slack's own drawn photo isn't
@@ -610,15 +656,18 @@ not; and with it closed, or on a phone, as a push (**Pushed**, below).
   change it; one subscribed under another key is subscribed again. A browser has one subscription
   for its address, which each DSP opened there shares, as a platform owner opens many at the
   admin's: turning Notifications off at one lets go of it there, and the browser lets go of it once
-  no DSP it remembers keeping it wants it. Each message new in what waits, as above, as the server
-  reads it again on each change to the DSP's conversations, goes to each browser kept of each
-  member who has Notifications on and may use Communications there then, as a session of theirs at
-  the address they subscribed at would (their account, role, the DSP and its features as now),
-  titled with who wrote it, saying what as the list shows it, and opening the conversation at that
-  address; never the DSP's own. What waited when the server began watching the DSP goes nowhere.
+  no DSP it remembers keeping it wants it. Each tab's changes to it take their turn among every
+  tab's (Web Locks), reading it afresh, and one stops, changing nothing more, once its page moves
+  on to another DSP or member, or they choose again. Each message new in what waits, as above, as
+  the server reads it again on each change to the DSP's conversations, goes to each browser kept of
+  each member who has Notifications on and may use Communications there then, as a session of
+  theirs at the address they subscribed at would (their account, role, the DSP and its features
+  as now), titled with who wrote it, saying what as the list shows it, and opening the
+  conversation at that address; never the DSP's own. What waited when the server began watching the DSP goes nowhere.
   Pushes go apart from the change, a batch at a time for each DSP, eight at once across the
-  server, each within ten seconds, one that fails tried once more; a browser its push service no
-  longer knows (404, 410), or of a member who may no longer be told, is let go of. Dispatch's
+  server, each within ten seconds, one that fails tried once more, each push service's
+  authorization signed once an hour; a browser its push service no longer knows (404, 410), or of a
+  member who may no longer be told, is let go of. Dispatch's
   service worker (`app/frontend/public/service-worker.js`) shows every push, as browsers ask,
   penalising one that shows nothing. It first asks each window of Dispatch in front there whether
   it alerts of it itself: one that does, of its own DSP, with its conversation or group open or
@@ -635,7 +684,8 @@ not; and with it closed, or on a phone, as a push (**Pushed**, below).
 the page's layout and the variables its parts draw by.
 
 - `page/`: the page, which section shows, what's open (in the address) and the layout; the
-  section switch and the list's frame; and how each section shows (`section-views.tsx`).
+  section switch and the list's frame; how each section shows (`section-views.tsx`); and its keys
+  (`useShortcuts.ts`).
 - `inbox/`: the conversations and groups as they change (`inbox.ts`, `useInbox.ts`), the list of
   them and its rows, and the sections, each defined once (`sections.ts`).
 - `conversations/`: the conversation open, its thread, composer and profile; each kind of
@@ -651,8 +701,9 @@ the page's layout and the variables its parts draw by.
 - `todays-routes/`: Today's Routes' read, list and board, a route's facts, a driver's workdays,
   Pick driver and No work phone.
 - `shared/`: what any of them draws with: faces, a list's rows and headings, a contact's row, a
-  message's body and runs, a thread's frame, a pane's head, the side panel, and how the page
-  words things (`format.ts`).
+  message's body and runs, a thread's frame, a pane's head, the side panel, how the page words
+  things (`format.ts`), and what each key does (`shortcuts.ts`).
+- `replies/`: the DSP's quick replies, in the composer and in Settings.
 - `alerts/` and `display/`: new messages' alerts on every page, and pushes to the browser
   (`push.ts`); and Message display.
 
@@ -714,6 +765,10 @@ Behind `communications.use`:
   there, `chatLink`, whether, on there, it needs updating for what Communications uses,
   `needsUpdate`, and the version of its logo, `logo`, none without one), who is typing, each
   with their person and photo, and the latest change (`revision`).
+- `GET …/quick-replies`: the DSP's quick replies, in their order, and their `revision`;
+  `POST …/quick-replies`, `{replies, revision}`: keeps them, each trimmed, as the revision they
+  were read at, refused past 30, one empty or over 500 characters (`invalid_input`), or once
+  another save passed it (409 `settings_changed_reload_before_saving`).
 - `GET …/waiting`: how many conversations wait, and since when each has, for the sidebar; the
   latest message from whom each is with (`latest`: the conversation, the group it's listed under,
   their name and the message), for alerts; and the DSP's phones an app holds, each online or not,
@@ -817,8 +872,10 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   waits), `communications_group_people` (whom each went to, by workspace and member ID, under
   their name then), `communications_group_messages` (each message to a group, its sender's name
   and the letters of their initials), `communications_deliveries` (each going to each person:
-  waiting, sent with their message, or not sent and why) and `communications_group_uploads` (a
-  group message's photos as uploaded to each workspace); the files' bytes in the DSP's data,
+  waiting, sent with their message, or not sent and why), `communications_group_uploads` (a
+  group message's photos as uploaded to each workspace) and `communications_replies` (each answer
+  noted on its way to Slack, until it's kept or found not to be there; migration 15); the files'
+  bytes in the DSP's data,
   `data/communications/files/`, which backups keep. By text: `communications_text_conversations`
   (each a driver's, a work phone's nobody had, or a number's), on each text's own row
   (`phones_texts`, below) the conversation it's filed in, none while it waits to be, the name its
@@ -826,9 +883,10 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   (migration 9, which copied each from `communications_texts`, since dropped),
   `communications_contacts` (the names saved for numbers, by whom and when),
   `communications_blocked` (the numbers blocked, by whom and when) and `communications_picked`
-  (the driver picked for a work phone on a day, by whom and when). For pushes,
+  (the driver picked for a work phone on a day, by whom and when). The DSP's quick replies, with
+  their revision, in its `settings` table under `communications.quick_replies`. For pushes,
   `communications_push` (each browser a member is told in, by where its pushes go, with the keys
-  they're encrypted for and the address it was subscribed at: migration 15), kept until it's let
+  they're encrypted for and the address it was subscribed at: migration 16), kept until it's let
   go of. The phone side's, as Phones
   made them before Communications adopted them (its migrations 7 and 8, which find them made on a
   database Phones migrated, and leave Phones' own records of its migrations as they were):
@@ -843,10 +901,11 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   the DSP's data, `data/phones/files/`, by their SHA-256, which backups keep. In either folder
   (`bytes`), bytes arrive beside those kept, and take their place, and are let go, only under the
   platform's write lock with the files that keep them. Kept until the DSP is deleted, as the rest.
-- **Upkeep:** catching up hourly and as the server starts; downloading what's due, sending
-  what's due to go to groups' people, filing texts waiting to be filed, filing today's again
-  where they belong now, and failing the texts still waiting on an offline phone as they expire,
-  every minute; and hourly, in each DSP with Slack connected, letting go of
+- **Upkeep:** catching up hourly and as the server starts; downloading what's due, keeping
+  answers that went to Slack unkept, sending what's due to go to groups' people and giving up
+  those too late, filing texts waiting to be filed, filing today's again where they belong now,
+  and failing the texts still waiting on an offline phone as they expire, every minute, each
+  failure logged with its DSP; and hourly, in each DSP with Slack connected, letting go of
   photos added and never sent within a day, then of bytes no file keeps, as a failure once in
   place or a removal that failed leaves, and of bytes left arriving an hour, as a restart leaves,
   each on its own: one that fails, logged as `communications_tidy_failed` with its DSP and job,

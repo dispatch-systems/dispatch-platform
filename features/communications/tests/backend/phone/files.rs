@@ -111,13 +111,13 @@ async fn bytes_sent_again_leave_those_before_them_kept_while_what_keeps_them_fai
     let (at, id) = (dsp.clone(), file.clone());
     let bytes = state
         .read(move |db| {
-            let sha256 = db.phones_file(&at, &id)?.unwrap().sha256.unwrap();
+            let sha256 = db.phones_file(&at, &id)?.unwrap().file.sha256.unwrap();
             Ok(std::fs::read(kept(db, &at).join(sha256)).ok())
         })
         .await
         .unwrap();
     assert_eq!(bytes.as_deref(), Some(&b"door"[..]));
-    let shown = super::shown(&state, &dsp, &file, "usr_other").await;
+    let shown = super::shown(&state, &dsp, &file, "usr_other", None).await;
     assert!(shown.unwrap().is_some(), "it downloads");
 }
 
@@ -197,7 +197,7 @@ async fn a_picture_is_its_adders_alone_until_it_goes_and_its_bytes_are_kept_once
             viewer.to_owned(),
         );
         async move {
-            super::shown(&state, &dsp, &id, &viewer)
+            super::shown(&state, &dsp, &id, &viewer, None)
                 .await
                 .unwrap()
                 .is_some()

@@ -2,7 +2,7 @@
 //! whom a group message can go to.
 use super::{
     ComposeLimits, ConversationState, Correspondent, GroupChoiceKind, GroupPersonState,
-    MessageFile, Sender,
+    MessageFile, NotSent, Sender,
 };
 use dispatch_core::manifest::people::PersonRole;
 use serde::Serialize;
@@ -114,7 +114,7 @@ pub struct GroupPeople {
 }
 
 /// One of a group's people: who, in which workspace, their conversation once they have one, and
-/// where the group stands with them.
+/// where the group stands with them, and why, when its latest message wasn't sent them.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(
@@ -127,6 +127,7 @@ pub struct GroupPerson {
     pub person: Correspondent,
     pub conversation_id: Option<String>,
     pub state: GroupPersonState,
+    pub not_sent: Option<NotSent>,
 }
 
 /// `GET /api/dsp/communications/groups/choices`: whom a group message can go to, each person

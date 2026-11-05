@@ -19,11 +19,15 @@ const bytes = (text: string) =>
 /** The DSPs opened here. */
 const NORTH = 'dsp_north';
 const SUMMIT = 'dsp_summit';
+const WEST = 'dsp_west';
+/** A change no one ends. */
+const going = () => new AbortController().signal;
 
 /**
  * A browser that can be pushed to, subscribed under `subscribed` if anything, for the DSPs
- * `keeping` it, at a server whose key is `key`; and what it and the server were asked, in order.
- * Its worker, newly registered, is active only once it's ready.
+ * `keeping` it, at a server whose key is `key`; what it and the server were asked, in order; the
+ * DSPs it remembers keeping its subscription; and a hold on its worker's activation, which the
+ * test releases. Its worker, newly registered, is active only once it's ready.
  */
 function browser(t: TestContext, key: string | null, subscribed?: string, keeping = [NORTH]) {
   const asked: string[] = [];
@@ -59,6 +63,16 @@ function browser(t: TestContext, key: string | null, subscribed?: string, keepin
     },
   };
   let registered = Boolean(subscribed);
+  let activation = Promise.resolve();
+  /** Holds the worker's activation: once asked for it, then until released. */
+  const hold = () => {
+    let reached = () => {};
+    let release = () => {};
+    const asked = new Promise<void>((done) => (reached = done));
+    activation = new Promise<void>((done) => (release = done));
+    return { asked, release, reached: () => reached() };
+  };
+  let held: ReturnType<typeof hold> | undefined;
   const serviceWorker = {
     register: async (url: string) => {
       asked.push(`register ${url}`);
@@ -66,8 +80,11 @@ function browser(t: TestContext, key: string | null, subscribed?: string, keepin
       return { pushManager };
     },
     get ready() {
-      active = registered;
-      return Promise.resolve({ pushManager });
+      held?.reached();
+      return activation.then(() => {
+        active = registered;
+        return { pushManager };
+      });
     },
     getRegistration: async () => (registered ? { pushManager } : undefined),
   };
@@ -93,7 +110,11 @@ function browser(t: TestContext, key: string | null, subscribed?: string, keepin
     delete (globalThis as { window?: unknown }).window;
     delete (globalThis as { Notification?: unknown }).Notification;
   });
-  return asked;
+  const keepers = () =>
+    (JSON.parse(storage.get('dispatch-communications-push') ?? 'null') as { dsps: string[] } | null)
+      ?.dsps;
+  const holdActivation = () => (held = hold());
+  return { asked, keepers, holdActivation };
 }
 
 const kept = (endpoint: string) =>
@@ -102,8 +123,8 @@ const removed = (endpoint: string) =>
   `POST /api/dsp/communications/push/remove {"endpoint":"${endpoint}"}`;
 
 test("a browser is subscribed under the server's key once its worker is active, and kept as the member's", async (t) => {
-  const asked = browser(t, KEY);
-  await followPush(true, NORTH);
+  const { asked } = browser(t, KEY);
+  await followPush(true, NORTH, going());
   assert.deepEqual(asked, [
     'register /service-worker.js',
     `subscribe ${KEY}`,
@@ -112,14 +133,14 @@ test("a browser is subscribed under the server's key once its worker is active, 
 });
 
 test('a browser subscribed already is kept again, as the server may have let go of it', async (t) => {
-  const asked = browser(t, KEY, KEY);
-  await followPush(true, NORTH);
+  const { asked } = browser(t, KEY, KEY);
+  await followPush(true, NORTH, going());
   assert.deepEqual(asked, ['register /service-worker.js', kept('https://push.example/old')]);
 });
 
 test("a browser subscribed under the server's old key is subscribed again under its new one", async (t) => {
-  const asked = browser(t, KEY, OLD);
-  await followPush(true, NORTH);
+  const { asked } = browser(t, KEY, OLD);
+  await followPush(true, NORTH, going());
   assert.deepEqual(asked, [
     'register /service-worker.js',
     removed('https://push.example/old'),
@@ -135,8 +156,8 @@ test('a browser is let go of once the member no longer wants it, or the server p
     [true, null],
   ] as const) {
     await t.test(`wanted ${wanted}, key ${key}`, async (t) => {
-      const asked = browser(t, key, KEY);
-      await followPush(wanted, NORTH);
+      const { asked } = browser(t, key, KEY);
+      await followPush(wanted, NORTH, going());
       assert.deepEqual(asked, [
         removed('https://push.example/old'),
         'unsubscribe https://push.example/old',
@@ -144,17 +165,17 @@ test('a browser is let go of once the member no longer wants it, or the server p
     });
   }
   // Never subscribed, there's nothing to let go of.
-  const asked = browser(t, KEY);
-  await followPush(false, NORTH);
+  const { asked } = browser(t, KEY);
+  await followPush(false, NORTH, going());
   assert.deepEqual(asked, []);
 });
 
 test('a browser another DSP opened here still wants is let go of by this one alone', async (t) => {
-  const asked = browser(t, KEY, KEY, [NORTH, SUMMIT]);
-  await followPush(false, NORTH);
+  const { asked } = browser(t, KEY, KEY, [NORTH, SUMMIT]);
+  await followPush(false, NORTH, going());
   assert.deepEqual(asked, [removed('https://push.example/old')]);
   // Then let go of by the last DSP that wanted it.
-  await followPush(false, SUMMIT);
+  await followPush(false, SUMMIT, going());
   assert.deepEqual(asked, [
     removed('https://push.example/old'),
     removed('https://push.example/old'),
@@ -179,4 +200,37 @@ test('a page in front alerts of a push of its own DSP it shows open or notifies 
       alerts,
       JSON.stringify([pushed, inFront, notifies]),
     );
+});
+
+test('changes from several tabs at once each take their turn, losing no DSP that wants it', async (t) => {
+  const { asked, keepers } = browser(t, KEY, KEY, [NORTH]);
+  await Promise.all([followPush(true, SUMMIT, going()), followPush(true, WEST, going())]);
+  assert.deepEqual(keepers(), [NORTH, SUMMIT, WEST]);
+  // Two letting go at once leave it to the third, which still wants it.
+  await Promise.all([followPush(false, NORTH, going()), followPush(false, WEST, going())]);
+  assert.deepEqual(keepers(), [SUMMIT]);
+  assert(!asked.some((each) => each.startsWith('unsubscribe')));
+});
+
+test('a change the member chose again over changes nothing once its turn comes', async (t) => {
+  const { asked, keepers } = browser(t, KEY, KEY, [NORTH]);
+  const off = new AbortController();
+  const first = followPush(false, NORTH, off.signal);
+  off.abort();
+  await Promise.all([first.catch(() => {}), followPush(true, NORTH, going())]);
+  assert.deepEqual(asked, ['register /service-worker.js', kept('https://push.example/old')]);
+  assert.deepEqual(keepers(), [NORTH]);
+});
+
+test("a change for a DSP the page moved on from changes nothing under the next one's view", async (t) => {
+  const { asked, holdActivation } = browser(t, KEY);
+  const held = holdActivation();
+  const ends = new AbortController();
+  const following = followPush(true, NORTH, ends.signal);
+  // Waiting on the worker to be active, the page opens another DSP.
+  await held.asked;
+  ends.abort();
+  held.release();
+  await following.catch(() => {});
+  assert.deepEqual(asked, ['register /service-worker.js']);
 });

@@ -2,7 +2,7 @@
 //! kept, a workspace's logo, and the public image of someone's initials.
 use super::{id, slack_id};
 use crate::backend::{
-    conversations,
+    bytes, conversations,
     files::{self, FileStatus, FileStore},
     initials, reply,
 };
@@ -17,7 +17,7 @@ use dispatch_core::{
     db::Store,
     foundation::validate as v,
     server::http::{
-        input::{Input, Reply},
+        input::{Input, Reply, optional},
         route::{Dsp, Grant, Member},
         upload::Upload,
     },
@@ -39,8 +39,8 @@ pub(super) async fn add_photo(
     let added = reply::upload(&state, &c, access, &name, kind, photo).await?;
     Reply::of_status(&added, 201)
 }
-/// A photo or file attached to a message, as kept. One added for a message not sent yet is its
-/// adder's alone.
+/// A photo or file attached to a message, as kept, kept by the browser at its version, `v`. One
+/// added for a message not sent yet is its adder's alone.
 pub(super) async fn file(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
     let wanted = id(input.param("id"), "file")?;
@@ -51,7 +51,8 @@ pub(super) async fn file(state: Arc<State>, input: Input, access: Dsp) -> Result
             Ok((c, file))
         })
         .await?;
-    v::fields(&input.query, &[])?;
+    v::fields(&input.query, &["v"])?;
+    let asked = optional(&input.query, "v", |q, key| v::text(q, key, 1, 64))?;
     let file = file
         .filter(|file| file.status == FileStatus::Kept)
         .filter(|file| {
@@ -62,12 +63,13 @@ pub(super) async fn file(state: Arc<State>, input: Input, access: Dsp) -> Result
         .ok_or_else(|| Error::new("communications_file_not_found", 404))?;
     let sha256 = file.sha256.unwrap_or_default();
     let bytes = files::read(&state, &c.dsp.id, &sha256).await?;
-    Ok(Reply::download(
+    let reply = Reply::download(
         &file.mime,
         &file.name,
         Some(file.size as u64),
         Body::from_stream(bytes),
-    ))
+    );
+    Ok(bytes::as_asked(reply, asked, &sha256))
 }
 /// A workspace's logo, as Slack keeps a copy of it. Its address carries its version, `v`, so the
 /// browser keeps it until the logo changes.

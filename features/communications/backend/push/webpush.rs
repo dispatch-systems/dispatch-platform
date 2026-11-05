@@ -12,13 +12,19 @@ use p256::{
     ecdsa::{Signature, SigningKey, signature::Signer},
 };
 use sha2::Sha256;
-use std::sync::OnceLock;
+use std::{
+    collections::HashMap,
+    sync::{Mutex, OnceLock},
+};
 
 /// The variable the server's private key is read from: its 32 bytes in base64url, as
 /// `npx web-push generate-vapid-keys` prints a private key. Its public key follows from it.
 pub const KEY: &str = "VAPID_PRIVATE_KEY";
 /// How long a push's signature holds, in seconds: within the day push services allow.
 const SIGNED_FOR: i64 = 12 * 60 * 60;
+/// How long one signature is used for each push service, in seconds, before another is signed:
+/// an hour, as often as Apple asks at most, and well before it runs out.
+const SIGNED_EVERY: i64 = 60 * 60;
 /// The size of the one record a push is, as its header says: larger than any message it carries.
 const RECORD: u32 = 4096;
 
@@ -28,6 +34,8 @@ pub struct Vapid {
     /// Its public key, uncompressed, in base64url: what browsers subscribe with.
     pub public: String,
     subject: String,
+    /// The authorization last signed for each push service, by its origin, and when.
+    signed: Mutex<HashMap<String, (i64, String)>>,
 }
 impl Vapid {
     fn new(secret: &SecretKey, subject: &str) -> Self {
@@ -35,14 +43,34 @@ impl Vapid {
             signing: SigningKey::from(secret),
             public: B64.encode(secret.public_key().to_sec1_bytes()),
             subject: subject.to_owned(),
+            signed: Mutex::default(),
         }
     }
-    /// What a push to `endpoint` is authorized with, signed at `now` (seconds since 1970).
+    /// What a push to `endpoint` is authorized with at `now` (seconds since 1970): the one signed
+    /// for its push service within the hour, else one signed now.
     pub fn authorization(&self, endpoint: &url::Url, now: i64) -> String {
+        let audience = endpoint.origin().ascii_serialization();
+        let mut signed = self
+            .signed
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        match signed.get(&audience) {
+            Some((at, authorization)) if (0..SIGNED_EVERY).contains(&(now - at)) => {
+                authorization.clone()
+            }
+            _ => {
+                let authorization = self.sign(&audience, now);
+                signed.insert(audience, (now, authorization.clone()));
+                authorization
+            }
+        }
+    }
+    /// An authorization for pushes to the push service at `audience`, signed at `now`.
+    fn sign(&self, audience: &str, now: i64) -> String {
         let header = B64.encode(br#"{"typ":"JWT","alg":"ES256"}"#);
         let claims = B64.encode(
             serde_json::json!({
-                "aud": endpoint.origin().ascii_serialization(),
+                "aud": audience,
                 "exp": now + SIGNED_FOR,
                 "sub": self.subject,
             })

@@ -49,8 +49,20 @@ async fn members_are_read_once_the_admin_lets_the_bot_and_never_bots() {
     // Someone deactivated in Slack is told of as changed, and kept inactive.
     let event = json!({"user": {"id": "U0FIXCASEY", "deleted": true,
         "profile": {"real_name": "Casey Rivera", "phone": "(612) 555-0104"}}});
-    told(&bot, &event).await.unwrap();
+    told(&bot, &event, false).await.unwrap();
     assert!(!member_of(&kept(&state, &dsp).await, "Casey Rivera").active);
+    // Told of again, after keeping it failed, someone is kept as Slack has them now, not as the
+    // event said then, as later changes may have been kept meanwhile.
+    let earlier = json!({"user": {"id": "U0FIXCASEY", "deleted": false,
+        "profile": {"real_name": "Casey Old", "phone": "(612) 555-0199"}}});
+    told(&bot, &earlier, true).await.unwrap();
+    let names: Vec<String> = kept(&state, &dsp)
+        .await
+        .into_iter()
+        .filter(|(_, member)| member.user == "U0FIXCASEY")
+        .map(|(_, member)| member.name)
+        .collect();
+    assert_eq!(names, ["Casey Rivera"]);
     // Disconnected, the workspace's members go with it, and a read under way as it went keeps
     // none of them.
     let of = dsp.clone();

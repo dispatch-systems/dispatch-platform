@@ -258,7 +258,7 @@ async fn a_picture_keeps_nothing_once_its_adders_access_ended_while_its_bytes_ca
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(first.sha256.as_deref(), Some(bytes[0].as_str()));
+    assert_eq!(first.file.sha256.as_deref(), Some(bytes[0].as_str()));
 }
 
 #[tokio::test]

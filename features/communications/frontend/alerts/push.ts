@@ -39,51 +39,84 @@ export function step(
   return subscribed === key ? 'keep' : 'subscribe';
 }
 
-/** Has this browser pushed to as `wanted` by the DSP `dsp`, where it can be. */
-export async function followPush(wanted: boolean, dsp: string) {
-  if (!canPush()) return;
-  const { key } = await getPushKey();
-  // Subscribed only once the worker is active, as browsers ask.
-  const worker =
-    wanted && key
-      ? await navigator.serviceWorker.register(WORKER).then(() => navigator.serviceWorker.ready)
-      : await navigator.serviceWorker.getRegistration('/');
-  const current = (await worker?.pushManager.getSubscription()) ?? null;
-  const under = current?.options.applicationServerKey;
-  const keeping = current ? keepers(current.endpoint).filter((each) => each !== dsp) : [];
-  switch (
-    step(wanted, key, current ? (under ? encode(under) : '') : undefined, keeping.length > 0)
-  ) {
-    case 'leave':
-      await stopPushing(current!.endpoint);
-      return keep(current!.endpoint, keeping);
-    case 'remove':
-      await stopPushing(current!.endpoint);
-      await current!.unsubscribe();
-      return keep(current!.endpoint, []);
-    case 'keep':
-      await kept(current!);
-      return keep(current!.endpoint, [...keeping, dsp]);
-    case 'subscribe': {
-      // Under the server's new key, the DSPs that kept the old one keep this once opened again.
-      if (current) {
-        await stopPushing(current.endpoint);
-        await current.unsubscribe();
+/** The lock every tab of Dispatch here takes its turn changing the subscription under. */
+const LOCK = 'dispatch-communications-push';
+/** This tab's changes in turn, where the browser has no Web Locks. */
+let turns: Promise<unknown> = Promise.resolve();
+/** Does `work` in its turn among every tab's changes, unless `ends` ends it before then. */
+function inTurn(ends: AbortSignal, work: () => Promise<void>) {
+  if ('locks' in navigator) return navigator.locks.request(LOCK, { signal: ends }, work);
+  const next = turns.then(() => {
+    ends.throwIfAborted();
+    return work();
+  });
+  turns = next.catch(() => {});
+  return next;
+}
+
+/**
+ * Has this browser pushed to as `wanted` by the DSP `dsp`, where it can be: in its turn among
+ * every tab's changes, reading the subscription and which DSPs keep it as the turn starts. Once
+ * `ends` ends it, as the page moved on to another DSP or member, or the member chose again, it
+ * changes nothing more, on the server or in the browser.
+ */
+export function followPush(wanted: boolean, dsp: string, ends: AbortSignal) {
+  if (!canPush()) return Promise.resolve();
+  /** What `doing` comes to, unless it ended meanwhile. */
+  const still = async <T>(doing: Promise<T>) => {
+    const done = await doing;
+    ends.throwIfAborted();
+    return done;
+  };
+  return inTurn(ends, async () => {
+    const { key } = await still(getPushKey(ends));
+    // Subscribed only once the worker is active, as browsers ask.
+    const worker = await still(
+      wanted && key
+        ? navigator.serviceWorker.register(WORKER).then(() => navigator.serviceWorker.ready)
+        : navigator.serviceWorker.getRegistration('/'),
+    );
+    const current = await still(
+      worker ? worker.pushManager.getSubscription() : Promise.resolve(null),
+    );
+    const under = current?.options.applicationServerKey;
+    const keeping = current ? keepers(current.endpoint).filter((each) => each !== dsp) : [];
+    switch (
+      step(wanted, key, current ? (under ? encode(under) : '') : undefined, keeping.length > 0)
+    ) {
+      case 'leave':
+        await still(stopPushing(current!.endpoint, ends));
+        return keep(current!.endpoint, keeping);
+      case 'remove':
+        await still(stopPushing(current!.endpoint, ends));
+        await current!.unsubscribe();
+        return keep(current!.endpoint, []);
+      case 'keep':
+        await still(kept(current!, ends));
+        return keep(current!.endpoint, [...keeping, dsp]);
+      case 'subscribe': {
+        // Under the server's new key, the DSPs that kept the old one keep this once opened again.
+        if (current) {
+          await still(stopPushing(current.endpoint, ends));
+          await still(current.unsubscribe());
+        }
+        const made = await still(
+          worker!.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: decode(key!),
+          }),
+        );
+        await still(kept(made, ends));
+        return keep(made.endpoint, [dsp]);
       }
-      const made = await worker!.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: decode(key!),
-      });
-      await kept(made);
-      return keep(made.endpoint, [dsp]);
     }
-  }
+  });
 }
 
 /** Tells the server of `subscription`, as the member's. */
-function kept(subscription: PushSubscription) {
+function kept(subscription: PushSubscription, ends: AbortSignal) {
   const { endpoint, keys } = subscription.toJSON();
-  return keepPushing(endpoint!, { p256dh: keys!.p256dh!, auth: keys!.auth! });
+  return keepPushing(endpoint!, { p256dh: keys!.p256dh!, auth: keys!.auth! }, ends);
 }
 
 /** Where this browser remembers which DSPs keep its subscription, by its endpoint. */

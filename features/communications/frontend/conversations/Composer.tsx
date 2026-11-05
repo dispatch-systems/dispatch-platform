@@ -19,6 +19,7 @@ import { size } from '../shared/format.js';
 import { randomId } from '../../../../core/shell/frontend/lib/random-id.js';
 import type { Drafts } from './drafts.js';
 import { EmojiPicker, finePointer } from './EmojiPicker.js';
+import { QuickReplies } from '../replies/QuickReplies.js';
 import './composer.css';
 
 // Writing a message, in a conversation or to a group: as much as one may carry, as the API says
@@ -26,8 +27,8 @@ import './composer.css';
 // what refuses one says too. Photos upload as they're added, as the way it goes keeps them
 // (`attachments`): by text, to the DSP's phones, which send them with it. Enter sends, Shift+Enter
 // starts a new line; or, as the member may choose, Enter starts one and Ctrl or ⌘ with it sends.
-// An emoji picked goes in where the writer was, or after the one picked before; with a mouse, the
-// field takes focus back, where a phone's keyboard stays down.
+// An emoji picked, or one of the DSP's quick replies, goes in where the writer was, or after the one
+// picked before; with a mouse, the field takes focus back, where a phone's keyboard stays down.
 // While someone writes in a conversation, their teammates see they are, said again every few
 // seconds. A text says the number it goes to by its last digits, when the name doesn't. While what
 // it goes to can't be reached, as a driver holding no work phone, what says so takes the box's
@@ -109,7 +110,8 @@ export function Composer({
   const picker = useRef<HTMLInputElement>(null);
   const field = useRef<HTMLTextAreaElement>(null);
   const said = useRef(0);
-  // Where the next emoji picked goes in, after the last, until the writer moves in the field.
+  // Where the next emoji or quick reply picked goes in, after the last, until the writer moves in
+  // the field.
   const caret = useRef<number>(undefined);
   const refocus = useRef(false);
   // Photos still uploading stop, and their previews go, as the composer does.
@@ -143,13 +145,13 @@ export function Composer({
     field.current!.setSelectionRange(caret.current, caret.current);
   }, [text]);
 
-  const addEmoji = (emoji: string) => {
+  const put = (picked: string) => {
     const element = field.current!;
     const start = caret.current ?? element.selectionStart;
     const end = caret.current ?? element.selectionEnd;
-    const next = text.slice(0, start) + emoji + text.slice(end);
+    const next = text.slice(0, start) + picked + text.slice(end);
     if (limits && next.length > limits.text) return;
-    caret.current = start + emoji.length;
+    caret.current = start + picked.length;
     refocus.current = finePointer();
     writing(next);
   };
@@ -309,7 +311,8 @@ export function Composer({
             />
           </>
         )}
-        <EmojiPicker disabled={!open} pick={addEmoji} />
+        <EmojiPicker disabled={!open} pick={put} />
+        <QuickReplies disabled={!open} pick={put} />
         <textarea
           ref={field}
           rows={1}

@@ -1,5 +1,6 @@
 //! Web Push as push services and browsers read it: a message encrypted as RFC 8291's own example
-//! is, and a push's authorization signed by the server's key for the push service it goes to.
+//! is, and a push's authorization signed by the server's key for the push service it goes to,
+//! signed again for each no more than hourly.
 use super::*;
 use p256::ecdsa::{VerifyingKey, signature::Verifier};
 
@@ -63,4 +64,23 @@ fn a_push_is_authorized_by_the_servers_key_for_the_service_it_goes_to() {
             "sub": "https://admin.example.test",
         })
     );
+}
+
+#[test]
+fn each_push_service_has_one_authorization_an_hour() {
+    let vapid = Vapid::new(&secret().unwrap(), "https://admin.example.test");
+    let at = |address: &str| url::Url::parse(address).unwrap();
+    let (chrome, firefox) = (
+        at("https://fcm.googleapis.com/fcm/send/browser-1"),
+        at("https://updates.push.services.mozilla.com/wpush/v2/browser-2"),
+    );
+    let first = vapid.authorization(&chrome, 1_800_000_000);
+    // Another browser at the same push service, within the hour: the same one.
+    let other = at("https://fcm.googleapis.com/fcm/send/browser-3");
+    assert_eq!(vapid.authorization(&other, 1_800_000_000 + 3599), first);
+    // Another push service has its own; an hour on, the first is signed again.
+    assert_ne!(vapid.authorization(&firefox, 1_800_000_000 + 10), first);
+    let later = vapid.authorization(&chrome, 1_800_000_000 + 3600);
+    assert_ne!(later, first);
+    assert_eq!(vapid.authorization(&chrome, 1_800_000_000 + 3700), later);
 }

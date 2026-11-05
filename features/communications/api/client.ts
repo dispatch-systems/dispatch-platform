@@ -5,6 +5,7 @@ import {
   useCachedData,
   useData,
 } from '../../../core/shell/frontend/runtime/api.js';
+import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { upload } from '../../../core/shell/frontend/runtime/transfer.js';
 import type {
   Communications,
@@ -28,6 +29,7 @@ import type {
   Phones,
   Profile,
   PushKey,
+  QuickReplies,
   SentMessage,
   TextContacts,
   TextPeople,
@@ -64,6 +66,7 @@ const wording: Readonly<Record<string, string>> = {
   communications_contact_not_found: 'This person is no longer in your Slack workspace.',
   communications_off: 'Communications is off in this Slack workspace.',
   communications_upload_not_found: 'A photo is no longer attached. Add it again.',
+  communications_reply_sending: 'This message is still sending.',
   communications_photo_kind: 'Photos must be PNG, JPEG or GIF.',
   communications_file_not_found: 'This file is no longer here.',
   communications_push_off: "Notifications can't reach this browser with Dispatch closed.",
@@ -108,14 +111,17 @@ export const getWaiting = (signal: AbortSignal) =>
 /** The key a browser subscribes with to be told of new messages with Dispatch closed: none while
  * the server pushes nothing. */
 const pushKeyUrl = `${communicationsUrl}/push`;
-export const getPushKey = () => api<PushKey>(pushKeyUrl);
+export const getPushKey = (signal?: AbortSignal) => api<PushKey>(pushKeyUrl, undefined, signal);
 export const usePushKey = () => useCachedData<PushKey>(pushKeyUrl);
 /** Keeps this browser's subscription, `endpoint` and its `keys`, as the member's. */
-export const keepPushing = (endpoint: string, keys: { p256dh: string; auth: string }) =>
-  api<{ ok: true }>(`${communicationsUrl}/push`, { endpoint, keys });
+export const keepPushing = (
+  endpoint: string,
+  keys: { p256dh: string; auth: string },
+  signal?: AbortSignal,
+) => api<{ ok: true }>(`${communicationsUrl}/push`, { endpoint, keys }, signal);
 /** Lets go of the member's browser at `endpoint`. */
-export const stopPushing = (endpoint: string) =>
-  api<{ ok: true }>(`${communicationsUrl}/push/remove`, { endpoint });
+export const stopPushing = (endpoint: string, signal?: AbortSignal) =>
+  api<{ ok: true }>(`${communicationsUrl}/push/remove`, { endpoint }, signal);
 /** What changed since `after`, and who is typing, once either differs from what the page has. */
 export const getCommunicationsUpdates = (after: number, typing: number, signal: AbortSignal) =>
   api<CommunicationsUpdates>(
@@ -202,6 +208,18 @@ export const getTodaysRoutes = (signal?: AbortSignal) =>
 /** Files a work phone nobody held under one of today's drivers: their conversation. */
 export const pickDriver = (id: string, driverId: string) =>
   api<Conversation>(`${communicationsUrl}/conversations/${id}/driver`, { driverId });
+/** The DSP's quick replies, in their order, as the composer offers them and Settings edits them. */
+export const quickRepliesUrl = `${communicationsUrl}/quick-replies`;
+export const useQuickReplies = () => useCachedData<QuickReplies>(quickRepliesUrl);
+/** Saves the DSP's quick replies, in their order, on the `revision` they were read at. Once saved,
+ * they take the place of what was read, so they show at once and the next save goes on their
+ * revision, unless another view opened meanwhile. */
+export async function saveQuickReplies(replies: string[], revision: number) {
+  const session = dataCache.session;
+  const saved = await api<QuickReplies>(quickRepliesUrl, { replies, revision });
+  if (dataCache.session === session) dataCache.put(quickRepliesUrl, saved);
+  return saved;
+}
 /** Whom the DSP can text, or those found by a name or number typed, and the numbers blocked. */
 export const getTextContacts = (typed = '') =>
   api<TextContacts>(address(`${communicationsUrl}/texts/contacts`, { q: typed }));

@@ -73,7 +73,7 @@ async fn a_direct_message_is_answered_by_slack_until_an_integration_on_there_tak
         posts.map(|post| post.text).collect()
     };
     // No integration on in the workspace hears of it, so Slack answers it.
-    on_event(&bot, &written).await.unwrap();
+    on_event(&bot, &written, false).await.unwrap();
     assert_eq!(posted(), answered);
     assert!(support::heard(&dsp).is_empty());
     // One on there hears of it, as `message.im`, and takes it: Slack answers no more.
@@ -82,7 +82,7 @@ async fn a_direct_message_is_answered_by_slack_until_an_integration_on_there_tak
         .run(move |db| db.turn_on_slack_integration(&of, TEAM, LISTENING.id, "U1"))
         .await
         .unwrap();
-    on_event(&bot, &written).await.unwrap();
+    on_event(&bot, &written, false).await.unwrap();
     let taken = [(TEAM.to_owned(), "message.im".to_owned())];
     assert_eq!(support::heard(&dsp), taken);
     assert_eq!(posted(), answered);
