@@ -3,7 +3,9 @@
 //! phone it is the day each was written, today's or a saved day's, and a day's again as its route
 //! data changes, both ways, while Routes can read the day, and only then: never as how one went
 //! changes, nor while Routes is off; a blocked number's out of the list, never waiting on what it
-//! sent while blocked. A text that can't be filed as it comes is kept, and filed by the next upkeep.
+//! sent while blocked. A text that can't be filed as it comes is kept, and filed by the next upkeep,
+//! else, ten minutes on, under its number; a day whose filing again failed is filed again by the
+//! upkeep until it's done.
 use super::*;
 use crate::backend::{
     changes::ChangeStore,
@@ -750,6 +752,69 @@ async fn a_text_that_cant_be_filed_as_it_comes_is_kept_waiting_and_the_next_upke
         .unwrap()
         .expect("kept");
     assert_eq!(kept.conversation, None);
+
+    // Once the day can be read, the next upkeep files it under Avery.
+    failing(&dsp, false);
+    (MAINTENANCE.run)(state.clone(), false).await;
+    assert_eq!(filed(&state, &dsp, &late).await.driver, driver("avery"));
+}
+
+#[tokio::test]
+async fn a_saved_days_texts_go_where_they_belong_by_the_next_upkeep_once_filing_them_again_failed()
+{
+    let (_root, state, dsp) = started();
+    let (zone, day) = today(&state, &dsp).await;
+    let yesterday = day.pred_opt().unwrap();
+    // Yesterday's text, relayed late before the day is saved, is its number's.
+    let written = at(zone, yesterday, 16, 0);
+    let late = texted(&state, &dsp, "+12065550101", "Back at the station", written).await;
+    assert_eq!(
+        filed(&state, &dsp, &late).await.kind,
+        ConversationKind::Number
+    );
+
+    // Routes says the day was saved with Avery's phone 0101, while reading it fails: it stays.
+    failing(&dsp, true);
+    let avery = saved(yesterday, &[("avery", "2065550101")]);
+    phoned(&state, &dsp, None, Vec::new(), vec![avery]).await;
+    assert_eq!(
+        filed(&state, &dsp, &late).await.kind,
+        ConversationKind::Number
+    );
+
+    // Once the day can be read, the next upkeep files it again, though nothing says it changed.
+    failing(&dsp, false);
+    (MAINTENANCE.run)(state.clone(), false).await;
+    assert_eq!(filed(&state, &dsp, &late).await.driver, driver("avery"));
+}
+
+#[tokio::test]
+async fn a_text_that_cant_be_filed_for_ten_minutes_goes_under_its_number_until_its_day_can_be_read()
+{
+    let (_root, state, dsp) = started();
+    let (zone, day) = today(&state, &dsp).await;
+    let yesterday = day.pred_opt().unwrap();
+    // Yesterday was saved with Avery's phone 0101; then reading a day's phones fails, and a text of
+    // yesterday's, relayed late, waits to be filed.
+    let avery = saved(yesterday, &[("avery", "2065550101")]);
+    phoned(&state, &dsp, None, Vec::new(), vec![avery]).await;
+    failing(&dsp, true);
+    let written = at(zone, yesterday, 16, 0);
+    let late = texted(&state, &dsp, "+12065550101", "Back at the station", written).await;
+    let unfiled = || {
+        let (at_dsp, id) = (dsp.clone(), late.clone());
+        let read = state.read(move |db| db.communications_text(&at_dsp, &id));
+        async move { read.await.unwrap().expect("kept").conversation.is_none() }
+    };
+
+    // Not yet ten minutes on, it waits still; ten minutes on, it's the work phone's own.
+    overdue(&state, &dsp, now() + UNFILED_MS - 60_000)
+        .await
+        .unwrap();
+    assert!(unfiled().await);
+    overdue(&state, &dsp, now() + UNFILED_MS).await.unwrap();
+    let own = filed(&state, &dsp, &late).await;
+    assert_eq!((own.kind, own.driver), (ConversationKind::Work, None));
 
     // Once the day can be read, the next upkeep files it under Avery.
     failing(&dsp, false);

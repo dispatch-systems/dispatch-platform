@@ -154,7 +154,8 @@ and every other number's in Recents.
 
 The drivers on a route today, while live route data holds today, and the work phones they text
 from. At the stop, as live route data empties, it lists nobody (No routes), and the conversations
-stay; the next day's drivers fill it as its live reads start.
+stay, the work ones waiting two hours more ([Waiting](#texts)); the next day's drivers fill it as
+its live reads start.
 
 - **Who:** each driver its routes name today, with their route as last read live (of several
   itineraries, the one with the most stops), and their work conversation once they have one;
@@ -334,8 +335,12 @@ queues a text for a phone.
   written, who at the DSP sent it, how it went, and its pictures as the phone side keeps them),
   and each conversation a change touched keeps whether it waits; the pages waiting on it hear
   once both are committed. A text that can't be placed as it comes, as reading where it belongs
-  failed, is kept all the same, waiting to be filed (no conversation yet), and every minute's
-  upkeep places those waiting, oldest first, each on its own. Where it's placed:
+  failed, is kept all the same, waiting to be filed (no conversation yet, and since when it
+  couldn't be placed, logged as `communications_texts_failed` with its DSP and text), and every
+  minute's upkeep places those waiting, oldest first, each on its own; one still waiting ten
+  minutes after it first couldn't be is placed under its number, as on a day Routes can't read,
+  and its day noted to be filed again (below), which moves it where it belongs once Routes can
+  say. Where it's placed:
   - **A work phone's**, a driver's: a number `+1` and ten digits, as Routes' work phones are, is
     filed by the day it was written, where the DSP is, under the driver whose latest work phone
     it is that day, by their ID of the source naming the drivers, as Routes reads the day
@@ -359,20 +364,26 @@ queues a text for a phone.
   data changed (`routes.data_changed`, which names the day), every text of that day, both ways,
   is filed again where it belongs now: a text that came before the day's first live read goes to
   the driver whose phone a read then names. A day Routes can't read keeps its texts where they
-  are. Today's are filed again every minute too, so a change nothing heard, as while
-  Communications was off or a hearing failed, is repaired by the next pass; an earlier day's only
-  as Routes says it changed.
+  are. A day whose filing again fails, logged as `communications_texts_refile_failed` with its
+  DSP and day, is noted (`communications_refiling`), and every minute's upkeep files the noted
+  days again, the earliest four first, each on its own, until each is done. Today's are filed
+  again every minute too, so a change nothing heard, as while Communications was off, is repaired
+  by the next pass; an earlier day's only as Routes says it changed, or as it's noted.
 - **Waiting:** as a Slack conversation's: a text in after the latest text out that didn't fail,
   and not covered by a Done. Done marks each text in it covers, those up to the latest the page
   showed, which stays handled wherever it's filed again, never handling a text it didn't cover. A
   failed answer leaves it waiting; one queued counts as an answer until it fails. A work
   conversation waits only on what was written on the live day, while live route data holds
-  today: from the first text in on it after its latest answer or Done, though it came before the
-  day's first live read; so at the stop, as live route data empties, none waits or counts, and
-  the next day starts afresh. Each
-  time today's route data changes, the work conversations waiting by their texts are noted
-  changed, so the pages waiting on changes hear the day begin or end, and so is every driver's,
-  so one open hears their work phone change, or none shown any more.
+  today, and for two hours after it ends, at the stop: from the first text in on it after its
+  latest answer or Done, though it came before the day's first live read. A text in during those
+  two hours waits, and counts, as on the live day, until answered, Done, or the two hours pass;
+  then none waits or counts, and the next day starts afresh. When the live day ended is kept as
+  Communications first saw it (`communications_live_days`), as it hears today's route data change
+  or by the next minute's upkeep, never after the day itself ended, as for a day a stop never
+  saved. Each time today's route data changes, the work conversations waiting by their texts are
+  noted changed, so the pages waiting on changes hear the day begin or end, and so is every
+  driver's, so one open hears their work phone change, or none shown any more; and so are they
+  as the two hours after the stop pass, so the pages hear them stop waiting.
 - **Answering:** what someone at the DSP writes goes as written, nothing added, from the phone that
   last texted that number, else the one seen last, one online before any offline, with its
   pictures, kept by the phone side as they're added, the adder's alone until they go, and none of
@@ -755,9 +766,14 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   (migration 9, which copied each from `communications_texts`, since dropped),
   `communications_contacts` (the names saved for numbers, by whom and when),
   `communications_blocked` (the numbers blocked, by whom and when) and `communications_picked`
-  (the driver picked for a work phone on a day, by whom and when). The phone side's, as Phones
-  made them before Communications adopted them (its migrations 7 and 8, which find them made on a
-  database Phones migrated, and leave Phones' own records of its migrations as they were):
+  (the driver picked for a work phone on a day, by whom and when); and, from migration 14,
+  `communications_refiling` (each day still to be filed again, and since when),
+  `communications_live_days` (each day live route data was seen holding, when it was first seen
+  not to, and whether the pages heard the two hours after end) and, on each text waiting to be
+  filed, since when it couldn't be placed (`phones_texts.unfiled_since`). The phone side's, as
+  Phones made them before Communications adopted them (its migrations 7 and 8, which find them
+  made on a database Phones migrated, and leave Phones' own records of its migrations as they
+  were):
   `phones_devices` (each phone, by its key's SHA-256), `phones_pairings` (the code that pairs the
   next, by its SHA-256, with its ID and when a newer one replaced it), `phones_texts` (each text,
   with its phone, direction, origin, the other party's number, how one Dispatch sent went, each
@@ -769,8 +785,9 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   (`bytes`), bytes arrive beside those kept, and take their place, and are let go, only under the
   platform's write lock with the files that keep them. Kept until the DSP is deleted, as the rest.
 - **Upkeep:** catching up hourly and as the server starts; downloading what's due, sending
-  what's due to go to groups' people, filing texts waiting to be filed, filing today's again
-  where they belong now, and failing the texts still waiting on an offline phone as they expire,
+  what's due to go to groups' people, filing texts waiting to be filed, those waiting ten minutes
+  under their number, filing the days noted and today's again where they belong now, keeping
+  when the live day ends, and failing the texts still waiting on an offline phone as they expire,
   every minute; and hourly, in each DSP with Slack connected, letting go of
   photos added and never sent within a day, then of bytes no file keeps, as a failure once in
   place or a removal that failed leaves, and of bytes left arriving an hour, as a restart leaves,

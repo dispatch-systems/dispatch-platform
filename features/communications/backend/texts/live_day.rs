@@ -1,13 +1,14 @@
 //! The live day: the day live route data holds, while it holds today (`live_route_data`), which
 //! Today's Routes lists and the DSP's work conversations wait on. A work conversation waits only on
-//! texts written on the live day, from the first after its latest answer or Done: at the stop, as
-//! live route data empties, none waits, and the next day starts afresh, with what drivers texted
-//! before its first live read. A Slack or number's conversation waits as its messages say,
-//! whichever day.
+//! texts written on the live day, from the first after its latest answer or Done, and for two hours
+//! after it ends, at the stop, as live route data empties (`AFTER_STOP_MS`): when it ended is kept
+//! as first seen (`watched`), never past the day's own end. Then none waits, and the next day starts
+//! afresh, with what drivers texted before its first live read. A Slack or number's conversation
+//! waits as its messages say, whichever day.
 use super::{
-    began,
-    model::{Filed, TextConversation},
-    storage::{PickStore, TextStore},
+    began, date,
+    model::{Filed, LiveKept, TextConversation},
+    storage::{DayStore, PickStore, TextStore},
     zone,
 };
 use crate::backend::{
@@ -15,12 +16,20 @@ use crate::backend::{
     today,
 };
 use chrono::NaiveDate;
-use dispatch_core::{Error, Result, db::Store};
+use chrono_tz::Tz;
+use dispatch_core::{
+    Error, Result,
+    db::{Store, now},
+};
 use dispatch_routes_contract::{self as routes, DayPhones, DriverPhone, LiveRouteData, RouteDay};
 use std::{
     cmp::Reverse,
     collections::{BTreeMap, HashMap, HashSet},
 };
+
+/// Two hours, in milliseconds: how long after the live day ends, at the stop, work conversations
+/// go on waiting as on it.
+pub const AFTER_STOP_MS: i64 = 2 * 60 * 60 * 1000;
 
 /// The DSP's live day, and what reads it.
 pub struct LiveDay {
@@ -41,9 +50,7 @@ impl LiveDay {
         let Some(day) = reader.live_day(db, dsp)? else {
             return Ok(None);
         };
-        let date = NaiveDate::parse_from_str(&day, "%Y-%m-%d")
-            .map_err(|_| Error::new("invalid_date", 400))?;
-        let from = began(zone(db, dsp)?, date)?;
+        let from = began(zone(db, dsp)?, date(&day)?)?;
         Ok(Some(Self {
             reader,
             source: reader.source().as_str().to_owned(),
@@ -127,8 +134,8 @@ impl LiveDay {
 }
 
 /// `kept` as of the DSP's live day: a work conversation waiting by its texts waits only on those
-/// written on it, since the first of them; else it's done with, as at the stop. The live day is
-/// read only when one does.
+/// written on it, since the first of them, and for two hours after it ends (`waits_from`); else
+/// it's done with. Since when they wait is read only when one does.
 pub fn slated(
     db: &Store,
     dsp: &str,
@@ -145,9 +152,9 @@ pub fn slated(
     if ids.is_empty() {
         return Ok(kept);
     }
-    let since: HashMap<String, i64> = match LiveDay::read(db, dsp)? {
-        Some(live) => db
-            .communications_waiting_from(dsp, &ids, live.from)?
+    let since: HashMap<String, i64> = match waits_from(db, dsp, now())? {
+        Some(from) => db
+            .communications_waiting_from(dsp, &ids, from)?
             .into_iter()
             .collect(),
         None => HashMap::new(),
@@ -161,7 +168,85 @@ pub fn slated(
     Ok(kept)
 }
 
-/// The work conversations waiting on the live day, the longest waiting first: none without one.
+/// Since when the DSP's work conversations wait at `at`, as it began where the DSP is: the live
+/// day, while live route data holds today, and until `AFTER_STOP_MS` after it ended; none else.
+pub fn waits_from(db: &Store, dsp: &str, at: i64) -> Result<Option<i64>> {
+    if let Some(live) = LiveDay::read(db, dsp)? {
+        return Ok(Some(live.from));
+    }
+    let Some(kept) = db.communications_live_day(dsp)? else {
+        return Ok(None);
+    };
+    let (zone, day) = (zone(db, dsp)?, date(&kept.day)?);
+    if at >= ended(zone, day, kept.ended_at, at)? + AFTER_STOP_MS {
+        return Ok(None);
+    }
+    Ok(Some(began(zone, day)?))
+}
+
+/// What watching the live day at a moment finds to keep.
+pub enum Watched {
+    /// Live route data holds `day`, today, as it didn't.
+    Live(String),
+    /// Live route data held `day` until `at`, and doesn't now.
+    Ended { day: String, at: i64 },
+    /// The two hours after `day` ended passed: its work conversations, waiting from `from`, don't
+    /// any more.
+    Over { day: String, from: i64 },
+}
+
+/// What's changed of the DSP's live day at `at`, by what was kept of it: none while nothing has.
+/// The day ends as first seen not held, though never after the day itself does, as one a stop
+/// never saved leaves.
+pub fn watched(db: &Store, dsp: &str, at: i64) -> Result<Option<Watched>> {
+    let live = match routes::live_for_dsp(db, dsp)? {
+        Some(reader) => reader.live_day(db, dsp)?,
+        None => None,
+    };
+    let kept = db.communications_live_day(dsp)?;
+    Ok(match (live, kept) {
+        (Some(day), Some(kept)) if kept.day == day && kept.ended_at.is_none() => None,
+        (Some(day), _) => Some(Watched::Live(day)),
+        (None, Some(LiveKept { over: true, .. }) | None) => None,
+        (None, Some(kept)) => {
+            let (zone, day) = (zone(db, dsp)?, date(&kept.day)?);
+            match kept.ended_at {
+                None => Some(Watched::Ended {
+                    day: kept.day,
+                    at: ended(zone, day, None, at)?,
+                }),
+                Some(ended) if at >= ended + AFTER_STOP_MS => Some(Watched::Over {
+                    day: kept.day,
+                    from: began(zone, day)?,
+                }),
+                Some(_) => None,
+            }
+        }
+    })
+}
+/// Keeps what `watched` found; once the two hours after a stop pass, notes changed the work
+/// conversations that waited, so the pages waiting on changes hear they don't.
+pub fn keep(db: &Store, dsp: &str, watched: &Watched) -> Result<()> {
+    match watched {
+        Watched::Live(day) => db.live_communications_day(dsp, day),
+        Watched::Ended { day, at } => db.ended_communications_day(dsp, day, *at),
+        Watched::Over { day, from } => db.dsp(dsp)?.transaction(|| {
+            db.changed_communications_work(dsp, *from)?;
+            db.over_communications_day(dsp, day)
+        }),
+    }
+}
+
+/// When the live day `day` ended, kept as `ended_at`, or else `at`: never after the day did.
+fn ended(zone: Tz, day: NaiveDate, ended_at: Option<i64>, at: i64) -> Result<i64> {
+    let next = day
+        .succ_opt()
+        .ok_or_else(|| Error::new("invalid_date", 400))?;
+    Ok(ended_at.unwrap_or(at).min(began(zone, next)?))
+}
+
+/// The work conversations waiting on the live day, or in the two hours after it, the longest
+/// waiting first: none else.
 pub fn waiting(db: &Store, dsp: &str) -> Result<Vec<TextConversation>> {
     let mut waiting: Vec<TextConversation> = slated(db, dsp, db.waiting_communications_work(dsp)?)?
         .into_iter()

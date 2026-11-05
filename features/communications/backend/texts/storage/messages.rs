@@ -1,9 +1,9 @@
 //! Each conversation by text and the texts filed in it, and whether each conversation waits, kept
 //! beside its texts each time they change. A text is the phone side's row of it (`phones_texts`),
 //! on which this keeps the conversation it's filed in (`conversation_id`, none while it waits to
-//! be), the name its sender was shown by as it was filed, whether its number was blocked as it
-//! came, and the Done that covered it; the rest of the row, and the text's files, are the phone
-//! side's (`phone::storage`).
+//! be, and since when placing it failed while it waits), the name its sender was shown by as it was
+//! filed, whether its number was blocked as it came, and the Done that covered it; the rest of the
+//! row, and the text's files, are the phone side's (`phone::storage`).
 use crate::backend::{
     changes::changed_conversation,
     model::{ConversationState, TEXT_PREFIX},
@@ -78,6 +78,17 @@ pub trait TextStore {
         after: Option<(i64, &str)>,
         most: usize,
     ) -> Result<Vec<(i64, String)>>;
+    /// Keeps that each of the texts `ids`, waiting to be filed, couldn't be placed at `at`: one
+    /// that couldn't before keeps since when.
+    fn unplaced_communications_texts(&self, dsp: &str, ids: &[String], at: i64) -> Result<()>;
+    /// The texts waiting to be filed that couldn't be placed since `since` or before, the oldest
+    /// `most`, oldest first.
+    fn overdue_communications_texts(
+        &self,
+        dsp: &str,
+        since: i64,
+        most: usize,
+    ) -> Result<Vec<Unfiled>>;
     /// Files the text `id`, waiting to be, as `filed`, sent by someone at the DSP shown by
     /// `sender_name`, as their name stands now: one with a number of its own as blocked while its
     /// number is. The conversation it's in. Where a text is filed is decided again only as its
@@ -314,6 +325,26 @@ impl TextStore for Store {
             "SELECT at,id FROM phones_texts WHERE conversation_id IS NULL \
              AND (at>?1 OR (at=?1 AND id>?2)) ORDER BY at,id LIMIT ?3",
             params![at, id, most as i64],
+        )
+    }
+    fn unplaced_communications_texts(&self, dsp: &str, ids: &[String], at: i64) -> Result<()> {
+        self.dsp(dsp)?.exec(
+            "UPDATE phones_texts SET unfiled_since=?1 WHERE id IN (SELECT value FROM json_each(?2)) \
+             AND conversation_id IS NULL AND unfiled_since IS NULL",
+            params![at, serde_json::to_string(ids)?],
+        )?;
+        Ok(())
+    }
+    fn overdue_communications_texts(
+        &self,
+        dsp: &str,
+        since: i64,
+        most: usize,
+    ) -> Result<Vec<Unfiled>> {
+        self.dsp(dsp)?.query_as(
+            "SELECT id,number,at,sent_by FROM phones_texts WHERE conversation_id IS NULL \
+             AND unfiled_since<=?1 ORDER BY at,id LIMIT ?2",
+            params![since, most as i64],
         )
     }
     fn place_communications_text(

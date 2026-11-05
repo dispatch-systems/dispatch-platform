@@ -65,6 +65,8 @@ pub const FEATURE: Feature = Feature {
             "communications_contacts",
             "communications_blocked",
             "communications_picked",
+            "communications_refiling",
+            "communications_live_days",
             "phones_devices",
             "phones_pairings",
             "phones_texts",
@@ -155,14 +157,22 @@ pub const FEATURE: Feature = Feature {
                 name: "communications_done_places",
                 apply: Code(backend::storage::add_done_places),
             },
+            // The days still to file again, when each live day ended, and since when each text
+            // waiting to be filed couldn't be placed.
+            Migration {
+                id: 14,
+                name: "communications_days",
+                apply: Code(backend::texts::storage::add_days),
+            },
         ],
     }],
     // Its dispatch phones are the DSP's own, managed on DSP Connections.
     dsp_connection: true,
     // Catching up on what Dispatch didn't hear of, hourly and as the server starts; downloading
     // what members attach, sending what's due to go to groups' people, filing texts waiting to be
-    // filed, and filing today's again where they belong now, every minute; and letting go of
-    // photos and the phones' pictures never sent, bytes no file keeps and codes expired, hourly.
+    // filed, and filing the days noted and today's again where they belong now, every minute; and
+    // letting go of photos and the phones' pictures never sent, bytes no file keeps and codes
+    // expired, hourly.
     maintenance: &[
         integrations::messages::catch_up::MAINTENANCE,
         backend::files::MAINTENANCE,

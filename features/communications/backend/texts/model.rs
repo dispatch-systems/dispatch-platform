@@ -1,6 +1,6 @@
 //! What texting keeps, as its storage reads and writes it: each conversation by text, each text
-//! filed in one with its pictures and how one Dispatch sent went, and where a text is filed
-//! (`Filed`).
+//! filed in one with its pictures and how one Dispatch sent went, where a text is filed
+//! (`Filed`), and the latest day live route data held (`LiveKept`).
 use crate::backend::{
     model::{ConversationKind, ConversationState, Direction},
     phone::model::File,
@@ -113,6 +113,25 @@ impl FromRow for Unfiled {
             number: row.get("number")?,
             at: row.get("at")?,
             sent_by: row.get("sent_by")?,
+        })
+    }
+}
+
+/// The latest day live route data was seen holding: when it was first seen not to, at the stop,
+/// none while it holds it; and whether the pages heard the work conversations stop waiting after.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LiveKept {
+    /// YYYY-MM-DD in the DSP's own time.
+    pub day: String,
+    pub ended_at: Option<i64>,
+    pub over: bool,
+}
+impl FromRow for LiveKept {
+    fn from_row(row: &Row<'_>) -> Result<Self> {
+        Ok(Self {
+            day: row.get("day")?,
+            ended_at: row.get("ended_at")?,
+            over: row.get("over")?,
         })
     }
 }
