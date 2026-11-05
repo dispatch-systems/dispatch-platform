@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Conversation, RouteDriver, Today } from '../../api/index.js';
-import { driverToday, routeGroups, routeRows } from '../../frontend/todays-routes/todays-routes.js';
+import {
+  driverToday,
+  routeGroups,
+  routeRows,
+  routeToday,
+} from '../../frontend/todays-routes/todays-routes.js';
 
 /** A driver's work conversation, or a work phone's nobody held, waiting since `since` or
  * answered, last written in at `at`. */
@@ -105,4 +110,60 @@ test('a driver’s work phone at the stop stands through the two hours after, th
   assert.equal(driverToday('avery', read, over)?.phone, '+12065550101');
   // As the two hours end, the conversation is read again, with none.
   assert.equal(driverToday('avery', { value: null, at: 7_200_000 }, over), null);
+});
+
+test('Recents shows a driver’s route on each of their conversations Driver Match knows them in, while they have a route today', () => {
+  const as = (conversation: Conversation, code: string | null): Conversation => ({
+    ...conversation,
+    with: { ...conversation.with, code },
+  });
+  const on = (
+    id: string,
+    code: string | null,
+    route: string | null,
+    conversation?: Conversation,
+  ) => {
+    const each = driver(id, 940, conversation);
+    return {
+      ...each,
+      person: { ...each.person, code },
+      today: {
+        ...each.today,
+        route,
+        stops: route === null ? null : 120,
+        stopsDone: route === null ? null : 40,
+      },
+    };
+  };
+  const routes = {
+    day: '2026-11-05',
+    drivers: [
+      on('avery', 'P1', 'CX1', work('avery', 500)),
+      // No one Driver Match knows: their work conversation alone.
+      on('blake', null, 'CX2', work('blake', 500)),
+      // Gone from the day's list: no route, though their work conversation stays.
+      on('casey', 'P3', null, work('casey', 500)),
+    ],
+    phones: [],
+  };
+  const routeOf = routeToday(routeGroups(routeRows(routes, [])));
+  const shown = (conversation: Conversation) => routeOf(conversation)?.route ?? null;
+  const personal = (id: string, code: string | null) =>
+    as({ ...work(id, 600), kind: 'number', driverId: null }, code);
+  const slack = (id: string, code: string | null) =>
+    as({ ...work(id, 600), kind: 'slack', driverId: null, number: null }, code);
+  assert.deepEqual(
+    [
+      shown(work('avery', 500)),
+      shown(personal('avery-own', 'P1')),
+      shown(slack('avery-dm', 'P1')),
+      shown(work('blake', 500)),
+      shown(work('casey', 500)),
+      shown(personal('casey-own', 'P3')),
+      // Matched, with no route today, and a number nobody linked.
+      shown(personal('dana-own', 'P4')),
+      shown(personal('stranger', null)),
+    ],
+    ['CX1', 'CX1', 'CX1', 'CX2', null, null, null, null],
+  );
 });

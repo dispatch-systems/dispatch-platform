@@ -27,6 +27,14 @@
   width: calc(var(--small-size) - 0.5px);
   height: calc(var(--small-size) - 0.5px);
 }
+/* Where a conversation is, in Recents, as wide as "Personal", so the bars line up; in a row short
+   of room, the bar after it gives way, before its pace is cut off. */
+.route-place {
+  flex: 0 0 4.2em;
+}
+.route-place ~ .stops-bar {
+  min-width: 0;
+}
 .stops-bar {
   position: relative;
   flex: 0 1 56px;

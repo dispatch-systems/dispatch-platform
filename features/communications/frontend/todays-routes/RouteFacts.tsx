@@ -3,10 +3,11 @@ import type { Pace, Today } from '../../api/index.js';
 import { lastFour, paceText } from '../shared/format.js';
 import './route-facts.css';
 
-// Pieces of a driver's route today, as Today's Routes, a work conversation's head and the profile
-// show them: the route's code, a work phone by its last digits, how many stops are done of how
-// many, as a bar in the colour of its pace and in words, "98 of 168 stops", or in a list's row,
-// short of room, "98/168", read aloud in full; and its pace, but on time.
+// Pieces of a driver's route today, as Today's Routes, Recents, a work conversation's head and the
+// profile show them: the route's code, a work phone by its last digits, or in Recents where the
+// conversation is, how many stops are done of how many, as a bar in the colour of its pace and in
+// words, "98 of 168 stops", or in a list's row, short of room, "98/168", read aloud in full; and
+// its pace, but on time.
 
 /** A route's code, as CX14. */
 export function RouteCode({ code }: { code: string }) {
@@ -70,13 +71,17 @@ export function RouteToday({ today }: { today: Today }) {
   );
 }
 
-/** A driver's route under their row in a list: its code, their work phone, the stops done and its
- * pace. */
-export function RouteLine({ today }: { today: Today }) {
+/** A driver's route under their row in a list: its code, their work phone, or in Recents where the
+ * conversation is (`place`), the stops done and its pace. */
+export function RouteLine({ today, place }: { today: Today; place?: string }) {
   return (
     <>
       {today.route && <RouteCode code={today.route} />}
-      {today.phone && <WorkPhone number={today.phone} />}
+      {place ? (
+        <span className="route-place">{place}</span>
+      ) : (
+        today.phone && <WorkPhone number={today.phone} />
+      )}
       <Stops today={today} short />
       <PaceMark pace={today.pace} />
     </>

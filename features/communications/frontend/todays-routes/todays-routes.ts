@@ -46,17 +46,27 @@ export const routeConversations = (groups: readonly RouteGroup[]) =>
   groups.flatMap((group) =>
     group.rows.flatMap((row) => (row.conversation ? [row.conversation] : [])),
   );
-/** The route today of the driver each conversation Today's Routes lists is with, by its ID. */
-export const routesToday = (groups: readonly RouteGroup[]) =>
-  new Map(
-    groups.flatMap((group) =>
-      group.rows.flatMap((row) =>
-        row.kind === 'driver' && row.conversation
-          ? [[row.conversation.id, row.driver.today] as const]
-          : [],
-      ),
-    ),
-  );
+/** The route today of whom a conversation is with, while they drive one: a driver's work
+ * conversation by its ID, else any conversation with someone Driver Match knows as a driver, by
+ * their person's code; of a person's several, the route with the most stops. */
+export function routeToday(groups: readonly RouteGroup[]) {
+  const byConversation = new Map<string, Today>();
+  const byPerson = new Map<string, Today>();
+  for (const row of groups.flatMap((group) => group.rows)) {
+    if (row.kind !== 'driver' || !onRoute(row.driver.today)) continue;
+    const { today, person } = row.driver;
+    if (row.conversation) byConversation.set(row.conversation.id, today);
+    const kept = person.code === null ? undefined : byPerson.get(person.code);
+    if (person.code !== null && (!kept || (today.stops ?? 0) > (kept.stops ?? 0)))
+      byPerson.set(person.code, today);
+  }
+  return (conversation: Conversation): Today | undefined =>
+    byConversation.get(conversation.id) ??
+    (conversation.with.code === null ? undefined : byPerson.get(conversation.with.code));
+}
+/** Whether a driver has a route today, not only a work phone: one gone from the day's list has
+ * none. */
+const onRoute = (today: Today) => today.route !== null || today.stops !== null;
 
 /** `rows` in their groups, in order, each group holding someone: the drivers as the server lists
  * them, by name. */
