@@ -20,6 +20,7 @@ export { RecoveryCodes } from './RecoveryCodes.js';
 export { SortHeader } from './SortHeader.js';
 export { downloadTable } from './tableCsv.js';
 export { Tabs } from './Tabs.js';
+export { TypedConfirmDialog } from './TypedConfirmDialog.js';
 export {
   useDataTable,
   type TableColumn,

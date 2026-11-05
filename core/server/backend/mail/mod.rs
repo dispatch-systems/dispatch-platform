@@ -75,6 +75,17 @@ pub fn discard_stale(db: &Store) -> Result<()> {
     Ok(())
 }
 
+/// Deletes the mail of a DSP being deleted, sent or not: what names it, and its invitations'.
+/// Its invitations' routes are still there to find them by.
+pub fn forget_dsp(db: &Store, dsp: &str) -> Result<()> {
+    db.platform.exec(
+        "DELETE FROM outbox WHERE dsp_id=?1 OR \
+         invitation_hash IN (SELECT hash FROM invitation_routes WHERE dsp_id=?1)",
+        [dsp],
+    )?;
+    Ok(())
+}
+
 /// Whether what a waiting message is for still stands: an open invitation of an active DSP,
 /// an unused reset of an active account, an active platform owner for a notice, and an
 /// active account for what a feature writes.

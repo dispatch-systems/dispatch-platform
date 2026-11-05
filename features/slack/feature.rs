@@ -17,7 +17,7 @@ use dispatch_core::{
         Kind, Migration, OwnMigrations,
         migrations::Apply::{Code, Sql},
     },
-    manifest::{Audit, Commands, Feature, feature, optional, perm},
+    manifest::{Audit, Commands, Deleting, Feature, feature, optional, perm},
     tenancy::api::audit::AuditArea::Connections,
 };
 
@@ -204,6 +204,12 @@ pub const FEATURE: Feature = Feature {
         "chat_accounts",
         "Each person's accounts in the DSP's Slack workspaces: where, and whether each is active.",
     )],
+    // A deleted DSP's workspaces lose the app, and are free for any DSP.
+    deleting: Deleting {
+        revoke: Some(backend::connection::revoke),
+        forget: Some(backend::storage::forget_dsp),
+        ..Deleting::NONE
+    },
     ..feature("slack")
 };
 

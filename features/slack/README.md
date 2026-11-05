@@ -193,6 +193,9 @@ Slack's manifest lists each one's integration, upkeep, migration and tables. `in
   cancelling the install link, and, with no member as their actor, a workspace connected by
   the link, the app removed from a workspace in Slack, and Slack refusing a workspace's
   tokens.
+- **A DSP deleted** has Slack remove the app from each of its workspaces first, best effort
+  (`deleting.revoke`), then frees them for any DSP (`deleting.forget`, its `slack_teams` rows);
+  the rest of what Slack keeps of them goes with the DSP's folder.
 
 ## Members
 

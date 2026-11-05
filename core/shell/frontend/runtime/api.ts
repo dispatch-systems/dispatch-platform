@@ -65,6 +65,8 @@ const labels: Record<string, string> = {
   short_code_locked: 'This DSP’s short code is already set.',
   invalid_login: 'The email or password is incorrect.',
   dsp_disabled: 'This DSP is disabled.',
+  dsp_not_disabled: 'Disable this DSP first.',
+  dsp_name_mismatch: 'The name doesn’t match.',
   permission_denied: 'Your role does not allow this action.',
   dsp_view_expired: 'Your DSP access changed. Refreshing your view…',
   // Accepting an invitation whose role went raises it too.

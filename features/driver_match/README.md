@@ -100,7 +100,8 @@ what was decided.
   `driver_match.phone_removed` (with the number), and `driver_match.role_given` (with the
   role before and after; `driver_match.titled`, with the title, before roles could be given),
   naming people by their codes; the log puts today's names to them.
-- **Storage:** `driver_codes` in the platform's database (platform migration 10) and
+- **Storage:** `driver_codes` in the platform's database (platform migration 10), whose rows of a
+  DSP go as it's deleted (`deleting.forget`), and
   `people`, `person_ids`, `people_apart`, `person_roles` and `person_phones` in each DSP's (DSP
   migration 7, and its own migration 1, which lets `person_ids` hold any source, 2, which made
   the links the meal-break page saved before Driver Match its own decisions, 3, its titles, 4,

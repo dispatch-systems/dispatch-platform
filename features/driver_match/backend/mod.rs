@@ -6,7 +6,7 @@
 //! uses.
 mod assign;
 mod audit;
-mod codes;
+pub(crate) mod codes;
 mod contacts;
 mod decisions;
 mod details;

@@ -144,6 +144,7 @@ const phrases: AuditPhrases = {
   'dsp.restored': (e) => ['restored ', strong(e.dspName ?? 'a DSP')],
   'dsp.suspended': (e) => ['disabled ', strong(e.dspName ?? 'a DSP')],
   'dsp.resumed': (e) => ['enabled ', strong(e.dspName ?? 'a DSP')],
+  'dsp.deleted': (e) => ['deleted ', strong(e.detail || 'a DSP')],
   'audit.exported': () => ['exported the audit log'],
   'account.signed_in': () => ['signed in'],
   'account.password_changed': () => ['changed their password'],

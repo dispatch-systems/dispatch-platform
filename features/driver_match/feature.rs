@@ -16,7 +16,7 @@ pub use backend::{Collected, DriverMatchStore};
 use dispatch_core::{
     db::{Kind, Migration, Migrations, OwnMigrations, migrations::Apply::Sql},
     manifest::{
-        Audit, Feature,
+        Audit, Deleting, Feature,
         events::{CollectionSucceeded, PeopleChanged},
         feature, mandatory,
         people::Directory,
@@ -112,6 +112,11 @@ pub const FEATURE: Feature = Feature {
         dispatch_core::on!(CollectionSucceeded, backend::maintenance::collected),
         dispatch_core::on!(PeopleChanged, backend::maintenance::changed),
     ],
+    // A deleted DSP's people's codes are listed no more.
+    deleting: Deleting {
+        forget: Some(backend::codes::forget_dsp),
+        ..Deleting::NONE
+    },
     ..feature("driver_match")
 };
 

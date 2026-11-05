@@ -166,6 +166,19 @@ impl State {
             None => self.changed(None),
         }
     }
+    /// Lets go of what the server's caches and stores hold of a deleted DSP: its cached reads,
+    /// and the connections each idle store keeps to its databases. A store at work keeps its
+    /// own until it's least recently used, as it can't open them again.
+    pub fn forget_dsp(&self, dsp: &str) {
+        self.read_cache.invalidate_dsp(dsp);
+        let pool = self
+            .pool
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        for store in pool.iter() {
+            store.forget_dsp(dsp);
+        }
+    }
     /// A tenant mutation with known dependencies. Unknown writes must keep using `run`.
     pub async fn run_scoped<T: Send + 'static>(
         self: &Arc<Self>,

@@ -175,3 +175,40 @@ pub fn reopen(db: &Store, auth: &Auth, id: &str) -> Result<SupportDetail> {
         detail(db, auth, id)
     })
 }
+
+/// Deletes the tickets of a DSP being deleted, with everything of theirs: those about it, those
+/// its people reported, and what its people uploaded or were told. Each table goes before the
+/// one its rows refer to.
+pub(crate) fn forget_dsp(db: &Store, dsp: &str) -> Result<()> {
+    const TICKETS: &str = "SELECT id FROM support_tickets WHERE dsp_id=?1 OR reporter_scope=?1";
+    for table in [
+        "support_approvals",
+        "support_evidence",
+        "support_github_events",
+        "support_jobs",
+        "support_proposals",
+        "support_messages",
+    ] {
+        db.platform.exec(
+            &format!("DELETE FROM {table} WHERE ticket_id IN ({TICKETS})"),
+            [dsp],
+        )?;
+    }
+    db.platform.exec(
+        &format!(
+            "DELETE FROM support_notifications WHERE ticket_id IN ({TICKETS}) OR user_scope=?1"
+        ),
+        [dsp],
+    )?;
+    db.platform.exec(
+        &format!(
+            "DELETE FROM support_attachments WHERE ticket_id IN ({TICKETS}) OR uploader_scope=?1"
+        ),
+        [dsp],
+    )?;
+    db.platform.exec(
+        "DELETE FROM support_tickets WHERE dsp_id=?1 OR reporter_scope=?1",
+        [dsp],
+    )?;
+    Ok(())
+}

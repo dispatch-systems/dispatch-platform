@@ -9,6 +9,7 @@ use super::{
     fixture, logo, members,
     slack::{Installed, Slack},
     storage::{Install, SlackStore, Starter, Workspace},
+    work,
 };
 use crate::api::types::{SlackAccount, SlackInstall, SlackLink, SlackWorkspace, WorkspaceStatus};
 use dispatch_core::{
@@ -17,6 +18,7 @@ use dispatch_core::{
     db::{Store, identifier, iso},
     ensure,
     foundation::{config::Site, crypto},
+    manifest::Upkeep,
     server::http::route::Dsp,
     tenancy::api::types::DspStatus,
 };
@@ -306,6 +308,27 @@ pub async fn disconnect(
         slack.uninstall(&token).await;
     }
     state.read(move |db| account(db, &id)).await
+}
+
+/// Takes Dispatch out of each workspace of a DSP being deleted, as disconnecting one does: best
+/// effort, as the DSP goes whatever Slack answers. What Dispatch keeps of them goes with it.
+pub fn revoke(state: Arc<State>, dsp: String) -> Upkeep {
+    Box::pin(async move {
+        let Ok(slack) = Slack::of(&state.config) else {
+            return;
+        };
+        let at = dsp.clone();
+        let workspaces = match state.read(move |db| db.slack_workspaces(&at)).await {
+            Ok(workspaces) => workspaces,
+            Err(error) => return work::failed("slack_revoke_failed", &error),
+        };
+        for workspace in workspaces {
+            match Bot::new(&state, &dsp, &workspace.team).token().await {
+                Ok(token) => slack.uninstall(&token).await,
+                Err(error) => work::failed("slack_revoke_failed", &error),
+            }
+        }
+    })
 }
 
 /// Marks the workspace broken, as Slack stopped honouring its tokens: once, in the activity

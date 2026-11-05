@@ -281,7 +281,8 @@ fn refuses_missing_cross_tenant_and_unsafe_storage() {
     crate::install();
     let (root, store) = platform();
     let id = pending(&store);
-    let data = store.area(&id, "data").unwrap();
+    // Its folder, as provisioning makes it, before it does.
+    let data = db::private_dir(&store.dsp_folder(&id).unwrap().join("data")).unwrap();
     let outside = root.path().join("outside");
     std::fs::create_dir(&outside).unwrap();
     symlink(&outside, data.join("paycom")).unwrap();

@@ -159,3 +159,38 @@ impl Store {
         Ok(Some(moved))
     }
 }
+
+/// The accounts the platform's directory still holds of a DSP's people that belong to no other
+/// DSP: theirs alone, which go with it. Platform owners stay.
+const ONLY_THERE: &str = "SELECT u.id FROM users u WHERE u.platform_owner=0 \
+    AND EXISTS (SELECT 1 FROM memberships m WHERE m.user_id=u.id AND m.dsp_id=?1) \
+    AND NOT EXISTS (SELECT 1 FROM memberships m WHERE m.user_id=u.id AND m.dsp_id<>?1)";
+
+impl Store {
+    /// The accounts the platform's directory holds of the DSP's people from before they moved
+    /// into its own, of those who belong to no other DSP.
+    pub fn legacy_people(&self, dsp: &str) -> Result<Vec<String>> {
+        let people: Vec<(String,)> = self.platform.query_as(ONLY_THERE, [dsp])?;
+        Ok(people.into_iter().map(|(id,)| id).collect())
+    }
+    /// Deletes what the platform's directory holds of a DSP being deleted: its roles,
+    /// memberships and invitations, the routes to its own invitations, and the accounts of
+    /// `people`, its people's that belong to no other DSP, with their sign-ins, resets and the
+    /// invitations they sent. What they did goes before, with the DSP's log.
+    pub fn forget_legacy_people(&self, dsp: &str, people: &[String]) -> Result<()> {
+        for table in ["memberships", "invitations", "invitation_routes", "roles"] {
+            self.platform
+                .exec(&format!("DELETE FROM {table} WHERE dsp_id=?"), [dsp])?;
+        }
+        for user in people {
+            for table in ["sessions", "resets"] {
+                self.platform
+                    .exec(&format!("DELETE FROM {table} WHERE user_id=?"), [user])?;
+            }
+            self.platform
+                .exec("DELETE FROM invitations WHERE created_by=?", [user])?;
+            self.platform.exec("DELETE FROM users WHERE id=?", [user])?;
+        }
+        Ok(())
+    }
+}

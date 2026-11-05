@@ -490,6 +490,14 @@ impl Store {
         self.cancel_jobs(CancelJobs::Dsp(id))?;
         Ok(())
     }
+    /// Deletes the jobs of a DSP being deleted, with their metrics, and what its live readers
+    /// recorded.
+    pub fn forget_dsp_jobs(&self, id: &str) -> Result<()> {
+        self.jobs.transaction(|| {
+            self.jobs.exec("DELETE FROM jobs WHERE dsp_id=?", [id])?;
+            self.forget_reads(id)
+        })
+    }
     /// The job is still this worker's to run. Answers with its DSP.
     pub fn guard(&self, id: &str, owner: &str) -> Result<Dsp> {
         let row = self.job_row(id, None)?;

@@ -230,6 +230,14 @@ pub struct Logo {
     pub picture: Vec<u8>,
 }
 
+/// Frees each workspace of a DSP being deleted for any DSP: the rest of what Slack keeps of them
+/// is in the DSP's folder, which goes with it.
+pub fn forget_dsp(db: &Store, dsp: &str) -> Result<()> {
+    db.platform
+        .exec("DELETE FROM slack_teams WHERE dsp_id=?", [dsp])?;
+    Ok(())
+}
+
 /// What Slack reads and writes.
 pub trait SlackStore {
     /// The DSP's workspaces, by name.

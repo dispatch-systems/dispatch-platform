@@ -20,6 +20,7 @@ use dispatch_core::{
     ensure,
     foundation::observability,
     foundation::{config::Site, crypto},
+    manifest::Upkeep,
     server::http::route::Dsp,
 };
 use serde_json::json;
@@ -234,6 +235,31 @@ pub async fn disconnect(state: &Arc<State>, c: Context, access: Dsp) -> Result<D
         })
         .await?;
     account(state, &id).await
+}
+
+/// Gives back the Google account of a DSP being deleted, as disconnecting it does: best effort,
+/// as the DSP goes whatever Google answers. The folder stays in the account's Drive; the token
+/// goes with the DSP.
+pub fn revoke(state: Arc<State>, dsp: String) -> Upkeep {
+    Box::pin(async move {
+        let Ok(google) = Google::of(&state.config) else {
+            return;
+        };
+        match state.read(move |db| db.documents_refresh_token(&dsp)).await {
+            Ok(Some(token)) => google.revoke(&token).await,
+            Ok(None) => {}
+            Err(error) => observability::event(
+                "error",
+                "documents_revoke_failed",
+                json!({"error": error.code}),
+            ),
+        }
+    })
+}
+/// Forgets what's held in memory of a deleted DSP's files.
+pub fn forgotten(dsp: &str) {
+    files::forget(dsp);
+    mirror::forget(dsp);
 }
 
 /// Marks the DSP's connection broken, as Google refused its token: once, in the activity log

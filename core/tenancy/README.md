@@ -35,3 +35,11 @@ DSPs share one, and none is a name kept for the platform's own addresses. Its fi
 chooses it on the invite page; after that only the platform owner changes it, which moves the
 DSP to the new address. A DSP set up before short codes takes its abbreviation as its code at
 startup, when that is one and is free; any other waits for the platform owner to give it one.
+
+The platform owner deletes a disabled DSP for good, never the permanent one, by typing its name
+(`deletion`). What it connected outside Dispatch is given back first, best effort, as each
+feature declares (`deleting`); then one transaction deletes every row of it in the platform's
+database, each feature's and the agents' with core's, frees its short code and notes the delete
+in `dsp_deletions`; then its jobs and its folder go, and the note with them. A delete the server
+stopped partway through is finished by the next upkeep pass, as it starts too. A DSP's folder is
+made only as it's provisioned, so nothing makes it again once it's gone.

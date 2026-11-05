@@ -1,6 +1,7 @@
 //! Who a phone's call comes from: a paired phone, by the key it was given, at its DSP's own
 //! address, while the DSP is active and Communications is on there; or, for the app itself, which
-//! a phone downloads before it has a key, anyone at that address.
+//! a phone downloads before it has a key, anyone at that address. A phone at an address no DSP
+//! has is removed.
 use crate::backend::phone::{
     self,
     pairing::KEY_BYTES,
@@ -36,6 +37,13 @@ impl Grant for Phone {
         Access::Public
     }
     fn authorize(self, db: &Store, input: &Input) -> Result<Caller> {
+        // No DSP has its address any more, as once its DSP is deleted: nothing is left that the
+        // phone is paired with, and it's told so for good.
+        if let Site::Dsp(code) = &input.site
+            && db.dsp_at(code)?.is_none()
+        {
+            return Err(Error::new("phones_removed", 401));
+        }
         let dsp = site_dsp(db, input)?.id;
         let bearer = input
             .header("authorization")

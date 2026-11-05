@@ -50,6 +50,9 @@ pub struct Agents {
     /// Ends, in a restored backup's platform database, what its credentials made, as its
     /// sessions end.
     pub restored: fn(&rusqlite::Connection) -> Result<()>,
+    /// Deletes what it keeps of a DSP, in the transaction that deletes the DSP's rows in the
+    /// platform's database: what keys and apps were given there, and what agents did there.
+    pub forget_dsp: fn(&Store, &str) -> Result<()>,
     /// Panics unless what it declares of itself holds, as the registry is installed.
     pub check: fn(),
     /// What only the piece itself reads of its declaration.

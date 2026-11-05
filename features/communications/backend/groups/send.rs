@@ -230,15 +230,27 @@ struct Sending {
     wanted: AtomicBool,
     running: tokio::sync::Mutex<()>,
 }
+/// Each DSP's sending, by its ID.
+static SENDING: LazyLock<Mutex<HashMap<String, Arc<Sending>>>> = LazyLock::new(Default::default);
+/// When the next post to each of a DSP's workspaces may go, by the DSP's ID and the workspace's.
+static NEXT: LazyLock<Mutex<HashMap<(String, String), Instant>>> = LazyLock::new(Default::default);
 fn sending(dsp: &str) -> Arc<Sending> {
-    static SENDING: LazyLock<Mutex<HashMap<String, Arc<Sending>>>> =
-        LazyLock::new(Default::default);
     SENDING
         .lock()
         .unwrap_or_else(|poison| poison.into_inner())
         .entry(dsp.to_owned())
         .or_default()
         .clone()
+}
+/// Forgets a deleted DSP's sending, and when it last posted to each of its workspaces.
+pub fn forgotten(dsp: &str) {
+    SENDING
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
+        .remove(dsp);
+    NEXT.lock()
+        .unwrap_or_else(|poison| poison.into_inner())
+        .retain(|(of, _), _| of != dsp);
 }
 /// Sends what's due in the DSP, unless that's under way already, in which case it goes on to
 /// what was asked for since: asked for while it was finishing, it goes on too.
@@ -320,8 +332,6 @@ async fn expire(state: &Arc<State>, dsp: &str) {
 
 /// Waits its turn to post to the DSP's workspace `team`: a second after the last.
 async fn pace(dsp: &str, team: &str) {
-    static NEXT: LazyLock<Mutex<HashMap<(String, String), Instant>>> =
-        LazyLock::new(Default::default);
     let turn = {
         let mut next = NEXT.lock().unwrap_or_else(|poison| poison.into_inner());
         let now = Instant::now();
