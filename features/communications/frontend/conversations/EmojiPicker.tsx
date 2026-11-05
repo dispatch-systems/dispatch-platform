@@ -98,6 +98,22 @@ function Emojis({ pick }: { pick: (emoji: string) => void }) {
     [categories, typed],
   );
   const shown = at ?? sections[0]?.key;
+  // Over the conversation, it's as tall as the room above the composer in its pane, however tall
+  // what's written makes the composer (`--emoji-room`, emoji-picker.css).
+  useLayoutEffect(() => {
+    const panel = list.current!.closest<HTMLElement>('.emoji-panel')!;
+    const composer = panel.closest<HTMLElement>('.composer')!;
+    const pane = composer.parentElement!;
+    const fit = () => {
+      const room = composer.getBoundingClientRect().top - pane.getBoundingClientRect().top - 8;
+      panel.style.setProperty('--emoji-room', `${room}px`);
+    };
+    fit();
+    const resized = new ResizeObserver(fit);
+    resized.observe(composer);
+    resized.observe(pane);
+    return () => resized.disconnect();
+  }, []);
 
   // The same for every emoji, whatever's written, so the grids aren't drawn again as it changes.
   const latest = useRef({ pick, tone });

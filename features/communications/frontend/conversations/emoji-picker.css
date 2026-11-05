@@ -10,7 +10,7 @@
   display: flex;
   flex-direction: column;
   width: min(calc(var(--emoji-cell) * 8 + 18px), calc(100% - 2 * var(--side)));
-  height: min(calc(420px * var(--scale)), 70vh);
+  height: min(calc(420px * var(--scale)), var(--emoji-room, 70vh));
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 14px;
