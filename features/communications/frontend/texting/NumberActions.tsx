@@ -1,15 +1,17 @@
+import { useState } from 'react';
 import { Copy, Ellipsis, Phone, PhoneOff, UserMinus } from 'lucide-react';
 import type { Conversation, RouteDriver } from '../../api/index.js';
 import { blockNumber, removeFromPerson } from '../../api/client.js';
+import { phoneText } from '../../../../core/shell/frontend/lib/format.js';
 import { toClipboard } from '../../../../core/shell/frontend/runtime/clipboard.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
-import { Popover } from '../../../../core/shell/frontend/ui/index.js';
+import { ConfirmDialog, Popover } from '../../../../core/shell/frontend/ui/index.js';
 import { SaveContact } from './SaveContact.js';
 import './number-actions.css';
 
 // What someone at the DSP does with the number a conversation texts: add it to a driver or save a
 // name for it, shared with everyone at the DSP, while Driver Match knows no one by it; take it off
-// the driver it was added to; copy it; block or unblock it.
+// the driver it was added to; copy it; block it, once asked whether to, or unblock it.
 
 export function NumberActions({
   conversation,
@@ -25,9 +27,11 @@ export function NumberActions({
   const copy = useAction(() => toClipboard(conversation.number ?? ''), {
     success: 'Number copied',
   });
-  const block = useAction(async (blocked: boolean) =>
-    show(await blockNumber(conversation.id, blocked)),
-  );
+  const [blocking, setBlocking] = useState(false);
+  const block = useAction(async (blocked: boolean) => {
+    show(await blockNumber(conversation.id, blocked));
+    setBlocking(false);
+  });
   const remove = useAction(async (code: string) =>
     show(await removeFromPerson(conversation.id, code)),
   );
@@ -58,12 +62,24 @@ export function NumberActions({
             Unblock
           </button>
         ) : (
-          <button className="danger" onClick={() => void block.run(true)}>
+          <button className="danger" onClick={() => setBlocking(true)}>
             <PhoneOff size={15} />
             Block
           </button>
         )}
       </Popover>
+      {blocking && (
+        <ConfirmDialog
+          title={`Block ${phoneText(conversation.number ?? '')}?`}
+          confirm="Block"
+          tone="danger"
+          busy={block.busy}
+          onConfirm={() => void block.run(true)}
+          onCancel={() => setBlocking(false)}
+        >
+          {null}
+        </ConfirmDialog>
+      )}
     </>
   );
 }

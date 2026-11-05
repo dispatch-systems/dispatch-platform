@@ -18,6 +18,7 @@ use dispatch_core::{
     Result, State,
     db::{Store, now},
     manifest::{Maintenance, Upkeep, integrations::Heard},
+    server::cache::DataDomain,
 };
 use serde_json::json;
 use std::{sync::Arc, time::Duration};
@@ -106,6 +107,7 @@ impl Queue for Canvases {
     const BATCH: usize = 10;
     const CLAIM_MS: i64 = 30 * 60 * 1000;
     const FAILED: &'static str = FAILED;
+    const CHANGES: Option<DataDomain> = None;
 
     fn due(db: &Store, dsp: &str, at: i64, most: usize) -> Result<Vec<Canvas>> {
         db.due_slack_canvases(dsp, at, most)

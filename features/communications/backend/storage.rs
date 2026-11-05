@@ -11,6 +11,7 @@ use super::{
 use dispatch_core::{
     Error, Result,
     db::{Db, FromRow, Row, Store, migrations::add_column, now},
+    ensure,
     foundation::crypto,
     server::cache::DataDomain,
 };
@@ -200,9 +201,16 @@ pub trait CommunicationsStore {
     /// Keeps a message a member wrote, with its files to download, or a later edit of one kept
     /// already: what changed, if anything did.
     fn keep_communications_message(&self, dsp: &str, written: &Written) -> Result<Option<Kept>>;
-    /// Notes an answer before it goes to Slack, or, noted already, its try again: its photos, the
-    /// name it goes under and its claim, from when it may have been posted kept as it was.
+    /// Notes an answer before it goes to Slack, or, noted already, its try again, while that try
+    /// holds it (`claimed_until`): its photos and the name it goes under, from when it may have
+    /// been posted kept as it was. Another try holding it is refused
+    /// (`communications_reply_sending`).
     fn note_communications_reply(&self, dsp: &str, noted: &Noted) -> Result<()>;
+    /// Claims the answer noted as `id` for a try until `until`, while no try holds it at `at`:
+    /// whether it did.
+    fn claim_communications_reply(&self, dsp: &str, id: &str, at: i64, until: i64) -> Result<bool>;
+    /// Claims each answer noted that no try holds at `at`, until `until`: those it claimed.
+    fn claim_communications_replies(&self, dsp: &str, at: i64, until: i64) -> Result<Vec<Noted>>;
     /// The answers noted in the conversation `conversation`, or in every one, no try holding them
     /// at `at`, the earliest first.
     fn noted_communications_replies(
@@ -211,8 +219,9 @@ pub trait CommunicationsStore {
         conversation: Option<&str>,
         at: i64,
     ) -> Result<Vec<Noted>>;
-    /// Clears the answer noted as `id`: it's not in Slack.
-    fn clear_communications_reply(&self, dsp: &str, id: &str) -> Result<()>;
+    /// Clears the answer noted as `id`, not in Slack, while the try that claimed it until
+    /// `claimed_until` holds it.
+    fn clear_communications_reply(&self, dsp: &str, id: &str, claimed_until: i64) -> Result<()>;
     /// Keeps the answer noted as `noted` in the conversation as Slack took it, `sent`, with the
     /// photos added for it, which become its own, and clears its note. Kept already, by its `ts`,
     /// it's that one.
@@ -391,11 +400,11 @@ impl CommunicationsStore for Store {
         })
     }
     fn note_communications_reply(&self, dsp: &str, noted: &Noted) -> Result<()> {
-        self.dsp(dsp)?.exec(
+        let noted = self.dsp(dsp)?.exec(
             "INSERT INTO communications_replies (id,conversation_id,text,sent_by,sender_name,\
              photos,posting_since,claimed_until) VALUES (?,?,?,?,?,?,?,?) \
              ON CONFLICT(id) DO UPDATE SET sender_name=excluded.sender_name,\
-             photos=excluded.photos,claimed_until=excluded.claimed_until",
+             photos=excluded.photos WHERE claimed_until=excluded.claimed_until",
             params![
                 noted.id,
                 noted.conversation,
@@ -407,7 +416,28 @@ impl CommunicationsStore for Store {
                 noted.claimed_until
             ],
         )?;
-        Ok(())
+        ensure(noted > 0, "communications_reply_sending", 409)
+    }
+    fn claim_communications_reply(&self, dsp: &str, id: &str, at: i64, until: i64) -> Result<bool> {
+        let claimed = self.dsp(dsp)?.exec(
+            "UPDATE communications_replies SET claimed_until=? WHERE id=? AND claimed_until<=?",
+            params![until, id, at],
+        )?;
+        Ok(claimed > 0)
+    }
+    fn claim_communications_replies(&self, dsp: &str, at: i64, until: i64) -> Result<Vec<Noted>> {
+        let db = self.dsp(dsp)?;
+        db.transaction(|| {
+            db.exec(
+                "UPDATE communications_replies SET claimed_until=? WHERE claimed_until<=?",
+                params![until, at],
+            )?;
+            db.query_as(
+                "SELECT * FROM communications_replies WHERE claimed_until=? \
+                 ORDER BY posting_since,id",
+                [until],
+            )
+        })
     }
     fn noted_communications_replies(
         &self,
@@ -421,9 +451,11 @@ impl CommunicationsStore for Store {
             params![at, conversation],
         )
     }
-    fn clear_communications_reply(&self, dsp: &str, id: &str) -> Result<()> {
-        self.dsp(dsp)?
-            .exec("DELETE FROM communications_replies WHERE id=?", [id])?;
+    fn clear_communications_reply(&self, dsp: &str, id: &str, claimed_until: i64) -> Result<()> {
+        self.dsp(dsp)?.exec(
+            "DELETE FROM communications_replies WHERE id=? AND claimed_until=?",
+            params![id, claimed_until],
+        )?;
         Ok(())
     }
     fn keep_communications_reply(

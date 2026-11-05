@@ -13,7 +13,8 @@
 //! message (`im:history`) by its note's ID, and kept if it's there: by the maintenance pass every
 //! minute once no try holds it, which clears the note if it isn't, or at once when the same member
 //! sends the same message there again, which then isn't posted a second time, and is otherwise
-//! tried again under the same note. A note stays until it's settled so.
+//! tried again under the same note. Each claims the note first, so a resend while another try of
+//! it is under way is refused. A note stays until it's settled so, its photos with it.
 use super::{
     compose::{SLACK, checked, photo_kind},
     conversations, files,
@@ -142,7 +143,8 @@ pub async fn send(
                 409,
             )?;
             let uploads = db.claim_communications_uploads(&dsp, &by, &chosen, until)?;
-            // The same message the same member sent there before, should Slack have it unkept.
+            // The same message the same member sent there before, should Slack have it unkept,
+            // claimed for this try; refused while another try of it is under way.
             let earlier = db
                 .noted_communications_replies(&dsp, Some(&at), i64::MAX)?
                 .into_iter()
@@ -151,6 +153,17 @@ pub async fn send(
                         && noted.text == asked
                         && noted.photos.iter().map(|(photo, _)| photo).eq(&chosen)
                 });
+            let earlier = match earlier {
+                Some(noted) => {
+                    let claimed = db.claim_communications_reply(&dsp, &noted.id, now(), until)?;
+                    ensure(claimed, "communications_reply_sending", 409)?;
+                    Some(Noted {
+                        claimed_until: until,
+                        ..noted
+                    })
+                }
+                None => None,
+            };
             Ok((conversation, uploads, earlier))
         })
         .await?;
@@ -205,9 +218,9 @@ async fn deliver(
     let identity = sender::identity(state, dsp, &conversation.team, &c.auth.user).await;
     // Sent before and not in Slack: tried again under the same note, so whichever try Slack took
     // is found by it.
-    let (id, posting_since) = match earlier {
-        Some(earlier) => (earlier.id, earlier.posting_since),
-        None => (crypto::id("rpl")?, now()),
+    let (id, posting_since, claimed_until) = match earlier {
+        Some(earlier) => (earlier.id, earlier.posting_since, earlier.claimed_until),
+        None => (crypto::id("rpl")?, now(), now() + SENDING_MS),
     };
     let noted = Noted {
         id,
@@ -220,7 +233,7 @@ async fn deliver(
             .map(|(photo, slack_id, _)| (photo.clone(), slack_id.clone()))
             .collect(),
         posting_since,
-        claimed_until: now() + SENDING_MS,
+        claimed_until,
     };
     let mut args = message(&conversation.channel, written, &shown, &identity);
     args["metadata"] = tag(EVENT, &noted.id);
@@ -274,15 +287,23 @@ fn pass(state: Arc<State>, _: bool) -> Upkeep {
 }
 /// Keeps each message noted in the DSP that no try holds and Slack has, and clears the note of each
 /// it hasn't, while Communications works in its workspace; one where it doesn't waits until it
-/// does.
+/// does. Each is claimed first, so no try of it runs meanwhile.
 async fn settle(state: &Arc<State>, dsp: &str) -> Result<()> {
     let at = dsp.to_owned();
-    let noted = state
+    let unheld = state
         .read(move |db| {
-            let noted = db.noted_communications_replies(&at, None, now())?;
-            if noted.is_empty() {
-                return Ok(Vec::new());
-            }
+            Ok(!db
+                .noted_communications_replies(&at, None, now())?
+                .is_empty())
+        })
+        .await?;
+    if !unheld {
+        return Ok(());
+    }
+    let at = dsp.to_owned();
+    let noted = state
+        .run_bookkeeping(move |db| {
+            let noted = db.claim_communications_replies(&at, now(), now() + SENDING_MS)?;
             let on = kit::workspaces_on(db, &at, ID)?;
             let ids: Vec<String> = noted.iter().map(|each| each.conversation.clone()).collect();
             let conversations: HashMap<String, storage::Conversation> = db
@@ -297,7 +318,7 @@ async fn settle(state: &Arc<State>, dsp: &str) -> Result<()> {
                     let working = on.contains(&conversation.team);
                     Some((noted, conversation, working))
                 })
-                .collect())
+                .collect::<Vec<_>>())
         })
         .await?;
     for (noted, conversation, working) in noted {
@@ -316,9 +337,9 @@ async fn settle(state: &Arc<State>, dsp: &str) -> Result<()> {
         match found {
             Some(ts) => keep(state, dsp, &noted, &ts).await.map(drop)?,
             None => {
-                let (at, id) = (dsp.to_owned(), noted.id);
+                let (at, id, held) = (dsp.to_owned(), noted.id, noted.claimed_until);
                 state
-                    .run_bookkeeping(move |db| db.clear_communications_reply(&at, &id))
+                    .run_bookkeeping(move |db| db.clear_communications_reply(&at, &id, held))
                     .await?
             }
         }

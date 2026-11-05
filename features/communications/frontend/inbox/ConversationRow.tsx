@@ -48,7 +48,7 @@ export function ConversationRow({
       below={below}
       open={() => select(conversation.id)}
       warm={() => warm(conversation.id)}
-      done={() => done(conversation)}
+      done={{ whom: person.name, run: () => done(conversation) }}
     />
   );
 }

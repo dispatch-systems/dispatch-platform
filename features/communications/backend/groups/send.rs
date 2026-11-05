@@ -33,12 +33,12 @@ use crate::{
     integrations::messages::{ID, incoming},
 };
 use dispatch_core::{
-    Error, Result, State,
+    Code, Error, Result, State,
     accounts::Context,
     db::{Store, now},
     ensure,
     manifest::{Maintenance, Upkeep},
-    server::http::route::Dsp,
+    server::{cache::DataDomain, http::route::Dsp},
 };
 use dispatch_slack::kit::{self, Bot, Queue};
 use std::{
@@ -78,6 +78,10 @@ const WAIT_MS: i64 = 5 * 60 * 1000;
 const FRESH_MS: i64 = 2 * 60 * 60 * 1000;
 /// Why a message given up for that wasn't sent.
 const TOO_LATE: &str = "communications_expired";
+/// What a try fails with where it can't go: Communications is off in the workspace, or the person
+/// is no longer there.
+const OFF: Code = Code::new("communications_off");
+const GONE: Code = Code::new("communications_contact_not_found");
 /// What each post carries, as Slack's message metadata, to be found again by.
 const EVENT: &str = "dispatch_group_message";
 /// How a failure is reported.
@@ -363,6 +367,7 @@ impl Queue for Deliveries {
     const BATCH: usize = 1;
     const CLAIM_MS: i64 = CLAIM_MS;
     const FAILED: &'static str = FAILED;
+    const CHANGES: Option<DataDomain> = Some(DOMAIN);
 
     fn due(db: &Store, dsp: &str, at: i64, most: usize) -> Result<Vec<Due>> {
         if !db.feature_enabled(dsp, crate::FEATURE.name)? {
@@ -471,15 +476,15 @@ async fn deliver(
         (true, _) => {}
         (false, Some(true)) => {
             return Ok(Outcome::Failed {
-                reason: "communications_off".into(),
+                reason: OFF.as_str().into(),
             });
         }
-        (false, Some(false)) => return Err(Error::new("slack_connection_broken", 409)),
-        (false, None) => return Err(Error::new("slack_not_connected", 404)),
+        (false, Some(false)) => return Err(Error::new(kit::CONNECTION_BROKEN.as_str(), 409)),
+        (false, None) => return Err(Error::new(kit::NOT_CONNECTED.as_str(), 404)),
     }
     let Some(member) = member else {
         return Ok(Outcome::Failed {
-            reason: "communications_contact_not_found".into(),
+            reason: GONE.as_str().into(),
         });
     };
     pace(dsp, &item.team).await;
@@ -529,13 +534,14 @@ async fn deliver(
     .await;
     let mut args = reply::message(&channel, &message.text, &shown, &identity);
     args["metadata"] = reply::tag(EVENT, &message.id);
-    // Slack asking it to slow down is waited out only while the post would still be in time.
-    let left = Duration::from_millis((deadline - now()).max(0) as u64 / 2);
-    let poster = Bot::new(state, dsp, &item.team).patient().waiting(left);
+    // No post starts past its deadline, a photo's post tried again or a token renewed included,
+    // nor waits on Slack asking it to slow down.
+    let poster = Bot::new(state, dsp, &item.team).until(deadline);
     *unposted = false;
     let answer = match reply::post(&poster, &args, !shown.is_empty()).await {
+        Err(error) if error.is(kit::PAST_DEADLINE) => return Ok(too_late()),
         // Slack took nothing, and no earlier try's post is there: the next needn't look for one.
-        Err(error) if error.code == "slack_rate_limited" => {
+        Err(error) if error.is(kit::RATE_LIMITED) => {
             return Ok(Outcome::Later {
                 reason: error.code,
                 at: now() + SLOWED_MS,
@@ -579,10 +585,16 @@ async fn upload(
 /// given up where it can't go; or tried again later, and given up after the last try.
 fn failure(item: &Due, error: &Error, unposted: bool) -> Outcome {
     let code = error.code.clone();
-    let waited = match code.as_str() {
-        "slack_rate_limited" => Some(SLOWED_MS),
-        "slack_needs_update" | "slack_connection_broken" | "slack_not_connected" => Some(WAIT_MS),
-        _ => None,
+    let waited = if error.is(kit::RATE_LIMITED) {
+        Some(SLOWED_MS)
+    } else if error.is_any(&[
+        kit::NEEDS_UPDATE,
+        kit::CONNECTION_BROKEN,
+        kit::NOT_CONNECTED,
+    ]) {
+        Some(WAIT_MS)
+    } else {
+        None
     };
     if let Some(waited) = waited {
         return Outcome::Later {
@@ -592,9 +604,8 @@ fn failure(item: &Due, error: &Error, unposted: bool) -> Outcome {
             unposted,
         };
     }
-    let gone = ["communications_off", "communications_contact_not_found"];
     match RETRIES_MS.get(item.attempts.max(0) as usize) {
-        Some(after) if !gone.contains(&code.as_str()) => Outcome::Later {
+        Some(after) if !error.is_any(&[OFF, GONE]) => Outcome::Later {
             reason: code,
             at: now() + after,
             counted: true,

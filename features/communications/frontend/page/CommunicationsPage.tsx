@@ -481,6 +481,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
                   seen={seen}
                   reads={reads}
                   typing={inbox.typing.writing}
+                  me={user}
                   timeZone={timeZone}
                   now={now}
                   show={show}

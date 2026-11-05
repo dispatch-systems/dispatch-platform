@@ -12,6 +12,7 @@ use dispatch_core::{
     Result, State,
     db::{Store, now},
     manifest::{Maintenance, Upkeep, integrations::Heard},
+    server::cache::DataDomain,
 };
 use std::sync::Arc;
 use std::time::Duration;
@@ -97,6 +98,7 @@ impl Queue for Imports {
     const BATCH: usize = 20;
     const CLAIM_MS: i64 = 30 * 60 * 1000;
     const FAILED: &'static str = FAILED;
+    const CHANGES: Option<DataDomain> = None;
 
     fn due(db: &Store, dsp: &str, at: i64, most: usize) -> Result<Vec<Self::Item>> {
         db.due_slack_imports(dsp, at, most)

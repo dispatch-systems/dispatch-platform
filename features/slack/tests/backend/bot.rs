@@ -1,7 +1,9 @@
 //! How the bot renews a workspace's token: Slack honours each refresh token once, so a token is
 //! renewed as it nears its end and kept at once, and a token with time left, or one another call
-//! has renewed since Slack refused it, is used as it is.
+//! has renewed since Slack refused it, is used as it is. And a bot with a deadline starts no call
+//! past it.
 use super::*;
+use crate::backend::fixture;
 use dispatch_core::testing;
 
 const TEAM: &str = "T0FIXTURE1";
@@ -74,4 +76,18 @@ async fn a_method_no_fixture_answers_fails_and_an_integration_answers_its_own() 
     assert_eq!(error.code, "slack_fixture_unanswered");
     let answered = bot.call("listening.ping", &asked).await.unwrap();
     assert_eq!(answered["team"], TEAM);
+}
+
+#[tokio::test]
+async fn a_bot_with_a_deadline_starts_no_call_past_it() {
+    let (_root, state, bot) = bot();
+    kept_until(&bot, 2 * 60 * 60 * 1000).await;
+    let post = serde_json::json!({"channel": "D0DEADLINE", "text": "Running late"});
+    let late = Bot::new(&state, &bot.dsp, TEAM).until(now());
+    let refused = late.call("chat.postMessage", &post).await.unwrap_err();
+    assert!(refused.is(kit::PAST_DEADLINE));
+    assert!(fixture::posted(TEAM, "D0DEADLINE").is_empty());
+    let in_time = Bot::new(&state, &bot.dsp, TEAM).until(now() + 60_000);
+    in_time.call("chat.postMessage", &post).await.unwrap();
+    assert_eq!(fixture::posted(TEAM, "D0DEADLINE").len(), 1);
 }

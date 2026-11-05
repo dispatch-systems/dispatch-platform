@@ -11,13 +11,19 @@ export function PhonesOffline({ phones, now }: { phones: readonly DispatchPhone[
   if (offline.length === 0) return null;
   return (
     <div className="phones-offline">
-      {offline.map((phone) => (
-        <span key={phone.id} className="phone-offline" role="status">
-          <WifiOff aria-hidden="true" />
-          {phones.length > 1 ? `${phone.name} offline` : 'Phone offline'}
-          {phone.lastSeenAt !== null && ` · ${waited(phone.lastSeenAt, now).label}`}
-        </span>
-      ))}
+      {offline.map((phone) => {
+        const since = phone.lastSeenAt !== null && waited(phone.lastSeenAt, now);
+        return (
+          <span key={phone.id} className="phone-offline" role="status">
+            <WifiOff aria-hidden="true" />
+            <span>
+              {phones.length > 1 ? `${phone.name} offline` : 'Phone offline'}
+              {since && <span aria-hidden="true"> · {since.label}</span>}
+            </span>
+            {since && <span className="sr-only">for {since.spoken}</span>}
+          </span>
+        );
+      })}
     </div>
   );
 }

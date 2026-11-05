@@ -19,7 +19,10 @@ use dispatch_core::{
     db::{FromRow, Row, Store, now},
     foundation::{crypto, observability},
     manifest::{Maintenance, Upkeep},
-    server::http::upload::{UPLOAD_LIMIT, Upload},
+    server::{
+        cache::DataDomain,
+        http::upload::{UPLOAD_LIMIT, Upload},
+    },
 };
 use dispatch_slack::kit::{self, Bot, Bytestream, Queue};
 use rusqlite::params;
@@ -136,7 +139,8 @@ pub trait FileStore {
     /// Lets go of the photos `ids` names, claimed for a message Slack didn't take.
     fn release_communications_uploads(&self, dsp: &str, ids: &[String]) -> Result<()>;
     /// Lets go of the photos added before `before` for a message never sent, but one going with
-    /// a message now, whose bytes upkeep then lets go of once no file keeps them.
+    /// a message now, or carried by an answer noted on its way to Slack, whose bytes upkeep then
+    /// lets go of once no file keeps them.
     fn forget_unsent_communications(&self, dsp: &str, before: i64) -> Result<()>;
     /// Whether any file is kept by the SHA-256 `sha256`.
     fn communications_bytes_kept(&self, dsp: &str, sha256: &str) -> Result<bool>;
@@ -222,10 +226,13 @@ impl FileStore for Store {
         Ok(())
     }
     fn forget_unsent_communications(&self, dsp: &str, before: i64) -> Result<()> {
-        // Not one going to Slack with a message now, nor a group message's.
+        // Not one going to Slack with a message now, nor a group message's, nor one an answer
+        // noted on its way to Slack carries, which Slack may have.
         self.dsp(dsp)?.exec(
             "DELETE FROM communications_files WHERE message_id IS NULL \
-             AND group_message_id IS NULL AND added_at<? AND coalesce(claimed_until,0)<?",
+             AND group_message_id IS NULL AND added_at<? AND coalesce(claimed_until,0)<? \
+             AND id NOT IN (SELECT json_extract(photo.value,'$[0]') \
+             FROM communications_replies, json_each(communications_replies.photos) photo)",
             params![before, now()],
         )?;
         Ok(())
@@ -351,6 +358,7 @@ impl Queue for Downloads {
     const BATCH: usize = 20;
     const CLAIM_MS: i64 = 30 * 60 * 1000;
     const FAILED: &'static str = FAILED;
+    const CHANGES: Option<DataDomain> = Some(DOMAIN);
 
     fn due(db: &Store, dsp: &str, at: i64, most: usize) -> Result<Vec<Due>> {
         if !db.feature_enabled(dsp, crate::FEATURE.name)? {

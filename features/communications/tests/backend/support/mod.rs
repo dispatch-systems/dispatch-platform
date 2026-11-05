@@ -41,8 +41,8 @@ use dispatch_core::{
         events,
         people::{Person, PersonRole, Source, SourceInfo},
     },
-    server::http::route::Dsp,
-    testing,
+    server::{cache::Scope, http::route::Dsp},
+    settings, testing,
 };
 use dispatch_routes_contract::{DayPhones, DriverPhone, RouteDataChanged, RouteDay};
 use dispatch_slack::{kit::Bot, testing as slack};
@@ -51,7 +51,8 @@ use serde_json::json;
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, atomic::Ordering},
+    time::Duration,
 };
 
 /// Reading the DSP's conversations and answering them.
@@ -77,6 +78,45 @@ pub fn started() -> (impl Drop, Arc<State>, String) {
     let config = store.config.clone();
     drop(store);
     (root, State::new(config).unwrap(), dsp)
+}
+/// Keeps a read of the DSP's in the server's read cache, as Settings keeps its answer, which every
+/// write to the DSP's data evicts but reviewed bookkeeping and a collection's live pages: whether
+/// it's kept still, once asked, so nothing since wrote to the DSP's data.
+pub fn cached(state: &Arc<State>, dsp: &str) -> impl Fn() -> bool + use<> {
+    let read = |state: &State, dsp: &str, value: u8| {
+        state
+            .read_cache
+            .read(
+                Scope::tenant(settings::CACHED, dsp),
+                "kept".into(),
+                state.data_revision.load(Ordering::Relaxed),
+                || Ok(value),
+            )
+            .unwrap()
+    };
+    read(state, dsp, 1);
+    let (state, dsp) = (state.clone(), dsp.to_owned());
+    move || read(&state, &dsp, 2) == 1
+}
+/// What `work` comes to, finished while a thread of the test's holds the server's transition lock
+/// shared, as a read does: a write, bookkeeping too, waits on it, so finishing proves it took none.
+/// One that waits fails the test once ten seconds pass, rather than hanging it.
+pub async fn unwritten<T>(state: &Arc<State>, work: impl Future<Output = T>) -> T {
+    let (held, holding) = std::sync::mpsc::channel();
+    let (release, released) = std::sync::mpsc::channel::<()>();
+    let shared = Arc::clone(state);
+    let holder = std::thread::spawn(move || {
+        let _shared = shared.transition.read().unwrap();
+        held.send(()).unwrap();
+        let _ = released.recv();
+    });
+    holding.recv().unwrap();
+    let done = tokio::time::timeout(Duration::from_secs(10), work)
+        .await
+        .expect("it waited to write");
+    drop(release);
+    holder.join().unwrap();
+    done
 }
 /// Where the DSP's Slack photos' and files' bytes are kept, made private as Communications makes
 /// it.

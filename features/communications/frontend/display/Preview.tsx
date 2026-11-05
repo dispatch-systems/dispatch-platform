@@ -123,7 +123,6 @@ export function Preview({
                   more={false}
                   readOlder={nothing}
                   olderFailed={false}
-                  writing={[]}
                   timeZone={timeZone}
                   now={now}
                   profile={{}}

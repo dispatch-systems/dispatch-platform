@@ -58,7 +58,7 @@ export function GroupRow({
         </span>
       }
       open={() => openGroup(group.id)}
-      done={() => doneGroup(group)}
+      done={{ whom: group.name, run: () => doneGroup(group) }}
     />
   );
 }

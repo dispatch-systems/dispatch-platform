@@ -39,7 +39,8 @@ pub mod kit {
     };
     pub use crate::backend::fixture::history as fixture_history;
     pub use crate::backend::kit::{
-        SOURCE, integration_on_since, logo, logos, member_id, members, workspaces, workspaces_on,
+        CONNECTION_BROKEN, NEEDS_UPDATE, NOT_CONNECTED, PAST_DEADLINE, RATE_LIMITED, SOURCE,
+        integration_on_since, logo, logos, member_id, members, workspaces, workspaces_on,
     };
     pub use crate::backend::members::member;
     pub use crate::backend::slack::Bytestream;

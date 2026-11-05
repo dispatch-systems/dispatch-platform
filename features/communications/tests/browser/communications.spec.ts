@@ -162,11 +162,11 @@ test('an owner connects Slack from Communications, answers a member as they writ
   await page.getByRole('heading', { name: 'Communications', level: 1 }).click();
   await expect(profile).toHaveCount(0);
 
-  // Written to again, it waits, until the check on its row marks it done without a reply.
+  // Written to again, it waits, until the check on its row, named for them, marks it done
+  // without a reply.
   expect((await write('Thanks')).status).toBe(200);
   await expect(list.getByRole('heading', { name: /^Waiting/ })).toBeVisible();
-  await jordan.hover();
-  await jordan.getByRole('button', { name: 'Done' }).click();
+  await jordan.getByRole('button', { name: 'Done: Jordan Ellis' }).click();
   await expect(list.getByRole('heading', { name: /^Waiting/ })).toHaveCount(0);
 
   // New message finds someone by a misspelt name, and their conversation stays at the top of
@@ -626,13 +626,15 @@ test.describe('on a phone', () => {
     const casey = page.getByRole('region', { name: 'Casey Rivera' });
     const asked = casey.getByText('Can I swap Saturday?');
     await expect(asked).toHaveCSS('font-size', '20px');
-    // Its header keeps a line each at that size: what they do and where, and Done, its mark alone.
+    // Its header keeps a line each at that size: what they do and where, and Done, by its word.
     const about = await casey.locator('.thread-head .who small').evaluate((element) => ({
       height: element.getBoundingClientRect().height,
       size: parseFloat(getComputedStyle(element).fontSize),
     }));
     expect(about.height).toBeLessThan(about.size * 2);
-    expect(await casey.getByRole('button', { name: 'Done' }).innerText()).toBe('');
+    await expect(casey.locator('.thread-head').getByRole('button', { name: 'Done' })).toHaveText(
+      'Done',
+    );
     const box = casey.getByLabel('Message');
     await box.fill('Yes');
     await box.press('Enter');

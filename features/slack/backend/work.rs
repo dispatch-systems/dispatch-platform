@@ -10,6 +10,7 @@ use dispatch_core::{
     db::{Store, now},
     foundation::observability,
     manifest::Upkeep,
+    server::cache::DataDomain,
 };
 use serde_json::json;
 use std::{future::Future, sync::Arc, time::Duration};
@@ -101,6 +102,10 @@ pub trait Queue: 'static {
     const CLAIM_MS: i64;
     /// How a failure is reported.
     const FAILED: &'static str;
+    /// The kind of the DSP's data its claims and what its tries came to change, for the read
+    /// cache: its owner's, evicting the cached reads that depend on it; none while no cached read
+    /// depends on what it keeps, as bookkeeping.
+    const CHANGES: Option<DataDomain>;
 
     /// The items waiting to be tried by `at`, the longest waiting first, `most` at most.
     fn due(db: &Store, dsp: &str, at: i64, most: usize) -> Result<Vec<Self::Item>>;
@@ -149,9 +154,10 @@ pub async fn due<Q: Queue>(state: &Arc<State>, dsp: &str) {
     for item in due {
         let (at, of) = (dsp.to_owned(), item.clone());
         let started = now();
-        let claimed = state
-            .run(move |db| Q::claim(db, &at, &of, started, started + Q::CLAIM_MS))
-            .await;
+        let claimed = write::<Q, _>(state, dsp, move |db| {
+            Q::claim(db, &at, &of, started, started + Q::CLAIM_MS)
+        })
+        .await;
         let outcome = match claimed {
             Ok(Some(claimed)) => Q::try_one(state, dsp, &item, claimed).await,
             Ok(None) => continue,
@@ -161,12 +167,25 @@ pub async fn due<Q: Queue>(state: &Arc<State>, dsp: &str) {
             }
         };
         let at = dsp.to_owned();
-        if let Err(error) = state
-            .run(move |db| Q::finish(db, &at, &item, &outcome, now()))
-            .await
+        if let Err(error) = write::<Q, _>(state, dsp, move |db| {
+            Q::finish(db, &at, &item, &outcome, now())
+        })
+        .await
         {
             failed(Q::FAILED, Some(dsp), &error);
         }
+    }
+}
+/// A write of the queue `Q` in the DSP's database, evicting only the cached reads that depend on
+/// what it changes (`Queue::CHANGES`).
+async fn write<Q: Queue, T: Send + 'static>(
+    state: &Arc<State>,
+    dsp: &str,
+    f: impl FnOnce(&Store) -> Result<T> + Send + 'static,
+) -> Result<T> {
+    match Q::CHANGES {
+        Some(domain) => state.run_scoped(dsp, domain, f).await,
+        None => state.run_bookkeeping(f).await,
     }
 }
 
