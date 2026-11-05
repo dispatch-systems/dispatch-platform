@@ -153,3 +153,5 @@ and requires exact hashes for reviewed binary assets. Findings show locations an
 never matched values. The scan excludes private ignored state and does not cover Git history
 or external exports; review prose and images manually. Do not broaden policy exceptions to
 silence a finding.
+
+<!-- Throwaway CI test: a Markdown-only push. -->
