@@ -10,7 +10,8 @@ use crate::backend::{
     storage::DOMAIN,
 };
 use dispatch_core::{
-    Error, Result, State, db,
+    Error, Result, State,
+    db::{self, Store},
     foundation::{crypto, validate as v},
     server::http::{
         input::{Input, Reply},
@@ -44,7 +45,8 @@ struct PairedDsp {
     name: String,
 }
 /// Pairs a phone by the code someone at the DSP showed: its own number, model and the app's
-/// version, then its key. What it sends is checked before the database is asked for.
+/// version, then its key. What it sends is checked before the database is asked for, and the code
+/// by a read (`pairing::opens`), so only a right one takes the write.
 pub(super) async fn pair(state: Arc<State>, input: Input, access: Public) -> Result<Reply> {
     v::fields(&input.body, &["code", "number", "model", "version"])?;
     let code = pairing::kept(v::text(&input.body, "code", pairing::LENGTH, TYPED_MOST)?)
@@ -53,12 +55,11 @@ pub(super) async fn pair(state: Arc<State>, input: Input, access: Public) -> Res
     let model = v::name(&input.body, "model", MODEL_MOST)?;
     let version = v::name(&input.body, "version", VERSION_MOST)?;
     let asked = input.clone();
-    let dsp = state
-        .read(move |db| {
-            access.authorize(db, &asked)?;
-            site_dsp(db, &asked)
-        })
-        .await?;
+    let at = move |db: &Store| {
+        access.authorize(db, &asked)?;
+        site_dsp(db, &asked)
+    };
+    let dsp = pairing::opens(&state, &input.ip, at, code.clone()).await?;
     let key = pairing::new_key()?;
     let (asked, kept) = (input.clone(), crypto::sha(&key));
     let device = state
