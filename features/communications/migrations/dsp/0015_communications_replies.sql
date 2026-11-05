@@ -7,10 +7,12 @@
 -- (`photos`, JSON pairs), from when it may have been posted (`posting_since`), and held by the
 -- try posting it until `claimed_until`. Each try's post carries its ID as Slack's message
 -- metadata: sent again, it's tried again under the same ID. It's cleared once its post is kept,
--- or found not to be in Slack once no try holds it.
+-- or found not to be in Slack once no try holds it. `conversation_id` names its conversation
+-- with no foreign key, so a release before this one, which knows nothing of these notes, still
+-- deletes a conversation with none of its messages; a note left so is cleared.
 CREATE TABLE IF NOT EXISTS communications_replies (
     id TEXT PRIMARY KEY,
-    conversation_id TEXT NOT NULL REFERENCES communications_conversations (id),
+    conversation_id TEXT NOT NULL,
     text TEXT NOT NULL,
     sent_by TEXT NOT NULL,
     sender_name TEXT NOT NULL,

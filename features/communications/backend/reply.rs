@@ -13,8 +13,9 @@
 //! message (`im:history`) by its note's ID, and kept if it's there: by the maintenance pass every
 //! minute once no try holds it, which clears the note if it isn't, or at once when the same member
 //! sends the same message there again, which then isn't posted a second time, and is otherwise
-//! tried again under the same note. Each claims the note first, so a resend while another try of
-//! it is under way is refused. A note stays until it's settled so, its photos with it.
+//! tried again under the same note. Each claims the note first, a first try noting it in the same
+//! write that finds none, so a try begun while another of it is under way is refused. A note stays
+//! until it's settled so, and no other message takes its photos meanwhile.
 use super::{
     compose::{SLACK, checked, photo_kind},
     conversations, files,
@@ -32,7 +33,7 @@ use crate::{
 use dispatch_core::{
     Error, Result, State,
     accounts::Context,
-    db::now,
+    db::{Store, now},
     ensure,
     foundation::crypto,
     manifest::{Maintenance, Upkeep},
@@ -129,60 +130,98 @@ pub async fn send(
         c.auth.user.id.clone(),
         photos.to_vec(),
     );
-    // Its photos are claimed for it, so another message can't take them as it goes.
+    // Its photos, and its note, are claimed for it, so another message can't take them as it
+    // goes.
     let until = now() + SENDING_MS;
-    let asked = written.to_owned();
-    let (conversation, uploads, earlier) = state
+    let (asked, name) = (written.to_owned(), sender::name(&c.auth.user));
+    let (conversation, uploads, noted, earlier) = state
         .run_scoped(c.dsp.id.clone(), DOMAIN, move |db| {
-            let conversation = db
-                .communications_conversation(&dsp, &at)?
-                .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
-            ensure(
-                kit::workspaces_on(db, &dsp, ID)?.contains(&conversation.team),
-                "communications_off",
-                409,
-            )?;
-            let uploads = db.claim_communications_uploads(&dsp, &by, &chosen, until)?;
-            // The same message the same member sent there before, should Slack have it unkept,
-            // claimed for this try; refused while another try of it is under way.
-            let earlier = db
-                .noted_communications_replies(&dsp, Some(&at), i64::MAX)?
-                .into_iter()
-                .find(|noted| {
-                    noted.by == by
-                        && noted.text == asked
-                        && noted.photos.iter().map(|(photo, _)| photo).eq(&chosen)
-                });
-            let earlier = match earlier {
-                Some(noted) => {
-                    let claimed = db.claim_communications_reply(&dsp, &noted.id, now(), until)?;
-                    ensure(claimed, "communications_reply_sending", 409)?;
-                    Some(Noted {
-                        claimed_until: until,
-                        ..noted
-                    })
-                }
-                None => None,
-            };
-            Ok((conversation, uploads, earlier))
+            begin(db, &dsp, &at, (&by, &name), &asked, &chosen, until)
         })
         .await?;
-    let sent = deliver(state, c, access, &conversation, written, &uploads, earlier).await;
-    if sent.is_err() && !photos.is_empty() {
-        // Slack didn't take it: its photos are free to send again. Should letting them go fail,
-        // the claim ends on its own.
+    let sent = deliver(
+        state,
+        c,
+        access,
+        &conversation,
+        written,
+        &uploads,
+        (noted.clone(), earlier),
+    )
+    .await;
+    if sent.is_err() {
+        // Slack didn't take it, or may have: its photos are free to send again, and its note to
+        // try again or settle. Should letting them go fail, the claims end on their own.
         let (dsp, chosen) = (c.dsp.id.clone(), photos.to_vec());
         let _ = state
             .run_scoped(c.dsp.id.clone(), DOMAIN, move |db| {
+                db.release_communications_reply(&dsp, &noted.id, noted.claimed_until)?;
                 db.release_communications_uploads(&dsp, &chosen)
             })
             .await;
     }
     sent
 }
-/// Sends what the member `c` wrote in `conversation`, with the photos `uploads` they added, then
-/// keeps it: the message, as the page reads it. Sent before, as `earlier`, and in Slack unkept,
-/// that post is kept instead; not in Slack, it's tried again under the same note.
+/// Begins a try of what the member `by` wrote, under the name `name`, in the conversation `id`,
+/// with the photos `chosen`, holding them and its note until `until`: the conversation, the
+/// photos, the note, and whether it was noted before. The same message sent there before, should
+/// Slack have it unkept, is that note, claimed, and refused while another try of it is under way;
+/// else it's noted now, in the same write, so a try of it begun meanwhile is refused too.
+fn begin(
+    db: &Store,
+    dsp: &str,
+    id: &str,
+    (by, name): (&str, &str),
+    text: &str,
+    chosen: &[String],
+    until: i64,
+) -> Result<(storage::Conversation, Vec<File>, Noted, bool)> {
+    let conversation = db
+        .communications_conversation(dsp, id)?
+        .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
+    ensure(
+        kit::workspaces_on(db, dsp, ID)?.contains(&conversation.team),
+        "communications_off",
+        409,
+    )?;
+    let earlier = db
+        .noted_communications_replies(dsp, Some(id), i64::MAX)?
+        .into_iter()
+        .find(|noted| {
+            noted.by == by
+                && noted.text == text
+                && noted.photos.iter().map(|(photo, _)| photo).eq(chosen)
+        });
+    let of = earlier.as_ref().map(|noted| noted.id.as_str());
+    let uploads = db.claim_communications_uploads(dsp, by, chosen, until, of)?;
+    let Some(earlier) = earlier else {
+        let noted = Noted {
+            id: crypto::id("rpl")?,
+            conversation: id.to_owned(),
+            text: text.to_owned(),
+            by: by.to_owned(),
+            name: name.to_owned(),
+            photos: chosen
+                .iter()
+                .map(|photo| (photo.clone(), String::new()))
+                .collect(),
+            posting_since: now(),
+            claimed_until: until,
+        };
+        db.note_communications_reply(dsp, &noted)?;
+        return Ok((conversation, uploads, noted, false));
+    };
+    let claimed = db.claim_communications_reply(dsp, &earlier.id, now(), until)?;
+    ensure(claimed, "communications_reply_sending", 409)?;
+    let noted = Noted {
+        claimed_until: until,
+        ..earlier
+    };
+    Ok((conversation, uploads, noted, true))
+}
+/// Sends what the member `c` wrote in `conversation`, with the photos `uploads` they added, under
+/// the note `noted`, then keeps it: the message, as the page reads it. Noted `earlier`, and in
+/// Slack unkept, that post is kept instead; not in Slack, it's tried again under the same note.
 async fn deliver(
     state: &Arc<State>,
     c: &Context,
@@ -190,21 +229,15 @@ async fn deliver(
     conversation: &storage::Conversation,
     written: &str,
     uploads: &[File],
-    earlier: Option<Noted>,
+    (noted, earlier): (Noted, bool),
 ) -> Result<Message> {
     let dsp = c.dsp.id.as_str();
     let bot = Bot::new(state, dsp, &conversation.team);
-    if let Some(earlier) = &earlier
-        && let Some(ts) = posted(
-            &bot,
-            &conversation.channel,
-            EVENT,
-            &earlier.id,
-            earlier.posting_since,
-        )
-        .await?
+    let channel = &conversation.channel;
+    if earlier
+        && let Some(ts) = posted(&bot, channel, EVENT, &noted.id, noted.posting_since).await?
     {
-        let message = keep(state, dsp, earlier, &ts).await?;
+        let message = keep(state, dsp, &noted, &ts).await?;
         live::stopped(state, dsp, &conversation.id, &c.auth.user.id);
         return Ok(message);
     }
@@ -216,28 +249,17 @@ async fn deliver(
         shown.push((upload.id.clone(), slack_id, upload.name.clone()));
     }
     let identity = sender::identity(state, dsp, &conversation.team, &c.auth.user).await;
-    // Sent before and not in Slack: tried again under the same note, so whichever try Slack took
-    // is found by it.
-    let (id, posting_since, claimed_until) = match earlier {
-        Some(earlier) => (earlier.id, earlier.posting_since, earlier.claimed_until),
-        None => (crypto::id("rpl")?, now(), now() + SENDING_MS),
-    };
     let noted = Noted {
-        id,
-        conversation: conversation.id.clone(),
-        text: written.to_owned(),
-        by: c.auth.user.id.clone(),
         name: identity.name.clone(),
         photos: shown
             .iter()
             .map(|(photo, slack_id, _)| (photo.clone(), slack_id.clone()))
             .collect(),
-        posting_since,
-        claimed_until,
+        ..noted
     };
-    let mut args = message(&conversation.channel, written, &shown, &identity);
+    let mut args = message(channel, written, &shown, &identity);
     args["metadata"] = tag(EVENT, &noted.id);
-    // Checked again, and noted, before it goes to Slack: once Slack has it, it's kept.
+    // Checked again, and noted as it goes, before it goes to Slack: once Slack has it, it's kept.
     let (asked, note) = (c.clone(), noted.clone());
     let c = state
         .run_bookkeeping(move |db| {
@@ -287,7 +309,8 @@ fn pass(state: Arc<State>, _: bool) -> Upkeep {
 }
 /// Keeps each message noted in the DSP that no try holds and Slack has, and clears the note of each
 /// it hasn't, while Communications works in its workspace; one where it doesn't waits until it
-/// does. Each is claimed first, so no try of it runs meanwhile.
+/// does, and one whose conversation is gone is cleared. Each is claimed first, so no try of it
+/// runs meanwhile.
 async fn settle(state: &Arc<State>, dsp: &str) -> Result<()> {
     let at = dsp.to_owned();
     let unheld = state
@@ -313,25 +336,32 @@ async fn settle(state: &Arc<State>, dsp: &str) -> Result<()> {
                 .collect();
             Ok(noted
                 .into_iter()
-                .filter_map(|noted| {
-                    let conversation = conversations.get(&noted.conversation)?.clone();
-                    let working = on.contains(&conversation.team);
-                    Some((noted, conversation, working))
+                .map(|noted| {
+                    let conversation = conversations.get(&noted.conversation).cloned();
+                    let working = conversation
+                        .as_ref()
+                        .is_some_and(|conversation| on.contains(&conversation.team));
+                    (noted, conversation, working)
                 })
                 .collect::<Vec<_>>())
         })
         .await?;
     for (noted, conversation, working) in noted {
-        if !working {
-            continue;
-        }
-        let bot = Bot::new(state, dsp, &conversation.team).patient();
-        let since = noted.posting_since;
-        let found = match posted(&bot, &conversation.channel, EVENT, &noted.id, since).await {
-            Ok(found) => found,
-            Err(error) => {
-                kit::failed(FAILED, Some(dsp), &error);
-                continue;
+        let found = match conversation {
+            // Its conversation forgotten, as a release before this one forgets a workspace's
+            // conversations with no message: nothing is left to keep it in.
+            None => None,
+            Some(_) if !working => continue,
+            Some(conversation) => {
+                let bot = Bot::new(state, dsp, &conversation.team).patient();
+                let (channel, since) = (&conversation.channel, noted.posting_since);
+                match posted(&bot, channel, EVENT, &noted.id, since).await {
+                    Ok(found) => found,
+                    Err(error) => {
+                        kit::failed(FAILED, Some(dsp), &error);
+                        continue;
+                    }
+                }
             }
         };
         match found {

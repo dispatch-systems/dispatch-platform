@@ -222,6 +222,9 @@ pub trait CommunicationsStore {
     /// Clears the answer noted as `id`, not in Slack, while the try that claimed it until
     /// `claimed_until` holds it.
     fn clear_communications_reply(&self, dsp: &str, id: &str, claimed_until: i64) -> Result<()>;
+    /// Lets go of the answer noted as `id` while the try that claimed it until `claimed_until`
+    /// holds it, as that try ended without keeping it: another may claim it.
+    fn release_communications_reply(&self, dsp: &str, id: &str, claimed_until: i64) -> Result<()>;
     /// Keeps the answer noted as `noted` in the conversation as Slack took it, `sent`, with the
     /// photos added for it, which become its own, and clears its note. Kept already, by its `ts`,
     /// it's that one.
@@ -450,6 +453,13 @@ impl CommunicationsStore for Store {
              AND (?2 IS NULL OR conversation_id=?2) ORDER BY posting_since,id",
             params![at, conversation],
         )
+    }
+    fn release_communications_reply(&self, dsp: &str, id: &str, claimed_until: i64) -> Result<()> {
+        self.dsp(dsp)?.exec(
+            "UPDATE communications_replies SET claimed_until=0 WHERE id=? AND claimed_until=?",
+            params![id, claimed_until],
+        )?;
+        Ok(())
     }
     fn clear_communications_reply(&self, dsp: &str, id: &str, claimed_until: i64) -> Result<()> {
         self.dsp(dsp)?.exec(

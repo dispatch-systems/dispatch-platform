@@ -561,7 +561,10 @@ in their own direct message with the app, and their answers come back together.
   there again, which then keeps that post rather than post a second, or, not finding it, tries
   again under the same note, so whichever try Slack took is found. Each claims the note first:
   sent again while another try of it is under way, it's refused (`communications_reply_sending`),
-  and upkeep leaves a note a resend holds. Its photos are kept while it's noted, however long.
+  and upkeep leaves a note a resend holds; a first try notes it in the same write that finds
+  none, so two begun together share it. Its photos are kept while it's noted, however long, and
+  no other message takes them. A note names its conversation without a foreign key, so a release
+  before this one can still forget a conversation with no message; upkeep clears a note left so.
 - **Under whose name:** the full name on the writer's Dispatch account, and their Slack profile
   photo (`chat:write.customize`), read from the member of the DSP's workspaces with their email
   address, the conversation's workspace first (`users.info`): Slack's own drawn photo isn't

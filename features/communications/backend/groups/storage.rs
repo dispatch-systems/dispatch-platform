@@ -4,6 +4,7 @@
 //! one of them changes. Only this crate writes SQL against its tables.
 use crate::backend::{
     changes::changed_conversation,
+    files,
     model::ConversationState,
     storage::{Message, Sent, mark_done, opened, sent_out, settle, settle_with},
 };
@@ -857,10 +858,15 @@ fn written(db: &Db, group: &str, writing: &Writing) -> Result<String> {
         ],
     )?;
     let photos = serde_json::to_string(writing.photos)?;
+    // Not one an answer noted on its way to Slack carries.
     let taken = db.exec(
-        "UPDATE communications_files SET group_message_id=?1,claimed_until=NULL \
-         WHERE id IN (SELECT value FROM json_each(?2)) AND uploaded_by=?3 \
-         AND message_id IS NULL AND group_message_id IS NULL AND coalesce(claimed_until,0)<=?4",
+        &format!(
+            "UPDATE communications_files SET group_message_id=?1,claimed_until=NULL \
+             WHERE id IN (SELECT value FROM json_each(?2)) AND uploaded_by=?3 \
+             AND message_id IS NULL AND group_message_id IS NULL \
+             AND coalesce(claimed_until,0)<=?4 AND id NOT IN ({})",
+            files::noted_photos("NULL")
+        ),
         params![id, photos, writing.by, at],
     )?;
     if taken != writing.photos.len() {

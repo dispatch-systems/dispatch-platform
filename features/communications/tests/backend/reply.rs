@@ -204,7 +204,7 @@ async fn an_answer_carries_the_photos_added_for_it_shown_in_slack() {
         vec![photo.id.clone()],
     );
     let claim = move |db: &dispatch_core::db::Store| {
-        db.claim_communications_uploads(&at, &by, &ids, now() + 60_000)
+        db.claim_communications_uploads(&at, &by, &ids, now() + 60_000, None)
             .map(drop)
     };
     state.run(claim.clone()).await.unwrap();
@@ -417,7 +417,7 @@ async fn sent_again_while_another_try_of_it_is_under_way_an_answer_isnt_posted_t
 }
 
 #[tokio::test]
-async fn an_answer_noted_on_its_way_to_slack_keeps_its_photos_until_its_settled() {
+async fn an_answer_noted_on_its_way_to_slack_keeps_its_photos_until_its_settled_for_it_alone() {
     let (_root, state, bot) = support::connected(TEAM).await;
     let dsp = bot.dsp.clone();
     let id = started(&state, &bot, "D0KEPTPHOTO").await;
@@ -452,6 +452,18 @@ async fn an_answer_noted_on_its_way_to_slack_keeps_its_photos_until_its_settled(
     let args = json!({"channel": "D0KEPTPHOTO", "text": "Here's the van",
         "metadata": tag(EVENT, &noted.id)});
     bot.call("chat.postMessage", &args).await.unwrap();
+    // Another message can't take it, though its try ended.
+    let taken = send(
+        &state,
+        &owner,
+        USE,
+        &id,
+        "Van 12",
+        std::slice::from_ref(&added.id),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(taken.code, "communications_upload_not_found");
     // Upkeep letting go of photos never sent leaves it.
     let at = dsp.clone();
     state
@@ -465,6 +477,60 @@ async fn an_answer_noted_on_its_way_to_slack_keeps_its_photos_until_its_settled(
         (kept.text.as_str(), kept.files.len()),
         ("Here's the van", 1)
     );
+}
+
+#[tokio::test]
+async fn two_first_tries_of_an_answer_begun_together_share_one_note_and_one_is_refused() {
+    let (_root, state, bot) = support::connected(TEAM).await;
+    let dsp = bot.dsp.clone();
+    let id = started(&state, &bot, "D0TOGETHER").await;
+    let owner = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+    let by = owner.auth.user.id.clone();
+    let begun = |until: i64| {
+        let (at, of, by) = (dsp.clone(), id.clone(), by.clone());
+        state.run(move |db| {
+            begin(db, &at, &of, (&by, "Test Owner"), "On my way", &[], until).map(drop)
+        })
+    };
+    // Neither had found a note; the first notes it as it begins, and the second finds it held.
+    begun(now() + SENDING_MS).await.unwrap();
+    let refused = begun(now() + SENDING_MS).await.unwrap_err();
+    assert_eq!(refused.code, "communications_reply_sending");
+    assert_eq!(
+        kept_and_noted(&state, &dsp, &id).await.1,
+        vec!["On my way".to_owned()]
+    );
+}
+
+#[tokio::test]
+async fn a_note_whose_conversation_an_earlier_release_forgot_is_cleared() {
+    let (_root, state, bot) = support::connected(TEAM).await;
+    let dsp = bot.dsp.clone();
+    let owner = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+    // Messaged first, the try ended unkept, before any message was in the conversation.
+    let opened = open(&state, &owner, USE, TEAM, "U0FIXOWNER").await.unwrap();
+    let at = (opened.id.as_str(), "D0FIXOWNER");
+    unkept(&state, &bot, &owner, at, "Welcome aboard", ENDED, false).await;
+    // Rolled back, the release before this one forgets the workspace's conversations with no
+    // message, knowing nothing of notes.
+    let of = dsp.clone();
+    state
+        .run(move |db| {
+            db.dsp(&of)?.exec(
+                "DELETE FROM communications_conversations WHERE team_id=? AND last_at IS NULL",
+                [TEAM],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    settle(&state, &dsp).await.unwrap();
+    let (at, of) = (dsp.clone(), opened.id.clone());
+    let noted = state
+        .read(move |db| db.noted_communications_replies(&at, Some(&of), i64::MAX))
+        .await
+        .unwrap();
+    assert!(noted.is_empty());
 }
 
 #[tokio::test]
