@@ -51,6 +51,13 @@ and every other number's in Recents.
   them, under New messages: `sound`, on to start, and `notifications`, off, which turning on asks
   the browser for, staying off if it refuses, and which shows on only in a browser that has
   allowed it; left out where the browser can't show one, as a phone's.
+  And `communications.quick_replies` (Quick replies), the DSP's, under `communications.use`, so
+  anyone who uses Communications edits them, on Communications' own page under Features: drawn by
+  its own component, `frontend/replies/`, as a list of texts is none of Settings' kinds of value.
+  Up to 30 short replies, each up to 500 characters, in their order, each in a box of its own with
+  Remove, Add reply under them, and Save, which leaves out the empty ones; it asks before the page
+  moves on with them unsaved, and a save over another session's since is refused
+  (`settings_changed_reload_before_saving`) and the list read again.
 - **On every page:** `communications.alerts`, a watcher (`frontend/alerts/`), for those with
   `communications.use`, alerting them to new messages ([New messages](#new-messages)), and to the
   DSP's phones as each goes down; and `communications.phones`, a watcher drawing a banner atop
@@ -105,7 +112,9 @@ and every other number's in Recents.
   and role, and with every workspace shown, the one they're in; how long they've waited, or
   when they last wrote. Each opens their conversation, or starts one, as New message does.
 - **A conversation:** who it's with, the workspace it's in while there are several, and, while
-  it waits, how long, "Waiting 31 min", and Done, by its word on a phone too; its messages under the day each was written, the member's beside
+  it waits, how long, "Waiting 31 min", and Done, by its word on a phone too; once it's answered,
+  by Done or a send, **Next waiting**, while another of the section shown waits, which opens the
+  one waiting longest, a group's too, never by itself; its messages under the day each was written, the member's beside
   their photo, the DSP's under the name and photo of whoever sent them, each edited in Slack
   marked Edited, a reply in one of its threads in its place among them, photos shown and other
   files to download, or why one isn't kept; older ones read as it's scrolled to its start, and
@@ -113,8 +122,10 @@ and every other number's in Recents.
   again. Right above its box, however its messages are scrolled, who else at the DSP is writing
   in it, "Keisha is typing…", said to a screen reader as it changes. Writing in it: text, with
   photos added (Add photo), as much as one message carries as the conversation's read says
-  (`limits`), which what's refused says too, and nothing until it's read; Enter or **Send** to
-  send; while writing, teammates see it. Where a teammate, or the phone itself, wrote in it since
+  (`limits`), which what's refused says too, and nothing until it's read; **Quick replies**,
+  beside the smiley while the DSP has some, by its icon alone on a phone, opens them, and the one
+  chosen goes in where the writer was, as an emoji does, never sent by itself, in a group's box
+  too; Enter or **Send** to send; while writing, teammates see it. Where a teammate, or the phone itself, wrote in it since
   the member started writing, since it opened with what they'd written, or since they last
   answered this, Send asks first, above the box: "Keisha just replied", with **Send anyway** and
   **Cancel**, which keeps what's written and shows the reply. It's told from what the page holds,
@@ -147,6 +158,11 @@ and every other number's in Recents.
 - **New message** finds whom to write to by name, misspelt or not, and opens their
   conversation, or opens a direct message with them, kept at the top of the list until it holds
   a message. With nothing typed, Message a group comes first.
+- **Keys,** on a desktop, but while a field is written in, or with Ctrl, Alt or ⌘ held: J and K
+  open the next and the previous row of the list, or its first with none open; N presses Next
+  waiting and E Done, in the head of what's open, each naming its key (`aria-keyshortcuts`, and
+  its title); / goes to Search; and Escape leaves the field written in. Keys pressed in a dialog
+  are its own (`frontend/shared/shortcuts.ts`, `frontend/page/useShortcuts.ts`).
 - **Display** opens the member's own Message display in Settings, which the page looks as, with
   either section.
 - **Copy chat link** copies the address that opens the app's Messages tab in a workspace where
@@ -603,7 +619,8 @@ not; nothing reaches a browser closed, as nothing is pushed.
 the page's layout and the variables its parts draw by.
 
 - `page/`: the page, which section shows, what's open (in the address) and the layout; the
-  section switch and the list's frame; and how each section shows (`section-views.tsx`).
+  section switch and the list's frame; how each section shows (`section-views.tsx`); and its keys
+  (`useShortcuts.ts`).
 - `inbox/`: the conversations and groups as they change (`inbox.ts`, `useInbox.ts`), the list of
   them and its rows, and the sections, each defined once (`sections.ts`).
 - `conversations/`: the conversation open, its thread, composer and profile; each kind of
@@ -619,8 +636,9 @@ the page's layout and the variables its parts draw by.
 - `todays-routes/`: Today's Routes' read, list and board, a route's facts, a driver's workdays,
   Pick driver and No work phone.
 - `shared/`: what any of them draws with: faces, a list's rows and headings, a contact's row, a
-  message's body and runs, a thread's frame, a pane's head, the side panel, and how the page
-  words things (`format.ts`).
+  message's body and runs, a thread's frame, a pane's head, the side panel, how the page words
+  things (`format.ts`), and what each key does (`shortcuts.ts`).
+- `replies/`: the DSP's quick replies, in the composer and in Settings.
 - `alerts/` and `display/`: new messages' alerts on every page, and Message display.
 
 Where to add:
@@ -681,6 +699,10 @@ Behind `communications.use`:
   there, `chatLink`, whether, on there, it needs updating for what Communications uses,
   `needsUpdate`, and the version of its logo, `logo`, none without one), who is typing, each
   with their person and photo, and the latest change (`revision`).
+- `GET …/quick-replies`: the DSP's quick replies, in their order, and their `revision`;
+  `POST …/quick-replies`, `{replies, revision}`: keeps them, each trimmed, as the revision they
+  were read at, refused past 30, one empty or over 500 characters (`invalid_input`), or once
+  another save passed it (409 `settings_changed_reload_before_saving`).
 - `GET …/waiting`: how many conversations wait, and since when each has, for the sidebar; the
   latest message from whom each is with (`latest`: the conversation, the group it's listed under,
   their name and the message), for alerts; and the DSP's phones an app holds, each online or not,
@@ -788,7 +810,8 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   (migration 9, which copied each from `communications_texts`, since dropped),
   `communications_contacts` (the names saved for numbers, by whom and when),
   `communications_blocked` (the numbers blocked, by whom and when) and `communications_picked`
-  (the driver picked for a work phone on a day, by whom and when). The phone side's, as Phones
+  (the driver picked for a work phone on a day, by whom and when). The DSP's quick replies, with
+  their revision, in its `settings` table under `communications.quick_replies`. The phone side's, as Phones
   made them before Communications adopted them (its migrations 7 and 8, which find them made on a
   database Phones migrated, and leave Phones' own records of its migrations as they were):
   `phones_devices` (each phone, by its key's SHA-256, and how it last said it stands, `health`,

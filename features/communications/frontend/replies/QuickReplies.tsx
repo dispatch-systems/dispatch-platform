@@ -45,7 +45,7 @@ export function QuickReplies({
                 pick(reply);
               }}
             >
-              {reply}
+              <span>{reply}</span>
             </button>
           </li>
         ))}

@@ -39,11 +39,10 @@
   list-style: none;
 }
 .quick-replies-panel button {
-  display: -webkit-box;
+  display: block;
   width: 100%;
   min-height: calc(40px * var(--scale));
   padding: 8px 10px;
-  overflow: hidden;
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -51,6 +50,11 @@
   font-weight: 500;
   text-align: left;
   white-space: normal;
+}
+/* A long one shows its first two lines. */
+.quick-replies-panel button span {
+  display: -webkit-box;
+  overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
