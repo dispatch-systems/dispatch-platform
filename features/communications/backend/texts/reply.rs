@@ -6,9 +6,9 @@
 //! driver's, the work phone they have now, as live route data says or Pick driver picked them for
 //! (`LiveDay::phones`), and none while they have none. Its pictures are kept by the phone side as
 //! they're added, its adder's alone until they go with it, and none of one kept should the adder's
-//! access end while its bytes come. One that failed is sent again with Retry. Either is queued, and
-//! filed, in the write that checks where it goes and that the member may still send it, so no
-//! handoff, stop or change of their access comes between.
+//! access end while its bytes come. One that failed is sent again with Retry, from the phone a new
+//! text would go from. Either is queued, and filed, in the write that checks where it goes and that
+//! the member may still send it, so no handoff, stop or change of their access comes between.
 use super::{
     filing, live_day::LiveDay, numbers::work_number, reading::message, storage::TextStore,
 };

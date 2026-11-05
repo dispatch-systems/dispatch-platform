@@ -25,9 +25,9 @@ use serde_json::Value;
 /// page of the texts filing places.
 pub const MOST_TEXTS: usize = 100;
 /// How long after its time a text may come into a phone, as its app looks back that far for one
-/// (`Inbox.LOOK_BACK_MS`), in milliseconds.
+/// (`Inbox.LOOK_BACK_MS`), in milliseconds: a phone reports none from further before it paired.
 const LOOK_BACK_MS: i64 = 24 * 60 * 60 * 1000;
-/// How far a phone's clock may be off from the server's, in milliseconds.
+/// How far ahead of the server's a phone's clock may be, in milliseconds.
 const SKEW_MS: i64 = 5 * 60 * 1000;
 
 /// A text as the phone reports it, by its own ID of it.
@@ -39,11 +39,12 @@ pub struct Reported {
     pub at: i64,
     pub files: Vec<ReportedFile>,
 }
-/// When a text a phone reports as written at `at` was, as it's kept: as the phone says, while
-/// that's within its app's look-back and its clock's skew of `received`, when the report came;
-/// else `received` itself, the text kept all the same.
-pub fn written(at: i64, received: i64) -> i64 {
-    if (received - LOOK_BACK_MS - SKEW_MS..=received + SKEW_MS).contains(&at) {
+/// When a text a phone paired at `paired` reports as written at `at` was, as it's kept: as the
+/// phone says, from its app's look-back before it paired, however long a phone offline held it,
+/// until its clock's skew after `received`, when the report came; else `received` itself, the
+/// text kept all the same.
+pub fn written(at: i64, paired: i64, received: i64) -> i64 {
+    if (paired - LOOK_BACK_MS..=received + SKEW_MS).contains(&at) {
         at
     } else {
         received
@@ -86,9 +87,11 @@ pub trait TextStore {
     /// the one seen last, one online at `at` before any offline: refused as `invalid_input` for a
     /// number that isn't one, or a text with nothing in it or past `LIMITS`.
     fn phones_send(&self, dsp: &str, outgoing: &Outgoing, at: i64) -> Result<Text>;
+    /// Queues again the text `id`, one Dispatch sent that failed, as a new attempt from the phone
+    /// a new text to its number would go from: refused as `phones_none` while none is paired.
     fn phones_retry(&self, dsp: &str, id: &str, at: i64) -> Result<Text>;
-    /// The texts Dispatch queued that wait past their expiry at `at` on a phone that hasn't
-    /// checked in since they were queued, or tried again: offline, it never had them.
+    /// The texts Dispatch queued that wait past their expiry at `at` on a phone offline then: not
+    /// checked in within `ONLINE_MS`.
     fn phones_expired(&self, dsp: &str, at: i64) -> Result<Vec<String>>;
     /// Fails each of `phones_expired` as `PHONE_OFFLINE`: those it failed.
     fn phones_expire(&self, dsp: &str, at: i64) -> Result<Vec<String>>;
@@ -238,18 +241,9 @@ impl TextStore for Store {
                         "SELECT id FROM phones_devices WHERE id=? AND removed_at IS NULL",
                         [phone],
                     )?
+                    .map(|found| s(&found, "id").to_owned())
                     .ok_or_else(|| Error::new("phones_not_found", 404))?,
-                None => db
-                    .one(
-                        "SELECT d.id FROM phones_devices d \
-                         LEFT JOIN phones_texts t ON t.device_id=d.id AND t.number=?1 \
-                         WHERE d.removed_at IS NULL \
-                         GROUP BY d.id ORDER BY coalesce(d.last_seen_at,0)>=?2 DESC, \
-                         max(t.at) IS NULL, max(t.at) DESC, \
-                         coalesce(d.last_seen_at,0) DESC, d.paired_at LIMIT 1",
-                        params![to, at - ONLINE_MS],
-                    )?
-                    .ok_or_else(|| Error::new("phones_none", 409))?,
+                None => sender(&db, &to, at)?,
             };
             let change = next_change(&db)?;
             db.exec(
@@ -258,7 +252,7 @@ impl TextStore for Store {
                  change) VALUES (?1,?2,'out','dispatch',?3,?4,?5,?6,'waiting',?5,?7,?7)",
                 params![
                     id,
-                    s(&device, "id"),
+                    device,
                     to,
                     outgoing.body,
                     at,
@@ -282,15 +276,22 @@ impl TextStore for Store {
     fn phones_retry(&self, dsp: &str, id: &str, at: i64) -> Result<Text> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
+            let found = db
+                .one(
+                    "SELECT number FROM phones_texts WHERE id=? AND origin='dispatch' \
+                     AND status='failed'",
+                    [id],
+                )?
+                .ok_or_else(|| Error::new("phones_text_not_found", 404))?;
+            // A new attempt, from the phone a new text to its number would go from.
+            let device = sender(&db, s(&found, "number"), at)?;
             let change = next_change(&db)?;
-            // A new attempt, from the phone it went from, while that phone is still paired.
-            let changed = db.exec(
-                "UPDATE phones_texts SET status='waiting', status_at=?1, attempt=?2, error=NULL, \
-                 change=?2 WHERE id=?3 AND origin='dispatch' AND status='failed' \
-                 AND device_id IN (SELECT id FROM phones_devices WHERE removed_at IS NULL)",
-                params![at, change, id],
+            db.exec(
+                "UPDATE phones_texts SET device_id=?1, status='waiting', status_at=?2, \
+                 attempt=?3, error=NULL, change=?3 WHERE id=?4",
+                params![device, at, change, id],
             )?;
-            ensure(changed == 1, "phones_text_not_found", 404)
+            Ok(())
         })?;
         drop(db);
         self.phones_text(dsp, id)?
@@ -300,8 +301,8 @@ impl TextStore for Store {
         let expired: Vec<(String,)> = self.dsp(dsp)?.query_as(
             "SELECT t.id FROM phones_devices d JOIN phones_texts t ON t.device_id=d.id \
              WHERE t.status='waiting' AND t.origin='dispatch' AND t.status_at<=? \
-             AND coalesce(d.last_seen_at,0)<=t.status_at ORDER BY t.at,t.id",
-            [at - EXPIRY_MS],
+             AND coalesce(d.last_seen_at,0)<? ORDER BY t.at,t.id",
+            [at - EXPIRY_MS, at - ONLINE_MS],
         )?;
         Ok(expired.into_iter().map(|(id,)| id).collect())
     }
@@ -332,6 +333,23 @@ impl TextStore for Store {
             Ok(())
         })
     }
+}
+
+/// The phone a text to `to` goes from at `at`, of the DSP's paired ones: the one that last texted
+/// it, else the one seen last, one online before any offline; refused as `phones_none` with none.
+fn sender(db: &Db, to: &str, at: i64) -> Result<String> {
+    let found = db
+        .one(
+            "SELECT d.id FROM phones_devices d \
+             LEFT JOIN phones_texts t ON t.device_id=d.id AND t.number=?1 \
+             WHERE d.removed_at IS NULL \
+             GROUP BY d.id ORDER BY coalesce(d.last_seen_at,0)>=?2 DESC, \
+             max(t.at) IS NULL, max(t.at) DESC, \
+             coalesce(d.last_seen_at,0) DESC, d.paired_at LIMIT 1",
+            params![to, at - ONLINE_MS],
+        )?
+        .ok_or_else(|| Error::new("phones_none", 409))?;
+    Ok(s(&found, "id").to_owned())
 }
 
 /// Fails the texts Dispatch queued that still wait on the phone `device`, which was removed:

@@ -4,7 +4,7 @@
 //! waiting on its conversation hear once both are committed. A text that can't be placed yet, as
 //! reading where it belongs failed, stays kept, waiting to be filed, and every minute's upkeep
 //! places those waiting (`unfiled`); it files today's again too, as its route data may have
-//! changed unheard (`reconcile`), and fails the answers an offline phone never came for by their
+//! changed unheard (`reconcile`), and fails the answers still waiting on an offline phone at their
 //! expiry (`expire`).
 //!
 //! A work phone passes from driver to driver, so a text with one is filed by the day it was
@@ -60,7 +60,7 @@ use std::{
 const TWO_DAYS_MS: i64 = 2 * 24 * 60 * 60 * 1000;
 
 /// Every minute, each DSP's texts waiting to be filed, and today's filed again where they belong
-/// now; and its answers an offline phone never came for failed once they expire.
+/// now; and its answers still waiting on an offline phone failed once they expire.
 pub const MAINTENANCE: Maintenance = Maintenance {
     every: Duration::from_secs(60),
     run: pass,
@@ -156,7 +156,7 @@ pub async fn unfiled(state: &Arc<State>, dsp: &str) -> Result<()> {
     }
 }
 
-/// Fails the answers queued on a phone that hasn't checked in since, past their expiry at `at`, as
+/// Fails the answers waiting past their expiry at `at` on a phone offline then, as
 /// `phones_offline`, each filed as it fails, so its conversation waits again: written only once
 /// one has expired.
 pub async fn expire(state: &Arc<State>, dsp: &str, at: i64) -> Result<()> {

@@ -142,11 +142,11 @@ fn how_a_text_went_only_moves_on() {
     let theirs = attempt_of(&other.id);
     let foreign = report(&other.id, theirs, Status::Sent);
     assert!(!db.phones_status(&dsp, "phone_other", &foreign).unwrap());
-    // A text whose phone was removed isn't tried again: no phone would send it.
+    // With no phone paired, a text isn't tried again: no phone would send it.
     assert!(status(&other.id, theirs, Status::Failed));
     db.phones_remove(&dsp, &phone.id, 11_000).unwrap();
     let orphan = db.phones_retry(&dsp, &other.id, 12_000);
-    assert_eq!(orphan.unwrap_err().code.as_str(), "phones_text_not_found");
+    assert_eq!(orphan.unwrap_err().code.as_str(), "phones_none");
 }
 
 #[test]
@@ -188,6 +188,24 @@ fn a_text_goes_from_the_phone_that_last_texted_its_number_one_online_first() {
         .phones_send(&dsp, &outgoing("4255550199", vec![], &owner), 200_000)
         .unwrap();
     assert_eq!(online.phone, first.id);
+    // Failed, it's tried again as a new text goes: from the one online now.
+    let failed = StatusReport {
+        id: online.id.clone(),
+        attempt: db
+            .phones_outbox(&dsp, &first.id)
+            .unwrap()
+            .into_iter()
+            .find(|(text, _)| text.id == online.id)
+            .unwrap()
+            .1,
+        status: Status::Failed,
+        at: 200_001,
+        error: None,
+    };
+    assert!(db.phones_status(&dsp, &first.id, &failed).unwrap());
+    db.phones_seen(&dsp, &second.id, 400_000).unwrap();
+    let retried = db.phones_retry(&dsp, &online.id, 400_000).unwrap();
+    assert_eq!(retried.phone, second.id);
     // Pictures go only with the text of who added them, once.
     let file = ReportedFile {
         name: "door.jpg".into(),
@@ -220,7 +238,7 @@ fn a_text_goes_from_the_phone_that_last_texted_its_number_one_online_first() {
 }
 
 #[test]
-fn a_text_its_phone_never_came_for_fails_as_it_expires_and_counts_if_it_went_after_all() {
+fn a_text_still_waiting_on_an_offline_phone_fails_as_it_expires_and_counts_if_it_went_after_all() {
     let (_root, db, dsp) = store();
     let phone = paired(&db, &dsp, "key", "2065550100");
     let owner = testing::a_user(&db);
@@ -255,14 +273,18 @@ fn a_text_its_phone_never_came_for_fails_as_it_expires_and_counts_if_it_went_aft
     let went = db.phones_text(&dsp, &text.id).unwrap().unwrap();
     assert_eq!((went.status, went.error), (Some(Status::Sent), None));
 
-    // One the phone came for after it was queued waits for the phone to start it or say it
-    // expired.
+    // One whose phone is online as it expires waits for the phone to start it or say it expired;
+    // once the phone is offline, it fails, though it checked in after the text was queued.
     let later = 100 * EXPIRY_MS;
     let waiting = db
         .phones_send(&dsp, &outgoing("4255550198", vec![], &owner), later)
         .unwrap();
-    db.phones_seen(&dsp, &phone.id, later + 1).unwrap();
-    assert!(expired(later + 2 * EXPIRY_MS).is_empty());
+    db.phones_seen(&dsp, &phone.id, later + EXPIRY_MS).unwrap();
+    assert!(expired(later + EXPIRY_MS + ONLINE_MS).is_empty());
+    assert_eq!(
+        expired(later + EXPIRY_MS + ONLINE_MS + 1),
+        std::slice::from_ref(&waiting.id)
+    );
     // Failed and tried again, it expires anew from then.
     let failing = StatusReport {
         id: waiting.id.clone(),
@@ -279,16 +301,22 @@ fn a_text_its_phone_never_came_for_fails_as_it_expires_and_counts_if_it_went_aft
 }
 
 #[test]
-fn a_reported_texts_time_is_kept_only_within_the_apps_look_back_and_clock_skew_of_its_report() {
+fn a_reported_texts_time_is_kept_from_the_apps_look_back_before_pairing_to_clock_skew_after_its_report()
+ {
     let (minute, day) = (60_000, 24 * 60 * 60 * 1000);
-    let received = 100 * day;
-    // A text a day old, as the app looks back that far, or a few minutes ahead, as a clock may
-    // be: as the phone says.
-    for at in [received - day - minute, received, received + 4 * minute] {
-        assert_eq!(written(at, received), at);
+    let (paired, received) = (50 * day, 100 * day);
+    // A day before the phone paired, as the app looks back that far; days old, as a phone
+    // offline held it; or a few minutes ahead, as a clock may be: as the phone says.
+    for at in [
+        paired - day,
+        received - 3 * day,
+        received,
+        received + 4 * minute,
+    ] {
+        assert_eq!(written(at, paired, received), at);
     }
     // Further off, as a clock set wrong: when its report came.
-    for at in [0, received - 2 * day, received + 10 * minute] {
-        assert_eq!(written(at, received), received);
+    for at in [0, paired - day - 1, received + 10 * minute] {
+        assert_eq!(written(at, paired, received), received);
     }
 }

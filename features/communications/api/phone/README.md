@@ -113,9 +113,10 @@ waits: wait a moment and ask again.
 
 `expires` is when the attempt was queued, or tried again, and ten minutes (`EXPIRY_MS`): past it
 by the phone's clock, the app never hands the text to Android, and says it `failed` with the error
-`expired`; one handed over before goes on. An app older than this ignores it. Should the phone not
-check in from when the attempt was queued until it expires, Dispatch fails it itself, with the
-error `phones_offline` ([Failures](#failures)).
+`expired`; one handed over before goes on. An app older than this ignores it. Should it still wait
+as it expires while the phone is offline ([Presence](#presence)), Dispatch fails it itself, with
+the error `phones_offline` ([Failures](#failures)); a `sent` of that attempt reported later still
+counts.
 
 ### `POST /api/communications/phone/texts`
 
@@ -139,13 +140,13 @@ The texts the phone received, and those sent from its own messaging app:
 - `clientId`: the app's own ID of the text, 1 to 128 characters (`CLIENT_ID_MOST`), never reused
   on this phone.
 - `direction`: `in`, to the phone, or `out`, from it. `number`: the other party's. `at`: when it
-  was written, kept as it says while that's within a day and five minutes before the report came
-  and five minutes after (the app's look-back, `LOOK_BACK_MS`, and its clock's skew, `SKEW_MS`);
-  else, as from a clock set wrong, when the report came. `files`: optional, each `name` at most
-  200 characters and `mime` at most 100 (`NAME_MOST`, `MIME_MOST`), with the `size` the phone
-  knows. A still picture received as HEIF, as iPhones send them, which browsers don't show, the
-  app reports and sends as a JPEG it makes of it (`image/jpeg`, its name ending `.jpg`); a HEIF
-  sequence, and one Android can't decode, as before Android 9, as it is.
+  was written, kept as it says from a day before the phone paired (the app's look-back,
+  `LOOK_BACK_MS`), however long a phone offline held it, until five minutes after the report came
+  (its clock's skew, `SKEW_MS`); else, as from a clock set wrong, when the report came. `files`:
+  optional, each `name` at most 200 characters and `mime` at most 100 (`NAME_MOST`, `MIME_MOST`),
+  with the `size` the phone knows. A still picture received as HEIF, as iPhones send them, which
+  browsers don't show, the app reports and sends as a JPEG it makes of it (`image/jpeg`, its name
+  ending `.jpg`); a HEIF sequence, and one Android can't decode, as before Android 9, as it is.
 
 Answers, for each, Dispatch's ID of it and of its files, in the order reported:
 `{ "texts": [ { "clientId": "sms-8812", "id": "…", "files": ["…"] } ] }`. Reporting is
@@ -211,8 +212,8 @@ phone fetches to install the app or update it, and which the Phones card links t
 A call that fails without an answer, or with a `5xx`, is safe to make again: reports and statuses
 are idempotent, and a file's bytes replace themselves. The app tries again with a growing pause,
 and gives up on nothing: a text only fails once its phone says so; once it's removed, when every
-text waiting on it fails with `phones_removed` as its error; or once it expires on a phone that
-hasn't checked in since it was queued, with `phones_offline`.
+text waiting on it fails with `phones_removed` as its error; or once it expires on a phone
+offline, with `phones_offline`.
 
 Pairing alone isn't safe to make again. Its code works once, and Dispatch keeps only the SHA-256
 of the key it answers, so a pairing whose answer was lost may have paired a phone whose key was

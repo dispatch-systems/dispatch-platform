@@ -52,9 +52,16 @@ pub(super) async fn texts(state: Arc<State>, input: Input, access: Phone) -> Res
         .filter(|texts| !texts.is_empty() && texts.len() <= MOST_TEXTS)
         .ok_or_else(|| Error::new("invalid_input", 400))?
         .iter()
-        .map(|text| reported(text, received))
+        .map(reported)
         .collect::<Result<Vec<_>>>()?;
     let caller = checked_in(&state, &input, access).await?;
+    let reported: Vec<Reported> = reported
+        .into_iter()
+        .map(|text| Reported {
+            at: written(text.at, caller.device.paired_at, received),
+            ..text
+        })
+        .collect();
     let asked = input.clone();
     let kept = filing::changing(&state, &caller.dsp, move |db| {
         let caller = access.authorize(db, &asked)?;
@@ -85,8 +92,8 @@ pub(super) async fn texts(state: Arc<State>, input: Input, access: Phone) -> Res
             .collect(),
     })
 }
-/// One text as the phone reports it, in a report `received` then.
-fn reported(text: &Value, received: i64) -> Result<Reported> {
+/// One text as the phone reports it.
+fn reported(text: &Value) -> Result<Reported> {
     v::fields(
         text,
         &["clientId", "direction", "number", "body", "at", "files"],
@@ -115,7 +122,7 @@ fn reported(text: &Value, received: i64) -> Result<Reported> {
         number: normal(v::text(text, "number", 1, NUMBER_MOST)?)
             .ok_or_else(|| Error::new("invalid_input", 400))?,
         body: v::text(text, "body", 0, LIMITS.body)?.to_owned(),
-        at: written(v::integer(text, "at", 0, i64::MAX)?, received),
+        at: v::integer(text, "at", 0, i64::MAX)?,
         files,
     })
 }

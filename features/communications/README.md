@@ -371,17 +371,18 @@ queues a text for a phone.
   as its texts are filed under them; refused while they have none
   (`communications_no_work_phone`). Today's Routes and their Work chip show the same phone. Filed
   as it's queued, under the full name of whoever sent it (`sent_by`), taken as it's first filed,
-  however it was sent. Retry sends again one
-  Dispatch sent that failed, while its phone is still paired, and only where a text written now
-  would go: in a driver's, refused while they have no work phone (`communications_no_work_phone`) or
-  have another (`communications_work_phone_changed`), as the one it went to may be another driver's
-  since. Either is queued, and filed, in the write that checks where it goes and the member's
-  access (`phone::outbox`), so a handoff, the stop or a change of their access can't come between.
+  however it was sent. Retry sends again one Dispatch sent that failed, from the phone a new text
+  to its number would go from (`phones_none` while none is paired), and only where a text written
+  now would go: in a driver's, refused while they have no work phone
+  (`communications_no_work_phone`) or have another (`communications_work_phone_changed`), as the
+  one it went to may be another driver's since. Either is queued, and filed, in the write that
+  checks where it goes and the member's access (`phone::outbox`), so a handoff, the stop or a
+  change of their access can't come between.
 - **Expiry:** a text queued, or tried again, goes only within ten minutes (`EXPIRY_MS`): the phone
-  never starts it after, and says it failed (`expired`). One whose phone hasn't checked in since
-  it was queued fails as it expires, by every minute's upkeep, with `phones_offline` as its error,
-  filed as it fails, so its conversation waits again and Retry sends it anew. Should the phone
-  say that attempt was sent after all, it counts.
+  never starts it after, and says it failed (`expired`). One still waiting as it expires on a
+  phone offline then, not checked in for two minutes, fails, by every minute's upkeep, with
+  `phones_offline` as its error, filed as it fails, so its conversation waits again and Retry
+  sends it anew. Should the phone say that attempt was sent after all, it counts.
 
 ## Messaging a group
 
@@ -747,7 +748,7 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   platform's write lock with the files that keep them. Kept until the DSP is deleted, as the rest.
 - **Upkeep:** catching up hourly and as the server starts; downloading what's due, sending
   what's due to go to groups' people, filing texts waiting to be filed, filing today's again
-  where they belong now, and failing the texts an offline phone never came for as they expire,
+  where they belong now, and failing the texts still waiting on an offline phone as they expire,
   every minute; and hourly, in each DSP with Slack connected, letting go of
   photos added and never sent within a day, then of bytes no file keeps, as a failure once in
   place or a removal that failed leaves, and of bytes left arriving an hour, as a restart leaves,
