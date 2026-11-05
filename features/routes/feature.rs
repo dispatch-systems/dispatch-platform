@@ -74,6 +74,7 @@ pub const FEATURE: Feature = Feature {
                 "staged_addresses",
                 "staged_drivers",
                 "route_days_untold",
+                "route_days_noted",
                 // The window chosen before Settings kept it, read once to move it there.
                 "route_retention",
             ],

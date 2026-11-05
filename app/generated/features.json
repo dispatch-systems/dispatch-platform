@@ -791,6 +791,7 @@
         "driver_days",
         "drivers",
         "itineraries",
+        "route_days_noted",
         "route_days_untold",
         "route_publications",
         "route_raw",

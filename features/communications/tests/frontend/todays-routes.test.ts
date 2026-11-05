@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Conversation, RouteDriver, Today } from '../../api/index.js';
-import { routeGroups, routeRows } from '../../frontend/todays-routes/todays-routes.js';
+import { driverToday, routeGroups, routeRows } from '../../frontend/todays-routes/todays-routes.js';
 
 /** A driver's work conversation, or a work phone's nobody held, waiting since `since` or
  * answered, last written in at `at`. */
@@ -87,4 +87,22 @@ test('Today’s Routes lists its drivers by name, waiting or not, then the work 
       ],
     ],
   ]);
+});
+
+test('a driver’s work phone at the stop stands through the two hours after, though Today’s Routes, read since, lists no day', () => {
+  const stopped: Today = {
+    route: 'CX14',
+    van: null,
+    waveAt: 940,
+    stops: 120,
+    stopsDone: 120,
+    pace: 'done',
+    phone: '+12065550101',
+  };
+  // Their conversation, read half an hour after the stop, then Today's Routes a minute on.
+  const read = { value: stopped, at: 1_000 };
+  const over = { value: { day: null, drivers: [], phones: [] }, at: 61_000 };
+  assert.equal(driverToday('avery', read, over)?.phone, '+12065550101');
+  // As the two hours end, the conversation is read again, with none.
+  assert.equal(driverToday('avery', { value: null, at: 7_200_000 }, over), null);
 });

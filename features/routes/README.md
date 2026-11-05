@@ -108,9 +108,10 @@ it is live route data, in a database of its own, `routelive`.
   itineraries, stops, tasks, breaks and unknown stops, and every response compressed; the
   addresses and drivers the days share, as the last read to become its day's read sent them
   (each read's are staged with it until then); and the days changed not told of yet
-  (`route_days_untold`, migration 12). The holds on work phones that Routes kept before
-  each day's work phones were its itineraries' (`work_phones` in both, `work_phones_shown` in live
-  route data) are dropped by a migration of each.
+  (`route_days_untold`, each note by an ID `route_days_noted` never gives again, migration 12).
+  The holds on work phones that Routes kept before each day's work phones were its itineraries'
+  (`work_phones` in both, `work_phones_shown` in live route data) are dropped by a migration of
+  each.
 - **Retention:** from 30 to 3,650 days, or every day. Hourly, data past the window is retired,
   and then deleted in small steps, so the lock is never held long.
 - **Settings:** `routes.retention`, "Route data", on the shared Data page

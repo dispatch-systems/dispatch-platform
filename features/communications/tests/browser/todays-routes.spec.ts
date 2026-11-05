@@ -153,7 +153,7 @@ test('Today’s Routes lists the day’s drivers on the board and in the list, a
   ).toHaveAttribute('placeholder', 'Message Second');
 });
 
-test('a driver’s work conversation keeps what’s being written while they hold no work phone, and their profile follows their day to its end', async ({
+test('a driver’s work conversation keeps what’s being written while they hold no work phone, and their phone through the two hours after the stop', async ({
   page,
   dispatch,
 }) => {
@@ -201,21 +201,41 @@ test('a driver’s work conversation keeps what’s being written while they hol
   const profile = page.getByRole('dialog', { name: 'Fixture Driver' });
   await expect(profile.getByText('Work phone')).toBeVisible();
 
-  // The day ends while Today's Routes can't be read: their conversation, read again, says they
-  // hold no work phone, as the profile left open does, though Today's Routes' last read, older,
-  // had one.
+  // The day ends while Today's Routes can't be read: their conversation, read again, keeps the
+  // work phone they had at the stop for the two hours after, as the profile left open does.
   await page.route(routesRead, (route) =>
     route.fulfill({ status: 500, json: { error: 'internal', message: 'Something went wrong.' } }),
   );
+  const readAgain = page.waitForResponse(
+    (response) =>
+      /\/api\/dsp\/communications\/conversations\/[^/?]+$/.test(new URL(response.url()).pathname) &&
+      response.request().method() === 'GET',
+  );
   await northline.end();
-  await expect(conversation.getByText('No work phone')).toBeVisible();
-  await expect(profile.getByText('Work phone')).toHaveCount(0);
+  await readAgain;
+  await expect(box).toHaveValue(draft);
+  await expect(profile.getByText('Work phone')).toBeVisible();
   await page.keyboard.press('Escape');
-  // Read again, as the page comes back into view, Today's Routes says the day is over.
+  // Read again, as the page comes back into view, Today's Routes says the day is over: the box
+  // stays, the phone the conversation says theirs.
   await page.unroute(routesRead);
   await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
   await expect(page.getByText('No routes', { exact: true })).toBeVisible();
+  await expect(box).toHaveValue(draft);
+  await expect(conversation.getByText('No work phone')).toHaveCount(0);
+
+  // A read of Today's Routes shows them with no work phone, as one handed to another driver: No
+  // work phone takes the box's place.
+  const phoneless = structuredClone(routes) as {
+    drivers: { person: { name: string }; today: { phone: string | null } }[];
+  };
+  for (const each of phoneless.drivers) {
+    if (each.person.name === 'Fixture Driver') each.today.phone = null;
+  }
+  await page.route(routesRead, (route) => route.fulfill({ json: phoneless }));
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
   await expect(conversation.getByText('No work phone')).toBeVisible();
+  await page.unroute(routesRead);
 
   // Today's Routes reads them holding their phone again, as the next day's first read would (a
   // day can't begin here without moving the DSP's zone, which opens its view afresh): what was
