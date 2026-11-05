@@ -146,7 +146,7 @@ test('Today’s Routes lists the day’s drivers on the board and in the list, a
   // From the list, a driver who hasn't texted: their conversation, started to text them first.
   await page
     .getByRole('region', { name: 'Conversations' })
-    .getByRole('button', { name: /Second Driver/ })
+    .getByRole('button', { name: /^Second Driver/ })
     .click();
   await expect(
     page.getByRole('region', { name: 'Second Driver' }).getByRole('textbox', { name: 'Message' }),
@@ -181,7 +181,7 @@ test('a driver’s work conversation keeps what’s being written while they hol
   await routesShown(page);
   await page
     .getByRole('region', { name: 'Conversations' })
-    .getByRole('button', { name: /Fixture Driver/ })
+    .getByRole('button', { name: /^Fixture Driver/ })
     .click();
   const conversation = page.getByRole('region', { name: 'Fixture Driver' });
 
@@ -238,12 +238,12 @@ test('a driver’s progress stays as it was last read, though another driver’s
   await page.goto(northline.page);
   await routesShown(page);
   const list = page.getByRole('region', { name: 'Conversations' });
-  await list.getByRole('button', { name: /Fixture Driver/ }).click();
+  await list.getByRole('button', { name: /^Fixture Driver/ }).click();
   const conversation = page.getByRole('region', { name: 'Fixture Driver' });
   await conversation.getByRole('button', { name: /^Fixture Driver/ }).click();
   const profile = page.getByRole('dialog', { name: 'Fixture Driver' });
   // As their conversation was read as it opened: the fixture's two stops, both done.
-  await expect(profile.getByText('2/2')).toBeVisible();
+  await expect(profile.getByText('2 of 2 stops')).toBeVisible();
 
   // Today's Routes read after it, as the page comes back into view, has them further on.
   const routesRead = '**/api/dsp/communications/routes';

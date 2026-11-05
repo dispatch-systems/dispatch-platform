@@ -140,7 +140,9 @@ pub fn messages(people: &People, numbers: &Numbers, kept: Vec<Text>) -> Vec<Mess
             edited_at: None,
             in_thread: false,
             group: None,
-            error: text.error.filter(|_| text.status == Some(TextStatus::Failed)),
+            error: text
+                .error
+                .filter(|_| text.status == Some(TextStatus::Failed)),
             status: text.status,
             number: Some(text.number),
         })

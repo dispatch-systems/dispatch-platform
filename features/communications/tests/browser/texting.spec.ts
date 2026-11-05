@@ -1,4 +1,10 @@
-import { test, expect, login, openDsp } from '../../../../core/shell/tests/support/fixtures.js';
+import {
+  test,
+  expect,
+  demo,
+  login,
+  openDsp,
+} from '../../../../core/shell/tests/support/fixtures.js';
 import { connect, event, fromSlack, install } from '../../../slack/tests/support/slack.js';
 
 // The seeded DSP texts through its demo's stand-in phone, (206) 555-0100, which received three
@@ -349,4 +355,77 @@ test('with Slack needing an update, Recents still works, and Update Slack covers
     'aria-selected',
     'true',
   );
+});
+
+test('a teammate typing shows above the box, and their reply since the member started writing is asked about before sending, also once an earlier send ends, and sent anyway only once it can go', async ({
+  page,
+  dispatch,
+}) => {
+  // The demo's member, a teammate here once their role has Communications.
+  const owner = await dispatch.client();
+  const north = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
+  await owner.select(north.id);
+  const role = (await owner.get('/api/dsp/roles')).value.find(
+    (r: { name: string }) => r.name === 'Member',
+  );
+  const granted = await owner.post(`/api/dsp/roles/${role.id}`, {
+    name: 'Member',
+    permissions: [...role.permissions, 'communications.use'],
+  });
+  expect(granted.status).toBe(200);
+  const teammate = await dispatch.client(demo.member);
+  await teammate.select(north.id);
+  const { conversations } = await teammate.read('/api/dsp/communications');
+  const id = conversations.find((c: { number: string }) => c.number === '+14255550199').id;
+
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await page.getByRole('link', { name: 'Communications' }).click();
+  await page
+    .getByRole('region', { name: 'Conversations' })
+    .getByRole('listitem')
+    .filter({ hasText: '(425) 555-0199' })
+    .getByRole('button')
+    .first()
+    .click();
+  const conversation = page.getByRole('region', { name: '(425) 555-0199' });
+  const box = conversation.getByLabel('Message');
+  const send = conversation.getByRole('button', { name: 'Send', exact: true });
+  await expect(box).toBeEnabled();
+  expect((await teammate.post(`/api/dsp/communications/conversations/${id}/typing`)).status).toBe(
+    200,
+  );
+  await expect(conversation.getByRole('status').filter({ hasText: 'is typing…' })).toBeVisible();
+
+  // The member's send held, they write again, and the teammate replies before it ends: what
+  // they wrote since is still asked about.
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route('**/api/dsp/communications/conversations/*/messages', async (route) => {
+    if (route.request().method() === 'POST') await held;
+    await route.continue();
+  });
+  await box.fill('On my way');
+  await send.click();
+  await expect(box).toHaveValue('');
+  await box.fill('The gate code is 4412');
+  const reply = await teammate.post(`/api/dsp/communications/conversations/${id}/messages`, {
+    text: 'Calling them now',
+  });
+  expect(reply.status).toBe(201);
+  await expect(conversation.getByText('Calling them now')).toBeVisible();
+  release();
+  await expect(conversation.getByText('On my way')).toBeVisible();
+  await send.click();
+  const asking = conversation.getByRole('alert');
+  await expect(asking).toContainText('just replied');
+
+  // Send anyway goes only as Send would: not with nothing to send.
+  const anyway = asking.getByRole('button', { name: 'Send anyway' });
+  await box.fill('');
+  await expect(anyway).toBeDisabled();
+  await box.fill('The gate code is 4412');
+  await anyway.click();
+  await expect(asking).toHaveCount(0);
+  await expect(conversation.getByText('The gate code is 4412')).toBeVisible();
 });

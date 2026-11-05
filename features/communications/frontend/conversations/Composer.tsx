@@ -203,7 +203,6 @@ export function Composer({
     for (const photo of photos) URL.revokeObjectURL(photo.shown);
     setPhotos((now) => now.filter((photo) => !going.has(photo.key)));
     said.current = 0;
-    replied?.seen();
   });
   const uploading = photos.some((photo) => !photo.uploaded);
   const open = writable && limits !== undefined;
@@ -215,7 +214,9 @@ export function Composer({
     if (reply) setAsking(reply);
     else void send.run();
   };
+  // Answered: sent anyway, only once it can go as Send would, or not.
   const answer = (sending: boolean) => {
+    if (sending && !ready) return;
     setAsking(undefined);
     replied?.seen();
     if (sending) void send.run();
@@ -243,7 +244,7 @@ export function Composer({
       {asking && (
         <div className="replied" role="alert">
           <strong>{asking}</strong>
-          <button type="button" className="primary" onClick={() => answer(true)}>
+          <button type="button" className="primary" disabled={!ready} onClick={() => answer(true)}>
             Send anyway
           </button>
           <button type="button" onClick={() => answer(false)}>
