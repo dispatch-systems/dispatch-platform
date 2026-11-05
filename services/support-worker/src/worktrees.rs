@@ -36,6 +36,46 @@ pub async fn command(directory: &Path, program: &str, args: &[&str]) -> Result<S
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
 }
 
+/// The Rust toolchain `commit` pins, and the crates its lockfile names, installed on the host for
+/// the worktree `name`: its builds run in the sandbox offline, from this user's `.rustup` and
+/// Cargo registry read-only, so they can neither install a toolchain a new pin names nor download
+/// a crate a new dependency brings. It installs from a checkout of `commit` of its own beside the
+/// worktrees, never from the worktree an agent works in, whose files could point rustup or Cargo
+/// at a program of its choosing.
+async fn provision(config: &Config, name: &str, commit: &str) -> Result<()> {
+    let at = config.worktrees.join(format!("{name}-provision"));
+    let path = at.to_str().ok_or("Non-UTF8 worktree path")?;
+    let clone = &config.checkout;
+    if at.exists() {
+        command(clone, "git", &["worktree", "remove", "--force", path]).await?;
+    }
+    command(
+        clone,
+        "git",
+        &["worktree", "add", "-q", "--detach", path, commit],
+    )
+    .await?;
+    let bin = PathBuf::from(std::env::var_os("HOME").ok_or("HOME required")?).join(".cargo/bin");
+    let tool = |name: &str| {
+        bin.join(name)
+            .to_str()
+            .map(str::to_owned)
+            .ok_or("Non-UTF8 HOME")
+    };
+    let installed = async {
+        command(
+            &at,
+            &tool("rustup")?,
+            &["toolchain", "install", "--no-self-update"],
+        )
+        .await?;
+        command(&at, &tool("cargo")?, &["fetch", "--locked"]).await
+    }
+    .await;
+    command(clone, "git", &["worktree", "remove", "--force", path]).await?;
+    installed.map(|_| ())
+}
+
 impl Worktree {
     pub async fn prepare(config: &Config, job: &SupportJob, source: Option<&str>) -> Result<Self> {
         let identifier = job
@@ -74,6 +114,8 @@ impl Worktree {
                 require(is_sha(sha), "Source commit is not an immutable Git SHA")?;
                 command(&path, "git", &["fetch", "origin", sha]).await?;
                 command(&path, "git", &["switch", "-C", &name, sha]).await?;
+            } else {
+                provision(config, &name, "origin/main").await?;
             }
         }
         // Offline source checks use the clone's cached secret scanner, which the scan holds to
@@ -95,6 +137,7 @@ impl Worktree {
             // Analysis never owns implementation edits. A reopened report may pin a later release.
             command(&path, "git", &["fetch", "origin", sha]).await?;
             command(&path, "git", &["reset", "--hard", sha]).await?;
+            provision(config, &name, sha).await?;
         }
         Ok(Self { name, path })
     }
@@ -171,6 +214,11 @@ impl Worktree {
             .await?;
         }
         self.head().await
+    }
+
+    /// What main, fetched by `reconcile`, pins for Rust, on the host for the worktree's builds.
+    pub async fn provision_main(&self, config: &Config) -> Result<()> {
+        provision(config, &self.name, "origin/main").await
     }
 
     pub async fn reconcile(&self) -> Result<String> {

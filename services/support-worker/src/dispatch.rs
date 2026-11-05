@@ -653,10 +653,12 @@ async fn implement(
                     Ok(_) => {}
                     Err(error) => {
                         failure = format!("Required local check failed:\n{error}");
-                        if failure.contains("origin/main has advanced")
-                            && let Err(conflict) = tree.reconcile().await
-                        {
-                            failure.push_str(&format!("\nReconcile main conflict: {conflict}"));
+                        if failure.contains("origin/main has advanced") {
+                            match tree.reconcile().await {
+                                Ok(_) => tree.provision_main(config).await?,
+                                Err(conflict) => failure
+                                    .push_str(&format!("\nReconcile main conflict: {conflict}")),
+                            }
                         }
                         continue;
                     }
@@ -785,7 +787,10 @@ async fn implement(
             }
             if status["mergeable"] == "CONFLICTING" {
                 failure = match tree.reconcile().await {
-                    Ok(_) => "Main changed; verify the reconciled implementation again".into(),
+                    Ok(_) => {
+                        tree.provision_main(config).await?;
+                        "Main changed; verify the reconciled implementation again".into()
+                    }
                     Err(error) => format!("Resolve the main-branch merge conflict:\n{error}"),
                 };
                 progress(
