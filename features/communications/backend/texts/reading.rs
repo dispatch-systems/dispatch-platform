@@ -415,33 +415,32 @@ pub fn message(db: &Store, state: &State, dsp: &str, id: &str) -> Result<Message
     Ok(messages(&people, &numbers, vec![kept]).remove(0))
 }
 
-/// A text's picture or file, `id`, as the phone side keeps it, for the member `c`, whose access is
-/// checked again once it's read: it may have ended while it was.
+/// A text's picture or file, `id`, as the phone side keeps it, or its `preview`: a picture's own,
+/// or the picture of the first frame of a video, for the member `c`, whose access is checked again
+/// once it's read: it may have ended while it was.
 pub async fn file(
     state: &Arc<State>,
     c: &Context,
     access: Dsp,
     id: &str,
     version: Option<&str>,
+    preview: bool,
 ) -> Result<Reply> {
-    let file = files::shown(state, &c.dsp.id, id, &c.auth.user.id, version)
-        .await?
-        .ok_or_else(|| Error::new("communications_file_not_found", 404))?;
+    let poster = match preview {
+        true => files::preview(state, &c.dsp.id, id).await?,
+        false => None,
+    };
+    let file = match poster {
+        Some(poster) => poster,
+        None => files::shown(state, &c.dsp.id, id, &c.auth.user.id, version, preview)
+            .await?
+            .ok_or_else(|| Error::new("communications_file_not_found", 404))?,
+    };
     let asked = c.clone();
     state.read(move |db| access.revalidate(db, &asked)).await?;
     Ok(file)
 }
 
-/// The picture of the first frame of a text's video `id`, kept on its phone, for the member `c`,
-/// whose access is checked again once it's read.
-pub async fn preview(state: &Arc<State>, c: &Context, access: Dsp, id: &str) -> Result<Reply> {
-    let preview = files::preview(state, &c.dsp.id, id)
-        .await?
-        .ok_or_else(|| Error::new("communications_file_not_found", 404))?;
-    let asked = c.clone();
-    state.read(move |db| access.revalidate(db, &asked)).await?;
-    Ok(preview)
-}
 /// Asks the phone of a text's video `id`, which it keeps, for its bytes, for the member `c`, whose
 /// access is checked again in the write that asks, and waits a while for them: whether they're
 /// kept.

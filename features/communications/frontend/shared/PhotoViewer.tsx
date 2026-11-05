@@ -9,7 +9,8 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { Download, X } from 'lucide-react';
-import { download } from '../../../../core/shell/frontend/runtime/transfer.js';
+import { download, picture } from '../../../../core/shell/frontend/runtime/transfer.js';
+import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { ErrorBox, useFocusTrap } from '../../../../core/shell/frontend/ui/index.js';
 import './photo-viewer.css';
@@ -19,9 +20,9 @@ type Photo =
   | {
       /** Its file name, which names it to a screen reader, and a video's as it's saved. */
       name: string;
-      /** The photo, as the page already shows it. */
+      /** The photo, as the page already shows it: its preview, shown until the whole comes. */
       src: string;
-      /** Where it's read from, to save it. */
+      /** Where the whole photo is read from, to show and save it. */
       url: string;
       video?: false;
     }
@@ -74,6 +75,7 @@ export function useViewPhoto() {
 function PhotoViewer({ onClose, ...shown }: Photo & { onClose: () => void }) {
   const { name, src, video } = shown;
   const ref = useRef<HTMLDivElement>(null);
+  const whole = useWhole(shown.video ? undefined : shown.url);
   useFocusTrap(ref, { onEscape: onClose });
   // Inline: the page's own banner is under the viewer. A video saves the bytes it plays.
   const save = useAction(async () => (shown.video ? saved(src, name) : download(shown.url)), {
@@ -112,7 +114,7 @@ function PhotoViewer({ onClose, ...shown }: Photo & { onClose: () => void }) {
         />
       ) : (
         <img
-          src={src}
+          src={whole?.src ?? src}
           alt={name}
           style={shape ? ({ '--shape': shape } as CSSProperties) : undefined}
           onLoad={(event) =>
@@ -120,7 +122,7 @@ function PhotoViewer({ onClose, ...shown }: Photo & { onClose: () => void }) {
           }
         />
       )}
-      <ErrorBox message={save.error} />
+      <ErrorBox message={save.error || (whole?.error ?? '')} />
       <div className="photo-viewer-actions">
         <button
           className="icon-button"
@@ -145,4 +147,30 @@ function saved(src: string, name: string) {
   link.href = src;
   link.download = name;
   link.click();
+}
+
+/** The whole photo at `url`, as an address the page shows, once it comes: none until then, as
+ * the preview shows meanwhile, and why when it can't be fetched. None for a video. */
+function useWhole(url: string | undefined) {
+  const [whole, setWhole] = useState<{ url: string; src?: string; error?: string }>();
+  useEffect(() => {
+    if (!url) return;
+    const stop = new AbortController();
+    let src: string | undefined;
+    picture(url, stop.signal).then(
+      (blob) => {
+        if (stop.signal.aborted) return;
+        src = URL.createObjectURL(blob);
+        setWhole({ url, src });
+      },
+      (error: unknown) => {
+        if (!stop.signal.aborted) setWhole({ url, error: messageOf(error) });
+      },
+    );
+    return () => {
+      stop.abort();
+      if (src) URL.revokeObjectURL(src);
+    };
+  }, [url]);
+  return url && whole?.url === url ? whole : undefined;
 }

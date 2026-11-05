@@ -4,7 +4,7 @@ use super::{id, slack_id};
 use crate::backend::{
     bytes, conversations,
     files::{self, FileStatus, FileStore},
-    initials, reply,
+    initials, previews, reply,
 };
 use axum::{
     body::Body,
@@ -42,6 +42,14 @@ pub(super) async fn add_photo(
 /// A photo or file attached to a message, as kept, kept by the browser at its version, `v`. One
 /// added for a message not sent yet is its adder's alone.
 pub(super) async fn file(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    shown(state, input, access, false).await
+}
+/// A photo's preview, as `file` answers it: the photo itself when it has none.
+pub(super) async fn file_preview(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    shown(state, input, access, true).await
+}
+/// A photo or file attached to a message, or its `preview`.
+async fn shown(state: Arc<State>, input: Input, access: Dsp, preview: bool) -> Result<Reply> {
     let asked = input.clone();
     let wanted = id(input.param("id"), "file")?;
     let (c, file) = state
@@ -62,13 +70,21 @@ pub(super) async fn file(state: Arc<State>, input: Input, access: Dsp) -> Result
         })
         .ok_or_else(|| Error::new("communications_file_not_found", 404))?;
     let sha256 = file.sha256.unwrap_or_default();
-    let bytes = files::read(&state, &c.dsp.id, &sha256).await?;
-    let reply = Reply::download(
-        &file.mime,
-        &file.name,
-        Some(file.size as u64),
-        Body::from_stream(bytes),
-    );
+    let (dsp, name, mime) = (&c.dsp.id, &file.name, &file.mime);
+    let small = match preview {
+        true => previews::answer(&state, files::BYTES, dsp, &sha256, name, mime).await?,
+        false => None,
+    };
+    let reply = match small {
+        Some(small) => small,
+        None => {
+            let kept = files::read(&state, dsp, &sha256).await?;
+            Reply::download(mime, name, Some(file.size as u64), Body::from_stream(kept))
+        }
+    };
+    // A preview may wait its turn to be made: access is checked again once it's ready.
+    let ready = c.clone();
+    state.read(move |db| access.revalidate(db, &ready)).await?;
     Ok(bytes::as_asked(reply, asked, &sha256))
 }
 /// A workspace's logo, as Slack keeps a copy of it. Its address carries its version, `v`, so the

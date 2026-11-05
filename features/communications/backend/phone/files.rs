@@ -10,7 +10,10 @@ use super::{
     model::{Added, FETCH_WAIT_MS, File},
     storage::{FileStore, ReportedFile, Wanting},
 };
-use crate::backend::bytes::{self, Arrived, Folder};
+use crate::backend::{
+    bytes::{self, Arrived, Folder},
+    previews,
+};
 use dispatch_core::{
     Error, Result, State,
     db::{self, Store},
@@ -80,24 +83,38 @@ pub fn keep_added(db: &Store, dsp: &str, added: Added, arrived: &Arrived) -> Res
         db.phones_add_file(dsp, &added.by, &file, &arrived.sha256, db::now())
     })
 }
-/// The DSP's picture or file `id` as kept, to answer a page with, kept by the browser when the
-/// address asked for its `version`: none for one not the DSP's, one whose bytes haven't come yet,
-/// and one added for a text not sent yet but by `viewer`, whose alone it is until it's sent.
+/// The DSP's picture or file `id` as kept, or the picture's `preview` when it has one, to answer
+/// a page with, kept by the browser when the address asked for its `version`: none for one not
+/// the DSP's, one whose bytes haven't come yet, and one added for a text not sent yet but by
+/// `viewer`, whose alone it is until it's sent.
 pub async fn shown(
     state: &Arc<State>,
     dsp: &str,
     id: &str,
     viewer: &str,
     version: Option<&str>,
+    preview: bool,
 ) -> Result<Option<Reply>> {
     let (at, wanted) = (dsp.to_owned(), id.to_owned());
     let Some(stored) = state.read(move |db| db.phones_file(&at, &wanted)).await? else {
         return Ok(None);
     };
+    // A preview is a picture's alone.
+    if preview && !stored.file.mime.starts_with("image/") {
+        return Ok(None);
+    }
     let theirs = stored.text_id.is_some() || stored.added_by.as_deref() == Some(viewer);
     match &stored.file.sha256 {
         Some(sha256) if theirs => {
-            let reply = answer(state, dsp, sha256, &stored.file.name, &stored.file.mime).await?;
+            let (name, mime) = (&stored.file.name, &stored.file.mime);
+            let small = match preview {
+                true => previews::answer(state, BYTES, dsp, sha256, name, mime).await?,
+                false => None,
+            };
+            let reply = match small {
+                Some(small) => small,
+                None => answer(state, dsp, sha256, name, mime).await?,
+            };
             Ok(Some(bytes::as_asked(reply, version, sha256)))
         }
         _ => Ok(None),

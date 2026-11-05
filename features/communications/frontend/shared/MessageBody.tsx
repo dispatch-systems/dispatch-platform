@@ -52,12 +52,14 @@ export function MessageBody({
 }
 
 /**
- * A photo, fetched as it nears view, as the page's own calls are, with the DSP's view; pressed,
- * it opens over the page at full size.
+ * A photo, its preview fetched as it nears view, as the page's own calls are, with the DSP's
+ * view; pressed, it opens over the page at full size.
  */
 function Photo({ photo, address }: { photo: MessageFile; address: (id: string) => string }) {
   const url = versioned(photo, address);
-  const [box, src, lost] = usePicture<HTMLButtonElement>(url);
+  const [box, src, lost] = usePicture<HTMLButtonElement>(
+    versioned(photo, (id) => `${address(id)}/preview`),
+  );
   const view = useViewPhoto();
   return (
     <button

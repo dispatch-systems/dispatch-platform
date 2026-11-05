@@ -1,0 +1,91 @@
+//! A picture's preview: no larger than a thread needs, its shape kept, upright as its camera
+//! said to turn it, and none for a picture small enough already or bytes that aren't a picture.
+use super::*;
+use image::{ImageEncoder, ImageFormat, RgbImage};
+
+/// `bytes`, kept in a file of their own.
+fn kept(bytes: &[u8]) -> (tempfile::TempDir, std::path::PathBuf) {
+    let folder = tempfile::tempdir().unwrap();
+    let path = folder.path().join("bytes");
+    std::fs::write(&path, bytes).unwrap();
+    (folder, path)
+}
+/// A picture `width` by `height`, as `format`.
+fn picture(width: u32, height: u32, format: ImageFormat) -> Vec<u8> {
+    let mut bytes = std::io::Cursor::new(Vec::new());
+    DynamicImage::ImageRgb8(RgbImage::new(width, height))
+        .write_to(&mut bytes, format)
+        .unwrap();
+    bytes.into_inner()
+}
+/// The width and height of the JPEG `bytes`.
+fn measured(bytes: &[u8]) -> (u32, u32) {
+    let shown = image::load_from_memory_with_format(bytes, ImageFormat::Jpeg).unwrap();
+    (shown.width(), shown.height())
+}
+
+#[test]
+fn a_large_picture_previews_at_its_shape_no_larger_than_a_thread_needs() {
+    let (_folder, path) = kept(&picture(1_600, 800, ImageFormat::Png));
+    assert_eq!(measured(&made(&path).unwrap()), (640, 320));
+}
+
+#[test]
+fn a_photo_its_camera_turned_previews_upright() {
+    // A phone held upright saves its photo sideways, with EXIF saying to turn it a quarter.
+    let mut jpeg = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new(&mut jpeg)
+        .write_image(
+            RgbImage::new(1_200, 800).as_raw(),
+            1_200,
+            800,
+            image::ExtendedColorType::Rgb8,
+        )
+        .unwrap();
+    let turned: &[u8] = &[
+        0xFF, 0xE1, 0x00, 0x22, b'E', b'x', b'i', b'f', 0, 0, // APP1, 34 bytes long
+        b'M', b'M', 0x00, 0x2A, 0x00, 0x00, 0x00, 0x08, // big-endian TIFF, its IFD at 8
+        0x00, 0x01, // one entry
+        0x01, 0x12, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x06, 0x00,
+        0x00, // Orientation 6
+        0x00, 0x00, 0x00, 0x00, // no IFD after
+    ];
+    let photo = [&jpeg[..2], turned, &jpeg[2..]].concat();
+    let (_folder, path) = kept(&photo);
+    assert_eq!(measured(&made(&path).unwrap()), (427, 640));
+}
+
+#[test]
+fn a_picture_small_enough_or_bytes_that_arent_one_have_none() {
+    for bytes in [
+        picture(SIDE, 200, ImageFormat::Png),
+        b"\x89PNG\r\n\x1a\n".to_vec(),
+        b"not a picture".to_vec(),
+    ] {
+        let (_folder, path) = kept(&bytes);
+        assert_eq!(made(&path), None);
+    }
+}
+
+#[tokio::test]
+async fn a_preview_asked_for_leaves_the_list_once_none_ask_cut_short_or_not() {
+    let kept = std::path::PathBuf::from("/previews/asked-for-then-cut-short.jpg");
+    let listed = || {
+        UNDERWAY
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .contains_key(&kept)
+    };
+    let making = Underway::join(&kept);
+    let turn = making.turn().await;
+    // Another asks meanwhile and waits its turn; the one making it finishes, then the other's
+    // page goes before its turn comes.
+    let waiting = Underway::join(&kept);
+    let mut its_turn = Box::pin(waiting.turn());
+    assert!(futures_util::FutureExt::now_or_never(&mut its_turn).is_none());
+    drop((turn, making));
+    assert!(listed(), "the other still asks");
+    drop(its_turn);
+    drop(waiting);
+    assert!(!listed());
+}
