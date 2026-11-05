@@ -163,6 +163,5 @@ as before Android 12 or under its own rules, sending goes on, and a notification
 update, which opens the app to Android's confirmation, shown at once while the app is open; it goes
 once the update installs or the DSP no longer hands it out. A try that doesn't install is tried
 again later each time at its version, 1, 3, 12, then every 24 hours, or at once from the
-notification, from the APK it downloaded, kept for it. One whose download isn't the size and
-SHA-256 the DSP gave, or is an APK that isn't this app, is tried only once the DSP hands out
-another version. The relay starts again once it's replaced.
+notification, from the APK it downloaded, kept for it once it was the size and SHA-256 the DSP
+gave. One at an APK that isn't this app is tried only once the DSP hands out another version. The relay starts again once it's replaced.

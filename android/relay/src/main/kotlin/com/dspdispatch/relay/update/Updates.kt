@@ -55,7 +55,7 @@ interface Notice {
 
 /**
  * A version whose last try didn't install, after [tries] in a row, and when to try it again: never,
- * for an APK that isn't this app or isn't the one the DSP describes.
+ * for an APK that isn't this app.
  */
 data class Hold(val versionCode: Int, val until: Long?, val tries: Int = 1)
 
@@ -71,10 +71,9 @@ interface Holds {
  * Android with no one confirming, which replaces the app and restarts it. Where Android asks the
  * person to confirm it anyway, sending goes on and its [notice] asks them, until it's installed or
  * the DSP no longer hands it out. A try that fails is held ([holds]) longer each time at its
- * version ([RETRIES_MS]), its download kept for the next; one at an APK that isn't this app, or
- * isn't the one described, until the DSP hands out another. An error nothing expected is told to
- * [unexpected], and held as one Android failed. Its calls come on the main thread; a try runs in
- * [scope].
+ * version ([RETRIES_MS]), its download kept for the next once whole; one at an APK that isn't this
+ * app until the DSP hands out another. An error nothing expected is told to [unexpected], and held
+ * as one Android failed. Its calls come on the main thread; a try runs in [scope].
  */
 class Updates(
     private val dispatch: Dispatch,
@@ -246,12 +245,12 @@ class Updates(
 
     /**
      * The hold after another try at [app] failed for [problem]: for good, for an APK that isn't
-     * this app or isn't the one described, as another download of the version wouldn't be either;
-     * else for longer than the try before at it.
+     * this app, as another download of the version wouldn't be either; else for longer than the try
+     * before at it, a download that wasn't the one described too, as a network may spoil one.
      */
     private fun held(app: AppVersion, problem: Problem?): Hold {
         val tries = (holds.hold?.takeIf { it.versionCode == app.versionCode }?.tries ?: 0) + 1
-        if (problem == Problem.NOT_THIS_APP || problem == Problem.MISMATCH) return Hold(app.versionCode, null, tries)
+        if (problem == Problem.NOT_THIS_APP) return Hold(app.versionCode, null, tries)
         return Hold(app.versionCode, now() + RETRIES_MS[minOf(tries, RETRIES_MS.size) - 1], tries)
     }
 

@@ -277,7 +277,7 @@ class UpdatesTest {
         serve("another apk!!".toByteArray(), sha256 = sha256(bytes), app = newer)
         updates.heard(site, newest)
         assertEquals(Update.Available(newer, Problem.MISMATCH), updates.update.first { it is Update.Available && it.problem != null })
-        assertEquals(Hold(newer.versionCode, null), holds.hold)
+        assertEquals(Hold(newer.versionCode, Updates.RETRIES_MS.first()), holds.hold)
     }
 
     @Test
