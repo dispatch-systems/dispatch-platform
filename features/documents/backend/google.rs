@@ -10,6 +10,8 @@ use dispatch_core::{
 };
 use serde::Deserialize;
 use serde_json::json;
+#[cfg(test)]
+use std::{collections::BTreeMap, sync::Mutex};
 use std::{
     sync::{LazyLock, OnceLock},
     time::{Duration, Instant},
@@ -383,10 +385,35 @@ fn fixture_access(refresh: &str) -> Result<Access> {
         .nth(2)
         .filter(|_| refresh.starts_with("fixture:"))
         .ok_or_else(|| Error::new("google_connection_broken", 409))?;
+    #[cfg(test)]
+    fixture_renewed(refresh);
     Ok(Access {
         token: format!("fixture:{email}"),
         lasts: Duration::from_secs(3600),
     })
+}
+/// What a test has happen once fixture mode's Google next renews an access token with the
+/// refresh token `refresh`: as someone disabling the DSP while Google renews it.
+#[cfg(test)]
+static ON_RENEWAL: LazyLock<Mutex<BTreeMap<String, OnRenewal>>> = LazyLock::new(Default::default);
+#[cfg(test)]
+type OnRenewal = Box<dyn FnOnce() + Send>;
+#[cfg(test)]
+pub fn fixture_on_renewal(refresh: &str, then: impl FnOnce() + Send + 'static) {
+    ON_RENEWAL
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(refresh.to_owned(), Box::new(then));
+}
+#[cfg(test)]
+fn fixture_renewed(refresh: &str) {
+    let then = ON_RENEWAL
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .remove(refresh);
+    if let Some(then) = then {
+        then();
+    }
 }
 
 #[derive(Deserialize)]

@@ -118,6 +118,8 @@ pub(crate) async fn open(state: &Arc<State>, dsp: &str, fresh: bool) -> Result<D
     }
     match google.access(&refresh).await {
         Ok(access) => {
+            // Disabled while Google renewed it, nothing more reaches the DSP's Drive.
+            active(state, dsp).await?;
             let until = Instant::now() + access.lasts.saturating_sub(Duration::from_secs(60));
             ACCESS
                 .lock()
@@ -137,6 +139,14 @@ pub(crate) async fn open(state: &Arc<State>, dsp: &str, fresh: bool) -> Result<D
             Err(error)
         }
     }
+}
+/// Whether Google may still be asked anything for the DSP: not once it's disabled, though
+/// what asks began before (`dsp_unavailable`).
+pub(crate) async fn active(state: &Arc<State>, dsp: &str) -> Result<()> {
+    let at = dsp.to_owned();
+    state
+        .read(move |db| db.ensure_dsp_active(&at).map(drop))
+        .await
 }
 /// Runs `$call` on the DSP's Drive, with `$google` and its access token `$token`; once more
 /// with a fresh token if Google refused the kept one, since an access token lapses early when
@@ -885,3 +895,7 @@ pub(crate) fn kind(mime: &str) -> ItemKind {
         _ => ItemKind::File,
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/files.rs"]
+mod tests;

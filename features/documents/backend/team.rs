@@ -68,8 +68,8 @@ macro_rules! on_drive {
 }
 
 /// Whether the team changed since the folder was last shared: someone joined or left, gained
-/// or lost Use Documents, or is shared at an address they moved on from. Asks nothing of
-/// Google, so it can be checked every minute.
+/// or lost Use Documents, is shared at an address they moved on from, or isn't shared yet at
+/// the one they moved to. Asks nothing of Google, so it can be checked every minute.
 pub fn stale(db: &Store, dsp: &str) -> Result<bool> {
     Ok(changed(&members(db, dsp)?, &db.documents_people(dsp)?))
 }
@@ -79,14 +79,19 @@ fn changed(wanted: &[Member], people: &[Person]) -> bool {
             people
                 .iter()
                 .find(|person| person.user == member.user)
-                .is_none_or(|person| {
-                    let target = person.linked.as_deref().unwrap_or(&member.email);
-                    person
-                        .shared
-                        .as_ref()
-                        .is_some_and(|(email, _)| !email.eq_ignore_ascii_case(target))
+                .is_none_or(|person| match &person.shared {
+                    Some((email, _)) => {
+                        let target = person.linked.as_deref().unwrap_or(&member.email);
+                        !email.eq_ignore_ascii_case(target)
+                    }
+                    None => moving(person),
                 })
         })
+}
+/// Whether the member's share at an address they moved on from was taken back, and the
+/// folder not yet shared at the new one: the DSP was disabled between the two.
+fn moving(person: &Person) -> bool {
+    person.sharing == Sharing::Shared && person.shared.is_none()
 }
 
 /// A turn at sharing each DSP's folder, so two syncs never share or email at once.
@@ -160,7 +165,7 @@ pub async fn sync(state: &Arc<State>, dsp: &str) -> Result<Vec<Share>> {
         } else {
             // A share at an address they moved on from goes.
             if let Some((_, old)) = person.shared.clone() {
-                if let Err(error) = active(state, dsp).await {
+                if let Err(error) = files::active(state, dsp).await {
                     stopped = Some(error);
                     break;
                 }
@@ -168,7 +173,7 @@ pub async fn sync(state: &Arc<State>, dsp: &str) -> Result<Vec<Share>> {
                 shares.retain(|share| share.id != old);
                 person.shared = None;
             }
-            if let Err(error) = active(state, dsp).await {
+            if let Err(error) = files::active(state, dsp).await {
                 // Only the share at their old address was taken back, if any.
                 if before.is_some_and(|before| before != &person) {
                     changed.push(person);
@@ -214,7 +219,7 @@ pub async fn sync(state: &Arc<State>, dsp: &str) -> Result<Vec<Share>> {
             break;
         }
         if let Some((_, id)) = &person.shared {
-            if let Err(error) = active(state, dsp).await {
+            if let Err(error) = files::active(state, dsp).await {
                 stopped = Some(error);
                 break;
             }
@@ -249,15 +254,6 @@ pub async fn sync(state: &Arc<State>, dsp: &str) -> Result<Vec<Share>> {
     Ok(shares)
 }
 
-/// Whether Google may still be asked anything for the DSP: not once it's disabled, though a
-/// sync began before (`dsp_unavailable`).
-async fn active(state: &Arc<State>, dsp: &str) -> Result<()> {
-    let at = dsp.to_owned();
-    state
-        .read(move |db| db.ensure_dsp_active(&at).map(drop))
-        .await
-}
-
 /// Shares each file someone else owns that Documents holds a shortcut to with everyone the
 /// folder is shared with, as far as the account may share it, and takes back the shares
 /// Dispatch made from those who left, and of files no longer in Documents. Shares anyone else
@@ -290,7 +286,7 @@ async fn share_files(
         if missing.is_empty() {
             continue;
         }
-        active(state, dsp).await?;
+        files::active(state, dsp).await?;
         // Its owner may not let the account see who has it, or share it on.
         let Ok(shares) = drive.google.shares(&drive.access, file).await else {
             continue;
@@ -305,7 +301,7 @@ async fn share_files(
             if has {
                 continue;
             }
-            active(state, dsp).await?;
+            files::active(state, dsp).await?;
             let share = match drive.google.share(&drive.access, file, email).await {
                 Ok(Ok(share)) => share,
                 Err(error) if error.code == "google_connection_broken" => return Err(error),
@@ -335,7 +331,7 @@ async fn share_files(
         if targets.contains(&shared.file) && wanted.contains(&shared.email) {
             continue;
         }
-        active(state, dsp).await?;
+        files::active(state, dsp).await?;
         match drive
             .google
             .unshare(&drive.access, &shared.file, &shared.share)
@@ -418,6 +414,7 @@ pub fn mine(db: &Store, c: &Context) -> Result<Option<MySharing>> {
     };
     Ok(Some(MySharing {
         state: match person.sharing {
+            Sharing::Shared if moving(&person) => SharingState::Pending,
             Sharing::Shared => SharingState::Shared,
             Sharing::NeedsAccount => SharingState::NeedsAccount,
             Sharing::Refused(_) => SharingState::Refused,
