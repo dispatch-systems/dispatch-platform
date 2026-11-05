@@ -2,6 +2,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 
@@ -67,6 +68,55 @@ class BackupTests(unittest.TestCase):
         self.assertNotIn("RESTIC_PASSWORD", environment)
         self.assertNotIn("AWS_SECRET_ACCESS_KEY", environment)
         self.assertEqual(environment["DISPATCH_PROVIDER_MODE"], "native")
+
+    def test_older_snapshots_go_only_once_the_new_one_restores(self):
+        def drill(fails):
+            commands = []
+
+            def run(command, *, environment=None, capture=False, cwd=None):
+                command = [str(part) for part in command]
+                commands.append(command)
+                if command[:2] == ["/usr/bin/restic", "backup"]:
+                    return subprocess.CompletedProcess(command, 0, '{"snapshot_id":"a1b2c3"}')
+                if command[:2] == ["/usr/bin/restic", "restore"]:
+                    manifest = Path(command[command.index("--target") + 1]) / "snapshot"
+                    manifest.mkdir()
+                    (manifest / "backup.json").write_text("{}")
+                if fails and "restore" in command and "/usr/sbin/runuser" in command:
+                    raise subprocess.CalledProcessError(1, command)
+                return subprocess.CompletedProcess(command, 0, "")
+
+            with tempfile.TemporaryDirectory() as staging:
+                class FakeSettings:
+                    binary = Path("/opt/dispatch-production/current/services/rust/dispatch-backend")
+                    state = Path("/var/lib/dispatch-production")
+                    origin = invite_origin = "https://admin.dispatch.example.test"
+                    dsp_origin = "https://{code}.dispatch.example.test"
+                    restic = Path("/usr/bin/restic")
+                    runuser = Path("/usr/sbin/runuser")
+                    runtime_uid, runtime_gid = os.getuid(), os.getgid()
+
+                FakeSettings.staging = Path(staging)
+                before = module.run, module.Settings
+                module.run = run
+                try:
+                    module.Settings = lambda: FakeSettings()
+                    module.main()
+                except SystemExit:
+                    pass
+                finally:
+                    module.run, module.Settings = before
+            return [command[1] for command in commands if command[0] == "/usr/bin/restic"], [
+                command for command in commands if command[1:2] == ["forget"]
+            ]
+
+        steps, forgets = drill(fails=False)
+        self.assertEqual(steps, ["backup", "restore", "check", "forget", "prune"])
+        self.assertEqual(forgets, [[
+            "/usr/bin/restic", "forget", "--host", "dispatch-production", "--tag",
+            "dispatch-production", "--group-by", "host,tags", "--keep-within-daily", "30d",
+        ]])
+        self.assertEqual(drill(fails=True), (["backup", "restore"], []))
 
 
 if __name__ == "__main__":

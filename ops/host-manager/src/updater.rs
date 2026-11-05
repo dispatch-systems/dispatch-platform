@@ -11,8 +11,41 @@ use std::{
     io::Write,
     os::unix::fs::{OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
-    time::Duration,
+    time::{Duration, SystemTime},
 };
+
+/// How long a release's backup of Production is kept: what's deleted from Production is gone from
+/// every backup within 30 days, as from its nightly ones.
+const RELEASE_BACKUPS_KEPT: Duration = Duration::from_secs(30 * 24 * 60 * 60);
+
+/// Lets go of the backups in `folder` that releases took before `now` less `RELEASE_BACKUPS_KEPT`:
+/// each a folder of its own, named for when it was taken and the release it was taken before
+/// (`2026-11-05-091500-before-v1.2.3`), so one only partly let go of stays due until it's gone.
+/// Anything else stays.
+pub fn expire_release_backups(folder: &Path, now: SystemTime) -> Result<()> {
+    let Ok(entries) = fs::read_dir(folder) else {
+        return Ok(());
+    };
+    for entry in entries {
+        let entry = entry?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let Some(taken) = release_backup_taken(&name) else {
+            continue;
+        };
+        if entry.file_type()?.is_dir() && taken + RELEASE_BACKUPS_KEPT < now {
+            fs::remove_dir_all(entry.path())?;
+        }
+    }
+    Ok(())
+}
+/// When the release backup named `name` was taken, by the time it's named for: none for a name
+/// not a release backup's.
+fn release_backup_taken(name: &str) -> Option<SystemTime> {
+    let (taken, _) = name.split_once("-before-v")?;
+    let taken = chrono::NaiveDateTime::parse_from_str(taken, "%Y-%m-%d-%H%M%S").ok()?;
+    let seconds = u64::try_from(taken.and_utc().timestamp()).ok()?;
+    Some(SystemTime::UNIX_EPOCH + Duration::from_secs(seconds))
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Environment {
@@ -510,7 +543,13 @@ impl<'a> Updater<'a> {
         };
         let result = self.recover().and_then(|()| match self.environment {
             Environment::Dev => self.update_dev().map(|()| true),
-            Environment::Production => self.update_production(),
+            Environment::Production => {
+                // Release backups expire whatever the update made of this tick.
+                let updated = self.update_production();
+                let expired =
+                    expire_release_backups(&self.root.with_file_name("backups"), SystemTime::now());
+                updated.and_then(|updated| expired.map(|()| updated))
+            }
         });
         let recorded = self.record_update(&result);
         result.map(drop).and(recorded)

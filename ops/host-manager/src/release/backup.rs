@@ -60,7 +60,8 @@ fn remote(script: &str) -> String {
     )
 }
 /// Copies Production's databases and configuration, with the service and its updates stopped
-/// for the copy and started again whatever happens.
+/// for the copy and started again whatever happens. Production's updater lets go of them after
+/// 30 days (`updater::expire_release_backups`).
 fn backup_script(version: &str) -> String {
     format!(
         r#"set -eu; umask 077
