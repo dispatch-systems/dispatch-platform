@@ -15,6 +15,7 @@ use super::{
     people::People,
     search,
     storage::{self, CommunicationsStore},
+    today,
 };
 use crate::{
     api::types::{
@@ -263,7 +264,7 @@ pub fn seen(value: &str) -> Result<(i64, &str)> {
     Ok((at, ts))
 }
 /// The conversation `id` and its latest messages, or those before the one Slack knows as
-/// `before`, with whom it's with's conversations of each kind.
+/// `before`, with the route whom it's with drives today and their conversations of each kind.
 pub fn opened(
     db: &Store,
     state: &State,
@@ -280,15 +281,17 @@ pub fn opened(
     if more {
         read.remove(0);
     }
-    let elsewhere = match people.member_of(&kept.team, &kept.user) {
-        Some(person) => elsewhere::of(db, dsp, person)?,
-        None => Vec::new(),
+    // With someone Driver Match knows, the route they drive today, for its van, and their
+    // conversations of each kind.
+    let (today, elsewhere) = match people.member_of(&kept.team, &kept.user) {
+        Some(person) => (today::of(db, dsp, person)?, elsewhere::of(db, dsp, person)?),
+        None => (None, Vec::new()),
     };
     Ok(ConversationMessages {
         conversation: conversations(db, &people, dsp, vec![kept])?.remove(0),
         messages: messages(db, &people, dsp, read)?,
         more,
-        today: None,
+        today,
         elsewhere,
         workdays: Vec::new(),
         limits: compose::SLACK.into(),

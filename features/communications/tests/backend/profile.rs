@@ -1,7 +1,10 @@
 //! The profile beside a conversation: the member's route on the DSP's own day today, with what
-//! the DSP calls its van, and how to reach them, each only while the feature that knows it is on.
+//! the DSP calls its van, and how to reach them, each only while the feature that knows it is on;
+//! and the van they drive today in the head of their conversations in Slack and by their own
+//! number.
 use super::*;
-use crate::backend::support::{self, DRIVERS, route, van};
+use crate::backend::support::{self, DRIVERS, route, texted, van};
+use crate::backend::{conversations, texts::reading};
 use crate::integrations::messages::incoming;
 use dispatch_core::{db::now, foundation::clock, manifest::people::PersonRole};
 use dispatch_slack::kit::{self, Bot};
@@ -127,4 +130,46 @@ async fn the_profile_shows_no_route_of_another_day_and_no_contact_for_someone_un
     assert!(shown.today.is_none());
     assert_eq!((shown.phone, shown.email), (None, None));
     assert_eq!(shown.slack.as_deref(), Some(TEAM));
+}
+
+#[tokio::test]
+async fn their_slack_and_own_numbers_conversations_come_with_the_van_they_drive_today() {
+    let (_root, state, bot) = support::connected(TEAM).await;
+    let dsp = bot.dsp.clone();
+    let slack = started(&state, &bot, "U0FIXJORDAN").await;
+    let text = texted(&state, &dsp, "+16125550100", "Van won't start", now() - 1).await;
+    let number = support::filed(&state, &dsp, &text).await.id;
+    let (today, yesterday) = days(&state, &dsp).await;
+    support::know(
+        &state,
+        &dsp,
+        vec![jordan()],
+        vec![route(&yesterday, "A1", "CX9", "1FTVAN009", 190, WAVE - DAY)],
+        vec![van("1FTVAN214", "214"), van("1FTVAN009", "9")],
+    );
+    support::switch(&state, &dsp, "driving", true).await;
+    support::switch(&state, &dsp, "fleet", true).await;
+    let vans = || {
+        let (shared, dsp, slack, number) =
+            (state.clone(), dsp.clone(), slack.clone(), number.clone());
+        state.read(move |db| {
+            let van = |today: Option<Today>| today.and_then(|today| today.van);
+            Ok((
+                van(conversations::opened(db, &shared, &dsp, &slack, None)?.today),
+                van(reading::opened(db, &shared, &dsp, &number, None)?.today),
+            ))
+        })
+    };
+    // No van today, only yesterday's: none in either.
+    assert_eq!(vans().await.unwrap(), (None, None));
+
+    support::know(
+        &state,
+        &dsp,
+        vec![jordan()],
+        vec![route(&today, "A1", "CX14", "1FTVAN214", 168, WAVE)],
+        vec![van("1FTVAN214", "214")],
+    );
+    let assigned = Some("214".to_owned());
+    assert_eq!(vans().await.unwrap(), (assigned.clone(), assigned));
 }
