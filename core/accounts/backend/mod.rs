@@ -135,13 +135,25 @@ impl Store {
     }
     /// The directory a request to `site` signs in against, and the DSP it is, if any: the
     /// platform's at the admin's address, a DSP's own at its address, and none at the invite
-    /// page or at an address no DSP has.
+    /// page, at an address no DSP has, or at a disabled DSP's, where nobody is signed in.
     pub(crate) fn site_directory(&self, site: &Site) -> Result<Option<Option<String>>> {
         Ok(match site {
             Site::Admin => Some(None),
-            Site::Dsp(code) => self.dsp_at(code)?.map(|dsp| Some(dsp.id)),
+            Site::Dsp(code) => self
+                .dsp_at(code)?
+                .filter(|dsp| dsp.status != DspStatus::Suspended)
+                .map(|dsp| Some(dsp.id)),
             Site::Invite => None,
         })
+    }
+    /// Refuses signing in, or asking to, at a disabled DSP's address (`dsp_disabled`).
+    pub(crate) fn ensure_site_enabled(&self, site: &Site) -> Result<()> {
+        if let Site::Dsp(code) = site
+            && let Some(dsp) = self.dsp_at(code)?
+        {
+            ensure(dsp.status != DspStatus::Suspended, "dsp_disabled", 403)?;
+        }
+        Ok(())
     }
 }
 #[derive(Clone)]

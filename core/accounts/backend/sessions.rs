@@ -309,6 +309,7 @@ impl crate::State {
         // here as a missing one, and takes as long to refuse.
         let (scope, row) = self
             .run(move |db| {
+                db.ensure_site_enabled(&at)?;
                 let Some(scope) = db.site_directory(&at)? else {
                     db.password_attempt(None, &email, &ip)?;
                     return Ok((None, None));

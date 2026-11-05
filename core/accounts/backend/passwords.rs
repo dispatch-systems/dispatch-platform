@@ -32,6 +32,7 @@ impl Store {
     /// the address the request came to; the link goes back there.
     pub fn recovery(&self, email: &str, site: &Site) -> Result<()> {
         ensure(self.config.mail_available(), "email_unavailable", 503)?;
+        self.ensure_site_enabled(site)?;
         let Some(scope) = self.site_directory(site)? else {
             return Ok(());
         };
