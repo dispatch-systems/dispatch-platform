@@ -9,6 +9,11 @@ use rusqlite::params;
 use serde_json::{Value, json};
 
 const LEASE_MS: i64 = 90_000;
+/// Whether the ticket `t` is of no disabled DSP: a disabled DSP's tickets' jobs wait until it's
+/// enabled. None is claimed, and a lease on one holds no more, so its worker stops; the job keeps
+/// its last checkpoint, for the claim once the DSP is enabled and the lease has run out.
+const SERVED: &str =
+    "(t.dsp_id IS NULL OR t.dsp_id NOT IN (SELECT id FROM dsps WHERE status='suspended'))";
 pub(crate) struct Lease {
     pub ticket: String,
     pub kind: String,
@@ -81,10 +86,14 @@ pub(crate) fn route_reply(
     tickets::progress(db, ticket, "triaging", "Routing your reply")
 }
 pub(crate) fn leased(db: &Store, job: &str, lease: &str) -> Result<Lease> {
-    let row = db.platform.one(
-        "SELECT * FROM support_jobs WHERE id=? AND status='running' AND lease_hash=? AND lease_until>?",
-        params![job, crypto::sha(lease), now()],
-    )?.ok_or_else(|| crate::Error::new("support_lease_lost", 409))?;
+    let leased = format!(
+        "SELECT j.* FROM support_jobs j JOIN support_tickets t ON t.id=j.ticket_id \
+         WHERE j.id=? AND j.status='running' AND j.lease_hash=? AND j.lease_until>? AND {SERVED}"
+    );
+    let row = db
+        .platform
+        .one(&leased, params![job, crypto::sha(lease), now()])?
+        .ok_or_else(|| crate::Error::new("support_lease_lost", 409))?;
     let run = Lease {
         ticket: s(&row, "ticket_id").to_owned(),
         kind: s(&row, "kind").to_owned(),
@@ -109,15 +118,16 @@ pub(crate) fn leased(db: &Store, job: &str, lease: &str) -> Result<Lease> {
     }
     Ok(run)
 }
+/// The next job due, leased to the worker: none of a ticket from a disabled DSP (`SERVED`).
 pub fn claim(db: &Store) -> Result<Option<SupportJob>> {
     db.platform.transaction(|| {
         let time = now();
         let next = db.platform.one(
-            "SELECT j.* FROM support_jobs j JOIN support_tickets t ON t.id=j.ticket_id \
+            &format!("SELECT j.* FROM support_jobs j JOIN support_tickets t ON t.id=j.ticket_id \
              WHERE ((j.status='queued' AND j.available_at<=?) OR (j.status='running' AND j.lease_until<=?)) \
-             AND t.status NOT IN ('denied','resolved') \
+             AND t.status NOT IN ('denied','resolved') AND {SERVED} \
              AND (j.kind NOT IN ('implement','release') OR j.version=t.approved_version) \
-             ORDER BY j.available_at,j.created_at,j.id LIMIT 1", params![time, time],
+             ORDER BY j.available_at,j.created_at,j.id LIMIT 1"), params![time, time],
         )?;
         let Some(row) = next else { return Ok(None); };
         let id = s(&row, "id");

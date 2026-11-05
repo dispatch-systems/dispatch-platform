@@ -2,47 +2,16 @@
 //! mode's Drive: only while Documents is on and its account connected, only inside the DSP's
 //! own folder, and named for whoever they came from; and pages written as Docs, and over them.
 use super::*;
-use crate::backend::{google::Google, storage::Connection, tree::Mime};
+use crate::backend::{
+    support::{connect, platform},
+    tree::Mime,
+};
 use axum::body::Bytes;
-use dispatch_core::{db::iso, server::http::upload::Upload, testing};
+use dispatch_core::{server::http::upload::Upload, testing};
 use dispatch_documents_contract::{self as files, Files, Page};
 use futures_util::stream;
 use serde_json::json;
 
-/// A platform with one DSP, Documents on and not yet connected, and its server's state.
-fn platform() -> (impl Drop, Arc<State>, String) {
-    testing::install(&[], &[&crate::FEATURE]);
-    let (root, store, dsp) = testing::bootstrapped();
-    let config = store.config.clone();
-    drop(store);
-    (root, State::new(config).unwrap(), dsp)
-}
-/// Connects the DSP's Documents to fixture mode's Google, with a main folder of its own.
-async fn connect(state: &Arc<State>, dsp: &str) {
-    let google = Google::of(&state.config).unwrap();
-    let granted = google
-        .exchange(&state.config.origin, "fixture:documents@example.test", "-")
-        .await
-        .unwrap();
-    let folder_id = google
-        .create_folder(&granted.access, "Test Documents")
-        .await
-        .unwrap();
-    let connection = Connection {
-        broken: false,
-        full: true,
-        account: granted.account,
-        folder_id,
-        folder_name: "Test Documents".into(),
-        connected_by: "user_1".into(),
-        connected_at: iso(),
-    };
-    let (at, refresh) = (dsp.to_owned(), granted.refresh);
-    state
-        .run(move |db| db.save_documents_connection(&at, &connection, &refresh))
-        .await
-        .unwrap();
-}
 /// The file `name`, holding `text`, as it arrives from Slack, from `by`.
 async fn incoming(name: &str, text: &'static str, by: Author) -> Incoming {
     let bytes = stream::iter([Ok(Bytes::from_static(text.as_bytes()))]);

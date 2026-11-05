@@ -340,6 +340,7 @@ impl crate::State {
         // here as a missing one, and takes as long to refuse.
         let (scope, row) = self
             .run(move |db| {
+                db.ensure_site_enabled(&at)?;
                 let Some(scope) = db.site_directory(&at)? else {
                     db.password_attempt(None, &email, &ip)?;
                     return Ok((None, None));
@@ -374,6 +375,8 @@ impl crate::State {
             return Err(Error::new("invalid_login", 401));
         };
         self.run(move |db| {
+            // The DSP may have been disabled while the password was checked, its sessions ended.
+            db.ensure_site_enabled(&site)?;
             let directory = db.directory(scope.as_deref())?;
             let current = UserRow::find(&directory, "id", &row.user.id)?
                 .ok_or_else(|| Error::new("invalid_login", 401))?;

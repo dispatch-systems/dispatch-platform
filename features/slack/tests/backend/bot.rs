@@ -1,10 +1,10 @@
 //! How the bot renews a workspace's token: Slack honours each refresh token once, so a token is
 //! renewed as it nears its end and kept at once, and a token with time left, or one another call
-//! has renewed since Slack refused it, is used as it is. And a bot with a deadline starts no call
-//! past it.
+//! has renewed since Slack refused it, is used as it is. A bot with a deadline starts no call
+//! past it, and none starts for a DSP disabled while the bot waited Slack out.
 use super::*;
 use crate::backend::fixture;
-use dispatch_core::testing;
+use dispatch_core::{Code, testing};
 
 const TEAM: &str = "T0FIXTURE1";
 
@@ -90,4 +90,28 @@ async fn a_bot_with_a_deadline_starts_no_call_past_it() {
     let in_time = Bot::new(&state, &bot.dsp, TEAM).until(now() + 60_000);
     in_time.call("chat.postMessage", &post).await.unwrap();
     assert_eq!(fixture::posted(TEAM, "D0DEADLINE").len(), 1);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_call_slack_slowed_is_tried_again_only_while_the_dsp_is_active() {
+    let (_root, state, bot) = bot();
+    kept_until(&bot, 2 * 60 * 60 * 1000).await;
+    let post = serde_json::json!({"channel": "D0SLOWED", "text": "On my way"});
+    // Slack asks the bot to wait five seconds: it waits, and posts.
+    fixture::slow_down(TEAM, "D0SLOWED", 5);
+    bot.call("chat.postMessage", &post).await.unwrap();
+    assert_eq!(fixture::posted(TEAM, "D0SLOWED").len(), 1);
+    // Disabled while the bot waits: it posts nothing more.
+    fixture::slow_down(TEAM, "D0SLOWED", 5);
+    let waiting = Bot::new(&state, &bot.dsp, TEAM);
+    let calling = tokio::spawn(async move { waiting.call("chat.postMessage", &post).await });
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    let dsp = bot.dsp.clone();
+    state
+        .run(move |db| testing::set_dsp_status(db, &dsp, "suspended"))
+        .await
+        .unwrap();
+    let refused = calling.await.unwrap().unwrap_err();
+    assert!(refused.is(Code::DspUnavailable));
+    assert_eq!(fixture::posted(TEAM, "D0SLOWED").len(), 1);
 }

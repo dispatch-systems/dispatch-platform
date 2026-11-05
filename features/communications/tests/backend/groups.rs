@@ -1,10 +1,10 @@
 //! Messaging a group: each person gets it once, in their own direct message, under the sender's
 //! name; their answers are the group's until the DSP writes to them alone, and their
 //! conversations are listed under it while nothing they wait on is older; sending picks up after
-//! a restart without a second copy; one that can't go isn't sent; one waits while its workspace
-//! needs reconnecting; none goes out over two hours late, and each person's panel says why it
-//! wasn't sent; the groups to choose from hold someone each; and what a message to a group may
-//! carry is offered with them, as Slack's.
+//! a restart without a second copy, and waits while the DSP is disabled; one that can't go isn't
+//! sent; one waits while its workspace needs reconnecting; none goes out over two hours late, and
+//! each person's panel says why it wasn't sent; the groups to choose from hold someone each; and
+//! what a message to a group may carry is offered with them, as Slack's.
 use super::*;
 use crate::api::types::ComposeLimits;
 use crate::api::types::GroupEntry;
@@ -22,6 +22,7 @@ use dispatch_core::{
     db::now,
     foundation::clock,
     manifest::people::{Person, PersonRole},
+    testing,
 };
 use dispatch_routes_contract::RouteDay;
 use dispatch_slack::{kit, testing as slack};
@@ -502,6 +503,48 @@ async fn sending_picks_up_after_a_restart_without_a_second_copy() {
         .progress
         .unwrap();
     assert_eq!((progress.sent, progress.failed), (2, 0));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_message_waiting_its_turn_waits_while_the_dsp_is_disabled() {
+    let (_root, state, bot) = support::connected(DRIVERS_TEAM).await;
+    let dsp = bot.dsp.clone();
+    let c = owner(&state, &dsp).await;
+    let picked = members(&[(DRIVERS_TEAM, "U0FIXCAM"), (DRIVERS_TEAM, "U0FIXCASEY")]);
+    let group = send::create(&state, &c, USE, "Wave", &picked, "Running late", &[])
+        .await
+        .unwrap();
+    let message = first_message(&state, &dsp, &group.id).await;
+    let status = |status: &'static str| {
+        let (shared, at) = (state.clone(), dsp.clone());
+        async move {
+            shared
+                .run(move |db| testing::set_dsp_status(db, &at, status))
+                .await
+                .unwrap()
+        }
+    };
+    let progress = || async {
+        let progress = listed(&state, &dsp, &group.id).await.last.unwrap().progress;
+        progress.map(|p| (p.sent, p.failed))
+    };
+    // Cam's goes at once; Casey's waits its turn in the workspace, a second, and the DSP is
+    // disabled meanwhile: it isn't sent, nor given up.
+    let sending = tokio::spawn({
+        let (state, dsp) = (state.clone(), dsp.clone());
+        async move { send::drain(&state, &dsp).await }
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    status("suspended").await;
+    sending.await.unwrap();
+    assert_eq!(posts(DRIVERS_TEAM, "U0FIXCAM", &message.id).len(), 1);
+    assert!(posts(DRIVERS_TEAM, "U0FIXCASEY", &message.id).is_empty());
+    assert_eq!(progress().await, Some((1, 0)));
+    // Enabled again, it goes.
+    status("active").await;
+    send::drain(&state, &dsp).await;
+    assert_eq!(posts(DRIVERS_TEAM, "U0FIXCASEY", &message.id).len(), 1);
+    assert_eq!(progress().await, Some((2, 0)));
 }
 
 #[tokio::test]

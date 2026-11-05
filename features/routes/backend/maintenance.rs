@@ -25,12 +25,24 @@ fn failed(event: &str, error: &Error) {
 
 fn clean(state: Arc<State>, expire: bool) -> Upkeep {
     Box::pin(async move {
-        let dsps = state.read(|db| db.kept_dsps()).await;
+        let dsps = state.read(|db| db.served_ids()).await;
         let dsps = match dsps {
             Ok(dsps) => dsps,
             Err(error) => return failed("routes_cleanup_failed", &error),
         };
         for dsp in dsps {
+            // One disabled since the pass began waits, its days still to tell of, until it's
+            // enabled; one disabled while its turn runs changes nothing after (`run_serving`).
+            // Sweeping only lets go of what no reader sees.
+            let id = dsp.clone();
+            match state.read(move |db| db.serves_dsp(&id)).await {
+                Ok(true) => {}
+                Ok(false) => continue,
+                Err(error) => {
+                    failed("routes_cleanup_failed", &error);
+                    continue;
+                }
+            }
             super::changed::tell(&state, &dsp).await;
             if let Err(error) = super::phone_backfill::extract(&state, &dsp).await {
                 failed("routes_phones_failed", &error);
@@ -38,7 +50,7 @@ fn clean(state: Arc<State>, expire: bool) -> Upkeep {
             if expire {
                 let id = dsp.clone();
                 if let Err(error) = state
-                    .run_scoped(dsp.clone(), super::DOMAIN, move |db| db.expire_routes(&id))
+                    .run_serving(dsp.clone(), super::DOMAIN, move |db| db.expire_routes(&id))
                     .await
                 {
                     failed("routes_expiry_failed", &error);

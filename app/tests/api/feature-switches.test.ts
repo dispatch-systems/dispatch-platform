@@ -208,17 +208,17 @@ test('a feature switched off for a DSP stops existing there until it is switched
       event.action === 'dsp.feature_disabled' && event.detail === 'timecard',
   );
   assert.deepEqual(cascade.changes, [{ field: 'cause', from: null, to: 'Paycom' }]);
-  // Feature switches still work after verification ages; destructive removal does not.
+  // Feature switches still work after verification ages; disabling the DSP does not.
   f.database('data/platform/accounts.sqlite', (db) =>
     db.prepare('UPDATE sessions SET created_at=0 WHERE user_id=?').run(platform.session.user.id),
   );
   assert.equal((await platform.post(url, { feature: 'uniforms', enabled: false })).status, 200);
   assert.equal((await platform.post(url, { feature: 'uniforms', enabled: true })).status, 200);
-  const remove = await platform.post(`/api/platform/dsps/${north.id}/remove`, {});
-  assert.equal(remove.status, 403, remove.body);
+  const disable = await platform.post(`/api/platform/dsps/${north.id}/disable`, {});
+  assert.equal(disable.status, 403, disable.body);
   assert.ok(
-    ['sign_in_again', 'reauthentication_required'].includes(remove.value.error),
-    remove.body,
+    ['sign_in_again', 'reauthentication_required'].includes(disable.value.error),
+    disable.body,
   );
 });
 

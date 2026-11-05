@@ -26,19 +26,17 @@ import { dspState, dspStates, stateLabels } from './status.js';
 import { field } from '../../../shell/frontend/lib/form.js';
 
 const none: DspSummary[] = [];
-const requests: Record<Exclude<DspAction, 'view' | 'code'>, [string, unknown, string]> = {
-  enable: ['status', { status: 'active' }, 'DSP enabled'],
-  retry: ['retry', {}, 'DSP available'],
-  restore: ['restore', {}, 'DSP restored'],
-  remove: ['remove', {}, 'DSP removed'],
-  disable: ['status', { status: 'suspended' }, 'DSP disabled'],
+const requests: Record<Exclude<DspAction, 'view' | 'code'>, [string, string]> = {
+  enable: ['enable', 'DSP enabled'],
+  retry: ['retry', 'DSP available'],
+  disable: ['disable', 'DSP disabled'],
 };
 
 export function DspsPage() {
   const { data, error, refresh } = usePlatformDsps(10000);
   const [query, setQuery] = useUpdateState('dsp-query', ''),
     [creating, setCreating] = useState(false),
-    [confirming, setConfirming] = useState<{ action: 'remove' | 'disable'; dsp: DspSummary }>(),
+    [confirming, setConfirming] = useState<DspSummary>(),
     [coding, setCoding] = useState<DspSummary>(),
     // The chosen DSP rides in the address, so a reload and a phone's back link keep it.
     [chosen, setChosen] = useState(() => hashQuery().get('dsp') ?? '');
@@ -73,17 +71,16 @@ export function DspsPage() {
   );
   const change = useAction(
     async (dsp: DspSummary, action: Exclude<DspAction, 'view' | 'code'>) => {
-      const [path, body] = requests[action];
-      await api(`/api/platform/dsps/${dsp.id}/${path}`, body);
+      await api(`/api/platform/dsps/${dsp.id}/${requests[action][0]}`, {});
       setConfirming(undefined);
       refresh();
     },
-    { success: (_, action) => requests[action][2] },
+    { success: (_, action) => requests[action][1] },
   );
   const act = (dsp: DspSummary, action: DspAction) => {
     if (action === 'view') open(dsp);
     else if (action === 'code') setCoding(dsp);
-    else if (action === 'remove' || action === 'disable') setConfirming({ action, dsp });
+    else if (action === 'disable') setConfirming(dsp);
     else void change.run(dsp, action);
   };
   return (
@@ -206,25 +203,13 @@ export function DspsPage() {
           </form>
         </Modal>
       )}
-      {confirming?.action === 'remove' && (
+      {confirming && (
         <ConfirmDialog
-          title="Remove DSP"
-          confirm="Remove DSP"
-          busy={change.busy}
-          onConfirm={() => void change.run(confirming.dsp, 'remove')}
-          onCancel={() => setConfirming(undefined)}
-        >
-          Remove {confirming.dsp.name}. Access and collection will stop immediately. Existing data
-          will be retained so you can restore this DSP later.
-        </ConfirmDialog>
-      )}
-      {confirming?.action === 'disable' && (
-        <ConfirmDialog
-          title={`Disable ${confirming.dsp.name}?`}
+          title={`Disable ${confirming.name}?`}
           confirm="Disable DSP"
           tone="danger"
           busy={change.busy}
-          onConfirm={() => void change.run(confirming.dsp, 'disable')}
+          onConfirm={() => void change.run(confirming, 'disable')}
           onCancel={() => setConfirming(undefined)}
         >
           Members lose access and active collections are cancelled until you enable this DSP again.

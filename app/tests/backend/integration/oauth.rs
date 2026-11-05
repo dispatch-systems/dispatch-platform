@@ -2992,7 +2992,7 @@ async fn a_connected_app_is_edited_like_a_key_but_only_ever_reads_and_never_expi
 }
 
 #[tokio::test]
-async fn only_disabling_removing_or_restoring_a_dsp_asks_the_owner_to_verify_again() {
+async fn only_disabling_or_enabling_a_dsp_asks_the_owner_to_verify_again() {
     let server = Server::paired().await;
     let earlier = server.signed_in(OWNER, db::now() - DAY).await;
     let north = server.dsp("Northline Logistics").await;
@@ -3000,8 +3000,7 @@ async fn only_disabling_removing_or_restoring_a_dsp_asks_the_owner_to_verify_aga
     let request = server
         .requested(CLAUDE_CODE, "http://localhost:50022/callback")
         .await;
-    // A day after signing in, the owner still makes and changes a key, approves an app and
-    // enables a DSP, though enabling shares its route with disabling.
+    // A day after signing in, the owner still makes and changes a key, and approves an app.
     let made = server
         .as_owner(&earlier, "POST", "/api/platform/agents/keys", key("Desk"))
         .await;
@@ -3013,23 +3012,14 @@ async fn only_disabling_removing_or_restoring_a_dsp_asks_the_owner_to_verify_aga
             format!("/api/platform/oauth/requests/{request}/approve"),
             everything("Laptop"),
         ),
-        (
-            format!("/api/platform/dsps/{north}/status"),
-            json!({"status":"active"}),
-        ),
     ] {
         let answer = server.as_owner(&earlier, "POST", &path, body).await;
         assert_eq!(answer.status, 200, "{path}: {}", answer.body);
     }
-    // Disabling, removing or restoring a DSP waits until they verify, as the account's own
-    // security does.
+    // Disabling or enabling a DSP waits until they verify, as the account's own security does.
     for (path, body) in [
-        (
-            format!("/api/platform/dsps/{north}/status"),
-            json!({"status":"suspended"}),
-        ),
-        (format!("/api/platform/dsps/{north}/remove"), json!({})),
-        (format!("/api/platform/dsps/{north}/restore"), json!({})),
+        (format!("/api/platform/dsps/{north}/disable"), json!({})),
+        (format!("/api/platform/dsps/{north}/enable"), json!({})),
         (
             "/api/auth/security/authenticator/register/start".to_owned(),
             json!({}),

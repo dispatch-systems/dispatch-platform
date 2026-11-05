@@ -7,8 +7,8 @@ use super::{
     LINKING,
     storage::{Described, Import, ImportStore, Outcome, Status},
 };
-use crate::backend::{author, bot::Bot, channel_links::storage::LinkStore, slack::Slack};
-use dispatch_core::{Error, Result, State, db::now, server::http::upload::Upload};
+use crate::backend::{author, bot::Bot, channel_links::storage::LinkStore};
+use dispatch_core::{Code, Error, Result, State, db::now, server::http::upload::Upload};
 use dispatch_documents_contract::{self as files, Incoming};
 use serde_json::json;
 use std::sync::Arc;
@@ -86,10 +86,7 @@ async fn attempt(state: &Arc<State>, dsp: &str, import: &Import) -> Result<Outco
     let Some(url) = file["url_private_download"].as_str() else {
         return Ok(left(Status::Skipped, "slack_file_not_hosted"));
     };
-    let token = bot.token().await?;
-    let bytes = Slack::of(&state.config)?
-        .download(&token, url, &described.mime)
-        .await?;
+    let bytes = bot.download(url, &described.mime).await?;
     let incoming = Incoming {
         name: described.name,
         mime: described.mime,
@@ -124,10 +121,18 @@ fn left(status: Status, reason: &str) -> Outcome {
     }
 }
 /// What `error` makes of trying `import`: it waits uncounted for an approval or the workspace
-/// to work again, is tried again later each time, or is given up.
+/// to work again, or for the DSP disabled meanwhile to be enabled, is tried again later each
+/// time, or is given up.
 fn failure(import: &Import, error: &Error) -> Outcome {
     if ["slack_needs_update", "slack_connection_broken"].contains(&error.code.as_str()) {
         return wait(&error.code);
+    }
+    if error.is(Code::DspUnavailable) {
+        return Outcome::Later {
+            reason: error.code.clone(),
+            at: now(),
+            counted: false,
+        };
     }
     match RETRIES_MS.get(import.attempts.max(0) as usize) {
         Some(after) => Outcome::Later {

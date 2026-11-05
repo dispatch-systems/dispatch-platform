@@ -42,17 +42,7 @@ pub async fn mailer(state: Arc<State>, mut stop: tokio::sync::watch::Receiver<bo
                 }
             }
         }
-        let pending = state
-            .run_bookkeeping(|db| {
-                super::discard_stale(db)?;
-                db.platform.all(
-                    "SELECT id,encrypted_message,attempts \
-            FROM outbox WHERE status='pending' AND available_at<=? \
-            ORDER BY CASE kind WHEN 'reset' THEN 0 ELSE 1 END,available_at LIMIT ?",
-                    [db::now(), BATCH as i64],
-                )
-            })
-            .await;
+        let pending = state.run_bookkeeping(|db| super::due(db, BATCH)).await;
         let rows = match pending {
             Ok(rows) => rows,
             Err(error) => {
@@ -72,6 +62,21 @@ pub async fn mailer(state: Arc<State>, mut stop: tokio::sync::watch::Receiver<bo
             if *stop.borrow() {
                 again = false;
                 break;
+            }
+            // Its DSP disabled since, it waits until it's enabled.
+            let id = s(&row, "id").to_owned();
+            match state.read(move |db| super::sendable(db, &id)).await {
+                Ok(true) => {}
+                Ok(false) => continue,
+                Err(error) => {
+                    again = false;
+                    crate::foundation::observability::event(
+                        "error",
+                        "mail.queue_failed",
+                        json!({"error":error.code}),
+                    );
+                    continue;
+                }
             }
             let config = state.config.clone();
             let key = state.key.clone();

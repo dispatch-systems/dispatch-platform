@@ -80,7 +80,7 @@ test('generated platform contracts validate real responses', async (t) => {
   (badHealth.mail as unknown as Record<string, unknown>).pending = 'two';
   await invalid('/api/platform/health', badHealth);
   const badProfile = structuredClone(dsps);
-  (badProfile[0]!.profile as unknown as Record<string, unknown>).removed = 'false';
+  (badProfile[0]!.profile as unknown as Record<string, unknown>).setupRequired = 'false';
   await invalid('/api/platform/dsps', badProfile);
   const badAudit = structuredClone(audit);
   (badAudit.events[0]! as unknown as Record<string, unknown>).ref = {

@@ -39,7 +39,7 @@ fn pass(state: Arc<State>, due: bool) -> Upkeep {
         let dsps = state
             .read(|db| {
                 let mut on = Vec::new();
-                for dsp in db.kept_dsps()? {
+                for dsp in db.served_ids()? {
                     if db.feature_enabled(&dsp, crate::FEATURE.switch.id)? {
                         on.push(dsp);
                     }
@@ -54,7 +54,7 @@ fn pass(state: Arc<State>, due: bool) -> Upkeep {
         for dsp in dsps {
             let at = dsp.clone();
             let tidied = state
-                .run_scoped(dsp.clone(), DOMAIN, move |db| {
+                .run_serving(dsp.clone(), DOMAIN, move |db| {
                     let_go(db, &at, db::now() - UNSENT_MS);
                     Ok(())
                 })

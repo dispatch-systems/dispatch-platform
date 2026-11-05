@@ -100,7 +100,7 @@ test('Rust cancellation and suspension prevent late publication; restart recover
     const row = (await owner.read('/api/dsp/jobs'))[0];
     return row.status === 'waiting_verification' && row.attempt === 2;
   });
-  await owner.post(`/api/platform/dsps/${dsp.id}/status`, { status: 'suspended' });
+  await owner.post(`/api/platform/dsps/${dsp.id}/disable`);
   const jobs = (await owner.get('/api/platform/jobs')).value;
   assert(
     jobs

@@ -52,7 +52,6 @@ const profile = z.object({
   abbreviation: text,
   stationCode: text,
   setupRequired: z.boolean(),
-  removed: z.boolean(),
   supportVisible: z.boolean(),
   aiSupportHidden: z.boolean(),
 }) satisfies z.ZodMiniType<DspProfile>;

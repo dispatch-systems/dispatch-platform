@@ -563,7 +563,7 @@ impl Google {
         email: &str,
     ) -> Result<std::result::Result<String, Refused>> {
         if let Self::Fixture = self {
-            return fixture(access, |drive| {
+            let shared = fixture(access, |drive| {
                 // Fixture mode's Google knows no account at example.net.
                 if email.ends_with("@example.net") {
                     return Ok(Err(Refused::NoGoogleAccount));
@@ -585,6 +585,9 @@ impl Google {
                 shares.push(share.clone());
                 Ok(Ok(share.id))
             });
+            #[cfg(test)]
+            fixture_sharing_changed(id);
+            return shared;
         }
         let response = HTTP
             .post(format!("{FILES}/{id}/permissions"))
@@ -621,12 +624,15 @@ impl Google {
     /// Takes back the share `share` of the folder `id`. One already gone is taken back.
     pub async fn unshare(&self, access: &str, id: &str, share: &str) -> Result<()> {
         if let Self::Fixture = self {
-            return fixture(access, |drive| {
+            let unshared = fixture(access, |drive| {
                 if let Some(shares) = drive.shares.get_mut(id) {
                     shares.retain(|each| each.id != share);
                 }
                 Ok(())
             });
+            #[cfg(test)]
+            fixture_sharing_changed(id);
+            return unshared;
         }
         let response = HTTP
             .delete(format!("{FILES}/{id}/permissions/{share}"))
@@ -1238,6 +1244,30 @@ pub fn fixture_hidden(access: &str) -> Result<Vec<Item>> {
 /// Whether fixture mode's Drive has the file, out of the trash.
 pub fn fixture_has(access: &str, id: &str) -> Result<bool> {
     fixture(access, |drive| Ok(drive.files.contains_key(id)))
+}
+
+/// What a test has happen once fixture mode's Google next shares the file or folder `id`, by
+/// ID, or takes a share of it back: as someone disabling the DSP between two shares.
+#[cfg(test)]
+static ON_SHARING: LazyLock<Mutex<BTreeMap<String, OnSharing>>> = LazyLock::new(Default::default);
+#[cfg(test)]
+type OnSharing = Box<dyn FnOnce() + Send>;
+#[cfg(test)]
+pub fn fixture_on_sharing(id: &str, then: impl FnOnce() + Send + 'static) {
+    ON_SHARING
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(id.to_owned(), Box::new(then));
+}
+#[cfg(test)]
+fn fixture_sharing_changed(id: &str) {
+    let then = ON_SHARING
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .remove(id);
+    if let Some(then) = then {
+        then();
+    }
 }
 
 #[cfg(test)]

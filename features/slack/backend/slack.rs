@@ -95,6 +95,13 @@ pub struct Installed {
     pub tokens: Tokens,
 }
 
+/// What Slack answered a call to one of its API methods: its answer, or to slow down, calling
+/// again only after so long.
+pub enum Called {
+    Answered(Value),
+    SlowDown(Duration),
+}
+
 /// Real Slack, or fixture mode's stand-in.
 pub enum Slack {
     Live(&'static Client),
@@ -223,15 +230,8 @@ impl Slack {
     }
     /// Calls Slack's API method `method` as the bot, with `args`: any method, as a form,
     /// where a value that isn't text goes as JSON, as Slack takes a view or blocks. Slack's
-    /// answer when it says `ok`. When Slack asks Dispatch to slow down, it waits as long as
-    /// Slack says, up to `longest`, and tries again, twice at most.
-    pub async fn call(
-        &self,
-        token: &str,
-        method: &str,
-        args: &Value,
-        longest: Duration,
-    ) -> Result<Value> {
+    /// answer when it says `ok`, or how long Slack asks Dispatch to wait before calling again.
+    pub async fn call(&self, token: &str, method: &str, args: &Value) -> Result<Called> {
         if let Self::Fixture = self {
             return fixture::call(token, method, args);
         }
@@ -248,25 +248,20 @@ impl Slack {
                 (key.clone(), text)
             })
             .collect();
-        let url = format!("{API}/{method}");
-        for attempt in 0.. {
-            let request = HTTP.post(&url).bearer_auth(token).form(&fields);
-            let response = timed(method, request).await.map_err(unreachable)?;
-            if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
-                let wait = response
-                    .headers()
-                    .get("retry-after")
-                    .and_then(|value| value.to_str().ok()?.parse::<u64>().ok())
-                    .unwrap_or(1);
-                if attempt >= 2 || wait > longest.as_secs() {
-                    return Err(Error::new("slack_rate_limited", 503));
-                }
-                tokio::time::sleep(Duration::from_secs(wait)).await;
-                continue;
-            }
-            return answer(method, response).await;
+        let request = HTTP
+            .post(format!("{API}/{method}"))
+            .bearer_auth(token)
+            .form(&fields);
+        let response = timed(method, request).await.map_err(unreachable)?;
+        if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            let wait = response
+                .headers()
+                .get("retry-after")
+                .and_then(|value| value.to_str().ok()?.parse::<u64>().ok())
+                .unwrap_or(1);
+            return Ok(Called::SlowDown(Duration::from_secs(wait)));
         }
-        unreachable!("the loop returns")
+        answer(method, response).await.map(Called::Answered)
     }
     /// Downloads the file of type `mime` Slack keeps at `url`, its `url_private_download`, as
     /// the bot whose token this is: its bytes as they arrive. Slack answers a token that may

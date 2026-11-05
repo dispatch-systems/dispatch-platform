@@ -13,6 +13,36 @@ mod delivery;
 pub mod templates;
 pub use delivery::mailer;
 
+/// Whether a waiting message of the outbox goes now: not while the DSP it names is disabled. It
+/// stays, unsent, and goes once the DSP is enabled; an invitation of one is discarded instead
+/// (`discard_stale`).
+const SENDABLE: &str =
+    "(dsp_id IS NULL OR dsp_id NOT IN (SELECT id FROM dsps WHERE status='suspended'))";
+
+/// The mail to send now, resets first, `most` at most, once what no longer stands is
+/// discarded: none held for a disabled DSP (`SENDABLE`).
+pub fn due(db: &Store, most: usize) -> Result<Vec<serde_json::Value>> {
+    discard_stale(db)?;
+    db.platform.all(
+        &format!(
+            "SELECT id,encrypted_message,attempts FROM outbox \
+             WHERE status='pending' AND available_at<=? AND {SENDABLE} \
+             ORDER BY CASE kind WHEN 'reset' THEN 0 ELSE 1 END,available_at LIMIT ?"
+        ),
+        params![db::now(), most as i64],
+    )
+}
+/// Whether the message `id`, picked to send, still goes: its DSP may have been disabled since.
+pub fn sendable(db: &Store, id: &str) -> Result<bool> {
+    Ok(db
+        .platform
+        .one(
+            &format!("SELECT 1 FROM outbox WHERE id=? AND {SENDABLE}"),
+            [id],
+        )?
+        .is_some())
+}
+
 /// Never send an expired, revoked or already consumed grant. Bound retained content. A
 /// notice about a connected app goes only to someone who is still an active platform owner,
 /// and what a feature writes a member only while the member's account is active. What a

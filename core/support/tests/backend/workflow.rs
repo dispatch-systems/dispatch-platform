@@ -472,6 +472,34 @@ fn restart_preserves_the_job_checkpoint_and_invalidates_the_expired_worker_lease
 }
 
 #[test]
+fn a_disabled_dsps_job_loses_its_worker_and_resumes_from_its_checkpoint_once_enabled() {
+    testing::install(&[], &[]);
+    let (_root, db, dsp) = testing::bootstrapped();
+    report(&db, &reporter(&db, &dsp, "alex@example.test"));
+    let job = jobs::claim(&db).unwrap().unwrap();
+    jobs::heartbeat(&db, &job.id, &job.lease, &json!({"phase":"browser"})).unwrap();
+    testing::set_dsp_status(&db, &dsp, "suspended").unwrap();
+    // Its worker's lease holds no more: it's neither kept going nor finished.
+    let lost =
+        |answer: crate::Result<()>| assert_eq!(answer.unwrap_err().code, "support_lease_lost");
+    lost(jobs::heartbeat(&db, &job.id, &job.lease, &json!({"phase":"later"})).map(drop));
+    lost(verification::complete(&db, &job.id, &job.lease, &json!({})));
+    // Nor is it claimed while the DSP is disabled, once the lease runs out.
+    db.platform
+        .exec(
+            "UPDATE support_jobs SET lease_until=? WHERE id=?",
+            rusqlite::params![now() - 1, job.id],
+        )
+        .unwrap();
+    assert!(jobs::claim(&db).unwrap().is_none());
+    // Enabled again, it's claimed where it was.
+    testing::set_dsp_status(&db, &dsp, "active").unwrap();
+    let resumed = jobs::claim(&db).unwrap().unwrap();
+    assert_eq!(resumed.id, job.id);
+    assert_eq!(resumed.checkpoint["phase"], "browser");
+}
+
+#[test]
 fn merge_and_resolution_require_current_commit_browser_proof_and_are_separate_states() {
     testing::install(&[], &[]);
     let (_root, db, dsp) = testing::bootstrapped();

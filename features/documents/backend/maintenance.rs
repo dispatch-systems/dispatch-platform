@@ -33,7 +33,7 @@ fn follow(state: Arc<State>, due: bool) -> Upkeep {
         if Google::of(&state.config).is_err() {
             return;
         }
-        let dsps = match state.read(|db| db.kept_dsps()).await {
+        let dsps = match state.read(|db| db.served_ids()).await {
             Ok(dsps) => dsps,
             Err(error) => return failed(&error),
         };
@@ -44,7 +44,8 @@ fn follow(state: Arc<State>, due: bool) -> Upkeep {
                     let selected = dsp.clone();
                     let changed = state
                         .read(move |db| {
-                            Ok(db.feature_enabled(&selected, "documents")?
+                            Ok(db.serves_dsp(&selected)?
+                                && db.feature_enabled(&selected, "documents")?
                                 && db
                                     .documents_connection(&selected)?
                                     .is_some_and(|c| !c.broken)
@@ -75,7 +76,7 @@ fn check(state: Arc<State>, due: bool) -> Upkeep {
         let Ok(google) = Google::of(&state.config) else {
             return;
         };
-        let dsps = match state.read(|db| db.kept_dsps()).await {
+        let dsps = match state.read(|db| db.served_ids()).await {
             Ok(dsps) => dsps,
             Err(error) => return failed(&error),
         };
@@ -87,7 +88,8 @@ fn check(state: Arc<State>, due: bool) -> Upkeep {
                     let selected = dsp.clone();
                     let token = state
                         .read(move |db| {
-                            if db.feature_enabled(&selected, "documents")?
+                            if db.serves_dsp(&selected)?
+                                && db.feature_enabled(&selected, "documents")?
                                 && db
                                     .documents_connection(&selected)?
                                     .is_some_and(|c| !c.broken)

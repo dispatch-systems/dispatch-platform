@@ -6,7 +6,7 @@ import { capturedMail } from '../../../../core/shell/tests/support/mail-support.
 import { demo, fixture } from '../../../../core/shell/tests/support/support.js';
 const { password } = demo;
 
-test('Rust provisioning, invitation acceptance, profile setup, removal and restoration preserve boundaries', async (t) => {
+test('Rust provisioning, invitation acceptance, profile setup, disabling and enabling preserve boundaries', async (t) => {
   const f = await fixture();
   t.after(f.close);
   const owner = await f.client();
@@ -74,15 +74,12 @@ test('Rust provisioning, invitation acceptance, profile setup, removal and resto
   );
   const members = (await user.get('/api/dsp/members')).value;
   assert.equal((await user.post(`/api/dsp/members/${members[0].id}`, { role: null })).status, 409);
-  assert.equal((await owner.post(`/api/platform/dsps/${id}/remove`)).status, 200);
+  assert.equal((await owner.post(`/api/platform/dsps/${id}/disable`)).status, 200);
+  assert.equal((await user.get('/api/dsp/members')).status, 401);
   assert.equal((await f.request(invite, undefined, at)).status, 404);
-  assert.equal((await user.get('/api/dsp/members')).status, 409);
-  assert.equal(
-    (await owner.post(`/api/platform/dsps/${id}/status`, { status: 'active' })).status,
-    409,
-  );
-  assert.equal((await owner.post(`/api/platform/dsps/${id}/restore`)).status, 200);
-  await user.select(id);
+  assert.equal((await owner.post(`/api/platform/dsps/${id}/disable`)).status, 409);
+  assert.equal((await owner.post(`/api/platform/dsps/${id}/enable`)).status, 200);
+  await (await f.client('new@dispatch.test', password, 'new')).select(id);
   assert.equal((await f.request(invite, undefined, at)).value.accepted, true);
   // After the invitation's own seven days, a used link reads as expired like any other.
   f.people(id, (db) =>
@@ -90,11 +87,7 @@ test('Rust provisioning, invitation acceptance, profile setup, removal and resto
   );
   assert.equal((await f.request(invite, undefined, at)).value.error, 'invitation_expired');
   const dev = owner.session.dsps.find((d: { permanent: boolean }) => d.permanent);
-  assert.equal((await owner.post(`/api/platform/dsps/${dev.id}/remove`)).status, 409);
-  assert.equal(
-    (await owner.post(`/api/platform/dsps/${dev.id}/status`, { status: 'suspended' })).status,
-    409,
-  );
+  assert.equal((await owner.post(`/api/platform/dsps/${dev.id}/disable`)).status, 409);
 });
 
 test('an address another DSP has an account for joins with an account of its own, and revocation respects tenant ownership', async (t) => {

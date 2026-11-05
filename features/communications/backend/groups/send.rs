@@ -581,8 +581,9 @@ async fn upload(
 }
 
 /// What `error` makes of trying `item`, `unposted` when nothing of it is in Slack: waited out
-/// while Slack asks Dispatch to slow down, or its workspace needs Slack updated or reconnected;
-/// given up where it can't go; or tried again later, and given up after the last try.
+/// while Slack asks Dispatch to slow down, its workspace needs Slack updated or reconnected, or
+/// until the DSP disabled meanwhile is enabled; given up where it can't go; or tried again later,
+/// and given up after the last try.
 fn failure(item: &Due, error: &Error, unposted: bool) -> Outcome {
     let code = error.code.clone();
     let waited = if error.is(kit::RATE_LIMITED) {
@@ -600,6 +601,14 @@ fn failure(item: &Due, error: &Error, unposted: bool) -> Outcome {
         return Outcome::Later {
             reason: code,
             at: now() + waited,
+            counted: false,
+            unposted,
+        };
+    }
+    if error.is(Code::DspUnavailable) {
+        return Outcome::Later {
+            reason: code,
+            at: now(),
             counted: false,
             unposted,
         };

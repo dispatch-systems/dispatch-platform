@@ -499,7 +499,7 @@ async fn every_access_kind_refuses_and_admits_the_right_callers() {
         .await;
     let call = Call::get("/api/platform/dsps").who(&member);
     server.expect(call, 403, "platform_owner_required").await;
-    let call = Call::post("/api/platform/dsps/x/status", json!({})).who(&member);
+    let call = Call::post("/api/platform/dsps/x/disable", json!({})).who(&member);
     server.expect(call, 403, "platform_owner_required").await;
     let dsps = server
         .send(Call::get("/api/platform/dsps").who(&owner))
@@ -612,14 +612,15 @@ async fn only_dsp_and_schedule_writes_that_succeed_wake_the_scheduler() {
     let call = Call::post(&path, json!({})).who(&owner);
     server.expect(call, 409, "dsp_already_initialized").await;
     assert_eq!(revision(), before + 2);
-    // Suspending a DSP has never woken the scheduler.
-    let path = format!("/api/platform/dsps/{id}/status");
-    let suspended = server
-        .send(Call::post(&path, json!({"status":"suspended"})).who(&owner))
-        .await;
-    assert_eq!(suspended.status, 200, "{}", suspended.body);
-    assert_eq!(suspended.body["status"], "suspended");
-    assert_eq!(revision(), before + 2);
+    // Disabling a DSP wakes it, so the DSP's collections stop at once, and so does enabling it,
+    // so they start again.
+    for (action, status, woken) in [("disable", "suspended", 3), ("enable", "active", 4)] {
+        let path = format!("/api/platform/dsps/{id}/{action}");
+        let changed = server.send(Call::post(&path, json!({})).who(&owner)).await;
+        assert_eq!(changed.status, 200, "{}", changed.body);
+        assert_eq!(changed.body["status"], status);
+        assert_eq!(revision(), before + woken);
+    }
     // A save in Settings wakes it only when it moves when the DSP's schedules run, as its
     // timezone does: not for a feature's choice, nor the DSP's station.
     let mut woken = revision();

@@ -1,13 +1,20 @@
 //! Reading a workspace's members, as fixture mode's Slack lists them: only once its admin lets
-//! the bot, without bots, and as Driver Match reads them, each by their own ID with their
-//! accounts in the DSP's other workspaces.
+//! the bot, without bots, never once the DSP is disabled, and as Driver Match reads them, each
+//! by their own ID with their accounts in the DSP's other workspaces.
 use super::*;
 use crate::backend::{
     app::SCOPES as APP,
+    fixture,
+    slack::Tokens,
     storage::SlackStore,
     support::{connect, platform},
 };
-use dispatch_core::{manifest::people::Named, testing};
+use dispatch_core::{
+    Code,
+    db::{Store, now},
+    manifest::people::Named,
+    testing,
+};
 
 const OPERATIONS: &str = "T0FIXTURE1";
 const DRIVERS: &str = "T0FIXTURE2";
@@ -79,6 +86,30 @@ async fn members_are_read_once_the_admin_lets_the_bot_and_never_bots() {
         .run(move |db| db.keep_slack_members(&of, DRIVERS, &read))
         .await
         .unwrap();
+    assert!(kept(&state, &dsp).await.is_empty());
+}
+// Disabled while Slack lists the workspace's members, the DSP keeps none of them.
+#[tokio::test]
+async fn members_slack_lists_as_the_dsp_is_disabled_are_not_kept() {
+    let (_root, state, dsp) = platform();
+    let bot = connect(&state, &dsp, DRIVERS, APP).await;
+    let tokens = Tokens {
+        access: format!("fixture-access:{DRIVERS}:disabled-while-listing"),
+        refresh: None,
+        expires_at: Some(now() + 3_600_000),
+    };
+    let (at, kept_tokens) = (dsp.clone(), tokens.clone());
+    state
+        .run(move |db| db.save_slack_tokens(&at, DRIVERS, &kept_tokens))
+        .await
+        .unwrap();
+    let (config, key, at) = (state.config.clone(), state.key.clone(), dsp.clone());
+    fixture::on_call(&tokens.access, move || {
+        let db = Store::open(config, key).unwrap();
+        testing::set_dsp_status(&db, &at, "suspended").unwrap();
+    });
+    let refused = read(&bot).await.unwrap_err();
+    assert!(refused.is(Code::DspUnavailable));
     assert!(kept(&state, &dsp).await.is_empty());
 }
 #[tokio::test]

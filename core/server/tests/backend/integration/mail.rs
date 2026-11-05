@@ -1,4 +1,5 @@
-//! The platform's mail log: what an email was for, and what became of its invitation.
+//! The platform's mail log: what an email was for, and what became of its invitation; and mail
+//! for a disabled DSP waiting until it's enabled.
 use common::{audits, seeded};
 use dispatch_core::testing as common;
 use dispatch_core::{db::now, server::mail};
@@ -93,4 +94,48 @@ fn the_log_follows_an_invitation_and_failed_mail_can_be_retried_or_discarded() {
         .filter(|action| action.starts_with("mail."))
         .collect();
     assert_eq!(recorded, ["mail.discarded", "mail.retried"]);
+}
+
+#[test]
+fn a_disabled_dsps_mail_waits_unsent_until_it_is_enabled() {
+    common::install(&[], &[]);
+    let (_root, db) = seeded();
+    let (north,): (String,) = db
+        .platform
+        .one_as("SELECT id FROM dsps WHERE name='Northline Logistics'", [])
+        .unwrap()
+        .unwrap();
+    let (member,): (String,) = db
+        .dsp(&north)
+        .unwrap()
+        .one_as(
+            "SELECT id FROM users WHERE email='member@dispatch.test'",
+            [],
+        )
+        .unwrap()
+        .unwrap();
+    // What Documents wrote Northline's member, as it does once.
+    db.platform
+        .exec(
+            "INSERT INTO outbox(id,encrypted_message,available_at,created_at,kind,user_id,dsp_id) \
+             VALUES ('mail_member','',?3,?3,'documents.google_account',?1,?2)",
+            params![member, north, now()],
+        )
+        .unwrap();
+    let due = || -> Vec<String> {
+        let rows = mail::due(&db, 5).unwrap();
+        rows.iter()
+            .map(|row| row["id"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    let status = |status: &str| common::set_dsp_status(&db, &north, status).unwrap();
+    assert_eq!(due(), ["mail_member"]);
+    // Disabled, it's kept and doesn't go, even picked to before.
+    status("suspended");
+    assert!(due().is_empty());
+    assert!(!mail::sendable(&db, "mail_member").unwrap());
+    // Enabled again, it goes.
+    status("active");
+    assert_eq!(due(), ["mail_member"]);
+    assert!(mail::sendable(&db, "mail_member").unwrap());
 }

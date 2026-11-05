@@ -97,7 +97,7 @@ pub async fn changing<T: Send + 'static>(
 ) -> Result<T> {
     let at = dsp.to_owned();
     let (answer, changed) = state
-        .run_scoped(dsp, DOMAIN, move |db| {
+        .run_serving(dsp, DOMAIN, move |db| {
             db.dsp(&at)?.transaction(|| {
                 let (answer, texts) = change(db)?;
                 Ok((answer, file(db, &at, &texts)?))
@@ -139,7 +139,7 @@ fn pass(state: Arc<State>, _: bool) -> Upkeep {
         let on = state
             .read(|db| {
                 let mut found = Vec::new();
-                for dsp in db.kept_dsps()? {
+                for dsp in db.served_ids()? {
                     if db.feature_enabled(&dsp, crate::FEATURE.switch.id)? {
                         found.push(dsp);
                     }
@@ -279,7 +279,7 @@ pub async fn watch_live_day(state: &Arc<State>, dsp: &str, at: i64) -> Result<()
     }
     let at_dsp = dsp.to_owned();
     let over = state
-        .run_scoped(dsp, DOMAIN, move |db| {
+        .run_serving(dsp, DOMAIN, move |db| {
             let Some(watched) = live_day::watched(db, &at_dsp, at)? else {
                 return Ok(false);
             };
@@ -396,7 +396,7 @@ pub async fn refile_day(state: &Arc<State>, dsp: &str, day: &str) -> Result<()> 
     let day = date(day)?;
     let at = dsp.to_owned();
     let changed = state
-        .run_scoped(dsp, DOMAIN, move |db| {
+        .run_serving(dsp, DOMAIN, move |db| {
             db.dsp(&at)?.transaction(|| {
                 let mut filer = Filer::new(db, &at)?;
                 let moved = !refiled_by(db, &at, &mut filer, day)?.is_empty();
@@ -495,7 +495,7 @@ pub async fn reconcile(state: &Arc<State>, dsp: &str) -> Result<()> {
         .await?;
     let at = dsp.to_owned();
     match state
-        .run_scoped(dsp, DOMAIN, move |db| refiled(db, &at))
+        .run_serving(dsp, DOMAIN, move |db| refiled(db, &at))
         .await
     {
         Ok(true) => live::changed(state, dsp),

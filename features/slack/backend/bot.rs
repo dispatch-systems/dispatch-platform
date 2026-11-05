@@ -6,10 +6,13 @@
 //! for each workspace, so two never spend the same refresh token.
 use super::{
     connection, kit,
-    slack::{Bytestream, Slack, Tokens},
+    slack::{Bytestream, Called, Slack, Tokens},
     storage::SlackStore,
 };
-use dispatch_core::{Error, Result, State, db::now};
+use dispatch_core::{
+    Error, Result, State,
+    db::{Store, now},
+};
 use serde_json::{Value, json};
 use std::{
     collections::HashMap,
@@ -90,20 +93,30 @@ impl Bot {
 
     /// Calls Slack's API method `method` with `args`: Slack's answer. A token Slack says
     /// expired is renewed and the call made again, once. Slack asking it to slow down is waited
-    /// out, up to half a minute, or two for a `patient` bot, and never for one with a deadline,
-    /// past which no call starts. Slack no longer honouring the workspace's tokens breaks it,
-    /// until someone reconnects it.
+    /// out, twice at most, up to half a minute, or two for a `patient` bot, and never for one
+    /// with a deadline, past which no call starts. Each try is refused once the DSP is disabled,
+    /// though an earlier one was made. Slack no longer honouring the workspace's tokens breaks
+    /// it, until someone reconnects it.
     pub async fn call(&self, method: &str, args: &Value) -> Result<Value> {
         let slack = Slack::of(&self.state.config)?;
-        let token = self.token().await?;
-        self.in_time()?;
-        let answer = match slack.call(&token, method, args, self.waits).await {
-            Err(error) if error.code == "slack_token_expired" => {
-                let token = self.instead_of(&token).await?;
-                self.in_time()?;
-                slack.call(&token, method, args, self.waits).await
+        let mut token = self.acting().await?;
+        let (mut renewed, mut slowed) = (false, 0);
+        let answer = loop {
+            self.in_time()?;
+            match slack.call(&token, method, args).await {
+                Ok(Called::Answered(answer)) => break Ok(answer),
+                Ok(Called::SlowDown(wait)) if slowed < 2 && wait <= self.waits => {
+                    slowed += 1;
+                    tokio::time::sleep(wait).await;
+                    self.active().await?;
+                }
+                Ok(Called::SlowDown(_)) => break Err(Error::new(kit::RATE_LIMITED.as_str(), 503)),
+                Err(error) if error.code == "slack_token_expired" && !renewed => {
+                    renewed = true;
+                    token = self.instead_of(&token).await?;
+                }
+                Err(error) => break Err(error),
             }
-            answer => answer,
         };
         if let Err(error) = &answer
             && error.code == "slack_connection_broken"
@@ -117,10 +130,16 @@ impl Bot {
     /// bytes as they arrive. One the bot may not read yet is refused as a permission the
     /// workspace hasn't approved (`slack_needs_update`).
     pub async fn download(&self, url: &str, mime: &str) -> Result<Bytestream> {
-        let token = self.token().await?;
+        let token = self.acting().await?;
         Slack::of(&self.state.config)?
             .download(&token, url, mime)
             .await
+    }
+    /// Downloads the picture Slack keeps at `url`, one of its own addresses that needs no token,
+    /// as a workspace's logo's is: its bytes, at most `most` of them.
+    pub async fn picture(&self, url: &url::Url, most: usize) -> Result<Vec<u8>> {
+        self.active().await?;
+        Slack::of(&self.state.config)?.picture(url, most).await
     }
     /// Uploads a file named `name` of `length` bytes as the bot (`files:write`), shared in no
     /// conversation, for a message's blocks to show: its ID in Slack.
@@ -137,6 +156,7 @@ impl Bot {
         ) else {
             return Err(Error::new("slack_refused", 502));
         };
+        self.active().await?;
         Slack::of(&self.state.config)?
             .upload(url, length, bytes)
             .await?;
@@ -145,28 +165,63 @@ impl Bot {
         Ok(id.to_owned())
     }
 
-    /// The workspace's access token, renewed first when it nears its end.
+    /// Whether the bot still acts for the DSP: refused once it's disabled (`dsp_unavailable`),
+    /// though the bot was made before, as nothing acts for a disabled DSP.
+    async fn active(&self) -> Result<()> {
+        let dsp = self.dsp.clone();
+        self.state
+            .read(move |db| db.ensure_dsp_active(&dsp).map(drop))
+            .await
+    }
+    /// Keeps what the bot learned from Slack in the DSP's data, in one database turn that checks
+    /// the DSP is still active: refused once it's disabled (`dsp_unavailable`), though Slack
+    /// answered before.
+    pub async fn keep<T: Send + 'static>(
+        &self,
+        f: impl FnOnce(&Store) -> Result<T> + Send + 'static,
+    ) -> Result<T> {
+        let dsp = self.dsp.clone();
+        self.state
+            .run(move |db| {
+                db.ensure_dsp_active(&dsp)?;
+                f(db)
+            })
+            .await
+    }
+    /// The workspace's access token for acting there, as `token`, while the DSP is active.
+    async fn acting(&self) -> Result<String> {
+        self.renewed(Self::ending, true).await
+    }
+    /// The workspace's access token, renewed first when it nears its end, whether the DSP is
+    /// disabled or not, as taking the app out of the workspace needs it.
     pub async fn token(&self) -> Result<String> {
-        self.renewed(|kept| {
-            kept.expires_at
-                .is_some_and(|expires| expires - now() <= RENEW_WITHIN_MS)
-        })
-        .await
+        self.renewed(Self::ending, false).await
     }
-    /// A token in place of `refused`, which Slack said expired: renewed, unless another call
-    /// renewed it meanwhile.
+    /// Whether the kept token nears its end.
+    fn ending(kept: &Tokens) -> bool {
+        kept.expires_at
+            .is_some_and(|expires| expires - now() <= RENEW_WITHIN_MS)
+    }
+    /// A token for acting in place of `refused`, which Slack said expired: renewed, unless
+    /// another call renewed it meanwhile.
     async fn instead_of(&self, refused: &str) -> Result<String> {
-        self.renewed(|kept| kept.access == refused).await
+        self.renewed(|kept| kept.access == refused, true).await
     }
-    /// The workspace's access token, renewed first when `due` says so of the kept tokens.
-    /// Slack refusing to renew it breaks the workspace.
-    async fn renewed(&self, due: impl FnOnce(&Tokens) -> bool) -> Result<String> {
+    /// The workspace's access token, renewed first when `due` says so of the kept tokens; when
+    /// `acting`, only while the DSP is active, checked just before Slack is asked to renew it
+    /// and again just before it's answered. Slack refusing to renew it breaks the workspace.
+    async fn renewed(&self, due: impl FnOnce(&Tokens) -> bool, acting: bool) -> Result<String> {
         let lock = lock("renewing", &self.dsp, &self.team);
         let _renewing = lock.lock().await;
         let (dsp, team) = (self.dsp.clone(), self.team.clone());
         let kept = self
             .state
-            .read(move |db| db.slack_tokens(&dsp, &team))
+            .read(move |db| {
+                if acting {
+                    db.ensure_dsp_active(&dsp)?;
+                }
+                db.slack_tokens(&dsp, &team)
+            })
             .await?
             .ok_or_else(|| Error::new("slack_not_connected", 404))?;
         // A token without a refresh token never expires: the app's rotation is off.
@@ -180,6 +235,9 @@ impl Bot {
                 self.state
                     .run(move |db| db.save_slack_tokens(&dsp, &team, &tokens))
                     .await?;
+                if acting {
+                    self.active().await?;
+                }
                 Ok(access)
             }
             Err(error) => {
