@@ -4,9 +4,6 @@ import { BESIDE } from '../page/useLayout.js';
 
 type Size = { width: number; height: number };
 
-/** The app's sidebar beside the page, and its heading above it, on a desktop. */
-const SIDEBAR = 240;
-const HEADING = 150;
 const PHONE = { width: 390, height: 760 };
 /** A phone's edge, round its screen. */
 const PHONE_EDGE = 20;
@@ -26,20 +23,21 @@ export type Frame = Size & { scale: number; aside: number };
  * list and conversation, else the conversation alone, the page laid out wider by its list (as
  * wide as `list`), which is kept out of view, while that's wide enough for both, else the page
  * as wide as the room, one pane; or, to `fit`, or with no room for a page at its actual size,
- * the whole page as wide as the member's window, made smaller to fit.
+ * the whole page as big as `page`, the Communications page's in the member's window, made smaller
+ * to fit.
  */
 export function frame({
   room,
   phone,
   fit,
   list,
-  window,
+  page,
 }: {
   room: Size;
   phone: boolean;
   fit: boolean;
   list: number;
-  window: Size;
+  page: Size;
 }): Frame {
   if (phone)
     return {
@@ -55,7 +53,6 @@ export function frame({
     const aside = alone ? drawn : 0;
     return { width: room.width + aside, height: room.height, scale: 1, aside };
   }
-  const whole = { width: window.width - SIDEBAR, height: window.height - HEADING };
-  const scale = Math.min(1, room.width / whole.width, room.height / whole.height);
-  return { ...whole, scale, aside: 0 };
+  const scale = Math.min(1, room.width / page.width, room.height / page.height);
+  return { ...page, scale, aside: 0 };
 }

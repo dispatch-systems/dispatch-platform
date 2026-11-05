@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { frame } from '../../frontend/display/frame.js';
 
-// Message display's preview of a desktop, in the room beside the choices, a 1440 by 900 window.
-const window = { width: 1440, height: 900 };
+// Message display's preview of a desktop, in the room beside the choices, the Communications
+// page's list and conversation 1200 by 750 in the member's window.
+const page = { width: 1200, height: 750 };
 const desktop = (width: number, list = 340) =>
-  frame({ room: { width, height: 700 }, phone: false, fit: false, list, window });
+  frame({ room: { width, height: 700 }, phone: false, fit: false, list, page });
 
 test('a desktop shows at its actual size: the whole page with room for both panes, else the conversation alone while its page has two', () => {
   assert.deepEqual(desktop(1000), { width: 1000, height: 700, scale: 1, aside: 0 });
@@ -24,7 +25,7 @@ test('to fit, or with no room for its actual size, a desktop’s whole page is m
     phone: false,
     fit: true,
     list: 340,
-    window,
+    page,
   });
   assert.deepEqual([fit.width, fit.height, fit.aside], [1200, 750, 0]);
   assert.equal(fit.scale, 0.5);
@@ -33,7 +34,7 @@ test('to fit, or with no room for its actual size, a desktop’s whole page is m
 
 test('a phone shows at its actual size, inside its edge', () => {
   const phone = (width: number, height: number) =>
-    frame({ room: { width, height }, phone: true, fit: false, list: 340, window });
+    frame({ room: { width, height }, phone: true, fit: false, list: 340, page });
   assert.deepEqual(phone(660, 900), { width: 390, height: 760, scale: 1, aside: 0 });
   assert.deepEqual(phone(354, 440), { width: 334, height: 420, scale: 1, aside: 0 });
 });
