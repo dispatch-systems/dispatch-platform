@@ -11,8 +11,15 @@ use crate::backend::{
 };
 use std::sync::Arc;
 
-/// Picks the driver `driver` for the work phone of the conversation `id`, as the member `me`.
-async fn picked(state: &Arc<State>, dsp: &str, id: &str, driver: &str) -> Result<Conversation> {
+/// Picks the driver `driver` for the work phone of the conversation `id`, as the member `me` at
+/// `at`.
+async fn picked(
+    state: &Arc<State>,
+    dsp: &str,
+    id: &str,
+    driver: &str,
+    at: i64,
+) -> Result<Conversation> {
     let (shared, dsp, id, driver) = (
         state.clone(),
         dsp.to_owned(),
@@ -20,8 +27,16 @@ async fn picked(state: &Arc<State>, dsp: &str, id: &str, driver: &str) -> Result
         driver.to_owned(),
     );
     state
-        .run(move |db| pick(db, &shared, &dsp, &id, &driver, "me"))
+        .run(move |db| pick(db, &shared, &dsp, &id, &driver, "me", at))
         .await
+}
+/// Where the answers queued so far went, oldest first.
+async fn went(state: &Arc<State>, dsp: &str) -> Vec<String> {
+    sent(state, dsp)
+        .await
+        .into_iter()
+        .map(|(to, ..)| to)
+        .collect()
 }
 /// Whose driver's conversation the text `id` is filed in, by their ID.
 async fn whose(state: &Arc<State>, dsp: &str, id: &str) -> Option<String> {
@@ -67,7 +82,9 @@ async fn a_driver_picked_for_a_work_phone_nobody_has_keeps_its_texts_of_today_un
     );
 
     // Picked for it, Avery has its text, and what comes after, and is answered at it.
-    let avery = picked(&state, &dsp, &phone.id, "A1").await.unwrap();
+    let avery = picked(&state, &dsp, &phone.id, "A1", now(10, 0))
+        .await
+        .unwrap();
     assert_eq!(avery.driver_id.as_deref(), Some("A1"));
     assert_eq!(whose(&state, &dsp, &asked).await.as_deref(), Some("A1"));
     let later = texted(&state, &dsp, "+12065550103", "Found it", now(13, 0)).await;
@@ -75,12 +92,7 @@ async fn a_driver_picked_for_a_work_phone_nobody_has_keeps_its_texts_of_today_un
     let c = member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
     let answer = || send(&state, &c, USE, &avery.id, "Thanks", &[]);
     answer().await.unwrap();
-    let went: Vec<String> = sent(&state, &dsp)
-        .await
-        .into_iter()
-        .map(|(to, ..)| to)
-        .collect();
-    assert_eq!(went, ["+12065550103"]);
+    assert_eq!(went(&state, &dsp).await, ["+12065550103"]);
 
     // A read shows 0103 as Blake's latest: the day's texts with it are Blake's, before the pick
     // too, and Avery has no work phone to be answered at.
@@ -95,11 +107,15 @@ async fn a_driver_picked_for_a_work_phone_nobody_has_keeps_its_texts_of_today_un
     );
 
     // Only one of today's drivers is picked, and only for a work phone nobody has.
-    let refused = picked(&state, &dsp, &phone.id, "Z9").await.unwrap_err();
+    let refused = picked(&state, &dsp, &phone.id, "Z9", now(13, 5))
+        .await
+        .unwrap_err();
     assert_eq!(refused.code, "communications_driver_not_found");
     let stranger = texted(&state, &dsp, "+14255550199", "Is this dispatch?", now(9, 5)).await;
     let number = filed(&state, &dsp, &stranger).await.id;
-    let refused = picked(&state, &dsp, &number, "A1").await.unwrap_err();
+    let refused = picked(&state, &dsp, &number, "A1", now(13, 5))
+        .await
+        .unwrap_err();
     assert_eq!(refused.code, "invalid_input");
 }
 
@@ -135,17 +151,67 @@ async fn a_driver_picked_for_a_work_phone_is_answered_at_it_rather_than_their_ow
     let phone = filed(&state, &dsp, &asked).await;
 
     // Picked for it, Avery is answered at 0103, where they asked from.
-    let avery = picked(&state, &dsp, &phone.id, "A1").await.unwrap();
+    let avery = picked(&state, &dsp, &phone.id, "A1", at(zone, day, 10, 0))
+        .await
+        .unwrap();
     let c = member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
     send(&state, &c, USE, &avery.id, "Got it", &[])
         .await
         .unwrap();
-    let went: Vec<String> = sent(&state, &dsp)
+    assert_eq!(went(&state, &dsp).await, ["+12065550103"]);
+}
+
+#[tokio::test]
+async fn a_driver_picked_for_more_than_one_work_phone_is_answered_at_the_one_picked_last() {
+    let (_root, state, dsp) = started();
+    let (zone, day) = today(&state, &dsp).await;
+    let now = |h, m| at(zone, day, h, m);
+    let today = day.to_string();
+    // Avery and Blake drive; 0102, 0103 and 0104 were work phones yesterday, nobody's today, and
+    // each texts.
+    routed(
+        &dsp,
+        vec![
+            route(&today, "A1", "CX14", "1FTVAN214", 168, now(9, 20)),
+            route(&today, "B1", "CX09", "1FTVAN207", 159, now(9, 40)),
+        ],
+    );
+    let yesterday = day.pred_opt().unwrap();
+    let earlier = vec![saved(
+        yesterday,
+        &[
+            ("C1", "2065550102"),
+            ("C2", "2065550103"),
+            ("C3", "2065550104"),
+        ],
+    )];
+    phoned(&state, &dsp, Some(&today), Vec::new(), earlier).await;
+    let mut work = Vec::new();
+    for number in ["+12065550102", "+12065550103", "+12065550104"] {
+        let asked = texted(&state, &dsp, number, "Who has this one?", now(9, 0)).await;
+        work.push(filed(&state, &dsp, &asked).await.id);
+    }
+    let c = member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+
+    // 0103 is picked for Avery, then 0102 for Blake, then 0103's pick corrected to Blake: Blake
+    // is answered at 0103, picked last.
+    picked(&state, &dsp, &work[1], "A1", now(10, 0))
         .await
-        .into_iter()
-        .map(|(to, ..)| to)
-        .collect();
-    assert_eq!(went, ["+12065550103"]);
+        .unwrap();
+    picked(&state, &dsp, &work[0], "B1", now(10, 5))
+        .await
+        .unwrap();
+    let blake = picked(&state, &dsp, &work[1], "B1", now(10, 10))
+        .await
+        .unwrap();
+    let answer = || send(&state, &c, USE, &blake.id, "Thanks", &[]);
+    answer().await.unwrap();
+    // Then 0104 is picked for Blake too: Blake is answered there.
+    picked(&state, &dsp, &work[2], "B1", now(10, 15))
+        .await
+        .unwrap();
+    answer().await.unwrap();
+    assert_eq!(went(&state, &dsp).await, ["+12065550103", "+12065550104"]);
 }
 
 #[tokio::test]
@@ -172,6 +238,8 @@ async fn a_work_phone_two_drivers_have_is_its_own_until_one_is_picked_for_it() {
     );
 
     // Picked for it, Blake has it.
-    picked(&state, &dsp, &phone.id, "B1").await.unwrap();
+    picked(&state, &dsp, &phone.id, "B1", now(10, 0))
+        .await
+        .unwrap();
     assert_eq!(whose(&state, &dsp, &asked).await.as_deref(), Some("B1"));
 }

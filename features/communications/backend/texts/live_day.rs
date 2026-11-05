@@ -51,10 +51,10 @@ impl LiveDay {
             from,
         }))
     }
-    /// The work phone each driver has now, by their ID, as its ten digits: one they were picked for
-    /// today that's no one driver's latest, as its texts are filed under them (`picking`); else
-    /// their latest of today, as live route data reads it, but one that's another driver's latest
-    /// too, which is no one driver's, so neither has it to be texted at.
+    /// The work phone each driver has now, by their ID, as its ten digits: the one they were last
+    /// picked for today that's no one driver's latest, as its texts are filed under them
+    /// (`picking`); else their latest of today, as live route data reads it, but one that's another
+    /// driver's latest too, which is no one driver's, so neither has it to be texted at.
     pub fn phones(&self, db: &Store, dsp: &str) -> Result<HashMap<String, String>> {
         let DayPhones::Read(read) = self.reader.day_phones(db, dsp)? else {
             return Ok(HashMap::new());
