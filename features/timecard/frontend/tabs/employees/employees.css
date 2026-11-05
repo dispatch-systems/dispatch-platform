@@ -384,8 +384,9 @@
     padding: 20px;
   }
 }
-/* A shorter window gets tighter rows and spacing, keeping a whole pay period in view. */
-@media (height < 1000px) {
+/* A window too short for a whole pay period at full spacing gets tighter rows and spacing,
+   keeping it in view. */
+@media (height < 1160px) {
   .employee-detail {
     padding-block: 18px;
   }
