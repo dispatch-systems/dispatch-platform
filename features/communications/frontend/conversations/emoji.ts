@@ -70,7 +70,7 @@ const shown =
     return {
       emoji,
       label,
-      words: [...label.toLowerCase().split(/[\s:,]+/), ...tags],
+      words: [...label.split(/[\s:,]+/), ...tags].map((word) => word.toLowerCase()),
       tones: tones.length ? Object.fromEntries([[0, emoji], ...tones]) : undefined,
     };
   };
