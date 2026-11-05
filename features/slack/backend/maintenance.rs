@@ -55,8 +55,7 @@ fn check(state: Arc<State>, due: bool) -> Upkeep {
                         {
                             let name = name.to_owned();
                             let (dsp, team) = (dsp.clone(), workspace.team.clone());
-                            state
-                                .run(move |db| db.rename_slack_workspace(&dsp, &team, &name))
+                            bot.keep(move |db| db.rename_slack_workspace(&dsp, &team, &name))
                                 .await?;
                         }
                         if let Err(error) = logo::keep(&bot, &info["team"]["icon"]).await {

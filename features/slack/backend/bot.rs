@@ -9,7 +9,10 @@ use super::{
     slack::{Bytestream, Called, Slack, Tokens},
     storage::SlackStore,
 };
-use dispatch_core::{Error, Result, State, db::now};
+use dispatch_core::{
+    Error, Result, State,
+    db::{Store, now},
+};
 use serde_json::{Value, json};
 use std::{
     collections::HashMap,
@@ -168,6 +171,21 @@ impl Bot {
         let dsp = self.dsp.clone();
         self.state
             .read(move |db| db.ensure_dsp_active(&dsp).map(drop))
+            .await
+    }
+    /// Keeps what the bot learned from Slack in the DSP's data, in one database turn that checks
+    /// the DSP is still active: refused once it's disabled (`dsp_unavailable`), though Slack
+    /// answered before.
+    pub async fn keep<T: Send + 'static>(
+        &self,
+        f: impl FnOnce(&Store) -> Result<T> + Send + 'static,
+    ) -> Result<T> {
+        let dsp = self.dsp.clone();
+        self.state
+            .run(move |db| {
+                db.ensure_dsp_active(&dsp)?;
+                f(db)
+            })
             .await
     }
     /// The workspace's access token for acting there, as `token`, while the DSP is active.

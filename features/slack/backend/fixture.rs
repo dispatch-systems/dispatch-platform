@@ -406,6 +406,8 @@ pub fn refresh(refresh: &str) -> Result<Tokens> {
 /// answer to a method only it calls. Any other method is a mistake: answering it would hide a call no test or
 /// preview tried. A call about a conversation a test slowed (`slow_down`) is asked to wait instead.
 pub fn call(token: &str, method: &str, args: &Value) -> Result<Called> {
+    #[cfg(test)]
+    called(token);
     let team = workspace(token, "fixture-access:")?;
     let asked = args["channel"].as_str().unwrap_or("");
     if let Some(wait) = slowed(team, asked) {
@@ -550,6 +552,30 @@ pub fn slow_down(team: &str, channel: &str, seconds: u64) {
             (team.to_owned(), channel.to_owned()),
             Duration::from_secs(seconds),
         );
+}
+
+/// What a test has happen as fixture mode's Slack is next called with the access token
+/// `token`, before it answers: as the platform owner disabling the DSP while a call is under way.
+#[cfg(test)]
+static ON_CALL: LazyLock<Mutex<HashMap<String, OnCall>>> = LazyLock::new(Default::default);
+#[cfg(test)]
+type OnCall = Box<dyn FnOnce() + Send>;
+#[cfg(test)]
+pub fn on_call(token: &str, then: impl FnOnce() + Send + 'static) {
+    ON_CALL
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
+        .insert(token.to_owned(), Box::new(then));
+}
+#[cfg(test)]
+fn called(token: &str) {
+    let then = ON_CALL
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
+        .remove(token);
+    if let Some(then) = then {
+        then();
+    }
 }
 
 /// A message the bot posted: its text, the name and photo it went under in place of the app's,

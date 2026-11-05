@@ -62,9 +62,7 @@ pub async fn keep(bot: &Bot, icon: &Value) -> Result<()> {
     let (dsp, team) = (bot.dsp.clone(), bot.team.clone());
     if icon["image_default"] == true {
         if kept.is_some() {
-            bot.state
-                .run(move |db| db.drop_slack_logo(&dsp, &team))
-                .await?;
+            bot.keep(move |db| db.drop_slack_logo(&dsp, &team)).await?;
         }
         return Ok(());
     }
@@ -79,8 +77,7 @@ pub async fn keep(bot: &Bot, icon: &Value) -> Result<()> {
     let picture = bot.picture(&url, MOST).await?;
     kind(&picture).ok_or_else(refused)?;
     let logo = Logo { source, picture };
-    bot.state
-        .run(move |db| db.keep_slack_logo(&dsp, &team, &logo))
+    bot.keep(move |db| db.keep_slack_logo(&dsp, &team, &logo))
         .await
 }
 /// Reads the DSP's workspace `team`'s logo once it was connected, reconnected or updated, so it

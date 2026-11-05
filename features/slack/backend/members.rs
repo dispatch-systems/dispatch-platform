@@ -96,8 +96,7 @@ pub async fn read(bot: &Bot) -> Result<()> {
     }
     let (dsp, team) = (bot.dsp.clone(), bot.team.clone());
     let new = bot
-        .state
-        .run(move |db| db.keep_slack_members(&dsp, &team, &members))
+        .keep(move |db| db.keep_slack_members(&dsp, &team, &members))
         .await?;
     if new {
         events::publish(&bot.state, &bot.dsp, PeopleChanged).await;
@@ -139,8 +138,7 @@ pub async fn told(bot: &Bot, event: &Value, again: bool) -> Result<()> {
     };
     let (dsp, team) = (bot.dsp.clone(), bot.team.clone());
     let new = bot
-        .state
-        .run(move |db| db.keep_slack_member(&dsp, &team, &member))
+        .keep(move |db| db.keep_slack_member(&dsp, &team, &member))
         .await?;
     if new {
         events::publish(&bot.state, &bot.dsp, PeopleChanged).await;
