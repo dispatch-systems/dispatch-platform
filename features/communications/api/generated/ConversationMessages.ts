@@ -17,7 +17,8 @@ export type ConversationMessages = { conversation: Conversation, messages: Array
 more: boolean,
 /**
  * For a driver's work conversation, their route today and the work phone they hold now, as
- * live route data holds them, while it holds today.
+ * live route data holds them, while it holds today. For one with someone's own number or in
+ * Slack, the route they drive today, as their profile reads it, whose van its head shows.
  */
 today: Today | null,
 /**

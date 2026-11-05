@@ -249,7 +249,9 @@ follows each update, and one started since is found by whom it's with. A driver 
 now has the work conversation of the ID that has it, as Driver Match may know them by several,
 started once they have none there; of several IDs with one, however many, the one whose route
 today has the most stops, the route their Today shows, else the first linked; else the latest of
-any of their IDs.
+any of their IDs. Under the head of their conversation by text with their own number and their
+Slack one, beside its number or their role, the van they drive today (Van 214), as their
+profile reads their route; none while they drive none, or Vans names it nothing.
 
 ## Messaging
 
@@ -786,9 +788,10 @@ Behind `communications.use`:
 - `GET …/conversations/{id}`, `?before=<ts>`: a conversation and its fifty latest messages, or
   those before one, in the order written; by text, `ts` is `<at>:<id>`; with whom it's with's
   conversations of each kind (`elsewhere`), for a driver's, their route `today` and each of its
-  days' route and van (`workdays`), and what a message written in it may carry (`limits`: its
-  text's characters, photos, each photo's bytes and their kinds; Slack's own, or as the phones
-  hold a text to).
+  days' route and van (`workdays`), for one with someone's own number or in Slack, the route
+  they drive today (`today`, its van in the head), and what a message written in it may carry
+  (`limits`: its text's characters, photos, each photo's bytes and their kinds; Slack's own, or
+  as the phones hold a text to).
 - `GET …/conversations/{id}/profile`: what the profile shows of whom it's with, a member of a
   workspace or a driver, besides the name, role and photo the conversation has: their route
   `today` (`route`, `van`, `waveAt`, `stops`, `stopsDone`, `pace`, and the work phone they have,
