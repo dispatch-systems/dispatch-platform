@@ -44,14 +44,18 @@ class Dispatch(http: OkHttpClient, private val own: AppVersion) {
 
     /**
      * Waits on the outbox for what Dispatch has for this phone to send; checks the phone in, saying
-     * the app's own version.
+     * the app's own version, and how it stands ([health]) in a header, which a server older than
+     * that ignores.
      */
-    suspend fun outbox(site: String, key: String): Outbox {
+    suspend fun outbox(site: String, key: String, health: Health?): Outbox {
         val url = address(site, "outbox").toHttpUrl().newBuilder()
             .addQueryParameter("version", own.version)
             .addQueryParameter("versionCode", own.versionCode.toString())
             .build()
-        return waiting.call(Request.Builder().url(url).header(AUTHORIZATION, bearer(key)).build())
+        val request = Request.Builder().url(url).header(AUTHORIZATION, bearer(key)).apply {
+            if (health != null) header(HEALTH, wire.encodeToString(health))
+        }
+        return waiting.call(request.build())
     }
 
     /** The app's latest version as the DSP hands it out, which anyone at its address may ask. */
@@ -136,6 +140,7 @@ class Dispatch(http: OkHttpClient, private val own: AppVersion) {
         private const val PATH = "api/communications/phone"
         private const val AUTHORIZATION = "Authorization"
         private const val ORIGIN = "Origin"
+        private const val HEALTH = "X-Dispatch-Health"
         private const val OUTBOX_READ_SECONDS = 40L
         private val JSON = "application/json".toMediaType()
         private val BYTES = "application/octet-stream".toMediaType()

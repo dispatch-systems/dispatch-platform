@@ -1,0 +1,33 @@
+/* The banner atop every page while one of the DSP's phones is down. */
+.phones-down {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--warning-border);
+  background: var(--warning-surface);
+  color: var(--warning);
+  font-size: 13px;
+  font-weight: 600;
+}
+.phones-down > a,
+.phones-down > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: inherit;
+}
+.phones-down > a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.phones-down svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+@media (width <= 640px) {
+  .phones-down {
+    padding: 10px 16px;
+  }
+}

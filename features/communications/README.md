@@ -52,13 +52,15 @@ and every other number's in Recents.
   the browser for, staying off if it refuses, and which shows on only in a browser that has
   allowed it; left out where the browser can't show one, as a phone's.
 - **On every page:** `communications.alerts`, a watcher (`frontend/alerts/`), for those with
-  `communications.use`, alerting them to new messages ([New messages](#new-messages)).
+  `communications.use`, alerting them to new messages ([New messages](#new-messages)), and to the
+  DSP's phones as each goes down; and `communications.phones`, a watcher drawing a banner atop
+  every page while one is down ([Dispatch phones](#dispatch-phones)).
 
 ## The page
 
 - **Communications** in the sidebar, for those with `communications.use`, with how many
-  conversations wait beside it, Slack's and the numbers' texts (`waiting`, read every 30 seconds while the page is closed, and
-  as the number changes while it's open). The page fills the window, however wide (`fills`),
+  conversations wait beside it, Slack's and the numbers' texts (`waiting`, as the banner of phones down reads it, every 30 seconds
+  on every page, and as the number changes while it's open). The page fills the window, however wide (`fills`),
   the list beside the conversation open, each scrolling on its own, and everything on it grows
   with the page's own width, smoothly, from a laptop's to an ultrawide's, then stops (a
   container query on the page). On a wide page, the messages and the box under them keep to a
@@ -265,7 +267,10 @@ decides ([Texts](#texts)).
   connections (`connectionPieces`, `dsp`), while Communications is on: each phone, by its number,
   with its name, model and the app's version, tagged Update while that's older than the one the
   DSP's address hands out, Online once it checked in in the last two minutes, else Offline and
-  for how long, read again every 30 seconds; Rename and Remove in its menu; a name changed and
+  for how long, read again every 30 seconds; what needs attention on it, as it last said it stands
+  (below), in plain words beside it: Can't send texts, Can't read texts, No SIM, No signal, Setup
+  not finished, how many texts wait to go once ten or more do (12 texts waiting to go), and how
+  many pictures it received that its texting app hasn't downloaded; Rename and Remove in its menu; a name changed and
   not saved asks "Save changes?", with only Save and Discard, before the dialog closes; closing
   the browser tab drops it silently. Its routes are refused (`not_found`) while
   Communications is off, though managing all the DSP's connections still lets a member in. With
@@ -285,6 +290,20 @@ decides ([Texts](#texts)).
   it, with its own number, model and the app's version, for a key: 32 random bytes in
   hexadecimal, of which only the SHA-256 is kept. The first phone is named Dispatch, the next
   Phone 2 and so on, until renamed.
+- **How it stands:** each phone says it with each wait on its outbox ([its
+  protocol](api/phone/README.md#how-the-phone-stands-with-each-wait)): its Set up steps undone,
+  whether it may read and send texts, its default texting app, its SIM, what waits on it to go, picture messages not
+  downloaded, why a text last failed and the last error it didn't expect. Dispatch keeps the
+  latest of each phone, written only as it changes.
+- **Down:** a phone an app holds, not the demo's stand-in, that has been offline ten minutes or
+  more, or says it can't send texts (Android doesn't let it, or it has no SIM): a banner atop every
+  page says so to those with `communications.use` (Dispatch phone offline for 25 min, or by its
+  name while the DSP has several; Dispatch phone can't send texts), linking to the card for those
+  who may open it, gone as soon as it's back. It reads them with `waiting`, every 30 seconds on
+  every page, whatever the member chose for alerts, which the sidebar's count shows too, and again
+  as the page's updates see them change. The tab
+  alerting the member of new messages notifies them too, once as each goes down, as they chose
+  Notifications in Message display; one down already as the tab first looks notifies no one.
 - **Removed:** a phone removed keeps its texts; its key works no more, and its next call is
   refused as `phones_removed`. The texts Dispatch queued that still wait on it fail as it's
   removed, with `phones_removed` as their error, filed as they fail; those waiting on a phone
@@ -582,7 +601,7 @@ the page's layout and the variables its parts draw by.
 - `slack/`, with `groups/`: Slack's contacts and workspaces, New message, Copy chat link and
   setting Slack up; messaging a group.
 - `texting/`: Recents' text contacts, a number's actions and Save contact (Add to driver or a
-  name), and phones offline;
+  name), phones offline, and the banner of phones down on every page (`PhonesDown.tsx`);
   `texting/phone/`, the phones' card on DSP Connections, Add phone and Rename phone.
 - `todays-routes/`: Today's Routes' read, list and board, a route's facts, a driver's workdays,
   Pick driver and No work phone.
@@ -649,9 +668,10 @@ Behind `communications.use`:
   there, `chatLink`, whether, on there, it needs updating for what Communications uses,
   `needsUpdate`, and the version of its logo, `logo`, none without one), who is typing, each
   with their person and photo, and the latest change (`revision`).
-- `GET …/waiting`: how many conversations wait, and since when each has, for the sidebar; and the
+- `GET …/waiting`: how many conversations wait, and since when each has, for the sidebar; the
   latest message from whom each is with (`latest`: the conversation, the group it's listed under,
-  their name and the message), for alerts.
+  their name and the message), for alerts; and the DSP's phones an app holds, each online or not,
+  since when, and whether it can't send texts (`phones`), for the banner of phones down.
 - `GET …/updates?after=<revision>&typing=<version>`: the long poll, with the workspaces as they
   are.
 - `GET …/conversations?q=<name>`, or `?before=<lastAt>:<id>`, with `team=<id>` for one
@@ -723,7 +743,7 @@ Behind `phones.manage` or `connections.manage`, while Communications is on (`not
 otherwise), the phones' card's:
 
 - `GET /api/dsp/communications/phones`: the DSP's phones, those removed left out, in the order
-  paired.
+  paired, each with what needs attention on it (`health`), none from an app that never said.
 - `POST …/phones/pairing`: a new code to pair the next phone, in place of any shown before, with
   its picture and when it expires.
 - `GET …/phones/pairing/{id}`: how that code stands: waiting, paired, replaced or expired.
@@ -758,7 +778,8 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   (the driver picked for a work phone on a day, by whom and when). The phone side's, as Phones
   made them before Communications adopted them (its migrations 7 and 8, which find them made on a
   database Phones migrated, and leave Phones' own records of its migrations as they were):
-  `phones_devices` (each phone, by its key's SHA-256), `phones_pairings` (the code that pairs the
+  `phones_devices` (each phone, by its key's SHA-256, and how it last said it stands, `health`,
+  migration 14), `phones_pairings` (the code that pairs the
   next, by its SHA-256, with its ID and when a newer one replaced it), `phones_texts` (each text,
   with its phone, direction, origin, the other party's number, how one Dispatch sent went, each
   attempt at it, and its latest change), `phones_files` (each text's pictures and files, and those

@@ -1,6 +1,7 @@
 //! The texts Dispatch has for a phone to send, waited on, and how each attempt at them went.
 use super::{
     access::{Phone, checked_in},
+    health,
     pairing::VERSION_MOST,
 };
 use crate::backend::{
@@ -28,7 +29,7 @@ use std::{sync::Arc, time::Duration};
 /// How long a phone waiting on its outbox waits before it's answered with nothing.
 const WAIT: Duration = Duration::from_secs(20);
 /// The most characters a phone may say of why a text failed.
-const ERROR_MOST: usize = 500;
+pub(super) const ERROR_MOST: usize = 500;
 /// The highest `versionCode` Android takes.
 const VERSION_CODE_MOST: usize = 2_100_000_000;
 
@@ -96,17 +97,26 @@ impl Outgoing {
     }
 }
 /// Waits, up to twenty seconds, for texts Dispatch has for the phone: checking in, as it does, and
-/// noting the app it runs once that changed.
+/// noting the app it runs and how it says it stands once either changed.
 pub(super) async fn outbox(state: Arc<State>, input: Input, access: Phone) -> Result<Reply> {
     v::fields(&input.query, &["version", "versionCode"])?;
     let running = running(&input.query)?;
+    let health = health::reported(&input)?;
     let caller = checked_in(&state, &input, access).await?;
-    if let Some(app) = running.filter(|app| !caller.device.runs(app)) {
+    let app = running.filter(|app| !caller.device.runs(app));
+    let health = health.filter(|health| caller.device.health.as_ref() != Some(health));
+    if app.is_some() || health.is_some() {
         let asked = input.clone();
         state
             .run_scoped(caller.dsp.clone(), DOMAIN, move |db| {
                 let caller = access.authorize(db, &asked)?;
-                db.phones_app_version(&caller.dsp, &caller.device.id, &app)
+                if let Some(app) = &app {
+                    db.phones_app_version(&caller.dsp, &caller.device.id, app)?;
+                }
+                if let Some(health) = &health {
+                    db.phones_health(&caller.dsp, &caller.device.id, health)?;
+                }
+                Ok(())
             })
             .await?;
     }

@@ -25,7 +25,7 @@ class ReaderTest {
         // Its row is written first, its parts and addresses after.
         val row = Row(Table.MMS, 5, PAIRED + 10, Direction.IN)
         provider.writing += row
-        backgroundScope.launch { reader.run {} }
+        backgroundScope.launch { reader.run({ null }) {} }
         delay(Reader.SETTLE_MS + 1)
         assertTrue(queue.texts.isEmpty())
         assertEquals(setOf(row.key), queue.unread.keys)
@@ -40,7 +40,7 @@ class ReaderTest {
     @Test
     fun readsAgainWithoutAWordFromTheProvider() = runTest {
         inbox.begin("phone_1", PAIRED)
-        backgroundScope.launch { reader.run {} }
+        backgroundScope.launch { reader.run({ null }) {} }
         delay(Reader.SETTLE_MS + 1)
         val row = Row(Table.SMS, 2, PAIRED + 10, Direction.IN)
         provider.messages += Message(row, listOf("(206) 555-0102"), "Gate code?", emptyList())
