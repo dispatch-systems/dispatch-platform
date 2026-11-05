@@ -16,7 +16,7 @@
   flex-direction: column;
   gap: 12px;
 }
-.contact-form label {
+.contact-name {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -60,11 +60,30 @@
   font-weight: 400;
   text-align: left;
 }
-.contact-people button:hover,
-.contact-people button[aria-pressed='true'] {
+.contact-people button:hover {
   background: var(--accent);
+}
+.contact-people button[aria-pressed='true'] {
+  background: var(--muted);
+}
+.contact-people button svg {
+  margin-left: auto;
+  color: var(--primary);
 }
 .contact-people strong {
   font-size: var(--ui-size);
   font-weight: 500;
+}
+.contact-panel .search {
+  width: 100%;
+}
+.contact-panel .search > svg {
+  left: calc(var(--field-height) * 0.3);
+  width: calc(var(--ui-size) + 3px);
+  height: calc(var(--ui-size) + 3px);
+}
+.contact-panel .search input {
+  min-height: var(--field-height);
+  padding-left: calc(var(--field-height) * 0.3 + var(--ui-size) + 11px);
+  font-size: var(--ui-size);
 }

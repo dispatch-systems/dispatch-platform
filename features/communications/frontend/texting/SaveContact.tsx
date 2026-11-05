@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { UserPlus } from 'lucide-react';
+import { Check, UserPlus } from 'lucide-react';
 import type { Conversation, Correspondent, RouteDriver } from '../../api/index.js';
 import { addToPerson, saveContact, useTextPeople } from '../../api/client.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
@@ -97,7 +97,7 @@ export function SaveContact({
             {saving === 'driver' ? (
               <People drivers={drivers} picked={picked} pick={setPicked} />
             ) : (
-              <label>
+              <label className="contact-name">
                 <span>Name</span>
                 <input
                   autoFocus
@@ -169,6 +169,7 @@ function People({
       >
         <Face {...person} size="contact" />
         <strong>{person.name}</strong>
+        {picked?.code === person.code && <Check size={16} aria-hidden="true" />}
       </button>
     </li>
   );
