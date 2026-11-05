@@ -51,7 +51,8 @@ With no version, publish makes a new release, the latest published version bumpe
 aside any release never published, unless that release already holds the same commit, which
 it continues. A version publishes, or finishes publishing, exactly that release.
 DSP Dispatch: Relay's version goes up, by the same bump, only when the commit changed
-android/ since the last released app; otherwise the release carries that app unchanged.
+android/, Markdown aside, since the last released app; otherwise the release carries that app
+unchanged.
 Options: --bump patch|minor|major, --commit REV, --notes PATH, --releases PATH
 Origins: --dev-origin HTTPS_ORIGIN --production-origin HTTPS_ORIGIN
   Or set devOrigin and productionOrigin in CHECKOUT/config/release.json.

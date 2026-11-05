@@ -1,10 +1,10 @@
 //! DSP Dispatch: Relay in a release ([Android apps](../../../../android/README.md#releases)).
 //! The last released app is the `production` entry of the `relay.json` GitHub's latest release
 //! attaches: the release Production installs and the checks carry from, whatever the highest
-//! version is. A release whose commit changed `android/` since then asks its checks for the
-//! app's next version, which they build and sign; any other has them carry the last released
-//! app unchanged. Once an app exists, each release attaches its package's `relay.json` and
-//! Production's APK, which the next release's checks and main's Dev builds read.
+//! version is. A release whose commit changed `android/`, Markdown aside, since then asks its
+//! checks for the app's next version, which they build and sign; any other has them carry the
+//! last released app unchanged. Once an app exists, each release attaches its package's
+//! `relay.json` and Production's APK, which the next release's checks and main's Dev builds read.
 use super::*;
 
 /// The file naming the builds a package carries, in its `dashboard/relay/`, and as a release
@@ -18,6 +18,8 @@ const FIRST: &str = "0.0.1";
 const FILE_MOST: u64 = 64 * 1024;
 /// The largest APK taken, as the build takes it.
 const APK_MOST: u64 = 200 * 1024 * 1024;
+/// What in `android/` isn't the app: its Markdown, which no build reads.
+const APP_IGNORES: &str = ":(exclude,glob)android/**/*.md";
 
 /// Why a release carrying an app unlike the last released one is refused.
 const CARRIES_ANOTHER: &str = "carries another DSP Dispatch: Relay than the last released one";
@@ -187,11 +189,19 @@ impl Release<'_> {
         Ok(version)
     }
     /// The app's version after `last`, as the release's bump asks, `0.0.1` first, when `commit`
-    /// changed `android/` since `last`'s commit; empty when it didn't.
+    /// changed `android/`, Markdown aside, since `last`'s commit; empty when it didn't.
     fn next_app(&self, commit: &str, last: Option<&Build>) -> Result<String> {
         let changed = match last {
             Some(last) => self.git(
-                &["diff", "--name-only", &last.commit, commit, "--", "android"],
+                &[
+                    "diff",
+                    "--name-only",
+                    &last.commit,
+                    commit,
+                    "--",
+                    "android",
+                    APP_IGNORES,
+                ],
                 None,
                 120,
             )?,
