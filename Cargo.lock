@@ -959,6 +959,7 @@ dependencies = [
 name = "dispatch-communications"
 version = "0.0.0"
 dependencies = [
+ "aes-gcm",
  "axum",
  "base64 0.23.1",
  "chrono",
@@ -969,8 +970,11 @@ dependencies = [
  "dispatch-vans-contract",
  "flate2",
  "futures-util",
+ "hkdf",
  "libc",
+ "p256",
  "qrcode",
+ "reqwest",
  "rusqlite",
  "serde",
  "serde_json",
@@ -978,6 +982,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "ts-rs",
+ "url",
 ]
 
 [[package]]

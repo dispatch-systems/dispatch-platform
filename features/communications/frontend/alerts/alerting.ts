@@ -3,7 +3,6 @@ import type { SettingsAnswer } from '../../../../core/settings/api/index.js';
 import { dataCache } from '../../../../core/shell/frontend/runtime/data-cache.js';
 import {
   hashQuery,
-  navigate,
   pageHash,
   parseHash,
 } from '../../../../core/shell/frontend/runtime/navigation.js';
@@ -41,7 +40,7 @@ export function choices(settings: SettingsAnswer | undefined) {
 }
 
 /** The conversation or group open on Communications' page, while it's in front of the member. */
-function inFront(): InFront {
+export function inFront(): InFront {
   if (document.visibilityState !== 'visible' || !document.hasFocus()) return {};
   if (parseHash(location.hash).page !== 'communications') return {};
   const query = hashQuery();
@@ -66,16 +65,10 @@ export function alertMember(access: () => Watching) {
     if (fresh.length && chosen.sound) void chime();
     if (!chosen.notifications) return;
     const card = phonesCard(access());
-    for (const each of phones.fresh) {
-      notify(each.words, '', () => {
-        if (card) navigate(card);
-      });
-    }
+    for (const each of phones.fresh) notify(each.words, '', `phone-down:${each.key}`, card);
     for (const each of fresh) {
       const opens = pageHash(access(), 'communications', { open: each.conversationId });
-      notify(each.from, preview(each.message), () => {
-        if (opens) navigate(opens);
-      });
+      notify(each.from, preview(each.message), each.message.id, opens);
     }
   };
   return lead(`dispatch-communications-alerts:${dsp}:${user}`, (ends) => {

@@ -15,6 +15,7 @@ CREATE TABLE communications_groups ( id TEXT PRIMARY KEY, name TEXT NOT NULL, cr
 CREATE TABLE communications_live_days (day TEXT PRIMARY KEY, ended_at INTEGER, over INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE communications_messages ( id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES communications_conversations (id), ts TEXT NOT NULL, thread_ts TEXT, direction TEXT NOT NULL CHECK (direction IN ('in', 'out')), sent_by TEXT, sender_name TEXT, text TEXT NOT NULL, at INTEGER NOT NULL, edited_at INTEGER, group_id TEXT, UNIQUE (conversation_id, ts) );
 CREATE TABLE communications_picked ( phone TEXT NOT NULL, day TEXT NOT NULL, source TEXT NOT NULL, driver_id TEXT NOT NULL, picked_by TEXT NOT NULL, picked_at INTEGER NOT NULL, PRIMARY KEY (phone, day) );
+CREATE TABLE communications_push ( endpoint TEXT PRIMARY KEY, user_id TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, site TEXT NOT NULL CHECK (site IN ('admin', 'dsp')), created_at INTEGER NOT NULL );
 CREATE TABLE communications_refiling (day TEXT PRIMARY KEY, noted_at INTEGER NOT NULL);
 CREATE TABLE communications_replies ( id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, text TEXT NOT NULL, sent_by TEXT NOT NULL, sender_name TEXT NOT NULL, photos TEXT NOT NULL, posting_since INTEGER NOT NULL, claimed_until INTEGER NOT NULL );
 CREATE TABLE communications_text_conversations ( id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('work', 'number')), source TEXT, driver_id TEXT, number TEXT, state TEXT NOT NULL DEFAULT 'responded' CHECK (state IN ('waiting', 'responded', 'done')), waiting_since INTEGER, last_at INTEGER, done_at INTEGER, done_by TEXT );
@@ -78,6 +79,7 @@ CREATE INDEX communications_group_people_members ON communications_group_people 
 CREATE INDEX communications_groups_latest ON communications_groups (last_at, id);
 CREATE INDEX communications_messages_groups ON communications_messages (group_id, at);
 CREATE INDEX communications_messages_latest ON communications_messages (conversation_id, at);
+CREATE INDEX communications_push_users ON communications_push (user_id);
 CREATE INDEX communications_replies_claimed ON communications_replies (claimed_until);
 CREATE INDEX communications_replies_conversations ON communications_replies (conversation_id);
 CREATE UNIQUE INDEX communications_text_conversations_drivers ON communications_text_conversations (source, driver_id) WHERE driver_id IS NOT NULL;

@@ -41,3 +41,8 @@ at. An invitation's link opens at its DSP's address, the one its email names, an
 page, which it names while the DSP has no short code, and nowhere else. There a DSP's first
 owner sets the DSP up, short code included, as they accept, unless the platform owner already
 gave it one, and is then sent to Sign In at the DSP's address.
+
+Work done for someone without a request of theirs, such as telling them of something new, asks
+`Store::may` whether they would hold a permission at a DSP now, signed in at the address they
+used: their account active and admitted in that address's directory, and their access built as a
+session of theirs acting there has it, the DSP's features as shown to them and the DSP active.

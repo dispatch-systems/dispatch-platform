@@ -18,6 +18,8 @@ ts = ["dep:ts-rs", "dispatch-core/ts"]
 # Core, the collectors it uses, the features it declares and the contracts it reads: nothing else
 # compiles.
 [dependencies]
+# Web Push: each push encrypted for its browser (RFC 8291) and signed by the server (RFC 8292).
+aes-gcm = { workspace = true }
 axum = { workspace = true }
 base64 = { workspace = true }
 # The DSP's days, as the live day begins at its midnight.
@@ -29,13 +31,18 @@ dispatch-slack = { path = "../slack" }
 dispatch-vans-contract = { path = "../vans/contract" }
 flate2 = { workspace = true }
 futures-util = { workspace = true }
+hkdf = { workspace = true }
+p256 = { workspace = true }
 qrcode = { workspace = true }
+# Pushes to the browsers members are told in.
+reqwest = { workspace = true }
 rusqlite = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 tokio = { workspace = true }
 ts-rs = { workspace = true, optional = true }
+url = { workspace = true }
 
 [dev-dependencies]
 dispatch-core = { path = "../../core", features = ["testing"] }

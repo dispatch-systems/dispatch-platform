@@ -26,6 +26,8 @@ mod meal_cache;
 mod meal_driver_match;
 mod network_policy;
 mod oauth;
+#[cfg(feature = "communications")]
+mod on_behalf;
 #[cfg(all(feature = "routes", feature = "communications"))]
 mod todays_routes;
 #[cfg(feature = "weekly_scorecard")]

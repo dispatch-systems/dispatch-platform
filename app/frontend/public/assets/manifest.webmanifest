@@ -1,0 +1,10 @@
+{
+  "name": "Dispatch",
+  "short_name": "Dispatch",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#102c27",
+  "background_color": "#102c27",
+  "icons": [{ "src": "/assets/email-mark.png", "sizes": "96x96", "type": "image/png" }]
+}

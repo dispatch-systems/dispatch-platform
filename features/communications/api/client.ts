@@ -28,6 +28,7 @@ import type {
   PhoneRow,
   Phones,
   Profile,
+  PushKey,
   QuickReplies,
   SentMessage,
   TextContacts,
@@ -69,6 +70,7 @@ const wording: Readonly<Record<string, string>> = {
   communications_reply_sending: 'This message is still sending.',
   communications_photo_kind: 'Photos must be PNG, JPEG or GIF.',
   communications_file_not_found: 'This file is no longer here.',
+  communications_push_off: "Notifications can't reach this browser with Dispatch closed.",
   phones_offline: 'The phone is offline.',
   phones_file_gone: 'This video is no longer on the phone.',
   upload_incomplete: "The photo didn't finish uploading. Try again.",
@@ -109,6 +111,20 @@ export const useCommunicationsWaiting = (poll: number) =>
 /** How many conversations wait, and the latest message each waits on. */
 export const getWaiting = (signal: AbortSignal) =>
   api<CommunicationsWaiting>(waitingUrl, undefined, signal);
+/** The key a browser subscribes with to be told of new messages with Dispatch closed: none while
+ * the server pushes nothing. */
+const pushKeyUrl = `${communicationsUrl}/push`;
+export const getPushKey = (signal?: AbortSignal) => api<PushKey>(pushKeyUrl, undefined, signal);
+export const usePushKey = () => useCachedData<PushKey>(pushKeyUrl);
+/** Keeps this browser's subscription, `endpoint` and its `keys`, as the member's. */
+export const keepPushing = (
+  endpoint: string,
+  keys: { p256dh: string; auth: string },
+  signal?: AbortSignal,
+) => api<{ ok: true }>(`${communicationsUrl}/push`, { endpoint, keys }, signal);
+/** Lets go of the member's browser at `endpoint`. */
+export const stopPushing = (endpoint: string, signal?: AbortSignal) =>
+  api<{ ok: true }>(`${communicationsUrl}/push/remove`, { endpoint }, signal);
 /** What changed since `after`, and who is typing, once either differs from what the page has. */
 export const getCommunicationsUpdates = (after: number, typing: number, signal: AbortSignal) =>
   api<CommunicationsUpdates>(

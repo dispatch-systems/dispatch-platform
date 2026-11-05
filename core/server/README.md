@@ -17,6 +17,10 @@ streams a file back under the name it's saved as, and `Reply::picture` answers o
 shows, which the browser keeps for a week for that view of the DSP: its address names the
 version, so a changed picture comes at a new one.
 
+The built dashboard is served from memory, loaded as the server starts: its page at `/`, its
+files at `/assets/`, and at `/service-worker.js` the worker that shows what the server pushes to a
+browser, at the root so it serves every page of its address.
+
 The server answers at three kinds of address, each its own origin: the platform owner's admin
 (`DISPATCH_ORIGIN`), the invite page where a new DSP's first owner sets it up
 (`DISPATCH_INVITE_ORIGIN`), and each DSP's own (`DISPATCH_DSP_ORIGIN`, its short code in place

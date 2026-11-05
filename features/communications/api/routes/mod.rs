@@ -9,14 +9,16 @@
 //! The handlers, by concern: the list, what changes in it and finding conversations (`inbox`); a
 //! conversation of either kind, through the backend's `dispatcher`, and Slack's contacts
 //! (`conversations`); what only texts have (`texts`); groups (`groups`); photos, files and
-//! pictures (`files`); the DSP's quick replies (`replies`); and the DSP's phones (`phones`). Reading the IDs and pages they name is
-//! here, below. Its writes of conversations change only Communications' own data (`changes`), so
+//! pictures (`files`); the DSP's quick replies (`replies`); telling the member of new messages
+//! with Dispatch closed (`push`); and the DSP's phones (`phones`). Reading the IDs and pages they
+//! name is here, below. Its writes of conversations change only Communications' own data (`changes`), so
 //! they leave the DSP's other cached reads, as who is who, as they were.
 mod conversations;
 mod files;
 mod groups;
 mod inbox;
 mod phones;
+mod push;
 mod replies;
 mod texts;
 
@@ -205,6 +207,14 @@ pub fn routes() -> Vec<Route> {
             USE,
             files::logo,
         ),
+        read("/api/dsp/communications/push", USE, push::key),
+        async_post("/api/dsp/communications/push", USE, push::subscribe),
+        write(
+            "/api/dsp/communications/push/remove",
+            USE,
+            push::unsubscribe,
+        )
+        .changes(DOMAIN),
         protocol(Method::GET, initials::PATH, |_, request| {
             Box::pin(async move { files::picture(request) })
         }),

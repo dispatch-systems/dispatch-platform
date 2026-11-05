@@ -256,6 +256,37 @@ impl Store {
         ensure(c.allows(permission), "permission_denied", 403)?;
         Ok(c)
     }
+    /// Whether `user`, signed in at `site`, would hold `permission` at `dsp` now, for work done
+    /// for them without a request of theirs: their account active in the directory `site` signs
+    /// in against and admitted there, and their access built as a session of theirs acting at
+    /// `dsp` has it, with the DSP's features as shown to them and the DSP active.
+    pub fn may(&self, user: &str, site: &Site, dsp: &str, permission: &str) -> Result<bool> {
+        let Some(scope) = self.site_directory(site)? else {
+            return Ok(false);
+        };
+        let directory = self.directory(scope.as_deref())?;
+        let Some(row) = UserRow::find(&directory, "id", user)?.filter(UserRow::active) else {
+            return Ok(false);
+        };
+        if !admitted(&directory, &row.user, scope.as_deref())? {
+            return Ok(false);
+        }
+        let a = Auth {
+            user: row.user,
+            hash: String::new(),
+            csrf: String::new(),
+            raw: String::new(),
+            preview: None,
+            site: site.clone(),
+            scope,
+        };
+        match self.context(&a, dsp, permission) {
+            Ok(_) => Ok(true),
+            // Refused as a session of theirs would be.
+            Err(error) if error.status < 500 => Ok(false),
+            Err(error) => Err(error),
+        }
+    }
     pub fn revalidate(&self, c: &Context, permission: &str) -> Result<Context> {
         let a = Auth {
             preview: c.auth.preview.clone(),

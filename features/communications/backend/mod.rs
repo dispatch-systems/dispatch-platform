@@ -27,6 +27,7 @@
 //! - `texts`: the texts the DSP's dispatch phones relay, each filed in a conversation, and
 //!   answering by text; `phone`, the phones themselves, pairing them, the texts they relay and
 //!   Dispatch's queued for them, and their bytes, knowing nothing of conversations.
+//! - `push`: telling members of new messages with Dispatch closed, or on a phone (Web Push).
 //! - `text`: Slack's markup, as Communications keeps and sends text.
 //! - `display`: how the page looks to each member, their own in Settings; `quick_replies`, the
 //!   DSP's short answers to put in what's written, edited in Settings by anyone who uses it.
@@ -47,6 +48,7 @@ pub(crate) mod model;
 pub(crate) mod people;
 pub(crate) mod phone;
 pub(crate) mod profile;
+pub(crate) mod push;
 pub(crate) mod quick_replies;
 pub(crate) mod reply;
 pub(crate) mod search;

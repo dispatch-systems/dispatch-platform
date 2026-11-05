@@ -191,3 +191,17 @@ pub struct CommunicationsUpdates {
     pub routes: bool,
     pub phones: Vec<DispatchPhone>,
 }
+
+/// `GET /api/dsp/communications/push`: the key this server's pushes are signed with, which a
+/// browser subscribes with to be told of new messages with Dispatch closed; none while it pushes
+/// nothing.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct PushKey {
+    pub key: Option<String>,
+}

@@ -16,6 +16,7 @@ GET /api/dsp/communications/groups/{id} Dsp("communications.use") Read
 GET /api/dsp/communications/groups/{id}/people Dsp("communications.use") Read
 GET /api/dsp/communications/phones Dsp("connections.manage|phones.manage") Read
 GET /api/dsp/communications/phones/pairing/{id} Dsp("connections.manage|phones.manage") Read
+GET /api/dsp/communications/push Dsp("communications.use") Read
 GET /api/dsp/communications/quick-replies Dsp("communications.use") Read
 GET /api/dsp/communications/routes Dsp("communications.use") Read
 GET /api/dsp/communications/texts/contacts Dsp("communications.use") Read
@@ -49,6 +50,8 @@ POST /api/dsp/communications/groups/{id}/messages Dsp("communications.use") Asyn
 POST /api/dsp/communications/phones/pairing Dsp("connections.manage|phones.manage") Write
 POST /api/dsp/communications/phones/{id}/remove Dsp("connections.manage|phones.manage") Async
 POST /api/dsp/communications/phones/{id}/rename Dsp("connections.manage|phones.manage") Write
+POST /api/dsp/communications/push Dsp("communications.use") Async
+POST /api/dsp/communications/push/remove Dsp("communications.use") Scoped(DataDomain("communications"))
 POST /api/dsp/communications/quick-replies Dsp("communications.use") Scoped(DataDomain("communications"))
 POST /api/dsp/communications/texts/conversations Dsp("communications.use") Scoped(DataDomain("communications"))
 POST /api/dsp/communications/texts/files/{id}/fetch Dsp("communications.use") Async
