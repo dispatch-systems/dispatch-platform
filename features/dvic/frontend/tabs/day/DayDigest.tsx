@@ -111,7 +111,7 @@ export function DayDigest({
   const repeat = summary?.repeatDrivers ?? [];
   const count = summary?.count ?? 0;
   const groups = [
-    { vehicles: 'non-dot', label: 'Non-DOT · Cargo Van & CDV', total: summary?.nonDot ?? 0 },
+    { vehicles: 'non-dot', label: 'Non-DOT · Cargo Van, CDV & EDV', total: summary?.nonDot ?? 0 },
     { vehicles: 'dot', label: 'DOT · Step Van', total: summary?.dot ?? 0 },
   ] as const;
   return (

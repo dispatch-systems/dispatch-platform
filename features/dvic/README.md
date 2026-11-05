@@ -17,7 +17,7 @@ entire selection, independently of paging. Source wall times stay unchanged. It 
 core's live collection updates (`live`, for `dvic.view`): a run that ends,
 wherever it started, refreshes it at once, and one in progress is read every five seconds,
 since a DVIC run is announced only as it ends.
-CV/CDV inspections shorter than 90 seconds and SV inspections shorter than 300 seconds
+CV/CDV/EDV inspections shorter than 90 seconds and SV inspections shorter than 300 seconds
 are exceptions. Exactly 90/300 seconds meets the minimum. Unknown vehicle types fail
 validation rather than guessing a threshold.
 

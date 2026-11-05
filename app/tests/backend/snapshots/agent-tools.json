@@ -782,7 +782,7 @@
             },
             "id": {"description": "Their ID it's under.", "type": "string"},
             "vehicle_type": {
-              "description": "CV, CDV or SV: 90 seconds is the minimum for the first two, 300 for a step van.",
+              "description": "CV, CDV, EDV or SV: 90 seconds is the minimum for the first three, 300 for a step van.",
               "type": "string"
             },
             "vin": {"type": "string"},
@@ -963,7 +963,7 @@
             "driver": {"type": "string"},
             "driver_id": {"description": "The driver's Amazon transporter ID.", "type": "string"},
             "vehicle_type": {
-              "description": "CV, CDV or SV: 90 seconds is the minimum for the first two, 300 for a step van.",
+              "description": "CV, CDV, EDV or SV: 90 seconds is the minimum for the first three, 300 for a step van.",
               "type": "string"
             },
             "vin": {"type": "string"},

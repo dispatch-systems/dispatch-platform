@@ -389,7 +389,7 @@ fn legacy_unverified_reports_and_inspections_stay_quarantined() {
 fn thresholds_are_strict_and_publication_weeks_follow_iso_including_year_rollover() {
     let capture = dvic::fixture(&request(&["2026-W39"])).unwrap();
     let mut row = capture.reports[0].rows.as_ref().unwrap()[0].clone();
-    for (fleet, min) in [("CV", 90.0), ("CDV", 90.0), ("SV", 300.0)] {
+    for (fleet, min) in [("CV", 90.0), ("CDV", 90.0), ("EDV", 90.0), ("SV", 300.0)] {
         row.fleet_type = fleet.into();
         row.duration = min - 0.1;
         assert!(row.is_short().unwrap());

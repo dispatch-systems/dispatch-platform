@@ -128,7 +128,7 @@ pub struct Inspection {
 impl Inspection {
     pub fn minimum_seconds(&self) -> Result<i64> {
         match self.fleet_type.as_str() {
-            "CV" | "CDV" => Ok(90),
+            "CV" | "CDV" | "EDV" => Ok(90),
             "SV" => Ok(300),
             _ => Err(Error::new("dvic_fleet_type_unknown", 502)),
         }
