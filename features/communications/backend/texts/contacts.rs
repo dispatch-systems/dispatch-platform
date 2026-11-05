@@ -147,7 +147,7 @@ pub fn addable(db: &Store, state: &State, dsp: &str) -> Result<TextPeople> {
             .everyone()
             .iter()
             .filter(|person| !person.role.left())
-            .map(|person| People::known(person))
+            .map(People::known)
             .collect(),
     })
 }
