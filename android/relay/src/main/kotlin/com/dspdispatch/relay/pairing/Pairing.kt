@@ -27,6 +27,18 @@ data class Paired(
     val subscription: Int = SubscriptionManager.INVALID_SUBSCRIPTION_ID,
 )
 
+/** What [open] answers once the keystore can be read: asked again after a growing pause while it can't. */
+internal suspend fun <T> reached(open: () -> T): T {
+    var failures = 0
+    while (true) {
+        try {
+            return open()
+        } catch (_: Vault.Unreachable) {
+            delay(backoff(++failures))
+        }
+    }
+}
+
 /** Where the phone stands with its DSP: paired, never paired, or removed by the DSP. */
 sealed interface Standing {
     data object Unpaired : Standing
@@ -54,14 +66,7 @@ class Pairings(context: Context) {
      */
     suspend fun key(): String? {
         val sealed = prefs.getString(KEY, null) ?: return null
-        var failures = 0
-        while (true) {
-            try {
-                return Vault.open(sealed)
-            } catch (_: Vault.Unreachable) {
-                delay(backoff(++failures))
-            }
-        }
+        return reached { Vault.open(sealed) }
     }
 
     fun save(paired: Paired, key: String) {

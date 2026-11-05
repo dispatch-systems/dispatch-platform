@@ -184,7 +184,7 @@ class Sender(
             // Near Android's SMS limit it goes as a picture message, or fails where it can't: as SMS,
             // Android would hold it behind the phone's prompt.
             if (!busy(parts.texts.size)) {
-                hand(send, parts.texts.size, parts.joined, mms = false) { line.sms(send, parts) }
+                hand(text, send, parts.texts.size, parts.joined, mms = false) { line.sms(send, parts) }
                 return
             }
         }
@@ -211,13 +211,10 @@ class Sender(
         return limits ?: null.also { sends.failed(send, Failure.MMS_OFF, now()) }
     }
 
-    /**
-     * Sends [text] as a picture message on [line], within the carrier's [limits], unless fetching its
-     * files took it past its time.
-     */
+    /** Sends [text] as a picture message on [line], within the carrier's [limits]. */
     private suspend fun sendMms(paired: Paired, key: String, line: Line, limits: MmsLimits, text: OutgoingText, send: Send) {
         val pdu = compose(paired, key, limits, text, send) ?: return
-        if (expired(text, send) || !hand(send, 1, joined = false, mms = true) { line.mms(send, pdu) }) pdu.delete()
+        if (!hand(text, send, 1, joined = false, mms = true) { line.mms(send, pdu) }) pdu.delete()
     }
 
     /** Whether [text] is past its time to start, by the phone's clock: [send] failed if so. */
@@ -241,12 +238,14 @@ class Sender(
     private suspend fun notSent(send: Send) = sends.failed(send, Failure.NOT_SENT, now())
 
     /**
-     * Hands [send] to Android in [parts] parts, [joined] as one message or not, as a picture message
-     * if [mms], by [go], kept as handed first, so it's never sent twice; answers whether Android
-     * took it.
+     * Hands [send], of [text], to Android in [parts] parts, [joined] as one message or not, as a
+     * picture message if [mms], by [go], kept as handed first, so it's never sent twice; answers
+     * whether Android took it. Never once [text] is past its time, as it may be once kept so: all
+     * else it waited on, its files fetched and the phone's database written, may take a while.
      */
-    private suspend fun hand(send: Send, parts: Int, joined: Boolean, mms: Boolean, go: () -> Unit): Boolean {
+    private suspend fun hand(text: OutgoingText, send: Send, parts: Int, joined: Boolean, mms: Boolean, go: () -> Unit): Boolean {
         sends.handed(send, parts, joined, now(), mms)
+        if (expired(text, send)) return false
         return try {
             go()
             true

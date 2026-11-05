@@ -7,7 +7,6 @@ import android.util.Base64
 import java.io.IOException
 import java.security.GeneralSecurityException
 import java.security.KeyStore
-import java.security.UnrecoverableEntryException
 import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -34,20 +33,27 @@ internal object Vault {
      * The secret [seal] sealed, or null once it can never be read, as after the keystore lost its
      * key; [Unreachable] while the keystore can't be read just now, as it's still starting.
      */
-    fun open(sealed: String): String? = try {
+    fun open(sealed: String): String? = opened {
         val bytes = Base64.decode(sealed, Base64.NO_WRAP)
-        val key = key() ?: return null
+        val key = key() ?: return@opened null
         val cipher = Cipher.getInstance(CIPHER).apply {
             init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(TAG_BITS, bytes, 0, IV_BYTES))
         }
         String(cipher.doFinal(bytes, IV_BYTES, bytes.size - IV_BYTES))
+    }
+
+    /**
+     * What [read], opening a secret, answers: null once it fails for a reason that won't pass;
+     * [Unreachable] for any other failure, as the keystore's own, which it wraps in an
+     * `UnrecoverableKeyException` whether it lost the key or only couldn't reach it now.
+     */
+    internal fun opened(read: () -> String?): String? = try {
+        read()
     } catch (_: IllegalArgumentException) {
         // Not something sealed.
         null
     } catch (_: AEADBadTagException) {
         // Sealed by a key the keystore no longer has.
-        null
-    } catch (_: UnrecoverableEntryException) {
         null
     } catch (_: KeyPermanentlyInvalidatedException) {
         null
@@ -64,12 +70,13 @@ internal object Vault {
     class Unreachable(cause: Exception) : Exception(cause)
 
     /**
-     * The keystore's key, if it has one. Never made as a secret is opened: that would replace one
-     * the keystore didn't give a moment.
+     * The keystore's key, or null when it has none. Never made as a secret is opened: that would
+     * replace one the keystore didn't give a moment. Asked for itself, as `getEntry` takes a failure
+     * to read what the key is for having none.
      */
     private fun key(): SecretKey? {
         val store = KeyStore.getInstance(STORE).apply { load(null) }
-        return (store.getEntry(ALIAS, null) as? KeyStore.SecretKeyEntry)?.secretKey
+        return store.getKey(ALIAS, null) as? SecretKey
     }
 
     private fun made(): SecretKey = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, STORE).apply {

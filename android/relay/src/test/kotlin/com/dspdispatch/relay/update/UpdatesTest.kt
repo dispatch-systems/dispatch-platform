@@ -199,6 +199,35 @@ class UpdatesTest {
     }
 
     @Test
+    fun keepsTheApkThroughATryWhoseDetailsCouldNotBeHad() = runTest {
+        installer.outcome = Outcome.FAILED
+        var reachable = true
+        val downloads = mutableListOf<String>()
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest) = when {
+                !reachable -> json(503, """{"error":"platform_busy"}""")
+                request.url.encodedPath.endsWith("/download") -> download(bytes).also { downloads += "apk" }
+                else -> details(bytes)
+            }
+        }
+        val updates = updates()
+        updates.heard(site, newer)
+        installer.tries.receive()
+        updates.update.first { it == Update.Available(newer, Problem.INSTALL) }
+        reachable = false
+        clock += Updates.RETRIES_MS[0]
+        updates.heard(site, newer)
+        updates.update.first { it == Update.Available(newer, Problem.DOWNLOAD) }
+        reachable = true
+        installer.outcome = Outcome.INSTALLED
+        clock += Updates.RETRIES_MS[1]
+        updates.heard(site, newer)
+        installer.tries.receive()
+        assertEquals(listOf(bytes.toList(), bytes.toList()), installer.installs.map(ByteArray::toList))
+        assertEquals(listOf("apk"), downloads)
+    }
+
+    @Test
     fun triesAgainAtOnceWhenThePersonAsksAfterRefusing() = runTest {
         installer.outcome = Outcome.REFUSED
         val updates = updates()
