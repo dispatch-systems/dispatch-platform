@@ -104,6 +104,51 @@ async fn a_driver_picked_for_a_work_phone_nobody_has_keeps_its_texts_of_today_un
 }
 
 #[tokio::test]
+async fn a_driver_picked_for_a_work_phone_is_answered_at_it_rather_than_their_own_latest() {
+    let (_root, state, dsp) = started();
+    let (zone, day) = today(&state, &dsp).await;
+    let today = day.to_string();
+    // Avery drives CX14 with 0101 as their latest; 0103, a work phone yesterday, nobody's today,
+    // texts.
+    routed(
+        &dsp,
+        vec![route(
+            &today,
+            "A1",
+            "CX14",
+            "1FTVAN214",
+            168,
+            at(zone, day, 9, 20),
+        )],
+    );
+    let avery = phones(&[("A1", "2065550101")]);
+    let earlier = vec![saved(day.pred_opt().unwrap(), &[("C1", "2065550103")])];
+    phoned(&state, &dsp, Some(&today), avery, earlier).await;
+    let asked = texted(
+        &state,
+        &dsp,
+        "+12065550103",
+        "This is Avery, my phone died",
+        at(zone, day, 9, 0),
+    )
+    .await;
+    let phone = filed(&state, &dsp, &asked).await;
+
+    // Picked for it, Avery is answered at 0103, where they asked from.
+    let avery = picked(&state, &dsp, &phone.id, "A1").await.unwrap();
+    let c = member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+    send(&state, &c, USE, &avery.id, "Got it", &[])
+        .await
+        .unwrap();
+    let went: Vec<String> = sent(&state, &dsp)
+        .await
+        .into_iter()
+        .map(|(to, ..)| to)
+        .collect();
+    assert_eq!(went, ["+12065550103"]);
+}
+
+#[tokio::test]
 async fn a_work_phone_two_drivers_have_is_its_own_until_one_is_picked_for_it() {
     let (_root, state, dsp) = started();
     let (zone, day) = today(&state, &dsp).await;
