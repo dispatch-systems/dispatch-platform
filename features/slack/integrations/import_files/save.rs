@@ -8,7 +8,7 @@ use super::{
     storage::{Described, Import, ImportStore, Outcome, Status},
 };
 use crate::backend::{author, bot::Bot, channel_links::storage::LinkStore};
-use dispatch_core::{Error, Result, State, db::now, server::http::upload::Upload};
+use dispatch_core::{Code, Error, Result, State, db::now, server::http::upload::Upload};
 use dispatch_documents_contract::{self as files, Incoming};
 use serde_json::json;
 use std::sync::Arc;
@@ -127,7 +127,7 @@ fn failure(import: &Import, error: &Error) -> Outcome {
     if ["slack_needs_update", "slack_connection_broken"].contains(&error.code.as_str()) {
         return wait(&error.code);
     }
-    if error.code == "dsp_unavailable" {
+    if error.is(Code::DspUnavailable) {
         return Outcome::Later {
             reason: error.code.clone(),
             at: now(),

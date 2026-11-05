@@ -12,7 +12,7 @@ use crate::backend::{
     bot::Bot,
     slack::{Bytestream, Slack},
 };
-use dispatch_core::{Error, Result, State, db::now};
+use dispatch_core::{Code, Error, Result, State, db::now};
 use dispatch_documents_contract::{self as files, Author, Page};
 use futures_util::TryStreamExt;
 use serde_json::{Value, json};
@@ -264,7 +264,7 @@ fn failure(canvas: &Canvas, error: &Error) -> Outcome {
     if ["slack_needs_update", "slack_connection_broken"].contains(&error.code.as_str()) {
         return wait(&error.code);
     }
-    if error.code == "dsp_unavailable" {
+    if error.is(Code::DspUnavailable) {
         return Outcome::Later {
             reason: error.code.clone(),
             at: now(),

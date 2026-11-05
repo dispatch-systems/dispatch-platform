@@ -605,7 +605,7 @@ fn failure(item: &Due, error: &Error, unposted: bool) -> Outcome {
             unposted,
         };
     }
-    if code == "dsp_unavailable" {
+    if error.is(Code::DspUnavailable) {
         return Outcome::Later {
             reason: code,
             at: now(),
