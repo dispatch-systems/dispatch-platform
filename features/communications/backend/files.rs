@@ -1,4 +1,4 @@
-//! The photos and files attached to messages, kept in Dispatch, in the DSP's own data, so they
+//! The photos and files attached to messages, kept in Dispatch, as `bytes` keeps them, so they
 //! outlive Slack: each by its bytes' SHA-256, so one sent twice is kept once. A member's are
 //! downloaded from Slack (`files:read`): each kept in the DSP's database until it is, tried at
 //! once, then, when it fails, after a minute, five, fifteen, an hour, three, six and twelve, and

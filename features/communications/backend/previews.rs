@@ -1,11 +1,14 @@
 //! Small previews of the pictures messages carry, which a thread shows until one is opened: at
 //! most `SIDE` pixels a side, turned upright, as a JPEG. Each is made from the picture's bytes the
-//! first time it's asked for and kept in the DSP's cache, since the bytes make it again; those
-//! asking for one at once share its making. A few are made at a time, so pictures arriving
-//! together leave the server's processors and memory to everything else. A picture small enough
-//! already, or one that can't be read as a picture, has none: it's shown as it is. A preview that
-//! can't be kept is shown all the same.
-use super::bytes::{Folder, Reading};
+//! first time it's asked for and kept in the DSP's cache, since the bytes make it again, for as
+//! long as a file keeps the bytes (`Folder::reconcile`) and the server's limit of cached copies
+//! leaves it (`bytes::bound`); those asking for one at once share its making, and bringing its
+//! picture down from the object store when the server has no copy of it. A few are made at a
+//! time, so pictures arriving together leave the server's processors and memory to everything
+//! else. A picture small enough already, one that can't be read as a picture, or one only the
+//! object store has while the DSP's cache can't be used to bring it down, has none: it's shown as
+//! it is. A preview that can't be kept is shown all the same.
+use super::bytes::{self, Folder, Reading};
 use dispatch_core::{
     Error, Result, State, foundation::crypto, foundation::observability, server::http::input::Reply,
 };
@@ -61,9 +64,6 @@ pub async fn preview(
     {
         return Ok(Some(reading));
     }
-    let Some(bytes) = folder.located(state, dsp, sha256).await? else {
-        return Ok(None);
-    };
     let underway = kept.as_deref().ok().map(Underway::join);
     let _turn = match (&underway, &kept) {
         (Some(underway), Ok(kept)) => {
@@ -75,6 +75,10 @@ pub async fn preview(
             Some(turn)
         }
         _ => None,
+    };
+    // In its turn, so those asking at once share bringing the picture down.
+    let Some(bytes) = folder.located(state, dsp, sha256).await? else {
+        return Ok(None);
     };
     let turn = MAKING
         .clone()
@@ -128,9 +132,10 @@ pub async fn answer(
     }))
 }
 
-/// The preview kept at `path`, when there is one.
+/// The preview kept at `path`, when there is one, marked read now, as the cache keeps what was
+/// read most recently.
 async fn opened(path: &Path) -> Option<Reading> {
-    let file = tokio::fs::File::open(path).await.ok()?;
+    let file = bytes::read_now(path).await?;
     Some(Reading::of(file).await)
 }
 

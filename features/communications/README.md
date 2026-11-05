@@ -569,8 +569,8 @@ in their own direct message with the app, and their answers come back together.
   second, five and thirty seconds after it fails, then left to catching up, the failure logged as
   `communications_heard_failed` with its DSP and code alone.
 - **Deletions:** a message deleted in Slack stays.
-- **Photos and files:** downloaded from Slack into Dispatch, kept in the DSP's own data
-  (`data/communications/files/`, by their bytes' SHA-256), so they outlive Slack. Each is tried
+- **Photos and files:** downloaded from Slack into Dispatch, kept by their bytes' SHA-256 as
+  every picture and file is ([Data and upkeep](#data-and-upkeep)), so they outlive Slack. Each is tried
   at once, then, when it fails, after a minute, five, fifteen, an hour, three, six and twelve,
   and given up after that; it waits, uncounted, while the workspace's admin hasn't approved
   reading files or the workspace needs reconnecting. One of a workspace the DSP no longer has
@@ -918,8 +918,8 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   waiting, sent with their message, or not sent and why), `communications_group_uploads` (a
   group message's photos as uploaded to each workspace) and `communications_replies` (each answer
   noted on its way to Slack, until it's kept or found not to be there; migration 15); the files'
-  bytes in the DSP's data,
-  `data/communications/files/`, which backups keep. By text: `communications_text_conversations`
+  bytes by their SHA-256, `data/communications/files/` until they're in the object store (below).
+  By text: `communications_text_conversations`
   (each a driver's, a work phone's nobody had, or a number's), on each text's own row
   (`phones_texts`, below) the conversation it's filed in, none while it waits to be, the name its
   sender was shown by, whether its number was blocked as it came and the Done that covered it
@@ -946,10 +946,28 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   `phones_attempts` (each earlier attempt at a text Dispatch sent, by the phone it was given to,
   kept as Retry queues the next: migration 12), and, on `phones_files`, a video its phone keeps,
   with the picture of its first frame, when it was last asked for and its phone told, when its
-  bytes came, and when its phone said it has it no more (migration 16); the files' bytes in
-  the DSP's data, `data/phones/files/`, by their SHA-256, which backups keep. In either folder
-  (`bytes`), bytes arrive beside those kept, and take their place, and are let go, only under the
+  bytes came, and when its phone said it has it no more (migration 16); the files' bytes by their
+  SHA-256, `data/phones/files/` until they're in the object store. In either folder (`bytes`),
+  bytes arrive beside those kept, and take their place, and are let go, only under the
   platform's write lock with the files that keep them. Kept until the DSP is deleted, as the rest.
+- **Where pictures and files are kept:** with an object store, core's bucket of Cloudflare R2
+  (`db::objects`, one for each environment), it keeps them for good, each by
+  `dsps/<dsp>/<phones|communications>/<sha256>`, a key the server makes of the DSP it checked,
+  never of what a request names. New bytes wait in the DSP's data, which backups keep, until
+  upkeep has copied them there. Until `R2_ONLY` is set (core's), they stay in the DSP's data
+  too, marked copied in its cache (`cache/<phones|communications>/copied/`), so a release that
+  reads only the disk, as one a rollback returns to, finds every one; once it's set, that copy
+  becomes the server's cached one, in the DSP's cache (`cache/<phones|communications>/files/`),
+  which backups leave out. Bytes are read from the DSP's data, opened before the cache is looked
+  at, else its cache, else the object store, cached again as they come down, or uncached when
+  the cache can't be used, so bytes the server has never wait on R2, nor on its cache; reading a
+  cached copy or a preview marks it read. Those asking for a preview at once share bringing its
+  picture down. The
+  server keeps every DSP's cached copies and previews within its limit, `PICTURE_CACHE_MB`
+  megabytes (10 GB unless the environment says), letting go of those read longest ago first; never
+  of bytes in a DSP's data. Without an object store (none of `R2_ACCOUNT_ID`, `R2_BUCKET`,
+  `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` set, as in development and tests), bytes stay in
+  the DSP's data, as they always did.
 - **Upkeep:** catching up hourly and as the server starts; downloading what's due, keeping
   answers that went to Slack unkept, sending what's due to go to groups' people and giving up
   those too late, filing texts waiting to be filed, those waiting ten minutes under their number,
@@ -965,10 +983,20 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   keeps, as bytes sent again in place of others and a removal that failed leave, and of bytes left
   arriving an hour, as a restart leaves, each on its own; and of codes expired. Each of these jobs
   runs on its own too: one that fails, logged as `phones_tidy_failed` with its DSP and job, leaves
-  the rest to run, and is tried again the next hour. And every minute, while the server pushes,
-  each DSP with Communications on and a browser kept is watched for what to push, as after a
-  restart; one whose pushes fail is logged as `communications_push_failed` with its DSP, and one a
-  push service refused twice as `communications_push_refused` with its status, never its address.
+  the rest to run, and is tried again the next hour. Either's letting go of bytes lets go of their
+  cached copies and previews too, and of previews left being made an hour, as a restart leaves.
+  And hourly, with an object store, in each DSP with Communications on, for each store of bytes
+  (`copies`): letting go of what the object store keeps that no file does, once a day, as listing
+  it is paid for by the page; then copying what waits in the DSP's data to it, a hundred at a
+  time, keeping the cache within its limit after each hundred, and, once `R2_ONLY` is set, making
+  each the cached copy. And hourly, in a task of its own, so copying never holds it up: keeping
+  the cache within its limit. Each on its own: one that fails, logged as
+  `communications_copies_failed` with its DSP, store and job, is tried again the next hour, its
+  bytes still waiting in the DSP's data, and R2 being down or slow holds up no text or message.
+  And every minute, while the server pushes, each DSP with Communications on and a browser kept
+  is watched for what to push, as after a restart; one whose pushes fail is logged as
+  `communications_push_failed` with its DSP, and one a push service refused twice as
+  `communications_push_refused` with its status, never its address.
 - **Fixture mode** never calls Slack: Slack's fixture answers what Slack itself calls, and
   `integrations/messages/fixture.rs` what only Communications does. Each member's direct
   message with the app is `D` and the rest of their ID, and holds what the app posted there, as
@@ -982,3 +1010,6 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   bytes in base64url, as `npx web-push generate-vapid-keys` prints one; its public key follows from
   it. Without one the server pushes nothing, but in fixture mode, which makes a pair for its run;
   one that isn't a key is logged as `communications_push_key_invalid`, and nothing is pushed.
+  `PICTURE_CACHE_MB`, how many megabytes of cached pictures and files the server keeps:
+  `DISPATCH_DEV_PICTURE_CACHE_MB` on Dev and its previews, `DISPATCH_PRODUCTION_PICTURE_CACHE_MB`
+  on Production; 10 GB unless it's set. The object store, and `R2_ONLY`, are core's.

@@ -38,6 +38,24 @@ pub struct Config {
     pub mail_worker_token: Option<String>,
     pub smtp_url: Option<String>,
     pub mail_from: Option<String>,
+    /// The bucket the DSPs' pictures are kept in (`db::objects`): none keeps them on this
+    /// server's disk alone.
+    pub objects: Option<ObjectStore>,
+}
+/// A bucket of Cloudflare R2, spoken to as S3 is, and the key that may use it. Its secret is
+/// never shown: it has no `Debug`.
+#[derive(Clone)]
+pub struct ObjectStore {
+    /// Where it answers: the account's R2 address.
+    pub endpoint: String,
+    pub bucket: String,
+    pub access_key_id: String,
+    pub secret_access_key: String,
+    /// Whether the bytes it keeps may leave the server's disk, to be read back from it as
+    /// they're needed (`R2_ONLY`, `1`): off, they're copied to it and stay on disk too, so a
+    /// release that reads only the disk still finds them. Turned on once the release a rollback
+    /// would return to reads the object store.
+    pub only: bool,
 }
 fn variable(name: &str, fallback: &str) -> String {
     env::var(name).unwrap_or_else(|_| fallback.into())
@@ -136,6 +154,10 @@ impl Config {
             mail_worker_token: mail_variable("MAIL_WORKER_TOKEN"),
             smtp_url: mail_variable("SMTP_URL"),
             mail_from: mail_variable("MAIL_FROM"),
+            objects: object_store(|suffix| {
+                let name = format!("{mail_prefix}_{suffix}");
+                (name.clone(), mail_variable(suffix))
+            })?,
         };
         if bundle.join("release.json").exists() {
             let manifest: serde_json::Value =
@@ -461,6 +483,60 @@ text_enum! {
     }
 }
 
+/// The object store the environment's `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID` and
+/// `R2_SECRET_ACCESS_KEY` name, and whether bytes may leave the disk for it, `R2_ONLY` (`1`, or
+/// `0` as unset), each as `variable` reads it with the variable it's read from: none with none of
+/// them set, and refused as `object_store_incomplete` with only some, naming those missing in the
+/// log, never a value.
+fn object_store(
+    variable: impl Fn(&str) -> (String, Option<String>),
+) -> Result<Option<ObjectStore>> {
+    let read = [
+        "R2_ACCOUNT_ID",
+        "R2_BUCKET",
+        "R2_ACCESS_KEY_ID",
+        "R2_SECRET_ACCESS_KEY",
+    ]
+    .map(&variable);
+    let (_, only) = variable("R2_ONLY");
+    let missing: Vec<&str> = read
+        .iter()
+        .filter(|(_, value)| value.is_none())
+        .map(|(name, _)| name.as_str())
+        .collect();
+    if missing.len() == read.len() && only.is_none() {
+        return Ok(None);
+    }
+    if !missing.is_empty() {
+        crate::foundation::observability::event(
+            "error",
+            "object_store_incomplete",
+            serde_json::json!({ "missing": missing }),
+        );
+        return Err(crate::Error::new("object_store_incomplete", 400));
+    }
+    let [account, bucket, access_key_id, secret_access_key] =
+        read.map(|(_, value)| value.unwrap_or_default());
+    let named = |value: &str, more: &[u8]| {
+        !value.is_empty()
+            && value
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || more.contains(&b))
+    };
+    let only = only.as_deref().map(str::trim);
+    ensure(
+        named(&account, b"") && named(&bucket, b"-") && matches!(only, None | Some("0" | "1")),
+        "invalid_object_store",
+        400,
+    )?;
+    Ok(Some(ObjectStore {
+        endpoint: format!("https://{account}.r2.cloudflarestorage.com"),
+        bucket,
+        access_key_id,
+        secret_access_key,
+        only: only == Some("1"),
+    }))
+}
 fn secure_smtp_url(endpoint: &url::Url, development: bool) -> bool {
     endpoint.host_str().is_some()
         && endpoint.fragment().is_none()

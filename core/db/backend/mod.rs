@@ -1,6 +1,7 @@
 mod connection;
 mod files;
 pub mod migrations;
+pub mod objects;
 mod row;
 mod schema;
 mod store;

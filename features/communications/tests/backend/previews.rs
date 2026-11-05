@@ -1,7 +1,11 @@
 //! A picture's preview: no larger than a thread needs, its shape kept, upright as its camera
-//! said to turn it, and none for a picture small enough already or bytes that aren't a picture.
+//! said to turn it, and none for a picture small enough already or bytes that aren't a picture;
+//! those asking for one at once share bringing its picture down from the object store.
 use super::*;
+use crate::backend::phone::{files::BYTES, support::store};
+use dispatch_core::testing::objects::Fake;
 use image::{ImageEncoder, ImageFormat, RgbImage};
+use reqwest::Method;
 
 /// `bytes`, kept in a file of their own.
 fn kept(bytes: &[u8]) -> (tempfile::TempDir, std::path::PathBuf) {
@@ -88,4 +92,24 @@ async fn a_preview_asked_for_leaves_the_list_once_none_ask_cut_short_or_not() {
     drop(its_turn);
     drop(waiting);
     assert!(!listed());
+}
+
+#[tokio::test]
+async fn those_asking_for_a_preview_at_once_share_one_download_of_its_picture() {
+    let fake = Fake::start().await;
+    let (_root, db, dsp) = store();
+    let mut config = db.config.clone();
+    config.objects = Some(fake.store());
+    drop(db);
+    let state = State::new(config).unwrap();
+    // Only the object store has the picture.
+    let photo = picture(1_600, 800, ImageFormat::Png);
+    let sha256 = crypto::sha(&photo);
+    let key = format!("dsps/{dsp}/phones/{sha256}");
+    fake.put(&key, &photo);
+    let asking = (0..4).map(|_| preview(&state, BYTES, &dsp, &sha256));
+    for shown in futures_util::future::join_all(asking).await {
+        assert!(shown.unwrap().is_some());
+    }
+    assert_eq!(fake.asked(Method::GET, &key), 1);
 }
