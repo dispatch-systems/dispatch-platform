@@ -1,7 +1,8 @@
 //! Answering from Dispatch: each answer goes to the member's direct message in Slack under the
 //! full name of whoever wrote it and their Slack profile photo, or the image of their initials,
 //! as written, with any photos they added, a photo refused for its kind taking nothing from the
-//! same photo added meanwhile; and someone at the DSP can message a member first.
+//! same photo added meanwhile; one Slack took that wasn't kept is kept once and never posted
+//! twice; and someone at the DSP can message a member first.
 use super::*;
 use crate::backend::{
     files::{self, FileStatus, FileStore},
@@ -12,6 +13,7 @@ use crate::backend::{
 };
 use crate::integrations::messages::incoming;
 use axum::body::Bytes;
+use dispatch_core::accounts::Context;
 use dispatch_core::db::now;
 use dispatch_slack::{kit::Bot, testing as slack};
 use futures_util::{TryStreamExt, stream};
@@ -31,6 +33,60 @@ async fn started(state: &Arc<State>, bot: &Bot, dm: &str) -> String {
         .await
         .unwrap()
         .id
+}
+
+/// How long ago a try that ended, holding its note no more, started.
+const ENDED: i64 = SENDING_MS + 60_000;
+
+/// What a try of `c`'s answer `text` in the conversation `id` leaves when nothing of it was kept,
+/// as when the server stopped once Slack had it: its note, from `ago` milliseconds back, held as
+/// long as a try holds one, and its post in the direct message `dm` if Slack took it.
+async fn unkept(
+    state: &Arc<State>,
+    bot: &Bot,
+    c: &Context,
+    (id, dm): (&str, &str),
+    text: &str,
+    ago: i64,
+    took: bool,
+) -> Noted {
+    let noted = Noted {
+        id: crypto::id("rpl").unwrap(),
+        conversation: id.into(),
+        text: text.into(),
+        by: c.auth.user.id.clone(),
+        name: "Test Owner".into(),
+        photos: Vec::new(),
+        posting_since: now() - ago,
+        claimed_until: now() - ago + SENDING_MS,
+    };
+    let (at, note) = (bot.dsp.clone(), noted.clone());
+    state
+        .run(move |db| db.note_communications_reply(&at, &note))
+        .await
+        .unwrap();
+    if took {
+        let args = json!({"channel": dm, "text": text, "metadata": tag(EVENT, &noted.id)});
+        bot.call("chat.postMessage", &args).await.unwrap();
+    }
+    noted
+}
+/// The texts of the conversation's messages, as kept, and of the answers noted there.
+async fn kept_and_noted(state: &Arc<State>, dsp: &str, id: &str) -> (Vec<String>, Vec<String>) {
+    let kept = support::messages(state, dsp, id)
+        .await
+        .into_iter()
+        .map(|message| message.text)
+        .collect();
+    let (at, of) = (dsp.to_owned(), id.to_owned());
+    let noted = state
+        .read(move |db| db.noted_communications_replies(&at, Some(&of), i64::MAX))
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|noted| noted.text)
+        .collect();
+    (kept, noted)
 }
 
 /// `bytes`, as an upload of a photo brings them.
@@ -148,7 +204,7 @@ async fn an_answer_carries_the_photos_added_for_it_shown_in_slack() {
         vec![photo.id.clone()],
     );
     let claim = move |db: &dispatch_core::db::Store| {
-        db.claim_communications_uploads(&at, &by, &ids, now() + 60_000)
+        db.claim_communications_uploads(&at, &by, &ids, now() + 60_000, None)
             .map(drop)
     };
     state.run(claim.clone()).await.unwrap();
@@ -249,6 +305,285 @@ async fn a_photo_refused_for_its_kind_takes_nothing_from_the_same_photo_added_me
         .await
         .unwrap();
     assert_eq!(bytes, png);
+}
+
+#[tokio::test]
+async fn sent_again_an_answer_slack_took_unkept_is_kept_and_not_posted_twice() {
+    let (_root, state, bot) = support::connected(TEAM).await;
+    let dsp = bot.dsp.clone();
+    let id = started(&state, &bot, "D0AGAIN").await;
+    let owner = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+    let at = (id.as_str(), "D0AGAIN");
+    unkept(&state, &bot, &owner, at, "Keys are in the van", ENDED, true).await;
+    let message = send(&state, &owner, USE, &id, "Keys are in the van", &[])
+        .await
+        .unwrap();
+    let posted = kit::fixture_history(TEAM, "D0AGAIN");
+    assert_eq!(posted.len(), 1);
+    assert_eq!(message.ts, posted[0]["ts"].as_str().unwrap());
+    assert_eq!(
+        kept_and_noted(&state, &dsp, &id).await,
+        (
+            vec!["Van won't start".into(), "Keys are in the van".into()],
+            vec![]
+        )
+    );
+    // One Slack didn't take is posted, under the same note, so should Slack take this try and
+    // nothing keep it, sending it again finds this try's post.
+    let failed = unkept(&state, &bot, &owner, at, "On my way", ENDED, false).await;
+    send(&state, &owner, USE, &id, "On my way", &[])
+        .await
+        .unwrap();
+    let posted = slack::posted(TEAM, "D0AGAIN");
+    assert_eq!(posted.len(), 2);
+    assert_eq!(posted[1].metadata["event_payload"]["message"], failed.id);
+    assert_eq!(
+        kept_and_noted(&state, &dsp, &id).await.1,
+        Vec::<String>::new()
+    );
+}
+
+#[tokio::test]
+async fn an_answer_slack_took_unkept_is_found_however_much_was_written_after_it() {
+    let (_root, state, bot) = support::connected(TEAM).await;
+    let dsp = bot.dsp.clone();
+    let id = started(&state, &bot, "D0BUSY").await;
+    let owner = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+    unkept(
+        &state,
+        &bot,
+        &owner,
+        (&id, "D0BUSY"),
+        "On my way",
+        ENDED,
+        true,
+    )
+    .await;
+    // More than a page of Slack's history after it.
+    for n in 0..250 {
+        let args = json!({"channel": "D0BUSY", "text": format!("Reminder {n}")});
+        bot.call("chat.postMessage", &args).await.unwrap();
+    }
+    send(&state, &owner, USE, &id, "On my way", &[])
+        .await
+        .unwrap();
+    assert_eq!(slack::posted(TEAM, "D0BUSY").len(), 251);
+    assert_eq!(
+        kept_and_noted(&state, &dsp, &id).await,
+        (vec!["Van won't start".into(), "On my way".into()], vec![])
+    );
+}
+
+#[tokio::test]
+async fn sent_again_while_another_try_of_it_is_under_way_an_answer_isnt_posted_twice() {
+    let (_root, state, bot) = support::connected(TEAM).await;
+    let dsp = bot.dsp.clone();
+    let id = started(&state, &bot, "D0OVERLAP").await;
+    let owner = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+    // A try still under way, as while Slack asks it to slow down, and not in Slack yet.
+    let held = unkept(
+        &state,
+        &bot,
+        &owner,
+        (&id, "D0OVERLAP"),
+        "On my way",
+        0,
+        false,
+    )
+    .await;
+    let refused = send(&state, &owner, USE, &id, "On my way", &[])
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code, "communications_reply_sending");
+    assert!(slack::posted(TEAM, "D0OVERLAP").is_empty());
+    // Once it's ended, upkeep holds it while it looks; a resend claiming it first keeps it from
+    // upkeep, which then neither looks for it nor clears it.
+    let (at, note) = (dsp.clone(), held.id.clone());
+    let claimed = state
+        .run(move |db| db.claim_communications_reply(&at, &note, now() + SENDING_MS, i64::MAX))
+        .await
+        .unwrap();
+    assert!(claimed);
+    let (at, note, stale) = (dsp.clone(), held.id.clone(), held.claimed_until);
+    state
+        .run(move |db| db.clear_communications_reply(&at, &note, stale))
+        .await
+        .unwrap();
+    settle(&state, &dsp).await.unwrap();
+    assert_eq!(
+        kept_and_noted(&state, &dsp, &id).await.1,
+        vec!["On my way".to_owned()]
+    );
+}
+
+#[tokio::test]
+async fn an_answer_noted_on_its_way_to_slack_keeps_its_photos_until_its_settled_for_it_alone() {
+    let (_root, state, bot) = support::connected(TEAM).await;
+    let dsp = bot.dsp.clone();
+    let id = started(&state, &bot, "D0KEPTPHOTO").await;
+    let owner = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+    let png = initials::image("PH.png").unwrap().to_vec();
+    let added = upload(
+        &state,
+        &owner,
+        USE,
+        "Van.png",
+        "image/png",
+        photo(png).await,
+    )
+    .await
+    .unwrap();
+    // A try Slack took with the photo a day and more ago, its workspace unreachable since.
+    let noted = Noted {
+        id: crypto::id("rpl").unwrap(),
+        conversation: id.clone(),
+        text: "Here's the van".into(),
+        by: owner.auth.user.id.clone(),
+        name: "Test Owner".into(),
+        photos: vec![(added.id.clone(), "F0VANPHOTO".into())],
+        posting_since: now() - 25 * 60 * 60_000,
+        claimed_until: now() - 25 * 60 * 60_000 + SENDING_MS,
+    };
+    let (at, note) = (dsp.clone(), noted.clone());
+    state
+        .run(move |db| db.note_communications_reply(&at, &note))
+        .await
+        .unwrap();
+    let args = json!({"channel": "D0KEPTPHOTO", "text": "Here's the van",
+        "metadata": tag(EVENT, &noted.id)});
+    bot.call("chat.postMessage", &args).await.unwrap();
+    // Another message can't take it, though its try ended.
+    let taken = send(
+        &state,
+        &owner,
+        USE,
+        &id,
+        "Van 12",
+        std::slice::from_ref(&added.id),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(taken.code, "communications_upload_not_found");
+    // Upkeep letting go of photos never sent leaves it.
+    let at = dsp.clone();
+    state
+        .run(move |db| db.forget_unsent_communications(&at, now() + 1))
+        .await
+        .unwrap();
+    settle(&state, &dsp).await.unwrap();
+    let messages = support::messages(&state, &dsp, &id).await;
+    let kept = messages.last().unwrap();
+    assert_eq!(
+        (kept.text.as_str(), kept.files.len()),
+        ("Here's the van", 1)
+    );
+}
+
+#[tokio::test]
+async fn two_first_tries_of_an_answer_begun_together_share_one_note_and_one_is_refused() {
+    let (_root, state, bot) = support::connected(TEAM).await;
+    let dsp = bot.dsp.clone();
+    let id = started(&state, &bot, "D0TOGETHER").await;
+    let owner = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+    let by = owner.auth.user.id.clone();
+    let begun = |until: i64| {
+        let (at, of, by) = (dsp.clone(), id.clone(), by.clone());
+        state.run(move |db| {
+            begin(db, &at, &of, (&by, "Test Owner"), "On my way", &[], until).map(drop)
+        })
+    };
+    // Neither had found a note; the first notes it as it begins, and the second finds it held.
+    begun(now() + SENDING_MS).await.unwrap();
+    let refused = begun(now() + SENDING_MS).await.unwrap_err();
+    assert_eq!(refused.code, "communications_reply_sending");
+    assert_eq!(
+        kept_and_noted(&state, &dsp, &id).await.1,
+        vec!["On my way".to_owned()]
+    );
+}
+
+#[tokio::test]
+async fn a_note_whose_conversation_an_earlier_release_forgot_is_cleared() {
+    let (_root, state, bot) = support::connected(TEAM).await;
+    let dsp = bot.dsp.clone();
+    let owner = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+    // Messaged first, the try ended unkept, before any message was in the conversation.
+    let opened = open(&state, &owner, USE, TEAM, "U0FIXOWNER").await.unwrap();
+    let at = (opened.id.as_str(), "D0FIXOWNER");
+    unkept(&state, &bot, &owner, at, "Welcome aboard", ENDED, false).await;
+    // Rolled back, the release before this one forgets the workspace's conversations with no
+    // message, knowing nothing of notes.
+    let of = dsp.clone();
+    state
+        .run(move |db| {
+            db.dsp(&of)?.exec(
+                "DELETE FROM communications_conversations WHERE team_id=? AND last_at IS NULL",
+                [TEAM],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    settle(&state, &dsp).await.unwrap();
+    let (at, of) = (dsp.clone(), opened.id.clone());
+    let noted = state
+        .read(move |db| db.noted_communications_replies(&at, Some(&of), i64::MAX))
+        .await
+        .unwrap();
+    assert!(noted.is_empty());
+}
+
+#[tokio::test]
+async fn upkeep_keeps_an_answer_slack_took_unkept_and_lets_go_of_one_no_try_holds_it_didnt() {
+    let (_root, state, bot) = support::connected(TEAM).await;
+    let dsp = bot.dsp.clone();
+    let id = started(&state, &bot, "D0UPKEEP").await;
+    let owner = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+    let at = (id.as_str(), "D0UPKEEP");
+    unkept(&state, &bot, &owner, at, "On my way", ENDED, true).await;
+    unkept(&state, &bot, &owner, at, "Running late", ENDED, false).await;
+    // One noted a day and more ago is still looked for, and kept.
+    unkept(
+        &state,
+        &bot,
+        &owner,
+        at,
+        "Back at the station",
+        25 * 60 * 60_000,
+        true,
+    )
+    .await;
+    // One a try still holds, as while Slack asks it to slow down, is left for now.
+    unkept(
+        &state,
+        &bot,
+        &owner,
+        at,
+        "Keys are in the van",
+        2 * 60_000,
+        false,
+    )
+    .await;
+    settle(&state, &dsp).await.unwrap();
+    assert_eq!(
+        kept_and_noted(&state, &dsp, &id).await,
+        (
+            vec![
+                "Van won't start".into(),
+                "On my way".into(),
+                "Back at the station".into()
+            ],
+            vec!["Keys are in the van".into()]
+        )
+    );
+    assert_eq!(slack::posted(TEAM, "D0UPKEEP").len(), 2);
+    // Answered, the conversation waits no more.
+    let at = dsp.clone();
+    let state_now = state
+        .read(move |db| Ok(db.communications_conversation(&at, &id)?.unwrap().state))
+        .await
+        .unwrap();
+    assert_eq!(state_now, ConversationState::Responded);
 }
 
 #[tokio::test]

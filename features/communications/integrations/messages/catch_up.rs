@@ -44,7 +44,7 @@ fn pass(state: Arc<State>, due: bool) -> Upkeep {
         }
         for dsp in kit::dsps(&state, FAILED).await {
             if let Err(error) = catch_up(&state, &dsp).await {
-                kit::failed(FAILED, &error);
+                kit::failed(FAILED, Some(&dsp), &error);
             }
         }
     })
@@ -140,7 +140,7 @@ pub async fn catch_up(state: &Arc<State>, dsp: &str) -> Result<()> {
             let left = match read.await {
                 Ok(left) => left,
                 Err(error) => {
-                    kit::failed(FAILED, &error);
+                    kit::failed(FAILED, Some(dsp), &error);
                     continue;
                 }
             };

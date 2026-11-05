@@ -77,7 +77,7 @@ pub struct Text {
     /// Its pictures and files, as the phone side keeps them.
     pub files: Vec<File>,
     /// The conversation one Dispatch sent was filed in as it was queued: none for one queued
-    /// before Communications kept it (migration 15).
+    /// before Communications kept it (migration 16).
     pub queued_in: Option<String>,
 }
 impl Text {

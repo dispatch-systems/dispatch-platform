@@ -501,12 +501,18 @@ in their own direct message with the app, and their answers come back together.
   need be (`im:write`), under the sender's full name and photo as an answer goes
   (`chat:write.customize`), its photos uploaded once to each workspace (`files:write`). Slack
   asking Dispatch to slow down (429, Retry-After) is waited out as long as it says, up to two
-  minutes, and beyond that tried again two minutes later; a try that fails is tried again after a
-  minute, five and fifteen, then given up; one to a workspace where Communications no longer
-  works, or someone no longer in it, isn't sent at all. Each is kept until it's sent or given up,
-  so sending picks up after a restart, from the pass every minute; a try that may have posted
-  before the server stopped looks for its post in their direct message first (`im:history`), by
-  the metadata each post carries, and keeps it rather than send a second.
+  minutes, and beyond that tried again two minutes later; one to a workspace where Slack needs
+  updating or reconnecting waits, uncounted, five minutes at a time; a try that fails is tried
+  again after a minute, five and fifteen, then given up; one to a workspace where Communications
+  no longer works, or someone no longer in it, isn't sent at all. None goes out more than two
+  hours after it was written, as while Communications was off: a wave running late has moved on,
+  so it's given up as too late, or as what it waited on, when that was Slack: no post starts
+  past then, a photo's post tried again or a token renewed first included, and a post doesn't
+  wait on Slack asking it to slow down. Each is kept until it's sent or
+  given up, so sending picks up after a restart, from the pass every minute; a try that may have
+  posted before the server stopped looks for its post in their direct message first
+  (`im:history`, every page since), by the metadata each post carries, and keeps it rather than
+  send a second, even past the two hours.
 - **The group** is listed among the conversations: two of its people's faces, its name and how
   many it went to, and the latest answer under its writer's first name, or the DSP's message. It
   waits while any conversation listed under it waits, by the longest wait, with a check that
@@ -527,7 +533,8 @@ in their own direct message with the app, and their answers come back together.
   opens it.
 - **Its people,** in the profile's place: the group, who first sent it and when, and each of its
   people with what they do and whether they replied, or its latest message is sending, was sent
-  or wasn't, each opening their own conversation.
+  or wasn't and why (Not sent: too late, Slack needs updating, Slack disconnected, Communications
+  off in Slack, no longer in Slack, Slack refused it), each opening their own conversation.
 
 ## Messages in
 
@@ -542,7 +549,13 @@ in their own direct message with the app, and their answers come back together.
   Slack ID.
 - **Edits:** a member editing a message in Slack replaces its text, and marks it edited; nothing
   of what it said before is kept, logged or read. Slack changing a message itself, as to show a
-  link's preview, isn't an edit.
+  link's preview, isn't an edit. An edit Slack tells of before its message, as when keeping the
+  message failed and is tried again, keeps the message as edited, and the message told of after
+  doesn't change it back. A message kept is edited while Communications works there, though it
+  was sent before Communications was last switched on.
+- **Told of:** what Slack tells of is kept once Slack has its answer; keeping it is tried again a
+  second, five and thirty seconds after it fails, then left to catching up, the failure logged as
+  `communications_heard_failed` with its DSP and code alone.
 - **Deletions:** a message deleted in Slack stays.
 - **Photos and files:** downloaded from Slack into Dispatch, kept in the DSP's own data
   (`data/communications/files/`, by their bytes' SHA-256), so they outlive Slack. Each is tried
@@ -575,6 +588,22 @@ in their own direct message with the app, and their answers come back together.
 - **Answering:** a message someone at the DSP writes, up to 3,000 characters, with up to ten
   photos (PNG, JPEG or GIF, up to 20 MB each), goes to the member's direct message
   (`chat.postMessage`) as written: escaped, so Slack shows what was typed.
+- **Kept once, never posted twice:** each message is noted as its writer's access is checked,
+  just before it goes to Slack, held for ten minutes by the try posting it, longer than its post
+  takes, Slack asking it to slow down included; its post carries the note's ID as Slack's message
+  metadata. Once Slack has it, it's kept, waiting its turn for the database rather than turned
+  away busy, and its note cleared. One Slack may have taken that wasn't kept, as when the server
+  stopped between, is looked for in the direct message (`im:history`, every page since it was
+  noted) by its note's ID: by the pass every minute, once no try holds it, which keeps it if
+  it's there and clears the note if not, while Communications works in its workspace, however
+  long that takes; or at once when its writer sends the same message, with the same photos,
+  there again, which then keeps that post rather than post a second, or, not finding it, tries
+  again under the same note, so whichever try Slack took is found. Each claims the note first:
+  sent again while another try of it is under way, it's refused (`communications_reply_sending`),
+  and upkeep leaves a note a resend holds; a first try notes it in the same write that finds
+  none, so two begun together share it. Its photos are kept while it's noted, however long, and
+  no other message takes them. A note names its conversation without a foreign key, so a release
+  before this one can still forget a conversation with no message; upkeep clears a note left so.
 - **Under whose name:** the full name on the writer's Dispatch account, and their Slack profile
   photo (`chat:write.customize`), read from the member of the DSP's workspaces with their email
   address, the conversation's workspace first (`users.info`): Slack's own drawn photo isn't
@@ -833,8 +862,10 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   waits), `communications_group_people` (whom each went to, by workspace and member ID, under
   their name then), `communications_group_messages` (each message to a group, its sender's name
   and the letters of their initials), `communications_deliveries` (each going to each person:
-  waiting, sent with their message, or not sent and why) and `communications_group_uploads` (a
-  group message's photos as uploaded to each workspace); the files' bytes in the DSP's data,
+  waiting, sent with their message, or not sent and why), `communications_group_uploads` (a
+  group message's photos as uploaded to each workspace) and `communications_replies` (each answer
+  noted on its way to Slack, until it's kept or found not to be there; migration 15); the files'
+  bytes in the DSP's data,
   `data/communications/files/`, which backups keep. By text: `communications_text_conversations`
   (each a driver's, a work phone's nobody had, or a number's), on each text's own row
   (`phones_texts`, below) the conversation it's filed in, none while it waits to be, the name its
@@ -842,7 +873,7 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   (migration 9, which copied each from `communications_texts`, since dropped),
   `communications_contacts` (the names saved for numbers, by whom and when),
   `communications_blocked` (the numbers blocked, by whom and when) and `communications_picked`
-  (the driver picked for a work phone on a day, by whom and when); and, from migration 15,
+  (the driver picked for a work phone on a day, by whom and when); and, from migration 16,
   `communications_refiling` (each day still to be filed again, and since when),
   `communications_live_days` (each day live route data was seen holding, when it was first seen
   not to, and whether the pages heard the two hours after end) and, on each text waiting to be
@@ -862,11 +893,12 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   the DSP's data, `data/phones/files/`, by their SHA-256, which backups keep. In either folder
   (`bytes`), bytes arrive beside those kept, and take their place, and are let go, only under the
   platform's write lock with the files that keep them. Kept until the DSP is deleted, as the rest.
-- **Upkeep:** catching up hourly and as the server starts; downloading what's due, sending
-  what's due to go to groups' people, filing texts waiting to be filed, those waiting ten minutes
-  under their number, filing the days noted and today's again where they belong now, keeping
-  when the live day ends, and failing the texts still waiting on an offline phone as they expire,
-  every minute; and hourly, in each DSP with Slack connected, letting go of
+- **Upkeep:** catching up hourly and as the server starts; downloading what's due, keeping
+  answers that went to Slack unkept, sending what's due to go to groups' people and giving up
+  those too late, filing texts waiting to be filed, those waiting ten minutes under their number,
+  filing the days noted and today's again where they belong now, keeping when the live day ends,
+  and failing the texts still waiting on an offline phone as they expire, every minute, each
+  failure logged with its DSP; and hourly, in each DSP with Slack connected, letting go of
   photos added and never sent within a day, then of bytes no file keeps, as a failure once in
   place or a removal that failed leaves, and of bytes left arriving an hour, as a restart leaves,
   each on its own: one that fails, logged as `communications_tidy_failed` with its DSP and job,

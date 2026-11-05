@@ -26,7 +26,8 @@ use dispatch_core::{
 /// uploading files there; what Slack keeps of the DSP's workspaces, their logos and their
 /// members, to read;
 /// linking a workspace's channels to folders where the DSP keeps its files, as Import Files and
-/// Sync Canvases do; the queue their work that mustn't be lost is kept in; and, for its fixture,
+/// Sync Canvases do; the queue their work that mustn't be lost is kept in, and trying again what
+/// Slack told of that failed (`retried`); and, for its fixture,
 /// what the bot posted in a conversation in fixture mode (`fixture_history`). Its folder takes
 /// their shape, `integrations/<name>/` in its feature, as `dispatchdev new integration <name>
 /// --to <feature>` writes it, and its feature declares `slack` in `depends_on` once it uses this.
@@ -38,12 +39,13 @@ pub mod kit {
     };
     pub use crate::backend::fixture::history as fixture_history;
     pub use crate::backend::kit::{
-        SOURCE, integration_on_since, logo, logos, member_id, members, workspaces, workspaces_on,
+        CONNECTION_BROKEN, NEEDS_UPDATE, NOT_CONNECTED, PAST_DEADLINE, RATE_LIMITED, SOURCE,
+        integration_on_since, logo, logos, member_id, members, workspaces, workspaces_on,
     };
     pub use crate::backend::members::member;
     pub use crate::backend::slack::Bytestream;
     pub use crate::backend::storage::{Member, Workspace};
-    pub use crate::backend::work::{Queue, dsps, due, failed, pass};
+    pub use crate::backend::work::{Queue, dsps, due, failed, pass, retried};
 }
 /// What a dependant's tests use of Slack, behind its `testing` feature: connecting one of a
 /// DSP's fixture workspaces, reading its members, switching an integration there, what the bot

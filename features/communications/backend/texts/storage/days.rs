@@ -80,7 +80,7 @@ impl DayStore for Store {
     }
 }
 
-/// Communications' migration 15: the days still to be filed again, as filing them again failed
+/// Communications' migration 16: the days still to be filed again, as filing them again failed
 /// (`communications_refiling`: each day, YYYY-MM-DD in the DSP's time, and when it was first
 /// noted); each day live route data was seen holding (`communications_live_days`: when it was
 /// first seen not to, none while it does, and whether the pages heard the two hours after end,

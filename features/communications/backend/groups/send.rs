@@ -6,8 +6,12 @@
 //! asks of an app posting messages; Slack asking Dispatch to slow down (429, Retry-After) is
 //! waited out as long as it says, up to two minutes, and beyond that tried again two minutes
 //! later, uncounted. A try that fails is tried again after a minute, five and fifteen, then given
-//! up: not sent. One to a workspace where Communications no longer works, or a member no longer
-//! there, isn't sent at all.
+//! up: not sent. One to a workspace where Slack needs updating or reconnecting waits, uncounted,
+//! five minutes at a time. One to a workspace where Communications no longer works, or a member no
+//! longer there, isn't sent at all; nor is one not sent within two hours of being written, too late
+//! by then, which keeps as why what it last waited on, if it waited on Slack. No try starts a post
+//! past then, nor waits on Slack past it to post; one that may have posted before then is still
+//! looked for, and kept if it's there.
 //!
 //! Each message to each person is kept until it's sent or given up, so sending picks up where it
 //! was after a restart, from the maintenance pass every minute. A try that may have posted before
@@ -29,7 +33,7 @@ use crate::{
     integrations::messages::{ID, incoming},
 };
 use dispatch_core::{
-    Error, Result, State,
+    Code, Error, Result, State,
     accounts::Context,
     db::{Store, now},
     ensure,
@@ -37,7 +41,6 @@ use dispatch_core::{
     server::{cache::DataDomain, http::route::Dsp},
 };
 use dispatch_slack::kit::{self, Bot, Queue};
-use serde_json::json;
 use std::{
     collections::{HashMap, HashSet},
     sync::{
@@ -67,6 +70,18 @@ const RETRIES_MS: &[i64] = &[60 * 1000, 5 * 60 * 1000, 15 * 60 * 1000];
 /// How long a message waits, uncounted, while Slack asks Dispatch to slow down for longer than a
 /// patient bot waits itself, in milliseconds: as long again.
 const SLOWED_MS: i64 = 2 * 60 * 1000;
+/// How long a message waits, uncounted, for Slack to be updated or reconnected in its workspace,
+/// in milliseconds.
+const WAIT_MS: i64 = 5 * 60 * 1000;
+/// How long after a group message is written it may still go to its people, in milliseconds: a
+/// wave running late has moved on by then. One not sent by then is given up.
+const FRESH_MS: i64 = 2 * 60 * 60 * 1000;
+/// Why a message given up for that wasn't sent.
+const TOO_LATE: &str = "communications_expired";
+/// What a try fails with where it can't go: Communications is off in the workspace, or the person
+/// is no longer there.
+const OFF: Code = Code::new("communications_off");
+const GONE: Code = Code::new("communications_contact_not_found");
 /// What each post carries, as Slack's message metadata, to be found again by.
 const EVENT: &str = "dispatch_group_message";
 /// How a failure is reported.
@@ -246,20 +261,21 @@ pub(crate) async fn drain(state: &Arc<State>, dsp: &str) {
 }
 /// Sends the DSP's messages due now, one at a time, telling the pages waiting of each that came to
 /// something they show, until none is due, or one comes to nothing, which the next pass tries
-/// again.
+/// again; first giving up those too late.
 async fn due(state: &Arc<State>, dsp: &str) {
+    expire(state, dsp).await;
     let mut last = None;
     loop {
         let at = dsp.to_owned();
         let read = state
             .read(move |db| {
-                let first = db.due_communications_deliveries(&at, now(), 1)?;
+                let first = db.due_communications_deliveries(&at, now(), now() - FRESH_MS, 1)?;
                 Ok((first.into_iter().next(), db.communications_revision(&at)?))
             })
             .await;
         let (first, before) = match read {
             Ok(read) => read,
-            Err(error) => return kit::failed(FAILED, &error),
+            Err(error) => return kit::failed(FAILED, Some(dsp), &error),
         };
         let Some(first) = first else {
             return;
@@ -275,6 +291,30 @@ async fn due(state: &Arc<State>, dsp: &str) {
             live::changed(state, dsp);
         }
         last = Some(key);
+    }
+}
+
+/// Gives up each of the DSP's messages not sent one of its people within `FRESH_MS` of being
+/// written, telling the pages waiting.
+async fn expire(state: &Arc<State>, dsp: &str) {
+    let (at, before) = (dsp.to_owned(), now() - FRESH_MS);
+    let stale = state
+        .read(move |db| db.stale_communications_deliveries(&at, before, now()))
+        .await;
+    match stale {
+        Ok(false) => return,
+        Ok(true) => {}
+        Err(error) => return kit::failed(FAILED, Some(dsp), &error),
+    }
+    let at = dsp.to_owned();
+    let expired = state
+        .run_scoped(dsp, DOMAIN, move |db| {
+            db.expire_communications_deliveries(&at, before, now(), TOO_LATE)
+        })
+        .await;
+    match expired {
+        Ok(()) => live::changed(state, dsp),
+        Err(error) => kit::failed(FAILED, Some(dsp), &error),
     }
 }
 
@@ -333,7 +373,7 @@ impl Queue for Deliveries {
         if !db.feature_enabled(dsp, crate::FEATURE.name)? {
             return Ok(Vec::new());
         }
-        db.due_communications_deliveries(dsp, at, most)
+        db.due_communications_deliveries(dsp, at, at - FRESH_MS, most)
     }
     fn claim(
         db: &Store,
@@ -345,9 +385,12 @@ impl Queue for Deliveries {
         db.claim_communications_delivery(dsp, item, at, until)
     }
     async fn try_one(state: &Arc<State>, dsp: &str, item: &Due, since: Option<i64>) -> Outcome {
-        match deliver(state, dsp, item, since).await {
+        // Whether nothing of it is in Slack should this try fail: not once an earlier try may
+        // have posted it until it's looked for, nor once this one posts.
+        let mut unposted = since.is_none();
+        match deliver(state, dsp, item, since, &mut unposted).await {
             Ok(outcome) => outcome,
-            Err(error) => failure(item, &error),
+            Err(error) => failure(item, &error, unposted),
         }
     }
     fn finish(db: &Store, dsp: &str, item: &Due, outcome: &Outcome, _: i64) -> Result<()> {
@@ -379,8 +422,22 @@ impl Queue for Deliveries {
 }
 
 /// Sends the group message to one of its people: in their direct message, opened first if need
-/// be; or, when an earlier try `since` then may have, keeps that post if it's there.
-async fn deliver(state: &Arc<State>, dsp: &str, item: &Due, since: Option<i64>) -> Result<Outcome> {
+/// be, unless it's too late; or, when an earlier try `since` then may have, keeps that post if
+/// it's there. Notes in `unposted` whether nothing of it is in Slack, as it learns.
+async fn deliver(
+    state: &Arc<State>,
+    dsp: &str,
+    item: &Due,
+    since: Option<i64>,
+    unposted: &mut bool,
+) -> Result<Outcome> {
+    let deadline = item.written + FRESH_MS;
+    let too_late = || Outcome::Failed {
+        reason: TOO_LATE.into(),
+    };
+    if since.is_none() && now() >= deadline {
+        return Ok(too_late());
+    }
     let (at, due) = (dsp.to_owned(), item.clone());
     let found = state
         .read(move |db| {
@@ -388,6 +445,10 @@ async fn deliver(state: &Arc<State>, dsp: &str, item: &Due, since: Option<i64>) 
                 .communications_group_message(&at, &due.message)?
                 .ok_or_else(|| Error::new("communications_group_not_found", 404))?;
             let on = kit::workspaces_on(db, &at, ID)?.contains(&due.team);
+            let working = kit::workspaces(db, &at)?
+                .into_iter()
+                .find(|workspace| workspace.team == due.team)
+                .map(|workspace| !workspace.broken);
             let member = kit::members(db, &at)?
                 .into_iter()
                 .find(|(team, member)| *team == due.team && member.user == due.user)
@@ -404,18 +465,26 @@ async fn deliver(state: &Arc<State>, dsp: &str, item: &Due, since: Option<i64>) 
                 .map(|each| each.email);
             let photos = db.communications_group_files(&at, std::slice::from_ref(&due.message))?;
             let uploaded = db.communications_group_uploads(&at, &due.message, &due.team)?;
-            Ok((message, on, member, channel, email, photos, uploaded))
+            Ok((
+                message, on, working, member, channel, email, photos, uploaded,
+            ))
         })
         .await?;
-    let (message, on, member, channel, email, photos, uploaded) = found;
-    if !on {
-        return Ok(Outcome::Failed {
-            reason: "communications_off".into(),
-        });
+    let (message, on, working, member, channel, email, photos, uploaded) = found;
+    // Waiting on its workspace to be reconnected; else Communications is off there.
+    match (on, working) {
+        (true, _) => {}
+        (false, Some(true)) => {
+            return Ok(Outcome::Failed {
+                reason: OFF.as_str().into(),
+            });
+        }
+        (false, Some(false)) => return Err(Error::new(kit::CONNECTION_BROKEN.as_str(), 409)),
+        (false, None) => return Err(Error::new(kit::NOT_CONNECTED.as_str(), 404)),
     }
     let Some(member) = member else {
         return Ok(Outcome::Failed {
-            reason: "communications_contact_not_found".into(),
+            reason: GONE.as_str().into(),
         });
     };
     pace(dsp, &item.team).await;
@@ -446,9 +515,13 @@ async fn deliver(state: &Arc<State>, dsp: &str, item: &Due, since: Option<i64>) 
         })
     };
     if let Some(since) = since
-        && let Some(ts) = posted(&bot, &channel, &message.id, since).await?
+        && let Some(ts) = reply::posted(&bot, &channel, EVENT, &message.id, since).await?
     {
         return sent(ts);
+    }
+    *unposted = true;
+    if now() >= deadline {
+        return Ok(too_late());
     }
     let identity = sender::named(
         state,
@@ -460,10 +533,15 @@ async fn deliver(state: &Arc<State>, dsp: &str, item: &Due, since: Option<i64>) 
     )
     .await;
     let mut args = reply::message(&channel, &message.text, &shown, &identity);
-    args["metadata"] = json!({"event_type": EVENT, "event_payload": {"message": message.id}});
-    let answer = match reply::post(&bot, &args, !shown.is_empty()).await {
+    args["metadata"] = reply::tag(EVENT, &message.id);
+    // No post starts past its deadline, a photo's post tried again or a token renewed included,
+    // nor waits on Slack asking it to slow down.
+    let poster = Bot::new(state, dsp, &item.team).until(deadline);
+    *unposted = false;
+    let answer = match reply::post(&poster, &args, !shown.is_empty()).await {
+        Err(error) if error.is(kit::PAST_DEADLINE) => return Ok(too_late()),
         // Slack took nothing, and no earlier try's post is there: the next needn't look for one.
-        Err(error) if error.code == "slack_rate_limited" => {
+        Err(error) if error.is(kit::RATE_LIMITED) => {
             return Ok(Outcome::Later {
                 reason: error.code,
                 at: now() + SLOWED_MS,
@@ -502,53 +580,36 @@ async fn upload(
     Ok(slack_id)
 }
 
-/// The `ts` of the post of the group message `message` in the direct message `channel`, posted
-/// since `since` (a minute before, for clocks that differ), if it's there.
-async fn posted(bot: &Bot, channel: &str, message: &str, since: i64) -> Result<Option<String>> {
-    let read = bot
-        .call(
-            "conversations.history",
-            &json!({"channel": channel, "oldest": incoming::ts(since - 60_000),
-                "include_all_metadata": true, "limit": 200}),
-        )
-        .await?;
-    let found = read["messages"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .find(|post| {
-            post["metadata"]["event_type"] == EVENT
-                && post["metadata"]["event_payload"]["message"] == message
-        })
-        .and_then(|post| post["ts"].as_str().map(str::to_owned));
-    Ok(found)
-}
-
-/// What `error` makes of trying `item`: waited out while Slack asks Dispatch to slow down, given
-/// up where it can't go, or tried again later, and given up after the last try.
-fn failure(item: &Due, error: &Error) -> Outcome {
+/// What `error` makes of trying `item`, `unposted` when nothing of it is in Slack: waited out
+/// while Slack asks Dispatch to slow down, or its workspace needs Slack updated or reconnected;
+/// given up where it can't go; or tried again later, and given up after the last try.
+fn failure(item: &Due, error: &Error, unposted: bool) -> Outcome {
     let code = error.code.clone();
-    if code == "slack_rate_limited" {
+    let waited = if error.is(kit::RATE_LIMITED) {
+        Some(SLOWED_MS)
+    } else if error.is_any(&[
+        kit::NEEDS_UPDATE,
+        kit::CONNECTION_BROKEN,
+        kit::NOT_CONNECTED,
+    ]) {
+        Some(WAIT_MS)
+    } else {
+        None
+    };
+    if let Some(waited) = waited {
         return Outcome::Later {
             reason: code,
-            at: now() + SLOWED_MS,
+            at: now() + waited,
             counted: false,
-            unposted: false,
+            unposted,
         };
     }
-    let gone = [
-        "communications_off",
-        "communications_contact_not_found",
-        "slack_needs_update",
-        "slack_connection_broken",
-        "slack_not_connected",
-    ];
     match RETRIES_MS.get(item.attempts.max(0) as usize) {
-        Some(after) if !gone.contains(&code.as_str()) => Outcome::Later {
+        Some(after) if !error.is_any(&[OFF, GONE]) => Outcome::Later {
             reason: code,
             at: now() + after,
             counted: true,
-            unposted: false,
+            unposted,
         },
         _ => Outcome::Failed { reason: code },
     }

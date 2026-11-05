@@ -1,6 +1,7 @@
 //! What members write to the app directly, kept as Slack tells of it: a message, a file shared,
-//! a reply in a thread and an edit, but never the app's own posts, another bot's, or anything
-//! sent before Communications was on; and nothing deleted in Slack is deleted here.
+//! a reply in a thread and an edit, even one told of before its message, but never the app's own
+//! posts, another bot's, or anything sent before Communications was on; and nothing deleted in
+//! Slack is deleted here.
 use super::*;
 use crate::backend::{
     files::{self, FileStatus, FileStore},
@@ -128,7 +129,34 @@ async fn a_members_messages_and_their_edits_are_kept_and_nothing_else() {
 }
 
 #[tokio::test]
-async fn nothing_sent_before_communications_was_on_in_the_workspace_is_kept() {
+async fn an_edit_told_of_before_its_message_keeps_the_message_as_edited() {
+    let (_root, state, bot) = support::connected(TEAM).await;
+    let dsp = bot.dsp.clone();
+    let start = now();
+    let edit = json!({"type": "message", "subtype": "message_changed", "channel": DM,
+        "channel_type": "im",
+        "message": {"user": "U0FIXCAM", "text": "Flat tire on route 6", "ts": ts(start),
+            "edited": {"user": "U0FIXCAM", "ts": ts(start + 60_000)}}});
+    heard(&state, &dsp, TEAM, &edit).await.unwrap();
+    // Its message, its handling tried again, comes after.
+    heard(&state, &dsp, TEAM, &written(start, json!({})))
+        .await
+        .unwrap();
+    let kept = support::conversation_with(&state, &dsp, TEAM, "U0FIXCAM")
+        .await
+        .unwrap();
+    let messages = support::messages(&state, &dsp, &kept.id).await;
+    let read: Vec<(&str, Option<i64>)> = messages
+        .iter()
+        .map(|message| (message.text.as_str(), message.edited_at))
+        .collect();
+    assert_eq!(read, [("Flat tire on route 6", Some(start + 60_000))]);
+    assert_eq!(kept.state, ConversationState::Waiting);
+}
+
+#[tokio::test]
+async fn nothing_sent_before_communications_was_on_in_the_workspace_is_kept_but_edits_of_what_was()
+{
     let (_root, state, bot) = support::connected(TEAM).await;
     let dsp = bot.dsp.clone();
     let hear = |event: Value| {
@@ -148,4 +176,30 @@ async fn nothing_sent_before_communications_was_on_in_the_workspace_is_kept() {
     // Sent since, it's kept.
     hear(written(now(), json!({}))).await;
     assert!(kept().await.is_some());
+    // An edit of one kept before it was last switched on is kept all the same.
+    let before = now() - 60 * 60 * 1000;
+    let earlier = Written {
+        team: TEAM.into(),
+        user: "U0FIXCAM".into(),
+        channel: DM.into(),
+        name: "Cameron Hayes".into(),
+        ts: ts(before),
+        thread_ts: None,
+        text: "Flat tire".into(),
+        at: before,
+        edited_at: None,
+        files: Vec::new(),
+    };
+    let at = dsp.clone();
+    state
+        .run(move |db| db.keep_communications_message(&at, &earlier).map(drop))
+        .await
+        .unwrap();
+    let edit = json!({"type": "message", "subtype": "message_changed", "channel": DM,
+        "message": {"user": "U0FIXCAM", "text": "Flat tire on route 6", "ts": ts(before),
+            "edited": {"user": "U0FIXCAM", "ts": ts(now())}}});
+    hear(edit).await;
+    let id = kept().await.unwrap().id;
+    let messages = support::messages(&state, &dsp, &id).await;
+    assert_eq!(messages[0].text, "Flat tire on route 6");
 }

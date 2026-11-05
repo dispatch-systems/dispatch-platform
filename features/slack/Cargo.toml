@@ -38,3 +38,5 @@ dispatch-slack-contract = { path = "contract" }
 
 [dev-dependencies]
 dispatch-core = { path = "../../core", features = ["testing"] }
+# A clock the tests move, through trying again what Slack told of.
+tokio = { workspace = true, features = ["test-util"] }

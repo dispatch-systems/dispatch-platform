@@ -5,6 +5,17 @@
 //! message with any member of a workspace where Communications works, to message them first
 //! (`im:write`). Slack is called outside the database, and the member's access checked again
 //! before anything is kept, or, for a message, before it goes to Slack: what Slack has is kept.
+//!
+//! A message is noted as it's checked, before it goes to Slack, held by the try posting it, and
+//! its post carries the note's ID as Slack's message metadata. Once Slack has it, it's kept,
+//! waiting its turn at the database rather than turned away, and the note cleared. One Slack may
+//! have taken that wasn't kept, as when the server stopped between, is looked for in the direct
+//! message (`im:history`) by its note's ID, and kept if it's there: by the maintenance pass every
+//! minute once no try holds it, which clears the note if it isn't, or at once when the same member
+//! sends the same message there again, which then isn't posted a second time, and is otherwise
+//! tried again under the same note. Each claims the note first, a first try noting it in the same
+//! write that finds none, so a try begun while another of it is under way is refused. A note stays
+//! until it's settled so, and no other message takes its photos meanwhile.
 use super::{
     compose::{SLACK, checked, photo_kind},
     conversations, files,
@@ -12,7 +23,7 @@ use super::{
     live,
     people::People,
     sender::{self, Identity},
-    storage::{self, CommunicationsStore, DOMAIN, Sent},
+    storage::{self, CommunicationsStore, DOMAIN, Noted, Sent},
     text,
 };
 use crate::{
@@ -20,15 +31,31 @@ use crate::{
     integrations::messages::{ID, incoming},
 };
 use dispatch_core::{
-    Error, Result, State, accounts::Context, db::now, ensure, server::http::route::Dsp,
+    Error, Result, State,
+    accounts::Context,
+    db::{Store, now},
+    ensure,
+    foundation::crypto,
+    manifest::{Maintenance, Upkeep},
+    server::http::route::Dsp,
     server::http::upload::Upload,
 };
 use dispatch_slack::kit::{self, Bot};
 use serde_json::{Value, json};
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
-/// How long a message's photos are claimed for it while it goes to Slack, in milliseconds.
+/// Every minute, each message that may have gone to Slack without being kept, looked for there.
+pub const MAINTENANCE: Maintenance = Maintenance {
+    every: Duration::from_secs(60),
+    run: pass,
+};
+/// How long a message, and its photos, are held for a try while it goes to Slack, in
+/// milliseconds: longer than its uploads and post take, Slack asking it to slow down included.
 const SENDING_MS: i64 = 10 * 60 * 1000;
+/// What each message's post carries, as Slack's message metadata, to be found again by.
+const EVENT: &str = "dispatch_reply";
+/// How a failure is reported.
+const FAILED: &str = "communications_reply_failed";
 
 /// Opens a direct message with the workspace `team`'s member `user`, for the member `c` to
 /// message them first: their conversation, made if it's new.
@@ -103,37 +130,98 @@ pub async fn send(
         c.auth.user.id.clone(),
         photos.to_vec(),
     );
-    // Its photos are claimed for it, so another message can't take them as it goes.
+    // Its photos, and its note, are claimed for it, so another message can't take them as it
+    // goes.
     let until = now() + SENDING_MS;
-    let (conversation, uploads) = state
+    let (asked, name) = (written.to_owned(), sender::name(&c.auth.user));
+    let (conversation, uploads, noted, earlier) = state
         .run_scoped(c.dsp.id.clone(), DOMAIN, move |db| {
-            let conversation = db
-                .communications_conversation(&dsp, &at)?
-                .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
-            ensure(
-                kit::workspaces_on(db, &dsp, ID)?.contains(&conversation.team),
-                "communications_off",
-                409,
-            )?;
-            let uploads = db.claim_communications_uploads(&dsp, &by, &chosen, until)?;
-            Ok((conversation, uploads))
+            begin(db, &dsp, &at, (&by, &name), &asked, &chosen, until)
         })
         .await?;
-    let sent = deliver(state, c, access, &conversation, written, &uploads).await;
-    if sent.is_err() && !photos.is_empty() {
-        // Slack didn't take it: its photos are free to send again. Should letting them go fail,
-        // the claim ends on its own.
+    let sent = deliver(
+        state,
+        c,
+        access,
+        &conversation,
+        written,
+        &uploads,
+        (noted.clone(), earlier),
+    )
+    .await;
+    if sent.is_err() {
+        // Slack didn't take it, or may have: its photos are free to send again, and its note to
+        // try again or settle. Should letting them go fail, the claims end on their own.
         let (dsp, chosen) = (c.dsp.id.clone(), photos.to_vec());
         let _ = state
             .run_scoped(c.dsp.id.clone(), DOMAIN, move |db| {
+                db.release_communications_reply(&dsp, &noted.id, noted.claimed_until)?;
                 db.release_communications_uploads(&dsp, &chosen)
             })
             .await;
     }
     sent
 }
-/// Sends what the member `c` wrote in `conversation`, with the photos `uploads` they added, then
-/// keeps it: the message, as the page reads it.
+/// Begins a try of what the member `by` wrote, under the name `name`, in the conversation `id`,
+/// with the photos `chosen`, holding them and its note until `until`: the conversation, the
+/// photos, the note, and whether it was noted before. The same message sent there before, should
+/// Slack have it unkept, is that note, claimed, and refused while another try of it is under way;
+/// else it's noted now, in the same write, so a try of it begun meanwhile is refused too.
+fn begin(
+    db: &Store,
+    dsp: &str,
+    id: &str,
+    (by, name): (&str, &str),
+    text: &str,
+    chosen: &[String],
+    until: i64,
+) -> Result<(storage::Conversation, Vec<File>, Noted, bool)> {
+    let conversation = db
+        .communications_conversation(dsp, id)?
+        .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
+    ensure(
+        kit::workspaces_on(db, dsp, ID)?.contains(&conversation.team),
+        "communications_off",
+        409,
+    )?;
+    let earlier = db
+        .noted_communications_replies(dsp, Some(id), i64::MAX)?
+        .into_iter()
+        .find(|noted| {
+            noted.by == by
+                && noted.text == text
+                && noted.photos.iter().map(|(photo, _)| photo).eq(chosen)
+        });
+    let of = earlier.as_ref().map(|noted| noted.id.as_str());
+    let uploads = db.claim_communications_uploads(dsp, by, chosen, until, of)?;
+    let Some(earlier) = earlier else {
+        let noted = Noted {
+            id: crypto::id("rpl")?,
+            conversation: id.to_owned(),
+            text: text.to_owned(),
+            by: by.to_owned(),
+            name: name.to_owned(),
+            photos: chosen
+                .iter()
+                .map(|photo| (photo.clone(), String::new()))
+                .collect(),
+            posting_since: now(),
+            claimed_until: until,
+        };
+        db.note_communications_reply(dsp, &noted)?;
+        return Ok((conversation, uploads, noted, false));
+    };
+    let claimed = db.claim_communications_reply(dsp, &earlier.id, now(), until)?;
+    ensure(claimed, "communications_reply_sending", 409)?;
+    let noted = Noted {
+        claimed_until: until,
+        ..earlier
+    };
+    Ok((conversation, uploads, noted, true))
+}
+/// Sends what the member `c` wrote in `conversation`, with the photos `uploads` they added, under
+/// the note `noted`, then keeps it: the message, as the page reads it. Noted `earlier`, and in
+/// Slack unkept, that post is kept instead; not in Slack, it's tried again under the same note.
 async fn deliver(
     state: &Arc<State>,
     c: &Context,
@@ -141,9 +229,18 @@ async fn deliver(
     conversation: &storage::Conversation,
     written: &str,
     uploads: &[File],
+    (noted, earlier): (Noted, bool),
 ) -> Result<Message> {
     let dsp = c.dsp.id.as_str();
     let bot = Bot::new(state, dsp, &conversation.team);
+    let channel = &conversation.channel;
+    if earlier
+        && let Some(ts) = posted(&bot, channel, EVENT, &noted.id, noted.posting_since).await?
+    {
+        let message = keep(state, dsp, &noted, &ts).await?;
+        live::stopped(state, dsp, &conversation.id, &c.auth.user.id);
+        return Ok(message);
+    }
     let mut shown = Vec::new();
     for upload in uploads {
         let sha256 = upload.sha256.as_deref().unwrap_or_default();
@@ -152,37 +249,175 @@ async fn deliver(
         shown.push((upload.id.clone(), slack_id, upload.name.clone()));
     }
     let identity = sender::identity(state, dsp, &conversation.team, &c.auth.user).await;
-    let args = message(&conversation.channel, written, &shown, &identity);
-    // Checked again before it goes to Slack: once Slack has it, it's kept.
-    let asked = c.clone();
-    let c = state.read(move |db| access.revalidate(db, &asked)).await?;
-    let posted = post(&bot, &args, !shown.is_empty()).await?;
-    let ts = posted["ts"].as_str().unwrap_or_default().to_owned();
-    let at = incoming::millis(&ts).ok_or_else(|| Error::new("slack_refused", 502))?;
-    let photos: Vec<(String, String)> = shown
-        .into_iter()
-        .map(|(photo, slack_id, _)| (photo, slack_id))
-        .collect();
-    let (shared, dsp, by) = (state.clone(), c.dsp.id.clone(), c.auth.user.id.clone());
-    let (id, name, written) = (conversation.id.clone(), identity.name, written.to_owned());
-    let message = state
-        .run_scoped(c.dsp.id.clone(), DOMAIN, move |db| {
-            let sent = Sent {
-                ts: &ts,
-                text: &written,
-                at,
-                by: &by,
-                name: &name,
-                photos: &photos,
-            };
-            let kept = db.keep_communications_reply(&dsp, &id, &sent)?;
-            let people = People::read(db, &shared, &dsp)?;
-            Ok(conversations::messages(db, &people, &dsp, vec![kept])?.remove(0))
+    let noted = Noted {
+        name: identity.name.clone(),
+        photos: shown
+            .iter()
+            .map(|(photo, slack_id, _)| (photo.clone(), slack_id.clone()))
+            .collect(),
+        ..noted
+    };
+    let mut args = message(channel, written, &shown, &identity);
+    args["metadata"] = tag(EVENT, &noted.id);
+    // Checked again, and noted as it goes, before it goes to Slack: once Slack has it, it's kept.
+    let (asked, note) = (c.clone(), noted.clone());
+    let c = state
+        .run_bookkeeping(move |db| {
+            let c = access.revalidate(db, &asked)?;
+            db.note_communications_reply(&c.dsp.id, &note)?;
+            Ok(c)
         })
         .await?;
+    let posted = post(&bot, &args, !shown.is_empty()).await?;
+    let ts = posted["ts"].as_str().unwrap_or_default();
+    let message = keep(state, &c.dsp.id, &noted, ts).await?;
     live::stopped(state, &c.dsp.id, &conversation.id, &c.auth.user.id);
-    live::changed(state, &c.dsp.id);
     Ok(message)
+}
+/// Keeps the message `noted` as Slack took it, `ts`, waiting its turn at the database rather
+/// than turned away: the message, as the page reads it.
+async fn keep(state: &Arc<State>, dsp: &str, noted: &Noted, ts: &str) -> Result<Message> {
+    let at = incoming::millis(ts).ok_or_else(|| Error::new("slack_refused", 502))?;
+    let (shared, of, noted, ts) = (state.clone(), dsp.to_owned(), noted.clone(), ts.to_owned());
+    let message = State::patiently(state.run_scoped(dsp, DOMAIN, move |db| {
+        let sent = Sent {
+            ts: &ts,
+            text: &noted.text,
+            at,
+            by: &noted.by,
+            name: &noted.name,
+            photos: &noted.photos,
+        };
+        let kept = db.keep_communications_reply(&of, &noted.conversation, &sent, &noted.id)?;
+        let people = People::read(db, &shared, &of)?;
+        Ok(conversations::messages(db, &people, &of, vec![kept])?.remove(0))
+    }))
+    .await?;
+    live::changed(state, dsp);
+    Ok(message)
+}
+
+/// Each DSP's messages that may have gone to Slack without being kept, looked for there.
+fn pass(state: Arc<State>, _: bool) -> Upkeep {
+    Box::pin(async move {
+        for dsp in kit::dsps(&state, FAILED).await {
+            if let Err(error) = settle(&state, &dsp).await {
+                kit::failed(FAILED, Some(&dsp), &error);
+            }
+        }
+    })
+}
+/// Keeps each message noted in the DSP that no try holds and Slack has, and clears the note of each
+/// it hasn't, while Communications works in its workspace; one where it doesn't waits until it
+/// does, and one whose conversation is gone is cleared. Each is claimed first, so no try of it
+/// runs meanwhile.
+async fn settle(state: &Arc<State>, dsp: &str) -> Result<()> {
+    let at = dsp.to_owned();
+    let unheld = state
+        .read(move |db| {
+            Ok(!db
+                .noted_communications_replies(&at, None, now())?
+                .is_empty())
+        })
+        .await?;
+    if !unheld {
+        return Ok(());
+    }
+    let at = dsp.to_owned();
+    let noted = state
+        .run_bookkeeping(move |db| {
+            let noted = db.claim_communications_replies(&at, now(), now() + SENDING_MS)?;
+            let on = kit::workspaces_on(db, &at, ID)?;
+            let ids: Vec<String> = noted.iter().map(|each| each.conversation.clone()).collect();
+            let conversations: HashMap<String, storage::Conversation> = db
+                .communications_conversations(&at, &ids)?
+                .into_iter()
+                .map(|conversation| (conversation.id.clone(), conversation))
+                .collect();
+            Ok(noted
+                .into_iter()
+                .map(|noted| {
+                    let conversation = conversations.get(&noted.conversation).cloned();
+                    let working = conversation
+                        .as_ref()
+                        .is_some_and(|conversation| on.contains(&conversation.team));
+                    (noted, conversation, working)
+                })
+                .collect::<Vec<_>>())
+        })
+        .await?;
+    for (noted, conversation, working) in noted {
+        let found = match conversation {
+            // Its conversation forgotten, as a release before this one forgets a workspace's
+            // conversations with no message: nothing is left to keep it in.
+            None => None,
+            Some(_) if !working => continue,
+            Some(conversation) => {
+                let bot = Bot::new(state, dsp, &conversation.team).patient();
+                let (channel, since) = (&conversation.channel, noted.posting_since);
+                match posted(&bot, channel, EVENT, &noted.id, since).await {
+                    Ok(found) => found,
+                    Err(error) => {
+                        kit::failed(FAILED, Some(dsp), &error);
+                        continue;
+                    }
+                }
+            }
+        };
+        match found {
+            Some(ts) => keep(state, dsp, &noted, &ts).await.map(drop)?,
+            None => {
+                let (at, id, held) = (dsp.to_owned(), noted.id, noted.claimed_until);
+                state
+                    .run_bookkeeping(move |db| db.clear_communications_reply(&at, &id, held))
+                    .await?
+            }
+        }
+    }
+    Ok(())
+}
+
+/// What a post carries, as Slack's message metadata, to be found again by: the kind of post
+/// `event`, and the ID `id` of what it posts.
+pub(crate) fn tag(event: &str, id: &str) -> Value {
+    json!({"event_type": event, "event_payload": {"message": id}})
+}
+/// The `ts` of the post tagged as the kind `event` of `id` in the direct message `channel`,
+/// posted since `since` (a minute before, for clocks that differ), if it's there: every page
+/// Slack has of them is read until it's found.
+pub(crate) async fn posted(
+    bot: &Bot,
+    channel: &str,
+    event: &str,
+    id: &str,
+    since: i64,
+) -> Result<Option<String>> {
+    let mut cursor = Value::Null;
+    loop {
+        let page = bot
+            .call(
+                "conversations.history",
+                &json!({"channel": channel, "oldest": incoming::ts(since - 60_000),
+                    "include_all_metadata": true, "limit": 200, "cursor": cursor}),
+            )
+            .await?;
+        let found = page["messages"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|post| {
+                post["metadata"]["event_type"] == event
+                    && post["metadata"]["event_payload"]["message"] == id
+            })
+            .and_then(|post| post["ts"].as_str().map(str::to_owned));
+        if found.is_some() {
+            return Ok(found);
+        }
+        cursor = match page["response_metadata"]["next_cursor"].as_str() {
+            Some(next) if !next.is_empty() => json!(next),
+            _ => return Ok(None),
+        };
+    }
 }
 /// What `chat.postMessage` is asked in the direct message `channel`: what was written, as
 /// written, with the photos `shown` (each by its ID, Slack's ID of it and its name), under
