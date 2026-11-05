@@ -18,6 +18,7 @@ mod names;
 mod overview;
 mod pairs;
 mod person;
+mod phones;
 mod photos;
 mod review;
 mod sources;

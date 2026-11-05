@@ -55,6 +55,7 @@ fn person(
         ]),
         emails: Vec::new(),
         phones: Vec::new(),
+        added_phones: Vec::new(),
         confirmed: true,
         photo: None,
     }

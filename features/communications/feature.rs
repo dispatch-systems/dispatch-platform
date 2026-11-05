@@ -19,8 +19,8 @@ pub use api::types::{
     GroupEntry, GroupMember, GroupMessages, GroupPeople, GroupPerson, GroupPersonState,
     GroupProgress, Message, MessageFile, MessageGroup, Pace, PairingStatus, PhoneApp, PhonePairing,
     PhonePairingStatus, PhoneRow, Phones, Profile, Reachable, RouteDriver, Sender, SentMessage,
-    TextContact, TextContacts, TextStatus, Today, TodaysRoutes, Typing, WaitingMessage, Workday,
-    Writing,
+    TextContact, TextContacts, TextPeople, TextStatus, Today, TodaysRoutes, Typing, WaitingMessage,
+    Workday, Writing,
 };
 
 use dispatch_core::db::{
@@ -206,6 +206,7 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         Contact,
         TextContacts,
         TextContact,
+        TextPeople,
         Profile,
         Today,
         Pace,

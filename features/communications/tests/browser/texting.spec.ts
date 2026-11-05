@@ -11,7 +11,7 @@ const PIXEL = Buffer.from(
   'base64',
 );
 
-test('with its phone and no Slack, Communications opens on Recents, where its texts wait, beside Today’s Routes, with no routes before live route data reads today: a number saved as a contact, asked before a name is left unsaved, answered by text with a picture, blocked into Contacts and unblocked', async ({
+test('with its phone and no Slack, Communications opens on Recents, where its texts wait, beside Today’s Routes, with no routes before live route data reads today: a number saved as a contact, asked before a name is left unsaved, added to a driver and taken off them, answered by text with a picture, blocked into Contacts and unblocked', async ({
   page,
 }) => {
   await login(page);
@@ -41,18 +41,42 @@ test('with its phone and no Slack, Communications opens on Recents, where its te
   await page.keyboard.press('Escape');
   await expect(name).toHaveCount(0);
   await expect(saveContact).toBeFocused();
-  // A name written and left asks first: discarded, it's gone; saved, it's the contact's.
+  // A name written and left asks first, from the other tab too: discarded, it's gone; saved,
+  // it's the contact's.
+  const newContact = page.getByRole('tab', { name: 'New contact' });
   await saveContact.click();
+  await newContact.click();
   await name.fill('Jamie Ortiz');
   await page.keyboard.press('Escape');
   await asking.getByRole('button', { name: 'Discard changes' }).click();
   await expect(name).toHaveCount(0);
   await expect(stranger).toBeVisible();
   await saveContact.click();
+  await newContact.click();
   await name.fill('Jamie Ortiz');
+  await page.getByRole('tab', { name: 'Add to driver' }).click();
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await asking.getByRole('button', { name: 'Save changes' }).click();
   await expect(list.getByRole('listitem').filter({ hasText: 'Jamie Ortiz' })).toBeVisible();
+
+  // Added to a driver, a number's texts are theirs, until it's taken off them again.
+  const gate = list.getByRole('listitem').filter({ hasText: '(425) 555-0131' });
+  await gate.getByRole('button').first().click();
+  const unknown = page.getByRole('region', { name: '(425) 555-0131' });
+  await unknown.getByRole('button', { name: 'Save contact' }).click();
+  await page.getByRole('button', { name: 'Alex Parker' }).click();
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  const alex = page.getByRole('region', { name: 'Alex Parker' });
+  await expect(alex.getByRole('button', { name: 'Save contact' })).toHaveCount(0);
+  await alex.getByLabel('More').click();
+  await alex.getByRole('button', { name: 'Remove from Alex Parker' }).click();
+  await expect(unknown.getByRole('button', { name: 'Save contact' })).toBeVisible();
+  await list
+    .getByRole('listitem')
+    .filter({ hasText: 'Jamie Ortiz' })
+    .getByRole('button')
+    .first()
+    .click();
 
   // Answered by text, it goes from the DSP's phone, which delivers it.
   const jamie = page.getByRole('region', { name: 'Jamie Ortiz' });

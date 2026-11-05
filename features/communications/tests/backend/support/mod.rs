@@ -154,6 +154,7 @@ pub fn driver(code: &str, name: &str, id: &str) -> Person {
         ids: BTreeMap::from([(DRIVERS, vec![id.into()])]),
         emails: Vec::new(),
         phones: Vec::new(),
+        added_phones: Vec::new(),
         confirmed: true,
         photo: None,
     }

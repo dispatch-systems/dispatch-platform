@@ -12,6 +12,7 @@ const work = (id: string, at: number, since: number | null = null): Conversation
   number: '+12065550101',
   driverId: id,
   contact: false,
+  added: false,
   blocked: false,
   with: { userId: null, name: id, code: null, role: null, title: null, photo: null },
   state: since === null ? 'responded' : 'waiting',

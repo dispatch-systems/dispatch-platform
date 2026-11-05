@@ -26,6 +26,7 @@ fn person(code: &str, names: &[&str], ids: &[(Source, &str)], email: &str, phone
         ids: held,
         emails: vec![email.into()],
         phones: vec![phone.into()],
+        added_phones: Vec::new(),
         confirmed: false,
         photo: None,
     }

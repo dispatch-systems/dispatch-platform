@@ -57,6 +57,7 @@ export type { TeamColor } from './generated/TeamColor';
 export type { TeamSide } from './generated/TeamSide';
 export type { TextContact } from './generated/TextContact';
 export type { TextContacts } from './generated/TextContacts';
+export type { TextPeople } from './generated/TextPeople';
 export type { TextStatus } from './generated/TextStatus';
 export type { Times } from './generated/Times';
 export type { Today } from './generated/Today';

@@ -1,4 +1,4 @@
-//! What only a conversation by text has: Retry, a number's contact and block, texting a number or
+//! What only a conversation by text has: Retry, a number's contact, person and block, texting a number or
 //! one of today's drivers first, whom the DSP can text, a text's pictures, Today's Routes and Pick
 //! driver. A Slack conversation's ID is refused for each.
 use super::texting_id;
@@ -44,6 +44,32 @@ pub(super) fn save_contact(db: &Store, c: &Member, input: &Input) -> Result<Repl
         &name,
         c.actor(),
     )?)
+}
+/// Adds the number of a conversation by text to the person `code`'s.
+pub(super) fn add_to_person(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    person(db, c, input, true)
+}
+/// Takes the number of a conversation by text off the person `code`, whom it was added to.
+pub(super) fn remove_from_person(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    person(db, c, input, false)
+}
+fn person(db: &Store, c: &Member, input: &Input, added: bool) -> Result<Reply> {
+    v::fields(&input.body, &["code"])?;
+    let conversation = texted(input)?;
+    let code = v::text(&input.body, "code", 6, 6)?;
+    Reply::of(&texts::contacts::add_to_person(
+        db,
+        c.state,
+        c,
+        &conversation,
+        code,
+        added,
+    )?)
+}
+/// Everyone Driver Match knows who hasn't left, whom a number can be added to.
+pub(super) fn addable(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    v::fields(&input.query, &[])?;
+    Reply::of(&texts::contacts::addable(db, c.state, c.dsp_id())?)
 }
 /// Blocks the number of a conversation by text.
 pub(super) fn block(db: &Store, c: &Member, input: &Input) -> Result<Reply> {

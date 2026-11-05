@@ -29,9 +29,14 @@ title: PersonTitle | null,
  */
 ids: { [key in PeopleSource]?: Array<string> },
 /**
- * The email addresses and phone numbers their sources have for them, as written.
+ * The email addresses and phone numbers their sources have for them, as written, and after
+ * their sources' numbers, those someone at the DSP added.
  */
 emails: Array<string>, phones: Array<string>,
+/**
+ * The phone numbers someone at the DSP added to theirs, as `phones` writes them.
+ */
+addedPhones: Array<string>,
 /**
  * Whether someone confirmed who they are, rather than a match.
  */

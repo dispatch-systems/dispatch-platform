@@ -78,6 +78,7 @@ export function sample(now: number) {
     number: null,
     driverId: null,
     contact: false,
+    added: false,
     blocked: false,
     with: who,
     state: waiting ? 'waiting' : 'responded',
