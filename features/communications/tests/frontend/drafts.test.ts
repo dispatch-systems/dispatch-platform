@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { Drafts } from '../../frontend/conversations/drafts.js';
+import { Drafts, draftsOf } from '../../frontend/conversations/drafts.js';
 
 /** The browser's tab's storage, as a reload finds it. */
 const tab = new Map<string, string>();
@@ -37,4 +37,15 @@ test('what’s written stays each conversation’s, for each member at each DSP,
   assert.equal(reloaded.text('c1'), 'On my way\nAt the station in 10');
   reloaded.sending('c2', 'Call me');
   assert.equal(new Drafts('dsp_a', 'user_a').text('c2'), '');
+});
+
+test('a send that fails once the page closed and opened again comes back before what was written since', () => {
+  const before = draftsOf('dsp_a', 'user_c');
+  before.sending('c1', 'First try');
+  // Another page, then Communications again, and written in the same conversation.
+  const after = draftsOf('dsp_a', 'user_c');
+  after.write('c1', 'Written after');
+  before.failed('c1', 'First try');
+  assert.equal(after.text('c1'), 'First try\nWritten after');
+  assert.equal(new Drafts('dsp_a', 'user_c').text('c1'), 'First try\nWritten after');
 });

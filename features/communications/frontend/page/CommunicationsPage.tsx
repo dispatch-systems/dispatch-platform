@@ -32,7 +32,7 @@ import {
 } from '../inbox/sections.js';
 import { routeGroups, routeRows, rowTarget } from '../todays-routes/todays-routes.js';
 import { started, type Target } from '../conversations/target.js';
-import { Drafts } from '../conversations/drafts.js';
+import { draftsOf } from '../conversations/drafts.js';
 import { memberTarget } from '../slack/members.js';
 import { ConversationPane } from '../conversations/ConversationPane.js';
 import { useConversationReads } from '../conversations/useConversation.js';
@@ -160,7 +160,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const reading = open || group || drafting;
   const [pinned, setPinned] = useState<Row>();
   const [composing, setComposing] = useState(false);
-  const drafts = useMemo(() => new Drafts(view.dsp.id, user), [view.dsp.id, user]);
+  const drafts = useMemo(() => draftsOf(view.dsp.id, user), [view.dsp.id, user]);
   // Whom a message to a group is to, kept as another opens, and what the list's row says of it.
   const [picks, setPicks] = useState<Pick[]>([]);
   const [draft, setDraft] = useState<Draft>({ name: '', people: 0 });
