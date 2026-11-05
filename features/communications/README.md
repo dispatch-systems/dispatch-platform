@@ -123,9 +123,9 @@ and every other number's in Recents.
   in it, "Keisha is typing…", said to a screen reader as it changes. Writing in it: text, with
   photos added (Add photo), as much as one message carries as the conversation's read says
   (`limits`), which what's refused says too, and nothing until it's read; **Quick replies**,
-  beside the smiley while the DSP has some, by its icon alone on a phone, opens them, and the one
-  chosen goes in where the writer was, as an emoji does, never sent by itself, in a group's box
-  too; Enter or **Send** to send; while writing, teammates see it. Where a teammate, or the phone itself, wrote in it since
+  beside the smiley while the DSP has some, on a phone under the field with attaching and Send,
+  opens them, and the one chosen goes in where the writer was, as an emoji does, never sent by
+  itself, in a group's box too; Enter or **Send** to send; while writing, teammates see it. Where a teammate, or the phone itself, wrote in it since
   the member started writing, since it opened with what they'd written, or since they last
   answered this, Send asks first, above the box: "Keisha just replied", with **Send anyway** and
   **Cancel**, which keeps what's written and shows the reply. It's told from what the page holds,

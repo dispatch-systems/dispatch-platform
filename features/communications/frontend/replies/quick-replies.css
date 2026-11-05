@@ -1,5 +1,6 @@
-/* Quick replies in the composer: its button by its word beside the smiley, by its icon alone on a
-   phone; the replies over the thread at the box's left edge, on a phone across the composer. */
+/* Quick replies in the composer: its button by its word beside the smiley, on a phone under the
+   field with attaching (composer.css); the replies over the thread at the box's left edge, on a
+   phone across the composer. */
 .communications button.quick-replies-button {
   gap: 6px;
   height: var(--round-size);
@@ -64,13 +65,6 @@
 }
 
 @container communications (width < 680px) {
-  .communications button.quick-replies-button {
-    width: var(--round-size);
-    padding: 0;
-  }
-  .quick-replies-button span {
-    display: none;
-  }
   .quick-replies-panel {
     left: 0;
     width: 100%;

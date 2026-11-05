@@ -32,7 +32,8 @@ function perform(page: HTMLElement, action: Exclude<Shortcut, 'leave'>) {
       ?.click();
   if (action === 'search')
     return page.querySelector<HTMLInputElement>('.pane-list .search input')?.focus();
-  const rows = [...page.querySelectorAll<HTMLButtonElement>('.pane-list .convo-open')];
+  // The rows that open something, not a group message being written or a number blocked.
+  const rows = [...page.querySelectorAll<HTMLButtonElement>('.pane-list button.convo-open')];
   const at = rows.findIndex((row) => row.getAttribute('aria-current') === 'true');
   const to = at < 0 ? rows[0] : rows[action === 'next' ? at + 1 : at - 1];
   to?.focus();

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ApiError } from '../../../../core/shell/frontend/runtime/api.js';
-import { textAttachments } from '../../api/client.js';
+import { dataCache } from '../../../../core/shell/frontend/runtime/data-cache.js';
+import { quickRepliesUrl, saveQuickReplies, textAttachments } from '../../api/client.js';
 
 /** A browser's request, as `upload` sends one, which the server refuses as `answer` says. */
 function refusing(answer: { status: number; body: unknown; requestId: string }) {
@@ -40,4 +41,12 @@ test('a picture for a text the server refuses is worded as Communications words 
     );
     return true;
   });
+});
+
+test('quick replies saved show as saved at once, on the revision the save answered, while the list is read again', async (t) => {
+  dataCache.put(quickRepliesUrl, { replies: ['On my way'], revision: 1 });
+  const saved = { replies: ['On my way', 'Call dispatch when you can'], revision: 2 };
+  t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify(saved)));
+  await saveQuickReplies(saved.replies, 1);
+  assert.deepEqual(dataCache.peek(quickRepliesUrl).data, saved);
 });
