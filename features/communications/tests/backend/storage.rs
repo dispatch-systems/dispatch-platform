@@ -88,19 +88,25 @@ fn a_conversation_waits_from_the_members_first_unanswered_message_until_answered
         (ConversationState::Waiting, Some(130_000), Some(130_000))
     );
     // Done covers only what its member was shown: what came after still waits, though written
-    // in the same millisecond.
-    for (ts, text) in [("140.000001", "And the vest?"), ("140.000999", "Found it")] {
+    // in the same millisecond, kept before the Done or after it.
+    let keep = |ts, text| {
         store
             .keep_communications_message(&dsp, &written(ts, 140_000, text))
             .unwrap();
-    }
+    };
+    keep("140.000001", "And the vest?");
+    keep("140.000500", "Found it");
     let done = |seen| store.mark_communications_done(&dsp, &id, "user_1", seen);
     let waits = (ConversationState::Waiting, Some(140_000), Some(140_000));
     assert!(done(Some((130_000, "130.000001"))).unwrap());
     assert_eq!(state(), waits);
     assert!(done(Some((140_000, "140.000001"))).unwrap());
     assert_eq!(state(), waits);
-    assert!(done(Some((140_000, "140.000999"))).unwrap());
+    assert!(done(Some((140_000, "140.000500"))).unwrap());
+    assert_eq!(state().0, ConversationState::Done);
+    keep("140.000999", "Thanks again");
+    assert_eq!(state(), waits);
+    assert!(done(None).unwrap());
     assert_eq!(state().0, ConversationState::Done);
     assert!(!done(None).unwrap());
     // Its messages, in the order written.
@@ -119,7 +125,8 @@ fn a_conversation_waits_from_the_members_first_unanswered_message_until_answered
             "On my way",
             "Thanks",
             "And the vest?",
-            "Found it"
+            "Found it",
+            "Thanks again"
         ]
     );
 }

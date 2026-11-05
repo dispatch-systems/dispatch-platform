@@ -5,8 +5,9 @@
 use crate::backend::{
     changes::changed_conversation,
     model::ConversationState,
-    storage::{Message, Place, Sent, covered, opened, sent_out, settle, settle_with},
+    storage::{Message, Sent, mark_done, opened, sent_out, settle, settle_with},
 };
+use crate::integrations::messages::incoming;
 use dispatch_core::{
     Error, Result,
     db::{Db, FromRow, Row, Store, now},
@@ -241,7 +242,7 @@ pub trait GroupStore {
     ) -> Result<Vec<(String, String, i64)>>;
     /// Marks each conversation listed under the group done, as the member `by`, while it waits,
     /// covering what was written up to `seen`, the latest of its messages and answers the member
-    /// was shown, when it was written and its ID, else up to now: how many were.
+    /// was shown, when it was written and its ID, else up to now (`mark_done`): how many were.
     fn mark_communications_group_done(
         &self,
         dsp: &str,
@@ -581,16 +582,21 @@ impl GroupStore for Store {
                 "SELECT id FROM communications_conversations WHERE group_id=? AND state='waiting'",
                 [group],
             )?;
+            // The latest entry shown, as a Done reaches it: an answer up to its `ts`; a message of
+            // the group's, which went to each at a time of its own, up to its millisecond's start.
+            let seen = match seen {
+                Some((at, id)) => {
+                    let answer: Option<(String,)> = db.one_as(
+                        "SELECT ts FROM communications_messages WHERE id=? AND at=?",
+                        params![id, at],
+                    )?;
+                    Some((at, answer.map_or_else(|| incoming::ts(at), |(ts,)| ts)))
+                }
+                None => None,
+            };
             for (conversation,) in &waiting {
-                db.exec(
-                    "UPDATE communications_conversations SET done_at=max(coalesce(done_at,-1),?),\
-                     done_by=? WHERE id=?",
-                    params![
-                        covered(&db, conversation, seen, Place::Id)?,
-                        by,
-                        conversation
-                    ],
-                )?;
+                let seen = seen.as_ref().map(|(at, ts)| (*at, ts.as_str()));
+                mark_done(&db, conversation, by, seen)?;
                 settle(&db, conversation)?;
             }
             Ok(waiting.len())

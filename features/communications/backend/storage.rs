@@ -407,19 +407,15 @@ impl CommunicationsStore for Store {
     ) -> Result<bool> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
-            let marked = db.exec(
-                "UPDATE communications_conversations SET done_at=max(coalesce(done_at,-1),?),\
-                 done_by=? WHERE id=? AND state='waiting'",
-                params![
-                    covered(&db, conversation, seen, Place::Ts)?,
-                    by,
-                    conversation
-                ],
-            )?;
-            if marked > 0 {
+            let waiting = db.count(
+                "SELECT count(*) FROM communications_conversations WHERE id=? AND state='waiting'",
+                [conversation],
+            )? > 0;
+            if waiting {
+                mark_done(&db, conversation, by, seen)?;
                 settle(&db, conversation)?;
             }
-            Ok(marked > 0)
+            Ok(waiting)
         })
     }
     fn waiting_communications(&self, dsp: &str) -> Result<Vec<Conversation>> {
@@ -610,6 +606,39 @@ pub(crate) fn sent_out(
     Ok((id, touched))
 }
 
+/// Marks the conversation done as the member `by`, covering what was written up to `seen`, the
+/// latest message they were shown, when it was written and its `ts`, else up to now: never less
+/// than a Done before covered. A Done covers its millisecond (`done_at`) up to its `ts`
+/// (`done_ts`), so one of the member's in that millisecond after it, kept before or after, still
+/// waits; one with no `ts` covers all of it.
+pub(crate) fn mark_done(
+    db: &Db,
+    conversation: &str,
+    by: &str,
+    seen: Option<(i64, &str)>,
+) -> Result<()> {
+    let at = now();
+    let (until, ts) = match seen {
+        Some((seen, ts)) if seen < at => (seen, Some(ts.to_owned())),
+        _ => (at, None),
+    };
+    let (done_at, done_ts): (Option<i64>, Option<String>) = db
+        .one_as(
+            "SELECT done_at,done_ts FROM communications_conversations WHERE id=?",
+            [conversation],
+        )?
+        .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
+    // How far a Done covers: to its millisecond, then all of it, else up to its `ts` in it.
+    let reach = |at: Option<i64>, ts: &Option<String>| (at, ts.is_none(), ts.clone());
+    if reach(Some(until), &ts) <= reach(done_at, &done_ts) {
+        return Ok(());
+    }
+    db.exec(
+        "UPDATE communications_conversations SET done_at=?,done_ts=?,done_by=? WHERE id=?",
+        params![until, ts, by, conversation],
+    )?;
+    Ok(())
+}
 /// Keeps whether the conversation waits on an answer, and since when, from its messages and
 /// when it was marked done, and the group it's listed under, and notes it changed, with each
 /// group that changed with it. It waits while the member's latest message came after anyone at
@@ -617,79 +646,35 @@ pub(crate) fn sent_out(
 /// message to a group answers no one. It's listed under the group the DSP's latest message to
 /// them went to, while all it waits on answers a message to a group: nothing they wrote before
 /// one, since the DSP last wrote to them alone, still waits.
-/// How a page places the messages of one millisecond after one another: by Slack's `ts`, as a
-/// conversation does, or by their ID, as a group does its messages and answers.
-#[derive(Clone, Copy)]
-pub(crate) enum Place {
-    Ts,
-    Id,
-}
-/// Up to when, in milliseconds, a Done covers the conversation `conversation`'s messages: up to
-/// `seen`, the latest message its member was shown, when it was written and its place among those
-/// of that millisecond (`place`), else up to now, never later. A millisecond less while one of the
-/// member's came in that millisecond after it, so that one still waits, and with it the
-/// conversation, since then.
-pub(crate) fn covered(
-    db: &Db,
-    conversation: &str,
-    seen: Option<(i64, &str)>,
-    place: Place,
-) -> Result<i64> {
-    let at = now();
-    let Some((seen, last)) = seen.filter(|(seen, _)| *seen < at) else {
-        return Ok(at);
-    };
-    let after = match place {
-        Place::Ts => "ts>?3",
-        Place::Id => "id>?3",
-    };
-    let unseen = db.count(
-        &format!(
-            "SELECT count(*) FROM communications_messages WHERE conversation_id=?1 \
-             AND direction='in' AND at=?2 AND {after}"
-        ),
-        params![conversation, seen, last],
-    )? > 0;
-    Ok(seen - i64::from(unseen))
-}
 pub(crate) fn settle(db: &Db, conversation: &str) -> Result<()> {
     settle_with(db, conversation, Vec::new())
 }
 /// `settle`, with the groups `touched` settled again too, as those whose answers changed.
 pub(crate) fn settle_with(db: &Db, conversation: &str, mut touched: Vec<String>) -> Result<()> {
-    let (last_in, last_alone, done_at, was): (
-        Option<i64>,
-        Option<i64>,
-        Option<i64>,
-        Option<String>,
-    ) = db
+    let (last_alone, done_at, was): (Option<i64>, Option<i64>, Option<String>) = db
         .one_as(
             "SELECT (SELECT max(at) FROM communications_messages \
-             WHERE conversation_id=?1 AND direction='in'),\
-             (SELECT max(at) FROM communications_messages \
              WHERE conversation_id=?1 AND direction='out' AND group_id IS NULL),\
              done_at,group_id FROM communications_conversations WHERE id=?1",
             [conversation],
         )?
         .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
-    let answered = last_alone.max(done_at);
-    let waiting = last_in.is_some() && last_in > answered;
-    let state = if waiting {
+    // What it waits on, if it waits: the first of the member's after the latest answer that the
+    // latest Done didn't cover (`mark_done`), and whether it answers a group.
+    let first: Option<(i64, Option<String>)> = db.one_as(
+        "SELECT m.at,m.group_id FROM communications_messages m \
+         JOIN communications_conversations c ON c.id=m.conversation_id \
+         WHERE m.conversation_id=?1 AND m.direction='in' AND m.at>?2 \
+         AND (m.at>coalesce(c.done_at,-1) OR (m.at=c.done_at AND m.ts>c.done_ts)) \
+         ORDER BY m.at,m.ts LIMIT 1",
+        params![conversation, last_alone.unwrap_or(-1)],
+    )?;
+    let state = if first.is_some() {
         ConversationState::Waiting
     } else if done_at > last_alone {
         ConversationState::Done
     } else {
         ConversationState::Responded
-    };
-    // What it waits on, if it waits: since when, and whether that first message answers a group.
-    let first: Option<(i64, Option<String>)> = if waiting {
-        db.one_as(
-            "SELECT at,group_id FROM communications_messages \
-             WHERE conversation_id=? AND direction='in' AND at>? ORDER BY at,ts LIMIT 1",
-            params![conversation, answered.unwrap_or(-1)],
-        )?
-    } else {
-        None
     };
     let since = first.as_ref().map(|(at, _)| *at);
     // Under the group the DSP last wrote to them in, while all it waits on answers a group.
@@ -715,6 +700,13 @@ pub(crate) fn settle_with(db: &Db, conversation: &str, mut touched: Vec<String>)
         settle_group(db, &group)?;
     }
     Ok(())
+}
+
+/// Communications' migration 13: how far within its millisecond each conversation's latest Done
+/// covered (`done_ts`, the `ts` of the latest message it covered), none for one before, which
+/// covered all of it.
+pub(crate) fn add_done_places(db: &Db) -> Result<()> {
+    add_column(db, "communications_conversations", "done_ts", "TEXT")
 }
 
 /// Communications' migration 3: what ties conversations, messages and photos to groups. A

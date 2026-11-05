@@ -149,6 +149,12 @@ pub const FEATURE: Feature = Feature {
                 name: "phones_attempts",
                 apply: Sql(include_str!("migrations/dsp/0012_phones_attempts.sql")),
             },
+            // How far within its millisecond each conversation's latest Done covered.
+            Migration {
+                id: 13,
+                name: "communications_done_places",
+                apply: Code(backend::storage::add_done_places),
+            },
         ],
     }],
     // Its dispatch phones are the DSP's own, managed on DSP Connections.

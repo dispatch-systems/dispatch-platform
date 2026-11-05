@@ -272,18 +272,30 @@ async fn answers_are_the_groups_until_the_dsp_writes_to_them_alone() {
     support::writes(&state, &dsp, DRIVERS_TEAM, "U0FIXJORDAN", "On it").await;
     let jordan = with(&state, &dsp, DRIVERS_TEAM, "U0FIXJORDAN").await;
     assert_eq!(jordan.group.as_deref(), Some(later.id.as_str()));
-    let marked = |seen| {
+    let marked = |seen: Option<(i64, String)>| {
         let (shared, at, id) = (state.clone(), dsp.clone(), later.id.clone());
-        state.read(move |db| done(db, &shared, &at, &id, "someone", seen))
+        state.read(move |db| {
+            let seen = seen.as_ref().map(|(at, id)| (*at, id.as_str()));
+            done(db, &shared, &at, &id, "someone", seen)
+        })
     };
-    // Done covers only what was shown: shown up to before "On it", in its millisecond, Jordan
-    // still waits.
-    let shown = jordan.waiting_since.unwrap();
+    // Done covers only what was shown: shown up to before "On it", Jordan still waits; shown up
+    // to it, as the group shows it, they're done.
+    let shown = jordan.waiting_since.unwrap() - 1;
     assert_eq!(
-        marked(Some((shown, ""))).await.unwrap().state,
+        marked(Some((shown, String::new()))).await.unwrap().state,
         ConversationState::Waiting
     );
-    let marked = marked(None).await.unwrap();
+    let (shared, at, id) = (state.clone(), dsp.clone(), later.id.clone());
+    let on_it = state
+        .read(move |db| opened(db, &shared, &at, &id, None))
+        .await
+        .unwrap()
+        .entries
+        .pop()
+        .unwrap();
+    assert_eq!(on_it.text, "On it");
+    let marked = marked(Some((on_it.at, on_it.id))).await.unwrap();
     assert_eq!(marked.state, ConversationState::Responded);
     let jordan = with(&state, &dsp, DRIVERS_TEAM, "U0FIXJORDAN").await;
     assert_eq!(jordan.state, ConversationState::Done);
