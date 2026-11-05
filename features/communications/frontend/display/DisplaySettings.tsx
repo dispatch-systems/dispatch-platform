@@ -34,8 +34,8 @@ import './display.css';
 // which changes as they choose. A phone has the choices that apply on one. What they choose is
 // shown at once and saved a moment later, their own; Reset takes the screen back to its defaults.
 // Then how a new message alerts them, on any screen.
-// The preview shows the screen chosen at its actual size, or a desktop's whole page made to fit,
-// as it starts (`frame`).
+// The preview shows the screen chosen at its actual size, or a desktop's whole page, as big as
+// it is in this window, made to fit, as it starts (`frame`).
 
 /** How long after a choice it's saved, so a slider dragged saves once. */
 const SAVE_MS = 400;
@@ -95,6 +95,40 @@ function useRoom(box: RefObject<HTMLElement | null>) {
   return room;
 }
 
+/** Below the Communications page's heading, to its list and conversation (communications.css). */
+const UNDER_HEADING = 22;
+
+/**
+ * The size of the Communications page's list and conversation in this window, as it changes: the
+ * room beside the app's sidebar, under its bars and a page's heading, as `box`'s page, Settings,
+ * has them too.
+ */
+function usePage(box: RefObject<HTMLElement | null>) {
+  const [page, setPage] = useState({ width: 0, height: 0 });
+  useLayoutEffect(() => {
+    const main = box.current?.closest('main');
+    const area = main?.parentElement;
+    const heading = main?.querySelector('.page-heading');
+    if (!area || !heading) return;
+    const measure = () =>
+      setPage({
+        width: window.innerWidth - area.getBoundingClientRect().left,
+        height:
+          window.innerHeight -
+          (heading.getBoundingClientRect().bottom + window.scrollY + UNDER_HEADING),
+      });
+    // The window resized, or the app's bars or the page's heading changed size.
+    const observer = new ResizeObserver(measure);
+    observer.observe(area);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [box]);
+  return page;
+}
+
 export function DisplaySettings({ view, refresh }: { view: DspView; refresh: () => void }) {
   const choices = useChoices(refresh);
   const [screen, setScreen] = useState<Screen>(thisScreen);
@@ -104,13 +138,14 @@ export function DisplaySettings({ view, refresh }: { view: DspView; refresh: () 
   const [profile, setProfile] = useState(false);
   const stage = useRef<HTMLDivElement>(null);
   const room = useRoom(stage);
+  const page = usePage(stage);
   const phone = screen === 'phone';
   const { width, height, scale, aside } = frame({
     room,
     phone,
     fit: size === 'fit',
     list: widths(shown).list,
-    window: { width: window.innerWidth, height: window.innerHeight },
+    page,
   });
   // Notifications are on only where this browser may show them, which turning them on asks.
   const [allowed, setAllowed] = useState(notifying);
@@ -499,7 +534,7 @@ export function DisplaySettings({ view, refresh }: { view: DspView; refresh: () 
           )}
         </div>
         <div className="display-stage" ref={stage}>
-          {room.width > 0 && (
+          {room.width > 0 && page.width > 0 && (
             <div
               className={phone ? 'display-scaled phone' : 'display-scaled'}
               style={{

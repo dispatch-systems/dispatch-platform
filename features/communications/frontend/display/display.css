@@ -1,7 +1,10 @@
 /* Settings' Message display: the choices in a column beside the preview, which stays in view as
    the page scrolls by them; with no room for both, the preview over them. The choices are drawn
    as Settings draws its own sections and fields (settings.css), with tiles, sliders and colours
-   besides. */
+   besides. The page takes the window's whole width, for the most room for both. */
+.page-container:has(.message-display) {
+  max-width: none;
+}
 .message-display {
   display: grid;
   grid-template-columns: minmax(340px, 440px) minmax(0, 1fr);
