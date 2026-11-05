@@ -29,10 +29,11 @@ class Inbox(
 
     /**
      * Reads the texts written since the last read, and those not whole then, keeping each new one
-     * to report. Whether to leave the next read to its regular time: not while a text that couldn't
-     * be read is less than [UNREAD_MS] old, as one being written soon is whole.
+     * to report: of the SIM [sim] alone, where it's one of several. Whether to leave the next read
+     * to its regular time: not while a text that couldn't be read is less than [UNREAD_MS] old, as
+     * one being written soon is whole.
      */
-    suspend fun read(): Boolean {
+    suspend fun read(sim: Int?): Boolean {
         val mark = queue.mark() ?: return true
         val started = now()
         // A text may come into the provider after its time. A text sent leaves the outbox in its
@@ -40,7 +41,7 @@ class Inbox(
         // was deleted. A picture message downloaded late is a new row, its time when it came,
         // however long before: found above the highest ID read.
         val since = maxOf(mark.paired, mark.scanned - LOOK_BACK_MS)
-        val rows = provider.rows(Scan(mark.paired, since, mark.sms, mark.mms))
+        val rows = provider.rows(Scan(mark.paired, since, mark.sms, mark.mms, sim))
         val seen = queue.seen().toHashSet()
         val unread = queue.unread()
         val found = unread.associate { it.key to it.found }

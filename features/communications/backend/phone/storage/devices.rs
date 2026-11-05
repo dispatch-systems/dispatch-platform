@@ -3,7 +3,10 @@
 use super::texts::{self, Reported, TextStore};
 use crate::{
     api::types::PairingStatus,
-    backend::phone::{model::Phone, numbers::normal},
+    backend::phone::{
+        model::{Health, Phone},
+        numbers::normal,
+    },
 };
 use dispatch_core::{
     Error, Result,
@@ -43,6 +46,11 @@ pub(crate) fn add_pairing_ids(db: &Db) -> Result<()> {
 pub(crate) fn add_app_version_codes(db: &Db) -> Result<()> {
     add_column(db, "phones_devices", "app_version_code", "INTEGER")
 }
+/// Communications' migration 14: how each phone last said it stands (`health`), as JSON, with
+/// each wait; none until it says it, as an app older than that never does.
+pub(crate) fn add_health(db: &Db) -> Result<()> {
+    add_column(db, "phones_devices", "health", "TEXT")
+}
 
 /// One of the DSP's phones, as kept.
 #[derive(Clone, Debug, PartialEq)]
@@ -56,6 +64,10 @@ pub struct Device {
     pub app_version_code: Option<i64>,
     pub paired_at: i64,
     pub last_seen_at: Option<i64>,
+    /// How it last said it stands, once it said it.
+    pub health: Option<Health>,
+    /// Whether it's a stand-in, the demo's, which no app holds.
+    pub stand_in: bool,
 }
 impl Device {
     fn of(row: &Value) -> Self {
@@ -68,6 +80,11 @@ impl Device {
             app_version_code: row["app_version_code"].as_i64(),
             paired_at: n(row, "paired_at"),
             last_seen_at: row["last_seen_at"].as_i64(),
+            // As this server wrote it; one it can't read is as none said.
+            health: row["health"]
+                .as_str()
+                .and_then(|health| serde_json::from_str(health).ok()),
+            stand_in: n(row, "stand_in") == 1,
         }
     }
     /// Whether it runs `app` already.
@@ -102,6 +119,8 @@ impl Device {
             number: self.number.clone(),
             online: self.online(now),
             last_seen_at: self.last_seen_at,
+            cant_send: self.health.as_ref().is_some_and(Health::cant_send),
+            stand_in: self.stand_in,
         }
     }
 }
@@ -130,6 +149,8 @@ pub trait DeviceStore {
     fn phones_seen(&self, dsp: &str, device: &str, at: i64) -> Result<()>;
     /// Notes the app the phone runs.
     fn phones_app_version(&self, dsp: &str, device: &str, app: &AppVersion) -> Result<()>;
+    /// Notes how the phone says it stands.
+    fn phones_health(&self, dsp: &str, device: &str, health: &Health) -> Result<()>;
     fn phones_rename(&self, dsp: &str, id: &str, name: &str) -> Result<Device>;
     /// Removes the phone: its key works no more, and the texts still waiting on it fail, as no
     /// phone would send them. The phone as it was, and the texts that failed.
@@ -203,6 +224,13 @@ impl DeviceStore for Store {
         self.dsp(dsp)?.exec(
             "UPDATE phones_devices SET app_version=?, app_version_code=? WHERE id=?",
             params![app.version, app.version_code, device],
+        )?;
+        Ok(())
+    }
+    fn phones_health(&self, dsp: &str, device: &str, health: &Health) -> Result<()> {
+        self.dsp(dsp)?.exec(
+            "UPDATE phones_devices SET health=? WHERE id=?",
+            params![serde_json::to_string(health)?, device],
         )?;
         Ok(())
     }

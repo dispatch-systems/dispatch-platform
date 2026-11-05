@@ -23,19 +23,19 @@ class Reader(
     private val changes: Flow<Unit>,
     private val io: CoroutineContext = Dispatchers.IO,
 ) {
-    /** Reads until cancelled, calling [read] after each read. */
-    suspend fun run(read: () -> Unit): Nothing {
+    /** Reads the texts of the SIM [sim] says, until cancelled, calling [read] after each read. */
+    suspend fun run(sim: () -> Int?, read: () -> Unit): Nothing {
         while (true) {
             texting.await()
             try {
-                reading(read)
+                reading(sim, read)
             } catch (_: SecurityException) {
                 // Texting was turned off: nothing to read until it's back.
             }
         }
     }
 
-    private suspend fun reading(read: () -> Unit): Unit = coroutineScope {
+    private suspend fun reading(sim: () -> Int?, read: () -> Unit): Unit = coroutineScope {
         val changed = changes.produceIn(this)
         var failures = 0
         while (true) {
@@ -43,7 +43,7 @@ class Reader(
             // The texting app writes a text in steps: read once it's done.
             delay(SETTLE_MS)
             failures = try {
-                if (withContext(io) { inbox.read() }) 0 else failures + 1
+                if (withContext(io) { inbox.read(sim()) }) 0 else failures + 1
             } catch (_: Unavailable) {
                 failures + 1
             } catch (_: SQLiteException) {

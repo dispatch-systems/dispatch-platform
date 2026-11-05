@@ -1,6 +1,7 @@
 package com.dspdispatch.relay.connection
 
 import com.dspdispatch.relay.dispatch.Dispatch
+import com.dspdispatch.relay.dispatch.Health
 import com.dspdispatch.relay.dispatch.Outbox
 import com.dspdispatch.relay.dispatch.Refusal
 import com.dspdispatch.relay.pairing.Paired
@@ -35,13 +36,14 @@ class Connection(private val dispatch: Dispatch, private val now: () -> Long = S
     }
 
     /**
-     * Runs until the DSP removes this phone, then returns. Cancelling the coroutine stops it.
+     * Runs until the DSP removes this phone, then returns, saying how it stands as [health] has it
+     * with each wait. Cancelling the coroutine stops it.
      */
-    suspend fun run(paired: Paired, key: String, received: suspend (Outbox) -> Unit) {
+    suspend fun run(paired: Paired, key: String, health: suspend () -> Health?, received: suspend (Outbox) -> Unit) {
         var failures = 0
         while (true) {
             try {
-                val outbox = dispatch.outbox(paired.site, key)
+                val outbox = dispatch.outbox(paired.site, key, health())
                 failures = 0
                 if (state.value !is Link.Connected) state.value = Link.Connected(now())
                 received(outbox)

@@ -117,6 +117,47 @@ data class StatusesReport(val statuses: List<ReportedStatus>)
 @Serializable
 data class ReportedStatus(val id: String, val attempt: Long, val status: SendStatus, val at: Long, val error: String? = null)
 
+/**
+ * How the phone stands, said with each wait on the outbox: the Set up [setup] steps undone, by
+ * their keys; whether Android lets it [read] and [send] texts; its default texting app
+ * ([textingApp]), by its package, where it has one; its [sim]; what [waiting] to go to Dispatch;
+ * the picture messages received the texting app hasn't downloaded ([undownloaded]), where the
+ * phone lets the app count them; and what last went wrong.
+ */
+@Serializable
+data class Health(
+    val setup: List<String>,
+    val read: Boolean,
+    val send: Boolean,
+    val sim: Sim,
+    val waiting: Backlog,
+    val undownloaded: Int? = null,
+    val textingApp: String? = null,
+    val sendError: Lapse? = null,
+    val unexpected: Lapse? = null,
+)
+
+/** The SIM the phone texts from: in it and with the network, not in it, or in it with no network. */
+@Serializable
+enum class Sim {
+    @SerialName("ready")
+    READY,
+
+    @SerialName("absent")
+    ABSENT,
+
+    @SerialName("no_signal")
+    NO_SIGNAL,
+}
+
+/** How many texts read, files of them, and statuses wait on the phone to go to Dispatch. */
+@Serializable
+data class Backlog(val texts: Int, val files: Int, val statuses: Int)
+
+/** Something that went wrong: [error], when ([at]), and, for one the app didn't expect, what it was [doing]. */
+@Serializable
+data class Lapse(val error: String, val at: Long, @SerialName("where") val doing: String? = null)
+
 /** What Dispatch answers a call that only needs doing. */
 @Serializable
 internal data class Done(val ok: Boolean)
