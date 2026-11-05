@@ -63,9 +63,10 @@ and every other number's in Recents.
   with the page's own width, smoothly, from a laptop's to an ultrawide's, then stops (a
   container query on the page). On a wide page, the messages and the box under them keep to a
   centred column. Under 760 pixels of page, as on a phone, one pane at a time, edge to edge:
-  the list, or the conversation open, which takes the whole page, with a way back. The
-  conversation open is in the address (`?open=<id>`), and a link to one opens it, the page open
-  or not.
+  the list, or the conversation open, which takes the whole page, with a way back; one opened
+  from the list is a step of the browser's history, so Back, the phone's too, goes back to the
+  list. The conversation open is in the address (`?open=<id>`), and a link to one opens it, the
+  page open or not.
 - **Sections:** the list's, at its top while there are two or more, each with how many wait in
   it: **Recents**, always, every other section's conversations and groups and the numbers that
   text the DSP's phones ([Messaging](#messaging)), counting everyone waiting; **Today's Routes**
@@ -89,7 +90,8 @@ and every other number's in Recents.
 - **Messages:** Waiting, the longest waiting first, each with how long it has, amber from 15
   minutes and red from 30, and a check, shown as it's pointed at or reached by the keyboard
   beside the conversation, that marks it done without a reply; then Responded, the latest
-  first; older ones read as the list is scrolled to its end. Each shows who it's with, by their
+  first; older ones read as the list is scrolled to its end, and once a read of them failed, as
+  Try again is pressed. Each shows who it's with, by their
   photo, when they last wrote, and what was written last, under the first name of whoever at the
   DSP wrote it, or who at the DSP is writing in it. In Recents, every section's, Waiting, then
   those answered under the day each was last written in (Today, Yesterday, then the day), the
@@ -103,10 +105,16 @@ and every other number's in Recents.
   it waits, how long and Done; its messages under the day each was written, the member's beside
   their photo, the DSP's under the name and photo of whoever sent them, each edited in Slack
   marked Edited, a reply in one of its threads in its place among them, photos shown and other
-  files to download, or why one isn't kept; older ones read as it's scrolled to its start; and
-  those at the DSP writing in it now. Writing in it: text, with photos attached (the paperclip),
-  as much as one message carries as the conversation's read says (`limits`), which what's refused
-  says too, and nothing until it's read; Enter to send; while writing, teammates see it. Photos
+  files to download, or why one isn't kept; older ones read as it's scrolled to its start, and
+  once a read of them failed, as Try again is pressed; and those at the DSP writing in it now. A
+  read that failed says why, with Try again. Writing in it: text, with photos attached (the
+  paperclip), as much as one message carries as the conversation's read says (`limits`), which
+  what's refused says too, and nothing until it's read; Enter to send; while writing, teammates
+  see it. What's written and not sent is kept, each conversation's and each group's, while the
+  page is open and in the browser's tab for each member at each DSP, so it's there again as it
+  opens again, after a reload too (`frontend/conversations/drafts.ts`); the photos go as it
+  closes. Sent, what was written and photos added while it went stay, and the conversation shows
+  as the server answered, unless an update brought it written in since. Photos
   show by Driver Match's person for each (`/api/dsp/people/{code}/photo`), never Slack's own
   addresses. Each conversation read is kept while the page is open, for forty at most, so it
   opens again at once as it was read, and is read again as it opens only once an update changed
@@ -395,6 +403,8 @@ in their own direct message with the app, and their answers come back together.
   written in first. It's called what was picked: one pick's name, else theirs joined, someone by
   their first name, and past three the first two and how many others.
 - **Writing it:** as in a conversation, photos too, sent with Send to and how many it goes to.
+  Whom it's to and what's written are kept while another is open, and Message a group comes back
+  to them, until it's sent.
 - **Sending:** in the background, one at a time, at most one a second in each workspace, as Slack
   asks of an app posting messages (`chat:write`), in each person's direct message, opened first if
   need be (`im:write`), under the sender's full name and photo as an answer goes
@@ -554,7 +564,8 @@ the page's layout and the variables its parts draw by.
 - `conversations/`: the conversation open, its thread, composer and profile; each kind of
   conversation (`kinds.ts`: how its messages carry photos and files, and how one is known and
   started), whom it's with (`party.tsx`, `parties.tsx`: their face, profile, head, actions and
-  whom a message goes to), and what opens one (`target.ts`).
+  whom a message goes to), what opens one (`target.ts`), and what's written in each and not sent
+  (`drafts.ts`).
 - `slack/`, with `groups/`: Slack's contacts and workspaces, New message, Copy chat link and
   setting Slack up; messaging a group.
 - `texting/`: Recents' text contacts, a number's actions and Save contact (Add to driver or a

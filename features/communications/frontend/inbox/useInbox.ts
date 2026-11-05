@@ -140,6 +140,8 @@ export function useInbox(chosen?: string) {
     [change],
   );
   const [reading, setReading] = useState(false);
+  // Whether the latest read of older ones failed: then read again only as asked again.
+  const [olderFailed, setOlderFailed] = useState(false);
   /** Reads the answered conversations and groups older than the last listed of the section that
    * `shown`'s list reads next: its own, or in Recents the one it stops at. */
   const readOlder = useCallback(
@@ -149,6 +151,7 @@ export function useInbox(chosen?: string) {
       const last = section && lastAnswered(listed, section);
       if (!listed || !section || !last || reading) return;
       setReading(true);
+      setOlderFailed(false);
       try {
         const asked = scope.current;
         const older = await olderConversations(last, sectionNamed(section).listing(asked));
@@ -157,11 +160,12 @@ export function useInbox(chosen?: string) {
           change(withOlder(current.current, older, section));
       } catch (cause) {
         setError(messageOf(cause));
+        setOlderFailed(true);
       } finally {
         setReading(false);
       }
     },
     [change, reading],
   );
-  return { inbox, team, changed, error, refresh, show, showGroup, readOlder };
+  return { inbox, team, changed, error, refresh, show, showGroup, readOlder, olderFailed };
 }

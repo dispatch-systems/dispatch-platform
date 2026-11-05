@@ -1,4 +1,12 @@
-import { useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react';
 import { ArrowUp, LoaderCircle, Paperclip, Phone, X } from 'lucide-react';
 import type { CommunicationsUpload, ComposeLimits } from '../../api/index.js';
 import type { Attachments } from '../../api/client.js';
@@ -8,6 +16,7 @@ import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import { Shown } from '../display/display.js';
 import { size } from '../shared/format.js';
 import { randomId } from '../../../../core/shell/frontend/lib/random-id.js';
+import type { Drafts } from './drafts.js';
 import './composer.css';
 
 // Writing a message, in a conversation or to a group: as much as one may carry, as the API says
@@ -18,7 +27,9 @@ import './composer.css';
 // While someone writes in a conversation, their teammates see they are, said again every few
 // seconds. A text says the number it goes to by its last digits, when the name doesn't. While what
 // it goes to can't be reached, as a driver holding no work phone, what says so takes the box's
-// place (`instead`), and what's written stays, with its photos, until it can be again.
+// place (`instead`), and what's written stays, with its photos, until it can be again. What's
+// written is kept by the page (`drafts`), so it's there again as the box opens again; sent, what
+// was written and photos added while it went stay.
 
 /** How often writing is said again: the server counts it for six seconds. */
 const TYPING_MS = 3000;
@@ -33,6 +44,8 @@ type Added = {
 };
 
 export function Composer({
+  drafts,
+  draft,
   placeholder,
   writable,
   ready: whom = true,
@@ -44,6 +57,10 @@ export function Composer({
   label,
   instead,
 }: {
+  /** What's written in each box, kept by the page. */
+  drafts: Drafts;
+  /** Which of them this box's is. */
+  draft: string;
   placeholder: string;
   /** Whether it can be written in: Communications works where it goes now. */
   writable: boolean;
@@ -65,7 +82,10 @@ export function Composer({
   instead?: ReactNode;
 }) {
   const { fail } = useFeedback();
-  const [text, setText] = useState('');
+  const text = useSyncExternalStore(
+    useCallback((watch: () => void) => drafts.watch(draft, watch), [drafts, draft]),
+    () => drafts.text(draft),
+  );
   const { enter_sends: enterSends } = useContext(Shown);
   const [photos, setPhotos] = useState<Added[]>([]);
   const picker = useRef<HTMLInputElement>(null);
@@ -131,13 +151,15 @@ export function Composer({
       );
   };
   const send = useAction(async () => {
+    const going = new Set(photos.map((photo) => photo.key));
     await deliver(
       text.trim(),
       photos.map((photo) => photo.uploaded!.id),
     );
+    // What was written and photos added while it went stay.
+    drafts.sent(draft, text);
     for (const photo of photos) URL.revokeObjectURL(photo.shown);
-    setPhotos([]);
-    setText('');
+    setPhotos((now) => now.filter((photo) => !going.has(photo.key)));
     said.current = 0;
   });
   const uploading = photos.some((photo) => !photo.uploaded);
@@ -145,7 +167,7 @@ export function Composer({
   const ready =
     open && whom && !send.busy && !uploading && (text.trim().length > 0 || photos.length > 0);
   const writing = (value: string) => {
-    setText(value);
+    drafts.write(draft, value);
     if (typing && value.trim() && Date.now() - said.current > TYPING_MS) {
       said.current = Date.now();
       typing();

@@ -36,6 +36,7 @@ export function Thread({
   messages,
   more,
   readOlder,
+  olderFailed,
   writing,
   timeZone,
   now,
@@ -48,6 +49,8 @@ export function Thread({
   messages: readonly Message[];
   more: boolean;
   readOlder: () => void;
+  /** Whether the latest read of older ones failed. */
+  olderFailed: boolean;
   writing: readonly Writing[];
   timeZone: string;
   now: number;
@@ -67,7 +70,13 @@ export function Thread({
   const pauses = !plain && times === 'after_pause';
   const today = dayOf(now, timeZone);
   return (
-    <ThreadFrame items={messages} after={writing} more={more} readOlder={readOlder}>
+    <ThreadFrame
+      items={messages}
+      after={writing}
+      more={more}
+      readOlder={readOlder}
+      olderFailed={olderFailed}
+    >
       {runs(messages, timeZone).map(({ day, at, runs }) => (
         <div key={day} className={workdays && day !== today ? 'day-messages past' : 'day-messages'}>
           {workdays ? (

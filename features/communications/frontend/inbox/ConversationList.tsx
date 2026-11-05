@@ -43,6 +43,7 @@ export function ConversationList({
   read,
   below,
   readOlder,
+  olderFailed,
   ...listing
 }: Listing & {
   inbox: Communications;
@@ -62,6 +63,8 @@ export function ConversationList({
   /** What's open, while the list doesn't show it. */
   pinned?: Row;
   readOlder: () => void;
+  /** Whether the latest read of older ones failed. */
+  olderFailed: boolean;
 }) {
   const model = sectionNamed(section);
   // What Search searches: the section's own, or in Recents every section the DSP has.
@@ -152,7 +155,7 @@ export function ConversationList({
           {list(rows)}
         </Fragment>
       ))}
-      {readsNext(inbox, section) && <More read={readOlder} />}
+      {readsNext(inbox, section) && <More read={readOlder} failed={olderFailed} />}
     </>
   );
 }
