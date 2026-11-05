@@ -45,6 +45,8 @@ pub trait PushStore {
     fn keep_communications_push(&self, dsp: &str, subscription: &Subscription) -> Result<()>;
     /// Lets go of the browser at `endpoint`, if it's `user`'s.
     fn remove_communications_push(&self, dsp: &str, user: &str, endpoint: &str) -> Result<()>;
+    /// The browser at `endpoint`, as it's kept now, if it is.
+    fn communications_push(&self, dsp: &str, endpoint: &str) -> Result<Option<Subscription>>;
     /// Every browser the DSP's members are told in, each member's together.
     fn communications_pushes(&self, dsp: &str) -> Result<Vec<Subscription>>;
     /// Lets go of the browsers at `endpoints`, whoever's they are.
@@ -77,6 +79,12 @@ impl PushStore for Store {
             [endpoint, user],
         )?;
         Ok(())
+    }
+    fn communications_push(&self, dsp: &str, endpoint: &str) -> Result<Option<Subscription>> {
+        self.dsp(dsp)?.one_as(
+            "SELECT endpoint,user_id,p256dh,auth,site FROM communications_push WHERE endpoint=?",
+            [endpoint],
+        )
     }
     fn communications_pushes(&self, dsp: &str) -> Result<Vec<Subscription>> {
         self.dsp(dsp)?.query_as(

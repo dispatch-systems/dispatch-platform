@@ -1,7 +1,9 @@
 //! Who is pushed what: each message new in what waits, to each browser of each member who may be
 //! told of it, once, opening where it was subscribed; the browsers let go of once they can't be
-//! told; and pushes going a few at once, however many batches go.
+//! told, even as a push waits to be tried again; pushes going a few at once, however many batches
+//! go; and what a push says of a message, as the list does.
 use super::*;
+use crate::api::types::{FileStatus, MessageFile};
 use crate::backend::{
     reply,
     support::{self, USE},
@@ -181,12 +183,24 @@ async fn browsers_are_let_go_of_once_they_cant_be_told() {
 async fn pushes_go_a_few_at_once_however_many_batches_go() {
     let (_root, state, bot) = support::connected(TEAM).await;
     let dsp = bot.dsp.clone();
+    let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+    let owner = c.actor().to_owned();
+    notifications(&state, &dsp, &owner, true, 0).await;
     // Two batches of browsers whose push services take a second each, going together.
+    let endpoint = |n: usize| format!("https://fcm.googleapis.com/fcm/send/slow-{n}");
+    let ns: Vec<usize> = (0..sending::AT_ONCE)
+        .chain(100..100 + sending::AT_ONCE)
+        .collect();
+    for n in &ns {
+        keep(&state, &dsp, &owner, &endpoint(*n)).await;
+    }
     let batch = |from: usize| -> Vec<(Subscription, Vec<u8>)> {
         (from..from + sending::AT_ONCE)
             .map(|n| {
-                let endpoint = format!("https://fcm.googleapis.com/fcm/send/slow-{n}");
-                (browser("user", &endpoint, Address::Admin), b"{}".to_vec())
+                (
+                    browser(&owner, &endpoint(n), Address::Admin),
+                    b"{}".to_vec(),
+                )
             })
             .collect()
     };
@@ -197,8 +211,55 @@ async fn pushes_go_a_few_at_once_however_many_batches_go() {
     first.unwrap();
     second.unwrap();
     assert!(fixture::most_answering() <= sending::AT_ONCE);
-    for n in (0..sending::AT_ONCE).chain(100..100 + sending::AT_ONCE) {
-        let endpoint = format!("https://fcm.googleapis.com/fcm/send/slow-{n}");
-        assert_eq!(fixture::pushed(&endpoint).len(), 1, "{endpoint}");
+    for n in ns {
+        assert_eq!(fixture::pushed(&endpoint(n)).len(), 1, "{}", endpoint(n));
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_push_tried_again_goes_only_if_its_member_is_still_told() {
+    let (_root, state, bot) = support::connected(TEAM).await;
+    let dsp = bot.dsp.clone();
+    let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+    let owner = c.actor().to_owned();
+    notifications(&state, &dsp, &owner, true, 0).await;
+    let busy = "https://fcm.googleapis.com/fcm/send/busy-retried";
+    keep(&state, &dsp, &owner, busy).await;
+    let pushes = vec![(browser(&owner, busy, Address::Admin), b"{}".to_vec())];
+    let sending = {
+        let (state, dsp) = (state.clone(), dsp.clone());
+        tokio::spawn(async move { sending::send(&state, &dsp, pushes).await })
+    };
+    // Refused the first time; while it waits to be tried again, they turn Notifications off.
+    while !fixture::refused(busy) {
+        tokio::task::yield_now().await;
+    }
+    notifications(&state, &dsp, &owner, false, 1).await;
+    sending.await.unwrap().unwrap();
+    assert!(fixture::pushed(busy).is_empty());
+    assert!(kept(&state, &dsp).await.is_empty());
+}
+
+#[test]
+fn a_push_previews_a_message_as_the_list_does() {
+    let cases: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../../previews.json")).unwrap();
+    for each in cases {
+        let files: Vec<MessageFile> = each["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|file| MessageFile {
+                id: "file".into(),
+                name: file[1].as_str().unwrap().into(),
+                mime: file[0].as_str().unwrap().into(),
+                size: 1,
+                status: FileStatus::Kept,
+                version: None,
+                preview: false,
+            })
+            .collect();
+        let text = each["text"].as_str().unwrap();
+        assert_eq!(sending::preview(text, &files), each["preview"], "{each}");
     }
 }

@@ -26,8 +26,9 @@ const going = () => new AbortController().signal;
 /**
  * A browser that can be pushed to, subscribed under `subscribed` if anything, for the DSPs
  * `keeping` it, at a server whose key is `key`; what it and the server were asked, in order; the
- * DSPs it remembers keeping its subscription; and a hold on its worker's activation, which the
- * test releases. Its worker, newly registered, is active only once it's ready.
+ * DSPs it remembers keeping its subscription; and holds, which the test releases, on its worker's
+ * activation and on the server's answer to keeping it. Its worker, newly registered, is active
+ * only once it's ready.
  */
 function browser(t: TestContext, key: string | null, subscribed?: string, keeping = [NORTH]) {
   const asked: string[] = [];
@@ -63,14 +64,13 @@ function browser(t: TestContext, key: string | null, subscribed?: string, keepin
     },
   };
   let registered = Boolean(subscribed);
-  let activation = Promise.resolve();
-  /** Holds the worker's activation: once asked for it, then until released. */
+  /** A hold: asked for once reached, then held until released. */
   const hold = () => {
     let reached = () => {};
     let release = () => {};
     const asked = new Promise<void>((done) => (reached = done));
-    activation = new Promise<void>((done) => (release = done));
-    return { asked, release, reached: () => reached() };
+    const held = new Promise<void>((done) => (release = done));
+    return { asked, held, release, reached: () => reached() };
   };
   let held: ReturnType<typeof hold> | undefined;
   const serviceWorker = {
@@ -81,15 +81,21 @@ function browser(t: TestContext, key: string | null, subscribed?: string, keepin
     },
     get ready() {
       held?.reached();
-      return activation.then(() => {
+      return (held?.held ?? Promise.resolve()).then(() => {
         active = registered;
         return { pushManager };
       });
     },
     getRegistration: async () => (registered ? { pushManager } : undefined),
   };
+  let answering: ReturnType<typeof hold> | undefined;
   t.mock.method(globalThis, 'fetch', async (url: string, init: RequestInit) => {
     if (init.method === 'POST') asked.push(`POST ${url} ${String(init.body)}`);
+    // The server kept it, and its answer is held.
+    if (init.method === 'POST' && url.endsWith('/push') && answering) {
+      answering.reached();
+      await answering.held;
+    }
     return Response.json(init.method === 'POST' ? { ok: true } : { key });
   });
   Object.defineProperty(navigator, 'serviceWorker', { value: serviceWorker, configurable: true });
@@ -114,7 +120,9 @@ function browser(t: TestContext, key: string | null, subscribed?: string, keepin
     (JSON.parse(storage.get('dispatch-communications-push') ?? 'null') as { dsps: string[] } | null)
       ?.dsps;
   const holdActivation = () => (held = hold());
-  return { asked, keepers, holdActivation };
+  /** Holds the server's answer to keeping the subscription, after it kept it. */
+  const holdKeeping = () => (answering = hold());
+  return { asked, keepers, holdActivation, holdKeeping };
 }
 
 const kept = (endpoint: string) =>
@@ -233,4 +241,21 @@ test("a change for a DSP the page moved on from changes nothing under the next o
   held.release();
   await following.catch(() => {});
   assert.deepEqual(asked, ['register /service-worker.js']);
+});
+
+test('a DSP whose keeping was cut short after the server kept it still counts as keeping it', async (t) => {
+  const { asked, keepers, holdKeeping } = browser(t, KEY, KEY, [NORTH]);
+  const keeping = holdKeeping();
+  const ends = new AbortController();
+  const following = followPush(true, SUMMIT, ends.signal);
+  // The server keeps it for Summit, and the page moves on before its answer comes.
+  await keeping.asked;
+  ends.abort();
+  keeping.release();
+  await following.catch(() => {});
+  assert.deepEqual(keepers(), [NORTH, SUMMIT]);
+  // Northline letting go of it leaves it to Summit, still subscribed.
+  await followPush(false, NORTH, going());
+  assert.deepEqual(keepers(), [SUMMIT]);
+  assert(!asked.some((each) => each.startsWith('unsubscribe')));
 });

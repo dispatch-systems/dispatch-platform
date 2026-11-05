@@ -663,27 +663,28 @@ not; and with it closed, or on a phone, as a push (**Pushed**, below).
   change it; one subscribed under another key is subscribed again. A browser has one subscription
   for its address, which each DSP opened there shares, as a platform owner opens many at the
   admin's: turning Notifications off at one lets go of it there, and the browser lets go of it once
-  no DSP it remembers keeping it wants it. Each tab's changes to it take their turn among every
-  tab's (Web Locks), reading it afresh, and one stops, changing nothing more, once its page moves
-  on to another DSP or member, or they choose again. Each message new in what waits, as above, as
-  the server reads it again on each change to the DSP's conversations, goes to each browser kept of
-  each member who has Notifications on and may use Communications there then, as a session of
-  theirs at the address they subscribed at would (their account, role, the DSP and its features
-  as now), titled with who wrote it, saying what as the list shows it, and opening the
-  conversation at that address; never the DSP's own. What waited when the server began watching the DSP goes nowhere.
-  Pushes go apart from the change, a batch at a time for each DSP, eight at once across the
-  server, each within ten seconds, one that fails tried once more, each push service's
-  authorization signed once an hour; a browser its push service no longer knows (404, 410), or of a
-  member who may no longer be told, is let go of. Dispatch's
+  no DSP it remembers keeping it wants it, each remembered before the server is told it keeps it.
+  Each tab's changes to it take their turn among every tab's (Web Locks), reading it afresh, and one
+  stops, changing nothing more, once its page moves on to another DSP or member, or they choose
+  again. Each message new in what waits, as above, as the server reads it again on each change to
+  the DSP's conversations, goes to each browser kept of each member who has Notifications on and may
+  use Communications there then, as a session of theirs at the address they subscribed at would
+  (their account, role, the DSP and its features as now), titled with who wrote it, saying what as
+  the list shows it, and opening the conversation at that address; never the DSP's own. What waited
+  when the server began watching the DSP goes nowhere. Pushes go apart from the change, a batch at a
+  time for each DSP, eight at once across the server, each within ten seconds, one that fails tried
+  once more, each push service's authorization signed once an hour; each try goes only if, as its
+  turn comes, the browser is kept as it was for a member still told; a browser its push service no
+  longer knows (404, 410), or of a member who may no longer be told, is let go of. Dispatch's
   service worker (`app/frontend/public/service-worker.js`) shows every push, as browsers ask,
-  penalising one that shows nothing. It first asks each window of Dispatch in front there whether
-  it alerts of it itself: one that does, of its own DSP, with its conversation or group open or
-  showing notifications from the page, has it shown silently and closed at once, or left to the
-  page's own notification of it; no such answer within a second, it stays shown. Where the worker
-  serves the page, the page's notifications go through it, under the message's tag, so a push of
-  one shown already takes its place. On a phone, pushes are its only notifications: Android's
-  browser shows them, and an iPhone's only for Dispatch added to its Home Screen (the web app
-  manifest, `app/frontend/public/assets/manifest.webmanifest`).
+  penalising one that shows nothing. It first asks each window of Dispatch in front there whether it
+  alerts of it itself: one that does, of its own DSP, with its conversation or group open or showing
+  notifications from the page, has it shown silently and closed at once, or left to the page's own
+  notification of it; no such answer within a second, it stays shown. Where the worker serves the
+  page, the page's notifications go through it, under the message's tag, so a push of one shown
+  already takes its place. On a phone, pushes are its only notifications: Android's browser shows
+  them, and an iPhone's only for Dispatch added to its Home Screen (the web app manifest,
+  `app/frontend/public/assets/manifest.webmanifest`).
 
 ## The page's code
 

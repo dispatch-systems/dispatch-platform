@@ -91,9 +91,13 @@ export function followPush(wanted: boolean, dsp: string, ends: AbortSignal) {
         await still(stopPushing(current!.endpoint, ends));
         await current!.unsubscribe();
         return keep(current!.endpoint, []);
+      // Each DSP is remembered as keeping it before the server is told, as an answer cut short
+      // may come after the server kept it: one remembered that the server doesn't keep only keeps
+      // the browser subscribed.
       case 'keep':
+        keep(current!.endpoint, [...keeping, dsp]);
         await still(kept(current!, ends));
-        return keep(current!.endpoint, [...keeping, dsp]);
+        return;
       case 'subscribe': {
         // Under the server's new key, the DSPs that kept the old one keep this once opened again.
         if (current) {
@@ -106,8 +110,9 @@ export function followPush(wanted: boolean, dsp: string, ends: AbortSignal) {
             applicationServerKey: decode(key!),
           }),
         );
+        keep(made.endpoint, [dsp]);
         await still(kept(made, ends));
-        return keep(made.endpoint, [dsp]);
+        return;
       }
     }
   });

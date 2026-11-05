@@ -1,13 +1,15 @@
 //! Each push: what it says (`message`), as the browser's service worker shows it, and sending it
 //! to each browser, a few at once across the server, each within ten seconds, one that fails
-//! tried once more a few seconds later. A browser its push service no longer knows (404, 410) is
-//! let go of. Fixture mode sends none: its push services are `fixture`'s.
+//! tried once more a few seconds later; each try only while, as its turn comes, the browser is kept
+//! as it was for a member still told (`turn`). A browser its push service no longer knows (404,
+//! 410), or of a member no longer told, is let go of. Fixture mode sends none: its push services are `fixture`'s.
 use super::{
-    fixture,
+    Turn, fixture,
     storage::{PushStore, Subscription},
+    turn,
     webpush::{self, Vapid},
 };
-use crate::api::types::{Message, WaitingMessage};
+use crate::api::types::{MessageFile, WaitingMessage};
 use dispatch_core::{Result, State, db::now, foundation::observability};
 use futures_util::{StreamExt, stream};
 use serde_json::json;
@@ -48,6 +50,8 @@ pub enum Answer {
     Gone,
     /// Refused or unanswered, with the status, if any.
     Failed(Option<u16>),
+    /// Not sent, as the browser is no longer kept as it was.
+    Withheld,
 }
 
 /// What a push of `waiting`, in the DSP `dsp`, says: titled with who wrote it, saying what as the
@@ -61,7 +65,7 @@ pub fn message(dsp: &str, waiting: &WaitingMessage, address: &str) -> Vec<u8> {
         .finish();
     json!({
         "title": cut(&waiting.from, TITLE_MOST),
-        "body": cut(&preview(&waiting.message), BODY_MOST),
+        "body": cut(&preview(&waiting.message.text, &waiting.message.files), BODY_MOST),
         "url": format!("{address}communications?{opens}"),
         "tag": waiting.message.id,
         "dsp": dsp,
@@ -72,23 +76,27 @@ pub fn message(dsp: &str, waiting: &WaitingMessage, address: &str) -> Vec<u8> {
     .into_bytes()
 }
 
-/// A message as a row of the list shows it: its text, else what it holds.
-fn preview(message: &Message) -> String {
-    if !message.text.trim().is_empty() {
-        return message.text.clone();
+/// A message, `text` and `files`, as a row of the list shows it (`shared/format.ts`'s
+/// `preview`): its text, else what it holds. Both are held to `tests/previews.json`.
+pub fn preview(text: &str, files: &[MessageFile]) -> String {
+    if !text.trim().is_empty() {
+        return text.to_owned();
     }
-    let Some(first) = message.files.first() else {
+    let Some(first) = files.first() else {
         return String::new();
     };
-    let photo = |mime: &str| {
+    let photo = |file: &MessageFile| {
         ["png", "jpeg", "gif", "webp", "avif"]
             .iter()
-            .any(|kind| mime == format!("image/{kind}"))
+            .any(|kind| file.mime == format!("image/{kind}"))
     };
-    match message.files.len() {
-        _ if !message.files.iter().all(|file| photo(&file.mime)) => first.name.clone(),
-        1 => "Photo".to_owned(),
-        photos => format!("{photos} photos"),
+    let video = |file: &MessageFile| file.mime.starts_with("video/");
+    match files.len() {
+        1 if photo(first) => "Photo".to_owned(),
+        many if files.iter().all(photo) => format!("{many} photos"),
+        1 if video(first) => "Video".to_owned(),
+        many if files.iter().all(video) => format!("{many} videos"),
+        _ => first.name.clone(),
     }
 }
 
@@ -109,13 +117,12 @@ pub async fn send(
     let Some(vapid) = webpush::vapid(&state.config) else {
         return Ok(());
     };
-    let fixture = state.config.fixture;
     let answers: Vec<(String, Answer)> = stream::iter(pushes)
         .map(|(subscription, message)| async move {
-            let mut answer = deliver(vapid, fixture, &subscription, &message).await;
+            let mut answer = deliver(state, dsp, vapid, &subscription, &message).await;
             if matches!(answer, Answer::Failed(_)) {
                 tokio::time::sleep(AGAIN).await;
-                answer = deliver(vapid, fixture, &subscription, &message).await;
+                answer = deliver(state, dsp, vapid, &subscription, &message).await;
             }
             (subscription.endpoint, answer)
         })
@@ -125,7 +132,7 @@ pub async fn send(
     let mut gone = Vec::new();
     for (endpoint, answer) in answers {
         match answer {
-            Answer::Sent => {}
+            Answer::Sent | Answer::Withheld => {}
             Answer::Gone => gone.push(endpoint),
             Answer::Failed(status) => observability::event(
                 "warn",
@@ -143,18 +150,27 @@ pub async fn send(
     Ok(())
 }
 
-/// Sends `message` to the browser `subscription` names, encrypted for it and signed by `vapid`,
-/// in its turn among every push going.
+/// Sends `message` to the browser `subscription` names in the DSP `dsp`, encrypted for it and
+/// signed by `vapid`, in its turn among every push going, while it's still to go then.
 async fn deliver(
+    state: &Arc<State>,
+    dsp: &str,
     vapid: &Vapid,
-    fixture: bool,
     subscription: &Subscription,
     message: &[u8],
 ) -> Answer {
     let Ok(_turn) = TURNS.acquire().await else {
         return Answer::Failed(None);
     };
-    if fixture {
+    // Who may be told is read again as each try's turn comes, as it may have changed while it
+    // waited.
+    match turn(state, dsp, subscription).await {
+        Ok(Turn::Goes) => {}
+        Ok(Turn::Untold) => return Answer::Gone,
+        Ok(Turn::Gone) => return Answer::Withheld,
+        Err(_) => return Answer::Failed(None),
+    }
+    if state.config.fixture {
         return fixture::deliver(&subscription.endpoint, message).await;
     }
     // Both were checked as it was kept: either failing now, it can't be pushed to.

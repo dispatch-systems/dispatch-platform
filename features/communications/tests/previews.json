@@ -1,0 +1,37 @@
+[
+  {
+    "text": "Where do I park?",
+    "files": [["image/png", "gate.png"]],
+    "preview": "Where do I park?"
+  },
+  { "text": "  ", "files": [], "preview": "" },
+  { "text": "", "files": [["image/jpeg", "dent.jpg"]], "preview": "Photo" },
+  {
+    "text": "",
+    "files": [
+      ["image/png", "a.png"],
+      ["image/webp", "b.webp"]
+    ],
+    "preview": "2 photos"
+  },
+  { "text": "", "files": [["video/mp4", "walkaround.mp4"]], "preview": "Video" },
+  {
+    "text": "",
+    "files": [
+      ["video/mp4", "a.mp4"],
+      ["video/3gpp", "b.3gp"],
+      ["video/quicktime", "c.mov"]
+    ],
+    "preview": "3 videos"
+  },
+  {
+    "text": "",
+    "files": [
+      ["image/png", "a.png"],
+      ["video/mp4", "b.mp4"]
+    ],
+    "preview": "a.png"
+  },
+  { "text": "", "files": [["image/heic", "door.heic"]], "preview": "door.heic" },
+  { "text": "", "files": [["application/pdf", "route.pdf"]], "preview": "route.pdf" }
+]

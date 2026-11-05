@@ -224,6 +224,36 @@ async fn tell(state: &Arc<State>, dsp: &str, new: Vec<WaitingMessage>) -> Result
     sending::send(state, dsp, pushes).await
 }
 
+/// What becomes of a push to `subscription` as its turn to go comes, read again then.
+pub enum Turn {
+    /// It goes: the browser is kept as it was, of a member who is told.
+    Goes,
+    /// It doesn't, and the browser is let go of: its member is no longer told.
+    Untold,
+    /// It doesn't: the browser is no longer kept so, let go of or kept anew since.
+    Gone,
+}
+/// What becomes of a push to `subscription` in the DSP `dsp` now.
+pub async fn turn(state: &Arc<State>, dsp: &str, subscription: &Subscription) -> Result<Turn> {
+    let (at, subscription) = (dsp.to_owned(), subscription.clone());
+    state
+        .read(move |db| {
+            if db
+                .communications_push(&at, &subscription.endpoint)?
+                .as_ref()
+                != Some(&subscription)
+            {
+                return Ok(Turn::Gone);
+            }
+            let code = db.find_dsp(&at)?.code;
+            Ok(match tells(db, &at, code.as_deref(), &subscription)? {
+                true => Turn::Goes,
+                false => Turn::Untold,
+            })
+        })
+        .await
+}
+
 /// Whether the member whose browser `subscription` names is told of the DSP's new messages: with
 /// Notifications on, as one who may use Communications there now, signed in where they subscribed
 /// it.

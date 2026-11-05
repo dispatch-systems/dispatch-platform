@@ -80,3 +80,12 @@ pub fn most_answering() -> usize {
         .unwrap_or_else(|poison| poison.into_inner())
         .1
 }
+
+/// Whether the `busy` endpoint `endpoint` has refused its first push this run.
+#[cfg(test)]
+pub fn refused(endpoint: &str) -> bool {
+    REFUSED
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
+        .contains(endpoint)
+}
