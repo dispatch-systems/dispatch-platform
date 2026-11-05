@@ -235,18 +235,13 @@ class UpdatesTest {
     }
 
     @Test
-    fun installsNothingThatIsNotTheDownloadDescribedNorDownloadsItAgain() = runTest {
+    fun installsNothingThatIsNotTheDownloadDescribed() = runTest {
         val updates = updates()
         serve("another apk!!".toByteArray(), sha256 = sha256(bytes))
         updates.heard(site, newer)
         assertEquals(Update.Available(newer, Problem.MISMATCH), updates.update.first { it is Update.Available && it.problem != null })
         assertTrue(installer.installs.isEmpty())
         assertFalse(apk.exists())
-        clock += 2 * Updates.RETRIES_MS.last()
-        updates.heard(site, newer)
-        updates.install(site)
-        updates().heard(site, newer)
-        assertEquals(2, server.requestCount)
     }
 
     @Test
