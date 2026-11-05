@@ -75,6 +75,13 @@ pub struct Reading {
     pub chunks: Pin<Box<dyn Stream<Item = std::io::Result<Bytes>> + Send>>,
 }
 impl Reading {
+    /// `bytes`, already read.
+    pub fn whole(bytes: Vec<u8>) -> Self {
+        Self {
+            length: Some(bytes.len() as u64),
+            chunks: Box::pin(stream::once(async move { Ok(Bytes::from(bytes)) })),
+        }
+    }
     /// The bytes of `file`, open, as they're read.
     pub async fn of(file: tokio::fs::File) -> Self {
         let length = file.metadata().await.ok().map(|meta| meta.len());
@@ -101,6 +108,28 @@ impl Folder {
     fn path(&self, db: &Store, dsp: &str) -> Result<PathBuf> {
         let owner = db::private_dir(&db.area(dsp, "data")?.join(self.owner))?;
         db::private_dir(&owner.join("files"))
+    }
+    /// The DSP's folder `name` of what its bytes make again, in its cache, made private.
+    pub fn cache(&self, db: &Store, dsp: &str, name: &str) -> Result<PathBuf> {
+        let owner = db::private_dir(&db.area(dsp, db::CACHE)?.join(self.owner))?;
+        db::private_dir(&owner.join(name))
+    }
+    /// Where the DSP's bytes kept by `sha256` are: none when they aren't kept.
+    pub async fn located(
+        &self,
+        state: &Arc<State>,
+        dsp: &str,
+        sha256: &str,
+    ) -> Result<Option<PathBuf>> {
+        let (folder, at) = (*self, dsp.to_owned());
+        let path = state
+            .read(move |db| folder.path(db, &at))
+            .await?
+            .join(sha256);
+        Ok(tokio::fs::try_exists(&path)
+            .await
+            .unwrap_or(false)
+            .then_some(path))
     }
     /// Receives `bytes`, as they arrive, beside the DSP's: refused before any arrive past `most`,
     /// however large an upload its route allows.

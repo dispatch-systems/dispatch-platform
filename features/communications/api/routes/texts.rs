@@ -121,24 +121,25 @@ pub(super) fn text_contacts(db: &Store, c: &Member, input: &Input) -> Result<Rep
 }
 /// A text's picture or file, as the phone side keeps it, kept by the browser at its version, `v`.
 pub(super) async fn text_file(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
-    let asked = input.clone();
-    let c = state.read(move |db| access.authorize(db, &asked)).await?;
-    v::fields(&input.query, &["v"])?;
-    let version = optional(&input.query, "v", |q, key| v::text(q, key, 1, 64))?;
-    let wanted = texting_id(input.param("id"))?;
-    texts::reading::file(&state, &c, access, &wanted, version).await
+    text_shown(state, input, access, false).await
 }
-/// The picture of the first frame of a text's video kept on its phone.
+/// A text's picture's preview, as `text_file` answers it, the picture itself when it has none; or
+/// the picture of the first frame of a text's video kept on its phone.
 pub(super) async fn text_file_preview(
     state: Arc<State>,
     input: Input,
     access: Dsp,
 ) -> Result<Reply> {
+    text_shown(state, input, access, true).await
+}
+/// A text's picture or file, or its `preview`.
+async fn text_shown(state: Arc<State>, input: Input, access: Dsp, preview: bool) -> Result<Reply> {
     let asked = input.clone();
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
-    v::fields(&input.query, &[])?;
+    v::fields(&input.query, &["v"])?;
+    let version = optional(&input.query, "v", |q, key| v::text(q, key, 1, 64))?;
     let wanted = texting_id(input.param("id"))?;
-    texts::reading::preview(&state, &c, access, &wanted).await
+    texts::reading::file(&state, &c, access, &wanted, version, preview).await
 }
 /// Asks the phone of a text's video it keeps for its bytes, to play it.
 pub(super) async fn fetch_text_file(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {

@@ -292,6 +292,18 @@ test('a DSP’s texts are its own: listed by number, answered through its phone 
     ),
     'no-store',
   );
+  // A picture small enough already is its own preview.
+  const previewed = await f.raw(
+    `${route}/texts/files/${picture}/preview?v=${version}`,
+    undefined,
+    owner.headers,
+  );
+  assert.deepEqual(cached(previewed), [
+    200,
+    'private, max-age=31536000, immutable',
+    'X-Dispatch-View',
+  ]);
+  assert.deepEqual([...new Uint8Array(await previewed.arrayBuffer())], png);
 
   // Today's Routes lists nobody until live route data reads today, and a number's conversation
   // has no driver to pick.
@@ -306,6 +318,7 @@ test('a DSP’s texts are its own: listed by number, answered through its phone 
   assert.equal((await owner.post(`${route}/conversations/${asked.id}/driver`, driver)).status, 404);
   assert.equal((await owner.get(`${route}/texts/files/${picture}`)).status, 404);
   assert.equal((await owner.get(`${route}/texts/files/${picture}?v=${version}`)).status, 404);
+  assert.equal((await owner.get(`${route}/texts/files/${picture}/preview`)).status, 404);
   const { contacts } = await owner.read(`${route}/texts/contacts`);
   assert.equal(
     contacts.some((each: { person: { name: string } }) => each.person.name === 'New hire'),

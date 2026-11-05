@@ -202,6 +202,11 @@ pub fn routes() -> Vec<Route> {
             files::add_photo,
         ),
         async_get("/api/dsp/communications/files/{id}", USE, files::file),
+        async_get(
+            "/api/dsp/communications/files/{id}/preview",
+            USE,
+            files::file_preview,
+        ),
         read(
             "/api/dsp/communications/workspaces/{team}/logo",
             USE,

@@ -88,6 +88,7 @@
         "POST /api/dsp/communications/groups/{id}/done",
         "POST /api/dsp/communications/uploads",
         "GET /api/dsp/communications/files/{id}",
+        "GET /api/dsp/communications/files/{id}/preview",
         "GET /api/dsp/communications/workspaces/{team}/logo",
         "GET /api/dsp/communications/push",
         "POST /api/dsp/communications/push",
