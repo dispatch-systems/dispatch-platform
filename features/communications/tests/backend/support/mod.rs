@@ -52,6 +52,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     path::PathBuf,
     sync::{Arc, Mutex, atomic::Ordering},
+    time::Duration,
 };
 
 /// Reading the DSP's conversations and answering them.
@@ -96,6 +97,15 @@ pub fn cached(state: &Arc<State>, dsp: &str) -> impl Fn() -> bool + use<> {
     read(state, dsp, 1);
     let (state, dsp) = (state.clone(), dsp.to_owned());
     move || read(&state, &dsp, 2) == 1
+}
+/// What `work` comes to, finished while the test holds the server's transition lock shared, as a
+/// read does: a write, bookkeeping too, waits on it, so finishing proves it took none. One that
+/// waits fails the test once ten seconds pass, rather than hanging it.
+pub async fn unwritten<T>(state: &Arc<State>, work: impl Future<Output = T>) -> T {
+    let _shared = state.transition.read().unwrap();
+    tokio::time::timeout(Duration::from_secs(10), work)
+        .await
+        .expect("it waited to write")
 }
 /// Where the DSP's Slack photos' and files' bytes are kept, made private as Communications makes
 /// it.

@@ -1,9 +1,10 @@
 //! The DSP's phones, against a real store in a temporary directory: pairing by a code, once, while
-//! it lasts; checking in, noted at most every half minute, online throughout; and a removed phone's
-//! key working no more, nor its texts still waiting.
+//! it lasts; checking in, noted at most every half minute however its calls overlap, online
+//! throughout; and a removed phone's key working no more, nor its texts still waiting.
 use super::*;
 use crate::backend::phone::{
     model::{PHONE_REMOVED, Status},
+    seen,
     storage::{StatusReport, TextStore},
     support::{CODE, outgoing, paired, store},
 };
@@ -58,6 +59,7 @@ fn a_code_pairs_one_phone_once_while_it_lasts() {
 fn a_phone_waiting_on_its_outbox_is_noted_at_most_every_half_minute_and_online_throughout() {
     let (_root, db, dsp) = store();
     let device = paired(&db, &dsp, "key", "2065550100");
+    // As each check-in's write reads it.
     let phone = || db.phones_device(&dsp, &device.id).unwrap().unwrap();
     // It checks in as each twenty-second wait on its outbox ends, for ten minutes: noted only once
     // half a minute passed since it last was, and online until it checks in again.
@@ -68,17 +70,26 @@ fn a_phone_waiting_on_its_outbox_is_noted_at_most_every_half_minute_and_online_t
             phone().online(at - 1),
             "online just before checking in at {at}"
         );
-        if phone().noting(at) {
-            db.phones_seen(&dsp, &device.id, at).unwrap();
-            noted.push(at);
+        seen(&db, &dsp, &phone(), at).unwrap();
+        let last = phone().last_seen_at.unwrap();
+        if last != *noted.last().unwrap() {
+            noted.push(last);
         }
     }
     assert!(noted.windows(2).all(|two| two[1] - two[0] >= SEEN_MS));
     assert!(noted.len() < waits.len(), "fewer writes than check-ins");
+    // Two calls of its alongside, as its outbox wait and a report of how texts went, each find it
+    // due as they first read it; the second's write finds the first noted it, and notes nothing.
+    let last = *noted.last().unwrap();
+    let (first, second) = (last + SEEN_MS, last + SEEN_MS + 1);
+    let read = phone();
+    assert!(read.noting(first) && read.noting(second));
+    seen(&db, &dsp, &phone(), first).unwrap();
+    seen(&db, &dsp, &phone(), second).unwrap();
+    assert_eq!(phone().last_seen_at, Some(first));
     // Once it stops, offline within two minutes of its last check-in, as the card says.
-    let last = *waits.last().unwrap();
-    assert!(phone().online(last + ONLINE_MS - SEEN_MS));
-    assert!(!phone().online(last + ONLINE_MS + 1));
+    assert!(phone().online(second + ONLINE_MS - SEEN_MS));
+    assert!(!phone().online(first + ONLINE_MS + 1));
 }
 
 #[test]

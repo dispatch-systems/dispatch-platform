@@ -179,7 +179,10 @@ stay; the next day's drivers fill it as its live reads start.
   work conversation, and as the page comes back into view or the browser back online, a read that
   failed tried again, as the dashboard's reads are. Until a read answers, loading, or offline or
   paused, as the dashboard's pages say it, never No routes; a read that fails says why in Today's
-  Routes, the list or the board, and nowhere else.
+  Routes, the list or the board, and nowhere else. A driver's work conversation open shows only
+  with one of the two (opening it shows Today's Routes, unless Recents shows; choosing another
+  section closes it), so its route, van, stops and pace follow this read, as an update changes
+  it only as their work phone does.
 - **A driver's conversation:** under its head, their route code, van and the work phone they have
   now, and how long it has waited; chips to their conversation of each kind, Work (by the work
   phone they have), Personal (by their own number) and Slack, each marked with a dot while it

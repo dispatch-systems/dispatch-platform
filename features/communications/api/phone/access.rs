@@ -2,6 +2,7 @@
 //! address, while the DSP is active and Communications is on there; or, for the app itself, which
 //! a phone downloads before it has a key, anyone at that address.
 use crate::backend::phone::{
+    self,
     pairing::KEY_BYTES,
     storage::{Device, DeviceStore},
 };
@@ -75,8 +76,9 @@ impl Grant for Address {
         addressed(db, input).map(drop)
     }
 }
-/// Authorizes a phone's call and notes that it checked in, once `SEEN_MS` passed since it last was:
-/// bookkeeping, which no cached read depends on, as presence is read afresh.
+/// Authorizes a phone's call and notes that it checked in, once `SEEN_MS` passed since it last was
+/// (`phone::seen`), as read first and again in the write: bookkeeping, which no cached read depends
+/// on, as presence is read afresh.
 pub(super) async fn checked_in(state: &Arc<State>, input: &Input, access: Phone) -> Result<Caller> {
     let asked = input.clone();
     let caller = state.read(move |db| access.authorize(db, &asked)).await?;
@@ -87,7 +89,7 @@ pub(super) async fn checked_in(state: &Arc<State>, input: &Input, access: Phone)
     state
         .run_bookkeeping(move |db| {
             let caller = access.authorize(db, &asked)?;
-            db.phones_seen(&caller.dsp, &caller.device.id, db::now())?;
+            phone::seen(db, &caller.dsp, &caller.device, db::now())?;
             Ok(caller)
         })
         .await

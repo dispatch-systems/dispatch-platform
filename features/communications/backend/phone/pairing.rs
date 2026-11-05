@@ -73,7 +73,8 @@ pub fn picture(link: &str) -> Result<String> {
 /// The DSP `at` reads, where the code kept as `code` (`kept`) pairs a phone now: told by a read,
 /// a wrong code refused `phones_pairing_invalid` and counted against the address `ip` and the DSP.
 /// Refused `rate_limited` while either guessed `ADDRESS_GUESSES` or `DSP_GUESSES` wrong in the last
-/// `GUESSES_MS`, the address before the database is asked.
+/// `GUESSES_MS`: the address before the database is asked, and both again as the read answers,
+/// counting under the same lock, as guesses from the address may have answered meanwhile.
 pub async fn opens(
     state: &Arc<State>,
     ip: &str,
@@ -89,10 +90,11 @@ pub async fn opens(
             Ok((dsp, open))
         })
         .await?;
-    let mut counted = guessed();
-    counted.waits(Tried::Dsp(&dsp.id), asked)?;
+    let (mut counted, answered) = (guessed(), now());
+    counted.waits(Tried::Address(ip), answered)?;
+    counted.waits(Tried::Dsp(&dsp.id), answered)?;
     if !open {
-        counted.wrong(ip, &dsp.id, asked);
+        counted.wrong(ip, &dsp.id, answered);
         return Err(Error::new("phones_pairing_invalid", 401));
     }
     Ok(dsp)

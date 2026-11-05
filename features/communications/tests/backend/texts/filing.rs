@@ -20,7 +20,7 @@ use crate::backend::{
     storage::DOMAIN,
     support::{
         self, DRIVERS, at, cached, failing, filed, phoned, phones, route, routed, saved, started,
-        switch, texted, today,
+        switch, texted, today, unwritten,
     },
     texts::{contacts, reading, reply, storage::TextStore},
 };
@@ -709,7 +709,7 @@ async fn an_upkeep_with_nothing_to_file_or_expire_writes_nothing() {
     )
     .await;
     let kept = cached(&state, &dsp);
-    (MAINTENANCE.run)(state.clone(), false).await;
+    unwritten(&state, (MAINTENANCE.run)(state.clone(), false)).await;
     assert!(kept(), "the DSP's cached reads were evicted");
 }
 

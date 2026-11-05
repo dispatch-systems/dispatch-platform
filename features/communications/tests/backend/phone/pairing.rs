@@ -1,10 +1,10 @@
 //! A code reads the same however it's typed, and only a code of its letters is one. A code tried is
 //! told right or wrong by a read, writing nothing; an address, and a DSP, that guessed too many
-//! wrong wait, a right code too.
+//! wrong wait, a right code too, however many of its guesses answer together.
 use super::{ADDRESS_GUESSES, DSP_GUESSES, kept, new_code, opens};
 use crate::backend::{
     phone::storage::DeviceStore,
-    support::{cached, started},
+    support::{cached, started, unwritten},
 };
 use dispatch_core::{State, db::now, testing};
 use std::sync::Arc;
@@ -48,7 +48,7 @@ async fn a_wrong_code_is_told_by_a_read_and_writes_nothing() {
     let kept_read = cached(&state, &dsp);
     let wrong = kept("ABCD-EFGH").unwrap();
     assert_eq!(
-        tried(&state, &dsp, "198.51.100.1", &wrong).await,
+        unwritten(&state, tried(&state, &dsp, "198.51.100.1", &wrong)).await,
         Err("phones_pairing_invalid".into())
     );
     assert!(kept_read(), "the DSP's cached reads were evicted");
@@ -79,4 +79,53 @@ async fn an_address_and_a_dsp_that_guessed_too_many_wrong_wait_a_right_code_too(
         assert_eq!(guessed, Err("phones_pairing_invalid".into()));
     }
     assert_eq!(tried(&state, &dsp, "198.51.100.200", &code).await, waits);
+}
+
+#[tokio::test]
+async fn guesses_from_an_address_answering_together_count_against_it_all_the_same() {
+    let (_root, state, dsp) = started();
+    made(&state, &dsp).await;
+    let wrong = kept("ABCD-EFGH").unwrap();
+    // A write holds the lock, as another DSP's may: each guess passes the address's first check and
+    // waits on the database behind it, more than the address may make.
+    let (began, holding) = tokio::sync::oneshot::channel();
+    let (release, wait) = std::sync::mpsc::channel::<()>();
+    let write = tokio::spawn({
+        let state = Arc::clone(&state);
+        async move {
+            state
+                .run_bookkeeping(move |_| {
+                    let _ = began.send(());
+                    let _ = wait.recv();
+                    Ok(())
+                })
+                .await
+        }
+    });
+    holding.await.unwrap();
+    let free = state.db_queue.available_permits();
+    let guesses: Vec<_> = (0..=ADDRESS_GUESSES)
+        .map(|_| {
+            let (state, dsp, wrong) = (Arc::clone(&state), dsp.clone(), wrong.clone());
+            tokio::spawn(State::patiently(async move {
+                tried(&state, &dsp, "198.51.100.30", &wrong).await
+            }))
+        })
+        .collect();
+    while state.db_queue.available_permits() > free - guesses.len() {
+        tokio::task::yield_now().await;
+    }
+    release.send(()).unwrap();
+    write.await.unwrap().unwrap();
+    let mut answers = Vec::new();
+    for guess in guesses {
+        answers.push(guess.await.unwrap().unwrap_err());
+    }
+    let count = |code: &str| answers.iter().filter(|each| *each == code).count();
+    assert_eq!(
+        count("phones_pairing_invalid"),
+        ADDRESS_GUESSES,
+        "{answers:?}"
+    );
+    assert_eq!(count("rate_limited"), 1, "the rest waits: {answers:?}");
 }
