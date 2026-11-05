@@ -9,6 +9,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import com.dspdispatch.relay.connection.Link
+import com.dspdispatch.relay.connection.Logcat
+import com.dspdispatch.relay.connection.keepRunning
 import com.dspdispatch.relay.pairing.Standing
 import com.dspdispatch.relay.setup.Watchdog
 import kotlinx.coroutines.Job
@@ -34,20 +36,25 @@ class RelayService : LifecycleService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
         val paired = (relay.pairings.standing.value as? Standing.Pairing)?.paired
-        val key = relay.pairings.key()
-        if (paired == null || key == null) {
+        // Android ends an app whose service, started for the foreground, stops before it's in it:
+        // so it is, even to stop at once.
+        val shown = show(paired?.dsp ?: getString(R.string.app_name), relay.connection.link.value)
+        if (paired == null || !shown) {
             stopSelf()
             return START_NOT_STICKY
         }
-        show(paired.dsp, relay.connection.link.value)
         Watchdog.schedule(this)
         if (relaying?.isActive != true) {
             relaying = lifecycleScope.launch {
                 launch { relay.connection.link.collect { show(paired.dsp, it) } }
-                launch { relay.texts.run(paired, key) }
-                relay.connection.run(paired, key) { outbox ->
-                    relay.updates.heard(paired.site, outbox.app)
-                    relay.texts.send(paired, outbox)
+                // Null once the keystore lost what sealed it: the pairing's forgotten, to pair again.
+                val key = relay.pairings.key() ?: return@launch stopSelf()
+                launch { keepRunning("Relaying texts", Logcat) { relay.texts.run(paired, key) } }
+                keepRunning("Waiting on the outbox", Logcat) {
+                    relay.connection.run(paired, key) { outbox ->
+                        relay.updates.heard(paired.site, outbox.app)
+                        relay.texts.send(paired, outbox)
+                    }
                 }
                 relay.pairings.removed(paired)
                 stopSelf()
@@ -56,7 +63,8 @@ class RelayService : LifecycleService() {
         return START_STICKY
     }
 
-    private fun show(dsp: String, link: Link) {
+    /** Shows the relay's notification, of [title] and [link], as it runs in the foreground; whether Android let it. */
+    private fun show(title: String, link: Link): Boolean {
         val state = getString(
             when (link) {
                 is Link.Connected -> R.string.connected
@@ -64,7 +72,14 @@ class RelayService : LifecycleService() {
                 Link.Connecting -> R.string.connecting
             },
         )
-        ServiceCompat.startForeground(this, Notifications.RELAY_ID, Notifications.relay(this, dsp, state), TYPE)
+        return try {
+            ServiceCompat.startForeground(this, Notifications.RELAY_ID, Notifications.relay(this, title, state), TYPE)
+            true
+        } catch (_: IllegalStateException) {
+            // Android 12+'s ForegroundServiceStartNotAllowedException, as when it restarts the relay
+            // from the background on its own: started again at the watchdog's next run.
+            false
+        }
     }
 
     companion object {

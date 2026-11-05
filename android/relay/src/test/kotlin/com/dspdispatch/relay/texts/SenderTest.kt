@@ -14,8 +14,10 @@ import kotlin.time.measureTime
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
+import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
+import mockwebserver3.RecordedRequest
 import okhttp3.OkHttpClient
 import okio.Buffer
 import org.junit.After
@@ -32,14 +34,16 @@ class SenderTest {
     private val dispatch = Dispatch(OkHttpClient(), AppVersion("1.4.0", 14))
     private val statuses = Statuses(dispatch, sends)
     private val folder = Files.createTempDirectory("sending").toFile()
-    private val pictures = FakePictures { ByteArray(it) }
+    private var shrink: (Int) -> ByteArray? = { ByteArray(it) }
+    private val pictures = FakePictures { shrink(it) }
     private val provider = FakeProvider()
     private val own = OwnRows(provider, sends, APP)
     private var clock = 1_793_041_515_000L
     private var mmsWhenBusy = true
+    private val unexpected = mutableListOf<Throwable>()
     private lateinit var paired: Paired
 
-    private fun sender() = Sender(
+    private fun sender(sends: Sends = this.sends) = Sender(
         dispatch,
         sends,
         own,
@@ -48,6 +52,7 @@ class SenderTest {
         statuses,
         folder,
         { mmsWhenBusy },
+        { _, error -> unexpected += error },
     ) { clock }
 
     @Before
@@ -136,6 +141,72 @@ class SenderTest {
         sender.send(paired, KEY, outbox)
         assertEquals(listOf("text_1"), radio.pictureMessages.map { it.first.id })
         assertEquals("each sent once", 1, radio.handed.size)
+    }
+
+    @Test
+    fun failsAPictureMessageWhoseFileCantBeFetchedAfterAFewTries() = runTest {
+        val sender = sender()
+        val outbox = Outbox(listOf(text("text_1", 1, "", OutgoingFile("file_1", "door.jpg", "image/jpeg", 3))))
+        repeat(10) {
+            server.enqueue(json(503, """{"error":"platform_busy"}"""))
+            sender.send(paired, KEY, outbox)
+            clock += 60_000
+        }
+        assertEquals(listOf(Failure.FILE_UNAVAILABLE), sends.statuses(10).map { it.error })
+        assertTrue(server.requestCount < 10)
+        assertTrue(radio.pictureMessages.isEmpty())
+    }
+
+    @Test
+    fun neverHandsAndroidATextPastItsTime() = runTest {
+        val late = text("late", 1, "On my way").copy(expires = clock - 1)
+        val due = text("due", 1, "On my way").copy(expires = clock)
+        // Its picture takes it past its time as it's fetched.
+        val slow = text("slow", 1, "Door", OutgoingFile("file_1", "door.jpg", "image/jpeg", 3)).copy(expires = clock + 1_000)
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                clock += 2_000
+                return MockResponse.Builder().code(200).body(Buffer().write(byteArrayOf(1, 2, 3))).build()
+            }
+        }
+        sender().send(paired, KEY, Outbox(listOf(late, due, slow)))
+        assertEquals(listOf("due"), radio.handed.map { it.first.id })
+        assertTrue(radio.pictureMessages.isEmpty())
+        assertEquals(mapOf("late" to Failure.EXPIRED, "slow" to Failure.EXPIRED), sends.statuses(10).associate { it.id to it.error })
+        assertTrue(folder.list()!!.isEmpty())
+    }
+
+    @Test
+    fun neverHandsAndroidATextThatPassedItsTimeAsItWasKeptHanded() = runTest {
+        // The phone's database busy a while as the text is kept handed.
+        val busy = object : Sends by sends {
+            override suspend fun handed(send: Send, parts: Int, joined: Boolean, at: Long, mms: Boolean) {
+                clock += 2_000
+                sends.handed(send, parts, joined, at, mms)
+            }
+        }
+        sender(busy).send(paired, KEY, Outbox(listOf(text("text_1", 1, "On my way").copy(expires = clock + 1_000))))
+        assertTrue(radio.handed.isEmpty())
+        assertEquals(listOf(Told("text_1", 1, SendStatus.FAILED, clock, Failure.EXPIRED)), sends.statuses(10))
+    }
+
+    @Test
+    fun failsAloneATextThatFailsInAWayNothingExpected() = runTest {
+        radio.mmsLimits = MmsLimits(4_000, Size(640, 480))
+        val picture = text("text_1", 1, "Door", OutgoingFile("file_1", "door.png", "image/png", 10_000))
+        val outbox = Outbox(listOf(picture, text("text_2", 1, "On my way")))
+        server.enqueue(MockResponse.Builder().code(200).body(Buffer().write(ByteArray(10_000))).build())
+        shrink = { throw IllegalStateException("Software rendering doesn't support hardware bitmaps") }
+        sender().send(paired, KEY, outbox)
+        server.enqueue(MockResponse.Builder().code(200).body(Buffer().write(ByteArray(10_000))).build())
+        shrink = { throw OutOfMemoryError() }
+        sender().send(paired, KEY, outbox.copy(texts = listOf(picture.copy(attempt = 2))))
+        assertEquals(listOf(Failure.NOT_SENT, Failure.TOO_LARGE), sends.statuses(10).map { it.error })
+        assertEquals(1, unexpected.size)
+        assertEquals(listOf("text_2"), radio.handed.map { it.first.id })
+        // Never tried again: Dispatch hears it failed.
+        sender().send(paired, KEY, outbox)
+        assertEquals(2, server.requestCount)
     }
 
     @Test

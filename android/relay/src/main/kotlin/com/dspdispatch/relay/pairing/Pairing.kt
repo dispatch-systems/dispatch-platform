@@ -3,6 +3,8 @@ package com.dspdispatch.relay.pairing
 import android.content.Context
 import android.telephony.SubscriptionManager
 import androidx.core.content.edit
+import com.dspdispatch.relay.connection.backoff
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,6 +27,18 @@ data class Paired(
     val subscription: Int = SubscriptionManager.INVALID_SUBSCRIPTION_ID,
 )
 
+/** What [open] answers once the keystore can be read: asked again after a growing pause while it can't. */
+internal suspend fun <T> reached(open: () -> T): T {
+    var failures = 0
+    while (true) {
+        try {
+            return open()
+        } catch (_: Vault.Unreachable) {
+            delay(backoff(++failures))
+        }
+    }
+}
+
 /** Where the phone stands with its DSP: paired, never paired, or removed by the DSP. */
 sealed interface Standing {
     data object Unpaired : Standing
@@ -34,45 +48,94 @@ sealed interface Standing {
     data class Pairing(val paired: Paired) : Standing
 }
 
+/** Where the pairing is kept, each value by its name: the app's own storage. */
+internal interface Kept {
+    /** The value kept as [name], if one is. */
+    fun read(name: String): String?
+
+    /** Keeps [values] in place of everything kept. */
+    fun replace(values: Map<String, String>)
+}
+
+/** What seals the pairing's key, and opens it again ([Vault]). */
+internal interface Locks {
+    fun seal(secret: String): String
+
+    /** [sealed] opened, or null once it can never be; [Vault.Unreachable] while it can't be just now. */
+    fun open(sealed: String): String?
+}
+
 /**
- * The phone's pairing, kept in the app's own storage, its key sealed by the [Vault]. Nothing of
+ * The phone's pairing, [kept] in the app's own storage, its key sealed by the [vault]. Nothing of
  * it leaves the phone in a backup (`data_extraction_rules.xml`).
  */
-class Pairings(context: Context) {
-    private val prefs = context.getSharedPreferences("pairing", Context.MODE_PRIVATE)
+class Pairings internal constructor(private val kept: Kept, private val vault: Locks) {
+    constructor(context: Context) : this(Stored(context), Vault)
+
     private val state = MutableStateFlow(read())
 
     /** Where the phone stands now, as it changes. */
     val standing: StateFlow<Standing> = state.asStateFlow()
 
-    /** The key the phone calls its DSP with, while it's paired. */
-    fun key(): String? = prefs.getString(KEY, null)?.let(Vault::open)
+    /**
+     * The key the phone calls its DSP with, while it's paired; read again after a growing pause
+     * while the keystore can't be read. Null once it's lost for good, as after the keystore lost
+     * what sealed it, when the pairing is forgotten, for the phone to pair again.
+     */
+    suspend fun key(): String? {
+        val paired = (state.value as? Standing.Pairing)?.paired ?: return null
+        val key = kept.read(KEY)?.let { sealed -> reached { vault.open(sealed) } }
+        if (key == null) forget(paired)
+        return key
+    }
 
     fun save(paired: Paired, key: String) {
-        prefs.edit {
-            clear()
-            putString(PAIRED, Json.encodeToString(paired))
-            putString(KEY, Vault.seal(key))
-        }
+        kept.replace(mapOf(PAIRED to Json.encodeToString(paired), KEY to vault.seal(key)))
         state.value = Standing.Pairing(paired)
     }
 
     /** The DSP removed this phone, or no longer knows its key: forgets the key. */
     fun removed(paired: Paired) {
-        prefs.edit {
-            clear()
-            putString(REMOVED, paired.dsp)
-        }
+        kept.replace(mapOf(REMOVED to paired.dsp))
         state.value = Standing.Removed(paired.dsp)
     }
 
+    /** Forgets [paired], whose key is lost for good, unless the phone paired again since. */
+    private fun forget(paired: Paired) {
+        if ((state.value as? Standing.Pairing)?.paired != paired) return
+        kept.replace(emptyMap())
+        state.value = Standing.Unpaired
+    }
+
     private fun read(): Standing {
-        val paired = prefs.getString(PAIRED, null)?.let { runCatching { Json.decodeFromString<Paired>(it) }.getOrNull() }
-        val removed = prefs.getString(REMOVED, null)
+        val paired = kept.read(PAIRED)?.let { runCatching { Json.decodeFromString<Paired>(it) }.getOrNull() }
+        val removed = kept.read(REMOVED)
         return when {
-            paired != null && key() != null -> Standing.Pairing(paired)
+            paired != null && !lost() -> Standing.Pairing(paired)
             removed != null -> Standing.Removed(removed)
             else -> Standing.Unpaired
+        }
+    }
+
+    /**
+     * Whether the key is gone for good, or was never kept. Not while the keystore can't be read
+     * just now: the phone stays paired, and the relay reads its key again ([key]).
+     */
+    private fun lost(): Boolean = try {
+        kept.read(KEY)?.let(vault::open) == null
+    } catch (_: Vault.Unreachable) {
+        false
+    }
+
+    /** The pairing [Kept] in the app's own storage. */
+    private class Stored(context: Context) : Kept {
+        private val prefs = context.getSharedPreferences("pairing", Context.MODE_PRIVATE)
+
+        override fun read(name: String): String? = prefs.getString(name, null)
+
+        override fun replace(values: Map<String, String>) = prefs.edit {
+            clear()
+            values.forEach { (name, value) -> putString(name, value) }
         }
     }
 

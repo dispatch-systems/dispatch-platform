@@ -42,7 +42,10 @@ data class AppDetails(val version: String, val versionCode: Int, val size: Long,
     val app get() = AppVersion(version, versionCode)
 }
 
-/** A text to send from the phone; each [attempt] is sent once, and a later one is new. */
+/**
+ * A text to send from the phone; each [attempt] is sent once, and a later one is new. Never started
+ * once [expires] has passed, where Dispatch gives it.
+ */
 @Serializable
 data class OutgoingText(
     val id: String,
@@ -50,6 +53,7 @@ data class OutgoingText(
     val body: String,
     val attempt: Long,
     val files: List<OutgoingFile> = emptyList(),
+    val expires: Long? = null,
 )
 
 @Serializable

@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Installs an update of this app with Android's `PackageInstaller`, in a session of its own
@@ -33,7 +34,10 @@ class SessionInstaller(private val sessions: Sessions) : Installer {
     /** A confirmation for the app's screen to show, once, then say [asked]. */
     val confirm: StateFlow<Intent?> = asking.asStateFlow()
 
-    private class Waiting(val outcome: CompletableDeferred<Outcome>, val confirming: () -> Unit)
+    private class Waiting(val outcome: CompletableDeferred<Outcome>, val confirming: () -> Unit) {
+        /** Android said something of it: asked the person, or how it ended. */
+        val answered = CompletableDeferred<Unit>()
+    }
 
     override suspend fun install(apk: File, confirming: () -> Unit): Outcome {
         val id = try {
@@ -45,9 +49,13 @@ class SessionInstaller(private val sessions: Sessions) : Installer {
             return FAILED
         }
         val outcome = CompletableDeferred<Outcome>()
-        waiting[id] = Waiting(outcome, confirming)
+        val session = Waiting(outcome, confirming)
+        waiting[id] = session
         try {
             withContext(Dispatchers.IO) { sessions.commit(id, apk) }
+            // Texts are held back until Android says something of it: one it never does is
+            // dropped, for them to go. A person asked to confirm it is waited on however long.
+            withTimeoutOrNull(ANSWER_MS) { session.answered.await() } ?: return FAILED
             return outcome.await()
         } catch (_: IOException) {
             return FAILED
@@ -82,6 +90,7 @@ class SessionInstaller(private val sessions: Sessions) : Installer {
      */
     fun said(id: Int, status: Int, confirmation: Intent?) {
         val session = waiting[id] ?: return
+        session.answered.complete(Unit)
         if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
             pending = confirmation
             asking.value = confirmation
@@ -97,5 +106,10 @@ class SessionInstaller(private val sessions: Sessions) : Installer {
                 else -> FAILED
             },
         )
+    }
+
+    companion object {
+        /** How long Android may take to say something of an update handed to it. */
+        const val ANSWER_MS = 5 * 60 * 1000L
     }
 }

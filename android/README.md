@@ -156,10 +156,12 @@ Each outbox wait tells the app the version its DSP hands out, and one above its 
 app on its own, showing nothing, once Android lets it install (Set up's Install updates): it
 downloads it from the DSP, checks its size and SHA-256 against the DSP's details and that it's the
 same app signed with the same key, waits until no text is mid-send, and installs it with Android's
-`PackageInstaller`. On Android 12+ it asks to install with no one confirming, which Android allows
-an app updating itself (`UPDATE_PACKAGES_WITHOUT_USER_ACTION`); Android decides each time. Wherever
-it asks anyway, as before Android 12 or under its own rules, a notification asks the person to
+`PackageInstaller`, sending held back until Android says something of it, for five minutes at most.
+On Android 12+ it asks to install with no one confirming, which Android allows an app updating
+itself (`UPDATE_PACKAGES_WITHOUT_USER_ACTION`); Android decides each time. Wherever it asks anyway,
+as before Android 12 or under its own rules, sending goes on, and a notification asks the person to
 update, which opens the app to Android's confirmation, shown at once while the app is open; it goes
 once the update installs or the DSP no longer hands it out. A try that doesn't install is tried
-again an hour later, or at once from the notification; one at an APK that isn't this app, only
-once the DSP hands out another version. The relay starts again once it's replaced.
+again later each time at its version, 1, 3, 12, then every 24 hours, or at once from the
+notification, from the APK it downloaded, kept for it once it was the size and SHA-256 the DSP
+gave. One at an APK that isn't this app is tried only once the DSP hands out another version. The relay starts again once it's replaced.

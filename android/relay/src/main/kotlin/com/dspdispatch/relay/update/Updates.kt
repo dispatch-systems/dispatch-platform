@@ -1,11 +1,14 @@
 package com.dspdispatch.relay.update
 
+import com.dspdispatch.relay.connection.Unexpected
+import com.dspdispatch.relay.dispatch.AppDetails
 import com.dspdispatch.relay.dispatch.AppVersion
 import com.dspdispatch.relay.dispatch.Dispatch
 import com.dspdispatch.relay.dispatch.Refusal
 import java.io.File
 import java.io.IOException
 import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -51,8 +54,11 @@ interface Notice {
     fun cancel()
 }
 
-/** A version whose last try didn't install, and when to try it again: never, for one that isn't this app. */
-data class Hold(val versionCode: Int, val until: Long?)
+/**
+ * A version whose last try didn't install, after [tries] in a row, and when to try it again: never,
+ * for an APK that isn't this app.
+ */
+data class Hold(val versionCode: Int, val until: Long?, val tries: Int = 1)
 
 /** The update held back from trying again (`StoredHold`): kept across restarts. */
 interface Holds {
@@ -65,9 +71,10 @@ interface Holds {
  * is, and, once no text is mid-send, with sending held back ([hold], until [release]), installed by
  * Android with no one confirming, which replaces the app and restarts it. Where Android asks the
  * person to confirm it anyway, sending goes on and its [notice] asks them, until it's installed or
- * the DSP no longer hands it out. A try that fails is held ([holds]) for [RETRY_MS]; one at an APK
- * that isn't this app until the DSP hands out another. Its calls come on the main thread; a try
- * runs in [scope].
+ * the DSP no longer hands it out. A try that fails is held ([holds]) longer each time at its
+ * version ([RETRIES_MS]), its download kept for the next once whole; one at an APK that isn't this
+ * app until the DSP hands out another. An error nothing expected is told to [unexpected], and held
+ * as one Android failed. Its calls come on the main thread; a try runs in [scope].
  */
 class Updates(
     private val dispatch: Dispatch,
@@ -80,6 +87,7 @@ class Updates(
     private val hold: suspend () -> Unit,
     private val release: () -> Unit,
     private val scope: CoroutineScope,
+    private val unexpected: Unexpected,
     private val io: CoroutineContext = Dispatchers.IO,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
@@ -93,8 +101,11 @@ class Updates(
     /** The version the try in progress is at. */
     private val trying get() = state.value.app
 
-    // An APK left by an update that installed, which ended the process before it was deleted.
-    private val cleared = scope.launch(io) { apk.delete() }
+    // An APK left by an update that installed, which ended the process before it was deleted: any
+    // but one kept for the next try at a newer version.
+    private val cleared = scope.launch(io) {
+        if (holds.hold?.let { it.until != null && it.versionCode > own.versionCode } != true) apk.delete()
+    }
 
     /**
      * Dispatch's latest version, [app] as the outbox of [site], the DSP the phone is paired with,
@@ -117,13 +128,14 @@ class Updates(
 
     /**
      * The person asked to update, from its notification: shows Android's confirmation again while
-     * one waits, or tries the version offered from [site] at once, held or not, unless it isn't this
-     * app.
+     * one waits, or tries the version offered from [site] at once, held or not, unless it's held for
+     * good.
      */
     fun install(site: String) {
         if (state.value is Update.Confirming) return installer.askAgain()
         val app = offered ?: return
-        if (installing?.isActive == true || holds.hold == Hold(app.versionCode, null)) return
+        val held = holds.hold?.let { it.versionCode == app.versionCode && it.until == null } == true
+        if (installing?.isActive == true || held) return
         start(site)
     }
 
@@ -144,7 +156,11 @@ class Updates(
         notice.showing = null
     }
 
-    /** Tries the version offered from [site], after any try still ending, a confirmation dropped. */
+    /**
+     * Tries the version offered from [site], after any try still ending, a confirmation dropped. Its
+     * APK is kept for the next try at its version, through any failure but its own: let go of once
+     * it's not whole, not this app, installed, or of a version the DSP no longer hands out.
+     */
     private fun start(site: String) {
         val previous = installing
         installing = scope.launch {
@@ -160,23 +176,32 @@ class Updates(
                 failed(trying, Problem.DOWNLOAD)
             } catch (_: Mismatch) {
                 failed(trying, Problem.MISMATCH)
-            } finally {
-                withContext(NonCancellable + io) { apk.delete() }
+            } catch (cancelled: CancellationException) {
+                // Dropped for a version the DSP hands out now.
+                letGo()
+                throw cancelled
+            } catch (error: Exception) {
+                // Never ending the app, to fail the same way as it starts again.
+                unexpected.happened("Updating the app", error)
+                failed(trying, Problem.INSTALL)
             }
         }
     }
 
-    /** Downloads, checks and installs the version the DSP hands out now; where that leaves updating. */
+    /**
+     * Downloads, checks and installs the version the DSP hands out now, from the APK kept by a try
+     * before if it's that version's; where that leaves updating.
+     */
     private suspend fun attempt(site: String): Update {
         cleared.join()
         val details = dispatch.app(site)
         val app = details.app
         offer(app.takeIf { it.versionCode > own.versionCode })
-        if (offered == null) return Update.None
+        if (offered == null) return Update.None.also { letGo() }
         // From here the try is at the version the details name, which may not be the one heard of.
         state.value = Update.Downloading(app)
-        withContext(io) { dispatch.apk(site) { input -> save(input, apk, details) } }
-        if (!withContext(io) { check.isThisApp(apk) }) return failed(app, Problem.NOT_THIS_APP)
+        if (!withContext(io) { saved(apk, details) }) download(site, details)
+        if (!withContext(io) { check.isThisApp(apk) }) return failed(app, Problem.NOT_THIS_APP).also { letGo() }
         // Installing ends the process: never while a text is mid-send, nor while one starts.
         var installed = false
         val outcome = try {
@@ -191,12 +216,28 @@ class Updates(
         } finally {
             if (!installed) release()
         }
+        if (installed) letGo()
         return when (outcome) {
             // Android replaces the app, ending this process; the new one starts the relay again.
             Outcome.INSTALLED -> Update.Installing(app)
             Outcome.REFUSED -> failed(app, null)
             Outcome.FAILED -> failed(app, Problem.INSTALL)
         }
+    }
+
+    /** Downloads the APK [details] describes from [site]: none of it kept, unless it's whole. */
+    private suspend fun download(site: String, details: AppDetails) {
+        try {
+            withContext(io) { dispatch.apk(site) { input -> save(input, apk, details) } }
+        } catch (failed: Throwable) {
+            letGo()
+            throw failed
+        }
+    }
+
+    /** Lets go of the APK: not whole, not this app, installed, or of no version to try. */
+    private suspend fun letGo() {
+        withContext(NonCancellable + io) { apk.delete() }
     }
 
     /** Asks the person to confirm installing [app], unless its notification was posted already. */
@@ -210,13 +251,24 @@ class Updates(
      * try's [problem] only if it's [app]; or nothing, if none.
      */
     private fun failed(app: AppVersion?, problem: Problem?): Update {
-        if (app != null) holds.hold = Hold(app.versionCode, if (problem == Problem.NOT_THIS_APP) null else now() + RETRY_MS)
+        if (app != null) holds.hold = held(app, problem)
         val now = offered ?: return Update.None
         return Update.Available(now, problem.takeIf { now == app })
     }
 
+    /**
+     * The hold after another try at [app] failed for [problem]: for good, for an APK that isn't
+     * this app, as another download of the version wouldn't be either; else for longer than the try
+     * before at it, a download that wasn't the one described too, as a network may spoil one.
+     */
+    private fun held(app: AppVersion, problem: Problem?): Hold {
+        val tries = (holds.hold?.takeIf { it.versionCode == app.versionCode }?.tries ?: 0) + 1
+        if (problem == Problem.NOT_THIS_APP) return Hold(app.versionCode, null, tries)
+        return Hold(app.versionCode, now() + RETRIES_MS[minOf(tries, RETRIES_MS.size) - 1], tries)
+    }
+
     companion object {
-        /** How long a try that didn't install waits before the next. */
-        const val RETRY_MS = 60 * 60 * 1000L
+        /** How long each try in a row at a version that didn't install waits before the next: the last, each after. */
+        val RETRIES_MS = listOf(1L, 3L, 12L, 24L).map { it * 60 * 60 * 1000 }
     }
 }
