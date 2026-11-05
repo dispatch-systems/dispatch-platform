@@ -117,16 +117,26 @@ pub fn read_soon(state: &Arc<State>, dsp: &str, team: &str) {
 }
 
 /// Keeps the member Slack told of, who joined the workspace or changed their profile; when
-/// they're new, Driver Match gives them a person at once.
-pub async fn told(bot: &Bot, event: &Value) -> Result<()> {
-    let Some(member) = member(&event["user"]) else {
-        return Ok(());
-    };
+/// they're new, Driver Match gives them a person at once. Told of `again`, after keeping them
+/// failed, they're kept as Slack has them now (`users.info`), not as Slack told of them then, so
+/// a later change kept meanwhile stays.
+pub async fn told(bot: &Bot, event: &Value, again: bool) -> Result<()> {
     let lock = bot::lock("members", &bot.dsp, &bot.team);
     let _keeping = lock.lock().await;
     if !readable(bot).await? {
         return Ok(());
     }
+    let now;
+    let told = if again {
+        let user = event["user"]["id"].as_str().unwrap_or_default();
+        now = bot.call("users.info", &json!({"user": user})).await?;
+        &now["user"]
+    } else {
+        &event["user"]
+    };
+    let Some(member) = member(told) else {
+        return Ok(());
+    };
     let (dsp, team) = (bot.dsp.clone(), bot.team.clone());
     let new = bot
         .state

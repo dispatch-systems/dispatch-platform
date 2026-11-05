@@ -69,7 +69,7 @@ pub fn approved(workspace: &kit::Workspace) -> bool {
 pub fn heard(state: Arc<State>, heard: Heard) -> Upkeep {
     Box::pin(async move {
         let kept =
-            kit::retried(|| incoming::heard(&state, &heard.dsp, &heard.account, &heard.event))
+            kit::retried(|_| incoming::heard(&state, &heard.dsp, &heard.account, &heard.event))
                 .await;
         if let Err(error) = kept {
             observability::event(

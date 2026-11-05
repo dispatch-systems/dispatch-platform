@@ -142,7 +142,7 @@ pub struct Sent<'a> {
 
 /// An answer on its way to Slack, noted before it's posted: the ID its post carries, its
 /// conversation, its text, who sent it under what name, its photos, as kept and as Slack has each,
-/// and from when it may have been posted.
+/// from when it may have been posted, and until when the try posting it holds it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Noted {
     pub id: String,
@@ -152,6 +152,7 @@ pub struct Noted {
     pub name: String,
     pub photos: Vec<(String, String)>,
     pub posting_since: i64,
+    pub claimed_until: i64,
 }
 impl FromRow for Noted {
     fn from_row(row: &Row<'_>) -> Result<Self> {
@@ -163,6 +164,7 @@ impl FromRow for Noted {
             name: row.get("sender_name")?,
             photos: serde_json::from_str(&row.get::<String>("photos")?)?,
             posting_since: row.get("posting_since")?,
+            claimed_until: row.get("claimed_until")?,
         })
     }
 }
@@ -198,15 +200,16 @@ pub trait CommunicationsStore {
     /// Keeps a message a member wrote, with its files to download, or a later edit of one kept
     /// already: what changed, if anything did.
     fn keep_communications_message(&self, dsp: &str, written: &Written) -> Result<Option<Kept>>;
-    /// Notes an answer before it goes to Slack.
+    /// Notes an answer before it goes to Slack, or, noted already, its try again: its photos, the
+    /// name it goes under and its claim, from when it may have been posted kept as it was.
     fn note_communications_reply(&self, dsp: &str, noted: &Noted) -> Result<()>;
-    /// The answers noted before `before` in the conversation `conversation`, or in every one,
-    /// the earliest first.
+    /// The answers noted in the conversation `conversation`, or in every one, no try holding them
+    /// at `at`, the earliest first.
     fn noted_communications_replies(
         &self,
         dsp: &str,
         conversation: Option<&str>,
-        before: i64,
+        at: i64,
     ) -> Result<Vec<Noted>>;
     /// Clears the answer noted as `id`: it's not in Slack.
     fn clear_communications_reply(&self, dsp: &str, id: &str) -> Result<()>;
@@ -390,7 +393,9 @@ impl CommunicationsStore for Store {
     fn note_communications_reply(&self, dsp: &str, noted: &Noted) -> Result<()> {
         self.dsp(dsp)?.exec(
             "INSERT INTO communications_replies (id,conversation_id,text,sent_by,sender_name,\
-             photos,posting_since) VALUES (?,?,?,?,?,?,?)",
+             photos,posting_since,claimed_until) VALUES (?,?,?,?,?,?,?,?) \
+             ON CONFLICT(id) DO UPDATE SET sender_name=excluded.sender_name,\
+             photos=excluded.photos,claimed_until=excluded.claimed_until",
             params![
                 noted.id,
                 noted.conversation,
@@ -398,7 +403,8 @@ impl CommunicationsStore for Store {
                 noted.by,
                 noted.name,
                 serde_json::to_string(&noted.photos)?,
-                noted.posting_since
+                noted.posting_since,
+                noted.claimed_until
             ],
         )?;
         Ok(())
@@ -407,12 +413,12 @@ impl CommunicationsStore for Store {
         &self,
         dsp: &str,
         conversation: Option<&str>,
-        before: i64,
+        at: i64,
     ) -> Result<Vec<Noted>> {
         self.dsp(dsp)?.query_as(
-            "SELECT * FROM communications_replies WHERE posting_since<?1 \
+            "SELECT * FROM communications_replies WHERE claimed_until<=?1 \
              AND (?2 IS NULL OR conversation_id=?2) ORDER BY posting_since,id",
-            params![before, conversation],
+            params![at, conversation],
         )
     }
     fn clear_communications_reply(&self, dsp: &str, id: &str) -> Result<()> {

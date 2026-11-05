@@ -149,13 +149,14 @@ pub enum Answered {
     Group(String),
 }
 
-/// A group message due to go to one of its people.
+/// A group message due to go to one of its people, and when it was written.
 #[derive(Clone, Debug)]
 pub struct Due {
     pub message: String,
     pub team: String,
     pub user: String,
     pub attempts: i64,
+    pub written: i64,
 }
 impl FromRow for Due {
     fn from_row(row: &Row<'_>) -> Result<Self> {
@@ -164,6 +165,7 @@ impl FromRow for Due {
             team: row.get("team_id")?,
             user: row.get("user_id")?,
             attempts: row.get("attempts")?,
+            written: row.get("at")?,
         })
     }
 }
@@ -267,8 +269,8 @@ pub trait GroupStore {
         by: &str,
         seen: Option<(i64, &str)>,
     ) -> Result<usize>;
-    /// The group messages written since `fresh` due to go to one of their people by `at`, the
-    /// longest due first, `most` at most.
+    /// The group messages due to go to one of their people by `at`, written since `fresh`, or
+    /// that a try may have posted, to be looked for, the longest due first, `most` at most.
     fn due_communications_deliveries(
         &self,
         dsp: &str,
@@ -277,10 +279,11 @@ pub trait GroupStore {
         most: usize,
     ) -> Result<Vec<Due>>;
     /// Whether any group message written before `before` waits to go to one of its people, no
-    /// try holding it at `at`.
+    /// try holding it at `at` and none that may have posted it.
     fn stale_communications_deliveries(&self, dsp: &str, before: i64, at: i64) -> Result<bool>;
     /// Gives up each group message written before `before` waiting to go to one of its people,
-    /// no try holding it at `at`, for `reason`, or what it last waited on, if it waited on Slack.
+    /// no try holding it at `at` and none that may have posted it, for `reason`, or what it last
+    /// waited on, if it waited on Slack.
     fn expire_communications_deliveries(
         &self,
         dsp: &str,
@@ -637,12 +640,14 @@ impl GroupStore for Store {
         most: usize,
     ) -> Result<Vec<Due>> {
         self.dsp(dsp)?.query_as(
-            "SELECT d.message_id,d.team_id,d.user_id,d.attempts FROM communications_deliveries d \
+            "SELECT d.message_id,d.team_id,d.user_id,d.attempts,m.at \
+             FROM communications_deliveries d \
              JOIN communications_group_messages m ON m.id=d.message_id \
              JOIN communications_group_people p ON p.group_id=m.group_id \
              AND p.team_id=d.team_id AND p.user_id=d.user_id \
              WHERE d.status='waiting' AND d.due_at<=?1 AND coalesce(d.claimed_until,0)<=?1 \
-             AND m.at>=?2 ORDER BY d.due_at,m.at,m.id,p.place LIMIT ?3",
+             AND (m.at>=?2 OR d.posting_since IS NOT NULL) \
+             ORDER BY d.due_at,m.at,m.id,p.place LIMIT ?3",
             params![at, fresh, most as i64],
         )
     }
@@ -650,7 +655,8 @@ impl GroupStore for Store {
         let stale = self.dsp(dsp)?.count(
             "SELECT count(*) FROM communications_deliveries d \
              JOIN communications_group_messages m ON m.id=d.message_id \
-             WHERE d.status='waiting' AND m.at<?1 AND coalesce(d.claimed_until,0)<=?2",
+             WHERE d.status='waiting' AND m.at<?1 AND coalesce(d.claimed_until,0)<=?2 \
+             AND d.posting_since IS NULL",
             params![before, at],
         )?;
         Ok(stale > 0)
@@ -666,7 +672,8 @@ impl GroupStore for Store {
         db.transaction(|| {
             let stale = "FROM communications_deliveries d \
                          JOIN communications_group_messages m ON m.id=d.message_id \
-                         WHERE d.status='waiting' AND m.at<?1 AND coalesce(d.claimed_until,0)<=?2";
+                         WHERE d.status='waiting' AND m.at<?1 AND coalesce(d.claimed_until,0)<=?2 \
+                         AND d.posting_since IS NULL";
             let groups: Vec<(String,)> = db.query_as(
                 &format!("SELECT DISTINCT m.group_id {stale}"),
                 params![before, at],

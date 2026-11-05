@@ -41,12 +41,13 @@ use std::{
 
 /// What each event the app is told of does, by its kind, for a workspace Dispatch acts in: what
 /// Slack itself does, then what the integrations on there that hear of it do, and then what
-/// Slack does with one none of them heard of. An event added to `app::EVENTS` is handled here.
-async fn on_event(bot: &Bot, event: &Value) -> Result<()> {
+/// Slack does with one none of them heard of; `again` once it failed before. An event added to
+/// `app::EVENTS` is handled here.
+async fn on_event(bot: &Bot, event: &Value, again: bool) -> Result<()> {
     let kind = kind(event);
     match kind {
         "app_home_opened" => home::opened(bot, event).await?,
-        "team_join" | "user_change" => members::told(bot, event).await?,
+        "team_join" | "user_change" => members::told(bot, event, again).await?,
         _ => {}
     }
     if integrations::heard(bot, kind, event).await? {
@@ -113,9 +114,9 @@ pub async fn events(state: Arc<State>, request: Request) -> Response {
                     }
                 };
             }
-            after(state, "slack_event_failed", team, move |bot| {
+            after(state, "slack_event_failed", team, move |bot, again| {
                 let event = event.clone();
-                async move { on_event(&bot, &event).await }
+                async move { on_event(&bot, &event, again).await }
             });
             StatusCode::OK.into_response()
         }
@@ -172,7 +173,7 @@ pub async fn interactions(state: Arc<State>, request: Request) -> Response {
         return middleware::failure(Error::new("invalid_input", 400));
     };
     let team = payload["team"]["id"].as_str().unwrap_or("").to_owned();
-    after(state, "slack_interaction_failed", team, move |bot| {
+    after(state, "slack_interaction_failed", team, move |bot, _| {
         let payload = payload.clone();
         async move {
             let kind = payload["type"].as_str().unwrap_or("");
@@ -189,20 +190,21 @@ pub async fn interactions(state: Arc<State>, request: Request) -> Response {
 }
 
 /// Does `work` with the bot in the workspace `team` once Slack has its answer, while Dispatch
-/// acts there, tried again soon when it fails: why its last try failed is logged as `failed`,
-/// with the workspace's DSP.
+/// acts there, tried again soon when it fails, told whether it's again: why its last try failed
+/// is logged as `failed`, with the workspace's DSP.
 fn after<F>(
     state: Arc<State>,
     failed: &'static str,
     team: String,
-    work: impl Fn(Bot) -> F + Send + Sync + 'static,
+    work: impl Fn(Bot, bool) -> F + Send + Sync + 'static,
 ) where
     F: Future<Output = Result<()>> + Send + 'static,
 {
     tokio::spawn(async move {
-        let tried = work::retried(|| async {
-            match Bot::serving(&state, &team).await? {
-                Some(bot) => work(bot).await,
+        let (serving, of, work) = (&state, &team, &work);
+        let tried = work::retried(|again| async move {
+            match Bot::serving(serving, of).await? {
+                Some(bot) => work(bot, again).await,
                 None => Ok(()),
             }
         })

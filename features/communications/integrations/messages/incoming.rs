@@ -4,7 +4,7 @@
 //! nothing of what it said before kept. An edit told of before its message keeps the message as
 //! edited, which its message told of later doesn't change back. Never the app's own posts or
 //! another bot's, and nothing deleted in Slack is deleted here. Never one sent before Slack,
-//! Communications and its integration in the workspace were all on.
+//! Communications and its integration in the workspace were all on, but an edit of one kept.
 use super::ID;
 use crate::backend::{
     files, live,
@@ -100,9 +100,11 @@ pub async fn keep(
             ))
         })
         .await?;
-    // Sent before its messages may be kept, or kept already, as Slack or catching up told of it
-    // again, with no later edit.
-    if since.is_none_or(|since| sent < since) || kept.is_some_and(|kept| edited_at <= kept) {
+    // Nothing while it's off; one not kept, sent before its messages may be kept; or one kept
+    // already, as Slack or catching up told of it again, with no later edit. An edit of one kept
+    // before it was last switched on is kept.
+    let admitted = since.is_some_and(|since| kept.is_some() || sent >= since);
+    if !admitted || kept.is_some_and(|kept| edited_at <= kept) {
         return Ok(false);
     }
     let (at, of) = (dsp.to_owned(), team.to_owned());

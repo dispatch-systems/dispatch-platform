@@ -560,6 +560,53 @@ async fn a_group_message_not_sent_within_two_hours_is_given_up_as_too_late() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn past_two_hours_a_try_that_may_have_posted_is_looked_for_and_nothing_is_posted_anew() {
+    let (_root, state, bot) = support::connected(DRIVERS_TEAM).await;
+    let dsp = bot.dsp.clone();
+    let c = owner(&state, &dsp).await;
+    let picked = members(&[(DRIVERS_TEAM, "U0FIXCAM"), (DRIVERS_TEAM, "U0FIXCASEY")]);
+    let group = send::create(&state, &c, USE, "Wave", &picked, "Running late", &[])
+        .await
+        .unwrap();
+    let message = first_message(&state, &dsp, &group.id).await;
+    // Before the server stopped, a try posted to Cam and kept nothing, and one to Casey was
+    // claimed and stopped before posting; it's back past the two hours.
+    let at = dsp.clone();
+    let due = state
+        .read(move |db| db.due_communications_deliveries(&at, now(), 0, 10))
+        .await
+        .unwrap();
+    for item in &due {
+        let (at, item) = (dsp.clone(), item.clone());
+        state
+            .run(move |db| {
+                db.claim_communications_delivery(&at, &item, now(), now() - 1)
+                    .map(drop)
+            })
+            .await
+            .unwrap();
+    }
+    bot.call(
+        "chat.postMessage",
+        &json!({"channel": "D0FIXCAM", "text": "Running late", "metadata":
+            {"event_type": "dispatch_group_message", "event_payload": {"message": message.id}}}),
+    )
+    .await
+    .unwrap();
+    late(&state, &dsp, &message.id).await;
+    send::drain(&state, &dsp).await;
+    assert_eq!(posts(DRIVERS_TEAM, "U0FIXCAM", &message.id).len(), 1);
+    assert!(posts(DRIVERS_TEAM, "U0FIXCASEY", &message.id).is_empty());
+    assert_eq!(
+        panel(&state, &dsp, &group.id).await,
+        [
+            (GroupPersonState::Sent, None),
+            (GroupPersonState::NotSent, Some(NotSent::TooLate))
+        ]
+    );
+}
+
+#[tokio::test(start_paused = true)]
 async fn a_workspace_needing_reconnecting_holds_its_messages_then_says_why_they_went_unsent() {
     let (_root, state, bot) = support::connected(DRIVERS_TEAM).await;
     let dsp = bot.dsp.clone();

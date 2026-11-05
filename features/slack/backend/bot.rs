@@ -50,6 +50,14 @@ impl Bot {
             ..self
         }
     }
+    /// The bot, Slack asking it to slow down waited out no longer than `longest`, as for work that
+    /// mustn't go on past a deadline: asked to wait longer, a call fails at once.
+    pub fn waiting(self, longest: Duration) -> Self {
+        Self {
+            waits: self.waits.min(longest),
+            ..self
+        }
+    }
     /// The bot in the workspace `team`, for the DSP it belongs to, while Dispatch acts there:
     /// the DSP active, Slack on for it, and the workspace connected and working.
     pub async fn serving(state: &Arc<State>, team: &str) -> Result<Option<Self>> {

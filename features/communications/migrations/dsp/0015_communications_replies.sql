@@ -4,9 +4,10 @@
 
 -- An answer someone at the DSP wrote in a conversation, by their account (`sent_by`), under the
 -- name it goes out under (`sender_name`), with its photos as kept and as Slack has each
--- (`photos`, JSON pairs), from when it may have been posted (`posting_since`). Its post carries
--- its ID as Slack's message metadata. It's cleared once its post is kept, or found not to be in
--- Slack.
+-- (`photos`, JSON pairs), from when it may have been posted (`posting_since`), and held by the
+-- try posting it until `claimed_until`. Each try's post carries its ID as Slack's message
+-- metadata: sent again, it's tried again under the same ID. It's cleared once its post is kept,
+-- or found not to be in Slack once no try holds it.
 CREATE TABLE IF NOT EXISTS communications_replies (
     id TEXT PRIMARY KEY,
     conversation_id TEXT NOT NULL REFERENCES communications_conversations (id),
@@ -14,9 +15,10 @@ CREATE TABLE IF NOT EXISTS communications_replies (
     sent_by TEXT NOT NULL,
     sender_name TEXT NOT NULL,
     photos TEXT NOT NULL,
-    posting_since INTEGER NOT NULL
+    posting_since INTEGER NOT NULL,
+    claimed_until INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS communications_replies_conversations
     ON communications_replies (conversation_id);
-CREATE INDEX IF NOT EXISTS communications_replies_since
-    ON communications_replies (posting_since);
+CREATE INDEX IF NOT EXISTS communications_replies_claimed
+    ON communications_replies (claimed_until);

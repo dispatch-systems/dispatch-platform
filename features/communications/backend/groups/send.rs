@@ -9,7 +9,9 @@
 //! up: not sent. One to a workspace where Slack needs updating or reconnecting waits, uncounted,
 //! five minutes at a time. One to a workspace where Communications no longer works, or a member no
 //! longer there, isn't sent at all; nor is one not sent within two hours of being written, too late
-//! by then, which keeps as why what it last waited on, if it waited on Slack.
+//! by then, which keeps as why what it last waited on, if it waited on Slack. No try starts a post
+//! past then, nor waits on Slack past it to post; one that may have posted before then is still
+//! looked for, and kept if it's there.
 //!
 //! Each message to each person is kept until it's sent or given up, so sending picks up where it
 //! was after a restart, from the maintenance pass every minute. A try that may have posted before
@@ -378,9 +380,12 @@ impl Queue for Deliveries {
         db.claim_communications_delivery(dsp, item, at, until)
     }
     async fn try_one(state: &Arc<State>, dsp: &str, item: &Due, since: Option<i64>) -> Outcome {
-        match deliver(state, dsp, item, since).await {
+        // Whether nothing of it is in Slack should this try fail: not once an earlier try may
+        // have posted it until it's looked for, nor once this one posts.
+        let mut unposted = since.is_none();
+        match deliver(state, dsp, item, since, &mut unposted).await {
             Ok(outcome) => outcome,
-            Err(error) => failure(item, &error),
+            Err(error) => failure(item, &error, unposted),
         }
     }
     fn finish(db: &Store, dsp: &str, item: &Due, outcome: &Outcome, _: i64) -> Result<()> {
@@ -412,8 +417,22 @@ impl Queue for Deliveries {
 }
 
 /// Sends the group message to one of its people: in their direct message, opened first if need
-/// be; or, when an earlier try `since` then may have, keeps that post if it's there.
-async fn deliver(state: &Arc<State>, dsp: &str, item: &Due, since: Option<i64>) -> Result<Outcome> {
+/// be, unless it's too late; or, when an earlier try `since` then may have, keeps that post if
+/// it's there. Notes in `unposted` whether nothing of it is in Slack, as it learns.
+async fn deliver(
+    state: &Arc<State>,
+    dsp: &str,
+    item: &Due,
+    since: Option<i64>,
+    unposted: &mut bool,
+) -> Result<Outcome> {
+    let deadline = item.written + FRESH_MS;
+    let too_late = || Outcome::Failed {
+        reason: TOO_LATE.into(),
+    };
+    if since.is_none() && now() >= deadline {
+        return Ok(too_late());
+    }
     let (at, due) = (dsp.to_owned(), item.clone());
     let found = state
         .read(move |db| {
@@ -495,6 +514,10 @@ async fn deliver(state: &Arc<State>, dsp: &str, item: &Due, since: Option<i64>) 
     {
         return sent(ts);
     }
+    *unposted = true;
+    if now() >= deadline {
+        return Ok(too_late());
+    }
     let identity = sender::named(
         state,
         dsp,
@@ -506,7 +529,11 @@ async fn deliver(state: &Arc<State>, dsp: &str, item: &Due, since: Option<i64>) 
     .await;
     let mut args = reply::message(&channel, &message.text, &shown, &identity);
     args["metadata"] = reply::tag(EVENT, &message.id);
-    let answer = match reply::post(&bot, &args, !shown.is_empty()).await {
+    // Slack asking it to slow down is waited out only while the post would still be in time.
+    let left = Duration::from_millis((deadline - now()).max(0) as u64 / 2);
+    let poster = Bot::new(state, dsp, &item.team).patient().waiting(left);
+    *unposted = false;
+    let answer = match reply::post(&poster, &args, !shown.is_empty()).await {
         // Slack took nothing, and no earlier try's post is there: the next needn't look for one.
         Err(error) if error.code == "slack_rate_limited" => {
             return Ok(Outcome::Later {
@@ -547,10 +574,10 @@ async fn upload(
     Ok(slack_id)
 }
 
-/// What `error` makes of trying `item`: waited out while Slack asks Dispatch to slow down, or
-/// its workspace needs Slack updated or reconnected; given up where it can't go; or tried again
-/// later, and given up after the last try.
-fn failure(item: &Due, error: &Error) -> Outcome {
+/// What `error` makes of trying `item`, `unposted` when nothing of it is in Slack: waited out
+/// while Slack asks Dispatch to slow down, or its workspace needs Slack updated or reconnected;
+/// given up where it can't go; or tried again later, and given up after the last try.
+fn failure(item: &Due, error: &Error, unposted: bool) -> Outcome {
     let code = error.code.clone();
     let waited = match code.as_str() {
         "slack_rate_limited" => Some(SLOWED_MS),
@@ -562,7 +589,7 @@ fn failure(item: &Due, error: &Error) -> Outcome {
             reason: code,
             at: now() + waited,
             counted: false,
-            unposted: false,
+            unposted,
         };
     }
     let gone = ["communications_off", "communications_contact_not_found"];
@@ -571,7 +598,7 @@ fn failure(item: &Due, error: &Error) -> Outcome {
             reason: code,
             at: now() + after,
             counted: true,
-            unposted: false,
+            unposted,
         },
         _ => Outcome::Failed { reason: code },
     }

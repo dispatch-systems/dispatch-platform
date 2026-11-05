@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 #[tokio::test(start_paused = true)]
 async fn work_slack_told_of_that_fails_is_tried_again_soon_a_few_times() {
     let tries = AtomicUsize::new(0);
-    let done = retried(|| async {
+    let done = retried(|_| async {
         match tries.fetch_add(1, Ordering::SeqCst) {
             0 | 1 => Err(Error::new("platform_busy", 503)),
             _ => Ok(()),
@@ -17,7 +17,7 @@ async fn work_slack_told_of_that_fails_is_tried_again_soon_a_few_times() {
     assert_eq!(tries.load(Ordering::SeqCst), 3);
     // Failing each time, it's left, saying why.
     let tries = AtomicUsize::new(0);
-    let left = retried(|| async {
+    let left = retried(|_| async {
         tries.fetch_add(1, Ordering::SeqCst);
         Err(Error::new("platform_busy", 503))
     })

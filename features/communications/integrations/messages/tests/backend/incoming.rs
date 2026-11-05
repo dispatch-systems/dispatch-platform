@@ -155,7 +155,8 @@ async fn an_edit_told_of_before_its_message_keeps_the_message_as_edited() {
 }
 
 #[tokio::test]
-async fn nothing_sent_before_communications_was_on_in_the_workspace_is_kept() {
+async fn nothing_sent_before_communications_was_on_in_the_workspace_is_kept_but_edits_of_what_was()
+{
     let (_root, state, bot) = support::connected(TEAM).await;
     let dsp = bot.dsp.clone();
     let hear = |event: Value| {
@@ -175,4 +176,30 @@ async fn nothing_sent_before_communications_was_on_in_the_workspace_is_kept() {
     // Sent since, it's kept.
     hear(written(now(), json!({}))).await;
     assert!(kept().await.is_some());
+    // An edit of one kept before it was last switched on is kept all the same.
+    let before = now() - 60 * 60 * 1000;
+    let earlier = Written {
+        team: TEAM.into(),
+        user: "U0FIXCAM".into(),
+        channel: DM.into(),
+        name: "Cameron Hayes".into(),
+        ts: ts(before),
+        thread_ts: None,
+        text: "Flat tire".into(),
+        at: before,
+        edited_at: None,
+        files: Vec::new(),
+    };
+    let at = dsp.clone();
+    state
+        .run(move |db| db.keep_communications_message(&at, &earlier).map(drop))
+        .await
+        .unwrap();
+    let edit = json!({"type": "message", "subtype": "message_changed", "channel": DM,
+        "message": {"user": "U0FIXCAM", "text": "Flat tire on route 6", "ts": ts(before),
+            "edited": {"user": "U0FIXCAM", "ts": ts(now())}}});
+    hear(edit).await;
+    let id = kept().await.unwrap().id;
+    let messages = support::messages(&state, &dsp, &id).await;
+    assert_eq!(messages[0].text, "Flat tire on route 6");
 }

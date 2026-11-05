@@ -445,10 +445,12 @@ in their own direct message with the app, and their answers come back together.
   again after a minute, five and fifteen, then given up; one to a workspace where Communications
   no longer works, or someone no longer in it, isn't sent at all. None goes out more than two
   hours after it was written, as while Communications was off: a wave running late has moved on,
-  so it's given up as too late, or as what it waited on, when that was Slack. Each is kept until
-  it's sent or given up, so sending picks up after a restart, from the pass every minute; a try
-  that may have posted before the server stopped looks for its post in their direct message first
-  (`im:history`), by the metadata each post carries, and keeps it rather than send a second.
+  so it's given up as too late, or as what it waited on, when that was Slack: no try starts a post
+  past then, nor waits on Slack asking it to slow down past it. Each is kept until it's sent or
+  given up, so sending picks up after a restart, from the pass every minute; a try that may have
+  posted before the server stopped looks for its post in their direct message first
+  (`im:history`, every page since), by the metadata each post carries, and keeps it rather than
+  send a second, even past the two hours.
 - **The group** is listed among the conversations: two of its people's faces, its name and how
   many it went to, and the latest answer under its writer's first name, or the DSP's message. It
   waits while any conversation listed under it waits, by the longest wait, with a check that
@@ -487,7 +489,8 @@ in their own direct message with the app, and their answers come back together.
   of what it said before is kept, logged or read. Slack changing a message itself, as to show a
   link's preview, isn't an edit. An edit Slack tells of before its message, as when keeping the
   message failed and is tried again, keeps the message as edited, and the message told of after
-  doesn't change it back.
+  doesn't change it back. A message kept is edited while Communications works there, though it
+  was sent before Communications was last switched on.
 - **Told of:** what Slack tells of is kept once Slack has its answer; keeping it is tried again a
   second, five and thirty seconds after it fails, then left to catching up, the failure logged as
   `communications_heard_failed` with its DSP and code alone.
@@ -524,14 +527,16 @@ in their own direct message with the app, and their answers come back together.
   photos (PNG, JPEG or GIF, up to 20 MB each), goes to the member's direct message
   (`chat.postMessage`) as written: escaped, so Slack shows what was typed.
 - **Kept once, never posted twice:** each message is noted as its writer's access is checked,
-  just before it goes to Slack, and its post carries the note's ID as Slack's message metadata.
-  Once Slack has it, it's kept, waiting its turn for the database rather than turned away busy,
-  and its note cleared. One Slack may have taken that wasn't kept, as when the server stopped
-  between, is looked for in the direct message (`im:history`) by its note's ID: by the pass every
-  minute, once it was noted a minute ago, which keeps it if it's there and clears the note if
-  not, while Communications works in its workspace, and lets a note go after a day; or at once
-  when its writer sends the same message, with the same photos, there again, which then keeps
-  that post rather than post a second.
+  just before it goes to Slack, held for ten minutes by the try posting it, longer than its post
+  takes, Slack asking it to slow down included; its post carries the note's ID as Slack's message
+  metadata. Once Slack has it, it's kept, waiting its turn for the database rather than turned
+  away busy, and its note cleared. One Slack may have taken that wasn't kept, as when the server
+  stopped between, is looked for in the direct message (`im:history`, every page since it was
+  noted) by its note's ID: by the pass every minute, once no try holds it, which keeps it if
+  it's there and clears the note if not, while Communications works in its workspace, however
+  long that takes; or at once when its writer sends the same message, with the same photos,
+  there again, which then keeps that post rather than post a second, or, not finding it, tries
+  again under the same note, so whichever try Slack took is found.
 - **Under whose name:** the full name on the writer's Dispatch account, and their Slack profile
   photo (`chat:write.customize`), read from the member of the DSP's workspaces with their email
   address, the conversation's workspace first (`users.info`): Slack's own drawn photo isn't

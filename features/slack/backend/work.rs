@@ -30,16 +30,19 @@ pub fn failed(event: &'static str, dsp: Option<&str>, error: &Error) {
 
 /// Does work Slack told of, `work`, until it succeeds: tried again after a second, five and thirty
 /// when it fails, then left to the passes that catch up on what was missed, answering why its last
-/// try failed. Each try does it all again, so what it keeps it keeps once, however often it's
-/// tried, and what came after it in Slack is kept meanwhile.
-pub async fn retried<F: Future<Output = Result<()>>>(mut work: impl FnMut() -> F) -> Result<()> {
-    for wait in AGAIN {
-        if work().await.is_ok() {
+/// try failed. Each try does it all again, told whether it's again, so what it keeps it keeps
+/// once, however often it's tried; and what came after it in Slack is kept meanwhile, so a try
+/// again keeps nothing older than what's kept.
+pub async fn retried<F: Future<Output = Result<()>>>(
+    mut work: impl FnMut(bool) -> F,
+) -> Result<()> {
+    for (tries, wait) in AGAIN.into_iter().enumerate() {
+        if work(tries > 0).await.is_ok() {
             return Ok(());
         }
         tokio::time::sleep(wait).await;
     }
-    work().await
+    work(true).await
 }
 
 /// The DSPs Slack works for: each kept DSP that's active with Slack on. A failure finding them

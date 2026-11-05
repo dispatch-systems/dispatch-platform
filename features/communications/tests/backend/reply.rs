@@ -36,8 +36,8 @@ async fn started(state: &Arc<State>, bot: &Bot, dm: &str) -> String {
 }
 
 /// What a try of `c`'s answer `text` in the conversation `id` leaves when nothing of it was kept,
-/// as when the server stopped once Slack had it: its note, from `ago` milliseconds back, and its
-/// post in the direct message `dm` if Slack took it.
+/// as when the server stopped once Slack had it: its note, from `ago` milliseconds back, held as
+/// long as a try holds one, and its post in the direct message `dm` if Slack took it.
 async fn unkept(
     state: &Arc<State>,
     bot: &Bot,
@@ -55,6 +55,7 @@ async fn unkept(
         name: "Test Owner".into(),
         photos: Vec::new(),
         posting_since: now() - ago,
+        claimed_until: now() - ago + SENDING_MS,
     };
     let (at, note) = (bot.dsp.clone(), noted.clone());
     state
@@ -324,30 +325,84 @@ async fn sent_again_an_answer_slack_took_unkept_is_kept_and_not_posted_twice() {
             vec![]
         )
     );
-    // One Slack didn't take is posted.
-    unkept(&state, &bot, &owner, at, "On my way", 0, false).await;
+    // One Slack didn't take is posted, under the same note, so should Slack take this try and
+    // nothing keep it, sending it again finds this try's post.
+    let failed = unkept(&state, &bot, &owner, at, "On my way", 0, false).await;
     send(&state, &owner, USE, &id, "On my way", &[])
         .await
         .unwrap();
-    assert_eq!(slack::posted(TEAM, "D0AGAIN").len(), 2);
+    let posted = slack::posted(TEAM, "D0AGAIN");
+    assert_eq!(posted.len(), 2);
+    assert_eq!(posted[1].metadata["event_payload"]["message"], failed.id);
+    assert_eq!(
+        kept_and_noted(&state, &dsp, &id).await.1,
+        Vec::<String>::new()
+    );
 }
 
 #[tokio::test]
-async fn upkeep_keeps_an_answer_slack_took_unkept_and_lets_go_of_one_it_didnt() {
+async fn an_answer_slack_took_unkept_is_found_however_much_was_written_after_it() {
+    let (_root, state, bot) = support::connected(TEAM).await;
+    let dsp = bot.dsp.clone();
+    let id = started(&state, &bot, "D0BUSY").await;
+    let owner = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+    unkept(&state, &bot, &owner, (&id, "D0BUSY"), "On my way", 0, true).await;
+    // More than a page of Slack's history after it.
+    for n in 0..250 {
+        let args = json!({"channel": "D0BUSY", "text": format!("Reminder {n}")});
+        bot.call("chat.postMessage", &args).await.unwrap();
+    }
+    send(&state, &owner, USE, &id, "On my way", &[])
+        .await
+        .unwrap();
+    assert_eq!(slack::posted(TEAM, "D0BUSY").len(), 251);
+    assert_eq!(
+        kept_and_noted(&state, &dsp, &id).await,
+        (vec!["Van won't start".into(), "On my way".into()], vec![])
+    );
+}
+
+#[tokio::test]
+async fn upkeep_keeps_an_answer_slack_took_unkept_and_lets_go_of_one_no_try_holds_it_didnt() {
     let (_root, state, bot) = support::connected(TEAM).await;
     let dsp = bot.dsp.clone();
     let id = started(&state, &bot, "D0UPKEEP").await;
     let owner = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
     let at = (id.as_str(), "D0UPKEEP");
-    unkept(&state, &bot, &owner, at, "On my way", 2 * 60_000, true).await;
-    unkept(&state, &bot, &owner, at, "Running late", 2 * 60_000, false).await;
-    // One noted just now may still be going to Slack: left for now.
-    unkept(&state, &bot, &owner, at, "Keys are in the van", 0, true).await;
+    let held = SENDING_MS + 60_000;
+    unkept(&state, &bot, &owner, at, "On my way", held, true).await;
+    unkept(&state, &bot, &owner, at, "Running late", held, false).await;
+    // One noted a day and more ago is still looked for, and kept.
+    unkept(
+        &state,
+        &bot,
+        &owner,
+        at,
+        "Back at the station",
+        25 * 60 * 60_000,
+        true,
+    )
+    .await;
+    // One a try still holds, as while Slack asks it to slow down, is left for now.
+    unkept(
+        &state,
+        &bot,
+        &owner,
+        at,
+        "Keys are in the van",
+        2 * 60_000,
+        false,
+    )
+    .await;
     settle(&state, &dsp).await.unwrap();
     assert_eq!(
         kept_and_noted(&state, &dsp, &id).await,
         (
-            vec!["Van won't start".into(), "On my way".into()],
+            vec![
+                "Van won't start".into(),
+                "On my way".into(),
+                "Back at the station".into()
+            ],
             vec!["Keys are in the van".into()]
         )
     );

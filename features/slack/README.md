@@ -227,9 +227,10 @@ Slack's manifest lists each one's integration, upkeep, migration and tables. `in
   answers at once, as Slack waits three seconds, and does the work after; an event Slack sends
   again is handled once. Work done after that fails is tried again a second, five and thirty
   seconds later, then left to the passes that catch up on what was missed, logged as
-  `slack_event_failed` or `slack_interaction_failed` with its DSP; an integration can try what it
-  hears again the same way (`kit::retried`), and each pass logs a failure with the DSP it was
-  working for (`kit::failed`). The app's removal from a workspace, or its tokens' revocation
+  `slack_event_failed` or `slack_interaction_failed` with its DSP; someone joining or changing
+  their profile, told of again, is kept as Slack has them then (`users.info`), so a later change
+  stays. An integration can try what it hears again the same way (`kit::retried`), and each pass
+  logs a failure with the DSP it was working for (`kit::failed`). The app's removal from a workspace, or its tokens' revocation
   there, is kept before Dispatch answers, and a failure is answered as one, so Slack sends it
   again. A request may be up to 64 KiB, as any request to the server may. An event goes by the name the
   app is told of it by: a message by its conversation's, `message.im` for one written to the
