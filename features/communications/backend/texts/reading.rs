@@ -28,6 +28,7 @@ use dispatch_core::{
     db::Store,
     server::http::{input::Reply, route::Dsp},
 };
+use serde_json::json;
 use std::{collections::HashMap, sync::Arc};
 
 /// A text's place among its conversation's, as a message's `ts`: when it was written, thirteen
@@ -129,10 +130,15 @@ pub fn messages(people: &People, numbers: &Numbers, kept: Vec<Text>) -> Vec<Mess
                     size: file.size,
                     status: if file.kept {
                         FileStatus::Kept
+                    } else if file.gone {
+                        FileStatus::Gone
+                    } else if file.on_phone {
+                        FileStatus::OnPhone
                     } else {
                         FileStatus::Waiting
                     },
                     version: file.sha256.as_deref().map(bytes::version),
+                    preview: file.preview,
                 })
                 .collect(),
             direction: text.direction,
@@ -412,6 +418,27 @@ pub async fn file(
     Ok(file)
 }
 
+/// The picture of the first frame of a text's video `id`, kept on its phone, for the member `c`,
+/// whose access is checked again once it's read.
+pub async fn preview(state: &Arc<State>, c: &Context, access: Dsp, id: &str) -> Result<Reply> {
+    let preview = files::preview(state, &c.dsp.id, id)
+        .await?
+        .ok_or_else(|| Error::new("communications_file_not_found", 404))?;
+    let asked = c.clone();
+    state.read(move |db| access.revalidate(db, &asked)).await?;
+    Ok(preview)
+}
+/// Asks the phone of a text's video `id`, which it keeps, for its bytes, for the member `c`, whose
+/// access is checked again in the write that asks, and waits a while for them: whether they're
+/// kept.
+pub async fn fetch(state: &Arc<State>, c: &Context, access: Dsp, id: &str) -> Result<Reply> {
+    let asked = c.clone();
+    let kept = files::fetch(state, &c.dsp.id, id, move |db| {
+        access.revalidate(db, &asked).map(|_| ())
+    })
+    .await?;
+    Reply::of(&json!({ "kept": kept }))
+}
 /// The DSP's conversation by text `id`.
 fn found(db: &Store, dsp: &str, id: &str) -> Result<TextConversation> {
     db.communications_text_conversation(dsp, id)?

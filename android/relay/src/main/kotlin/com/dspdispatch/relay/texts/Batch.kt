@@ -34,5 +34,5 @@ private fun WaitingText.reported() = ReportedText(
     text.number,
     text.body,
     text.at,
-    files.sortedBy(WaitingFile::position).map { ReportedFile(it.name, it.mime, it.size) },
+    files.sortedBy(WaitingFile::position).map { ReportedFile(it.name, it.mime, it.size, it.onPhone) },
 )

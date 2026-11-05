@@ -72,6 +72,8 @@
         "GET /api/dsp/communications/texts/contacts",
         "GET /api/dsp/communications/texts/people",
         "GET /api/dsp/communications/texts/files/{id}",
+        "GET /api/dsp/communications/texts/files/{id}/preview",
+        "POST /api/dsp/communications/texts/files/{id}/fetch",
         "POST /api/dsp/communications/texts/uploads",
         "GET /api/dsp/communications/routes",
         "GET /api/dsp/communications/quick-replies",
@@ -103,6 +105,8 @@
         "POST /api/communications/phone/texts",
         "POST /api/communications/phone/files/{id}",
         "GET /api/communications/phone/files/{id}",
+        "POST /api/communications/phone/files/{id}/preview",
+        "POST /api/communications/phone/files/{id}/gone",
         "POST /api/communications/phone/statuses"
       ],
       "exposes": [],

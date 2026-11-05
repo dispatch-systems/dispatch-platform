@@ -89,6 +89,71 @@ class ReporterTest {
     }
 
     @Test
+    fun keepsAVideoOnThePhoneSendingOnlyItsFirstFrame() = runTest {
+        val reporter = reporter(FakePictures(frame = { video -> FRAME.takeIf { video.contentEquals(VIDEO) } }))
+        waiting("mms-1-1", WaitingFile("mms-1-1", 0, "content://mms/part/1", "defect.mp4", "video/mp4", 4, onPhone = true))
+        provider.bytes["content://mms/part/1"] = VIDEO
+        server.enqueue(json(200, """{"texts":[{"clientId":"mms-1-1","id":"text_1","files":["file_1"]}]}"""))
+        server.enqueue(json(200, """{"ok":true}"""))
+
+        assertTrue(reporter.report(site, KEY))
+        assertTrue(""""files":[{"name":"defect.mp4","mime":"video/mp4","size":4,"onPhone":true}]""" in server.takeRequest().body!!.utf8())
+        assertTrue(reporter.upload(site, KEY))
+        val frame = server.takeRequest()
+        assertEquals("/api/communications/phone/files/file_1/preview", frame.url.encodedPath)
+        assertEquals(FRAME.toList(), frame.body?.toByteArray()?.toList())
+        assertEquals("the report and its frame, never its bytes", 2, server.requestCount)
+        assertEquals(OnPhone("file_1", "content://mms/part/1"), queue.onPhone("file_1"))
+        assertTrue(queue.files.isEmpty())
+        assertEquals("its copy let go", 0, folder.list()!!.size)
+        assertFalse(reporter.upload(site, KEY))
+    }
+
+    @Test
+    fun keepsAVideoAndroidCantReadOnThePhoneWithoutAFrame() = runTest {
+        answered(WaitingFile("mms-1-1", 0, "content://mms/part/1", "defect.3gp", "video/3gpp", 4, "file_1", onPhone = true))
+        provider.bytes["content://mms/part/1"] = VIDEO
+        assertTrue(reporter.upload(site, KEY))
+        assertEquals(0, server.requestCount)
+        assertEquals(OnPhone("file_1", "content://mms/part/1"), queue.onPhone("file_1"))
+    }
+
+    @Test
+    fun reportsAVideoAsItsBytesToADispatchThatRefusesItKeptOnThePhone() = runTest {
+        // A Dispatch rolled back to before phones kept videos refuses `onPhone`.
+        waiting("mms-1-1", WaitingFile("mms-1-1", 0, "content://mms/part/1", "defect.mp4", "video/mp4", 4, onPhone = true))
+        provider.bytes["content://mms/part/1"] = VIDEO
+        server.enqueue(json(400, """{"error":"invalid_input"}"""))
+        server.enqueue(json(200, """{"texts":[{"clientId":"mms-1-1","id":"text_1","files":["file_1"]}]}"""))
+        server.enqueue(json(200, """{"ok":true}"""))
+
+        repeat(2) { assertTrue(reporter.report(site, KEY)) }
+        assertTrue("onPhone" in server.takeRequest().body!!.utf8())
+        assertTrue(""""files":[{"name":"defect.mp4","mime":"video/mp4","size":4}]""" in server.takeRequest().body!!.utf8())
+        assertTrue(reporter.upload(site, KEY))
+        val bytes = server.takeRequest()
+        assertEquals("/api/communications/phone/files/file_1", bytes.url.encodedPath)
+        assertEquals(VIDEO.toList(), bytes.body?.toByteArray()?.toList())
+        assertNull(queue.onPhone("file_1"))
+    }
+
+    @Test
+    fun keepsAVideoItCantReadOnThePhoneAndSendsTheFilesAfterIt() = runTest {
+        answered(WaitingFile("mms-1-1", 0, "content://mms/part/1", "defect.mp4", "video/mp4", 4, "file_1", onPhone = true))
+        answered(WaitingFile("mms-2-2", 0, "content://mms/part/2", "door.jpg", "image/jpeg", 3, "file_2"))
+        provider.bytes["content://mms/part/1"] = VIDEO
+        provider.bytes["content://mms/part/2"] = byteArrayOf(1, 2, 3)
+        provider.broken += "content://mms/part/1"
+        server.enqueue(json(200, """{"ok":true}"""))
+
+        repeat(2) { assertTrue(reporter.upload(site, KEY)) }
+        assertEquals(OnPhone("file_1", "content://mms/part/1"), queue.onPhone("file_1"))
+        assertTrue(unexpected.single().cause is IllegalArgumentException)
+        assertEquals("/api/communications/phone/files/file_2", server.takeRequest().url.encodedPath)
+        assertTrue(queue.files.isEmpty())
+    }
+
+    @Test
     fun keepsAFileWhileDispatchIsBusy() = runTest {
         answered(WaitingFile("mms-1-1", 0, "content://mms/part/1", "door.jpg", "image/jpeg", 3, "file_1"))
         provider.bytes["content://mms/part/1"] = byteArrayOf(1, 2, 3)
@@ -471,6 +536,10 @@ class ReporterTest {
 
         /** A JPEG made of a picture: how one begins. */
         val JPEG = byteArrayOf(-1, -40, -1)
+
+        /** A video's bytes, and the JPEG of its first frame. */
+        val VIDEO = byteArrayOf(0, 0, 0, 24)
+        val FRAME = byteArrayOf(-1, -40, -1, -37)
 
         /** The HEIF picture `content://mms/part/1` holds, as it's reported as it is. */
         const val HEIC = """{"name":"IMG_0001.HEIC","mime":"image/heic","size":4}"""

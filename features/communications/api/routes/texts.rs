@@ -128,6 +128,27 @@ pub(super) async fn text_file(state: Arc<State>, input: Input, access: Dsp) -> R
     let wanted = texting_id(input.param("id"))?;
     texts::reading::file(&state, &c, access, &wanted, version).await
 }
+/// The picture of the first frame of a text's video kept on its phone.
+pub(super) async fn text_file_preview(
+    state: Arc<State>,
+    input: Input,
+    access: Dsp,
+) -> Result<Reply> {
+    let asked = input.clone();
+    let c = state.read(move |db| access.authorize(db, &asked)).await?;
+    v::fields(&input.query, &[])?;
+    let wanted = texting_id(input.param("id"))?;
+    texts::reading::preview(&state, &c, access, &wanted).await
+}
+/// Asks the phone of a text's video it keeps for its bytes, to play it.
+pub(super) async fn fetch_text_file(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    let asked = input.clone();
+    let c = state.read(move |db| access.authorize(db, &asked)).await?;
+    v::fields(&input.query, &[])?;
+    v::fields(&input.body, &[])?;
+    let wanted = texting_id(input.param("id"))?;
+    texts::reading::fetch(&state, &c, access, &wanted).await
+}
 /// Keeps a picture added for a text not sent yet, as the phone side keeps it: its `name` and
 /// `type` in the query.
 pub(super) async fn add_text_photo(

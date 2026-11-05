@@ -278,7 +278,11 @@ from people who may or may not work for the DSP.
   kept. Its texts as Slack's messages show, the other party's by their face or a phone; the DSP's
   under who wrote each, or the phone's name and mark for one sent from the phone's own messaging
   app; each picture shown, as the phone keeps it (PNG, JPEG, GIF, WebP or AVIF; an iPhone's HEIF
-  photo as the JPEG the phone's app makes of it), any other file a download. Under a text the DSP sent, the last of a run or
+  photo as the JPEG the phone's app makes of it); each video as the picture of its first frame
+  under a play button, played over the page once pressed, or downloaded where the browser can't
+  play it, up to 25 MB; any other file a download. A video the phone keeps (below) is asked of
+  the phone as it's pressed, and plays once the phone sent it: Play says so while the phone is
+  offline or has it no more. Under a text the DSP sent, the last of a run or
   one that failed: Sending, Sent, Delivered, or Not sent with why, where it's known, and
   **Retry**: Phone offline (`phones_offline`, or the phone's `expired`), Phone removed
   (`phones_removed`), or the phone's own words, as "No service".
@@ -353,10 +357,13 @@ decides ([Texts](#texts)).
   outbox for what Dispatch has for it (woken by its own live channel, `phones`, apart from the
   page's), reports the texts it receives and sends from its own messaging app, each kept once by
   its own ID of it, sends their pictures' bytes, fetches those of Dispatch's, and says how each
-  attempt at Dispatch's went. Waiting on the outbox and reporting texts or statuses count as
-  checking in, noted at most every thirty seconds (`SEEN_MS`), as bookkeeping no cached read
-  depends on; a file's bytes, either way, don't. Each call, with every payload, unit and limit,
-  is in the [protocol reference](api/phone/README.md) beside the code.
+  attempt at Dispatch's went. A video stays on the phone: only the picture of its first frame
+  comes with its text, and its bytes once someone plays it, as the outbox asks for them, kept an
+  hour (`FETCHED_MS`) so another who plays it soon after has them at once, then let go of. Waiting
+  on the outbox and reporting texts or statuses count as checking in, noted at most every thirty
+  seconds (`SEEN_MS`), as bookkeeping no cached read depends on; a file's bytes, either way, don't.
+  Each call, with every payload, unit and limit, is in the [protocol reference](api/phone/README.md)
+  beside the code.
 - **The app:** DSP Dispatch: Relay, which the DSP's address hands out (`phone::app`), as the
   build packed it: CI's signed builds, named in `relay.json` beside their APKs in the runtime's
   `dashboard/relay/` ([Android apps](../../android/README.md#releases)). A preview server, as
@@ -815,6 +822,14 @@ Behind `communications.use`:
   the phone side.
 - `GET …/texts/contacts?q=<name or digits>`: whom the DSP can text, and the numbers blocked.
 - `GET …/texts/files/{id}`: a text's picture or file, as the phone side keeps it.
+- `GET …/texts/files/{id}/preview`: the picture of the first frame of a text's video its phone
+  keeps.
+- `POST …/texts/files/{id}/fetch`: asks the phone of a text's video it keeps for its bytes, the
+  member's access checked again in the write that asks, and waits up to 40 seconds
+  (`FETCH_WAIT_MS`) for them, answering `{ kept }`; played again while the phone sends it, it waits
+  on the same. Refused `phones_offline` (503) while the phone is, and `phones_file_gone` (410) once
+  it has it no more. The page asks it each time a video's played, so one the server let go of is
+  asked of its phone again.
 - `GET …/contacts?q=<name>&team=<id>`: whom the DSP can message, every one or those found
   by a name, in every workspace or one, each with their conversation, if any, since when it
   waits (`waitingSince`) and when it was last written in (`lastAt`).
@@ -858,7 +873,7 @@ otherwise), the phones' card's:
 
 Public, on the admin's address: `GET /communications/initials/1/{letters}.png`. Public to the
 server, at a DSP's own address, by a phone's key, the phones' own:
-`/api/communications/phone/{pair,outbox,texts,statuses,files/{id}}`, as their
+`/api/communications/phone/{pair,outbox,texts,statuses,files/{id},files/{id}/preview,files/{id}/gone}`, as their
 [protocol reference](api/phone/README.md) says.
 
 ## Data and upkeep
@@ -886,7 +901,7 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   (the driver picked for a work phone on a day, by whom and when). The DSP's quick replies, with
   their revision, in its `settings` table under `communications.quick_replies`. For pushes,
   `communications_push` (each browser a member is told in, by where its pushes go, with the keys
-  they're encrypted for and the address it was subscribed at: migration 16), kept until it's let
+  they're encrypted for and the address it was subscribed at: migration 17), kept until it's let
   go of. The phone side's, as Phones
   made them before Communications adopted them (its migrations 7 and 8, which find them made on a
   database Phones migrated, and leave Phones' own records of its migrations as they were):
@@ -897,15 +912,18 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   attempt at it, and its latest change), `phones_files` (each text's pictures and files, and those
   added for one not sent yet) and `phones_change` (the last change given); and its own,
   `phones_attempts` (each earlier attempt at a text Dispatch sent, by the phone it was given to,
-  kept as Retry queues the next: migration 12); the files' bytes in
+  kept as Retry queues the next: migration 12), and, on `phones_files`, a video its phone keeps,
+  with the picture of its first frame, when it was last asked for and its phone told, when its
+  bytes came, and when its phone said it has it no more (migration 16); the files' bytes in
   the DSP's data, `data/phones/files/`, by their SHA-256, which backups keep. In either folder
   (`bytes`), bytes arrive beside those kept, and take their place, and are let go, only under the
   platform's write lock with the files that keep them. Kept until the DSP is deleted, as the rest.
 - **Upkeep:** catching up hourly and as the server starts; downloading what's due, keeping
   answers that went to Slack unkept, sending what's due to go to groups' people and giving up
   those too late, filing texts waiting to be filed, filing today's again where they belong now,
-  and failing the texts still waiting on an offline phone as they expire, every minute, each
-  failure logged with its DSP; and hourly, in each DSP with Slack connected, letting go of
+  failing the texts still waiting on an offline phone as they expire, and letting go of the bytes
+  of videos their phone sent an hour before, every minute, each failure logged with its DSP; and
+  hourly, in each DSP with Slack connected, letting go of
   photos added and never sent within a day, then of bytes no file keeps, as a failure once in
   place or a removal that failed leaves, and of bytes left arriving an hour, as a restart leaves,
   each on its own: one that fails, logged as `communications_tidy_failed` with its DSP and job,

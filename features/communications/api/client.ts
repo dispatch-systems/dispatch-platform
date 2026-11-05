@@ -70,6 +70,8 @@ const wording: Readonly<Record<string, string>> = {
   communications_photo_kind: 'Photos must be PNG, JPEG or GIF.',
   communications_file_not_found: 'This file is no longer here.',
   communications_push_off: "Notifications can't reach this browser with Dispatch closed.",
+  phones_offline: 'The phone is offline.',
+  phones_file_gone: 'This video is no longer on the phone.',
   upload_incomplete: "The photo didn't finish uploading. Try again.",
   slack_needs_update: 'This workspace needs updating first.',
   slack_connection_broken: 'Slack stopped accepting the connection. Reconnect the workspace.',
@@ -230,6 +232,13 @@ export const getTextContacts = (typed = '') =>
 export type Attachments = {
   add: (photo: File, signal?: AbortSignal) => Promise<CommunicationsUpload>;
   address: (id: string) => string;
+  /** Where the picture of a video's first frame is read from, for a text's video its phone keeps. */
+  preview?: (id: string) => string;
+  /**
+   * Asks for a text's video, from its phone where it keeps it, waiting a while for the phone to
+   * send it: whether it's kept.
+   */
+  fetch?: (id: string, signal?: AbortSignal) => Promise<{ kept: boolean }>;
 };
 /** Adds `photo` through the upload route `path`, for a message not sent yet: a refusal worded as
  * its calls' are. */
@@ -251,6 +260,9 @@ export const slackAttachments: Attachments = {
 export const textAttachments: Attachments = {
   add: adding('texts/uploads'),
   address: (id) => `${communicationsUrl}/texts/files/${id}`,
+  preview: (id) => `${communicationsUrl}/texts/files/${id}/preview`,
+  fetch: (id, signal) =>
+    api<{ kept: boolean }>(`${communicationsUrl}/texts/files/${id}/fetch`, {}, signal),
 };
 /** The address of the workspace `team`'s logo, at its `version`, which it carries. */
 export const workspaceLogoUrl = (team: string, version: string) =>

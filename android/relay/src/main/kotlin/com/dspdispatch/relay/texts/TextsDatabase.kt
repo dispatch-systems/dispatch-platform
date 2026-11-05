@@ -18,11 +18,11 @@ import kotlinx.coroutines.flow.Flow
  */
 @Database(
     entities = [
-        Mark::class, Seen::class, Unread::class, Waiting::class, WaitingFile::class,
+        Mark::class, Seen::class, Unread::class, Waiting::class, WaitingFile::class, OnPhone::class,
         Send::class, Report::class, SendRow::class, Told::class, SmsParts::class,
     ],
-    version = 2,
-    autoMigrations = [AutoMigration(from = 1, to = 2)],
+    version = 3,
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
 )
 abstract class TextsDatabase : RoomDatabase() {
     abstract fun queue(): StoredQueue
@@ -54,6 +54,7 @@ abstract class StoredQueue : Queue {
         clearUnread()
         clearTexts()
         clearFiles()
+        clearOnPhone()
         clearSends()
         clearReports()
         clearRows()
@@ -95,6 +96,8 @@ abstract class StoredQueue : Queue {
             for (file in filesOf(clientId)) {
                 val id = ids.getOrNull(file.position)
                 if (id == null) uploaded(file.id) else answerFile(file.id, id)
+                // Known by Dispatch's ID at once, so it's sent when asked for before its frame went.
+                if (id != null && file.onPhone) keep(OnPhone(id, file.uri))
             }
         }
     }
@@ -121,6 +124,18 @@ abstract class StoredQueue : Queue {
     @Query("DELETE FROM files WHERE id = :id")
     abstract override suspend fun uploaded(id: Long)
 
+    @Transaction
+    override suspend fun keptOnPhone(id: Long, video: OnPhone) {
+        uploaded(id)
+        keep(video)
+    }
+
+    @Query("SELECT * FROM on_phone WHERE dispatchId = :dispatchId")
+    abstract override suspend fun onPhone(dispatchId: String): OnPhone?
+
+    @Query("DELETE FROM on_phone WHERE dispatchId = :dispatchId")
+    abstract override suspend fun goneFromPhone(dispatchId: String)
+
     /** Today's texts from [since], the day's start, as they change. */
     @Query(
         """
@@ -145,6 +160,9 @@ abstract class StoredQueue : Queue {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     protected abstract suspend fun keepTexts(texts: List<Waiting>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    protected abstract suspend fun keep(video: OnPhone)
 
     @Insert
     protected abstract suspend fun keepFiles(files: List<WaitingFile>)
@@ -181,6 +199,9 @@ abstract class StoredQueue : Queue {
 
     @Query("DELETE FROM files")
     protected abstract suspend fun clearFiles()
+
+    @Query("DELETE FROM on_phone")
+    protected abstract suspend fun clearOnPhone()
 
     @Query("DELETE FROM sends")
     protected abstract suspend fun clearSends()

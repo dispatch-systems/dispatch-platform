@@ -21,12 +21,15 @@ GET /api/dsp/communications/quick-replies Dsp("communications.use") Read
 GET /api/dsp/communications/routes Dsp("communications.use") Read
 GET /api/dsp/communications/texts/contacts Dsp("communications.use") Read
 GET /api/dsp/communications/texts/files/{id} Dsp("communications.use") Async
+GET /api/dsp/communications/texts/files/{id}/preview Dsp("communications.use") Async
 GET /api/dsp/communications/texts/people Dsp("communications.use") Read
 GET /api/dsp/communications/updates Dsp("communications.use") Async
 GET /api/dsp/communications/waiting Dsp("communications.use") Read
 GET /api/dsp/communications/workspaces/{team}/logo Dsp("communications.use") Read
 GET /communications/initials/1/{name} Public Async
 POST /api/communications/phone/files/{id} Public Upload
+POST /api/communications/phone/files/{id}/gone Public Async
+POST /api/communications/phone/files/{id}/preview Public Upload
 POST /api/communications/phone/pair Public Async
 POST /api/communications/phone/statuses Public Async
 POST /api/communications/phone/texts Public Async
@@ -51,5 +54,6 @@ POST /api/dsp/communications/push Dsp("communications.use") Async
 POST /api/dsp/communications/push/remove Dsp("communications.use") Scoped(DataDomain("communications"))
 POST /api/dsp/communications/quick-replies Dsp("communications.use") Scoped(DataDomain("communications"))
 POST /api/dsp/communications/texts/conversations Dsp("communications.use") Scoped(DataDomain("communications"))
+POST /api/dsp/communications/texts/files/{id}/fetch Dsp("communications.use") Async
 POST /api/dsp/communications/texts/uploads Dsp("communications.use") Upload
 POST /api/dsp/communications/uploads Dsp("communications.use") Upload

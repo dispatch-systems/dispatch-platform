@@ -43,6 +43,7 @@ pub fn reported(id: &str, number: &str, at: i64, files: usize) -> Reported {
                 name: format!("photo{index}.jpg"),
                 mime: "image/jpeg".into(),
                 size: 100,
+                on_phone: false,
             })
             .collect(),
     }

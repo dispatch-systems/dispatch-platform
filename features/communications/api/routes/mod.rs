@@ -132,6 +132,16 @@ pub fn routes() -> Vec<Route> {
             USE,
             texts::text_file,
         ),
+        async_get(
+            "/api/dsp/communications/texts/files/{id}/preview",
+            USE,
+            texts::text_file_preview,
+        ),
+        async_post(
+            "/api/dsp/communications/texts/files/{id}/fetch",
+            USE,
+            texts::fetch_text_file,
+        ),
         // As large as any upload: the phone side refuses a picture past what a text carries.
         upload(
             "/api/dsp/communications/texts/uploads",

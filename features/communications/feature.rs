@@ -175,11 +175,18 @@ pub const FEATURE: Feature = Feature {
                     "migrations/dsp/0015_communications_replies.sql"
                 )),
             },
-            // Each browser a member is told of new messages in, with Dispatch closed.
+            // Videos a phone keeps until someone plays them, with a picture of each one's first
+            // frame.
             Migration {
                 id: 16,
+                name: "phones_files_on_phone",
+                apply: Code(backend::phone::storage::add_on_phone),
+            },
+            // Each browser a member is told of new messages in, with Dispatch closed.
+            Migration {
+                id: 17,
                 name: "communications_push",
-                apply: Sql(include_str!("migrations/dsp/0016_communications_push.sql")),
+                apply: Sql(include_str!("migrations/dsp/0017_communications_push.sql")),
             },
         ],
     }],
@@ -189,10 +196,10 @@ pub const FEATURE: Feature = Feature {
     env: &[&[backend::push::webpush::KEY]],
     // Catching up on what Dispatch didn't hear of, hourly and as the server starts; downloading
     // what members attach, keeping answers that went to Slack unkept, sending what's due to go to
-    // groups' people, filing texts waiting to be filed, and filing today's again where they belong
-    // now, every minute; and letting go of photos and the phones' pictures never sent, bytes no
-    // file keeps and codes expired, hourly; and watching each DSP whose members are told in a
-    // browser for what to push.
+    // groups' people, filing texts waiting to be filed, filing today's again where they belong
+    // now, and letting go of the videos phones sent an hour before, every minute; and letting go
+    // of photos and the phones' pictures never sent, bytes no file keeps and codes expired, hourly;
+    // and watching each DSP whose members are told in a browser for what to push.
     maintenance: &[
         integrations::messages::catch_up::MAINTENANCE,
         backend::files::MAINTENANCE,

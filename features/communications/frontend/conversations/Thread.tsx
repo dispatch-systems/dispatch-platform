@@ -65,7 +65,7 @@ export function Thread({
   workdays?: readonly Workday[];
 }) {
   const person = conversation.with;
-  const { address } = KINDS[conversation.kind].attachments;
+  const { attachments } = KINDS[conversation.kind];
   const { style, times } = useContext(Shown);
   const plain = style === 'plain';
   const pauses = !plain && times === 'after_pause';
@@ -140,7 +140,7 @@ export function Thread({
                     const last = at === written.length - 1;
                     return (
                       <Fragment key={message.id}>
-                        <MessageBody message={message} address={address} />
+                        <MessageBody message={message} attachments={attachments} />
                         <Meta
                           message={message}
                           time={!plain && !pauses && (last || times === 'each_message')}
