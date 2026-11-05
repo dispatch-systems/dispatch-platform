@@ -103,13 +103,30 @@ export const documentsFolderUrl = (folder?: string, query?: string) => {
 };
 /** How often the folder open is asked for again, for what changed in Google Drive. */
 const FOLLOW_MS = 15_000;
-const readFolder = (url: string) => (signal: AbortSignal) =>
-  call<DocumentsFolder>(url, undefined, signal);
+let moments = 0;
+/**
+ * A moment of the page's, after every one before: when it asked for a folder, or Google confirmed
+ * a change. A clock can't say which came first, as it can stand still or be set back.
+ */
+export const moment = () => ++moments;
+/**
+ * A folder as read, and the moment the page asked for it: a reading Google answers as it did the
+ * last is still a new one, which a change Google confirmed before it was asked for waits on
+ * (`usePending`). The top read ahead of the page, as its route opens, has no moment.
+ */
+export type FolderReading = DocumentsFolder & { asked?: number };
+/** Reads the folder or search `url` names. */
+export const readFolder =
+  (url: string) =>
+  async (signal: AbortSignal): Promise<FolderReading> => {
+    const asked = moment();
+    return { ...(await call<DocumentsFolder>(url, undefined, signal)), asked };
+  };
 /** A folder, kept once read: it shows at once when it opens again, and is asked for anew. */
 export function useDocumentsFolder(folder?: string, query?: string) {
   const url = documentsFolderUrl(folder, query);
   const read = useMemo(() => readFolder(url), [url]);
-  return useData<DocumentsFolder>(url, FOLLOW_MS, undefined, undefined, true, read);
+  return useData<FolderReading>(url, FOLLOW_MS, undefined, undefined, true, read);
 }
 /** Reads a folder ahead of its opening, as the pointer rests on it. */
 export function prefetchFolder(folder?: string) {

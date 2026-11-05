@@ -72,8 +72,9 @@ export type Asked =
  * A change the page shows before the folder it's in is read again with it: made, uploaded,
  * renamed, moved or trashed in `folder`. Something being made has a stand-in's ID until Google
  * makes it; something moved goes `to` a folder, or the top. Once Google confirmed it, it shows
- * until a reading of the folder does, or a while, and a move counts in the cards of the folders
- * it left and went into until they're read again (`counted`).
+ * until a reading of the folder asked for after does, or a while, and a move counts in the cards
+ * of the folders it left and went into until a reading after it (`counted`): one asked for after
+ * the `moment` Google `confirmed` it.
  */
 export type Pending = {
   key: string;
@@ -82,6 +83,7 @@ export type Pending = {
   item: DocumentsItem;
   to?: string;
   settled?: number;
+  confirmed?: number;
   counted?: boolean;
 };
 export const SETTLING_MS = 30_000;
@@ -105,6 +107,40 @@ export function arranged(items: DocumentsItem[]) {
         ? order(a.name.toLowerCase(), b.name.toLowerCase())
         : order(b.modifiedAt, a.modifiedAt)),
   );
+}
+/** What a reading of a folder or a search answers with, and the `moment` it was asked for. */
+export type Reading = { items: DocumentsItem[]; asked?: number };
+/**
+ * `pending`, once `read` comes: a change Google confirmed before the reading was asked for goes
+ * once the reading shows it, or a while after, and a move stops counting in its folders' cards.
+ * A reading asked for before Google confirmed a change may have been read before Google made it
+ * or after, so it says nothing of it. `pending` itself when nothing changes.
+ */
+export function reconciled(
+  pending: Pending[],
+  read: Reading,
+  folder: string | undefined,
+  searching: boolean,
+) {
+  let changed = false;
+  const left = pending.flatMap((each) => {
+    if (!each.settled || (read.asked ?? 0) < (each.confirmed ?? 0)) return [each];
+    const listed = read.items.find((item) => item.id === each.item.id);
+    const inside = !searching && each.folder === folder;
+    const shown =
+      Date.now() - each.settled > SETTLING_MS ||
+      (each.change === 'renamed'
+        ? listed?.name === each.item.name
+        : each.change === 'made'
+          ? inside && Boolean(listed)
+          : each.change === 'moved'
+            ? !searching && (each.to === folder ? Boolean(listed) : inside && !listed)
+            : inside && !listed);
+    changed ||= shown || (each.change === 'moved' && !each.counted);
+    if (shown) return [];
+    return [each.change === 'moved' ? { ...each, counted: true } : each];
+  });
+  return changed ? left : pending;
 }
 /** What a folder or a search shows, with the changes it hasn't been read with yet. */
 export function overlaid(
