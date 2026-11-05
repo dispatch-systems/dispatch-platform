@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { EmployeeTimecardPeriod, EmployeeTimecardResponse } from '../../../api/index.js';
 import { timecardPeriod } from '../../timecard-format.js';
@@ -6,11 +7,14 @@ export function EmployeePeriodControls({
   data,
   period,
   busy,
+  status,
   onChange,
 }: {
   data?: EmployeeTimecardResponse;
   period?: EmployeeTimecardPeriod | null;
   busy: boolean;
+  /** How the timecard shown stands, as whether it's the latest, under its dates. */
+  status: ReactNode;
   onChange: (period: EmployeeTimecardPeriod) => void;
 }) {
   const shown = period ?? data?.period;
@@ -27,6 +31,7 @@ export function EmployeePeriodControls({
         <ChevronLeft size={16} />
       </button>
       <span aria-live="polite">{shown ? timecardPeriod(shown.from, shown.to) : '—'}</span>
+      {status}
       <button
         type="button"
         className="icon-button"

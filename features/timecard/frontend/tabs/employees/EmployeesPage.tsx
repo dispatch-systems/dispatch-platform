@@ -1,5 +1,6 @@
 import { performancePolicy } from '../../../../../core/shell/frontend/lib/performance-policy.js';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { ArrowDownAZ, ArrowUpAZ, ChevronRight } from 'lucide-react';
 import type { EmployeeTimecardPeriod, EmployeeTimecardResponse } from '../../../api/index.js';
 import { useUpdateState } from '../../../../../core/shell/frontend/runtime/browser-update.js';
@@ -24,6 +25,7 @@ const statuses = ['all', 'active', 'inactive'] as const;
 const fillsWindow = '(width > 700px) and (height >= 600px)';
 export function EmployeesPage({
   actions,
+  actionsTarget,
   refreshKey,
   selection,
   onSelectionChange: setSelection,
@@ -33,6 +35,8 @@ export function EmployeesPage({
   today,
 }: {
   actions: (timecard: EmployeeTimecardResponse | undefined) => ReactNode;
+  /** Where its actions draw, the page's heading; without it, they don't. */
+  actionsTarget: HTMLElement | null;
   refreshKey: string;
   selection?: { code: string; period: EmployeeTimecardPeriod | null; date?: string };
   onSelectionChange: (selection: {
@@ -162,8 +166,8 @@ export function EmployeesPage({
           {desc ? <ArrowUpAZ size={16} /> : <ArrowDownAZ size={16} />}
           {desc ? 'Z–A' : 'A–Z'}
         </button>
-        <div className="employees-sync">{actions(timecard.data)}</div>
       </div>
+      {actionsTarget && createPortal(actions(timecard.data), actionsTarget)}
       <DataState data={data} error={error} failed={!!error}>
         {(data) => (
           <>

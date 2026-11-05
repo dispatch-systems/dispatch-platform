@@ -83,11 +83,15 @@ export function EmployeeDetail({
             data={shown}
             period={period}
             busy={busy}
+            status={
+              <div
+                className={`employee-period-status ${!shown?.collectedAt || shown.nextPeriod ? 'muted' : 'employee-latest'}`}
+              >
+                {status}
+              </div>
+            }
             onChange={onPeriodChange}
           />
-          <span className={!shown?.collectedAt || shown.nextPeriod ? 'muted' : 'employee-latest'}>
-            {status}
-          </span>
         </div>
         {employeeView === 'meals' ? (
           <EmployeeMeals
