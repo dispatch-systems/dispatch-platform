@@ -357,7 +357,7 @@ export function DvicPage({ view }: { view: DspView }) {
               <option value="non-dot">Non-DOT</option>
             </select>
             <span className="dvic-minimums">
-              Minimums: Non-DOT (CV, CDV) · 1m 30s &nbsp; DOT (SV) · 5m
+              Minimums: Non-DOT (CV, CDV, EDV) · 1m 30s &nbsp; DOT (SV) · 5m
             </span>
           </div>
           <ErrorBox

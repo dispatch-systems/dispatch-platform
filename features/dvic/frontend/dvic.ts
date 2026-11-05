@@ -41,11 +41,15 @@ export function inspectionDuration(seconds: number) {
 export const inspectionShortfall = (seconds: number) =>
   inspectionDuration(Math.max(0, Math.ceil(seconds - 1e-6)));
 
-/** Step vans are DOT vehicles with the 5-minute minimum; cargo vans and CDVs are not. */
+/** Step vans are DOT vehicles with the 5-minute minimum; cargo vans, CDVs and EDVs are not. */
 export type VehicleClass = '' | 'dot' | 'non-dot';
 
-export const fleetLabel = (fleet: string) =>
-  fleet === 'CV' ? 'CV · Cargo Van' : fleet === 'SV' ? 'SV · Step Van' : fleet;
+const FLEET_LABELS: Record<string, string> = {
+  CV: 'CV · Cargo Van',
+  EDV: 'EDV · Electric Delivery Van',
+  SV: 'SV · Step Van',
+};
+export const fleetLabel = (fleet: string) => FLEET_LABELS[fleet] ?? fleet;
 
 /** Share of the required minimum the inspection reached, capped at 1. */
 export const inspectionShare = (row: Pick<DvicInspection, 'durationSeconds' | 'minimumSeconds'>) =>
