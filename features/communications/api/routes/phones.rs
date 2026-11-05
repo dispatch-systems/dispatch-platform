@@ -6,11 +6,13 @@ use super::id;
 use crate::{
     api::{
         phone::DOWNLOAD,
-        types::{PhoneApp, PhonePairing, PhonePairingStatus, PhoneRow, Phones},
+        types::{PhoneApp, PhoneHealth, PhonePairing, PhonePairingStatus, PhoneRow, Phones},
     },
     backend::{
         phone::{
-            app, live, pairing,
+            app, live,
+            model::{Health, Sim},
+            pairing,
             storage::{Device, DeviceStore, PAIRING_MS},
         },
         texts::filing,
@@ -50,6 +52,19 @@ fn row(device: &Device, now: i64, latest: Option<u32>) -> PhoneRow {
         update: latest.is_some_and(|code| device.outdated(code)),
         online: device.online(now),
         last_seen_at: device.last_seen_at,
+        health: device.health.as_ref().map(attention),
+    }
+}
+/// What needs attention on a phone, as `health` says it stands.
+fn attention(health: &Health) -> PhoneHealth {
+    PhoneHealth {
+        cant_send: !health.send,
+        cant_read: !health.read,
+        no_sim: health.sim == Sim::Absent,
+        no_signal: health.sim == Sim::NoSignal,
+        setup_undone: !health.setup.is_empty(),
+        waiting: health.waiting.texts,
+        undownloaded: health.undownloaded,
     }
 }
 

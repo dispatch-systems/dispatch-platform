@@ -17,10 +17,10 @@ pub use api::types::{
     ConversationMessages, ConversationState, Conversations, Correspondent, Direction,
     DispatchPhone, Elsewhere, FileStatus, Group, GroupChoice, GroupChoiceKind, GroupChoices,
     GroupEntry, GroupMember, GroupMessages, GroupPeople, GroupPerson, GroupPersonState,
-    GroupProgress, Message, MessageFile, MessageGroup, Pace, PairingStatus, PhoneApp, PhonePairing,
-    PhonePairingStatus, PhoneRow, Phones, Profile, Reachable, RouteDriver, Sender, SentMessage,
-    TextContact, TextContacts, TextPeople, TextStatus, Today, TodaysRoutes, Typing, WaitingMessage,
-    Workday, Writing,
+    GroupProgress, Message, MessageFile, MessageGroup, Pace, PairingStatus, PhoneApp, PhoneHealth,
+    PhonePairing, PhonePairingStatus, PhoneRow, Phones, Profile, Reachable, RouteDriver, Sender,
+    SentMessage, TextContact, TextContacts, TextPeople, TextStatus, Today, TodaysRoutes, Typing,
+    WaitingMessage, Workday, Writing,
 };
 
 use dispatch_core::db::{
@@ -141,6 +141,11 @@ pub const FEATURE: Feature = Feature {
                 name: "phones_app_version_codes",
                 apply: Code(backend::phone::storage::add_app_version_codes),
             },
+            Migration {
+                id: 12,
+                name: "phones_health",
+                apply: Code(backend::phone::storage::add_health),
+            },
         ],
     }],
     // Its dispatch phones are the DSP's own, managed on DSP Connections.
@@ -244,6 +249,7 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         Phones,
         PhoneApp,
         PhoneRow,
+        PhoneHealth,
         PhonePairing,
         PhonePairingStatus,
         PairingStatus,

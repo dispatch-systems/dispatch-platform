@@ -4,7 +4,7 @@
 //!
 //! Its IDs, of a phone, a text or a file, are opaque: at most `ID_MOST` ASCII letters, digits, `_`
 //! or `-` (`identifier`), meaning nothing but to the phone side, which gave them.
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// The most characters an ID the phone side gives may have.
 pub const ID_MOST: usize = 64;
@@ -23,6 +23,66 @@ pub struct Phone {
     pub online: bool,
     /// When it last checked in, epoch milliseconds; none before it ever has.
     pub last_seen_at: Option<i64>,
+    /// Whether it says it can't send texts, as its health last had it.
+    pub cant_send: bool,
+    /// Whether it's a stand-in, the demo's, which no app holds.
+    pub stand_in: bool,
+}
+
+/// How a phone says it stands, with each wait on its outbox: its Set up, texting and SIM, what
+/// waits on it to go, and what last went wrong. Kept as it last said it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Health {
+    /// The Set up steps it has undone, by the app's own keys.
+    pub setup: Vec<String>,
+    /// Whether Android lets it read the phone's texts, and send them.
+    pub read: bool,
+    pub send: bool,
+    pub sim: Sim,
+    /// What waits on it to go to Dispatch.
+    pub waiting: Backlog,
+    /// The picture messages received that the phone's texting app hasn't downloaded.
+    pub undownloaded: i64,
+    /// Why a text last failed to send, as the phone said it to Dispatch, and when.
+    pub send_error: Option<Happened>,
+    /// The last error the app didn't expect: its class, and what it was doing, never what it held.
+    pub unexpected: Option<Happened>,
+}
+impl Health {
+    /// Whether it can't send texts: Android doesn't let it, or it has no SIM.
+    pub fn cant_send(&self) -> bool {
+        !self.send || self.sim == Sim::Absent
+    }
+}
+
+dispatch_core::text_enum! {
+    /// The SIM a phone texts from, as Android says it: in the phone and with the network, not in
+    /// it, or in it with no network to text on.
+    pub enum Sim {
+        Ready => "ready",
+        Absent => "absent",
+        NoSignal => "no_signal",
+    }
+}
+
+/// How many of each wait on a phone to go to Dispatch: the texts it read, their pictures' bytes,
+/// and how Dispatch's texts went.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Backlog {
+    pub texts: i64,
+    pub files: i64,
+    pub statuses: i64,
+}
+
+/// Something that went wrong on a phone: what (`error`), as it was doing what (`doing`) where it
+/// says, and when.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Happened {
+    pub error: String,
+    #[serde(rename = "where", default, skip_serializing_if = "Option::is_none")]
+    pub doing: Option<String>,
+    pub at: i64,
 }
 
 /// What one text may carry: queuing refuses more, and keeping a picture one past `largest`.
