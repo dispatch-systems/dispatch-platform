@@ -119,10 +119,16 @@ export function overlaid(
   if (!here.length) return items;
   const latest = (id: string) =>
     here.findLast((each) => each.change !== 'made' && each.item.id === id);
+  // A reading is one moment of Google's: a move it already holds, out of the folder read or
+  // into it, its cards count too, whether or not Google has answered the move yet.
+  const listed = (id: string) => items.some((item) => item.id === id);
+  const held = (each: Pending) =>
+    !searching &&
+    (each.folder === folder ? !listed(each.item.id) : each.to === folder && listed(each.item.id));
   // A folder's card counts what moved in or out of it until it's read again.
   const counted = (item: DocumentsItem) => {
     if (item.items === null) return item;
-    const moved = here.filter((each) => each.change === 'moved' && !each.counted);
+    const moved = here.filter((each) => each.change === 'moved' && !each.counted && !held(each));
     const into = moved.filter((each) => each.to === item.id).length;
     const out = moved.filter((each) => each.folder === item.id).length;
     return into === out ? item : { ...item, items: Math.max(0, item.items + into - out) };
