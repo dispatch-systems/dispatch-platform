@@ -116,7 +116,9 @@ and every other number's in Recents.
   the member started writing, since it opened with what they'd written, or since they last
   answered this, Send asks first, above the box: "Keisha just replied", with **Send anyway** and
   **Cancel**, which keeps what's written and shows the reply. It's told from what the page holds,
-  the messages read and the last each update brings (`frontend/conversations/replied.ts`).
+  the latest read's messages and the last each update brings, never older ones read since, by
+  which were held, not when each was written; a reply once held counts until the member answers
+  it or starts writing again (`frontend/conversations/replied.ts`).
   What's written and not sent is kept, each conversation's and each group's, while the
   page is open and in the browser's tab for each member at each DSP, so it's there again as it
   opens again, after a reload too (`frontend/conversations/drafts.ts`); the photos go as it

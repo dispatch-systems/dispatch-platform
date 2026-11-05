@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Message, Sender } from '../../api/index.js';
 import { fresh, runs } from '../../frontend/conversations/messages.js';
-import { repliedSince, repliedText, seenOf } from '../../frontend/conversations/replied.js';
+import { Replies, repliedText } from '../../frontend/conversations/replied.js';
 import { isPhoto, whyNotSent } from '../../frontend/shared/format.js';
 
 /** A text written `minutes` past 4 PM: from the number a conversation is with, or by `sender`. */
@@ -80,41 +80,42 @@ test('the page shows pictures of the kinds browsers show, and offers others to d
 test('Send asks first once a teammate or the phone wrote what the page didn’t hold as the member started writing', () => {
   const me = { ...phone('', 'Dana Cole'), userId: 'user_dana', phoneId: null };
   const keisha = { ...phone('', 'Keisha Brown'), userId: 'user_keisha', phoneId: null };
-  const shown = [text('asked', 10), text('mine', 11, me)];
-  const since = seenOf(shown);
+  const replies = new Replies('user_dana');
+  const read = [text('asked', 10), text('mine', 11, me)];
+  // Told the member saw it before it's read, it waits for the read to count from.
+  replies.seen();
+  replies.hold(read);
   // Nothing since, or only the member's own, or the employee writing again: it sends.
-  assert.equal(repliedSince(shown, since, 'user_dana'), undefined);
-  const theirs = [...shown, text('mine again', 12, me), text('again', 13)];
-  assert.equal(repliedSince(theirs, since, 'user_dana'), undefined);
-  // A teammate's answer since, even with the employee's after it, the latest of them by when.
-  const answered = [...theirs, text('on it', 14, keisha), text('thanks', 15)];
-  const reply = repliedSince(answered, since, 'user_dana');
-  assert.equal(reply?.id, 'on it');
-  assert.equal(repliedText(reply!), 'Keisha just replied');
-  // Already there as the member started, it's no news.
-  assert.equal(repliedSince(answered, seenOf(answered), 'user_dana'), undefined);
-  // A text the phone stamped minutes ahead of the server's clock doesn't hide a reply written
-  // after it was seen, nor do older messages read from further back count as news.
-  const ahead = [...shown, text('back on route', 45)];
-  const seenAhead = seenOf(ahead);
-  const older = [text('earlier', 2, keisha), ...ahead, text('calling them', 16, keisha)];
-  assert.equal(repliedSince(older, seenAhead, 'user_dana')?.id, 'calling them');
-  assert.equal(
-    repliedSince([text('earlier', 2, keisha), ...ahead], seenAhead, 'user_dana'),
-    undefined,
-  );
+  assert.equal(replies.check(), undefined);
+  replies.hold([...read, text('mine again', 12, me)]);
+  replies.hold([...read, text('again', 13)]);
+  assert.equal(replies.check(), undefined);
+  // A teammate's answer, as an update's last message, the latest of them by when.
+  replies.hold([...read, text('on it', 14, keisha)]);
+  assert.equal(replies.check(), 'Keisha just replied');
+  // The next update's last is the employee's, before the conversation is read again: the reply
+  // is still news.
+  replies.hold([...read, text('thanks', 15)]);
+  assert.equal(replies.check(), 'Keisha just replied');
+  // Seen, it's no news, nor once the read that holds it comes.
+  replies.seen();
+  assert.equal(replies.check(), undefined);
+  replies.hold([...read, text('on it', 14, keisha), text('thanks', 15)]);
+  assert.equal(replies.check(), undefined);
   // Typed on the phone itself, by the phone's name.
-  const fromPhone = repliedSince(
-    [...shown, text('ok', 16, phone('phone_1', 'Dispatch 2'))],
-    since,
-    'user_dana',
-  );
-  assert.equal(repliedText(fromPhone!), 'Dispatch 2 just replied');
-  // In a conversation that had nothing, anything a teammate writes is news.
-  assert.equal(repliedSince([text('first', 1, keisha)], seenOf([]), 'user_dana')?.id, 'first');
+  replies.hold([...read, text('ok', 16, phone('phone_1', 'Dispatch 2'))]);
+  assert.equal(replies.check(), 'Dispatch 2 just replied');
   // A teammate without a name on their account.
-  const nameless = text('ok', 17, { ...keisha, name: '' });
-  assert.equal(repliedText(nameless), 'Someone just replied');
+  assert.equal(repliedText(text('ok', 17, { ...keisha, name: '' })), 'Someone just replied');
+});
+
+test('a first text stamped minutes ahead by its phone doesn’t hide a teammate’s reply', () => {
+  const keisha = { ...phone('', 'Keisha Brown'), userId: 'user_keisha', phoneId: null };
+  const replies = new Replies('user_dana');
+  const first = text('back on route', 45);
+  replies.hold([first]);
+  replies.hold([first, text('calling them', 16, keisha)]);
+  assert.equal(replies.check(), 'Keisha just replied');
 });
 
 test('a text that failed says why in a few words: the server’s codes worded, the phone’s as it wrote them', () => {

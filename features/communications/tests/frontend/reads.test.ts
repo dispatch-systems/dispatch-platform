@@ -155,3 +155,41 @@ test('a read of older ones that failed is held as failed until it’s asked agai
   assert.equal(reads.held('tc_a').olderFailed, false);
   assert.equal(reads.held('tc_a').opened?.more, false);
 });
+
+test('older messages read in are held, but not as the latest read brought them', async () => {
+  const at = Date.UTC(2026, 9, 26, 16);
+  const message = (id: string, minutes: number) => ({
+    id,
+    ts: `${at + minutes * 60_000}:${id}`,
+    direction: 'out' as const,
+    text: id,
+    at: at + minutes * 60_000,
+    editedAt: null,
+    inThread: false,
+    sender: { userId: 'user_keisha', phoneId: null, name: 'Keisha Brown', code: null, photo: null },
+    files: [],
+    group: null,
+    status: null,
+    error: null,
+    number: '+14255550199',
+  });
+  const latest = { ...read('tc_a'), more: true, messages: [message('m2', 2)] };
+  const older = { ...read('tc_a'), more: false, messages: [message('m1', 1)] };
+  globalThis.fetch = ((url: string) =>
+    Promise.resolve(
+      new Response(JSON.stringify(url.includes('?') ? older : latest)),
+    )) as typeof fetch;
+  const reads = new ConversationReads();
+  reads.open('tc_a');
+  await new Promise((settled) => setImmediate(settled));
+  await reads.readOlder('tc_a');
+  const opened = reads.held('tc_a').opened!;
+  assert.deepEqual(
+    opened.messages.map((each) => each.id),
+    ['m1', 'm2'],
+  );
+  assert.deepEqual(
+    opened.lastRead.map((each) => each.id),
+    ['m2'],
+  );
+});

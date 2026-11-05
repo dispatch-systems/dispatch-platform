@@ -167,10 +167,11 @@ export function ConversationPane({
     if (conversation) read.show(conversation, await retryText(id, failed.id));
   });
   const writing = typing.filter((writer) => writer.conversationId === id);
-  // Its messages as read, and its last as the latest update brings it, which may be newer.
+  // Its latest read's messages, and its last as the latest update brings it, which may be newer:
+  // never older ones read since, which are no teammate's reply.
   const last = conversation?.last;
   const known = useMemo(
-    () => opened && (last ? [...opened.messages, last] : opened.messages),
+    () => opened && (last ? [...opened.lastRead, last] : opened.lastRead),
     [opened, last],
   );
   const replied = useReplied(known, me);
@@ -252,7 +253,11 @@ export function ConversationPane({
           send={async (text, photos) => sent(await sendMessage(id, text, photos))}
           typing={() => void sayTyping(id).catch(() => undefined)}
           above={<TypingLine writing={writing} />}
-          replied={{ ...replied, show: () => setLatest((shown) => shown + 1) }}
+          replied={{
+            check: replied.check,
+            seen: replied.seen,
+            show: () => setLatest((shown) => shown + 1),
+          }}
         />
       )}
     </section>

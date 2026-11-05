@@ -13,10 +13,12 @@ import { fresh, joined } from './messages.js';
 // the keyboard, or as one of the first waiting, a few at a time and after what's opened. The
 // longest unopened go once there are too many.
 
-/** A conversation as read, and when its latest read answered, by the page's own clock. */
+/** A conversation as read, and when its latest read answered, by the page's own clock; and the
+ * messages that read brought, as read (`lastRead`), never those of older pages read after it. */
 export type Opened = Omit<ConversationMessages, 'messages'> & {
   id: string;
   messages: Message[];
+  lastRead: readonly Message[];
   readAt: number;
 };
 /** A conversation as the page holds it: as read, why it couldn't be, or that it's no longer there;
@@ -231,6 +233,7 @@ export class ConversationReads {
         opened: {
           ...latest,
           id,
+          lastRead: latest.messages,
           readAt: performance.now(),
           workdays: withDays(before?.workdays ?? [], latest.workdays),
           ...fresh(before, latest, unread),
