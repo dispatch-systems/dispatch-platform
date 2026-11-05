@@ -145,7 +145,8 @@ export function PhonesCard(_: { view: DspView }) {
 
 /** What needs attention on a phone, as it last said it stands: nothing while all's well. */
 function Attention({ health }: { health: PhoneHealth }) {
-  const pictures = health.undownloaded === 1 ? 'picture' : 'pictures';
+  const undownloaded = health.undownloaded ?? 0;
+  const pictures = undownloaded === 1 ? 'picture' : 'pictures';
   const needs = (
     [
       [health.cantSend, 'failed', "Can't send texts"],
@@ -154,7 +155,7 @@ function Attention({ health }: { health: PhoneHealth }) {
       [health.noSignal, 'queued', 'No signal'],
       [health.setupUndone, 'queued', 'Setup not finished'],
       [health.waiting >= BACKLOG, 'queued', `${health.waiting} texts waiting to go`],
-      [health.undownloaded > 0, 'queued', `${health.undownloaded} ${pictures} not downloaded`],
+      [undownloaded > 0, 'queued', `${undownloaded} ${pictures} not downloaded`],
     ] satisfies [needed: boolean, tone: string, label: string][]
   ).filter(([needed]) => needed);
   if (needs.length === 0) return null;

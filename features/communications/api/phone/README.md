@@ -133,6 +133,7 @@ that says nothing, and Dispatch keeps what the phone said last.
   "sim": "ready",
   "waiting": { "texts": 0, "files": 0, "statuses": 0 },
   "undownloaded": 0,
+  "textingApp": "com.google.android.apps.messaging",
   "sendError": { "error": "No service", "at": 1793041519000 },
   "unexpected": {
     "error": "java.lang.IllegalStateException",
@@ -145,11 +146,14 @@ that says nothing, and Dispatch keeps what the phone said last.
 - `setup`: the Set up steps undone, by the app's own keys, at most 20 (`STEPS_MOST`), each 1 to 40
   lowercase letters or `_` (`STEP_MOST`).
 - `read`, `send`: whether Android lets the app read the phone's texts, and send them.
+- `textingApp`: the phone's default texting app, by its package, at most 200 letters, digits, `.`
+  or `_` (`APP_MOST`); `null`, or left out, where it has none.
 - `sim`: the SIM it texts from: `ready`, in the phone with a network; `absent`; or `no_signal`, in
   it with no network to text on.
 - `waiting`: how many texts it read wait to be reported, files of them to be sent, and statuses to
   be told; `undownloaded`, how many picture messages it received that its texting app hasn't
-  downloaded. Each 0 to 1,000,000 (`COUNT_MOST`).
+  downloaded, `null` or left out while it can't count them, as while Android doesn't let it read
+  texts. Each 0 to 1,000,000 (`COUNT_MOST`).
 - `sendError`: why a text last failed to send, as its status said it (`ERROR_MOST`), and when; none
   for one past its `expires`. `unexpected`: the last error the app didn't expect, by its class's
   name, at most 200 characters of letters, digits, `.`, `_` and `$` (`CLASS_MOST`), and what the

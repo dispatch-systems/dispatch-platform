@@ -25,11 +25,13 @@ class RadioTest {
     }
 
     @Test
-    fun relaysThePairedSimsTextsAloneWhileThePhoneHoldsSeveral() {
+    fun relaysThePairedSimsTextsAloneOnAPhoneOfSeveralSims() {
         val sims = mapOf(1 to "+14255550100", 2 to "(206) 555-0100")
-        assertEquals(2, relayed(sims, "+12065550100", default = 1))
-        assertEquals("a number Android didn't say", 1, relayed(sims, "", default = 1))
-        assertNull("one SIM, every text, as a SIM swapped keeps them", relayed(mapOf(3 to "+14255550100"), "+12065550100", default = 3))
-        assertNull("SIMs Android won't name", relayed(emptyMap(), "+12065550100", default = 3))
+        assertEquals(2, relayed(sims, slots = 2, "+12065550100", default = 1))
+        assertEquals("a number Android didn't say", 1, relayed(sims, slots = 2, "", default = 1))
+        // Android 8 and 9 name only the SIM paired on and the default, here the same, beside another.
+        assertEquals("one named of two", 1, relayed(mapOf(1 to "+12065550100"), slots = 2, "+12065550100", default = 1))
+        assertNull("one slot, every text, as a SIM swapped keeps them", relayed(mapOf(3 to "+14255550100"), slots = 1, "+12065550100", default = 3))
+        assertNull("SIMs Android won't name", relayed(emptyMap(), slots = 2, "+12065550100", default = -1))
     }
 }

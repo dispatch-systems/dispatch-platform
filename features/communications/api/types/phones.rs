@@ -79,9 +79,10 @@ pub struct PhoneHealth {
     /// How many texts it read wait to go to Dispatch.
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub waiting: i64,
-    /// The picture messages it received that its texting app hasn't downloaded.
-    #[cfg_attr(feature = "ts", ts(type = "number"))]
-    pub undownloaded: i64,
+    /// The picture messages it received that its texting app hasn't downloaded, while it can count
+    /// them.
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
+    pub undownloaded: Option<i64>,
 }
 
 /// `POST /api/dsp/communications/phones/pairing`: the code that pairs the next phone, by its ID to

@@ -11,10 +11,12 @@ import {
   keepSeen,
   readSeen,
   SEEN_MS,
+  wentDown,
+  type Downs,
   type InFront,
   type Seen,
 } from '../../frontend/alerts/arrivals.js';
-import { OFFLINE_MS } from '../../frontend/texting/phones-down.js';
+import { down, OFFLINE_MS } from '../../frontend/texting/phones-down.js';
 
 /** The message `id` waiting in the conversation `conversation`, listed under `group`, if any. */
 const waits = (conversation: string, id: string, group: string | null = null): WaitingMessage => ({
@@ -359,4 +361,26 @@ test('a phone alerts once as it goes down, and not one down before Dispatch was 
     'casey: Running late',
     'sam: Running late',
   ]);
+});
+
+test('a phone down alerts once, though a tab taking its turn still reads it as it was before', () => {
+  const failing: DispatchPhone[] = [
+    { id: 'p1', name: 'Dispatch', online: true, lastSeenAt: 0, cantSend: true },
+  ];
+  const sending: DispatchPhone[] = [{ ...failing[0]!, cantSend: false }];
+  let seen: Downs | undefined;
+  /** The tab alerting looks at the phones as its copy has them, at `now`: what alerts. */
+  const looks = (phones: DispatchPhone[], now: number) => {
+    const looked = wentDown(down(phones, now), seen, now);
+    seen = looked.seen;
+    return looked.fresh.map((each) => each.words);
+  };
+  looks(sending, 0);
+  assert.deepEqual(looks(failing, 5_000), ["Dispatch phone can't send texts"]);
+  // Another tab takes its turn with a copy read before it failed, then reads it afresh.
+  assert.deepEqual(looks(sending, 10_000), []);
+  assert.deepEqual(looks(failing, 15_000), []);
+  // Sending again for a while, it fails again: that alerts.
+  for (let now = 20_000; now <= 20_000 + SEEN_MS; now += 5_000) looks(sending, now);
+  assert.deepEqual(looks(failing, 25_000 + SEEN_MS), ["Dispatch phone can't send texts"]);
 });

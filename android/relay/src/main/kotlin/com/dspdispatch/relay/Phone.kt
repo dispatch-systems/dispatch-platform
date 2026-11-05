@@ -51,6 +51,9 @@ object Phone {
      */
     fun subscriptions(context: Context, paired: Int): Map<Int, String> = guarded { readSubscriptions(context, paired) }.orEmpty()
 
+    /** How many SIMs the phone takes at once: one where Android can't say. */
+    fun slots(context: Context): Int = guarded { context.getSystemService(TelephonyManager::class.java).slots() } ?: 1
+
     private fun readSubscriptions(context: Context, paired: Int): Map<Int, String> {
         val slots = context.getSystemService(TelephonyManager::class.java).slots()
         val subscriptions = when {

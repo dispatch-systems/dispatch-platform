@@ -48,8 +48,11 @@ pub struct Health {
     pub sim: Sim,
     /// What waits on it to go to Dispatch.
     pub waiting: Backlog,
-    /// The picture messages received that the phone's texting app hasn't downloaded.
-    pub undownloaded: i64,
+    /// The picture messages received that the phone's texting app hasn't downloaded: none while it
+    /// can't count them, as while Android doesn't let it read texts.
+    pub undownloaded: Option<i64>,
+    /// The phone's default texting app, by its package, where it has one.
+    pub texting_app: Option<String>,
     /// Why a text last failed to send, as the phone said it to Dispatch, and when.
     pub send_error: Option<Happened>,
     /// The last error the app didn't expect: its class, and what it was doing, never what it held.

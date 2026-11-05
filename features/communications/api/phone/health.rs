@@ -14,6 +14,8 @@ const STEPS_MOST: usize = 20;
 const STEP_MOST: usize = 40;
 /// The most of anything it may count.
 const COUNT_MOST: i64 = 1_000_000;
+/// The most characters of the default texting app's package.
+const APP_MOST: usize = 200;
 /// The most characters of an unexpected error's class, and of what the app was doing.
 const CLASS_MOST: usize = 200;
 const DOING_MOST: usize = 100;
@@ -39,6 +41,7 @@ pub(super) fn reported(input: &Input) -> Result<Option<Health>> {
             "sim",
             "waiting",
             "undownloaded",
+            "textingApp",
             "sendError",
             "unexpected",
         ],
@@ -61,7 +64,11 @@ pub(super) fn reported(input: &Input) -> Result<Option<Health>> {
             files: v::integer(waiting, "files", 0, COUNT_MOST)?,
             statuses: v::integer(waiting, "statuses", 0, COUNT_MOST)?,
         },
-        undownloaded: v::integer(&health, "undownloaded", 0, COUNT_MOST)?,
+        undownloaded: match health["undownloaded"] {
+            Value::Null => None,
+            _ => Some(v::integer(&health, "undownloaded", 0, COUNT_MOST)?),
+        },
+        texting_app: texting_app(&health["textingApp"])?,
         send_error: send_error(&health["sendError"])?,
         unexpected: unexpected(&health["unexpected"])?,
     }))
@@ -80,6 +87,22 @@ fn step(step: &Value) -> Result<String> {
         400,
     )?;
     Ok(key.to_owned())
+}
+/// The default texting app's package, if the phone has one: letters, digits, `.` and `_`.
+fn texting_app(app: &Value) -> Result<Option<String>> {
+    if app.is_null() {
+        return Ok(None);
+    }
+    let package = app.as_str().ok_or_else(invalid)?;
+    ensure(
+        (1..=APP_MOST).contains(&package.len())
+            && package
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_')),
+        "invalid_input",
+        400,
+    )?;
+    Ok(Some(package.to_owned()))
 }
 /// Why a text last failed to send, if one did: as the phone told Dispatch, and when.
 fn send_error(failed: &Value) -> Result<Option<Happened>> {

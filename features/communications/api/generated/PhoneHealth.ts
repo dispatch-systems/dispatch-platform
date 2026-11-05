@@ -21,6 +21,7 @@ setupUndone: boolean,
  */
 waiting: number,
 /**
- * The picture messages it received that its texting app hasn't downloaded.
+ * The picture messages it received that its texting app hasn't downloaded, while it can count
+ * them.
  */
-undownloaded: number, };
+undownloaded: number | null, };

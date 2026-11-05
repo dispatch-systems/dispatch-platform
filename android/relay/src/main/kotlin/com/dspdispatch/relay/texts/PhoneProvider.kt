@@ -64,11 +64,15 @@ class PhoneProvider(private val resolver: ContentResolver) : Provider {
      */
     fun undownloaded(since: Long, sim: Int?): Int {
         val only = sim(Table.MMS, sim)
-        return mms(
-            Mms.CONTENT_URI,
-            "${Mms.DATE} >= ? AND ${Mms.MESSAGE_BOX} = ${BaseMmsColumns.MESSAGE_BOX_INBOX} AND ${Mms.MESSAGE_TYPE} = $NOTIFICATION_IND" + only.first,
-            arrayOf(seconds(since).toString()) + only.second,
-        ).size
+        return (
+            resolver.query(
+                Mms.CONTENT_URI,
+                arrayOf(Mms._ID),
+                "${Mms.DATE} >= ? AND ${Mms.MESSAGE_BOX} = ${BaseMmsColumns.MESSAGE_BOX_INBOX} AND ${Mms.MESSAGE_TYPE} = $NOTIFICATION_IND" + only.first,
+                arrayOf(seconds(since).toString()) + only.second,
+                null,
+            ) ?: throw Unavailable("its picture messages")
+            ).use { it.count }
     }
 
     // Android answers nothing for a provider that crashed a moment ago, and says a part's not

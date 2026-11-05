@@ -13,7 +13,15 @@ import type { CommunicationsWaiting } from '../../api/index.js';
 import { ownDisplay } from '../display/display.js';
 import { preview } from '../shared/format.js';
 import { down, phonesCard } from '../texting/phones-down.js';
-import { arrived, keepSeen, readSeen, wentDown, type InFront } from './arrivals.js';
+import {
+  arrived,
+  keepDowns,
+  keepSeen,
+  readDowns,
+  readSeen,
+  wentDown,
+  type InFront,
+} from './arrivals.js';
 import { chime } from './chime.js';
 import { lead } from './leading.js';
 import { notify, notifying } from './notices.js';
@@ -52,8 +60,8 @@ export function alertMember(access: () => Watching) {
     const now = Date.now();
     const { fresh, seen } = arrived(waiting.latest, readSeen(dsp, user), now, inFront());
     keepSeen(dsp, user, seen);
-    const phones = wentDown(down(waiting.phones, now), readSeen(dsp, user, 'phones'), now);
-    keepSeen(dsp, user, phones.seen, 'phones');
+    const phones = wentDown(down(waiting.phones, now), readDowns(dsp, user), now);
+    keepDowns(dsp, user, phones.seen);
     const chosen = choices(settings);
     if (fresh.length && chosen.sound) void chime();
     if (!chosen.notifications) return;

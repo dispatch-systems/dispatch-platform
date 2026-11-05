@@ -119,9 +119,10 @@ data class ReportedStatus(val id: String, val attempt: Long, val status: SendSta
 
 /**
  * How the phone stands, said with each wait on the outbox: the Set up [setup] steps undone, by
- * their keys; whether Android lets it [read] and [send] texts; its [sim]; what [waiting] to go to
- * Dispatch; the picture messages received the texting app hasn't downloaded ([undownloaded]); and
- * what last went wrong.
+ * their keys; whether Android lets it [read] and [send] texts; its default texting app
+ * ([textingApp]), by its package, where it has one; its [sim]; what [waiting] to go to Dispatch;
+ * the picture messages received the texting app hasn't downloaded ([undownloaded]), where the
+ * phone lets the app count them; and what last went wrong.
  */
 @Serializable
 data class Health(
@@ -130,7 +131,8 @@ data class Health(
     val send: Boolean,
     val sim: Sim,
     val waiting: Backlog,
-    val undownloaded: Int,
+    val undownloaded: Int? = null,
+    val textingApp: String? = null,
     val sendError: Lapse? = null,
     val unexpected: Lapse? = null,
 )

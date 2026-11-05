@@ -72,7 +72,7 @@ class DispatchTest {
             send = true,
             sim = Sim.NO_SIGNAL,
             waiting = Backlog(12, 1, 0),
-            undownloaded = 0,
+            textingApp = "com.google.android.apps.messaging",
             unexpected = Lapse("java.lang.IllegalStateException", 2, "Reading texts"),
         )
         val outbox = dispatch.outbox(site, "k".repeat(64), health)
@@ -87,10 +87,12 @@ class DispatchTest {
         assertEquals("1.4.0", request.url.queryParameter("version"))
         assertEquals("14", request.url.queryParameter("versionCode"))
         assertEquals("Bearer ${"k".repeat(64)}", request.headers["Authorization"])
-        // How it stands, as Dispatch reads it, nothing it didn't say given as null.
+        // How it stands, as Dispatch reads it, what it couldn't count, as pictures not downloaded,
+        // left out.
         assertEquals(
             """{"setup":["battery"],"read":true,"send":true,"sim":"no_signal","waiting":{"texts":12,"files":1,"statuses":0},""" +
-                """"undownloaded":0,"unexpected":{"error":"java.lang.IllegalStateException","at":2,"where":"Reading texts"}}""",
+                """"textingApp":"com.google.android.apps.messaging",""" +
+                """"unexpected":{"error":"java.lang.IllegalStateException","at":2,"where":"Reading texts"}}""",
             request.headers["X-Dispatch-Health"],
         )
     }

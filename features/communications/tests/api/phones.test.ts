@@ -188,6 +188,7 @@ test('A phone says how it stands with each wait, which its card and every page s
     sim: 'ready',
     waiting: { texts: 12, files: 1, statuses: 0 },
     undownloaded: 2,
+    textingApp: 'com.google.android.apps.messaging',
     sendError: { error: "Sending texts isn't allowed on the phone", at: 1 },
     unexpected: { error: 'java.lang.IllegalStateException', where: 'Reading texts', at: 2 },
   };
@@ -207,6 +208,13 @@ test('A phone says how it stands with each wait, which its card and every page s
   assert.equal((await wait(absent)).status, 200);
   assert.equal((await card()).noSim, true);
   assert.deepEqual(await banner(), [[id, true]]);
+  // Texting turned off, it can't count the pictures it hasn't downloaded, and says the rest.
+  const off = { ...absent, sim: 'ready', read: false, send: false, undownloaded: null };
+  assert.equal((await wait(off)).status, 200);
+  assert.deepEqual(
+    [(await card()).cantRead, (await card()).undownloaded, await banner()],
+    [true, null, [[id, true]]],
+  );
   const well = { ...absent, setup: [], sim: 'no_signal', sendError: null, unexpected: null };
   assert.equal((await wait(well)).status, 200);
   assert.deepEqual(await banner(), [[id, false]]);
@@ -223,6 +231,7 @@ test('A phone says how it stands with each wait, which its card and every page s
     { ...well, unexpected: { error: 'java.io.IOException', where: 'Texting 555 0100', at: 1 } },
     { ...well, sendError: { error: 'x'.repeat(501), at: 1 } },
     { ...well, setup: Array.from({ length: 400 }, () => 'battery') },
+    { ...well, textingApp: 'Messages +1 206 555 0100' },
   ]) {
     const answer = await wait(refused);
     assert.equal(answer.value.error, 'invalid_input', JSON.stringify(refused).slice(0, 80));

@@ -292,7 +292,7 @@ decides ([Texts](#texts)).
   Phone 2 and so on, until renamed.
 - **How it stands:** each phone says it with each wait on its outbox ([its
   protocol](api/phone/README.md#how-the-phone-stands-with-each-wait)): its Set up steps undone,
-  whether it may read and send texts, its SIM, what waits on it to go, picture messages not
+  whether it may read and send texts, its default texting app, its SIM, what waits on it to go, picture messages not
   downloaded, why a text last failed and the last error it didn't expect. Dispatch keeps the
   latest of each phone, written only as it changes.
 - **Down:** a phone an app holds, not the demo's stand-in, that has been offline ten minutes or

@@ -53,8 +53,9 @@ internal fun subscription(subscriptions: Map<Int, String>, number: String, defau
 
 /**
  * Which of the phone's [subscriptions] to relay the texts of: the one it texts from, as
- * [subscription] chooses it, while it holds several SIMs; null while it holds one, or Android
- * names none, for every text, as a SIM swapped keeps them.
+ * [subscription] chooses it, on a phone of several SIM [slots], however many of them Android
+ * names, as before Android 10 it names only two at most, often the same; null on a phone of one
+ * slot, for every text, as a SIM swapped keeps them, or where Android names none.
  */
-internal fun relayed(subscriptions: Map<Int, String>, number: String, default: Int): Int? =
-    if (subscriptions.size < 2) null else subscription(subscriptions, number, default)
+internal fun relayed(subscriptions: Map<Int, String>, slots: Int, number: String, default: Int): Int? =
+    if (slots < 2) null else subscription(subscriptions, number, default)

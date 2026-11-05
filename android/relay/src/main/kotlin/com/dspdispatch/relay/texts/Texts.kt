@@ -100,8 +100,18 @@ class Texts(private val context: Context, dispatch: Dispatch, private val lapses
     /** How many texts read, their files, and statuses wait to go to Dispatch. */
     suspend fun backlog(): Backlog = queue.backlog()
 
-    /** How many picture messages [paired]'s SIM received since it paired that the texting app hasn't downloaded. */
-    fun undownloaded(paired: Paired) = provider.undownloaded(paired.at, radio.relayed(paired.number, paired.subscription))
+    /**
+     * How many picture messages [paired]'s SIM received since it paired that the texting app hasn't
+     * downloaded; null while the phone doesn't let the app read texts, or the provider can't say.
+     */
+    fun undownloaded(paired: Paired): Int? = try {
+        if (textingAllowed(context)) provider.undownloaded(paired.at, radio.relayed(paired.number, paired.subscription)) else null
+    } catch (_: SecurityException) {
+        // Texting turned off between the check and the read.
+        null
+    } catch (_: Unavailable) {
+        null
+    }
 
     /** Holds sending back once no text is mid-send, for the app to be replaced by its update, until [release]d. */
     suspend fun hold() = sender.hold()
