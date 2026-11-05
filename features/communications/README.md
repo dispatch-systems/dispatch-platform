@@ -513,9 +513,10 @@ in their own direct message with the app, and their answers come back together.
 A conversation waits (`waiting`) while the member's latest message came after anyone at the DSP
 answered it or marked it done, since the first of their messages after that. An answer makes it
 `responded`; Done, `done`, answered without a reply, covering what was written up to the latest
-message the page showed, so one it hadn't shown yet keeps it waiting; a new message from the
-member, waiting again. It follows from its messages in the order they were written, so one caught
-up later, written before an answer, leaves it answered.
+message the page showed, to its `ts`, so one it hadn't shown yet, kept before the Done or after,
+keeps it waiting; a new message from the member, waiting again. It follows from its messages in
+the order they were written, so one caught up later, written before an answer, leaves it
+answered.
 
 ## Live
 
@@ -724,9 +725,10 @@ server, at a DSP's own address, by a phone's key, the phones' own:
 ## Data and upkeep
 
 - **Data:** in each DSP's own database, `communications_conversations` (with the group each is
-  listed under), `communications_messages` (with the group each went to or answers),
-  `communications_files` (each photo and file, and downloading it; a group message's own photos
-  too), `communications_changes` (each change to a conversation or a group, the latest thousand,
+  listed under, and how far its latest Done covered: `done_at` and `done_ts`, migration 13),
+  `communications_messages` (with the group each went to or answers), `communications_files`
+  (each photo and file, and downloading it; a group message's own photos too),
+  `communications_changes` (each change to a conversation or a group, the latest thousand,
   for `updates`); `communications_groups` (each group, its name, who made it and whether it
   waits), `communications_group_people` (whom each went to, by workspace and member ID, under
   their name then), `communications_group_messages` (each message to a group, its sender's name
