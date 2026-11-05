@@ -165,7 +165,8 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const [picks, setPicks] = useState<Pick[]>([]);
   const [draft, setDraft] = useState<Draft>({ name: '', people: 0 });
   const now = useNow();
-  // How many times what's open changed, as one started opens only if nothing else did meanwhile.
+  // How many times what's open changed, or one to start was chosen, as one started opens only if
+  // nothing else did meanwhile.
   const turns = useRef(0);
   const phone = layout === 'phone';
   /** Shows what `next` names. */
@@ -262,11 +263,11 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   );
   const seenGroup = useCallback((listed: Group) => setPinned({ kind: 'group', row: listed }), []);
   // What a target names, opened: a conversation there is, or one started, pinned until it holds
-  // a message, unless something else was opened while it started.
+  // a message, unless something else was opened, or another chosen, while it started.
   const reach = async (target: Target) => {
     if (target.kind === 'conversation') select(target.id);
     else {
-      const turn = turns.current;
+      const turn = ++turns.current;
       const begun = await started(target);
       if (turns.current === turn) {
         setPinned({ kind: 'conversation', row: begun });
