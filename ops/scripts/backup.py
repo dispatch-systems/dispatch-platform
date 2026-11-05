@@ -20,8 +20,10 @@ SNAPSHOTS = ("--host", "dispatch-production", "--tag", "dispatch-production")
 # The last snapshot of each day for 30 days before the newest, so what's deleted from Production, a
 # DSP deleted included, is gone from its backups within 30 days: counted in days, not snapshots, so
 # days without one keep nothing longer, and pruned to the last byte no snapshot keeps.
-RETENTION = ("--group-by", "host,tags", "--keep-within-daily", "30d", "--prune",
-             "--max-unused", "0")
+RETENTION = ("--group-by", "host,tags", "--keep-within-daily", "30d")
+# Pruned every run, not only when snapshots were just forgotten, so a prune cut short is finished
+# by the next: to the last byte no snapshot keeps.
+PRUNE = ("--max-unused", "0")
 
 
 def absolute_path(environment, name):
@@ -183,8 +185,9 @@ def backup(settings):
 
 def retain(settings):
     """Lets go of the snapshots past `RETENTION`: run only once a new one restored."""
-    run([settings.restic, "forget", *SNAPSHOTS, *RETENTION],
-        environment=restic_environment(settings))
+    environment = restic_environment(settings)
+    run([settings.restic, "forget", *SNAPSHOTS, *RETENTION], environment=environment)
+    run([settings.restic, "prune", *PRUNE], environment=environment)
 
 
 def main():

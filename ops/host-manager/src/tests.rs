@@ -1156,8 +1156,14 @@ fn production_without_its_gh_fails_every_tick_and_says_so_until_it_is_back() {
     f.running_latest();
     u.run_locked().unwrap();
     f.system.no_gh.set(true);
+    // Release backups expire all the same.
+    let expired = u
+        .root
+        .with_file_name("backups/2020-01-01-000000-before-v0.1.0");
+    fs::create_dir_all(&expired).unwrap();
     for attempt in 1..=2 {
         let error = u.run_locked().unwrap_err().to_string();
+        assert!(!expired.exists());
         assert_eq!(error, "Production's updater needs /usr/local/bin/gh");
         let failure = io::read_json(&u.failure_file).unwrap();
         assert_eq!(failure["attempts"], attempt);
@@ -1571,17 +1577,18 @@ fn isolated_production_service_preserves_activation_and_rollback() {
 #[test]
 fn release_backups_go_once_taken_over_30_days_ago() {
     let backups = tempfile::tempdir().unwrap();
-    let made = |name: &str, days: u64| {
+    let made = |name: &str| {
         let path = backups.path().join(name);
         fs::create_dir_all(path.join("data")).unwrap();
-        let at = SystemTime::now() - Duration::from_secs(days * 24 * 60 * 60);
-        fs::File::open(&path).unwrap().set_modified(at).unwrap();
         path
     };
-    let old = made("2026-09-01-091500-before-v1.0.0", 31);
-    let recent = made("2026-10-14-091500-before-v1.1.0", 29);
-    let other = made("kept-by-hand", 90);
-    crate::updater::expire_release_backups(backups.path(), SystemTime::now()).unwrap();
+    // Named for when they were taken; the old one was partly let go of, which made its folder
+    // newly changed.
+    let old = made("2026-09-01-091500-before-v1.0.0");
+    let recent = made("2026-10-14-091500-before-v1.1.0");
+    let other = made("kept-by-hand");
+    let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_793_923_200); // 2026-11-06
+    crate::updater::expire_release_backups(backups.path(), now).unwrap();
     assert_eq!(
         (old.exists(), recent.exists(), other.exists()),
         (false, true, true)

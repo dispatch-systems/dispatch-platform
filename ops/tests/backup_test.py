@@ -111,11 +111,10 @@ class BackupTests(unittest.TestCase):
             ]
 
         steps, forgets = drill(fails=False)
-        self.assertEqual(steps, ["backup", "restore", "check", "forget"])
+        self.assertEqual(steps, ["backup", "restore", "check", "forget", "prune"])
         self.assertEqual(forgets, [[
             "/usr/bin/restic", "forget", "--host", "dispatch-production", "--tag",
             "dispatch-production", "--group-by", "host,tags", "--keep-within-daily", "30d",
-            "--prune", "--max-unused", "0",
         ]])
         self.assertEqual(drill(fails=True), (["backup", "restore"], []))
 
