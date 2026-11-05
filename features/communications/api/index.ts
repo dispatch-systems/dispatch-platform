@@ -49,6 +49,7 @@ export type { PhoneRow } from './generated/PhoneRow';
 export type { Phones } from './generated/Phones';
 export type { Profile } from './generated/Profile';
 export type { ProfileOpens } from './generated/ProfileOpens';
+export type { QuickReplies } from './generated/QuickReplies';
 export type { Reachable } from './generated/Reachable';
 export type { RouteDriver } from './generated/RouteDriver';
 export type { Sender } from './generated/Sender';

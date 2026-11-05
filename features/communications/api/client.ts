@@ -27,6 +27,7 @@ import type {
   PhoneRow,
   Phones,
   Profile,
+  QuickReplies,
   SentMessage,
   TextContacts,
   TextPeople,
@@ -189,6 +190,12 @@ export const getTodaysRoutes = (signal?: AbortSignal) =>
 /** Files a work phone nobody held under one of today's drivers: their conversation. */
 export const pickDriver = (id: string, driverId: string) =>
   api<Conversation>(`${communicationsUrl}/conversations/${id}/driver`, { driverId });
+/** The DSP's quick replies, in their order, as the composer offers them and Settings edits them. */
+export const quickRepliesUrl = `${communicationsUrl}/quick-replies`;
+export const useQuickReplies = () => useCachedData<QuickReplies>(quickRepliesUrl);
+/** Saves the DSP's quick replies, in their order, on the `revision` they were read at. */
+export const saveQuickReplies = (replies: string[], revision: number) =>
+  api<QuickReplies>(quickRepliesUrl, { replies, revision });
 /** Whom the DSP can text, or those found by a name or number typed, and the numbers blocked. */
 export const getTextContacts = (typed = '') =>
   api<TextContacts>(address(`${communicationsUrl}/texts/contacts`, { q: typed }));

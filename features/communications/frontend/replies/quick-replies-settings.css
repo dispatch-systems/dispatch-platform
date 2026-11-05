@@ -1,0 +1,23 @@
+/* Settings' Quick replies: each reply's box beside its Remove, a row each. */
+.quick-replies-settings ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.quick-replies-settings li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+}
+.quick-replies-settings li + li {
+  border-top: 1px solid var(--border);
+}
+.quick-replies-settings textarea {
+  flex: 1;
+  min-width: 0;
+  resize: vertical;
+}
+.quick-replies-settings button svg {
+  flex-shrink: 0;
+}

@@ -4,4 +4,4 @@
  * `GET /api/dsp/communications/quick-replies`: the DSP's quick replies, in their order, and the
  * revision a save of them goes on.
  */
-export type QuickReplies = { replies: Array<string>, revision: bigint, };
+export type QuickReplies = { replies: Array<string>, revision: number, };

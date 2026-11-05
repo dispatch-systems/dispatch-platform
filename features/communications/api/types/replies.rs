@@ -12,5 +12,6 @@ use serde::{Deserialize, Serialize};
 #[serde(default)]
 pub struct QuickReplies {
     pub replies: Vec<String>,
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub revision: i64,
 }

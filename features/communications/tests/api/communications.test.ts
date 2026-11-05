@@ -111,7 +111,7 @@ test('a direct message reaches Communications live, and its answer and photo go 
   assert.equal(initials.headers.get('content-type'), 'image/png');
 });
 
-test('Communications answers only those whose role gives them it, and the profile, logos and groups with it alone', async (t) => {
+test('Communications answers only those whose role gives them it, and the profile, logos, groups and quick replies with it alone', async (t) => {
   const f = await fixture();
   t.after(f.close);
   // No default role holds communications.use, so a member is refused until a role grants it.
@@ -119,6 +119,8 @@ test('Communications answers only those whose role gives them it, and the profil
   const north = refused.session.dsps[0];
   await refused.select(north.id);
   assert.equal((await refused.get(route)).status, 403);
+  const replies = { replies: ['On my way'], revision: 0 };
+  assert.equal((await refused.post(`${route}/quick-replies`, replies)).status, 403);
 
   // Granted it alone, they read the profile of whom a conversation is with, which shows what
   // other features know of them without their permissions.
@@ -182,6 +184,14 @@ test('Communications answers only those whose role gives them it, and the profil
     [['Jordan Ellis', 'sent']],
   );
   assert.equal((await member.read(route)).groups[0].id, made.value.id);
+
+  // They edit the DSP's quick replies, though they manage nothing.
+  const saved = await member.post(`${route}/quick-replies`, replies);
+  assert.equal(saved.status, 200, saved.body);
+  assert.deepEqual(await member.read(`${route}/quick-replies`), {
+    replies: ['On my way'],
+    revision: 1,
+  });
 });
 
 test('a DSP’s texts are its own: listed by number, answered through its phone as written with pictures, and with Today’s Routes only for those whose role gives them Communications', async (t) => {

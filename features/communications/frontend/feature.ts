@@ -21,6 +21,10 @@ const loadDisplay = () => import('./display/DisplaySettings.js');
 const DisplaySettings = lazy(() =>
   loadDisplay().then((module) => ({ default: module.DisplaySettings })),
 );
+const loadQuickReplies = () => import('./replies/QuickRepliesSettings.js');
+const QuickRepliesSettings = lazy(() =>
+  loadQuickReplies().then((module) => ({ default: module.QuickRepliesSettings })),
+);
 const loadPhones = () => import('./texting/phone/PhonesCard.js');
 const PhonesCard = lazy(() => loadPhones().then((module) => ({ default: module.PhonesCard })));
 
@@ -44,13 +48,20 @@ export const feature: FrontendFeature = {
         createElement(CommunicationsPage, { view, user: session.user.id }),
     },
   ],
-  // How the page looks to each member, their own, on Settings' Display page.
+  // How the page looks to each member, their own, on Settings' Display page; and the DSP's
+  // quick replies, on its own page.
   settingsSections: [
     {
       id: 'communications.display',
       load: loadDisplay,
       render: ({ view, refresh }) => view && createElement(DisplaySettings, { view, refresh }),
       prefetch: () => ['/api/dsp/settings'],
+    },
+    {
+      id: 'communications.quick_replies',
+      load: loadQuickReplies,
+      render: () => createElement(QuickRepliesSettings),
+      prefetch: () => ['/api/dsp/communications/quick-replies'],
     },
   ],
   // Alerts the member to new messages on every page, as they chose in Message display, and a
