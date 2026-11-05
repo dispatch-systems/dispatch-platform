@@ -694,7 +694,9 @@ Behind `communications.use`:
   group, sent in the background.
 - `GET …/groups/{id}`, `?before=<at>:<id>`: a group and its fifty latest messages and answers, or
   those before one, each of the DSP's with how far it has gone (`progress`), and what a message
-  to its people may carry (`limits`, a Slack message's).
+  to its people may carry (`limits`, a Slack message's). In the order written: within a
+  millisecond, the DSP's first, then the answers by Slack's `ts`, then by ID, the order its paging
+  and Done go by too.
 - `GET …/groups/{id}/people`: who it went to, who first sent it and when, and where it stands
   with each.
 - `POST …/groups/{id}/messages` (`text`, `photos`), to the same people; `POST …/groups/{id}/done`

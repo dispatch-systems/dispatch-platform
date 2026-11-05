@@ -73,14 +73,13 @@ pub fn listed(
         .collect();
     let sent = db.latest_communications_group_messages(dsp, &ids)?;
     let answers = db.latest_communications_answers(dsp, &ids)?;
-    let mut last: HashMap<String, GroupEntry> = HashMap::new();
+    let mut last: HashMap<String, (String, String, GroupEntry)> = HashMap::new();
     for entry in entries(db, people, dsp, sent, answers)? {
-        let group = entry.0;
         let later = last
-            .get(&group)
-            .is_none_or(|kept| (entry.1.at, &entry.1.id) > (kept.at, &kept.id));
+            .get(&entry.0)
+            .is_none_or(|kept| order(&entry) > order(kept));
         if later {
-            last.insert(group, entry.1);
+            last.insert(entry.0.clone(), entry);
         }
     }
     Ok(kept
@@ -98,7 +97,7 @@ pub fn listed(
                 state: group.state,
                 waiting_since: group.waiting_since,
                 last_at: group.last_at,
-                last: last.remove(&group.id),
+                last: last.remove(&group.id).map(|(_, _, entry)| entry),
                 name: group.name,
                 id: group.id,
             }
@@ -106,8 +105,14 @@ pub fn listed(
         .collect())
 }
 
+/// Where an entry of `entries` comes in its group: when it was written, its place in that
+/// millisecond, then its ID.
+fn order((_, place, entry): &(String, String, GroupEntry)) -> (i64, &str, &str) {
+    (entry.at, place, &entry.id)
+}
+
 /// The DSP's messages to groups and the answers, as a group's page reads them, each with its
-/// group, in the order written: the DSP's under who sent them, with their photos and how far each
+/// group and its place in its millisecond (`storage::place`), in the group's order: the DSP's under who sent them, with their photos and how far each
 /// has gone; the answers under who wrote them, with their photos and files and their
 /// conversation.
 fn entries(
@@ -116,7 +121,7 @@ fn entries(
     dsp: &str,
     sent: Vec<GroupMessage>,
     answers: Vec<kept::Message>,
-) -> Result<Vec<(String, GroupEntry)>> {
+) -> Result<Vec<(String, String, GroupEntry)>> {
     let sent_ids: Vec<String> = sent.iter().map(|message| message.id.clone()).collect();
     let mut photos =
         conversations::attached(db.communications_group_files(dsp, &sent_ids)?, |file| {
@@ -139,7 +144,7 @@ fn entries(
         .into_iter()
         .map(|conversation| (conversation.id.clone(), conversation))
         .collect();
-    let mut entries: Vec<(String, GroupEntry)> = sent
+    let mut entries: Vec<(String, String, GroupEntry)> = sent
         .into_iter()
         .map(|message| {
             let gone = progress.get(&message.id).copied().unwrap_or_default();
@@ -158,7 +163,7 @@ fn entries(
                 conversation_id: None,
                 id: message.id,
             };
-            (message.group, entry)
+            (message.group, String::new(), entry)
         })
         .collect();
     for message in answers {
@@ -168,6 +173,7 @@ fn entries(
         let writer = writers.get(&message.conversation);
         entries.push((
             group,
+            message.ts,
             GroupEntry {
                 at: message.at,
                 text: message.text,
@@ -183,7 +189,7 @@ fn entries(
             },
         ));
     }
-    entries.sort_by(|a, b| (a.1.at, &a.1.id).cmp(&(b.1.at, &b.1.id)));
+    entries.sort_by(|a, b| order(a).cmp(&order(b)));
     Ok(entries)
 }
 
@@ -212,7 +218,7 @@ pub fn opened(
     let (sent, answers) = db.communications_group_entries(dsp, id, before, PAGE + 1)?;
     let mut entries: Vec<GroupEntry> = entries(db, &people, dsp, sent, answers)?
         .into_iter()
-        .map(|(_, entry)| entry)
+        .map(|(_, _, entry)| entry)
         .collect();
     let more = entries.len() > PAGE;
     if more {

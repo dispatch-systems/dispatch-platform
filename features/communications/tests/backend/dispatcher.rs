@@ -109,3 +109,23 @@ async fn done_covers_only_the_texts_the_page_showed_and_a_newer_one_still_waits(
     let shown = read().await.unwrap().messages.pop().unwrap().ts;
     assert_eq!(done(shown).await.unwrap().state, ConversationState::Done);
 }
+
+#[tokio::test]
+async fn done_refuses_a_slack_place_past_what_milliseconds_hold() {
+    let (_root, state, bot) = support::connected(TEAM).await;
+    let dsp = bot.dsp.clone();
+    support::writes(&state, &dsp, TEAM, "U0FIXCASEY", "Where do I park?").await;
+    let slack = support::conversation_with(&state, &dsp, TEAM, "U0FIXCASEY")
+        .await
+        .unwrap()
+        .id;
+    let (shared, reference) = (state.clone(), Reference::Slack(slack));
+    let refused = state
+        .run(move |db| {
+            let seen = Some("9223372036854775807.000000");
+            done(db, &shared, &dsp, &reference, "me", seen)
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code, "invalid_input");
+}
