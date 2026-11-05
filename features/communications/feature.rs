@@ -18,9 +18,9 @@ pub use api::types::{
     DispatchPhone, Elsewhere, FileStatus, Group, GroupChoice, GroupChoiceKind, GroupChoices,
     GroupEntry, GroupMember, GroupMessages, GroupPeople, GroupPerson, GroupPersonState,
     GroupProgress, Message, MessageFile, MessageGroup, Pace, PairingStatus, PhoneApp, PhoneHealth,
-    PhonePairing, PhonePairingStatus, PhoneRow, Phones, Profile, QuickReplies, Reachable, RouteDriver, Sender,
-    SentMessage, TextContact, TextContacts, TextPeople, TextStatus, Today, TodaysRoutes, Typing,
-    WaitingMessage, Workday, Writing,
+    PhonePairing, PhonePairingStatus, PhoneRow, Phones, Profile, QuickReplies, Reachable,
+    RouteDriver, Sender, SentMessage, TextContact, TextContacts, TextPeople, TextStatus, Today,
+    TodaysRoutes, Typing, WaitingMessage, Workday, Writing,
 };
 
 use dispatch_core::db::{

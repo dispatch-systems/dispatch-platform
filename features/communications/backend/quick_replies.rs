@@ -45,7 +45,10 @@ pub fn save_quick_replies(
     replies: &[String],
     revision: i64,
 ) -> Result<QuickReplies> {
-    let replies: Vec<String> = replies.iter().map(|reply| reply.trim().to_owned()).collect();
+    let replies: Vec<String> = replies
+        .iter()
+        .map(|reply| reply.trim().to_owned())
+        .collect();
     ensure(
         replies.len() <= MOST
             && replies
