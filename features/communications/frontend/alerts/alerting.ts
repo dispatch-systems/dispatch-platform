@@ -11,13 +11,22 @@ import { getWaiting, waitingUrl } from '../../api/client.js';
 import type { CommunicationsWaiting } from '../../api/index.js';
 import { ownDisplay } from '../display/display.js';
 import { preview } from '../shared/format.js';
-import { arrived, keepSeen, readSeen, type InFront } from './arrivals.js';
+import { down, phonesCard } from '../texting/phones-down.js';
+import {
+  arrived,
+  keepDowns,
+  keepSeen,
+  readDowns,
+  readSeen,
+  wentDown,
+  type InFront,
+} from './arrivals.js';
 import { chime } from './chime.js';
 import { lead } from './leading.js';
 import { notify, notifying } from './notices.js';
 
-// One of the member's tabs at the DSP alerts them (`lead`), in view or not, looking at what waits
-// every few seconds: what this tab read in the last half minute, else read again. Each turn
+// One of the member's tabs at the DSP alerts them (`lead`), in view or not, of new messages and of
+// the DSP's phones as each goes down, looking at what waits every few seconds: what this tab read in the last half minute, else read again. Each turn
 // first reads what the member chose again, as they may have changed it in another tab since this
 // one read it, and alerts as they last chose; what's read for a turn that ended alerts no one.
 
@@ -45,13 +54,18 @@ function inFront(): InFront {
 export function alertMember(access: () => Watching) {
   const dsp = access().view.dsp.id;
   const user = access().session.user.id;
-  /** Alerts of each message new in what waits, as the member chose. */
+  /** Alerts of each message new in what waits, and each phone gone down, as the member chose. */
   const heard = (waiting: CommunicationsWaiting, settings: SettingsAnswer) => {
-    const { fresh, seen } = arrived(waiting.latest, readSeen(dsp, user), Date.now(), inFront());
+    const now = Date.now();
+    const { fresh, seen } = arrived(waiting.latest, readSeen(dsp, user), now, inFront());
     keepSeen(dsp, user, seen);
+    const phones = wentDown(down(waiting.phones, now), readDowns(dsp, user), now);
+    keepDowns(dsp, user, phones.seen);
     const chosen = choices(settings);
     if (fresh.length && chosen.sound) void chime();
     if (!chosen.notifications) return;
+    const card = phonesCard(access());
+    for (const each of phones.fresh) notify(each.words, '', `phone-down:${each.key}`, card);
     for (const each of fresh) {
       const opens = pageHash(access(), 'communications', { open: each.conversationId });
       notify(each.from, preview(each.message), each.message.id, opens);

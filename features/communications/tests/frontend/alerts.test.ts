@@ -4,16 +4,19 @@ import type { SettingsAnswer } from '../../../../core/settings/api/index.js';
 import { cacheLimits, dataCache } from '../../../../core/shell/frontend/runtime/data-cache.js';
 import { settingsRead, type Watching } from '../../../../core/shell/frontend/runtime/slots.js';
 import { waitingUrl } from '../../api/client.js';
-import type { WaitingMessage } from '../../api/index.js';
+import type { DispatchPhone, WaitingMessage } from '../../api/index.js';
 import { alertMember } from '../../frontend/alerts/alerting.js';
 import {
   arrived,
   keepSeen,
   readSeen,
   SEEN_MS,
+  wentDown,
+  type Downs,
   type InFront,
   type Seen,
 } from '../../frontend/alerts/arrivals.js';
+import { down, OFFLINE_MS } from '../../frontend/texting/phones-down.js';
 
 /** The message `id` waiting in the conversation `conversation`, listed under `group`, if any. */
 const waits = (conversation: string, id: string, group: string | null = null): WaitingMessage => ({
@@ -29,6 +32,7 @@ const waits = (conversation: string, id: string, group: string | null = null): W
     editedAt: null,
     inThread: false,
     status: null,
+    error: null,
     sender: null,
     files: [],
     group: null,
@@ -107,12 +111,22 @@ const turns = () => new Promise((resolve) => setImmediate(resolve));
 function tab(t: TestContext, user: string, focused: boolean) {
   t.mock.timers.enable({ apis: ['setInterval', 'Date'], now: 1_761_400_000_000 });
   const dsp = 'dsp_north';
-  const server = { settings: chose(false), waiting: [] as WaitingMessage[] };
+  const server = {
+    settings: chose(false),
+    waiting: [] as WaitingMessage[],
+    phones: [] as DispatchPhone[],
+  };
   const held = new Map<string, (give: (answer: unknown) => void) => void>();
   const answer = (url: string) =>
     url === settingsRead
       ? server.settings
-      : { revision: 0, count: server.waiting.length, since: [], latest: server.waiting };
+      : {
+          revision: 0,
+          count: server.waiting.length,
+          since: [],
+          latest: server.waiting,
+          phones: server.phones,
+        };
   t.mock.method(globalThis, 'fetch', async (url: string) => {
     const holding = held.get(url);
     held.delete(url);
@@ -155,7 +169,15 @@ function tab(t: TestContext, user: string, focused: boolean) {
     for (const each of Object.keys(browser)) delete (globalThis as Record<string, unknown>)[each];
     dataCache.clear();
   });
-  const access = { view: { dsp: { id: dsp } }, session: { user: { id: user } } } as Watching;
+  const access = {
+    view: {
+      dsp: { id: dsp },
+      features: ['communications'],
+      role: { owner: false },
+      permissions: [],
+    },
+    session: { user: { id: user } },
+  } as unknown as Watching;
   /** The member's tabs saw `ids` waiting, just now. */
   const saw = (...ids: string[]) => keepSeen(dsp, user, { at: Date.now(), ids });
   /** Until the tab alerting has seen the message `id`, if it hasn't yet. */
@@ -241,7 +263,13 @@ test('what a tab reads for a turn that ended alerts no one', async (t) => {
   const close = await other(true);
   await turns();
   // Sam's message comes to this tab, no longer alerting: the other, with Sam's open, saw it.
-  give({ revision: 0, count: 3, since: [], latest: [...server.waiting, waits('sam', 'm3')] });
+  give({
+    revision: 0,
+    count: 3,
+    since: [],
+    latest: [...server.waiting, waits('sam', 'm3')],
+    phones: [],
+  });
   await turns();
   saw('m1', 'm2', 'm3');
   // Its turn again as the other closes, Alex's message alerts.
@@ -275,7 +303,13 @@ test('a message alerts as the member chose once it is read, not as the tab began
   t.mock.timers.tick(30_000);
   const give = await asked;
   dataCache.put(settingsRead, chose(true));
-  give({ revision: 0, count: 2, since: [], latest: [...server.waiting, waits('casey', 'm2')] });
+  give({
+    revision: 0,
+    count: 2,
+    since: [],
+    latest: [...server.waiting, waits('casey', 'm2')],
+    phones: [],
+  });
   await sees('m2');
   assert.deepEqual(shown, ['casey: Running late']);
 });
@@ -294,4 +328,60 @@ test('a tab that lets go of what the member chose reads it again before alerting
   t.mock.timers.tick(30_000);
   await sees('m2');
   assert.deepEqual(shown, []);
+});
+
+test('a phone alerts once as it goes down, and not one down before Dispatch was open', async (t) => {
+  const { server, shown, sees, start } = tab(t, 'user_phones', true);
+  server.settings = chose(true);
+  const phone = (id: string, name: string): DispatchPhone => ({
+    id,
+    name,
+    online: true,
+    lastSeenAt: Date.now(),
+    cantSend: false,
+  });
+  // One can't send texts as the tab first looks: it alerts no one.
+  const first = { ...phone('p1', 'Dispatch'), cantSend: true };
+  server.phones = [first, phone('p2', 'Phone 2')];
+  server.waiting = [waits('jordan', 'm1')];
+  start();
+  await sees('m1');
+  // The other goes offline, ten minutes ago as the tab next looks: it alerts, once.
+  server.phones = [
+    first,
+    { ...phone('p2', 'Phone 2'), online: false, lastSeenAt: Date.now() - OFFLINE_MS + 30_000 },
+  ];
+  server.waiting = [...server.waiting, waits('casey', 'm2')];
+  t.mock.timers.tick(30_000);
+  await sees('m2');
+  server.waiting = [...server.waiting, waits('sam', 'm3')];
+  t.mock.timers.tick(30_000);
+  await sees('m3');
+  assert.deepEqual(shown, [
+    'Phone 2 offline for 10 min: ',
+    'casey: Running late',
+    'sam: Running late',
+  ]);
+});
+
+test('a phone down alerts once, though a tab taking its turn still reads it as it was before', () => {
+  const failing: DispatchPhone[] = [
+    { id: 'p1', name: 'Dispatch', online: true, lastSeenAt: 0, cantSend: true },
+  ];
+  const sending: DispatchPhone[] = [{ ...failing[0]!, cantSend: false }];
+  let seen: Downs | undefined;
+  /** The tab alerting looks at the phones as its copy has them, at `now`: what alerts. */
+  const looks = (phones: DispatchPhone[], now: number) => {
+    const looked = wentDown(down(phones, now), seen, now);
+    seen = looked.seen;
+    return looked.fresh.map((each) => each.words);
+  };
+  looks(sending, 0);
+  assert.deepEqual(looks(failing, 5_000), ["Dispatch phone can't send texts"]);
+  // Another tab takes its turn with a copy read before it failed, then reads it afresh.
+  assert.deepEqual(looks(sending, 10_000), []);
+  assert.deepEqual(looks(failing, 15_000), []);
+  // Sending again for a while, it fails again: that alerts.
+  for (let now = 20_000; now <= 20_000 + SEEN_MS; now += 5_000) looks(sending, now);
+  assert.deepEqual(looks(failing, 25_000 + SEEN_MS), ["Dispatch phone can't send texts"]);
 });

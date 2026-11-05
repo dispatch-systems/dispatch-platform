@@ -17,10 +17,10 @@ pub use api::types::{
     ConversationMessages, ConversationState, Conversations, Correspondent, Direction,
     DispatchPhone, Elsewhere, FileStatus, Group, GroupChoice, GroupChoiceKind, GroupChoices,
     GroupEntry, GroupMember, GroupMessages, GroupPeople, GroupPerson, GroupPersonState,
-    GroupProgress, Message, MessageFile, MessageGroup, Pace, PairingStatus, PhoneApp, PhonePairing,
-    PhonePairingStatus, PhoneRow, Phones, Profile, PushKey, Reachable, RouteDriver, Sender,
-    SentMessage, TextContact, TextContacts, TextPeople, TextStatus, Today, TodaysRoutes, Typing,
-    WaitingMessage, Workday, Writing,
+    GroupProgress, Message, MessageFile, MessageGroup, Pace, PairingStatus, PhoneApp, PhoneHealth,
+    PhonePairing, PhonePairingStatus, PhoneRow, Phones, Profile, PushKey, Reachable, RouteDriver,
+    Sender, SentMessage, TextContact, TextContacts, TextPeople, TextStatus, Today, TodaysRoutes,
+    Typing, WaitingMessage, Workday, Writing,
 };
 
 use dispatch_core::db::{
@@ -156,11 +156,17 @@ pub const FEATURE: Feature = Feature {
                 name: "communications_done_places",
                 apply: Code(backend::storage::add_done_places),
             },
+            // How each phone last said it stands, with each wait on its outbox.
+            Migration {
+                id: 14,
+                name: "phones_health",
+                apply: Code(backend::phone::storage::add_health),
+            },
             // Each browser a member is told of new messages in, with Dispatch closed.
             Migration {
-                id: 16,
+                id: 15,
                 name: "communications_push",
-                apply: Sql(include_str!("migrations/dsp/0016_communications_push.sql")),
+                apply: Sql(include_str!("migrations/dsp/0015_communications_push.sql")),
             },
         ],
     }],
@@ -270,6 +276,7 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         Phones,
         PhoneApp,
         PhoneRow,
+        PhoneHealth,
         PhonePairing,
         PhonePairingStatus,
         PairingStatus,

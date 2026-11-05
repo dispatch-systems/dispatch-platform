@@ -11,4 +11,8 @@ online: boolean,
 /**
  * When it last checked in; none before it ever has.
  */
-lastSeenAt: number | null, };
+lastSeenAt: number | null,
+/**
+ * Whether it says it can't send texts: Android doesn't let it, or it has no SIM.
+ */
+cantSend: boolean, };

@@ -3,11 +3,12 @@ package com.dspdispatch.relay
 import android.content.Context
 import androidx.annotation.StringRes
 import com.dspdispatch.relay.connection.Connection
-import com.dspdispatch.relay.connection.Logcat
 import com.dspdispatch.relay.dispatch.AppVersion
 import com.dspdispatch.relay.dispatch.Dispatch
 import com.dspdispatch.relay.dispatch.PairRequest
 import com.dspdispatch.relay.dispatch.Refusal
+import com.dspdispatch.relay.health.Checkup
+import com.dspdispatch.relay.health.Lapses
 import com.dspdispatch.relay.pairing.Paired
 import com.dspdispatch.relay.pairing.PairingLink
 import com.dspdispatch.relay.pairing.Pairings
@@ -53,7 +54,11 @@ class Relay(private val context: Context) {
     val dispatch = Dispatch(http(), own)
     val connection = Connection(dispatch)
     val setup = Setup(context)
-    val texts = Texts(context, dispatch)
+
+    /** Where the relay tells of errors it didn't expect, and what last went wrong, for its health. */
+    val lapses = Lapses(context)
+    val texts = Texts(context, dispatch, lapses)
+    val checkup = Checkup(context, setup, texts, lapses)
     val installer = SessionInstaller(PhoneSessions(context))
     val updates = Updates(
         dispatch,
@@ -66,7 +71,7 @@ class Relay(private val context: Context) {
         texts::hold,
         texts::release,
         scope,
-        Logcat,
+        lapses,
     )
     private val attempt = MutableStateFlow<Attempt>(Attempt.None)
     val attempting: StateFlow<Attempt> = attempt.asStateFlow()

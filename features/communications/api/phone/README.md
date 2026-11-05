@@ -30,8 +30,9 @@ with `{"error": "<code>", "message": "…"}`: the app acts on the code, never th
 
 A phone is online while it checked in within the last two minutes (`ONLINE_MS`). Waiting on the
 outbox, reporting texts and reporting statuses check in, and pairing counts as the first; sending
-or fetching a file's bytes doesn't. So the app waits on its outbox again as each wait ends, which
-keeps it online.
+or fetching a file's bytes doesn't. Dispatch notes a check-in at most every thirty seconds
+(`SEEN_MS`), so when it last saw a phone may be that much earlier. So the app waits on its outbox
+again as each wait ends, which keeps it online.
 
 ## Limits
 
@@ -70,7 +71,10 @@ keeps it online.
 Answers `{ "key": "<64 hex>", "phone": { "id", "name" }, "dsp": { "name" } }`: the phone is
 named Dispatch, or Phone 2 and so on, until someone renames it. A code works once, for ten
 minutes, and only while no newer one replaced it: else `phones_pairing_invalid` (401), and
-someone at the DSP makes a new one.
+someone at the DSP makes a new one. Once an address tried ten wrong codes in ten minutes
+(`ADDRESS_GUESSES`), or the DSP was tried with a hundred from every address (`DSP_GUESSES`),
+pairing there is refused `rate_limited` (429), a right code too, until the oldest are ten minutes
+old.
 
 ### `GET /api/communications/phone/outbox`
 
@@ -118,9 +122,54 @@ as it expires while the phone is offline ([Presence](#presence)), Dispatch fails
 the error `phones_offline` ([Failures](#failures)); a `sent` of that attempt reported later still
 counts.
 
+### How the phone stands, with each wait
+
+With each wait on the outbox, the app says how the phone stands, in a header of its own,
+`X-Dispatch-Health`, of JSON, at most 4 KiB (`HEALTH_MOST`): a header, which a server older than
+that ignores, where it would refuse a query it doesn't know (`invalid_input`). An app older than
+that says nothing, and Dispatch keeps what the phone said last.
+
+```json
+{
+  "setup": ["battery", "chat_features"],
+  "read": true,
+  "send": true,
+  "sim": "ready",
+  "waiting": { "texts": 0, "files": 0, "statuses": 0 },
+  "undownloaded": 0,
+  "textingApp": "com.google.android.apps.messaging",
+  "sendError": { "error": "No service", "at": 1793041519000 },
+  "unexpected": {
+    "error": "java.lang.IllegalStateException",
+    "where": "Reading texts",
+    "at": 1793041519000
+  }
+}
+```
+
+- `setup`: the Set up steps undone, by the app's own keys, at most 20 (`STEPS_MOST`), each 1 to 40
+  lowercase letters or `_` (`STEP_MOST`).
+- `read`, `send`: whether Android lets the app read the phone's texts, and send them.
+- `textingApp`: the phone's default texting app, by its package, at most 200 letters, digits, `.`
+  or `_` (`APP_MOST`); `null`, or left out, where it has none.
+- `sim`: the SIM it texts from: `ready`, in the phone with a network; `absent`; or `no_signal`, in
+  it with no network to text on.
+- `waiting`: how many texts it read wait to be reported, files of them to be sent, and statuses to
+  be told; `undownloaded`, how many picture messages it received that its texting app hasn't
+  downloaded, `null` or left out while it can't count them, as while Android doesn't let it read
+  texts. Each 0 to 1,000,000 (`COUNT_MOST`).
+- `sendError`: why a text last failed to send, as its status said it (`ERROR_MOST`), and when; none
+  for one past its `expires`. `unexpected`: the last error the app didn't expect, by its class's
+  name, at most 200 characters of letters, digits, `.`, `_` and `$` (`CLASS_MOST`), and what the
+  app was doing (`where`), at most 100 letters and spaces (`DOING_MOST`), so neither ever carries
+  a text or a number. Either `null`, or left out, before anything went wrong.
+
+Past any of these, the wait is refused `invalid_input` (400), and what the phone said before kept.
+
 ### `POST /api/communications/phone/texts`
 
-The texts the phone received, and those sent from its own messaging app:
+The texts the phone received, and those sent from its own messaging app, of the SIM it sends
+Dispatch's from alone where it holds several:
 
 ```json
 {
@@ -179,7 +228,7 @@ How the attempts at the outbox's texts went:
 
 - `id` and `attempt`: as the outbox gave them. `status`: `sent`, `delivered` or `failed`, and
   `at`, when it was. `error`: why it failed, at most 500 characters (`ERROR_MOST`), kept with
-  `failed` alone.
+  `failed` alone and shown as written beside Not sent, so a few plain words, as "No service".
 
 Answers `{ "ok": true }`. Reporting is idempotent, and order doesn't matter: a status only moves
 on, waiting to sent to delivered, waiting or sent to failed; sent or failed counts only for the

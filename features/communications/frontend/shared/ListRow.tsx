@@ -4,8 +4,8 @@ import './list-row.css';
 
 // A row of the list, a conversation's, a group's or a driver's on Today's Routes: whom it's with,
 // when it was last written in, what was written last, and what else it shows below that; while it
-// waits, how long, and a check that marks it done without a reply, shown as it's pointed at or
-// reached by the keyboard beside the conversation.
+// waits, how long, and a check beside it that marks it done without a reply, named by whom it's
+// with.
 
 export function ListRow({
   className,
@@ -37,8 +37,8 @@ export function ListRow({
   open: () => void;
   /** Reads what it opens before it's opened, as it's pointed at or reached. */
   warm?: () => void;
-  /** Marks it done, while it waits. */
-  done?: () => void;
+  /** Marks it done, while it waits, named by whom it's with. */
+  done?: { whom: string; run: () => void };
 }) {
   const classes = ['convo', className, selected && 'selected', waits && 'waits'];
   return (
@@ -66,7 +66,7 @@ export function ListRow({
         </span>
       </button>
       {waits && done && (
-        <button className="convo-done" aria-label="Done" onClick={done}>
+        <button className="convo-done" aria-label={`Done: ${done.whom}`} onClick={done.run}>
           <Check size={16} />
         </button>
       )}

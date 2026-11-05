@@ -94,7 +94,13 @@ test('each section’s list keeps the server’s order as it changes, with the p
     typing: { version: 0, writing: [] },
   };
   // The phone went offline, and live route data began.
-  const offline = { id: 'phone', name: 'Dispatch', online: false, lastSeenAt: 900 };
+  const offline = {
+    id: 'phone',
+    name: 'Dispatch',
+    online: false,
+    lastSeenAt: 900,
+    cantSend: false,
+  };
   const next = updated(inbox, {
     revision: 2,
     reset: false,
@@ -302,12 +308,15 @@ test('the letters that matched are marked by the runs the server counts, UTF-16 
   );
 });
 
-test('a wait turns amber at 15 minutes and red at 30', () => {
+test('a wait reads in plain words, in full aloud, and turns amber at 15 minutes and red at 30', () => {
   const minutes = (count: number) => waited(0, count * 60_000);
-  assert.deepEqual(minutes(14), { label: '14m', tone: '' });
-  assert.deepEqual(minutes(15), { label: '15m', tone: 'slow' });
-  assert.deepEqual(minutes(30), { label: '30m', tone: 'late' });
-  assert.deepEqual(minutes(125), { label: '2h', tone: 'late' });
+  assert.deepEqual(minutes(1), { label: '1 min', spoken: '1 minute', tone: '' });
+  assert.deepEqual(minutes(14), { label: '14 min', spoken: '14 minutes', tone: '' });
+  assert.deepEqual(minutes(15), { label: '15 min', spoken: '15 minutes', tone: 'slow' });
+  assert.deepEqual(minutes(30), { label: '30 min', spoken: '30 minutes', tone: 'late' });
+  assert.deepEqual(minutes(125), { label: '2 hr', spoken: '2 hours', tone: 'late' });
+  assert.deepEqual(minutes(24 * 60), { label: '1 day', spoken: '1 day', tone: 'late' });
+  assert.deepEqual(minutes(3 * 24 * 60 + 5), { label: '3 days', spoken: '3 days', tone: 'late' });
 });
 
 test('the workspace chosen is shown while it is one of two or more where it works, else every one', () => {

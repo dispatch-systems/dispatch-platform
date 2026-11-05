@@ -9,7 +9,7 @@ mod files;
 mod texts;
 
 pub use devices::{AppVersion, Device, DeviceStore, PAIRING_MS, Pairing};
-pub(crate) use devices::{add_app_version_codes, add_pairing_ids};
+pub(crate) use devices::{add_app_version_codes, add_health, add_pairing_ids};
 pub use files::{FileStore, ReportedFile};
 pub use texts::{Kept, MOST_TEXTS, Reported, StatusReport, TextStore, written};
 

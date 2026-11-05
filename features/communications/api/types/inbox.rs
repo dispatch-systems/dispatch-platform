@@ -57,10 +57,13 @@ pub struct DispatchPhone {
     /// When it last checked in; none before it ever has.
     #[cfg_attr(feature = "ts", ts(type = "number | null"))]
     pub last_seen_at: Option<i64>,
+    /// Whether it says it can't send texts: Android doesn't let it, or it has no SIM.
+    pub cant_send: bool,
 }
 
 /// `GET /api/dsp/communications/waiting`: how many conversations wait on an answer, for the
-/// sidebar, since when each has, and what each waits on, which alerts the member to a new message.
+/// sidebar, since when each has, and what each waits on, which alerts the member to a new message;
+/// and the DSP's phones, for the banner on every page.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(
@@ -78,6 +81,9 @@ pub struct CommunicationsWaiting {
     /// The latest message from whom each is with, the longest waiting first: a message not there
     /// before is a new one.
     pub latest: Vec<WaitingMessage>,
+    /// The DSP's dispatch phones an app holds, which the banner on every page says are offline or
+    /// can't send texts.
+    pub phones: Vec<DispatchPhone>,
 }
 
 /// The latest message from whom a waiting conversation is with: its ID, the group it's listed

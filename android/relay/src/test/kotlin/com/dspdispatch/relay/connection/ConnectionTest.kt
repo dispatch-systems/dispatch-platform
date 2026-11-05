@@ -35,7 +35,7 @@ class ConnectionTest {
         server.enqueue(json(401, """{"error":"phones_removed"}"""))
         val received = mutableListOf<Outbox>()
         val links = mutableListOf<Link>()
-        connection.run(paired, "key") {
+        connection.run(paired, "key", { null }) {
             received += it
             links += connection.link.value
         }
@@ -51,7 +51,7 @@ class ConnectionTest {
         server.enqueue(json(200, """{"texts":[]}"""))
         server.enqueue(json(401, """{"error":"phones_removed"}"""))
         val links = mutableListOf<Link>()
-        connection.run(paired, "key") { links += connection.link.value }
+        connection.run(paired, "key", { null }) { links += connection.link.value }
         assertEquals(listOf<Link>(Link.Connected(1_000)), links)
         assertEquals(4, server.requestCount)
     }
@@ -63,7 +63,7 @@ class ConnectionTest {
         server.enqueue(json(200, """{"texts":[]}"""))
         server.enqueue(json(401, """{"error":"phones_removed"}"""))
         val links = mutableListOf<Link>()
-        connection.run(paired, "key") { links += connection.link.value }
+        connection.run(paired, "key", { null }) { links += connection.link.value }
         assertEquals(listOf<Link>(Link.Connected(1_000)), links)
         assertEquals(4, server.requestCount)
     }
@@ -73,7 +73,7 @@ class ConnectionTest {
         server.enqueue(json(403, """{"error":"phones_off"}"""))
         server.enqueue(json(401, """{"error":"phones_removed"}"""))
         clock = 5_000L
-        connection.run(paired, "key") {}
+        connection.run(paired, "key", { null }) {}
         assertEquals(Link.Reconnecting(5_000, "phones_off"), connection.link.value)
     }
 

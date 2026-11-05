@@ -105,6 +105,10 @@ pub struct Message {
     pub group: Option<MessageGroup>,
     /// How a text Dispatch sent went.
     pub status: Option<TextStatus>,
+    /// Why a text Dispatch sent failed, while it has: the server's code, `phones_offline` or
+    /// `phones_removed`, or the phone's own words for it, as `expired` or "No service", at most
+    /// 500 characters as the phone side keeps it. None when it didn't say.
+    pub error: Option<String>,
     /// The other party's number, for a text: in a driver's conversation, the work phone it went
     /// through.
     pub number: Option<String>,
