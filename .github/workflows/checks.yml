@@ -100,7 +100,7 @@ jobs:
           path: ${{ runner.temp }}/relay-apps
           key: relay-dev-${{ steps.version.outputs.changed }}-${{ steps.version.outputs.next }}-${{ steps.key.outputs.cert }}
       - if: steps.cache.outputs.cache-hit != 'true'
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78
         with:
           distribution: temurin
           java-version: '21'
@@ -142,7 +142,7 @@ jobs:
         with:
           path: ${{ runner.temp }}/relay-apps
           key: ${{ steps.cache.outputs.cache-primary-key }}
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: relay-dev-apps
           path: ${{ runner.temp }}/relay-apps
@@ -168,7 +168,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
           filter: blob:none
-      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78
         with:
           distribution: temurin
           java-version: '21'
@@ -212,7 +212,7 @@ jobs:
         env:
           CERT: ${{ steps.key.outputs.cert }}
         run: python3 tooling/ci/relay.py signed "$RUNNER_TEMP/relay-apps" production "$CERT"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: relay-production-apps
           path: ${{ runner.temp }}/relay-apps
@@ -256,12 +256,12 @@ jobs:
       # GitHub drops an output that holds a secret's value, and the relay environments hold
       # secrets that match words of these names.
       - if: needs.relay-dev.result == 'success'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: relay-dev-apps
           path: ${{ runner.temp }}/relay-apps
       - if: needs.relay-production.result == 'success'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: relay-production-apps
           path: ${{ runner.temp }}/relay-apps
@@ -289,7 +289,7 @@ jobs:
       # Where the release compile spent its time, when it compiled.
       - name: Preserve the compile's timings
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: dispatch-release-timings-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/cargo-timings/
@@ -302,10 +302,10 @@ jobs:
           echo "name=dispatch-candidate-${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
       - name: Attest the runtime package
         if: github.event_name != 'pull_request'
-        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
         with:
           subject-path: dispatch-dev.tar.gz
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ${{ steps.candidate.outputs.name }}
           path: dispatch-dev.tar.gz
@@ -367,13 +367,13 @@ jobs:
         with:
           path: ~/.cache/ms-playwright/
           key: ${{ steps.tools.outputs.playwright-key }}
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: ${{ needs.build.outputs.candidate }}
       - run: mkdir .build && tar -xzf dispatch-dev.tar.gz -C .build
       - uses: ./.github/actions/setup-rust
         if: steps.tools.outputs.fixture-hit != 'true'
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
         if: steps.tools.outputs.fixture-hit != 'true'
         with:
           prefix-key: ${{ env.DISPATCH_RUST_CACHE }}
@@ -386,7 +386,7 @@ jobs:
         run: npm run check:ci -- browser ${{ matrix.shard }}/6
       - name: Preserve failure traces
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: dispatch-browser-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
           path: test-results/
@@ -394,7 +394,7 @@ jobs:
           retention-days: 7
       - name: Preserve large-folder measurements
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: dispatch-documents-performance-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
           path: test-results/**/attachments/documents-performance*.json
@@ -420,7 +420,7 @@ jobs:
       - uses: ./.github/actions/setup-rust
         if: steps.tools.outputs.tools-hit != 'true'
       - uses: ./.github/actions/setup-packages
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: ${{ needs.build.outputs.candidate }}
       - run: mkdir .build && tar -xzf dispatch-dev.tar.gz -C .build
@@ -578,7 +578,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78
         with:
           distribution: temurin
           java-version: '21'
@@ -715,7 +715,7 @@ jobs:
           fixture: 'true'
       - uses: ./.github/actions/setup-rust
         if: steps.restore.outputs.tools-hit != 'true' || steps.restore.outputs.fixture-hit != 'true'
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
         if: steps.restore.outputs.tools-hit != 'true'
         with:
           prefix-key: ${{ env.DISPATCH_RUST_CACHE }}
@@ -735,7 +735,7 @@ jobs:
         with:
           path: .ci-tools/tools/
           key: ${{ steps.restore.outputs.tools-key }}
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
         if: steps.restore.outputs.fixture-hit != 'true'
         with:
           prefix-key: ${{ env.DISPATCH_RUST_CACHE }}
@@ -839,14 +839,14 @@ jobs:
       # The host tool the verification runs builds with Cargo when its cache missed.
       - uses: ./.github/actions/setup-rust
         if: steps.tools.outputs.tools-hit != 'true'
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: ${{ needs.build.outputs.candidate }}
       - name: Verify the build's source commit and inventory
         run: python3 tooling/ci/ci-verify.py dispatch-dev.tar.gz
       - name: Publish the verified build
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: dispatch-main-${{ github.sha }}
           path: dispatch-dev.tar.gz
