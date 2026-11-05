@@ -7,9 +7,12 @@
 use super::*;
 use crate::ConversationState;
 use crate::backend::{
-    phone::{model::Status, storage::FileStore},
+    phone::{
+        model::{EXPIRY_MS, PHONE_OFFLINE, Status},
+        storage::FileStore,
+    },
     support::{self, filed, phoned, phones, read_live, reported, saved, switch, texted, today},
-    texts::{model::TextStatus, reading, reading::one, storage::TextStore},
+    texts::{filing::expire, model::TextStatus, reading, reading::one, storage::TextStore},
 };
 use axum::body::Bytes;
 use dispatch_core::{db::now, server::http::upload::Upload};
@@ -86,6 +89,35 @@ async fn an_answer_that_failed_leaves_it_waiting_and_retry_sends_it_again() {
         refused.unwrap_err().code,
         "communications_message_not_found"
     );
+}
+
+#[tokio::test]
+async fn an_answer_its_offline_phone_never_came_for_fails_as_it_expires_and_it_waits_again() {
+    let (_root, state, dsp) = support::started();
+    let asked = texted(&state, &dsp, "+12535550177", "Which door?", now() - 60_000).await;
+    let conversation = filed(&state, &dsp, &asked).await.id;
+    let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+    let state_of = || {
+        let (shared, at, id) = (state.clone(), dsp.clone(), conversation.clone());
+        state.read(move |db| Ok(one(db, &shared, &at, &id)?.state))
+    };
+
+    // Queued on the phone, which never checks in again, it's an answer until it expires.
+    let answer = send(&state, &c, support::USE, &conversation, "Door 3", &[])
+        .await
+        .unwrap();
+    assert_eq!(state_of().await.unwrap(), ConversationState::Responded);
+    expire(&state, &dsp, now() + EXPIRY_MS).await.unwrap();
+    let (at, id) = (dsp.clone(), answer.id.clone());
+    let failed = state
+        .read(move |db| Ok(db.communications_text(&at, &id)?.unwrap()))
+        .await
+        .unwrap();
+    assert_eq!(
+        (failed.status, failed.error.as_deref()),
+        (Some(TextStatus::Failed), Some(PHONE_OFFLINE))
+    );
+    assert_eq!(state_of().await.unwrap(), ConversationState::Waiting);
 }
 
 #[tokio::test]

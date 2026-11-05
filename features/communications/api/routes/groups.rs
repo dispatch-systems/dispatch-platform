@@ -1,6 +1,6 @@
 //! Messaging a group: whom one can go to, making one and messaging it again, reading it and its
 //! people, and Done for everyone listed under it.
-use super::{before, file_id, id, photos, slack_id};
+use super::{before, file_id, id, photos, place, slack_id};
 use crate::backend::{
     compose,
     groups::{self, choices, send},
@@ -41,11 +41,21 @@ pub(super) fn group_people(db: &Store, c: &Member, input: &Input) -> Result<Repl
     let group = id(input.param("id"), "grp")?;
     Reply::of(&groups::people(db, c.state, c.dsp_id(), &group)?)
 }
-/// Marks done every conversation listed under a group that waits.
+/// Marks done every conversation listed under a group that waits, covering what was written up
+/// to `seen`, the latest of its messages and answers the page showed, `<time>:<id>`, else
+/// everything.
 pub(super) fn group_done(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
-    v::fields(&input.body, &[])?;
+    v::fields(&input.body, &["seen"])?;
     let group = id(input.param("id"), "grp")?;
-    Reply::of(&groups::done(db, c.state, c.dsp_id(), &group, c.actor())?)
+    let seen = place(&input.body, "seen")?;
+    Reply::of(&groups::done(
+        db,
+        c.state,
+        c.dsp_id(),
+        &group,
+        c.actor(),
+        seen.as_ref().map(|(at, id)| (*at, id.as_str())),
+    )?)
 }
 
 /// Messages a group: its `name`, its `people`, each `teamId` and `userId`, and the `text` and the

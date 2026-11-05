@@ -123,6 +123,7 @@
         "communications_picked",
         "communications_replies",
         "communications_text_conversations",
+        "phones_attempts",
         "phones_change",
         "phones_devices",
         "phones_files",

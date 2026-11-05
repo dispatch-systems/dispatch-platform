@@ -43,6 +43,7 @@ export type { NotSent } from './generated/NotSent';
 export type { Pace } from './generated/Pace';
 export type { PairingStatus } from './generated/PairingStatus';
 export type { PhoneApp } from './generated/PhoneApp';
+export type { PhoneHealth } from './generated/PhoneHealth';
 export type { PhonePairing } from './generated/PhonePairing';
 export type { PhonePairingStatus } from './generated/PhonePairingStatus';
 export type { PhoneRow } from './generated/PhoneRow';

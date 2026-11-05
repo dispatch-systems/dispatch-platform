@@ -93,6 +93,7 @@ the phone is removed.
       "number": "+14255550199",
       "body": "On my way",
       "attempt": 41,
+      "expires": 1793042115267,
       "files": [{ "id": "…", "name": "door.jpg", "mime": "image/jpeg", "size": 48213 }]
     }
   ]
@@ -110,9 +111,61 @@ latest `attempt` says it was sent or failed, so it comes again with each wait: t
 later `attempt`: a new one to send. Refused `platform_busy` (503) while the server holds too many
 waits: wait a moment and ask again.
 
+`expires` is when the attempt was queued, or tried again, and ten minutes (`EXPIRY_MS`): past it
+by the phone's clock, the app never hands the text to Android, and says it `failed` with the error
+`expired`; one handed over before goes on. An app older than this ignores it. Should it still wait
+as it expires while the phone is offline ([Presence](#presence)), Dispatch fails it itself, with
+the error `phones_offline` ([Failures](#failures)); a `sent` of that attempt reported later still
+counts.
+
+### How the phone stands, with each wait
+
+With each wait on the outbox, the app says how the phone stands, in a header of its own,
+`X-Dispatch-Health`, of JSON, at most 4 KiB (`HEALTH_MOST`): a header, which a server older than
+that ignores, where it would refuse a query it doesn't know (`invalid_input`). An app older than
+that says nothing, and Dispatch keeps what the phone said last.
+
+```json
+{
+  "setup": ["battery", "chat_features"],
+  "read": true,
+  "send": true,
+  "sim": "ready",
+  "waiting": { "texts": 0, "files": 0, "statuses": 0 },
+  "undownloaded": 0,
+  "textingApp": "com.google.android.apps.messaging",
+  "sendError": { "error": "No service", "at": 1793041519000 },
+  "unexpected": {
+    "error": "java.lang.IllegalStateException",
+    "where": "Reading texts",
+    "at": 1793041519000
+  }
+}
+```
+
+- `setup`: the Set up steps undone, by the app's own keys, at most 20 (`STEPS_MOST`), each 1 to 40
+  lowercase letters or `_` (`STEP_MOST`).
+- `read`, `send`: whether Android lets the app read the phone's texts, and send them.
+- `textingApp`: the phone's default texting app, by its package, at most 200 letters, digits, `.`
+  or `_` (`APP_MOST`); `null`, or left out, where it has none.
+- `sim`: the SIM it texts from: `ready`, in the phone with a network; `absent`; or `no_signal`, in
+  it with no network to text on.
+- `waiting`: how many texts it read wait to be reported, files of them to be sent, and statuses to
+  be told; `undownloaded`, how many picture messages it received that its texting app hasn't
+  downloaded, `null` or left out while it can't count them, as while Android doesn't let it read
+  texts. Each 0 to 1,000,000 (`COUNT_MOST`).
+- `sendError`: why a text last failed to send, as its status said it (`ERROR_MOST`), and when; none
+  for one past its `expires`. `unexpected`: the last error the app didn't expect, by its class's
+  name, at most 200 characters of letters, digits, `.`, `_` and `$` (`CLASS_MOST`), and what the
+  app was doing (`where`), at most 100 letters and spaces (`DOING_MOST`), so neither ever carries
+  a text or a number. Either `null`, or left out, before anything went wrong.
+
+Past any of these, the wait is refused `invalid_input` (400), and what the phone said before kept.
+
 ### `POST /api/communications/phone/texts`
 
-The texts the phone received, and those sent from its own messaging app:
+The texts the phone received, and those sent from its own messaging app, of the SIM it sends
+Dispatch's from alone where it holds several:
 
 ```json
 {
@@ -132,11 +185,13 @@ The texts the phone received, and those sent from its own messaging app:
 - `clientId`: the app's own ID of the text, 1 to 128 characters (`CLIENT_ID_MOST`), never reused
   on this phone.
 - `direction`: `in`, to the phone, or `out`, from it. `number`: the other party's. `at`: when it
-  was written. `files`: optional, each `name` at most 200 characters and `mime` at most 100
-  (`NAME_MOST`, `MIME_MOST`), with the `size` the phone knows. A still picture received as HEIF,
-  as iPhones send them, which browsers don't show, the app reports and sends as a JPEG it makes
-  of it (`image/jpeg`, its name ending `.jpg`); a HEIF sequence, and one Android can't decode, as
-  before Android 9, as it is.
+  was written, kept as it says from a day before the phone paired (the app's look-back,
+  `LOOK_BACK_MS`), however long a phone offline held it, until five minutes after the report came
+  (its clock's skew, `SKEW_MS`); else, as from a clock set wrong, when the report came. `files`:
+  optional, each `name` at most 200 characters and `mime` at most 100 (`NAME_MOST`, `MIME_MOST`),
+  with the `size` the phone knows. A still picture received as HEIF, as iPhones send them, which
+  browsers don't show, the app reports and sends as a JPEG it makes of it (`image/jpeg`, its name
+  ending `.jpg`); a HEIF sequence, and one Android can't decode, as before Android 9, as it is.
 
 Answers, for each, Dispatch's ID of it and of its files, in the order reported:
 `{ "texts": [ { "clientId": "sms-8812", "id": "…", "files": ["…"] } ] }`. Reporting is
@@ -173,9 +228,11 @@ How the attempts at the outbox's texts went:
 
 Answers `{ "ok": true }`. Reporting is idempotent, and order doesn't matter: a status only moves
 on, waiting to sent to delivered, waiting or sent to failed; sent or failed counts only for the
-text's latest attempt, so a late report of an earlier one never cancels a text tried again; and
-delivered counts from any attempt, as it proves the text got there. A status of a text that
-isn't this phone's is ignored.
+text's latest attempt, so a late report of an earlier one never cancels a text tried again;
+delivered counts from any attempt, as it proves the text got there, from the phone it waits on
+or, for an earlier attempt Retry moved to another phone, the phone that had it; and sent counts
+after a failure only Dispatch's own `phones_offline`, as the phone sent it after all. A status of
+a text that isn't this phone's is ignored.
 
 ### `GET /api/communications/phone/app`
 
@@ -203,8 +260,9 @@ are idempotent, and a file's bytes replace themselves. The app tries again with 
 and gives up only on what Dispatch would refuse again however often it's sent: a text or status
 refused alone, and a file's bytes refused but while the DSP or Communications is away
 (`sign_in_required`, `phones_off`) or for `upload_incomplete`. A text only fails once its phone
-says so, as after its pictures couldn't be fetched five times in a row, or once it's removed,
-when every text waiting on it fails with `phones_removed` as its error.
+says so, as after its pictures couldn't be fetched five times in a row or past its `expires`
+(`expired`); once it's removed, when every text waiting on it fails with `phones_removed` as its
+error; or once it expires on a phone offline, with `phones_offline`.
 
 Pairing alone isn't safe to make again. Its code works once, and Dispatch keeps only the SHA-256
 of the key it answers, so a pairing whose answer was lost may have paired a phone whose key was

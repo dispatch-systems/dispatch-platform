@@ -18,9 +18,9 @@ pub use api::types::{
     DispatchPhone, Elsewhere, FileStatus, Group, GroupChoice, GroupChoiceKind, GroupChoices,
     GroupEntry, GroupMember, GroupMessages, GroupPeople, GroupPerson, GroupPersonState,
     GroupProgress, Message, MessageFile, MessageGroup, NotSent, Pace, PairingStatus, PhoneApp,
-    PhonePairing, PhonePairingStatus, PhoneRow, Phones, Profile, Reachable, RouteDriver, Sender,
-    SentMessage, TextContact, TextContacts, TextPeople, TextStatus, Today, TodaysRoutes, Typing,
-    WaitingMessage, Workday, Writing,
+    PhoneHealth, PhonePairing, PhonePairingStatus, PhoneRow, Phones, Profile, Reachable,
+    RouteDriver, Sender, SentMessage, TextContact, TextContacts, TextPeople, TextStatus, Today,
+    TodaysRoutes, Typing, WaitingMessage, Workday, Writing,
 };
 
 use dispatch_core::db::{
@@ -69,6 +69,7 @@ pub const FEATURE: Feature = Feature {
             "phones_devices",
             "phones_pairings",
             "phones_texts",
+            "phones_attempts",
             "phones_files",
             "phones_change",
         ],
@@ -141,6 +142,25 @@ pub const FEATURE: Feature = Feature {
                 id: 11,
                 name: "phones_app_version_codes",
                 apply: Code(backend::phone::storage::add_app_version_codes),
+            },
+            // Each earlier attempt at a text, by the phone it was given to, as Retry may move a
+            // text to another phone.
+            Migration {
+                id: 12,
+                name: "phones_attempts",
+                apply: Sql(include_str!("migrations/dsp/0012_phones_attempts.sql")),
+            },
+            // How far within its millisecond each conversation's latest Done covered.
+            Migration {
+                id: 13,
+                name: "communications_done_places",
+                apply: Code(backend::storage::add_done_places),
+            },
+            // How each phone last said it stands, with each wait on its outbox.
+            Migration {
+                id: 14,
+                name: "phones_health",
+                apply: Code(backend::phone::storage::add_health),
             },
             // Each answer noted before it goes to Slack.
             Migration {
@@ -256,6 +276,7 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         Phones,
         PhoneApp,
         PhoneRow,
+        PhoneHealth,
         PhonePairing,
         PhonePairingStatus,
         PairingStatus,

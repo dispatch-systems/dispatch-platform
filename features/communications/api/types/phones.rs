@@ -55,6 +55,34 @@ pub struct PhoneRow {
     /// When it last checked in, epoch milliseconds.
     #[cfg_attr(feature = "ts", ts(type = "number | null"))]
     pub last_seen_at: Option<i64>,
+    /// What needs attention on it, as it last said it stands; none from an app that never said.
+    pub health: Option<PhoneHealth>,
+}
+
+/// What needs attention on a phone, as it last said it stands.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct PhoneHealth {
+    /// Android doesn't let it send texts, or read them.
+    pub cant_send: bool,
+    pub cant_read: bool,
+    pub no_sim: bool,
+    /// Its SIM has no network to text on.
+    pub no_signal: bool,
+    /// Steps of its Set up are undone.
+    pub setup_undone: bool,
+    /// How many texts it read wait to go to Dispatch.
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub waiting: i64,
+    /// The picture messages it received that its texting app hasn't downloaded, while it can count
+    /// them.
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
+    pub undownloaded: Option<i64>,
 }
 
 /// `POST /api/dsp/communications/phones/pairing`: the code that pairs the next phone, by its ID to

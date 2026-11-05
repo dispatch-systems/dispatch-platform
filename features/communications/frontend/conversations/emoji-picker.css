@@ -1,0 +1,141 @@
+/* The emoji picker: over the thread, at the box's left edge; on a phone, a panel of the composer's
+   full width under the box, where the keyboard would be. Its emoji are the device's own. */
+.emoji-panel {
+  --emoji-size: calc(22px * var(--scale));
+  --emoji-cell: calc(36px * var(--scale));
+  position: absolute;
+  bottom: 100%;
+  left: var(--side);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  width: min(calc(var(--emoji-cell) * 8 + 18px), calc(100% - 2 * var(--side)));
+  height: min(calc(420px * var(--scale)), var(--emoji-room, 70vh));
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: 0 10px 30px #0004;
+}
+.emoji-tabs button,
+.emoji-grid button,
+.emoji-tones button {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+}
+.emoji-tabs button:hover:not(:disabled),
+.emoji-grid button:hover,
+.emoji-tones button:hover {
+  background: var(--accent);
+}
+.emoji-search {
+  display: flex;
+  flex-direction: row;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  margin: 8px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+.emoji-search input {
+  flex: 1;
+  min-width: 0;
+  height: calc(32px * var(--scale));
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  outline: none;
+  color: var(--foreground);
+  font-size: var(--typed-size);
+}
+.emoji-tabs {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: space-between;
+  padding: 0 8px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.emoji-panel .emoji-tabs button {
+  width: calc(28px * var(--scale));
+  height: calc(28px * var(--scale));
+  border-radius: 6px;
+  color: var(--muted-foreground);
+}
+.emoji-panel .emoji-tabs button[aria-selected='true'] {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.emoji-list {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 8px 8px;
+}
+/* Loading, or what loads it again after it failed. */
+.emoji-list > .loading,
+.emoji-list > button {
+  margin: 40px auto;
+}
+.emoji-list h4 {
+  padding: 10px 4px 4px;
+  color: var(--muted-foreground);
+  font-size: var(--small-size);
+  font-weight: 600;
+}
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--emoji-cell), 1fr));
+}
+.emoji-panel .emoji-grid button,
+.emoji-panel .emoji-tones button {
+  font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif;
+  line-height: 1;
+}
+.emoji-panel .emoji-grid button {
+  height: var(--emoji-cell);
+  font-size: var(--emoji-size);
+}
+.emoji-tones {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: flex-end;
+  gap: 2px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--border);
+}
+.emoji-panel .emoji-tones button {
+  width: calc(28px * var(--scale));
+  height: calc(28px * var(--scale));
+  border-radius: 6px;
+  font-size: calc(16px * var(--scale));
+}
+.emoji-panel .emoji-tones button[aria-checked='true'] {
+  background: var(--primary);
+}
+
+@container communications (width < 680px) {
+  .composer:has(.emoji-panel) {
+    padding-bottom: calc(var(--emoji-panel-height) + 10px);
+  }
+  .emoji-panel {
+    --emoji-cell: calc(42px * var(--scale));
+    --emoji-size: calc(26px * var(--scale));
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: var(--emoji-panel-height);
+    border-width: 1px 0 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}

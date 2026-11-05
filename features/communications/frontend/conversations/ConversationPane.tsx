@@ -26,6 +26,7 @@ import { Profile } from './Profile.js';
 import type { Target } from './target.js';
 import { Thread } from './Thread.js';
 import type { ConversationReads } from './reads.js';
+import type { Drafts } from './drafts.js';
 import { useConversation } from './useConversation.js';
 
 // The conversation open: who it's with, the workspace it's in while there are several, the number
@@ -45,6 +46,7 @@ export function ConversationPane({
   texting,
   docked,
   kept,
+  drafts,
   seen,
   reads,
   typing,
@@ -70,6 +72,8 @@ export function ConversationPane({
   docked: boolean;
   /** Whether the profile is open as the conversation opens, as the member may keep it. */
   kept: boolean;
+  /** What's written in each conversation, kept by the page. */
+  drafts: Drafts;
   /** Tells the page of the conversation as read, which pins one the list doesn't hold. */
   seen: (conversation: Conversation) => void;
   /** The conversations the page has read, which it shows from as it opens. */
@@ -90,7 +94,15 @@ export function ConversationPane({
   /** Opens another conversation, as whom it's with's of another kind, or starts it. */
   open: (target: Target) => void;
 }) {
-  const { opened, error, gone, readOlder, ...read } = useConversation(reads, id);
+  const {
+    opened,
+    error,
+    gone,
+    readOlder,
+    olderFailed,
+    retry: readAgain,
+    ...read
+  } = useConversation(reads, id);
   useEffect(() => {
     if (gone) closed();
   }, [gone, closed]);
@@ -134,20 +146,16 @@ export function ConversationPane({
   // One that can't reach them now, as a driver holding no work phone, once it's read.
   const unreachable = shown && opened !== undefined && party?.reachable?.(shown) === false;
   const done = useAction(async () => {
-    const after = await markDone(id);
+    const after = await markDone(id, opened?.messages.at(-1) ?? conversation?.last);
     read.show(after);
     show(after);
   });
   const sent = ({ conversation: theirs, message }: SentMessage) => {
-    if (!conversation) return;
     // Filed in another conversation, as its number changed hands as it went: follow it there.
     if (theirs.id !== id) return follow(theirs);
-    // Answered, it waits no more, unless it didn't go; the next update says so for everyone.
-    const answered: Partial<Conversation> =
-      message.status === 'failed' ? {} : { state: 'responded', waitingSince: null };
-    const after: Conversation = { ...conversation, ...answered, lastAt: message.at, last: message };
-    read.show(after, message);
-    show(after);
+    // As the server had it once sent; the next update says so for everyone.
+    read.show(theirs, message);
+    show(theirs);
   };
   const retry = useAction(async (failed: Message) => {
     if (conversation) read.show(conversation, await retryText(id, failed.id));
@@ -204,6 +212,7 @@ export function ConversationPane({
           messages={opened.messages}
           more={opened.more}
           readOlder={readOlder}
+          olderFailed={olderFailed}
           writing={writing}
           timeZone={timeZone}
           now={now}
@@ -213,10 +222,12 @@ export function ConversationPane({
           workdays={party?.workdays ? opened.workdays : undefined}
         />
       ) : (
-        <ThreadPending failed={Boolean(error)} />
+        <ThreadPending failed={Boolean(error)} retry={readAgain} />
       )}
       {shown && party && (
         <Composer
+          drafts={drafts}
+          draft={id}
           placeholder={`Message ${party.whom(shown)}`}
           writable={party.writable(shown) && !unreachable}
           instead={unreachable && <NoWorkPhone elsewhere={elsewhere} go={go} />}

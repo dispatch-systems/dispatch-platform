@@ -16,6 +16,7 @@ import {
   shownWorkspace,
   updated,
   waitingIn,
+  withConversation,
   withOlder,
 } from '../../frontend/inbox/inbox.js';
 import type { Section } from '../../frontend/inbox/sections.js';
@@ -93,7 +94,13 @@ test('each section’s list keeps the server’s order as it changes, with the p
     typing: { version: 0, writing: [] },
   };
   // The phone went offline, and live route data began.
-  const offline = { id: 'phone', name: 'Dispatch', online: false, lastSeenAt: 900 };
+  const offline = {
+    id: 'phone',
+    name: 'Dispatch',
+    online: false,
+    lastSeenAt: 900,
+    cantSend: false,
+  };
   const next = updated(inbox, {
     revision: 2,
     reset: false,
@@ -170,6 +177,38 @@ test('each section’s list keeps the server’s order as it changes, with the p
   ]);
   assert.equal(readsNext(read, 'messaging'), undefined);
   assert.deepEqual(ids(read), ids(older));
+});
+
+test('a send’s answer shows as the server had it, unless an update brought the conversation written in since', () => {
+  const inbox: Communications = {
+    revision: 1,
+    waiting: 1,
+    conversations: [conversation('a', 300, 300), conversation('b', 200)],
+    groups: [],
+    more: false,
+    moreTexts: false,
+    moreWork: false,
+    workspaces: [],
+    texting: false,
+    routes: false,
+    phones: [],
+    typing: { version: 0, writing: [] },
+  };
+  // Answered as it waited: the server's answer, Responded.
+  const answered = withConversation(inbox, conversation('a', 400));
+  assert.equal(rows(answered, 'slack')[0]?.row.state, 'responded');
+  // Their next message came while the answer went: it waits, as the update has it.
+  const again = updated(answered, {
+    ...answered,
+    reset: false,
+    conversations: [conversation('a', 500, 500)],
+    groups: [],
+  });
+  const late = withConversation(again, conversation('a', 400));
+  assert.deepEqual(
+    late.conversations.find((each) => each.id === 'a'),
+    conversation('a', 500, 500),
+  );
 });
 
 test('a conversation’s chips follow the list as it changes: a dot while each other waits, one started since by whom it’s with', () => {

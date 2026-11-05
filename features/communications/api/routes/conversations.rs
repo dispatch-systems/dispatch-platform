@@ -36,15 +36,19 @@ pub(super) fn profile(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     let reference = Reference::parse(input.param("id"))?;
     Reply::of(&dispatcher::profile(db, c.state, c.dsp_id(), &reference)?)
 }
+/// Marks a conversation done without an answer, covering what was written up to the message at
+/// `seen`, the latest the page showed, else everything.
 pub(super) fn done(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
-    v::fields(&input.body, &[])?;
+    v::fields(&input.body, &["seen"])?;
     let reference = Reference::parse(input.param("id"))?;
+    let seen = optional_text(&input.body, "seen", PLACE_MOST)?;
     Reply::of(&dispatcher::done(
         db,
         c.state,
         c.dsp_id(),
         &reference,
         c.actor(),
+        (!seen.is_empty()).then_some(seen),
     )?)
 }
 /// Sends a message in a conversation: its `text`, and the `photos` added for it, by text the

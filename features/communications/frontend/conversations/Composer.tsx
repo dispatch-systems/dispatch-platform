@@ -1,4 +1,13 @@
-import { useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react';
 import { ArrowUp, LoaderCircle, Paperclip, Phone, X } from 'lucide-react';
 import type { CommunicationsUpload, ComposeLimits } from '../../api/index.js';
 import type { Attachments } from '../../api/client.js';
@@ -8,6 +17,8 @@ import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import { Shown } from '../display/display.js';
 import { size } from '../shared/format.js';
 import { randomId } from '../../../../core/shell/frontend/lib/random-id.js';
+import type { Drafts } from './drafts.js';
+import { EmojiPicker, finePointer } from './EmojiPicker.js';
 import './composer.css';
 
 // Writing a message, in a conversation or to a group: as much as one may carry, as the API says
@@ -15,10 +26,14 @@ import './composer.css';
 // what refuses one says too. Photos upload as they're added, as the way it goes keeps them
 // (`attachments`): by text, to the DSP's phones, which send them with it. Enter sends, Shift+Enter
 // starts a new line; or, as the member may choose, Enter starts one and Ctrl or ⌘ with it sends.
+// An emoji picked goes in where the writer was, or after the one picked before; with a mouse, the
+// field takes focus back, where a phone's keyboard stays down.
 // While someone writes in a conversation, their teammates see they are, said again every few
 // seconds. A text says the number it goes to by its last digits, when the name doesn't. While what
 // it goes to can't be reached, as a driver holding no work phone, what says so takes the box's
-// place (`instead`), and what's written stays, with its photos, until it can be again.
+// place (`instead`), and what's written stays, with its photos, until it can be again. What's
+// written is kept by the page (`drafts`), so it's there again as the box opens again; sent, what
+// was written and photos added while it went stay.
 
 /** How often writing is said again: the server counts it for six seconds. */
 const TYPING_MS = 3000;
@@ -33,6 +48,8 @@ type Added = {
 };
 
 export function Composer({
+  drafts,
+  draft,
   placeholder,
   writable,
   ready: whom = true,
@@ -44,6 +61,10 @@ export function Composer({
   label,
   instead,
 }: {
+  /** What's written in each box, kept by the page. */
+  drafts: Drafts;
+  /** Which of them this box's is. */
+  draft: string;
   placeholder: string;
   /** Whether it can be written in: Communications works where it goes now. */
   writable: boolean;
@@ -65,12 +86,18 @@ export function Composer({
   instead?: ReactNode;
 }) {
   const { fail } = useFeedback();
-  const [text, setText] = useState('');
+  const text = useSyncExternalStore(
+    useCallback((watch: () => void) => drafts.watch(draft, watch), [drafts, draft]),
+    () => drafts.text(draft),
+  );
   const { enter_sends: enterSends } = useContext(Shown);
   const [photos, setPhotos] = useState<Added[]>([]);
   const picker = useRef<HTMLInputElement>(null);
   const field = useRef<HTMLTextAreaElement>(null);
   const said = useRef(0);
+  // Where the next emoji picked goes in, after the last, until the writer moves in the field.
+  const caret = useRef<number>(undefined);
+  const refocus = useRef(false);
   // Photos still uploading stop, and their previews go, as the composer does.
   const added = useRef(photos);
   useEffect(() => {
@@ -95,6 +122,23 @@ export function Composer({
     element.style.height = `${element.scrollHeight}px`;
   }, [text, away]);
 
+  useLayoutEffect(() => {
+    if (!refocus.current || caret.current === undefined) return;
+    refocus.current = false;
+    field.current!.focus();
+    field.current!.setSelectionRange(caret.current, caret.current);
+  }, [text]);
+
+  const addEmoji = (emoji: string) => {
+    const element = field.current!;
+    const start = caret.current ?? element.selectionStart;
+    const end = caret.current ?? element.selectionEnd;
+    const next = text.slice(0, start) + emoji + text.slice(end);
+    if (limits && next.length > limits.text) return;
+    caret.current = start + emoji.length;
+    refocus.current = finePointer();
+    writing(next);
+  };
   const remove = (key: string) => {
     const photo = added.current.find((each) => each.key === key);
     photo?.controller.abort();
@@ -131,13 +175,21 @@ export function Composer({
       );
   };
   const send = useAction(async () => {
-    await deliver(
-      text.trim(),
-      photos.map((photo) => photo.uploaded!.id),
-    );
+    const going = new Set(photos.map((photo) => photo.key));
+    // What goes leaves the box at once; what's written and photos added while it goes stay.
+    drafts.sending(draft, text);
+    caret.current = undefined;
+    try {
+      await deliver(
+        text.trim(),
+        photos.map((photo) => photo.uploaded!.id),
+      );
+    } catch (cause) {
+      drafts.failed(draft, text);
+      throw cause;
+    }
     for (const photo of photos) URL.revokeObjectURL(photo.shown);
-    setPhotos([]);
-    setText('');
+    setPhotos((now) => now.filter((photo) => !going.has(photo.key)));
     said.current = 0;
   });
   const uploading = photos.some((photo) => !photo.uploaded);
@@ -145,7 +197,7 @@ export function Composer({
   const ready =
     open && whom && !send.busy && !uploading && (text.trim().length > 0 || photos.length > 0);
   const writing = (value: string) => {
-    setText(value);
+    drafts.write(draft, value);
     if (typing && value.trim() && Date.now() - said.current > TYPING_MS) {
       said.current = Date.now();
       typing();
@@ -203,6 +255,7 @@ export function Composer({
             />
           </>
         )}
+        <EmojiPicker disabled={!open} pick={addEmoji} />
         <textarea
           ref={field}
           rows={1}
@@ -212,6 +265,9 @@ export function Composer({
           value={text}
           disabled={!open}
           onChange={(event) => writing(event.target.value)}
+          onSelect={() => {
+            caret.current = undefined;
+          }}
           onKeyDown={(event) => {
             if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
             if (!enterSends && !event.ctrlKey && !event.metaKey) return;

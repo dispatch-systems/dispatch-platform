@@ -13,7 +13,7 @@ use crate::backend::{
         self,
         model::{Outgoing, Status},
         outbox,
-        storage::{MOST_TEXTS, Reported, TextStore as _},
+        storage::{MOST_TEXTS, Reported},
     },
     storage::DOMAIN,
     support::{
@@ -405,7 +405,7 @@ async fn a_text_marked_done_stays_done_filed_under_a_driver_whose_own_still_wait
     let number = filed(&state, &dsp, &early).await.id;
     let at_dsp = dsp.clone();
     state
-        .run(move |db| db.mark_communications_text_done(&at_dsp, &number, "me"))
+        .run(move |db| db.mark_communications_text_done(&at_dsp, &number, "me", None))
         .await
         .unwrap();
     texted(
@@ -568,7 +568,7 @@ async fn a_blocked_numbers_conversation_leaves_the_list_and_never_waits_on_what_
     let id = filed(&state, &dsp, &first).await.id;
     let (at, done) = (dsp.clone(), id.clone());
     state
-        .run(move |db| db.mark_communications_text_done(&at, &done, "me"))
+        .run(move |db| db.mark_communications_text_done(&at, &done, "me", None))
         .await
         .unwrap();
     assert!(block(&state, &dsp, &id, true).await.0);

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Communications, Conversation, Group } from '../../api/index.js';
+import type { Communications, Conversation, DispatchPhone, Group } from '../../api/index.js';
 import {
   getCommunications,
   getCommunicationsUpdates,
@@ -44,9 +44,12 @@ export function useInbox(chosen?: string) {
   const current = useRef<Communications | undefined>(undefined);
   const scope = useRef<string | undefined>(undefined);
   const change = useCallback((next: Communications) => {
-    // The sidebar's count reads again as the page first reads how many wait, and once that
-    // changes.
-    if (current.current?.waiting !== next.waiting)
+    // The sidebar's count, and every page's banner of the phones down, read again as the page
+    // first reads how many wait and how the phones stand, and once either changes.
+    if (
+      current.current?.waiting !== next.waiting ||
+      standing(current.current?.phones) !== standing(next.phones)
+    )
       dataCache.invalidate((key) => key === waitingUrl);
     current.current = next;
     setInbox(next);
@@ -140,6 +143,8 @@ export function useInbox(chosen?: string) {
     [change],
   );
   const [reading, setReading] = useState(false);
+  // Whether the latest read of older ones failed: then read again only as asked again.
+  const [olderFailed, setOlderFailed] = useState(false);
   /** Reads the answered conversations and groups older than the last listed of the section that
    * `shown`'s list reads next: its own, or in Recents the one it stops at. */
   const readOlder = useCallback(
@@ -149,6 +154,7 @@ export function useInbox(chosen?: string) {
       const last = section && lastAnswered(listed, section);
       if (!listed || !section || !last || reading) return;
       setReading(true);
+      setOlderFailed(false);
       try {
         const asked = scope.current;
         const older = await olderConversations(last, sectionNamed(section).listing(asked));
@@ -157,11 +163,16 @@ export function useInbox(chosen?: string) {
           change(withOlder(current.current, older, section));
       } catch (cause) {
         setError(messageOf(cause));
+        setOlderFailed(true);
       } finally {
         setReading(false);
       }
     },
     [change, reading],
   );
-  return { inbox, team, changed, error, refresh, show, showGroup, readOlder };
+  return { inbox, team, changed, error, refresh, show, showGroup, readOlder, olderFailed };
 }
+
+/** How the DSP's phones stand, as every page's banner reads it: each online, or able to send. */
+const standing = (phones: readonly DispatchPhone[] | undefined) =>
+  phones?.map((phone) => `${phone.id}:${phone.online}:${phone.cantSend}`).join() ?? '';

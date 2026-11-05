@@ -5,7 +5,7 @@
 use crate::backend::{
     changes::changed_conversation,
     model::ConversationState,
-    storage::{Message, Sent, opened, sent_out, settle, settle_with},
+    storage::{Message, Sent, mark_done, opened, sent_out, settle, settle_with},
 };
 use dispatch_core::{
     Error, Result,
@@ -229,10 +229,11 @@ pub trait GroupStore {
         dsp: &str,
         ids: &[String],
     ) -> Result<Vec<GroupMessage>>;
-    /// The latest answer to each of the groups `ids` names.
+    /// The latest answer to each of the groups `ids` names, as the group orders them
+    /// (`place`).
     fn latest_communications_answers(&self, dsp: &str, ids: &[String]) -> Result<Vec<Message>>;
     /// The group's messages from the DSP and its answers before `before`, the time written and
-    /// the ID, the latest `most`, in the order written: which of each.
+    /// the ID, the latest `most`, in the group's order (`place`): which of each.
     fn communications_group_entries(
         &self,
         dsp: &str,
@@ -255,9 +256,17 @@ pub trait GroupStore {
         dsp: &str,
         group: &str,
     ) -> Result<Vec<(String, String, i64)>>;
-    /// Marks each conversation listed under the group done, as the member `by`, while it waits:
-    /// how many were.
-    fn mark_communications_group_done(&self, dsp: &str, group: &str, by: &str) -> Result<usize>;
+    /// Marks each conversation listed under the group done, as the member `by`, while it waits,
+    /// covering what was written up to `seen`, the latest of its messages and answers the member
+    /// was shown, when it was written and its ID, in the group's order (`place`), else up to now
+    /// (`mark_done`): how many were.
+    fn mark_communications_group_done(
+        &self,
+        dsp: &str,
+        group: &str,
+        by: &str,
+        seen: Option<(i64, &str)>,
+    ) -> Result<usize>;
     /// The group messages written since `fresh` due to go to one of their people by `at`, the
     /// longest due first, `most` at most.
     fn due_communications_deliveries(
@@ -506,7 +515,7 @@ impl GroupStore for Store {
             "SELECT m.* FROM communications_messages m \
              WHERE m.group_id IN (SELECT value FROM json_each(?)) AND m.direction='in' AND m.id=(\
              SELECT id FROM communications_messages WHERE group_id=m.group_id \
-             AND direction='in' ORDER BY at DESC,id DESC LIMIT 1)",
+             AND direction='in' ORDER BY at DESC,ts DESC,id DESC LIMIT 1)",
             [serde_json::to_string(ids)?],
         )
     }
@@ -518,14 +527,17 @@ impl GroupStore for Store {
         most: usize,
     ) -> Result<(Vec<GroupMessage>, Vec<Message>)> {
         let db = self.dsp(dsp)?;
-        let (at, id) = before.unwrap_or((i64::MAX, "\u{10FFFF}"));
+        let (at, place, id) = match before {
+            Some((at, id)) => (at, place(&db, at, id)?, id),
+            None => (i64::MAX, END.to_owned(), END),
+        };
         let rows: Vec<(String, String)> = db.query_as(
             "SELECT kind,id FROM (\
-             SELECT 'sent' kind,id,at FROM communications_group_messages WHERE group_id=?1 \
-             UNION ALL SELECT 'answer',id,at FROM communications_messages \
+             SELECT 'sent' kind,id,at,'' place FROM communications_group_messages \
+             WHERE group_id=?1 UNION ALL SELECT 'answer',id,at,ts FROM communications_messages \
              WHERE group_id=?1 AND direction='in') \
-             WHERE at<?2 OR (at=?2 AND id<?3) ORDER BY at DESC,id DESC LIMIT ?4",
-            params![group, at, id, most as i64],
+             WHERE (at,place,id)<(?2,?3,?4) ORDER BY at DESC,place DESC,id DESC LIMIT ?5",
+            params![group, at, place, id, most as i64],
         )?;
         let of = |kind: &str| -> Result<String> {
             Ok(serde_json::to_string(
@@ -543,7 +555,7 @@ impl GroupStore for Store {
         )?;
         let answers = db.query_as(
             "SELECT * FROM communications_messages \
-             WHERE id IN (SELECT value FROM json_each(?)) ORDER BY at,id",
+             WHERE id IN (SELECT value FROM json_each(?)) ORDER BY at,ts,id",
             [of("answer")?],
         )?;
         Ok((sent, answers))
@@ -592,18 +604,26 @@ impl GroupStore for Store {
             [group],
         )
     }
-    fn mark_communications_group_done(&self, dsp: &str, group: &str, by: &str) -> Result<usize> {
+    fn mark_communications_group_done(
+        &self,
+        dsp: &str,
+        group: &str,
+        by: &str,
+        seen: Option<(i64, &str)>,
+    ) -> Result<usize> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             let waiting: Vec<(String,)> = db.query_as(
                 "SELECT id FROM communications_conversations WHERE group_id=? AND state='waiting'",
                 [group],
             )?;
+            let seen = match seen {
+                Some((at, id)) => Some((at, place(&db, at, id)?)),
+                None => None,
+            };
             for (conversation,) in &waiting {
-                db.exec(
-                    "UPDATE communications_conversations SET done_at=?,done_by=? WHERE id=?",
-                    params![now(), by, conversation],
-                )?;
+                let seen = seen.as_ref().map(|(at, ts)| (*at, ts.as_str()));
+                mark_done(&db, conversation, by, seen)?;
                 settle(&db, conversation)?;
             }
             Ok(waiting.len())
@@ -864,4 +884,19 @@ pub(crate) fn settle_group(db: &Db, group: &str) -> Result<()> {
         [group],
     )?;
     changed_conversation(db, group)
+}
+
+/// Where after `END` nothing is: a first page's `before`.
+const END: &str = "\u{10FFFF}";
+
+/// Where the group's message or answer `id`, written at `at`, comes among those of its
+/// millisecond, as its page, its paging and its Done order them: the DSP's messages to it first
+/// (an empty place), as each went to its people at a time of its own; then each answer by its
+/// Slack `ts`; then each by its ID.
+fn place(db: &Db, at: i64, id: &str) -> Result<String> {
+    let answer: Option<(String,)> = db.one_as(
+        "SELECT ts FROM communications_messages WHERE id=? AND at=?",
+        params![id, at],
+    )?;
+    Ok(answer.map_or_else(String::new, |(ts,)| ts))
 }

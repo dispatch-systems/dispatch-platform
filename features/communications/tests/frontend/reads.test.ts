@@ -108,3 +108,50 @@ test('a conversation read opens again as read until an update changes it, or one
   await answer();
   stop();
 });
+
+test('a read of older ones that failed is held as failed until it’s asked again, which reads them', async () => {
+  const at = Date.UTC(2026, 9, 26, 16);
+  const latest = {
+    ...read('tc_a'),
+    more: true,
+    messages: [
+      {
+        id: 'm1',
+        ts: `${at}:m1`,
+        direction: 'in' as const,
+        text: 'Running late',
+        at,
+        editedAt: null,
+        inThread: false,
+        sender: null,
+        files: [],
+        group: null,
+        status: null,
+        number: '+14255550199',
+      },
+    ],
+  };
+  const asked: string[] = [];
+  let failing = false;
+  globalThis.fetch = ((url: string) => {
+    asked.push(url);
+    return Promise.resolve(
+      failing
+        ? new Response(JSON.stringify({ error: 'unavailable' }), { status: 503 })
+        : new Response(JSON.stringify(url.includes('?') ? { ...latest, more: false } : latest)),
+    );
+  }) as typeof fetch;
+  const reads = new ConversationReads();
+  reads.open('tc_a');
+  await new Promise((settled) => setImmediate(settled));
+  failing = true;
+  await reads.readOlder('tc_a');
+  assert.equal(reads.held('tc_a').olderFailed, true);
+  assert.equal(reads.held('tc_a').older, false);
+  assert.equal(asked.length, 2);
+  failing = false;
+  await reads.readOlder('tc_a');
+  assert.equal(asked.length, 3);
+  assert.equal(reads.held('tc_a').olderFailed, false);
+  assert.equal(reads.held('tc_a').opened?.more, false);
+});

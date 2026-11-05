@@ -127,6 +127,118 @@ test("Only those who manage the DSP's phones or connections see or pair them", a
   assert.equal((await member.post('/api/dsp/communications/phones/pairing')).status, 403);
 });
 
+test('A phone says how it stands with each wait, which its card and every page show', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const owner = await f.client();
+  const north = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
+  await owner.select(north.id);
+  const at = f.at(demo.memberDsp);
+  const pairing = await owner.post('/api/dsp/communications/phones/pairing');
+  const paired = await f.request(
+    '/api/communications/phone/pair',
+    { code: pairing.value.code, number: '', model: 'Pixel 8a', version: '1.4.0' },
+    at,
+  );
+  const id = paired.value.phone.id;
+  const key = { ...at, authorization: `Bearer ${paired.value.key}` };
+  // A text waiting for it to send, so each wait answers at once.
+  const text = { clientId: 'sms-1', direction: 'in', number: '4255550142', body: 'Hi', at: 1 };
+  await f.request('/api/communications/phone/texts', { texts: [text] }, key);
+  let conversation = '';
+  await until(async () => {
+    const listed: { id: string; number?: string }[] = (await owner.read('/api/dsp/communications'))
+      .conversations;
+    conversation = listed.find((each) => each.number === '+14255550142')?.id ?? '';
+    return conversation !== '';
+  });
+  await owner.post(`/api/dsp/communications/conversations/${conversation}/messages`, {
+    text: 'Hello',
+  });
+  const wait = (health?: unknown) =>
+    f.request(
+      '/api/communications/phone/outbox',
+      undefined,
+      health === undefined
+        ? key
+        : {
+            ...key,
+            'x-dispatch-health': typeof health === 'string' ? health : JSON.stringify(health),
+          },
+    );
+  const card = async () =>
+    (await owner.read('/api/dsp/communications/phones')).phones.find(
+      (phone: { id: string }) => phone.id === id,
+    ).health;
+  /** The phones every page's banner reads, the demo's stand-in left out. */
+  const banner = async () =>
+    (await owner.read('/api/dsp/communications/waiting')).phones.map(
+      (phone: { id: string; cantSend: boolean }) => [phone.id, phone.cantSend],
+    );
+
+  // An app older than that says nothing of it.
+  assert.equal((await wait()).status, 200);
+  assert.equal(await card(), null);
+  assert.deepEqual(await banner(), [[id, false]]);
+
+  const health = {
+    setup: ['battery', 'chat_features'],
+    read: true,
+    send: false,
+    sim: 'ready',
+    waiting: { texts: 12, files: 1, statuses: 0 },
+    undownloaded: 2,
+    textingApp: 'com.google.android.apps.messaging',
+    sendError: { error: "Sending texts isn't allowed on the phone", at: 1 },
+    unexpected: { error: 'java.lang.IllegalStateException', where: 'Reading texts', at: 2 },
+  };
+  assert.equal((await wait(health)).status, 200);
+  assert.deepEqual(await card(), {
+    cantSend: true,
+    cantRead: false,
+    noSim: false,
+    noSignal: false,
+    setupUndone: true,
+    waiting: 12,
+    undownloaded: 2,
+  });
+  assert.deepEqual(await banner(), [[id, true]]);
+  // With no SIM it can't send either; with one and no signal, it can once there is.
+  const absent = { ...health, send: true, sim: 'absent' };
+  assert.equal((await wait(absent)).status, 200);
+  assert.equal((await card()).noSim, true);
+  assert.deepEqual(await banner(), [[id, true]]);
+  // Texting turned off, it can't count the pictures it hasn't downloaded, and says the rest.
+  const off = { ...absent, sim: 'ready', read: false, send: false, undownloaded: null };
+  assert.equal((await wait(off)).status, 200);
+  assert.deepEqual(
+    [(await card()).cantRead, (await card()).undownloaded, await banner()],
+    [true, null, [[id, true]]],
+  );
+  const well = { ...absent, setup: [], sim: 'no_signal', sendError: null, unexpected: null };
+  assert.equal((await wait(well)).status, 200);
+  assert.deepEqual(await banner(), [[id, false]]);
+
+  // Past its limits it's refused, and what it said before kept: never a text or a number where
+  // the app says what went wrong.
+  for (const refused of [
+    '{',
+    { ...well, more: true },
+    { ...well, setup: ['Battery'] },
+    { ...well, waiting: { texts: -1, files: 0, statuses: 0 } },
+    { ...well, sim: 'roaming' },
+    { ...well, unexpected: { error: 'Call 2065550100', where: 'Reading texts', at: 1 } },
+    { ...well, unexpected: { error: 'java.io.IOException', where: 'Texting 555 0100', at: 1 } },
+    { ...well, sendError: { error: 'x'.repeat(501), at: 1 } },
+    { ...well, setup: Array.from({ length: 400 }, () => 'battery') },
+    { ...well, textingApp: 'Messages +1 206 555 0100' },
+  ]) {
+    const answer = await wait(refused);
+    assert.equal(answer.value.error, 'invalid_input', JSON.stringify(refused).slice(0, 80));
+  }
+  assert.equal((await card()).noSignal, true);
+});
+
 /** Each build: its version and versionCode, and its APK, as a release's package carries them. */
 const BUILDS = {
   dev: { version: '1.3.1-dev.14', versionCode: 14, apk: 'dev apk' },
@@ -245,6 +357,8 @@ test("A DSP's address hands out its server's build of the app to anyone, and pho
   assert.equal(answered.status, 201, answered.body);
   const outbox = await f.request('/api/communications/phone/outbox', undefined, key);
   assert.equal(outbox.value.texts[0].body, 'Hello');
+  // Never started ten minutes after it was queued.
+  assert.equal(outbox.value.texts[0].expires, answered.value.message.at + 10 * 60 * 1000);
   assert.deepEqual(outbox.value.app, { version: '1.3.1-dev.14', versionCode: 14 });
 
   // It says the app it runs with each wait, kept as its own: one older than the version handed
