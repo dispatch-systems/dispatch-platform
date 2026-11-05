@@ -3,7 +3,10 @@ package com.dspdispatch.relay.texts
 import java.io.File
 import kotlin.math.sqrt
 
-/** Android's pictures: scaled down to fit a picture message, and made JPEGs Dispatch's pages show. */
+/**
+ * Android's pictures: scaled down to fit a picture message, and made JPEGs Dispatch's pages show,
+ * of pictures and of videos' first frames.
+ */
 interface Pictures {
     /** Whether Android decodes HEIF pictures here, as it does from Android 9. */
     val decodesHeif: Boolean
@@ -20,6 +23,12 @@ interface Pictures {
      * [OutOfMemoryError] when the phone hasn't the memory for it.
      */
     fun jpeg(picture: ByteArray, most: Int, longest: Int): ByteArray?
+
+    /**
+     * The first frame of the video in [video] as a JPEG upright of at most [most] bytes and
+     * [longest] pixels on its longest side, or null when Android can't read one of it.
+     */
+    fun frame(video: File, most: Int, longest: Int): ByteArray?
 }
 
 /** A picture's size, or the largest a carrier takes, in pixels. */

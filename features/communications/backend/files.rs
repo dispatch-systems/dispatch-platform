@@ -65,14 +65,18 @@ pub const BYTES: Folder = Folder {
 dispatch_core::text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     #[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]
-    /// Where a file stands: being downloaded from Slack; kept in Dispatch; too large to keep;
-    /// not one Slack hosts, as a link to elsewhere; or given up after failing.
+    /// Where a file stands: being downloaded from Slack, or sent by a phone; kept in Dispatch;
+    /// too large to keep; not one Slack hosts, as a link to elsewhere; or given up after failing.
+    /// A text's video may be kept on its phone instead, until someone plays it, or be gone from
+    /// it; Slack's never are.
     pub enum FileStatus {
         Waiting => "waiting",
         Kept => "kept",
         TooLarge => "too_large",
         Unavailable => "unavailable",
         Failed => "failed",
+        OnPhone => "on_phone",
+        Gone => "gone",
     }
 }
 

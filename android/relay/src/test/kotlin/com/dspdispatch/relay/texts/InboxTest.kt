@@ -109,11 +109,19 @@ class InboxTest {
         read()
         assertTrue(queue.texts.isEmpty())
         provider.writing.clear()
-        mms(5, PAIRED + 10, Direction.IN, listOf("(206) 555-0105"), "Door", Part("content://mms/part/9", "door.jpg", "image/jpeg", 48_213))
+        mms(
+            5, PAIRED + 10, Direction.IN, listOf("(206) 555-0105"), "Door",
+            Part("content://mms/part/9", "door.jpg", "image/jpeg", 48_213),
+            Part("content://mms/part/10", "door.mp4", "video/mp4", 1_900_000),
+        )
         read()
         assertEquals(listOf("mms-5-${PAIRED + 10}"), queue.texts.keys.toList())
+        // Its video stays on the phone until someone plays it.
         assertEquals(
-            listOf(WaitingFile("mms-5-${PAIRED + 10}", 0, "content://mms/part/9", "door.jpg", "image/jpeg", 48_213, id = 1)),
+            listOf(
+                WaitingFile("mms-5-${PAIRED + 10}", 0, "content://mms/part/9", "door.jpg", "image/jpeg", 48_213, id = 1),
+                WaitingFile("mms-5-${PAIRED + 10}", 1, "content://mms/part/10", "door.mp4", "video/mp4", 1_900_000, onPhone = true, id = 2),
+            ),
             queue.files,
         )
     }

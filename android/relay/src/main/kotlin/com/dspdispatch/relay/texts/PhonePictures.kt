@@ -10,6 +10,7 @@ import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.PorterDuff
 import android.graphics.Rect
+import android.media.MediaMetadataRetriever
 import android.os.Build
 import androidx.core.graphics.createBitmap
 import androidx.exifinterface.media.ExifInterface
@@ -69,6 +70,33 @@ object PhonePictures : Pictures {
             fit(most, maxOf(decoded.width, decoded.height)) { side, quality -> jpeg(decoded, side, quality) }
         } finally {
             decoded.recycle()
+        }
+    }
+
+    override fun frame(video: File, most: Int, longest: Int): ByteArray? {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(video.path)
+            // Turned upright as the video says, as Android's retriever turns each frame it gives,
+            // and decoded no larger than it's kept where Android can: never scaled up.
+            val frame = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                val sides = listOf(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH, MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+                    .mapNotNull { retriever.extractMetadata(it)?.toIntOrNull() }
+                val side = minOf(longest, sides.maxOrNull() ?: longest)
+                retriever.getScaledFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, side, side)
+            } else {
+                retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            } ?: return null
+            try {
+                fit(most, minOf(longest, maxOf(frame.width, frame.height))) { side, quality -> jpeg(frame, side, quality) }
+            } finally {
+                frame.recycle()
+            }
+        } catch (_: RuntimeException) {
+            // A file the retriever can't read as a video it knows.
+            null
+        } finally {
+            retriever.release()
         }
     }
 

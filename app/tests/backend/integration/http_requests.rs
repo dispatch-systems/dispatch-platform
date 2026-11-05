@@ -448,7 +448,8 @@ async fn the_request_pipeline_checks_host_origin_content_type_and_size() {
         assert_eq!(
             answer.header("content-security-policy"),
             "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' \
-             'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' blob: ws:; font-src 'self'; \
+             'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' \
+             blob: ws:; font-src 'self'; \
              object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
         );
     }

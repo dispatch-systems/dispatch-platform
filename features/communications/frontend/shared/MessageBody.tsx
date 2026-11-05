@@ -1,24 +1,35 @@
-import { FileText } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import { FileText, LoaderCircle, Play } from 'lucide-react';
 import type { Message, MessageFile } from '../../api/index.js';
-import { download } from '../../../../core/shell/frontend/runtime/transfer.js';
+import type { Attachments } from '../../api/client.js';
+import { download, picture } from '../../../../core/shell/frontend/runtime/transfer.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { usePicture } from '../../../../core/shell/frontend/runtime/usePicture.js';
-import { fileStatus, isPhoto, size } from './format.js';
+import { fileStatus, isPhoto, isVideo, size } from './format.js';
 import { useViewPhoto } from './PhotoViewer.js';
 import './message-body.css';
 
-/** One message: its text, marked if edited in Slack, then its photos and files, read from where
- * the way it went keeps them (`address`). */
+/** The most bytes of a video the page plays; a larger one is downloaded. */
+const PLAYS_MOST = 25 * 1024 ** 2;
+
+/** One message: its text, marked if edited in Slack, then its photos, videos and files, read from
+ * where the way it went keeps them (`attachments`). */
 export function MessageBody({
   message,
-  address,
+  attachments,
 }: {
   message: Pick<Message, 'text' | 'editedAt' | 'files'> & Partial<Pick<Message, 'status'>>;
-  /** Where a photo or file of it is read from, by the way it went. */
-  address: (id: string) => string;
+  /** Where a photo, video or file of it is read from, by the way it went. */
+  attachments: Pick<Attachments, 'address' | 'preview' | 'fetch'>;
 }) {
   const photos = message.files.filter((file) => file.status === 'kept' && isPhoto(file.mime));
-  const files = message.files.filter((file) => !photos.includes(file));
+  const videos = message.files.filter(
+    (file) =>
+      isVideo(file.mime) &&
+      file.size <= PLAYS_MOST &&
+      (file.status === 'kept' || (file.status === 'on_phone' && attachments.fetch)),
+  );
+  const files = message.files.filter((file) => !photos.includes(file) && !videos.includes(file));
   return (
     <>
       {message.text && (
@@ -28,10 +39,13 @@ export function MessageBody({
         </div>
       )}
       {photos.map((photo) => (
-        <Photo key={photo.id} photo={photo} address={address} />
+        <Photo key={photo.id} photo={photo} address={attachments.address} />
+      ))}
+      {videos.map((video) => (
+        <Video key={video.id} video={video} attachments={attachments} />
       ))}
       {files.map((file) => (
-        <Attached key={file.id} file={file} address={address} />
+        <Attached key={file.id} file={file} address={attachments.address} />
       ))}
     </>
   );
@@ -60,6 +74,63 @@ function Photo({ photo, address }: { photo: MessageFile; address: (id: string) =
 /** Where `file` is read from, at the version of its bytes, so the browser keeps it. */
 const versioned = (file: MessageFile, address: (id: string) => string) =>
   file.version ? `${address(file.id)}?v=${file.version}` : address(file.id);
+
+/**
+ * A video: the picture of its first frame, where its phone sent one, under a play button.
+ * Pressed, it's asked for, from its phone where it keeps it, as the server says it stands now
+ * rather than as the message last said; then fetched whole, and played over the page, or
+ * downloaded where the browser can't play it. Unmounted as it's fetched, it's left.
+ */
+function Video({
+  video,
+  attachments,
+}: {
+  video: MessageFile;
+  attachments: Pick<Attachments, 'address' | 'preview' | 'fetch'>;
+}) {
+  const view = useViewPhoto();
+  const url = attachments.address(video.id);
+  const [box, still, lost] = usePicture<HTMLButtonElement>(
+    video.preview ? attachments.preview?.(video.id) : undefined,
+  );
+  const playing = useRef<AbortController>(undefined);
+  useEffect(() => () => playing.current?.abort(), []);
+  const play = useAction(async () => {
+    const stop = new AbortController();
+    playing.current = stop;
+    try {
+      const asked = attachments.fetch && (await attachments.fetch(video.id, stop.signal));
+      if (asked && !asked.kept) throw new Error("The phone didn't send the video. Try again.");
+      // One the browser surely can't play; one it may not, the viewer saves if it can't.
+      if (document.createElement('video').canPlayType(video.mime) === '')
+        return await download(url);
+      const bytes = await picture(url, stop.signal);
+      if (!stop.signal.aborted)
+        view({ name: video.name, src: URL.createObjectURL(bytes), video: true });
+    } catch (error) {
+      if (!stop.signal.aborted) throw error;
+    }
+  });
+  return (
+    <button
+      ref={box}
+      className="photo video"
+      aria-label={`Play ${video.name}`}
+      aria-busy={play.busy}
+      disabled={play.busy}
+      onClick={() => void play.run()}
+    >
+      {still && <img src={still} alt="" onError={lost} />}
+      <span className="play">
+        {play.busy ? (
+          <LoaderCircle className="spin" size={22} aria-hidden="true" />
+        ) : (
+          <Play size={22} aria-hidden="true" />
+        )}
+      </span>
+    </button>
+  );
+}
 
 /** A file that isn't a photo, or one Dispatch doesn't keep: its name, and its size or why. */
 function Attached({ file, address }: { file: MessageFile; address: (id: string) => string }) {

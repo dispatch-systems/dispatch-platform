@@ -115,7 +115,10 @@ class Inbox(
         return numbers.mapIndexed { index, number ->
             val clientId = if (row.table == Table.MMS && row.direction == Direction.OUT) "${row.key}-$index" else row.key
             val files = parts.mapIndexed { position, part ->
-                WaitingFile(clientId, position, part.uri, part.name.limited(NAME_MOST), part.mime.limited(MIME_MOST), part.size)
+                WaitingFile(
+                    clientId, position, part.uri, part.name.limited(NAME_MOST), part.mime.limited(MIME_MOST), part.size,
+                    onPhone = video(part.mime),
+                )
             }
             Waiting(clientId, row.direction, number.trim(), body, row.at) to files
         }
@@ -143,6 +146,9 @@ class Inbox(
         private fun List<Row>.highest(table: Table, read: Long): Long = filter { it.table == table }.maxOfOrNull(Row::id)?.coerceAtLeast(read) ?: read
     }
 }
+
+/** Whether a part of type [mime] is a video, which the phone keeps until someone plays it. */
+internal fun video(mime: String) = mime.startsWith("video/")
 
 /** At most [most] characters of this, counting as Dispatch does. */
 internal fun String.limited(most: Int): String =

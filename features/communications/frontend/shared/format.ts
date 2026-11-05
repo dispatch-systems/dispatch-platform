@@ -95,6 +95,8 @@ export const fileStatus: Record<Exclude<FileStatus, 'kept'>, string> = {
   too_large: 'Too large',
   unavailable: 'Hosted elsewhere',
   failed: "Couldn't download",
+  on_phone: 'On the phone',
+  gone: 'No longer on the phone',
 };
 /** How a text Dispatch sent went, as it reads. */
 export const textStatus: Record<TextStatus, string> = {
@@ -135,17 +137,19 @@ export function size(bytes: number) {
 }
 /** Whether a file is a photo the page shows. */
 export const isPhoto = (mime: string) => /^image\/(png|jpeg|gif|webp|avif)$/.test(mime);
+/** Whether a file is a video. */
+export const isVideo = (mime: string) => mime.startsWith('video/');
 
 /** A message as a row of the list shows it: its text, else what it holds. */
 export function preview(message: Pick<Message, 'text' | 'files'>) {
   if (message.text.trim()) return message.text;
   const [first] = message.files;
   if (!first) return '';
-  return message.files.every((file) => isPhoto(file.mime))
-    ? message.files.length > 1
-      ? `${message.files.length} photos`
-      : 'Photo'
-    : first.name;
+  if (message.files.every((file) => isPhoto(file.mime)))
+    return message.files.length > 1 ? `${message.files.length} photos` : 'Photo';
+  if (message.files.every((file) => isVideo(file.mime)))
+    return message.files.length > 1 ? `${message.files.length} videos` : 'Video';
+  return first.name;
 }
 
 /** The identity tone someone's initials are drawn in. */

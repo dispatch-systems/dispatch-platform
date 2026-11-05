@@ -1,5 +1,6 @@
 //! The bytes of the pictures and files texts carry: those of a text the phone reported, which it
-//! sends, and those of a text Dispatch has for it, which it fetches.
+//! sends, with the picture of the first frame of a video it keeps, or that it has the video no
+//! more; and those of a text Dispatch has for it, which it fetches.
 use super::access::Phone;
 use crate::backend::{
     phone::{files, storage::FileStore},
@@ -7,6 +8,7 @@ use crate::backend::{
 };
 use dispatch_core::{
     Error, Result, State,
+    db::now,
     foundation::validate as v,
     server::http::{
         input::{Input, Reply},
@@ -31,6 +33,46 @@ pub(super) async fn file_in(
     filing::changing(&state, &caller.dsp, move |db| {
         let caller = access.authorize(db, &asked)?;
         let text = files::keep_reported(db, &caller.dsp, &caller.device.id, &id, &arrived)?;
+        Ok(((), vec![text]))
+    })
+    .await?;
+    Ok(Reply::ok())
+}
+/// Keeps the picture of the first frame of a video of a text the phone reported, which it keeps,
+/// which filing hears of.
+pub(super) async fn preview_in(
+    state: Arc<State>,
+    input: Input,
+    access: Phone,
+    bytes: Upload,
+) -> Result<Reply> {
+    v::fields(&input.query, &[])?;
+    let asked = input.clone();
+    let caller = state.read(move |db| access.authorize(db, &asked)).await?;
+    let arrived = files::receive_preview(&state, &caller.dsp, bytes).await?;
+    let (asked, id) = (input.clone(), input.param("id").to_owned());
+    filing::changing(&state, &caller.dsp, move |db| {
+        let caller = access.authorize(db, &asked)?;
+        let text = files::keep_preview(db, &caller.dsp, &caller.device.id, &id, &arrived)?;
+        Ok(((), vec![text]))
+    })
+    .await?;
+    Ok(Reply::ok())
+}
+/// Notes the phone has a video it kept no more, which filing hears of.
+pub(super) async fn gone(state: Arc<State>, input: Input, access: Phone) -> Result<Reply> {
+    v::fields(&input.query, &[])?;
+    v::fields(&input.body, &[])?;
+    let caller = state
+        .read({
+            let asked = input.clone();
+            move |db| access.authorize(db, &asked)
+        })
+        .await?;
+    let (asked, id) = (input.clone(), input.param("id").to_owned());
+    filing::changing(&state, &caller.dsp, move |db| {
+        let caller = access.authorize(db, &asked)?;
+        let text = db.phones_file_gone(&caller.dsp, &caller.device.id, &id, now())?;
         Ok(((), vec![text]))
     })
     .await?;

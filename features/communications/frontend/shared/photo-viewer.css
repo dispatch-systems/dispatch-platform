@@ -1,4 +1,4 @@
-/* A photo over the page, whole, on a dark backdrop, its buttons in the corner above it. */
+/* A photo or video over the page, whole, on a dark backdrop, its buttons in the corner above it. */
 .photo-viewer {
   position: fixed;
   inset: 0;
@@ -12,7 +12,8 @@
 }
 /* As large as the space inside allows at its own shape (`--shape`, its width over its height),
    small photos too; until that's known, no larger than it is. */
-.photo-viewer img {
+.photo-viewer img,
+.photo-viewer video {
   width: min(100cqw, 100cqh * var(--shape));
   max-width: 100%;
   max-height: 100%;

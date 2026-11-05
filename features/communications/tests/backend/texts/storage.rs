@@ -27,7 +27,8 @@ use std::sync::Arc;
 
 /// Puts the DSP's database back as the build before migration 9 left it: the phone side's texts
 /// and files as Communications' migration 7 makes them, with nothing filing keeps on them; and the
-/// copy, and how far it read, as migrations 4 and 6 make them.
+/// copy, and how far it read, as migrations 4 and 6 make them. The files have migration 16's
+/// columns too, as the phone side reports them now.
 fn before_filing(db: &Store, dsp: &str) {
     let database = db.dsp(dsp).unwrap();
     database
@@ -35,7 +36,7 @@ fn before_filing(db: &Store, dsp: &str) {
         .execute_batch("DROP TABLE phones_files; DROP TABLE phones_texts;")
         .unwrap();
     drop(database);
-    migrate(db, dsp, &[4, 6, 7]);
+    migrate(db, dsp, &[4, 6, 7, 16]);
 }
 /// The text a phone reported from `number` at `at`, saying `body`, with `pictures` pictures whose
 /// bytes haven't come: its ID, and its pictures'.
@@ -52,6 +53,7 @@ fn reported(db: &Store, dsp: &str, number: &str, body: &str, at: i64, pictures: 
                 name: format!("door{index}.jpg"),
                 mime: "image/jpeg".into(),
                 size: 100,
+                on_phone: false,
             })
             .collect(),
     };
@@ -350,7 +352,7 @@ async fn texts_the_copy_never_read_before_migration_9_are_filed_by_the_next_upke
             drop(database);
             // After the copy last read: the picture's bytes come, the answer fails, and a text
             // comes from a number new to the DSP.
-            db.phones_file_arrived(&at_dsp, &phone, &pictured.files[0], "sha", 4)?;
+            db.phones_file_arrived(&at_dsp, &phone, &pictured.files[0], "sha", 4, 8_000)?;
             let attempt = db.phones_outbox(&at_dsp, &phone)?[0].1;
             let report = StatusReport {
                 id: answer.clone(),

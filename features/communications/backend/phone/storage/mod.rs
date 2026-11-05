@@ -10,7 +10,8 @@ mod texts;
 
 pub use devices::{AppVersion, Device, DeviceStore, PAIRING_MS, Pairing};
 pub(crate) use devices::{add_app_version_codes, add_health, add_pairing_ids};
-pub use files::{FileStore, ReportedFile};
+pub(crate) use files::add_on_phone;
+pub use files::{FileStore, ReportedFile, Wanting};
 pub use texts::{Kept, MOST_TEXTS, Reported, StatusReport, TextStore, written};
 
 use dispatch_core::{

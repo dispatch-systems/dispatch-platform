@@ -16,8 +16,9 @@ import kotlinx.serialization.SerializationException
 /**
  * Reports what the [queue] holds to the phone's DSP: its texts in batches, each until Dispatch
  * answers it, then each file's bytes, streamed from the [provider] while [texting] allows it, or
- * from the [jpegs] made of its HEIF pictures, both read on [io]. A file whose bytes can't be read
- * as nothing expected is told to [unexpected], and left.
+ * from the [jpegs] made of its HEIF pictures, both read on [io]. A video stays on the phone: only a
+ * JPEG of its first frame goes, and its bytes once Dispatch asks for them ([Fetches]). A file whose
+ * bytes can't be read as nothing expected is told to [unexpected], and left.
  */
 class Reporter(
     private val dispatch: Dispatch,
@@ -66,7 +67,7 @@ class Reporter(
             dispatch.texts(site, key, report)
         } catch (refusal: Refusal) {
             if (refusal.code != Refusal.INVALID_INPUT && refusal.code != Refusal.REQUEST_TOO_LARGE) throw refusal
-            if (report.texts.size == 1) refused(waiting.first { it.text.clientId == report.texts.single().clientId }) else most = report.texts.size / 2
+            if (report.texts.size == 1) refusedAlone(waiting.first { it.text.clientId == report.texts.single().clientId }) else most = report.texts.size / 2
             return true
         }
         most = MOST_TEXTS
@@ -83,6 +84,7 @@ class Reporter(
         val file = queue.upload() ?: return false
         val id = checkNotNull(file.dispatchId)
         texting.await()
+        if (file.onPhone) return keepOnPhone(site, key, id, file)
         val parts = if (jpegs.holds(file.uri)) jpegs else provider
         try {
             // Measured as it's sent: the part may have changed since it was read, and Dispatch fails
@@ -96,6 +98,27 @@ class Reporter(
         }
         queue.uploaded(file.id)
         withContext(io) { jpegs.remove(file.uri) }
+        return true
+    }
+
+    /**
+     * Sends a JPEG of the first frame of [file], a video Dispatch knows as [id], in place of its
+     * bytes, and keeps it on the phone. One Android can't make a JPEG of, or can't read as nothing
+     * expected, or Dispatch would refuse again however often it's sent, is kept without one.
+     */
+    private suspend fun keepOnPhone(site: String, key: String, id: String, file: WaitingFile): Boolean {
+        val frame = try {
+            withContext(io) { reading { jpegs.frame(file) { provider.open(file.uri) } } }
+        } catch (unreadable: Unreadable) {
+            unexpected.happened("Reading a video's first frame", unreadable)
+            null
+        }
+        try {
+            if (frame != null) dispatch.preview(site, key, id, frame)
+        } catch (refusal: Refusal) {
+            if (!refusal.lasting) throw refusal
+        }
+        queue.keptOnPhone(file.id, OnPhone(id, file.uri))
         return true
     }
 
@@ -125,6 +148,16 @@ class Reporter(
             val size = provider.size(file.uri)
             if (size == null || size > Inbox.LARGEST) null else jpegs.of(file) { provider.open(file.uri) }
         } ?: file
+    }
+
+    /**
+     * Leaves [text], which Dispatch refuses alone: one with videos the phone keeps is reported
+     * again with each sent as its bytes instead, as a Dispatch from before phones kept them, as one
+     * rolled back, takes it.
+     */
+    private suspend fun refusedAlone(text: WaitingText) {
+        val onPhone = text.files.filter(WaitingFile::onPhone)
+        if (onPhone.isEmpty()) refused(text) else queue.settled(onPhone.map { it.copy(onPhone = false) })
     }
 
     /** Leaves [text], which Dispatch refuses alone, with the JPEGs made of its pictures. */

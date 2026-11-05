@@ -174,15 +174,22 @@ pub const FEATURE: Feature = Feature {
                     "migrations/dsp/0015_communications_replies.sql"
                 )),
             },
+            // Videos a phone keeps until someone plays them, with a picture of each one's first
+            // frame.
+            Migration {
+                id: 16,
+                name: "phones_files_on_phone",
+                apply: Code(backend::phone::storage::add_on_phone),
+            },
         ],
     }],
     // Its dispatch phones are the DSP's own, managed on DSP Connections.
     dsp_connection: true,
     // Catching up on what Dispatch didn't hear of, hourly and as the server starts; downloading
     // what members attach, keeping answers that went to Slack unkept, sending what's due to go to
-    // groups' people, filing texts waiting to be filed, and filing today's again where they belong
-    // now, every minute; and letting go of photos and the phones' pictures never sent, bytes no
-    // file keeps and codes expired, hourly.
+    // groups' people, filing texts waiting to be filed, filing today's again where they belong
+    // now, and letting go of the videos phones sent an hour before, every minute; and letting go
+    // of photos and the phones' pictures never sent, bytes no file keeps and codes expired, hourly.
     maintenance: &[
         integrations::messages::catch_up::MAINTENANCE,
         backend::files::MAINTENANCE,

@@ -149,6 +149,7 @@ pub fn attached(
             size,
             status,
             version,
+            preview: false,
         });
     }
     attached
