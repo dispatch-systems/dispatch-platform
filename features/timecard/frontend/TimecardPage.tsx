@@ -263,7 +263,7 @@ export function PaycomPage({ view }: { view: DspView }) {
       {canCollect && syncUnavailable && (
         <p className="paycom-sync-unavailable muted">{syncUnavailable}</p>
       )}
-      <div aria-busy={pending || undefined} inert={pending}>
+      <div className="paycom-tab" aria-busy={pending || undefined} inert={pending}>
         <Suspense fallback={<Loading />}>
           {hosting.open ? (
             <HostedTab tab={hosting.open} />

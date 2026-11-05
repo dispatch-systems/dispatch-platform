@@ -70,7 +70,8 @@ export type DspRoute = Page<DspPageContext> & {
   landing?: boolean;
   /**
    * Whether it fills the window below the app's bars, its parts scrolling within it, as a
-   * conversation does, so the page itself never scrolls.
+   * conversation does, so the page itself never scrolls. A page filling it only at times, as on
+   * one of its tabs, calls `useFillsWindow` there instead.
    */
   fills?: boolean;
   /** Whether the page draws a DSP's Settings, every owner's sections of it; one at most does. */

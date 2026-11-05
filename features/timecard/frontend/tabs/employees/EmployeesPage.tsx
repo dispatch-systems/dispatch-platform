@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowDownAZ, ArrowUpAZ, ChevronRight } from 'lucide-react';
 import type { EmployeeTimecardPeriod, EmployeeTimecardResponse } from '../../../api/index.js';
 import { useUpdateState } from '../../../../../core/shell/frontend/runtime/browser-update.js';
+import { useFillsWindow } from '../../../../../core/shell/frontend/runtime/fills.js';
 import { employeeTimecardUrl, useEmployeeTimecard, useEmployees } from '../../../api/client.js';
 import {
   cancelPrefetches,
@@ -19,6 +20,8 @@ import { EmployeeDetail } from './EmployeeDetail.js';
 import './employees.css';
 
 const statuses = ['all', 'active', 'inactive'] as const;
+// Too narrow or short a window, and the page scrolls as others do (employees.css).
+const fillsWindow = '(width > 700px) and (height >= 600px)';
 export function EmployeesPage({
   actions,
   refreshKey,
@@ -42,6 +45,7 @@ export function EmployeesPage({
   showMeals: boolean;
   today: string;
 }) {
+  useFillsWindow(fillsWindow);
   const [desc, setDesc] = useUpdateState('employee-sort-desc', false);
   const [query, setQuery] = useUpdateState('employee-query', '');
   const [status, setStatus] = useUpdateState<(typeof statuses)[number]>('employee-status', 'all');
@@ -113,16 +117,13 @@ export function EmployeesPage({
   }, [visibleCodes, prefetched]);
   return (
     <section className="employees-page" aria-label="Employees">
-      <div className="employees-heading">
+      <div className="employees-toolbar">
         <div className="employees-title">
           <h2>Employees</h2>
           <span className="employees-count" aria-label="Employee count">
             {data?.total ?? '…'}
           </span>
         </div>
-        <div className="employees-sync">{actions(timecard.data)}</div>
-      </div>
-      <div className="employees-toolbar">
         <SearchInput
           type="search"
           label="Search employees"
@@ -161,6 +162,7 @@ export function EmployeesPage({
           {desc ? <ArrowUpAZ size={16} /> : <ArrowDownAZ size={16} />}
           {desc ? 'Z–A' : 'A–Z'}
         </button>
+        <div className="employees-sync">{actions(timecard.data)}</div>
       </div>
       <DataState data={data} error={error} failed={!!error}>
         {(data) => (

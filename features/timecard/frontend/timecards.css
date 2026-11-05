@@ -8,6 +8,13 @@
 .paycom-page .embedded-page > .page-heading {
   display: none;
 }
+/* A tab filling the window (the Employees tab) gets the height the page's heading and tabs leave. */
+.main-area.fills :is(.paycom-page, .paycom-tab, .embedded-page) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
 
 .paycom-date-controls {
   display: flex;
