@@ -5,7 +5,6 @@
 //! again once Slack gives it at another address. A workspace whose logo is Slack's own has none.
 use super::{
     bot::{self, Bot},
-    slack::Slack,
     storage::{Logo, SlackStore},
 };
 use dispatch_core::{
@@ -77,7 +76,7 @@ pub async fn keep(bot: &Bot, icon: &Value) -> Result<()> {
     }
     let refused = || Error::new("slack_refused", 502);
     let url = address(&source).ok_or_else(refused)?;
-    let picture = Slack::of(&bot.state.config)?.picture(&url, MOST).await?;
+    let picture = bot.picture(&url, MOST).await?;
     kind(&picture).ok_or_else(refused)?;
     let logo = Logo { source, picture };
     bot.state

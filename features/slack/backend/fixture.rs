@@ -13,7 +13,7 @@
 //! The bot posts in direct conversations and the channels it's in, under a name and photo of
 //! its choosing, showing the files it uploaded, and what it posted is kept for the server's run,
 //! which a test reads with `posted`. Requests it sends are signed with a secret the tests share.
-use super::slack::{Bytestream, Installed, Tokens};
+use super::slack::{Bytestream, Called, Installed, Tokens};
 use super::{app::scopes, storage::SlackStore};
 use axum::body::Bytes;
 use dispatch_core::{
@@ -29,6 +29,7 @@ use std::{
         LazyLock, Mutex,
         atomic::{AtomicU64, Ordering},
     },
+    time::Duration,
 };
 
 /// The secret its requests are signed with, which tests sign theirs with too.
@@ -403,11 +404,14 @@ pub fn refresh(refresh: &str) -> Result<Tokens> {
 /// tab; the message posted, for `chat.postMessage`; a file the bot uploads, for
 /// `files.getUploadURLExternal` and `files.completeUploadExternal`; and an integration's own
 /// answer to a method only it calls. Any other method is a mistake: answering it would hide a call no test or
-/// preview tried.
-pub fn call(token: &str, method: &str, args: &Value) -> Result<Value> {
+/// preview tried. A call about a conversation a test slowed (`slow_down`) is asked to wait instead.
+pub fn call(token: &str, method: &str, args: &Value) -> Result<Called> {
     let team = workspace(token, "fixture-access:")?;
     let asked = args["channel"].as_str().unwrap_or("");
-    Ok(match method {
+    if let Some(wait) = slowed(team, asked) {
+        return Ok(Called::SlowDown(wait));
+    }
+    Ok(Called::Answered(match method {
         "team.info" => json!({"ok": true, "team": {"id": team, "name": name(team),
             "icon": icon(team)}}),
         "users.list" => json!({
@@ -512,7 +516,7 @@ pub fn call(token: &str, method: &str, args: &Value) -> Result<Value> {
                     .fixture
                     .and_then(|fixture| fixture(team, method, args))
                 {
-                    return answer;
+                    return answer.map(Called::Answered);
                 }
             }
             dispatch_core::foundation::observability::event(
@@ -522,7 +526,30 @@ pub fn call(token: &str, method: &str, args: &Value) -> Result<Value> {
             );
             return Err(Error::new("slack_fixture_unanswered", 500));
         }
-    })
+    }))
+}
+
+/// How long Slack asks the bot to wait before its next call about each conversation, by
+/// workspace and conversation: once, as Slack does a bot posting there too fast.
+static SLOWED: LazyLock<Mutex<HashMap<(String, String), Duration>>> =
+    LazyLock::new(Default::default);
+fn slowed(team: &str, channel: &str) -> Option<Duration> {
+    SLOWED
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
+        .remove(&(team.to_owned(), channel.to_owned()))
+}
+/// Has Slack ask the bot to wait `seconds` before calling again, the next time it calls about
+/// the workspace's conversation `channel`.
+#[cfg(test)]
+pub fn slow_down(team: &str, channel: &str, seconds: u64) {
+    SLOWED
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
+        .insert(
+            (team.to_owned(), channel.to_owned()),
+            Duration::from_secs(seconds),
+        );
 }
 
 /// A message the bot posted: its text, the name and photo it went under in place of the app's,

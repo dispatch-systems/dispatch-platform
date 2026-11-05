@@ -7,11 +7,7 @@ use super::{
     page::{self, Picture},
     storage::{Canvas, Outcome, Status},
 };
-use crate::backend::{
-    author,
-    bot::Bot,
-    slack::{Bytestream, Slack},
-};
+use crate::backend::{author, bot::Bot, slack::Bytestream};
 use dispatch_core::{Code, Error, Result, State, db::now};
 use dispatch_documents_contract::{self as files, Author, Page};
 use futures_util::TryStreamExt;
@@ -91,13 +87,7 @@ async fn attempt(state: &Arc<State>, dsp: &str, canvas: &Canvas, folder: &str) -
     let Some(url) = file["url_private_download"].as_str() else {
         return Ok(left(Status::Gone, "slack_file_gone"));
     };
-    let slack = Slack::of(&state.config)?;
-    let token = bot.token().await?;
-    let html = read(
-        slack.download(&token, url, "text/html").await?,
-        CANVAS_LIMIT,
-    )
-    .await?;
+    let html = read(bot.download(url, "text/html").await?, CANVAS_LIMIT).await?;
     let source = String::from_utf8_lossy(&html).into_owned();
     // A token that may not read files is answered with Slack's sign-in page, a whole one.
     if source.contains("<html") {
@@ -106,7 +96,7 @@ async fn attempt(state: &Arc<State>, dsp: &str, canvas: &Canvas, folder: &str) -
     let mut pictures = BTreeMap::new();
     let mut room = PICTURES_LIMIT;
     for id in page::pictures(&source) {
-        if let Some(picture) = picture(&bot, &slack, &token, &id, room).await? {
+        if let Some(picture) = picture(&bot, &id, room).await? {
             room -= picture.bytes.len();
             pictures.insert(id, picture);
         }
@@ -167,13 +157,7 @@ fn written(answer: Result<Outcome>) -> Result<Outcome> {
 /// The picture the Slack file `id` is, as a page shows it: itself while it's small, fits in
 /// `room` bytes and is of a kind a document shows, or else Slack's largest preview of it; none
 /// for one Slack no longer has, or has no picture of. One that doesn't fit is too large.
-async fn picture(
-    bot: &Bot,
-    slack: &Slack,
-    token: &str,
-    id: &str,
-    room: usize,
-) -> Result<Option<Picture>> {
+async fn picture(bot: &Bot, id: &str, room: usize) -> Result<Option<Picture>> {
     let info = match bot.call("files.info", &json!({"file": id})).await {
         Err(error) if error.code == "slack_file_gone" => return Ok(None),
         answer => answer?,
@@ -199,7 +183,7 @@ async fn picture(
         return Ok(None);
     };
     let limit = PICTURE_LIMIT.min(room);
-    let bytes = read(slack.download(token, url, "image/*").await?, limit).await?;
+    let bytes = read(bot.download(url, "image/*").await?, limit).await?;
     Ok(kind(&bytes).map(|mime| Picture {
         mime: mime.to_owned(),
         bytes,
