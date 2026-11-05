@@ -1,6 +1,10 @@
 use crate::{Result, config::Config, require};
 use dispatch_core::support::api::types::SupportJob;
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
+    time::Duration,
+};
 use tokio::process::Command;
 
 /// Below this, a new worktree's build could fill the disk: a debug build takes about 3 GB, and
@@ -10,6 +14,52 @@ const LOW_DISK: u64 = 20_000_000_000;
 /// Bytes free where support worktrees build: the worktrees folder, or the disk it links to.
 fn free(config: &Config) -> Result<u64> {
     fs2::available_space(&config.worktrees).map_err(|_| "Couldn't read the free disk space".into())
+}
+
+/// What installing a commit's toolchain and crates leaves free, at least, on the disk holding this
+/// user's `.rustup` and Cargo registry, which the live service shares: a toolchain takes about
+/// 600 MB.
+const HOME_RESERVE: u64 = 10_000_000_000;
+/// What a copy of a commit's files, about 50 MB with its archive, needs beside the worktrees.
+const COPY: u64 = 1_000_000_000;
+/// A provisioning copy's name begins with this; one a worker stopped mid-way left goes once it is
+/// `ABANDONED` old, longer than any provisioning takes.
+const PROVISIONING: &str = ".provision-";
+const ABANDONED: Duration = Duration::from_secs(60 * 60);
+static COPIES: AtomicU64 = AtomicU64::new(0);
+
+/// A provisioning copy, removed however the provisioning ends, a cancelled job's included: off the
+/// task that polls the job and its lease, as a folder of files takes a moment to remove.
+struct Scratch(PathBuf);
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let at = std::mem::take(&mut self.0);
+        tokio::task::spawn_blocking(move || std::fs::remove_dir_all(at));
+    }
+}
+
+/// The provisioning copies a worker stopped mid-way left beside the worktrees.
+async fn sweep(config: &Config) -> Result<()> {
+    let mut entries = tokio::fs::read_dir(&config.worktrees).await?;
+    while let Some(entry) = entries.next_entry().await? {
+        if !entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with(PROVISIONING)
+        {
+            continue;
+        }
+        // One a provisioning that ended is still removing may be gone already.
+        let modified = match entry.metadata().await.and_then(|found| found.modified()) {
+            Ok(modified) => modified,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error.into()),
+        };
+        if modified.elapsed().unwrap_or_default() > ABANDONED {
+            let _ = tokio::fs::remove_dir_all(entry.path()).await;
+        }
+    }
+    Ok(())
 }
 
 #[derive(Clone)]
@@ -36,6 +86,66 @@ pub async fn command(directory: &Path, program: &str, args: &[&str]) -> Result<S
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
 }
 
+/// The Rust toolchain `commit` pins, and the crates its lockfile names, installed on the host: a
+/// worktree's builds run in the sandbox offline, from this user's `.rustup` and Cargo registry
+/// read-only, so they can neither install a toolchain a new pin names nor download a crate a new
+/// dependency brings. `commit` is one GitHub holds: main's, or a release's.
+///
+/// It installs from a copy of `commit`'s files of its own beside the worktrees, from Git's archive
+/// of it, so nothing is registered in the clone, and never from the worktree an agent works in,
+/// whose files could point rustup or Cargo at a program of their choosing. rustup runs nothing the
+/// copy holds. Cargo's fetch asks the compiler about its targets, through the configured wrapper
+/// otherwise, so it runs with none.
+async fn provision(config: &Config, commit: &str) -> Result<()> {
+    require(is_sha(commit), "Provisioning needs an immutable Git SHA")?;
+    let home = PathBuf::from(std::env::var_os("HOME").ok_or("HOME required")?);
+    let room = fs2::available_space(&home).map_err(|_| "Couldn't read the free disk space")?;
+    require(
+        room >= HOME_RESERVE && free(config)? >= COPY,
+        "Host disk capacity must be restored before installing a build's Rust toolchain and crates",
+    )?;
+    let tool = |name: &str| {
+        home.join(".cargo/bin")
+            .join(name)
+            .to_str()
+            .map(str::to_owned)
+            .ok_or("Non-UTF8 HOME")
+    };
+    let (rustup, cargo) = (tool("rustup")?, tool("cargo")?);
+    let count = COPIES.fetch_add(1, Ordering::Relaxed);
+    let scratch = Scratch(config.worktrees.join(format!(
+        "{PROVISIONING}{commit}-{}-{count}",
+        std::process::id()
+    )));
+    let at = &scratch.0;
+    tokio::fs::create_dir(at).await?;
+    let archive = at.join(".commit.tar");
+    let archive = archive.to_str().ok_or("Non-UTF8 worktree path")?;
+    command(
+        &config.checkout,
+        "git",
+        &["archive", "--format=tar", "-o", archive, commit],
+    )
+    .await?;
+    command(at, "tar", &["-xf", archive]).await?;
+    command(at, &rustup, &["toolchain", "install", "--no-self-update"]).await?;
+    let fetched = Command::new(&cargo)
+        .args(["fetch", "--locked"])
+        .env("RUSTC_WRAPPER", "")
+        .env("RUSTC_WORKSPACE_WRAPPER", "")
+        .current_dir(at)
+        .kill_on_drop(true)
+        .output()
+        .await?;
+    require(
+        fetched.status.success(),
+        &format!(
+            "cargo fetch failed: {}",
+            String::from_utf8_lossy(&fetched.stderr)
+        ),
+    )
+}
+
 impl Worktree {
     pub async fn prepare(config: &Config, job: &SupportJob, source: Option<&str>) -> Result<Self> {
         let identifier = job
@@ -55,6 +165,7 @@ impl Worktree {
         let suffix = if source.is_some() { "-analysis" } else { "" };
         let name = format!("support-{}-{identifier}{suffix}", job.environment);
         let path = config.worktrees.join(&name);
+        sweep(config).await?;
         if !path.exists() {
             require(
                 free(config)? >= LOW_DISK,
@@ -63,10 +174,11 @@ impl Worktree {
             // A worktree of its own on a new branch from current main, with its packages.
             let at = path.to_str().ok_or("Non-UTF8 worktree path")?;
             command(&config.checkout, "git", &["fetch", "-q", "origin", "main"]).await?;
+            let main = command(&config.checkout, "git", &["rev-parse", "origin/main"]).await?;
             command(
                 &config.checkout,
                 "git",
-                &["worktree", "add", "-q", "-b", &name, at, "origin/main"],
+                &["worktree", "add", "-q", "-b", &name, at, &main],
             )
             .await?;
             command(&path, "npm", &["ci", "--silent"]).await?;
@@ -96,6 +208,14 @@ impl Worktree {
             command(&path, "git", &["fetch", "origin", sha]).await?;
             command(&path, "git", &["reset", "--hard", sha]).await?;
         }
+        // What the commit it builds on pins for Rust, each time, so a provisioning that failed is
+        // tried again: the release an analysis reads, or the commit of main an implementation
+        // branched from or last merged, which the agent's own commits can't change.
+        let base = match source {
+            Some(sha) => sha.to_owned(),
+            None => command(&path, "git", &["merge-base", "HEAD", "origin/main"]).await?,
+        };
+        provision(config, &base).await?;
         Ok(Self { name, path })
     }
 
@@ -173,9 +293,16 @@ impl Worktree {
         self.head().await
     }
 
-    pub async fn reconcile(&self) -> Result<String> {
+    /// Main merged in, what it pins for Rust provisioned first, as the builder resolves any
+    /// conflict offline. A failure to fetch or provision is the error; a conflict the merge left
+    /// for the builder, the answer's.
+    pub async fn reconcile(&self, config: &Config) -> Result<std::result::Result<String, String>> {
         command(&self.path, "git", &["fetch", "origin", "main"]).await?;
-        command(&self.path, "git", &["merge", "--no-edit", "origin/main"]).await
+        let main = command(&self.path, "git", &["rev-parse", "origin/main"]).await?;
+        provision(config, &main).await?;
+        Ok(command(&self.path, "git", &["merge", "--no-edit", &main])
+            .await
+            .map_err(|conflict| conflict.to_string()))
     }
 
     /// Once its PR merged, or for analysis that never will: the worktree, its branch here and on
