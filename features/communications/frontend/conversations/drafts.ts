@@ -1,8 +1,8 @@
 // What's written in each conversation's box, a group's, and a message to a group, and not sent
 // yet: kept by the page, outside the box, so it's there again as it opens again, after another was
 // open, Back or a notification followed; and in the browser's tab for each member at each DSP, so
-// a reload brings it back too. Only the text: photos go with the box. Gone once it's sent, but for
-// what was written while it went.
+// a reload brings it back too. Only the text: photos go with the box. Taken out as it's sent, so the
+// box opened again while it goes can't send it twice, and put back should it fail.
 
 const key = (dsp: string, user: string, draft: string) =>
   `dispatch-communications-draft:${dsp}:${user}:${draft}`;
@@ -44,9 +44,14 @@ export class Drafts {
     }
     for (const watch of this.watchers.get(draft) ?? []) watch();
   }
-  /** Takes what went, `text`, out of `draft`: what was written while it went stays. */
-  sent(draft: string, text: string) {
+  /** Takes what goes, `text`, out of `draft`: what's written while it goes stays. */
+  sending(draft: string, text: string) {
     this.write(draft, unsent(this.text(draft), text));
+  }
+  /** Puts `text`, which didn't go, back in `draft`, before what was written since. */
+  failed(draft: string, text: string) {
+    const since = this.text(draft);
+    this.write(draft, since ? `${text}\n${since}` : text);
   }
   /** Calls `watch` as `draft` changes, until what this answers is called. */
   watch(draft: string, watch: () => void) {
