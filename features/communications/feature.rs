@@ -17,10 +17,10 @@ pub use api::types::{
     ConversationMessages, ConversationState, Conversations, Correspondent, Direction,
     DispatchPhone, Elsewhere, FileStatus, Group, GroupChoice, GroupChoiceKind, GroupChoices,
     GroupEntry, GroupMember, GroupMessages, GroupPeople, GroupPerson, GroupPersonState,
-    GroupProgress, Message, MessageFile, MessageGroup, Pace, PairingStatus, PhoneApp, PhonePairing,
-    PhonePairingStatus, PhoneRow, Phones, Profile, Reachable, RouteDriver, Sender, SentMessage,
-    TextContact, TextContacts, TextPeople, TextStatus, Today, TodaysRoutes, Typing, WaitingMessage,
-    Workday, Writing,
+    GroupProgress, Message, MessageFile, MessageGroup, Pace, PairingStatus, PhoneApp, PhoneHealth,
+    PhonePairing, PhonePairingStatus, PhoneRow, Phones, Profile, Reachable, RouteDriver, Sender,
+    SentMessage, TextContact, TextContacts, TextPeople, TextStatus, Today, TodaysRoutes, Typing,
+    WaitingMessage, Workday, Writing,
 };
 
 use dispatch_core::db::{
@@ -157,10 +157,16 @@ pub const FEATURE: Feature = Feature {
                 name: "communications_done_places",
                 apply: Code(backend::storage::add_done_places),
             },
+            // How each phone last said it stands, with each wait on its outbox.
+            Migration {
+                id: 14,
+                name: "phones_health",
+                apply: Code(backend::phone::storage::add_health),
+            },
             // The days still to file again, when each live day ended, and since when each text
             // waiting to be filed couldn't be placed.
             Migration {
-                id: 14,
+                id: 15,
                 name: "communications_days",
                 apply: Code(backend::texts::storage::add_days),
             },
@@ -268,6 +274,7 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         Phones,
         PhoneApp,
         PhoneRow,
+        PhoneHealth,
         PhonePairing,
         PhonePairingStatus,
         PairingStatus,

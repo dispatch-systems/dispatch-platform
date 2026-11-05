@@ -9,6 +9,7 @@ import androidx.room3.Query
 import androidx.room3.RoomDatabase
 import androidx.room3.Transaction
 import androidx.room3.Update
+import com.dspdispatch.relay.dispatch.Backlog
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -109,6 +110,10 @@ abstract class StoredQueue : Queue {
 
     @Query("SELECT uri FROM files")
     abstract override suspend fun uris(): List<String>
+
+    /** How many texts read wait to be reported, files of them to be sent, and statuses to be told. */
+    @Query("SELECT (SELECT COUNT(*) FROM texts) AS texts, (SELECT COUNT(*) FROM files) AS files, (SELECT COUNT(*) FROM statuses) AS statuses")
+    abstract suspend fun backlog(): Backlog
 
     @Query("SELECT * FROM files WHERE dispatchId IS NOT NULL ORDER BY id LIMIT 1")
     abstract override suspend fun upload(): WaitingFile?

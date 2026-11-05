@@ -1,7 +1,8 @@
 import type { WaitingMessage } from '../../api/index.js';
+import type { Down } from '../texting/phones-down.js';
 
 // Which messages alert the member: a message from an employee that wasn't waiting when the tab
-// alerting them last looked. What it saw is kept in the browser, shared by the member's tabs at
+// alerting them last looked; and which of the DSP's phones, each once as it goes down. What it saw is kept in the browser, shared by the member's tabs at
 // the DSP, so a message alerts once however many are open, whichever alerts. What was waiting
 // before Dispatch was open alerts no one.
 
@@ -46,20 +47,51 @@ export function arrived(
   return { fresh, seen: { at: now, ids: [...gone, ...ids] } };
 }
 
-/** Where the member's tabs at the DSP keep what they saw. */
-const key = (dsp: string, user: string) => `dispatch-communications-seen:${dsp}:${user}`;
-/** What the member's tabs at the DSP saw last, if any. */
-export function readSeen(dsp: string, user: string): Seen | undefined {
+/**
+ * The phones down the member's tabs at the DSP saw, each by its key with when a tab last saw it
+ * down, and when they last looked.
+ */
+export type Downs = { at: number; down: Readonly<Record<string, number>> };
+
+/**
+ * What the alerting tab makes of the phones `downs` at `now`: those that went down since the tabs
+ * last saw them, to alert of, and what's seen after it. None to a tab that's the first to look in
+ * a while, as with messages. One no longer down is remembered for as long as what was seen holds,
+ * as a tab taking its turn may read the phones as they were before another tab saw it go down: it
+ * alerts again only once it went down again after that.
+ */
+export function wentDown(downs: readonly Down[], seen: Downs | undefined, now: number) {
+  const holds = seen !== undefined && now - seen.at <= SEEN_MS;
+  const down: Record<string, number> = {};
+  if (holds)
+    for (const [key, at] of Object.entries(seen.down)) if (now - at <= SEEN_MS) down[key] = at;
+  const fresh = holds ? downs.filter((each) => !(each.key in down)) : [];
+  for (const each of downs) down[each.key] = now;
+  return { fresh, seen: { at: now, down } };
+}
+
+/** Where the member's tabs at the DSP keep what they saw, of messages or of phones. */
+const key = (dsp: string, user: string, of: 'seen' | 'phones-down') =>
+  `dispatch-communications-${of}:${dsp}:${user}`;
+function read<T>(at: string): T | undefined {
   try {
-    return (JSON.parse(localStorage.getItem(key(dsp, user)) ?? 'null') as Seen | null) ?? undefined;
+    return (JSON.parse(localStorage.getItem(at) ?? 'null') as T | null) ?? undefined;
   } catch {
     return undefined;
   }
 }
-export function keepSeen(dsp: string, user: string, seen: Seen) {
+function keep(at: string, value: unknown) {
   try {
-    localStorage.setItem(key(dsp, user), JSON.stringify(seen));
+    localStorage.setItem(at, JSON.stringify(value));
   } catch {
-    // Not kept, what waits next is seen afresh, alerting of nothing.
+    // Not kept, what's seen next is seen afresh, alerting of nothing.
   }
 }
+/** What the member's tabs at the DSP saw waiting last, if any. */
+export const readSeen = (dsp: string, user: string) => read<Seen>(key(dsp, user, 'seen'));
+export const keepSeen = (dsp: string, user: string, seen: Seen) =>
+  keep(key(dsp, user, 'seen'), seen);
+/** The phones down the member's tabs at the DSP saw last, if any. */
+export const readDowns = (dsp: string, user: string) => read<Downs>(key(dsp, user, 'phones-down'));
+export const keepDowns = (dsp: string, user: string, downs: Downs) =>
+  keep(key(dsp, user, 'phones-down'), downs);

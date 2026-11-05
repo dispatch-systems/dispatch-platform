@@ -189,6 +189,7 @@ pub fn waiting(db: &Store, state: &State, dsp: &str) -> Result<CommunicationsWai
         count: since.len(),
         since,
         latest: latest.into_iter().map(|(_, message)| message).collect(),
+        phones: texts::held_phones(db, dsp)?,
     })
 }
 

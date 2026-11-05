@@ -33,7 +33,10 @@ pub(crate) mod storage;
 pub(crate) mod todays_routes;
 pub(crate) mod workdays;
 
-use crate::{api::types::DispatchPhone, backend::phone};
+use crate::{
+    api::types::DispatchPhone,
+    backend::phone::{self, model::Phone},
+};
 use chrono::{Duration, NaiveDate, NaiveTime, TimeZone};
 use chrono_tz::Tz;
 use dispatch_core::{Error, Result, db::Store};
@@ -45,13 +48,25 @@ const DAY_MINUTES: i64 = 24 * 60;
 pub fn phones(db: &Store, dsp: &str) -> Result<Vec<DispatchPhone>> {
     Ok(phone::phones(db, dsp)?
         .into_iter()
-        .map(|phone| DispatchPhone {
-            id: phone.id,
-            name: phone.name,
-            online: phone.online,
-            last_seen_at: phone.last_seen_at,
-        })
+        .map(dispatch_phone)
         .collect())
+}
+/// The DSP's dispatch phones an app holds, leaving out the demo's stand-in.
+pub fn held_phones(db: &Store, dsp: &str) -> Result<Vec<DispatchPhone>> {
+    Ok(phone::phones(db, dsp)?
+        .into_iter()
+        .filter(|phone| !phone.stand_in)
+        .map(dispatch_phone)
+        .collect())
+}
+fn dispatch_phone(phone: Phone) -> DispatchPhone {
+    DispatchPhone {
+        id: phone.id,
+        name: phone.name,
+        online: phone.online,
+        last_seen_at: phone.last_seen_at,
+        cant_send: phone.cant_send,
+    }
 }
 /// The DSP's own timezone, which its days are in.
 pub fn zone(db: &Store, dsp: &str) -> Result<Tz> {

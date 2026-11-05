@@ -8,8 +8,9 @@ import android.os.Build
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import androidx.core.content.ContextCompat
+import com.dspdispatch.relay.dispatch.Sim
 
-/** What the app tells its DSP about the phone as it pairs, and which SIMs the phone holds. */
+/** What the app tells its DSP about the phone as it pairs, and which SIMs the phone holds and how they stand. */
 object Phone {
     /** The phone's maker and model, as Settings shows them. */
     val model: String
@@ -26,11 +27,32 @@ object Phone {
     fun number(context: Context, subscription: Int): String = guarded { readNumber(context, subscription) }.orEmpty()
 
     /**
+     * How the SIM of [subscription] stands, or the phone's own where null, as Android says it now:
+     * with no network to text on where Android can't say.
+     */
+    fun sim(context: Context, subscription: Int?): Sim = guarded { readSim(context, subscription) } ?: Sim.NO_SIGNAL
+
+    private fun readSim(context: Context, subscription: Int?): Sim {
+        val telephony = context.getSystemService(TelephonyManager::class.java).let {
+            if (subscription == null) it else it.createForSubscriptionId(subscription)
+        }
+        return when (telephony.simState) {
+            TelephonyManager.SIM_STATE_ABSENT -> Sim.ABSENT
+            // Its network's code, there only while it's registered on one.
+            TelephonyManager.SIM_STATE_READY -> if (telephony.networkOperator.isNullOrEmpty()) Sim.NO_SIGNAL else Sim.READY
+            else -> Sim.NO_SIGNAL
+        }
+    }
+
+    /**
      * The subscriptions of the phone's SIMs, each with its number, empty where Android won't say.
      * Before Android 10, which lists them only to apps reading the phone's state, those it names
      * without: [paired], the one the phone paired on, then its default for texts.
      */
     fun subscriptions(context: Context, paired: Int): Map<Int, String> = guarded { readSubscriptions(context, paired) }.orEmpty()
+
+    /** How many SIMs the phone takes at once: one where Android can't say. */
+    fun slots(context: Context): Int = guarded { context.getSystemService(TelephonyManager::class.java).slots() } ?: 1
 
     private fun readSubscriptions(context: Context, paired: Int): Map<Int, String> {
         val slots = context.getSystemService(TelephonyManager::class.java).slots()
