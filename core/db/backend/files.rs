@@ -16,8 +16,12 @@ pub fn private_dir(path: &Path) -> Result<PathBuf> {
             500,
         )?;
         cursor.push(part);
-        if !cursor.try_exists()? {
-            fs::DirBuilder::new().mode(0o700).create(&cursor)?;
+        // Made by another meanwhile is as good: what's there is checked all the same.
+        if !cursor.try_exists()?
+            && let Err(error) = fs::DirBuilder::new().mode(0o700).create(&cursor)
+            && error.kind() != std::io::ErrorKind::AlreadyExists
+        {
+            return Err(error.into());
         }
         let stat = fs::symlink_metadata(&cursor)?;
         ensure(
