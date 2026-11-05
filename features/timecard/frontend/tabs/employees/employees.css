@@ -1,20 +1,12 @@
 .employees-page {
   padding-top: 24px;
 }
-.employees-heading,
 .employees-title,
-.employees-sync,
 .employees-toolbar,
-.employee-detail-heading,
-.employee-timecard-heading {
+.employee-detail-heading {
   display: flex;
   align-items: center;
   gap: 12px;
-}
-.employees-heading {
-  justify-content: space-between;
-  flex-wrap: wrap;
-  margin-bottom: 14px;
 }
 .employees-title h2 {
   font-size: 20px;
@@ -31,19 +23,12 @@
   color: var(--muted-foreground);
   font-size: 12px;
 }
-.employees-sync {
-  flex-wrap: wrap;
-  font-size: 12px;
-  min-width: 0;
-}
-.employees-sync > button {
-  min-height: 34px;
-  padding: 6px 10px;
-  font-size: 12px;
-}
 .employees-toolbar {
   flex-wrap: wrap;
   margin-bottom: 16px;
+}
+.employees-title {
+  margin-right: 4px;
 }
 .employees-toolbar .search {
   flex: 1;
@@ -159,6 +144,7 @@
   font-weight: 600;
 }
 .employee-detail {
+  container: employee-detail / inline-size;
   padding: 22px;
   min-width: 0;
 }
@@ -207,41 +193,61 @@
   padding-top: 16px;
   border-top: 1px solid var(--border);
 }
+/* The view and the timecard shown share a line, the timecard centred while there's room. */
 .employee-timecard-heading {
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(max-content, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
   margin-bottom: 10px;
-  flex-wrap: wrap;
 }
-.employee-timecard-heading h4 {
-  font-size: 14px;
-  font-weight: 600;
-  margin: 0;
+.employee-timecard-heading > .employees-filters {
+  justify-self: start;
 }
-.employee-timecard-heading > span {
-  font-size: 12px;
+/* Too narrow for one line: the view above the timecard shown. */
+@container employee-detail (width < 480px) {
+  .employee-timecard-heading {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .employee-timecard-heading > .employee-period-controls {
+    justify-self: center;
+  }
 }
 .employee-latest {
   color: var(--primary);
 }
+/* The dates between the arrows, how the timecard stands under them. */
 .employee-period-controls {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 10px;
+  grid-template-areas:
+    'previous period next'
+    'previous status next';
+  column-gap: 10px;
   align-items: center;
   /* Keep the arrows fixed when the date label changes. */
-  max-width: 320px;
-  height: 44px;
-  margin-inline: auto;
-  margin-bottom: 12px;
+  width: min(280px, 100%);
+  height: 40px;
+}
+.employee-period-controls > :first-child {
+  grid-area: previous;
+}
+.employee-period-controls > :last-child {
+  grid-area: next;
 }
 .employee-period-controls > span {
-  display: grid;
-  place-items: center;
-  align-self: stretch;
+  grid-area: period;
+  align-self: end;
   text-align: center;
   font-size: 14px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
+}
+.employee-period-status {
+  grid-area: status;
+  align-self: start;
+  text-align: center;
+  font-size: 11px;
 }
 .employee-timecard-body {
   position: relative;
@@ -332,6 +338,38 @@
   min-width: 7ch;
   text-align: right;
 }
+/* Filling the window (EmployeesPage's useFillsWindow): the card takes the height the toolbar
+   leaves, the list and the days scrolling within it, so the page itself doesn't scroll. */
+.main-area.fills .employees-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.main-area.fills .employees-workspace {
+  flex: 1;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
+}
+.main-area.fills .employees-directory {
+  position: static;
+  align-self: stretch;
+  height: auto;
+}
+.main-area.fills
+  :is(.employee-detail, .employee-timecard-section, .employee-meals, .employee-timecard-body) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.main-area.fills :is(.employee-timecard-section, .employee-meals, .employee-timecard-body) {
+  flex: 1;
+}
+.main-area.fills :is(.employee-timecard-scroll, .employee-meals-scroll) {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
 @media (max-width: 1100px) and (min-width: 701px) {
   .employees-workspace {
     grid-template-columns: minmax(180px, 1fr) minmax(0, 3fr);
@@ -342,6 +380,38 @@
   }
   .employee-detail {
     padding: 20px;
+  }
+}
+/* A window too short for a whole pay period at full spacing gets tighter rows and spacing,
+   keeping it in view. */
+@media (height < 1160px) {
+  .employees-page {
+    padding-top: 18px;
+  }
+  .employee-detail {
+    padding-block: 14px;
+  }
+  .employee-timecard-section {
+    margin-top: 10px;
+    padding-top: 10px;
+  }
+  .employee-period-table th,
+  .employee-period-table td {
+    padding-block: 6px;
+  }
+  .employee-period-table th {
+    height: 34px;
+  }
+  /* A header and 14 of these rows, as the page scrolls on a phone. */
+  .employee-timecard-scroll {
+    min-height: 470px;
+  }
+  .employee-timecard-heading {
+    margin-bottom: 6px;
+  }
+  .employee-timecard-total {
+    margin-top: 8px;
+    padding-top: 10px;
   }
 }
 @media (max-width: 700px) {

@@ -8,6 +8,13 @@
 .paycom-page .embedded-page > .page-heading {
   display: none;
 }
+/* A tab filling the window (the Employees tab) gets the height the page's heading and tabs leave. */
+.main-area.fills :is(.paycom-page, .paycom-tab, .embedded-page) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
 
 .paycom-date-controls {
   display: flex;
@@ -87,7 +94,7 @@
   align-items: center;
 }
 
-.paycom-daily-page .heading-actions {
+.paycom-sync-page .heading-actions {
   display: flex;
   align-items: center;
   flex-shrink: 1;
@@ -96,7 +103,11 @@
   min-width: 0;
   max-width: 100%;
 }
-.paycom-daily-page .page-heading {
+/* The Employees tab's sync, drawn into the heading among its actions. */
+.paycom-employee-sync {
+  display: contents;
+}
+.paycom-sync-page .page-heading {
   flex-wrap: wrap;
   gap: 16px;
 }
@@ -231,7 +242,7 @@
   line-height: 1.6;
 }
 @media (max-width: 760px) {
-  .paycom-daily-page .heading-actions {
+  .paycom-sync-page .heading-actions {
     justify-content: flex-start;
   }
 }

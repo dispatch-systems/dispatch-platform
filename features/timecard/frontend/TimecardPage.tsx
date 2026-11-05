@@ -119,6 +119,9 @@ export function PaycomPage({ view }: { view: DspView }) {
   const meals = tab === 'meal-breaks';
   const timecards = tab === 'timecards';
   const daily = timecards || meals;
+  const employees = tab === 'employees';
+  // Where the Employees tab draws its sync, in the heading as the daily tabs draw theirs.
+  const [employeeSync, setEmployeeSync] = useState<HTMLDivElement | null>(null);
   const overview = useCachedData<{
     connection: Connection;
     workforce: { collectedAt: string | null };
@@ -211,7 +214,7 @@ export function PaycomPage({ view }: { view: DspView }) {
       </button>
     );
   return (
-    <div className={`paycom-page${daily ? ' paycom-daily-page' : ''}`}>
+    <div className={`paycom-page${daily || employees ? ' paycom-sync-page' : ''}`}>
       <Header title="Timecard">
         {daily && canCollect && (
           <>
@@ -230,6 +233,7 @@ export function PaycomPage({ view }: { view: DspView }) {
           </>
         )}
         {daily && syncButton()}
+        {employees && canCollect && <div ref={setEmployeeSync} className="paycom-employee-sync" />}
         {ownSettings && (
           <button
             onPointerEnter={warmSettings}
@@ -263,7 +267,7 @@ export function PaycomPage({ view }: { view: DspView }) {
       {canCollect && syncUnavailable && (
         <p className="paycom-sync-unavailable muted">{syncUnavailable}</p>
       )}
-      <div aria-busy={pending || undefined} inert={pending}>
+      <div className="paycom-tab" aria-busy={pending || undefined} inert={pending}>
         <Suspense fallback={<Loading />}>
           {hosting.open ? (
             <HostedTab tab={hosting.open} />
@@ -300,7 +304,7 @@ export function PaycomPage({ view }: { view: DspView }) {
           ) : (
             <CommittedTab tab={tab}>
               <div className="embedded-page">
-                {tab === 'employees' ? (
+                {employees ? (
                   <EmployeesPage
                     selection={employeeSelection}
                     onSelectionChange={setEmployeeSelection}
@@ -311,19 +315,18 @@ export function PaycomPage({ view }: { view: DspView }) {
                     showMeals={hasFeature(view, 'timecard.meal_breaks')}
                     today={today}
                     refreshKey={`${refreshKey}:${syncRevision}`}
-                    actions={(timecard) =>
-                      canCollect && (
-                        <EmployeePeriodSync
-                          key={view.dsp.id}
-                          period={employeeSelection?.period ?? timecard?.period}
-                          refreshKey={refreshKey}
-                          onQueued={() => {
-                            refresh();
-                            setSyncRevision((value) => value + 1);
-                          }}
-                        />
-                      )
-                    }
+                    actionsTarget={employeeSync}
+                    actions={(timecard) => (
+                      <EmployeePeriodSync
+                        key={view.dsp.id}
+                        period={employeeSelection?.period ?? timecard?.period}
+                        refreshKey={refreshKey}
+                        onQueued={() => {
+                          refresh();
+                          setSyncRevision((value) => value + 1);
+                        }}
+                      />
+                    )}
                   />
                 ) : (
                   <TimecardsPage

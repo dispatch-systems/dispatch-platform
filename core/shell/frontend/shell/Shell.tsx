@@ -16,6 +16,7 @@ import { Popover } from '../ui/Popover.js';
 import { SidebarHead } from '../ui/SidebarHead.js';
 import { useFocusTrap } from '../ui/useFocusTrap.js';
 import { dspHash, platformHash } from '../runtime/navigation.js';
+import { useFillRequested } from '../runtime/fills.js';
 import { sourceLink } from '../lib/source.js';
 import {
   accountActions,
@@ -164,7 +165,10 @@ export function Shell({
   current: string;
   label: string;
   pending?: boolean;
-  /** Whether the open page fills the window, its parts scrolling within it. */
+  /**
+   * Whether the open page fills the window, its parts scrolling within it. A part of it may ask
+   * for that too, with `useFillsWindow`.
+   */
   fills?: boolean;
   /** The app's sidebar: its pages, and its sidebars of pages with theirs. */
   navigation: readonly NavItem[];
@@ -182,6 +186,7 @@ export function Shell({
   const drawer = useRef<HTMLElement>(null);
   const name = `${session.user.firstName} ${session.user.lastName}`;
   const source = sourceLink(session.source);
+  const filled = useFillRequested() || fills;
   useEffect(() => {
     document.title = `${label} · Dispatch`;
   }, [label]);
@@ -392,7 +397,7 @@ export function Shell({
           </Popover>
         </div>
       </aside>
-      <div className={fills ? 'main-area fills' : 'main-area'} inert={mobile}>
+      <div className={filled ? 'main-area fills' : 'main-area'} inert={mobile}>
         {view && session.user.platformOwner && (
           <Suspense fallback={null}>
             <DspViewBanner

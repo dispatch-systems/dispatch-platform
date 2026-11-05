@@ -79,16 +79,20 @@ export function EmployeeDetail({
               </button>
             )}
           </div>
-          <span className={!shown?.collectedAt || shown.nextPeriod ? 'muted' : 'employee-latest'}>
-            {status}
-          </span>
+          <EmployeePeriodControls
+            data={shown}
+            period={period}
+            busy={busy}
+            status={
+              <div
+                className={`employee-period-status ${!shown?.collectedAt || shown.nextPeriod ? 'muted' : 'employee-latest'}`}
+              >
+                {status}
+              </div>
+            }
+            onChange={onPeriodChange}
+          />
         </div>
-        <EmployeePeriodControls
-          data={shown}
-          period={period}
-          busy={busy}
-          onChange={onPeriodChange}
-        />
         {employeeView === 'meals' ? (
           <EmployeeMeals
             code={employee.code}
