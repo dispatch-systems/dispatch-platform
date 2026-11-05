@@ -150,6 +150,14 @@ impl State {
             }
         }
     }
+    /// What a `run_declaring` write that changes only `domain` changes: one DSP's reads that
+    /// depend on it, and those every DSP shares that do, or with no DSP, anything, as `changed`.
+    pub fn changed_in(&self, dsp: Option<&str>, domain: cache::DataDomain) {
+        match dsp {
+            Some(dsp) => self.read_cache.invalidate_tenant(dsp, domain),
+            None => self.changed(None),
+        }
+    }
     /// A tenant mutation with known dependencies. Unknown writes must keep using `run`.
     pub async fn run_scoped<T: Send + 'static>(
         self: &Arc<Self>,

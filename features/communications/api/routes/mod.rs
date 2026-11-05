@@ -10,7 +10,8 @@
 //! conversation of either kind, through the backend's `dispatcher`, and Slack's contacts
 //! (`conversations`); what only texts have (`texts`); groups (`groups`); photos, files and
 //! pictures (`files`); and the DSP's phones (`phones`). Reading the IDs and pages they name is
-//! here, below.
+//! here, below. Its writes of conversations change only Communications' own data (`changes`), so
+//! they leave the DSP's other cached reads, as who is who, as they were.
 mod conversations;
 mod files;
 mod groups;
@@ -18,7 +19,9 @@ mod inbox;
 mod phones;
 mod texts;
 
-use crate::backend::{compose, initials, model::Reference, phone::model as texting};
+use crate::backend::{
+    compose, initials, model::Reference, phone::model as texting, storage::DOMAIN,
+};
 use axum::http::Method;
 use dispatch_core::{
     Error, Result,
@@ -68,7 +71,8 @@ pub fn routes() -> Vec<Route> {
             "/api/dsp/communications/conversations/{id}/done",
             USE,
             conversations::done,
-        ),
+        )
+        .changes(DOMAIN),
         async_post(
             "/api/dsp/communications/conversations/{id}/typing",
             USE,
@@ -83,22 +87,26 @@ pub fn routes() -> Vec<Route> {
             "/api/dsp/communications/conversations/{id}/contact",
             USE,
             texts::save_contact,
-        ),
+        )
+        .changes(DOMAIN),
         write(
             "/api/dsp/communications/conversations/{id}/block",
             USE,
             texts::block,
-        ),
+        )
+        .changes(DOMAIN),
         write(
             "/api/dsp/communications/conversations/{id}/unblock",
             USE,
             texts::unblock,
-        ),
+        )
+        .changes(DOMAIN),
         write(
             "/api/dsp/communications/texts/conversations",
             USE,
             texts::text_first,
-        ),
+        )
+        .changes(DOMAIN),
         read(
             "/api/dsp/communications/texts/contacts",
             USE,
@@ -121,7 +129,8 @@ pub fn routes() -> Vec<Route> {
             "/api/dsp/communications/conversations/{id}/driver",
             USE,
             texts::pick_driver,
-        ),
+        )
+        .changes(DOMAIN),
         read(
             "/api/dsp/communications/contacts",
             USE,
@@ -148,7 +157,8 @@ pub fn routes() -> Vec<Route> {
             "/api/dsp/communications/groups/{id}/done",
             USE,
             groups::group_done,
-        ),
+        )
+        .changes(DOMAIN),
         upload(
             "/api/dsp/communications/uploads",
             USE,

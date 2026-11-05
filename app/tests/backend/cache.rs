@@ -22,6 +22,8 @@ const EVICTS: &[(&str, [bool; 3])] = &[
     ("drivers", [false, true, true]),
     ("tenant", [true, true, true]),
     ("schedules", [true, false, false]),
+    ("communications", [false, false, false]),
+    ("vans", [false, false, false]),
 ];
 
 fn domain(name: &str) -> DataDomain {
