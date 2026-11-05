@@ -16,6 +16,17 @@ impl Registry {
         let features = self.features.iter().flat_map(|feature| feature.cached);
         cache::CACHED.iter().chain(features)
     }
+    /// Whether a write to `domain` can change who is who: it's one a feature that names people
+    /// declares, or one it publishes a collection to.
+    pub fn naming_people(&self, domain: DataDomain) -> bool {
+        self.features
+            .iter()
+            .filter(|feature| !feature.people.is_empty())
+            .any(|feature| {
+                feature.domains.contains(&domain)
+                    || feature.keeps.iter().any(|keeper| keeper.domain() == domain)
+            })
+    }
 }
 
 /// Panics unless every domain is declared once, and before it is named.
@@ -32,7 +43,9 @@ pub(crate) fn check(registry: &Registry) {
         .keepers()
         .map(|keeper| keeper.domain())
         .chain(registry.cached().flat_map(|cached| match cached.evicted {
-            cache::Evicted::By(named) | cache::Evicted::ByAllBut(named) => named.iter().copied(),
+            cache::Evicted::By(named)
+            | cache::Evicted::ByAllBut(named)
+            | cache::Evicted::ByPeopleAnd(named) => named.iter().copied(),
         }));
     for domain in named {
         assert!(

@@ -59,7 +59,8 @@ struct Entry {
     key: String,
     scope: Scope,
     revision: u64,
-    at: Instant,
+    /// When it's no longer kept.
+    until: Instant,
     value: Box<dyn Any + Send>,
     bytes: usize,
 }
@@ -138,6 +139,9 @@ pub enum Evicted {
     By(&'static [DataDomain]),
     /// By writes to any domain but these.
     ByAllBut(&'static [DataDomain]),
+    /// By writes to these domains, and to each domain a feature that names people declares or
+    /// publishes a collection to: what who is who is read from.
+    ByPeopleAnd(&'static [DataDomain]),
 }
 /// What core declares of its own cached reads.
 pub const CACHED: &[Cached] = &[
@@ -145,10 +149,11 @@ pub const CACHED: &[Cached] = &[
         read: LISTINGS,
         evicted: Evicted::By(&[DataDomain::TENANT, DataDomain::SCHEDULES]),
     },
-    // Driver Match reads publications, never a collection's live pages.
+    // Driver Match reads what each feature naming people publishes, and its own decisions,
+    // never a collection's live pages.
     Cached {
         read: PEOPLE,
-        evicted: Evicted::ByAllBut(&[DataDomain::SCHEDULES, DataDomain::LIVE]),
+        evicted: Evicted::ByPeopleAnd(&[DataDomain::TENANT, DataDomain::DRIVERS]),
     },
     // Settings reads its sections' values, and whatever their options and keepers read of the
     // DSP's data, never a collection's live pages.
@@ -164,7 +169,20 @@ fn evicts(read: &str, domain: DataDomain) -> bool {
         .any(|cached| match cached.evicted {
             Evicted::By(domains) => domains.contains(&domain),
             Evicted::ByAllBut(domains) => !domains.contains(&domain),
+            Evicted::ByPeopleAnd(domains) => {
+                domains.contains(&domain) || registry().naming_people(domain)
+            }
         })
+}
+/// How long a read is kept at most, though no write evicts it. Most reads, which may depend on
+/// the time, half a minute. Who is who doesn't, and each write that could change it evicts it:
+/// ten minutes, so a write that changed it without saying so shows within them.
+fn lifetime(read: &str) -> Duration {
+    if read == PEOPLE {
+        Duration::from_secs(600)
+    } else {
+        Duration::from_secs(30)
+    }
 }
 /// The most the read cache keeps in all, by its estimates: room for the working sets of
 /// several busy DSPs at once, each a people directory with its feature's reads beside it, so
@@ -263,9 +281,8 @@ impl ReadCache {
     ) -> Result<T> {
         // Do not serialize unrelated readers behind an expensive calculation.
         if let Ok(mut entries) = self.entries.lock() {
-            entries.retain(|entry| {
-                entry.revision == revision && entry.at.elapsed() < Duration::from_secs(30)
-            });
+            let now = Instant::now();
+            entries.retain(|entry| entry.revision == revision && entry.until > now);
             if let Some(index) = entries
                 .iter()
                 .position(|entry| entry.key == key && entry.scope == scope)
@@ -292,10 +309,10 @@ impl ReadCache {
                 entries.pop_front();
             }
             entries.push_back(Entry {
+                until: Instant::now() + lifetime(scope.read),
                 key,
                 scope,
                 revision,
-                at: Instant::now(),
                 value: Box::new(value.clone()),
                 bytes,
             });

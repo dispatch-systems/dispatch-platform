@@ -13,6 +13,7 @@ use crate::{
     ensure,
     foundation::{config::Site, crypto, observability::RequestTrace},
     manifest::registry,
+    server::cache::DataDomain,
 };
 use axum::{
     body::{Body, HttpBody},
@@ -224,6 +225,9 @@ pub enum Work {
     /// One closure under the exclusive platform lock, which says what it changes once its
     /// caller is authorized: `State::run_declaring`.
     Write,
+    /// As `Write`, changing only this kind of its DSP's data, as its owner reviewed: it evicts
+    /// only the cached reads that depend on it.
+    Scoped(DataDomain),
     /// Reviewed leases and checkpoints, under the exclusive lock without evicting data.
     Bookkeeping,
     /// An async handler that makes its own `State::read` and `State::run` calls.
@@ -234,9 +238,9 @@ pub enum Work {
     Memory,
 }
 
-/// A route's handler, told whether its work is a write whose changes it says once it knows its
-/// caller, with `State::changed`.
-type Blocking = Arc<dyn Fn(&Store, &State, &Input, bool) -> Result<Reply> + Send + Sync>;
+/// A route's handler, told its work, a write saying what it changes once it knows its caller,
+/// with `State::changed`.
+type Blocking = Arc<dyn Fn(&Store, &State, &Input, Work) -> Result<Reply> + Send + Sync>;
 /// A route's gate: its access's `Grant::gate`, run before the database is asked for.
 type Gate = Arc<dyn Fn(&State, &Input) -> Result<()> + Send + Sync>;
 fn gate_of<A: Grant>(access: A) -> Gate {
@@ -299,14 +303,17 @@ fn blocking<A: Grant>(
     method: Method,
     handler: impl Fn(&Store, &Ctx<'_, A::Who>, &Input) -> Result<Reply> + Send + Sync + 'static,
 ) -> Route {
-    let handler = move |db: &Store, state: &State, input: &Input, writes: bool| {
+    let handler = move |db: &Store, state: &State, input: &Input, work: Work| {
         let who = access
             .authorize(db, input)
             .inspect_err(|error| access.refused(state, input, error))?;
         access.admit(state, &who)?;
-        // A write on a DSP's route changes that DSP's data, and any other changes anything.
-        if writes {
-            state.changed(access.tenant(&who));
+        // A write on a DSP's route changes that DSP's data, or the kind of it it names, and any
+        // other changes anything.
+        match work {
+            Work::Write => state.changed(access.tenant(&who)),
+            Work::Scoped(domain) => state.changed_in(access.tenant(&who), domain),
+            _ => {}
         }
         handler(db, &Ctx { state, who }, input)
     };
@@ -382,7 +389,7 @@ pub fn coalesced_read_by(
             state
                 .read(move |db| {
                     let _turn = turn;
-                    handler(db, &shared, &input, false)
+                    handler(db, &shared, &input, Work::Read)
                 })
                 .await
         })
@@ -562,6 +569,13 @@ impl Route {
         self.work = Work::Bookkeeping;
         self
     }
+    /// The owner's reviewed write changes only `domain` of its DSP's data: it evicts only the
+    /// cached reads that depend on it, keeping the write lock and all of the route's checks.
+    pub fn changes(mut self, domain: DataDomain) -> Self {
+        assert_eq!(self.work, Work::Write);
+        self.work = Work::Scoped(domain);
+        self
+    }
     /// Wakes the scheduler after the handler succeeds, because the route
     /// changes which DSPs or schedules exist.
     pub fn invalidates_schedules(mut self) -> Self {
@@ -706,8 +720,8 @@ impl Route {
         let input = middleware::input(&state, request, self.path).await?;
         (self.gate)(&state, &input)?;
         let shared = state.clone();
-        let writes = self.work == Work::Write;
-        let work = move |db: &Store| handler(db, &shared, &input, writes);
+        let changes = self.work;
+        let work = move |db: &Store| handler(db, &shared, &input, changes);
         let reply = match self.work {
             Work::Read => state.read(work).await?,
             Work::Bookkeeping => state.run_bookkeeping(work).await?,

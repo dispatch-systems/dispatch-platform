@@ -5,7 +5,7 @@ use dispatch_core::{
     server::http::{
         Access::{self, Agent, Dsp, Public},
         Route,
-        Work::{self, Async, Read, Write},
+        Work::{self, Async, Read, Scoped, Write},
     },
     tenancy::roles,
 };
@@ -220,11 +220,11 @@ fn no_route_is_registered_twice_and_only_get_and_post_exist() {
             route.path
         );
         // The Origin and CSRF checks rest on reads never changing anything for a session.
-        if route.method == "GET" && route.work == Write {
+        if route.method == "GET" && matches!(route.work, Write | Scoped(_)) {
             assert_eq!(route.access, Public, "{}", route.path);
         }
         assert!(
-            !route.invalidates_schedules || route.work == Write,
+            !route.invalidates_schedules || matches!(route.work, Write | Scoped(_)),
             "{} wakes the scheduler without being a write",
             route.path
         );
