@@ -75,6 +75,7 @@ test('Rust provisioning, invitation acceptance, profile setup, disabling and ena
   const members = (await user.get('/api/dsp/members')).value;
   assert.equal((await user.post(`/api/dsp/members/${members[0].id}`, { role: null })).status, 409);
   assert.equal((await owner.post(`/api/platform/dsps/${id}/disable`)).status, 200);
+  assert.equal((await user.get('/api/dsp/members')).status, 401);
   assert.equal((await f.request(invite, undefined, at)).status, 404);
   assert.equal((await owner.post(`/api/platform/dsps/${id}/disable`)).status, 409);
   assert.equal((await owner.post(`/api/platform/dsps/${id}/enable`)).status, 200);
