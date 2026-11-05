@@ -344,6 +344,8 @@ impl crate::State {
             return Err(Error::new("invalid_login", 401));
         };
         self.run(move |db| {
+            // The DSP may have been disabled while the password was checked, its sessions ended.
+            db.ensure_site_enabled(&site)?;
             let directory = db.directory(scope.as_deref())?;
             let current = UserRow::find(&directory, "id", &row.user.id)?
                 .ok_or_else(|| Error::new("invalid_login", 401))?;
