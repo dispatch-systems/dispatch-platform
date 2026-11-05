@@ -1,17 +1,21 @@
 package com.dspdispatch.relay.texts
 
+import com.dspdispatch.relay.connection.Unexpected
 import com.dspdispatch.relay.dispatch.Direction
 
 /**
  * Reads the phone's texts into the [queue]: each received, and each sent from its texting app but
  * the app's [own], once, from when the phone paired on. Each read goes back over the texts written
  * since the last one, so a text written while the app was stopped is read at its next start, over
- * each not whole the last time, and over each row added since, whatever its time.
+ * each not whole the last time, and over each row added since, whatever its time. A row the
+ * provider fails on in a way nothing expected is told to [unexpected], and read again as one not
+ * whole.
  */
 class Inbox(
     private val provider: Provider,
     private val queue: Queue,
     private val own: Own,
+    private val unexpected: Unexpected,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
     /**
@@ -51,11 +55,11 @@ class Inbox(
 
     /**
      * Reads [row], first [found] unread then, at [now]: whether it's done with as far as the quick
-     * retries go. One that can't be read yet is kept until it's whole or gone, however long that
-     * takes; after a day, only the regular reads try it again.
+     * retries go. One that can't be read yet is kept until it's whole or gone, for [UNREAD_MOST_MS]
+     * at most, then left; after a day, only the regular reads try it again.
      */
     private suspend fun read(row: Row, found: Long, now: Long): Boolean {
-        return when (val reading = provider.read(row)) {
+        return when (val reading = reading(row)) {
             is Reading.Whole -> {
                 if (row.direction == Direction.OUT) {
                     when (own.whose(reading.message)) {
@@ -72,10 +76,22 @@ class Inbox(
             }
             Reading.Gone -> left(row)
             Reading.Later -> {
+                // Never whole, as a picture message the texting app wrote without its parts.
+                if (now - found >= UNREAD_MOST_MS) return left(row)
                 queue.later(Unread(row, found))
                 now - found >= UNREAD_MS
             }
         }
+    }
+
+    /** What the provider holds of [row]: not whole yet, while it fails in a way nothing expected. */
+    private fun reading(row: Row): Reading = try {
+        provider.read(row)
+    } catch (lost: SecurityException) {
+        throw lost
+    } catch (failed: RuntimeException) {
+        unexpected.happened("Reading a text", failed)
+        Reading.Later
     }
 
     /** Keeps [row] as read, never reported. */
@@ -108,8 +124,11 @@ class Inbox(
         /** How long after its time a text may still come into the provider. */
         const val LOOK_BACK_MS = 24 * 60 * 60 * 1000L
 
-        /** How long a text not whole is read again, from when it was found, before it's left. */
+        /** How long a text not whole is read again quickly, from when it was found. */
         const val UNREAD_MS = 24 * 60 * 60 * 1000L
+
+        /** How long a text not whole is read again at all, from when it was found, before it's left. */
+        const val UNREAD_MOST_MS = 7 * UNREAD_MS
 
         // What Dispatch takes of a text (`LIMITS`, `NAME_MOST`, `MIME_MOST`), in characters as it
         // counts them, each code point one.

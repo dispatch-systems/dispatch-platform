@@ -10,6 +10,7 @@ import com.dspdispatch.relay.dispatch.TextsReport
 import com.dspdispatch.relay.dispatch.wire
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.io.IOException
 import java.net.URI
 import java.nio.file.Files
 import java.util.concurrent.TimeUnit
@@ -40,6 +41,7 @@ class ReporterTest {
     private val provider = FakeProvider()
     private val folder = Files.createTempDirectory("jpegs").toFile()
     private val pictures = FakePictures(jpeg = { JPEG })
+    private val unexpected = mutableListOf<Throwable>()
     private val reporter = reporter(pictures)
     private lateinit var site: String
 
@@ -129,6 +131,42 @@ class ReporterTest {
         assertTrue(reporter.upload(site, KEY))
         assertEquals("/api/communications/phone/files/file_2", server.takeRequest().url.encodedPath)
         assertTrue(queue.files.isEmpty())
+    }
+
+    @Test
+    fun leavesAFileDispatchAlwaysRefusesOrThatCantBeReadAndSendsTheRest() = runTest {
+        answered(WaitingFile("mms-1-1", 0, "content://mms/part/1", "broken.jpg", "image/jpeg", 3, "file_1"))
+        answered(WaitingFile("mms-2-2", 0, "content://mms/part/2", "refused.jpg", "image/jpeg", 3, "file_2"))
+        answered(WaitingFile("mms-3-3", 0, "content://mms/part/3", "door.jpg", "image/jpeg", 3, "file_3"))
+        (1..3).forEach { provider.bytes["content://mms/part/$it"] = byteArrayOf(1, 2, 3) }
+        // Opened as it's sent, on the network's own thread.
+        provider.broken += "content://mms/part/1"
+        server.enqueue(json(403, """{"error":"invalid_origin"}"""))
+        server.enqueue(json(200, """{"ok":true}"""))
+        repeat(3) { assertTrue(reporter.upload(site, KEY)) }
+        assertTrue(queue.files.isEmpty())
+        assertTrue(unexpected.single().cause is IllegalArgumentException)
+        assertEquals(listOf("file_2", "file_3"), List(2) { server.takeRequest().url.encodedPath.substringAfterLast('/') })
+    }
+
+    @Test
+    fun keepsAFileWhileTheProvidersDatabaseFailsAMoment() = runTest {
+        answered(WaitingFile("mms-1-1", 0, "content://mms/part/1", "door.jpg", "image/jpeg", 3, "file_1"))
+        provider.bytes["content://mms/part/1"] = byteArrayOf(1, 2, 3)
+        // Opened as it's sent, on the network's own thread.
+        provider.failingOnce += "content://mms/part/1"
+        try {
+            reporter.upload(site, KEY)
+            fail("Sent")
+        } catch (_: IOException) {
+        }
+        assertEquals(1, queue.files.size)
+        assertTrue(unexpected.isEmpty())
+
+        server.enqueue(json(200, """{"ok":true}"""))
+        assertTrue(reporter.upload(site, KEY))
+        assertTrue(queue.files.isEmpty())
+        assertEquals(listOf<Byte>(1, 2, 3), server.takeRequest().body?.toByteArray()?.toList())
     }
 
     @Test
@@ -410,6 +448,7 @@ class ReporterTest {
         provider,
         Texting { provider.allowed },
         Jpegs(jpegs, pictures),
+        { _, error -> unexpected += error },
         EmptyCoroutineContext,
     )
 

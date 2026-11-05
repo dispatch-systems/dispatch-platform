@@ -5,11 +5,14 @@ import com.dspdispatch.relay.dispatch.Dispatch
 import java.io.File
 import java.security.MessageDigest
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
+import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
+import mockwebserver3.RecordedRequest
 import okhttp3.OkHttpClient
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
@@ -170,23 +173,58 @@ class UpdatesTest {
     }
 
     @Test
-    fun triesAnUpdateThatDidNotInstallAgainAfterAnHour() = runTest {
+    fun triesAnUpdateThatDidNotInstallAgainLaterEachTimeFromTheApkKept() = runTest {
         installer.outcome = Outcome.FAILED
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest) =
+                if (request.url.encodedPath.endsWith("/download")) download(bytes) else details(bytes)
+        }
+        var updates = updates()
+        val waits = Updates.RETRIES_MS + Updates.RETRIES_MS.last()
+        for ((tried, wait) in waits.withIndex()) {
+            updates.heard(site, newer)
+            installer.tries.receive()
+            assertEquals(Update.Available(newer, Problem.INSTALL), updates.update.first { it is Update.Available })
+            assertEquals(Hold(newer.versionCode, clock + wait, tried + 1), holds.hold)
+            clock += wait - 1
+            updates.heard(site, newer)
+            // Through a restart too.
+            updates = updates()
+            updates.heard(site, newer)
+            clock += 1
+        }
+        assertEquals(List(waits.size) { bytes.toList() }, installer.installs.map(ByteArray::toList))
+        assertEquals("one download, then the details for each try", 1 + waits.size, server.requestCount)
+        assertEquals(waits.size, released)
+    }
+
+    @Test
+    fun keepsTheApkThroughATryWhoseDetailsCouldNotBeHad() = runTest {
+        installer.outcome = Outcome.FAILED
+        var reachable = true
+        val downloads = mutableListOf<String>()
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest) = when {
+                !reachable -> json(503, """{"error":"platform_busy"}""")
+                request.url.encodedPath.endsWith("/download") -> download(bytes).also { downloads += "apk" }
+                else -> details(bytes)
+            }
+        }
         val updates = updates()
-        serve(bytes)
         updates.heard(site, newer)
-        assertEquals(Update.Available(newer, Problem.INSTALL), updates.update.first { it is Update.Available && it.problem != null })
-        assertEquals(1, released)
-        clock += Updates.RETRY_MS - 1
+        installer.tries.receive()
+        updates.update.first { it == Update.Available(newer, Problem.INSTALL) }
+        reachable = false
+        clock += Updates.RETRIES_MS[0]
         updates.heard(site, newer)
-        updates().heard(site, newer)
-        assertEquals(2, server.requestCount)
-        clock += 1
+        updates.update.first { it == Update.Available(newer, Problem.DOWNLOAD) }
+        reachable = true
         installer.outcome = Outcome.INSTALLED
-        serve(bytes)
+        clock += Updates.RETRIES_MS[1]
         updates.heard(site, newer)
-        assertEquals(Update.Installing(newer), updates.update.first { it is Update.Installing })
-        assertEquals(2, installer.installs.size)
+        installer.tries.receive()
+        assertEquals(listOf(bytes.toList(), bytes.toList()), installer.installs.map(ByteArray::toList))
+        assertEquals(listOf("apk"), downloads)
     }
 
     @Test
@@ -214,7 +252,7 @@ class UpdatesTest {
         updates.heard(site, newer)
         assertEquals(Update.Available(newer, Problem.NOT_THIS_APP), updates.update.first { it is Update.Available && it.problem != null })
         assertTrue(installer.installs.isEmpty())
-        clock += 2 * Updates.RETRY_MS
+        clock += 2 * Updates.RETRIES_MS.last()
         updates.heard(site, newer)
         updates.install(site)
         updates().heard(site, newer)
@@ -259,7 +297,7 @@ class UpdatesTest {
         server.enqueue(json(404, """{"error":"phones_app_not_found","message":"…"}"""))
         updates.heard(site, newest)
         assertEquals(Update.Available(newer, Problem.DOWNLOAD), updates.update.first { it is Update.Available && it.problem != null })
-        assertEquals(Hold(newer.versionCode, Updates.RETRY_MS), holds.hold)
+        assertEquals(Hold(newer.versionCode, Updates.RETRIES_MS.first()), holds.hold)
     }
 
     @Test
@@ -268,7 +306,7 @@ class UpdatesTest {
         serve("another apk!!".toByteArray(), sha256 = sha256(bytes), app = newer)
         updates.heard(site, newest)
         assertEquals(Update.Available(newer, Problem.MISMATCH), updates.update.first { it is Update.Available && it.problem != null })
-        assertEquals(Hold(newer.versionCode, Updates.RETRY_MS), holds.hold)
+        assertEquals(Hold(newer.versionCode, Updates.RETRIES_MS.first()), holds.hold)
     }
 
     @Test
@@ -295,13 +333,20 @@ class UpdatesTest {
         },
         { released++ },
         backgroundScope,
+        { _, error -> throw AssertionError("Unexpected", error) },
         now = { clock },
     )
 
     private fun serve(apk: ByteArray, sha256: String = sha256(apk), app: AppVersion = newer) {
-        server.enqueue(json(200, """{"version":"${app.version}","versionCode":${app.versionCode},"size":${apk.size},"sha256":"$sha256"}"""))
-        server.enqueue(MockResponse.Builder().code(200).addHeader("Content-Type", "application/vnd.android.package-archive").body(okio.Buffer().write(apk)).build())
+        server.enqueue(details(apk, sha256, app))
+        server.enqueue(download(apk))
     }
+
+    private fun details(apk: ByteArray, sha256: String = sha256(apk), app: AppVersion = newer) =
+        json(200, """{"version":"${app.version}","versionCode":${app.versionCode},"size":${apk.size},"sha256":"$sha256"}""")
+
+    private fun download(apk: ByteArray) =
+        MockResponse.Builder().code(200).addHeader("Content-Type", "application/vnd.android.package-archive").body(okio.Buffer().write(apk)).build()
 
     private fun json(code: Int, body: String) =
         MockResponse.Builder().code(code).addHeader("Content-Type", "application/json").body(body).build()
@@ -316,6 +361,7 @@ class UpdatesTest {
         var asks = 0
         val installs = mutableListOf<ByteArray>()
         val installed = CompletableDeferred<ByteArray>()
+        val tries = Channel<Unit>(Channel.UNLIMITED)
         val dropped = CompletableDeferred<Unit>()
 
         override fun allowed() = allowed
@@ -324,6 +370,7 @@ class UpdatesTest {
             val bytes = apk.readBytes()
             installs += bytes
             installed.complete(bytes)
+            tries.trySend(Unit)
             if (!confirm) return outcome
             confirming()
             try {

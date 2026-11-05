@@ -3,6 +3,7 @@ package com.dspdispatch.relay
 import android.content.Context
 import androidx.annotation.StringRes
 import com.dspdispatch.relay.connection.Connection
+import com.dspdispatch.relay.connection.Logcat
 import com.dspdispatch.relay.dispatch.AppVersion
 import com.dspdispatch.relay.dispatch.Dispatch
 import com.dspdispatch.relay.dispatch.PairRequest
@@ -65,6 +66,7 @@ class Relay(private val context: Context) {
         texts::hold,
         texts::release,
         scope,
+        Logcat,
     )
     private val attempt = MutableStateFlow<Attempt>(Attempt.None)
     val attempting: StateFlow<Attempt> = attempt.asStateFlow()

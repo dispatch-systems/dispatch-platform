@@ -12,7 +12,8 @@ class InboxTest {
     private val queue = MemoryQueue()
     private val whose = mutableMapOf<Row, Whose>()
     private var clock = PAIRED
-    private val inbox = Inbox(provider, queue, { whose[it.row] ?: Whose.PHONE }) { clock }
+    private val unexpected = mutableListOf<Throwable>()
+    private val inbox = Inbox(provider, queue, { whose[it.row] ?: Whose.PHONE }, { _, error -> unexpected += error }) { clock }
 
     @Test
     fun readsEachTextOnceFromWhenThePhonePaired() = runTest {
@@ -118,7 +119,7 @@ class InboxTest {
     }
 
     @Test
-    fun keepsAPictureMessageItCantReadYetHoweverLongItTakes() = runTest {
+    fun keepsAPictureMessageItCantReadYetUntilItsWhole() = runTest {
         inbox.begin("phone_1", PAIRED)
         val row = Row(Table.MMS, 5, PAIRED + 10, Direction.IN)
         provider.writing += row
@@ -136,6 +137,28 @@ class InboxTest {
         inbox.read()
         assertEquals(setOf("mms-5-${PAIRED + 10}", "mms-9-$clock"), queue.texts.keys)
         assertTrue(queue.unread.isEmpty())
+    }
+
+    @Test
+    fun leavesARowThatNeverReadsWholeAfterAWeekReadingTheRestMeanwhile() = runTest {
+        inbox.begin("phone_1", PAIRED)
+        val empty = Row(Table.MMS, 5, PAIRED + 10, Direction.IN)
+        val failing = Row(Table.MMS, 6, PAIRED + 20, Direction.IN)
+        provider.writing += empty
+        mms(6, PAIRED + 20, Direction.IN, listOf("(206) 555-0106"), "Door")
+        provider.failing += failing
+        sms(7, PAIRED + 30, Direction.IN, "(206) 555-0107", "Gate code?")
+        assertFalse(inbox.read())
+        assertEquals(listOf("sms-7-${PAIRED + 30}"), queue.texts.keys.toList())
+        assertTrue(unexpected.single() is IllegalStateException)
+        clock += Inbox.UNREAD_MOST_MS - 1
+        inbox.read()
+        assertEquals(setOf(empty.key, failing.key), queue.unread.keys)
+        clock += 1
+        assertTrue(inbox.read())
+        assertTrue(queue.unread.isEmpty())
+        inbox.read()
+        assertEquals(3, unexpected.size)
     }
 
     @Test
