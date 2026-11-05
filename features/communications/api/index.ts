@@ -39,6 +39,7 @@ export type { MessageFile } from './generated/MessageFile';
 export type { MessageGroup } from './generated/MessageGroup';
 export type { MessageLayout } from './generated/MessageLayout';
 export type { MessageStyle } from './generated/MessageStyle';
+export type { NotSent } from './generated/NotSent';
 export type { Pace } from './generated/Pace';
 export type { PairingStatus } from './generated/PairingStatus';
 export type { PhoneApp } from './generated/PhoneApp';

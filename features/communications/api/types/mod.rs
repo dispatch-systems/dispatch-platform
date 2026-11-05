@@ -6,7 +6,7 @@
 //! `phone/`.
 pub use crate::backend::{
     files::FileStatus,
-    groups::{GroupChoiceKind, GroupPersonState},
+    groups::{GroupChoiceKind, GroupPersonState, NotSent},
     model::{ConversationKind, ConversationState, Direction},
     texts::model::TextStatus,
     today::Pace,

@@ -64,15 +64,18 @@ pub fn approved(workspace: &kit::Workspace) -> bool {
 }
 
 /// Keeps what Slack told of, while it's on in the workspace and Communications is on for the
-/// DSP. A failure is logged by its code alone, never with what was written.
+/// DSP, tried again soon when it fails, then left to catching up. A failure is logged by its code
+/// and the DSP alone, never with what was written.
 pub fn heard(state: Arc<State>, heard: Heard) -> Upkeep {
     Box::pin(async move {
-        let kept = incoming::heard(&state, &heard.dsp, &heard.account, &heard.event).await;
+        let kept =
+            kit::retried(|| incoming::heard(&state, &heard.dsp, &heard.account, &heard.event))
+                .await;
         if let Err(error) = kept {
             observability::event(
                 "warn",
                 "communications_heard_failed",
-                json!({"error": error.code}),
+                json!({"dspId": heard.dsp, "error": error.code}),
             );
         }
     })

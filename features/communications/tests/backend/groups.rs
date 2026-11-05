@@ -1,8 +1,10 @@
 //! Messaging a group: each person gets it once, in their own direct message, under the sender's
 //! name; their answers are the group's until the DSP writes to them alone, and their
 //! conversations are listed under it while nothing they wait on is older; sending picks up after
-//! a restart without a second copy; one that can't go isn't sent; the groups to choose from
-//! hold someone each; and what a message to a group may carry is offered with them, as Slack's.
+//! a restart without a second copy; one that can't go isn't sent; one waits while its workspace
+//! needs reconnecting; none goes out over two hours late, and each person's panel says why it
+//! wasn't sent; the groups to choose from hold someone each; and what a message to a group may
+//! carry is offered with them, as Slack's.
 use super::*;
 use crate::api::types::ComposeLimits;
 use crate::backend::{
@@ -111,6 +113,38 @@ async fn with(
     support::conversation_with(state, dsp, team, user)
         .await
         .unwrap()
+}
+/// Makes the group message `id` written two hours and a minute earlier than it was.
+async fn late(state: &Arc<State>, dsp: &str, id: &str) {
+    let (dsp, id) = (dsp.to_owned(), id.to_owned());
+    state
+        .run(move |db| {
+            db.dsp(&dsp)?.exec(
+                "UPDATE communications_group_messages SET at=at-? WHERE id=?",
+                rusqlite::params![2 * 60 * 60 * 1000 + 60_000, id],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+}
+/// Where the group `id` stands with each of its people, and why it wasn't sent them, if it
+/// wasn't.
+async fn panel(
+    state: &Arc<State>,
+    dsp: &str,
+    id: &str,
+) -> Vec<(GroupPersonState, Option<NotSent>)> {
+    let (shared, dsp, id) = (state.clone(), dsp.to_owned(), id.to_owned());
+    let panel = state
+        .read(move |db| people(db, &shared, &dsp, &id))
+        .await
+        .unwrap();
+    panel
+        .people
+        .into_iter()
+        .map(|person| (person.state, person.not_sent))
+        .collect()
 }
 /// The group `id`, as the list reads it.
 async fn listed(state: &Arc<State>, dsp: &str, id: &str) -> crate::api::types::Group {
@@ -316,7 +350,7 @@ async fn sending_picks_up_after_a_restart_without_a_second_copy() {
     // claimed and posted nothing; both claims have since run out.
     let at = dsp.clone();
     let due = state
-        .read(move |db| db.due_communications_deliveries(&at, now(), 10))
+        .read(move |db| db.due_communications_deliveries(&at, now(), 0, 10))
         .await
         .unwrap();
     for item in &due {
@@ -384,7 +418,52 @@ async fn one_that_cant_go_is_not_sent() {
         .await
         .unwrap();
     assert_eq!(panel.people[0].state, GroupPersonState::NotSent);
+    assert_eq!(panel.people[0].not_sent, Some(NotSent::Off));
     assert_eq!(panel.sent_by, "Test Owner");
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_group_message_not_sent_within_two_hours_is_given_up_as_too_late() {
+    let (_root, state, bot) = support::connected(DRIVERS_TEAM).await;
+    let dsp = bot.dsp.clone();
+    let c = owner(&state, &dsp).await;
+    let picked = members(&[(DRIVERS_TEAM, "U0FIXCAM")]);
+    let group = send::create(&state, &c, USE, "Wave", &picked, "Running late", &[])
+        .await
+        .unwrap();
+    let message = first_message(&state, &dsp, &group.id).await;
+    // Nothing sent it within two hours, as while Communications was off for the DSP.
+    late(&state, &dsp, &message.id).await;
+    send::drain(&state, &dsp).await;
+    assert!(posts(DRIVERS_TEAM, "U0FIXCAM", &message.id).is_empty());
+    assert_eq!(
+        panel(&state, &dsp, &group.id).await,
+        [(GroupPersonState::NotSent, Some(NotSent::TooLate))]
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_workspace_needing_reconnecting_holds_its_messages_then_says_why_they_went_unsent() {
+    let (_root, state, bot) = support::connected(DRIVERS_TEAM).await;
+    let dsp = bot.dsp.clone();
+    let c = owner(&state, &dsp).await;
+    let picked = members(&[(DRIVERS_TEAM, "U0FIXCAM"), (DRIVERS_TEAM, "U0FIXCASEY")]);
+    let group = send::create(&state, &c, USE, "Wave", &picked, "Running late", &[])
+        .await
+        .unwrap();
+    slack::disconnect(&state, &dsp, DRIVERS_TEAM).await;
+    send::drain(&state, &dsp).await;
+    let sending = (GroupPersonState::Sending, None);
+    assert_eq!(panel(&state, &dsp, &group.id).await, [sending, sending]);
+    // Not back within two hours of being written: given up, with why.
+    let message = first_message(&state, &dsp, &group.id).await;
+    late(&state, &dsp, &message.id).await;
+    send::drain(&state, &dsp).await;
+    let disconnected = (GroupPersonState::NotSent, Some(NotSent::Disconnected));
+    assert_eq!(
+        panel(&state, &dsp, &group.id).await,
+        [disconnected, disconnected]
+    );
 }
 
 #[tokio::test(start_paused = true)]

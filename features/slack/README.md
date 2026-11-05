@@ -225,9 +225,13 @@ Slack's manifest lists each one's integration, upkeep, migration and tables. `in
   must carry Slack's signature of its time and body, made with the app's signing secret, and be
   no more than five minutes old: anything else is refused (`slack_unsigned`, 401). Dispatch
   answers at once, as Slack waits three seconds, and does the work after; an event Slack sends
-  again is handled once. The app's removal from a workspace, or its tokens' revocation there, is
-  kept before Dispatch answers, and a failure is answered as one, so Slack sends it again. A
-  request may be up to 64 KiB, as any request to the server may. An event goes by the name the
+  again is handled once. Work done after that fails is tried again a second, five and thirty
+  seconds later, then left to the passes that catch up on what was missed, logged as
+  `slack_event_failed` or `slack_interaction_failed` with its DSP; an integration can try what it
+  hears again the same way (`kit::retried`), and each pass logs a failure with the DSP it was
+  working for (`kit::failed`). The app's removal from a workspace, or its tokens' revocation
+  there, is kept before Dispatch answers, and a failure is answered as one, so Slack sends it
+  again. A request may be up to 64 KiB, as any request to the server may. An event goes by the name the
   app is told of it by: a message by its conversation's, `message.im` for one written to the
   app directly. The app is told when its Home tab is opened, which shows the DSP's name; when
   someone joins a workspace or changes their profile, which its members keep; when someone

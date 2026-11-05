@@ -12,11 +12,34 @@ use dispatch_core::{
     manifest::Upkeep,
 };
 use serde_json::json;
-use std::{future::Future, sync::Arc};
+use std::{future::Future, sync::Arc, time::Duration};
 
-/// Reports a pass's failure, as `event`, with the error's code.
-pub fn failed(event: &'static str, error: &Error) {
-    observability::event("error", event, json!({"error": error.code}));
+/// How long work Slack told of waits before each try again after it fails: a second, five and
+/// thirty.
+const AGAIN: [Duration; 3] = [
+    Duration::from_secs(1),
+    Duration::from_secs(5),
+    Duration::from_secs(30),
+];
+
+/// Reports a pass's failure, as `event`, with the error's code and the DSP it was working for, if
+/// it was working for one.
+pub fn failed(event: &'static str, dsp: Option<&str>, error: &Error) {
+    observability::event("error", event, json!({"dspId": dsp, "error": error.code}));
+}
+
+/// Does work Slack told of, `work`, until it succeeds: tried again after a second, five and thirty
+/// when it fails, then left to the passes that catch up on what was missed, answering why its last
+/// try failed. Each try does it all again, so what it keeps it keeps once, however often it's
+/// tried, and what came after it in Slack is kept meanwhile.
+pub async fn retried<F: Future<Output = Result<()>>>(mut work: impl FnMut() -> F) -> Result<()> {
+    for wait in AGAIN {
+        if work().await.is_ok() {
+            return Ok(());
+        }
+        tokio::time::sleep(wait).await;
+    }
+    work().await
 }
 
 /// The DSPs Slack works for: each kept DSP that's active with Slack on. A failure finding them
@@ -36,7 +59,7 @@ pub async fn dsps(state: &Arc<State>, event: &'static str) -> Vec<String> {
     match found {
         Ok(open) => open,
         Err(error) => {
-            failed(event, &error);
+            failed(event, None, &error);
             Vec::new()
         }
     }
@@ -118,7 +141,7 @@ pub async fn due<Q: Queue>(state: &Arc<State>, dsp: &str) {
     let at = dsp.to_owned();
     let due = match state.read(move |db| Q::due(db, &at, now(), Q::BATCH)).await {
         Ok(due) => due,
-        Err(error) => return failed(Q::FAILED, &error),
+        Err(error) => return failed(Q::FAILED, Some(dsp), &error),
     };
     for item in due {
         let (at, of) = (dsp.to_owned(), item.clone());
@@ -130,7 +153,7 @@ pub async fn due<Q: Queue>(state: &Arc<State>, dsp: &str) {
             Ok(Some(claimed)) => Q::try_one(state, dsp, &item, claimed).await,
             Ok(None) => continue,
             Err(error) => {
-                failed(Q::FAILED, &error);
+                failed(Q::FAILED, Some(dsp), &error);
                 continue;
             }
         };
@@ -139,7 +162,11 @@ pub async fn due<Q: Queue>(state: &Arc<State>, dsp: &str) {
             .run(move |db| Q::finish(db, &at, &item, &outcome, now()))
             .await
         {
-            failed(Q::FAILED, &error);
+            failed(Q::FAILED, Some(dsp), &error);
         }
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/work.rs"]
+mod tests;

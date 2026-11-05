@@ -1,6 +1,7 @@
 //! What members write to the app directly, kept as Slack tells of it: a message, a file shared,
-//! a reply in a thread and an edit, but never the app's own posts, another bot's, or anything
-//! sent before Communications was on; and nothing deleted in Slack is deleted here.
+//! a reply in a thread and an edit, even one told of before its message, but never the app's own
+//! posts, another bot's, or anything sent before Communications was on; and nothing deleted in
+//! Slack is deleted here.
 use super::*;
 use crate::backend::{
     files::{self, FileStatus, FileStore},
@@ -125,6 +126,32 @@ async fn a_members_messages_and_their_edits_are_kept_and_nothing_else() {
         .await
         .unwrap();
     assert!(!serde_json::to_string(&stored).unwrap().contains("4 & 5"));
+}
+
+#[tokio::test]
+async fn an_edit_told_of_before_its_message_keeps_the_message_as_edited() {
+    let (_root, state, bot) = support::connected(TEAM).await;
+    let dsp = bot.dsp.clone();
+    let start = now();
+    let edit = json!({"type": "message", "subtype": "message_changed", "channel": DM,
+        "channel_type": "im",
+        "message": {"user": "U0FIXCAM", "text": "Flat tire on route 6", "ts": ts(start),
+            "edited": {"user": "U0FIXCAM", "ts": ts(start + 60_000)}}});
+    heard(&state, &dsp, TEAM, &edit).await.unwrap();
+    // Its message, its handling tried again, comes after.
+    heard(&state, &dsp, TEAM, &written(start, json!({})))
+        .await
+        .unwrap();
+    let kept = support::conversation_with(&state, &dsp, TEAM, "U0FIXCAM")
+        .await
+        .unwrap();
+    let messages = support::messages(&state, &dsp, &kept.id).await;
+    let read: Vec<(&str, Option<i64>)> = messages
+        .iter()
+        .map(|message| (message.text.as_str(), message.edited_at))
+        .collect();
+    assert_eq!(read, [("Flat tire on route 6", Some(start + 60_000))]);
+    assert_eq!(kept.state, ConversationState::Waiting);
 }
 
 #[tokio::test]

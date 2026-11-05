@@ -113,6 +113,26 @@ text_enum! {
     }
 }
 
+/// Where a group message stands with one of its people, by workspace and ID, and why, if it
+/// wasn't sent them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Delivery {
+    pub team: String,
+    pub user: String,
+    pub status: DeliveryStatus,
+    pub reason: Option<String>,
+}
+impl FromRow for Delivery {
+    fn from_row(row: &Row<'_>) -> Result<Self> {
+        Ok(Self {
+            team: row.get("team_id")?,
+            user: row.get("user_id")?,
+            status: row.get("status")?,
+            reason: row.get("reason")?,
+        })
+    }
+}
+
 /// How far a group message has gone: to how many in all, how many it reached, and how many it
 /// couldn't.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -227,11 +247,7 @@ pub trait GroupStore {
         ids: &[String],
     ) -> Result<Vec<(String, Progress)>>;
     /// Where the group message `message` stands with each of its people.
-    fn communications_deliveries(
-        &self,
-        dsp: &str,
-        message: &str,
-    ) -> Result<Vec<(String, String, DeliveryStatus)>>;
+    fn communications_deliveries(&self, dsp: &str, message: &str) -> Result<Vec<Delivery>>;
     /// Each of the group's people who answered it, by workspace and ID, with when they first
     /// did.
     fn communications_group_answered(
@@ -242,9 +258,27 @@ pub trait GroupStore {
     /// Marks each conversation listed under the group done, as the member `by`, while it waits:
     /// how many were.
     fn mark_communications_group_done(&self, dsp: &str, group: &str, by: &str) -> Result<usize>;
-    /// The group messages due to go to one of their people by `at`, the longest due first, `most`
-    /// at most.
-    fn due_communications_deliveries(&self, dsp: &str, at: i64, most: usize) -> Result<Vec<Due>>;
+    /// The group messages written since `fresh` due to go to one of their people by `at`, the
+    /// longest due first, `most` at most.
+    fn due_communications_deliveries(
+        &self,
+        dsp: &str,
+        at: i64,
+        fresh: i64,
+        most: usize,
+    ) -> Result<Vec<Due>>;
+    /// Whether any group message written before `before` waits to go to one of its people, no
+    /// try holding it at `at`.
+    fn stale_communications_deliveries(&self, dsp: &str, before: i64, at: i64) -> Result<bool>;
+    /// Gives up each group message written before `before` waiting to go to one of its people,
+    /// no try holding it at `at`, for `reason`, or what it last waited on, if it waited on Slack.
+    fn expire_communications_deliveries(
+        &self,
+        dsp: &str,
+        before: i64,
+        at: i64,
+        reason: &str,
+    ) -> Result<()>;
     /// Claims the delivery for one try, from `at` until `until`, while it's due: since when an
     /// earlier try may have posted it, if one may have; none when it's no longer due.
     fn claim_communications_delivery(
@@ -539,13 +573,10 @@ impl GroupStore for Store {
             })
             .collect())
     }
-    fn communications_deliveries(
-        &self,
-        dsp: &str,
-        message: &str,
-    ) -> Result<Vec<(String, String, DeliveryStatus)>> {
+    fn communications_deliveries(&self, dsp: &str, message: &str) -> Result<Vec<Delivery>> {
         self.dsp(dsp)?.query_as(
-            "SELECT team_id,user_id,status FROM communications_deliveries WHERE message_id=?",
+            "SELECT team_id,user_id,status,CASE WHEN status='failed' THEN reason END reason \
+             FROM communications_deliveries WHERE message_id=?",
             [message],
         )
     }
@@ -578,16 +609,64 @@ impl GroupStore for Store {
             Ok(waiting.len())
         })
     }
-    fn due_communications_deliveries(&self, dsp: &str, at: i64, most: usize) -> Result<Vec<Due>> {
+    fn due_communications_deliveries(
+        &self,
+        dsp: &str,
+        at: i64,
+        fresh: i64,
+        most: usize,
+    ) -> Result<Vec<Due>> {
         self.dsp(dsp)?.query_as(
             "SELECT d.message_id,d.team_id,d.user_id,d.attempts FROM communications_deliveries d \
              JOIN communications_group_messages m ON m.id=d.message_id \
              JOIN communications_group_people p ON p.group_id=m.group_id \
              AND p.team_id=d.team_id AND p.user_id=d.user_id \
              WHERE d.status='waiting' AND d.due_at<=?1 AND coalesce(d.claimed_until,0)<=?1 \
-             ORDER BY d.due_at,m.at,m.id,p.place LIMIT ?2",
-            params![at, most as i64],
+             AND m.at>=?2 ORDER BY d.due_at,m.at,m.id,p.place LIMIT ?3",
+            params![at, fresh, most as i64],
         )
+    }
+    fn stale_communications_deliveries(&self, dsp: &str, before: i64, at: i64) -> Result<bool> {
+        let stale = self.dsp(dsp)?.count(
+            "SELECT count(*) FROM communications_deliveries d \
+             JOIN communications_group_messages m ON m.id=d.message_id \
+             WHERE d.status='waiting' AND m.at<?1 AND coalesce(d.claimed_until,0)<=?2",
+            params![before, at],
+        )?;
+        Ok(stale > 0)
+    }
+    fn expire_communications_deliveries(
+        &self,
+        dsp: &str,
+        before: i64,
+        at: i64,
+        reason: &str,
+    ) -> Result<()> {
+        let db = self.dsp(dsp)?;
+        db.transaction(|| {
+            let stale = "FROM communications_deliveries d \
+                         JOIN communications_group_messages m ON m.id=d.message_id \
+                         WHERE d.status='waiting' AND m.at<?1 AND coalesce(d.claimed_until,0)<=?2";
+            let groups: Vec<(String,)> = db.query_as(
+                &format!("SELECT DISTINCT m.group_id {stale}"),
+                params![before, at],
+            )?;
+            db.exec(
+                &format!(
+                    "UPDATE communications_deliveries SET status='failed',claimed_until=NULL,\
+                     reason=CASE WHEN reason IN \
+                     ('slack_needs_update','slack_connection_broken','slack_not_connected') \
+                     THEN reason ELSE ?3 END \
+                     WHERE (message_id,team_id,user_id) IN \
+                     (SELECT d.message_id,d.team_id,d.user_id {stale})"
+                ),
+                params![before, at, reason],
+            )?;
+            for (group,) in &groups {
+                changed_conversation(&db, group)?;
+            }
+            Ok(())
+        })
     }
     fn claim_communications_delivery(
         &self,

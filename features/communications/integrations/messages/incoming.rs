@@ -1,9 +1,10 @@
 //! What members write to the app directly, kept as Slack tells of it (`message.im`) or as
 //! catching up reads it: each message a person wrote anew there, shared a file in, or wrote in a
 //! thread of, with its files to download, and each later edit of one, its text replaced and
-//! nothing of what it said before kept. Never the app's own posts or another bot's, and nothing
-//! deleted in Slack is deleted here. Never one sent before Slack, Communications and its
-//! integration in the workspace were all on.
+//! nothing of what it said before kept. An edit told of before its message keeps the message as
+//! edited, which its message told of later doesn't change back. Never the app's own posts or
+//! another bot's, and nothing deleted in Slack is deleted here. Never one sent before Slack,
+//! Communications and its integration in the workspace were all on.
 use super::ID;
 use crate::backend::{
     files, live,
@@ -39,15 +40,15 @@ pub fn kept_since(db: &Store, dsp: &str, team: &str) -> Result<Option<i64>> {
         .try_fold(0, |since, on| on.map(|on| since.max(on))))
 }
 
-/// Keeps what Slack told of in the workspace `team`: a message a member wrote, or an edit of one.
+/// Keeps what Slack told of in the workspace `team`: a message a member wrote, or an edit of one,
+/// which describes the message as edited.
 pub async fn heard(state: &Arc<State>, dsp: &str, team: &str, event: &Value) -> Result<()> {
-    match event["subtype"].as_str() {
-        Some("message_changed") => edited(state, dsp, team, &event["message"]).await,
-        _ => {
-            let channel = event["channel"].as_str().unwrap_or_default();
-            keep(state, dsp, team, channel, event).await.map(drop)
-        }
-    }
+    let channel = event["channel"].as_str().unwrap_or_default();
+    let message = match event["subtype"].as_str() {
+        Some("message_changed") => &event["message"],
+        _ => event,
+    };
+    keep(state, dsp, team, channel, message).await.map(drop)
 }
 
 /// Whether `message`, as Slack describes one, is one a person wrote anew, shared a file in, or
@@ -153,42 +154,6 @@ pub async fn keep(
         files::download_due(state, dsp).await;
     }
     Ok(true)
-}
-
-/// Replaces the text of a message kept with the edit `message` describes, from the workspace
-/// `team`. Only its latest text is kept: what it said before is neither read nor logged.
-async fn edited(state: &Arc<State>, dsp: &str, team: &str, message: &Value) -> Result<()> {
-    let (Some(user), Some(ts), Some(edited_at)) = (
-        message["user"].as_str(),
-        message["ts"].as_str(),
-        message["edited"]["ts"].as_str().and_then(millis),
-    ) else {
-        // Slack changing a message itself, as to show a link's preview, isn't an edit.
-        return Ok(());
-    };
-    if !message["bot_id"].is_null() {
-        return Ok(());
-    }
-    let (at, of) = (dsp.to_owned(), team.to_owned());
-    let names = state.read(move |db| names(db, &at, &of)).await?;
-    let text = text::plain(message["text"].as_str().unwrap_or_default(), |id| {
-        names.get(id).cloned()
-    });
-    let (of, team, user, ts) = (
-        dsp.to_owned(),
-        team.to_owned(),
-        user.to_owned(),
-        ts.to_owned(),
-    );
-    let changed = state
-        .run_scoped(dsp, DOMAIN, move |db| {
-            db.edit_communications_message(&of, &team, &user, &ts, &text, edited_at)
-        })
-        .await?;
-    if changed.is_some() {
-        live::changed(state, dsp);
-    }
-    Ok(())
 }
 
 /// The workspace `team`'s members' names, by their IDs, as Slack's members were last read.

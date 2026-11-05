@@ -1,6 +1,6 @@
 import { useId } from 'react';
 import { Check, LoaderCircle, Reply, X, type LucideIcon } from 'lucide-react';
-import type { Group, GroupPerson, GroupPersonState } from '../../../api/index.js';
+import type { Group, GroupPerson, GroupPersonState, NotSent } from '../../../api/index.js';
 import { useGroupPeople } from '../../../api/client.js';
 import { ErrorBox, Loading } from '../../../../../core/shell/frontend/ui/index.js';
 import { listTime } from '../../shared/format.js';
@@ -20,6 +20,15 @@ const states: Record<GroupPersonState, [LucideIcon, string]> = {
   sending: [LoaderCircle, 'Sending'],
   sent: [Check, 'Sent'],
   not_sent: [X, 'Not sent'],
+};
+/** Why the group's latest message wasn't sent someone, as it reads after "Not sent:". */
+const notSent: Record<NotSent, string> = {
+  too_late: 'too late',
+  needs_update: 'Slack needs updating',
+  disconnected: 'Slack disconnected',
+  off: 'Communications off in Slack',
+  gone: 'no longer in Slack',
+  refused: 'Slack refused it',
 };
 
 export function GroupPeople({
@@ -82,7 +91,8 @@ export function GroupPeople({
       {data && (
         <ul className="recipients">
           {data.people.map((each) => {
-            const [Icon, label] = states[each.state];
+            const [Icon, state] = states[each.state];
+            const label = each.notSent ? `${state}: ${notSent[each.notSent]}` : state;
             return (
               <li key={`${each.teamId}:${each.person.userId}`}>
                 <button className="recipient" onClick={() => open(each)}>
