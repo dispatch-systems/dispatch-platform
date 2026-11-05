@@ -267,6 +267,14 @@ pub fn set_dsp(db: &Store, dsp: &str, name: &str, timezone: &str) -> Result<()> 
     Ok(())
 }
 
+/// Disables a DSP, as `suspended`, or enables it again, as `active`, as nothing but a test
+/// does: a permanent one too, with no audit, and its sessions and schedules as they were.
+pub fn set_dsp_status(db: &Store, dsp: &str, status: &str) -> Result<()> {
+    db.platform
+        .exec("UPDATE dsps SET status=? WHERE id=?", [status, dsp])?;
+    Ok(())
+}
+
 /// Leaves a DSP's settings as they were before Settings kept them, with no section's record,
 /// for a test of what a feature carries over from where it kept its values then: a DSP made
 /// since has carried over what it had as it opened, which was nothing.

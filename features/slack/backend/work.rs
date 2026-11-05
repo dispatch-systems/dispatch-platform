@@ -46,13 +46,13 @@ pub async fn retried<F: Future<Output = Result<()>>>(
     work(true).await
 }
 
-/// The DSPs Slack works for: each kept DSP that's active with Slack on. A failure finding them
-/// is reported as `event`, and the pass finds none.
+/// The DSPs Slack works for: each DSP served with Slack on. A failure finding them is reported
+/// as `event`, and the pass finds none.
 pub async fn dsps(state: &Arc<State>, event: &'static str) -> Vec<String> {
     let found = state
         .read(|db| {
             let mut open = Vec::new();
-            for dsp in db.kept_dsps()? {
+            for dsp in db.served_ids()? {
                 if connection::open(db, &dsp)? {
                     open.push(dsp);
                 }
@@ -144,10 +144,21 @@ pub fn pass<Q: Queue>(state: Arc<State>, _: bool) -> Upkeep {
     })
 }
 
-/// Tries the DSP's items that are due, each claimed first so two tries never run at once.
+/// Tries the DSP's items that are due while Slack works for it, each claimed first so two tries
+/// never run at once: none once the DSP is disabled, or Slack switched off there, even in a
+/// pass under way.
 pub async fn due<Q: Queue>(state: &Arc<State>, dsp: &str) {
     let at = dsp.to_owned();
-    let due = match state.read(move |db| Q::due(db, &at, now(), Q::BATCH)).await {
+    let due = state
+        .read(move |db| {
+            if connection::open(db, &at)? {
+                Q::due(db, &at, now(), Q::BATCH)
+            } else {
+                Ok(Vec::new())
+            }
+        })
+        .await;
+    let due = match due {
         Ok(due) => due,
         Err(error) => return failed(Q::FAILED, Some(dsp), &error),
     };

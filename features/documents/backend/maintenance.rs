@@ -33,7 +33,7 @@ fn follow(state: Arc<State>, due: bool) -> Upkeep {
         if Google::of(&state.config).is_err() {
             return;
         }
-        let dsps = match state.read(|db| db.kept_dsps()).await {
+        let dsps = match state.read(|db| db.served_ids()).await {
             Ok(dsps) => dsps,
             Err(error) => return failed(&error),
         };
@@ -75,7 +75,7 @@ fn check(state: Arc<State>, due: bool) -> Upkeep {
         let Ok(google) = Google::of(&state.config) else {
             return;
         };
-        let dsps = match state.read(|db| db.kept_dsps()).await {
+        let dsps = match state.read(|db| db.served_ids()).await {
             Ok(dsps) => dsps,
             Err(error) => return failed(&error),
         };

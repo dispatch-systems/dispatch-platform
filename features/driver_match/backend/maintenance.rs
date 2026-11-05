@@ -46,7 +46,7 @@ fn catch_up(state: Arc<State>, due: bool) -> Upkeep {
         if !due {
             return;
         }
-        let dsps = state.read(|db| db.kept_dsps()).await;
+        let dsps = state.read(|db| db.served_ids()).await;
         let dsps = match dsps {
             Ok(dsps) => dsps,
             Err(error) => return failed(None, &error),

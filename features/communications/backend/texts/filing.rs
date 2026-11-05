@@ -139,7 +139,7 @@ fn pass(state: Arc<State>, _: bool) -> Upkeep {
         let on = state
             .read(|db| {
                 let mut found = Vec::new();
-                for dsp in db.kept_dsps()? {
+                for dsp in db.served_ids()? {
                     if db.feature_enabled(&dsp, crate::FEATURE.switch.id)? {
                         found.push(dsp);
                     }

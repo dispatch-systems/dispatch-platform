@@ -109,6 +109,8 @@ pub(crate) fn leased(db: &Store, job: &str, lease: &str) -> Result<Lease> {
     }
     Ok(run)
 }
+/// The next job due, leased to the worker: none of a ticket from a disabled DSP, which waits
+/// until it's enabled.
 pub fn claim(db: &Store) -> Result<Option<SupportJob>> {
     db.platform.transaction(|| {
         let time = now();
@@ -116,6 +118,7 @@ pub fn claim(db: &Store) -> Result<Option<SupportJob>> {
             "SELECT j.* FROM support_jobs j JOIN support_tickets t ON t.id=j.ticket_id \
              WHERE ((j.status='queued' AND j.available_at<=?) OR (j.status='running' AND j.lease_until<=?)) \
              AND t.status NOT IN ('denied','resolved') \
+             AND (t.dsp_id IS NULL OR t.dsp_id NOT IN (SELECT id FROM dsps WHERE status='suspended')) \
              AND (j.kind NOT IN ('implement','release') OR j.version=t.approved_version) \
              ORDER BY j.available_at,j.created_at,j.id LIMIT 1", params![time, time],
         )?;

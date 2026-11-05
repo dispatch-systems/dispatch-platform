@@ -15,8 +15,9 @@ pub use delivery::mailer;
 
 /// Never send an expired, revoked or already consumed grant. Bound retained content. A
 /// notice about a connected app goes only to someone who is still an active platform owner,
-/// and what a feature writes a member only while the member's account is active. What a
-/// message is for lives in the directory of the DSP it names, or the platform's.
+/// and what a feature writes a member only while the member's account is active. Nothing goes
+/// for a disabled DSP. What a message is for lives in the directory of the DSP it names, or the
+/// platform's.
 pub fn discard_stale(db: &Store) -> Result<()> {
     db.platform.exec(
         "DELETE FROM outbox WHERE (status<>'pending' AND created_at<?1) OR \
@@ -45,9 +46,9 @@ pub fn discard_stale(db: &Store) -> Result<()> {
     Ok(())
 }
 
-/// Whether what a waiting message is for still stands: an open invitation of an active DSP,
-/// an unused reset of an active account, an active platform owner for a notice, and an
-/// active account for what a feature writes.
+/// Whether what a waiting message is for still stands: an open invitation, an unused reset
+/// of an active account, an active platform owner for a notice, and an active account for
+/// what a feature writes, each of a DSP still active when it names one.
 fn current(
     db: &Store,
     kind: Option<&str>,
@@ -59,14 +60,14 @@ fn current(
         db.find_dsp(dsp)
             .is_ok_and(|found| found.status == crate::tenancy::api::types::DspStatus::Active)
     };
-    // A DSP without its database, or no longer there, holds nothing a message is for.
-    let people = |dsp: Option<&str>| db.directory(dsp).ok();
+    // A DSP disabled, without its database, or no longer there, holds nothing a message is
+    // for.
+    let people = |dsp: Option<&str>| match dsp {
+        Some(dsp) if !active(dsp) => None,
+        dsp => db.directory(dsp).ok(),
+    };
     Ok(match kind {
-        Some("invitation") => match (
-            invitation,
-            dsp.filter(|dsp| active(dsp))
-                .and_then(|dsp| people(Some(dsp))),
-        ) {
+        Some("invitation") => match (invitation, dsp.and_then(|dsp| people(Some(dsp)))) {
             (Some(hash), Some(people)) => people
                 .one(
                     "SELECT 1 FROM invitations WHERE hash=? AND used_at IS NULL AND expires_at>?",
