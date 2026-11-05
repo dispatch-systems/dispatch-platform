@@ -64,3 +64,16 @@ export class Drafts {
     };
   }
 }
+
+const stores = new Map<string, Drafts>();
+/** What `user` writes at `dsp`, one store however often the page opens while Dispatch is open, so a
+ * send that fails once the page closed and opened again puts it back where the page writes now. */
+export function draftsOf(dsp: string, user: string) {
+  const id = `${dsp}:${user}`;
+  let drafts = stores.get(id);
+  if (!drafts) {
+    drafts = new Drafts(dsp, user);
+    stores.set(id, drafts);
+  }
+  return drafts;
+}

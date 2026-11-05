@@ -14,7 +14,7 @@ import org.junit.Test
 class ReaderTest {
     private val provider = FakeProvider()
     private val queue = MemoryQueue()
-    private val inbox = Inbox(provider, queue, { Whose.PHONE }) { PAIRED + HOUR_MS }
+    private val inbox = Inbox(provider, queue, { Whose.PHONE }, { _, error -> throw error }) { PAIRED + HOUR_MS }
 
     // The provider says it changed once, as the reader starts, and never again.
     private val reader = Reader(inbox, Texting { true }, flow { emit(Unit); awaitCancellation() }, EmptyCoroutineContext)

@@ -12,6 +12,10 @@ object Failure {
     const val NO_RESULT = "The phone never said whether it sent"
     const val NOT_SENT = "Couldn't send"
     const val MMS_REFUSED = "The carrier refused the picture message"
+    const val FILE_UNAVAILABLE = "Couldn't download the picture"
+
+    /** Past the time Dispatch gave it to start by: its code, which Dispatch tells in its own words. */
+    const val EXPIRED = "expired"
 
     /** Why Android failed a part of a text, by its result code (`SmsManager.RESULT_*`), or null for sent. */
     fun sms(code: Int): String? = when (code) {

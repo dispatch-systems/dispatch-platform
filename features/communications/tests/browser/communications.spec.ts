@@ -98,6 +98,20 @@ test('an owner connects Slack from Communications, answers a member as they writ
   await expect(conversation.getByText('On my way')).toBeVisible();
   await expect(list.getByRole('heading', { name: 'Responded' })).toBeVisible();
   await expect(list.getByRole('heading', { name: /^Waiting/ })).toHaveCount(0);
+  // An emoji found by search goes in where the writer was: Enter in the search picks it and
+  // sends nothing, and Escape closes the picker, the message sending with the emoji in it.
+  const box = conversation.getByLabel('Message');
+  await box.fill('Thanks !');
+  await box.press('ArrowLeft');
+  await conversation.getByRole('button', { name: 'Add emoji' }).click();
+  const emoji = page.getByRole('dialog', { name: 'Add emoji' });
+  await emoji.getByLabel('Search emoji').fill('thumbs up');
+  await emoji.getByLabel('Search emoji').press('Enter');
+  await expect(box).toHaveValue('Thanks 👍!');
+  await page.keyboard.press('Escape');
+  await expect(emoji).toHaveCount(0);
+  await box.press('Enter');
+  await expect(conversation.getByText('Thanks 👍!')).toBeVisible();
 
   // Who it's with, above, opens their profile over the conversation, and Escape closes it, back
   // to where it opened; their photo by their messages opens it too, its X closes it, back to that

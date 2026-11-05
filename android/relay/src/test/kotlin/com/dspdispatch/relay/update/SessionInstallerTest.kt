@@ -3,6 +3,9 @@ package com.dspdispatch.relay.update
 import android.content.pm.PackageInstaller
 import java.io.File
 import java.io.IOException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -41,6 +44,24 @@ class SessionInstallerTest {
         sessions.refuseCommit = SecurityException("installing is restricted for this user")
         assertEquals(Outcome.FAILED, installer.install(apk) {})
         assertEquals(listOf(SESSION), sessions.abandoned)
+    }
+
+    @Test
+    fun dropsASessionAndroidNeverSaysAnythingOfForTextsToGoOn() = runTest {
+        assertEquals(Outcome.FAILED, installer.install(apk) {})
+        assertEquals(listOf(SESSION), sessions.abandoned)
+    }
+
+    @Test
+    fun waitsOnThePersonAndroidAsksHoweverLongTheyTake() = runTest {
+        sessions.answer = { installer.said(it, PackageInstaller.STATUS_PENDING_USER_ACTION, null) }
+        val asked = CompletableDeferred<Unit>()
+        val outcome = async { installer.install(apk) { asked.complete(Unit) } }
+        asked.await()
+        delay(10 * SessionInstaller.ANSWER_MS)
+        installer.said(SESSION, PackageInstaller.STATUS_SUCCESS, null)
+        assertEquals(Outcome.INSTALLED, outcome.await())
+        assertEquals(emptyList<Int>(), sessions.abandoned)
     }
 
     private class FakeSessions : Sessions {

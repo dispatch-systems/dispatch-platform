@@ -32,7 +32,7 @@ import {
 } from '../inbox/sections.js';
 import { routeGroups, routeRows, rowTarget } from '../todays-routes/todays-routes.js';
 import { started, type Target } from '../conversations/target.js';
-import { Drafts } from '../conversations/drafts.js';
+import { draftsOf } from '../conversations/drafts.js';
 import { memberTarget } from '../slack/members.js';
 import { ConversationPane } from '../conversations/ConversationPane.js';
 import { useConversationReads } from '../conversations/useConversation.js';
@@ -160,12 +160,13 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const reading = open || group || drafting;
   const [pinned, setPinned] = useState<Row>();
   const [composing, setComposing] = useState(false);
-  const drafts = useMemo(() => new Drafts(view.dsp.id, user), [view.dsp.id, user]);
+  const drafts = useMemo(() => draftsOf(view.dsp.id, user), [view.dsp.id, user]);
   // Whom a message to a group is to, kept as another opens, and what the list's row says of it.
   const [picks, setPicks] = useState<Pick[]>([]);
   const [draft, setDraft] = useState<Draft>({ name: '', people: 0 });
   const now = useNow();
-  // How many times what's open changed, as one started opens only if nothing else did meanwhile.
+  // How many times what's open changed, or one to start was chosen, as one started opens only if
+  // nothing else did meanwhile.
   const turns = useRef(0);
   const phone = layout === 'phone';
   /** Shows what `next` names. */
@@ -262,11 +263,11 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   );
   const seenGroup = useCallback((listed: Group) => setPinned({ kind: 'group', row: listed }), []);
   // What a target names, opened: a conversation there is, or one started, pinned until it holds
-  // a message, unless something else was opened while it started.
+  // a message, unless something else was opened, or another chosen, while it started.
   const reach = async (target: Target) => {
     if (target.kind === 'conversation') select(target.id);
     else {
-      const turn = turns.current;
+      const turn = ++turns.current;
       const begun = await started(target);
       if (turns.current === turn) {
         setPinned({ kind: 'conversation', row: begun });
