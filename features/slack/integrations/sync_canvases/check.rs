@@ -109,7 +109,7 @@ fn pass(state: Arc<State>, due: bool) -> Upkeep {
         }
         for dsp in work::dsps(&state, FAILED).await {
             if let Err(error) = check(&state, &dsp).await {
-                work::failed(FAILED, &error);
+                work::failed(FAILED, Some(&dsp), &error);
             }
         }
     })
@@ -149,12 +149,12 @@ pub(super) async fn check(state: &Arc<State>, dsp: &str) -> Result<()> {
             };
             match in_channel(state, &bot, channel, covers).await {
                 Ok(noted) => seen.extend(noted),
-                Err(error) => work::failed(FAILED, &error),
+                Err(error) => work::failed(FAILED, Some(dsp), &error),
             }
         }
         for pick in picks.iter().filter(|pick| !seen.contains(&pick.canvas)) {
             if let Err(error) = unlisted(state, &bot, pick).await {
-                work::failed(FAILED, &error);
+                work::failed(FAILED, Some(dsp), &error);
             }
         }
     }

@@ -8,11 +8,20 @@ use super::{
     work,
 };
 use dispatch_core::{
-    Result,
+    Code, Result,
     db::Store,
     manifest::people::{Photo, Source},
 };
 use std::collections::BTreeMap;
+
+/// What a call to Slack fails with that a dependant's work tells apart: Slack needs updating, or
+/// reconnecting, in the workspace, or it's no longer connected; Slack asked the bot to slow down
+/// longer than it waits; or the call would have started past the bot's deadline (`Bot::until`).
+pub const NEEDS_UPDATE: Code = Code::new("slack_needs_update");
+pub const CONNECTION_BROKEN: Code = Code::new("slack_connection_broken");
+pub const NOT_CONNECTED: Code = Code::new("slack_not_connected");
+pub const RATE_LIMITED: Code = Code::new("slack_rate_limited");
+pub const PAST_DEADLINE: Code = Code::new("slack_past_deadline");
 
 /// The DSP's workspaces, by name.
 pub fn workspaces(db: &Store, dsp: &str) -> Result<Vec<Workspace>> {

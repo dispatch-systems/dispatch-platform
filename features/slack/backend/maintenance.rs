@@ -38,41 +38,45 @@ fn check(state: Arc<State>, due: bool) -> Upkeep {
                         .filter(|workspace| !workspace.broken)
                         .map(|workspace| (dsp.clone(), workspace)),
                 ),
-                Err(error) => work::failed(FAILED, &error),
+                Err(error) => work::failed(FAILED, Some(&dsp), &error),
             }
         }
         stream::iter(working)
             .map(|(dsp, workspace)| {
                 let state = state.clone();
                 async move {
-                    let bot = Bot::new(&state, &dsp, &workspace.team);
-                    // Slack refusing the workspace's tokens breaks it as the call answers.
-                    let info = bot.call("team.info", &json!({"team": bot.team})).await?;
-                    if let Some(name) = info["team"]["name"].as_str()
-                        && !name.is_empty()
-                        && name != workspace.name
-                    {
-                        let name = name.to_owned();
-                        let (dsp, team) = (dsp.clone(), workspace.team.clone());
-                        state
-                            .run(move |db| db.rename_slack_workspace(&dsp, &team, &name))
-                            .await?;
+                    let checked = async {
+                        let bot = Bot::new(&state, &dsp, &workspace.team);
+                        // Slack refusing the workspace's tokens breaks it as the call answers.
+                        let info = bot.call("team.info", &json!({"team": bot.team})).await?;
+                        if let Some(name) = info["team"]["name"].as_str()
+                            && !name.is_empty()
+                            && name != workspace.name
+                        {
+                            let name = name.to_owned();
+                            let (dsp, team) = (dsp.clone(), workspace.team.clone());
+                            state
+                                .run(move |db| db.rename_slack_workspace(&dsp, &team, &name))
+                                .await?;
+                        }
+                        if let Err(error) = logo::keep(&bot, &info["team"]["icon"]).await {
+                            logo::failed(&error);
+                        }
+                        // Whatever Slack didn't tell of as it happened.
+                        if let Err(error) = members::read(&bot).await {
+                            members::failed(&error);
+                        }
+                        dispatch_core::Result::Ok(())
                     }
-                    if let Err(error) = logo::keep(&bot, &info["team"]["icon"]).await {
-                        logo::failed(&error);
-                    }
-                    // Whatever Slack didn't tell of as it happened.
-                    if let Err(error) = members::read(&bot).await {
-                        members::failed(&error);
-                    }
-                    dispatch_core::Result::Ok(())
+                    .await;
+                    (dsp, checked)
                 }
             })
             .buffer_unordered(2)
-            .for_each(|result| async move {
+            .for_each(|(dsp, result)| async move {
                 match result {
                     Err(error) if error.code != "slack_connection_broken" => {
-                        work::failed(FAILED, &error)
+                        work::failed(FAILED, Some(&dsp), &error)
                     }
                     _ => {}
                 }

@@ -5,7 +5,7 @@
 //! refresh token Slack honours once, and keeps the new pair at once. One renewal runs at a time
 //! for each workspace, so two never spend the same refresh token.
 use super::{
-    connection,
+    connection, kit,
     slack::{Bytestream, Slack, Tokens},
     storage::SlackStore,
 };
@@ -32,6 +32,8 @@ pub struct Bot {
     pub team: String,
     /// How long Slack asking it to slow down is waited out, at most.
     waits: Duration,
+    /// When no call may start any more, in milliseconds, if ever.
+    until: Option<i64>,
 }
 impl Bot {
     pub fn new(state: &Arc<State>, dsp: &str, team: &str) -> Self {
@@ -40,6 +42,7 @@ impl Bot {
             dsp: dsp.to_owned(),
             team: team.to_owned(),
             waits: WAITED,
+            until: None,
         }
     }
     /// The bot for work in the background, nobody waiting on its answers: Slack asking it to slow
@@ -48,6 +51,23 @@ impl Bot {
         Self {
             waits: WAITED_PATIENTLY,
             ..self
+        }
+    }
+    /// The bot for work that mustn't reach Slack from `deadline`, in milliseconds: no call to
+    /// Slack starts from then, its token renewed or not, failing `slack_past_deadline`; and Slack
+    /// asking it to slow down isn't waited out, failing the call at once.
+    pub fn until(self, deadline: i64) -> Self {
+        Self {
+            waits: Duration::ZERO,
+            until: Some(deadline),
+            ..self
+        }
+    }
+    /// Whether a call may still start, by the bot's deadline.
+    fn in_time(&self) -> Result<()> {
+        match self.until {
+            Some(until) if now() >= until => Err(Error::new(kit::PAST_DEADLINE.as_str(), 409)),
+            _ => Ok(()),
         }
     }
     /// The bot in the workspace `team`, for the DSP it belongs to, while Dispatch acts there:
@@ -70,16 +90,18 @@ impl Bot {
 
     /// Calls Slack's API method `method` with `args`: Slack's answer. A token Slack says
     /// expired is renewed and the call made again, once. Slack asking it to slow down is waited
-    /// out, up to half a minute, or two for a `patient` bot. Slack no longer honouring the
-    /// workspace's tokens breaks it, until someone reconnects it.
+    /// out, up to half a minute, or two for a `patient` bot, and never for one with a deadline,
+    /// past which no call starts. Slack no longer honouring the workspace's tokens breaks it,
+    /// until someone reconnects it.
     pub async fn call(&self, method: &str, args: &Value) -> Result<Value> {
         let slack = Slack::of(&self.state.config)?;
         let token = self.token().await?;
+        self.in_time()?;
         let answer = match slack.call(&token, method, args, self.waits).await {
             Err(error) if error.code == "slack_token_expired" => {
-                slack
-                    .call(&self.instead_of(&token).await?, method, args, self.waits)
-                    .await
+                let token = self.instead_of(&token).await?;
+                self.in_time()?;
+                slack.call(&token, method, args, self.waits).await
             }
             answer => answer,
         };

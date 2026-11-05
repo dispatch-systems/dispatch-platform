@@ -65,6 +65,7 @@ const wording: Readonly<Record<string, string>> = {
   communications_contact_not_found: 'This person is no longer in your Slack workspace.',
   communications_off: 'Communications is off in this Slack workspace.',
   communications_upload_not_found: 'A photo is no longer attached. Add it again.',
+  communications_reply_sending: 'This message is still sending.',
   communications_photo_kind: 'Photos must be PNG, JPEG or GIF.',
   communications_file_not_found: 'This file is no longer here.',
   upload_incomplete: "The photo didn't finish uploading. Try again.",

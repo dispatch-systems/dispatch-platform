@@ -26,7 +26,7 @@ use crate::api::types::{
 };
 use dispatch_core::{Error, Result, State, db::Store, foundation::names, text_enum};
 use std::collections::HashMap;
-use storage::{DeliveryStatus, GroupMessage, GroupStore, Outline, Progress};
+use storage::{Delivery, DeliveryStatus, GroupMessage, GroupStore, Outline, Progress};
 
 /// How many of a group's people show it, as two faces.
 const FACES: usize = 2;
@@ -54,6 +54,34 @@ text_enum! {
         Sending => "sending",
         Sent => "sent",
         NotSent => "not_sent",
+    }
+}
+text_enum! {
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]
+    /// Why a group's latest message wasn't sent one of its people: too late; Slack needs updating
+    /// or reconnecting in their workspace; Communications is off there; they're no longer there;
+    /// or Slack wouldn't take it.
+    pub enum NotSent {
+        TooLate => "too_late",
+        NeedsUpdate => "needs_update",
+        Disconnected => "disconnected",
+        Off => "off",
+        Gone => "gone",
+        Refused => "refused",
+    }
+}
+impl NotSent {
+    /// Why a delivery given up for `reason` wasn't sent, as it reads.
+    fn of(reason: Option<&str>) -> Self {
+        match reason {
+            Some("communications_expired") => Self::TooLate,
+            Some("slack_needs_update") => Self::NeedsUpdate,
+            Some("slack_connection_broken" | "slack_not_connected") => Self::Disconnected,
+            Some("communications_off") => Self::Off,
+            Some("communications_contact_not_found") => Self::Gone,
+            _ => Self::Refused,
+        }
     }
 }
 
@@ -245,10 +273,10 @@ pub fn people(db: &Store, state: &State, dsp: &str, id: &str) -> Result<GroupPeo
         .into_iter()
         .map(|(team, user, at)| ((team, user), at))
         .collect();
-    let gone: HashMap<(String, String), DeliveryStatus> = db
+    let gone: HashMap<(String, String), Delivery> = db
         .communications_deliveries(dsp, &latest.id)?
         .into_iter()
-        .map(|(team, user, status)| ((team, user), status))
+        .map(|delivery| ((delivery.team.clone(), delivery.user.clone()), delivery))
         .collect();
     let members = db.communications_group_people(dsp, id)?;
     let mut teams: Vec<&str> = members.iter().map(|member| member.team.as_str()).collect();
@@ -265,17 +293,34 @@ pub fn people(db: &Store, state: &State, dsp: &str, id: &str) -> Result<GroupPeo
         .map(|member| {
             let key = (member.team.clone(), member.user.clone());
             let replied = answered.get(&key).copied();
-            let state = match (replied, gone.get(&key)) {
-                (Some(_), _) => GroupPersonState::Replied,
-                (None, Some(DeliveryStatus::Sent)) => GroupPersonState::Sent,
-                (None, Some(DeliveryStatus::Failed)) => GroupPersonState::NotSent,
-                (None, _) => GroupPersonState::Sending,
+            let (state, not_sent) = match (replied, gone.get(&key)) {
+                (Some(_), _) => (GroupPersonState::Replied, None),
+                (
+                    None,
+                    Some(Delivery {
+                        status: DeliveryStatus::Sent,
+                        ..
+                    }),
+                ) => (GroupPersonState::Sent, None),
+                (
+                    None,
+                    Some(Delivery {
+                        status: DeliveryStatus::Failed,
+                        reason,
+                        ..
+                    }),
+                ) => (
+                    GroupPersonState::NotSent,
+                    Some(NotSent::of(reason.as_deref())),
+                ),
+                (None, _) => (GroupPersonState::Sending, None),
             };
             let person = GroupPerson {
                 person: people.correspondent(&member.team, &member.user, &member.name),
                 conversation_id: conversations.remove(&key),
                 team_id: member.team,
                 state,
+                not_sent,
             };
             (replied, person)
         })

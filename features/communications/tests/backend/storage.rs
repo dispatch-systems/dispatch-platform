@@ -73,7 +73,7 @@ fn a_conversation_waits_from_the_members_first_unanswered_message_until_answered
     );
     // Answered, it's responded; a message caught up later, written before the answer, leaves it so.
     store
-        .keep_communications_reply(&dsp, &id, &sent("120.000001", 120_000))
+        .keep_communications_reply(&dsp, &id, &sent("120.000001", 120_000), "rpl_1")
         .unwrap();
     store
         .keep_communications_message(&dsp, &written("115.000001", 115_000, "Still here"))
@@ -140,9 +140,11 @@ fn an_edit_keeps_only_the_latest_text() {
         .unwrap();
     let before = store.communications_revision(&dsp).unwrap();
     let edit = |text: &str, at: i64| {
-        store
-            .edit_communications_message(&dsp, TEAM, "U0JORDAN", "100.000001", text, at)
-            .unwrap()
+        let edited = Written {
+            edited_at: Some(at),
+            ..written("100.000001", 100_000, text)
+        };
+        store.keep_communications_message(&dsp, &edited).unwrap()
     };
     assert!(edit("Van 21 is out", 105_000).is_some());
     // An earlier edit told of late changes nothing.

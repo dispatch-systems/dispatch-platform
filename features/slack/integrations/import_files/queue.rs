@@ -29,7 +29,7 @@ pub const MAINTENANCE: Maintenance = Maintenance {
 pub fn heard(state: Arc<State>, heard: Heard) -> Upkeep {
     Box::pin(async move {
         if let Err(error) = noticed(&state, &heard).await {
-            work::failed(FAILED, &error);
+            work::failed(FAILED, Some(&heard.dsp), &error);
         }
     })
 }
