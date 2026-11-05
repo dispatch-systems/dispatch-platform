@@ -87,6 +87,16 @@ pub fn credential_lease(root: &Path, dsp: &str, provider: Provider) -> Result<Fi
     Ok(file)
 }
 
+impl Store {
+    /// The lease of the DSP's account with `provider` a provider browser starts with, as
+    /// `credential_lease`, while this backend serves the DSP: checked in the turn that takes it,
+    /// so a start Disable and Delete finish around makes nothing in the deleted DSP's folder.
+    pub fn browser_lease(&self, dsp: &str, provider: Provider) -> Result<File> {
+        self.ensure_dsp_active(dsp)?;
+        credential_lease(&self.config.root, dsp, provider)
+    }
+}
+
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Request {
