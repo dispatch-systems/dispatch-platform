@@ -3,6 +3,7 @@ import test from 'node:test';
 import { ResponseCache } from '../../../../core/shell/frontend/lib/response-cache.js';
 import {
   documentsFolderUrl,
+  moment,
   readFolder,
   type DocumentsFolder,
   type DocumentsItem,
@@ -28,7 +29,7 @@ const item = (id: string, items: number | null): DocumentsItem => ({
 });
 
 test("a folder's card stops counting a move at a reading asked for after Google answered it, though Google reads the same", async (t) => {
-  t.mock.timers.enable({ apis: ['Date'], now: 1_000 });
+  t.mock.timers.enable({ apis: ['Date'], now: 7_200_000 });
   // Google took November's move from the top into Sheets before answering it: every reading of
   // the top lists Sheets holding 2, and November no more.
   const top: DocumentsFolder = {
@@ -56,11 +57,12 @@ test("a folder's card stops counting a move at a reading asked for after Google 
   };
   const before = await read();
   let pending = reconciled([moving], before, undefined, false);
-  t.mock.timers.tick(1_000);
-  pending = pending.map((each) => ({ ...each, settled: Date.now() }));
+  // Google answers within the same tick of the clock as the reading was asked for.
+  pending = pending.map((each) => ({ ...each, settled: Date.now(), confirmed: moment() }));
   // A reading asked for before Google answered says nothing of the move, though it holds it.
   assert.equal(reconciled(pending, before, undefined, false), pending);
-  t.mock.timers.tick(1_000);
+  // The clock is set back an hour before the page reads the top again.
+  t.mock.timers.setTime(3_600_000);
   const after = await read();
   assert.equal(card(seen(pending, after, before), after), 2);
 });

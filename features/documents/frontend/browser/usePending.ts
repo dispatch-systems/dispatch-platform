@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { DocumentsItem } from '../../api/client.js';
+import { moment, type DocumentsItem } from '../../api/client.js';
 import { reconciled, type Pending, type Reading } from './browsing.js';
 
 /**
@@ -24,7 +24,9 @@ export function usePending(
   const settle = (key: string, item?: DocumentsItem) =>
     setPending((all) =>
       all.map((each) =>
-        each.key === key ? { ...each, item: item ?? each.item, settled: Date.now() } : each,
+        each.key === key
+          ? { ...each, item: item ?? each.item, settled: Date.now(), confirmed: moment() }
+          : each,
       ),
     );
   const drop = (key: string) => setPending((all) => all.filter((each) => each.key !== key));

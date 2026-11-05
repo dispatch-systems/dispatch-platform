@@ -73,7 +73,8 @@ export type Asked =
  * renamed, moved or trashed in `folder`. Something being made has a stand-in's ID until Google
  * makes it; something moved goes `to` a folder, or the top. Once Google confirmed it, it shows
  * until a reading of the folder asked for after does, or a while, and a move counts in the cards
- * of the folders it left and went into until a reading after it (`counted`).
+ * of the folders it left and went into until a reading after it (`counted`): one asked for after
+ * the `moment` Google `confirmed` it.
  */
 export type Pending = {
   key: string;
@@ -82,6 +83,7 @@ export type Pending = {
   item: DocumentsItem;
   to?: string;
   settled?: number;
+  confirmed?: number;
   counted?: boolean;
 };
 export const SETTLING_MS = 30_000;
@@ -106,7 +108,7 @@ export function arranged(items: DocumentsItem[]) {
         : order(b.modifiedAt, a.modifiedAt)),
   );
 }
-/** What a reading of a folder or a search answers with, and when it was asked for. */
+/** What a reading of a folder or a search answers with, and the `moment` it was asked for. */
 export type Reading = { items: DocumentsItem[]; asked?: number };
 /**
  * `pending`, once `read` comes: a change Google confirmed before the reading was asked for goes
@@ -122,7 +124,7 @@ export function reconciled(
 ) {
   let changed = false;
   const left = pending.flatMap((each) => {
-    if (!each.settled || (read.asked ?? 0) < each.settled) return [each];
+    if (!each.settled || (read.asked ?? 0) < (each.confirmed ?? 0)) return [each];
     const listed = read.items.find((item) => item.id === each.item.id);
     const inside = !searching && each.folder === folder;
     const shown =
