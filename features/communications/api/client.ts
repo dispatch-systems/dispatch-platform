@@ -149,9 +149,9 @@ export const openConversation = (teamId: string, userId: string) =>
 /** Sends a message, with the photos added for it: it, and the conversation it's in now. */
 export const sendMessage = (id: string, text: string, photos: string[] = []) =>
   api<SentMessage>(`${communicationsUrl}/conversations/${id}/messages`, { text, photos });
-/** Marks a conversation answered without a reply. */
-export const markDone = (id: string) =>
-  api<Conversation>(`${communicationsUrl}/conversations/${id}/done`, {});
+/** Marks a conversation answered without a reply, as far as `seen`, the latest message shown. */
+export const markDone = (id: string, seen?: Message | null) =>
+  api<Conversation>(`${communicationsUrl}/conversations/${id}/done`, seen ? { seen: seen.ts } : {});
 /** Says the member is writing in a conversation, for the next few seconds. */
 export const sayTyping = (id: string) =>
   api<{ ok: true }>(`${communicationsUrl}/conversations/${id}/typing`, {});
@@ -250,9 +250,13 @@ export function useGroupPeople(id: string, refresh: string) {
 /** Sends a group another message, to the same people. */
 export const messageGroup = (id: string, text: string, photos: string[] = []) =>
   api<GroupEntry>(`${communicationsUrl}/groups/${id}/messages`, { text, photos });
-/** Marks done every conversation listed under a group that waits. */
-export const markGroupDone = (id: string) =>
-  api<Group>(`${communicationsUrl}/groups/${id}/done`, {});
+/** Marks done every conversation listed under a group that waits, as far as `seen`, the latest of
+ * its messages and answers shown. */
+export const markGroupDone = (id: string, seen?: GroupEntry | null) =>
+  api<Group>(
+    `${communicationsUrl}/groups/${id}/done`,
+    seen ? { seen: `${seen.at}:${seen.id}` } : {},
+  );
 /** The DSP's phones, as those who manage them or all its connections see them. */
 export const phonesUrl = `${communicationsUrl}/phones`;
 /** The DSP's phones, read again every `poll` milliseconds, as they check in. */

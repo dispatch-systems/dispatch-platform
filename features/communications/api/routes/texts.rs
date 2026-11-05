@@ -5,7 +5,7 @@ use super::texting_id;
 use crate::backend::{model::Reference, phone::numbers::NUMBER_MOST, texts};
 use dispatch_core::{
     Result, State,
-    db::Store,
+    db::{Store, now},
     ensure,
     foundation::validate as v,
     server::http::{
@@ -161,5 +161,6 @@ pub(super) fn pick_driver(db: &Store, c: &Member, input: &Input) -> Result<Reply
         &conversation,
         driver,
         c.actor(),
+        now(),
     )?)
 }

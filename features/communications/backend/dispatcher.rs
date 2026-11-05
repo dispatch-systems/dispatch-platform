@@ -47,18 +47,27 @@ pub fn profile(db: &Store, state: &State, dsp: &str, reference: &Reference) -> R
 }
 
 /// Marks the conversation `reference` done without an answer, as the member `by`, while it
-/// waits: the conversation, as the page reads it.
+/// waits, covering only what they were shown: up to the message at `seen`, as each transport
+/// places its messages, else everything. The conversation, as the page reads it.
 pub fn done(
     db: &Store,
     state: &State,
     dsp: &str,
     reference: &Reference,
     by: &str,
+    seen: Option<&str>,
 ) -> Result<Conversation> {
     found(db, dsp, reference)?;
     let marked = match reference {
-        Reference::Slack(id) => db.mark_communications_done(dsp, id, by)?,
-        Reference::Text(id) => db.mark_communications_text_done(dsp, id, by)?,
+        Reference::Slack(id) => {
+            let seen = seen.map(conversations::seen).transpose()?;
+            db.mark_communications_done(dsp, id, by, seen)?
+        }
+        Reference::Text(id) => {
+            let seen = seen.map(texts::reading::before).transpose()?;
+            let seen = seen.as_ref().map(|(at, id)| (*at, id.as_str()));
+            db.mark_communications_text_done(dsp, id, by, seen)?
+        }
     };
     if marked {
         live::changed(state, dsp);

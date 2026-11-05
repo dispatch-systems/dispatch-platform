@@ -251,9 +251,11 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const updating =
     manages && model.workspaces ? (inbox?.workspaces.filter((each) => each.needsUpdate) ?? []) : [];
   const done = useAction(async (conversation: Conversation) =>
-    show(await markDone(conversation.id)),
+    show(await markDone(conversation.id, conversation.last)),
   );
-  const doneGroup = useAction(async (listed: Group) => showGroup(await markGroupDone(listed.id)));
+  const doneGroup = useAction(async (listed: Group) =>
+    showGroup(await markGroupDone(listed.id, listed.last)),
+  );
   // What's open, as last read, is pinned to the top of the list while the list doesn't show it:
   // a conversation holding no message yet, as New message opens it, one listed under a group, or
   // one older than those listed.

@@ -2,6 +2,7 @@
 //! as reading it says, by text as a text does and in Slack as Slack does; and an answer that went,
 //! kept though its writer's access ended as it went, read back to them only while they may read it.
 use super::*;
+use crate::ConversationState;
 use crate::backend::{
     compose::SLACK,
     support::{self, filed, switch, texted},
@@ -79,4 +80,52 @@ async fn an_answer_that_went_stays_kept_though_its_writers_access_ended_as_it_we
         .unwrap();
     let bodies: Vec<&str> = kept.iter().map(|text| text.body.as_str()).collect();
     assert_eq!(bodies, ["Can I swap Saturday?", "Swap it"]);
+}
+
+#[tokio::test]
+async fn done_covers_only_the_texts_the_page_showed_and_a_newer_one_still_waits() {
+    let (_root, state, dsp) = support::started();
+    let asked = texted(&state, &dsp, "+12535550177", "Which van?", now() - 60_000).await;
+    let reference = Reference::Text(filed(&state, &dsp, &asked).await.id);
+    // The page shows the conversation as it is, then a text it hasn't shown yet comes.
+    let read = || {
+        let (shared, at, reference) = (state.clone(), dsp.clone(), reference.clone());
+        state.read(move |db| opened(db, &shared, &at, &reference, None))
+    };
+    let shown = read().await.unwrap().messages.pop().unwrap().ts;
+    let later = texted(&state, &dsp, "+12535550177", "Tire light", now()).await;
+    let done = |seen: String| {
+        let (shared, at, reference) = (state.clone(), dsp.clone(), reference.clone());
+        state.run(move |db| done(db, &shared, &at, &reference, "me", Some(&seen)))
+    };
+
+    // Done as the page saw it leaves the newer text waiting; once shown, Done covers it.
+    let marked = done(shown).await.unwrap();
+    let written = filed(&state, &dsp, &later).await.waiting_since;
+    assert_eq!(
+        (marked.state, marked.waiting_since),
+        (ConversationState::Waiting, written)
+    );
+    let shown = read().await.unwrap().messages.pop().unwrap().ts;
+    assert_eq!(done(shown).await.unwrap().state, ConversationState::Done);
+}
+
+#[tokio::test]
+async fn done_refuses_a_slack_place_past_what_milliseconds_hold() {
+    let (_root, state, bot) = support::connected(TEAM).await;
+    let dsp = bot.dsp.clone();
+    support::writes(&state, &dsp, TEAM, "U0FIXCASEY", "Where do I park?").await;
+    let slack = support::conversation_with(&state, &dsp, TEAM, "U0FIXCASEY")
+        .await
+        .unwrap()
+        .id;
+    let (shared, reference) = (state.clone(), Reference::Slack(slack));
+    let refused = state
+        .run(move |db| {
+            let seen = Some("9223372036854775807.000000");
+            done(db, &shared, &dsp, &reference, "me", seen)
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code, "invalid_input");
 }

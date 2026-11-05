@@ -139,9 +139,16 @@ pub trait TextStore {
     /// The conversation texts filed so would be in, made with no text if it's new.
     fn open_communications_text(&self, dsp: &str, filed: &Filed) -> Result<TextConversation>;
     /// Marks the conversation done without an answer, as the member `by`, while it waits, and
-    /// each text in it the Done covers, which stays so wherever it's filed again: whether it was
-    /// waiting.
-    fn mark_communications_text_done(&self, dsp: &str, id: &str, by: &str) -> Result<bool>;
+    /// each text in it the Done covers, which stays so wherever it's filed again: those up to
+    /// `seen`, the latest the member was shown (when written and the ID), else every one. Whether
+    /// it was waiting.
+    fn mark_communications_text_done(
+        &self,
+        dsp: &str,
+        id: &str,
+        by: &str,
+        seen: Option<(i64, &str)>,
+    ) -> Result<bool>;
 }
 
 /// When the conversation `c`'s latest text out that didn't fail was written.
@@ -480,7 +487,14 @@ impl TextStore for Store {
             .ok_or_else(|| Error::new("communications_conversation_not_found", 404))
         })
     }
-    fn mark_communications_text_done(&self, dsp: &str, id: &str, by: &str) -> Result<bool> {
+    fn mark_communications_text_done(
+        &self,
+        dsp: &str,
+        id: &str,
+        by: &str,
+        seen: Option<(i64, &str)>,
+    ) -> Result<bool> {
+        let (until, last) = seen.unwrap_or(END);
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             let at = now();
@@ -491,9 +505,10 @@ impl TextStore for Store {
             )?;
             if marked > 0 {
                 db.exec(
-                    "UPDATE phones_texts SET done_at=?,done_by=? \
-                     WHERE conversation_id=? AND direction='in' AND done_at IS NULL",
-                    params![at, by, id],
+                    "UPDATE phones_texts SET done_at=?1,done_by=?2 \
+                     WHERE conversation_id=?3 AND direction='in' AND done_at IS NULL \
+                     AND (at<?4 OR (at=?4 AND id<=?5))",
+                    params![at, by, id, until, last],
                 )?;
                 settle(&db, id)?;
             }
