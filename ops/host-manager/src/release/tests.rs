@@ -53,6 +53,8 @@ struct Fake {
     rehearsal: RefCell<Value>,
     /// What Production reports of itself before a release publishes.
     production: RefCell<Value>,
+    /// When, on the release's clock, the collections Production reports running finish.
+    collections_end: Cell<Option<Duration>>,
     /// The Slack app manifest Production makes before the release installs, and after.
     slack: RefCell<(Value, Value)>,
     /// The warnings and errors Production's service logs once the release is published.
@@ -319,6 +321,9 @@ impl System for Fake {
                 )
             } else if script.contains("production-update-failure.json") {
                 let mut report = self.production.borrow().clone();
+                if self.collections_end.get().is_some_and(|end| self.elapsed.get() >= end) {
+                    report["running"] = json!(0);
+                }
                 report["slackManifest"] = self.slack.borrow().0.clone();
                 report.to_string()
             } else {
@@ -598,6 +603,7 @@ impl Fixture {
             rehearsal: RefCell::new(rehearsed()),
             production: RefCell::new(json!({"failure":null,"gh":true,"service":"active",
                 "timer":"active","health":"ready","free":50u64 << 30,"running":0})),
+            collections_end: Cell::new(None),
             slack: RefCell::new((slack.clone(), slack)),
             log: RefCell::new(vec![]),
             dev_runtime: RefCell::new(String::new()),
@@ -2327,6 +2333,39 @@ fn the_release_finds_gh_in_local_bin_without_a_login_shell() {
         ),
         None
     );
+}
+
+#[test]
+fn publication_waits_up_to_ten_minutes_for_collections_running_on_production() {
+    // Collections that finish within the wait hold publication until they do.
+    let f = Fixture::new();
+    f.draft();
+    let release = f.release();
+    f.system.production.borrow_mut()["running"] = json!(2);
+    let finish = f.system.elapsed.get() + Duration::from_secs(4 * 60);
+    f.system.collections_end.set(Some(finish));
+    assert_eq!(
+        release.execute(Stage::Publish, None).unwrap()["stage"],
+        "complete"
+    );
+    assert!(f.system.has_call(&["-F", "draft=false"]));
+    assert!(f.system.elapsed.get() >= finish);
+    // Ones still running after it refuse publication.
+    let f = Fixture::new();
+    f.draft();
+    let release = f.release();
+    f.system.production.borrow_mut()["running"] = json!(1);
+    let started = f.system.elapsed.get();
+    let refused = release
+        .execute(Stage::Publish, None)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        refused.contains("Collections are running on Production (1)"),
+        "{refused}"
+    );
+    assert!(f.system.elapsed.get() - started >= Duration::from_secs(10 * 60));
+    assert!(!f.system.has_call(&["-F", "draft=false"]));
 }
 
 #[test]
