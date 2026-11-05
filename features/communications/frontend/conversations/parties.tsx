@@ -15,7 +15,8 @@ import type { Party } from './party.js';
 export type Open = {
   conversation: Conversation;
   /** For a driver's, their route today and the work phone they hold now, while there's a live
-   * day, as its head and profile both show them (`driverToday`). */
+   * day, as its head and profile both show them (`driverToday`); for anyone else's, the route
+   * they drive today as the conversation was read, whose van its head shows. */
   today: Today | null;
   /** The workspace it's in, while the DSP has two or more where Communications works. */
   where?: string;
@@ -54,6 +55,8 @@ type PartyPane = {
   workdays: boolean;
 };
 
+/** The van they drive today, as their work conversation's head says it. */
+const van = ({ today }: Open) => today?.van && `Van ${today.van}`;
 /** Their first name, as a message to someone Driver Match knows goes. */
 const firstName = ({ conversation }: Open) => conversation.with.name.split(' ')[0] ?? '';
 /** Their first name, once Driver Match knows them; else the name saved, or the number, whole. */
@@ -66,8 +69,8 @@ export const PARTIES: { [P in Party]: PartyPane } = {
     number: () => null,
     writable: ({ conversation, working }) =>
       working.some((workspace) => workspace.teamId === conversation.teamId),
-    about: ({ conversation, where }) =>
-      [roleText(conversation.with), where].filter(Boolean).join(' · '),
+    about: (open) =>
+      [roleText(open.conversation.with), open.where, van(open)].filter(Boolean).join(' · '),
     whom: firstName,
     workdays: false,
   },
@@ -75,7 +78,10 @@ export const PARTIES: { [P in Party]: PartyPane } = {
     profile: false,
     number: ({ conversation }) => conversation.number,
     writable: ({ texting }) => texting,
-    about: ({ conversation }) => numberBeside(conversation.with.name, conversation.number ?? ''),
+    about: (open) =>
+      [numberBeside(open.conversation.with.name, open.conversation.number ?? ''), van(open)]
+        .filter(Boolean)
+        .join(' · '),
     actions: ({ conversation, drivers, show }) => (
       <NumberActions conversation={conversation} drivers={drivers} show={show} />
     ),

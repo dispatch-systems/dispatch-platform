@@ -305,7 +305,8 @@ pub fn like(typed: &str, name: &str, numbers: &[String]) -> Option<(f64, Vec<(u3
 }
 
 /// The conversation `id` and its latest texts, or those before `before`; a driver's with their
-/// route today and each workday's; and whom it's with's conversations of each kind.
+/// route today and each workday's, and one with someone's own number with the route they drive
+/// today; and whom it's with's conversations of each kind.
 pub fn opened(
     db: &Store,
     state: &State,
@@ -321,6 +322,7 @@ pub fn opened(
     if more {
         read.remove(0);
     }
+    let person = whose(&people, &kept);
     let (today, workdays) = match &kept.driver {
         Some((source, driver)) => {
             let today = match LiveDay::read(db, dsp)? {
@@ -331,9 +333,13 @@ pub fn opened(
             };
             (today, workdays::of(db, dsp, source, driver, &read)?)
         }
-        None => (None, Vec::new()),
+        // Someone texting from their own number: the route they drive today, for its van.
+        None => match person {
+            Some(person) => (today::of(db, dsp, person)?, Vec::new()),
+            None => (None, Vec::new()),
+        },
     };
-    let elsewhere = match whose(&people, &kept) {
+    let elsewhere = match person {
         Some(person) => elsewhere::of(db, dsp, person)?,
         None => Vec::new(),
     };

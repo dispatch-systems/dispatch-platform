@@ -139,7 +139,7 @@ export function ConversationPane({
           opened && { value: opened.today, at: opened.readAt },
           todays,
         )
-      : null,
+      : (opened?.today ?? null),
     // With several workspaces to tell apart, the one it's in.
     where:
       working.length > 1

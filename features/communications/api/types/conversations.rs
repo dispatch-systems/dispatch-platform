@@ -214,7 +214,8 @@ pub struct ConversationMessages {
     /// Whether older messages are left to read.
     pub more: bool,
     /// For a driver's work conversation, their route today and the work phone they hold now, as
-    /// live route data holds them, while it holds today.
+    /// live route data holds them, while it holds today. For one with someone's own number or in
+    /// Slack, the route they drive today, as their profile reads it, whose van its head shows.
     pub today: Option<Today>,
     /// Whom it's with's conversation of each kind, this one too, while they have two or more:
     /// work, by text from their number, and Slack.
