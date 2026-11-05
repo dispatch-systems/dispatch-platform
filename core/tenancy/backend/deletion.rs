@@ -37,16 +37,10 @@ impl Store {
     /// (`finish`), and records who deleted it, by its name, as nothing else names it now.
     pub fn delete_dsp(&self, id: &str, name: &str, actor: &str) -> Result<()> {
         self.ensure_deletable(id, name)?;
-        // Its people: in its own directory, and those the platform's held only for it.
         let own: Vec<(String,)> = self.dsp(id)?.query_as("SELECT id FROM users", [])?;
-        let legacy = self.legacy_people(id)?;
-        let people: Vec<String> = own
-            .into_iter()
-            .map(|(id,)| id)
-            .chain(legacy.iter().cloned())
-            .collect();
+        let own: Vec<String> = own.into_iter().map(|(id,)| id).collect();
         self.platform.transaction(|| {
-            self.forget_audit(id, &people)?;
+            self.forget_audit(id, &self.people_alone(id, &own)?)?;
             mail::forget_dsp(self, id)?;
             support::tickets::forget_dsp(self, id)?;
             if let Some(agents) = registry().agents {
@@ -55,7 +49,7 @@ impl Store {
             for forget in registry().features.iter().filter_map(|f| f.deleting.forget) {
                 forget(self, id)?;
             }
-            self.forget_legacy_people(id, &legacy)?;
+            self.forget_legacy_people(id)?;
             self.platform
                 .exec("DELETE FROM dsp_features WHERE dsp_id=?", [id])?;
             self.platform.exec("DELETE FROM dsps WHERE id=?", [id])?;

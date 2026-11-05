@@ -179,12 +179,14 @@ impl Store {
         )
     }
     /// Deletes the log of a DSP being deleted: what happened there, and what `people`, its
-    /// people, did to their own accounts.
+    /// people who are no other DSP's, did to their own accounts, outside any DSP's log. What
+    /// happened at another DSP stays, whoever did it.
     pub fn forget_audit(&self, dsp: &str, people: &[String]) -> Result<()> {
         let people = serde_json::to_string(people)?;
         self.platform.exec(
-            "DELETE FROM audit WHERE dsp_id=?1 OR actor_id IN (SELECT value FROM json_each(?2)) \
-             OR member_id IN (SELECT value FROM json_each(?2))",
+            "DELETE FROM audit WHERE dsp_id=?1 OR (dsp_id IS NULL AND \
+             (actor_id IN (SELECT value FROM json_each(?2)) \
+             OR member_id IN (SELECT value FROM json_each(?2))))",
             [dsp, people.as_str()],
         )?;
         Ok(())
