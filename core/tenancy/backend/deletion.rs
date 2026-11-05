@@ -80,6 +80,7 @@ impl Store {
         let folder = self.dsp_folder(dsp)?;
         let aside = folder.with_extension("deleting");
         if folder.try_exists()? {
+            // What a delete cut short left aside goes first, as one folder takes its place.
             remove(&aside)?;
             std::fs::rename(&folder, &aside)?;
         }
