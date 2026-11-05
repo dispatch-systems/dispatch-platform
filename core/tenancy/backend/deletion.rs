@@ -135,10 +135,14 @@ async fn finish_one(state: &Arc<State>, dsp: &str) -> Result<()> {
 }
 
 /// Lets go of everything the server holds of a deleted DSP in memory: its browsers, its cached
-/// reads, the connections idle stores keep to its databases, and what each feature holds.
+/// reads, the connections idle stores keep to its databases, and what the agents and each
+/// feature hold.
 pub async fn forget(state: &Arc<State>, dsp: &str) {
     state.browsers.revoke(dsp).await;
     state.forget_dsp(dsp);
+    if let Some(agents) = registry().agents {
+        (agents.forgotten)(state, dsp);
+    }
     for forgotten in registry()
         .features
         .iter()

@@ -203,6 +203,12 @@ impl Activity {
             capped: std::mem::take(&mut held.capped),
         }
     }
+    /// Lets go of the calls about a deleted DSP.
+    pub fn forget_dsp(&self, dsp: &str) {
+        self.held()
+            .calls
+            .retain(|call| call.dsp.as_ref().is_none_or(|at| at.id != dsp));
+    }
     /// Holds calls again, ahead of any recorded since, after writing them down failed.
     pub fn restore(&self, calls: Vec<Call>) {
         let mut held = self.held();
@@ -364,7 +370,8 @@ impl FromRow for Listed {
 }
 
 pub trait ActivityStore {
-    /// Writes calls down, all in one transaction.
+    /// Writes calls down, all in one transaction: those about a DSP no longer there, as one
+    /// deleted since, never.
     fn record_agent_activity(&self, calls: &[Call]) -> Result<()>;
 
     /// Removes calls past 90 days, a step at a time. Answers how many went.
@@ -380,7 +387,8 @@ impl ActivityStore for Store {
                 let dsp = call.dsp.as_ref();
                 self.platform.exec(
                     "INSERT INTO agent_activity(at,key_id,key_name,key_kind,surface,dsp_id,\
-                     dsp_name,outcome,ms,bytes) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                     dsp_name,outcome,ms,bytes) SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10 \
+                     WHERE ?6 IS NULL OR EXISTS (SELECT 1 FROM dsps WHERE id=?6)",
                     params![
                         call.at,
                         call.key.id,

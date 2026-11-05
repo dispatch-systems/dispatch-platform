@@ -53,6 +53,9 @@ pub struct Agents {
     /// Deletes what it keeps of a DSP, in the transaction that deletes the DSP's rows in the
     /// platform's database: what keys and apps were given there, and what agents did there.
     pub forget_dsp: fn(&Store, &str) -> Result<()>,
+    /// Lets go of what it holds of a deleted DSP in memory, as what agents did there that it
+    /// hasn't written down yet.
+    pub forgotten: fn(&State, &str),
     /// Panics unless what it declares of itself holds, as the registry is installed.
     pub check: fn(),
     /// What only the piece itself reads of its declaration.

@@ -61,6 +61,7 @@ pub const fn piece(own: &'static Own) -> Agents {
         password_reset,
         restored,
         forget_dsp,
+        forgotten,
         check,
         own,
     }
@@ -349,6 +350,10 @@ fn forget_dsp(db: &Store, dsp: &str) -> Result<()> {
             .exec(&format!("DELETE FROM {table} WHERE dsp_id=?"), [dsp])?;
     }
     Ok(())
+}
+/// What agents did at a deleted DSP and wait to be written down goes too.
+fn forgotten(state: &State, dsp: &str) {
+    Kept::of(state).activity.forget_dsp(dsp);
 }
 
 fn check() {
