@@ -138,7 +138,9 @@ test('deleting a disabled DSP leaves nothing of it, frees its code and unpairs i
   assert(fs.existsSync(path.join(f.root, 'dsps', north.id)));
 
   assert.deepEqual(await remove(north, north.name), [200, undefined]);
-  assert(!fs.existsSync(path.join(f.root, 'dsps', north.id)));
+  // Nothing of its folder is left among the DSPs'.
+  const folders = fs.readdirSync(path.join(f.root, 'dsps'));
+  assert(!folders.some((name) => name.includes(north.id)), String(folders));
   assert.deepEqual(held(north.id), Array(13).fill(0));
   const [legacy, deletions, deleted] = platform((db) => [
     db.prepare("SELECT count(*) n FROM users WHERE id='usr_0'").get()!.n,

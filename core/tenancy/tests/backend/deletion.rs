@@ -29,7 +29,12 @@ async fn a_delete_cut_short_is_finished_once_the_server_starts_again() {
 
     let state = crate::State::new(config).unwrap();
     finish(&state).await;
-    assert!(!folder.exists());
+    // Nothing of its folder is left among the DSPs'.
+    let dsps = std::fs::read_dir(folder.parent().unwrap()).unwrap();
+    let names: Vec<String> = dsps
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert!(names.iter().all(|name| !name.contains(&id)), "{names:?}");
     let left = state
         .read(move |db| {
             Ok((
