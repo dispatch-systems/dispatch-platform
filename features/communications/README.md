@@ -110,9 +110,10 @@ and every other number's in Recents.
   show by Driver Match's person for each (`/api/dsp/people/{code}/photo`), never Slack's own
   addresses. Each conversation read is kept while the page is open, for forty at most, so it
   opens again at once as it was read, and is read again as it opens only once an update changed
-  it since; the one open, at once as one does. A row pointed at or reached by the keyboard, and
-  the first three waiting of those shown, are read before they're opened, but not on a slow or
-  metered connection (`frontend/conversations/reads.ts`).
+  it, or one of whom it's with's others it shows, since; the one open, at once as one does. A row
+  pointed at or reached by the keyboard, and the first three waiting of those shown, are read
+  before they're opened, two at a time at low priority, but not on a slow or metered connection
+  (`frontend/conversations/reads.ts`).
 - **The profile** of whom a conversation is with opens from who it's with, above it, or their
   photo by their messages, over the conversation, and closes with its X, Escape, or a press
   anywhere else; from 1,500 pixels of page, it opens beside the conversation instead, a column

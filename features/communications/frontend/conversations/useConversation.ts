@@ -25,7 +25,12 @@ export function useConversation(reads: ConversationReads, id: string) {
     () => reads.held(id),
   );
   useEffect(() => reads.open(id), [reads, id]);
-  const readOlder = useCallback(() => void reads.readOlder(id), [reads, id]);
+  // Not while a read of older ones is under way, and made again as it ends, so what reads them as
+  // it's in view looks again.
+  const { older } = held;
+  const readOlder = useCallback(() => {
+    if (!older) void reads.readOlder(id);
+  }, [reads, id, older]);
   const show = useCallback(
     (conversation: Conversation, message?: Message) => reads.show(conversation, message),
     [reads],

@@ -9,7 +9,8 @@ import { fresh, joined } from './messages.js';
 // The conversations the page has read, kept while it's open, so one opened again shows at once:
 // each as last read, read again only once an update changed it since, and as it opens, the one
 // open at once as it changes; and read before it's opened, as a row is pointed at or reached by
-// the keyboard, or as one of the first waiting. The longest unopened go once there are too many.
+// the keyboard, or as one of the first waiting, a few at a time and after what's opened. The
+// longest unopened go once there are too many.
 
 /** A conversation as read, and when its latest read answered, by the page's own clock. */
 export type Opened = Omit<ConversationMessages, 'messages'> & {
@@ -22,6 +23,10 @@ export type Held = { opened?: Opened; error: string; gone: boolean; older: boole
 
 /** How many conversations it keeps: a dispatcher's morning's worth, each at most a page or a few. */
 const KEPT = 40;
+/** How many reads before opening run at once, and how many wait, the latest asked kept, as core's
+ * preloads do. */
+const WARMING = 2;
+const WARM_WAITING = 6;
 const nothing: Held = { opened: undefined, error: '', gone: false, older: false };
 
 type Entry = {
@@ -51,6 +56,9 @@ export class ConversationReads {
   private at = 0;
   private everyAt = 0;
   private readonly changedAt = new Map<string, number>();
+  /** The conversations to read before they're opened, in the order asked, and how many are read. */
+  private readonly warming = new Set<string>();
+  private warmed = 0;
 
   /** The conversation `id` as held. */
   held(id: string): Held {
@@ -67,13 +75,21 @@ export class ConversationReads {
       if (!watching.size) this.watchers.delete(id);
     };
   }
-  /** The latest update, `changed`: what it names is read again once it's opened, and the one open
-   * now. */
+  /** The latest update, `changed`: what it names, and each conversation whose read shows one it
+   * names among whom it's with's others (`elsewhere`), as a driver's work phone, is read again once
+   * it's opened, and the one open now. */
   change(changed: Changed) {
     if (changed.at <= this.at) return;
     this.at = changed.at;
     if (changed.ids === 'all') this.everyAt = changed.at;
-    else for (const id of changed.ids) if (this.entries.has(id)) this.changedAt.set(id, changed.at);
+    else {
+      const named = new Set(changed.ids);
+      for (const [id, entry] of this.entries) {
+        const others = entry.held.opened?.elsewhere ?? [];
+        if (named.has(id) || others.some((each) => named.has(each.conversationId ?? '')))
+          this.changedAt.set(id, changed.at);
+      }
+    }
     for (const id of this.watchers.keys()) if (this.stale(id)) void this.read(id);
   }
   /** Opens the conversation `id`: as held, at once, and read, unless no update changed it since
@@ -85,9 +101,17 @@ export class ConversationReads {
     void this.read(id);
   }
   /** Reads the conversation `id` before it's opened, unless it's held as it is, or a read of it is
-   * under way: optional, so not on a slow or metered connection. */
+   * under way: optional, so not on a slow or metered connection, at low priority, and a few at a
+   * time, those asked longest ago left once too many wait. */
   warm(id: string) {
-    if (canPrefetch() && !document.hidden && this.stale(id)) void this.read(id);
+    if (!canPrefetch() || document.hidden || !this.stale(id)) return;
+    this.warming.delete(id);
+    this.warming.add(id);
+    for (const waiting of this.warming) {
+      if (this.warming.size <= WARM_WAITING) break;
+      this.warming.delete(waiting);
+    }
+    this.warmNext();
   }
   /** Reads the fifty messages before the first shown. */
   async readOlder(id: string) {
@@ -100,7 +124,7 @@ export class ConversationReads {
     const since = entry.turns.shown;
     try {
       const page = await getConversation(id, shown.messages[0]);
-      const now = this.entries.get(id)?.held.opened;
+      const now = this.entries.get(id) === entry ? entry.held.opened : undefined;
       if (now && entry.turns.shown === since)
         this.hold(id, {
           ...this.held(id),
@@ -112,7 +136,7 @@ export class ConversationReads {
           },
         });
     } catch (cause) {
-      this.hold(id, { ...this.held(id), error: messageOf(cause) });
+      if (this.entries.get(id) === entry) this.hold(id, { ...entry.held, error: messageOf(cause) });
     } finally {
       if (this.entries.get(id) === entry) this.hold(id, { ...this.held(id), older: false });
     }
@@ -142,14 +166,27 @@ export class ConversationReads {
     if (!entry.held.opened) return true;
     return entry.asked < Math.max(this.everyAt, this.changedAt.get(id) ?? 0);
   }
-  private async read(id: string) {
+  /** Reads the next conversations waiting to be read before they're opened, while too few are. */
+  private warmNext() {
+    for (const id of this.warming) {
+      if (this.warmed >= WARMING) return;
+      this.warming.delete(id);
+      if (!this.stale(id)) continue;
+      this.warmed++;
+      void this.read(id, 'low').finally(() => {
+        this.warmed--;
+        this.warmNext();
+      });
+    }
+  }
+  private async read(id: string, priority?: 'low') {
     const entry = this.touch(id);
     const turn = ++entry.turns.asked;
     entry.reading = true;
     entry.asked = this.at;
     let latest: ConversationMessages;
     try {
-      latest = await getConversation(id);
+      latest = await getConversation(id, undefined, priority);
     } catch (cause) {
       if (this.entries.get(id) !== entry) return;
       entry.reading = false;
