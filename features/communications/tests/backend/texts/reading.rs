@@ -59,7 +59,7 @@ async fn a_texts_picture_is_refused_once_the_members_access_ended_while_the_phon
     // Asked for with their access standing, the picture is got ready until the phone side waits in
     // its open, which no poll gets past; this test polls until then, waking itself, as nothing
     // else would. Let through, it isn't polled again until access has ended.
-    let asked = file(&state, &c, support::USE, &added.id);
+    let asked = file(&state, &c, support::USE, &added.id, None);
     tokio::pin!(asked);
     std::future::poll_fn(|cx| {
         if release(&bytes) {
