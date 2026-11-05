@@ -43,7 +43,7 @@ fn a_text_reported_twice_is_kept_once() {
     assert!(text.files.iter().all(|file| !file.kept), "bytes come after");
     // Its picture's bytes arrive: the text changes again, after the other, which arriving answers.
     let of = db
-        .phones_file_arrived(&dsp, &phone.id, &first[0].files[0], "sha", 100)
+        .phones_file_arrived(&dsp, &phone.id, &first[0].files[0], "sha", 100, 8_000)
         .unwrap();
     assert_eq!(of, first[0].id);
     let later = db.phones_text(&dsp, &first[0].id).unwrap().unwrap();
@@ -61,7 +61,7 @@ fn a_text_reported_twice_is_kept_once() {
     let other = db
         .phones_pair(&dsp, "other", "key-2", &pairing, 7_000)
         .unwrap();
-    let foreign = db.phones_file_arrived(&dsp, &other.id, &first[0].files[1], "sha", 100);
+    let foreign = db.phones_file_arrived(&dsp, &other.id, &first[0].files[1], "sha", 100, 8_000);
     assert_eq!(foreign.unwrap_err().code.as_str(), "phones_file_not_found");
 }
 
@@ -220,6 +220,7 @@ fn a_text_goes_from_the_phone_that_last_texted_its_number_one_online_first() {
         name: "door.jpg".into(),
         mime: "image/jpeg".into(),
         size: 10,
+        on_phone: false,
     };
     let picture = db
         .phones_add_file(&dsp, &owner, &file, "sha", 12_000)

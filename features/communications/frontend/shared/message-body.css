@@ -42,6 +42,24 @@
   height: 100%;
   object-fit: cover;
 }
+/* A video: its first frame, where there is one, under a play button in its middle. */
+.photo.video {
+  position: relative;
+  cursor: pointer;
+}
+.photo.video .play {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--viewer-backdrop);
+  color: var(--viewer-foreground);
+  transform: translate(-50%, -50%);
+}
 .file {
   display: inline-flex;
   align-items: center;

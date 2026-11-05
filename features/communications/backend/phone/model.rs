@@ -16,6 +16,15 @@ pub const PHONE_OFFLINE: &str = "phones_offline";
 /// How long a text Dispatch queued, or tried again, may wait for its phone to start it, in
 /// milliseconds: past it, the phone never does.
 pub const EXPIRY_MS: i64 = 10 * 60 * 1000;
+/// How long the bytes of a video kept on its phone are kept once it sent them, in milliseconds, so
+/// another who plays it soon after has them at once: let go of by the hourly upkeep after it.
+pub const FETCHED_MS: i64 = 60 * 60 * 1000;
+/// How long someone playing a video kept on its phone waits for its bytes, in milliseconds: playing
+/// it again within it while its phone sends them waits on the same, rather than asking again.
+pub const FETCH_WAIT_MS: i64 = 40 * 1000;
+/// How long a phone may still be told of a video someone asked for, in milliseconds: one told of it
+/// later doesn't send it.
+pub const WANT_MS: i64 = 2 * 60 * 1000;
 
 /// One of the DSP's dispatch phones.
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -165,11 +174,18 @@ pub struct File {
     pub name: String,
     pub mime: String,
     pub size: i64,
-    /// Whether its bytes are kept; a phone's come after its text.
+    /// Whether its bytes are kept; a phone's come after its text, and a video kept on its phone's
+    /// once someone plays it, for an hour (`FETCHED_MS`).
     pub kept: bool,
     /// Its bytes' SHA-256, once they're kept.
     #[serde(skip)]
     pub sha256: Option<String>,
+    /// Whether it's a video its phone keeps, sending its bytes only once someone plays it.
+    pub on_phone: bool,
+    /// Whether a picture of its first frame is kept, for a video kept on its phone.
+    pub preview: bool,
+    /// Whether its phone said it has it no more, for a video kept on it.
+    pub gone: bool,
 }
 
 /// A text to send.

@@ -55,7 +55,8 @@ data class Waiting(
  * A picture or file of a text, its bytes still to send: [dispatchId] comes once Dispatch answered
  * its text, at its [position] among the text's files. [settled] once it's to be reported as it is
  * now, every time: its name, type and size, and the bytes at [uri] sent for them, never change
- * after, as Dispatch keeps the first it's told of a file.
+ * after, as Dispatch keeps the first it's told of a file. A video [onPhone] stays on the phone:
+ * only the picture of its first frame is sent, and its bytes once Dispatch asks for them.
  */
 @Entity(tableName = "files", indices = [Index("clientId"), Index("dispatchId")])
 data class WaitingFile(
@@ -68,8 +69,16 @@ data class WaitingFile(
     val dispatchId: String? = null,
     // A file kept before this was, by an app that made no JPEGs, may have been reported as it is.
     @ColumnInfo(defaultValue = "1") val settled: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val onPhone: Boolean = false,
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
 )
+
+/**
+ * A video the phone keeps, at [uri] in the provider, by Dispatch's ID of it: its bytes sent once
+ * Dispatch asks for them, as someone plays it.
+ */
+@Entity(tableName = "on_phone")
+data class OnPhone(@PrimaryKey val dispatchId: String, val uri: String)
 
 /** A text waiting to be reported, with its files. */
 data class WaitingText(
@@ -107,7 +116,10 @@ interface Queue {
     /** The [most] oldest texts waiting to be reported, with their files. */
     suspend fun waiting(most: Int): List<WaitingText>
 
-    /** Dispatch answered [answered] with its IDs: leaves each text, and gives its files theirs. */
+    /**
+     * Dispatch answered [answered] with its IDs: leaves each text, and gives its files theirs, each
+     * video kept on the phone known by its ID from then on.
+     */
     suspend fun answered(answered: Map<String, List<String>>)
 
     /** Leaves [clientId], a text Dispatch refuses alone, and its files, never to be reported. */
@@ -124,4 +136,13 @@ interface Queue {
 
     /** Leaves the file [id], its bytes sent, or never to be. */
     suspend fun uploaded(id: Long)
+
+    /** Leaves the file [id], a video kept on the phone as [video], whose bytes go once Dispatch asks for them. */
+    suspend fun keptOnPhone(id: Long, video: OnPhone)
+
+    /** The video the phone keeps that Dispatch knows as [dispatchId], if it's kept. */
+    suspend fun onPhone(dispatchId: String): OnPhone?
+
+    /** Forgets the video Dispatch knows as [dispatchId], gone from the phone. */
+    suspend fun goneFromPhone(dispatchId: String)
 }

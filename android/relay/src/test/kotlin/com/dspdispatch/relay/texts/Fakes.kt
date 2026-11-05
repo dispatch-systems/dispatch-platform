@@ -21,6 +21,7 @@ class MemoryQueue : Queue {
     val unread = mutableMapOf<String, Unread>()
     val texts = mutableMapOf<String, Waiting>()
     val files = mutableListOf<WaitingFile>()
+    val onPhone = mutableMapOf<String, OnPhone>()
     private var nextFile = 1L
 
     override suspend fun mark() = mark
@@ -30,6 +31,7 @@ class MemoryQueue : Queue {
         unread.clear()
         texts.clear()
         files.clear()
+        onPhone.clear()
         this.mark = mark
     }
 
@@ -60,6 +62,9 @@ class MemoryQueue : Queue {
         for ((clientId, ids) in answered) {
             texts.remove(clientId)
             files.replaceAll { if (it.clientId == clientId) it.copy(dispatchId = ids.getOrNull(it.position)) else it }
+            files.filter { it.clientId == clientId && it.onPhone }.forEach { file ->
+                file.dispatchId?.let { onPhone[it] = OnPhone(it, file.uri) }
+            }
             files.removeAll { it.clientId == clientId && it.dispatchId == null }
         }
     }
@@ -80,6 +85,17 @@ class MemoryQueue : Queue {
 
     override suspend fun uploaded(id: Long) {
         files.removeAll { it.id == id }
+    }
+
+    override suspend fun keptOnPhone(id: Long, video: OnPhone) {
+        uploaded(id)
+        onPhone[video.dispatchId] = video
+    }
+
+    override suspend fun onPhone(dispatchId: String) = onPhone[dispatchId]
+
+    override suspend fun goneFromPhone(dispatchId: String) {
+        onPhone.remove(dispatchId)
     }
 }
 
@@ -220,12 +236,13 @@ class FakeRadio : Radio {
  * Pictures as Android would scale them, each [sizes] says, by [shrink]: what each shrinking was
  * asked is kept in [asked]. [decodesHeif] is whether it says Android here decodes HEIF; whatever
  * it says, each JPEG it's asked for is [jpeg]'s, and what it was asked, the picture and the most
- * bytes and pixels, is kept in [made].
+ * bytes and pixels, is kept in [made]. A video's first frame is [frame]'s, of the video's bytes.
  */
 class FakePictures(
     private val sizes: Map<String, Size> = emptyMap(),
     override val decodesHeif: Boolean = true,
     private val jpeg: (picture: ByteArray) -> ByteArray? = { null },
+    private val frame: (video: ByteArray) -> ByteArray? = { null },
     private val shrink: (most: Int) -> ByteArray? = { ByteArray(it / 2) },
 ) : Pictures {
     val asked = mutableListOf<Triple<String, Int, Size>>()
@@ -242,6 +259,8 @@ class FakePictures(
         asked += Triple(file.name, most, within)
         return shrink(most)
     }
+
+    override fun frame(video: File, most: Int, longest: Int): ByteArray? = frame(video.readBytes())
 }
 
 /** The app's texts database, in memory, on SQLite itself. */

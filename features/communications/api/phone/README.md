@@ -47,7 +47,8 @@ again as each wait ends, which keeps it online.
   `Content-Length`, at most 20 MiB: refused `upload_too_large` (413) past it, and
   `length_required` (411) without it. It fails `upload_incomplete` (400) when fewer bytes come
   than it said, or none come for a minute, and is refused `uploads_busy` (503) while the server
-  takes four others: try it again.
+  takes four others: try it again. The picture of a video's first frame is at most 256 KiB
+  (`PREVIEW_MOST`), refused `upload_too_large` (413) past it.
 - **A number:** at most 32 characters of digits, spaces and `+-().` (`NUMBER_MOST`). Dispatch
   writes it one way: `+1` and ten digits in North America, `+` and the digits with a country
   code, a short code's digits alone.
@@ -78,9 +79,10 @@ old.
 
 ### `GET /api/communications/phone/outbox`
 
-Waits up to 20 seconds (`WAIT`) for the texts Dispatch has for this phone, and answers as soon as
-it has any, or with none once the wait ends; it wakes as a text is queued for the phone, and as
-the phone is removed.
+Waits up to 20 seconds (`WAIT`) for the texts Dispatch has for this phone, or the videos it keeps
+that someone is playing, and answers as soon as it has any, or with none once the wait ends; it
+wakes as a text is queued for the phone, as someone plays one of its videos, and as the phone is
+removed.
 
 - `?version=1.4.0&versionCode=14`: the app's own, which the phone says with each wait, both or
   neither (an app older than this never says them): `version` at most 40 characters
@@ -104,7 +106,14 @@ the phone is removed.
 }
 ```
 
-With them, while the server hands out the app, its latest version,
+With them, `"wanted": ["…"]`, left out while there are none: the IDs of the videos the phone keeps
+([reporting texts](#post-apicommunicationsphonetexts)) that someone asked for within the last two
+minutes (`WANT_MS`) and whose bytes haven't come, each answered once each time it's asked for, and
+not again while the phone was told of it within the last 40 seconds (`FETCH_WAIT_MS`). The
+app sends each one's bytes (`POST /api/communications/phone/files/{id}`), or, holding it no more,
+says so (`POST /api/communications/phone/files/{id}/gone`). An app older than this ignores it.
+
+And, while the server hands out the app, its latest version,
 `"app": { "version": "1.4.0", "versionCode": 14 }`, left out while it hands out none. The app
 updates itself once `versionCode` is above its own ([the app](#get-apicommunicationsphoneapp)).
 
@@ -196,6 +205,11 @@ Dispatch's from alone where it holds several:
   with the `size` the phone knows. A still picture received as HEIF, as iPhones send them, which
   browsers don't show, the app reports and sends as a JPEG it makes of it (`image/jpeg`, its name
   ending `.jpg`); a HEIF sequence, and one Android can't decode, as before Android 9, as it is.
+  A video, `"onPhone": true`, stays on the phone: the app sends the picture of its first frame
+  (`POST …/files/{id}/preview`) in place of its bytes, and its bytes only once the outbox asks for
+  them (`wanted`). Left out, it's `false`, as an app older than this sends every file's bytes. A
+  text with one that Dispatch refuses alone, as one from before this does, the app reports again
+  with each video's bytes sent instead.
 
 Answers, for each, Dispatch's ID of it and of its files, in the order reported:
 `{ "texts": [ { "clientId": "sms-8812", "id": "…", "files": ["…"] } ] }`. Reporting is
@@ -208,6 +222,24 @@ it first did, then sends each file's bytes.
 The bytes of a file of a text the phone reported, by the ID its report answered. Sent again, they
 replace those before. The file's size is what arrives, whatever the report said. Refused
 `phones_file_not_found` (404) for a file not of this phone's reported texts.
+
+A video's, sent as the outbox asks for them, are kept an hour (`FETCHED_MS`), then let go of until
+someone plays it again.
+
+### `POST /api/communications/phone/files/{id}/preview`
+
+The picture of the first frame of a video of a text the phone reported, which it keeps
+(`onPhone`): a JPEG, upright, at most 256 KiB, as a file's bytes are sent. Sent again, it replaces
+the one before. Refused `phones_file_not_found` (404) for a file not of this phone's reported
+texts, or not one it keeps.
+
+### `POST /api/communications/phone/files/{id}/gone`
+
+`{}`: the phone has a video it kept no more, as its texting app deleted it, or it never had it, as
+one asked of a pairing before. The app says it of a video it doesn't know only once no text waits
+to be reported, whose answer may yet name it. Playing it says so from then on, until the phone
+sends its first frame or bytes after all. Answers `{ "ok": true }`; refused
+`phones_file_not_found` (404) as `…/preview` is.
 
 ### `GET /api/communications/phone/files/{id}`
 

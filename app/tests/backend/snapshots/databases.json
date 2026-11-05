@@ -91,6 +91,7 @@
       ["communications", 13, "communications_done_places", "code"],
       ["communications", 14, "phones_health", "code"],
       ["communications", 15, "communications_replies", "3002223a7e9fe025"],
+      ["communications", 16, "phones_files_on_phone", "code"],
       ["slack", 1, "slack", "8ca8fd50f814a724"],
       ["slack", 2, "slack_new_connections", "code"],
       ["slack", 3, "slack_members", "a3cacf7486f2ded9"],

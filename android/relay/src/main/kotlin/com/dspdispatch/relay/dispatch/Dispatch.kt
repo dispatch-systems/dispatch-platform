@@ -81,6 +81,19 @@ class Dispatch(http: OkHttpClient, private val own: AppVersion) {
     }
 
     /**
+     * Sends [frame], a JPEG of the first frame of the video Dispatch knows as [id], which the phone
+     * keeps.
+     */
+    suspend fun preview(site: String, key: String, id: String, frame: ByteArray) {
+        http.call<Done>(post(site, "files/$id/preview", frame.toRequestBody(BYTES), key))
+    }
+
+    /** Says the phone has the video Dispatch knows as [id], which it kept, no more. */
+    suspend fun gone(site: String, key: String, id: String) {
+        http.call<Done>(post(site, "files/$id/gone", "{}", key))
+    }
+
+    /**
      * Writes into [to] the bytes of the file Dispatch knows as [id], a picture of a text in the
      * outbox, streamed as they come: it may be 20 MiB.
      */

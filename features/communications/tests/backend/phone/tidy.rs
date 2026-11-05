@@ -18,6 +18,7 @@ fn picture() -> ReportedFile {
         name: "door.jpg".into(),
         mime: "image/jpeg".into(),
         size: 4,
+        on_phone: false,
     }
 }
 

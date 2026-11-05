@@ -149,9 +149,17 @@ impl TextStore for Store {
                 for file in text.files {
                     let file_id = crypto::id("file")?;
                     db.exec(
-                        "INSERT INTO phones_files (id,text_id,name,mime,size,added_at) \
-                         VALUES (?,?,?,?,?,?)",
-                        params![file_id, id, file.name, file.mime, file.size, text.at],
+                        "INSERT INTO phones_files (id,text_id,name,mime,size,on_phone,added_at) \
+                         VALUES (?,?,?,?,?,?,?)",
+                        params![
+                            file_id,
+                            id,
+                            file.name,
+                            file.mime,
+                            file.size,
+                            file.on_phone,
+                            text.at
+                        ],
                     )?;
                     files.push(file_id);
                 }

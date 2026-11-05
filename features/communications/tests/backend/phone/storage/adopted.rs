@@ -41,6 +41,7 @@ fn a_database_phones_migrated_upgrades_with_its_phone_its_waiting_text_and_its_p
         name: "door.png".into(),
         mime: "image/png".into(),
         size: 4,
+        on_phone: false,
     };
     let picture = db
         .phones_add_file(&dsp, &owner, &file, &sha256, 3_000)

@@ -103,11 +103,15 @@ fn reported(text: &Value) -> Result<Reported> {
         Value::Array(files) if files.len() <= LIMITS.files => files
             .iter()
             .map(|file| {
-                v::fields(file, &["name", "mime", "size"])?;
+                v::fields(file, &["name", "mime", "size", "onPhone"])?;
                 Ok(ReportedFile {
                     name: v::name(file, "name", NAME_MOST)?,
                     mime: v::text(file, "mime", 1, MIME_MOST)?.to_owned(),
                     size: v::integer(file, "size", 0, LIMITS.largest as i64)?,
+                    on_phone: match file["onPhone"] {
+                        Value::Null => false,
+                        _ => v::boolean(file, "onPhone")?,
+                    },
                 })
             })
             .collect::<Result<_>>()?,
