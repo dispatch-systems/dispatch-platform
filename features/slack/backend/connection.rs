@@ -320,12 +320,12 @@ pub fn revoke(state: Arc<State>, dsp: String) -> Upkeep {
         let at = dsp.clone();
         let workspaces = match state.read(move |db| db.slack_workspaces(&at)).await {
             Ok(workspaces) => workspaces,
-            Err(error) => return work::failed("slack_revoke_failed", &error),
+            Err(error) => return work::failed("slack_revoke_failed", Some(&dsp), &error),
         };
         for workspace in workspaces {
             match Bot::new(&state, &dsp, &workspace.team).token().await {
                 Ok(token) => slack.uninstall(&token).await,
-                Err(error) => work::failed("slack_revoke_failed", &error),
+                Err(error) => work::failed("slack_revoke_failed", Some(&dsp), &error),
             }
         }
     })
