@@ -26,6 +26,7 @@ CREATE TABLE owner_migrations (owner TEXT NOT NULL, id INTEGER NOT NULL, name TE
 CREATE TABLE people ( code TEXT PRIMARY KEY, created_at TEXT NOT NULL, merged_into TEXT REFERENCES people(code), merged_at TEXT, merged_by TEXT, split_from TEXT REFERENCES people(code), created_by TEXT );
 CREATE TABLE people_apart ( first TEXT NOT NULL REFERENCES people(code), second TEXT NOT NULL REFERENCES people(code), decided_at TEXT NOT NULL, actor_id TEXT, PRIMARY KEY(first, second), CHECK(first < second) );
 CREATE TABLE "person_ids" ( source TEXT NOT NULL, external_id TEXT NOT NULL, code TEXT NOT NULL REFERENCES people(code), linked_by TEXT NOT NULL, linked_at TEXT NOT NULL, actor_id TEXT, PRIMARY KEY(source, external_id) );
+CREATE TABLE person_phones ( phone TEXT PRIMARY KEY, code TEXT NOT NULL REFERENCES people(code), added_at TEXT NOT NULL, actor_id TEXT );
 CREATE TABLE person_roles ( code TEXT PRIMARY KEY REFERENCES people(code), role TEXT NOT NULL, decided_at TEXT NOT NULL, actor_id TEXT );
 CREATE TABLE person_titles ( code TEXT PRIMARY KEY REFERENCES people(code), title TEXT NOT NULL, decided_at TEXT NOT NULL, actor_id TEXT );
 CREATE TABLE phones_change ( id INTEGER PRIMARY KEY CHECK (id = 1), last INTEGER NOT NULL );
@@ -82,6 +83,7 @@ CREATE INDEX invitations_role ON invitations(role_id) WHERE used_at IS NULL;
 CREATE INDEX memberships_dsp_role ON memberships(dsp_id,role,user_id);
 CREATE INDEX memberships_role ON memberships(role_id);
 CREATE INDEX person_ids_code ON person_ids(code);
+CREATE INDEX person_phones_code ON person_phones(code);
 CREATE INDEX phones_files_text ON phones_files (text_id);
 CREATE UNIQUE INDEX phones_pairings_id ON phones_pairings (id);
 CREATE INDEX phones_texts_change ON phones_texts (change);

@@ -66,6 +66,19 @@ pub struct TextContacts {
     pub blocked: Vec<TextContact>,
 }
 
+/// `GET /api/dsp/communications/texts/people`: everyone Driver Match knows who hasn't left, by
+/// name, whom a number can be added to.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct TextPeople {
+    pub people: Vec<Correspondent>,
+}
+
 /// Someone the DSP can text, by their number.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]

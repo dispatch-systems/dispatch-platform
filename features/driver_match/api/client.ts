@@ -29,3 +29,6 @@ export const keepApart = (code: string, other: string) =>
 /** `code` is given `role`, or with `null` has theirs from their sources again. */
 export const giveRole = (code: string, role: GivenRole | null) =>
   api(`${driverMatch}/role`, { code, role });
+/** A phone number someone added to `code` is taken off them. */
+export const removePhone = (code: string, phone: string) =>
+  api(`${driverMatch}/phones/remove`, { code, phone });

@@ -86,6 +86,7 @@ pub fn conversations(
                 driver_id: conversation.driver.map(|(_, id)| id),
                 team_id: None,
                 contact: own.is_some_and(|number| numbers.contact(number).is_some()),
+                added: own.is_some_and(|number| people.everyone().added(number).is_some()),
                 blocked: own.is_some_and(|number| numbers.blocked(number)),
                 number,
                 with,

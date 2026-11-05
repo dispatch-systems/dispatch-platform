@@ -149,8 +149,9 @@ directory (`people/directory.rs`), a contract the feature that tells people apar
 keeps to name them; the name they are shown by and every other way their sources write it; their
 role (driver, helper, office for management, former, or offboarded) and the title someone gave
 them, as Dispatch (`PersonTitle`, which `people-data.ts` lists with its label); every ID they
-hold, by source; their email addresses and phone numbers; whether someone confirmed who they
-are; and the version of their photo.
+hold, by source; their email addresses and phone numbers, the numbers someone at the DSP added
+to theirs among them (`added_phones`); whether someone confirmed who they are; and the version
+of their photo.
 
 ```rust
 let people = people::everyone(db, c.state, c.dsp_id())?; // everyone, by name
@@ -158,7 +159,13 @@ let person = people.person(code);                        // by code, a merged on
 let theirs = people.holding(dispatch_paycom::SOURCE, id); // by any source's ID
 let having = people.by_phone("+1 555 010 2030");         // by phone number, its last ten digits
 let found = people.find("cam hayes");                    // by name, ID, email or phone
+let added = people.added("+1 555 010 2030");             // whom someone added the number to
 ```
+
+`people::add_phone(db, c, code, number)` adds a number to a person's, as a member decided, as a
+driver's new or second phone: it tells who has the number, joins no one to anyone, and is refused
+while anyone has it. `people::remove_phone(db, c, number)` takes it off them again. Both ask the
+directory, which keeps the numbers, and are refused in a build without one.
 
 `people::everyone` keeps what it reads until a collection, a decision or the DSP's settings
 change it; `people::read` reads afresh, for work without the server's state, as an agent's

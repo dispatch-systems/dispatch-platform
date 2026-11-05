@@ -61,6 +61,10 @@ impl People {
         let name = contact.map_or_else(|| shown(number), str::to_owned);
         with(self.holding_number(number), &name)
     }
+    /// `person`, as Driver Match knows them.
+    pub fn known(person: &Person) -> Correspondent {
+        with(Some(person), &person.name)
+    }
     /// The driver holding `id` of the source `source`, as Driver Match knows them, if it does.
     pub fn driver_of(&self, source: &str, id: &str) -> Option<&Person> {
         Source::parse(source).and_then(|source| self.everyone.holding(source, id))

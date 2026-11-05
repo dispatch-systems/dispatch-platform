@@ -19,4 +19,8 @@ dates: Array<string>,
 /**
  * What each source that saw them work says of those days.
  */
-days: Array<SourceDays>, history: Array<PersonEvent>, };
+days: Array<SourceDays>, history: Array<PersonEvent>,
+/**
+ * The phone numbers someone added to theirs, the first added first.
+ */
+addedPhones: Array<string>, };

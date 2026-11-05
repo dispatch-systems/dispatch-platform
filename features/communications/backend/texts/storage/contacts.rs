@@ -20,6 +20,9 @@ pub trait ContactStore {
         name: &str,
         by: &str,
     ) -> Result<()>;
+    /// Notes that the number's conversation changed as who it's with did, as the number being
+    /// added to a person or taken off them, for the pages waiting on changes.
+    fn communications_number_changed(&self, dsp: &str, number: &str) -> Result<()>;
     /// Every number blocked.
     fn communications_blocked(&self, dsp: &str) -> Result<BTreeSet<String>>;
     /// Blocks the number, as the member `by`, or unblocks it.
@@ -50,6 +53,10 @@ impl ContactStore for Store {
             )?;
             changed_number(&db, number)
         })
+    }
+    fn communications_number_changed(&self, dsp: &str, number: &str) -> Result<()> {
+        let db = self.dsp(dsp)?;
+        db.transaction(|| changed_number(&db, number))
     }
     fn communications_blocked(&self, dsp: &str) -> Result<BTreeSet<String>> {
         let blocked: Vec<(String,)> = self
