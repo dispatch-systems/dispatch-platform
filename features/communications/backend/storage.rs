@@ -190,9 +190,16 @@ pub trait CommunicationsStore {
         conversation: &str,
         sent: &Sent,
     ) -> Result<Message>;
-    /// Marks the conversation done without an answer, as the member `by`, while it waits:
-    /// whether it was waiting.
-    fn mark_communications_done(&self, dsp: &str, conversation: &str, by: &str) -> Result<bool>;
+    /// Marks the conversation done without an answer, as the member `by`, while it waits, covering
+    /// what was written up to `seen`, when the latest message the member was shown was, else up to
+    /// now: whether it was waiting.
+    fn mark_communications_done(
+        &self,
+        dsp: &str,
+        conversation: &str,
+        by: &str,
+        seen: Option<i64>,
+    ) -> Result<bool>;
     /// The conversations waiting, the longest waiting first.
     fn waiting_communications(&self, dsp: &str) -> Result<Vec<Conversation>>;
     /// Every conversation with a message, the latest first.
@@ -391,13 +398,19 @@ impl CommunicationsStore for Store {
                 .ok_or_else(|| Error::new("communications_message_not_found", 404))
         })
     }
-    fn mark_communications_done(&self, dsp: &str, conversation: &str, by: &str) -> Result<bool> {
+    fn mark_communications_done(
+        &self,
+        dsp: &str,
+        conversation: &str,
+        by: &str,
+        seen: Option<i64>,
+    ) -> Result<bool> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             let marked = db.exec(
-                "UPDATE communications_conversations SET done_at=?,done_by=? \
-                 WHERE id=? AND state='waiting'",
-                params![now(), by, conversation],
+                "UPDATE communications_conversations SET done_at=max(coalesce(done_at,-1),?),\
+                 done_by=? WHERE id=? AND state='waiting'",
+                params![covered(seen), by, conversation],
             )?;
             if marked > 0 {
                 settle(&db, conversation)?;
@@ -600,6 +613,12 @@ pub(crate) fn sent_out(
 /// message to a group answers no one. It's listed under the group the DSP's latest message to
 /// them went to, while all it waits on answers a message to a group: nothing they wrote before
 /// one, since the DSP last wrote to them alone, still waits.
+/// Up to when a Done covers a conversation's messages: those written up to `seen`, when the latest
+/// one its member was shown was, else up to now; never later than now.
+pub(crate) fn covered(seen: Option<i64>) -> i64 {
+    let at = now();
+    seen.map_or(at, |seen| seen.min(at))
+}
 pub(crate) fn settle(db: &Db, conversation: &str) -> Result<()> {
     settle_with(db, conversation, Vec::new())
 }

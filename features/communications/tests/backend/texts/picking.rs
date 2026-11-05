@@ -2,8 +2,12 @@
 //! the day, its texts of today theirs until the day's route data names one driver whose latest
 //! phone it is, whose the whole day's are then.
 use super::*;
-use crate::backend::support::{
-    DRIVERS, at, filed, phoned, phones, route, routed, saved, started, texted, today,
+use crate::backend::{
+    support::{
+        DRIVERS, USE, at, filed, member, phoned, phones, route, routed, saved, sent, started,
+        texted, today,
+    },
+    texts::reply::send,
 };
 use std::sync::Arc;
 
@@ -62,20 +66,33 @@ async fn a_driver_picked_for_a_work_phone_nobody_has_keeps_its_texts_of_today_un
         (ConversationKind::Work, None)
     );
 
-    // Picked for it, Avery has its text, and what comes after.
+    // Picked for it, Avery has its text, and what comes after, and is answered at it.
     let avery = picked(&state, &dsp, &phone.id, "A1").await.unwrap();
     assert_eq!(avery.driver_id.as_deref(), Some("A1"));
     assert_eq!(whose(&state, &dsp, &asked).await.as_deref(), Some("A1"));
     let later = texted(&state, &dsp, "+12065550103", "Found it", now(13, 0)).await;
     assert_eq!(whose(&state, &dsp, &later).await.as_deref(), Some("A1"));
+    let c = member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+    let answer = || send(&state, &c, USE, &avery.id, "Thanks", &[]);
+    answer().await.unwrap();
+    let went: Vec<String> = sent(&state, &dsp)
+        .await
+        .into_iter()
+        .map(|(to, ..)| to)
+        .collect();
+    assert_eq!(went, ["+12065550103"]);
 
     // A read shows 0103 as Blake's latest: the day's texts with it are Blake's, before the pick
-    // too.
+    // too, and Avery has no work phone to be answered at.
     let blake = phones(&[("B1", "2065550103")]);
     phoned(&state, &dsp, Some(&today), blake, earlier).await;
     for text in [&asked, &later] {
         assert_eq!(whose(&state, &dsp, text).await.as_deref(), Some("B1"));
     }
+    assert_eq!(
+        answer().await.unwrap_err().code,
+        "communications_no_work_phone"
+    );
 
     // Only one of today's drivers is picked, and only for a work phone nobody has.
     let refused = picked(&state, &dsp, &phone.id, "Z9").await.unwrap_err();

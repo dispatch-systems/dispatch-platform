@@ -5,7 +5,7 @@
 use crate::backend::{
     changes::changed_conversation,
     model::ConversationState,
-    storage::{Message, Sent, opened, sent_out, settle, settle_with},
+    storage::{Message, Sent, covered, opened, sent_out, settle, settle_with},
 };
 use dispatch_core::{
     Error, Result,
@@ -239,9 +239,16 @@ pub trait GroupStore {
         dsp: &str,
         group: &str,
     ) -> Result<Vec<(String, String, i64)>>;
-    /// Marks each conversation listed under the group done, as the member `by`, while it waits:
-    /// how many were.
-    fn mark_communications_group_done(&self, dsp: &str, group: &str, by: &str) -> Result<usize>;
+    /// Marks each conversation listed under the group done, as the member `by`, while it waits,
+    /// covering what was written up to `seen`, when the latest message the member was shown was,
+    /// else up to now: how many were.
+    fn mark_communications_group_done(
+        &self,
+        dsp: &str,
+        group: &str,
+        by: &str,
+        seen: Option<i64>,
+    ) -> Result<usize>;
     /// The group messages due to go to one of their people by `at`, the longest due first, `most`
     /// at most.
     fn due_communications_deliveries(&self, dsp: &str, at: i64, most: usize) -> Result<Vec<Due>>;
@@ -561,7 +568,13 @@ impl GroupStore for Store {
             [group],
         )
     }
-    fn mark_communications_group_done(&self, dsp: &str, group: &str, by: &str) -> Result<usize> {
+    fn mark_communications_group_done(
+        &self,
+        dsp: &str,
+        group: &str,
+        by: &str,
+        seen: Option<i64>,
+    ) -> Result<usize> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             let waiting: Vec<(String,)> = db.query_as(
@@ -570,8 +583,9 @@ impl GroupStore for Store {
             )?;
             for (conversation,) in &waiting {
                 db.exec(
-                    "UPDATE communications_conversations SET done_at=?,done_by=? WHERE id=?",
-                    params![now(), by, conversation],
+                    "UPDATE communications_conversations SET done_at=max(coalesce(done_at,-1),?),\
+                     done_by=? WHERE id=?",
+                    params![covered(seen), by, conversation],
                 )?;
                 settle(&db, conversation)?;
             }

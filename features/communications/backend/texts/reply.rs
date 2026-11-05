@@ -1,14 +1,14 @@
 //! Answering by text, with pictures, and sending again one that failed. An answer goes as
 //! written, with nothing added, so the other party sees only the DSP's number: from the phone that
-//! last texted that number, else the one seen last; and is filed as it's queued, with how it went,
-//! under the full name of whoever wrote it, as a Slack answer is (`sent_by`).
-//! A number's conversation, and a work phone's nobody had, answer their number; a driver's, the
-//! work phone they have now, as live route data says (`LiveDay::phones`), and none while they have
-//! none. Its pictures
-//! are kept by the phone side as they're added, its adder's alone until they go with it, and none
-//! of one kept should the adder's access end while its bytes come. One that failed is sent again
-//! with Retry. Either is queued, and filed, in the write that checks where it goes and that the
-//! member may still send it, so no handoff, stop or change of their access comes between.
+//! last texted that number, else the one seen last, one online before any offline; and is filed as
+//! it's queued, with how it went, under the full name of whoever wrote it, as a Slack answer is
+//! (`sent_by`). A number's conversation, and a work phone's nobody had, answer their number; a
+//! driver's, the work phone they have now, as live route data says or Pick driver picked them for
+//! (`LiveDay::phones`), and none while they have none. Its pictures are kept by the phone side as
+//! they're added, its adder's alone until they go with it, and none of one kept should the adder's
+//! access end while its bytes come. One that failed is sent again with Retry. Either is queued, and
+//! filed, in the write that checks where it goes and that the member may still send it, so no
+//! handoff, stop or change of their access comes between.
 use super::{
     filing, live_day::LiveDay, numbers::work_number, reading::message, storage::TextStore,
 };

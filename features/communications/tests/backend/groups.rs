@@ -271,11 +271,17 @@ async fn answers_are_the_groups_until_the_dsp_writes_to_them_alone() {
     support::writes(&state, &dsp, DRIVERS_TEAM, "U0FIXJORDAN", "On it").await;
     let jordan = with(&state, &dsp, DRIVERS_TEAM, "U0FIXJORDAN").await;
     assert_eq!(jordan.group.as_deref(), Some(later.id.as_str()));
-    let (shared, at, id) = (state.clone(), dsp.clone(), later.id.clone());
-    let marked = state
-        .read(move |db| done(db, &shared, &at, &id, "someone"))
-        .await
-        .unwrap();
+    let marked = |seen| {
+        let (shared, at, id) = (state.clone(), dsp.clone(), later.id.clone());
+        state.read(move |db| done(db, &shared, &at, &id, "someone", seen))
+    };
+    // Done covers only what was shown: shown up to before "On it", Jordan still waits.
+    let shown = jordan.waiting_since.unwrap() - 1;
+    assert_eq!(
+        marked(Some(shown)).await.unwrap().state,
+        ConversationState::Waiting
+    );
+    let marked = marked(None).await.unwrap();
     assert_eq!(marked.state, ConversationState::Responded);
     let jordan = with(&state, &dsp, DRIVERS_TEAM, "U0FIXJORDAN").await;
     assert_eq!(jordan.state, ConversationState::Done);

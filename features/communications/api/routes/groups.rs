@@ -41,11 +41,23 @@ pub(super) fn group_people(db: &Store, c: &Member, input: &Input) -> Result<Repl
     let group = id(input.param("id"), "grp")?;
     Reply::of(&groups::people(db, c.state, c.dsp_id(), &group)?)
 }
-/// Marks done every conversation listed under a group that waits.
+/// Marks done every conversation listed under a group that waits, covering what was written up
+/// to `seen`, when the latest of its messages and answers the page showed was, else everything.
 pub(super) fn group_done(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
-    v::fields(&input.body, &[])?;
+    v::fields(&input.body, &["seen"])?;
     let group = id(input.param("id"), "grp")?;
-    Reply::of(&groups::done(db, c.state, c.dsp_id(), &group, c.actor())?)
+    let seen = match &input.body["seen"] {
+        Value::Null => None,
+        _ => Some(v::integer(&input.body, "seen", 0, i64::MAX)?),
+    };
+    Reply::of(&groups::done(
+        db,
+        c.state,
+        c.dsp_id(),
+        &group,
+        c.actor(),
+        seen,
+    )?)
 }
 
 /// Messages a group: its `name`, its `people`, each `teamId` and `userId`, and the `text` and the

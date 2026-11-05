@@ -87,9 +87,19 @@ fn a_conversation_waits_from_the_members_first_unanswered_message_until_answered
         state(),
         (ConversationState::Waiting, Some(130_000), Some(130_000))
     );
-    assert!(store.mark_communications_done(&dsp, &id, "user_1").unwrap());
+    // Done covers only what its member was shown: what came after still waits.
+    store
+        .keep_communications_message(&dsp, &written("140.000001", 140_000, "And the vest?"))
+        .unwrap();
+    let done = |seen| store.mark_communications_done(&dsp, &id, "user_1", seen);
+    assert!(done(Some(130_000)).unwrap());
+    assert_eq!(
+        state(),
+        (ConversationState::Waiting, Some(140_000), Some(140_000))
+    );
+    assert!(done(Some(140_000)).unwrap());
     assert_eq!(state().0, ConversationState::Done);
-    assert!(!store.mark_communications_done(&dsp, &id, "user_1").unwrap());
+    assert!(!done(None).unwrap());
     // Its messages, in the order written.
     let texts: Vec<String> = store
         .communications_messages(&dsp, &id, None, 50)
@@ -99,7 +109,14 @@ fn a_conversation_waits_from_the_members_first_unanswered_message_until_answered
         .collect();
     assert_eq!(
         texts,
-        ["Flat tire", "Hello?", "Still here", "On my way", "Thanks"]
+        [
+            "Flat tire",
+            "Hello?",
+            "Still here",
+            "On my way",
+            "Thanks",
+            "And the vest?"
+        ]
     );
 }
 

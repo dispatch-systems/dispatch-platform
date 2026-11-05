@@ -7,7 +7,7 @@ use crate::backend::{
     phone::{
         app::{self, App},
         live,
-        model::{ID_MOST, Status, Text},
+        model::{EXPIRY_MS, ID_MOST, Status, Text},
         storage::{AppVersion, DeviceStore, MOST_TEXTS, StatusReport, TextStore},
     },
     storage::DOMAIN,
@@ -33,8 +33,9 @@ const ERROR_MOST: usize = 500;
 const VERSION_CODE_MOST: usize = 2_100_000_000;
 
 /// The texts Dispatch has for the phone, each to send from its number to `number`, with its
-/// pictures to fetch first. A text tried again comes again with a later `attempt`. With them, the
-/// app's latest version, while the server hands one out, so the app offers to update within a wait.
+/// pictures to fetch first, never started once it `expires`. A text tried again comes again with a
+/// later `attempt`, and a later expiry. With them, the app's latest version, while the server hands
+/// one out, so the app offers to update within a wait.
 #[derive(Serialize)]
 struct Outbox {
     texts: Vec<Outgoing>,
@@ -63,6 +64,7 @@ struct Outgoing {
     body: String,
     files: Vec<OutgoingFile>,
     attempt: i64,
+    expires: i64,
 }
 #[derive(Serialize)]
 struct OutgoingFile {
@@ -75,6 +77,8 @@ impl Outgoing {
     fn of((text, attempt): (Text, i64)) -> Self {
         Self {
             attempt,
+            // Waiting, its status last moved as it was queued, or tried again.
+            expires: text.status_at.unwrap_or(text.at) + EXPIRY_MS,
             id: text.id,
             number: text.number,
             body: text.body,

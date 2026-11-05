@@ -4,7 +4,12 @@
 //! live route data empties, none waits, and the next day starts afresh, with what drivers texted
 //! before its first live read. A Slack or number's conversation waits as its messages say,
 //! whichever day.
-use super::{began, model::TextConversation, storage::TextStore, zone};
+use super::{
+    began,
+    model::{Filed, TextConversation},
+    storage::{PickStore, TextStore},
+    zone,
+};
 use crate::backend::{
     model::{ConversationKind, ConversationState},
     today,
@@ -14,7 +19,7 @@ use dispatch_core::{Error, Result, db::Store};
 use dispatch_routes_contract::{self as routes, DayPhones, DriverPhone, LiveRouteData, RouteDay};
 use std::{
     cmp::Reverse,
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
 };
 
 /// The DSP's live day, and what reads it.
@@ -48,16 +53,29 @@ impl LiveDay {
     }
     /// The work phone each driver has now, by their ID, as its ten digits: their latest of today, as
     /// live route data reads it, but one that's another driver's latest too, which is no one
-    /// driver's, so neither has it to be texted at.
+    /// driver's, so neither has it to be texted at; else one they were picked for today that's no
+    /// one driver's latest, as its texts are filed under them (`picking`).
     pub fn phones(&self, db: &Store, dsp: &str) -> Result<HashMap<String, String>> {
-        Ok(match self.reader.day_phones(db, dsp)? {
-            DayPhones::Read(phones) => phones
-                .into_iter()
-                .filter(|each| !each.shared)
-                .map(|each| (each.driver_id, each.phone))
-                .collect(),
-            DayPhones::Uncollected | DayPhones::Unextracted => HashMap::new(),
-        })
+        let DayPhones::Read(read) = self.reader.day_phones(db, dsp)? else {
+            return Ok(HashMap::new());
+        };
+        let latest: HashMap<String, String> = read
+            .into_iter()
+            .filter(|each| !each.shared)
+            .map(|each| (each.driver_id, each.phone))
+            .collect();
+        let named: HashSet<&String> = latest.values().collect();
+        let mut phones = HashMap::new();
+        for (phone, picked) in db.communications_picked(dsp, &self.day)? {
+            if let Filed::Driver { source, id } = picked
+                && source == self.source
+                && !named.contains(&phone)
+            {
+                phones.insert(id, phone);
+            }
+        }
+        phones.extend(latest);
+        Ok(phones)
     }
     /// The route today of each of `ids` with the most stops, by their ID (`today::busiest`), as live
     /// route data last read it: every one of them, as many at a time as one read of their routes

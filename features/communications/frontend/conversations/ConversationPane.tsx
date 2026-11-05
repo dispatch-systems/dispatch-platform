@@ -134,7 +134,7 @@ export function ConversationPane({
   // One that can't reach them now, as a driver holding no work phone, once it's read.
   const unreachable = shown && opened !== undefined && party?.reachable?.(shown) === false;
   const done = useAction(async () => {
-    const after = await markDone(id);
+    const after = await markDone(id, opened?.messages.at(-1) ?? conversation?.last);
     read.show(after);
     show(after);
   });

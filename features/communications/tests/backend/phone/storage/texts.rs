@@ -2,7 +2,7 @@
 //! phone reports, each kept once, and how Dispatch's texts go.
 use super::*;
 use crate::backend::phone::{
-    model::{Direction, Origin, Status},
+    model::{Direction, EXPIRY_MS, Origin, PHONE_OFFLINE, Status},
     storage::{DeviceStore, FileStore, Pairing, ReportedFile},
     support::{outgoing, paired, reported, store},
 };
@@ -150,7 +150,7 @@ fn how_a_text_went_only_moves_on() {
 }
 
 #[test]
-fn a_text_goes_from_the_phone_that_last_texted_its_number() {
+fn a_text_goes_from_the_phone_that_last_texted_its_number_one_online_first() {
     let (_root, db, dsp) = store();
     let owner = testing::a_user(&db);
     let none = db.phones_send(&dsp, &outgoing("4255550199", vec![], &owner), 1_000);
@@ -182,6 +182,12 @@ fn a_text_goes_from_the_phone_that_last_texted_its_number() {
     )
     .unwrap();
     assert_eq!(to("(425) 555-0199"), second.id);
+    // Offline, it gives way to one online.
+    db.phones_seen(&dsp, &first.id, 200_000).unwrap();
+    let online = db
+        .phones_send(&dsp, &outgoing("4255550199", vec![], &owner), 200_000)
+        .unwrap();
+    assert_eq!(online.phone, first.id);
     // Pictures go only with the text of who added them, once.
     let file = ReportedFile {
         name: "door.jpg".into(),
@@ -211,4 +217,78 @@ fn a_text_goes_from_the_phone_that_last_texted_its_number() {
         12_000,
     );
     assert_eq!(twice.unwrap_err().code.as_str(), "phones_file_not_found");
+}
+
+#[test]
+fn a_text_its_phone_never_came_for_fails_as_it_expires_and_counts_if_it_went_after_all() {
+    let (_root, db, dsp) = store();
+    let phone = paired(&db, &dsp, "key", "2065550100");
+    let owner = testing::a_user(&db);
+    let queued = 10_000;
+    let text = db
+        .phones_send(&dsp, &outgoing("4255550199", vec![], &owner), queued)
+        .unwrap();
+    let attempt = db.phones_outbox(&dsp, &phone.id).unwrap()[0].1;
+    let expired = |at| db.phones_expired(&dsp, at).unwrap();
+
+    // The phone never checks in: once it expires, it fails as offline, and leaves the outbox.
+    assert!(expired(queued + EXPIRY_MS - 1).is_empty());
+    assert_eq!(
+        db.phones_expire(&dsp, queued + EXPIRY_MS).unwrap(),
+        std::slice::from_ref(&text.id)
+    );
+    let failed = db.phones_text(&dsp, &text.id).unwrap().unwrap();
+    assert_eq!(
+        (failed.status, failed.error.as_deref()),
+        (Some(Status::Failed), Some(PHONE_OFFLINE))
+    );
+    assert!(db.phones_outbox(&dsp, &phone.id).unwrap().is_empty());
+    // It had it before it went offline and sent it: that attempt counts after all.
+    let sent = StatusReport {
+        id: text.id.clone(),
+        attempt,
+        status: Status::Sent,
+        at: queued + EXPIRY_MS + 1,
+        error: None,
+    };
+    assert!(db.phones_status(&dsp, &phone.id, &sent).unwrap());
+    let went = db.phones_text(&dsp, &text.id).unwrap().unwrap();
+    assert_eq!((went.status, went.error), (Some(Status::Sent), None));
+
+    // One the phone came for after it was queued waits for the phone to start it or say it
+    // expired.
+    let later = 100 * EXPIRY_MS;
+    let waiting = db
+        .phones_send(&dsp, &outgoing("4255550198", vec![], &owner), later)
+        .unwrap();
+    db.phones_seen(&dsp, &phone.id, later + 1).unwrap();
+    assert!(expired(later + 2 * EXPIRY_MS).is_empty());
+    // Failed and tried again, it expires anew from then.
+    let failing = StatusReport {
+        id: waiting.id.clone(),
+        attempt: db.phones_outbox(&dsp, &phone.id).unwrap()[0].1,
+        status: Status::Failed,
+        at: later + 2,
+        error: Some("no signal".into()),
+    };
+    assert!(db.phones_status(&dsp, &phone.id, &failing).unwrap());
+    let retried = later + 3 * EXPIRY_MS;
+    db.phones_retry(&dsp, &waiting.id, retried).unwrap();
+    assert!(expired(retried + EXPIRY_MS - 1).is_empty());
+    assert_eq!(expired(retried + EXPIRY_MS), [waiting.id]);
+}
+
+#[test]
+fn a_reported_texts_time_is_kept_only_within_the_apps_look_back_and_clock_skew_of_its_report() {
+    let (minute, day) = (60_000, 24 * 60 * 60 * 1000);
+    let received = 100 * day;
+    // A text a day old, as the app looks back that far, or a few minutes ahead, as a clock may
+    // be: as the phone says.
+    for at in [received - day - minute, received, received + 4 * minute] {
+        assert_eq!(written(at, received), at);
+    }
+    // Further off, as a clock set wrong: when its report came.
+    for at in [0, received - 2 * day, received + 10 * minute] {
+        assert_eq!(written(at, received), received);
+    }
 }

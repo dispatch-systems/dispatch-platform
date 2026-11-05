@@ -6,12 +6,13 @@ use crate::backend::{
         LIMITS,
         model::Direction,
         numbers::{NUMBER_MOST, normal},
-        storage::{Kept, MOST_TEXTS, Reported, ReportedFile, TextStore},
+        storage::{Kept, MOST_TEXTS, Reported, ReportedFile, TextStore, written},
     },
     texts::filing,
 };
 use dispatch_core::{
     Error, Result, State,
+    db::now,
     foundation::validate as v,
     server::http::{
         input::{Input, Reply},
@@ -45,12 +46,13 @@ struct Report {
 /// app, each once, and files those new.
 pub(super) async fn texts(state: Arc<State>, input: Input, access: Phone) -> Result<Reply> {
     v::fields(&input.body, &["texts"])?;
+    let received = now();
     let reported = input.body["texts"]
         .as_array()
         .filter(|texts| !texts.is_empty() && texts.len() <= MOST_TEXTS)
         .ok_or_else(|| Error::new("invalid_input", 400))?
         .iter()
-        .map(reported)
+        .map(|text| reported(text, received))
         .collect::<Result<Vec<_>>>()?;
     let caller = checked_in(&state, &input, access).await?;
     let asked = input.clone();
@@ -83,8 +85,8 @@ pub(super) async fn texts(state: Arc<State>, input: Input, access: Phone) -> Res
             .collect(),
     })
 }
-/// One text as the phone reports it.
-fn reported(text: &Value) -> Result<Reported> {
+/// One text as the phone reports it, in a report `received` then.
+fn reported(text: &Value, received: i64) -> Result<Reported> {
     v::fields(
         text,
         &["clientId", "direction", "number", "body", "at", "files"],
@@ -113,7 +115,7 @@ fn reported(text: &Value) -> Result<Reported> {
         number: normal(v::text(text, "number", 1, NUMBER_MOST)?)
             .ok_or_else(|| Error::new("invalid_input", 400))?,
         body: v::text(text, "body", 0, LIMITS.body)?.to_owned(),
-        at: v::integer(text, "at", 0, i64::MAX)?,
+        at: written(v::integer(text, "at", 0, i64::MAX)?, received),
         files,
     })
 }

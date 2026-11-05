@@ -4,7 +4,8 @@
 //! waiting on its conversation hear once both are committed. A text that can't be placed yet, as
 //! reading where it belongs failed, stays kept, waiting to be filed, and every minute's upkeep
 //! places those waiting (`unfiled`); it files today's again too, as its route data may have
-//! changed unheard (`reconcile`).
+//! changed unheard (`reconcile`), and fails the answers an offline phone never came for by their
+//! expiry (`expire`).
 //!
 //! A work phone passes from driver to driver, so a text with one is filed by the day it was
 //! written, where the DSP is, under the driver whose latest work phone that day it is, by their ID
@@ -30,7 +31,12 @@ use super::{
     storage::{PickStore, TextStore},
     zone,
 };
-use crate::backend::{live, phone::storage::MOST_TEXTS, sender, storage::DOMAIN};
+use crate::backend::{
+    live,
+    phone::storage::{MOST_TEXTS, TextStore as _},
+    sender,
+    storage::DOMAIN,
+};
 use chrono::NaiveDate;
 use chrono_tz::Tz;
 use dispatch_core::{
@@ -54,7 +60,7 @@ use std::{
 const TWO_DAYS_MS: i64 = 2 * 24 * 60 * 60 * 1000;
 
 /// Every minute, each DSP's texts waiting to be filed, and today's filed again where they belong
-/// now.
+/// now; and its answers an offline phone never came for failed once they expire.
 pub const MAINTENANCE: Maintenance = Maintenance {
     every: Duration::from_secs(60),
     run: pass,
@@ -115,6 +121,9 @@ fn pass(state: Arc<State>, _: bool) -> Upkeep {
                     if let Err(error) = reconcile(&state, &dsp).await {
                         failed("communications_texts_refile_failed", &error);
                     }
+                    if let Err(error) = expire(&state, &dsp, now()).await {
+                        failed("communications_texts_expire_failed", &error);
+                    }
                 }
             }
             Err(error) => failed("communications_texts_failed", &error),
@@ -145,6 +154,25 @@ pub async fn unfiled(state: &Arc<State>, dsp: &str) -> Result<()> {
         }
         after = last;
     }
+}
+
+/// Fails the answers queued on a phone that hasn't checked in since, past their expiry at `at`, as
+/// `phones_offline`, each filed as it fails, so its conversation waits again: written only once
+/// one has expired.
+pub async fn expire(state: &Arc<State>, dsp: &str, at: i64) -> Result<()> {
+    let asked = dsp.to_owned();
+    if state
+        .read(move |db| db.phones_expired(&asked, at))
+        .await?
+        .is_empty()
+    {
+        return Ok(());
+    }
+    let at_dsp = dsp.to_owned();
+    changing(state, dsp, move |db| {
+        Ok(((), db.phones_expire(&at_dsp, at)?))
+    })
+    .await
 }
 
 /// Files the texts `ids`, which the phone side kept or changed in this write: places each waiting
