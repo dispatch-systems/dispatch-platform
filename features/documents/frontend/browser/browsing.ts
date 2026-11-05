@@ -71,10 +71,9 @@ export type Asked =
 /**
  * A change the page shows before the folder it's in is read again with it: made, uploaded,
  * renamed, moved or trashed in `folder`. Something being made has a stand-in's ID until Google
- * makes it; something moved goes `to` a folder, or the top, from a search's results when
- * `searched`, whose `folder` is then the one searched, not the one it was in. Once Google
- * confirmed it, it shows until a reading of the folder does, or a while, and a move counts in the
- * cards of the folders it left and went into until they're read again (`counted`).
+ * makes it; something moved goes `to` a folder, or the top. Once Google confirmed it, it shows
+ * until a reading of the folder asked for after does, or a while, and a move counts in the cards
+ * of the folders it left and went into until a reading after it (`counted`).
  */
 export type Pending = {
   key: string;
@@ -84,7 +83,6 @@ export type Pending = {
   to?: string;
   settled?: number;
   counted?: boolean;
-  searched?: boolean;
 };
 export const SETTLING_MS = 30_000;
 /** Something Google moved, and the folder it was in: `null` for the top. */
@@ -108,6 +106,40 @@ export function arranged(items: DocumentsItem[]) {
         : order(b.modifiedAt, a.modifiedAt)),
   );
 }
+/** What a reading of a folder or a search answers with, and when it was asked for. */
+export type Reading = { items: DocumentsItem[]; asked?: number };
+/**
+ * `pending`, once `read` comes: a change Google confirmed before the reading was asked for goes
+ * once the reading shows it, or a while after, and a move stops counting in its folders' cards.
+ * A reading asked for before Google confirmed a change may have been read before Google made it
+ * or after, so it says nothing of it. `pending` itself when nothing changes.
+ */
+export function reconciled(
+  pending: Pending[],
+  read: Reading,
+  folder: string | undefined,
+  searching: boolean,
+) {
+  let changed = false;
+  const left = pending.flatMap((each) => {
+    if (!each.settled || (read.asked ?? 0) < each.settled) return [each];
+    const listed = read.items.find((item) => item.id === each.item.id);
+    const inside = !searching && each.folder === folder;
+    const shown =
+      Date.now() - each.settled > SETTLING_MS ||
+      (each.change === 'renamed'
+        ? listed?.name === each.item.name
+        : each.change === 'made'
+          ? inside && Boolean(listed)
+          : each.change === 'moved'
+            ? !searching && (each.to === folder ? Boolean(listed) : inside && !listed)
+            : inside && !listed);
+    changed ||= shown || (each.change === 'moved' && !each.counted);
+    if (shown) return [];
+    return [each.change === 'moved' ? { ...each, counted: true } : each];
+  });
+  return changed ? left : pending;
+}
 /** What a folder or a search shows, with the changes it hasn't been read with yet. */
 export function overlaid(
   items: DocumentsItem[],
@@ -121,22 +153,10 @@ export function overlaid(
   if (!here.length) return items;
   const latest = (id: string) =>
     here.findLast((each) => each.change !== 'made' && each.item.id === id);
-  // A reading is one moment of Google's: a move it already holds, out of the folder read or
-  // into it, its cards count too, whether or not Google has answered the move yet. Only a move
-  // from a folder, the one thing pending for its item, says so by where the item is: one from a
-  // search left a folder the reading may not show, and a move and its undo, one place.
-  const listed = (id: string) => items.some((item) => item.id === id);
-  const alone = (each: Pending) =>
-    here.filter((other) => other.change === 'moved' && other.item.id === each.item.id).length === 1;
-  const held = (each: Pending) =>
-    !searching &&
-    !each.searched &&
-    alone(each) &&
-    (each.folder === folder ? !listed(each.item.id) : each.to === folder && listed(each.item.id));
   // A folder's card counts what moved in or out of it until it's read again.
   const counted = (item: DocumentsItem) => {
     if (item.items === null) return item;
-    const moved = here.filter((each) => each.change === 'moved' && !each.counted && !held(each));
+    const moved = here.filter((each) => each.change === 'moved' && !each.counted);
     const into = moved.filter((each) => each.to === item.id).length;
     const out = moved.filter((each) => each.folder === item.id).length;
     return into === out ? item : { ...item, items: Math.max(0, item.items + into - out) };

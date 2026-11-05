@@ -217,13 +217,7 @@ export function Browser({
   const move = (moving: DocumentsItem[], to: Place, from = folder, undoing = false) => {
     const location = to.id ? to.name : null;
     const keys = moving.map((item) =>
-      changes.show({
-        folder: from,
-        change: 'moved',
-        item: { ...item, location },
-        to: to.id,
-        searched: searching,
-      }),
+      changes.show({ folder: from, change: 'moved', item: { ...item, location }, to: to.id }),
     );
     selection.clear();
     void perform(async () => {
