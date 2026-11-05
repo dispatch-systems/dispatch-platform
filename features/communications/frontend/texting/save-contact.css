@@ -1,4 +1,4 @@
-/* Save contact: the name to save for a number, asked for under the head's right end. */
+/* Save contact: the number added to a driver, or a name saved for it, under the head's right end. */
 .contact-panel {
   position: absolute;
   top: calc(100% - 4px);
@@ -27,4 +27,44 @@
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+/* Add to driver: everyone the number can be added to, today's drivers first, the one picked
+   marked. */
+.contact-panel:has(.contact-people) {
+  width: min(340px, calc(100vw - 32px));
+}
+.contact-people {
+  max-height: min(320px, 45vh);
+  overflow-y: auto;
+}
+.contact-people h3 {
+  padding: 6px 6px 2px;
+  color: var(--muted-foreground);
+  font-size: var(--small-size);
+  font-weight: 600;
+}
+.contact-people ul {
+  list-style: none;
+}
+.contact-people button {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  width: 100%;
+  min-height: 0;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-weight: 400;
+  text-align: left;
+}
+.contact-people button:hover,
+.contact-people button[aria-pressed='true'] {
+  background: var(--accent);
+}
+.contact-people strong {
+  font-size: var(--ui-size);
+  font-weight: 500;
 }

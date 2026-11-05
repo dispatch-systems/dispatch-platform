@@ -36,8 +36,8 @@ what was decided.
   codes, and everyone), `…/counts` (how many questions wait), `…/people/{code}` (one person's
   IDs, what they appear in, their days and history), and the decisions `POST …/merge` (two codes become one), `…/split` (one ID moves to a new
   person), `…/apart` (two people are kept apart), `…/confirm` (a match by a name or a
-  contact was right) and `…/role` (a person is given a role, or with `null` has theirs from
-  their sources again),
+  contact was right), `…/role` (a person is given a role, or with `null` has theirs from
+  their sources again) and `…/phones/remove` (a number someone added is taken off a person),
   which answer with nothing. A decision made on stale data is refused
   (`person_changed`), as is splitting a person's only ID (`person_single_id`).
 - **Codes:** six letters and digits that can't be mistaken for one another, unique across the
@@ -88,16 +88,24 @@ what was decided.
   IDs in the sources' order and each ID's kinds in the order their data is read
   (`backend/photos.rs`). The page, a person's photo and the directory answer by that one rule,
   so every feature showing people shows the same photo.
+- **Added numbers:** a phone number someone at the DSP adds to a person, as a driver's new or
+  second phone, through core's `people::add_phone` (Communications' Save contact, by anyone who
+  can text), is theirs in the directory beside their sources' numbers, so every feature knows who
+  has it; it joins no one to anyone and is no evidence in a question. A number anyone has, from a
+  source or added, however it's written, is refused (`driver_match_phone_taken`). A merge carries
+  it to whoever keeps the IDs. A person's sheet lists the numbers added to theirs, each taken off
+  by Remove (`backend/phones.rs`), as `people::remove_phone` takes one off.
 - **Log:** its decisions are audited as `driver_match.merged`, `driver_match.split`,
-  `driver_match.kept_apart`, `driver_match.confirmed` and `driver_match.role_given` (with the
+  `driver_match.kept_apart`, `driver_match.confirmed`, `driver_match.phone_added` and
+  `driver_match.phone_removed` (with the number), and `driver_match.role_given` (with the
   role before and after; `driver_match.titled`, with the title, before roles could be given),
   naming people by their codes; the log puts today's names to them.
 - **Storage:** `driver_codes` in the platform's database (platform migration 10) and
-  `people`, `person_ids`, `people_apart` and `person_roles` in each DSP's (DSP migration 7, and
-  its own migration 1, which lets `person_ids` hold any source, 2, which made the links the
-  meal-break page saved before Driver Match its own decisions, 3, its titles, and 4, the roles
-  given, which took over the titles: `person_titles` stays for the previous release, unwritten,
-  until a later one drops it).
+  `people`, `person_ids`, `people_apart`, `person_roles` and `person_phones` in each DSP's (DSP
+  migration 7, and its own migration 1, which lets `person_ids` hold any source, 2, which made
+  the links the meal-break page saved before Driver Match its own decisions, 3, its titles, 4,
+  the roles given, which took over the titles: `person_titles` stays for the previous release,
+  unwritten, until a later one drops it, and 5, the numbers added).
 
 ## How it's built
 
@@ -114,7 +122,8 @@ of rule already is:
 - `codes.rs` writes and checks codes.
 - `gather.rs` reads what the page, a person's sheet and the count need, once for each answer;
   `overview.rs` makes the page and its questions, `details.rs` one person's sheet, `photos.rs`
-  photos, and `decisions.rs` the decisions a person makes, roles given among them.
+  photos, `decisions.rs` the decisions a person makes, roles given among them, and `phones.rs`
+  the numbers added to people.
 
 ## Connecting a feature
 

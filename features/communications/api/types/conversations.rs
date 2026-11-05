@@ -29,6 +29,9 @@ pub struct Conversation {
     pub driver_id: Option<String>,
     /// Whether its number is one the DSP saved a name for.
     pub contact: bool,
+    /// Whether its number is one someone at the DSP added to the person it's with, who can take
+    /// it off them again.
+    pub added: bool,
     /// Whether its number is blocked: it isn't listed or counted.
     pub blocked: bool,
     /// Who it's with.

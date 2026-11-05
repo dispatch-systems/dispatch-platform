@@ -38,6 +38,7 @@ const conversation = (
   number: null,
   driverId: null,
   contact: false,
+  added: false,
   blocked: false,
   with: { userId: `U${id}`, name: id, code: null, role: null, title: null, photo: null },
   state: since === null ? 'responded' : 'waiting',

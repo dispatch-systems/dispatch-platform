@@ -56,6 +56,7 @@ fn jordan() -> Person {
         ]),
         emails: vec!["jordan.ellis@example.com".into(), "je@example.org".into()],
         phones: vec!["+16125550100".into(), "+16515550100".into()],
+        added_phones: Vec::new(),
         confirmed: true,
         photo: None,
     }

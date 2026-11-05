@@ -57,3 +57,44 @@ async fn a_number_opened_to_text_first_is_where_its_texts_go_a_drivers_while_its
         (ConversationKind::Work, Some("B2"))
     );
 }
+
+/// A driver with a number of their own and one someone added: each number is listed under them in
+/// Contacts, and a text from the added one is theirs, the conversation saying it was added so it
+/// can be taken off them again; their own number's says nothing of the kind.
+#[tokio::test]
+async fn every_number_a_driver_has_is_theirs_and_an_added_one_says_so() {
+    let (_root, state, dsp) = support::started();
+    let mut avery = support::driver("AVERY1", "Avery Lopez", "A1");
+    avery.phones = vec!["(206) 555-0101".into(), "+12065550202".into()];
+    avery.added_phones = vec!["+12065550202".into()];
+    support::know(&state, &dsp, vec![avery], Vec::new(), Vec::new());
+
+    let (shared, d) = (state.clone(), dsp.clone());
+    let listed = state
+        .read(move |db| contacts(db, &shared, &d, None))
+        .await
+        .unwrap();
+    let theirs: Vec<(&str, Option<&str>)> = listed
+        .contacts
+        .iter()
+        .map(|contact| (contact.number.as_str(), contact.person.code.as_deref()))
+        .collect();
+    assert_eq!(
+        theirs,
+        [
+            ("+12065550101", Some("AVERY1")),
+            ("+12065550202", Some("AVERY1"))
+        ]
+    );
+
+    let added = opened(&state, &dsp, "2065550202").await;
+    assert_eq!(
+        (added.with.code.as_deref(), added.added),
+        (Some("AVERY1"), true)
+    );
+    let own = opened(&state, &dsp, "2065550101").await;
+    assert_eq!(
+        (own.with.code.as_deref(), own.added),
+        (Some("AVERY1"), false)
+    );
+}

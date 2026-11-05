@@ -76,7 +76,9 @@ export const PARTIES: { [P in Party]: PartyPane } = {
     number: ({ conversation }) => conversation.number,
     writable: ({ texting }) => texting,
     about: ({ conversation }) => numberBeside(conversation.with.name, conversation.number ?? ''),
-    actions: ({ conversation, show }) => <NumberActions conversation={conversation} show={show} />,
+    actions: ({ conversation, drivers, show }) => (
+      <NumberActions conversation={conversation} drivers={drivers} show={show} />
+    ),
     whom: named,
     workdays: false,
   },

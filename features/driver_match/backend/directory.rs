@@ -1,11 +1,12 @@
 //! Everyone, told apart, for the features that show people or use what is known of them:
 //! core's directory, answered from the codes Driver Match keeps and what the DSP's features
-//! say of each ID, as the page lists them.
+//! say of each ID, as the page lists them, with the phone numbers someone added to each.
 use super::contacts::Contact;
 use super::gather::{Gathered, gather};
-use super::{IdRow, photos};
+use super::{IdRow, phones, photos};
 use dispatch_core::{
     Result,
+    accounts::Context,
     db::Store,
     foundation::names,
     manifest::people::{self, Everyone, Person, Photo, Source},
@@ -18,13 +19,21 @@ pub(crate) struct Directory;
 impl people::Directory for Directory {
     fn everyone(&self, store: &Store, dsp: &str) -> Result<Everyone> {
         let gathered = gather(store, dsp)?;
+        let db = store.dsp(dsp)?;
+        let added = phones::added(&db)?;
         let people = gathered
             .held()
             .iter()
-            .map(|(code, ids)| person(&gathered, code, ids))
+            .map(|(code, ids)| {
+                let mut person = person(&gathered, code, ids);
+                if let Some(added) = added.get(*code) {
+                    once(&mut person.phones, added.iter().cloned());
+                    person.added_phones.clone_from(added);
+                }
+                person
+            })
             .collect();
-        let merged = store
-            .dsp(dsp)?
+        let merged = db
             .query_as::<(String, String)>(
                 "SELECT code,merged_into FROM people WHERE merged_into IS NOT NULL",
                 [],
@@ -35,6 +44,12 @@ impl people::Directory for Directory {
     }
     fn photo(&self, store: &Store, dsp: &str, code: &str) -> Result<Option<Photo>> {
         photos::photo_of(store, dsp, code)
+    }
+    fn add_phone(&self, store: &Store, c: &Context, code: &str, number: &str) -> Result<()> {
+        phones::add(store, c, code, number)
+    }
+    fn remove_phone(&self, store: &Store, c: &Context, number: &str) -> Result<()> {
+        phones::remove(store, c, number)
     }
 }
 
@@ -51,6 +66,7 @@ fn person(gathered: &Gathered, code: &str, ids: &[(&IdRow, Source)]) -> Person {
         ids: BTreeMap::new(),
         emails: vec![],
         phones: vec![],
+        added_phones: vec![],
         confirmed: ids.iter().any(|(row, _)| row.linked_by.decided()),
         photo: listed.photo,
     };

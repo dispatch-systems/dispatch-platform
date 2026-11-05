@@ -89,6 +89,12 @@ pub fn routes() -> Vec<Route> {
             texts::save_contact,
         )
         .changes(DOMAIN),
+        // Changes who the number is, which every feature showing people reads: not only its own.
+        write(
+            "/api/dsp/communications/conversations/{id}/person",
+            USE,
+            texts::add_to_person,
+        ),
         write(
             "/api/dsp/communications/conversations/{id}/block",
             USE,
@@ -112,6 +118,7 @@ pub fn routes() -> Vec<Route> {
             USE,
             texts::text_contacts,
         ),
+        read("/api/dsp/communications/texts/people", USE, texts::addable),
         async_get(
             "/api/dsp/communications/texts/files/{id}",
             USE,

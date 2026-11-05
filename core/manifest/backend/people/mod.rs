@@ -6,12 +6,13 @@ mod directory;
 mod ids;
 mod rows;
 
-pub use directory::{Directory, Everyone, Person, PersonRole, PersonTitle};
+pub use directory::{Directory, Everyone, Person, PersonRole, PersonTitle, same_phone};
 pub use ids::{Kind, KindInfo, Source, SourceInfo};
 pub use rows::{Named, Records, Workdays, named, records, worked};
 
 use crate::{
-    Result, State,
+    Error, Result, State,
+    accounts::Context,
     db::Store,
     manifest::{Feature, Registry, registry},
     server::cache::{self, Scope},
@@ -185,6 +186,24 @@ pub fn photo(store: &Store, dsp: &str, code: &str) -> Result<Option<Photo>> {
     registry()
         .exposed::<dyn Directory>()
         .map_or(Ok(None), |(_, directory)| directory.photo(store, dsp, code))
+}
+
+/// Adds the phone number `number` to the person `code`'s, as the member `c` decided, through the
+/// directory: refused while anyone has it, and in a build without one.
+pub fn add_phone(store: &Store, c: &Context, code: &str, number: &str) -> Result<()> {
+    directory()?.add_phone(store, c, code, number)
+}
+/// Takes the phone number `number` off whoever someone added it to, as the member `c` decided,
+/// through the directory; refused in a build without one.
+pub fn remove_phone(store: &Store, c: &Context, number: &str) -> Result<()> {
+    directory()?.remove_phone(store, c, number)
+}
+/// The build's directory, or `not_found` without one.
+fn directory() -> Result<&'static dyn Directory> {
+    registry()
+        .exposed::<dyn Directory>()
+        .map(|(_, directory)| directory)
+        .ok_or_else(|| Error::new("not_found", 404))
 }
 
 impl Registry {

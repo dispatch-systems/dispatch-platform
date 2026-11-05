@@ -689,6 +689,60 @@ fn a_role_given_holds_whatever_their_sources_show() {
     assert_eq!(stale.code, "person_changed");
 }
 
+/// A number someone added to a person is theirs wherever the directory is asked, however it's
+/// written, and goes with them when they're merged into someone; nobody else can have it while
+/// they do, and once it's taken off them again it's no one's.
+#[test]
+fn a_number_added_is_the_persons_and_follows_them_into_a_merge() {
+    dispatch_backend::install();
+    let (_root, db, id, context) = ready();
+    pass(&db, &id).unwrap();
+    let before = db.driver_match(&id).unwrap();
+    let (antonio, tony) = (
+        code(&before, PAYCOM, "E002"),
+        code(&before, AMAZON, "TREYES"),
+    );
+    let holder = |number: &str| -> Vec<String> {
+        let everyone = people::read(&db, &id).unwrap();
+        let held = everyone.by_phone(number);
+        held.iter().map(|person| person.code.clone()).collect()
+    };
+
+    people::add_phone(&db, &context, &tony, "+12065550188").unwrap();
+    assert_eq!(holder("(206) 555-0188"), [tony.clone()]);
+    let everyone = people::read(&db, &id).unwrap();
+    let theirs = everyone.person(&tony).unwrap();
+    assert_eq!(theirs.added_phones, ["+12065550188"]);
+    assert!(theirs.phones.contains(&"+12065550188".to_owned()));
+    let taken = people::add_phone(&db, &context, &antonio, "2065550188").unwrap_err();
+    assert_eq!(taken.code, "driver_match_phone_taken");
+    let entry = db
+        .platform
+        .one(
+            "SELECT * FROM audit WHERE action='driver_match.phone_added' AND detail=?",
+            [&tony],
+        )
+        .unwrap()
+        .unwrap();
+    let data: Value = serde_json::from_str(s(&entry, "data")).unwrap();
+    assert_eq!(
+        data["changes"],
+        json!([{"field":"phone","from":null,"to":"+12065550188"}])
+    );
+
+    db.merge_people(&context, &tony, &antonio).unwrap();
+    assert_eq!(holder("2065550188"), [antonio.clone()]);
+    assert_eq!(
+        db.person_details(&id, &antonio).unwrap().added_phones,
+        ["+12065550188"]
+    );
+
+    people::remove_phone(&db, &context, "206-555-0188").unwrap();
+    assert!(holder("2065550188").is_empty());
+    let again = people::remove_phone(&db, &context, "2065550188").unwrap_err();
+    assert_eq!(again.code, "not_found");
+}
+
 #[test]
 fn a_feature_switched_off_says_nothing_and_its_ids_wait_for_it() {
     dispatch_backend::install();

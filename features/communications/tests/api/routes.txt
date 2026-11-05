@@ -19,6 +19,7 @@ GET /api/dsp/communications/phones/pairing/{id} Dsp("connections.manage|phones.m
 GET /api/dsp/communications/routes Dsp("communications.use") Read
 GET /api/dsp/communications/texts/contacts Dsp("communications.use") Read
 GET /api/dsp/communications/texts/files/{id} Dsp("communications.use") Async
+GET /api/dsp/communications/texts/people Dsp("communications.use") Read
 GET /api/dsp/communications/updates Dsp("communications.use") Async
 GET /api/dsp/communications/waiting Dsp("communications.use") Read
 GET /api/dsp/communications/workspaces/{team}/logo Dsp("communications.use") Read
@@ -34,6 +35,7 @@ POST /api/dsp/communications/conversations/{id}/done Dsp("communications.use") S
 POST /api/dsp/communications/conversations/{id}/driver Dsp("communications.use") Scoped(DataDomain("communications"))
 POST /api/dsp/communications/conversations/{id}/messages Dsp("communications.use") Async
 POST /api/dsp/communications/conversations/{id}/messages/{message}/retry Dsp("communications.use") Async
+POST /api/dsp/communications/conversations/{id}/person Dsp("communications.use") Write
 POST /api/dsp/communications/conversations/{id}/typing Dsp("communications.use") Async
 POST /api/dsp/communications/conversations/{id}/unblock Dsp("communications.use") Scoped(DataDomain("communications"))
 POST /api/dsp/communications/groups Dsp("communications.use") Async

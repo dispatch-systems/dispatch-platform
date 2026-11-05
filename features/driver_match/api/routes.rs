@@ -1,12 +1,12 @@
 //! Driver Match's endpoints: every person the DSP's features name, and the decisions that
-//! join or part them or give them a role, which answer with nothing: the page reads itself
+//! join or part them, give them a role or take off a phone number someone added, which answer with nothing: the page reads itself
 //! again. Its one permission gates them all.
 use crate::{api::types::GivenRole, backend::DriverMatchStore};
 use dispatch_core::{
     Error, Result,
     db::Store,
     foundation::validate as v,
-    manifest::people::Source,
+    manifest::people::{self, Source},
     server::{
         cache::{PEOPLE, Scope},
         http::{
@@ -28,6 +28,7 @@ pub fn routes() -> Vec<Route> {
         write("/api/dsp/driver-match/apart", MANAGE, apart),
         write("/api/dsp/driver-match/confirm", MANAGE, confirm),
         write("/api/dsp/driver-match/role", MANAGE, give_role),
+        write("/api/dsp/driver-match/phones/remove", MANAGE, remove_phone),
     ]
 }
 fn overview(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
@@ -93,6 +94,13 @@ fn give_role(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         ),
     };
     db.give_role(c, v::text(b, "code", 6, 6)?, given)?;
+    Ok(Reply::ok())
+}
+/// The phone number `phone` someone added to a person is taken off them.
+fn remove_phone(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    let b = &input.body;
+    v::fields(b, &["phone"])?;
+    people::remove_phone(db, c, v::text(b, "phone", 1, 32)?)?;
     Ok(Reply::ok())
 }
 fn apart(db: &Store, c: &Member, input: &Input) -> Result<Reply> {

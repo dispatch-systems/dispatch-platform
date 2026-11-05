@@ -62,10 +62,12 @@
         "POST /api/dsp/communications/conversations/{id}/typing",
         "POST /api/dsp/communications/conversations/{id}/messages/{message}/retry",
         "POST /api/dsp/communications/conversations/{id}/contact",
+        "POST /api/dsp/communications/conversations/{id}/person",
         "POST /api/dsp/communications/conversations/{id}/block",
         "POST /api/dsp/communications/conversations/{id}/unblock",
         "POST /api/dsp/communications/texts/conversations",
         "GET /api/dsp/communications/texts/contacts",
+        "GET /api/dsp/communications/texts/people",
         "GET /api/dsp/communications/texts/files/{id}",
         "POST /api/dsp/communications/texts/uploads",
         "GET /api/dsp/communications/routes",
@@ -364,7 +366,8 @@
         "POST /api/dsp/driver-match/split",
         "POST /api/dsp/driver-match/apart",
         "POST /api/dsp/driver-match/confirm",
-        "POST /api/dsp/driver-match/role"
+        "POST /api/dsp/driver-match/role",
+        "POST /api/dsp/driver-match/phones/remove"
       ],
       "exposes": [
         {
@@ -383,6 +386,7 @@
         "people",
         "people_apart",
         "person_ids",
+        "person_phones",
         "person_roles",
         "person_titles"
       ],

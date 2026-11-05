@@ -28,6 +28,11 @@ driverId: string | null,
  */
 contact: boolean,
 /**
+ * Whether its number is one someone at the DSP added to the person it's with, who can take
+ * it off them again.
+ */
+added: boolean,
+/**
  * Whether its number is blocked: it isn't listed or counted.
  */
 blocked: boolean,

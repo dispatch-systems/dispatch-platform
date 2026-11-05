@@ -314,4 +314,6 @@ pub struct PersonDetails {
     /// What each source that saw them work says of those days.
     pub days: Vec<SourceDays>,
     pub history: Vec<PersonEvent>,
+    /// The phone numbers someone added to theirs, the first added first.
+    pub added_phones: Vec<String>,
 }

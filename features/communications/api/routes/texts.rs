@@ -1,10 +1,10 @@
-//! What only a conversation by text has: Retry, a number's contact and block, texting a number or
+//! What only a conversation by text has: Retry, a number's contact, person and block, texting a number or
 //! one of today's drivers first, whom the DSP can text, a text's pictures, Today's Routes and Pick
 //! driver. A Slack conversation's ID is refused for each.
 use super::texting_id;
 use crate::backend::{model::Reference, phone::numbers::NUMBER_MOST, texts};
 use dispatch_core::{
-    Result, State,
+    Error, Result, State,
     db::Store,
     ensure,
     foundation::validate as v,
@@ -44,6 +44,29 @@ pub(super) fn save_contact(db: &Store, c: &Member, input: &Input) -> Result<Repl
         &name,
         c.actor(),
     )?)
+}
+/// Adds the number of a conversation by text to the person `code`'s, or with `null` takes it off
+/// whoever someone added it to.
+pub(super) fn add_to_person(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    v::fields(&input.body, &["code"])?;
+    let conversation = texted(input)?;
+    let code = match input.body.get("code") {
+        Some(serde_json::Value::Null) => None,
+        Some(_) => Some(v::text(&input.body, "code", 6, 6)?),
+        None => return Err(Error::new("invalid_input", 400)),
+    };
+    Reply::of(&texts::contacts::add_to_person(
+        db,
+        c.state,
+        c,
+        &conversation,
+        code,
+    )?)
+}
+/// Everyone Driver Match knows who hasn't left, whom a number can be added to.
+pub(super) fn addable(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    v::fields(&input.query, &[])?;
+    Reply::of(&texts::contacts::addable(db, c.state, c.dsp_id())?)
 }
 /// Blocks the number of a conversation by text.
 pub(super) fn block(db: &Store, c: &Member, input: &Input) -> Result<Reply> {

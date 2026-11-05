@@ -1,9 +1,9 @@
 import { GitMerge } from 'lucide-react';
 import { useState } from 'react';
 import type { GivenRole, Person, PersonDetails, PersonId } from '../../api/index.js';
-import { giveRole, splitOff, usePersonDetails } from '../../api/client.js';
+import { giveRole, removePhone, splitOff, usePersonDetails } from '../../api/client.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
-import { time } from '../../../../core/shell/frontend/lib/format.js';
+import { phoneText, time } from '../../../../core/shell/frontend/lib/format.js';
 import {
   ConfirmDialog,
   DataState,
@@ -28,8 +28,8 @@ import { MergeDialog } from './MergeDialog.js';
 import { SheetIds } from './SheetIds.js';
 
 /**
- * One person in full: their role, their IDs, what they appear in, their last fourteen days and
- * history.
+ * One person in full: their role, their IDs, the phone numbers someone added to theirs, what they
+ * appear in, their last fourteen days and history.
  */
 export function PersonSheet({
   code,
@@ -65,6 +65,7 @@ export function PersonSheet({
               <RolePicker key={data.person.given ?? ''} person={data.person} />
             )}
             <SheetIds person={data.person} today={today} onSplit={setSplitting} />
+            {data.addedPhones.length > 0 && <AddedPhones phones={data.addedPhones} />}
             <Appears data={data} />
             {data.days.length > 0 && (
               <section className="driver-sheet-section" aria-labelledby="driver-days">
@@ -100,6 +101,30 @@ export function PersonSheet({
         )}
       </DataState>
     </Modal>
+  );
+}
+
+/** The phone numbers someone added to theirs, beside their sources', each taken off by Remove. */
+function AddedPhones({ phones }: { phones: string[] }) {
+  const remove = useAction(removePhone, {
+    inline: true,
+    success: (phone) => `${phoneText(phone)} is removed`,
+  });
+  return (
+    <section className="driver-sheet-section" aria-labelledby="driver-phones">
+      <h3 id="driver-phones">Added numbers</h3>
+      <ErrorBox message={remove.error} />
+      {phones.map((phone) => (
+        <div className="driver-id" key={phone}>
+          <strong>{phoneText(phone)}</strong>
+          <div className="driver-id-actions">
+            <button disabled={remove.busy} onClick={() => void remove.run(phone)}>
+              Remove
+            </button>
+          </div>
+        </div>
+      ))}
+    </section>
   );
 }
 

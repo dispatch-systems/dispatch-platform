@@ -109,6 +109,7 @@ fn a_driver_goes_by_every_name_id_and_contact_the_directory_has_for_them() {
         )]),
         emails: vec![email.into()],
         phones: vec![],
+        added_phones: Vec::new(),
         confirmed: false,
         photo: None,
     };
