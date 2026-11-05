@@ -237,15 +237,15 @@ pub async fn disconnect(state: &Arc<State>, c: Context, access: Dsp) -> Result<D
     account(state, &id).await
 }
 
-/// Gives back the Google account of a DSP being deleted, as disconnecting it does: best effort,
-/// as the DSP goes whatever Google answers. The folder stays in the account's Drive; the token
-/// goes with the DSP.
+/// Gives back the Google account of a DSP being deleted, as disconnecting it does, unless
+/// another DSP connects that account too: best effort, as the DSP goes whatever Google answers.
+/// The folder stays in the account's Drive; the token goes with the DSP.
 pub fn revoke(state: Arc<State>, dsp: String) -> Upkeep {
     Box::pin(async move {
         let Ok(google) = Google::of(&state.config) else {
             return;
         };
-        match state.read(move |db| db.documents_refresh_token(&dsp)).await {
+        match state.read(move |db| own_grant(db, &dsp)).await {
             Ok(Some(token)) => google.revoke(&token).await,
             Ok(None) => {}
             Err(error) => observability::event(
@@ -256,9 +256,25 @@ pub fn revoke(state: Arc<State>, dsp: String) -> Upkeep {
         }
     })
 }
+/// The refresh token of the DSP's Google account, when no other DSP kept connects that
+/// account: Google ends the account's grant to Dispatch for every token given back, the other
+/// DSP's too.
+fn own_grant(db: &Store, dsp: &str) -> Result<Option<String>> {
+    let account = db
+        .documents_connection(dsp)?
+        .map(|found| found.account.email);
+    for other in db.kept_dsps()?.iter().filter(|other| *other != dsp) {
+        let connected = db.documents_connection(other)?;
+        if connected.is_some_and(|found| Some(&found.account.email) == account.as_ref()) {
+            return Ok(None);
+        }
+    }
+    db.documents_refresh_token(dsp)
+}
 /// Forgets what's held in memory of a deleted DSP's files.
 pub fn forgotten(dsp: &str) {
     files::forget(dsp);
+    files::forget_pictures(dsp);
     mirror::forget(dsp);
 }
 
@@ -270,3 +286,7 @@ pub(crate) fn broken(db: &Store, dsp: &str) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/connection.rs"]
+mod tests;
