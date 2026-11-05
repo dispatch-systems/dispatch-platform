@@ -258,11 +258,18 @@ fn left(status: Status, reason: &str) -> Outcome {
     }
 }
 /// What `error` makes of trying `canvas`: it waits uncounted for an approval or the workspace
-/// to work again, is tried again later each time, or is given up until it's edited again, as
-/// one too large is at once.
+/// to work again, or for the DSP disabled meanwhile to be enabled, is tried again later each
+/// time, or is given up until it's edited again, as one too large is at once.
 fn failure(canvas: &Canvas, error: &Error) -> Outcome {
     if ["slack_needs_update", "slack_connection_broken"].contains(&error.code.as_str()) {
         return wait(&error.code);
+    }
+    if error.code == "dsp_unavailable" {
+        return Outcome::Later {
+            reason: error.code.clone(),
+            at: now(),
+            counted: false,
+        };
     }
     if error.code == "upload_too_large" {
         return left(Status::Failed, &error.code);

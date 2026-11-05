@@ -506,11 +506,11 @@ async fn sending_picks_up_after_a_restart_without_a_second_copy() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_disabled_dsps_group_messages_wait_until_it_is_enabled() {
+async fn a_message_waiting_its_turn_waits_while_the_dsp_is_disabled() {
     let (_root, state, bot) = support::connected(DRIVERS_TEAM).await;
     let dsp = bot.dsp.clone();
     let c = owner(&state, &dsp).await;
-    let picked = members(&[(DRIVERS_TEAM, "U0FIXCAM")]);
+    let picked = members(&[(DRIVERS_TEAM, "U0FIXCAM"), (DRIVERS_TEAM, "U0FIXCASEY")]);
     let group = send::create(&state, &c, USE, "Wave", &picked, "Running late", &[])
         .await
         .unwrap();
@@ -524,16 +524,27 @@ async fn a_disabled_dsps_group_messages_wait_until_it_is_enabled() {
                 .unwrap()
         }
     };
-    // Disabled, nothing goes, and nothing is given up.
+    let progress = || async {
+        let progress = listed(&state, &dsp, &group.id).await.last.unwrap().progress;
+        progress.map(|p| (p.sent, p.failed))
+    };
+    // Cam's goes at once; Casey's waits its turn in the workspace, a second, and the DSP is
+    // disabled meanwhile: it isn't sent, nor given up.
+    let sending = tokio::spawn({
+        let (state, dsp) = (state.clone(), dsp.clone());
+        async move { send::drain(&state, &dsp).await }
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     status("suspended").await;
-    send::drain(&state, &dsp).await;
-    assert!(posts(DRIVERS_TEAM, "U0FIXCAM", &message.id).is_empty());
-    let progress = listed(&state, &dsp, &group.id).await.last.unwrap().progress;
-    assert_eq!(progress.map(|p| (p.sent, p.failed)), Some((0, 0)));
+    sending.await.unwrap();
+    assert_eq!(posts(DRIVERS_TEAM, "U0FIXCAM", &message.id).len(), 1);
+    assert!(posts(DRIVERS_TEAM, "U0FIXCASEY", &message.id).is_empty());
+    assert_eq!(progress().await, Some((1, 0)));
     // Enabled again, it goes.
     status("active").await;
     send::drain(&state, &dsp).await;
-    assert_eq!(posts(DRIVERS_TEAM, "U0FIXCAM", &message.id).len(), 1);
+    assert_eq!(posts(DRIVERS_TEAM, "U0FIXCASEY", &message.id).len(), 1);
+    assert_eq!(progress().await, Some((2, 0)));
 }
 
 #[tokio::test]

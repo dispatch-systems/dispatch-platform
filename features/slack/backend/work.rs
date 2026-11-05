@@ -146,7 +146,8 @@ pub fn pass<Q: Queue>(state: Arc<State>, _: bool) -> Upkeep {
 
 /// Tries the DSP's items that are due while Slack works for it, each claimed first so two tries
 /// never run at once: none once the DSP is disabled, or Slack switched off there, even in a
-/// pass under way.
+/// pass under way. The try under way then finds the bot refusing to act (`Bot`), and waits,
+/// uncounted, as its integration says.
 pub async fn due<Q: Queue>(state: &Arc<State>, dsp: &str) {
     let at = dsp.to_owned();
     let due = state
@@ -166,6 +167,9 @@ pub async fn due<Q: Queue>(state: &Arc<State>, dsp: &str) {
         let (at, of) = (dsp.to_owned(), item.clone());
         let started = now();
         let claimed = write::<Q, _>(state, dsp, move |db| {
+            if !connection::open(db, &at)? {
+                return Ok(None);
+            }
             Q::claim(db, &at, &of, started, started + Q::CLAIM_MS)
         })
         .await;

@@ -2,7 +2,7 @@
 //! the same: Slack; a stand-in feature with an integration through it, which hears of Slack's
 //! events as an integration would and keeps what it heard, and one that starts on, and hears
 //! when the DSP's people change; and a stand-in for where a DSP keeps its files, which keeps what's saved and written
-//! there in memory. And how a test starts: a platform with one DSP, and its workspaces connected.
+//! there in memory, and may disable the DSP as it does. And how a test starts: a platform with one DSP, and its workspaces connected.
 use crate::FEATURE;
 use dispatch_core::{
     State,
@@ -115,6 +115,8 @@ pub type KeptFile = (String, String, String, usize, Author);
 static KEPT: Mutex<Vec<KeptFile>> = Mutex::new(Vec::new());
 /// The DSPs whose files the stand-in can't keep for now.
 static UNREADY: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
+/// The DSPs the stand-in disables once it keeps a file of theirs.
+static DISABLING: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
 /// The stand-in for where a DSP keeps its files: every folder whose ID begins `folder-` is one.
 pub struct Keeping;
 static KEEPING: Keeping = Keeping;
@@ -187,7 +189,7 @@ impl Files for Keeping {
     }
     fn save<'a>(
         &'a self,
-        _: &'a Arc<State>,
+        state: &'a Arc<State>,
         dsp: &'a str,
         folder: &'a str,
         file: Incoming,
@@ -207,6 +209,12 @@ impl Files for Keeping {
                 file.by,
             );
             KEPT.lock().unwrap().push(kept);
+            if DISABLING.lock().unwrap().remove(dsp) {
+                let at = dsp.to_owned();
+                state
+                    .run(move |db| testing::set_dsp_status(db, &at, "suspended"))
+                    .await?;
+            }
             Ok(Saved {
                 id: format!("saved-{}", file.name),
                 name: file.name.clone(),
@@ -307,6 +315,11 @@ pub fn kept(dsp: &str) -> Vec<KeptFile> {
         .filter(|kept| kept.0 == dsp)
         .cloned()
         .collect()
+}
+/// Has the stand-in disable the DSP once it keeps the next file of theirs, as the platform
+/// owner disabling it while its files are saved.
+pub fn disable_on_save(dsp: &str) {
+    DISABLING.lock().unwrap().insert(dsp.to_owned());
 }
 /// Has the stand-in keep the DSP's files, or not for now.
 pub fn ready(dsp: &str, ready: bool) {

@@ -95,7 +95,7 @@ impl Bot {
     /// until someone reconnects it.
     pub async fn call(&self, method: &str, args: &Value) -> Result<Value> {
         let slack = Slack::of(&self.state.config)?;
-        let token = self.token().await?;
+        let token = self.acting().await?;
         self.in_time()?;
         let answer = match slack.call(&token, method, args, self.waits).await {
             Err(error) if error.code == "slack_token_expired" => {
@@ -117,7 +117,7 @@ impl Bot {
     /// bytes as they arrive. One the bot may not read yet is refused as a permission the
     /// workspace hasn't approved (`slack_needs_update`).
     pub async fn download(&self, url: &str, mime: &str) -> Result<Bytestream> {
-        let token = self.token().await?;
+        let token = self.acting().await?;
         Slack::of(&self.state.config)?
             .download(&token, url, mime)
             .await
@@ -145,7 +145,18 @@ impl Bot {
         Ok(id.to_owned())
     }
 
-    /// The workspace's access token, renewed first when it nears its end.
+    /// The workspace's access token for acting there, as `token`: refused once the DSP is
+    /// disabled (`dsp_unavailable`), though the bot was made before, as nothing acts for a
+    /// disabled DSP.
+    async fn acting(&self) -> Result<String> {
+        let dsp = self.dsp.clone();
+        self.state
+            .read(move |db| db.ensure_dsp_active(&dsp).map(drop))
+            .await?;
+        self.token().await
+    }
+    /// The workspace's access token, renewed first when it nears its end, whether the DSP is
+    /// disabled or not, as taking the app out of the workspace needs it.
     pub async fn token(&self) -> Result<String> {
         self.renewed(|kept| {
             kept.expires_at

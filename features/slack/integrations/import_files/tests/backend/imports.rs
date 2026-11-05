@@ -1,7 +1,8 @@
 //! Import Files, against fixture mode's Slack and a stand-in for where the DSP keeps its files: a
 //! file shared in a linked channel, since it was linked, is saved once, to its folder, as the
 //! member who posted it; one elsewhere, from before, too large or not hosted by Slack isn't;
-//! what can't be saved yet waits; and the hourly catch-up finds what Slack didn't tell of.
+//! what can't be saved yet waits, as do those of a DSP disabled meanwhile; and the hourly
+//! catch-up finds what Slack didn't tell of.
 use crate::backend::{
     app,
     channel_links::storage::{Link, LinkStore},
@@ -175,6 +176,42 @@ async fn a_file_shared_in_a_linked_channel_is_saved_once_to_its_folder_as_who_po
     assert_eq!(waiting[0].status, Status::Waiting);
     assert_eq!(waiting[0].reason.as_deref(), Some("Not ready"));
     support::ready(&dsp, true);
+}
+
+#[tokio::test]
+async fn a_dsp_disabled_while_its_files_are_saved_saves_no_more_until_it_is_enabled() {
+    let (_root, state, dsp, owner) = importing().await;
+    let (at, by) = (dsp.clone(), owner.clone());
+    state
+        .run(move |db| {
+            db.save_slack_channel_link(&at, &LINKING, &link(DISPATCH, "routes", &by))?;
+            db.notice_slack_import(&at, TEAM, "F0FIXVAN", PHOTOS, now())?;
+            db.notice_slack_import(&at, TEAM, "F0FIXROUTE", DISPATCH, now())
+        })
+        .await
+        .unwrap();
+    // Disabled as the first of the two is kept: the second waits, untried.
+    support::disable_on_save(&dsp);
+    super::save_due(&state, &dsp).await;
+    assert_eq!(support::kept(&dsp).len(), 1);
+    let at = dsp.clone();
+    let waiting: Vec<_> = state
+        .read(move |db| db.recent_slack_imports(&at, TEAM, 50))
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|import| import.status == Status::Waiting)
+        .map(|import| (import.attempts, import.reason))
+        .collect();
+    assert_eq!(waiting, [(0, None)]);
+    // Enabled again, it's saved.
+    let at = dsp.clone();
+    state
+        .run(move |db| testing::set_dsp_status(db, &at, "active"))
+        .await
+        .unwrap();
+    super::save_due(&state, &dsp).await;
+    assert_eq!(support::kept(&dsp).len(), 2);
 }
 
 #[tokio::test]
