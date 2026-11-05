@@ -14,7 +14,7 @@ use crate::api::types::{
     Conversation, ConversationMessages, Conversations, Message, MessageFile, Sender,
 };
 use crate::backend::{
-    compose, elsewhere,
+    bytes, compose, elsewhere,
     files::FileStatus,
     model::{ConversationKind, ConversationState, Direction, PAGE},
     people::People,
@@ -132,6 +132,7 @@ pub fn messages(people: &People, numbers: &Numbers, kept: Vec<Text>) -> Vec<Mess
                     } else {
                         FileStatus::Waiting
                     },
+                    version: file.sha256.as_deref().map(bytes::version),
                 })
                 .collect(),
             direction: text.direction,
@@ -396,8 +397,14 @@ pub fn message(db: &Store, state: &State, dsp: &str, id: &str) -> Result<Message
 
 /// A text's picture or file, `id`, as the phone side keeps it, for the member `c`, whose access is
 /// checked again once it's read: it may have ended while it was.
-pub async fn file(state: &Arc<State>, c: &Context, access: Dsp, id: &str) -> Result<Reply> {
-    let file = files::shown(state, &c.dsp.id, id, &c.auth.user.id)
+pub async fn file(
+    state: &Arc<State>,
+    c: &Context,
+    access: Dsp,
+    id: &str,
+    version: Option<&str>,
+) -> Result<Reply> {
+    let file = files::shown(state, &c.dsp.id, id, &c.auth.user.id, version)
         .await?
         .ok_or_else(|| Error::new("communications_file_not_found", 404))?;
     let asked = c.clone();

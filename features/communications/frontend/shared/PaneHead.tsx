@@ -1,5 +1,6 @@
 import type { ReactNode, Ref } from 'react';
-import { ArrowLeft, Check } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check } from 'lucide-react';
+import { KEYS } from './shortcuts.js';
 import type { OpensProfile } from './usePanel.js';
 import { Wait } from './Wait.js';
 import './pane-head.css';
@@ -7,7 +8,8 @@ import './pane-head.css';
 // The head of what's open, a conversation or a group: the way back to the list, on a phone; who
 // it's with, by their face and name, what's said of them, and while it waits how long, which opens
 // their profile or its people where there's one; what else can be done with it; and while it
-// waits, Done, by its word, on a phone under who it's with where there isn't room beside them.
+// waits, Done, by its word, or once it's answered, Next waiting while another does, on a phone
+// under who it's with where there isn't room beside them. Each names its key.
 
 export function PaneHead({
   face,
@@ -21,6 +23,7 @@ export function PaneHead({
   opens,
   back,
   done,
+  next,
   actions,
 }: {
   /** Whom it's with, by their face; none until it's read. */
@@ -42,6 +45,8 @@ export function PaneHead({
   back: () => void;
   /** Done, while it waits. */
   done: { busy: boolean; run: () => void };
+  /** Opens the one waiting longest of the section shown, while another waits. */
+  next?: () => void;
   /** What else can be done with it, before Done. */
   actions?: ReactNode;
 }) {
@@ -77,14 +82,32 @@ export function PaneHead({
         ) : (
           <div className="who">{shown}</div>
         ))}
-      {(actions || waits) && (
+      {(actions || waits || next) && (
         <div className="actions">
           {actions}
-          {waits && (
-            <button disabled={done.busy} onClick={done.run} aria-label="Done">
+          {waits ? (
+            <button
+              disabled={done.busy}
+              onClick={done.run}
+              aria-label="Done"
+              aria-keyshortcuts={KEYS.done}
+              title={`Done (${KEYS.done})`}
+            >
               <Check size={15} />
               <span>Done</span>
             </button>
+          ) : (
+            next && (
+              <button
+                onClick={next}
+                aria-label="Next waiting"
+                aria-keyshortcuts={KEYS.waiting}
+                title={`Next waiting (${KEYS.waiting})`}
+              >
+                <span>Next waiting</span>
+                <ArrowRight size={15} />
+              </button>
+            )
           )}
         </div>
       )}

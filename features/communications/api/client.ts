@@ -5,6 +5,7 @@ import {
   useCachedData,
   useData,
 } from '../../../core/shell/frontend/runtime/api.js';
+import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { upload } from '../../../core/shell/frontend/runtime/transfer.js';
 import type {
   Communications,
@@ -27,6 +28,7 @@ import type {
   PhoneRow,
   Phones,
   Profile,
+  QuickReplies,
   SentMessage,
   TextContacts,
   TextPeople,
@@ -190,6 +192,18 @@ export const getTodaysRoutes = (signal?: AbortSignal) =>
 /** Files a work phone nobody held under one of today's drivers: their conversation. */
 export const pickDriver = (id: string, driverId: string) =>
   api<Conversation>(`${communicationsUrl}/conversations/${id}/driver`, { driverId });
+/** The DSP's quick replies, in their order, as the composer offers them and Settings edits them. */
+export const quickRepliesUrl = `${communicationsUrl}/quick-replies`;
+export const useQuickReplies = () => useCachedData<QuickReplies>(quickRepliesUrl);
+/** Saves the DSP's quick replies, in their order, on the `revision` they were read at. Once saved,
+ * they take the place of what was read, so they show at once and the next save goes on their
+ * revision, unless another view opened meanwhile. */
+export async function saveQuickReplies(replies: string[], revision: number) {
+  const session = dataCache.session;
+  const saved = await api<QuickReplies>(quickRepliesUrl, { replies, revision });
+  if (dataCache.session === session) dataCache.put(quickRepliesUrl, saved);
+  return saved;
+}
 /** Whom the DSP can text, or those found by a name or number typed, and the numbers blocked. */
 export const getTextContacts = (typed = '') =>
   api<TextContacts>(address(`${communicationsUrl}/texts/contacts`, { q: typed }));

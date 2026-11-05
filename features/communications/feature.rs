@@ -18,9 +18,9 @@ pub use api::types::{
     DispatchPhone, Elsewhere, FileStatus, Group, GroupChoice, GroupChoiceKind, GroupChoices,
     GroupEntry, GroupMember, GroupMessages, GroupPeople, GroupPerson, GroupPersonState,
     GroupProgress, Message, MessageFile, MessageGroup, NotSent, Pace, PairingStatus, PhoneApp,
-    PhoneHealth, PhonePairing, PhonePairingStatus, PhoneRow, Phones, Profile, Reachable,
-    RouteDriver, Sender, SentMessage, TextContact, TextContacts, TextPeople, TextStatus, Today,
-    TodaysRoutes, Typing, WaitingMessage, Workday, Writing,
+    PhoneHealth, PhonePairing, PhonePairingStatus, PhoneRow, Phones, Profile, QuickReplies,
+    Reachable, RouteDriver, Sender, SentMessage, TextContact, TextContacts, TextPeople, TextStatus,
+    Today, TodaysRoutes, Typing, WaitingMessage, Workday, Writing,
 };
 
 use dispatch_core::db::{
@@ -45,8 +45,12 @@ pub const FEATURE: Feature = Feature {
         perm("communications.use", "Use Communications", 95),
         perm("phones.manage", "Manage Phones", 150),
     ],
-    // How the page looks to each member, their own, on Settings' Display page.
-    settings: &[backend::display::DISPLAY],
+    // How the page looks to each member, their own, on Settings' Display page; and the DSP's
+    // quick replies, on its own page.
+    settings: &[
+        backend::display::DISPLAY,
+        backend::quick_replies::QUICK_REPLIES,
+    ],
     routes: api::routes::routes,
     domains: &[backend::storage::DOMAIN],
     tables: &[(
@@ -280,5 +284,6 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         PhonePairing,
         PhonePairingStatus,
         PairingStatus,
+        QuickReplies,
     )
 }

@@ -11,6 +11,7 @@ import type {
   Reachable,
 } from '../../api/index.js';
 import {
+  nextWaiting,
   readsNext,
   rows,
   shownWorkspace,
@@ -177,6 +178,38 @@ test('each section’s list keeps the server’s order as it changes, with the p
   ]);
   assert.equal(readsNext(read, 'messaging'), undefined);
   assert.deepEqual(ids(read), ids(older));
+});
+
+test('Next waiting opens the one waiting longest of the section shown, but the one open, wherever the list has it, and nothing once no other waits', () => {
+  const inbox: Communications = {
+    revision: 1,
+    waiting: 4,
+    conversations: [
+      conversation('slack-latest', 900, 700),
+      conversation('slack-longest', 400, 100),
+      texts('text', 800, 150),
+      conversation('answered', 950),
+    ],
+    groups: [group('group', 600, 200)],
+    more: false,
+    moreTexts: false,
+    moreWork: false,
+    workspaces: [],
+    texting: true,
+    routes: false,
+    phones: [],
+    typing: { version: 0, writing: [] },
+  };
+  const next = (section: Section, open?: string) => nextWaiting(rows(inbox, section), open)?.row.id;
+  // Recents lists the latest written in first; Next waiting goes by how long each has waited.
+  assert.equal(ids(inbox, 'messaging')[0], 'answered');
+  assert.equal(next('messaging', 'answered'), 'slack-longest');
+  assert.equal(next('messaging', 'slack-longest'), 'text');
+  // Slack's lists its own and the groups alone.
+  assert.equal(next('slack', 'slack-longest'), 'group');
+  // Of rows where only the one open waits, there's none.
+  const [answered, latest] = rows(inbox, 'messaging');
+  assert.equal(nextWaiting([answered!, latest!], 'slack-latest'), undefined);
 });
 
 test('a send’s answer shows as the server had it, unless an update brought the conversation written in since', () => {

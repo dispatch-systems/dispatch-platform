@@ -5,8 +5,8 @@
 //! a conversation's messages the latest fifty at a time, in the order written. The list of every
 //! kind, with those waiting, is `inbox`'s.
 use super::{
-    compose, elsewhere,
-    files::{File, FileStore},
+    bytes, compose, elsewhere,
+    files::{File, FileStatus, FileStore},
     groups::{
         self,
         storage::{Answered, GroupStore},
@@ -136,14 +136,19 @@ pub fn attached(
             mime,
             size,
             status,
+            sha256,
             ..
         } = file;
+        let version = sha256
+            .filter(|_| status == FileStatus::Kept)
+            .map(|sha256| bytes::version(&sha256));
         attached.entry(to).or_default().push(MessageFile {
             id,
             name,
             mime,
             size,
             status,
+            version,
         });
     }
     attached
