@@ -152,12 +152,17 @@ export function Composer({
   };
   const send = useAction(async () => {
     const going = new Set(photos.map((photo) => photo.key));
-    await deliver(
-      text.trim(),
-      photos.map((photo) => photo.uploaded!.id),
-    );
-    // What was written and photos added while it went stay.
-    drafts.sent(draft, text);
+    // What goes leaves the box at once; what's written and photos added while it goes stay.
+    drafts.sending(draft, text);
+    try {
+      await deliver(
+        text.trim(),
+        photos.map((photo) => photo.uploaded!.id),
+      );
+    } catch (cause) {
+      drafts.failed(draft, text);
+      throw cause;
+    }
     for (const photo of photos) URL.revokeObjectURL(photo.shown);
     setPhotos((now) => now.filter((photo) => !going.has(photo.key)));
     said.current = 0;

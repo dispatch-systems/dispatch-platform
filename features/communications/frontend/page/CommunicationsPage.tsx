@@ -76,6 +76,11 @@ import { ViewToggle, type RoutesView } from '../todays-routes/ViewToggle.js';
 type Opened = { conversation?: string; group?: string; drafting?: true };
 /** How many of the first waiting are read before they're opened. */
 const WARMED = 3;
+/** What a step of the browser's history holds when it opened from the list, one pane at a time,
+ * so closing it goes back to the list, not to whatever came before, as a notification's link. */
+const FROM_LIST = 'communicationsFromList';
+/** Whether the step of the browser's history now opened from the list. */
+const fromList = () => (history.state as Record<string, unknown> | null)?.[FROM_LIST] === true;
 /** What the address says is open. */
 function addressed(): Opened {
   const query = hashQuery();
@@ -162,8 +167,6 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const now = useNow();
   // How many times what's open changed, as one started opens only if nothing else did meanwhile.
   const turns = useRef(0);
-  // Whether what's open is a step of the browser's history after the list, as one pane at a time.
-  const stepped = useRef(false);
   const phone = layout === 'phone';
   /** Shows what `next` names. */
   const adopt = useCallback((next: Opened) => {
@@ -182,13 +185,9 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
           ? { group: next.group }
           : {};
       const shows = Boolean(next.conversation || next.group);
-      if (phone && shows && !reading) {
-        stepped.current = true;
-        pushHashQuery(query);
-      } else if (phone && !shows && !next.drafting && stepped.current) {
-        stepped.current = false;
-        history.back();
-      } else replaceHashQuery(query);
+      if (phone && shows && !reading) pushHashQuery(query, { [FROM_LIST]: true });
+      else if (phone && !shows && !next.drafting && fromList()) history.back();
+      else replaceHashQuery(query);
       adopt(next);
     },
     [adopt, phone, reading],
@@ -201,7 +200,6 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
       const next = addressed();
       if (parseHash(location.hash).page !== 'communications') return;
       const shows = Boolean(next.conversation || next.group);
-      stepped.current = phone && shows;
       if (shows || phone) adopt(next);
     };
     addEventListener('hashchange', followed);

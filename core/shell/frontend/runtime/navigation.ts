@@ -142,12 +142,13 @@ function withHashQuery(query: Record<string, string>) {
   const search = new URLSearchParams(query).toString();
   return `${location.pathname}${location.search}${location.hash.split('?')[0]}${search ? `?${search}` : ''}`;
 }
-/** Records a page's own state in the address without navigating. */
+/** Records a page's own state in the address without navigating, keeping what its step of the
+ * browser's history holds. */
 export function replaceHashQuery(query: Record<string, string>) {
-  history.replaceState({}, '', withHashQuery(query));
+  history.replaceState(history.state, '', withHashQuery(query));
 }
-/** Records a page's own state in the address as a step of the browser's history, without
- * navigating: Back returns to the address before, which the page hears as it changes. */
-export function pushHashQuery(query: Record<string, string>) {
-  history.pushState({}, '', withHashQuery(query));
+/** Records a page's own state in the address as a step of the browser's history, holding `state`,
+ * without navigating: Back returns to the address before, which the page hears as it changes. */
+export function pushHashQuery(query: Record<string, string>, state: Record<string, unknown> = {}) {
+  history.pushState(state, '', withHashQuery(query));
 }

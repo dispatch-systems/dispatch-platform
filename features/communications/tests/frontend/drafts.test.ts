@@ -12,7 +12,7 @@ Object.assign(globalThis, {
   },
 });
 
-test('what’s written stays each conversation’s, for each member at each DSP, through a reload, and a send takes out only what went', () => {
+test('what’s written stays each conversation’s, for each member at each DSP, through a reload, and leaves as it’s sent, back should it fail', () => {
   const drafts = new Drafts('dsp_a', 'user_a');
   drafts.write('c1', 'On my way');
   drafts.write('c2', 'Call me');
@@ -23,18 +23,18 @@ test('what’s written stays each conversation’s, for each member at each DSP,
   assert.equal(new Drafts('dsp_a', 'user_b').text('c1'), '');
   assert.equal(new Drafts('dsp_b', 'user_a').text('c1'), '');
 
-  // Written on while it went: that stays.
+  // Sending: it leaves the box at once, so the box opened again while it goes has nothing to send
+  // twice; what's written while it goes stays.
   let changes = 0;
   const stop = reloaded.watch('c1', () => changes++);
-  reloaded.write('c1', 'On my way\nAt the station in 10');
-  reloaded.sent('c1', 'On my way');
-  assert.equal(reloaded.text('c1'), 'At the station in 10');
+  reloaded.sending('c1', 'On my way');
+  assert.equal(new Drafts('dsp_a', 'user_a').text('c1'), '');
+  reloaded.write('c1', 'At the station in 10');
   assert.equal(changes, 2);
   stop();
-  // Changed while it went: all of it stays. Sent as it was: gone, from the tab too.
-  reloaded.write('c2', 'Call me later');
-  reloaded.sent('c2', 'Call me now');
-  assert.equal(reloaded.text('c2'), 'Call me later');
-  reloaded.sent('c2', 'Call me later');
+  // Failed: back, before what was written since.
+  reloaded.failed('c1', 'On my way');
+  assert.equal(reloaded.text('c1'), 'On my way\nAt the station in 10');
+  reloaded.sending('c2', 'Call me');
   assert.equal(new Drafts('dsp_a', 'user_a').text('c2'), '');
 });
