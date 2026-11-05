@@ -1,6 +1,9 @@
-/* Writing a message, its text `--typed-size`, 16px on a touch screen (below). */
+/* Writing a message, its text `--typed-size`, 16px on a touch screen (below); the emoji picker
+   over it, or on a phone, under its box (`--emoji-panel-height`, emoji-picker.css). */
 .composer {
   --typed-size: var(--text-size);
+  --emoji-panel-height: min(calc(320px * var(--scale)), 50vh);
+  position: relative;
   margin: 0;
   padding: 10px var(--side) calc(var(--pad) - 2px);
   background: var(--thread-surface);
@@ -32,10 +35,6 @@
 }
 .composer textarea:disabled {
   cursor: default;
-}
-/* With no photos to add, the text starts in from the box's edge. */
-.composer .box > textarea:first-child {
-  padding-left: 12px;
 }
 /* The number a text goes to, by its last digits. */
 .texting-to {
