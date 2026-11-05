@@ -20,10 +20,11 @@ export function ConversationRow({
   timeZone,
   now,
   select,
+  warm,
   done,
   channel,
   below,
-}: Pick<Listing, 'open' | 'typing' | 'timeZone' | 'now' | 'select' | 'done'> & {
+}: Pick<Listing, 'open' | 'typing' | 'timeZone' | 'now' | 'select' | 'warm' | 'done'> & {
   conversation: Conversation;
   /** Whether its face says where it is, as in a list of every section's. */
   channel?: boolean;
@@ -46,6 +47,7 @@ export function ConversationRow({
       line={<LastWritten conversation={conversation} typing={typing} />}
       below={below}
       open={() => select(conversation.id)}
+      warm={() => warm(conversation.id)}
       done={() => done(conversation)}
     />
   );

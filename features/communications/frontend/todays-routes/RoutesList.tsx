@@ -21,6 +21,7 @@ export function RoutesList({
   timeZone,
   now,
   choose,
+  warm,
   done,
 }: {
   groups: readonly RouteGroup[];
@@ -33,9 +34,11 @@ export function RoutesList({
   now: number;
   /** Opens a row's conversation, or starts a driver's. */
   choose: (row: RouteRow) => void;
+  /** Reads a conversation before it's opened, as its row is pointed at or reached. */
+  warm: (id: string) => void;
   done: (conversation: Conversation) => void;
 }) {
-  const listing = { open, typing, timeZone, now, done };
+  const listing = { open, typing, timeZone, now, warm, done };
   return (
     <RoutesState read={read} empty={groups.length === 0}>
       {groups.map((group) => (

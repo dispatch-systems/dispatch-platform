@@ -10,7 +10,6 @@ import type {
 import { markDone, retryText, sayTyping, sendMessage } from '../../api/client.js';
 import { ErrorBox } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
-import type { Changed } from '../inbox/useInbox.js';
 import { lastFour } from '../shared/format.js';
 import { PaneHead } from '../shared/PaneHead.js';
 import { ThreadPending } from '../shared/ThreadFrame.js';
@@ -26,6 +25,7 @@ import { PartyFace, partyOf } from './party.js';
 import { Profile } from './Profile.js';
 import type { Target } from './target.js';
 import { Thread } from './Thread.js';
+import type { ConversationReads } from './reads.js';
 import { useConversation } from './useConversation.js';
 
 // The conversation open: who it's with, the workspace it's in while there are several, the number
@@ -46,7 +46,7 @@ export function ConversationPane({
   docked,
   kept,
   seen,
-  changed,
+  reads,
   typing,
   timeZone,
   now,
@@ -72,7 +72,8 @@ export function ConversationPane({
   kept: boolean;
   /** Tells the page of the conversation as read, which pins one the list doesn't hold. */
   seen: (conversation: Conversation) => void;
-  changed: Changed;
+  /** The conversations the page has read, which it shows from as it opens. */
+  reads: ConversationReads;
   typing: readonly Writing[];
   timeZone: string;
   now: number;
@@ -89,7 +90,7 @@ export function ConversationPane({
   /** Opens another conversation, as whom it's with's of another kind, or starts it. */
   open: (target: Target) => void;
 }) {
-  const { opened, error, gone, readOlder, ...read } = useConversation(id, changed);
+  const { opened, error, gone, readOlder, ...read } = useConversation(reads, id);
   useEffect(() => {
     if (gone) closed();
   }, [gone, closed]);

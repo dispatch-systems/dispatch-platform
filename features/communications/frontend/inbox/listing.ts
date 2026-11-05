@@ -8,6 +8,8 @@ export type Listing = {
   timeZone: string;
   now: number;
   select: (id: string) => void;
+  /** Reads a conversation before it's opened, as its row is pointed at or reached. */
+  warm: (id: string) => void;
   openGroup: (id: string) => void;
   done: (conversation: Conversation) => void;
   doneGroup: (group: Group) => void;

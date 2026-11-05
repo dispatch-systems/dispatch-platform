@@ -80,6 +80,7 @@ export function Preview({
                 timeZone={timeZone}
                 now={now}
                 select={nothing}
+                warm={nothing}
                 openGroup={nothing}
                 done={nothing}
                 doneGroup={nothing}

@@ -14,6 +14,7 @@ import {
   settingsHash,
 } from '../../../../core/shell/frontend/runtime/navigation.js';
 import { can } from '../../../../core/shell/frontend/runtime/permissions.js';
+import { cacheLimits } from '../../../../core/shell/frontend/runtime/data-cache.js';
 import { prefetchRouteData } from '../../../../core/shell/frontend/runtime/route-prefetch.js';
 import { settingsPage } from '../../../../core/shell/frontend/runtime/slots.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
@@ -32,6 +33,7 @@ import { routeGroups, routeRows, rowTarget } from '../todays-routes/todays-route
 import { started, type Target } from '../conversations/target.js';
 import { memberTarget } from '../slack/members.js';
 import { ConversationPane } from '../conversations/ConversationPane.js';
+import { useConversationReads } from '../conversations/useConversation.js';
 import { CopyChatLink } from '../slack/CopyChatLink.js';
 import { GroupDraft, type Draft } from '../slack/groups/GroupDraft.js';
 import { GroupPane } from '../slack/groups/GroupPane.js';
@@ -66,6 +68,8 @@ import { ViewToggle, type RoutesView } from '../todays-routes/ViewToggle.js';
 /** What the pane shows: a conversation or a group, by its ID, or a message being written to a
  * group. */
 type Opened = { conversation?: string; group?: string; drafting?: true };
+/** How many of the first waiting are read before they're opened. */
+const WARMED = 3;
 /** What the address says is open. */
 function addressed(): Opened {
   const query = hashQuery();
@@ -100,6 +104,9 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const { inbox, team, changed, error, refresh, show, showGroup, readOlder } = useInbox(
     ofWorkspace ? chosen : undefined,
   );
+  // The conversations read, kept so each opens at once once read, and read before they're opened.
+  const reads = useConversationReads(view.dsp.id, changed);
+  const warm = useCallback((id: string) => reads.warm(id), [reads]);
   // The sections the DSP has, the one chosen shown, else the one the page opened on; with none,
   // Slack's, empty until it's connected.
   const texting = Boolean(inbox?.texting);
@@ -189,6 +196,20 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
     if (firstGroup) openGroup(first.id);
     else select(first.id);
   }, [open, group, drafting, board, first, firstGroup, layout, select, openGroup]);
+  // The first few waiting of those shown, the likeliest opened next, read once the page has read
+  // what it opened, and again once an update changes them.
+  const waitingFirst = shownRows
+    .filter((each) => each.kind === 'conversation' && each.row.state === 'waiting')
+    .slice(0, WARMED)
+    .map((each) => each.row.id)
+    .join(' ');
+  useEffect(() => {
+    if (!waitingFirst) return;
+    const later = setTimeout(() => {
+      for (const id of waitingFirst.split(' ')) reads.warm(id);
+    }, cacheLimits.preloadDelayMs);
+    return () => clearTimeout(later);
+  }, [reads, waitingFirst, changed]);
   // While Slack shows: each update brings the workspaces as they are, so it goes once Slack is
   // updated.
   const updating =
@@ -360,6 +381,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
                 timeZone={timeZone}
                 now={now}
                 select={select}
+                warm={warm}
                 openGroup={openGroup}
                 done={(conversation) => void done.run(conversation)}
                 doneGroup={(listed) => void doneGroup.run(listed)}
@@ -408,7 +430,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
                   docked={docked}
                   kept={kept}
                   seen={seen}
-                  changed={changed}
+                  reads={reads}
                   typing={inbox.typing.writing}
                   timeZone={timeZone}
                   now={now}
