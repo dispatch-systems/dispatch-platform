@@ -385,12 +385,15 @@
 /* A window too short for a whole pay period at full spacing gets tighter rows and spacing,
    keeping it in view. */
 @media (height < 1160px) {
+  .employees-page {
+    padding-top: 18px;
+  }
   .employee-detail {
-    padding-block: 18px;
+    padding-block: 14px;
   }
   .employee-timecard-section {
-    margin-top: 14px;
-    padding-top: 12px;
+    margin-top: 10px;
+    padding-top: 10px;
   }
   .employee-period-table th,
   .employee-period-table td {
@@ -407,8 +410,8 @@
     margin-bottom: 6px;
   }
   .employee-timecard-total {
-    margin-top: 10px;
-    padding-top: 12px;
+    margin-top: 8px;
+    padding-top: 10px;
   }
 }
 @media (max-width: 700px) {
