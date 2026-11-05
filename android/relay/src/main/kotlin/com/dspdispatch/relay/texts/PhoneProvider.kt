@@ -14,6 +14,7 @@ import com.dspdispatch.relay.dispatch.Direction
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.InputStream
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * The phone's texts in Android's own texting provider, `Telephony.Sms` and `Telephony.Mms`. From
@@ -21,6 +22,8 @@ import java.io.InputStream
  * hours, accepted: such a text is reported once the provider lets it be read.
  */
 class PhoneProvider(private val resolver: ContentResolver) : Provider {
+    private val subscribed = ConcurrentHashMap<Table, Boolean>()
+
     override fun rows(scan: Scan): List<Row> = (smsRows(scan) + mmsRows(scan)).sortedWith(compareBy(Row::at, Row::id))
 
     override fun read(row: Row): Reading = try {
@@ -55,6 +58,19 @@ class PhoneProvider(private val resolver: ContentResolver) : Provider {
         ).map { (row, box) -> Tried(row, box == BaseMmsColumns.MESSAGE_BOX_SENT) }
     }
 
+    /**
+     * How many picture messages received from [since] on, of the SIM [sim] where it's one of
+     * several, the texting app hasn't downloaded: word of them alone.
+     */
+    fun undownloaded(since: Long, sim: Int?): Int {
+        val only = sim(Table.MMS, sim)
+        return mms(
+            Mms.CONTENT_URI,
+            "${Mms.DATE} >= ? AND ${Mms.MESSAGE_BOX} = ${BaseMmsColumns.MESSAGE_BOX_INBOX} AND ${Mms.MESSAGE_TYPE} = $NOTIFICATION_IND" + only.first,
+            arrayOf(seconds(since).toString()) + only.second,
+        ).size
+    }
+
     // Android answers nothing for a provider that crashed a moment ago, and says a part's not
     // found for one gone as for a provider it can't reach, or one that failed the call: a part's
     // gone only once the provider, answering, holds no such part.
@@ -67,22 +83,46 @@ class PhoneProvider(private val resolver: ContentResolver) : Provider {
 
     override fun open(uri: String): InputStream = resolver.openInputStream(uri.toUri()) ?: throw Unavailable(uri)
 
-    private fun smsRows(scan: Scan): List<Row> = sms(
-        Sms.CONTENT_URI,
-        "${Sms.DATE} >= ? AND (${Sms.DATE} >= ? OR ${Sms._ID} > ?) AND " +
-            "${Sms.TYPE} IN (${TextBasedSmsColumns.MESSAGE_TYPE_INBOX}, ${TextBasedSmsColumns.MESSAGE_TYPE_SENT})",
-        arrayOf(scan.paired.toString(), scan.since.toString(), scan.sms.toString()),
-    ).map { it.first }
+    private fun smsRows(scan: Scan): List<Row> {
+        val sim = sim(Table.SMS, scan.sim)
+        return sms(
+            Sms.CONTENT_URI,
+            "${Sms.DATE} >= ? AND (${Sms.DATE} >= ? OR ${Sms._ID} > ?) AND " +
+                "${Sms.TYPE} IN (${TextBasedSmsColumns.MESSAGE_TYPE_INBOX}, ${TextBasedSmsColumns.MESSAGE_TYPE_SENT})" + sim.first,
+            arrayOf(scan.paired.toString(), scan.since.toString(), scan.sms.toString()) + sim.second,
+        ).map { it.first }
+    }
 
     // One received counts once the texting app has downloaded it, when it holds the message
     // itself and not only word of it.
-    private fun mmsRows(scan: Scan): List<Row> = mms(
-        Mms.CONTENT_URI,
-        "${Mms.DATE} >= ? AND (${Mms.DATE} >= ? OR ${Mms._ID} > ?) AND " +
-            "((${Mms.MESSAGE_BOX} = ${BaseMmsColumns.MESSAGE_BOX_INBOX} AND ${Mms.MESSAGE_TYPE} = $RETRIEVE_CONF) OR " +
-            "${Mms.MESSAGE_BOX} = ${BaseMmsColumns.MESSAGE_BOX_SENT})",
-        arrayOf(seconds(scan.paired).toString(), seconds(scan.since).toString(), scan.mms.toString()),
-    ).map { it.first }
+    private fun mmsRows(scan: Scan): List<Row> {
+        val sim = sim(Table.MMS, scan.sim)
+        return mms(
+            Mms.CONTENT_URI,
+            "${Mms.DATE} >= ? AND (${Mms.DATE} >= ? OR ${Mms._ID} > ?) AND " +
+                "((${Mms.MESSAGE_BOX} = ${BaseMmsColumns.MESSAGE_BOX_INBOX} AND ${Mms.MESSAGE_TYPE} = $RETRIEVE_CONF) OR " +
+                "${Mms.MESSAGE_BOX} = ${BaseMmsColumns.MESSAGE_BOX_SENT})" + sim.first,
+            arrayOf(seconds(scan.paired).toString(), seconds(scan.since).toString(), scan.mms.toString()) + sim.second,
+        ).map { it.first }
+    }
+
+    /**
+     * What keeps a read of [table] to the SIM [subscription]'s texts, and those whose SIM Android
+     * didn't note: nothing where it's null, or where the provider doesn't say which SIM a text came
+     * by, as on a phone that never had two.
+     */
+    private fun sim(table: Table, subscription: Int?): Pair<String, Array<String>> =
+        if (subscription == null || !subscribed(table)) {
+            "" to emptyArray()
+        } else {
+            " AND ($SUB_ID = ? OR $SUB_ID < 0 OR $SUB_ID IS NULL)" to arrayOf(subscription.toString())
+        }
+
+    /** Whether the provider's [table] says which SIM each text came by: asked once, as it's the same throughout. */
+    private fun subscribed(table: Table): Boolean = subscribed.getOrPut(table) {
+        val uri = if (table == Table.SMS) Sms.CONTENT_URI else Mms.CONTENT_URI
+        (resolver.query(uri, null, "0", null, null) ?: throw Unavailable("its columns")).use { SUB_ID in it.columnNames }
+    }
 
     /** The plain texts' rows at [uri] that [where] selects, each with its type: received, sent, failed. */
     private fun sms(uri: Uri, where: String?, args: Array<String>?): List<Pair<Row, Int>> = resolver.query(
@@ -195,8 +235,14 @@ class PhoneProvider(private val resolver: ContentResolver) : Provider {
     private companion object {
         const val MS_PER_SECOND = 1_000L
 
+        /** The SIM a text came by, named the same in both tables. */
+        const val SUB_ID = TextBasedSmsColumns.SUBSCRIPTION_ID
+
         /** A picture message as received, downloaded whole (`PduHeaders.MESSAGE_TYPE_RETRIEVE_CONF`). */
         const val RETRIEVE_CONF = 132
+
+        /** Word of a picture message, not yet downloaded (`PduHeaders.MESSAGE_TYPE_NOTIFICATION_IND`). */
+        const val NOTIFICATION_IND = 130
 
         // Which party of a picture message an address is (`PduHeaders`).
         const val FROM = 137

@@ -9,7 +9,6 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import com.dspdispatch.relay.connection.Link
-import com.dspdispatch.relay.connection.Logcat
 import com.dspdispatch.relay.connection.keepRunning
 import com.dspdispatch.relay.pairing.Standing
 import com.dspdispatch.relay.setup.Watchdog
@@ -49,9 +48,9 @@ class RelayService : LifecycleService() {
                 launch { relay.connection.link.collect { show(paired.dsp, it) } }
                 // Null once the keystore lost what sealed it, which only pairing again mends.
                 val key = relay.pairings.key() ?: return@launch stopSelf()
-                launch { keepRunning("Relaying texts", Logcat) { relay.texts.run(paired, key) } }
-                keepRunning("Waiting on the outbox", Logcat) {
-                    relay.connection.run(paired, key) { outbox ->
+                launch { keepRunning("Relaying texts", relay.lapses) { relay.texts.run(paired, key) } }
+                keepRunning("Waiting on the outbox", relay.lapses) {
+                    relay.connection.run(paired, key, { relay.checkup.now(paired) }) { outbox ->
                         relay.updates.heard(paired.site, outbox.app)
                         relay.texts.send(paired, outbox)
                     }

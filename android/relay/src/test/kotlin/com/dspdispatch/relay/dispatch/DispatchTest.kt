@@ -66,7 +66,16 @@ class DispatchTest {
                    "files":[{"id":"file_1","name":"door.jpg","mime":"image/jpeg","size":48213}]}]}""",
             ),
         )
-        val outbox = dispatch.outbox(site, "k".repeat(64))
+        val health = Health(
+            listOf("battery"),
+            read = true,
+            send = true,
+            sim = Sim.NO_SIGNAL,
+            waiting = Backlog(12, 1, 0),
+            undownloaded = 0,
+            unexpected = Lapse("java.lang.IllegalStateException", 2, "Reading texts"),
+        )
+        val outbox = dispatch.outbox(site, "k".repeat(64), health)
         assertEquals(
             listOf(OutgoingText("text_1", "+14255550199", "On my way", 41, listOf(OutgoingFile("file_1", "door.jpg", "image/jpeg", 48213)))),
             outbox.texts,
@@ -78,12 +87,18 @@ class DispatchTest {
         assertEquals("1.4.0", request.url.queryParameter("version"))
         assertEquals("14", request.url.queryParameter("versionCode"))
         assertEquals("Bearer ${"k".repeat(64)}", request.headers["Authorization"])
+        // How it stands, as Dispatch reads it, nothing it didn't say given as null.
+        assertEquals(
+            """{"setup":["battery"],"read":true,"send":true,"sim":"no_signal","waiting":{"texts":12,"files":1,"statuses":0},""" +
+                """"undownloaded":0,"unexpected":{"error":"java.lang.IllegalStateException","at":2,"where":"Reading texts"}}""",
+            request.headers["X-Dispatch-Health"],
+        )
     }
 
     @Test
     fun hearsTheLatestVersionFromTheOutbox() = runTest {
         server.enqueue(json(200, """{"texts":[],"app":{"version":"1.4.1","versionCode":15}}"""))
-        assertEquals(AppVersion("1.4.1", 15), dispatch.outbox(site, "k").app)
+        assertEquals(AppVersion("1.4.1", 15), dispatch.outbox(site, "k", null).app)
     }
 
     @Test
@@ -106,14 +121,14 @@ class DispatchTest {
     @Test
     fun knowsARemovedPhoneAndAPassingRefusal() = runTest {
         server.enqueue(json(401, """{"error":"phones_removed","message":"…"}"""))
-        assertTrue(refused { dispatch.outbox(site, "k") }.removed)
+        assertTrue(refused { dispatch.outbox(site, "k", null) }.removed)
         // Dispatch answers this while the DSP is suspended too: the key may work again.
         server.enqueue(json(401, """{"error":"sign_in_required","message":"…"}"""))
-        assertFalse(refused { dispatch.outbox(site, "k") }.removed)
+        assertFalse(refused { dispatch.outbox(site, "k", null) }.removed)
         server.enqueue(json(503, """{"error":"platform_busy","message":"…"}"""))
-        assertTrue(refused { dispatch.outbox(site, "k") }.passing)
+        assertTrue(refused { dispatch.outbox(site, "k", null) }.passing)
         server.enqueue(MockResponse.Builder().code(502).body("<html>Bad gateway</html>").build())
-        assertEquals("http_502", refused { dispatch.outbox(site, "k") }.code)
+        assertEquals("http_502", refused { dispatch.outbox(site, "k", null) }.code)
     }
 
     @Test

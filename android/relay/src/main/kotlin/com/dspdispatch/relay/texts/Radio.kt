@@ -15,6 +15,9 @@ interface Radio {
      * [subscription].
      */
     fun line(number: String, subscription: Int): Line
+
+    /** The SIM whose texts to relay, as [line] chooses it, while the phone holds several; else null, for all of them. */
+    fun relayed(number: String, subscription: Int): Int?
 }
 
 /**
@@ -47,3 +50,11 @@ internal fun subscription(subscriptions: Map<Int, String>, number: String, defau
     subscriptions.entries.firstOrNull { number.isNotBlank() && Numbers.same(it.value, number) }?.key
         ?: default.takeIf { it in subscriptions || (subscriptions.isEmpty() && it >= 0) }
         ?: subscriptions.keys.firstOrNull()
+
+/**
+ * Which of the phone's [subscriptions] to relay the texts of: the one it texts from, as
+ * [subscription] chooses it, while it holds several SIMs; null while it holds one, or Android
+ * names none, for every text, as a SIM swapped keeps them.
+ */
+internal fun relayed(subscriptions: Map<Int, String>, number: String, default: Int): Int? =
+    if (subscriptions.size < 2) null else subscription(subscriptions, number, default)

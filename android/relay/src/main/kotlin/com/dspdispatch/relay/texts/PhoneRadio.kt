@@ -31,6 +31,9 @@ class PhoneRadio(private val context: Context) : Radio {
         return PhoneLine(context, manager(chosen))
     }
 
+    override fun relayed(number: String, subscription: Int) =
+        relayed(Phone.subscriptions(context, subscription), number, Phone.textingSubscription())
+
     private fun manager(subscription: Int?): SmsManager {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val manager = context.getSystemService(SmsManager::class.java)

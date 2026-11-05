@@ -123,10 +123,10 @@ class InboxTest {
         inbox.begin("phone_1", PAIRED)
         val row = Row(Table.MMS, 5, PAIRED + 10, Direction.IN)
         provider.writing += row
-        assertFalse(inbox.read())
+        assertFalse(inbox.read(null))
         // A day on, it's kept, read again only at the regular reads.
         clock += Inbox.UNREAD_MS
-        assertTrue(inbox.read())
+        assertTrue(inbox.read(null))
         assertEquals(listOf(row.key), queue.unread.keys.toList())
         assertTrue(queue.texts.isEmpty())
         // Whole at last, past the look-back and below the highest row read: it's reported.
@@ -134,7 +134,7 @@ class InboxTest {
         provider.writing.clear()
         mms(5, PAIRED + 10, Direction.IN, listOf("(206) 555-0105"), "Door")
         mms(9, clock, Direction.IN, listOf("(206) 555-0109"), "Later")
-        inbox.read()
+        inbox.read(null)
         assertEquals(setOf("mms-5-${PAIRED + 10}", "mms-9-$clock"), queue.texts.keys)
         assertTrue(queue.unread.isEmpty())
     }
@@ -148,16 +148,16 @@ class InboxTest {
         mms(6, PAIRED + 20, Direction.IN, listOf("(206) 555-0106"), "Door")
         provider.failing += failing
         sms(7, PAIRED + 30, Direction.IN, "(206) 555-0107", "Gate code?")
-        assertFalse(inbox.read())
+        assertFalse(inbox.read(null))
         assertEquals(listOf("sms-7-${PAIRED + 30}"), queue.texts.keys.toList())
         assertTrue(unexpected.single() is IllegalStateException)
         clock += Inbox.UNREAD_MOST_MS - 1
-        inbox.read()
+        inbox.read(null)
         assertEquals(setOf(empty.key, failing.key), queue.unread.keys)
         clock += 1
-        assertTrue(inbox.read())
+        assertTrue(inbox.read(null))
         assertTrue(queue.unread.isEmpty())
-        inbox.read()
+        inbox.read(null)
         assertEquals(3, unexpected.size)
     }
 
@@ -228,7 +228,7 @@ class InboxTest {
     }
 
     private suspend fun read() {
-        inbox.read()
+        inbox.read(null)
         clock += 1
     }
 

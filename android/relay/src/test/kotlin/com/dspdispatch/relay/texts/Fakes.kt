@@ -183,6 +183,8 @@ class FakeRadio : Radio {
 
     override fun smsLimit() = smsLimit
 
+    override fun relayed(number: String, subscription: Int): Int? = null
+
     override fun line(number: String, subscription: Int): Line {
         lines += number
         return object : Line {

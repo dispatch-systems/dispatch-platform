@@ -29,9 +29,10 @@ private val ROW_URI = Regex("content://(${Table.SMS.prefix}|${Table.MMS.prefix})
 
 /**
  * Which rows a read goes over, none written before [paired]: those written at or after [since],
- * and those above [sms] and [mms], the highest row IDs read before, whenever written.
+ * and those above [sms] and [mms], the highest row IDs read before, whenever written. With [sim],
+ * only that SIM's, where the provider says which SIM a text came by.
  */
-data class Scan(val paired: Long, val since: Long, val sms: Long, val mms: Long)
+data class Scan(val paired: Long, val since: Long, val sms: Long, val mms: Long, val sim: Int?)
 
 /**
  * A text as the provider holds it: [numbers], the sender of one received or each recipient of

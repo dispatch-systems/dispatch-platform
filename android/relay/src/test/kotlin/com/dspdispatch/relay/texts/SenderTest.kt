@@ -32,7 +32,7 @@ class SenderTest {
     private val sends = database.sends()
     private val radio = FakeRadio()
     private val dispatch = Dispatch(OkHttpClient(), AppVersion("1.4.0", 14))
-    private val statuses = Statuses(dispatch, sends)
+    private val statuses = Statuses(dispatch, sends) { _, _ -> }
     private val folder = Files.createTempDirectory("sending").toFile()
     private var shrink: (Int) -> ByteArray? = { ByteArray(it) }
     private val pictures = FakePictures { shrink(it) }

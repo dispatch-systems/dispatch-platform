@@ -1,11 +1,13 @@
 package com.dspdispatch.relay.texts
 
 import android.content.Context
+import com.dspdispatch.relay.Phone
 import androidx.room3.Room
-import com.dspdispatch.relay.connection.Logcat
 import com.dspdispatch.relay.connection.keepRunning
 import com.dspdispatch.relay.dispatch.Dispatch
+import com.dspdispatch.relay.dispatch.Backlog
 import com.dspdispatch.relay.dispatch.Outbox
+import com.dspdispatch.relay.health.Lapses
 import com.dspdispatch.relay.pairing.Paired
 import java.io.File
 import java.time.LocalDate
@@ -26,7 +28,7 @@ import kotlinx.coroutines.launch
  * with their pictures, read into a queue kept on the phone and reported from it; and sending the
  * DSP's from the phone, telling it how each went.
  */
-class Texts(private val context: Context, dispatch: Dispatch) {
+class Texts(private val context: Context, dispatch: Dispatch, private val lapses: Lapses) {
     /** The running screen's switch: whether a text near Android's SMS limit goes as a picture message. */
     val mmsWhenBusy = MmsWhenBusy(context)
 
@@ -35,20 +37,21 @@ class Texts(private val context: Context, dispatch: Dispatch) {
     private val sends = database.sends()
     private val provider = PhoneProvider(context.contentResolver)
     private val own = OwnRows(provider, sends, context.packageName)
-    private val inbox = Inbox(provider, queue, SentByApp(sends, context.packageName), Logcat)
+    private val inbox = Inbox(provider, queue, SentByApp(sends, context.packageName), lapses)
     private val texting = Texting { textingAllowed(context) }
-    private val reporter = Reporter(dispatch, queue, provider, texting, Jpegs(File(context.noBackupFilesDir, JPEGS), PhonePictures), Logcat)
-    private val statuses = Statuses(dispatch, sends)
+    private val reporter = Reporter(dispatch, queue, provider, texting, Jpegs(File(context.noBackupFilesDir, JPEGS), PhonePictures), lapses)
+    private val statuses = Statuses(dispatch, sends, lapses::failed)
+    private val radio = PhoneRadio(context)
     private val sender = Sender(
         dispatch,
         sends,
         own,
-        PhoneRadio(context),
+        radio,
         PictureMessage(PhonePictures),
         statuses,
         File(context.cacheDir, SENDING),
         mmsWhenBusy.on::value,
-        Logcat,
+        lapses,
     )
 
     // Android said how a text the app sent went: the row it wrote of it may be read for sure now.
@@ -74,10 +77,12 @@ class Texts(private val context: Context, dispatch: Dispatch) {
     suspend fun run(paired: Paired, key: String): Unit = coroutineScope {
         inbox.begin(paired.phoneId, paired.at)
         val wake = Channel<Unit>(Channel.CONFLATED)
-        launch { keepRunning("Reporting texts", Logcat) { reporter.run(paired.site, key, wake) } }
-        launch { keepRunning("Reporting statuses", Logcat) { statuses.run(paired.site, key) } }
-        launch { keepRunning("Sending texts", Logcat) { sender.run(paired, key) } }
-        keepRunning("Reading texts", Logcat) { reader.run { wake.trySend(Unit) } }
+        launch { keepRunning("Reporting texts", lapses) { reporter.run(paired.site, key, wake) } }
+        launch { keepRunning("Reporting statuses", lapses) { statuses.run(paired.site, key) } }
+        launch { keepRunning("Sending texts", lapses) { sender.run(paired, key) } }
+        keepRunning("Reading texts", lapses) {
+            reader.run({ radio.relayed(paired.number, paired.subscription) }) { wake.trySend(Unit) }
+        }
     }
 
     /**
@@ -85,6 +90,18 @@ class Texts(private val context: Context, dispatch: Dispatch) {
      * waiting again.
      */
     suspend fun send(paired: Paired, outbox: Outbox) = sender.take(paired, outbox)
+
+    /** Whether Android lets the app send texts. */
+    fun sending() = radio.allowed()
+
+    /** The SIM [paired]'s texts go from, as Android names it; null where it names none. */
+    fun line(paired: Paired) = subscription(Phone.subscriptions(context, paired.subscription), paired.number, Phone.textingSubscription())
+
+    /** How many texts read, their files, and statuses wait to go to Dispatch. */
+    suspend fun backlog(): Backlog = queue.backlog()
+
+    /** How many picture messages [paired]'s SIM received since it paired that the texting app hasn't downloaded. */
+    fun undownloaded(paired: Paired) = provider.undownloaded(paired.at, radio.relayed(paired.number, paired.subscription))
 
     /** Holds sending back once no text is mid-send, for the app to be replaced by its update, until [release]d. */
     suspend fun hold() = sender.hold()
