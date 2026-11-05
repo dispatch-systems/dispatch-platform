@@ -29,7 +29,9 @@ import './composer.css';
 // it goes to can't be reached, as a driver holding no work phone, what says so takes the box's
 // place (`instead`), and what's written stays, with its photos, until it can be again. What's
 // written is kept by the page (`drafts`), so it's there again as the box opens again; sent, what
-// was written and photos added while it went stay.
+// was written and photos added while it went stay. Above the box, who else is writing (`above`);
+// and where a teammate replied since the member started writing (`replied`), sending asks there
+// first, to send anyway or not.
 
 /** How often writing is said again: the server counts it for six seconds. */
 const TYPING_MS = 3000;
@@ -56,6 +58,8 @@ export function Composer({
   typing,
   label,
   instead,
+  above,
+  replied,
 }: {
   /** What's written in each box, kept by the page. */
   drafts: Drafts;
@@ -76,10 +80,16 @@ export function Composer({
   send: (text: string, photos: string[]) => Promise<void>;
   /** Says the member is writing, for the next few seconds. */
   typing?: () => void;
-  /** What sending says beside its arrow, as "Send to 8"; else the arrow alone. */
+  /** What sending says beside its arrow, as "Send to 8"; else "Send". */
   label?: string;
   /** What shows in the box's place while what it goes to can't be reached. */
   instead?: ReactNode;
+  /** What shows right above the box, as who else is writing. */
+  above?: ReactNode;
+  /** Before sending, what a teammate's reply since the member started writing says, if there's
+   * one (`check`); told as the member saw what's there now (`seen`), and to show the reply when
+   * they'd rather not send (`show`). */
+  replied?: { check: () => string | undefined; seen: () => void; show: () => void };
 }) {
   const { fail } = useFeedback();
   const text = useSyncExternalStore(
@@ -88,6 +98,8 @@ export function Composer({
   );
   const { enter_sends: enterSends } = useContext(Shown);
   const [photos, setPhotos] = useState<Added[]>([]);
+  // A teammate's reply, as it reads, asked about before sending.
+  const [asking, setAsking] = useState<string>();
   const picker = useRef<HTMLInputElement>(null);
   const field = useRef<HTMLTextAreaElement>(null);
   const said = useRef(0);
@@ -161,12 +173,26 @@ export function Composer({
     for (const photo of photos) URL.revokeObjectURL(photo.shown);
     setPhotos((now) => now.filter((photo) => !going.has(photo.key)));
     said.current = 0;
+    replied?.seen();
   });
   const uploading = photos.some((photo) => !photo.uploaded);
   const open = writable && limits !== undefined;
   const ready =
     open && whom && !send.busy && !uploading && (text.trim().length > 0 || photos.length > 0);
+  // Sends, unless a teammate replied since the member started writing: that's asked first.
+  const go = () => {
+    const reply = replied?.check();
+    if (reply) setAsking(reply);
+    else void send.run();
+  };
+  const answer = (sending: boolean) => {
+    setAsking(undefined);
+    replied?.seen();
+    if (sending) void send.run();
+    else replied?.show();
+  };
   const writing = (value: string) => {
+    if (!text.trim() && value.trim()) replied?.seen();
     drafts.write(draft, value);
     if (typing && value.trim() && Date.now() - said.current > TYPING_MS) {
       said.current = Date.now();
@@ -180,9 +206,21 @@ export function Composer({
       className="composer"
       onSubmit={(event) => {
         event.preventDefault();
-        if (ready) void send.run();
+        if (ready) go();
       }}
     >
+      {above}
+      {asking && (
+        <div className="replied" role="alert">
+          <strong>{asking}</strong>
+          <button type="button" className="primary" onClick={() => answer(true)}>
+            Send anyway
+          </button>
+          <button type="button" onClick={() => answer(false)}>
+            Cancel
+          </button>
+        </div>
+      )}
       {photos.length > 0 && (
         <ul className="adding">
           {photos.map((photo) => (
@@ -206,7 +244,8 @@ export function Composer({
             <button
               type="button"
               className="round"
-              aria-label="Attach photos"
+              aria-label="Add photo"
+              title="Add photo"
               disabled={!open || photos.length >= limits.photos}
               onClick={() => picker.current?.click()}
             >
@@ -238,7 +277,7 @@ export function Composer({
             if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
             if (!enterSends && !event.ctrlKey && !event.metaKey) return;
             event.preventDefault();
-            if (ready) void send.run();
+            if (ready) go();
           }}
         />
         {to && (
@@ -247,16 +286,10 @@ export function Composer({
             {to}
           </span>
         )}
-        {label ? (
-          <button type="submit" className="send-to" disabled={!ready}>
-            {label}
-            {sending}
-          </button>
-        ) : (
-          <button type="submit" className="round send" aria-label="Send" disabled={!ready}>
-            {sending}
-          </button>
-        )}
+        <button type="submit" className="send-to" disabled={!ready}>
+          {label ?? 'Send'}
+          {sending}
+        </button>
       </div>
     </form>
   );

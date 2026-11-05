@@ -5,7 +5,7 @@ import './route-facts.css';
 
 // Pieces of a driver's route today, as Today's Routes, a work conversation's head and the profile
 // show them: the route's code, a work phone by its last digits, how many stops are done of how
-// many, as a bar in the colour of its pace, and its pace, but on time.
+// many, as a bar in the colour of its pace and in words, and its pace, but on time.
 
 /** A route's code, as CX14. */
 export function RouteCode({ code }: { code: string }) {
@@ -32,7 +32,7 @@ export function Stops({ today }: { today: Pick<Today, 'stops' | 'stopsDone' | 'p
         <i style={{ width: `${Math.min(100, (100 * done) / today.stops)}%` }} />
       </span>
       <span className="stops">
-        {done}/{today.stops}
+        {done} of {today.stops} stops
       </span>
     </>
   );

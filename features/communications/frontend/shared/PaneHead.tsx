@@ -58,7 +58,7 @@ export function PaneHead({
                 {waitingSince !== null && ' ·'}
               </span>
             )}
-            {waitingSince !== null && <Wait since={waitingSince} now={now} />}
+            {waitingSince !== null && <Wait since={waitingSince} now={now} words />}
           </small>
         )}
       </span>

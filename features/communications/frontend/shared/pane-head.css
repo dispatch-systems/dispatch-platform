@@ -74,10 +74,6 @@
   .thread-head {
     padding: 10px 12px;
   }
-  /* Done, its mark alone, leaving who it's with the room. */
-  .thread-head .actions button > span {
-    display: none;
-  }
   .thread-head .actions button {
     padding-inline: 10px;
   }

@@ -6,15 +6,15 @@ import './thread-frame.css';
 
 // The messages of a conversation or a group, scrolling on their own: kept at the latest as more
 // come, or where they were as older ones come above, which are read as its top nears (`More`);
-// and what goes between them: the day they were written, and the time after a pause. A read that
-// failed is read again as Try again is pressed.
+// and what goes between them: the day they were written, and the time after a pause; and back at
+// the latest as asked (`latest`). A read that failed is read again as Try again is pressed.
 
 /** How near its end it still counts as at the latest, in pixels. */
 const LATEST_PX = 80;
 
 export function ThreadFrame({
   items,
-  after,
+  latest,
   more,
   readOlder,
   olderFailed,
@@ -22,8 +22,8 @@ export function ThreadFrame({
 }: {
   /** What it shows, in the order written: as they change, it keeps its place. */
   items: readonly { id: string }[];
-  /** What shows below them, as who is writing, which keeps it at the latest too. */
-  after?: readonly unknown[];
+  /** Goes to the latest as it changes, wherever it was. */
+  latest?: number;
   more: boolean;
   readOlder: () => void;
   /** Whether the latest read of older ones failed. */
@@ -43,7 +43,13 @@ export function ThreadFrame({
       element.scrollTop = was.top + element.scrollHeight - was.height;
     else if (was.latest) element.scrollTop = element.scrollHeight;
     before.current = { ...was, first, height: element.scrollHeight, top: element.scrollTop };
-  }, [items, after]);
+  }, [items]);
+  useLayoutEffect(() => {
+    const element = scroller.current;
+    if (!element || !latest) return;
+    element.scrollTop = element.scrollHeight;
+    before.current = { ...before.current, height: element.scrollHeight, top: element.scrollTop, latest: true };
+  }, [latest]);
   const scrolled = () => {
     const element = scroller.current;
     if (!element) return;

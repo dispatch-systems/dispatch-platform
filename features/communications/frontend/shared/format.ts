@@ -71,16 +71,22 @@ export function workdayLabel(day: string, timeZone: string, now = Date.now()) {
   return shown;
 }
 
-/** How long someone has waited on an answer, and how late that is: amber from 15 minutes, red from 30. */
+/** How long someone has waited on an answer, as it shows, "31 min", "2 hr", "3 days", and as it's
+ * read aloud, "31 minutes"; and how late that is: amber from 15 minutes, red from 30. */
 export function waited(since: number, now = Date.now()) {
   const minutes = Math.max(0, Math.floor((now - since) / 60_000));
-  const label =
+  const [count, shown, said] =
     minutes < 60
-      ? `${minutes}m`
+      ? [minutes, 'min', 'minute']
       : minutes < 24 * 60
-        ? `${Math.floor(minutes / 60)}h`
-        : `${Math.floor(minutes / (24 * 60))}d`;
-  return { label, tone: minutes >= 30 ? 'late' : minutes >= 15 ? 'slow' : '' };
+        ? [Math.floor(minutes / 60), 'hr', 'hour']
+        : [Math.floor(minutes / (24 * 60)), 'day', 'day'];
+  const plural = count === 1 ? '' : 's';
+  return {
+    label: `${count} ${shown === 'day' ? shown + plural : shown}`,
+    spoken: `${count} ${said}${plural}`,
+    tone: minutes >= 30 ? 'late' : minutes >= 15 ? 'slow' : '',
+  };
 }
 
 /** A file that isn't kept in Dispatch, by why. */
@@ -97,6 +103,17 @@ export const textStatus: Record<TextStatus, string> = {
   delivered: 'Delivered',
   failed: 'Not sent',
 };
+/** Why a text Dispatch sent failed, by the server's code for it, or as the phone's app wrote it, in
+ * a few words: nothing for none, or a code the page doesn't know. */
+export function whyNotSent(error: string | null) {
+  if (error === null) return '';
+  const known: Record<string, string> = {
+    phones_offline: 'Phone offline',
+    expired: 'Phone offline',
+    phones_removed: 'Phone removed',
+  };
+  return known[error] ?? (/^[a-z_]+$/.test(error) ? '' : error);
+}
 /** How a route keeps up, as it reads; on time, it's left unsaid. */
 export const paceText: Record<Pace, string> = {
   behind: 'Behind',

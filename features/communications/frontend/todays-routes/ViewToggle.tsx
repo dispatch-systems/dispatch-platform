@@ -14,11 +14,13 @@ export function ViewToggle({
 }) {
   return (
     <div className="view-toggle" role="group" aria-label="View">
-      <button aria-label="List" aria-pressed={view === 'list'} onClick={() => choose('list')}>
-        <List />
+      <button aria-pressed={view === 'list'} onClick={() => choose('list')}>
+        <List aria-hidden="true" />
+        List
       </button>
-      <button aria-label="Board" aria-pressed={view === 'board'} onClick={() => choose('board')}>
-        <Table />
+      <button aria-pressed={view === 'board'} onClick={() => choose('board')}>
+        <Table aria-hidden="true" />
+        Board
       </button>
     </div>
   );
