@@ -5,7 +5,8 @@ import './route-facts.css';
 
 // Pieces of a driver's route today, as Today's Routes, a work conversation's head and the profile
 // show them: the route's code, a work phone by its last digits, how many stops are done of how
-// many, as a bar in the colour of its pace and in words, and its pace, but on time.
+// many, as a bar in the colour of its pace and in words, "98 of 168 stops", or in a list's row,
+// short of room, "98/168", read aloud in full; and its pace, but on time.
 
 /** A route's code, as CX14. */
 export function RouteCode({ code }: { code: string }) {
@@ -22,18 +23,33 @@ export function WorkPhone({ number }: { number: string }) {
   );
 }
 
-/** How many of a route's stops are done, of how many, as a bar and in words, while it has any. */
-export function Stops({ today }: { today: Pick<Today, 'stops' | 'stopsDone' | 'pace'> }) {
+/** How many of a route's stops are done, of how many, as a bar and in words, or `short`, as
+ * "98/168", while it has any. */
+export function Stops({
+  today,
+  short,
+}: {
+  today: Pick<Today, 'stops' | 'stopsDone' | 'pace'>;
+  short?: boolean;
+}) {
   if (today.stops === null) return null;
   const done = today.stopsDone ?? 0;
+  const words = `${done} of ${today.stops} stops`;
   return (
     <>
       <span className={today.pace ? `stops-bar ${today.pace}` : 'stops-bar'} aria-hidden="true">
         <i style={{ width: `${Math.min(100, (100 * done) / today.stops)}%` }} />
       </span>
-      <span className="stops">
-        {done} of {today.stops} stops
-      </span>
+      {short ? (
+        <span className="stops">
+          <span aria-hidden="true">
+            {done}/{today.stops}
+          </span>
+          <span className="sr-only">{words}</span>
+        </span>
+      ) : (
+        <span className="stops">{words}</span>
+      )}
     </>
   );
 }
@@ -61,7 +77,7 @@ export function RouteLine({ today }: { today: Today }) {
     <>
       {today.route && <RouteCode code={today.route} />}
       {today.phone && <WorkPhone number={today.phone} />}
-      <Stops today={today} />
+      <Stops today={today} short />
       <PaceMark pace={today.pace} />
     </>
   );

@@ -191,7 +191,7 @@ test('a driver’s work conversation keeps what’s being written while they hol
   await box.fill(draft);
   const height = await box.evaluate((field) => field.getBoundingClientRect().height);
   const choosing = page.waitForEvent('filechooser');
-  await conversation.getByRole('button', { name: 'Attach photos' }).click();
+  await conversation.getByRole('button', { name: 'Add photo' }).click();
   await (await choosing).setFiles({ name: 'gate.png', mimeType: 'image/png', buffer: PIXEL });
   const picture = conversation.getByRole('img', { name: 'gate.png' });
   await expect(picture).toBeVisible();
@@ -257,7 +257,7 @@ test('a driver’s progress stays as it was last read, though another driver’s
     await route.fulfill({ response, json: read });
   });
   await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-  await expect(profile.getByText('98/168')).toBeVisible();
+  await expect(profile.getByText('98 of 168 stops')).toBeVisible();
 
   // Second Driver is texted, which reads Today's Routes again, and that read fails: Fixture
   // Driver's conversation, not read again and so older, doesn't take their progress back.
@@ -267,5 +267,5 @@ test('a driver’s progress stays as it was last read, though another driver’s
   );
   await northline.text('driver-2', 'Running 20 late');
   await expect(list.getByRole('alert')).toHaveText('Something went wrong.');
-  await expect(profile.getByText('98/168')).toBeVisible();
+  await expect(profile.getByText('98 of 168 stops')).toBeVisible();
 });

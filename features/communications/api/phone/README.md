@@ -169,7 +169,7 @@ How the attempts at the outbox's texts went:
 
 - `id` and `attempt`: as the outbox gave them. `status`: `sent`, `delivered` or `failed`, and
   `at`, when it was. `error`: why it failed, at most 500 characters (`ERROR_MOST`), kept with
-  `failed` alone.
+  `failed` alone and shown as written beside Not sent, so a few plain words, as "No service".
 
 Answers `{ "ok": true }`. Reporting is idempotent, and order doesn't matter: a status only moves
 on, waiting to sent to delivered, waiting or sent to failed; sent or failed counts only for the

@@ -48,7 +48,12 @@ export function ThreadFrame({
     const element = scroller.current;
     if (!element || !latest) return;
     element.scrollTop = element.scrollHeight;
-    before.current = { ...before.current, height: element.scrollHeight, top: element.scrollTop, latest: true };
+    before.current = {
+      ...before.current,
+      height: element.scrollHeight,
+      top: element.scrollTop,
+      latest: true,
+    };
   }, [latest]);
   const scrolled = () => {
     const element = scroller.current;

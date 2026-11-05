@@ -68,6 +68,8 @@ pub trait TextStore {
     /// the one seen last: refused as `invalid_input` for a number that isn't one, or a text with
     /// nothing in it or past `LIMITS`.
     fn phones_send(&self, dsp: &str, outgoing: &Outgoing, at: i64) -> Result<Text>;
+    /// Queues again the failed text `id` Dispatch sent, from the phone it went from: refused as
+    /// `phones_removed` once that phone was removed, as no phone would send it.
     fn phones_retry(&self, dsp: &str, id: &str, at: i64) -> Result<Text>;
     /// Has the demo's stand-in phone say the text it was given delivered, at once.
     fn phones_stand_in_delivered(&self, dsp: &str, id: &str, at: i64) -> Result<()>;
@@ -264,6 +266,15 @@ impl TextStore for Store {
                  AND device_id IN (SELECT id FROM phones_devices WHERE removed_at IS NULL)",
                 params![at, change, id],
             )?;
+            if changed == 0 {
+                let removed = db.one(
+                    "SELECT 1 FROM phones_texts t JOIN phones_devices d ON d.id=t.device_id \
+                     WHERE t.id=? AND t.origin='dispatch' AND t.status='failed' \
+                     AND d.removed_at IS NOT NULL",
+                    [id],
+                )?;
+                ensure(removed.is_none(), PHONE_REMOVED, 409)?;
+            }
             ensure(changed == 1, "phones_text_not_found", 404)
         })?;
         drop(db);

@@ -26,10 +26,12 @@ export function repliedSince(messages: readonly Message[], since: number, me: st
   return latest;
 }
 
-/** "Keisha just replied": a teammate by their first name, the phone by its own. */
+/** "Keisha just replied": a teammate by their first name, the phone by its own; "Someone" for
+ * one without a name. */
 export function repliedText(message: Message) {
   const sender = message.sender!;
-  return `${sender.userId ? sender.name.split(' ')[0] : sender.name} just replied`;
+  const name = sender.userId ? sender.name.split(' ')[0] : sender.name;
+  return `${name || 'Someone'} just replied`;
 }
 
 /**

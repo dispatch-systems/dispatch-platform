@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Message, Sender } from '../../api/index.js';
 import { fresh, runs } from '../../frontend/conversations/messages.js';
-import { isPhoto } from '../../frontend/shared/format.js';
+import { latestAt, repliedSince, repliedText } from '../../frontend/conversations/replied.js';
+import { isPhoto, whyNotSent } from '../../frontend/shared/format.js';
 
 /** A text written `minutes` past 4 PM: from the number a conversation is with, or by `sender`. */
 const text = (id: string, minutes: number, sender: Sender | null = null): Message => {
@@ -19,6 +20,7 @@ const text = (id: string, minutes: number, sender: Sender | null = null): Messag
     files: [],
     group: null,
     status: null,
+    error: null,
     number: '+14255550199',
   };
 };
@@ -73,4 +75,42 @@ test('the page shows pictures of the kinds browsers show, and offers others to d
   for (const kind of ['png', 'jpeg', 'gif', 'webp', 'avif']) assert.ok(isPhoto(`image/${kind}`));
   for (const kind of ['image/heic', 'image/heif', 'image/svg+xml', 'application/pdf'])
     assert.ok(!isPhoto(kind));
+});
+
+test('Send asks first once a teammate or the phone wrote after what the member started writing from', () => {
+  const me = { ...phone('', 'Dana Cole'), userId: 'user_dana', phoneId: null };
+  const keisha = { ...phone('', 'Keisha Brown'), userId: 'user_keisha', phoneId: null };
+  const shown = [text('asked', 0), text('mine', 1, me)];
+  const since = latestAt(shown);
+  // Nothing since, or only the member's own, or the employee writing again: it sends.
+  assert.equal(repliedSince(shown, since, 'user_dana'), undefined);
+  const theirs = [...shown, text('mine again', 2, me), text('again', 3)];
+  assert.equal(repliedSince(theirs, since, 'user_dana'), undefined);
+  // A teammate's answer since, even with the employee's after it, the latest of them by when.
+  const answered = [...theirs, text('on it', 4, keisha), text('thanks', 5)];
+  const reply = repliedSince(answered, since, 'user_dana');
+  assert.equal(reply?.id, 'on it');
+  assert.equal(repliedText(reply!), 'Keisha just replied');
+  // Already there as the member started, it's no news.
+  assert.equal(repliedSince(answered, latestAt(answered), 'user_dana'), undefined);
+  // Typed on the phone itself, by the phone's name.
+  const fromPhone = repliedSince(
+    [...shown, text('ok', 6, phone('phone_1', 'Dispatch 2'))],
+    since,
+    'user_dana',
+  );
+  assert.equal(repliedText(fromPhone!), 'Dispatch 2 just replied');
+  // A teammate without a name on their account.
+  const nameless = text('ok', 7, { ...keisha, name: '' });
+  assert.equal(repliedText(nameless), 'Someone just replied');
+});
+
+test('a text that failed says why in a few words: the server’s codes worded, the phone’s as it wrote them', () => {
+  assert.equal(whyNotSent('phones_offline'), 'Phone offline');
+  assert.equal(whyNotSent('expired'), 'Phone offline');
+  assert.equal(whyNotSent('phones_removed'), 'Phone removed');
+  assert.equal(whyNotSent('No service'), 'No service');
+  // None, or a code the page doesn't know, says nothing beside Not sent.
+  assert.equal(whyNotSent(null), '');
+  assert.equal(whyNotSent('phones_something_new'), '');
 });

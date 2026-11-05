@@ -89,7 +89,7 @@ test('with its phone and no Slack, Communications opens on Recents, where its te
   await expect(headings.nth(1)).toHaveText('Today');
   // A picture goes by text too, kept by the phone, and shows as sent.
   const choosing = page.waitForEvent('filechooser');
-  await jamie.getByRole('button', { name: 'Attach photos' }).click();
+  await jamie.getByRole('button', { name: 'Add photo' }).click();
   await (await choosing).setFiles({ name: 'door.png', mimeType: 'image/png', buffer: PIXEL });
   await jamie.getByRole('button', { name: 'Send' }).click();
   // Pressed, it opens over the page, focus inside it, and Escape closes it, focus back on it.
@@ -104,9 +104,13 @@ test('with its phone and no Slack, Communications opens on Recents, where its te
   await expect(viewer).toHaveCount(0);
   await expect(door).toBeFocused();
 
-  // Blocked, it leaves Messages for Contacts' Blocked, until it's unblocked.
+  // Blocked once asked, it leaves Messages for Contacts' Blocked, until it's unblocked.
   await jamie.getByLabel('More').click();
   await jamie.getByRole('button', { name: 'Block', exact: true }).click();
+  await page
+    .getByRole('dialog', { name: 'Block (425) 555-0199?' })
+    .getByRole('button', { name: 'Block' })
+    .click();
   await expect(list.getByRole('listitem').filter({ hasText: 'Jamie Ortiz' })).toHaveCount(0);
   await page.getByRole('tab', { name: 'Contacts' }).click();
   const contacts = page.getByRole('region', { name: 'Contacts' });

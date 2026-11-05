@@ -5,7 +5,7 @@
 //! their conversations of other kinds.
 use super::{
     live_day::{self, LiveDay},
-    model::{Text, TextConversation},
+    model::{Text, TextConversation, TextStatus},
     numbers::Numbers,
     storage::TextStore,
     workdays,
@@ -102,7 +102,8 @@ pub fn conversations(
 }
 
 /// `kept` as the page reads them: the DSP's under who sent each, by their account, or the phone's
-/// own, under its name, with each picture and file, and how one Dispatch sent went.
+/// own, under its name, with each picture and file, and how one Dispatch sent went, and why it
+/// failed.
 pub fn messages(people: &People, numbers: &Numbers, kept: Vec<Text>) -> Vec<Message> {
     kept.into_iter()
         .map(|text| Message {
@@ -139,6 +140,7 @@ pub fn messages(people: &People, numbers: &Numbers, kept: Vec<Text>) -> Vec<Mess
             edited_at: None,
             in_thread: false,
             group: None,
+            error: text.error.filter(|_| text.status == Some(TextStatus::Failed)),
             status: text.status,
             number: Some(text.number),
         })

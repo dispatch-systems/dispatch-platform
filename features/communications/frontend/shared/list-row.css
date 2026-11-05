@@ -89,37 +89,33 @@
   font-size: var(--small-size);
   white-space: nowrap;
 }
-/* Pointed at or reached by the keyboard beside the conversation, a waiting one shows the check
-   that marks it done (below). */
+/* A waiting one's check that marks it done, beside it at its end, the row kept clear of it so
+   when it was written and how long it waits still show. */
+.convo.waits .convo-open {
+  padding-right: calc(var(--round-size) + var(--gap) * 1.4);
+}
 .convo-done {
   position: absolute;
   top: 50%;
-  right: 18px;
-  display: none;
+  right: calc(var(--gap) * 0.6);
+  display: inline-flex;
   width: var(--round-size);
   min-height: var(--round-size);
   height: var(--round-size);
   padding: 0;
   border-radius: 50%;
   background: var(--card);
-  box-shadow: 0 2px 6px var(--shadow-color);
+  color: var(--muted-foreground);
   transform: translateY(-50%);
+}
+.convo-done:hover {
+  border-color: var(--primary);
+  background: var(--card);
+  color: var(--primary);
 }
 .convo-done svg {
   width: 47%;
   height: 47%;
-}
-@container communications (width >= 680px) {
-  .convo:hover .convo-done,
-  .convo:focus-within .convo-done {
-    display: inline-flex;
-  }
-  .convo.waits:hover time,
-  .convo.waits:hover .wait,
-  .convo.waits:focus-within time,
-  .convo.waits:focus-within .wait {
-    visibility: hidden;
-  }
 }
 
 /* As the member chose in Message display: no photos in the list. */

@@ -29,6 +29,7 @@ const waits = (conversation: string, id: string, group: string | null = null): W
     editedAt: null,
     inThread: false,
     status: null,
+    error: null,
     sender: null,
     files: [],
     group: null,

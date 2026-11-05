@@ -2,7 +2,7 @@
 //! phone reports, each kept once, and how Dispatch's texts go.
 use super::*;
 use crate::backend::phone::{
-    model::{Direction, Origin, Status},
+    model::{Direction, Origin, PHONE_REMOVED, Status},
     storage::{DeviceStore, FileStore, Pairing, ReportedFile},
     support::{outgoing, paired, reported, store},
 };
@@ -142,11 +142,11 @@ fn how_a_text_went_only_moves_on() {
     let theirs = attempt_of(&other.id);
     let foreign = report(&other.id, theirs, Status::Sent);
     assert!(!db.phones_status(&dsp, "phone_other", &foreign).unwrap());
-    // A text whose phone was removed isn't tried again: no phone would send it.
+    // A text whose phone was removed isn't tried again: no phone would send it, as it says.
     assert!(status(&other.id, theirs, Status::Failed));
     db.phones_remove(&dsp, &phone.id, 11_000).unwrap();
     let orphan = db.phones_retry(&dsp, &other.id, 12_000);
-    assert_eq!(orphan.unwrap_err().code.as_str(), "phones_text_not_found");
+    assert_eq!(orphan.unwrap_err().code.as_str(), PHONE_REMOVED);
 }
 
 #[test]
