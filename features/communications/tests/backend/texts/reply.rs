@@ -41,7 +41,8 @@ async fn an_answer_that_failed_leaves_it_waiting_and_retry_sends_it_again() {
         state.read(move |db| Ok(one(db, &shared, &at, &id)?.state))
     };
 
-    // The phone fails to send it: the answer shows so, under who wrote it, and it still waits.
+    // The phone fails to send it: the answer shows so, why, under who wrote it, and it still
+    // waits.
     let answer = send(
         &state,
         &c,
@@ -68,8 +69,12 @@ async fn an_answer_that_failed_leaves_it_waiting_and_retry_sends_it_again() {
         .await
         .unwrap();
     assert_eq!(
-        (failed.status, failed.sender.unwrap().name.as_str()),
-        (Some(TextStatus::Failed), "Test Owner")
+        (
+            failed.status,
+            failed.error.as_deref(),
+            failed.sender.unwrap().name.as_str()
+        ),
+        (Some(TextStatus::Failed), Some("No service"), "Test Owner")
     );
     assert_eq!(state_of().await.unwrap(), ConversationState::Waiting);
 
@@ -78,8 +83,8 @@ async fn an_answer_that_failed_leaves_it_waiting_and_retry_sends_it_again() {
         .await
         .unwrap();
     assert_eq!(
-        (again.id, again.status),
-        (failed.id, Some(TextStatus::Waiting))
+        (again.id, again.status, again.error),
+        (failed.id, Some(TextStatus::Waiting), None)
     );
     assert_eq!(state_of().await.unwrap(), ConversationState::Responded);
     // Another conversation's text isn't this one's to send again.

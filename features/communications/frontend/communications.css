@@ -59,6 +59,12 @@
   flex: 1;
   min-height: 0;
 }
+/* On a touch screen, round buttons are at least 40px, to be pressed with a finger. */
+@media (pointer: coarse) {
+  .communications {
+    --round-size: max(40px, calc(32px * var(--scale)));
+  }
+}
 [data-theme='dark'] .communications {
   --bubble-in: #262f3f;
   --bubble-out: #3a62e6;

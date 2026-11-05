@@ -89,9 +89,10 @@ and every other number's in Recents.
   reads as every one once the workspace is no longer one of two or more where it works. Then
   Search, and Messages or Contacts, whichever Search searches, by a name, misspelt or not,
   marking the letters that matched.
-- **Messages:** Waiting, the longest waiting first, each with how long it has, amber from 15
-  minutes and red from 30, and a check, shown as it's pointed at or reached by the keyboard
-  beside the conversation, that marks it done without a reply; then Responded, the latest
+- **Messages:** Waiting, the longest waiting first, each with how long it has in plain words, "31
+  min", "2 hr", "3 days" (read aloud in full, "Waiting 31 minutes"), amber from 15 minutes and red
+  from 30, and beside it a check, Done named for whom it's with, that marks it done without a
+  reply; then Responded, the latest
   first; older ones read as the list is scrolled to its end, and once a read of them failed, as
   Try again is pressed. Each shows who it's with, by their
   photo, when they last wrote, and what was written last, under the first name of whoever at the
@@ -104,15 +105,24 @@ and every other number's in Recents.
   and role, and with every workspace shown, the one they're in; how long they've waited, or
   when they last wrote. Each opens their conversation, or starts one, as New message does.
 - **A conversation:** who it's with, the workspace it's in while there are several, and, while
-  it waits, how long and Done; its messages under the day each was written, the member's beside
+  it waits, how long, "Waiting 31 min", and Done, by its word on a phone too; its messages under the day each was written, the member's beside
   their photo, the DSP's under the name and photo of whoever sent them, each edited in Slack
   marked Edited, a reply in one of its threads in its place among them, photos shown and other
   files to download, or why one isn't kept; older ones read as it's scrolled to its start, and
-  once a read of them failed, as Try again is pressed; and those at the DSP writing in it now. A
-  read that failed says why, with Try again. Writing in it: text, with photos attached (the
-  paperclip), as much as one message carries as the conversation's read says (`limits`), which
-  what's refused says too, and nothing until it's read; Enter to send; while writing, teammates
-  see it. What's written and not sent is kept, each conversation's and each group's, while the
+  once a read of them failed, as Try again is pressed. A read that failed says why, with Try
+  again. Right above its box, however its messages are scrolled, who else at the DSP is writing
+  in it, "Keisha is typing…", said to a screen reader as it changes. Writing in it: text, with
+  photos added (Add photo), as much as one message carries as the conversation's read says
+  (`limits`), which what's refused says too, and nothing until it's read; Enter or **Send** to
+  send; while writing, teammates see it. Where a teammate, or the phone itself, wrote in it since
+  the member started writing, since it opened with what they'd written, or since they last
+  answered this, Send asks first, above the box: "Keisha just replied", with **Send anyway** and
+  **Cancel**, which keeps what's written and shows the reply. It's told from what the page holds,
+  the latest read's messages and the last each update brings, never older ones read since, by
+  which were held, not when each was written; a reply once held counts until the member answers
+  it or starts a new draft, as an empty box gains text or a photo, which also puts the question
+  away (`frontend/conversations/replied.ts`).
+  What's written and not sent is kept, each conversation's and each group's, while the
   page is open and in the browser's tab for each member at each DSP, so it's there again as it
   opens again, after a reload too (`frontend/conversations/drafts.ts`); the photos go as it
   closes. Sent, what was written and photos added while it went stay, and the conversation shows
@@ -165,10 +175,11 @@ stay; the next day's drivers fill it as its live reads start.
 - **The list:** the drivers by name, A to Z, waiting or not; then the work phones nobody had (No
   driver), the latest written in first. Each row as a conversation's in the other sections, and
   under it the driver's route code, the work phone they have now by its last four digits, a bar
-  of the stops done, `98/168`, in the colour of its pace, and its pace but on time: Behind, At
-  risk (Amazon's `BEHIND`, `AT_RISK`), or Done, every stop of it. A driver without a conversation
+  of the stops done, `98/168` (read aloud "98 of 168 stops", as the board and the profile show
+  it), in the colour of its pace, and its pace but on time: Behind, At risk (Amazon's `BEHIND`,
+  `AT_RISK`), or Done, every stop of it. A driver without a conversation
   yet opens one, to text them first.
-- **The board:** beside Search, the list or the board, remembered in the browser for each member
+- **The board:** beside Search, List or Board, each by its word, remembered in the browser for each member
   at each DSP, and not offered one pane at a time: the same groups as a table across the page,
   each driver a line of route, wave, van, work phone, stops and pace, and the last text with how
   long it has waited or when. It shows while nothing is open: one chosen there, or opened by a
@@ -241,13 +252,15 @@ from people who may or may not work for the DSP.
   characters, shared by everyone at the DSP. A driver picked or a name changed is never left
   unsaved without Save changes? asking to save or discard it, and Escape closes it with focus
   back on its button. Its menu: **Remove from** whoever the number was added to, **Copy
-  number** and **Block** or **Unblock**. A number blocked leaves Messages and the counts, and
+  number** and **Block**, once asked "Block (425) 555-0199?", or **Unblock**. A number blocked leaves Messages and the counts, and
   what it sends while blocked never makes it wait, then or once unblocked; its texts are still
   kept. Its texts as Slack's messages show, the other party's by their face or a phone; the DSP's
   under who wrote each, or the phone's name and mark for one sent from the phone's own messaging
   app; each picture shown, as the phone keeps it (PNG, JPEG, GIF, WebP or AVIF; an iPhone's HEIF
   photo as the JPEG the phone's app makes of it), any other file a download. Under a text the DSP sent, the last of a run or
-  one that failed: Sending, Sent, Delivered, or Not sent with **Retry**.
+  one that failed: Sending, Sent, Delivered, or Not sent with why, where it's known, and
+  **Retry**: Phone offline (`phones_offline`, or the phone's `expired`), Phone removed
+  (`phones_removed`), or the phone's own words, as "No service".
 - **Writing:** text, with pictures (PNG, JPEG or GIF, by their stated type), as much as one text
   carries (`compose::TEXT`, as the phones hold one to: 10,000 characters and ten pictures of up
   to 20 MB each), Enter to send, the number's last four digits beside it while the

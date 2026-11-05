@@ -7,7 +7,7 @@ import './pane-head.css';
 // The head of what's open, a conversation or a group: the way back to the list, on a phone; who
 // it's with, by their face and name, what's said of them, and while it waits how long, which opens
 // their profile or its people where there's one; what else can be done with it; and while it
-// waits, Done, on a phone its mark alone.
+// waits, Done, by its word, on a phone under who it's with where there isn't room beside them.
 
 export function PaneHead({
   face,
@@ -58,7 +58,7 @@ export function PaneHead({
                 {waitingSince !== null && ' ·'}
               </span>
             )}
-            {waitingSince !== null && <Wait since={waitingSince} now={now} />}
+            {waitingSince !== null && <Wait since={waitingSince} now={now} words />}
           </small>
         )}
       </span>

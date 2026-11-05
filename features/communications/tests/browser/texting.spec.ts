@@ -1,4 +1,10 @@
-import { test, expect, login, openDsp } from '../../../../core/shell/tests/support/fixtures.js';
+import {
+  test,
+  expect,
+  demo,
+  login,
+  openDsp,
+} from '../../../../core/shell/tests/support/fixtures.js';
 import { connect, event, fromSlack, install } from '../../../slack/tests/support/slack.js';
 
 // The seeded DSP texts through its demo's stand-in phone, (206) 555-0100, which received three
@@ -89,7 +95,7 @@ test('with its phone and no Slack, Communications opens on Recents, where its te
   await expect(headings.nth(1)).toHaveText('Today');
   // A picture goes by text too, kept by the phone, and shows as sent.
   const choosing = page.waitForEvent('filechooser');
-  await jamie.getByRole('button', { name: 'Attach photos' }).click();
+  await jamie.getByRole('button', { name: 'Add photo' }).click();
   await (await choosing).setFiles({ name: 'door.png', mimeType: 'image/png', buffer: PIXEL });
   await jamie.getByRole('button', { name: 'Send' }).click();
   // Pressed, it opens over the page, focus inside it, and Escape closes it, focus back on it.
@@ -104,9 +110,13 @@ test('with its phone and no Slack, Communications opens on Recents, where its te
   await expect(viewer).toHaveCount(0);
   await expect(door).toBeFocused();
 
-  // Blocked, it leaves Messages for Contacts' Blocked, until it's unblocked.
+  // Blocked once asked, it leaves Messages for Contacts' Blocked, until it's unblocked.
   await jamie.getByLabel('More').click();
   await jamie.getByRole('button', { name: 'Block', exact: true }).click();
+  await page
+    .getByRole('dialog', { name: 'Block (425) 555-0199?' })
+    .getByRole('button', { name: 'Block' })
+    .click();
   await expect(list.getByRole('listitem').filter({ hasText: 'Jamie Ortiz' })).toHaveCount(0);
   await page.getByRole('tab', { name: 'Contacts' }).click();
   const contacts = page.getByRole('region', { name: 'Contacts' });
@@ -345,4 +355,96 @@ test('with Slack needing an update, Recents still works, and Update Slack covers
     'aria-selected',
     'true',
   );
+});
+
+test('a teammate typing shows above the box, and their reply since the member started writing, with text or a photo, is asked about before sending, also once an earlier send ends, until the draft starts again, and sent anyway only once it can go', async ({
+  page,
+  dispatch,
+}) => {
+  // The demo's member, a teammate here once their role has Communications.
+  const owner = await dispatch.client();
+  const north = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
+  await owner.select(north.id);
+  const role = (await owner.get('/api/dsp/roles')).value.find(
+    (r: { name: string }) => r.name === 'Member',
+  );
+  const granted = await owner.post(`/api/dsp/roles/${role.id}`, {
+    name: 'Member',
+    permissions: [...role.permissions, 'communications.use'],
+  });
+  expect(granted.status).toBe(200);
+  const teammate = await dispatch.client(demo.member);
+  await teammate.select(north.id);
+  const { conversations } = await teammate.read('/api/dsp/communications');
+  const id = conversations.find((c: { number: string }) => c.number === '+14255550199').id;
+
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await page.getByRole('link', { name: 'Communications' }).click();
+  await page
+    .getByRole('region', { name: 'Conversations' })
+    .getByRole('listitem')
+    .filter({ hasText: '(425) 555-0199' })
+    .getByRole('button')
+    .first()
+    .click();
+  const conversation = page.getByRole('region', { name: '(425) 555-0199' });
+  const box = conversation.getByLabel('Message');
+  const send = conversation.getByRole('button', { name: 'Send', exact: true });
+  await expect(box).toBeEnabled();
+  expect((await teammate.post(`/api/dsp/communications/conversations/${id}/typing`)).status).toBe(
+    200,
+  );
+  await expect(conversation.getByRole('status').filter({ hasText: 'is typing…' })).toBeVisible();
+
+  // The member's send held, they write again, and the teammate replies before it ends: what
+  // they wrote since is still asked about.
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route('**/api/dsp/communications/conversations/*/messages', async (route) => {
+    if (route.request().method() === 'POST') await held;
+    await route.continue();
+  });
+  await box.fill('On my way');
+  await send.click();
+  await expect(box).toHaveValue('');
+  await box.fill('The gate code is 4412');
+  const reply = await teammate.post(`/api/dsp/communications/conversations/${id}/messages`, {
+    text: 'Calling them now',
+  });
+  expect(reply.status).toBe(201);
+  await expect(conversation.getByText('Calling them now')).toBeVisible();
+  release();
+  await expect(conversation.getByText('On my way')).toBeVisible();
+  await send.click();
+  const asking = conversation.getByRole('alert');
+  await expect(asking).toContainText('just replied');
+
+  // Send anyway goes only as Send would: not with nothing to send. Written anew, the draft
+  // starts again, no longer asked about, and Send sends it.
+  const anyway = asking.getByRole('button', { name: 'Send anyway' });
+  await box.fill('');
+  await expect(anyway).toBeDisabled();
+  await box.fill('Gate code is 4412');
+  await expect(asking).toHaveCount(0);
+  await send.click();
+  await expect(conversation.getByText('Gate code is 4412')).toBeVisible();
+  await expect(asking).toHaveCount(0);
+
+  // A photo starts a draft too: a reply before its caption is still asked about, and it goes
+  // anyway.
+  const choosing = page.waitForEvent('filechooser');
+  await conversation.getByRole('button', { name: 'Add photo' }).click();
+  await (await choosing).setFiles({ name: 'gate.png', mimeType: 'image/png', buffer: PIXEL });
+  const again = await teammate.post(`/api/dsp/communications/conversations/${id}/messages`, {
+    text: 'Sending them a photo too',
+  });
+  expect(again.status).toBe(201);
+  await expect(conversation.getByText('Sending them a photo too')).toBeVisible();
+  await box.fill('This gate');
+  await send.click();
+  await expect(asking).toContainText('just replied');
+  await anyway.click();
+  await expect(asking).toHaveCount(0);
+  await expect(conversation.getByText('This gate')).toBeVisible();
 });
