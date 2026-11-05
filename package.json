@@ -2,6 +2,7 @@
   "name": "dispatch-platform",
   "version": "0.0.19",
   "private": true,
+  "description": "Throwaway CI test: not for merging.",
   "license": "FSL-1.1-ALv2",
   "type": "module",
   "engines": {
