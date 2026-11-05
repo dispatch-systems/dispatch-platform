@@ -116,7 +116,8 @@ and every other number's in Recents.
   the member started writing, since it opened with what they'd written, or since they last
   answered this, Send asks first, above the box: "Keisha just replied", with **Send anyway** and
   **Cancel**, which keeps what's written and shows the reply. It's told from what the page holds,
-  the messages read and the last each update brings (`frontend/conversations/replied.ts`). What's written and not sent is kept, each conversation's and each group's, while the
+  the messages read and the last each update brings (`frontend/conversations/replied.ts`).
+  What's written and not sent is kept, each conversation's and each group's, while the
   page is open and in the browser's tab for each member at each DSP, so it's there again as it
   opens again, after a reload too (`frontend/conversations/drafts.ts`); the photos go as it
   closes. Sent, what was written and photos added while it went stay, and the conversation shows
@@ -254,8 +255,7 @@ from people who may or may not work for the DSP.
   photo as the JPEG the phone's app makes of it), any other file a download. Under a text the DSP sent, the last of a run or
   one that failed: Sending, Sent, Delivered, or Not sent with why, where it's known, and
   **Retry**: Phone offline (`phones_offline`, or the phone's `expired`), Phone removed
-  (`phones_removed`), or the phone's own words, as "No service". Retry of a text whose phone was
-  removed is refused as `phones_removed` (409).
+  (`phones_removed`), or the phone's own words, as "No service".
 - **Writing:** text, with pictures (PNG, JPEG or GIF, by their stated type), as much as one text
   carries (`compose::TEXT`, as the phones hold one to: 10,000 characters and ten pictures of up
   to 20 MB each), Enter to send, the number's last four digits beside it while the
@@ -297,7 +297,8 @@ decides ([Texts](#texts)).
   Phone 2 and so on, until renamed.
 - **Removed:** a phone removed keeps its texts; its key works no more, and its next call is
   refused as `phones_removed`. The texts Dispatch queued that still wait on it fail as it's
-  removed, with `phones_removed` as their error, filed as they fail.
+  removed, with `phones_removed` as their error, filed as they fail; those waiting on a phone
+  offline fail as they expire ([Texts](#texts)).
 - **Their address:** `/api/communications/phone/…`, at the DSP's own address alone, never from a
   browser (a request with a cookie is refused) but for the app, while the DSP is active and
   Communications is on there (`phones_off` otherwise): pairing by the code, and the app, public;
@@ -372,27 +373,37 @@ queues a text for a phone.
   Communications was off or a hearing failed, is repaired by the next pass; an earlier day's only
   as Routes says it changed.
 - **Waiting:** as a Slack conversation's: a text in after the latest text out that didn't fail,
-  and not covered by a Done. Done marks each text in it covers, which stays handled wherever it's
-  filed again, never handling a text it didn't cover. A failed answer leaves it waiting. A work conversation waits only on what was
-  written on the live day, while live route data holds today: from the first text in on it
-  after its latest answer or Done, though it came before the day's first live read; so at the
-  stop, as live route data empties, none waits or counts, and the next day starts afresh. Each
+  and not covered by a Done. Done marks each text in it covers, those up to the latest the page
+  showed, which stays handled wherever it's filed again, never handling a text it didn't cover. A
+  failed answer leaves it waiting; one queued counts as an answer until it fails. A work
+  conversation waits only on what was written on the live day, while live route data holds
+  today: from the first text in on it after its latest answer or Done, though it came before the
+  day's first live read; so at the stop, as live route data empties, none waits or counts, and
+  the next day starts afresh. Each
   time today's route data changes, the work conversations waiting by their texts are noted
   changed, so the pages waiting on changes hear the day begin or end, and so is every driver's,
   so one open hears their work phone change, or none shown any more.
 - **Answering:** what someone at the DSP writes goes as written, nothing added, from the phone that
-  last texted that number, else the one seen last, with its pictures, kept by the phone side as
-  they're added, the adder's alone until they go, and none of one kept should the adder's access end
-  while its bytes come. A number's conversation, and a work phone's nobody had, answer their number;
-  a driver's, the work phone they have now: their latest of today, as live route data reads it, but
-  one that's another driver's latest too, which is no one driver's; refused while they have none
-  (`communications_no_work_phone`). Filed as it's queued, under the full name of whoever sent it
-  (`sent_by`), taken as it's first filed, however it was sent. Retry sends again one
-  Dispatch sent that failed, while its phone is still paired, and only where a text written now
-  would go: in a driver's, refused while they have no work phone (`communications_no_work_phone`) or
-  have another (`communications_work_phone_changed`), as the one it went to may be another driver's
-  since. Either is queued, and filed, in the write that checks where it goes and the member's
-  access (`phone::outbox`), so a handoff, the stop or a change of their access can't come between.
+  last texted that number, else the one seen last, one online before any offline, with its
+  pictures, kept by the phone side as they're added, the adder's alone until they go, and none of
+  one kept should the adder's access end while its bytes come. A number's conversation, and a work
+  phone's nobody had, answer their number; a driver's, the work phone they have now: one they were
+  picked for today (Pick driver) that's no one driver's latest, as its texts are filed under them;
+  else their latest of today, as live route data reads it, but one that's another driver's latest
+  too, which is no one driver's; refused while they have none (`communications_no_work_phone`). Today's Routes and their Work chip show the same phone. Filed
+  as it's queued, under the full name of whoever sent it (`sent_by`), taken as it's first filed,
+  however it was sent. Retry sends again one Dispatch sent that failed, from the phone a new text
+  to its number would go from (`phones_none` while none is paired), and only where a text written
+  now would go: in a driver's, refused while they have no work phone
+  (`communications_no_work_phone`) or have another (`communications_work_phone_changed`), as the
+  one it went to may be another driver's since. Either is queued, and filed, in the write that
+  checks where it goes and the member's access (`phone::outbox`), so a handoff, the stop or a
+  change of their access can't come between.
+- **Expiry:** a text queued, or tried again, goes only within ten minutes (`EXPIRY_MS`): the phone
+  never starts it after, and says it failed (`expired`). One still waiting as it expires on a
+  phone offline then, not checked in for two minutes, fails, by every minute's upkeep, with
+  `phones_offline` as its error, filed as it fails, so its conversation waits again and Retry
+  sends it anew. Should the phone say that attempt was sent after all, it counts.
 
 ## Messaging a group
 
@@ -521,9 +532,11 @@ in their own direct message with the app, and their answers come back together.
 
 A conversation waits (`waiting`) while the member's latest message came after anyone at the DSP
 answered it or marked it done, since the first of their messages after that. An answer makes it
-`responded`; Done, `done`, answered without a reply; a new message from the member, waiting
-again. It follows from its messages in the order they were written, so one caught up later,
-written before an answer, leaves it answered.
+`responded`; Done, `done`, answered without a reply, covering what was written up to the latest
+message the page showed, to its `ts`, so one it hadn't shown yet, kept before the Done or after,
+keeps it waiting; a new message from the member, waiting again. It follows from its messages in
+the order they were written, so one caught up later, written before an answer, leaves it
+answered.
 
 ## Live
 
@@ -679,7 +692,9 @@ Behind `communications.use`:
   the answer went, what went is kept, and the answer refused.
 - `POST …/conversations/{id}/messages/{message}/retry`: sends again a text Dispatch sent that
   failed.
-- `POST …/conversations/{id}/done`, and `…/typing`, which says the member is writing.
+- `POST …/conversations/{id}/done` (`seen`, the place of the latest message the page showed, as
+  `before` names it): covering only what was written up to it, so a message the page hadn't shown
+  still waits; without it, everything. And `…/typing`, which says the member is writing.
 - `POST …/conversations/{id}/contact` (`name`), `…/block` and `…/unblock`: a number's
   conversation's, as the number's.
 - `POST …/texts/conversations` (`number`, or `driverId` for one of today's drivers): opens the
@@ -700,11 +715,15 @@ Behind `communications.use`:
   group, sent in the background.
 - `GET …/groups/{id}`, `?before=<at>:<id>`: a group and its fifty latest messages and answers, or
   those before one, each of the DSP's with how far it has gone (`progress`), and what a message
-  to its people may carry (`limits`, a Slack message's).
+  to its people may carry (`limits`, a Slack message's). In the order written: within a
+  millisecond, the DSP's first, then the answers by Slack's `ts`, then by ID, the order its paging
+  and Done go by too.
 - `GET …/groups/{id}/people`: who it went to, who first sent it and when, and where it stands
   with each.
-- `POST …/groups/{id}/messages` (`text`, `photos`), to the same people; `POST …/groups/{id}/done`,
-  for each conversation listed under it that waits.
+- `POST …/groups/{id}/messages` (`text`, `photos`), to the same people; `POST …/groups/{id}/done`
+  (`seen`, the latest of its messages and answers the page showed, `<at>:<id>` as `before` names
+  one), for each conversation listed under it that waits, covering only what was written up to
+  it.
 - `POST …/uploads?name=&type=`: a photo for a message not sent yet, as its bytes.
 - `GET …/files/{id}`: a photo or file attached to a message.
 - `GET …/workspaces/{team}/logo?v=<logo>`: a workspace's logo, the copy Slack keeps of it, read
@@ -729,9 +748,10 @@ server, at a DSP's own address, by a phone's key, the phones' own:
 ## Data and upkeep
 
 - **Data:** in each DSP's own database, `communications_conversations` (with the group each is
-  listed under), `communications_messages` (with the group each went to or answers),
-  `communications_files` (each photo and file, and downloading it; a group message's own photos
-  too), `communications_changes` (each change to a conversation or a group, the latest thousand,
+  listed under, and how far its latest Done covered: `done_at` and `done_ts`, migration 13),
+  `communications_messages` (with the group each went to or answers), `communications_files`
+  (each photo and file, and downloading it; a group message's own photos too),
+  `communications_changes` (each change to a conversation or a group, the latest thousand,
   for `updates`); `communications_groups` (each group, its name, who made it and whether it
   waits), `communications_group_people` (whom each went to, by workspace and member ID, under
   their name then), `communications_group_messages` (each message to a group, its sender's name
@@ -752,13 +772,16 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   next, by its SHA-256, with its ID and when a newer one replaced it), `phones_texts` (each text,
   with its phone, direction, origin, the other party's number, how one Dispatch sent went, each
   attempt at it, and its latest change), `phones_files` (each text's pictures and files, and those
-  added for one not sent yet) and `phones_change` (the last change given); the files' bytes in
+  added for one not sent yet) and `phones_change` (the last change given); and its own,
+  `phones_attempts` (each earlier attempt at a text Dispatch sent, by the phone it was given to,
+  kept as Retry queues the next: migration 12); the files' bytes in
   the DSP's data, `data/phones/files/`, by their SHA-256, which backups keep. In either folder
   (`bytes`), bytes arrive beside those kept, and take their place, and are let go, only under the
   platform's write lock with the files that keep them. Kept until the DSP is deleted, as the rest.
 - **Upkeep:** catching up hourly and as the server starts; downloading what's due, sending
-  what's due to go to groups' people, filing texts waiting to be filed, and filing today's again
-  where they belong now, every minute; and hourly, in each DSP with Slack connected, letting go of
+  what's due to go to groups' people, filing texts waiting to be filed, filing today's again
+  where they belong now, and failing the texts still waiting on an offline phone as they expire,
+  every minute; and hourly, in each DSP with Slack connected, letting go of
   photos added and never sent within a day, then of bytes no file keeps, as a failure once in
   place or a removal that failed leaves, and of bytes left arriving an hour, as a restart leaves,
   each on its own: one that fails, logged as `communications_tidy_failed` with its DSP and job,

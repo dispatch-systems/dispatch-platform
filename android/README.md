@@ -124,7 +124,8 @@ app into each release:
   latest release (`releases/latest`), which Production installs and `relay.py` reads, whatever
   the highest version is; without one, none was released.
 - **Its version:** the app changed when `git diff <production.commit> <commit> -- android` isn't
-  empty, or none was released and `android/` exists. Then `relay-version` is the last released
+  empty once Markdown is left out (no build reads it, so phones aren't sent an update for it), or
+  none was released and `android/` exists. Then `relay-version` is the last released
   app version's next patch (or more, with the release's `--bump`), `0.0.1` first; otherwise it's
   empty and the release carries the last released app. It's decided once for the release's
   commit and kept in the release's journal, so a rerun asks for the same, and refused at or

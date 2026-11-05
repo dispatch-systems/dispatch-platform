@@ -76,7 +76,7 @@ export function GroupPane({
     (workspace) => workspace.on && group?.teamIds.includes(workspace.teamId),
   );
   const done = useAction(async () => {
-    const after = await markGroupDone(id);
+    const after = await markGroupDone(id, opened?.entries.at(-1) ?? group?.last);
     read.show(after);
     show(after);
   });

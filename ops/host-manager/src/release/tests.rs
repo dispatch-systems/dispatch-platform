@@ -53,6 +53,8 @@ struct Fake {
     rehearsal: RefCell<Value>,
     /// What Production reports of itself before a release publishes.
     production: RefCell<Value>,
+    /// When, on the release's clock, the collections Production reports running finish.
+    collections_end: Cell<Option<Duration>>,
     /// The Slack app manifest Production makes before the release installs, and after.
     slack: RefCell<(Value, Value)>,
     /// The warnings and errors Production's service logs once the release is published.
@@ -319,6 +321,9 @@ impl System for Fake {
                 )
             } else if script.contains("production-update-failure.json") {
                 let mut report = self.production.borrow().clone();
+                if self.collections_end.get().is_some_and(|end| self.elapsed.get() >= end) {
+                    report["running"] = json!(0);
+                }
                 report["slackManifest"] = self.slack.borrow().0.clone();
                 report.to_string()
             } else {
@@ -474,6 +479,8 @@ enum App {
     Unchanged,
     /// In `android/` from the first commit, and changed by the released change.
     Changed,
+    /// In `android/` from the first commit, where the released change edits only Markdown.
+    Notes,
 }
 /// A build of DSP Dispatch: Relay: its entry in `relay.json`, and its APK's bytes.
 struct Apk {
@@ -561,10 +568,10 @@ impl Fixture {
         if migration {
             fs::write(&snapshot, databases(&["baseline", "accounts"])).unwrap();
         }
-        let commit = if app == App::Changed {
-            merge_change(&root, "accepted", "android/relay/build.gradle.kts")
-        } else {
-            merge_to_main(&root, "accepted")
+        let commit = match app {
+            App::Changed => merge_change(&root, "accepted", "android/relay/build.gradle.kts"),
+            App::Notes => merge_change(&root, "accepted", "android/relay/README.md"),
+            App::None | App::Unchanged => merge_to_main(&root, "accepted"),
         };
         let slack = json!({"display_information":{"name":"Dispatch"},
             "oauth_config":{"scopes":{"bot":["chat:write"]}}});
@@ -598,6 +605,7 @@ impl Fixture {
             rehearsal: RefCell::new(rehearsed()),
             production: RefCell::new(json!({"failure":null,"gh":true,"service":"active",
                 "timer":"active","health":"ready","free":50u64 << 30,"running":0})),
+            collections_end: Cell::new(None),
             slack: RefCell::new((slack.clone(), slack)),
             log: RefCell::new(vec![]),
             dev_runtime: RefCell::new(String::new()),
@@ -2087,7 +2095,8 @@ fn a_first_app_is_0_0_1_built_by_the_releases_checks_and_attached_with_its_recor
 
 #[test]
 fn a_release_without_app_changes_carries_the_last_released_app() {
-    let f = Fixture::with_app(App::Unchanged);
+    // Markdown in android/ isn't part of the app: phones aren't sent an update for it.
+    let f = Fixture::with_app(App::Notes);
     let last = Apk::production("0.0.1", &f.previous());
     f.released(Some(&last));
     f.build(Some(&last));
@@ -2327,6 +2336,42 @@ fn the_release_finds_gh_in_local_bin_without_a_login_shell() {
         ),
         None
     );
+}
+
+#[test]
+fn publication_waits_up_to_ten_minutes_for_collections_running_on_production() {
+    // Collections that finish within the wait hold publication until they do.
+    let f = Fixture::new();
+    f.draft();
+    let release = f.release();
+    f.system.production.borrow_mut()["running"] = json!(2);
+    let finish = f.system.elapsed.get() + Duration::from_secs(4 * 60);
+    f.system.collections_end.set(Some(finish));
+    assert_eq!(
+        release.execute(Stage::Publish, None).unwrap()["stage"],
+        "complete"
+    );
+    assert!(f.system.has_call(&["-F", "draft=false"]));
+    // It goes ahead within one check of their finishing.
+    let poll = Duration::from_secs(30);
+    assert!((finish..finish + poll).contains(&f.system.elapsed.get()));
+    // Ones still running after it refuse publication.
+    let f = Fixture::new();
+    f.draft();
+    let release = f.release();
+    f.system.production.borrow_mut()["running"] = json!(1);
+    let started = f.system.elapsed.get();
+    let refused = release
+        .execute(Stage::Publish, None)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        refused.contains("Collections are running on Production (1)"),
+        "{refused}"
+    );
+    let wait = Duration::from_secs(10 * 60);
+    assert!((wait..wait + poll).contains(&(f.system.elapsed.get() - started)));
+    assert!(!f.system.has_call(&["-F", "draft=false"]));
 }
 
 #[test]
