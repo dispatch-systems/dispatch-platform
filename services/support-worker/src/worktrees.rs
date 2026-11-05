@@ -20,48 +20,42 @@ fn free(config: &Config) -> Result<u64> {
 /// user's `.rustup` and Cargo registry, which the live service shares: a toolchain takes about
 /// 600 MB.
 const HOME_RESERVE: u64 = 10_000_000_000;
-/// What a checkout of a commit, without its builds, needs beside the worktrees.
-const CHECKOUT: u64 = 1_000_000_000;
-/// A provisioning checkout's name begins with this; one a worker stopped mid-way left goes once it
-/// is `ABANDONED` old, longer than any provisioning takes.
+/// What a copy of a commit's files, about 50 MB with its archive, needs beside the worktrees.
+const COPY: u64 = 1_000_000_000;
+/// A provisioning copy's name begins with this; one a worker stopped mid-way left goes once it is
+/// `ABANDONED` old, longer than any provisioning takes.
 const PROVISIONING: &str = ".provision-";
 const ABANDONED: Duration = Duration::from_secs(60 * 60);
-static CHECKOUTS: AtomicU64 = AtomicU64::new(0);
+static COPIES: AtomicU64 = AtomicU64::new(0);
 
-/// A provisioning checkout, removed however the provisioning ends, a cancelled job's included.
-struct Scratch {
-    clone: PathBuf,
-    at: PathBuf,
-}
+/// A provisioning copy, removed however the provisioning ends, a cancelled job's included: off the
+/// task that polls the job and its lease, as a folder of files takes a moment to remove.
+struct Scratch(PathBuf);
 impl Drop for Scratch {
     fn drop(&mut self) {
-        discard(&self.clone, &self.at);
+        let at = std::mem::take(&mut self.0);
+        tokio::task::spawn_blocking(move || std::fs::remove_dir_all(at));
     }
 }
 
-/// The provisioning checkout `at` and its registration in `clone`: forced twice, as one whose
-/// creation was stopped is still locked, and its folder removed whether Git knew it or not.
-fn discard(clone: &Path, at: &Path) {
-    let _ = std::process::Command::new("git")
-        .args(["worktree", "remove", "-f", "-f"])
-        .arg(at)
-        .current_dir(clone)
-        .output();
-    let _ = std::fs::remove_dir_all(at);
-}
-
-/// The provisioning checkouts a worker stopped mid-way left beside the worktrees.
-fn sweep(config: &Config) -> Result<()> {
-    for entry in std::fs::read_dir(&config.worktrees)? {
-        let entry = entry?;
-        let old = entry.metadata()?.modified()?.elapsed().unwrap_or_default() > ABANDONED;
+/// The provisioning copies a worker stopped mid-way left beside the worktrees.
+async fn sweep(config: &Config) -> Result<()> {
+    let mut entries = tokio::fs::read_dir(&config.worktrees).await?;
+    while let Some(entry) = entries.next_entry().await? {
+        let old = entry
+            .metadata()
+            .await?
+            .modified()?
+            .elapsed()
+            .unwrap_or_default()
+            > ABANDONED;
         if entry
             .file_name()
             .to_string_lossy()
             .starts_with(PROVISIONING)
             && old
         {
-            discard(&config.checkout, &entry.path());
+            let _ = tokio::fs::remove_dir_all(entry.path()).await;
         }
     }
     Ok(())
@@ -96,16 +90,17 @@ pub async fn command(directory: &Path, program: &str, args: &[&str]) -> Result<S
 /// read-only, so they can neither install a toolchain a new pin names nor download a crate a new
 /// dependency brings. `commit` is one GitHub holds: main's, or a release's.
 ///
-/// It installs from a checkout of `commit` of its own beside the worktrees, never from the
-/// worktree an agent works in, whose files could point rustup or Cargo at a program of their
-/// choosing. rustup runs nothing the checkout holds. Cargo's fetch asks the compiler about its
-/// targets, through the configured wrapper otherwise, so it runs with none.
+/// It installs from a copy of `commit`'s files of its own beside the worktrees, from Git's archive
+/// of it, so nothing is registered in the clone, and never from the worktree an agent works in,
+/// whose files could point rustup or Cargo at a program of their choosing. rustup runs nothing the
+/// copy holds. Cargo's fetch asks the compiler about its targets, through the configured wrapper
+/// otherwise, so it runs with none.
 async fn provision(config: &Config, commit: &str) -> Result<()> {
     require(is_sha(commit), "Provisioning needs an immutable Git SHA")?;
     let home = PathBuf::from(std::env::var_os("HOME").ok_or("HOME required")?);
     let room = fs2::available_space(&home).map_err(|_| "Couldn't read the free disk space")?;
     require(
-        room >= HOME_RESERVE && free(config)? >= CHECKOUT,
+        room >= HOME_RESERVE && free(config)? >= COPY,
         "Host disk capacity must be restored before installing a build's Rust toolchain and crates",
     )?;
     let tool = |name: &str| {
@@ -116,28 +111,28 @@ async fn provision(config: &Config, commit: &str) -> Result<()> {
             .ok_or("Non-UTF8 HOME")
     };
     let (rustup, cargo) = (tool("rustup")?, tool("cargo")?);
-    let count = CHECKOUTS.fetch_add(1, Ordering::Relaxed);
-    let at = config.worktrees.join(format!(
+    let count = COPIES.fetch_add(1, Ordering::Relaxed);
+    let scratch = Scratch(config.worktrees.join(format!(
         "{PROVISIONING}{commit}-{}-{count}",
         std::process::id()
-    ));
-    let scratch = Scratch {
-        clone: config.checkout.clone(),
-        at: at.clone(),
-    };
-    let path = at.to_str().ok_or("Non-UTF8 worktree path")?;
+    )));
+    let at = &scratch.0;
+    tokio::fs::create_dir(at).await?;
+    let archive = at.join(".commit.tar");
+    let archive = archive.to_str().ok_or("Non-UTF8 worktree path")?;
     command(
-        &scratch.clone,
+        &config.checkout,
         "git",
-        &["worktree", "add", "-q", "--detach", path, commit],
+        &["archive", "--format=tar", "-o", archive, commit],
     )
     .await?;
-    command(&at, &rustup, &["toolchain", "install", "--no-self-update"]).await?;
+    command(at, "tar", &["-xf", archive]).await?;
+    command(at, &rustup, &["toolchain", "install", "--no-self-update"]).await?;
     let fetched = Command::new(&cargo)
         .args(["fetch", "--locked"])
         .env("RUSTC_WRAPPER", "")
         .env("RUSTC_WORKSPACE_WRAPPER", "")
-        .current_dir(&at)
+        .current_dir(at)
         .kill_on_drop(true)
         .output()
         .await?;
@@ -169,7 +164,7 @@ impl Worktree {
         let suffix = if source.is_some() { "-analysis" } else { "" };
         let name = format!("support-{}-{identifier}{suffix}", job.environment);
         let path = config.worktrees.join(&name);
-        sweep(config)?;
+        sweep(config).await?;
         if !path.exists() {
             require(
                 free(config)? >= LOW_DISK,
