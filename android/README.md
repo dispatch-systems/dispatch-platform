@@ -11,7 +11,7 @@ a change touches this folder, and passes at once for any other.
 
 ## Building
 
-From this folder, with the SDK at `~/Library/Android/sdk` (`ANDROID_HOME`) and Java 21:
+From this folder, with the SDK at `~/Library/Android/sdk` (`ANDROID_HOME`) and Java 25:
 
 ```sh
 ./gradlew test lintDevDebug lintProductionRelease assembleDebug  # what CI runs
