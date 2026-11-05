@@ -42,19 +42,20 @@ impl Drop for Scratch {
 async fn sweep(config: &Config) -> Result<()> {
     let mut entries = tokio::fs::read_dir(&config.worktrees).await?;
     while let Some(entry) = entries.next_entry().await? {
-        let old = entry
-            .metadata()
-            .await?
-            .modified()?
-            .elapsed()
-            .unwrap_or_default()
-            > ABANDONED;
-        if entry
+        if !entry
             .file_name()
             .to_string_lossy()
             .starts_with(PROVISIONING)
-            && old
         {
+            continue;
+        }
+        // One a provisioning that ended is still removing may be gone already.
+        let modified = match entry.metadata().await.and_then(|found| found.modified()) {
+            Ok(modified) => modified,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error.into()),
+        };
+        if modified.elapsed().unwrap_or_default() > ABANDONED {
             let _ = tokio::fs::remove_dir_all(entry.path()).await;
         }
     }
