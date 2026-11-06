@@ -22,7 +22,7 @@ use crate::{ClientStore, GuardStore, keys};
 use clients::Client;
 use dispatch_core::{
     Error, Result,
-    db::{Store, at, iso, now, s},
+    db::{FromRow, Row, Store, at, iso, now, s},
     ensure,
     foundation::{config::Config, crypto},
 };
@@ -294,13 +294,13 @@ impl OAuthStore for Store {
 
     fn oauth_request(&self, id: &str, name: Option<&str>, browser: &str) -> Result<OAuthRequest> {
         let request = waiting_request(self, id, browser)?;
-        let (redirect_host, redirect_scheme) = clients::destination(s(&request, "redirect_uri"));
+        let (redirect_host, redirect_scheme) = clients::destination(&request.redirect_uri);
         let replaced = replaced_apps(
             self,
-            name.unwrap_or(s(&request, "client_name")),
-            s(&request, "client_id"),
-            s(&request, "client_name"),
-            request["verified"] == 1,
+            name.unwrap_or(&request.client_name),
+            &request.client_id,
+            &request.client_name,
+            request.verified == 1,
         )?;
         let replaces = match replaced.first() {
             Some(id) => {
@@ -313,15 +313,15 @@ impl OAuthStore for Store {
             None => None,
         };
         Ok(OAuthRequest {
-            id: s(&request, "id").to_owned(),
+            id: request.id,
             app: OAuthApp {
-                name: s(&request, "client_name").to_owned(),
-                client_id: s(&request, "client_id").to_owned(),
-                known: request["verified"] == 1,
+                name: request.client_name,
+                client_id: request.client_id,
+                known: request.verified == 1,
                 redirect_host,
                 redirect_scheme,
             },
-            expires_at: s(&request, "expires_at").to_owned(),
+            expires_at: request.expires_at,
             replaces,
         })
     }
@@ -335,7 +335,7 @@ impl OAuthStore for Store {
     ) -> Result<OAuthRedirect> {
         let request = waiting_request(self, id, browser)?;
         ensure(
-            self.oauth_client_allowed(s(&request, "client_id"), s(&request, "redirect_uri"))?,
+            self.oauth_client_allowed(&request.client_id, &request.redirect_uri)?,
             "app_not_allowed",
             403,
         )?;
@@ -343,9 +343,9 @@ impl OAuthStore for Store {
         let replaced = replaced_apps(
             self,
             &approval.name,
-            s(&request, "client_id"),
-            s(&request, "client_name"),
-            request["verified"] == 1,
+            &request.client_id,
+            &request.client_name,
+            request.verified == 1,
         )?;
         keys::check_agent_key(self, None, &approval.key(), &replaced)?;
         let code = crypto::token()?;
@@ -371,12 +371,12 @@ impl OAuthStore for Store {
                  VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                 rusqlite::params![
                     crypto::sha(&code),
-                    s(&request, "client_id"),
-                    s(&request, "client_name"),
-                    request["verified"].as_i64(),
-                    s(&request, "redirect_uri"),
-                    s(&request, "code_challenge"),
-                    s(&request, "resource"),
+                    request.client_id,
+                    request.client_name,
+                    request.verified,
+                    request.redirect_uri,
+                    request.code_challenge,
+                    request.resource,
                     choices.to_string(),
                     owner,
                     iso(),
@@ -387,10 +387,10 @@ impl OAuthStore for Store {
         })?;
         Ok(OAuthRedirect {
             redirect: redirect(
-                s(&request, "redirect_uri"),
+                &request.redirect_uri,
                 &[
                     ("code", Some(&code)),
-                    ("state", request["state"].as_str()),
+                    ("state", request.state.as_deref()),
                     ("iss", Some(issuer(&self.config))),
                 ],
             ),
@@ -402,10 +402,10 @@ impl OAuthStore for Store {
         answer_request(self, id)?;
         Ok(OAuthRedirect {
             redirect: redirect(
-                s(&request, "redirect_uri"),
+                &request.redirect_uri,
                 &[
                     ("error", Some("access_denied")),
-                    ("state", request["state"].as_str()),
+                    ("state", request.state.as_deref()),
                     ("iss", Some(issuer(&self.config))),
                 ],
             ),
@@ -625,19 +625,49 @@ fn request_oauth(
     Ok(Ok(id))
 }
 
+struct WaitingRequest {
+    id: String,
+    client_id: String,
+    client_name: String,
+    verified: i64,
+    redirect_uri: String,
+    state: Option<String>,
+    code_challenge: String,
+    resource: String,
+    expires_at: String,
+    browser: Option<String>,
+}
+impl FromRow for WaitingRequest {
+    fn from_row(row: &Row<'_>) -> Result<Self> {
+        Ok(Self {
+            id: row.get("id")?,
+            client_id: row.get("client_id")?,
+            client_name: row.get("client_name")?,
+            verified: row.get("verified")?,
+            redirect_uri: row.get("redirect_uri")?,
+            state: row.get("state")?,
+            code_challenge: row.get("code_challenge")?,
+            resource: row.get("resource")?,
+            expires_at: row.get("expires_at")?,
+            browser: row.get("browser")?,
+        })
+    }
+}
+
 /// A request still waiting for the owner's answer, in the browser the app sent to
 /// Dispatch: `browser` is the nonce that browser was given. Any other browser, such as
 /// one that was sent a link to the request, is refused.
-fn waiting_request(db: &Store, id: &str, browser: &str) -> Result<Value> {
+fn waiting_request(db: &Store, id: &str, browser: &str) -> Result<WaitingRequest> {
     let request = db
         .platform
-        .one(
+        .one_as::<WaitingRequest>(
             "SELECT * FROM oauth_requests WHERE id=? AND expires_at>?",
             [id.to_owned(), iso()],
         )?
         .ok_or_else(|| Error::new("authorization_not_found", 404))?;
-    let held = request["browser"]
-        .as_str()
+    let held = request
+        .browser
+        .as_deref()
         .is_some_and(|hash| crypto::equal(hash, &crypto::sha(browser)));
     ensure(held, "wrong_browser", 403)?;
     Ok(request)
