@@ -3,8 +3,9 @@ use crate::{
     config::Config,
     github, hermes,
     jobs::Platform,
+    process::command,
     require, verification,
-    worktrees::{Worktree, command, is_sha},
+    worktrees::{Worktree, is_sha},
 };
 use dispatch_core::support::api::types::{SupportJob, SupportProposal};
 use fs2::FileExt;

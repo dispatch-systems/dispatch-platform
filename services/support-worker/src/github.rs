@@ -2,8 +2,9 @@ use crate::{
     Result,
     config::Config,
     hermes::atomic_json,
+    process::command,
     require,
-    worktrees::{Worktree, command, is_sha},
+    worktrees::{Worktree, is_sha},
 };
 use dispatch_core::support::api::types::SupportJob;
 use serde_json::{Value, json};
