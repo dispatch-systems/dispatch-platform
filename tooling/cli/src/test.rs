@@ -4,6 +4,7 @@
 use crate::{
     Result, Runner, check, require,
     slot::{self, Slot},
+    test_selection::{self, Workspace},
     workspace,
 };
 use serde_json::Value;
@@ -83,11 +84,13 @@ pub fn affected(root: &Path, runner: &dyn Runner) -> Result<Vec<String>> {
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok())
         .unwrap_or(Value::Null);
-    let workspace = check::Workspace::read(root).unwrap_or_default();
-    Ok(check::affected(&changed(root, runner)?, &plan, &workspace)
-        .into_iter()
-        .filter(|command| !command.starts_with("cargo clippy"))
-        .collect())
+    let workspace = Workspace::read(root).unwrap_or_default();
+    Ok(
+        test_selection::affected(&changed(root, runner)?, &plan, &workspace)
+            .into_iter()
+            .filter(|command| !command.starts_with("cargo clippy"))
+            .collect(),
+    )
 }
 /// Every Rust test, and every Node test the CI api job runs: the browser and collector suites
 /// stay on GitHub.
