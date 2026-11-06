@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useCachedData, useData, wordedApi } from '../../shell/frontend/runtime/api.js';
+import { wordedApi } from '../../shell/frontend/runtime/api.js';
+import { useCachedData, useData } from '../../shell/frontend/runtime/data-reads.js';
 import { upload } from '../../shell/frontend/runtime/transfer.js';
 import type { SupportDetail, SupportNotification, SupportTicket } from './index.js';
 import { attachmentSchema } from './runtime.js';

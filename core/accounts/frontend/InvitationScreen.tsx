@@ -1,5 +1,5 @@
 import { Brand } from '../../shell/frontend/runtime/Brand.js';
-import { useData } from '../../shell/frontend/runtime/api.js';
+import { useData } from '../../shell/frontend/runtime/data-reads.js';
 import { Loading } from '../../shell/frontend/ui/index.js';
 import { InvitationAccepted } from './member-profile/InvitationAccepted.js';
 import { InvitationExpired } from './member-profile/InvitationExpired.js';

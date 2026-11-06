@@ -1,10 +1,6 @@
 import { useCallback } from 'react';
-import {
-  api as call,
-  ApiError,
-  useCachedData,
-  useData,
-} from '../../../core/shell/frontend/runtime/api.js';
+import { api as call, ApiError } from '../../../core/shell/frontend/runtime/api.js';
+import { useCachedData, useData } from '../../../core/shell/frontend/runtime/data-reads.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { upload } from '../../../core/shell/frontend/runtime/transfer.js';
 import type {

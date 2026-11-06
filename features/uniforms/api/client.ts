@@ -1,4 +1,5 @@
-import { useData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
+import { wordedApi } from '../../../core/shell/frontend/runtime/api.js';
+import { useData } from '../../../core/shell/frontend/runtime/data-reads.js';
 import type {
   UniformAdjustment,
   UniformHistory,

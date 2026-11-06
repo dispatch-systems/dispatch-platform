@@ -1,5 +1,5 @@
 import type { DriverMatch, MatchCounts } from '../api/index.js';
-import { useCachedData } from '../../../core/shell/frontend/runtime/api.js';
+import { useCachedData } from '../../../core/shell/frontend/runtime/data-reads.js';
 
 /**
  * How often the count is asked for again while the page is closed. It changes only with a

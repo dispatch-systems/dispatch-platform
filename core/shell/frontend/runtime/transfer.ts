@@ -1,5 +1,5 @@
 import { beginBrowserWrite } from './browser-update.js';
-import { ApiError, csrf, errorLabel, view } from './api.js';
+import { ApiError, csrf, errorLabel, responseError, view } from './api.js';
 
 // Files to and from the server, for a page that moves them: kept out of `api` so only the
 // pages that need them load them.
@@ -9,12 +9,7 @@ function failed(status: number, value: { error?: string; message?: string }, req
   const code = value.error ?? 'request_failed';
   if (code === 'dsp_view_expired') window.dispatchEvent(new Event('dispatch-view-expired'));
   if (status === 401) window.dispatchEvent(new Event('dispatch-signed-out'));
-  return new ApiError(
-    code,
-    errorLabel(code) ?? value.message ?? 'The request could not be completed.',
-    status,
-    request,
-  );
+  return responseError(status, code, errorLabel(code) ?? value.message, request);
 }
 
 /**

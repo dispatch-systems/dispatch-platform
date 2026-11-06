@@ -1,4 +1,5 @@
-import { useCachedData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
+import { wordedApi } from '../../../core/shell/frontend/runtime/api.js';
+import { useCachedData } from '../../../core/shell/frontend/runtime/data-reads.js';
 import type {
   DspInvitation,
   Membership,

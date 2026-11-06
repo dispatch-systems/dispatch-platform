@@ -1,7 +1,7 @@
 import type { Job } from '../../../core/collection/api/index.js';
 import { wordedApi } from '../../../core/shell/frontend/runtime/api.js';
 import type { DvicSummary, DvicInspectionPage, DvicInspectionDetail } from './index.js';
-import { useCachedData } from '../../../core/shell/frontend/runtime/api.js';
+import { useCachedData } from '../../../core/shell/frontend/runtime/data-reads.js';
 import { performancePolicy } from '../../../core/shell/frontend/lib/performance-policy.js';
 
 // DVIC's endpoints, as its page calls them. Only its own screens raise this, so its words load

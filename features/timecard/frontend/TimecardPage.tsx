@@ -18,7 +18,7 @@ import type { Connection } from '../../../core/collection/api/index.js';
 import type { DspView } from '../../../core/accounts/api/index.js';
 import type { EmployeeTimecardPeriod } from '../api/index.js';
 import { paycomDefaults } from './paycom.js';
-import { useCachedData, useData } from '../../../core/shell/frontend/runtime/api.js';
+import { useCachedData, useData } from '../../../core/shell/frontend/runtime/data-reads.js';
 import { hasFeature } from '../../../core/shell/frontend/runtime/features.js';
 import { syncMealBreaks, usePaycomSettings } from '../api/client.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';

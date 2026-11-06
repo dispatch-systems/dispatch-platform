@@ -4,11 +4,8 @@ import type { DspView } from '../../../core/accounts/api/index.js';
 import type { Job } from '../../../core/collection/api/index.js';
 import { useCollectionUpdates } from '../../../core/collection/frontend/live-collection.js';
 import type { DvicStatus } from '../api/index.js';
-import {
-  ApiError,
-  useCachedData,
-  view as admittedToken,
-} from '../../../core/shell/frontend/runtime/api.js';
+import { ApiError, view as admittedToken } from '../../../core/shell/frontend/runtime/api.js';
+import { useCachedData } from '../../../core/shell/frontend/runtime/data-reads.js';
 import { cancelDvicJob, collectDvic, summaryUrl, useSummary } from '../api/client.js';
 import {
   readUpdateState,
