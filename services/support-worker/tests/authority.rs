@@ -1,10 +1,10 @@
 //! Contracts guarding private service configuration and what agents and GitHub are shown.
 use dispatch_support_worker::{
+    collection_verification::cortex_collections,
     config::{Config, Origin, ProductionReader, read_private},
     github::redact_identities,
     hermes::{production_server, safe_job},
     intake::{Analysis, Decision},
-    verification::cortex_collections,
 };
 use serde_json::json;
 use std::path::PathBuf;

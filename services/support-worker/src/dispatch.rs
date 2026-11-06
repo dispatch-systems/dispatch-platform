@@ -1,8 +1,9 @@
 use crate::{
-    Result,
+    Result, collection_verification,
     config::Config,
     github, hermes,
     jobs::Platform,
+    preview::NativePreview,
     process::command,
     require, verification,
     worktrees::{Worktree, is_sha},
@@ -400,7 +401,7 @@ async fn investigate(
                 .await?;
                 let baseline = async {
                     tree.build(config).await?;
-                    verification::NativePreview::start(config, tree, None).await
+                    NativePreview::start(config, tree, None).await
                 }
                 .await;
                 match baseline {
@@ -618,7 +619,7 @@ async fn implement(
             loop {
                 let initial = async {
                     tree.build(config).await?;
-                    verification::NativePreview::start(config, &tree, None).await
+                    NativePreview::start(config, &tree, None).await
                 }
                 .await;
                 let initial = match initial {
@@ -673,7 +674,8 @@ async fn implement(
                     json!({"phase":"verification","headSha":head}),
                 )
                 .await?;
-                let collections = verification::collect(config, &tree, job, proposal).await?;
+                let collections =
+                    collection_verification::collect(config, &tree, job, proposal).await?;
                 for proof in &collections.proofs {
                     platform
                         .update(job, "evidence", json!({"evidence":proof}))
@@ -682,8 +684,7 @@ async fn implement(
                 // Every preview executes the committed artifact with no host network or secrets.
                 tree.build(config).await?;
                 let native =
-                    verification::NativePreview::start(config, &tree, collections.state.as_ref())
-                        .await?;
+                    NativePreview::start(config, &tree, collections.state.as_ref()).await?;
                 let target = json!({"url":native.origin,"readOnly":false,"fixtureLogin":true});
                 let context = json!({"rules":rules(config)?,"proposal":proposal,"acceptanceCriteria":proposal.acceptance_criteria,"headSha":head,"collectionResults":collections.summaries,"browser":target});
                 let reviewed = hermes::run(config, job, &tree, "reviewer", "Independently verify every criterion in the actual changed application. Use real browser interactions and dispatch_browser assert for each exact criterion. Inspect persisted outcomes after refresh and relevant roles/layouts. Return the independent-verification JSON contract.", context).await?;
@@ -916,7 +917,7 @@ async fn release(
         )
         .await?;
         tree.build(config).await?;
-        let preview = verification::NativePreview::start(config, &tree, None).await?;
+        let preview = NativePreview::start(config, &tree, None).await?;
         target = json!({"url":preview.origin,"readOnly":false,"fixtureLogin":true});
         counterpart = Some(preview);
     }
