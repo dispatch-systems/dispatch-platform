@@ -3,6 +3,7 @@ use crate::{
     io::{self, System},
     require,
 };
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::{
@@ -11,6 +12,22 @@ use std::{
     os::unix::fs::OpenOptionsExt,
     path::Path,
 };
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct Provenance {
+    pub(crate) repository: String,
+    pub(crate) commit: String,
+    pub(crate) version: String,
+    pub(crate) workflow_run: u64,
+    pub(crate) workflow_attempt: u64,
+    pub(crate) artifact_id: u64,
+    pub(crate) artifact_digest: String,
+    pub(crate) build_sha256: String,
+    pub(crate) attestation_sha256: String,
+    pub(crate) runtime_digest: String,
+    pub(crate) archive_sha256: String,
+}
 
 pub use dispatch_shared::runs::{latest_run, passed};
 pub fn download_run(

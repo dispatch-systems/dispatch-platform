@@ -2,9 +2,10 @@ use crate::{
     Result,
     artifact::{self, Manifest},
     io::{self, System},
-    management, releases, require,
+    management,
+    releases::{self, Provenance},
+    require,
 };
-use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
     fs::{self, OpenOptions},
@@ -80,21 +81,6 @@ enum Checked {
     Pending(Value),
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct PublishedProvenance {
-    repository: String,
-    commit: String,
-    version: String,
-    workflow_run: u64,
-    workflow_attempt: u64,
-    artifact_id: u64,
-    artifact_digest: String,
-    build_sha256: String,
-    attestation_sha256: String,
-    runtime_digest: String,
-    archive_sha256: String,
-}
 pub struct Updater<'a> {
     pub root: PathBuf,
     pub active: PathBuf,
@@ -857,7 +843,7 @@ impl<'a> Updater<'a> {
         )?;
         let published: Manifest =
             serde_json::from_value(io::read_json(&temp.path().join("release.json"))?)?;
-        let provenance: PublishedProvenance =
+        let provenance: Provenance =
             serde_json::from_value(io::read_json(&temp.path().join("provenance.json"))?)?;
         let archive_name = format!("dispatch-platform-{selected}.tar.gz");
         let release_manifest = temp.path().join("release.json");

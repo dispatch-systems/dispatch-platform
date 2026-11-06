@@ -1,25 +1,10 @@
 use super::*;
+use crate::releases::Provenance;
 use std::{
     fs::File,
     io::{Read, Write},
     os::unix::fs::{MetadataExt, PermissionsExt},
 };
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct Prepared {
-    repository: String,
-    pub commit: String,
-    version: String,
-    workflow_run: u64,
-    workflow_attempt: u64,
-    artifact_id: u64,
-    artifact_digest: String,
-    build_sha256: String,
-    attestation_sha256: String,
-    pub runtime_digest: String,
-    archive_sha256: String,
-}
 
 pub(super) fn regular(path: &Path) -> Result<()> {
     let info = fs::symlink_metadata(path)?;
@@ -59,16 +44,16 @@ impl Release<'_> {
     fn asset_names(&self, directory: &Path) -> Result<Vec<String>> {
         Ok([self.runtime_assets(), self.app_assets(directory)?].concat())
     }
-    pub(super) fn prepared(&self, commit: Option<&str>) -> Result<Prepared> {
+    pub(super) fn prepared(&self, commit: Option<&str>) -> Result<Provenance> {
         self.verify_preparation(&self.output, commit)
     }
-    fn verify_preparation(&self, directory: &Path, commit: Option<&str>) -> Result<Prepared> {
+    fn verify_preparation(&self, directory: &Path, commit: Option<&str>) -> Result<Provenance> {
         artifact::real_directory(directory)?;
         let names = self.runtime_assets();
         for name in &names {
             regular(&directory.join(name))?;
         }
-        let prepared: Prepared =
+        let prepared: Provenance =
             serde_json::from_value(io::read_json(&directory.join("provenance.json"))?)?;
         require(
             crate::REPOSITORIES.contains(&prepared.repository.as_str())
@@ -118,7 +103,7 @@ impl Release<'_> {
         self.app_assets(directory)?;
         Ok(prepared)
     }
-    pub(super) fn prepare(&self, commit: &str) -> Result<Prepared> {
+    pub(super) fn prepare(&self, commit: &str) -> Result<Provenance> {
         if self.output.try_exists()? {
             return self.prepared(Some(commit)).map_err(|error| format!(
                 "Existing preparation {} is incomplete or changed: {error}. Preserve it for inspection",
@@ -243,7 +228,7 @@ impl Release<'_> {
             staging.path().join("release.json"),
         )?;
         relay::stage(&candidate, staging.path(), app.as_ref())?;
-        let prepared = Prepared {
+        let prepared = Provenance {
             repository: REPOSITORY.into(),
             commit: commit.into(),
             version: self.version.clone(),
@@ -288,7 +273,7 @@ impl Release<'_> {
     }
     /// Unpacks the prepared runtime into `build`, checked to be the one prepared, answering
     /// where its backend is, ready to run.
-    pub(super) fn unpack_prepared(&self, prepared: &Prepared, build: &Path) -> Result<PathBuf> {
+    pub(super) fn unpack_prepared(&self, prepared: &Provenance, build: &Path) -> Result<PathBuf> {
         artifact::unpack(&self.output.join(self.archive()), build)?;
         let manifest = artifact::verify(build, Some(&prepared.commit))?;
         require(
@@ -299,10 +284,10 @@ impl Release<'_> {
         fs::set_permissions(&backend, fs::Permissions::from_mode(0o700))?;
         Ok(backend)
     }
-    fn smoke_receipt(&self, prepared: &Prepared) -> Value {
+    fn smoke_receipt(&self, prepared: &Provenance) -> Value {
         json!({"commit":prepared.commit,"runtimeDigest":prepared.runtime_digest,"archiveSha256":prepared.archive_sha256})
     }
-    pub(super) fn smoke(&self, prepared: &Prepared) -> Result<()> {
+    pub(super) fn smoke(&self, prepared: &Provenance) -> Result<()> {
         self.prepared(Some(&prepared.commit))?;
         let receipt = self.output.join("smoke-verification.json");
         let expected = self.smoke_receipt(prepared);
@@ -429,7 +414,7 @@ impl Release<'_> {
         )?;
         Ok(Some(commit))
     }
-    fn verify_identity(&self, release: &Value, prepared: &Prepared) -> Result<()> {
+    fn verify_identity(&self, release: &Value, prepared: &Provenance) -> Result<()> {
         require(
             release["tag_name"] == self.tag && release["prerelease"] == false,
             "Expected stable release",
@@ -463,7 +448,7 @@ impl Release<'_> {
             self.system.sleep(Duration::from_secs(3));
         }
     }
-    pub(super) fn ensure_draft(&self, prepared: &Prepared) -> Result<Value> {
+    pub(super) fn ensure_draft(&self, prepared: &Provenance) -> Result<Value> {
         self.prepared(Some(&prepared.commit))?;
         self.checked_source(&prepared.commit)?;
         let release = match self.listed_release()? {
@@ -556,7 +541,7 @@ impl Release<'_> {
         Ok(release)
     }
     /// Publishes the verified draft, answering the release and the backup this run took.
-    pub(super) fn publish(&self, prepared: &Prepared) -> Result<(Value, Option<Value>)> {
+    pub(super) fn publish(&self, prepared: &Provenance) -> Result<(Value, Option<Value>)> {
         let release = self.listed_release()?.ok_or("No draft exists to publish")?;
         self.verify_identity(&release, prepared)?;
         if release["draft"] == false {
@@ -620,7 +605,7 @@ impl Release<'_> {
         )?;
         Ok(bytes)
     }
-    pub(super) fn verify_production(&self, prepared: &Prepared, release: &Value) -> Result<()> {
+    pub(super) fn verify_production(&self, prepared: &Provenance, release: &Value) -> Result<()> {
         say("Waiting for Production to install the release");
         let deadline = self.system.monotonic() + Duration::from_secs(600);
         let health = loop {

@@ -2,7 +2,10 @@ const DEV: &str = "https://dev.dispatch.test";
 const PRODUCTION: &str = "https://dispatch.test";
 const RUNNING: &str = "the host tool the release runs as";
 use super::*;
-use crate::io::{Native, Response};
+use crate::{
+    io::{Native, Response},
+    releases::Provenance,
+};
 use fs2::FileExt;
 use std::{
     cell::{Cell, RefCell},
@@ -751,13 +754,13 @@ impl Fixture {
             .collect();
         run(&args, &self.system)
     }
-    fn prepare(&self) -> assets::Prepared {
+    fn prepare(&self) -> Provenance {
         let release = self.release();
         let prepared = release.prepare(&self.system.commit).unwrap();
         fs::write(&release.notes, "Release notes\n").unwrap();
         prepared
     }
-    fn draft(&self) -> assets::Prepared {
+    fn draft(&self) -> Provenance {
         let prepared = self.prepare();
         let release = self.release();
         release.smoke(&prepared).unwrap();
@@ -766,7 +769,7 @@ impl Fixture {
     }
     /// Drafts the release after v0.9.0, published at the commit before its own, which GitHub
     /// lists after the draft.
-    fn draft_after_v0_9_0(&self) -> assets::Prepared {
+    fn draft_after_v0_9_0(&self) -> Provenance {
         let previous = json!({"tag_name":"v0.9.0","draft":false,"prerelease":false});
         git(
             &self.root,

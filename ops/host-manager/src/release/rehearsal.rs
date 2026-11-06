@@ -8,6 +8,7 @@
 //! recorded beside the release for its commit and backup, so a rerun doesn't repeat it, and
 //! the release's result reports it.
 use super::*;
+use crate::releases::Provenance;
 use std::os::unix::fs::PermissionsExt;
 
 /// What the release keeps of the rehearsal that passed.
@@ -35,7 +36,7 @@ impl Release<'_> {
     /// Before a release that brings migrations publishes, once Production has its backup:
     /// starts a copy of that backup with the release's backend, refusing publication, with what
     /// failed, unless it starts with every carry-over done. Answers whether it rehearsed now.
-    pub(super) fn rehearse(&self, prepared: &assets::Prepared) -> Result<bool> {
+    pub(super) fn rehearse(&self, prepared: &Provenance) -> Result<bool> {
         if self.new_migrations(&prepared.commit)?.is_empty() {
             return Ok(false);
         }
