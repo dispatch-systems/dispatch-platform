@@ -78,6 +78,8 @@ export function Preview({
                 current={open}
                 readOlder={nothing}
                 olderFailed={false}
+                previousDays={false}
+                showPreviousDays={nothing}
                 reach={() => Promise.resolve()}
                 show={nothing}
                 open={open.id}

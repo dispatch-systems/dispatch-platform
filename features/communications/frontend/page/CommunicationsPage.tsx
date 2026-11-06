@@ -46,7 +46,9 @@ import { PhonesOffline } from '../texting/PhonesOffline.js';
 import { VIEWS, type RoutesShown } from './section-views.js';
 import { Sections } from './Sections.js';
 import { ConnectSlack, UpdateSlack } from '../slack/Setup.js';
+import { beforeToday } from '../inbox/headings.js';
 import { useInbox } from '../inbox/useInbox.js';
+import { dayOf } from '../shared/format.js';
 import { useLayout } from './useLayout.js';
 import { useNow } from './useNow.js';
 import { useRemembered } from './useRemembered.js';
@@ -111,6 +113,8 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const [chosen, choose] = useRemembered('workspace', view.dsp.id, user);
   const [chosenSection, chooseSection] = useRemembered('section', view.dsp.id, user);
   const [chosenView, chooseView] = useRemembered('routes-view', view.dsp.id, user);
+  // The day Recents' Previous days were shown on, as they stay shown until it ends.
+  const [previousOn, showPreviousOn] = useRemembered('previous-days', view.dsp.id, user);
   // Of the workspace chosen while a section of workspaces is chosen, as Slack is; else of every one,
   // as Recents lists them.
   const ofWorkspace = SECTIONS.some((each) => each.id === chosenSection && each.workspaces);
@@ -167,6 +171,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const [picks, setPicks] = useState<Pick[]>([]);
   const [draft, setDraft] = useState<Draft>({ name: '', people: 0 });
   const now = useNow();
+  const today = dayOf(now, timeZone);
   // How many times what's open changed, or one to start was chosen, as one started opens only if
   // nothing else did meanwhile.
   const turns = useRef(0);
@@ -226,9 +231,14 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const boardable = layout !== undefined && layout !== 'phone';
   const board = shows.board !== undefined && routesView === 'board' && boardable && !reading;
   // Side by side, something is always open: the first listed with a conversation, until another
-  // is chosen, and as the page widens to show both; on the board, nothing.
-  const first = shows.first ? shows.first(routeList) : shownRows[0]?.row;
-  const firstGroup = !shows.first && shownRows[0]?.kind === 'group';
+  // is chosen, and as the page widens to show both, but none Previous days hides; on the board,
+  // nothing.
+  const firstShown =
+    model.everything && previousOn !== today
+      ? shownRows.find((each) => !beforeToday(each.row, { timeZone, now }))
+      : shownRows[0];
+  const first = shows.first ? shows.first(routeList) : firstShown?.row;
+  const firstGroup = !shows.first && firstShown?.kind === 'group';
   useEffect(() => {
     if (open || group || drafting || board || !first || !layout || layout === 'phone') return;
     if (firstGroup) openGroup(first.id);
@@ -425,6 +435,8 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
                 current={current}
                 readOlder={readOlder}
                 olderFailed={olderFailed}
+                previousDays={previousOn === today}
+                showPreviousDays={(shown) => showPreviousOn(shown ? today : undefined)}
                 reach={reach}
                 show={show}
                 open={open ?? group}

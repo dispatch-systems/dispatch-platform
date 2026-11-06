@@ -27,3 +27,9 @@
   padding: 0 calc(var(--gap) * 0.6);
   list-style: none;
 }
+/* Shows or hides Recents' days before today, at the end of today's. */
+.previous-days {
+  display: flex;
+  width: calc(100% - var(--gap) * 1.2);
+  margin: calc(var(--gap) * 0.6) auto;
+}

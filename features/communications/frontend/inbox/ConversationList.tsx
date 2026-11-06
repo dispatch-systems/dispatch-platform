@@ -3,7 +3,7 @@ import type { Communications, Conversation } from '../../api/index.js';
 import { searchConversations } from '../../api/client.js';
 import { Loading } from '../../../../core/shell/frontend/ui/index.js';
 import { PartyFace } from '../conversations/party.js';
-import { dayLabel, dayOf } from '../shared/format.js';
+import { dayOf } from '../shared/format.js';
 import { ListEmpty, ListHead, Rows } from '../shared/List.js';
 import { ListRow } from '../shared/ListRow.js';
 import { More } from '../shared/More.js';
@@ -11,6 +11,7 @@ import { useFound } from '../shared/useFound.js';
 import type { Draft } from '../slack/groups/GroupDraft.js';
 import { GroupDraftRow, GroupRow } from '../slack/groups/GroupRow.js';
 import { ConversationRow } from './ConversationRow.js';
+import { atPreviousDays, byDay, byState, responded, type Headed } from './headings.js';
 import { latestFirst, readsNext, rows as listed, type Row } from './inbox.js';
 import {
   groupsSection,
@@ -25,7 +26,8 @@ import type { Listing } from './listing.js';
 // Messages: a section's conversations, and in Slack's the groups, of every workspace or the one
 // chosen, those waiting on an answer, then those answered; in Recents every section's, each face
 // marked with where it is, those answered under the day each was last written in, and the latest
-// written in first under each heading; or the conversations found by a name typed, misspelt or
+// written in first under each heading, the days before today under Previous days, shown as it's
+// pressed, and read on only while they are; or the conversations found by a name typed, misspelt or
 // not, or by a number, in Recents in every section, the latest written in first. A conversation
 // listed under a group is the group's row.
 // The message being written to a group is at the top while it's written, and what's open at the
@@ -44,6 +46,8 @@ export function ConversationList({
   below,
   readOlder,
   olderFailed,
+  previousDays,
+  showPreviousDays,
   ...listing
 }: Listing & {
   inbox: Communications;
@@ -65,6 +69,9 @@ export function ConversationList({
   readOlder: () => void;
   /** Whether the latest read of older ones failed. */
   olderFailed: boolean;
+  /** Whether Recents shows the days before today. */
+  previousDays: boolean;
+  showPreviousDays: (shown: boolean) => void;
 }) {
   const model = sectionNamed(section);
   // What Search searches: the section's own, or in Recents every section the DSP has.
@@ -123,6 +130,21 @@ export function ConversationList({
     (pinned.kind === 'group'
       ? lists(section, groupsSection) && (!team || pinned.row.teamIds.includes(team))
       : lists(section, sectionOf(pinned.row)) && (!team || pinned.row.teamId === team));
+  const headed = byState(
+    shown,
+    waitingPeople,
+    model.everything ? (answered) => byDay(answered, listing) : responded,
+  );
+  const { current, previous, any } = model.everything
+    ? atPreviousDays(headed, dayOf(listing.now, listing.timeZone), previousDays, listing.open)
+    : { current: headed, previous: [], any: false };
+  const headings = (shownHere: readonly Headed[]) =>
+    shownHere.map(({ key, label, count, rows }) => (
+      <Fragment key={key}>
+        <ListHead count={count}>{label}</ListHead>
+        {list(rows)}
+      </Fragment>
+    ));
   return (
     <>
       {draft && (
@@ -145,51 +167,20 @@ export function ConversationList({
         ) : (
           list([pinned])
         ))}
-      {byState(
-        shown,
-        waitingPeople,
-        model.everything ? (answered) => byDay(answered, listing) : responded,
-      ).map(({ key, label, count, rows }) => (
-        <Fragment key={key}>
-          <ListHead count={count}>{label}</ListHead>
-          {list(rows)}
-        </Fragment>
-      ))}
-      {readsNext(inbox, section) && <More read={readOlder} failed={olderFailed} />}
+      {headings(current)}
+      {any && (
+        <button
+          className="previous-days"
+          aria-expanded={previousDays}
+          onClick={() => showPreviousDays(!previousDays)}
+        >
+          {previousDays ? 'Hide previous days' : 'Previous days'}
+        </button>
+      )}
+      {headings(previous)}
+      {readsNext(inbox, section) && (previousDays || !any) && (
+        <More read={readOlder} failed={olderFailed} />
+      )}
     </>
   );
-}
-
-/** A list's rows under their headings, with how many people wait under Waiting. */
-type Headed = { key: string; label: string; count?: number; rows: Row[] };
-/** Those waiting, then those answered, under the headings `answered` gives them. */
-function byState(
-  shown: readonly Row[],
-  waiting: number,
-  answered: (rows: Row[]) => Headed[],
-): Headed[] {
-  const headed = [
-    {
-      key: 'waiting',
-      label: 'Waiting',
-      count: waiting,
-      rows: shown.filter((each) => each.row.state === 'waiting'),
-    },
-    ...answered(shown.filter((each) => each.row.state !== 'waiting')),
-  ];
-  return headed.filter((each) => each.rows.length > 0);
-}
-/** Those answered, under Responded. */
-const responded = (rows: Row[]): Headed[] => [{ key: 'responded', label: 'Responded', rows }];
-/** Under the day each was last written in: Today, Yesterday, then by the day. */
-function byDay(shown: readonly Row[], { timeZone, now }: Pick<Listing, 'timeZone' | 'now'>) {
-  const headed: Headed[] = [];
-  for (const each of shown) {
-    const at = each.row.lastAt ?? now;
-    const key = dayOf(at, timeZone);
-    const last = headed.at(-1);
-    if (last?.key === key) last.rows.push(each);
-    else headed.push({ key, label: dayLabel(at, timeZone, now), rows: [each] });
-  }
-  return headed;
 }
