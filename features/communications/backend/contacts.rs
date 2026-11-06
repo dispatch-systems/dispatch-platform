@@ -5,7 +5,7 @@
 use super::{
     people::People,
     search,
-    storage::{self, CommunicationsStore},
+    storage::conversations::{Conversation, ConversationStore},
 };
 use crate::{
     api::types::{Contact, Contacts},
@@ -31,7 +31,7 @@ pub fn contacts(
     let people = People::read(db, state, dsp)?;
     let mut on = kit::workspaces_on(db, dsp, ID)?;
     on.retain(|each| team.is_none_or(|team| each == team));
-    let mut conversations: HashMap<(String, String), storage::Conversation> = HashMap::new();
+    let mut conversations: HashMap<(String, String), Conversation> = HashMap::new();
     for team in &on {
         for conversation in db.communications_in(dsp, team)? {
             conversations.insert(

@@ -28,7 +28,7 @@ use crate::{
         compose,
         files::{self, FileStore},
         initials, live, reply, sender,
-        storage::{CommunicationsStore, DOMAIN},
+        storage::{DOMAIN, conversations::ConversationStore},
     },
     integrations::messages::{ID, incoming},
 };

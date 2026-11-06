@@ -7,7 +7,7 @@ use super::{
     conversations, live,
     model::Reference,
     profile, reply,
-    storage::CommunicationsStore,
+    storage::conversations::ConversationStore,
     texts::{self, storage::TextStore},
 };
 use crate::api::types::{Conversation, ConversationMessages, Profile, SentMessage};

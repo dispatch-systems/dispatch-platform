@@ -9,7 +9,11 @@
 //! down. Its direct messages are those Dispatch knows, and every other Slack lists the app as
 //! having (`im:read`) once the workspace's admin has approved that.
 use super::{ID, incoming};
-use crate::backend::storage::{CommunicationsStore, Conversation, DOMAIN};
+use crate::backend::storage::{
+    DOMAIN,
+    catch_up::CatchUpStore,
+    conversations::{Conversation, ConversationStore},
+};
 use dispatch_core::{
     Result, State,
     db::now,

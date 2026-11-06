@@ -13,7 +13,10 @@ use crate::backend::{
     inbox,
     model::ConversationState,
     reply,
-    storage::{CommunicationsStore, Written},
+    storage::{
+        conversations::Conversation,
+        messages::{MessageStore, Written},
+    },
     support::{self, DRIVERS, USE},
 };
 use crate::integrations::messages::ID;
@@ -107,12 +110,7 @@ async fn first_message(state: &Arc<State>, dsp: &str, group: &str) -> storage::G
         .unwrap()
 }
 /// The conversation with the workspace's member `user`, as kept.
-async fn with(
-    state: &Arc<State>,
-    dsp: &str,
-    team: &str,
-    user: &str,
-) -> crate::backend::storage::Conversation {
+async fn with(state: &Arc<State>, dsp: &str, team: &str, user: &str) -> Conversation {
     support::conversation_with(state, dsp, team, user)
         .await
         .unwrap()

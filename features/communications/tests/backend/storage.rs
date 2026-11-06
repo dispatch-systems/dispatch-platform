@@ -1,7 +1,14 @@
 //! What's kept of each conversation: its messages, an edit in place of what was written, and
 //! whether it waits on an answer, from its messages in the order they were written.
-use super::*;
-use crate::backend::changes::ChangeStore;
+use crate::backend::{
+    changes::ChangeStore,
+    model::ConversationState,
+    storage::{
+        conversations::ConversationStore,
+        messages::{MessageStore, Sent, Written},
+        replies::ReplyStore,
+    },
+};
 use dispatch_core::testing;
 
 const TEAM: &str = "T0FIXTURE1";

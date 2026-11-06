@@ -6,7 +6,11 @@ use crate::backend::{
     changes::changed_conversation,
     files,
     model::ConversationState,
-    storage::{Message, Sent, mark_done, opened, sent_out, settle, settle_with},
+    storage::{
+        conversations::opened,
+        messages::{Message, Sent, sent_out},
+        settlement::{mark_done, settle, settle_with},
+    },
 };
 use dispatch_core::{
     Error, Result,

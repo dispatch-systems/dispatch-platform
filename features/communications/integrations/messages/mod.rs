@@ -10,7 +10,7 @@ pub mod catch_up;
 pub mod fixture;
 pub mod incoming;
 
-use crate::backend::storage::CommunicationsStore;
+use crate::backend::storage::conversations::ConversationStore;
 use dispatch_core::{
     Result, State,
     db::Store,

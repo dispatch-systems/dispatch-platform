@@ -3,7 +3,7 @@
 //! before Communications was on, nor the app's own posts, and nothing twice.
 use super::*;
 use crate::backend::{
-    changes::ChangeStore, model::ConversationState, storage::CommunicationsStore, support,
+    changes::ChangeStore, model::ConversationState, storage::catch_up::CatchUpStore, support,
 };
 use crate::integrations::messages::fixture::{self, JORDAN};
 
