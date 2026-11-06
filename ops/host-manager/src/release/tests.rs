@@ -1395,6 +1395,10 @@ fn release_lock_is_released_even_while_a_child_retains_its_descriptor() {
 }
 
 #[test]
+#[cfg_attr(
+    not(target_os = "linux"),
+    ignore = "requires Linux, which refuses to run a file open for writing (ETXTBSY)"
+)]
 fn staged_smoke_executables_tolerate_a_briefly_inherited_writable_descriptor() {
     let mut executable = tempfile::NamedTempFile::new().unwrap();
     executable.write_all(b"#!/bin/sh\nprintf ready\n").unwrap();
@@ -1421,6 +1425,10 @@ fn staged_smoke_executables_tolerate_a_briefly_inherited_writable_descriptor() {
 }
 
 #[test]
+#[cfg_attr(
+    not(target_os = "linux"),
+    ignore = "requires Linux, which refuses to run a file open for writing (ETXTBSY)"
+)]
 fn busy_executable_retry_respects_the_command_deadline() {
     let mut executable = tempfile::NamedTempFile::new().unwrap();
     executable.write_all(b"#!/bin/sh\nexit 0\n").unwrap();

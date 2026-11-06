@@ -45,7 +45,7 @@ fn checkout() -> (tempfile::TempDir, PathBuf) {
     git(&root, &["init", "-q"]);
     executable(
         &temp.path().join("bin/cargo"),
-        "#!/bin/sh\nset -eu\nprintf x >> \"$BUILDS\"\ntarget=$(printf '%s\\n' \"$@\" | sed -n '/--target-dir/{n;p}')\n\
+        "#!/bin/sh\nset -eu\nprintf x >> \"$BUILDS\"\ntarget=$(printf '%s\\n' \"$@\" | sed -n '/--target-dir/{n;p;}')\n\
          mkdir -p \"$target/debug\"\nprintf '#!/bin/sh\\necho built %s \"$@\"\\n' \"$(wc -c < \"$BUILDS\")\" > \"$target/debug/dispatchdev\"\n\
          chmod +x \"$target/debug/dispatchdev\"\n",
     );
