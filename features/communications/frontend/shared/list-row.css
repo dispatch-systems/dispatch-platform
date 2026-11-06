@@ -89,11 +89,7 @@
   font-size: var(--small-size);
   white-space: nowrap;
 }
-/* A waiting one's check that marks it done, beside it at its end, the row kept clear of it so
-   when it was written and how long it waits still show. */
-.convo.waits .convo-open {
-  padding-right: calc(var(--round-size) + var(--gap) * 1.4);
-}
+/* A waiting one's check that marks it done, at its end. */
 .convo-done {
   position: absolute;
   top: 50%;
@@ -118,7 +114,13 @@
   height: 47%;
 }
 /* Where a pointer can hover, the check shows only while its row is pointed at or reached by
-   keyboard; on a touch screen it always shows. */
+   keyboard, over the row's end; on a touch screen it always shows, the row kept clear of it so
+   when it was written and how long it waits still show. */
+@media (hover: none) {
+  .convo.waits .convo-open {
+    padding-right: calc(var(--round-size) + var(--gap) * 1.4);
+  }
+}
 @media (hover: hover) {
   .convo-done {
     opacity: 0;
