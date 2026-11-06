@@ -108,6 +108,7 @@ test('an address another DSP has an account for joins with an account of its own
   });
   assert.equal(invited.status, 200);
   assert.equal(invited.value.invitationUrl, undefined);
+  assert.equal((await owner.get('/api/dsp/invitations')).value[0].accepted, 0);
   const token = /token=([A-Za-z0-9_-]{43})/.exec(
     (await capturedMail(f.root, 'member@dispatch.test')).text,
   )![1];
@@ -122,6 +123,7 @@ test('an address another DSP has an account for joins with an account of its own
   const separate = 'A-separate-password-1!';
   assert.equal((await accept(separate)).status, 200);
   assert.equal((await accept(separate)).status, 404);
+  assert.equal((await owner.get('/api/dsp/invitations')).value[0].accepted, 1);
   const existing = await f.client('member@dispatch.test', separate, dev.code);
   assert.equal(existing.session.user.firstName, 'Fake');
   assert.notEqual(existing.session.user.id, member.session.user.id);

@@ -1,5 +1,10 @@
 import { useCachedData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
-import type { Membership, Permission, Role } from '../../../core/accounts/api/index.js';
+import type {
+  DspInvitation,
+  Membership,
+  Permission,
+  Role,
+} from '../../../core/accounts/api/index.js';
 
 // Team & Roles' endpoints, as its page calls them. Only its own screens raise these, so their
 // words load with them.
@@ -20,6 +25,8 @@ export const inviteMember = (email: unknown, role: unknown) =>
 export const setMemberRole = (member: string, role: string | null) =>
   api(`/api/dsp/members/${member}`, { role });
 
+export const useInvitations = (enabled: boolean, poll = 0) =>
+  useCachedData<DspInvitation[]>(enabled ? '/api/dsp/invitations' : '', poll);
 export const revokeInvitation = (email: string) => api('/api/dsp/invitations/revoke', { email });
 
 export const useRoles = (poll = 0) => useCachedData<Role[]>('/api/dsp/roles', poll);

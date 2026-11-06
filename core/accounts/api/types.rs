@@ -150,6 +150,29 @@ pub struct Member {
     pub owner: bool,
     pub status: Presence,
 }
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/accounts/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct DspInvitation {
+    pub email: String,
+    pub role: String,
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub expires_at: i64,
+    /// The list preserves SQLite's numeric 0/1 flag on the wire.
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub accepted: i64,
+}
+impl FromRow for DspInvitation {
+    fn from_row(row: &Row<'_>) -> Result<Self> {
+        Ok(Self {
+            email: row.get("email")?,
+            role: row.get("role")?,
+            expires_at: row.get("expiresAt")?,
+            accepted: row.get("accepted")?,
+        })
+    }
+}
 /// A role as the team pages list it. The counts are only known to the list.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]

@@ -1,9 +1,8 @@
 import { performancePolicy } from '../../../core/shell/frontend/lib/performance-policy.js';
 import { useDeferredValue, useMemo, useState } from 'react';
 import { RefreshCw, Plus, Ellipsis } from 'lucide-react';
-import type { DspView, Membership, Role } from '../../../core/accounts/api/index.js';
+import type { DspInvitation, DspView, Membership, Role } from '../../../core/accounts/api/index.js';
 import { useUpdateState } from '../../../core/shell/frontend/runtime/browser-update.js';
-import { useCachedData } from '../../../core/shell/frontend/runtime/api.js';
 import { HostedTab, usePageTabs } from '../../../core/shell/frontend/runtime/PageTabs.js';
 import {
   Badge,
@@ -29,6 +28,7 @@ import { RolesTab } from './RolesTab.js';
 import { assignable } from './assignable.js';
 import {
   useMembers,
+  useInvitations,
   inviteMember,
   revokeInvitation,
   setMemberRole,
@@ -37,7 +37,6 @@ import {
 } from '../api/client.js';
 import { field } from '../../../core/shell/frontend/lib/form.js';
 
-type Invitation = { email: string; role: string; expiresAt: number; accepted: boolean };
 const actions = <span className="sr-only">Actions</span>;
 export function TeamPage({ view, reopen }: { view: DspView; reopen: () => Promise<void> }) {
   const [ownTab, setTab] = useUpdateState('team-tab', 'members');
@@ -53,8 +52,8 @@ export function TeamPage({ view, reopen }: { view: DspView; reopen: () => Promis
   const { data, error, refresh } = useMembers(
     tab === 'members' ? performancePolicy.teamPollMs : -1,
   );
-  const invitations = useCachedData<Invitation[]>(
-    canInvite && tab === 'invitations' ? '/api/dsp/invitations' : '',
+  const invitations = useInvitations(
+    canInvite && tab === 'invitations',
     performancePolicy.teamPollMs,
   );
   const roles = useRoles(tab === 'roles' ? performancePolicy.teamPollMs : -1);
@@ -74,9 +73,9 @@ export function TeamPage({ view, reopen }: { view: DspView; reopen: () => Promis
   const [inviting, setInviting] = useState(false);
   const [editing, setEditing] = useState<Membership>();
   const [removing, setRemoving] = useState<Membership>();
-  const [revoking, setRevoking] = useState<Invitation>();
+  const [revoking, setRevoking] = useState<DspInvitation>();
   const revoke = useAction(
-    async (invitation: Invitation) => {
+    async (invitation: DspInvitation) => {
       await revokeInvitation(invitation.email);
       setRevoking(undefined);
       invitations.refresh();
@@ -182,7 +181,7 @@ export function TeamPage({ view, reopen }: { view: DspView; reopen: () => Promis
       ) ?? [],
     [invitations.data],
   );
-  const invitationColumns: TableColumn<Invitation>[] = [
+  const invitationColumns: TableColumn<DspInvitation>[] = [
     {
       id: 'email',
       header: 'Email address',

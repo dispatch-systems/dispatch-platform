@@ -15,6 +15,7 @@ pub fn typescript(cfg: &ts_rs::Config) -> crate::Typescript {
         types::AccountSession,
         types::AuthenticatorSetup,
         types::Dsp,
+        types::DspInvitation,
         types::DspProfile,
         types::DspSummary,
         types::DspView,
