@@ -1,11 +1,9 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
+import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import { Maximize2, Minimize2, RefreshCw } from 'lucide-react';
-import type { BrowserFrame, BrowserInput, Connection } from '../api/index.js';
-import { api, ApiError } from '../../shell/frontend/runtime/api.js';
+import type { BrowserInput, Connection } from '../api/index.js';
 import { featureLabel } from '../../shell/frontend/runtime/features.js';
 import { ErrorBox, Loading, Modal } from '../../shell/frontend/ui/index.js';
-import { messageOf } from '../../shell/frontend/lib/errors.js';
-import { connectionUrl } from '../api/client.js';
+import { useBrowserVerification } from './useBrowserVerification.js';
 
 export function BrowserVerification({
   sessionId,
@@ -17,81 +15,33 @@ export function BrowserVerification({
   close: () => void;
 }) {
   const name = featureLabel(provider);
-  const endpoint = connectionUrl(provider);
-  const [frame, setFrame] = useState<BrowserFrame>();
-  const [error, setError] = useState('');
-  const [streamError, setStreamError] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [expired, setExpired] = useState(false);
+  const {
+    frame,
+    error,
+    streamError,
+    busy,
+    expired,
+    capture,
+    send,
+    submit,
+    pointerDown,
+    pointerMove,
+    pointerUp,
+    inputBlocked,
+    pointerPressed,
+  } = useBrowserVerification({ sessionId, provider, close });
   const [zoom, setZoom] = useState(false);
   const [text, setText] = useState('');
   const image = useRef<HTMLImageElement>(null);
   const screen = useRef<HTMLDivElement>(null);
   const submitButton = useRef<HTMLButtonElement>(null);
-  const controller = useRef<AbortController | null>(null);
-  const pending = useRef<Promise<unknown>>(Promise.resolve());
-  const capturing = useRef(false);
-  const pressed = useRef(false);
-  const blocked = useRef(false);
-  const move = useRef<Extract<BrowserInput, { kind: 'pointer' }> | undefined>(undefined);
-  const moveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  blocked.current = busy || expired;
-
-  const failed = useCallback((error: Error) => {
-    if (controller.current?.signal.aborted || error.name === 'AbortError') return;
-    setError(messageOf(error));
-    if (
-      error instanceof ApiError &&
-      ['verification_expired', 'permission_denied'].includes(error.code)
-    ) {
-      setExpired(true);
-      blocked.current = true;
-    }
-  }, []);
-  const capture = useCallback(async () => {
-    if (capturing.current || blocked.current || controller.current?.signal.aborted) return;
-    capturing.current = true;
-    const signal = controller.current?.signal;
-    try {
-      const next = await api<BrowserFrame>(
-        `${endpoint}/screenshot?sessionId=${encodeURIComponent(sessionId)}`,
-        undefined,
-        signal,
-      );
-      if (signal?.aborted) return;
-      if (next.sessionId !== sessionId)
-        throw new ApiError('verification_expired', 'This verification session has ended.', 409);
-      setFrame(next);
-      setStreamError('');
-    } catch (error) {
-      if (!signal?.aborted && (error as Error).name !== 'AbortError') {
-        setStreamError(messageOf(error));
-        if (error instanceof ApiError && [401, 403, 409].includes(error.status)) failed(error);
-      }
-    } finally {
-      capturing.current = false;
-    }
-  }, [sessionId, failed, endpoint]);
   useEffect(() => {
-    const abort = new AbortController();
-    controller.current = abort;
-    let timer: ReturnType<typeof setTimeout>;
-    const poll = async () => {
-      await capture();
-      if (!abort.signal.aborted) timer = setTimeout(() => void poll(), 650);
-    };
-    void poll();
     const viewport = screen.current;
     const preventPageScroll = (event: WheelEvent) => {
       if (event.target === image.current) event.preventDefault();
     };
     viewport?.addEventListener('wheel', preventPageScroll, { passive: false });
-    return () => {
-      abort.abort();
-      clearTimeout(timer);
-      clearTimeout(moveTimer.current);
-      viewport?.removeEventListener('wheel', preventPageScroll);
-    };
+    return () => viewport?.removeEventListener('wheel', preventPageScroll);
   }, [capture]);
   useEffect(() => {
     if (zoom && screen.current) {
@@ -102,15 +52,6 @@ export function BrowserVerification({
       );
     }
   }, [zoom]);
-  const send = (input: BrowserInput) => {
-    if (blocked.current || controller.current?.signal.aborted) return;
-    pending.current = pending.current
-      .then(async () => {
-        if (controller.current?.signal.aborted) return;
-        await api(`${endpoint}/assist`, { sessionId, input }, controller.current?.signal);
-      })
-      .catch(failed);
-  };
   const position = (element: HTMLImageElement, clientX: number, clientY: number) => {
     const rect = element.getBoundingClientRect();
     return {
@@ -130,45 +71,11 @@ export function BrowserVerification({
       ),
     };
   };
-  const flushMove = () => {
-    clearTimeout(moveTimer.current);
-    moveTimer.current = undefined;
-    if (move.current) {
-      send(move.current);
-      move.current = undefined;
-    }
-  };
   const release = (event: PointerEvent<HTMLImageElement>) => {
-    if (!pressed.current) return;
-    flushMove();
-    pressed.current = false;
-    send({
-      kind: 'pointer',
-      phase: 'up',
-      pressed: false,
-      ...position(event.currentTarget, event.clientX, event.clientY),
-    });
+    if (!pointerPressed()) return;
+    pointerUp(position(event.currentTarget, event.clientX, event.clientY));
     if (event.currentTarget.hasPointerCapture(event.pointerId))
       event.currentTarget.releasePointerCapture(event.pointerId);
-  };
-  const submit = async () => {
-    flushMove();
-    blocked.current = true;
-    setBusy(true);
-    setError('');
-    try {
-      await pending.current;
-      if (controller.current?.signal.aborted) return;
-      await api(`${endpoint}/submit`, { sessionId }, controller.current?.signal);
-      close();
-    } catch (error) {
-      failed(error as Error);
-    } finally {
-      if (!controller.current?.signal.aborted) {
-        setBusy(false);
-        blocked.current = false;
-      }
-    }
   };
   return (
     <Modal title={`Complete ${name} verification`} variant="browser" onClose={close}>
@@ -221,48 +128,27 @@ export function BrowserVerification({
             draggable={false}
             src={`data:image/png;base64,${frame.image}`}
             onLoad={() => {
-              if (zoom && screen.current && !pressed.current && screen.current.scrollLeft === 0)
+              if (zoom && screen.current && !pointerPressed() && screen.current.scrollLeft === 0)
                 screen.current.scrollLeft =
                   (screen.current.scrollWidth - screen.current.clientWidth) / 2;
             }}
             onContextMenu={(event) => event.preventDefault()}
             onPointerDown={(event) => {
-              if (blocked.current || event.button !== 0 || !event.isPrimary) return;
+              if (inputBlocked() || event.button !== 0 || !event.isPrimary) return;
               event.preventDefault();
               event.currentTarget.focus();
               event.currentTarget.setPointerCapture(event.pointerId);
-              flushMove();
-              pressed.current = true;
-              send({
-                kind: 'pointer',
-                phase: 'down',
-                pressed: true,
-                ...position(event.currentTarget, event.clientX, event.clientY),
-              });
+              pointerDown(position(event.currentTarget, event.clientX, event.clientY));
             }}
             onPointerMove={(event) => {
-              if (blocked.current || !event.isPrimary) return;
-              move.current = {
-                kind: 'pointer',
-                phase: 'move',
-                pressed: pressed.current,
-                ...position(event.currentTarget, event.clientX, event.clientY),
-              };
-              if (!moveTimer.current)
-                moveTimer.current = setTimeout(() => {
-                  const scheduled = moveTimer.current;
-                  // Keep the latest position while earlier input is in flight.
-                  // A slow connection must not accumulate a trail of old moves.
-                  void pending.current.then(() => {
-                    if (moveTimer.current === scheduled) flushMove();
-                  });
-                }, 60);
+              if (inputBlocked() || !event.isPrimary) return;
+              pointerMove(position(event.currentTarget, event.clientX, event.clientY));
             }}
             onPointerUp={release}
             onPointerCancel={release}
             onLostPointerCapture={release}
             onWheel={(event) => {
-              if (blocked.current) return;
+              if (inputBlocked()) return;
               const scale = event.deltaMode === 1 ? 20 : event.deltaMode === 2 ? 500 : 1;
               send({
                 kind: 'scroll',
@@ -278,7 +164,7 @@ export function BrowserVerification({
                 submitButton.current?.focus();
                 return;
               }
-              if (blocked.current || event.ctrlKey || event.metaKey || event.altKey) return;
+              if (inputBlocked() || event.ctrlKey || event.metaKey || event.altKey) return;
               if (event.key.length === 1) {
                 event.preventDefault();
                 event.stopPropagation();
