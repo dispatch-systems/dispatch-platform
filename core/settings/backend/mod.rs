@@ -1,12 +1,8 @@
-//! A DSP's settings: the values of the sections features and core declare
-//! (`manifest::settings`), each kept for the DSP or for each member in the DSP's own database,
-//! checked as its fields' kinds say, and recorded in the log as they change. A feature reads
-//! its own with `read`; Settings, and anything else that changes one, saves through `save`;
-//! a feature moves values it kept itself before into its section with `carry_over`; a removed
-//! member's own go with their account (`forget_member`).
+//! DSP and member settings declared through `manifest::settings`.
+//! Storage, saving and carry-over policy: `core/settings/README.md`.
 //!
-//! `store` keeps the records, `kinds` says what each kind of field holds and how it reads,
-//! `read` and `save` are what the rest of the product calls, and `api` what members reach.
+//! `store` owns records, `kinds` validates fields, `read` and `save` serve product callers,
+//! and `api` serves members. `forget_member` removes a member's own settings.
 #[path = "../api/mod.rs"]
 pub mod api;
 pub(crate) mod kinds;
