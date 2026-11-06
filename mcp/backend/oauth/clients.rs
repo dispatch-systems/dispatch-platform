@@ -33,36 +33,40 @@ pub struct Client {
     pub redirect_uris: Vec<String>,
 }
 
-/// The apps Dispatch knows: the exact URL of each one's client document, the name to fall
-/// back on, and the copy served instead of the network in fixture mode and tests.
-const KNOWN: &[(&str, &str, &str)] = &[
-    (
-        "https://chatgpt.com/oauth/client.json",
-        "ChatGPT",
-        include_str!("clients/chatgpt.json"),
-    ),
-    (
-        "https://chatgpt.com/oauth/codex/client.json",
-        "Codex",
-        include_str!("clients/codex.json"),
-    ),
-    (
-        "https://claude.ai/oauth/claude-code-client-metadata",
-        "Claude Code",
-        include_str!("clients/claude-code.json"),
-    ),
-    (
-        "https://nousresearch.github.io/hermes-agent/docs/oauth/client-metadata.json",
-        "Hermes Agent",
-        include_str!("clients/hermes.json"),
-    ),
-];
-/// Which kind of app each known app is, in the same order, for the owner's choice of apps.
-const KNOWN_APPS: [OAuthAppId; KNOWN.len()] = [
-    OAuthAppId::Chatgpt,
-    OAuthAppId::Codex,
-    OAuthAppId::ClaudeCode,
-    OAuthAppId::Hermes,
+struct KnownApp {
+    app: OAuthAppId,
+    url: &'static str,
+    name: &'static str,
+    copy: &'static str,
+}
+
+/// The apps Dispatch knows: their identity, each one's exact client document URL, the name
+/// to fall back on, and the copy served instead of the network in fixture mode and tests.
+const KNOWN: &[KnownApp] = &[
+    KnownApp {
+        app: OAuthAppId::Chatgpt,
+        url: "https://chatgpt.com/oauth/client.json",
+        name: "ChatGPT",
+        copy: include_str!("clients/chatgpt.json"),
+    },
+    KnownApp {
+        app: OAuthAppId::Codex,
+        url: "https://chatgpt.com/oauth/codex/client.json",
+        name: "Codex",
+        copy: include_str!("clients/codex.json"),
+    },
+    KnownApp {
+        app: OAuthAppId::ClaudeCode,
+        url: "https://claude.ai/oauth/claude-code-client-metadata",
+        name: "Claude Code",
+        copy: include_str!("clients/claude-code.json"),
+    },
+    KnownApp {
+        app: OAuthAppId::Hermes,
+        url: "https://nousresearch.github.io/hermes-agent/docs/oauth/client-metadata.json",
+        name: "Hermes Agent",
+        copy: include_str!("clients/hermes.json"),
+    },
 ];
 /// A document is fetched again after an hour, and while that fails the last one serves a day.
 /// A failed fetch is not tried again for a minute.
@@ -172,10 +176,15 @@ impl Documents {
     /// The known app whose client document is at `url`, or the error page's code:
     /// `unknown_app` for any other URL, `app_unavailable` when its document cannot be had.
     pub async fn client(&self, config: &Config, url: &str) -> Found {
-        let Some(index) = KNOWN.iter().position(|(known, ..)| *known == url) else {
+        let Some(index) = KNOWN.iter().position(|known| known.url == url) else {
             return Err("unknown_app");
         };
-        let (known, name, copy) = KNOWN[index];
+        let KnownApp {
+            url: known,
+            name,
+            copy,
+            ..
+        } = KNOWN[index];
         if config.fixture {
             return document(known, name, copy.as_bytes()).ok_or("app_unavailable");
         }
@@ -187,7 +196,12 @@ impl Documents {
         index: usize,
         fetch: impl FnOnce() -> F,
     ) -> Found {
-        let (known, name, copy) = KNOWN[index];
+        let KnownApp {
+            url: known,
+            name,
+            copy,
+            ..
+        } = KNOWN[index];
         let entry = || {
             self.fetched
                 .lock()
@@ -348,12 +362,14 @@ async fn settle<F: Future<Output = Result<Vec<u8>>>>(
 
 /// Whether `url` is a known app's client document.
 pub fn known(url: &str) -> bool {
-    KNOWN.iter().any(|(known, ..)| *known == url)
+    KNOWN.iter().any(|known| known.url == url)
 }
 /// The known app whose client document is at `url`, as the owner's choice of apps names it.
 pub fn known_app(url: &str) -> Option<OAuthAppId> {
-    let index = KNOWN.iter().position(|(known, ..)| *known == url)?;
-    Some(KNOWN_APPS[index])
+    KNOWN
+        .iter()
+        .find(|known| known.url == url)
+        .map(|known| known.app)
 }
 
 /// A client document's body: HTTPS only, no redirects, within 5 seconds and 64 KiB.
