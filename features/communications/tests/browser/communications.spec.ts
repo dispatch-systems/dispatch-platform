@@ -16,7 +16,9 @@ import { connect, event, fromSlack, install } from '../../../slack/tests/support
 
 /** Has the reads of conversations with those `named` say they're working, as live route data
  * having them on a route today would, so their profile opens; anyone else's read is as the server
- * answers it. Summit has no live route data, and the rule itself is the backend's to test. */
+ * answers it. Summit has no live route data, and the rule itself is the backend's to test; in
+ * Recents, Today's Routes, read after, says Summit has no day, so a test using this opens on
+ * Slack's section. */
 async function working(page: Page, ...named: string[]) {
   await page.route(
     (url) => /\/api\/dsp\/communications\/conversations\/[^/]+$/.test(url.pathname),
@@ -444,6 +446,7 @@ test('Display opens the member’s own Message display, its preview made to fit,
     }),
   );
   expect(written.status).toBe(200);
+  await slackChosen(page, dispatch);
   await working(page, 'Casey Rivera');
 
   await login(page);
@@ -527,6 +530,7 @@ test('on a wide screen a bubble is as wide as chosen, plain lines stay readable,
     }),
   );
   expect(written.status).toBe(200);
+  await slackChosen(page, dispatch);
   await working(page, 'Casey Rivera');
   // Changes to the owner's own Message display, as Settings saves them, which the page draws once
   // it's read them again (`drawn`).
