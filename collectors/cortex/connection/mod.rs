@@ -1,6 +1,7 @@
 //! Cortex authentication and performance transport from Amazon Logistics.
+pub(crate) mod companies;
 pub mod performance;
-use crate::collections::associates::collect::COMPANIES;
+use self::companies::COMPANIES;
 use crate::collections::meals::collect as collection;
 use crate::discovery::{CollectionRequest, Scope, known::KnownScopes};
 use dispatch_core::collection::browser::{
@@ -152,9 +153,8 @@ impl Driver {
     /// Amazon's cookies, Amazon serves the console page itself rather than sending it to
     /// a sign-in or a verification, and the company list, which Amazon answers only a
     /// signed-in account, comes back with the account's companies. Anything else signs
-    /// in on the page as before, where a verification reaches the owner. Amazon answered
-    /// both in under half a second when tried. Answers the company list when the session
-    /// stands.
+    /// in on the page as before, where a verification reaches the owner. Answers the
+    /// company list when the session stands.
     async fn saved_session(&self) -> Result<Option<Value>> {
         let http = Http::signed_in(&self.browser, &self.origin, &crate::HOSTS).await?;
         if !http.carries_cookies() {

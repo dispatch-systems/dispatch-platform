@@ -9,7 +9,10 @@ use super::capture::{
 };
 use super::shrink::shrink;
 use crate as cortex;
-use crate::connection::Driver;
+use crate::connection::{
+    Driver,
+    companies::{COMPANIES, company, refusal},
+};
 use dispatch_core::{
     Error, Result,
     collection::browser::{
@@ -18,7 +21,6 @@ use dispatch_core::{
     },
     db::now,
     ensure,
-    foundation::validate::token,
     manifest::registry,
 };
 use futures_util::{StreamExt, stream};
@@ -28,12 +30,10 @@ use tokio::sync::Semaphore;
 
 /// Where S3 serves the photos the application redirects to.
 pub const PHOTO_HOST: &str = "amazon-flex-da-photo-prod-usamazon.s3.amazonaws.com";
-pub(crate) const COMPANIES: &str = "/workforce/listCompanies";
 const ROSTER: &str = "/workforce/api/v1/fetchDSPAssociates";
 /// As much as one reply may hold. A hundred associates are 60 KB.
 const LIMIT: usize = 16 * 1024 * 1024;
-/// Photo downloads at once: forty took 4.4 s sixteen at a time, against 5.4 s eight at a
-/// time and 4.2 s all forty together.
+/// Photo downloads at once, bounding the requests a roster holds in flight.
 const LANES: usize = 16;
 /// What one collection keeps of the photos the DSP lacks, as the capture holds them: about
 /// 3,600 shrunk ones. A roster lacking more brings the rest next time.
@@ -41,41 +41,6 @@ const PHOTOS_BUDGET: usize = 96 * 1024 * 1024;
 /// Photos shrunk at once: each holds a CPU for a moment, and a collection shares the server
 /// with everyone using it.
 const SHRINKING: usize = 4;
-
-pub(crate) fn refusal(error: Refusal) -> Error {
-    match error {
-        Refusal::Unavailable => Error::new("provider_unavailable", 502),
-        Refusal::Unreadable("http_signed_out") => Error::new("verification_required", 409),
-        Refusal::Unreadable(_) => Error::new(cortex::codes::CORTEX_SOURCE_CHANGED.as_str(), 502),
-    }
-}
-
-/// The company whose short code is the DSP's, of those the sign-in sees.
-pub(crate) fn company(reply: &Value, code: &str) -> Result<(String, String)> {
-    let records = reply["records"]
-        .as_array()
-        .ok_or_else(|| Error::new(cortex::codes::CORTEX_SOURCE_CHANGED.as_str(), 502))?;
-    let named: Vec<(String, String)> = records
-        .iter()
-        .filter_map(|record| {
-            let id = record["companyId"].as_str()?;
-            let short = record["shortCode"].as_str()?;
-            (token(id, 128) && token(short, 32) && short.eq_ignore_ascii_case(code))
-                .then(|| (id.to_owned(), short.to_owned()))
-        })
-        .collect();
-    match named.as_slice() {
-        [one] => Ok(one.clone()),
-        [] => Err(Error::new(
-            cortex::codes::CORTEX_SCOPE_MISMATCH.as_str(),
-            502,
-        )),
-        _ => Err(Error::new(
-            cortex::codes::CORTEX_PROVIDER_AMBIGUOUS.as_str(),
-            502,
-        )),
-    }
-}
 
 /// Every associate the roster lists, from its table's rows: never no one.
 pub(crate) fn roster(reply: &Value) -> Result<Vec<Associate>> {

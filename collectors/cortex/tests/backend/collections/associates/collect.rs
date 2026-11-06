@@ -1,4 +1,5 @@
 use super::*;
+use crate::connection::companies;
 use axum::{
     Router,
     body::Body,
@@ -9,7 +10,7 @@ use axum::{
 #[test]
 fn the_dsp_code_picks_its_one_company() {
     let company = |code: &str, records: serde_json::Value| {
-        super::company(&json!({ "records": records }), code)
+        companies::company(&json!({ "records": records }), code)
     };
     let fxtr = json!({"companyId":"c-1","shortCode":"FXTR","name":"Fixture","providerId":"p"});
     let other = json!({"companyId":"c-2","shortCode":"OTHR","name":"Other","providerId":"p"});
@@ -26,7 +27,7 @@ fn the_dsp_code_picks_its_one_company() {
         company("FXTR", json!([fxtr, twin])).unwrap_err().code,
         "cortex_provider_ambiguous"
     );
-    assert!(super::company(&json!({"error":"signed out"}), "FXTR").is_err());
+    assert!(companies::company(&json!({"error":"signed out"}), "FXTR").is_err());
 }
 
 #[test]
