@@ -140,34 +140,6 @@ impl Db {
             .query_map(p, row_json)?
             .collect::<std::result::Result<Vec<_>, _>>()?)
     }
-    /// Reads rows with a hard bound on SQLite virtual-machine work. The handler belongs to
-    /// this connection and is removed before it returns, including after an interrupted query.
-    pub fn all_bounded(&mut self, sql: &str, p: impl Params, max_ops: u64) -> Result<Vec<Value>> {
-        const INTERVAL: u64 = 1_000;
-        let mut callbacks_left = max_ops.div_ceil(INTERVAL).max(1);
-        self.0.progress_handler(
-            INTERVAL as i32,
-            Some(move || {
-                callbacks_left = callbacks_left.saturating_sub(1);
-                callbacks_left == 0
-            }),
-        )?;
-        let result = (|| {
-            let mut stmt = self.0.prepare_cached(sql)?;
-            stmt.query_map(p, row_json)?
-                .collect::<std::result::Result<Vec<_>, _>>()
-        })();
-        self.0.progress_handler(0, None::<fn() -> bool>)?;
-        match result {
-            Err(error)
-                if error.sqlite_error_code() == Some(rusqlite::ErrorCode::OperationInterrupted) =>
-            {
-                Err(crate::Error::new(crate::Code::QueryLimitExceeded, 503))
-            }
-            Err(error) => Err(error.into()),
-            Ok(rows) => Ok(rows),
-        }
-    }
     pub fn one(&self, sql: &str, p: impl Params) -> Result<Option<Value>> {
         use rusqlite::OptionalExtension;
         Ok(self
@@ -250,7 +222,3 @@ pub fn boolean(value: &mut Value, keys: &[&str]) {
         value[*key] = json!(flag(value, key));
     }
 }
-
-#[cfg(test)]
-#[path = "../tests/backend/connection.rs"]
-mod tests;

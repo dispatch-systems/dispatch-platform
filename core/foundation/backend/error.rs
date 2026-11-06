@@ -36,7 +36,6 @@ codes! {
     ProviderContentMissing => "provider_content_missing",
     ProviderHoursMismatch => "provider_hours_mismatch",
     ProviderResponseUnreadable => "provider_response_unreadable",
-    QueryLimitExceeded => "query_limit_exceeded",
     VerificationRequired => "verification_required",
     ManualVerificationRequired => "manual_verification_required",
     VerificationIncomplete => "verification_incomplete",
