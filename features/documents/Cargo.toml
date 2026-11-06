@@ -31,3 +31,5 @@ url = { workspace = true }
 
 [dev-dependencies]
 dispatch-core = { path = "../../core", features = ["testing"] }
+# A clock the tests move, through a sign-in held while a DSP is deleted.
+tokio = { workspace = true, features = ["test-util"] }

@@ -244,7 +244,12 @@ impl Google {
     /// Trades the code Google sent the browser back with for the account's tokens.
     pub async fn exchange(&self, origin: &str, code: &str, verifier: &str) -> Result<Granted> {
         let client = match self {
-            Self::Fixture => return fixture_grant(code),
+            Self::Fixture => {
+                let granted = fixture_grant(code);
+                #[cfg(test)]
+                fixture_exchanged(code).await;
+                return granted;
+            }
             Self::Live(client) => client,
         };
         let back = format!("{origin}{RETURN_PATH}");
@@ -412,6 +417,29 @@ pub fn fixture_on_renewal(refresh: &str, then: impl FnOnce() + Send + 'static) {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .insert(refresh.to_owned(), Box::new(then));
+}
+/// What a test has a sign-in wait for once fixture mode's Google has traded the code `code`
+/// for tokens: as the sign-in holding there while another DSP is deleted.
+#[cfg(test)]
+static ON_EXCHANGE: LazyLock<Mutex<BTreeMap<String, Held>>> = LazyLock::new(Default::default);
+#[cfg(test)]
+type Held = std::pin::Pin<Box<dyn Future<Output = ()> + Send>>;
+#[cfg(test)]
+pub fn fixture_on_exchange(code: &str, hold: impl Future<Output = ()> + Send + 'static) {
+    ON_EXCHANGE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(code.to_owned(), Box::pin(hold));
+}
+#[cfg(test)]
+async fn fixture_exchanged(code: &str) {
+    let hold = ON_EXCHANGE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .remove(code);
+    if let Some(hold) = hold {
+        hold.await;
+    }
 }
 /// The refresh tokens given back to Google, for a test to ask whether one was.
 #[cfg(test)]

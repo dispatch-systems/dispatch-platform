@@ -119,6 +119,12 @@ pub fn start(db: &Store, c: &Context, site: &Site) -> Result<GoogleSignIn> {
     })
 }
 
+/// One Google grant changes at a time on this server: a sign-in, from Google giving its tokens
+/// until they're kept, and a deleted DSP's account given back, from asking which DSP connects
+/// it until Google has ended the grant. So no DSP keeps tokens of a grant Google is ending,
+/// and none is ended while a DSP is keeping its tokens.
+static GRANTS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// Finishes the sign-in the member started with `state`, now that Google sent them back with
 /// `code`: keeps the account's token, and makes the DSP's main folder unless it has one.
 pub async fn finish(
@@ -137,6 +143,7 @@ pub async fn finish(
         })
         .await?;
     let google = Google::of(&state.config)?;
+    let granting = GRANTS.lock().await;
     let granted = google
         .exchange(&state.config.origin, &code, &verifier)
         .await?;
@@ -193,6 +200,7 @@ pub async fn finish(
             c.audit(db, action, &connection.account.email)
         })
         .await?;
+    drop(granting);
     // The team gets the folder shared with them while the owner looks around.
     let sharing = Arc::clone(state);
     let at = shared.clone();
@@ -245,6 +253,7 @@ pub fn revoke(state: Arc<State>, dsp: String) -> Upkeep {
         let Ok(google) = Google::of(&state.config) else {
             return;
         };
+        let _granting = GRANTS.lock().await;
         match state.read(move |db| own_grant(db, &dsp)).await {
             Ok(Some(token)) => google.revoke(&token).await,
             Ok(None) => {}
