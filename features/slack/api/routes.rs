@@ -7,7 +7,7 @@ use crate::backend::{
     channels,
     connection::{self, Started},
     inbound, integrations, link, logo, pages,
-    storage::{self, SlackStore},
+    storage::{installation::InstallationStore, workspaces},
 };
 use crate::integrations as own;
 use axum::{
@@ -113,7 +113,7 @@ pub(crate) fn folder(id: &str) -> Result<String> {
 }
 /// A Slack workspace's ID, as Slack writes them.
 pub(crate) fn team(id: &str) -> Result<String> {
-    ensure(storage::team_id(id), "invalid_input", 400)?;
+    ensure(workspaces::team_id(id), "invalid_input", 400)?;
     Ok(id.to_owned())
 }
 /// A Slack channel's ID, as Slack writes them.

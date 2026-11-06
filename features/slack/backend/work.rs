@@ -4,7 +4,10 @@
 //! or a failure. A pass goes over each DSP Slack works for; each item due is claimed first, so
 //! two tries never run at once, and what its try came to is kept. Each pass logs its own
 //! failures and goes on to the next DSP.
-use super::{connection, storage::SlackStore};
+use super::{
+    connection,
+    storage::{integrations::IntegrationStore, workspaces::WorkspaceStore},
+};
 use dispatch_core::{
     Error, Result, State,
     db::{Store, now},

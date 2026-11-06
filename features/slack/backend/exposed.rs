@@ -1,6 +1,9 @@
 //! What Slack exposes to every other feature and agent tool: its workspaces' members, as each
 //! person's accounts there (`chat_accounts`, through `dispatch_slack_contract`).
-use super::{people, storage::SlackStore};
+use super::{
+    people,
+    storage::{members::MemberStore, workspaces::WorkspaceStore},
+};
 use dispatch_core::{Result, db::Store, foundation::validate, manifest::people::Source};
 use dispatch_slack_contract::{ChatAccount, ChatAccounts};
 use std::collections::HashMap;

@@ -44,7 +44,7 @@ pub mod kit {
     };
     pub use crate::backend::members::member;
     pub use crate::backend::slack::Bytestream;
-    pub use crate::backend::storage::{Member, Workspace};
+    pub use crate::backend::storage::{members::Member, workspaces::Workspace};
     pub use crate::backend::work::{Queue, dsps, due, failed, pass, retried};
 }
 /// What a dependant's tests use of Slack, behind its `testing` feature: connecting one of a
@@ -109,7 +109,7 @@ pub const FEATURE: Feature = Feature {
                 Migration {
                     id: 2,
                     name: "slack_new_connections",
-                    apply: Code(backend::storage::add_new_connections),
+                    apply: Code(backend::storage::migrations::add_new_connections),
                 },
                 Migration {
                     id: 3,
@@ -145,7 +145,7 @@ pub const FEATURE: Feature = Feature {
                 Migration {
                     id: 8,
                     name: "slack_workspaces_added",
-                    apply: Code(backend::storage::add_workspaces_added),
+                    apply: Code(backend::storage::migrations::add_workspaces_added),
                 },
                 Migration {
                     id: 9,
@@ -157,7 +157,7 @@ pub const FEATURE: Feature = Feature {
                 Migration {
                     id: 10,
                     name: "slack_install_pages",
-                    apply: Code(backend::storage::add_install_pages),
+                    apply: Code(backend::storage::migrations::add_install_pages),
                 },
                 Migration {
                     id: 11,
@@ -207,7 +207,7 @@ pub const FEATURE: Feature = Feature {
     // A deleted DSP's workspaces lose the app, and are free for any DSP.
     deleting: Deleting {
         revoke: Some(backend::connection::revoke),
-        forget: Some(backend::storage::forget_dsp),
+        forget: Some(backend::storage::workspaces::forget_dsp),
         ..Deleting::NONE
     },
     ..feature("slack")

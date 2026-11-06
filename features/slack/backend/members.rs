@@ -5,7 +5,10 @@
 //! Slackbot aren't members here; guests are.
 use super::{
     bot::{self, Bot},
-    storage::{Member, SlackStore},
+    storage::{
+        members::{Member, MemberStore},
+        workspaces::WorkspaceStore,
+    },
 };
 use dispatch_core::{
     Error, Result, State,

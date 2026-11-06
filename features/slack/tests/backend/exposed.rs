@@ -3,7 +3,7 @@
 use crate::backend::{
     app::SCOPES,
     members::read,
-    storage::SlackStore,
+    storage::workspaces::WorkspaceStore,
     support::{connect, platform},
 };
 use dispatch_core::testing;

@@ -12,7 +12,11 @@ use crate::backend::{
     channel_links::storage::{Link, LinkStore},
     fixture::{self, CANVAS},
     slack::Tokens,
-    storage::{Member, SlackStore, Workspace},
+    storage::{
+        integrations::IntegrationStore,
+        members::{Member, MemberStore},
+        workspaces::{Workspace, WorkspaceStore},
+    },
     support,
 };
 use dispatch_core::testing;

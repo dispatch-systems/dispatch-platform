@@ -10,7 +10,11 @@
 //! `slack_import_links`, and calls these from its routes.
 pub mod storage;
 
-use super::{bot::Bot, channels, storage::SlackStore};
+use super::{
+    bot::Bot,
+    channels,
+    storage::{integrations::IntegrationStore, workspaces::WorkspaceStore},
+};
 use crate::api::types::{SlackChannel, SlackFolder, SlackFolders};
 use dispatch_core::{
     Error, Result, State,

@@ -8,7 +8,12 @@ use super::{
     bot::Bot,
     fixture, logo, members,
     slack::{Installed, Slack},
-    storage::{Install, SlackStore, Starter, Workspace},
+    storage::{
+        installation::{Install, InstallationStore, Starter},
+        integrations::IntegrationStore,
+        logos::LogoStore,
+        workspaces::{Workspace, WorkspaceStore},
+    },
     work,
 };
 use crate::api::types::{SlackAccount, SlackInstall, SlackLink, SlackWorkspace, WorkspaceStatus};

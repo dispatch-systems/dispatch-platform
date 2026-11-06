@@ -3,7 +3,7 @@
 //! keeps the workspace's name and logo as Slack has them, and its members; and notices a
 //! workspace whose tokens Slack stopped honouring, so the card says so and the DSP can reconnect
 //! it before someone finds out by trying.
-use super::{bot::Bot, logo, members, slack::Slack, storage::SlackStore, work};
+use super::{bot::Bot, logo, members, slack::Slack, storage::workspaces::WorkspaceStore, work};
 use dispatch_core::{
     State,
     manifest::{Maintenance, Upkeep},

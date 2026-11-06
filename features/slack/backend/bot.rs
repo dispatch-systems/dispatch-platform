@@ -7,7 +7,7 @@
 use super::{
     connection, kit,
     slack::{Bytestream, Called, Slack, Tokens},
-    storage::SlackStore,
+    storage::workspaces::WorkspaceStore,
 };
 use dispatch_core::{
     Error, Result, State,

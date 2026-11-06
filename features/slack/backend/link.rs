@@ -9,7 +9,10 @@ use super::{
     connection::{self, Started},
     logo, members,
     slack::Slack,
-    storage::{Install, Link, SlackStore, Starter},
+    storage::{
+        installation::{Install, InstallationStore, Link, Starter},
+        workspaces::WorkspaceStore,
+    },
 };
 use crate::api::types::{SlackAccount, SlackNewLink};
 use dispatch_core::{

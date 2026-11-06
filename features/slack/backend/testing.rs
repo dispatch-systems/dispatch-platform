@@ -5,7 +5,10 @@ use super::{
     bot::Bot,
     connection,
     slack::Tokens,
-    storage::{SlackStore, Workspace},
+    storage::{
+        integrations::IntegrationStore,
+        workspaces::{Workspace, WorkspaceStore},
+    },
 };
 use dispatch_core::{State, db::now};
 use std::sync::Arc;

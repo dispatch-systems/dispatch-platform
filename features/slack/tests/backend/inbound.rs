@@ -6,6 +6,7 @@
 use super::*;
 use crate::backend::{
     app, fixture,
+    storage::integrations::IntegrationStore,
     support::{self, LISTENING},
 };
 use axum::http::HeaderValue;
