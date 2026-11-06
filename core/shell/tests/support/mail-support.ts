@@ -5,6 +5,7 @@ export async function capturedMail(
   root: string,
   to: string,
   previousText?: string,
+  { subject }: { subject?: string } = {},
 ): Promise<{
   to: string;
   subject: string;
@@ -20,12 +21,20 @@ export async function capturedMail(
       if (!name.endsWith('.json')) continue;
       const file = path.join(directory, name);
       const message = JSON.parse(fs.readFileSync(file, 'utf8'));
-      if (message.to === to && message.text !== previousText) {
+      if (
+        message.to === to &&
+        message.text !== previousText &&
+        (subject === undefined || message.subject === subject)
+      ) {
         assert.equal(fs.statSync(file).mode & 0o077, 0);
         return message;
       }
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  throw new Error('Invitation email was not delivered to the fixture mailbox');
+  throw new Error(
+    subject === undefined
+      ? 'Invitation email was not delivered to the fixture mailbox'
+      : `No email "${subject}" was delivered to ${to}`,
+  );
 }
