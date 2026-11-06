@@ -9,9 +9,7 @@
 //! object store has while the DSP's cache can't be used to bring it down, has none: it's shown as
 //! it is. A preview that can't be kept is shown all the same.
 use super::bytes::{self, Folder, Reading};
-use dispatch_core::{
-    Error, Result, State, foundation::crypto, foundation::observability, server::http::input::Reply,
-};
+use dispatch_core::{Error, Result, State, foundation::crypto, foundation::observability};
 use image::{
     DynamicImage, ImageDecoder, ImageReader, Limits, Rgb, RgbImage, codecs::jpeg::JpegEncoder,
 };
@@ -107,29 +105,6 @@ pub async fn preview(
         );
     }
     Ok(Some(Reading::whole(jpeg)))
-}
-
-/// The preview of the DSP's picture kept by `sha256` in `folder`, as `mime` named `name`, for a
-/// page to show: none for a file that isn't a picture, or a picture with none.
-pub async fn answer(
-    state: &Arc<State>,
-    folder: Folder,
-    dsp: &str,
-    sha256: &str,
-    name: &str,
-    mime: &str,
-) -> Result<Option<Reply>> {
-    if !mime.starts_with("image/") {
-        return Ok(None);
-    }
-    Ok(preview(state, folder, dsp, sha256).await?.map(|small| {
-        Reply::download(
-            MIME,
-            name,
-            small.length,
-            axum::body::Body::from_stream(small.chunks),
-        )
-    }))
 }
 
 /// The preview kept at `path`, when there is one, marked read now, as the cache keeps what was

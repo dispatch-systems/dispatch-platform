@@ -29,7 +29,7 @@ use dispatch_core::{
     db::{self, Store, objects::Objects},
     ensure,
     foundation::crypto,
-    server::http::{input::Reply, upload::Upload},
+    server::http::upload::Upload,
 };
 use futures_util::{Stream, StreamExt, stream};
 use sha2::{Digest, Sha256};
@@ -584,15 +584,6 @@ pub fn bound(root: &Path, owners: &[&str], most: u64) -> Vec<Error> {
 /// enough of it that no two of a DSP's bytes share one.
 pub fn version(sha256: &str) -> String {
     sha256.chars().take(16).collect()
-}
-/// `reply`, the bytes `sha256`, kept by the browser when the address asked for their version,
-/// `asked`: another version comes at another address.
-pub fn as_asked(reply: Reply, asked: Option<&str>, sha256: &str) -> Reply {
-    if asked.is_some_and(|asked| asked == version(sha256)) {
-        reply.kept()
-    } else {
-        reply
-    }
 }
 
 /// Bytes coming down from the object store, and their copy arriving in the cache, when there's
