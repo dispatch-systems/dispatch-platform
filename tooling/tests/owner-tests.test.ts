@@ -280,7 +280,8 @@ test("one of the app's Rust test files runs as the module it is of its backend's
     'app/backend/lib.rs': '#[cfg(test)]\n#[path = "../tests/backend/audit.rs"]\nmod audit_areas;\n',
     'app/tests/backend/audit.rs': '',
     'app/tests/backend/integration/main.rs': 'mod support;\n\nmod oauth;\n',
-    'app/tests/backend/integration/oauth.rs': '',
+    'app/tests/backend/integration/oauth.rs': 'mod protocol;\n',
+    'app/tests/backend/integration/oauth/protocol.rs': '',
   });
   try {
     const run = (file: string) =>
@@ -289,6 +290,9 @@ test("one of the app's Rust test files runs as the module it is of its backend's
     assert.deepEqual(run('audit.rs'), [`${cargo} --lib -- audit_areas::`]);
     // The program's root sits in app/tests/, outside the crate's folder.
     assert.deepEqual(run('integration/oauth.rs'), [`${cargo} --test integration -- oauth::`]);
+    assert.deepEqual(run('integration/oauth/protocol.rs'), [
+      `${cargo} --test integration -- oauth::protocol::`,
+    ]);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
