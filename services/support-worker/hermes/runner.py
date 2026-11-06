@@ -47,6 +47,8 @@ with (home / "runner.log").open("w", encoding="utf-8") as log, contextlib.redire
             raise PermissionError("Effective Hermes tools differ from the profile's exact manifest: " + json.dumps({"expected":profile["tools"], "actual":sorted(agent.valid_tool_names)}))
         safe_context = dict(request["context"])
         safe_context["browser"] = {key: value for key, value in request["context"].get("browser", {}).items() if key != "storageState"}
+        if isinstance(safe_context.get("deploymentMetadata"), dict):
+            safe_context["deploymentMetadata"] = {key: value for key, value in safe_context["deploymentMetadata"].items() if key != "cookie"}
         images = safe_context.pop("imageInputs", [])
         payload = {"ticket": request["job"], "context": safe_context}
         content = [{"type":"text", "text":json.dumps(payload)}]

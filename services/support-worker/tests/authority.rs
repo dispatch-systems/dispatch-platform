@@ -131,6 +131,22 @@ fn reporter_model_payload_excludes_owner_private_context_but_owner_answers_retai
 }
 
 #[test]
+fn model_payload_excludes_browser_authority_while_trusted_tools_retain_it() {
+    let script = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/support/runner.py");
+    let output = std::process::Command::new("python3")
+        .args(["-I", "-B"])
+        .arg(script)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "runner privacy contract failed:\n{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+}
+
+#[test]
 fn production_server_reads_go_only_to_production_analysis_with_the_tickets_dsp() {
     let mut job: dispatch_core::support::api::types::SupportJob = serde_json::from_value(json!({
         "id":"job","kind":"investigate","version":0,"lease":"lease","leaseUntil":0,"checkpoint":{},
