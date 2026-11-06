@@ -5,6 +5,7 @@ import os
 import shutil
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -48,6 +49,7 @@ class PolicyTests(unittest.TestCase):
                 policy.patch({"path":"safe.txt", "old_string":"original", "new_string":"changed"})
         self.assertEqual((self.root / "safe.txt").read_text(), "original")
 
+    @unittest.skipUnless(sys.platform == "linux", "the support sandbox is bubblewrap, which runs on Linux alone")
     def test_intake_needs_no_workspace_and_source_analysis_cannot_open_a_browser(self):
         analyst = self.profiles["analyst"]
         intake = {**analyst, **analyst["stages"]["intake"]}
@@ -74,6 +76,7 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(policy.observations, ["dispatch_command"])
         self.assertEqual((self.root / "safe.txt").read_text(), "original")
 
+    @unittest.skipUnless(sys.platform == "linux", "the support sandbox is bubblewrap, which runs on Linux alone")
     def test_shell_can_edit_only_builder_source_and_cannot_replace_host_git_pointer(self):
         builder = module.Policy(self.request)
         result = json.loads(builder.command({"command":"test \"$HOME\" = /sandbox/home && test -d \"$HOME\" && printf changed > safe.txt"}))

@@ -1,6 +1,6 @@
 use dispatchdev_cli::{
-    Native, Result, Runner, api, build, change, check, machine::Machine, observation, pr, scaffold,
-    shot, test, verify,
+    Native, Result, Runner, api, build, change, check, observation, pr, scaffold, shot, test,
+    verify,
 };
 use std::{collections::BTreeMap, path::PathBuf};
 
@@ -125,8 +125,7 @@ const COMMANDS: &[Spec] = &[
         "What stops the branch, then the rule checks, the TypeScript linter and clippy side by \
          side, clippy in the checkout's own build. They pass again without running on a \
          committed tree they passed on, as clippy does on Rust inputs it passed on; the checks \
-         on the branch's PR run the tests. --plan only names them. It runs on Linux alone: \
-         elsewhere, the PR's checks run every check on GitHub.",
+         on the branch's PR run the tests. --plan only names them.",
     )
     .flags(&["--plan"]),
     spec(
@@ -141,7 +140,7 @@ const COMMANDS: &[Spec] = &[
          of every kind, as feature:<name>, collector:<site>, core:<part>, integration:<name>, \
          app, mcp or a name alone, or --only its rust, api, frontend, browser or native ones, or \
          one --file of them. Each run builds in a folder of its own, deleted when it ends unless \
-         --keep. It runs on Linux alone: elsewhere, the PR's checks run every check on GitHub.",
+         --keep.",
     )
     .flags(&["--all", "--keep"])
     .options(&["--owner", "--only", "--file"]),
@@ -150,8 +149,7 @@ const COMMANDS: &[Spec] = &[
         &["verify <feature>"],
         "A feature in progress, committed or not: whether generate would change anything, \
          what a generator left to write, the rules, TypeScript, the changed files' format and \
-         lint, then its own tests as test --owner runs them. It runs on Linux alone: elsewhere, \
-         the PR's checks run every check on GitHub.",
+         lint, then its own tests as test --owner runs them.",
     )
     .arguments(1),
     spec(
@@ -460,8 +458,8 @@ fn run() -> Result<()> {
             change::finish(&line.root()?, name, line.flag("--abandon"), &Native)
         }
         "check" => {
-            check::here(Machine::THIS, "check")?;
             let root = line.root()?;
+            check::here(&root, "check", &Native)?;
             let plan = check::plan(&root, &Native)?;
             if line.flag("--plan") {
                 check::print(&plan);
@@ -490,20 +488,14 @@ fn run() -> Result<()> {
                 (true, None) => test::Tests::All,
                 (false, None) => test::Tests::Affected,
             };
-            match test::run(
-                &line.root()?,
-                tests,
-                line.flag("--keep"),
-                Machine::THIS,
-                &Native,
-            )? {
+            match test::run(&line.root()?, tests, line.flag("--keep"), &Native)? {
                 true => Ok(()),
                 false => Err("A test failed.".into()),
             }
         }
         "verify" => {
             let feature = line.name()?;
-            let passed = verify::run(&line.root()?, feature, Machine::THIS, &Native)?;
+            let passed = verify::run(&line.root()?, feature, &Native)?;
             match passed {
                 true => Ok(()),
                 false => Err(Quiet.into()),

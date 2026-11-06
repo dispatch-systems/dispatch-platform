@@ -27,6 +27,7 @@ sha256() { if command -v sha256sum >/dev/null; then sha256sum "$@"; else shasum 
 # The toolchains. Rust needs a C compiler to link, which takes an administrator to install.
 command -v git >/dev/null || fail "Install git first."
 command -v python3 >/dev/null || fail "Install Python 3 first."
+python3 tooling/ci/python.py || exit 1
 if ! command -v cc >/dev/null; then
   case $(uname -s) in
     Darwin) fail "Install Apple's command line tools first: xcode-select --install" ;;

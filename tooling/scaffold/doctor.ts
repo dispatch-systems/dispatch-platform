@@ -47,6 +47,15 @@ export const CHECKS: Check[] = [
     },
   },
   {
+    name: 'python3',
+    run: (root) => {
+      const ready = spawnSync('python3', ['tooling/ci/python.py'], { cwd: root, encoding: 'utf8' });
+      if (ready.status === 0) return { ok: true };
+      const said = ready.error ? `python3: ${ready.error.message}` : ready.stderr.trim();
+      return { ok: false, fix: 'a newer python3, first on PATH', detail: [said] };
+    },
+  },
+  {
     name: 'wiring',
     run: (root) => {
       const stale = unwired(root);

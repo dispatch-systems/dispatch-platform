@@ -3,12 +3,16 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from compiler_paths_test import ROOT, config, gate
 
 
 class CompilerPathIntegrationTests(unittest.TestCase):
+    # A Mac's linker writes each object file's own path into the binary for the debugger, which
+    # no remap reaches; Dispatch's executables are built on Linux alone.
+    @unittest.skipUnless(sys.platform == "linux", "Dispatch's executables are built on Linux alone")
     def test_real_cargo_remaps_dependencies_and_rebuilds_when_policy_changes(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "checkout"

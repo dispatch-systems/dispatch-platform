@@ -2,11 +2,9 @@
 //! `generate` would change anything, what a generator left to write in it, the architecture rules,
 //! TypeScript, the format and lint of the changed files, and the feature's own tests of every
 //! kind, built in a folder of the run's own (`crate::test`). A line a step, then what failed and
-//! what to do next. It runs on Linux alone, as the local checks do.
+//! what to do next.
 use crate::{
-    Result, Runner,
-    machine::Machine,
-    require,
+    Result, Runner, require,
     slot::{self, Slot},
     test, workspace,
 };
@@ -115,8 +113,8 @@ fn markers(root: &Path, feature: &str, runner: &dyn Runner) -> Result<Vec<String
         .collect())
 }
 /// `dispatchdev verify`: whether every step passed.
-pub fn run(root: &Path, feature: &str, machine: Machine, runner: &dyn Runner) -> Result<bool> {
-    crate::check::here(machine, "verify")?;
+pub fn run(root: &Path, feature: &str, runner: &dyn Runner) -> Result<bool> {
+    crate::check::here(root, "verify", runner)?;
     require(
         workspace::has_feature(root, feature),
         &format!("This checkout has no feature named {feature}: features/{feature} isn't there."),

@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 import socket
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -14,6 +15,7 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
 
+@unittest.skipUnless(sys.platform == "linux", "the support sandbox is bubblewrap, which runs on Linux alone")
 class SandboxTests(unittest.TestCase):
     def test_collection_child_starts_with_its_canonical_pin_mounted_read_only(self):
         launchers = Path(__file__).resolve().parents[2] / "ops/launchers"
