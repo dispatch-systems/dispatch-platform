@@ -3,7 +3,6 @@ import { SlidersHorizontal } from 'lucide-react';
 import type { DspView } from '../../../../core/accounts/api/index.js';
 import { useFillsWindow } from '../../../../core/shell/frontend/runtime/fills.js';
 import { usePushKey } from '../../api/client.js';
-import type { MessageDisplay } from '../../api/index.js';
 import { DisplayPreview } from './DisplayPreview.js';
 import { useDisplayChoices } from './useDisplayChoices.js';
 import { Choice, Segments, Sketch, Slider, Swatches, Switch, Tiles } from './controls.js';
