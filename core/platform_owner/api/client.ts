@@ -7,6 +7,7 @@ import type {
   DspFeatures,
   DspVisibility,
   MailMessage,
+  PlatformDiagnostics,
   PlatformHealth,
   Visibility,
 } from './index.js';
@@ -47,6 +48,9 @@ export const discardMail = (id: string) => api(`/api/platform/mail/${id}/discard
 export const usePlatformJobs = (poll = 0) => useCachedData<Job[]>('/api/platform/jobs', poll);
 export const usePlatformHealth = (poll = 0) =>
   useData<PlatformHealth>('/api/platform/health', poll);
+const diagnostics = '/api/platform/diagnostics';
+export const usePlatformDiagnostics = (poll = 0) => useData<PlatformDiagnostics>(diagnostics, poll);
+export const loadTestDsp = () => api<PlatformDiagnostics>(diagnostics, {});
 const audit = '/api/platform/audit';
 export const useAuditPage = (query: URLSearchParams, limit: number) =>
   useData<AuditPage>(`${audit}?${query}&limit=${limit}`, 10000);

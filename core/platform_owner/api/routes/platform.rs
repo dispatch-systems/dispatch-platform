@@ -11,7 +11,8 @@ use crate::{
         registry,
     },
     platform_owner::api::types::{
-        BrowserHealth, DspFeatures, DspVisibility, PlatformHealth, Visibility,
+        BrowserHealth, DiagnosticsRuntime, DspFeatures, DspVisibility, PlatformDiagnostics,
+        PlatformHealth, Visibility,
     },
     server::{
         http::{
@@ -443,7 +444,7 @@ fn health(db: &Store, owner: &User, _: &Input) -> Result<Reply> {
 }
 
 fn diagnostics(db: &Store, owner: &User, _: &Input) -> Result<Reply> {
-    Ok(Reply::json(diagnostics_report(db, owner.state)?))
+    Reply::of(&diagnostics_report(db, owner.state)?)
 }
 
 fn load_test_dsp(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
@@ -464,22 +465,22 @@ fn load_test_dsp(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
         "diagnostics.fixtures_loaded",
         "",
     )?;
-    Ok(Reply::json(diagnostics_report(db, owner.state)?))
+    Reply::of(&diagnostics_report(db, owner.state)?)
 }
 
-fn diagnostics_report(db: &Store, state: &State) -> Result<Value> {
+fn diagnostics_report(db: &Store, state: &State) -> Result<PlatformDiagnostics> {
     let memory = operations::memory();
-    Ok(json!({
-        "enabled":db.config.development || db.config.environment.is_preview(),
-        "storageAvailableBytes":operations::available_space(&db.config.root)?,
-        "runtime":{
-            "name":"Shared platform (Rust)",
-            "status":"Running",
-            "memoryBytes":memory.0 + memory.1,
-            "coreMemoryBytes":memory.0,
-            "workerMemoryBytes":memory.1,
-            "browsers":state.browsers.active()
+    Ok(PlatformDiagnostics {
+        enabled: db.config.development || db.config.environment.is_preview(),
+        storage_available_bytes: operations::available_space(&db.config.root)?,
+        runtime: DiagnosticsRuntime {
+            name: "Shared platform (Rust)".into(),
+            status: "Running".into(),
+            memory_bytes: memory.0 + memory.1,
+            core_memory_bytes: memory.0,
+            worker_memory_bytes: memory.1,
+            browsers: state.browsers.active(),
         },
-        "dsps":db.platform.all(TEST_DSPS, [])?
-    }))
+        dsps: db.platform.query_as(TEST_DSPS, [])?,
+    })
 }

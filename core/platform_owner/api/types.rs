@@ -1,8 +1,10 @@
 pub use crate::tenancy::visibility::Visibility;
 use crate::{
+    Result,
     collection::api::jobs::JobStatus,
+    db::{FromRow, Row},
     foundation::config::{Environment, ProviderMode},
-    tenancy::{switches::SwitchedFeatures, visibility::FeatureVisibility},
+    tenancy::{api::types::DspStatus, switches::SwitchedFeatures, visibility::FeatureVisibility},
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -136,6 +138,52 @@ pub struct PlatformHealth {
     pub email: bool,
     pub mail: MailHealth,
     pub provider_mode: ProviderMode,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/platform_owner/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct PlatformDiagnostics {
+    pub enabled: bool,
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub storage_available_bytes: u64,
+    pub runtime: DiagnosticsRuntime,
+    pub dsps: Vec<DiagnosticsDsp>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/platform_owner/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct DiagnosticsRuntime {
+    pub name: String,
+    pub status: String,
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub memory_bytes: u64,
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub core_memory_bytes: u64,
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub worker_memory_bytes: u64,
+    pub browsers: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/platform_owner/api/generated/"))]
+pub struct DiagnosticsDsp {
+    pub id: String,
+    pub name: String,
+    pub status: DspStatus,
+}
+impl FromRow for DiagnosticsDsp {
+    fn from_row(row: &Row<'_>) -> Result<Self> {
+        Ok(Self {
+            id: row.get("id")?,
+            name: row.get("name")?,
+            status: row.get("status")?,
+        })
+    }
 }
 
 impl From<SwitchedFeatures> for DspFeatures {

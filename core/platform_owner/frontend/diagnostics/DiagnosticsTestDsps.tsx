@@ -1,5 +1,5 @@
 import { FlaskConical } from 'lucide-react';
-import { api } from '../../../shell/frontend/runtime/api.js';
+import { loadTestDsp } from '../../api/client.js';
 import { platformHash } from '../../../shell/frontend/runtime/navigation.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import {
@@ -9,10 +9,9 @@ import {
   type TableColumn,
 } from '../../../shell/frontend/ui/index.js';
 import { title } from '../../../shell/frontend/lib/format.js';
-import type { Diagnostics } from './types.js';
+import type { DiagnosticsDsp, PlatformDiagnostics } from '../../api/index.js';
 
-type TestDsp = Diagnostics['dsps'][number];
-const columns: TableColumn<TestDsp>[] = [
+const columns: TableColumn<DiagnosticsDsp>[] = [
   { id: 'dsp', header: 'DSP', rowHeader: true, cell: (dsp) => <strong>{dsp.name}</strong> },
   { id: 'status', header: 'Status', cell: (dsp) => <Badge value={dsp.status} /> },
   {
@@ -27,12 +26,12 @@ export function DiagnosticsTestDsps({
   diagnostics,
   refresh,
 }: {
-  diagnostics: Diagnostics;
+  diagnostics: PlatformDiagnostics;
   refresh: () => void;
 }) {
   const deploy = useAction(
     async () => {
-      await api('/api/platform/diagnostics', {});
+      await loadTestDsp();
       refresh();
     },
     { success: 'Test DSP ready' },
