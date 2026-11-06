@@ -1,5 +1,5 @@
 use crate::{Result, config::Origin, require};
-use dispatch_core::support::api::types::SupportJob;
+use dispatch_core::support::api::types::{SupportBrowserGrant, SupportJob};
 use reqwest::Client;
 use serde_json::{Value, json};
 
@@ -47,8 +47,9 @@ impl Platform {
         .await
     }
 
-    pub async fn metadata(&self, job: &SupportJob) -> Result<Value> {
-        self.update(job, "browser", json!({})).await
+    pub async fn metadata(&self, job: &SupportJob) -> Result<SupportBrowserGrant> {
+        let value = self.update(job, "browser", json!({})).await?;
+        serde_json::from_value(value).map_err(|_| "Invalid read-only browser grant".into())
     }
 
     pub async fn deployment(&self) -> Result<Value> {

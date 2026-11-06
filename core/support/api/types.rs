@@ -161,3 +161,31 @@ pub struct SupportJob {
     pub origin: String,
     pub detail: SupportDetail,
 }
+
+/// Private lease-bound browser authority for the trusted worker.
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SupportBrowserGrant {
+    pub origin: String,
+    pub ticket_id: String,
+    pub expires_at: i64,
+    pub source_sha: Option<String>,
+    pub version: Option<String>,
+    pub release: String,
+    pub cookie: SupportBrowserCookie,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SupportBrowserCookie {
+    pub name: String,
+    pub value: String,
+    pub url: String,
+    pub path: String,
+    pub http_only: bool,
+    pub secure: bool,
+    pub same_site: String,
+    /// Preserve additional browser cookie properties when making storage state.
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}

@@ -1,10 +1,13 @@
 //! Dev-host orchestration of private AI Support jobs from both platform environments.
+mod checkpoint;
+pub mod collection_verification;
 pub mod config;
 pub mod dispatch;
 pub mod github;
 pub mod hermes;
 pub mod intake;
 pub mod jobs;
+mod preview;
 pub mod process;
 pub mod verification;
 pub mod worktrees;

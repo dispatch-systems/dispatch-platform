@@ -1,10 +1,10 @@
 //! Contracts guarding private service configuration and what agents and GitHub are shown.
 use dispatch_support_worker::{
+    collection_verification::cortex_collections,
     config::{Config, Origin, ProductionReader, read_private},
     github::redact_identities,
     hermes::{production_server, safe_job},
     intake::{Analysis, Decision},
-    verification::cortex_collections,
 };
 use serde_json::json;
 use std::path::PathBuf;
@@ -128,6 +128,22 @@ fn reporter_model_payload_excludes_owner_private_context_but_owner_answers_retai
     let owner = safe_job(&job).unwrap().to_string();
     assert!(owner.contains("OWNER_CANARY") && owner.contains("PROPOSAL_CANARY"));
     assert!(!owner.contains("LEASE_CANARY") && !owner.contains("CHECKPOINT_CANARY"));
+}
+
+#[test]
+fn model_payload_excludes_browser_authority_while_trusted_tools_retain_it() {
+    let script = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/support/runner.py");
+    let output = std::process::Command::new("python3")
+        .args(["-I", "-B"])
+        .arg(script)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "runner privacy contract failed:\n{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
 }
 
 #[test]

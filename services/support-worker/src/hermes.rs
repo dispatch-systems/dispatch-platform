@@ -1,5 +1,5 @@
 use crate::{Result, config::Config, require, worktrees::Worktree};
-use dispatch_core::support::api::types::SupportJob;
+use dispatch_core::support::api::types::{SupportBrowserGrant, SupportJob};
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -303,3 +303,41 @@ pub fn atomic_json(path: &Path, value: &Value) -> Result<()> {
     fs::rename(temp, path)?;
     Ok(())
 }
+
+/// How we work, then the development and feature docs a change follows, from the agent docs.
+pub(crate) fn rules(config: &Config) -> Result<String> {
+    let mut instructions = String::new();
+    for file in [
+        "AGENTS.md",
+        "skills/dispatch-development/SKILL.md",
+        "skills/dispatch-development/references/workflow.md",
+        "skills/dispatch-development/references/writing-tests.md",
+        "skills/dispatch-features/SKILL.md",
+        "skills/dispatch-features/references/workflow.md",
+        "skills/dispatch-features/references/mcp.md",
+    ] {
+        instructions.push_str(&fs::read_to_string(config.agents.join(file))?);
+        instructions.push_str("\n\n");
+    }
+    instructions.push_str("The approved AI Support policy overrides interactive workflow steps: owner approval authorizes implementation, agent browser verification, PR creation and its automatic merge once the PR's checks pass, without another user preview or code review. Production releases remain separately authorized. Do not message other users via external channels.");
+    Ok(instructions)
+}
+
+pub(crate) fn browser(metadata: &SupportBrowserGrant) -> Result<Value> {
+    let origin = &metadata.origin;
+    let mut cookie = serde_json::to_value(&metadata.cookie)?;
+    cookie["domain"] = url::Url::parse(origin)?
+        .host_str()
+        .ok_or("Browser cookie host missing")?
+        .into();
+    cookie["path"] = "/".into();
+    cookie["expires"] = (-1).into();
+    if let Some(object) = cookie.as_object_mut() {
+        object.remove("url");
+    }
+    Ok(json!({"url":origin,"readOnly":true,"storageState":{"cookies":[cookie],"origins":[]}}))
+}
+
+#[cfg(test)]
+#[path = "../tests/backend/browser.rs"]
+mod browser_tests;
