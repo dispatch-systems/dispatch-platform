@@ -1,30 +1,16 @@
 import { performancePolicy } from '../../../core/shell/frontend/lib/performance-policy.js';
-import { useDeferredValue, useMemo, useState } from 'react';
-import { RefreshCw, Plus, Ellipsis } from 'lucide-react';
+import { useState } from 'react';
+import { Plus } from 'lucide-react';
 import type { DspInvitation, DspView, Membership, Role } from '../../../core/accounts/api/index.js';
 import { useUpdateState } from '../../../core/shell/frontend/runtime/browser-update.js';
 import { HostedTab, usePageTabs } from '../../../core/shell/frontend/runtime/PageTabs.js';
-import {
-  Badge,
-  ConfirmDialog,
-  DataState,
-  DataTable,
-  Empty,
-  ErrorBox,
-  Header,
-  Modal,
-  Popover,
-  SearchInput,
-  Tabs,
-  TablePagination,
-  useDataTable,
-  type TableColumn,
-} from '../../../core/shell/frontend/ui/index.js';
-import { time } from '../../../core/shell/frontend/lib/format.js';
+import { ConfirmDialog, ErrorBox, Header, Tabs } from '../../../core/shell/frontend/ui/index.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import { RoleSheet } from './RoleSheet.js';
 import { RolesTab } from './RolesTab.js';
+import { MembersTab, ChangeMemberRoleDialog, RemoveMemberDialog } from './MembersTab.js';
+import { InvitationsTab, RevokeInvitationDialog, InviteMemberDialog } from './InvitationsTab.js';
 import { assignable } from './assignable.js';
 import {
   useMembers,
@@ -37,7 +23,6 @@ import {
 } from '../api/client.js';
 import { field } from '../../../core/shell/frontend/lib/form.js';
 
-const actions = <span className="sr-only">Actions</span>;
 export function TeamPage({ view, reopen }: { view: DspView; reopen: () => Promise<void> }) {
   const [ownTab, setTab] = useUpdateState('team-tab', 'members');
   const canInvite = can(view, 'members.invite'),
@@ -69,7 +54,7 @@ export function TeamPage({ view, reopen }: { view: DspView; reopen: () => Promis
     { success: 'Role deleted' },
   );
   const grantable = roles.data?.filter((role) => assignable(view, role, roles.data ?? [])) ?? [];
-  const [search, setSearch] = useUpdateState('team-search', '');
+  // Dialogs and in-flight actions outlive tab changes; success coordinates the shared reads here.
   const [inviting, setInviting] = useState(false);
   const [editing, setEditing] = useState<Membership>();
   const [removing, setRemoving] = useState<Membership>();
@@ -102,124 +87,6 @@ export function TeamPage({ view, reopen }: { view: DspView; reopen: () => Promis
     },
     { success: (_, role) => (role === null ? 'Member removed' : 'Role updated') },
   );
-  const searchable = useMemo(
-    () =>
-      data?.map((member) => ({
-        member,
-        text: `${member.name} ${member.email}`.toLowerCase(),
-      })) ?? [],
-    [data],
-  );
-  const searchText = search.toLowerCase();
-  const deferredSearch = useDeferredValue(searchText);
-  const searching = searchText !== deferredSearch;
-  const members = useMemo(
-    () =>
-      searchable.filter(({ text }) => text.includes(deferredSearch)).map(({ member }) => member),
-    [searchable, deferredSearch],
-  );
-  const memberColumns: TableColumn<Membership>[] = [
-    {
-      id: 'member',
-      header: 'Member',
-      headerClassName: 'team-member-column',
-      value: (member) => member.name,
-      cell: (member) => (
-        <div className="member-identity">
-          <span className="avatar">
-            {member.name
-              .split(/\s+/)
-              .slice(0, 2)
-              .map((part) => part[0])
-              .join('')}
-          </span>
-          <div>
-            <strong>{member.name}</strong>
-            <small>{member.email}</small>
-          </div>
-        </div>
-      ),
-    },
-    { id: 'role', header: 'Role', value: (member) => member.role, cell: (member) => member.role },
-    {
-      id: 'status',
-      header: 'Status',
-      value: (member) => member.status,
-      cell: (member) => <Badge value={member.status} />,
-    },
-    {
-      id: 'actions',
-      header: actions,
-      className: 'cell-end',
-      cell: (member) =>
-        canManage &&
-        grantable.some((role) => role.id === member.roleId) && (
-          <Popover
-            className="row-menu"
-            label={`Actions for ${member.name}`}
-            trigger={<Ellipsis size={18} />}
-            anchored
-          >
-            <button onClick={() => setEditing(member)}>Change role</button>
-            <button className="danger" onClick={() => setRemoving(member)}>
-              Remove member
-            </button>
-          </Popover>
-        ),
-    },
-  ];
-  const memberTable = useDataTable({
-    columns: memberColumns,
-    rows: members,
-    rowId: (member) => member.id,
-    pageSize: 100,
-  });
-  const pending = useMemo(
-    () =>
-      invitations.data?.filter(
-        (invitation) => !invitation.accepted && invitation.expiresAt > Date.now(),
-      ) ?? [],
-    [invitations.data],
-  );
-  const invitationColumns: TableColumn<DspInvitation>[] = [
-    {
-      id: 'email',
-      header: 'Email address',
-      value: (invitation) => invitation.email,
-      cell: (invitation) => invitation.email,
-    },
-    {
-      id: 'role',
-      header: 'Role',
-      value: (invitation) => invitation.role,
-      cell: (invitation) => invitation.role,
-    },
-    {
-      id: 'expires',
-      header: 'Expires',
-      value: (invitation) => invitation.expiresAt,
-      cell: (invitation) => time(new Date(invitation.expiresAt).toISOString(), view.dsp.timezone),
-    },
-    {
-      id: 'actions',
-      header: actions,
-      cell: (invitation) => (
-        <button
-          className="text-button"
-          aria-label={`Revoke invitation for ${invitation.email}`}
-          onClick={() => setRevoking(invitation)}
-        >
-          Revoke
-        </button>
-      ),
-    },
-  ];
-  const invitationTable = useDataTable({
-    columns: invitationColumns,
-    rows: pending,
-    rowId: (invitation, index) => `${invitation.email}:${index}`,
-    pageSize: 100,
-  });
   return (
     <>
       <Header title="Team & Roles">
@@ -246,37 +113,17 @@ export function TeamPage({ view, reopen }: { view: DspView; reopen: () => Promis
       />
       {tabs.open && <HostedTab tab={tabs.open} />}
       <ErrorBox message={error || roles.error || invitations.error} />
-      {tab === 'members' && (
-        <>
-          <div className="table-toolbar">
-            <SearchInput
-              label="Search members"
-              placeholder="Search members"
-              value={search}
-              onChange={(value) => {
-                setSearch(value);
-                memberTable.setPage(0);
-              }}
-            />
-            <button className="icon-button" aria-label="Refresh members" onClick={refresh}>
-              <RefreshCw size={16} />
-            </button>
-          </div>
-          <DataState data={data} failed={Boolean(error)} retry={refresh}>
-            {() => (
-              <div className="table-wrap" aria-busy={searching} inert={searching}>
-                <DataTable table={memberTable} label="Team members" />
-                <TablePagination table={memberTable} />
-                {!members.length && (
-                  <Empty title="No team members">
-                    Invite a member to give them access to this DSP.
-                  </Empty>
-                )}
-              </div>
-            )}
-          </DataState>
-        </>
-      )}
+      {/* Keep both views mounted so own and hosted tab changes retain search and table state. */}
+      <MembersTab
+        active={tab === 'members'}
+        data={data}
+        failed={Boolean(error)}
+        refresh={refresh}
+        canManage={canManage}
+        grantable={grantable}
+        edit={setEditing}
+        remove={setRemoving}
+      />
       {tab === 'roles' && (
         <RolesTab
           view={view}
@@ -299,113 +146,36 @@ export function TeamPage({ view, reopen }: { view: DspView; reopen: () => Promis
           }}
         />
       )}
-      {tab === 'invitations' && canInvite && (
-        <>
-          <div className="table-toolbar">
-            <p className="muted">Pending invitations to your DSP.</p>
-            <button
-              className="icon-button"
-              aria-label="Refresh invitations"
-              onClick={invitations.refresh}
-            >
-              <RefreshCw size={16} />
-            </button>
-          </div>
-          <DataState
-            data={invitations.data}
-            failed={Boolean(invitations.error)}
-            retry={invitations.refresh}
-          >
-            {() => (
-              <div className="table-wrap">
-                <DataTable table={invitationTable} label="Pending invitations" />
-                <TablePagination table={invitationTable} />
-                {!pending.length && (
-                  <Empty title="No invitations">Invite a team member to get started.</Empty>
-                )}
-              </div>
-            )}
-          </DataState>
-        </>
-      )}
+      <InvitationsTab
+        active={tab === 'invitations' && canInvite}
+        data={invitations.data}
+        failed={Boolean(invitations.error)}
+        refresh={invitations.refresh}
+        timezone={view.dsp.timezone}
+        revoke={setRevoking}
+      />
       {revoking && (
-        <ConfirmDialog
-          title="Revoke invitation"
-          confirm="Revoke invitation"
-          onConfirm={() => void revoke.run(revoking)}
-          onCancel={() => setRevoking(undefined)}
-        >
-          Revoke the pending invitation for {revoking.email}? Its link will stop working.
-        </ConfirmDialog>
+        <RevokeInvitationDialog
+          invitation={revoking}
+          confirm={() => void revoke.run(revoking)}
+          close={() => setRevoking(undefined)}
+        />
       )}
       {inviting && (
-        <Modal
-          variant="sheet"
-          title="Invite member"
-          description={`Give someone access to ${view.dsp.name}.`}
-          onClose={() => setInviting(false)}
-        >
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void invite.run(new FormData(event.currentTarget));
-            }}
-          >
-            <label>
-              Email address
-              <input name="email" type="email" required />
-            </label>
-            <label>
-              Role
-              <select
-                name="role"
-                required
-                defaultValue={
-                  (grantable.find((role) => role.name === 'Member') ?? grantable.at(-1))?.id
-                }
-              >
-                {grantable.map((role) => (
-                  <option key={role.id} value={role.id}>
-                    {role.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="form-actions">
-              <button type="button" onClick={() => setInviting(false)}>
-                Cancel
-              </button>
-              <button className="primary">Send invitation</button>
-            </div>
-          </form>
-        </Modal>
+        <InviteMemberDialog
+          dspName={view.dsp.name}
+          grantable={grantable}
+          close={() => setInviting(false)}
+          submit={(form) => void invite.run(form)}
+        />
       )}
       {editing && (
-        <Modal title={`Change role for ${editing.name}`} onClose={() => setEditing(undefined)}>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void assign.run(editing, new FormData(event.currentTarget).get('role'));
-            }}
-          >
-            <label>
-              Role
-              <select name="role" defaultValue={editing.roleId ?? undefined}>
-                {grantable.map((role) => (
-                  <option key={role.id} value={role.id}>
-                    {role.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="form-actions">
-              <button type="button" onClick={() => setEditing(undefined)}>
-                Cancel
-              </button>
-              <button className="primary">Save role</button>
-            </div>
-          </form>
-        </Modal>
+        <ChangeMemberRoleDialog
+          member={editing}
+          grantable={grantable}
+          close={() => setEditing(undefined)}
+          assign={(role) => void assign.run(editing, role)}
+        />
       )}
       {removingRole && (
         <ConfirmDialog
@@ -424,16 +194,12 @@ export function TeamPage({ view, reopen }: { view: DspView; reopen: () => Promis
         </ConfirmDialog>
       )}
       {removing && (
-        <ConfirmDialog
-          title="Remove member"
-          confirm="Remove member"
-          tone="danger"
+        <RemoveMemberDialog
+          member={removing}
           busy={assign.busy}
-          onConfirm={() => void assign.run(removing, null)}
-          onCancel={() => setRemoving(undefined)}
-        >
-          Remove {removing.name} and delete their account?
-        </ConfirmDialog>
+          confirm={() => void assign.run(removing, null)}
+          close={() => setRemoving(undefined)}
+        />
       )}
     </>
   );
