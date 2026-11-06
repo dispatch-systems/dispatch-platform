@@ -1,0 +1,754 @@
+.documents-card {
+  max-width: 1120px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+}
+.documents-card h2 {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  line-height: 1.35;
+}
+.documents-card p {
+  color: var(--muted-foreground);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.documents-card strong {
+  color: var(--foreground);
+  font-weight: 550;
+}
+.documents-folder-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  color: var(--slate);
+  background: var(--slate-surface);
+}
+/* Connecting, as the owner first sees it. */
+.documents-connect-copy {
+  padding: 34px 38px 36px;
+  max-width: 760px;
+}
+.documents-connect h2 {
+  font-size: 22px;
+  letter-spacing: -0.4px;
+}
+.documents-connect-copy > p {
+  margin-top: 10px;
+}
+.documents-connect .documents-settings-button {
+  margin-top: 24px;
+  min-height: 44px;
+  padding: 10px 18px;
+}
+/* Where the DSP's Google account is connected and reconnected: Settings' Connections. */
+.documents-settings-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--control-height);
+  padding: 8px 14px;
+  border-radius: var(--radius);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font: 500 14px/1.4 var(--font-family);
+  transition: background-color var(--motion-duration);
+}
+.documents-settings-button:hover {
+  background: var(--primary-hover);
+}
+.documents-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 30px 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+.documents-steps li {
+  position: relative;
+  padding-left: 36px;
+  font-size: 14px;
+  line-height: 1.5;
+  counter-increment: step;
+}
+.documents-steps li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: -1px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.documents-steps small {
+  display: block;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.documents-fine {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+.documents-fine p {
+  display: flex;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.documents-fine svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* Waiting on an owner, or on Dispatch support. */
+.documents-waiting {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 72px 24px;
+  text-align: center;
+}
+.documents-waiting h2 {
+  margin-top: 6px;
+}
+.documents-waiting p {
+  max-width: 440px;
+}
+/* A member whose email isn't a Google account: linking one opens Documents. */
+.documents-gate p {
+  max-width: 520px;
+}
+.documents-gate .documents-google-button {
+  margin-top: 8px;
+}
+.documents-gate .documents-gate-note {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+/* The connection stopped working. */
+.documents-broken {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  padding: 30px 32px;
+  background: var(--warning-surface);
+  border-color: var(--warning-border);
+}
+.documents-broken > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--warning);
+}
+.documents-broken p {
+  margin-top: 6px;
+  max-width: 640px;
+}
+.documents-broken .documents-google-button {
+  background: var(--background);
+}
+
+/* Connected: the folder, and where it lives. */
+
+@media (width <= 600px) {
+  .documents-connect-copy {
+    padding: 24px 20px 26px;
+  }
+  .documents-broken {
+    padding: 22px 20px;
+  }
+}
+
+/* The heading's buttons, and its menus: Upload and New. */
+.documents-upload,
+.documents-new {
+  position: relative;
+}
+.documents-upload summary {
+  padding: 8px 14px;
+}
+.documents-new summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--control-height);
+  padding: 8px 14px;
+  border-radius: var(--radius);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-weight: 500;
+}
+.documents-upload .account-popover,
+.documents-new .account-popover {
+  width: 220px;
+}
+.documents-new .account-popover .documents-tile {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+}
+
+/* Above the files: what to show, the way here, search and the view. */
+.documents-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  padding: 0 0 16px;
+}
+.documents-toolbar > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.documents-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.documents-pills button {
+  min-height: 32px;
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.documents-pills button[aria-pressed='true'] {
+  background: var(--selection);
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
+  color: var(--primary);
+}
+.documents-path {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 40px;
+  font-size: 15px;
+}
+.documents-path span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.documents-path a,
+.documents-path svg {
+  color: var(--muted-foreground);
+}
+/* A step of the path a drop lands in has room around its name, which it takes from the gap. */
+.documents-path a {
+  margin: -3px -6px;
+  padding: 3px 6px;
+  border-radius: 6px;
+}
+.documents-path strong {
+  font-weight: 600;
+}
+/* The list. */
+.documents-table th {
+  color: var(--muted-foreground);
+}
+.documents-table td {
+  padding-top: 11px;
+  padding-bottom: 11px;
+}
+.documents-table td:first-child {
+  padding-left: 4px;
+}
+.documents-table .muted {
+  font-size: 13px;
+}
+.documents-name {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  color: var(--foreground);
+}
+.documents-name > span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.documents-name strong {
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.documents-name small,
+.documents-edited small {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.documents-name:hover strong {
+  color: var(--primary);
+}
+.documents-edited {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.documents-person {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+}
+/* The grid. */
+.documents-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.documents-cards h2 {
+  margin-bottom: 14px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.documents-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 16px;
+}
+.documents-folder-card,
+.documents-file-card {
+  position: relative;
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+}
+.documents-folder-card {
+  align-items: center;
+  padding: 14px 10px 14px 16px;
+}
+.documents-folder-card .documents-name {
+  flex: 1;
+}
+.documents-folder-card .documents-tile {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+}
+.documents-file-card {
+  flex-direction: column;
+  overflow: hidden;
+}
+.documents-file-open {
+  display: flex;
+  flex-direction: column;
+  color: var(--foreground);
+}
+.documents-file-open .documents-name {
+  padding: 12px 44px 14px 14px;
+}
+.documents-file-open .documents-tile {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+}
+.documents-file-card .row-menu {
+  position: absolute;
+  right: 6px;
+  bottom: 14px;
+}
+
+/* Naming files before they upload: a row each, the list scrolling past a few. Its padding
+   keeps a focused box's ring clear of the scrolling edge. */
+.documents-naming {
+  display: grid;
+  gap: 10px;
+  max-height: 50vh;
+  margin: -4px -4px 12px;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+}
+.documents-naming li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 4.5em;
+  align-items: end;
+  gap: 12px;
+}
+.documents-naming li > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.documents-naming small {
+  padding-bottom: 10px;
+  text-align: right;
+}
+.documents-too-large {
+  color: var(--destructive);
+}
+
+@media (width <= 760px) {
+  .documents-heading .heading-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    width: 100%;
+  }
+  .documents-toolbar > div {
+    width: 100%;
+  }
+  .documents-toolbar .search {
+    flex: 1;
+  }
+  .documents-table th:nth-child(2),
+  .documents-table td:nth-child(2),
+  .documents-table th:nth-child(4),
+  .documents-table td:nth-child(4) {
+    display: none;
+  }
+}
+
+/* Uploading: the Upload menu's items, the hint over the page while files are dragged on
+   it, and how the uploads are going, in the corner. */
+.documents-menu-rule {
+  display: block;
+  height: 1px;
+  margin: 6px 4px;
+  background: var(--border);
+}
+.documents-menu-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--muted-foreground);
+}
+.documents-drop {
+  position: relative;
+  min-height: 240px;
+}
+/* While a folder comes, the last one shown stays, faded, under a line running along its top:
+   both only once it takes a moment, so a folder that comes at once never flickers. */
+.documents-progress {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 2;
+  height: 2px;
+  overflow: hidden;
+  opacity: 0;
+  animation: documents-shown 0s 150ms forwards;
+}
+.documents-progress::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  background: var(--primary);
+  animation: documents-progress 1s ease-in-out infinite;
+}
+.documents-coming {
+  animation: documents-faded 0s 150ms forwards;
+}
+/* Something Google is still making. */
+.documents-making {
+  opacity: 0.6;
+}
+/* A shortcut whose file is gone. */
+.documents-unavailable {
+  opacity: 0.55;
+}
+@media (prefers-reduced-motion: reduce) {
+  .documents-progress::after {
+    width: 100%;
+    animation: none;
+  }
+}
+@keyframes documents-shown {
+  to {
+    opacity: 1;
+  }
+}
+@keyframes documents-faded {
+  to {
+    opacity: 0.55;
+  }
+}
+@keyframes documents-progress {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+.documents-drop-hint {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 16px;
+  border: 2px dashed var(--primary);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+  pointer-events: none;
+}
+/* The folders show through the hint, so a file can be dropped on one; its words stay in view
+   below them. */
+.documents-drop-hint span {
+  position: sticky;
+  bottom: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-weight: 550;
+  box-shadow: 0 6px 18px var(--shadow-color);
+}
+.documents-uploads {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 40;
+  width: min(360px, calc(100vw - 32px));
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.18);
+}
+.documents-uploads header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.documents-uploads header button {
+  min-height: 0;
+  padding: 4px;
+  border: 0;
+  background: transparent;
+}
+.documents-uploads ul {
+  max-height: 260px;
+  margin: 0;
+  padding: 4px 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.documents-uploads li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  font-size: 13px;
+}
+.documents-uploads li > svg {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+.documents-uploads li.done > svg {
+  color: var(--success);
+}
+.documents-uploads li.failed > svg {
+  color: var(--destructive);
+}
+.documents-uploads li > div {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.documents-uploads li > div > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.documents-uploads small {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.documents-uploads li.failed small {
+  color: var(--destructive);
+}
+.documents-uploads .documents-meter {
+  display: block;
+  height: 4px;
+}
+/* The heading's buttons, a little apart. Wide enough, they stay on one line and its words
+   wrap instead. */
+.documents-heading .heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+@media (width > 760px) {
+  .documents-heading .heading-actions {
+    flex-shrink: 0;
+    flex-wrap: nowrap;
+  }
+}
+/* Adding files made directly in Drive. */
+.documents-picked {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0 20px;
+}
+.documents-picked label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 14px;
+}
+.documents-picked label.chosen {
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
+  background: var(--selection);
+}
+.documents-picked svg {
+  color: var(--slate);
+}
+.documents-picked .documents-tile {
+  width: 24px;
+  height: 24px;
+}
+
+/* Selecting, dragging and dropping: what's selected is marked, what's dragged fades, and the
+   folder under it lights up. */
+.documents-folder-card,
+.documents-file-card {
+  transition:
+    border-color var(--motion-duration),
+    background-color var(--motion-duration),
+    opacity var(--motion-duration);
+}
+.documents-folder-card.documents-selected,
+.documents-file-card.documents-selected {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 8%, var(--card));
+}
+.documents-table tr.documents-selected td {
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+.documents-carried {
+  opacity: 0.45;
+}
+.documents-folder-card.documents-over {
+  border-color: var(--primary);
+  outline: 2px solid var(--primary);
+  outline-offset: -1px;
+  background: color-mix(in srgb, var(--primary) 14%, var(--card));
+}
+.documents-table tr.documents-over td {
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+.documents-table tr.documents-over td:first-child {
+  box-shadow: inset 2px 0 0 var(--primary);
+}
+.documents-path a.documents-over {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  outline: 2px solid var(--primary);
+}
+/* What several dragged at once show as under the pointer: drawn off the screen, then gone. */
+.documents-drag-count {
+  position: fixed;
+  top: -100px;
+  left: 0;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font: 600 13px/1.4 var(--font-family);
+  white-space: nowrap;
+}
+
+/* Move to: the path of the folder it shows, and the folders in it, each opening on a click. */
+.documents-move-path {
+  min-height: 0;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+.documents-move-path button {
+  min-height: 0;
+  margin: -3px -6px;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+.documents-move-path button:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+.documents-move-folders {
+  height: min(320px, 45vh);
+  margin-bottom: 20px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.documents-move-folders ul {
+  list-style: none;
+}
+.documents-move-folders li + li {
+  border-top: 1px solid var(--border);
+}
+.documents-move-folders li button {
+  justify-content: flex-start;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+.documents-move-folders li button:hover:not(:disabled) {
+  background: var(--accent);
+}
+.documents-move-folders li button span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.documents-move-folders li button > svg {
+  color: var(--muted-foreground);
+}
+.documents-move-folders > p {
+  padding: 14px;
+}

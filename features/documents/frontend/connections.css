@@ -1,0 +1,46 @@
+/* Documents's cards on Settings' Connections: the DSP's Google account, with how full it is,
+   and the member's own. */
+.documents-details {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 10px 20px;
+  margin: 0;
+  font-size: 14px;
+}
+.documents-details dt {
+  color: var(--muted-foreground);
+}
+.documents-details dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.documents-details small {
+  display: block;
+  color: var(--muted-foreground);
+}
+.documents-connection-card .documents-row {
+  margin-top: 0;
+  align-items: center;
+}
+.documents-storage {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.documents-storage-warning {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius);
+  background: var(--warning-surface);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.documents-storage-warning svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--warning);
+}
