@@ -2,6 +2,7 @@ use super::*;
 use crate::{
     codes,
     connection::{Driver, SEARCH},
+    timecards::projection,
 };
 use chrono::{Datelike, NaiveDate};
 use dispatch_core::{
@@ -242,119 +243,6 @@ fn employees(raw: &Value, expected: &BTreeSet<String>) -> Result<Vec<Value>> {
     }
     Ok(employees)
 }
-fn hours(value: &Value) -> Option<f64> {
-    value["totalHours"]
-        .as_f64()
-        .or_else(|| value["hours"].as_f64())
-}
-pub(crate) fn project(record: &Value, employee: &str) -> Result<Vec<Value>> {
-    let error = || Error::new("invalid_timecard_hours", 409);
-    let days = record["days"].as_array().ok_or_else(error)?;
-    let additional = record["additionalRows"].as_array().ok_or_else(error)?;
-    ensure(
-        days.len() == 14 && additional.len() <= 200,
-        "invalid_timecard_hours",
-        409,
-    )?;
-    let base = days
-        .iter()
-        .map(|day| {
-            hours(day)
-                .or_else(|| {
-                    // DOM extraction folds all pay-code punches into the day.
-                    // Only row zero determines whether the leading row is empty;
-                    // additional rows contribute their own reported hours below.
-                    let no_missing_leading = day["missingPunch"] == false
-                        || day["unresolvedSlots"].as_array().is_some_and(|slots| {
-                            !slots.is_empty()
-                                && slots.iter().all(|slot| {
-                                    slot.as_str().is_some_and(|slot| slot.contains(':'))
-                                })
-                        });
-                    if no_missing_leading
-                        && day["punches"].as_array().is_some_and(|punches| {
-                            punches
-                                .iter()
-                                .all(|punch| punch["rowIndex"].as_u64().is_some_and(|row| row > 0))
-                        })
-                    {
-                        Some(0.)
-                    } else {
-                        None
-                    }
-                })
-                .ok_or_else(error)
-        })
-        .collect::<Result<Vec<_>>>()?;
-    let rows = days
-        .iter()
-        .enumerate()
-        .map(|(index, day)| {
-            base[index]
-                + additional
-                    .iter()
-                    .filter(|r| r["date"] == day["date"])
-                    .map(|r| hours(r).unwrap_or(0.))
-                    .sum::<f64>()
-        })
-        .collect::<Vec<_>>();
-    let reported = days
-        .iter()
-        .enumerate()
-        .map(|(index, day)| {
-            let totals = std::iter::once(day)
-                .chain(additional.iter().filter(|r| r["date"] == day["date"]))
-                .filter_map(|r| r["totalHours"].as_f64())
-                .collect::<Vec<_>>();
-            if totals.is_empty() {
-                rows[index]
-            } else {
-                totals.iter().sum()
-            }
-        })
-        .collect::<Vec<_>>();
-    let matches = |values: &[f64]| {
-        values.iter().all(|v| v.is_finite() && *v >= 0.)
-            && record["weeklyTotals"].as_array().is_some_and(|totals| {
-                totals.len() == 2
-                    && totals.iter().enumerate().all(|(i, t)| {
-                        t.as_f64().is_some_and(|v| {
-                            (values[i * 7..i * 7 + 7].iter().sum::<f64>() - v).abs() < 0.011
-                        })
-                    })
-            })
-            && record["periodTotalHours"]
-                .as_f64()
-                .is_some_and(|v| (values.iter().sum::<f64>() - v).abs() < 0.011)
-    };
-    let values = [rows, base, reported]
-        .into_iter()
-        .find(|h| matches(h))
-        .ok_or_else(|| Error::new("provider_hours_mismatch", 409))?;
-    days.iter().enumerate().map(|(index,day)|{
-        let mut punches=Vec::new(); let mut pending=Value::Null; let mut pending_kind=Value::Null; let mut row=Value::Null;
-        for punch in day["punches"].as_array().ok_or_else(error)? {
-            if row!=punch["rowIndex"] && !pending.is_null() {
-                punches.push(json!({"in":pending,"out":null,"hours":null,"inKind":pending_kind,"outKind":null}));
-                pending=Value::Null; pending_kind=Value::Null;
-            }
-            row=punch["rowIndex"].clone();
-            let kind = if s(punch,"kind").is_empty() {Value::Null} else {punch["kind"].clone()};
-            if s(punch,"slot").starts_with('i') {
-                if !pending.is_null() {punches.push(json!({"in":pending,"out":null,"hours":null,"inKind":pending_kind,"outKind":null}));}
-                pending=punch["displayTime"].clone(); pending_kind=kind;
-            } else {
-                punches.push(json!({"in":pending,"out":punch["displayTime"],"hours":null,"inKind":pending_kind,"outKind":kind}));
-                pending=Value::Null; pending_kind=Value::Null;
-            }
-        }
-        if !pending.is_null(){punches.push(json!({"in":pending,"out":null,"hours":null,"inKind":pending_kind,"outKind":null}));}
-        Ok(json!({"employeeCode":employee,"date":day["date"],"hours":(values[index]*100.).round()/100.,
-            "status":if day["missingPunch"]==true{"Missing punch"}else if punches.is_empty(){"No punches"}else{"Complete"},
-                "punches":punches}))
-    }).collect()
-}
-
 impl Driver {
     pub(crate) async fn collect_employee(
         &mut self,
@@ -682,7 +570,7 @@ async fn extract(
                 error
             }
         })?;
-    project(&record, s(employee, "code"))
+    projection::project(&record, s(employee, "code"))
 }
 
 #[cfg(test)]

@@ -1,4 +1,5 @@
 use super::*;
+use crate::timecards::projection;
 #[tokio::test(start_paused = true)]
 async fn page_deadlines_keep_navigation_and_content_failure_diagnostics() -> Result<()> {
     use dispatch_core::collection::api::metrics::PageStage;
@@ -169,9 +170,9 @@ fn projection_reconciles_additional_totals_without_double_counting() -> Result<(
         .collect::<Vec<_>>();
     let mut record = json!({"days":days,"additionalRows":[{"date":"day0","hours":2,"totalHours":10}],
         "weeklyTotals":[10,0],"periodTotalHours":10});
-    assert_eq!(project(&record, "AA01")?[0]["hours"], 10.);
+    assert_eq!(projection::project(&record, "AA01")?[0]["hours"], 10.);
     record["periodTotalHours"] = json!(11);
-    assert!(project(&record, "AA01").is_err());
+    assert!(projection::project(&record, "AA01").is_err());
     Ok(())
 }
 #[test]
@@ -197,7 +198,7 @@ fn mixed_pay_code_totals_and_cross_row_punches_remain_exact() -> Result<()> {
         record["days"][i]["hours"] = json!(hours);
         record["days"][i]["totalHours"] = json!(total);
     }
-    let projected = project(&record, "AA01")?;
+    let projected = projection::project(&record, "AA01")?;
     assert_eq!(
         projected
             .iter()
@@ -207,20 +208,20 @@ fn mixed_pay_code_totals_and_cross_row_punches_remain_exact() -> Result<()> {
     );
     record["weeklyTotals"] = json!([17, 8.5]);
     assert_eq!(
-        project(&record, "AA01").unwrap_err().code,
+        projection::project(&record, "AA01").unwrap_err().code,
         "provider_hours_mismatch"
     );
     record["weeklyTotals"] = json!([18, 7.5]);
     record["periodTotalHours"] = json!(24.5);
     assert_eq!(
-        project(&record, "AA01").unwrap_err().code,
+        projection::project(&record, "AA01").unwrap_err().code,
         "provider_hours_mismatch"
     );
     record["periodTotalHours"] = json!(25.5);
     record["days"][0]["missingPunch"] = json!(true);
     record["days"][0]["punches"] = json!([{"slot":"i1","rowIndex":0,"displayTime":"08:00 \
         AM"},{"slot":"o1","rowIndex":1,"displayTime":"12:00 PM"}]);
-    let projected = project(&record, "AA01")?;
+    let projected = projection::project(&record, "AA01")?;
     assert_eq!(projected[0]["status"], "Missing punch");
     assert_eq!(
         projected[0]["punches"],
@@ -243,7 +244,7 @@ fn blank_leading_row_uses_additional_totals_and_preserves_punches() -> Result<()
         {"slot":"i1","rowIndex":1,"displayTime":"08:00 AM"},
         {"slot":"o1","rowIndex":1,"displayTime":"10:00 AM"}
     ]);
-    let day = &project(&record, "AA01")?[0];
+    let day = &projection::project(&record, "AA01")?[0];
     assert_eq!(day["hours"], 4.);
     assert_eq!(day["status"], "Complete");
     assert_eq!(
@@ -254,23 +255,26 @@ fn blank_leading_row_uses_additional_totals_and_preserves_punches() -> Result<()
     record["days"][0]["punches"][0]["kind"] = json!("IN DAY");
     record["days"][0]["punches"][1]["kind"] = json!("OUT LUNCH");
     assert_eq!(
-        project(&record, "AA01")?[0]["punches"][0]["outKind"],
+        projection::project(&record, "AA01")?[0]["punches"][0]["outKind"],
         "OUT LUNCH"
     );
     assert_eq!(
-        project(&record, "AA01")?[0]["punches"][0]["inKind"],
+        projection::project(&record, "AA01")?[0]["punches"][0]["inKind"],
         "IN DAY"
     );
 
     // An unresolved punch on the additional row is still reported as such.
     record["days"][0]["missingPunch"] = json!(true);
     record["days"][0]["unresolvedSlots"] = json!(["1:o2"]);
-    assert_eq!(project(&record, "AA01")?[0]["status"], "Missing punch");
+    assert_eq!(
+        projection::project(&record, "AA01")?[0]["status"],
+        "Missing punch"
+    );
 
     // Equal period totals cannot conceal hours in the wrong week.
     record["weeklyTotals"] = json!([0, 4]);
     assert_eq!(
-        project(&record, "AA01").unwrap_err().code,
+        projection::project(&record, "AA01").unwrap_err().code,
         "provider_hours_mismatch"
     );
     record["weeklyTotals"] = json!([4, 0]);
@@ -278,14 +282,14 @@ fn blank_leading_row_uses_additional_totals_and_preserves_punches() -> Result<()
     // Missing hours on an occupied leading row must still fail closed.
     record["days"][0]["unresolvedSlots"] = json!(["o2"]);
     assert_eq!(
-        project(&record, "AA01").unwrap_err().code,
+        projection::project(&record, "AA01").unwrap_err().code,
         "invalid_timecard_hours"
     );
     record["days"][0]["missingPunch"] = json!(false);
     record["days"][0]["unresolvedSlots"] = json!([]);
     record["days"][0]["punches"][0]["rowIndex"] = json!(0);
     assert_eq!(
-        project(&record, "AA01").unwrap_err().code,
+        projection::project(&record, "AA01").unwrap_err().code,
         "invalid_timecard_hours"
     );
     Ok(())

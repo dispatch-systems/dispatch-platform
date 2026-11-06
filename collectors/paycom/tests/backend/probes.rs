@@ -2,7 +2,10 @@
 //! against a copy of a DSP, with the `operator-probes` feature. Never run by CI or print
 //! provider records. Each installs a registry of Paycom, as the app installs its own.
 use super::*;
-use crate::{collections::timecards::extract, connection::SEARCH};
+use crate::{
+    collections::timecards::{extract, projection},
+    connection::SEARCH,
+};
 
 fn concurrency_levels(value: &str) -> Result<Vec<usize>> {
     let levels: Vec<usize> = value
@@ -203,8 +206,8 @@ async fn http_extraction_parity() -> Result<()> {
             let (tab, here, same) = outcome.unwrap();
             match (&tab, &here) {
                 (Ok(a), Ok(b)) => {
-                    let projected = collection::project(a, code).ok();
-                    let mine = collection::project(b, code).ok();
+                    let projected = projection::project(a, code).ok();
+                    let mine = projection::project(b, code).ok();
                     if projected.is_some() && projected == mine {
                         projected_equal += 1;
                     }

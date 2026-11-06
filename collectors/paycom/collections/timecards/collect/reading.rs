@@ -1,6 +1,7 @@
 //! Reading the roster and each employee's timecard: in the browser tab, rendered; over HTTP,
 //! from the response, once `proof` allows; and the lanes that work through the roster.
 use super::*;
+use crate::timecards::projection;
 
 pub(super) struct Queue<'a, F> {
     pub(super) employees: &'a [Value],
@@ -165,7 +166,7 @@ pub(super) async fn read_http(
                 url: &source,
             };
             let record = extract::timecard(&html, &source)?;
-            project(&record, &code).map_err(|error| {
+            projection::project(&record, &code).map_err(|error| {
                 extract::Unreadable::Invalid(if error.is(codes::INVALID_TIMECARD_HOURS) {
                     "invalid_timecard_hours"
                 } else {
@@ -363,7 +364,7 @@ pub(super) async fn read_response(
     if outcome["ok"] != true {
         return Ok(None);
     }
-    Ok(project(&outcome["record"], s(employee, "code")).ok())
+    Ok(projection::project(&outcome["record"], s(employee, "code")).ok())
 }
 
 pub(super) async fn read_once(
