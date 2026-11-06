@@ -4,7 +4,7 @@
 //! driver's latest work phone of a day.
 use super::*;
 use crate::backend::{
-    day_request, routes_today,
+    scope::{day_request, routes_today},
     tests::{publish, publish_edited},
 };
 use chrono::Duration;
