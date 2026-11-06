@@ -4,6 +4,7 @@
 mod assets;
 mod backup;
 mod dry_run;
+mod notes;
 mod origins;
 mod production;
 mod rehearsal;
