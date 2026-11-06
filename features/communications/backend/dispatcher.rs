@@ -42,7 +42,7 @@ pub fn opened(
 pub fn profile(db: &Store, state: &State, dsp: &str, reference: &Reference) -> Result<Profile> {
     match reference {
         Reference::Slack(id) => profile::member(db, state, dsp, id),
-        Reference::Text(id) => profile::driver(db, state, dsp, id),
+        Reference::Text(id) => profile::text(db, state, dsp, id),
     }
 }
 

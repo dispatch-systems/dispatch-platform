@@ -223,6 +223,9 @@ pub struct ConversationMessages {
     /// live route data holds them, while it holds today. For one with someone's own number or in
     /// Slack, the route they drive today, as their profile reads it, whose van its head shows.
     pub today: Option<Today>,
+    /// Whether whom it's with is working: on a route as live route data holds today, or for the
+    /// two hours after the stop, on one the day stopped. Their profile opens only then.
+    pub working: bool,
     /// Whom it's with's conversation of each kind, this one too, while they have two or more:
     /// work, by text from their number, and Slack.
     pub elsewhere: Vec<Elsewhere>,

@@ -38,9 +38,8 @@ import { useConversation } from './useConversation.js';
 // text through the DSP's phones, or for a driver holding no work phone, their other conversations
 // instead; above the box, who else at the DSP is writing in it, and before sending, whether one of
 // them replied since the member started writing. On a phone it takes the page, with a way back to
-// the list. In Slack, or a driver's, who it's with, or
-// their photo by their messages, opens their profile over it, or beside it on a wide page
-// (`docked`).
+// the list. While whom it's with is working, who it's with, or their photo by their messages,
+// opens their profile over it, or beside it on a wide page (`docked`).
 
 export function ConversationPane({
   id,
@@ -183,10 +182,10 @@ export function ConversationPane({
   const [latest, setLatest] = useState(0);
   const person = conversation?.with;
   const about: ReactNode = shown && party?.about(shown);
-  // The profile, and what opened it, which focus goes back to as it closes: the photo by the
-  // messages, or who it's with when that photo is gone.
-  const profiled = party?.profile || undefined;
-  const profile = usePanel(kept && Boolean(profiled));
+  // Their profile, while they're working, and what opened it, which focus goes back to as it
+  // closes: the photo by the messages, or who it's with when that photo is gone.
+  const profiled = Boolean(opened?.working);
+  const profile = usePanel(kept && profiled);
   const opens = profiled ? profile.opens : undefined;
   return (
     <section
@@ -215,8 +214,8 @@ export function ConversationPane({
           conversation={id}
           person={person}
           workspace={workspaces.find((workspace) => workspace.teamId === conversation?.teamId)}
-          elsewhere={profiled.ways ? elsewhere : []}
-          today={profiled.today ? (shown?.today ?? null) : undefined}
+          elsewhere={elsewhere}
+          today={party?.liveToday ? (shown?.today ?? null) : undefined}
           go={go}
           timeZone={timeZone}
           docked={docked}
@@ -237,7 +236,7 @@ export function ConversationPane({
           latest={latest}
           timeZone={timeZone}
           now={now}
-          profile={profiled?.fromPhoto ? opens : undefined}
+          profile={opens}
           openGroup={openGroup}
           retry={(failed) => void retry.run(failed)}
           workdays={party?.workdays ? opened.workdays : undefined}

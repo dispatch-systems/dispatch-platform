@@ -22,6 +22,11 @@ more: boolean,
  */
 today: Today | null,
 /**
+ * Whether whom it's with is working: on a route as live route data holds today, or for the
+ * two hours after the stop, on one the day stopped. Their profile opens only then.
+ */
+working: boolean,
+/**
  * Whom it's with's conversation of each kind, this one too, while they have two or more:
  * work, by text from their number, and Slack.
  */

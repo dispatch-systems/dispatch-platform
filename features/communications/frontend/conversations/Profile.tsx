@@ -30,13 +30,12 @@ import { PaceMark, Stops } from '../todays-routes/RouteFacts.js';
 import { WorkspaceMark } from '../slack/WorkspaceMark.js';
 import './profile.css';
 
-// The profile beside a conversation: whom it's with, a member or a driver, their route today and
-// how to reach them, over the conversation until its X, Escape, or a press anywhere else closes
-// it; or, on a wide page (`docked`), a column of its own beside it, covering nothing, until its X
-// or Escape does. A driver's, by their work conversation, goes to each of their conversations, and
+// The profile beside a conversation, while whom it's with is working: who they are, their route
+// today and how to reach them, over the conversation until its X, Escape, or a press anywhere else
+// closes it; or, on a wide page (`docked`), a column of its own beside it, covering nothing, until
+// its X or Escape does. It goes to each of their conversations; by their work conversation, it
 // shows how far their route has come and the work phone they hold as the conversation's head does,
-// live, gone once the day is over. What nobody knows of them is left out, as is a section left
-// with nothing.
+// live. What nobody knows of them is left out, as is a section left with nothing.
 
 export function Profile({
   id,

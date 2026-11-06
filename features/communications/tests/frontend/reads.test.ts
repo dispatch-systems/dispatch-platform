@@ -26,6 +26,7 @@ const read = (id: string): ConversationMessages => ({
   messages: [],
   more: false,
   today: null,
+  working: false,
   elsewhere:
     id === 'tc_c'
       ? [

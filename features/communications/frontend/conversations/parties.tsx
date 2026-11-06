@@ -7,7 +7,7 @@ import { RouteToday } from '../todays-routes/RouteFacts.js';
 import type { Party } from './party.js';
 
 // What the conversation open does for whom it's with, by who they are (`Party`), defined once
-// each: whether they have a profile, what its head says of them and what else it does there, the
+// each: where their profile's Today comes from, what its head says of them and what else it does there, the
 // number a message goes to and whether one reaches them now, whom the box says it goes to, and
 // whether its days are a driver's workdays.
 
@@ -34,11 +34,9 @@ export type Open = {
 };
 
 type PartyPane = {
-  /** Whether they have a profile, opened from who it's with, and from their photo by their
-   * messages too (`fromPhoto`); whether it goes to each of their conversations (`ways`); and
-   * whether its Today is the conversation's own, live, as its head's is (`today`), else read with
-   * it. */
-  profile: false | { fromPhoto: boolean; ways: boolean; today: boolean };
+  /** Whether their profile's Today is the conversation's own, live, as its head's is, else read
+   * with it. */
+  liveToday: boolean;
   /** The number a message goes to: none in Slack. */
   number: (open: Open) => string | null;
   /** Whether a message reaches them now: one that can't shows No work phone in the box's place. */
@@ -65,7 +63,7 @@ const named = (open: Open) =>
 
 export const PARTIES: { [P in Party]: PartyPane } = {
   member: {
-    profile: { fromPhoto: true, ways: false, today: false },
+    liveToday: false,
     number: () => null,
     writable: ({ conversation, working }) =>
       working.some((workspace) => workspace.teamId === conversation.teamId),
@@ -75,7 +73,7 @@ export const PARTIES: { [P in Party]: PartyPane } = {
     workdays: false,
   },
   number: {
-    profile: false,
+    liveToday: false,
     number: ({ conversation }) => conversation.number,
     writable: ({ texting }) => texting,
     about: (open) =>
@@ -89,7 +87,7 @@ export const PARTIES: { [P in Party]: PartyPane } = {
     workdays: false,
   },
   driver: {
-    profile: { fromPhoto: false, ways: true, today: true },
+    liveToday: true,
     number: ({ today }) => today?.phone ?? null,
     reachable: ({ today }) => Boolean(today?.phone),
     writable: ({ texting }) => texting,
@@ -98,7 +96,7 @@ export const PARTIES: { [P in Party]: PartyPane } = {
     workdays: true,
   },
   work_phone: {
-    profile: false,
+    liveToday: false,
     number: ({ conversation }) => conversation.number,
     writable: ({ texting }) => texting,
     about: () => 'No driver',

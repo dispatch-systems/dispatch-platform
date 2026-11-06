@@ -314,8 +314,8 @@ pub fn like(typed: &str, name: &str, numbers: &[String]) -> Option<(f64, Vec<(u3
 
 /// The conversation `id` and its latest texts, or those before `before`; a driver's with their
 /// route today, or for the two hours after the stop the day's and the work phone they had then,
-/// and each workday's; one with someone's own number with the route they drive today; and whom
-/// it's with's conversations of each kind.
+/// and each workday's; one with someone's own number with the route they drive today; whether
+/// whom it's with is working; and their conversations of each kind.
 pub fn opened(
     db: &Store,
     state: &State,
@@ -332,7 +332,7 @@ pub fn opened(
         read.remove(0);
     }
     let person = whose(&people, &kept);
-    let (today, workdays) = match &kept.driver {
+    let (today, working, workdays) = match &kept.driver {
         Some((source, driver)) => {
             let ids = std::slice::from_ref(driver);
             let today = match LiveDay::read(db, dsp)? {
@@ -345,12 +345,20 @@ pub fn opened(
                     _ => None,
                 },
             };
-            (today, workdays::of(db, dsp, source, driver, &read)?)
+            let working = today.as_ref().is_some_and(today::on_route);
+            (
+                today,
+                working,
+                workdays::of(db, dsp, source, driver, &read)?,
+            )
         }
         // Someone texting from their own number: the route they drive today, for its van.
         None => match person {
-            Some(person) => (today::of(db, dsp, person)?, Vec::new()),
-            None => (None, Vec::new()),
+            Some(person) => {
+                let (today, working) = today::of_working(db, dsp, person)?;
+                (today, working, Vec::new())
+            }
+            None => (None, false, Vec::new()),
         },
     };
     let elsewhere = match person {
@@ -362,6 +370,7 @@ pub fn opened(
         messages: messages(&people, &numbers, read),
         more,
         today,
+        working,
         elsewhere,
         workdays,
         limits: compose::TEXT.into(),
@@ -369,7 +378,7 @@ pub fn opened(
 }
 /// Whom the conversation `kept` is with, as Driver Match knows them: the driver, or whoever it
 /// has the number for.
-fn whose<'a>(people: &'a People, kept: &TextConversation) -> Option<&'a Person> {
+pub(crate) fn whose<'a>(people: &'a People, kept: &TextConversation) -> Option<&'a Person> {
     match (&kept.driver, kept.kind, &kept.number) {
         (Some((source, id)), _, _) => people.driver_of(source, id),
         (None, ConversationKind::Number, Some(number)) => people.holding_number(number),

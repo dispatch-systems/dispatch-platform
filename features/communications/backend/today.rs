@@ -11,7 +11,13 @@ use super::texts::{
     zone,
 };
 use crate::api::types::Today;
-use dispatch_core::{Result, db::Store, foundation::clock, manifest::people::Person, text_enum};
+use dispatch_core::{
+    Result,
+    db::{Store, now},
+    foundation::clock,
+    manifest::people::Person,
+    text_enum,
+};
 use dispatch_routes_contract::{self as routes, RouteDay};
 use dispatch_vans_contract::{self as fleet, MOST_VINS};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -120,6 +126,34 @@ pub fn of(db: &Store, dsp: &str, person: &Person) -> Result<Option<Today>> {
     if let Some(live) = LiveDay::read(db, dsp)? {
         return of_drivers(db, dsp, &live, person.ids_of(live.reader.source()));
     }
+    planned(db, dsp, person)
+}
+
+/// The route `person` drives today, as `of` has it, and whether they're working: on a route on
+/// the live day, or for the two hours after the stop, on one the day stopped, as their work
+/// conversation's head shows it. Routes' read alone is no proof.
+pub fn of_working(db: &Store, dsp: &str, person: &Person) -> Result<(Option<Today>, bool)> {
+    if let Some(live) = LiveDay::read(db, dsp)? {
+        let today = of_drivers(db, dsp, &live, person.ids_of(live.reader.source()))?;
+        let working = today.as_ref().is_some_and(on_route);
+        return Ok((today, working));
+    }
+    let working = match Stopped::read(db, dsp, now())? {
+        Some(stopped) => of_stopped(db, dsp, &stopped, person.ids_of(stopped.reader.source()))?
+            .as_ref()
+            .is_some_and(on_route),
+        None => false,
+    };
+    Ok((planned(db, dsp, person)?, working))
+}
+
+/// Whether `today` is a route, not only a work phone.
+pub fn on_route(today: &Today) -> bool {
+    today.route.is_some() || today.stops.is_some()
+}
+
+/// The route `person` drives today as Routes has read it so far, with no work phone.
+fn planned(db: &Store, dsp: &str, person: &Person) -> Result<Option<Today>> {
     let Some(reader) = routes::for_dsp(db, dsp)? else {
         return Ok(None);
     };

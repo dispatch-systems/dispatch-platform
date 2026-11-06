@@ -14,6 +14,26 @@ import { connect, event, fromSlack, install } from '../../../slack/tests/support
 // each is at Summit Delivery, which has no phone and no texts (texting.spec.ts has Northline,
 // which texts). The page opens on Recents, the first section, once Slack has a conversation.
 
+/** Has the reads of conversations with those `named` say they're working, as live route data
+ * having them on a route today would, so their profile opens; anyone else's read is as the server
+ * answers it. Summit has no live route data, and the rule itself is the backend's to test. */
+async function working(page: Page, ...named: string[]) {
+  await page.route(
+    (url) => /\/api\/dsp\/communications\/conversations\/[^/]+$/.test(url.pathname),
+    async (route) => {
+      if (route.request().method() !== 'GET') return route.fallback();
+      const response = await route.fetch();
+      if (!response.ok()) return route.fulfill({ response });
+      const read = await response.json();
+      const shown = {
+        ...read,
+        working: read.working || named.includes(read.conversation.with.name),
+      };
+      await route.fulfill({ response, json: shown });
+    },
+  );
+}
+
 /** Slack's section chosen in this browser, as Summit's owner would have it, for a test whose page
  * opens before Slack has a conversation to open on. */
 async function slackChosen(page: Page, dispatch: Dispatch) {
@@ -57,6 +77,7 @@ test('an owner connects Slack from Communications, answers a member as they writ
   dispatch,
 }) => {
   await slackChosen(page, dispatch);
+  await working(page, 'Jordan Ellis');
   await login(page);
   await openDsp(page, 'Summit Delivery');
   await page.getByRole('link', { name: 'Communications' }).click();
@@ -115,9 +136,9 @@ test('an owner connects Slack from Communications, answers a member as they writ
   await box.press('Enter');
   await expect(conversation.getByText('Thanks 👍!')).toBeVisible();
 
-  // Who it's with, above, opens their profile over the conversation, and Escape closes it, back
-  // to where it opened; their photo by their messages opens it too, its X closes it, back to that
-  // photo, and a press elsewhere closes it. Closed, it slides away and is gone: looked for hidden
+  // Working today, who it's with, above, opens their profile over the conversation, and Escape
+  // closes it, back to where it opened; their photo by their messages opens it too, its X closes
+  // it, back to that photo, and a press elsewhere closes it. Closed, it slides away and is gone: looked for hidden
   // too, as it is while it slides.
   const opensProfile = conversation.getByRole('button', { name: /^Jordan Ellis/ });
   await opensProfile.first().click();
@@ -257,6 +278,7 @@ test('with two workspaces, each by its logo or initials, the lists show the one 
     );
   expect((await write('T0FIXTURE1', 'U0FIXJORDAN', 'Running late')).status).toBe(200);
   expect((await write('T0FIXTURE2', 'U0FIXCAM', 'Can I swap Saturday?')).status).toBe(200);
+  await working(page, 'Casey Rivera');
   // Operations' logo, which Dispatch keeps a copy of once it's connected.
   await expect
     .poll(async () => {
@@ -297,6 +319,14 @@ test('with two workspaces, each by its logo or initials, the lists show the one 
   await page.reload();
   await expect(list.getByLabel('Workspace: Drivers')).toBeVisible();
   await expect(jordan).toHaveCount(0);
+  // Not working today, as Summit has no live route data, Cameron has no profile to open.
+  await cameron
+    .getByRole('button', { name: /^Cameron Hayes/ })
+    .first()
+    .click();
+  const cam = page.getByRole('region', { name: 'Cameron Hayes' });
+  await expect(cam.getByText('Can I swap Saturday?')).toBeVisible();
+  await expect(cam.getByRole('button', { name: /^Cameron Hayes/ })).toHaveCount(0);
 
   // Contacts: Drivers' members, A to Z; one with no conversation yet starts one.
   await list.getByRole('tab', { name: 'Contacts' }).click();
@@ -311,7 +341,8 @@ test('with two workspaces, each by its logo or initials, the lists show the one 
   const casey = page.getByRole('region', { name: 'Casey Rivera' });
   await expect(casey.getByLabel('Message')).toBeEnabled();
 
-  // On a wide page, the profile is beside the conversation, and a press elsewhere leaves it.
+  // Working today, on a wide page, their profile is beside the conversation, and a press
+  // elsewhere leaves it.
   await page.setViewportSize({ width: 1920, height: 1080 });
   await casey
     .getByRole('button', { name: /^Casey Rivera/ })
@@ -413,6 +444,7 @@ test('Display opens the member’s own Message display, its preview made to fit,
     }),
   );
   expect(written.status).toBe(200);
+  await working(page, 'Casey Rivera');
 
   await login(page);
   await openDsp(page, 'Summit Delivery');
@@ -495,6 +527,7 @@ test('on a wide screen a bubble is as wide as chosen, plain lines stay readable,
     }),
   );
   expect(written.status).toBe(200);
+  await working(page, 'Casey Rivera');
   // Changes to the owner's own Message display, as Settings saves them, which the page draws once
   // it's read them again (`drawn`).
   const look = page.locator('.communications');
