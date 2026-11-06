@@ -1,6 +1,8 @@
 //! The object store: each request signed as S3 checks it; every key the server's own, of a DSP
 //! it checked, so one DSP never reads or lets go of another's; listing every page; an upload
-//! going on as long as it sends; and a bucket told from another by where it answers and its name.
+//! going on as long as it sends; a download going on however long its reader waits between
+//! reads, and given up once R2 stops answering or sending; and a bucket told from another by
+//! where it answers and its name.
 use super::*;
 use crate::testing::objects::Fake;
 
@@ -161,4 +163,57 @@ async fn an_upload_goes_on_past_the_wait_for_an_answer_while_it_sends() {
     });
     objects.upload(&key, 4, chunks).await.unwrap();
     assert_eq!(fake.object(&key).unwrap(), b"dock");
+}
+
+#[tokio::test]
+async fn a_download_goes_on_however_long_its_reader_waits_between_reads() {
+    let fake = Fake::start().await;
+    let objects = Objects::new(&fake.store()).unwrap();
+    let key = key(&dsp(1), "phones", DOOR).unwrap();
+    fake.put(&key, b"door");
+    let held = fake.hold_after(&key, 2);
+    let mut fetched = objects.get(&dsp(1), "phones", DOOR).await.unwrap().unwrap();
+    assert_eq!(fetched.chunks.next().await.unwrap().unwrap(), "do");
+    // R2 sends the rest while the reader waits longer than R2 may go without answering, as a
+    // download to a slow phone does.
+    tokio::time::pause();
+    held.go();
+    tokio::time::sleep(STALLED * 2).await;
+    let rest: Vec<_> = fetched.chunks.collect().await;
+    let rest: Vec<u8> = rest.into_iter().flat_map(|chunk| chunk.unwrap()).collect();
+    assert_eq!(rest, b"or");
+}
+
+#[tokio::test]
+async fn a_download_is_given_up_once_r2_stops_sending() {
+    let fake = Fake::start().await;
+    let objects = Objects::new(&fake.store()).unwrap();
+    let key = key(&dsp(1), "phones", DOOR).unwrap();
+    fake.put(&key, b"door");
+    let _held = fake.hold_after(&key, 2);
+    let mut fetched = objects.get(&dsp(1), "phones", DOOR).await.unwrap().unwrap();
+    assert_eq!(fetched.chunks.next().await.unwrap().unwrap(), "do");
+    // The rest never comes.
+    tokio::time::pause();
+    let stalled = fetched.chunks.next().await.unwrap().unwrap_err();
+    assert_eq!(stalled.kind(), std::io::ErrorKind::TimedOut);
+}
+
+#[tokio::test]
+async fn a_download_is_given_up_once_r2_stops_answering() {
+    let fake = Fake::start().await;
+    let objects = Objects::new(&fake.store()).unwrap();
+    let (door, dock) = (
+        key(&dsp(1), "phones", DOOR).unwrap(),
+        key(&dsp(1), "phones", DOCK).unwrap(),
+    );
+    fake.put(&door, b"door");
+    fake.put(&dock, b"dock");
+    // Connected before the clock stops, as connecting waits on the network and not on it: the
+    // download after goes on the same connection.
+    assert_eq!(fetched(&objects, &dsp(1), DOCK).await.unwrap(), b"dock");
+    let _held = fake.hold(&door);
+    tokio::time::pause();
+    let unanswered = objects.get(&dsp(1), "phones", DOOR).await;
+    assert_eq!(unanswered.err().unwrap().code, "object_store_unavailable");
 }

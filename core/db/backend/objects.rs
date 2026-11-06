@@ -3,9 +3,10 @@
 //! off this server's disk is kept. Every key is the server's own, `dsps/<dsp>/<owner>/<sha256>`:
 //! a DSP's ID it checked, the owner's name, and the SHA-256 of the bytes, never what a request
 //! named, so one DSP's objects are never another's. Bytes go up streamed from their file and
-//! come down streamed, a request given up when R2 stops answering for half a minute; an upload
-//! given up when it sends nothing for half a minute, R2 doesn't answer half a minute after it
-//! sent all, or after ten minutes whatever it does. Its key's secret signs requests and goes
+//! come down streamed, a request given up when R2 stops answering for half a minute: a download
+//! when a read of its bytes waits that long, however long its reader waits between reads. An
+//! upload is given up when it sends nothing for half a minute, R2 doesn't answer half a minute
+//! after it sent all, or after ten minutes whatever it does. Its key's secret signs requests and goes
 //! nowhere else: a failure is its code alone.
 use crate::{
     Error, Result,
@@ -41,12 +42,12 @@ pub struct Fetched {
     pub chunks: Pin<Box<dyn Stream<Item = std::io::Result<Bytes>> + Send>>,
 }
 
-/// The bucket, and its clients: one for uploads, whose answer comes only once they've sent all,
-/// and one for the rest, which R2 answers at once.
+/// The bucket, and its clients: one for the bytes of objects, going up or coming down, timed as
+/// they're waited on, and one for the rest, which R2 answers at once.
 pub struct Objects {
     store: ObjectStore,
     client: reqwest::Client,
-    uploads: reqwest::Client,
+    bytes: reqwest::Client,
 }
 impl Objects {
     pub fn new(store: &ObjectStore) -> Result<Self> {
@@ -65,7 +66,7 @@ impl Objects {
         Ok(Self {
             store: store.clone(),
             client: client(Some(STALLED))?,
-            uploads: client(None)?,
+            bytes: client(None)?,
         })
     }
     /// Whether the bytes it keeps may leave the server's disk (`ObjectStore::only`).
@@ -109,7 +110,7 @@ impl Objects {
             sent.send_replace(());
         });
         let response = self
-            .request(Method::PUT, key, &[], UNSIGNED)?
+            .request(&self.bytes, Method::PUT, key, &[], UNSIGNED)?
             .header(header::CONTENT_LENGTH, length)
             .timeout(UPLOAD)
             .body(reqwest::Body::wrap_stream(chunks))
@@ -136,24 +137,30 @@ impl Objects {
         }
     }
     /// The bytes the DSP's `owner` keeps by `sha256`, as they come down: none when it keeps none
-    /// by it.
+    /// by it. Given up when R2 doesn't answer within `STALLED`, and once it has, when a read of
+    /// its bytes waits that long, timed from when it's read: the time between reads is the
+    /// reader's own.
     pub async fn get(&self, dsp: &str, owner: &str, sha256: &str) -> Result<Option<Fetched>> {
         let key = key(dsp, owner, sha256)?;
-        let response = self
-            .request(Method::GET, &key, &[], &crypto::sha(""))?
-            .send()
-            .await;
+        let request = self
+            .request(&self.bytes, Method::GET, &key, &[], &crypto::sha(""))?
+            .send();
+        let response = tokio::time::timeout(STALLED, request)
+            .await
+            .map_err(|_| Error::new("object_store_unavailable", 503))?;
         let response = answered(response, &[StatusCode::OK, StatusCode::NOT_FOUND])?;
         if response.status() == StatusCode::NOT_FOUND {
             return Ok(None);
         }
         Ok(Some(Fetched {
             length: response.content_length(),
-            chunks: Box::pin(
-                response
-                    .bytes_stream()
-                    .map(|chunk| chunk.map_err(std::io::Error::other)),
-            ),
+            chunks: Box::pin(stream::try_unfold(response, |mut response| async move {
+                let chunk = tokio::time::timeout(STALLED, response.chunk())
+                    .await
+                    .map_err(|_| std::io::Error::from(std::io::ErrorKind::TimedOut))?
+                    .map_err(std::io::Error::other)?;
+                Ok(chunk.map(|chunk| (chunk, response)))
+            })),
         }))
     }
     /// Lets go of the bytes the DSP's `owner` keeps by `sha256`, once they're gone already too.
@@ -180,7 +187,7 @@ impl Objects {
 
     async fn delete_key(&self, key: &str) -> Result<()> {
         let response = self
-            .request(Method::DELETE, key, &[], &crypto::sha(""))?
+            .request(&self.client, Method::DELETE, key, &[], &crypto::sha(""))?
             .send()
             .await;
         answered(
@@ -203,7 +210,7 @@ impl Objects {
                 query.push(("continuation-token", token));
             }
             let response = self
-                .request(Method::GET, "", &query, &crypto::sha(""))?
+                .request(&self.client, Method::GET, "", &query, &crypto::sha(""))?
                 .send()
                 .await;
             let listing = answered(response, &[StatusCode::OK])?
@@ -218,10 +225,11 @@ impl Objects {
             ensure(after.is_some(), "object_store_unavailable", 503)?;
         }
     }
-    /// A request for `key` in the bucket, or for the bucket itself with none, asking `query`,
-    /// signed for a body whose SHA-256 is `payload`: by the client for uploads when it puts one.
+    /// A request by `client` for `key` in the bucket, or for the bucket itself with none, asking
+    /// `query`, signed for a body whose SHA-256 is `payload`.
     fn request(
         &self,
+        client: &reqwest::Client,
         method: Method,
         key: &str,
         query: &[(&str, &str)],
@@ -262,11 +270,6 @@ impl Objects {
         let address = match query.as_str() {
             "" => format!("{}{path}", endpoint.origin().ascii_serialization()),
             query => format!("{}{path}?{query}", endpoint.origin().ascii_serialization()),
-        };
-        let client = if method == Method::PUT {
-            &self.uploads
-        } else {
-            &self.client
         };
         Ok(client
             .request(method, address)

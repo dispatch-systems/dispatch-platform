@@ -1,7 +1,8 @@
 //! Bytes kept by their SHA-256: those gone once upkeep listed them went already. With an object
 //! store, bytes wait in the DSP's data until it has them; they stay there too, for a release that
 //! reads only the disk, until they may leave it, then become the cached copy, and come back from
-//! it once the cache let them go, checked and cached as a download ends; it being down loses
+//! it once the cache let them go, checked and cached as a download ends, however long its reader
+//! waits between reads; it being down loses
 //! nothing; what no file keeps goes from it too, and only the DSP's own; and the cache keeps
 //! within its limit, letting go of what was read longest ago first. Bytes leave the disk only once
 //! the bucket the server now has has them. A video's first frame, and its bytes once played, are
@@ -178,6 +179,28 @@ async fn a_download_from_the_object_store_is_checked_and_cached_as_it_ends() {
     fake.put(&format!("dsps/{dsp}/phones/{sha256}"), b"dock");
     assert!(downloaded(&state, &dsp, &sha256).await.is_err());
     assert!(!cache.join(&sha256).exists());
+}
+
+#[tokio::test]
+async fn a_download_whose_reader_waits_between_reads_comes_whole_and_is_cached() {
+    let fake = Fake::start().await;
+    let (_root, state, dsp, sha256, _) = added(Some(only(&fake)), b"door");
+    let (_, cache) = folders(&state, &dsp);
+    assert!(copied(&state, &dsp).await.is_empty());
+    emptied(&state);
+    // The object store sends them in two parts, the second at once.
+    fake.hold_after(&format!("dsps/{dsp}/phones/{sha256}"), 2)
+        .go();
+    let mut reading = BYTES.read(&state, &dsp, &sha256).await.unwrap().unwrap();
+    assert_eq!(reading.chunks.next().await.unwrap().unwrap(), "do");
+    // Its reader waits twice as long as the object store may go without answering, as a slow
+    // phone's download does, then reads on.
+    tokio::time::pause();
+    tokio::time::sleep(Duration::from_secs(60)).await;
+    let rest: Vec<_> = reading.chunks.collect().await;
+    let rest: Vec<u8> = rest.into_iter().flat_map(|chunk| chunk.unwrap()).collect();
+    assert_eq!(rest, b"or");
+    assert_eq!(std::fs::read(cache.join(&sha256)).unwrap(), b"door");
 }
 
 #[tokio::test]

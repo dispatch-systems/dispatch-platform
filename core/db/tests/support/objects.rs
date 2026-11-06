@@ -3,7 +3,8 @@
 //! after the first asked for by a token an address must escape; down, it answers each request
 //! with 503. It takes a request only signed as S3 checks it, by the key it gave out: its
 //! signature made again of what arrived, with the key's secret. It counts what it's asked for,
-//! and holds a request for a key the test holds until it lets go.
+//! and holds a request for a key the test holds, or the rest of the bytes it answers one with
+//! after their first, until it lets go.
 use crate::foundation::{config::ObjectStore, crypto};
 use axum::{
     Router,
@@ -13,6 +14,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use base64::{Engine, engine::general_purpose::STANDARD};
+use futures_util::{StreamExt, stream};
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::{Digest, Sha256};
 use std::{
@@ -40,8 +42,15 @@ struct Bucket {
     /// Each request taken, by its method and key.
     asked: Arc<Mutex<Vec<(Method, String)>>>,
     held: Arc<Mutex<HashMap<String, Arc<Held>>>>,
+    parted: Arc<Mutex<HashMap<String, Parted>>>,
 }
-/// Requests for a key, held until the test lets them go.
+/// How many of a key's bytes go before the rest are held.
+#[derive(Clone)]
+struct Parted {
+    first: usize,
+    rest: Arc<Held>,
+}
+/// Requests for a key, or the rest of the bytes answering them, held until the test lets them go.
 pub struct Held {
     arrived: Notify,
     /// Closed once they may go.
@@ -117,6 +126,22 @@ impl Fake {
             .insert(key.into(), held.clone());
         held
     }
+    /// Answers each GET for `key` with the first `first` of its bytes, then holds the rest until
+    /// `Held::go`.
+    pub fn hold_after(&self, key: &str, first: usize) -> Arc<Held> {
+        let held = Arc::new(Held {
+            arrived: Notify::new(),
+            going: Semaphore::new(0),
+        });
+        self.bucket.parted.lock().unwrap().insert(
+            key.into(),
+            Parted {
+                first,
+                rest: held.clone(),
+            },
+        );
+        held
+    }
     /// Every key it keeps, in order.
     pub fn keys(&self) -> Vec<String> {
         self.bucket
@@ -186,10 +211,26 @@ async fn answer(State(bucket): State<Bucket>, request: Request) -> Response {
             bucket.objects.lock().unwrap().insert(key, body.to_vec());
             StatusCode::OK.into_response()
         }
-        Method::GET => match bucket.objects.lock().unwrap().get(&key) {
-            Some(bytes) => Body::from(Bytes::from(bytes.clone())).into_response(),
-            None => StatusCode::NOT_FOUND.into_response(),
-        },
+        Method::GET => {
+            let Some(bytes) = bucket.objects.lock().unwrap().get(&key).cloned() else {
+                return StatusCode::NOT_FOUND.into_response();
+            };
+            let parted = bucket.parted.lock().unwrap().get(&key).cloned();
+            match parted {
+                Some(Parted { first, rest: held }) => {
+                    let mut bytes = Bytes::from(bytes);
+                    let rest = bytes.split_off(first.min(bytes.len()));
+                    let first = bytes;
+                    let rest = stream::once(async move {
+                        let _ = held.going.acquire().await;
+                        rest
+                    });
+                    let chunks = stream::once(async { first }).chain(rest);
+                    Body::from_stream(chunks.map(Ok::<_, std::convert::Infallible>)).into_response()
+                }
+                None => Body::from(Bytes::from(bytes)).into_response(),
+            }
+        }
         Method::DELETE => {
             bucket.objects.lock().unwrap().remove(&key);
             StatusCode::NO_CONTENT.into_response()
