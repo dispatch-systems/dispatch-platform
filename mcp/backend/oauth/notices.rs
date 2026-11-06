@@ -3,7 +3,7 @@
 //! presented again. Each is best effort and never stops what it reports.
 use super::{
     super::{keys, toolbox::Toolbox},
-    clients,
+    clients::redirects,
     mail::{self as email, ConnectedApp},
 };
 use dispatch_core::{
@@ -62,7 +62,7 @@ fn try_tell_owners(db: &Store, key: &str, told: Told) -> Result<()> {
         Told::Connected { redirect_uri } => Some(redirect_uri),
         Told::Disconnected { .. } => app["redirect_uri"].as_str(),
     };
-    let destination = redirect_uri.map(|uri| clients::destination(uri).0);
+    let destination = redirect_uri.map(|uri| redirects::destination(uri).0);
     let tools =
         Toolbox::installed().summary(&keys::agent_key_grants(db, key, app["all_tools"] == 1)?);
     let at = now();

@@ -1,8 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import fs from 'node:fs';
-import path from 'node:path';
 import { fixture, freePort } from '../../../core/shell/tests/support/support.js';
 import { capturedMail } from '../../../core/shell/tests/support/mail-support.js';
 import type {
@@ -63,21 +61,6 @@ async function openPairing(owner: Awaited<ReturnType<App['client']>>) {
   const opened = await owner.post('/api/platform/oauth/pairing');
   assert.equal(opened.status, 200, opened.body);
   return (opened.value as OAuthPairingOpened).openUntil;
-}
-
-/** The captured email to `to` with this subject, once the mailer has delivered it. */
-async function mailed(root: string, to: string, subject: string) {
-  const directory = path.join(root, 'data/platform/development-mail');
-  const deadline = Date.now() + 12000;
-  while (Date.now() < deadline) {
-    for (const name of fs.existsSync(directory) ? fs.readdirSync(directory) : []) {
-      if (!name.endsWith('.json')) continue;
-      const message = JSON.parse(fs.readFileSync(path.join(directory, name), 'utf8'));
-      if (message.to === to && message.subject === subject) return message as { text: string };
-    }
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  throw new Error(`No email "${subject}" was delivered to ${to}`);
 }
 
 /** The fixture as an MCP client and the platform owner meet it, the pairing window open. */
@@ -766,10 +749,14 @@ test('the platform owner is emailed when an app connects and when Dispatch disco
   const code = c.code(await c.approve(started.id, everything('ChatGPT')), started.state);
   const exchanged = await c.exchange(chatgpt, chatgptRedirect, code, started.verifier);
   assert.equal(exchanged.status, 200, JSON.stringify(exchanged.body));
-  await mailed(f.root, owner, '[Dispatch Dev] ChatGPT connected to Dispatch');
+  await capturedMail(f.root, owner, undefined, {
+    subject: '[Dispatch Dev] ChatGPT connected to Dispatch',
+  });
   const replay = await c.exchange(chatgpt, chatgptRedirect, code, started.verifier);
   assert.equal(replay.body.error, 'invalid_grant');
-  const disconnected = await mailed(f.root, owner, '[Dispatch Dev] Dispatch disconnected ChatGPT');
+  const disconnected = await capturedMail(f.root, owner, undefined, {
+    subject: '[Dispatch Dev] Dispatch disconnected ChatGPT',
+  });
   assert.ok(disconnected.text.includes('one-time code'), disconnected.text);
   assert.ok(disconnected.text.includes('Sent access to: chatgpt.com'), disconnected.text);
   c.refused(await c.whoami((exchanged.body as Tokens).access_token), 'the replayed app');

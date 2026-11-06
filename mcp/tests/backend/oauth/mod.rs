@@ -1,4 +1,8 @@
-use super::*;
+use super::{
+    Query,
+    protocol::{redirect, verifies},
+};
+use dispatch_core::foundation::crypto;
 
 #[test]
 fn redirects_keep_their_query_and_any_scheme() {
