@@ -38,5 +38,3 @@ def artifact(root, commit):
     manifest["digest"] = hashlib.sha256(json.dumps(manifest, separators=(",", ":")).encode()).hexdigest()
     (root / "release.json").write_text(json.dumps(manifest))
     return manifest
-
-
