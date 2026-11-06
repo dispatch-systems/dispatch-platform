@@ -1,8 +1,6 @@
 // DOM extraction and strict layout validation adapted from the archived Paycom provider.
 (config) => {
-  const DAY = 86400000,
-    ANCHOR_START = '2026-07-26',
-    BASE = 'https://www.paycomonline.net/v4/cl/web.php/timecard/index';
+  const DAY = 86400000;
   function isoDate(value) {
     if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value))
       throw new Error('invalid_period');
@@ -22,18 +20,6 @@
     const dates = Array.from({ length: 14 }, (_, i) => iso(new Date(a.valueOf() + i * DAY)));
     return Object.freeze({ start, end, key: `${start}_${end}`, dates: Object.freeze(dates) });
   }
-  function periodFromEnd(end) {
-    const b = isoDate(end);
-    if (b.getUTCDay() !== 6) throw new Error('invalid_period');
-    return fromBounds(iso(new Date(b.valueOf() - 13 * DAY)), end);
-  }
-  function periodContaining(value) {
-    const target = isoDate(value),
-      anchor = isoDate(ANCHOR_START),
-      index = Math.floor((target - anchor) / (14 * DAY)),
-      start = new Date(anchor.valueOf() + index * 14 * DAY);
-    return fromBounds(iso(start), iso(new Date(start.valueOf() + 13 * DAY)));
-  }
   function parsePeriodKey(key) {
     if (
       typeof key !== 'string' ||
@@ -43,82 +29,10 @@
     const [start, end] = key.split('_');
     return fromBounds(start, end);
   }
-  function shift(period, days) {
-    const p = parsePeriodKey(period.key);
-    return fromBounds(
-      iso(new Date(isoDate(p.start).valueOf() + days * DAY)),
-      iso(new Date(isoDate(p.end).valueOf() + days * DAY)),
-    );
-  }
-  function nextPeriod(period) {
-    return shift(period, 14);
-  }
-  function previousPeriod(period) {
-    return shift(period, -14);
-  }
   function validateCode(code) {
     if (typeof code !== 'string' || !/^[A-Za-z0-9]{4}$/.test(code))
       throw new Error('invalid_employee_code');
     return code;
-  }
-  function canonicalTimecardUrl(code, period) {
-    validateCode(code);
-    const p = parsePeriodKey(period.key),
-      url = new URL(BASE);
-    url.searchParams.set('firstrefno', code);
-    url.searchParams.set('perioddates', p.key);
-    url.searchParams.set('formtype', 'SUMMARY');
-    return url.href;
-  }
-  function buildTimecardUrl(code, period, variant) {
-    if (variant !== 1 && variant !== 2) throw new Error('navigation_policy_violation');
-    const url = new URL(canonicalTimecardUrl(code, period));
-    url.searchParams.set('dispatch_timecards', String(variant));
-    return url.href;
-  }
-  function sameTimecardIdentity(url, expected) {
-    return (
-      url.protocol === expected.protocol &&
-      url.hostname === expected.hostname &&
-      url.port === '' &&
-      url.username.length === 0 &&
-      url.password.length === 0 &&
-      url.pathname === expected.pathname &&
-      url.hash === '' &&
-      url.searchParams.getAll('firstrefno').length === 1 &&
-      url.searchParams.get('firstrefno') === expected.searchParams.get('firstrefno') &&
-      url.searchParams.getAll('perioddates').length === 1 &&
-      url.searchParams.get('perioddates') === expected.searchParams.get('perioddates') &&
-      url.searchParams.getAll('formtype').length === 1 &&
-      url.searchParams.get('formtype') === 'SUMMARY'
-    );
-  }
-  function isCapturedTimecardUrl(value, { employeeCode, period }) {
-    try {
-      const url = new URL(value),
-        expected = new URL(canonicalTimecardUrl(employeeCode, period)),
-        keys = [...url.searchParams.keys()].sort();
-      return (
-        sameTimecardIdentity(url, expected) &&
-        keys.join(',') === 'dispatch_timecards,firstrefno,formtype,perioddates' &&
-        url.searchParams.getAll('dispatch_timecards').length === 1 &&
-        ['1', '2'].includes(url.searchParams.get('dispatch_timecards'))
-      );
-    } catch {
-      return false;
-    }
-  }
-  function isCanonicalTimecardUrl(value, { employeeCode, period }) {
-    try {
-      const url = new URL(value),
-        expected = new URL(canonicalTimecardUrl(employeeCode, period)),
-        keys = [...url.searchParams.keys()].sort();
-      return (
-        sameTimecardIdentity(url, expected) && keys.join(',') === 'firstrefno,formtype,perioddates'
-      );
-    } catch {
-      return false;
-    }
   }
 
   const HEADERS = Object.freeze([
@@ -508,23 +422,6 @@
     validateGenericRows(value.attestations, 'timecard_attestation_invalid');
     validateGenericRows(value.mealWaivers, 'timecard_waiver_invalid');
     return value;
-  }
-
-  function renderedDayHeader(value) {
-    const text = String(value ?? '')
-      .replace(/\s+/g, ' ')
-      .trim();
-    const match = text.match(/^([A-Z]{3})\s*\(([0-9]{2}\/[0-9]{2})\)$/);
-    return match ? { label: match[1], dateText: match[2] } : null;
-  }
-
-  function bindRenderedDayDate(value, expectedDate) {
-    const header = renderedDayHeader(value);
-    return header &&
-      typeof expectedDate === 'string' &&
-      header.dateText === expectedDate.slice(5).replace('-', '/')
-      ? expectedDate
-      : '';
   }
 
   function resolveObservedEmployeeCode(values) {
