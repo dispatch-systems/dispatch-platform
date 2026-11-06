@@ -4,6 +4,7 @@
 mod assets;
 mod backup;
 mod dry_run;
+mod notes;
 mod origins;
 mod production;
 mod rehearsal;
@@ -16,14 +17,12 @@ use crate::{
     management, releases, require,
     updater::{Environment, Updater},
 };
-use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeSet,
     ffi::{OsStr, OsString},
-    fs::{self, OpenOptions},
-    os::unix::fs::OpenOptionsExt,
+    fs,
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -169,15 +168,6 @@ struct Journal {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     relay_version: Option<String>,
     complete: bool,
-}
-
-struct ReleaseLock(std::fs::File);
-impl Drop for ReleaseLock {
-    fn drop(&mut self) {
-        // Closing our descriptor alone can leave flock held by a concurrent
-        // fork until that child execs. Release the lock explicitly on every exit.
-        let _ = FileExt::unlock(&self.0);
-    }
 }
 
 struct Release<'a> {
@@ -380,16 +370,8 @@ impl<'a> Release<'a> {
             return self.status();
         }
         io::private_directory(&self.directory)?;
-        let lock = OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .write(true)
-            .mode(0o600)
-            .custom_flags(libc::O_NOFOLLOW)
-            .open(self.directory.join(".release.lock"))?;
-        lock.try_lock_exclusive()
-            .map_err(|_| "Another release command is running")?;
-        let _lock = ReleaseLock(lock);
+        let _lock = io::ExclusiveLock::try_acquire(&self.directory.join(".release.lock"))?
+            .ok_or("Another release command is running")?;
         if stage == Stage::Backup {
             return self.backup();
         }

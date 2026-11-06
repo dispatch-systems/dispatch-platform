@@ -114,8 +114,13 @@ test('every test file is run by exactly one check of full validation and none is
     [],
   );
 
-  // Python source checks and real compiler/host checks cover every module once in CI.
-  const python = pythonTestDirs.flatMap((directory) => names(directory, /\.py$/)).sort();
+  // Python source checks and real compiler/host checks cover every runnable module once in CI.
+  // The launchers' shared fixture is support code, imported by their tests.
+  const pythonSupport = 'ops/tests/runtime_fixtures.py';
+  const python = pythonTestDirs
+    .flatMap((directory) => names(directory, /\.py$/))
+    .filter((file) => file !== pythonSupport)
+    .sort();
   assert.deepEqual(
     python.filter((file) => !/^(tooling|ops)\/tests\/[a-z_]+_test\.py$/.test(file)),
     [],

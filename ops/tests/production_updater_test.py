@@ -2,7 +2,7 @@
 import subprocess
 import sys
 import unittest
-from dev_updater_test import TOOLING
+from runtime_fixtures import TOOLING
 
 
 class ProductionLauncherTests(unittest.TestCase):
