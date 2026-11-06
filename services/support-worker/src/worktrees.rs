@@ -1,7 +1,7 @@
-use crate::{Result, config::Config, require};
+use crate::{Result, config::Config, process::command, require};
 use dispatch_core::support::api::types::SupportJob;
 use std::{
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
     time::Duration,
 };
@@ -66,24 +66,6 @@ async fn sweep(config: &Config) -> Result<()> {
 pub struct Worktree {
     pub name: String,
     pub path: PathBuf,
-}
-
-pub async fn command(directory: &Path, program: &str, args: &[&str]) -> Result<String> {
-    let output = Command::new(program)
-        .args(args)
-        .current_dir(directory)
-        .kill_on_drop(true)
-        .output()
-        .await?;
-    if !output.status.success() {
-        // Build and GitHub errors go into the private agent context, never a public event log.
-        return Err(format!(
-            "{program} failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        )
-        .into());
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
 }
 
 /// The Rust toolchain `commit` pins, and the crates its lockfile names, installed on the host: a

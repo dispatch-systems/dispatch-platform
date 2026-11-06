@@ -302,7 +302,7 @@ pub async fn collect(
     job: &SupportJob,
     proposal: &SupportProposal,
 ) -> Result<Collected> {
-    let diff = crate::worktrees::command(
+    let diff = crate::process::command(
         &tree.path,
         "git",
         &["diff", "--name-only", "origin/main...HEAD"],
@@ -356,7 +356,7 @@ pub async fn collect(
     let mut evidence = vec![];
     let mut state: Option<PathBuf> = None;
     let mut proofs = vec![];
-    let date = crate::worktrees::command(
+    let date = crate::process::command(
         &tree.path,
         "/usr/bin/date",
         &["-u", "-d", "yesterday", "+%F"],
