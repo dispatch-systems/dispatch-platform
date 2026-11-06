@@ -26,7 +26,7 @@ use dispatch_core::{
 use dispatch_documents_contract::Author;
 use serde_json::json;
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     sync::{Arc, LazyLock, Mutex},
     time::{Duration, Instant},
 };
@@ -51,11 +51,18 @@ pub fn forget(dsp: &str) {
         .remove(dsp);
 }
 
-/// Google's links to pictures of what each DSP's Documents showed, by DSP and file. A picture
-/// is fetched only for a file kept here: so only one the DSP's own Documents showed, and never
-/// by a link a browser sent.
-static PICTURES: LazyLock<Mutex<HashMap<(String, String), Shown>>> =
-    LazyLock::new(Default::default);
+/// Google's links to pictures of what each DSP's Documents showed. A picture is fetched only
+/// for a file kept here: so only one the DSP's own Documents showed, and never by a link a
+/// browser sent.
+static PICTURES: LazyLock<Mutex<Pictures>> = LazyLock::new(Default::default);
+#[derive(Default)]
+struct Pictures {
+    /// By DSP and file.
+    shown: HashMap<(String, String), Shown>,
+    /// The DSPs deleted since the server started, which keep none: a folder shown as its DSP
+    /// was deleted would otherwise keep its pictures once they're forgotten.
+    deleted: HashSet<String>,
+}
 /// Google's link to a file's picture, when Google gave the link, and when Documents showed
 /// the file.
 #[derive(Clone)]
@@ -69,18 +76,21 @@ struct Shown {
 const PICTURE_LINK_LASTS: Duration = Duration::from_secs(60 * 60);
 /// The most links kept across every DSP; past them, a card keeps its drawing.
 const PICTURE_LINKS: usize = 20_000;
-/// Forgets the pictures the DSP's Documents showed, as once it's deleted.
+/// Forgets the pictures the DSP's Documents showed, once it's deleted, and keeps none it shows
+/// after.
 pub fn forget_pictures(dsp: &str) {
-    PICTURES
+    let mut pictures = PICTURES
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .retain(|(shown_by, _), _| shown_by != dsp);
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    pictures.shown.retain(|(shown_by, _), _| shown_by != dsp);
+    pictures.deleted.insert(dsp.to_owned());
 }
 /// The picture of the file `id`, when the DSP's Documents showed it within the hour.
 fn shown(dsp: &str, id: &str) -> Option<Shown> {
     PICTURES
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .shown
         .get(&(dsp.to_owned(), id.to_owned()))
         .filter(|shown| shown.shown.elapsed() < PICTURE_LINK_LASTS)
         .cloned()
@@ -840,13 +850,17 @@ impl Described<'_> {
         }
     }
     /// Where the page fetches Google's picture of `row`, keeping its link for the DSP to
-    /// fetch it by: none when Google made none. The address names the picture's version, so
-    /// the browser keeps each until the file changes.
+    /// fetch it by: none when Google made none, or the DSP is deleted. The address names the
+    /// picture's version, so the browser keeps each until the file changes.
     fn picture(&self, row: &Row) -> Option<String> {
         let link = row.thumbnail.as_deref()?.to_owned();
-        let mut links = PICTURES
+        let mut pictures = PICTURES
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if pictures.deleted.contains(self.dsp) {
+            return None;
+        }
+        let links = &mut pictures.shown;
         let key = (self.dsp.to_owned(), row.id.to_string());
         if links.len() >= PICTURE_LINKS && !links.contains_key(&key) {
             links.retain(|_, shown| shown.shown.elapsed() < PICTURE_LINK_LASTS);
