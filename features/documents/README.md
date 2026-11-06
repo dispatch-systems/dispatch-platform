@@ -24,7 +24,8 @@ and weeks, so it's best submitted well before the limit.
   `GET /api/dsp/documents/account`, the account with its storage, and
   `POST /api/dsp/documents/connect`, `…/connect/finish` and `…/disconnect`. A DSP deleted has
   Google take back Dispatch's access first, best effort (`deleting.revoke`), as disconnecting
-  does, unless another DSP connects the same account, as Google would end its access too; and
+  does, unless another DSP connects the same account or finishes signing in to it meanwhile, as
+  Google would end its access too; and
   its files', pictures' and copies' memory goes (`deleting.forgotten`). Behind `documents.use` too:
   `GET /api/dsp/documents/folder` (a folder and what it holds, or with `q`, what a search inside
   it found), `POST …/new` (a folder, Doc, Sheet or Slides), `POST …/upload` (a file, up to
