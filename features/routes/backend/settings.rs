@@ -1,8 +1,8 @@
 //! Routes' settings: how long the DSP keeps its route data, on Settings' Data page; and the
 //! window a DSP chose before Settings kept it, moved in once.
 use super::{
-    MAX_RETENTION_DAYS, MIN_RETENTION_DAYS, RoutesStore, STORAGE, first_kept,
-    maintenance::MAINTENANCE,
+    MAX_RETENTION_DAYS, MIN_RETENTION_DAYS, RoutesStore, maintenance::MAINTENANCE,
+    scope::first_kept, storage::STORAGE,
 };
 use dispatch_core::{
     Result,

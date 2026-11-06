@@ -1,12 +1,20 @@
 //! A whole read of a day that another feature collected itself, saved into historical route
 //! data as the standard collection saves its own: staged one itinerary at a time, then the
 //! day's read if it was collected later than the one the day has.
-use super::{work_phones::Stored, *};
+use super::{
+    COLLECTION, DOMAIN, RoutesStore,
+    publishing::publish_day,
+    scope::{day_allowed, day_request, routes_day},
+    staging::stage_capture,
+    work_phones::Stored,
+};
 use dispatch_core::{
-    State,
+    Error, Result, State,
+    db::Store,
+    ensure,
     manifest::events::{self, PeopleChanged},
 };
-use dispatch_cortex::routes::token;
+use dispatch_cortex::routes::{Capture, token};
 use dispatch_routes_contract::RouteDataChanged;
 use std::{
     collections::BTreeSet,

@@ -3,7 +3,7 @@
 //! is small and read whole into a tree. Each field reads as a tree would answer it, so the
 //! rows are the same: a field missing or of a kind shaping doesn't read is null, one repeated
 //! is the last, and anything but an object where one is expected reads as an empty object.
-use super::{StopFields, TaskFields};
+use super::rows::{StopFields, TaskFields};
 use serde::de::{Deserialize, Deserializer, IgnoredAny, MapAccess, SeqAccess, Visitor};
 use serde_json::{Map, Number, Value, json};
 use std::{borrow::Cow, collections::BTreeSet, fmt};
