@@ -117,6 +117,17 @@
   width: 47%;
   height: 47%;
 }
+/* Where a pointer can hover, the check shows only while its row is pointed at or reached by
+   keyboard; on a touch screen it always shows. */
+@media (hover: hover) {
+  .convo-done {
+    opacity: 0;
+  }
+  .convo:hover .convo-done,
+  .convo:has(:focus-visible) .convo-done {
+    opacity: 1;
+  }
+}
 
 /* As the member chose in Message display: no photos in the list. */
 .communications[data-hide~='list-photos']
