@@ -10,13 +10,15 @@
   border-radius: var(--radius);
   font-size: var(--ui-size);
 }
+/* Its bar gives way before its words are cut off. */
 .profile-stops {
-  display: inline-flex;
+  display: flex;
+  justify-content: flex-end;
   align-items: center;
   gap: 8px;
 }
 .profile-stops .stops-bar {
-  flex: 0 0 80px;
+  flex: 0 1 80px;
 }
 
 /* What's known of them: Call, and each section of facts. */
@@ -82,6 +84,28 @@
   min-width: 0;
   text-align: right;
   overflow-wrap: anywhere;
+}
+/* Their phone numbers, one to a line, their default marked. */
+.profile-phones {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.profile-phones > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.profile-default {
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--selection);
+  color: var(--primary);
+  font-size: calc(var(--small-size) - 0.5px);
+  font-weight: 650;
+  line-height: 1.6;
 }
 .profile-workspace {
   display: inline-flex;

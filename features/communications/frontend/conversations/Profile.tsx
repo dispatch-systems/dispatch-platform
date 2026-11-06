@@ -21,7 +21,7 @@ import type {
 import { useProfile } from '../../api/client.js';
 import { phoneText } from '../../../../core/shell/frontend/lib/format.js';
 import { ErrorBox, Loading } from '../../../../core/shell/frontend/ui/index.js';
-import { clock, lastFour } from '../shared/format.js';
+import { clock } from '../shared/format.js';
 import { ElsewhereChip } from './ElsewhereChips.js';
 import { Face } from '../shared/Face.js';
 import { Panel } from '../shared/Panel.js';
@@ -35,7 +35,7 @@ import './profile.css';
 // it; or, on a wide page (`docked`), a column of its own beside it, covering nothing, until its X
 // or Escape does. A driver's, by their work conversation, goes to each of their conversations, and
 // shows how far their route has come and the work phone they hold as the conversation's head does,
-// live, gone once the day is over. What nobody knows of them is left out, as is a section left
+// live, gone once the day is over. Their phone numbers, their default first, which Call calls. What nobody knows of them is left out, as is a section left
 // with nothing.
 
 export function Profile({
@@ -143,6 +143,7 @@ export function ProfileShown({
 }) {
   const today = live !== undefined ? live : profile?.today;
   const role = roleText(person);
+  const call = profile?.phones[0];
   return (
     <>
       <div className="me">
@@ -153,9 +154,9 @@ export function ProfileShown({
         </div>
       </div>
       {ways ||
-        (profile?.phone && (
+        (call && (
           <div className="profile-buttons">
-            <a className="profile-button" href={`tel:${profile.phone.replace(/[^\d+]/g, '')}`}>
+            <a className="profile-button" href={`tel:${call.replace(/[^\d+]/g, '')}`}>
               <Phone size={15} aria-hidden="true" />
               Call
             </a>
@@ -182,7 +183,7 @@ export function ProfileShown({
               ),
             ],
             [Gauge, 'Pace', today.pace && <PaceMark pace={today.pace} />],
-            [Smartphone, 'Work phone', today.phone && lastFour(today.phone)],
+            [Smartphone, 'Work phone', today.phone && phoneText(today.phone)],
           ]}
         />
       )}
@@ -190,7 +191,7 @@ export function ProfileShown({
         <Facts
           title="Contact"
           facts={[
-            [Phone, 'Phone', profile.phone === null ? null : phoneText(profile.phone)],
+            [Phone, 'Phone', profile.phones.length > 0 && <Phones phones={profile.phones} />],
             [Mail, 'Email', profile.email],
             [
               Hash,
@@ -208,6 +209,20 @@ export function ProfileShown({
         />
       )}
     </>
+  );
+}
+
+/** Their phone numbers, their default first, marked so while they have others. */
+function Phones({ phones }: { phones: readonly string[] }) {
+  return (
+    <span className="profile-phones">
+      {phones.map((phone, index) => (
+        <span key={phone}>
+          {index === 0 && phones.length > 1 && <span className="profile-default">Default</span>}
+          {phoneText(phone)}
+        </span>
+      ))}
+    </span>
   );
 }
 

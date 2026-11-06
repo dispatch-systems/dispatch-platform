@@ -14,9 +14,14 @@ export type Profile = {
  */
 today: Today | null,
 /**
- * Their phone number and email address, the first Driver Match has from their sources.
+ * Their phone numbers as Driver Match has them, their default first: the one a call and their
+ * conversation by text go to.
  */
-phone: string | null, email: string | null,
+phones: Array<string>,
+/**
+ * Their email address, the first Driver Match has from their sources.
+ */
+email: string | null,
 /**
  * The name of the workspace the conversation is in, while the DSP has it.
  */

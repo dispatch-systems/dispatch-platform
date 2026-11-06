@@ -89,7 +89,8 @@ async fn the_profile_shows_the_route_driven_today_and_how_to_reach_the_member() 
     assert_eq!(today.route.as_deref(), Some("CX14"));
     assert_eq!(today.van.as_deref(), Some("214"));
     assert_eq!((today.wave_at, today.stops), (Some(WAVE), Some(168)));
-    assert_eq!(shown.phone.as_deref(), Some("+16125550100"));
+    // Every number of theirs, their default first, which a call goes to.
+    assert_eq!(shown.phones, ["+16125550100", "+16515550100"]);
     assert_eq!(shown.email.as_deref(), Some("jordan.ellis@example.com"));
     assert_eq!(shown.slack.as_deref(), Some(TEAM));
 
@@ -124,11 +125,11 @@ async fn the_profile_shows_no_route_of_another_day_and_no_contact_for_someone_un
     // Yesterday's route is never today's.
     let shown = profile(&state, &dsp, &jordan_id).await;
     assert!(shown.today.is_none());
-    assert_eq!(shown.phone.as_deref(), Some("+16125550100"));
+    assert_eq!(shown.phones, ["+16125550100", "+16515550100"]);
     // Someone Driver Match doesn't know: their workspace alone.
     let shown = profile(&state, &dsp, &cam).await;
     assert!(shown.today.is_none());
-    assert_eq!((shown.phone, shown.email), (None, None));
+    assert_eq!((shown.phones.len(), shown.email), (0, None));
     assert_eq!(shown.slack.as_deref(), Some(TEAM));
 }
 

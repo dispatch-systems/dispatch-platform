@@ -1,7 +1,7 @@
 //! The profile beside a conversation: what's known of whom it's with, besides the name, role and
 //! photo the conversation has. Their route today and the work phone they hold now (`today`); and
-//! how to reach them: their phone number and email address as Driver Match has them
-//! (`directory`), and their Slack workspace: a Slack conversation's own, or for a driver's work
+//! how to reach them: their phone numbers, their default first, and email address as Driver
+//! Match has them (`directory`), and their Slack workspace: a Slack conversation's own, or for a driver's work
 //! conversation, the first of the DSP's workspaces they're in. Each feature is asked only while
 //! it's on for the DSP, and what none knows is left out. A number's conversation has none.
 use super::{
@@ -86,7 +86,7 @@ fn profile(
     });
     Profile {
         today,
-        phone: person.and_then(|person| person.phones.first().cloned()),
+        phones: person.map(|person| person.phones.clone()).unwrap_or_default(),
         email: person.and_then(|person| person.emails.first().cloned()),
         slack,
     }

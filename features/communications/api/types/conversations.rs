@@ -288,8 +288,10 @@ pub struct Profile {
     /// Their route on the DSP's own day today: as live route data last read it while it holds
     /// today, else as Routes has read it so far.
     pub today: Option<Today>,
-    /// Their phone number and email address, the first Driver Match has from their sources.
-    pub phone: Option<String>,
+    /// Their phone numbers as Driver Match has them, their default first: the one a call and their
+    /// conversation by text go to.
+    pub phones: Vec<String>,
+    /// Their email address, the first Driver Match has from their sources.
     pub email: Option<String>,
     /// The name of the workspace the conversation is in, while the DSP has it.
     pub slack: Option<String>,

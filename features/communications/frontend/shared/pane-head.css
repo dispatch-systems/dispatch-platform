@@ -51,10 +51,14 @@
   font-size: calc(var(--small-size) + 1px);
   white-space: nowrap;
 }
+/* What the head says of whom it's with, its pieces wrapping onto a second line short of room. */
 .thread-head .who .about {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 .thread-head .actions button {
   min-height: calc(var(--field-height) - 2px);

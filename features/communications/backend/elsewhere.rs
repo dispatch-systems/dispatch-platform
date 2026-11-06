@@ -1,6 +1,5 @@
 //! A person's conversations of each kind, which the page goes between under the head of any of
-//! them: their work conversation, as a driver who had the DSP's work phones, with the work phone
-//! they have now; the one by text with their own number, their default, the first of Driver
+//! them: their work conversation, while they work today, with the work phone they have now; the one by text with their own number, their default, the first of Driver
 //! Match's numbers for them; and their Slack one, in a workspace
 //! where Communications works, the latest written in, else their first account there. Each with
 //! whether it waits, and what starts one they don't have yet; listed only with two or more.
@@ -13,6 +12,7 @@ use super::{
         numbers::work_number,
         storage::TextStore,
     },
+    today,
 };
 use crate::{api::types::Elsewhere, backend::phone::numbers::normal, integrations::messages::ID};
 use dispatch_core::{Result, db::Store, manifest::people::Person};
@@ -33,10 +33,14 @@ pub fn of(db: &Store, dsp: &str, person: &Person) -> Result<Vec<Elsewhere>> {
     Ok(if found.len() > 1 { found } else { Vec::new() })
 }
 
-/// `person`'s work conversation, while they have one or a work phone now: with one, that of the ID
-/// that has it (`LiveDay::phone_of`), which a text there goes to, started if they have none by it;
-/// else the latest of any of their IDs.
+/// `person`'s work conversation, while they work today, with a route today or a work phone now
+/// (`today::of`), as the head of each of their conversations shows it, and have one or a work
+/// phone: with one, that of the ID that has it (`LiveDay::phone_of`), which a text there goes to,
+/// started if they have none by it; else the latest of any of their IDs.
 fn work(db: &Store, dsp: &str, person: &Person) -> Result<Option<Elsewhere>> {
+    if today::of(db, dsp, person)?.is_none() {
+        return Ok(None);
+    }
     let live = LiveDay::read(db, dsp)?;
     let source = match &live {
         Some(live) => live.reader.source(),
