@@ -2,13 +2,16 @@ use super::*;
 
 #[test]
 fn the_built_in_documents_are_the_known_apps_own() {
-    for (url, name, copy) in KNOWN {
+    for KnownApp {
+        url, name, copy, ..
+    } in KNOWN
+    {
         let client = document(url, "Fallback", copy.as_bytes()).unwrap();
         assert_eq!((client.name.as_str(), client.known), (*name, true));
         assert!(!client.redirect_uris.is_empty());
     }
     // A document naming another client, or none of its redirects, is no document.
-    let (url, _, copy) = KNOWN[0];
+    let KnownApp { url, copy, .. } = KNOWN[0];
     assert!(document("https://chatgpt.com/oauth/other.json", "x", copy.as_bytes()).is_none());
     let bare = json!({"client_id":url,"redirect_uris":[]}).to_string();
     assert!(document(url, "x", bare.as_bytes()).is_none());
@@ -50,7 +53,7 @@ async fn failed() -> Result<Vec<u8>> {
 #[tokio::test]
 async fn documents_are_fetched_once_at_a_time_and_failures_wait_a_minute() {
     use std::sync::atomic::{AtomicUsize, Ordering};
-    let (_, _, copy) = KNOWN[1];
+    let KnownApp { copy, .. } = KNOWN[1];
     let documents = Documents::default();
     let fetches = AtomicUsize::new(0);
     // Requests arriving together share one fetch.
@@ -89,7 +92,7 @@ async fn documents_are_fetched_once_at_a_time_and_failures_wait_a_minute() {
     assert_eq!(tried.load(Ordering::SeqCst), 0);
     // After the minute it is fetched again.
     let set = |document: &Documents, entry: Fetched| {
-        document.fetched.lock().unwrap().insert(KNOWN[2].0, entry);
+        document.fetched.lock().unwrap().insert(KNOWN[2].url, entry);
     };
     set(
         &other,
@@ -98,7 +101,9 @@ async fn documents_are_fetched_once_at_a_time_and_failures_wait_a_minute() {
             failed: Some(now() - RETRY - 1),
         },
     );
-    let (url, name, copy) = KNOWN[2];
+    let KnownApp {
+        url, name, copy, ..
+    } = KNOWN[2];
     assert_eq!(other.resolve(2, || fetched(copy)).await.unwrap().id, url);
     // A stale document that cannot be fetched again still serves its day.
     let stale = document(url, name, copy.as_bytes()).unwrap();
