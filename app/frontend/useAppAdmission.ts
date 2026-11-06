@@ -177,7 +177,7 @@ export function useAppAdmission(
       window.removeEventListener('dispatch-security-changed', required);
     };
   }, [load]);
-  const { route, dspId, page } = address;
+  const { dspId, page } = address;
   useEffect(() => {
     if (session && !showAuth && !securityRequired)
       void prepareRoute(

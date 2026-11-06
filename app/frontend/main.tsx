@@ -97,7 +97,8 @@ function App({ initialSession }: { initialSession: Promise<Session> }) {
         <FeedbackMessages />
       </>
     );
-  if (showAuth) return <SignedOutScreen key={route} onLogin={() => load(true)} />;
+  if (showAuth || session === null)
+    return <SignedOutScreen key={route} onLogin={() => load(true)} />;
   if (securityRequired && session)
     return (
       <SecurityPrompt security={session.security} complete={() => load(true)} signOut={logout} />
