@@ -52,6 +52,8 @@ pub struct State {
     /// What the agents' piece keeps in memory for as long as the server runs, in its own
     /// terms; none in a build without it.
     pub agents: Option<Box<dyn std::any::Any + Send + Sync>>,
+    /// The object store the DSPs' pictures are kept in, when the server has one.
+    pub objects: Option<db::objects::Objects>,
 }
 impl State {
     /// Reads the registry, which the app installs before it builds one.
@@ -74,6 +76,11 @@ impl State {
             Some(agents) => Some((agents.state)(&store)?),
             None => None,
         };
+        let objects = config
+            .objects
+            .as_ref()
+            .map(db::objects::Objects::new)
+            .transpose()?;
         Ok(Arc::new(Self {
             key: store.key.clone(),
             assets: http::assets(&config.dashboard, &config.release)?,
@@ -95,6 +102,7 @@ impl State {
             topics: live::Topics::default(),
             presence: presence::Presence::default(),
             agents,
+            objects,
         }))
     }
     /// The store a server starts from: its configuration checked, then every database brought

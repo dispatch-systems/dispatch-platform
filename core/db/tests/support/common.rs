@@ -19,6 +19,10 @@ use crate::{
 use serde_json::Value;
 use std::{collections::BTreeSet, os::unix::fs::PermissionsExt, sync::Mutex};
 
+/// A stand-in for R2, for the tests of what's kept in the object store.
+#[path = "objects.rs"]
+pub mod objects;
+
 /// Installs a registry of `collectors` and `features`, what a test needs beside core,
 /// unless one holding them is installed already. A test binary holds one registry: core's
 /// own tests get core alone, each integration test just what it names, and the app's module
@@ -179,6 +183,7 @@ pub fn store() -> (tempfile::TempDir, Store) {
     config.fixture = true;
     config.environment = "preview".into();
     config.standalone = true;
+    config.objects = None;
     let store = Store::initialize(config).unwrap();
     (root, store)
 }

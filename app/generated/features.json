@@ -42,7 +42,9 @@
         60,
         60,
         3600,
-        60
+        60,
+        3600,
+        3600
       ],
       "on": [
         {
@@ -114,6 +116,9 @@
       "env": [
         [
           "VAPID_PRIVATE_KEY"
+        ],
+        [
+          "PICTURE_CACHE_MB"
         ]
       ],
       "settings": [

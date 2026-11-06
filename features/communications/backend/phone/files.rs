@@ -1,10 +1,10 @@
-//! The bytes of the pictures and files texts carry, kept in the DSP's own data
-//! (`data/phones/files/`) by their SHA-256, so two texts with one picture keep it once: arriving,
-//! taking their place and let go as `bytes` keeps them, with the files that keep them. A video its
-//! phone keeps has only the picture of its first frame here until someone plays it: asked for then
-//! (`want`), its phone sends its bytes, kept an hour. Upkeep lets go of any bytes no file keeps, as
-//! bytes sent again in place of others, a video's an hour after they came and a removal that failed
-//! leave, and of bytes left arriving, as a restart leaves.
+//! The bytes of the pictures and files texts carry, kept by their SHA-256 (`data/phones/files/`
+//! until the object store has them), so two texts with one picture keep it once: arriving, taking
+//! their place, kept in the object store and let go as `bytes` keeps them, with the files that
+//! keep them. A video its phone keeps has only the picture of its first frame here until someone
+//! plays it: asked for then (`want`), its phone sends its bytes, kept an hour. Upkeep lets go of
+//! any bytes no file keeps, as bytes sent again in place of others, a video's an hour after they
+//! came and a removal that failed leave, and of bytes left arriving, as a restart leaves.
 use super::{
     LIMITS, live,
     model::{Added, FETCH_WAIT_MS, File},

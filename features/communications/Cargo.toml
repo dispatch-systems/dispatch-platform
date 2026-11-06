@@ -51,6 +51,8 @@ dispatch-core = { path = "../../core", features = ["testing"] }
 dispatch-slack = { path = "../slack", features = ["testing"] }
 # A pipe in place of a picture's bytes, through getting it ready to answer.
 libc = { workspace = true }
+# A picture downloaded over HTTP/1, as a phone or a page downloads it.
+reqwest = { workspace = true }
 # A clock the tests move, through sending's pace between posts.
 tokio = { workspace = true, features = ["test-util"] }
 # A runtime's folder the relay app is packed in.

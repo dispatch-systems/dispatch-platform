@@ -8,8 +8,10 @@
 //!   them; `files`, the photos and files attached, kept in the DSP's own data, and downloading
 //!   members' from Slack.
 //! - `bytes`: the bytes of every kind's files, kept by their SHA-256 in a folder of the DSP's own
-//!   data for each store of them: how they arrive, take their place, are read and let go;
-//!   `previews`, the small previews of their pictures a thread shows until one is opened.
+//!   data for each store of them: how they arrive, take their place, are read and let go, and
+//!   kept in the object store with a cached copy on the server; `copies`, the hourly upkeep that
+//!   copies them there and keeps the cache within its limit; `previews`, the small previews of
+//!   their pictures a thread shows until one is opened.
 //! - `dispatcher`: one conversation of either transport, by its reference: reading it, its
 //!   profile, sending in it, Done and who's writing.
 //! - `inbox`: the list of every kind as the page reads it, what changed in it, and what waits;
@@ -37,6 +39,7 @@ pub(crate) mod changes;
 pub(crate) mod compose;
 pub(crate) mod contacts;
 pub(crate) mod conversations;
+pub(crate) mod copies;
 pub(crate) mod dispatcher;
 pub(crate) mod display;
 pub(crate) mod elsewhere;

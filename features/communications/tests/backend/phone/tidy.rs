@@ -1,11 +1,12 @@
 //! Upkeep lets go of each picture never sent on its own: one whose bytes can't go leaves the
-//! rest to go, and goes the next time; bytes a later file of the same picture keeps stay; and
-//! bytes left arriving go once abandoned. Each job runs on its own: codes expired go though no
-//! bytes can be looked at.
+//! rest to go, and goes the next time; bytes a later file of the same picture keeps stay, with
+//! their preview, which goes with them; and bytes and previews left arriving go once abandoned.
+//! Each job runs on its own: codes expired go though no bytes can be looked at.
 use super::let_go;
 use crate::{
     api::types::PairingStatus,
     backend::phone::{
+        files::BYTES,
         storage::{DeviceStore, FileStore, ReportedFile},
         support::{CODE, kept, store},
     },
@@ -49,40 +50,55 @@ fn bytes_a_later_file_keeps_outlive_the_first_let_go() {
     let (_root, db, dsp) = store();
     let owner = testing::a_user(&db);
     let folder = kept(&db, &dsp);
-    // The same picture, added long ago and never sent, and again now.
+    // The same picture, added long ago and never sent, and again now, and its preview.
     std::fs::write(folder.join("door-sha"), b"door").unwrap();
+    let preview = BYTES
+        .cache(&db, &dsp, "previews")
+        .unwrap()
+        .join("door-sha.jpg");
+    std::fs::write(&preview, b"do").unwrap();
     db.phones_add_file(&dsp, &owner, &picture(), "door-sha", 1_000)
         .unwrap();
     db.phones_add_file(&dsp, &owner, &picture(), "door-sha", 5_000)
         .unwrap();
     let_go(&db, &dsp, 2_000);
     assert!(
-        folder.join("door-sha").exists(),
+        folder.join("door-sha").exists() && preview.exists(),
         "the later file keeps them"
     );
-    // Once nothing keeps them, they go.
+    // Once nothing keeps them, they go, with their preview.
     let_go(&db, &dsp, 6_000);
     assert!(!folder.join("door-sha").exists());
+    assert!(!preview.exists());
 }
 
 #[test]
 fn bytes_left_arriving_an_hour_go() {
     let (_root, db, dsp) = store();
     let folder = kept(&db, &dsp);
-    // One upload a restart cut short an hour and more ago, and one under way.
-    let (cut, arriving) = (folder.join(".arriving_cut"), folder.join(".arriving_now"));
-    std::fs::write(&cut, b"do").unwrap();
-    std::fs::write(&arriving, b"do").unwrap();
+    // One upload and one preview a restart cut short an hour and more ago, and one of each under
+    // way.
+    let previews = BYTES.cache(&db, &dsp, "previews").unwrap();
+    let cut = [folder.join(".arriving_cut"), previews.join(".preview_cut")];
+    let arriving = [folder.join(".arriving_now"), previews.join(".preview_now")];
     let long_ago = SystemTime::now() - Duration::from_secs(2 * 60 * 60);
-    std::fs::File::options()
-        .write(true)
-        .open(&cut)
-        .unwrap()
-        .set_modified(long_ago)
-        .unwrap();
+    for path in cut.iter().chain(&arriving) {
+        std::fs::write(path, b"do").unwrap();
+    }
+    for path in &cut {
+        std::fs::File::options()
+            .write(true)
+            .open(path)
+            .unwrap()
+            .set_modified(long_ago)
+            .unwrap();
+    }
     let_go(&db, &dsp, 2_000);
-    assert!(!cut.exists(), "abandoned, they go");
-    assert!(arriving.exists(), "still arriving, they stay");
+    assert!(cut.iter().all(|path| !path.exists()), "abandoned, they go");
+    assert!(
+        arriving.iter().all(|path| path.exists()),
+        "still arriving, they stay"
+    );
 }
 
 #[test]

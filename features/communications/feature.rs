@@ -201,14 +201,17 @@ pub const FEATURE: Feature = Feature {
     }],
     // Its dispatch phones are the DSP's own, managed on DSP Connections.
     dsp_connection: true,
-    // The key pair its pushes to members' browsers are signed with (VAPID).
-    env: &[&[backend::push::webpush::KEY]],
+    // The key pair its pushes to members' browsers are signed with (VAPID); and how many
+    // megabytes of pictures and files the server keeps cached copies of.
+    env: &[&[backend::push::webpush::KEY], &["PICTURE_CACHE_MB"]],
     // Catching up on what Dispatch didn't hear of, hourly and as the server starts; downloading
     // what members attach, keeping answers that went to Slack unkept, sending what's due to go to
     // groups' people, filing texts waiting to be filed, filing the days noted and today's again
     // where they belong now, and letting go of the videos phones sent an hour before, every minute;
-    // and letting go of photos and the phones' pictures never sent, bytes no file keeps and codes
-    // expired, hourly; and watching each DSP whose members are told in a browser for what to push.
+    // letting go of photos and the phones' pictures never sent, bytes no file keeps and codes
+    // expired, hourly; watching each DSP whose members are told in a browser for what to push;
+    // copying the bytes of both to the object store, hourly; and keeping the server's cached
+    // copies within its limit, hourly on its own, so copying never holds it up.
     maintenance: &[
         integrations::messages::catch_up::MAINTENANCE,
         backend::files::MAINTENANCE,
@@ -217,6 +220,8 @@ pub const FEATURE: Feature = Feature {
         backend::texts::filing::MAINTENANCE,
         backend::phone::tidy::MAINTENANCE,
         backend::push::MAINTENANCE,
+        backend::copies::MAINTENANCE,
+        backend::copies::CACHE,
     ],
     // A development DSP's stand-in phone, and the texts it received.
     demo: Some(backend::phone::demo::demo),

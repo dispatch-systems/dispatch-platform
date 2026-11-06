@@ -176,3 +176,78 @@ fn a_deployed_server_names_every_address_and_development_runs_on_localhost() {
         assert!(named(invite, dsp).is_err(), "{invite} {dsp}");
     }
 }
+
+/// The environment's object store variables, each set to its value in `values`, in the order
+/// `object_store` reads them, `R2_ONLY` last, or unset.
+fn r2(values: [Option<&'static str>; 5]) -> impl Fn(&str) -> (String, Option<String>) {
+    move |suffix| {
+        let index = [
+            "R2_ACCOUNT_ID",
+            "R2_BUCKET",
+            "R2_ACCESS_KEY_ID",
+            "R2_SECRET_ACCESS_KEY",
+            "R2_ONLY",
+        ]
+        .iter()
+        .position(|name| *name == suffix)
+        .unwrap();
+        (
+            format!("DISPATCH_PRODUCTION_{suffix}"),
+            values[index].map(String::from),
+        )
+    }
+}
+
+#[test]
+fn an_object_store_is_named_whole_or_not_at_all() {
+    assert!(super::object_store(r2([None; 5])).unwrap().is_none());
+    let whole = |only| {
+        r2([
+            Some("0123abcd"),
+            Some("dispatch-pictures"),
+            Some("key"),
+            Some("secret"),
+            only,
+        ])
+    };
+    let store = super::object_store(whole(None)).unwrap().unwrap();
+    assert_eq!(
+        (store.endpoint.as_str(), store.bucket.as_str(), store.only),
+        (
+            "https://0123abcd.r2.cloudflarestorage.com",
+            "dispatch-pictures",
+            false
+        )
+    );
+    // Bytes leave the disk only once `R2_ONLY` says so.
+    for (only, leave) in [("0", false), ("1", true)] {
+        let store = super::object_store(whole(Some(only))).unwrap().unwrap();
+        assert_eq!(store.only, leave);
+    }
+    for values in [
+        [
+            Some("0123abcd"),
+            Some("dispatch-pictures"),
+            Some("key"),
+            None,
+            None,
+        ],
+        [
+            Some("0123abcd.evil.example/"),
+            Some("dispatch-pictures"),
+            Some("key"),
+            Some("secret"),
+            None,
+        ],
+        [None, None, None, None, Some("1")],
+        [
+            Some("0123abcd"),
+            Some("dispatch-pictures"),
+            Some("key"),
+            Some("secret"),
+            Some("yes"),
+        ],
+    ] {
+        assert!(super::object_store(r2(values)).is_err());
+    }
+}
