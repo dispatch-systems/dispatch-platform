@@ -115,8 +115,9 @@ pub struct Person {
     pub title: Option<PersonTitle>,
     /// Every ID they hold, by its source, the first linked first.
     pub ids: BTreeMap<Source, Vec<String>>,
-    /// The email addresses and phone numbers their sources have for them, as written, and after
-    /// their sources' numbers, those someone at the DSP added.
+    /// The email addresses and phone numbers their sources have for them, as written, and ahead
+    /// of their sources' numbers, those someone at the DSP added, the latest added first: the
+    /// first number is their default, to reach them on.
     pub emails: Vec<String>,
     pub phones: Vec<String>,
     /// The phone numbers someone at the DSP added to theirs, as `phones` writes them.

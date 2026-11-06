@@ -21,6 +21,6 @@ dates: Array<string>,
  */
 days: Array<SourceDays>, history: Array<PersonEvent>,
 /**
- * The phone numbers someone added to theirs, the first added first.
+ * The phone numbers someone added to theirs, the latest added first.
  */
 addedPhones: Array<string>, };

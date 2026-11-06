@@ -1,7 +1,7 @@
 //! A person's conversations of each kind, which the page goes between under the head of any of
 //! them: their work conversation, as a driver who had the DSP's work phones, with the work phone
-//! they have now; the one by text with their own number, the latest written in of Driver Match's
-//! numbers for them, else the first; and their Slack one, in a workspace
+//! they have now; the one by text with their own number, their default, the first of Driver
+//! Match's numbers for them; and their Slack one, in a workspace
 //! where Communications works, the latest written in, else their first account there. Each with
 //! whether it waits, and what starts one they don't have yet; listed only with two or more.
 use super::{
@@ -78,24 +78,16 @@ fn work(db: &Store, dsp: &str, person: &Person) -> Result<Option<Elsewhere>> {
     }))
 }
 
-/// `person`'s conversation by text with their own number, while Driver Match has one for them.
+/// `person`'s conversation by text with their default number, the first Driver Match has for
+/// them, while it has one: a number someone added to theirs before their sources', so a driver's
+/// new phone is texted rather than the one they last wrote from.
 fn number(db: &Store, dsp: &str, person: &Person) -> Result<Option<Elsewhere>> {
-    let numbers: Vec<String> = person
-        .phones
-        .iter()
-        .filter_map(|phone| normal(phone))
-        .collect();
-    let Some(first) = numbers.first().cloned() else {
+    let Some(default) = person.phones.iter().find_map(|phone| normal(phone)) else {
         return Ok(None);
     };
-    let conversation = latest(db.communications_numbers_of(dsp, &numbers)?);
+    let conversation = latest(db.communications_numbers_of(dsp, std::slice::from_ref(&default))?);
     Ok(Some(Elsewhere {
-        number: Some(
-            conversation
-                .as_ref()
-                .and_then(|each| each.number.clone())
-                .unwrap_or(first),
-        ),
+        number: Some(default),
         ..found(ConversationKind::Number, conversation)
     }))
 }

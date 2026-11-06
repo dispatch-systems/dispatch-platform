@@ -242,8 +242,9 @@ next day's drivers fill it as its live reads start.
 ## Elsewhere
 
 A person's conversation of each kind, which the page goes between: their work conversation, as a
-driver who had the DSP's work phones; the one by text with their own number, the latest written
-in of Driver Match's numbers for them, else the first; and their Slack one, in a workspace where
+driver who had the DSP's work phones; the one by text with their own number, their default, the
+first of Driver Match's numbers for them, one added to theirs before their sources' (a driver's
+new phone, so not the one they last wrote from); and their Slack one, in a workspace where
 Communications works, the latest written in, else their first account there. Shown, as chips,
 on each of them while they have two or more, each waiting as the page's list has it, so its dot
 follows each update, and one started since is found by whom it's with. A driver with a work phone
@@ -272,8 +273,10 @@ from people who may or may not work for the DSP.
   how long and Done; **Save contact** (Edit contact once saved), while Driver Match knows no one
   by the number: **Add to driver**, the number added to someone Driver Match knows who hasn't
   left, today's drivers first, found by name, so its texts are theirs everywhere people are shown
-  (`people::add_phone`: Driver Match keeps it, beside their sources' numbers; one person may have
-  several, and each number keeps its own conversation); or **New contact**, a name, up to 80
+  and it's their default number, the profile's Phone and Call and the Personal chip's
+  (`people::add_phone`: Driver Match keeps it, ahead of their sources' numbers, which stay theirs;
+  one person may have several, the latest added their default, and each number keeps its own
+  conversation); or **New contact**, a name, up to 80
   characters, shared by everyone at the DSP. A driver picked or a name changed is never left
   unsaved without Save changes? asking to save or discard it, and Escape closes it with focus
   back on its button. Its menu: **Remove from** whoever the number was added to, **Copy
@@ -762,9 +765,10 @@ The profile, the groups a group message can go to, and texts' filing read what o
 expose, each only while the feature offering it is on for the DSP, for anyone with
 `communications.use`, who needs no permission of theirs:
 
-- **`directory`** (Driver Match): who the member is, by their Slack ID, and the first phone
-  number and email address their sources have for them (Driver Profiles' roster, Slack's
-  profile); and who texts from a number, by any of their phone numbers.
+- **`directory`** (Driver Match): who the member is, by their Slack ID, and their default phone
+  number, the latest added to theirs, else the first their sources have, and their sources'
+  first email address (Driver Profiles' roster, Slack's profile); and who texts from a number,
+  by any of their phone numbers.
 - **`live_route_data`** (Routes): the live day, its routes (`day`, and a driver's, `routes`) and
   each driver's latest work phone today (`day_phones`); and from `driver_routes`, a saved day's
   work phones, whether a number was ever a work phone, and each earlier workday's route of a

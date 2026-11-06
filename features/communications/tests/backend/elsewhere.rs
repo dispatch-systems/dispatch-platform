@@ -1,6 +1,7 @@
 //! A person's conversations of each kind: their work one follows the ID with a work phone now,
 //! whichever of their IDs their earlier texts were under; of IDs with one, however many, the one
-//! on the busiest route today, whose route and phone their profile shows.
+//! on the busiest route today, whose route and phone their profile shows; their personal one, their
+//! default number.
 use super::*;
 use crate::backend::support::{
     self, DRIVERS, at, phoned, phones, route, routed, saved, texted, today,
@@ -63,6 +64,43 @@ async fn the_work_chip_goes_to_the_id_with_a_work_phone_now_not_an_earlier_alias
     let both = phones(&[("A1", "2065550303"), ("A2", "2065550202")]);
     phoned(&state, &dsp, Some(&today), both, vec![earlier]).await;
     assert_eq!(work().await, a2);
+}
+
+/// The Personal chip goes to the driver's default number, one someone added to theirs as their new
+/// phone, not the number Amazon has that they last wrote from.
+#[tokio::test]
+async fn the_personal_chip_goes_to_the_default_number_not_the_one_last_written_from() {
+    let (_root, state, dsp) = support::started();
+    let (zone, day) = today(&state, &dsp).await;
+    let avery = Person {
+        code: "avery".into(),
+        name: "Avery Diaz".into(),
+        names: vec!["Avery Diaz".into()],
+        role: PersonRole::Driver,
+        title: None,
+        ids: BTreeMap::from([(DRIVERS, vec!["A1".into()])]),
+        emails: Vec::new(),
+        phones: vec!["+12065550404".into(), "(253) 555-0177".into()],
+        added_phones: vec!["+12065550404".into()],
+        confirmed: true,
+        photo: None,
+    };
+    support::know(&state, &dsp, vec![avery.clone()], Vec::new(), Vec::new());
+    let today = day.to_string();
+    phoned(&state, &dsp, Some(&today), phones(&[("A1", "2065550202")]), Vec::new()).await;
+    let then = at(zone, day.pred_opt().unwrap(), 9, 0);
+    texted(&state, &dsp, "+12535550177", "New phone soon", then).await;
+
+    let at_dsp = dsp.clone();
+    let found = state.read(move |db| of(db, &at_dsp, &avery)).await.unwrap();
+    let personal = found
+        .into_iter()
+        .find(|each| each.kind == ConversationKind::Number)
+        .unwrap();
+    assert_eq!(
+        (personal.conversation_id, personal.number.as_deref()),
+        (None, Some("+12065550404"))
+    );
 }
 
 /// Avery, one person to Driver Match by more IDs than one read of their routes names, with a work

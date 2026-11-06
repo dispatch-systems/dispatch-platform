@@ -1,6 +1,7 @@
 //! Everyone, told apart, for the features that show people or use what is known of them:
 //! core's directory, answered from the codes Driver Match keeps and what the DSP's features
-//! say of each ID, as the page lists them, with the phone numbers someone added to each.
+//! say of each ID, as the page lists them, with the phone numbers someone added to each ahead of
+//! their sources', the latest added their default.
 use super::contacts::Contact;
 use super::gather::{Gathered, gather};
 use super::{IdRow, phones, photos};
@@ -27,7 +28,9 @@ impl people::Directory for Directory {
             .map(|(code, ids)| {
                 let mut person = person(&gathered, code, ids);
                 if let Some(added) = added.get(*code) {
-                    once(&mut person.phones, added.iter().cloned());
+                    // The numbers added first, the latest their default, then their sources'.
+                    let theirs = std::mem::replace(&mut person.phones, added.clone());
+                    once(&mut person.phones, theirs.into_iter());
                     person.added_phones.clone_from(added);
                 }
                 person
