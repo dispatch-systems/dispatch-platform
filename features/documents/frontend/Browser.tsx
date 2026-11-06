@@ -62,15 +62,7 @@ const LAYOUTS: readonly ViewOption<Layout>[] = [
   { value: 'grid', label: 'Grid', icon: LayoutGrid },
 ];
 
-// The DSP's Documents, once Google is connected: a folder at a time, as a list or a grid,
-// with what Documents makes, what anyone uploads, by picking files or dropping them on the
-// page or on a folder, and what the team adds from Google Drive. A file opens in Google, in
-// a tab of its own, or downloads. Right-clicking a file or folder opens its menu where the
-// pointer is. Files and folders move by dragging them onto a folder or a step of the path, or
-// with Move to…; a click with Shift, Ctrl or ⌘ selects several to move together. What's made,
-// renamed, moved or trashed shows at once, and goes back if Google refuses it; a folder that
-// hasn't come yet leaves the last one shown. What the page draws is in `browser/views.tsx`;
-// the changes it shows ahead of Google, the selection and dragging are each a hook there.
+// Composes folder reads, optimistic changes, selection, dragging and the browser's views/dialogs.
 
 export function Browser({
   view,
