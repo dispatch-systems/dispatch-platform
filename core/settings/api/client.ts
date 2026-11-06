@@ -1,4 +1,5 @@
-import { api, useCachedData } from '../../shell/frontend/runtime/api.js';
+import { api } from '../../shell/frontend/runtime/api.js';
+import { useCachedData } from '../../shell/frontend/runtime/data-reads.js';
 import { dataCache } from '../../shell/frontend/runtime/data-cache.js';
 import { settingsRead } from '../../shell/frontend/runtime/slots.js';
 import type { SettingsAnswer, SettingsSave, SettingsSaved } from './index.js';

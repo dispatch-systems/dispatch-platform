@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import { ApiError, useData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
+import { ApiError, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
+import { useData } from '../../../core/shell/frontend/runtime/data-reads.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { canPrefetch } from '../../../core/shell/frontend/runtime/prefetch.js';
 import { download, picture, upload } from '../../../core/shell/frontend/runtime/transfer.js';

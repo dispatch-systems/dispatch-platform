@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { performancePolicy } from '../../../core/shell/frontend/lib/performance-policy.js';
-import { useCachedData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
+import { wordedApi } from '../../../core/shell/frontend/runtime/api.js';
+import { useCachedData } from '../../../core/shell/frontend/runtime/data-reads.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { cancelPrefetches, prefetchData } from '../../../core/shell/frontend/runtime/prefetch.js';
 import type {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from 'react';
-import { useData } from '../../../../../core/shell/frontend/runtime/api.js';
+import { useData } from '../../../../../core/shell/frontend/runtime/data-reads.js';
 import { call, channelLinking, workspaceUrl } from '../../../api/client.js';
 import type { SlackImports } from '../../../api/generated/SlackImports.js';
 

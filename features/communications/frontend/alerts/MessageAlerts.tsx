@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { SettingsAnswer } from '../../../../core/settings/api/index.js';
-import { useCachedData } from '../../../../core/shell/frontend/runtime/api.js';
+import { useCachedData } from '../../../../core/shell/frontend/runtime/data-reads.js';
 import { settingsRead, type Watching } from '../../../../core/shell/frontend/runtime/slots.js';
 import { ownDisplay } from '../display/display.js';
 import { alertMember, choices, inFront } from './alerting.js';

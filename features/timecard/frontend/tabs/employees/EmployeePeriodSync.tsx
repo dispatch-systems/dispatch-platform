@@ -6,7 +6,7 @@ import type {
   EmployeeTimecardPeriod,
 } from '../../../api/index.js';
 import { syncEmployeePeriod } from '../../../api/client.js';
-import { useCachedData } from '../../../../../core/shell/frontend/runtime/api.js';
+import { useCachedData } from '../../../../../core/shell/frontend/runtime/data-reads.js';
 import { useAction } from '../../../../../core/shell/frontend/runtime/useAction.js';
 import { dataCache } from '../../../../../core/shell/frontend/runtime/data-cache.js';
 import { collectionData } from '../../../../../core/shell/frontend/runtime/data-policy.js';
