@@ -101,18 +101,18 @@ impl Store {
             self.audit(Some(actor), None, "dsp.deleted", name)
         })
     }
-    /// The DSPs whose rows are gone and whose delete isn't finished.
-    /// When the delete of `dsp` began: none once it's finished.
-    fn deletion_started(&self, dsp: &str) -> Result<Option<chrono::DateTime<chrono::Utc>>> {
+    /// When the delete of `dsp` began, in milliseconds since the epoch: none once it's finished.
+    fn deletion_started(&self, dsp: &str) -> Result<Option<i64>> {
         let started: Vec<(String,)> = self
             .platform
             .query_as("SELECT started_at FROM dsp_deletions WHERE dsp_id=?", [dsp])?;
         Ok(started.first().and_then(|(at,)| {
             chrono::DateTime::parse_from_rfc3339(at)
                 .ok()
-                .map(|at| at.with_timezone(&chrono::Utc))
+                .map(|at| at.timestamp_millis())
         }))
     }
+    /// The DSPs whose rows are gone and whose delete isn't finished.
     fn deletions(&self) -> Result<Vec<String>> {
         let deleting: Vec<(String,)> = self
             .platform
@@ -210,9 +210,8 @@ async fn finish_one(state: &Arc<State>, dsp: &str) -> Result<()> {
         // the longest an upload takes has gone by.
         let at = dsp.to_owned();
         let started = state.read(move |db| db.deletion_started(&at)).await?;
-        let uploading = chrono::Duration::from_std(db::objects::UPLOAD)
-            .map_err(|_| Error::new("operation_failed", 500))?;
-        if started.is_some_and(|started| chrono::Utc::now() < started + uploading) {
+        let uploading = db::objects::UPLOAD.as_millis() as i64;
+        if started.is_some_and(|started| db::now() < started + uploading) {
             return Ok(());
         }
     }

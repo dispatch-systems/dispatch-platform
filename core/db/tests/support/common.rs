@@ -275,6 +275,16 @@ pub fn owner_of(db: &Store, dsp: &str, email: &str, first: &str) -> Result<Strin
     Ok(user.id)
 }
 
+/// The ID of the DSP named `name`.
+pub fn dsp_named(db: &Store, name: &str) -> String {
+    let (id,): (String,) = db
+        .platform
+        .one_as("SELECT id FROM dsps WHERE name=?", [name])
+        .unwrap()
+        .expect("a DSP of that name");
+    id
+}
+
 /// Renames a DSP and moves it to `timezone`, as nothing but a test does: no audit, and
 /// its schedules keep their deadlines.
 pub fn set_dsp(db: &Store, dsp: &str, name: &str, timezone: &str) -> Result<()> {

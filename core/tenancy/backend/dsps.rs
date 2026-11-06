@@ -181,6 +181,13 @@ impl Store {
         )?;
         Ok(named.into_iter().collect())
     }
+    /// Whether the DSP `id` is there, in any state: none once it's deleted.
+    pub fn dsp_exists(&self, id: &str) -> Result<bool> {
+        Ok(self
+            .platform
+            .count("SELECT count(*) FROM dsps WHERE id=?", [id])?
+            > 0)
+    }
     /// The IDs of the DSPs this backend serves, those whose upkeep runs: a disabled one's waits
     /// until it's enabled.
     pub fn served_ids(&self) -> Result<Vec<String>> {

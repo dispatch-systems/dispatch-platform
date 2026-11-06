@@ -216,11 +216,7 @@ fn the_log_names_each_dsp_as_it_is_now() {
 async fn what_agents_did_at_a_dsp_is_never_written_down_once_it_is_deleted() {
     crate::testing::install();
     let (_root, db) = dispatch_core::testing::seeded();
-    let (north,): (String,) = db
-        .platform
-        .one_as("SELECT id FROM dsps WHERE name='Northline Logistics'", [])
-        .unwrap()
-        .unwrap();
+    let north = dispatch_core::testing::dsp_named(&db, "Northline Logistics");
     let owner = dispatch_core::testing::platform_owner(&db);
     dispatch_core::testing::set_dsp_status(&db, &north, "suspended").unwrap();
     let state = crate::testing::serving(db);

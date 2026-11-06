@@ -385,10 +385,14 @@ impl ActivityStore for Store {
         self.platform.transaction(|| {
             for call in calls {
                 let dsp = call.dsp.as_ref();
+                if let Some(dsp) = dsp
+                    && !self.dsp_exists(&dsp.id)?
+                {
+                    continue;
+                }
                 self.platform.exec(
                     "INSERT INTO agent_activity(at,key_id,key_name,key_kind,surface,dsp_id,\
-                     dsp_name,outcome,ms,bytes) SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10 \
-                     WHERE ?6 IS NULL OR EXISTS (SELECT 1 FROM dsps WHERE id=?6)",
+                     dsp_name,outcome,ms,bytes) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
                     params![
                         call.at,
                         call.key.id,

@@ -15,12 +15,7 @@ use crate::{
 use rusqlite::params;
 
 fn dsp_named(db: &Store, name: &str) -> String {
-    let (id,): (String,) = db
-        .platform
-        .one_as("SELECT id FROM dsps WHERE name=?", [name])
-        .unwrap()
-        .unwrap();
-    id
+    testing::dsp_named(db, name)
 }
 
 #[tokio::test]

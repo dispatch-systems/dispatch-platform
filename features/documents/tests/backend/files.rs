@@ -80,11 +80,7 @@ fn a_deleted_dsps_token_and_pictures_are_forgotten_and_none_kept_after_and_no_ot
 async fn a_delete_whose_request_went_still_forgets_the_dsps_token() {
     testing::install(&[], &[&crate::FEATURE]);
     let (_root, db) = testing::seeded();
-    let (dsp,): (String,) = db
-        .platform
-        .query_as("SELECT id FROM dsps WHERE name='Northline Logistics'", [])
-        .unwrap()
-        .remove(0);
+    let dsp = testing::dsp_named(&db, "Northline Logistics");
     let owner = testing::platform_owner(&db);
     testing::set_dsp_status(&db, &dsp, "suspended").unwrap();
     keep(
