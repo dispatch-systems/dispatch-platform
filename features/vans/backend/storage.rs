@@ -37,7 +37,7 @@ pub(crate) fn fleet_request() -> Value {
     json!({"collection": "vans"})
 }
 /// The request a fleet job runs with: the DSP's code, as its profile has it now.
-pub(crate) fn bind_fleet_request(store: &Store, dsp: &str) -> Result<Value> {
+pub(crate) fn bind_fleet_request(store: &Store, dsp: &str) -> Result<Request> {
     let abbreviation = store.profile(dsp)?.abbreviation;
     ensure(!abbreviation.is_empty(), "vans_abbreviation_required", 409)?;
     let request = Request {
@@ -45,7 +45,7 @@ pub(crate) fn bind_fleet_request(store: &Store, dsp: &str) -> Result<Value> {
         dsp_abbreviation: abbreviation,
     };
     request.validate()?;
-    Ok(serde_json::to_value(request)?)
+    Ok(request)
 }
 
 /// What Vans reads and writes for one DSP.
@@ -62,8 +62,7 @@ impl VansStore for Store {
         self.added_storage(dsp, cortex::PROVIDER, &STORAGE)
     }
     fn publish_fleet(&self, dsp: &str, job: &str, capture: &Capture) -> Result<()> {
-        let request = Request::parse(&bind_fleet_request(self, dsp)?)?
-            .ok_or_else(|| dispatch_core::Error::new("invalid_input", 400))?;
+        let request = bind_fleet_request(self, dsp)?;
         capture.validate(&request)?;
         let collected_at = at(capture.finished_at);
         let db = self.vans_db(dsp)?;

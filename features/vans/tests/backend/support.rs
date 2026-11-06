@@ -7,7 +7,7 @@ use dispatch_cortex::vans::Capture;
 pub(crate) fn fleet(store: &Store, dsp: &str, when: i64) -> Capture {
     let request = bind_fleet_request(store, dsp).unwrap();
     let collected = dispatch_cortex::COLLECTOR
-        .fixture("America/Chicago", &request)
+        .fixture("America/Chicago", &serde_json::to_value(request).unwrap())
         .unwrap();
     let mut capture: Capture = serde_json::from_value(collected.data).unwrap();
     (capture.started_at, capture.finished_at) = (when, when);
