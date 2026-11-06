@@ -3,10 +3,12 @@
 //! reads only the disk, until they may leave it, then become the cached copy, and come back from
 //! it once the cache let them go, checked and cached as a download ends; it being down loses
 //! nothing; what no file keeps goes from it too, and only the DSP's own; and the cache keeps
-//! within its limit, letting go of what was read longest ago first. A video's first frame, and its
-//! bytes once played, are kept as a picture's are, the bytes going from it once let go of. A cache
-//! that can't be used never keeps bytes from being read, nor those no file keeps from going.
-//! Without one, bytes stay in the DSP's data.
+//! within its limit, letting go of what was read longest ago first. Bytes leave the disk only once
+//! the bucket the server now has has them. A video's first frame, and its bytes once played, are
+//! kept as a picture's are, the bytes going from it once let go of. A cache that can't be used
+//! never keeps bytes from being read, nor those no file keeps from going; nor does a DSP's data
+//! that can't be used keep the object store's bytes from being read. Without one, bytes stay in
+//! the DSP's data.
 use super::*;
 use crate::backend::phone::{
     files::{BYTES, answer, preview, shown},
@@ -228,6 +230,27 @@ async fn bytes_copied_stay_in_the_dsps_data_until_they_may_leave_the_disk() {
 }
 
 #[tokio::test]
+async fn bytes_leave_the_disk_only_once_the_bucket_now_in_place_has_them() {
+    let (first, second) = (Fake::start().await, Fake::start().await);
+    let (_root, state, dsp, sha256, _) = added(Some(first.store()), b"door");
+    let (data, _) = folders(&state, &dsp);
+    let key = format!("dsps/{dsp}/phones/{sha256}");
+    assert!(copied(&state, &dsp).await.is_empty());
+    assert_eq!(first.object(&key).unwrap(), b"door");
+    // The server starts with another bucket in its place, and bytes may leave its disk: the first
+    // bucket having them is no reason to.
+    let mut config = state.config.clone();
+    config.objects = Some(only(&second));
+    drop(state);
+    let state = State::new(config).unwrap();
+    assert!(copied(&state, &dsp).await.is_empty());
+    assert_eq!(second.object(&key).unwrap(), b"door");
+    assert!(!data.join(&sha256).exists());
+    emptied(&state);
+    assert_eq!(read(&state, &dsp, &sha256).await.unwrap(), b"door");
+}
+
+#[tokio::test]
 async fn a_videos_first_frame_and_bytes_played_come_back_from_the_object_store_until_let_go() {
     let fake = Fake::start().await;
     let (_root, db, dsp) = store();
@@ -304,6 +327,44 @@ async fn a_cache_that_cant_be_used_never_keeps_bytes_from_being_read() {
             assert_eq!(body.await.unwrap(), "door");
         }
     }
+}
+
+#[tokio::test]
+async fn a_dsps_data_that_cant_be_used_never_keeps_the_object_stores_bytes_from_being_read() {
+    let fake = Fake::start().await;
+    let mut photo = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgb8(image::RgbImage::new(1_600, 800))
+        .write_to(&mut photo, image::ImageFormat::Png)
+        .unwrap();
+    let photo = photo.into_inner();
+    let (_root, state, dsp, _, picture) = added(Some(only(&fake)), &photo);
+    let (data, _) = folders(&state, &dsp);
+    assert!(copied(&state, &dsp).await.is_empty());
+    emptied(&state);
+    // Only the object store has the picture, and a file is where the DSP's folder of them was.
+    std::fs::remove_dir(&data).unwrap();
+    std::fs::write(&data, b"").unwrap();
+    let owner = state.read(|db| Ok(testing::a_user(db))).await.unwrap();
+    let body = |reply: Reply| axum::body::to_bytes(reply.into_response().into_body(), usize::MAX);
+    let whole = shown(&state, &dsp, &picture, &owner, None, false)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(body(whole).await.unwrap(), photo);
+    // Its preview is made of it brought down again.
+    emptied(&state);
+    let small = shown(&state, &dsp, &picture, &owner, None, true)
+        .await
+        .unwrap()
+        .unwrap();
+    let small = body(small).await.unwrap();
+    assert_eq!(
+        image::guess_format(&small).unwrap(),
+        image::ImageFormat::Jpeg
+    );
+    // Bytes none other has: why the DSP's data can't be used.
+    let unread = BYTES.read(&state, &dsp, &crypto::sha(b"dock")).await;
+    assert_eq!(unread.err().unwrap().code, "unsafe_storage_path");
 }
 
 #[tokio::test]

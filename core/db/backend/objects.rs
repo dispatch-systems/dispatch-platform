@@ -72,6 +72,11 @@ impl Objects {
     pub fn only(&self) -> bool {
         self.store.only
     }
+    /// What tells this bucket from any other, by where it answers and its name, never its key:
+    /// the same each time the server starts with it, another for another bucket or account.
+    pub fn identity(&self) -> String {
+        crypto::sha(format!("{}\n{}", self.store.endpoint, self.store.bucket))[..16].to_owned()
+    }
     /// Keeps the bytes of `file` as the DSP's `owner`'s by their `sha256`, in place of any kept
     /// by it before.
     pub async fn put(&self, dsp: &str, owner: &str, sha256: &str, file: &Path) -> Result<()> {

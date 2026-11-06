@@ -1,6 +1,6 @@
 //! The object store: each request signed as S3 checks it; every key the server's own, of a DSP
-//! it checked, so one DSP never reads or lets go of another's; listing every page; and an upload
-//! going on as long as it sends.
+//! it checked, so one DSP never reads or lets go of another's; listing every page; an upload
+//! going on as long as it sends; and a bucket told from another by where it answers and its name.
 use super::*;
 use crate::testing::objects::Fake;
 
@@ -50,6 +50,38 @@ fn a_request_is_signed_as_s3_checks_it() {
          SignedHeaders=host;x-amz-content-sha256;x-amz-date,\
          Signature=34b48302e7b5fa45bde8084f4b7868a86f0a534bc59db6670ed5711ef69dc6f7"
     );
+}
+
+#[test]
+fn a_bucket_is_told_by_where_it_answers_and_its_name_never_its_key() {
+    let store = ObjectStore {
+        endpoint: "https://account.r2.cloudflarestorage.com".into(),
+        bucket: "pictures".into(),
+        access_key_id: "key".into(),
+        secret_access_key: "secret".into(),
+        only: false,
+    };
+    let identity = |store: &ObjectStore| Objects::new(store).unwrap().identity();
+    let rekeyed = ObjectStore {
+        access_key_id: "another key".into(),
+        secret_access_key: "another secret".into(),
+        only: true,
+        ..store.clone()
+    };
+    assert_eq!(identity(&rekeyed), identity(&store));
+    let others = [
+        ObjectStore {
+            bucket: "files".into(),
+            ..store.clone()
+        },
+        ObjectStore {
+            endpoint: "https://other.r2.cloudflarestorage.com".into(),
+            ..store.clone()
+        },
+    ];
+    for other in others {
+        assert_ne!(identity(&other), identity(&store));
+    }
 }
 
 #[test]

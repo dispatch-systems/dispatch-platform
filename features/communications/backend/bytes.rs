@@ -10,21 +10,23 @@
 //! the DSP's data, and so in its backups, until hourly upkeep copies them there, each to its key
 //! `dsps/<dsp>/<owner>/<sha256>`. Until bytes may leave the server's disk (`Objects::only`, set
 //! once the release a rollback would return to reads the object store), they stay in the DSP's
-//! data too, marked copied in its cache (`cache/<owner>/copied/`), so a release that reads only
-//! the disk finds them all. Once they may, those the object store has become the server's cached
-//! copy, in the DSP's cache (`cache/<owner>/files/`), which backups leave out. Bytes are read from
-//! the DSP's data, else its cache, else the object store, coming down into the cache as they're
-//! read, or uncached when the cache can't be used. Reading a cached copy marks it read, and
-//! upkeep keeps every DSP's cached copies, with what they make again, within the server's limit
-//! (`bound`), letting go of those read longest ago first; it never lets go of bytes in a DSP's
-//! data. Upkeep lets go of the bytes no file keeps in the object store too, once a day, as a
-//! listing is paid for. Without one, bytes stay in the DSP's data as they always did. Reading
+//! data too, marked copied in its cache by the bucket that has them
+//! (`cache/<owner>/copied-<bucket>/`, `Objects::identity`), so a release that reads only the disk
+//! finds them all, and another bucket in its place has them copied to it again. Once they may,
+//! those the bucket has become the server's cached copy, in the DSP's cache
+//! (`cache/<owner>/files/`), which backups leave out. Bytes are read from the DSP's data, else its
+//! cache, else the object store, coming down into the cache as they're read: a folder that can't
+//! be used is passed over, and they come uncached when it's the cache. Reading a cached copy marks
+//! it read, and upkeep keeps every DSP's cached copies, with what they make again, within the
+//! server's limit (`bound`), letting go of those read longest ago first; it never lets go of bytes
+//! in a DSP's data. Upkeep lets go of the bytes no file keeps in the object store too, once a day,
+//! as a listing is paid for. Without one, bytes stay in the DSP's data as they always did. Reading
 //! bytes the server has never waits on the object store, and it being down or slow loses nothing:
 //! what upkeep couldn't copy waits in the DSP's data for the next hour.
 use axum::body::Bytes;
 use dispatch_core::{
     Error, Result, State,
-    db::{self, Store},
+    db::{self, Store, objects::Objects},
     ensure,
     foundation::crypto,
     server::http::{input::Reply, upload::Upload},
@@ -52,10 +54,12 @@ const CHUNK: usize = 64 * 1024;
 const LISTED_MS: i64 = 24 * 60 * 60 * 1000;
 /// The folder of a store's cached copies, in its folder of the DSP's cache.
 const COPIES: &str = "files";
-/// The folder marking the bytes in the DSP's data the object store has, each by an empty file
-/// named by their SHA-256, while they stay on the server's disk too: in the store's folder of the
-/// DSP's cache, so bytes restored from a backup are copied again.
-const COPIED: &str = "copied";
+/// What begins the name of each folder marking the bytes in the DSP's data an object store has,
+/// each by an empty file named by their SHA-256, while they stay on the server's disk too: one
+/// for each bucket, named for it (`marks`), so bytes leave the disk only once the bucket the
+/// server now has has them; in the store's folder of the DSP's cache, so bytes restored from a
+/// backup are copied again.
+const COPIED: &str = "copied-";
 /// What marks, by when it last changed, when upkeep last listed what a store of the DSP keeps in
 /// the object store, in its folder of the DSP's cache.
 const LISTED: &str = "listed";
@@ -152,22 +156,25 @@ impl Folder {
         state.read(move |db| folder.path(db, &at)).await
     }
     /// The DSP's folder `name` in its cache, made private.
-    async fn cached(&self, state: &Arc<State>, dsp: &str, name: &'static str) -> Result<PathBuf> {
-        let (folder, at) = (*self, dsp.to_owned());
-        state.read(move |db| folder.cache(db, &at, name)).await
+    async fn cached(&self, state: &Arc<State>, dsp: &str, name: &str) -> Result<PathBuf> {
+        let (folder, at, name) = (*self, dsp.to_owned(), name.to_owned());
+        state.read(move |db| folder.cache(db, &at, &name)).await
     }
     /// Where the DSP's bytes kept by `sha256` are, on this server: in its data, looked for before
     /// its cache, else brought down from the object store into its cache when only it has them.
-    /// None when they aren't kept, or only the object store has them and the cache can't be used.
+    /// None when they aren't kept, or only the object store has them and the cache can't be used;
+    /// why its data can't be used when neither its cache nor the object store has them.
     pub async fn located(
         &self,
         state: &Arc<State>,
         dsp: &str,
         sha256: &str,
     ) -> Result<Option<PathBuf>> {
-        let path = self.data(state, dsp).await?.join(sha256);
-        if tokio::fs::try_exists(&path).await.unwrap_or(false) {
-            return Ok(Some(path));
+        let kept = self.data(state, dsp).await.map(|kept| kept.join(sha256));
+        if let Ok(kept) = &kept
+            && tokio::fs::try_exists(kept).await.unwrap_or(false)
+        {
+            return Ok(Some(kept.clone()));
         }
         let Ok(cached) = self.cached(state, dsp, COPIES).await else {
             return Ok(None);
@@ -177,7 +184,7 @@ impl Folder {
             return Ok(Some(path));
         }
         let Some(mut fetched) = self.fetched(state, dsp, Some(&cached), sha256).await? else {
-            return Ok(None);
+            return kept.map(|_| None);
         };
         while let Some(chunk) = fetched.chunks.next().await {
             chunk?;
@@ -251,8 +258,9 @@ impl Folder {
     /// Lets go of the DSP's bytes no file keeps, with their cached copies, what else they make
     /// again and what marks them copied in its cache, and of any of these left arriving
     /// `ABANDONED_MS` unchanged, each on its own, those in its data even when its cache can't be
-    /// used: why any couldn't be looked at or go, to be tried again the next time. Inside a write, so no bytes take their place meanwhile. Their copies
-    /// in the object store go once a day (`release`).
+    /// used: why any couldn't be looked at or go, to be tried again the next time. Inside a write,
+    /// so no bytes take their place meanwhile. Their copies in the object store go once a day
+    /// (`release`).
     pub fn reconcile(&self, db: &Store, dsp: &str) -> Result<Vec<Error>> {
         let kept: HashSet<String> = (self.kept)(db, dsp)?.into_iter().collect();
         let abandoned = db::now() - ABANDONED_MS;
@@ -286,15 +294,18 @@ impl Folder {
     }
     /// The DSP's bytes kept by `sha256`, as they're read: from its data, opened before its cache
     /// is looked at, else its cache, else the object store, uncached when the cache can't be used.
-    /// None when none has them, as bytes not kept.
+    /// None when none has them, as bytes not kept; why its data can't be used when it's the only
+    /// one that might.
     pub async fn read(
         &self,
         state: &Arc<State>,
         dsp: &str,
         sha256: &str,
     ) -> Result<Option<Reading>> {
-        let kept = self.data(state, dsp).await?;
-        if let Ok(file) = tokio::fs::File::open(kept.join(sha256)).await {
+        let kept = self.data(state, dsp).await;
+        if let Ok(kept) = &kept
+            && let Ok(file) = tokio::fs::File::open(kept.join(sha256)).await
+        {
             return Ok(Some(Reading::of(file).await));
         }
         let cached = self.cached(state, dsp, COPIES).await.ok();
@@ -303,7 +314,10 @@ impl Folder {
         {
             return Ok(Some(Reading::of(file).await));
         }
-        self.fetched(state, dsp, cached.as_deref(), sha256).await
+        match self.fetched(state, dsp, cached.as_deref(), sha256).await? {
+            Some(fetched) => Ok(Some(fetched)),
+            None => kept.map(|_| None),
+        }
     }
     /// The DSP's bytes kept by `sha256` in the object store, as they come down, copied into
     /// `cached`, when there's a cache to copy them to, as they do: the copy takes its place there
@@ -376,15 +390,15 @@ impl Folder {
         }))
     }
     /// The SHA-256 of each of the DSP's bytes in its data `copy` has to see to, in order: while
-    /// bytes may not leave the server's disk, only those not marked copied. None without an
-    /// object store.
+    /// bytes may not leave the server's disk, only those not marked copied by its bucket. None
+    /// without an object store.
     pub async fn waiting(&self, state: &Arc<State>, dsp: &str) -> Result<Vec<String>> {
         let Some(objects) = &state.objects else {
             return Ok(Vec::new());
         };
         let mut waiting = named(&self.data(state, dsp).await?).await?;
         if !objects.only() {
-            let copied: HashSet<String> = named(&self.cached(state, dsp, COPIED).await?)
+            let copied: HashSet<String> = named(&self.cached(state, dsp, &marks(objects)).await?)
                 .await?
                 .into_iter()
                 .collect();
@@ -394,10 +408,10 @@ impl Folder {
         Ok(waiting)
     }
     /// Copies the DSP's bytes `waiting` in its data to the object store, each on its own, unless
-    /// they're marked copied already: why any couldn't be, to be tried again the next time. Until
-    /// bytes may leave the server's disk (`Objects::only`), they stay in the DSP's data, marked
-    /// copied; once they may, they become the cached copy, for the cache to let go of in its turn.
-    /// Nothing without an object store.
+    /// they're marked copied by its bucket already: why any couldn't be, to be tried again the
+    /// next time. Until bytes may leave the server's disk (`Objects::only`), they stay in the
+    /// DSP's data, marked copied; once they may, they become the cached copy, for the cache to let
+    /// go of in its turn. Nothing without an object store.
     pub async fn copy(&self, state: &Arc<State>, dsp: &str, waiting: &[String]) -> Vec<Error> {
         let Some(objects) = &state.objects else {
             return Vec::new();
@@ -406,7 +420,7 @@ impl Folder {
             Ok::<_, Error>((
                 self.data(state, dsp).await?,
                 self.cached(state, dsp, COPIES).await?,
-                self.cached(state, dsp, COPIED).await?,
+                self.cached(state, dsp, &marks(objects)).await?,
             ))
         };
         let (kept, cached, copied) = match folders.await {
@@ -447,9 +461,9 @@ impl Folder {
         let Some(objects) = &state.objects else {
             return Vec::new();
         };
-        let (folder, at) = (*self, dsp.to_owned());
+        let (folder, at, marks) = (*self, dsp.to_owned(), marks(objects));
         let folders = state
-            .read(move |db| Ok((folder.in_cache(db, &at)?, folder.cache(db, &at, COPIED)?)))
+            .read(move |db| Ok((folder.in_cache(db, &at)?, folder.cache(db, &at, &marks)?)))
             .await;
         let (listed, copied) = match folders {
             Ok((cached, copied)) => (cached.join(LISTED), copied),
@@ -513,7 +527,9 @@ pub fn bound(root: &Path, owners: &[&str], most: u64) -> Vec<Error> {
         for owner in owners {
             let folder = dsp.path().join(db::CACHE).join(owner);
             for kind in listed(&folder, &mut failed) {
-                if !kind.file_type().is_ok_and(|kind| kind.is_dir()) || kind.file_name() == COPIED {
+                if !kind.file_type().is_ok_and(|kind| kind.is_dir())
+                    || kind.file_name().to_string_lossy().starts_with(COPIED)
+                {
                     continue;
                 }
                 for entry in listed(&kind.path(), &mut failed) {
@@ -603,6 +619,10 @@ impl Coming {
     }
 }
 
+/// The name of a store's folder in the DSP's cache marking the bytes the bucket of `objects` has.
+fn marks(objects: &Objects) -> String {
+    format!("{COPIED}{}", objects.identity())
+}
 /// The cached copy at `path`, open, marked read now, so the cache keeps it over those read longer
 /// ago: none when there's none.
 pub async fn read_now(path: &Path) -> Option<tokio::fs::File> {

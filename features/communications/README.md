@@ -955,17 +955,18 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   `dsps/<dsp>/<phones|communications>/<sha256>`, a key the server makes of the DSP it checked,
   never of what a request names. New bytes wait in the DSP's data, which backups keep, until
   upkeep has copied them there. Until `R2_ONLY` is set (core's), they stay in the DSP's data
-  too, marked copied in its cache (`cache/<phones|communications>/copied/`), so a release that
-  reads only the disk, as one a rollback returns to, finds every one; once it's set, that copy
-  becomes the server's cached one, in the DSP's cache (`cache/<phones|communications>/files/`),
+  too, marked copied in its cache by the bucket that has them
+  (`cache/<phones|communications>/copied-<bucket>/`, named for its address and name), so a
+  release that reads only the disk, as one a rollback returns to, finds every one, and another
+  bucket in its place has them copied to it again; once it's set, the copy the bucket in place
+  has becomes the server's cached one, in the DSP's cache (`cache/<phones|communications>/files/`),
   which backups leave out. Bytes are read from the DSP's data, opened before the cache is looked
   at, else its cache, else the object store, cached again as they come down, or uncached when
-  the cache can't be used, so bytes the server has never wait on R2, nor on its cache; reading a
-  cached copy or a preview marks it read. Those asking for a preview at once share bringing its
-  picture down. The
-  server keeps every DSP's cached copies and previews within its limit, `PICTURE_CACHE_MB`
-  megabytes (10 GB unless the environment says), letting go of those read longest ago first; never
-  of bytes in a DSP's data. Without an object store (none of `R2_ACCOUNT_ID`, `R2_BUCKET`,
+  the cache can't be used, a folder that can't be used passed over, so bytes the server has
+  never wait on R2, nor on its cache; reading a cached copy or a preview marks it read. Those
+  asking for a preview at once share bringing its picture down. The server keeps every DSP's
+  cached copies and previews within its limit, `PICTURE_CACHE_MB` megabytes (10 GB unless the
+  environment says), letting go of those read longest ago first; never of bytes in a DSP's data. Without an object store (none of `R2_ACCOUNT_ID`, `R2_BUCKET`,
   `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` set, as in development and tests), bytes stay in
   the DSP's data, as they always did.
 - **Upkeep:** catching up hourly and as the server starts; downloading what's due, keeping
