@@ -1,6 +1,6 @@
 import { ChevronLeft, Ellipsis, Eye } from 'lucide-react';
 import type { DspSummary } from '../../../accounts/api/index.js';
-import { useUpdateState } from '../../../shell/frontend/runtime/browser-update.js';
+import { useUpdateState } from '../../../shell/frontend/runtime/navigation-state.js';
 import { connectionFeatures } from '../../../shell/frontend/runtime/features.js';
 import { dspAddress } from '../../../shell/frontend/runtime/site.js';
 import { Badge, DspAvatar, Popover, Tabs } from '../../../shell/frontend/ui/index.js';

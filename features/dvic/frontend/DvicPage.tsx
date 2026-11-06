@@ -10,7 +10,7 @@ import { cancelDvicJob, collectDvic, summaryUrl, useSummary } from '../api/clien
 import {
   readUpdateState,
   useUpdateState,
-} from '../../../core/shell/frontend/runtime/browser-update.js';
+} from '../../../core/shell/frontend/runtime/navigation-state.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { hasFeature } from '../../../core/shell/frontend/runtime/features.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';

@@ -1,6 +1,6 @@
 import type { DspView } from '../../../core/accounts/api/index.js';
 import type { EmployeesResponse } from '../api/index.js';
-import { readUpdateState } from '../../../core/shell/frontend/runtime/browser-update.js';
+import { readUpdateState } from '../../../core/shell/frontend/runtime/navigation-state.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import {
   dailyPageUrl,

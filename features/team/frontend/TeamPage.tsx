@@ -2,7 +2,7 @@ import { performancePolicy } from '../../../core/shell/frontend/lib/performance-
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import type { DspInvitation, DspView, Membership, Role } from '../../../core/accounts/api/index.js';
-import { useUpdateState } from '../../../core/shell/frontend/runtime/browser-update.js';
+import { useUpdateState } from '../../../core/shell/frontend/runtime/navigation-state.js';
 import { HostedTab, usePageTabs } from '../../../core/shell/frontend/runtime/PageTabs.js';
 import { ConfirmDialog, ErrorBox, Header, Tabs } from '../../../core/shell/frontend/ui/index.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';

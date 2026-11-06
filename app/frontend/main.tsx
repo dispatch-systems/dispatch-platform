@@ -1,7 +1,5 @@
-import {
-  useBrowserUpdate,
-  clearNavigationState,
-} from '../../core/shell/frontend/runtime/browser-update.js';
+import { useBrowserUpdate } from '../../core/shell/frontend/runtime/browser-update.js';
+import { clearNavigationState } from '../../core/shell/frontend/runtime/navigation-state.js';
 import {
   lazy,
   Suspense,
