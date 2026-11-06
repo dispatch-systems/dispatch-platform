@@ -1,13 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { useState } from 'react';
 import { SlidersHorizontal } from 'lucide-react';
 import type { DspView } from '../../../../core/accounts/api/index.js';
-import { saveSettings, useSettings } from '../../../../core/settings/api/client.js';
-import { ApiError } from '../../../../core/shell/frontend/runtime/api.js';
-import { dataCache } from '../../../../core/shell/frontend/runtime/data-cache.js';
 import { useFillsWindow } from '../../../../core/shell/frontend/runtime/fills.js';
-import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { usePushKey } from '../../api/client.js';
 import type { MessageDisplay } from '../../api/index.js';
+import { DisplayPreview } from './DisplayPreview.js';
+import { useDisplayChoices } from './useDisplayChoices.js';
 import { Choice, Segments, Sketch, Slider, Swatches, Switch, Tiles } from './controls.js';
 import {
   kept,
@@ -15,18 +13,12 @@ import {
   looks,
   lookSizes,
   onScreen,
-  ownDisplay,
   screenDefaults,
-  section,
   thisScreen,
-  widths,
   type Display,
   type Look,
   type Screen,
 } from './display.js';
-import { ACTUAL_LEAST, frame } from './frame.js';
-import { Preview } from './Preview.js';
-import { autosave } from './saving.js';
 import { allowed as notificationsAllowed, canNotify } from '../alerts/notices.js';
 import { canPush } from '../alerts/push.js';
 import '../communications.css';
@@ -40,122 +32,16 @@ import './display.css';
 // The preview shows the screen chosen at its actual size, or a desktop's whole page, as big as
 // it is in this window, made to fit, as it starts (`frame`).
 
-/** How long after a choice it's saved, so a slider dragged saves once. */
-const SAVE_MS = 400;
-
-// With room for the choices beside the preview, the page fills the window: the choices scroll by
-// the preview, which stays in view, as does all above them (display.css).
+// The choices scroll beside the preview while both fit in the window (display.css).
 const fillsWindow = '(width > 1240px) and (height >= 600px)';
-
-/**
- * The member's choices as they make them, saved by `autosave` through the page's action, which says
- * why a save failed at the top of the page until one succeeds; one refused because another session
- * saved first reads Settings again, and what it holds replaces the choices made.
- */
-function useChoices(refresh: () => void) {
-  const { data: settings } = useSettings();
-  const saved = ownDisplay(settings);
-  const held = settings?.sections.find((each) => each.id === section);
-  const [draft, setDraft] = useState<MessageDisplay>();
-  const action = useAction((work: () => Promise<void>) => work());
-  // The newest of each, for saves that run after the page draws again.
-  const run = useRef(action.run);
-  run.current = action.run;
-  const reread = useRef(refresh);
-  reread.current = refresh;
-  const [saver] = useState(() =>
-    autosave({
-      save: async (values, revision) => {
-        const answer = await saveSettings(section, { values, revision });
-        return 'section' in answer ? answer.section.revision : revision;
-      },
-      view: () => dataCache.session,
-      perform: (work) => run.current(work),
-      later: (then) => {
-        const timer = window.setTimeout(then, SAVE_MS);
-        return () => window.clearTimeout(timer);
-      },
-      shown: setDraft,
-      clash: (error) =>
-        error instanceof ApiError && error.code === 'settings_changed_reload_before_saving',
-      reread: () => reread.current(),
-    }),
-  );
-  // Leaving the page saves what waits.
-  useEffect(() => () => void saver.flush(), [saver]);
-  const change = (changes: Partial<MessageDisplay>) =>
-    saver.change(changes, { values: saved, revision: held?.revision ?? 0 });
-  return { values: draft ?? saved, change };
-}
-
-/** The size of what `box` holds, as it changes. */
-function useRoom(box: RefObject<HTMLElement | null>) {
-  const [room, setRoom] = useState({ width: 0, height: 0 });
-  useLayoutEffect(() => {
-    const element = box.current;
-    if (!element) return;
-    const observer = new ResizeObserver(([entry]) =>
-      setRoom({ width: entry!.contentRect.width, height: entry!.contentRect.height }),
-    );
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [box]);
-  return room;
-}
-
-/** Below the Communications page's heading, to its list and conversation (communications.css). */
-const UNDER_HEADING = 22;
-
-/**
- * The size of the Communications page's list and conversation in this window, as it changes: the
- * room beside the app's sidebar, under its bars and a page's heading, as `box`'s page, Settings,
- * has them too.
- */
-function usePage(box: RefObject<HTMLElement | null>) {
-  const [page, setPage] = useState({ width: 0, height: 0 });
-  useLayoutEffect(() => {
-    const main = box.current?.closest('main');
-    const area = main?.parentElement;
-    const heading = main?.querySelector('.page-heading');
-    if (!area || !heading) return;
-    const measure = () =>
-      setPage({
-        width: window.innerWidth - area.getBoundingClientRect().left,
-        height:
-          window.innerHeight -
-          (heading.getBoundingClientRect().bottom + window.scrollY + UNDER_HEADING),
-      });
-    // The window resized, or the app's bars or the page's heading changed size.
-    const observer = new ResizeObserver(measure);
-    observer.observe(area);
-    window.addEventListener('resize', measure);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener('resize', measure);
-    };
-  }, [box]);
-  return page;
-}
 
 export function DisplaySettings({ view, refresh }: { view: DspView; refresh: () => void }) {
   useFillsWindow(fillsWindow);
-  const choices = useChoices(refresh);
+  const choices = useDisplayChoices(refresh);
   const [screen, setScreen] = useState<Screen>(thisScreen);
   const shown = onScreen(choices.values, screen);
   const change = (changes: Partial<Display>) => choices.change(kept(changes, screen));
-  const [size, setSize] = useState<'actual' | 'fit'>('fit');
-  const [profile, setProfile] = useState(false);
-  const stage = useRef<HTMLDivElement>(null);
-  const room = useRoom(stage);
-  const page = usePage(stage);
   const phone = screen === 'phone';
-  const { width, height, scale, aside } = frame({
-    room,
-    phone,
-    fit: size === 'fit',
-    list: widths(shown).list,
-    page,
-  });
   // Notifications are offered where this browser shows them from the page, or from pushes the
   // server sends, and on only where it allows them, which turning them on asks.
   const { data: push } = usePushKey();
@@ -524,55 +410,7 @@ export function DisplaySettings({ view, refresh }: { view: DspView; refresh: () 
         </div>
       </div>
 
-      <div className="display-preview">
-        <div className="display-bar">
-          <label className="settings-toggle display-bar-switch">
-            <span>Profile</span>
-            <input
-              type="checkbox"
-              role="switch"
-              checked={profile}
-              onChange={(event) => setProfile(event.target.checked)}
-            />
-          </label>
-          {!phone && room.width >= ACTUAL_LEAST && (
-            <Choice
-              label="Size"
-              value={size}
-              options={[
-                ['actual', 'Actual size'],
-                ['fit', 'Fit'],
-              ]}
-              change={setSize}
-            />
-          )}
-        </div>
-        <div className="display-stage" ref={stage}>
-          {room.width > 0 && page.width > 0 && (
-            <div
-              className={phone ? 'display-scaled phone' : 'display-scaled'}
-              style={{
-                width: Math.min(width * scale, room.width),
-                height: Math.min(height * scale, room.height),
-              }}
-            >
-              <div
-                className="display-scaler"
-                style={{ transform: `translateX(${-aside}px) scale(${scale})` }}
-              >
-                <Preview
-                  display={shown}
-                  phone={phone}
-                  profile={profile}
-                  width={width}
-                  height={height}
-                  timeZone={view.dsp.timezone}
-                />
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+      <DisplayPreview display={shown} phone={phone} timeZone={view.dsp.timezone} />
     </div>
   );
 }
