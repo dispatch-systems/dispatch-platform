@@ -1,10 +1,11 @@
+use super::PendingMail;
 use crate::{
     Error, Result, State,
-    db::{n, s},
+    db::s,
     ensure,
     foundation::{config::Config, crypto},
 };
-use serde_json::{Value, json};
+use serde_json::json;
 use std::{sync::Arc, time::Duration};
 /// Messages sent per look at the outbox.
 const BATCH: usize = 5;
@@ -84,17 +85,13 @@ pub async fn mailer(state: Arc<State>, mut stop: tokio::sync::watch::Receiver<bo
                 }
             };
             let error = result.err().map(|e| e.code);
-            let id = s(&row, "id").to_owned();
-            let attempts = n(&row, "attempts");
             crate::foundation::observability::event(
                 if error.is_some() { "warn" } else { "info" },
                 "mail.delivery",
-                json!({"mailId":id,"attempt":attempts+1,"error":error}),
+                json!({"mailId":row.id,"attempt":row.attempts+1,"error":error}),
             );
             if let Err(error) = state
-                .run_bookkeeping(move |db| {
-                    super::record_delivery(db, &id, attempts, error.as_deref())
-                })
+                .run_bookkeeping(move |db| super::record_delivery(db, &row, error.as_deref()))
                 .await
             {
                 again = false;
@@ -145,10 +142,10 @@ impl MailTransport {
 /// sending it. Development's captures are written by `capture`.
 async fn send(
     state: &Arc<State>,
-    row: Value,
+    row: PendingMail,
     transport: Arc<MailTransport>,
 ) -> Result<Option<Result<()>>> {
-    let id = s(&row, "id").to_owned();
+    let id = row.id.clone();
     if !state.read(move |db| super::sendable(db, &id)).await? {
         return Ok(None);
     }
@@ -159,8 +156,13 @@ async fn send(
         Err(Error::new("email_delivery_task_failed", 500))
     })))
 }
-fn deliver(config: &Config, key: &[u8], row: &Value, transport: &MailTransport) -> Result<()> {
-    let value = crypto::decrypt(key, s(row, "id"), s(row, "encrypted_message"))?;
+fn deliver(
+    config: &Config,
+    key: &[u8],
+    row: &PendingMail,
+    transport: &MailTransport,
+) -> Result<()> {
+    let value = crypto::decrypt(key, &row.id, &row.encrypted_message)?;
     if let MailTransport::Cloudflare(client) = transport {
         ensure(
             s(&value, "environment") == config.environment && s(&value, "origin") == config.origin,
