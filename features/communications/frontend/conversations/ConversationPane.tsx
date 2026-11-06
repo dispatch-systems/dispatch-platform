@@ -15,7 +15,7 @@ import { PaneHead } from '../shared/PaneHead.js';
 import { ThreadPending } from '../shared/ThreadFrame.js';
 import { usePanel } from '../shared/usePanel.js';
 import { NoWorkPhone } from '../todays-routes/NoWorkPhone.js';
-import { driverToday, type TodaysRead } from '../todays-routes/todays-routes.js';
+import { dayOf, type TodaysRead } from '../todays-routes/todays-routes.js';
 import { Composer } from './Composer.js';
 import { ElsewhereChips } from './ElsewhereChips.js';
 import { elsewhereNow, targetOf } from './elsewhere.js';
@@ -130,15 +130,12 @@ export function ConversationPane({
     const target = targetOf(to);
     if (target) open(target);
   };
+  // Whom it's with today, as the conversation or Today's Routes read it last.
+  const day =
+    conversation && dayOf(conversation, opened && { value: opened, at: opened.readAt }, todays);
   const shown: Open | undefined = conversation && {
     conversation,
-    today: conversation.driverId
-      ? driverToday(
-          conversation.driverId,
-          opened && { value: opened.today, at: opened.readAt },
-          todays,
-        )
-      : (opened?.today ?? null),
+    today: day?.today ?? null,
     // With several workspaces to tell apart, the one it's in.
     where:
       working.length > 1
@@ -183,13 +180,15 @@ export function ConversationPane({
   const person = conversation?.with;
   const about: ReactNode = shown && party?.about(shown);
   // Their profile, while they're working, and what opened it, which focus goes back to as it
-  // closes: the photo by the messages, or who it's with when that photo is gone.
-  const profiled = Boolean(opened?.working);
+  // closes: the photo by the messages, or who it's with when that photo is gone. Once they're not,
+  // it's gone, as is its room.
+  const profiled = Boolean(day?.working);
   const profile = usePanel(kept && profiled);
+  const profileOpen = profiled && profile.open;
   const opens = profiled ? profile.opens : undefined;
   return (
     <section
-      className={profile.open ? 'pane-thread profiled' : 'pane-thread'}
+      className={profileOpen ? 'pane-thread profiled' : 'pane-thread'}
       aria-label={person?.name ?? 'Conversation'}
     >
       <PaneHead
@@ -200,7 +199,7 @@ export function ConversationPane({
         waitingSince={conversation?.waitingSince ?? null}
         now={now}
         who={profile.who}
-        open={profile.open}
+        open={profileOpen}
         opens={opens}
         back={back}
         done={{ busy: done.busy, run: () => void done.run() }}
@@ -215,7 +214,7 @@ export function ConversationPane({
           person={person}
           workspace={workspaces.find((workspace) => workspace.teamId === conversation?.teamId)}
           elsewhere={elsewhere}
-          today={party?.liveToday ? (shown?.today ?? null) : undefined}
+          today={shown?.today ?? null}
           go={go}
           timeZone={timeZone}
           docked={docked}

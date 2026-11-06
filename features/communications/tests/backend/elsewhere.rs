@@ -185,9 +185,10 @@ async fn the_profile_shows_the_route_and_work_phone_of_the_id_the_work_chip_goes
 
     let at_dsp = dsp.clone();
     let shown = state
-        .read(move |db| crate::backend::today::of(db, &at_dsp, &avery))
+        .read(move |db| crate::backend::today::of_working(db, &at_dsp, &avery))
         .await
         .unwrap()
+        .0
         .unwrap();
     let route = format!("CX{:02}", dispatch_routes_contract::MOST_IDS);
     assert_eq!(

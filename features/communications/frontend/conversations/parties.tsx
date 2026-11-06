@@ -7,16 +7,15 @@ import { RouteToday } from '../todays-routes/RouteFacts.js';
 import type { Party } from './party.js';
 
 // What the conversation open does for whom it's with, by who they are (`Party`), defined once
-// each: where their profile's Today comes from, what its head says of them and what else it does there, the
-// number a message goes to and whether one reaches them now, whom the box says it goes to, and
+// each: what its head says of them and what else it does there, the number a message goes to and whether one reaches them now, whom the box says it goes to, and
 // whether its days are a driver's workdays.
 
 /** What the pane knows of the conversation open. */
 export type Open = {
   conversation: Conversation;
-  /** For a driver's, their route today and the work phone they hold now, while there's a live
-   * day, as its head and profile both show them (`driverToday`); for anyone else's, the route
-   * they drive today as the conversation was read, whose van its head shows. */
+  /** Their route today, as its head and profile both show it (`dayOf`): for a driver's, with the
+   * work phone they hold now, while there's a live day; for anyone else's, whose van its head
+   * shows. */
   today: Today | null;
   /** The workspace it's in, while the DSP has two or more where Communications works. */
   where?: string;
@@ -34,9 +33,6 @@ export type Open = {
 };
 
 type PartyPane = {
-  /** Whether their profile's Today is the conversation's own, live, as its head's is, else read
-   * with it. */
-  liveToday: boolean;
   /** The number a message goes to: none in Slack. */
   number: (open: Open) => string | null;
   /** Whether a message reaches them now: one that can't shows No work phone in the box's place. */
@@ -63,7 +59,6 @@ const named = (open: Open) =>
 
 export const PARTIES: { [P in Party]: PartyPane } = {
   member: {
-    liveToday: false,
     number: () => null,
     writable: ({ conversation, working }) =>
       working.some((workspace) => workspace.teamId === conversation.teamId),
@@ -73,7 +68,6 @@ export const PARTIES: { [P in Party]: PartyPane } = {
     workdays: false,
   },
   number: {
-    liveToday: false,
     number: ({ conversation }) => conversation.number,
     writable: ({ texting }) => texting,
     about: (open) =>
@@ -87,7 +81,6 @@ export const PARTIES: { [P in Party]: PartyPane } = {
     workdays: false,
   },
   driver: {
-    liveToday: true,
     number: ({ today }) => today?.phone ?? null,
     reachable: ({ today }) => Boolean(today?.phone),
     writable: ({ texting }) => texting,
@@ -96,7 +89,6 @@ export const PARTIES: { [P in Party]: PartyPane } = {
     workdays: true,
   },
   work_phone: {
-    liveToday: false,
     number: ({ conversation }) => conversation.number,
     writable: ({ texting }) => texting,
     about: () => 'No driver',

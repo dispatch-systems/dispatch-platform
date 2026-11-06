@@ -202,7 +202,8 @@ test('a driver’s work conversation keeps what’s being written while they hol
   await expect(profile.getByText('Work phone')).toBeVisible();
 
   // The day ends while Today's Routes can't be read: their conversation, read again, keeps the
-  // work phone they had at the stop for the two hours after, as the profile left open does.
+  // work phone they had at the stop for the two hours after, and the profile left open goes, as
+  // they're working no more.
   await page.route(routesRead, (route) =>
     route.fulfill({ status: 500, json: { error: 'internal', message: 'Something went wrong.' } }),
   );
@@ -214,8 +215,8 @@ test('a driver’s work conversation keeps what’s being written while they hol
   await northline.end();
   await readAgain;
   await expect(box).toHaveValue(draft);
-  await expect(profile.getByText('Work phone')).toBeVisible();
-  await page.keyboard.press('Escape');
+  await expect(profile).toHaveCount(0);
+  await expect(conversation.getByText('No work phone')).toHaveCount(0);
   // Read again, as the page comes back into view, Today's Routes says the day is over: the box
   // stays, the phone the conversation says theirs.
   await page.unroute(routesRead);

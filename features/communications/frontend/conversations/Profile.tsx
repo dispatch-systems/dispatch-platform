@@ -60,9 +60,8 @@ export function Profile({
   workspace?: CommunicationsWorkspace;
   /** For a driver's, each of their conversations, and going to one. */
   elsewhere: readonly Elsewhere[];
-  /** For a driver's, their route today as their conversation has it, live, which the profile
-   * shows in place of the one it reads; none once the day is over. */
-  today?: Today | null;
+  /** Their route today, as the conversation has it, live. */
+  today: Today | null;
   go: (elsewhere: Elsewhere) => void;
   timeZone: string;
   /** Whether it's a column of its own beside the conversation. */
@@ -121,7 +120,7 @@ export function ProfileShown({
   title,
   person,
   profile,
-  today: live,
+  today,
   error,
   workspace,
   timeZone,
@@ -132,15 +131,14 @@ export function ProfileShown({
   person: Correspondent;
   /** What's known of them, once read, or why it couldn't be. */
   profile?: Profile;
-  /** Their route today, live, in place of the one read with what's known of them. */
-  today?: Today | null;
+  /** Their route today, as the conversation has it. */
+  today: Today | null;
   error: string;
   workspace?: CommunicationsWorkspace;
   timeZone: string;
   /** Each of their conversations, to go to, in place of Call. */
   ways?: ReactNode;
 }) {
-  const today = live !== undefined ? live : profile?.today;
   const role = roleText(person);
   return (
     <>

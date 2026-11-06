@@ -87,22 +87,36 @@ export type Answered<T> = { value: T; at: number };
 /** Today's Routes as the page last read it. */
 export type TodaysRead = Answered<TodaysRoutes>;
 
+/** Whom a conversation is with today: their route and the work phone they hold now, and whether
+ * they're working, on a route as live route data holds today. */
+export type Day = { today: Today | null; working: boolean };
+
 /**
- * A driver's route today and the work phone they hold now, one source for all that shows them:
- * whichever of two reads answered last, Today's Routes' (`todays`), as it's read every minute
- * while it shows, or their conversation's (`read`), as each change to it is. Once the day is
- * over, as Today's Routes lists none, the conversation's own stands, as it does for a driver Today's
- * Routes doesn't list: the work phone they had at the stop, for the two hours after, then none, each
- * as the server notes their conversation changed. A read failing, or another driver's change,
- * leaves each as it last answered.
+ * Whom a conversation is with today, one source for all that shows it: whichever of two reads
+ * answered last, Today's Routes' (`todays`), as it's read every minute while it shows, or their
+ * conversation's (`read`), as each change to it is. While Today's Routes lists a day, they're
+ * working as it has them on a route, by the driver a work conversation is with, else as Driver
+ * Match knows them (`routeToday`), with the route it lists them on, and a driver's the work phone
+ * it lists them with too; else the conversation's own stands. Once the day is over, as Today's Routes lists none, the
+ * conversation's own stands, as it does for someone Today's Routes doesn't list: a driver's work
+ * phone they had at the stop, for the two hours after, then none, each as the server notes their
+ * conversation changed. A read failing, or another driver's change, leaves each as it last
+ * answered.
  */
-export function driverToday(
-  driverId: string | null,
-  read: Answered<Today | null> | undefined,
+export function dayOf(
+  conversation: Conversation,
+  read: Answered<Day> | undefined,
   todays: TodaysRead | undefined,
-): Today | null {
-  const own = read?.value ?? null;
+): Day {
+  const own = read?.value ?? { today: null, working: false };
   if (!todays || (read && read.at > todays.at)) return own;
   if (todays.value.day === null) return own;
-  return todays.value.drivers.find((each) => each.driverId === driverId)?.today ?? own;
+  const routed = routeToday(routeGroups(routeRows(todays.value, [])))(conversation);
+  const listed = todays.value.drivers.find(
+    (each) => conversation.driverId !== null && each.driverId === conversation.driverId,
+  )?.today;
+  return {
+    today: listed ?? routed ?? own.today,
+    working: routed !== undefined || (listed !== undefined && onRoute(listed)),
+  };
 }

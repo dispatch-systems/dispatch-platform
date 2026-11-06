@@ -22,8 +22,8 @@ more: boolean,
  */
 today: Today | null,
 /**
- * Whether whom it's with is working: on a route as live route data holds today, or for the
- * two hours after the stop, on one the day stopped. Their profile opens only then.
+ * Whether whom it's with is working: on a route as live route data holds today. Their
+ * profile opens only then.
  */
 working: boolean,
 /**
