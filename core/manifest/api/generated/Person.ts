@@ -29,8 +29,9 @@ title: PersonTitle | null,
  */
 ids: { [key in PeopleSource]?: Array<string> },
 /**
- * The email addresses and phone numbers their sources have for them, as written, and after
- * their sources' numbers, those someone at the DSP added.
+ * The email addresses and phone numbers their sources have for them, as written, and ahead
+ * of their sources' numbers, those someone at the DSP added, the latest added first: the
+ * first number is their default, to reach them on.
  */
 emails: Array<string>, phones: Array<string>,
 /**

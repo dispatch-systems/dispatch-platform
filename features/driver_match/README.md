@@ -90,11 +90,14 @@ what was decided.
   so every feature showing people shows the same photo.
 - **Added numbers:** a phone number someone at the DSP adds to a person, as a driver's new or
   second phone, through core's `people::add_phone` (Communications' Save contact, by anyone who
-  can text), is theirs in the directory beside their sources' numbers, so every feature knows who
-  has it; it joins no one to anyone and is no evidence in a question. A number anyone has, from a
+  can text), is theirs in the directory ahead of their sources' numbers, the latest added their
+  default, so every feature knows who has it and reaches them on it; their sources' numbers stay
+  theirs, and a collection, whatever numbers it brings, never changes or removes one added. It
+  joins no one to anyone and is no evidence in a question. A number anyone has, from a
   source or added, however it's written, is refused (`driver_match_phone_taken`). A merge carries
   it to whoever keeps the IDs. A person's sheet lists the numbers added to theirs, each taken off
-  by Remove (`backend/phones.rs`), as `people::remove_phone` takes one off.
+  by Remove (`backend/phones.rs`), the latest first, as `people::remove_phone` takes one off: the
+  one added before it, else their sources' first, is then their default.
 - **Log:** its decisions are audited as `driver_match.merged`, `driver_match.split`,
   `driver_match.kept_apart`, `driver_match.confirmed`, `driver_match.phone_added` and
   `driver_match.phone_removed` (with the number), and `driver_match.role_given` (with the

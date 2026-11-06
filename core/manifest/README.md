@@ -151,7 +151,8 @@ keeps to name them; the name they are shown by and every other way their sources
 role (driver, helper, office for management, former, or offboarded) and the title someone gave
 them, as Dispatch (`PersonTitle`, which `people-data.ts` lists with its label); every ID they
 hold, by source; their email addresses and phone numbers, the numbers someone at the DSP added
-to theirs among them (`added_phones`); whether someone confirmed who they are; and the version
+to theirs first (`added_phones`), the latest added their default, which features reach them on;
+whether someone confirmed who they are; and the version
 of their photo.
 
 ```rust

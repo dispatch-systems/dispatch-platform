@@ -1,6 +1,7 @@
 //! The phone numbers someone at the DSP adds to a person, beside those their sources have, as a
-//! driver's new or second phone: the directory gives them to the person, so every feature knows
-//! who texts from one, and they join no one to anyone. Anyone who can text adds them, through
+//! driver's new or second phone: the directory gives them to the person, the latest added their
+//! default, ahead of their sources' numbers, so every feature knows who texts from one and which
+//! to reach them on, and they join no one to anyone. A collection never changes them. Anyone who can text adds them, through
 //! core's `people::add_phone`, and takes them off again; a manager does too, on the person's
 //! sheet. Each is audited by the person's code, with the number.
 use super::codes::valid_code;
@@ -19,11 +20,14 @@ use std::collections::BTreeMap;
 /// The most characters an added number may be written with.
 const NUMBER_MOST: usize = 32;
 
-/// The numbers someone added to each person, by their code, the first added first.
+/// The order added numbers are listed in: the latest added first, the person's default.
+const LATEST_FIRST: &str = "ORDER BY added_at DESC,rowid DESC";
+
+/// The numbers someone added to each person, by their code, the latest added first.
 pub(super) fn added(db: &Db) -> Result<BTreeMap<String, Vec<String>>> {
     let mut added: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for (code, phone) in db.query_as::<(String, String)>(
-        "SELECT code,phone FROM person_phones ORDER BY added_at,phone",
+        &format!("SELECT code,phone FROM person_phones {LATEST_FIRST}"),
         [],
     )? {
         added.entry(code).or_default().push(phone);
@@ -31,12 +35,12 @@ pub(super) fn added(db: &Db) -> Result<BTreeMap<String, Vec<String>>> {
     Ok(added)
 }
 
-/// The numbers someone added to `code`, the first added first.
+/// The numbers someone added to `code`, the latest added first.
 pub(super) fn added_to(store: &Store, dsp: &str, code: &str) -> Result<Vec<String>> {
     Ok(store
         .dsp(dsp)?
         .query_as::<(String,)>(
-            "SELECT phone FROM person_phones WHERE code=? ORDER BY added_at,phone",
+            &format!("SELECT phone FROM person_phones WHERE code=? {LATEST_FIRST}"),
             [code],
         )?
         .into_iter()

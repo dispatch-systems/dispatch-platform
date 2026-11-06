@@ -478,22 +478,30 @@ fn links_the_meal_break_page_saved_become_decisions() {
 /// roles), with an email address made of their name, published as the roster's collection
 /// would.
 fn roster(db: &Store, id: &str, listed: &[(&str, &str, &str, &str)]) {
+    collected(
+        db,
+        id,
+        "job-roster",
+        listed.iter().map(|(transporter, name, status, roles)| {
+            let email = format!("{}@example.com", name.to_lowercase().replace(' ', "."));
+            json!({"transporter_id":transporter,"full_name":name,"email_address":email,
+                "operational_status":status,"roles":roles})
+        }),
+    );
+}
+/// A roster of the DSP's company listing `associates`, each as Amazon writes one, published as
+/// the roster's collection `job` would.
+fn collected(db: &Store, id: &str, job: &str, associates: impl IntoIterator<Item = Value>) {
     db.set_profile(id, json!({"abbreviation":"TST"})).unwrap();
     let request = json!({"collection":"associates","dspAbbreviation":"TST"});
     let collected = dispatch_cortex::COLLECTOR.fixture("UTC", &request).unwrap();
     let mut capture: associates::Capture = serde_json::from_value(collected.data).unwrap();
     capture.photos.clear();
-    capture.associates = listed
-        .iter()
-        .map(|(transporter, name, status, roles)| {
-            let email = format!("{}@example.com", name.to_lowercase().replace(' ', "."));
-            associates::Associate::read(json!({"transporter_id":transporter,"full_name":name,
-                "email_address":email,"operational_status":status,"roles":roles}))
-            .unwrap()
-            .unwrap()
-        })
+    capture.associates = associates
+        .into_iter()
+        .map(|associate| associates::Associate::read(associate).unwrap().unwrap())
         .collect();
-    db.publish_roster(id, "job-roster", &capture).unwrap();
+    db.publish_roster(id, job, &capture).unwrap();
 }
 
 /// A person is shown by the first source's name in the sources' order, and an ID by the first
@@ -747,6 +755,53 @@ fn a_number_added_is_the_persons_and_follows_them_into_a_merge() {
     assert!(holder("2065550188").is_empty());
     let again = people::remove_phone(&db, &context, &antonio, "2065550188").unwrap_err();
     assert_eq!(again.code, "not_found");
+}
+
+/// A number added to a driver is their default, the first of theirs, the latest added first,
+/// ahead of the personal phone Amazon's roster has, which stays theirs; a collection bringing
+/// them another never changes or removes it, and once it's taken off them, the number added
+/// before it is their default again.
+#[test]
+fn a_number_added_is_the_drivers_default_whatever_a_collection_brings() {
+    dispatch_backend::install();
+    let (_root, db, id, context) = ready();
+    let listing = |job: &str, phone: &str| {
+        collected(
+            &db,
+            &id,
+            job,
+            [json!({"transporter_id":"TREYES","full_name":"Tony Reyes",
+                "operational_status":"ACTIVE","roles":"Driver","personal_phone_number":phone})],
+        );
+        pass(&db, &id).unwrap();
+    };
+    listing("job-roster-1", "+12065550100");
+    let tony = code(&db.driver_match(&id).unwrap(), AMAZON, "TREYES");
+    let theirs = || {
+        let person = people::read(&db, &id)
+            .unwrap()
+            .person(&tony)
+            .unwrap()
+            .clone();
+        (person.phones, person.added_phones)
+    };
+    assert_eq!(theirs().0, ["+12065550100"]);
+
+    people::add_phone(&db, &context, &tony, "+12065550188").unwrap();
+    people::add_phone(&db, &context, &tony, "+12065550199").unwrap();
+    let added = ["+12065550199", "+12065550188"];
+    let (phones, added_phones) = theirs();
+    assert_eq!(phones, [added[0], added[1], "+12065550100"]);
+    assert_eq!(added_phones, added);
+    assert_eq!(db.person_details(&id, &tony).unwrap().added_phones, added);
+
+    listing("job-roster-2", "+12065550111");
+    let (phones, added_phones) = theirs();
+    assert_eq!(phones, [added[0], added[1], "+12065550111"]);
+    assert_eq!(added_phones, added);
+
+    people::remove_phone(&db, &context, &tony, added[0]).unwrap();
+    assert_eq!(theirs().0, [added[1], "+12065550111"]);
 }
 
 #[test]
