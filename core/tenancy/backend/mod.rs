@@ -7,3 +7,5 @@ pub mod catalog;
 pub mod deletion;
 pub mod dsps;
 pub mod roles;
+pub mod switches;
+pub mod visibility;

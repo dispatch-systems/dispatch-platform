@@ -1,6 +1,8 @@
+pub use crate::tenancy::visibility::Visibility;
 use crate::{
     collection::api::jobs::JobStatus,
     foundation::config::{Environment, ProviderMode},
+    tenancy::{switches::SwitchedFeatures, visibility::FeatureVisibility},
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -56,18 +58,6 @@ pub struct MailHealth {
 pub struct FeatureChange {
     pub feature: String,
     pub enabled: bool,
-}
-/// Who among a DSP's people sees one of its features while it is on: all of them, as their
-/// roles allow; only its beta testers, who hold all of it; or none, as the platform owner alone
-/// still does. Whatever it runs keeps running either way.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export_to = "core/platform_owner/api/generated/"))]
-#[serde(rename_all = "lowercase")]
-pub enum Visibility {
-    Shown,
-    Beta,
-    Hidden,
 }
 /// One feature of a DSP: whether it has it, who among its people sees it, and who last changed
 /// either and when.
@@ -146,4 +136,28 @@ pub struct PlatformHealth {
     pub email: bool,
     pub mail: MailHealth,
     pub provider_mode: ProviderMode,
+}
+
+impl From<SwitchedFeatures> for DspFeatures {
+    fn from(outcome: SwitchedFeatures) -> Self {
+        Self {
+            features: outcome.features,
+            changed: outcome
+                .changed
+                .into_iter()
+                .map(|(feature, enabled)| FeatureChange {
+                    feature: feature.id.to_owned(),
+                    enabled,
+                })
+                .collect(),
+        }
+    }
+}
+impl From<FeatureVisibility> for DspVisibility {
+    fn from(visibility: FeatureVisibility) -> Self {
+        Self {
+            hidden: visibility.hidden,
+            beta: visibility.beta,
+        }
+    }
 }

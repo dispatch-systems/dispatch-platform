@@ -351,7 +351,7 @@ fn nothing_collects_for_a_dsp_without_the_timecard() {
         result
             .changed
             .iter()
-            .map(|c| c.feature.as_str())
+            .map(|(feature, _)| feature.id)
             .collect::<Vec<_>>(),
         ["timecard"]
     );

@@ -11,6 +11,13 @@ preview or a test switches one on. Whether a DSP has a feature is `feature_enabl
 on, `feature_on_since`: none while it's off, and never before it came on, as hiding or showing
 it counts as later.
 
+`catalog` builds the catalog and checks its permission and capability rules. `switches::plan`
+plans raw switches and ordered transitions without storage; `switches` reads, plans, writes,
+audits and wakes live readers in the same transaction. `visibility` keeps member visibility
+and beta permissions together. The platform-owner API adapts these domain outcomes to its
+response records and owns the diagnostic report. The shared `Visibility` enum retains its
+existing platform-owner API reexport and generated TypeScript path.
+
 A page's parts switch on their own inside it: its tabs, and any other part a feature declares
 as a sub-feature, each with the permissions it owns, which exist while it and its page are on.
 Only a mandatory feature's parts may be mandatory. A part may need a connection of its own;

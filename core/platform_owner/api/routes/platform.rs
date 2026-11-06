@@ -10,7 +10,9 @@ use crate::{
         events::{self, PeopleChanged},
         registry,
     },
-    platform_owner::api::types::{BrowserHealth, DspFeatures, PlatformHealth, Visibility},
+    platform_owner::api::types::{
+        BrowserHealth, DspFeatures, DspVisibility, PlatformHealth, Visibility,
+    },
     server::{
         http::{
             input::{Input, Reply, optional},
@@ -260,7 +262,12 @@ fn set_visibility(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
     v::fields(b, &["feature", "visibility"])?;
     let feature = v::text(b, "feature", 1, 40)?;
     let visibility: Visibility = serde_json::from_value(b["visibility"].clone())?;
-    Reply::of(&db.set_visibility(input.param("id"), feature, visibility, owner.actor())?)
+    Reply::of(&DspVisibility::from(db.set_visibility(
+        input.param("id"),
+        feature,
+        visibility,
+        owner.actor(),
+    )?))
 }
 
 /// The DSP's people, its beta testers among them.
@@ -303,7 +310,12 @@ async fn set_feature(state: Arc<State>, input: Input, access: PlatformOwner) -> 
             v::fields(b, &["feature", "enabled"])?;
             let feature = v::text(b, "feature", 1, 40)?.to_owned();
             let enabled = v::boolean(b, "enabled")?;
-            let result = db.set_feature(&dsp, &feature, enabled, owner.user.id.as_str())?;
+            let result = DspFeatures::from(db.set_feature(
+                &dsp,
+                &feature,
+                enabled,
+                owner.user.id.as_str(),
+            )?);
             let mut cancelled = Vec::new();
             // Each collection's owning feature stops only its own jobs.
             for provider in Provider::all() {
