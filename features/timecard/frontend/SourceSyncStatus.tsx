@@ -1,17 +1,9 @@
 import { AlertTriangle } from 'lucide-react';
-import type { Job } from '../../../core/collection/api/index.js';
+import type { DailySyncSource } from '../api/index.js';
 import { Badge } from '../../../core/shell/frontend/ui/index.js';
 import { time, timeOfDay, title } from '../../../core/shell/frontend/lib/format.js';
 import { localDate } from '../../../core/shell/frontend/lib/day.js';
 import { calendarMonthDay } from '../../../core/shell/frontend/lib/format.js';
-
-export type SyncSource = {
-  enabled: boolean;
-  active: boolean;
-  job: Pick<Job, 'status'> | null;
-  jobDate: string | null;
-  collectedAt: string | null;
-};
 
 export function SourceSyncStatus({
   name,
@@ -20,7 +12,7 @@ export function SourceSyncStatus({
   compact = false,
 }: {
   name: string;
-  source?: SyncSource;
+  source?: DailySyncSource;
   timezone: string;
   compact?: boolean;
 }) {

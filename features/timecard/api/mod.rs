@@ -5,4 +5,5 @@ pub(crate) mod employee_sync;
 pub(crate) mod meals;
 pub(crate) mod routes;
 pub(crate) mod settings;
+pub(crate) mod status;
 pub(crate) mod types;

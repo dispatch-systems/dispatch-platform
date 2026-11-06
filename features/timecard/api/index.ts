@@ -10,6 +10,10 @@ export type { EmployeeTimecardPeriod } from '../../../collectors/paycom/api/gene
 export type { EmployeeTimecardResponse } from './generated/EmployeeTimecardResponse.js';
 export type { EmployeeSyncSource } from './generated/EmployeeSyncSource.js';
 export type { EmployeeSyncStatus } from './generated/EmployeeSyncStatus.js';
+export type { DailySyncSource } from './generated/DailySyncSource.js';
+export type { DailySyncStatus } from './generated/DailySyncStatus.js';
+export type { PaycomStatus } from './generated/PaycomStatus.js';
+export type { PaycomWorkforce } from './generated/PaycomWorkforce.js';
 export type { AssessedClock } from './generated/AssessedClock.js';
 export type { PunchEvent } from './generated/PunchEvent.js';
 export type { PaycomDay } from './generated/PaycomDay.js';

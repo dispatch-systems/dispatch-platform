@@ -1,5 +1,6 @@
 import { z } from 'zod/mini';
 import { employeeSyncSchema } from './employee-sync-runtime.js';
+import { dailySyncSchema, paycomStatusSchema } from './status-runtime.js';
 import type {
   Employee,
   EmployeeTimecardResponse,
@@ -27,6 +28,8 @@ import {
   mealPeriodGapsPath,
   mealPeriodPath,
   paycomSettingsPath,
+  paycomStatusPath,
+  dailySyncPath,
 } from './urls.js';
 
 const optionalText = z.optional(z.nullable(text));
@@ -243,6 +246,8 @@ export const paycomSettingsSchema = z.object({
 export const replies: Replies = (route, method) => {
   if (route === '/api/dsp/jobs/employees') return employeeSyncSchema;
   if (method === 'GET') {
+    if (route === dailySyncPath) return dailySyncSchema;
+    if (route === paycomStatusPath) return paycomStatusSchema;
     if (route === '/api/dsp/jobs') return jobsSchema;
     if (route === paycomSettingsPath) return paycomSettingsSchema;
     if (route === employeesPath) return employeesSchema;
@@ -258,6 +263,6 @@ export const replies: Replies = (route, method) => {
   }
   if (route === '/api/dsp/jobs') return jobSchema;
   if (route === '/api/dsp/cortex/meal-breaks/collect') return jobSchema;
-  if (route === '/api/dsp/jobs/meal-breaks') return z.object({ date: text, jobs: jobsSchema });
+  if (route === dailySyncPath) return z.object({ date: text, jobs: jobsSchema });
   return undefined;
 };

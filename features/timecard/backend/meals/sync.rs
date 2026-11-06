@@ -1,4 +1,5 @@
 //! Queue both sources together; a missing connection/scope cannot start half a sync.
+use crate::api::status::{DailySyncSource, DailySyncStatus};
 use dispatch_core::{
     Result,
     collection::registry::Provider,
@@ -45,7 +46,7 @@ pub(crate) fn meal_sync_scopes(store: &Store, id: &str, date: &str) -> Result<Ve
         })
         .collect())
 }
-fn sync_source(store: &Store, id: &str, date: &str, provider: Provider) -> Result<Value> {
+fn sync_source(store: &Store, id: &str, date: &str, provider: Provider) -> Result<DailySyncSource> {
     let kind = provider.job_kind();
     let active = store.active_job_of(id, kind)?;
     let mut latest = store.latest_job_for_date(id, kind, date)?;
@@ -68,15 +69,23 @@ fn sync_source(store: &Store, id: &str, date: &str, provider: Provider) -> Resul
         .as_ref()
         .map(|row| serde_json::from_str::<Value>(&row.request))
         .transpose()?;
-    Ok(json!({
-        "enabled":store.connection_for(id,provider)?.enabled,
-        "active":job.as_ref().is_some_and(|row|row.status.is_active()),
-        "jobDate":request.as_ref().and_then(|request|request.get("date")).and_then(Value::as_str),
-        "job":job.map(|row|store.public_job(row)).transpose()?,
-        "collectedAt":collected.map(|row|row["collected_at"].clone()),
-    }))
+    Ok(DailySyncSource {
+        enabled: store.connection_for(id, provider)?.enabled,
+        active: job.as_ref().is_some_and(|row| row.status.is_active()),
+        job_date: request
+            .as_ref()
+            .and_then(|request| request.get("date"))
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        job: job.map(|row| store.public_job(row)).transpose()?,
+        collected_at: serde_json::from_value(
+            collected
+                .map(|row| row["collected_at"].clone())
+                .unwrap_or(Value::Null),
+        )?,
+    })
 }
-pub(crate) fn meal_sync_status(store: &Store, id: &str, date: &str) -> Result<Value> {
+pub(crate) fn meal_sync_status(store: &Store, id: &str, date: &str) -> Result<DailySyncStatus> {
     // Reading a calendar date is valid even when the viewer is a day ahead
     // of the DSP. Collection still validates each provider's business date.
     dispatch_core::foundation::validate::date(date)?;
@@ -86,11 +95,12 @@ pub(crate) fn meal_sync_status(store: &Store, id: &str, date: &str) -> Result<Va
             .station
             .bytes()
             .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit());
-    Ok(
-        json!({"date":date,"scopeAvailable":station_available || !meal_sync_scopes(store, id,date)?.is_empty(),
-        "paycom":sync_source(store,id,date,paycom::PROVIDER)?,
-        "flex":sync_source(store,id,date,cortex::PROVIDER)?}),
-    )
+    Ok(DailySyncStatus {
+        date: date.into(),
+        scope_available: station_available || !meal_sync_scopes(store, id, date)?.is_empty(),
+        paycom: sync_source(store, id, date, paycom::PROVIDER)?,
+        flex: sync_source(store, id, date, cortex::PROVIDER)?,
+    })
 }
 pub(crate) fn enqueue_meals(
     store: &Store,
