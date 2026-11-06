@@ -253,6 +253,7 @@ test('a conversation’s chips follow the list as it changes: a dot while each o
     driverId: null,
     teamId: kind === 'slack' ? 'T0FIXTURE1' : null,
     userId: kind === 'slack' ? 'Us1' : null,
+    hidden: false,
   });
   // As read with the work conversation open: their Messaging one answered, no Slack one yet.
   const read = [chip('work', 'w1'), chip('number', 'n1'), chip('slack', null)];
