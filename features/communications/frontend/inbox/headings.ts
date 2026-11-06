@@ -44,15 +44,22 @@ export function byDay(shown: readonly Row[], { timeZone, now }: Pick<Listing, 't
   return headed;
 }
 
-/** Recents' headings split at Previous days: those waiting and today's above it, and the days
- * before below it, every row while they're `shown`, else only what's `open`. */
+/** Whether Recents lists `row` under Previous days: answered, and last written in before
+ * today, the DSP's; a phone's clock a little ahead writes in a day that hasn't begun. */
+export const beforeToday = (
+  { state, lastAt }: Row['row'],
+  { timeZone, now }: Pick<Listing, 'timeZone' | 'now'>,
+) => state !== 'waiting' && dayOf(lastAt ?? now, timeZone) < dayOf(now, timeZone);
+
+/** Recents' headings split at Previous days: those waiting, today's and any after above it, and
+ * the days before below it, every row while they're `shown`, else only what's `open`. */
 export function atPreviousDays(
   headed: readonly Headed[],
   today: string,
   shown: boolean,
   open?: string,
 ) {
-  const split = headed.findIndex((each) => each.key !== 'waiting' && each.key !== today);
+  const split = headed.findIndex((each) => each.key !== 'waiting' && each.key < today);
   const previous = split < 0 ? [] : headed.slice(split);
   return {
     current: split < 0 ? headed : headed.slice(0, split),

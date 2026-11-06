@@ -20,7 +20,7 @@ import {
   withConversation,
   withOlder,
 } from '../../frontend/inbox/inbox.js';
-import { atPreviousDays, byDay, byState } from '../../frontend/inbox/headings.js';
+import { atPreviousDays, beforeToday, byDay, byState } from '../../frontend/inbox/headings.js';
 import type { Section } from '../../frontend/inbox/sections.js';
 import { elsewhereNow } from '../../frontend/conversations/elsewhere.js';
 import { groupName, recipients, type Pick } from '../../frontend/slack/groups/groups.js';
@@ -183,9 +183,11 @@ test('each section’s list keeps the server’s order as it changes, with the p
 
 test('Recents keeps the days before today, the DSP’s, under Previous days: hidden but for what’s open, then every one as they’re shown; whoever waits stays above them', () => {
   const timeZone = 'America/Los_Angeles';
-  // 7 AM on Friday, November 6, there.
-  const now = Date.parse('2026-11-06T15:00:00Z');
+  // 11:58 PM on Friday, November 6, there.
+  const now = Date.parse('2026-11-07T07:58:00Z');
   const listed = [
+    // Written in at 12:01 AM by a phone whose clock is a little ahead.
+    conversation('ahead', Date.parse('2026-11-07T08:01:00Z')),
     conversation('this morning', Date.parse('2026-11-06T14:00:00Z')),
     // Written in at 11:58 PM on Thursday, there, and still waiting.
     conversation('late', Date.parse('2026-11-06T07:58:00Z'), Date.parse('2026-11-06T07:58:00Z')),
@@ -206,6 +208,7 @@ test('Recents keeps the days before today, the DSP’s, under Previous days: hid
   };
   const above = [
     ['waiting', ['late']],
+    ['2026-11-07', ['ahead']],
     ['2026-11-06', ['this morning']],
   ];
   assert.deepEqual(split(listed, false), {
@@ -222,7 +225,12 @@ test('Recents keeps the days before today, the DSP’s, under Previous days: hid
     any: true,
   });
   // With nothing before today, there's nothing to show.
-  assert.deepEqual(split(listed.slice(0, 2), false), { current: above, previous: [], any: false });
+  assert.deepEqual(split(listed.slice(0, 3), false), { current: above, previous: [], any: false });
+  // What the page opens first, side by side, is none of those it hides.
+  assert.deepEqual(
+    listed.filter(({ row }) => beforeToday(row, { timeZone, now })).map(({ row }) => row.id),
+    ['thursday', 'open', 'wednesday'],
+  );
 });
 
 test('Next waiting opens the one waiting longest of the section shown, but the one open, wherever the list has it, and nothing once no other waits', () => {
