@@ -258,14 +258,18 @@ impl Folder {
     /// Lets go of the DSP's bytes no file keeps, with their cached copies, what else they make
     /// again and what marks them copied in its cache, and of any of these left arriving
     /// `ABANDONED_MS` unchanged, each on its own, those in its data even when its cache can't be
-    /// used: why any couldn't be looked at or go, to be tried again the next time. Inside a write,
-    /// so no bytes take their place meanwhile. Their copies in the object store go once a day
-    /// (`release`).
+    /// used, and those in its cache even when its data can't: why any couldn't be looked at or
+    /// go, to be tried again the next time. Inside a write, so no bytes take their place
+    /// meanwhile. Their copies in the object store go once a day (`release`).
     pub fn reconcile(&self, db: &Store, dsp: &str) -> Result<Vec<Error>> {
         let kept: HashSet<String> = (self.kept)(db, dsp)?.into_iter().collect();
         let abandoned = db::now() - ABANDONED_MS;
         let mut failed = Vec::new();
-        let mut folders = vec![self.path(db, dsp)?];
+        let mut folders = Vec::new();
+        match self.path(db, dsp) {
+            Ok(data) => folders.push(data),
+            Err(error) => failed.push(error),
+        }
         match self.in_cache(db, dsp) {
             Ok(cache) => {
                 for made in listed(&cache, &mut failed) {

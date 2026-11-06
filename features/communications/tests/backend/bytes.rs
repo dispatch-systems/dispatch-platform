@@ -8,8 +8,8 @@
 //! the bucket the server now has has them. A video's first frame, and its bytes once played, are
 //! kept as a picture's are, the bytes going from it once let go of. A cache that can't be used
 //! never keeps bytes from being read, nor those no file keeps from going; nor does a DSP's data
-//! that can't be used keep the object store's bytes from being read. Without one, bytes stay in
-//! the DSP's data.
+//! that can't be used keep the object store's bytes from being read, nor what its cache has that
+//! no file keeps from going. Without one, bytes stay in the DSP's data.
 use super::*;
 use crate::backend::phone::{
     files::{BYTES, answer, preview, shown},
@@ -416,6 +416,48 @@ async fn a_cache_that_cant_be_used_never_keeps_unkept_bytes_from_going() {
             .unwrap();
         assert_eq!(failed.len(), 1, "the cache, tried again next time");
         assert!(!data.join(&sha256).exists() && !abandoned.exists());
+    }
+}
+
+#[tokio::test]
+async fn a_dsps_data_that_cant_be_used_never_keeps_unkept_bytes_in_its_cache_from_going() {
+    let fake = Fake::start().await;
+    let (_root, state, dsp, sha256, _) = added(Some(only(&fake)), b"door");
+    let (data, cache) = folders(&state, &dsp);
+    assert!(copied(&state, &dsp).await.is_empty());
+    // Beside the picture's cached copy, its preview, a mark it was copied, and a copy abandoned
+    // long ago as it came down.
+    let store = cache.parent().unwrap();
+    let preview = db::private_dir(&store.join("previews"))
+        .unwrap()
+        .join(format!("{sha256}.jpg"));
+    let marked = db::private_dir(&store.join(marks(state.objects.as_ref().unwrap())))
+        .unwrap()
+        .join(&sha256);
+    let abandoned = cache.join(".arriving_abandoned");
+    for made in [&preview, &marked, &abandoned] {
+        std::fs::write(made, b"").unwrap();
+    }
+    std::fs::File::options()
+        .write(true)
+        .open(&abandoned)
+        .unwrap()
+        .set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(1_000))
+        .unwrap();
+    // A file is where the DSP's folder of pictures was.
+    std::fs::remove_dir(&data).unwrap();
+    std::fs::write(&data, b"").unwrap();
+    let at = dsp.clone();
+    let failed = state
+        .run(move |db| {
+            db.phones_tidy_files(&at, 2_000)?;
+            BYTES.reconcile(db, &at)
+        })
+        .await
+        .unwrap();
+    assert_eq!(failed.len(), 1, "the DSP's data, tried again next time");
+    for made in [cache.join(&sha256), preview, marked, abandoned] {
+        assert!(!made.exists(), "{}", made.display());
     }
 }
 
