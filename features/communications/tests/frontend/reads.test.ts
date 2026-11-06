@@ -37,6 +37,7 @@ const read = (id: string): ConversationMessages => ({
             driverId: 'D1',
             teamId: null,
             userId: null,
+            hidden: false,
           },
         ]
       : [],

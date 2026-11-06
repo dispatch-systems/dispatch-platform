@@ -271,6 +271,9 @@ pub struct Elsewhere {
     /// For a Slack one, the workspace and their ID in it.
     pub team_id: Option<String>,
     pub user_id: Option<String>,
+    /// For a work one of a driver who doesn't work today, that it isn't shown: kept so an update to
+    /// it, as their work phone given out, reads again what's read with it.
+    pub hidden: bool,
 }
 
 /// `GET /api/dsp/communications/conversations/{id}/profile`: what the profile beside a

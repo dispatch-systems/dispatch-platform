@@ -32,30 +32,33 @@ pub fn of(db: &Store, dsp: &str, person: &Person) -> Result<Vec<Elsewhere>> {
     .collect())
 }
 
-/// `person`'s work conversation, while they work today, with a route today or a work phone now, as
-/// the head of each of their conversations shows it (`today`), and have one or a work phone: with
-/// one, that of the ID that has it (`LiveDay::phone_of`), which a text there goes to, started if
-/// they have none by it; else the latest of any of their IDs.
+/// `person`'s work conversation, shown while they work today, with a route today or a work phone
+/// now, as the head of each of their conversations shows it (`today`), and have one or a work phone:
+/// with one, that of the ID that has it (`LiveDay::phone_of`), which a text there goes to, started
+/// if they have none by it; else the latest of any of their IDs, which on a day they don't work is
+/// kept, hidden, so its update reads again what's read with it.
 fn work(db: &Store, dsp: &str, person: &Person) -> Result<Option<Elsewhere>> {
     let live = LiveDay::read(db, dsp)?;
-    let (source, phone) = match &live {
+    let (source, routed, phone) = match &live {
         Some(live) => {
             let ids = person.ids_of(live.reader.source());
-            let driven = live.routes_of(db, dsp, ids)?;
-            let phone = live.phone_of(db, dsp, ids, &driven)?;
-            if driven.is_empty() && phone.is_none() {
+            if ids.is_empty() {
                 return Ok(None);
             }
-            (live.reader.source(), phone)
+            let driven = live.routes_of(db, dsp, ids)?;
+            let phone = live.phone_of(db, dsp, ids, &driven)?;
+            (live.reader.source(), !driven.is_empty(), phone)
         }
         None => {
             let Some(reader) = routes::for_dsp(db, dsp)? else {
                 return Ok(None);
             };
-            if today::driven(db, dsp, reader, person.ids_of(reader.source()))?.is_none() {
+            let ids = person.ids_of(reader.source());
+            if ids.is_empty() {
                 return Ok(None);
             }
-            (reader.source(), None)
+            let routed = today::driven(db, dsp, reader, ids)?.is_some();
+            (reader.source(), routed, None)
         }
     };
     let ids = person.ids_of(source);
@@ -64,6 +67,12 @@ fn work(db: &Store, dsp: &str, person: &Person) -> Result<Option<Elsewhere>> {
         dsp,
         db.communications_drivers(dsp, source.as_str(), ids)?,
     )?;
+    if !routed && phone.is_none() {
+        return Ok(latest(kept).map(|each| Elsewhere {
+            hidden: true,
+            ..found(ConversationKind::Work, Some(each))
+        }));
+    }
     let conversation = match &phone {
         Some(phone) => kept.into_iter().find(|each| {
             each.driver
@@ -129,6 +138,7 @@ fn slack(db: &Store, dsp: &str, person: &Person) -> Result<Option<Elsewhere>> {
         driver_id: None,
         team_id: Some(team),
         user_id: Some(user),
+        hidden: false,
     }))
 }
 
@@ -148,6 +158,7 @@ fn found(kind: ConversationKind, conversation: Option<TextConversation>) -> Else
         driver_id: None,
         team_id: None,
         user_id: None,
+        hidden: false,
     }
 }
 

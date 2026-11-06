@@ -121,7 +121,10 @@ export function ConversationPane({
   }, [opened, seen]);
   const conversation = listed ?? opened?.conversation;
   const party = conversation && PARTIES[partyOf(conversation)];
-  const elsewhere = elsewhereNow(opened?.elsewhere ?? [], conversations);
+  // Those shown: a work one of a driver off today is read only to follow its updates (`reads.ts`).
+  const elsewhere = elsewhereNow(opened?.elsewhere ?? [], conversations).filter(
+    (each) => !each.hidden,
+  );
   const working = workspaces.filter((workspace) => workspace.on);
   const follow = (theirs: Conversation) => {
     show(theirs);

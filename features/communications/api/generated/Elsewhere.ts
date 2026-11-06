@@ -17,4 +17,9 @@ driverId: string | null,
 /**
  * For a Slack one, the workspace and their ID in it.
  */
-teamId: string | null, userId: string | null, };
+teamId: string | null, userId: string | null,
+/**
+ * For a work one of a driver who doesn't work today, that it isn't shown: kept so an update to
+ * it, as their work phone given out, reads again what's read with it.
+ */
+hidden: boolean, };
