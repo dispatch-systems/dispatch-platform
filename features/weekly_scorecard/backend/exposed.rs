@@ -1,7 +1,11 @@
 //! What Weekly Scorecard exposes to every other feature and agent tool: each driver's weekly
 //! scorecards and the packages they list, from the weeks its own reads show
 //! (`dispatch_weekly_scorecard_contract`).
-use super::{WeeklyScorecardStore, flag, text, weekly_scorecard_timezone};
+use super::{
+    keeper::weekly_scorecard_timezone,
+    publication::{flag, text},
+    storage::WeeklyScorecardStore,
+};
 use chrono::{DateTime, Datelike, Duration};
 use chrono_tz::Tz;
 use dispatch_core::{

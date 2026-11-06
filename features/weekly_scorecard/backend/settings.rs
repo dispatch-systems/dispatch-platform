@@ -1,6 +1,6 @@
 //! Weekly Scorecard's settings, with its collection on the Collectors page: which weeks a run
 //! rechecks; and the policy a DSP chose before Settings kept it, moved in once.
-use super::{STORAGE, WeeklyScorecardStore};
+use super::storage::{STORAGE, WeeklyScorecardStore};
 use dispatch_core::{
     Result,
     db::Store,

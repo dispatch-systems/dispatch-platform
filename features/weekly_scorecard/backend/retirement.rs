@@ -1,5 +1,8 @@
 //! Import the retired database once; the prior file becomes an inactive recovery archive.
-use super::{DATABASE, STORAGE, archive};
+use super::{
+    archive,
+    storage::{DATABASE, STORAGE},
+};
 use dispatch_core::{
     Result,
     collection::registry::{AddedStorage, added_identity, identity_seed},

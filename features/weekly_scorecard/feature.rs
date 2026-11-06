@@ -48,7 +48,7 @@ pub const FEATURE: Feature = Feature {
     routes: api::routes::routes,
     // Which weeks its collection rechecks, drawn with it on Settings' Collectors page.
     settings: &[backend::settings::COLLECTION],
-    upgrade_storage: Some(backend::upgrade),
+    upgrade_storage: Some(backend::storage::upgrade),
     keeps: &[&backend::keeper::WeeklyScorecard],
     tables: &[(
         "weekly_scorecard",
@@ -88,7 +88,7 @@ pub const FEATURE: Feature = Feature {
             Migration {
                 id: 2,
                 name: "verified_scope",
-                apply: Code(backend::add_weekly_verified_scope),
+                apply: Code(backend::storage::add_weekly_verified_scope),
             },
         ],
     }],
@@ -108,11 +108,11 @@ pub const FEATURE: Feature = Feature {
             Migration {
                 id: 3,
                 name: "verified_scope",
-                apply: Code(backend::add_verified_scope),
+                apply: Code(backend::storage::add_verified_scope),
             },
         ],
     }],
-    domains: &[backend::DOMAIN],
+    domains: &[backend::storage::DOMAIN],
     audit: Audit {
         areas: &[("weekly_scorecard.", Collections)],
         ..Audit::NONE
