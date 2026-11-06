@@ -1,10 +1,11 @@
 use dispatch_core::{
-    Error, Result,
-    db::Store,
-    ensure,
+    Error, Result, ensure,
     foundation::config::Config,
     manifest::registry,
-    server::operations::{self, Lock},
+    server::{
+        operations::{self, Lock},
+        startup,
+    },
 };
 use std::{io::Read, path::Path};
 pub async fn run() -> Result<()> {
@@ -97,7 +98,7 @@ pub async fn run() -> Result<()> {
                 503,
             )?;
             let state = dispatch_core::State::new(config.clone())?;
-            state.run(operations::recover).await?;
+            state.run(startup::recover).await?;
             let listener =
                 tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, config.port)).await?;
             let (stop, receiver) = tokio::sync::watch::channel(false);
@@ -157,7 +158,7 @@ pub async fn run() -> Result<()> {
             )?;
             let mut password = String::new();
             std::io::stdin().take(1024).read_to_string(&mut password)?;
-            let db = Store::initialize(config)?;
+            let db = startup::prepare_storage(config)?;
             println!(
                 "{}",
                 operations::bootstrap(
@@ -169,7 +170,7 @@ pub async fn run() -> Result<()> {
                 )?
             );
         }
-        "seed" => operations::seed(&Store::initialize(config)?)?,
+        "seed" => operations::seed(&startup::prepare_storage(config)?)?,
         "backup" => {
             ensure(args.len() == 2, "usage_backup_destination", 400)?;
             println!("{}", operations::backup(&config, Path::new(&args[1]))?);

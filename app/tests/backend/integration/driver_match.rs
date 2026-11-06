@@ -9,6 +9,7 @@ use dispatch_core::{
         Collector,
         people::{self, Source},
     },
+    server::startup,
 };
 use dispatch_cortex::{associates, discovery::Scope, meals};
 use dispatch_driver_match::{
@@ -448,7 +449,7 @@ fn links_the_meal_break_page_saved_become_decisions() {
     drop(dsp);
     let config = db.config.clone();
     drop(db);
-    let db = Store::initialize(config).unwrap();
+    let db = startup::prepare_storage(config).unwrap();
     let held: Vec<(String, String, String)> = db
         .dsp(&id)
         .unwrap()

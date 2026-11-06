@@ -2,7 +2,7 @@ use super::*;
 use crate::backend::TimecardStore;
 use dispatch_core::{
     foundation::config::{Config, Environment},
-    server::operations,
+    server::{operations, startup},
 };
 use dispatch_paycom::fixtures;
 use serde_json::json;
@@ -21,7 +21,7 @@ fn a_scoped_publication_rejects_other_employees_periods_and_incomplete_captures(
     config.development = true;
     config.fixture = true;
     config.environment = Environment::Preview;
-    let store = Store::initialize(config)?;
+    let store = startup::prepare_storage(config)?;
     let bootstrap = operations::bootstrap(
         &store,
         "sync@example.test",

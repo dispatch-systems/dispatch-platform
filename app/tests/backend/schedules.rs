@@ -7,6 +7,7 @@ use dispatch_core::{
     collection::{metrics::Metrics, schedules::Scheduled},
     db::{Store, iso, now, s},
     foundation::{config::Config, crypto},
+    server::startup,
     testing::schedule_due_at,
 };
 use dispatch_cortex as cortex;
@@ -22,7 +23,7 @@ fn setup() -> (tempfile::TempDir, Store, String) {
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
     let mut config = Config::load().unwrap();
     config.root = root.path().into();
-    let db = Store::initialize(config).unwrap();
+    let db = startup::prepare_storage(config).unwrap();
     let id = crypto::id("dsp").unwrap();
     db.platform
         .exec(

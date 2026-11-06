@@ -3,9 +3,10 @@
 use crate::snapshot;
 use dispatch_core::{
     collection::registry::Provider,
-    db::{Db, Kind, Store, migrate},
+    db::{Db, Kind, migrate},
     foundation::config::Config,
     manifest::registry,
+    server::startup,
 };
 use serde_json::json;
 use std::{
@@ -88,7 +89,7 @@ fn new_databases_match_the_recorded_schema() {
     let root = private();
     let mut config = Config::load().unwrap();
     config.root = root.path().into();
-    let store = Store::initialize(config).unwrap();
+    let store = startup::prepare_storage(config).unwrap();
     let id = dispatch_core::foundation::crypto::id("dsp").unwrap();
     store
         .platform

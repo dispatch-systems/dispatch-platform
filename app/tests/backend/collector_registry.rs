@@ -5,7 +5,7 @@ use dispatch_core::{
     collection::registry::{LAYOUT, Provider, database_path},
     db::{self, Db, Store},
     foundation::config::Config,
-    server::operations,
+    server::{operations, startup},
 };
 use dispatch_cortex as cortex;
 use dispatch_paycom as paycom;
@@ -20,7 +20,7 @@ fn platform() -> (tempfile::TempDir, Store) {
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
     let mut config = Config::load().unwrap();
     config.root = root.path().into();
-    let store = Store::initialize(config).unwrap();
+    let store = startup::prepare_storage(config).unwrap();
     (root, store)
 }
 fn pending(store: &Store) -> String {
@@ -142,7 +142,7 @@ fn startup_refuses_a_dsp_whose_provider_storage_was_never_separated() {
     let config = store.config.clone();
     drop(store);
     assert_eq!(
-        Store::initialize(config.clone()).err().unwrap().code,
+        startup::prepare_storage(config.clone()).err().unwrap().code,
         "unsupported_storage_layout"
     );
     let path = database_path(&config.root.join("dsps").join(&id), paycom::PROVIDER).unwrap();
@@ -190,7 +190,7 @@ fn storage_survives_backup_and_restore() {
     assert!(operations::backup(&store.config, &external.path().join("unsafe-backup")).is_err());
     let mut config = store.config.clone();
     config.root = restored;
-    let reopened = Store::initialize(config).unwrap();
+    let reopened = startup::prepare_storage(config).unwrap();
     reopened.open_collectors(&id).unwrap();
     assert_eq!(
         snapshot(&reopened.collector(&id, paycom::PROVIDER).unwrap()),
@@ -243,7 +243,7 @@ fn missing_initialized_cortex_database_is_not_recreated() {
     let config = store.config.clone();
     drop(store);
     std::fs::remove_file(&path).unwrap();
-    assert!(Store::initialize(config).is_err());
+    assert!(startup::prepare_storage(config).is_err());
     assert!(!path.exists());
 }
 #[cfg(feature = "timecard")]
@@ -327,7 +327,7 @@ fn startup_rejects_provider_database_as_core_storage() {
     std::fs::copy(provider, core).unwrap();
 
     assert_eq!(
-        Store::initialize(config).err().unwrap().code,
+        startup::prepare_storage(config).err().unwrap().code,
         "dsp_storage_identity_mismatch"
     );
 }

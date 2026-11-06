@@ -6,7 +6,7 @@ use dispatch_core::{
     accounts::Auth,
     db::s,
     foundation::config::{Config, Environment},
-    server::operations,
+    server::{operations, startup},
 };
 use std::os::unix::fs::PermissionsExt;
 
@@ -19,7 +19,7 @@ fn ready() -> (tempfile::TempDir, Store, Context) {
     config.development = true;
     config.fixture = true;
     config.environment = Environment::Preview;
-    let store = Store::initialize(config).unwrap();
+    let store = startup::prepare_storage(config).unwrap();
     let bootstrap = operations::bootstrap(
         &store,
         "uniforms@example.test",

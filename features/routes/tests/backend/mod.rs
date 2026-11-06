@@ -10,6 +10,7 @@ use chrono::NaiveDate;
 use dispatch_core::{
     db::{Store, s},
     foundation::config::Environment,
+    server::startup,
 };
 use dispatch_cortex::routes::{
     Capture, Collection, MAX_CAPTURE_BYTES, Mode, Request, add_capture_bytes,
@@ -31,7 +32,7 @@ fn retained_sweep_selection_rechecks_running_jobs_and_publication_activity() {
     config.fixture = true;
     config.development = true;
     config.environment = Environment::Preview;
-    let db = Store::initialize(config).unwrap();
+    let db = startup::prepare_storage(config).unwrap();
     let bootstrap = dispatch_core::server::operations::bootstrap(
         &db,
         "sweep@example.test",

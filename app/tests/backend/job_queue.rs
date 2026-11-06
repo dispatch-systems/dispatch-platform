@@ -1,8 +1,8 @@
 //! The job queue takes every kind a registered collector collects, and only those.
 use dispatch_core::{
     collection::registry::Provider,
-    db::Store,
     foundation::{config::Config, crypto},
+    server::startup,
 };
 use serde_json::json;
 use std::os::unix::fs::PermissionsExt;
@@ -14,7 +14,7 @@ fn only_a_kind_a_registered_collector_collects_is_queued() {
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
     let mut config = Config::load().unwrap();
     config.root = root.path().into();
-    let store = Store::initialize(config).unwrap();
+    let store = startup::prepare_storage(config).unwrap();
     let dsp = crypto::id("dsp").unwrap();
     // The table takes any kind; only those a collector collects are queued.
     for kind in ["cortex.collect", "unknown.collect", ""] {

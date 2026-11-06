@@ -1,4 +1,4 @@
-use super::{Db, Kind, identifier, key_file, migrations, private_dir, private_file, s};
+use super::{Db, Kind, identifier, key_file, migrations, private_dir, private_file};
 use crate::{Result, ensure, foundation::config::Config};
 use std::path::{Path, PathBuf};
 
@@ -42,7 +42,9 @@ pub struct Store {
     readers_moved: std::cell::Cell<bool>,
 }
 impl Store {
-    pub fn initialize(config: Config) -> Result<Self> {
+    /// Creates private storage and opens the platform and jobs databases at this binary's
+    /// schema. Domain upgrades belong to `server::startup::prepare_storage`.
+    pub fn create(config: Config) -> Result<Self> {
         private_dir(&config.root)?;
         private_dir(&config.root.join("config"))?;
         private_dir(&config.root.join("data"))?;
@@ -50,7 +52,7 @@ impl Store {
         private_dir(&config.environment_root())?;
         private_dir(&config.root.join("dsps"))?;
         let key = key_file(&config.platform().join("platform.key"))?;
-        let store = Self {
+        Ok(Self {
             platform: Db::create(
                 &config.platform().join("accounts.sqlite"),
                 Kind::PLATFORM,
@@ -67,30 +69,9 @@ impl Store {
             mail_queued: std::cell::Cell::new(false),
             schedules_moved: std::cell::Cell::new(false),
             readers_moved: std::cell::Cell::new(false),
-        };
-        crate::manifest::retirement::platform(&store)?;
-        store.keep_mandatory_features()?;
-        crate::tenancy::roles::backfill(&store.platform)?;
-        for row in store.platform.all(
-            "SELECT id FROM dsps WHERE status IN ('active','suspended')",
-            [],
-        )? {
-            let id = s(&row, "id");
-            migrations::migrate_dsp(&*store.dsp_unverified(id)?, id)?;
-            store.open_collectors(id)?;
-            store.initialize_schedules(id)?;
-        }
-        // Each DSP's people move into its own directory once, then its roles are repaired as
-        // the platform's were: a role for each legacy membership, and no retired permission.
-        for id in store.kept_dsps()? {
-            store.move_people(&id)?;
-            let people = store.dsp(&id)?;
-            crate::tenancy::roles::backfill_directory(&people, &id)?;
-            crate::manifest::retirement::roles(&people)?;
-        }
-        store.backfill_codes()?;
-        Ok(store)
+        })
     }
+    /// Opens existing storage without migrations or startup carry-over, as pool work needs.
     pub fn open(config: Config, key: Vec<u8>) -> Result<Self> {
         Ok(Self {
             platform: Db::open(&config.platform().join("accounts.sqlite"), Kind::PLATFORM)?,
@@ -155,6 +136,10 @@ impl Store {
     fn dsp_unverified(&self, id: &str) -> Result<DspLease<'_>> {
         let path = self.area(id, "data")?.join("dispatch.sqlite");
         self.cached_database(&path, Kind::DSP)
+    }
+    /// Migrates existing DSP storage, adopting a legacy identity only with its migration.
+    pub(crate) fn migrate_dsp(&self, id: &str) -> Result<()> {
+        migrations::migrate_dsp(&*self.dsp_unverified(id)?, id)
     }
     pub(crate) fn cached_database(&self, path: &Path, kind: Kind) -> Result<DspLease<'_>> {
         private_file(path, false)?;

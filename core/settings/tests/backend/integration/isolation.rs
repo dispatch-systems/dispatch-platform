@@ -10,7 +10,7 @@ use dispatch_core::{
         crypto,
     },
     manifest::{Feature, feature, mandatory, settings::number, settings::section},
-    server::operations,
+    server::{operations, startup},
     tenancy::roles,
     testing,
 };
@@ -80,7 +80,7 @@ impl Server {
         config.origin = format!("http://127.0.0.1:{port}");
         config.invite_origin = format!("http://invite.localhost:{port}");
         config.dsp_origin = format!("http://{{code}}.localhost:{port}");
-        let store = Store::initialize(config.clone()).unwrap();
+        let store = startup::prepare_storage(config.clone()).unwrap();
         operations::seed(&store).unwrap();
         // A second member of Northline's, beside the one the fixtures have.
         let north = s(
