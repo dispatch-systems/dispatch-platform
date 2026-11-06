@@ -1,6 +1,8 @@
 //! An itinerary as the tables hold it: its summary and detail flattened into the itinerary's
 //! row, and its stops, tasks, breaks and unknown stops into theirs.
-use super::*;
+use super::shaping::{flag, identifier, integer, json_list, number, opt, stamp, text};
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 
 /// A driver's itinerary flattened for its row.
 pub(super) struct Flat {

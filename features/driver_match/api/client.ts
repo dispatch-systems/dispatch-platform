@@ -1,4 +1,5 @@
-import { useCachedData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
+import { wordedApi } from '../../../core/shell/frontend/runtime/api.js';
+import { useCachedData } from '../../../core/shell/frontend/runtime/data-reads.js';
 import type { DriverMatch, GivenRole, PeopleSource, PersonDetails } from './index.js';
 
 // Driver Match's endpoints, as its page calls them. A decision answers with nothing: the page

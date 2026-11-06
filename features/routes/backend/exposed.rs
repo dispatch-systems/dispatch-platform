@@ -2,7 +2,7 @@
 //! read from the rows its own pages read in historical route data; and today in live route data;
 //! each driver's latest work phone of a day, today and on a saved day, and whether a number was
 //! ever one (`dispatch_routes_contract`).
-use super::{RoutesStore, routes_today, work_phones};
+use super::{RoutesStore, scope::routes_today, work_phones};
 use dispatch_core::{
     Result,
     db::{Db, Store, s},

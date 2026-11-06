@@ -2,8 +2,20 @@
 //! tasks and packages as `rows` flattens them, and every response whole, compressed; then
 //! making it the day's read. A day being staged has its rows added under a publication of its
 //! own; live route data's one day is kept in place, read by read.
-use super::{work_phones::Stored, *};
+use super::{
+    rows::TaskRow,
+    shaping::{PreparedItinerary, flag, integer, number, stamp, text},
+    staging::Staged,
+    work_phones::Stored,
+};
+use dispatch_core::{
+    Error, Result,
+    db::{Db, s},
+    ensure,
+};
+use rusqlite::params;
 use rusqlite::types::Value as SqlValue;
+use serde_json::{Value, json};
 
 /// How rows are written: added under a publication being staged; or kept in place in the one
 /// publication live route data holds, where a row new to the read is inserted, one that changed
@@ -753,4 +765,18 @@ pub(super) fn share(db: &Db, publication: &str, day: &str) -> Result<()> {
         )?;
     }
     Ok(())
+}
+
+fn sql_value(value: &Value) -> rusqlite::types::Value {
+    use rusqlite::types::Value as Sql;
+    match value {
+        Value::Null => Sql::Null,
+        Value::Bool(b) => Sql::Integer(i64::from(*b)),
+        Value::Number(n) => n
+            .as_i64()
+            .map(Sql::Integer)
+            .unwrap_or_else(|| Sql::Real(n.as_f64().unwrap_or(0.0))),
+        Value::String(text) => Sql::Text(text.clone()),
+        other => Sql::Text(other.to_string()),
+    }
 }

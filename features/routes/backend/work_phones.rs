@@ -4,8 +4,14 @@
 //! for it (`Stored`). A saved day kept before Routes kept them has them extracted from its stored
 //! responses by the same rule (`phone_backfill`). A day's read answers each driver's latest
 //! (`DayPhones`), and the days kept whether a number was ever one.
-use super::*;
+use super::shaping::PreparedItinerary;
+use dispatch_core::{
+    Result,
+    db::{Db, s},
+};
 use dispatch_routes_contract::{DayPhones, DriverPhone};
+use rusqlite::params;
+use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// The first adapter version whose itineraries keep their work phone. A publication shaped before
@@ -16,21 +22,6 @@ pub(super) const PHONES_SINCE: i64 = 3;
 pub(super) fn digits(text: &str) -> Option<String> {
     let digits: String = text.chars().filter(char::is_ascii_digit).collect();
     (digits.len() >= 10).then(|| digits[digits.len() - 10..].to_owned())
-}
-
-impl Shaper {
-    /// The work phone `driver`'s records show with their itinerary, by its last ten digits: the
-    /// day's list's record of them, else `own`'s, the drivers the itinerary's response names; none
-    /// when neither shows one.
-    pub(super) fn work_phone(&self, driver: &str, own: &Value) -> Option<String> {
-        let shown = |records: &[Value]| {
-            let record = records
-                .iter()
-                .find(|r| r["transporterId"] == json!(driver))?;
-            digits(record["workPhoneNumber"].as_str()?)
-        };
-        shown(&self.people).or_else(|| shown(own.as_array().map_or(&[], Vec::as_slice)))
-    }
 }
 
 impl PreparedItinerary {

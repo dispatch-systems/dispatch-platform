@@ -1,4 +1,5 @@
-import { api, useCachedData, useData } from '../../shell/frontend/runtime/api.js';
+import { api } from '../../shell/frontend/runtime/api.js';
+import { useCachedData, useData } from '../../shell/frontend/runtime/data-reads.js';
 import type {
   CollectionUpdates,
   Collectors,

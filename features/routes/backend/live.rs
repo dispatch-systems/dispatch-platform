@@ -3,18 +3,34 @@
 //! starts, and saved into historical route data as one of the day's reads. A feature reading routes
 //! live keeps its reads here.
 use super::{
+    ADAPTER_VERSION, COLLECTION, DOMAIN, RoutesStore,
+    publishing::{
+        Writes, prune_itineraries, prune_itinerary, prune_routes, write_assigned, write_itinerary,
+        write_raw, write_routes, write_shared,
+    },
+    saving,
+    scope::{day_allowed, day_request, routes_day, routes_today},
+    shaping::{PreparedItinerary, Shaper, gzip},
+    staging::blocking,
+    storage::stored_capture,
     work_phones::{PHONES_SINCE, Stored},
-    *,
 };
 use dispatch_core::{
-    State,
+    Error, Result, State,
+    db::{Db, Store, at, s},
+    ensure,
     foundation::crypto,
     manifest::{
         Counts,
         events::{self, PeopleChanged},
     },
 };
+use dispatch_cortex::{
+    self as cortex,
+    routes::{Capture, Mode, Request},
+};
 use dispatch_routes_contract::RouteDataChanged;
+use rusqlite::params;
 use std::sync::Arc;
 
 /// What keeping a live read counted, for its record: the itineraries it listed, and the rows it

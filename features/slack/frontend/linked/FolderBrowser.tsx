@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { ChevronRight, Folder } from 'lucide-react';
-import { useData } from '../../../../core/shell/frontend/runtime/api.js';
+import { useData } from '../../../../core/shell/frontend/runtime/data-reads.js';
 import { DataState } from '../../../../core/shell/frontend/ui/index.js';
 import type { SlackFolder, SlackFolders } from '../../api/client.js';
 import type { Linking } from './linking.js';
