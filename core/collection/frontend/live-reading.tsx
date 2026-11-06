@@ -50,7 +50,7 @@ export function LiveReading({
         <dt>Next read</dt>
         <dd>
           {runDay(nextRead, timezone)}
-          <small>{until(nextRead)}</small>
+          <small>{until(nextRead, timezone)}</small>
         </dd>
       </dl>
       {lastError && (
