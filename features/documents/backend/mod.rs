@@ -1,6 +1,9 @@
 //! Documents's logic. It is private to the crate: `feature.rs` re-exports what the app or a
 //! declared dependant uses.
+mod access;
+mod cache;
 pub(crate) mod connection;
+mod description;
 pub(crate) mod drive;
 pub(crate) mod files;
 pub(crate) mod google;

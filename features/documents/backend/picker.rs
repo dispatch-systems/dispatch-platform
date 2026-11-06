@@ -40,7 +40,7 @@ pub fn setup(google: &Google, connection: &Connection, me: String) -> Result<Opt
                 elsewhere: made
                     .into_iter()
                     .map(|item| DriveFile {
-                        kind: super::files::kind(&item.mime_type),
+                        kind: super::description::kind(&item.mime_type),
                         id: item.id,
                         name: item.name,
                     })

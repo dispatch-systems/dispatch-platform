@@ -3,7 +3,7 @@
 //! letting it go. Google is called outside the database, and the member's permission is checked
 //! again after every wait, before anything is written.
 use super::{
-    files,
+    access, cache,
     google::{self, Google},
     mirror, picker,
     storage::{Connection, DocumentsStore},
@@ -79,7 +79,7 @@ pub async fn account(state: &Arc<State>, dsp: &str) -> Result<DocumentsAccount> 
     let at = dsp.to_owned();
     let found = state.read(move |db| db.documents_connection(&at)).await?;
     let storage = match &found {
-        Some(found) if !found.broken => match files::open(state, dsp, false).await {
+        Some(found) if !found.broken => match access::open(state, dsp, false).await {
             Ok(drive) => drive.google.storage(&drive.access).await.ok(),
             Err(_) => None,
         },
@@ -185,7 +185,7 @@ pub async fn finish(
         connected_at: iso(),
     };
     let refresh = granted.refresh;
-    files::forget(&c.dsp.id);
+    cache::forget(&c.dsp.id);
     mirror::forget(&c.dsp.id);
     let shared = c.dsp.id.clone();
     state
@@ -230,7 +230,7 @@ pub async fn disconnect(state: &Arc<State>, c: Context, access: Dsp) -> Result<D
     if let (Some(token), Ok(google)) = (token, Google::of(&state.config)) {
         google.revoke(&token).await;
     }
-    files::forget(&c.dsp.id);
+    cache::forget(&c.dsp.id);
     mirror::forget(&c.dsp.id);
     state
         .run(move |db| {
@@ -282,7 +282,7 @@ fn own_grant(db: &Store, dsp: &str) -> Result<Option<String>> {
 }
 /// Forgets what's held in memory of a deleted DSP's files.
 pub fn forgotten(dsp: &str) {
-    files::forget_deleted(dsp);
+    cache::forget_deleted(dsp);
     mirror::forget(dsp);
 }
 

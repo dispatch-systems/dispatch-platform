@@ -3,7 +3,7 @@
 //! half an hour. Hourly, noticing a Google connection that stopped working, so the page
 //! says so and the owner can reconnect before someone finds out by trying, and checking the
 //! sharing against Google's own list.
-use super::{connection::broken, google::Google, mirror, storage::DocumentsStore, team};
+use super::{access, google::Google, mirror, storage::DocumentsStore, team};
 use dispatch_core::{
     Error, State,
     foundation::observability,
@@ -81,41 +81,7 @@ fn check(state: Arc<State>, due: bool) -> Upkeep {
             Err(error) => return failed(&error),
         };
         stream::iter(dsps)
-            .map(|dsp| {
-                let state = state.clone();
-                let google = &google;
-                async move {
-                    let selected = dsp.clone();
-                    let token = state
-                        .read(move |db| {
-                            if db.serves_dsp(&selected)?
-                                && db.feature_enabled(&selected, "documents")?
-                                && db
-                                    .documents_connection(&selected)?
-                                    .is_some_and(|c| !c.broken)
-                            {
-                                db.documents_refresh_token(&selected)
-                            } else {
-                                Ok(None)
-                            }
-                        })
-                        .await?;
-                    let Some(token) = token else {
-                        return Ok(());
-                    };
-                    // Only Google's refusal breaks it: an outage leaves it for next hour.
-                    match google.access(&token).await {
-                        Err(error) if error.code == "google_connection_broken" => {
-                            state.run(move |db| broken(db, &dsp)).await?;
-                        }
-                        Err(error) => return Err(error),
-                        Ok(_) => {
-                            team::sync(&state, &dsp).await?;
-                        }
-                    }
-                    dispatch_core::Result::Ok(())
-                }
-            })
+            .map(|dsp| access::check(state.clone(), &google, dsp))
             .buffer_unordered(2)
             .for_each(|result| async move {
                 if let Err(error) = result {

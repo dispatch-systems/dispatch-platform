@@ -4,6 +4,7 @@
 //! an upload is, with who it came from as who added it. A page is written as a Google Doc, and
 //! over it as the page changes. Every call works only inside the DSP's own folder.
 use super::{
+    access,
     files::{self, make, put},
     google::FOLDER,
     storage::DocumentsStore,
@@ -57,7 +58,7 @@ impl Files for DocumentsFiles {
         id: Option<&'a str>,
     ) -> Answer<'a, Browsed> {
         Box::pin(async move {
-            let (connection, tree) = files::tree(state, dsp).await?;
+            let (connection, tree) = access::tree(state, dsp).await?;
             let at = id.unwrap_or(tree.root());
             ensure(tree.is_folder(at), FOLDER_NOT_FOUND, 404)?;
             let folder = |row: &Row| Folder {
@@ -88,7 +89,7 @@ impl Files for DocumentsFiles {
         id: &'a str,
     ) -> Answer<'a, Option<Folder>> {
         Box::pin(async move {
-            let (connection, tree) = files::tree(state, dsp).await?;
+            let (connection, tree) = access::tree(state, dsp).await?;
             if id == tree.root() {
                 return Ok(Some(Folder {
                     id: id.to_owned(),
@@ -112,7 +113,7 @@ impl Files for DocumentsFiles {
         by: &'a Author,
     ) -> Answer<'a, Folder> {
         Box::pin(async move {
-            let (_, tree) = files::tree(state, dsp).await?;
+            let (_, tree) = access::tree(state, dsp).await?;
             let (_, made) = make(state, dsp, tree.root(), FOLDER, name).await?;
             let folder = Folder {
                 id: made.id,
@@ -139,7 +140,7 @@ impl Files for DocumentsFiles {
     ) -> Answer<'a, Saved> {
         Box::pin(async move {
             ensure(file.bytes.length <= self.largest(), "upload_too_large", 413)?;
-            let (_, tree) = files::tree(state, dsp).await?;
+            let (_, tree) = access::tree(state, dsp).await?;
             ensure(tree.is_folder(folder), FOLDER_NOT_FOUND, 404)?;
             let (_, made) = put(state, dsp, folder, &file.name, &file.mime, file.bytes).await?;
             let detail = format!("{} from {}", made.name, file.from);
@@ -160,7 +161,7 @@ impl Files for DocumentsFiles {
     ) -> Answer<'a, Saved> {
         Box::pin(async move {
             ensure(page.html.len() <= PAGE_LIMIT, "upload_too_large", 413)?;
-            let (_, tree) = files::tree(state, dsp).await?;
+            let (_, tree) = access::tree(state, dsp).await?;
             ensure(tree.is_folder(folder), FOLDER_NOT_FOUND, 404)?;
             let made = files::write(state, dsp, folder, &page.name, &page.html).await?;
             let detail = format!("{} from {}", made.name, page.from);
@@ -181,7 +182,7 @@ impl Files for DocumentsFiles {
     ) -> Answer<'a, Option<Saved>> {
         Box::pin(async move {
             ensure(page.html.len() <= PAGE_LIMIT, "upload_too_large", 413)?;
-            let (_, tree) = files::tree(state, dsp).await?;
+            let (_, tree) = access::tree(state, dsp).await?;
             if !tree.get(id).is_some_and(|row| row.mime == Mime::Doc) {
                 return Ok(None);
             }
