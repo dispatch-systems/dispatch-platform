@@ -29,6 +29,9 @@ const dayOf = (at: Date, timeZone: string) =>
   dateFormatter('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(
     at,
   );
+/** How many days on the calendar where the DSP is from now to a run: 0 today, 1 tomorrow. */
+const daysTo = (at: Date, timeZone: string, now: Date) =>
+  Math.round((Date.parse(dayOf(at, timeZone)) - Date.parse(dayOf(now, timeZone))) / 86_400_000);
 
 /**
  * When a run is or was, where the DSP is: "Today, 7:45 AM", "Tomorrow, 6:00 AM", "Yesterday,
@@ -37,9 +40,7 @@ const dayOf = (at: Date, timeZone: string) =>
 export function runDay(value: string, timeZone: string, now = new Date()) {
   const at = new Date(value);
   const clock = dateFormatter('en-US', { timeZone, hour: 'numeric', minute: '2-digit' }).format(at);
-  const days = Math.round(
-    (Date.parse(dayOf(at, timeZone)) - Date.parse(dayOf(now, timeZone))) / 86_400_000,
-  );
+  const days = daysTo(at, timeZone, now);
   const named: Record<number, string> = { [-1]: 'Yesterday', 0: 'Today', 1: 'Tomorrow' };
   const day =
     named[days] ??
@@ -54,22 +55,25 @@ export function runDay(value: string, timeZone: string, now = new Date()) {
 export function runShort(value: string, timeZone: string, now = new Date()) {
   const at = new Date(value);
   const clock = dateFormatter('en-US', { timeZone, hour: 'numeric', minute: '2-digit' }).format(at);
-  const days = Math.round(
-    (Date.parse(dayOf(at, timeZone)) - Date.parse(dayOf(now, timeZone))) / 86_400_000,
-  );
+  const days = daysTo(at, timeZone, now);
   if (days === 0) return clock;
   if (Math.abs(days) < 7)
     return `${dateFormatter('en-US', { timeZone, weekday: 'short' }).format(at)} ${clock}`;
   return dateFormatter('en-US', { timeZone, month: 'short', day: 'numeric' }).format(at);
 }
-/** How long until a run: "now", "in 4 min", "in 1 hr 4 min", "in 6 hr", "in 3 days". */
-export function until(value: string, now = Date.now()) {
-  const minutes = Math.round((Date.parse(value) - now) / 60_000);
+/**
+ * How long until a run: "now", "in 4 min", "in 1 hr 4 min", "in 6 hr"; a day or more away, the
+ * days on the calendar where the DSP is, so each run on one day says the same: "in 3 days".
+ */
+export function until(value: string, timeZone: string, now = new Date()) {
+  const at = new Date(value);
+  const minutes = Math.round((at.getTime() - now.getTime()) / 60_000);
   if (minutes <= 0) return 'now';
   if (minutes < 60) return `in ${minutes} min`;
   if (minutes < 120) return `in 1 hr${minutes > 60 ? ` ${minutes - 60} min` : ''}`;
   if (minutes < DAY) return `in ${Math.round(minutes / 60)} hr`;
-  const days = Math.round(minutes / DAY);
+  // The night the clocks go back has 25 hours, so a day's wait can end on the same date.
+  const days = Math.max(1, daysTo(at, timeZone, now));
   return `in ${days} day${days === 1 ? '' : 's'}`;
 }
 export function WeekPreview({
@@ -132,7 +136,7 @@ export function WeekPreview({
             <li key={run}>
               <i className="dot" />
               <span>{runDay(run, timezone)}</span>
-              <span>{until(run)}</span>
+              <span>{until(run, timezone)}</span>
             </li>
           ))}
         </ul>
