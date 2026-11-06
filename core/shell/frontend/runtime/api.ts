@@ -1,6 +1,7 @@
 import { asksVerification, recoverAccess, verification } from './access-recovery.js';
 import { performancePolicy } from '../lib/performance-policy.js';
-import { beginBrowserWrite, clearNavigationState } from './browser-update.js';
+import { beginBrowserWrite } from './browser-update.js';
+import { clearNavigationState } from './navigation-state.js';
 import { parseApiResponse } from './replies.js';
 import { dataCache } from './data-cache.js';
 import { clearDestinations } from './navigation.js';

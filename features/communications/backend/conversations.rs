@@ -6,12 +6,12 @@
 //! kind, with those waiting, is `inbox`'s.
 use super::{
     bytes, compose, elsewhere,
-    files::{File, FileStatus, FileStore},
+    files::{File, FileStore},
     groups::{
         self,
         storage::groups::{Answered, GroupStore},
     },
-    model::{ConversationKind, Direction, PAGE},
+    model::{ConversationKind, Direction, FileStatus, PAGE},
     people::People,
     search,
     storage::{

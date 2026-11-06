@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { ErrorBox } from './ErrorBox.js';
 import { Loading } from './Loading.js';
-import { useReadAvailability } from '../lib/read-availability.js';
+import { useReadAvailability } from './useReadAvailability.js';
 
 /**
  * The one loading rule: no data yet means a spinner, data (even stale, beside an

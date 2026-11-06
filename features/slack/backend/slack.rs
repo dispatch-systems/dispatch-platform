@@ -1,19 +1,14 @@
-//! Slack, as Dispatch talks to it: installing the app in a workspace, calling Slack's API there
-//! as the app's bot, downloading the files it may read and sending those it uploads, and
-//! downloading the pictures Slack names, as a workspace's logo. Fixture mode's Slack answers
-//! in-process instead.
-use super::{
-    app::{RETURN_PATH, scopes},
-    fixture,
-};
+//! Slack's app configuration, Live/Fixture facade and shared API response policy.
+mod oauth;
+mod transfer;
+
+use super::fixture;
 use axum::body::Bytes;
 use dispatch_core::{
     Error, Result,
-    db::now,
     foundation::{config::Config, observability},
 };
-use futures_util::{Stream, TryStreamExt};
-use serde::Deserialize;
+use futures_util::Stream;
 use serde_json::{Value, json};
 use std::{
     pin::Pin,
@@ -21,32 +16,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-const AUTHORIZE: &str = "https://slack.com/oauth/v2/authorize";
 const API: &str = "https://slack.com/api";
 
 static HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
         .timeout(Duration::from_secs(20))
-        .build()
-        .expect("the TLS backend is built in")
-});
-
-/// Downloads a file's bytes for as long as they take: only connecting is timed, as how long a
-/// file takes depends on its size, and whatever the bytes feed gives up once they stall.
-static DOWNLOADS: LazyLock<reqwest::Client> = LazyLock::new(|| {
-    reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(20))
-        .build()
-        .expect("the TLS backend is built in")
-});
-/// Where Slack keeps the files its API names: a download from anywhere else is refused.
-const FILES_HOST: &str = "https://files.slack.com/";
-/// Downloads a picture from the address Slack names alone: one that sends it elsewhere is
-/// refused, not followed.
-static PICTURES: LazyLock<reqwest::Client> = LazyLock::new(|| {
-    reqwest::Client::builder()
-        .timeout(Duration::from_secs(20))
-        .redirect(reqwest::redirect::Policy::none())
         .build()
         .expect("the TLS backend is built in")
 });
@@ -127,107 +101,6 @@ impl Slack {
             Self::Fixture => fixture::SIGNING_SECRET,
         }
     }
-    /// Where the browser goes to install the app. `team` skips Slack's choice of workspace, as
-    /// reconnecting or updating one does. Fixture mode skips Slack: the browser comes straight
-    /// back with a code naming the workspace, `fixture:<team>`.
-    pub fn install_url(&self, origin: &str, state: &str, team: Option<&str>) -> String {
-        let back = format!("{origin}{RETURN_PATH}");
-        let (base, query) = match self {
-            Self::Fixture => (
-                back.as_str(),
-                vec![
-                    ("state", state.to_owned()),
-                    ("code", format!("fixture:{}", team.unwrap_or_default())),
-                ],
-            ),
-            Self::Live(client) => (
-                AUTHORIZE,
-                [
-                    ("client_id", client.id.clone()),
-                    ("scope", scopes().join(",")),
-                    ("redirect_uri", back.clone()),
-                    ("state", state.to_owned()),
-                ]
-                .into_iter()
-                .chain(team.map(|team| ("team", team.to_owned())))
-                .collect(),
-            ),
-        };
-        let query = url::form_urlencoded::Serializer::new(String::new())
-            .extend_pairs(query)
-            .finish();
-        format!("{base}?{query}")
-    }
-    /// Trades the code Slack sent the browser back with for the workspace's tokens.
-    pub async fn exchange(&self, origin: &str, code: &str) -> Result<Installed> {
-        let client = match self {
-            Self::Fixture => return fixture::install(code),
-            Self::Live(client) => client,
-        };
-        let back = format!("{origin}{RETURN_PATH}");
-        let granted: Granted = form(
-            "oauth.v2.access",
-            &[
-                ("client_id", client.id.as_str()),
-                ("client_secret", client.secret.as_str()),
-                ("code", code),
-                ("redirect_uri", back.as_str()),
-            ],
-        )
-        .await
-        .map_err(|error| match error.code.as_str() {
-            "slack_connection_broken" => Error::new("slack_connect_expired", 409),
-            _ => error,
-        })?;
-        // Installing across a whole Enterprise Grid organization, which the app doesn't offer.
-        if granted.is_enterprise_install {
-            self.uninstall(&granted.access_token).await;
-            return Err(Error::new("slack_organization_install", 400));
-        }
-        let team = granted
-            .team
-            .ok_or_else(|| Error::new("slack_install_failed", 502))?;
-        Ok(Installed {
-            team: team.id,
-            name: team.name.unwrap_or_default(),
-            bot_user: granted.bot_user_id.unwrap_or_default(),
-            app: granted.app_id.unwrap_or_default(),
-            scopes: granted
-                .scope
-                .split(',')
-                .filter(|scope| !scope.is_empty())
-                .map(str::to_owned)
-                .collect(),
-            tokens: Tokens {
-                access: granted.access_token,
-                refresh: granted.refresh_token,
-                expires_at: granted.expires_in.map(|secs| now() + secs * 1000),
-            },
-        })
-    }
-    /// New tokens for the workspace, from its refresh token, which Slack honours only once.
-    /// One Slack refuses means Dispatch was removed there, or its tokens revoked.
-    pub async fn refresh(&self, refresh: &str) -> Result<Tokens> {
-        let client = match self {
-            Self::Fixture => return fixture::refresh(refresh),
-            Self::Live(client) => client,
-        };
-        let granted: Granted = form(
-            "oauth.v2.access",
-            &[
-                ("client_id", client.id.as_str()),
-                ("client_secret", client.secret.as_str()),
-                ("grant_type", "refresh_token"),
-                ("refresh_token", refresh),
-            ],
-        )
-        .await?;
-        Ok(Tokens {
-            access: granted.access_token,
-            refresh: granted.refresh_token,
-            expires_at: granted.expires_in.map(|secs| now() + secs * 1000),
-        })
-    }
     /// Calls Slack's API method `method` as the bot, with `args`: any method, as a form,
     /// where a value that isn't text goes as JSON, as Slack takes a view or blocks. Slack's
     /// answer when it says `ok`, or how long Slack asks Dispatch to wait before calling again.
@@ -263,89 +136,6 @@ impl Slack {
         }
         answer(method, response).await.map(Called::Answered)
     }
-    /// Downloads the file of type `mime` Slack keeps at `url`, its `url_private_download`, as
-    /// the bot whose token this is: its bytes as they arrive. Slack answers a token that may
-    /// not read the file with its sign-in page, which is refused as a permission the workspace
-    /// hasn't approved yet.
-    pub async fn download(&self, token: &str, url: &str, mime: &str) -> Result<Bytestream> {
-        if let Self::Fixture = self {
-            return fixture::download(url);
-        }
-        if !url.starts_with(FILES_HOST) {
-            return Err(Error::new("slack_refused", 502));
-        }
-        let response = timed("files.download", DOWNLOADS.get(url).bearer_auth(token))
-            .await
-            .map_err(unreachable)?;
-        let status = response.status();
-        if status == reqwest::StatusCode::NOT_FOUND {
-            return Err(Error::new("slack_file_gone", 404));
-        }
-        if !status.is_success() {
-            return Err(Error::new("slack_unreachable", 502));
-        }
-        let signing_in = response
-            .headers()
-            .get(reqwest::header::CONTENT_TYPE)
-            .and_then(|kind| kind.to_str().ok())
-            .is_some_and(|kind| kind.starts_with("text/html"))
-            && !mime.starts_with("text/html");
-        if signing_in {
-            return Err(Error::new("slack_needs_update", 409));
-        }
-        Ok(Box::pin(
-            response.bytes_stream().map_err(std::io::Error::other),
-        ))
-    }
-    /// Downloads the picture Slack keeps at `url`, one of its own addresses that needs no token,
-    /// as a workspace's logo's is: its bytes, at most `most` of them, else it's refused.
-    pub async fn picture(&self, url: &url::Url, most: usize) -> Result<Vec<u8>> {
-        if let Self::Fixture = self {
-            return fixture::picture(url.as_str());
-        }
-        let response = timed("team.icon", PICTURES.get(url.clone()))
-            .await
-            .map_err(unreachable)?;
-        if response.status() != reqwest::StatusCode::OK {
-            return Err(Error::new("slack_unreachable", 502));
-        }
-        let too_large = || Error::new("slack_refused", 502);
-        if response
-            .content_length()
-            .is_some_and(|length| length > most as u64)
-        {
-            return Err(too_large());
-        }
-        let mut picture = Vec::new();
-        let mut bytes = response.bytes_stream();
-        while let Some(chunk) = bytes.try_next().await.map_err(unreachable)? {
-            if picture.len() + chunk.len() > most {
-                return Err(too_large());
-            }
-            picture.extend_from_slice(&chunk);
-        }
-        Ok(picture)
-    }
-    /// Sends a file's `length` bytes to `url`, where `files.getUploadURLExternal` said it goes,
-    /// as they arrive. The address is Slack's own for this one file, so it needs no token.
-    pub async fn upload(&self, url: &str, length: u64, bytes: Bytestream) -> Result<()> {
-        if let Self::Fixture = self {
-            return fixture::upload(url, bytes).await;
-        }
-        if !url.starts_with(FILES_HOST) {
-            return Err(Error::new("slack_refused", 502));
-        }
-        let request = DOWNLOADS
-            .post(url)
-            .header(reqwest::header::CONTENT_LENGTH, length)
-            .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
-            .body(reqwest::Body::wrap_stream(bytes));
-        let response = timed("files.upload", request).await.map_err(unreachable)?;
-        if !response.status().is_success() {
-            return Err(Error::new("slack_unreachable", 502));
-        }
-        Ok(())
-    }
     /// Removes the app from the workspace whose token this is. Best effort: Dispatch forgets
     /// the workspace whatever Slack answers.
     pub async fn uninstall(&self, token: &str) {
@@ -364,35 +154,8 @@ impl Slack {
     }
 }
 
-/// What `oauth.v2.access` answers, on installing and on renewing tokens.
-#[derive(Deserialize)]
-struct Granted {
-    access_token: String,
-    refresh_token: Option<String>,
-    expires_in: Option<i64>,
-    #[serde(default)]
-    scope: String,
-    bot_user_id: Option<String>,
-    app_id: Option<String>,
-    team: Option<Team>,
-    #[serde(default)]
-    is_enterprise_install: bool,
-}
-#[derive(Deserialize)]
-struct Team {
-    id: String,
-    name: Option<String>,
-}
-
 fn unreachable(_: reqwest::Error) -> Error {
     Error::new("slack_unreachable", 502)
-}
-/// Calls an `oauth.v2` method, which takes the app's own credentials in a form, no token.
-async fn form<T: for<'de> Deserialize<'de>>(method: &str, fields: &[(&str, &str)]) -> Result<T> {
-    let request = HTTP.post(format!("{API}/{method}")).form(fields);
-    let response = timed(method, request).await.map_err(unreachable)?;
-    serde_json::from_value(answer(method, response).await?)
-        .map_err(|_| Error::new("slack_install_failed", 502))
 }
 /// Sends `request`, noting in the log which method it called and how long Slack took: never
 /// what it sent, which holds tokens.

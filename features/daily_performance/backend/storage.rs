@@ -4,7 +4,7 @@ use crate::api::types::{DailyPerformanceDataset, DailyPerformanceDay, DailyPerfo
 use dispatch_core::{
     Error, Result,
     collection::registry::AddedStorage,
-    db::{Db, DspLease, Kind, Store, at, now, s},
+    db::{Db, DspLease, FromRow, Kind, Row, Store, at, now, s},
     ensure,
     foundation::crypto,
     server::cache::DataDomain,
@@ -265,6 +265,48 @@ pub trait DailyPerformanceStore {
         scope: &Scope,
     ) -> Result<()>;
 }
+struct DailyPublicationRow {
+    id: String,
+    date: String,
+    collected_at: String,
+    row_count: usize,
+}
+impl FromRow for DailyPublicationRow {
+    fn from_row(row: &Row<'_>) -> Result<Self> {
+        Ok(Self {
+            id: row.get("id")?,
+            date: row.get("date")?,
+            collected_at: row.get("collected_at")?,
+            row_count: row.get::<i64>("row_count")?.max(0) as usize,
+        })
+    }
+}
+struct DailyDatasetRow {
+    dataset: String,
+    row_count: usize,
+    coverage: String,
+}
+impl FromRow for DailyDatasetRow {
+    fn from_row(row: &Row<'_>) -> Result<Self> {
+        Ok(Self {
+            dataset: row.get("dataset")?,
+            row_count: row.get::<i64>("row_count")?.max(0) as usize,
+            coverage: row.get("coverage")?,
+        })
+    }
+}
+impl DailyDatasetRow {
+    fn into_dataset(self) -> Result<DailyPerformanceDataset> {
+        let dataset = dispatch_cortex::daily_performance::dataset(&self.dataset)
+            .ok_or_else(|| Error::new("daily_performance_unknown_stored_dataset", 503))?;
+        Ok(DailyPerformanceDataset {
+            id: dataset.id.into(),
+            dataset: self.dataset,
+            rows: self.row_count,
+            coverage: self.coverage,
+        })
+    }
+}
 impl DailyPerformanceStore for Store {
     fn daily_performance_db(&self, dsp: &str) -> Result<DspLease<'_>> {
         self.added_storage(dsp, dispatch_cortex::PROVIDER, &STORAGE)
@@ -368,21 +410,22 @@ impl DailyPerformanceStore for Store {
     fn daily_performance_days(&self, dsp: &str) -> Result<DailyPerformanceSummary> {
         let station = self.profile(dsp)?.station_code;
         let data = self.daily_performance_db(dsp)?;
-        let rows = data.all("SELECT id,date,collected_at,row_count FROM daily_publications WHERE station=? AND active=1 ORDER BY date DESC",
+        let rows = data.query_as::<DailyPublicationRow>("SELECT id,date,collected_at,row_count FROM daily_publications WHERE station=? AND active=1 ORDER BY date DESC",
             [&station])?;
         let mut days = Vec::new();
         for row in rows {
-            let datasets = data.all("SELECT dataset,row_count,coverage FROM daily_datasets WHERE publication_id=? ORDER BY dataset",
-                [s(&row,"id")])?.iter().map(|source| Ok(DailyPerformanceDataset {
-                    id: dispatch_cortex::daily_performance::dataset(s(source,"dataset"))
-                        .ok_or_else(|| Error::new("daily_performance_unknown_stored_dataset",503))?.id.into(),
-                    dataset: s(source,"dataset").into(), rows: source["row_count"].as_u64().unwrap_or(0) as usize,
-                    coverage: s(source,"coverage").into(),
-                })).collect::<Result<Vec<_>>>()?;
+            let sources = data.query_as::<DailyDatasetRow>(
+                "SELECT dataset,row_count,coverage FROM daily_datasets WHERE publication_id=? ORDER BY dataset",
+                [&row.id],
+            )?;
+            let datasets = sources
+                .into_iter()
+                .map(DailyDatasetRow::into_dataset)
+                .collect::<Result<Vec<_>>>()?;
             days.push(DailyPerformanceDay {
-                date: s(&row, "date").into(),
-                collected_at: s(&row, "collected_at").into(),
-                row_count: row["row_count"].as_u64().unwrap_or(0) as usize,
+                date: row.date,
+                collected_at: row.collected_at,
+                row_count: row.row_count,
                 datasets,
             });
         }

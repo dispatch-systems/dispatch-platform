@@ -1,23 +1,6 @@
-//! The phone side: the DSP's dispatch phones, Android phones running Dispatch's app, each relaying
-//! the texts and pictures its number receives and sends, and sending Dispatch's from that number.
-//! It knows phones, the texts they relay, each attempt at Dispatch's and how it went, and their
-//! bytes; never who a text is from or which conversation it's filed in, which `texts` keeps on the
-//! same row of each text. Whoever changes a text here files it in the same write
-//! (`texts::filing::changing`).
-//!
-//! - `model`: what it speaks in: phones, texts, their files, and what one text may carry;
-//!   `numbers`, how it writes a number.
-//! - `pairing`: the codes that pair a phone, and the key it's given.
-//! - `outbox`: queuing a text Dispatch sends, or one that failed again, inside the write that
-//!   checks it may go; `live`, waking the phones waiting on their outbox.
-//! - `files`: the bytes of the texts' pictures and files, kept in the DSP's own data (`bytes`).
-//! - `storage`: its phones, the codes that pair them, the texts and their files, in each DSP's
-//!   own database.
-//! - `tidy`: its upkeep; `demo`, a development DSP's stand-in phone.
-//! - `app`: the app this server hands out to phones, as its build packed it.
-//!
-//! Its address, which the phones' app talks to, is `api::phone`'s; managing the DSP's phones,
-//! `api::routes::phones`'.
+//! Phone transport: paired devices, relayed texts, send attempts and attachment bytes.
+//! `texts` owns conversation attribution; every text mutation is filed in the same write
+//! through `texts::filing::changing`.
 pub(crate) mod app;
 pub(crate) mod demo;
 pub(crate) mod files;
@@ -29,11 +12,8 @@ pub(crate) mod pairing;
 pub(crate) mod storage;
 pub(crate) mod tidy;
 
-use dispatch_core::{
-    Result,
-    db::{self, Store},
-};
-use model::{Limits, Phone};
+use dispatch_core::{Result, db::Store};
+use model::Limits;
 use storage::{Device, DeviceStore};
 
 /// What one text may carry either way: as answering is held to, and a phone's reports. A
@@ -43,16 +23,6 @@ pub const LIMITS: Limits = Limits {
     files: 10,
     largest: 20 * 1024 * 1024,
 };
-
-/// The DSP's phones, those removed left out, each with whether it's online.
-pub fn phones(db: &Store, dsp: &str) -> Result<Vec<Phone>> {
-    let now = db::now();
-    Ok(db
-        .phones_devices(dsp)?
-        .iter()
-        .map(|device| device.phone(now))
-        .collect())
-}
 
 /// Notes the DSP's phone `device`, as read in this write, checked in at `at`, once `SEEN_MS` passed
 /// since it last was: another call of the phone's alongside may have noted it since this one first

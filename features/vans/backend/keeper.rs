@@ -27,7 +27,7 @@ impl Keeper for Fleet {
         DOMAIN
     }
     fn bind(&self, store: &Store, dsp: &str, _: &Value) -> Result<Value> {
-        bind_fleet_request(store, dsp)
+        Ok(serde_json::to_value(bind_fleet_request(store, dsp)?)?)
     }
     fn publish(&self, store: &Store, dsp: &str, job: &str, collected: Collected) -> Result<()> {
         store.publish_fleet(dsp, job, &serde_json::from_value(collected.data)?)

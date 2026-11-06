@@ -5,9 +5,9 @@
 //! twice; and someone at the DSP can message a member first.
 use super::*;
 use crate::backend::{
-    files::{self, FileStatus, FileStore},
+    files::{self, FileStore},
     inbox, initials,
-    model::ConversationState,
+    model::{ConversationState, FileStatus},
     storage::{conversations::ConversationStore, replies::ReplyStore},
     support::{self, USE},
 };

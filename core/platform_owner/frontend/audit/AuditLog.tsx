@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useUpdateState } from '../../../shell/frontend/runtime/browser-update.js';
+import { useUpdateState } from '../../../shell/frontend/runtime/navigation-state.js';
 import {
   ArrowRight,
   Building2,

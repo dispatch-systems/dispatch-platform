@@ -1,6 +1,6 @@
 import { useDeferredValue, useMemo, useState } from 'react';
 import type { PeopleSource, Person } from '../../api/index.js';
-import { useUpdateState } from '../../../../core/shell/frontend/runtime/browser-update.js';
+import { useUpdateState } from '../../../../core/shell/frontend/runtime/navigation-state.js';
 import { useTableState } from '../../../../core/shell/frontend/runtime/useTableState.js';
 import { Empty, SearchInput } from '../../../../core/shell/frontend/ui/index.js';
 import { found, peopleFilters, searchTerms, shows, type PeopleFilter } from '../driver-match.js';

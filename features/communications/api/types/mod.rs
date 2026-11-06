@@ -6,9 +6,8 @@
 //! milliseconds since 1970. What the phones themselves are answered with is theirs alone, in
 //! `phone/`.
 pub use crate::backend::{
-    files::FileStatus,
     groups::{GroupChoiceKind, GroupPersonState, NotSent},
-    model::{ConversationKind, ConversationState, Direction},
+    model::{ConversationKind, ConversationState, Direction, FileStatus},
     texts::model::TextStatus,
     today::Pace,
 };
