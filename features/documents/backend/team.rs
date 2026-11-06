@@ -6,8 +6,8 @@
 //! them. A file someone else owns, which Documents holds a shortcut to, is shared with them
 //! too, as far as the account may share it.
 use super::{
+    access::{self, on_drive},
     drive::{Refused, Share},
-    files,
     google::{self, Google},
     storage::{DocumentsStore, Person, SharedFile, Sharing},
 };
@@ -49,22 +49,6 @@ fn members(db: &Store, dsp: &str) -> Result<Vec<Member>> {
         }
     }
     Ok(wanted)
-}
-
-/// Runs `call` on the DSP's Drive, once more with a fresh token if Google refused the one
-/// kept, as `files` does.
-macro_rules! on_drive {
-    ($state:expr, $dsp:expr, $drive:ident, $call:expr) => {{
-        let mut $drive = files::open($state, $dsp, false).await?;
-        match $call.await {
-            Err(error) if error.code == "google_connection_broken" => {
-                files::forget($dsp);
-                $drive = files::open($state, $dsp, true).await?;
-                $call.await.map(|value| ($drive, value))
-            }
-            answer => answer.map(|value| ($drive, value)),
-        }
-    }};
 }
 
 /// Whether the team changed since the folder was last shared: someone joined or left, gained
@@ -165,7 +149,7 @@ pub async fn sync(state: &Arc<State>, dsp: &str) -> Result<Vec<Share>> {
         } else {
             // A share at an address they moved on from goes.
             if let Some((_, old)) = person.shared.clone() {
-                if let Err(error) = files::active(state, dsp).await {
+                if let Err(error) = access::active(state, dsp).await {
                     stopped = Some(error);
                     break;
                 }
@@ -173,7 +157,7 @@ pub async fn sync(state: &Arc<State>, dsp: &str) -> Result<Vec<Share>> {
                 shares.retain(|share| share.id != old);
                 person.shared = None;
             }
-            if let Err(error) = files::active(state, dsp).await {
+            if let Err(error) = access::active(state, dsp).await {
                 // Only the share at their old address was taken back, if any.
                 if before.is_some_and(|before| before != &person) {
                     changed.push(person);
@@ -219,7 +203,7 @@ pub async fn sync(state: &Arc<State>, dsp: &str) -> Result<Vec<Share>> {
             break;
         }
         if let Some((_, id)) = &person.shared {
-            if let Err(error) = files::active(state, dsp).await {
+            if let Err(error) = access::active(state, dsp).await {
                 stopped = Some(error);
                 break;
             }
@@ -261,10 +245,10 @@ pub async fn sync(state: &Arc<State>, dsp: &str) -> Result<Vec<Share>> {
 async fn share_files(
     state: &Arc<State>,
     dsp: &str,
-    drive: &files::Drive,
+    drive: &access::Drive,
     addresses: &[String],
 ) -> Result<()> {
-    let (_, tree) = files::tree(state, dsp).await?;
+    let (_, tree) = access::tree(state, dsp).await?;
     let targets = tree.targets();
     let account = drive.connection.account.email.to_lowercase();
     let wanted: BTreeSet<String> = addresses
@@ -286,7 +270,7 @@ async fn share_files(
         if missing.is_empty() {
             continue;
         }
-        files::active(state, dsp).await?;
+        access::active(state, dsp).await?;
         // Its owner may not let the account see who has it, or share it on.
         let Ok(shares) = drive.google.shares(&drive.access, file).await else {
             continue;
@@ -301,7 +285,7 @@ async fn share_files(
             if has {
                 continue;
             }
-            files::active(state, dsp).await?;
+            access::active(state, dsp).await?;
             let share = match drive.google.share(&drive.access, file, email).await {
                 Ok(Ok(share)) => share,
                 Err(error) if error.code == "google_connection_broken" => return Err(error),
@@ -331,7 +315,7 @@ async fn share_files(
         if targets.contains(&shared.file) && wanted.contains(&shared.email) {
             continue;
         }
-        files::active(state, dsp).await?;
+        access::active(state, dsp).await?;
         match drive
             .google
             .unshare(&drive.access, &shared.file, &shared.share)

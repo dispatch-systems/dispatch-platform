@@ -65,7 +65,7 @@ async fn files_are_kept_inside_the_dsps_folder_once_connected_and_named_for_who_
     let dre = Author::Named("Dre Holloway".into());
     let file = incoming("van.jpg", "jpeg", dre.clone()).await;
     let saved = files.save(&state, &dsp, &folder.id, file).await.unwrap();
-    let (_, tree) = crate::backend::files::tree(&state, &dsp).await.unwrap();
+    let (_, tree) = crate::backend::access::tree(&state, &dsp).await.unwrap();
     let parent = tree.get(&saved.id).and_then(|row| row.parent.as_deref());
     assert_eq!(parent, Some(folder.id.as_str()));
     let at = dsp.clone();
@@ -138,7 +138,7 @@ async fn a_page_is_written_as_a_doc_in_the_dsps_folder_and_over_it_where_it_is()
         )
         .await
         .unwrap();
-    let (_, tree) = crate::backend::files::tree(&state, &dsp).await.unwrap();
+    let (_, tree) = crate::backend::access::tree(&state, &dsp).await.unwrap();
     let row = tree.get(&written.id).expect("the Doc is in Documents");
     assert_eq!(row.mime, Mime::Doc);
     assert_eq!(row.parent.as_deref(), Some(folder.id.as_str()));

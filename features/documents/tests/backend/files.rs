@@ -3,10 +3,14 @@
 //! it was deleted.
 use super::*;
 use crate::backend::{
+    connection,
+    description::Described,
     drive::DOC,
-    google,
+    files::make,
+    google::{self, Google},
+    storage::DocumentsStore,
     support::{ACCOUNT, connect, disabling, platform},
-    tree::tests::item,
+    tree::{Tree, tests::item},
 };
 use dispatch_core::{Code, testing};
 
