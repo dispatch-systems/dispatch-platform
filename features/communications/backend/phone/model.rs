@@ -26,24 +26,6 @@ pub const FETCH_WAIT_MS: i64 = 40 * 1000;
 /// later doesn't send it.
 pub const WANT_MS: i64 = 2 * 60 * 1000;
 
-/// One of the DSP's dispatch phones.
-#[derive(Clone, Debug, PartialEq, Serialize)]
-pub struct Phone {
-    pub id: String,
-    /// What someone at the DSP calls it, as Dispatch.
-    pub name: String,
-    /// Its own number.
-    pub number: String,
-    /// Whether it has checked in lately.
-    pub online: bool,
-    /// When it last checked in, epoch milliseconds; none before it ever has.
-    pub last_seen_at: Option<i64>,
-    /// Whether it says it can't send texts, as its health last had it.
-    pub cant_send: bool,
-    /// Whether it's a stand-in, the demo's, which no app holds.
-    pub stand_in: bool,
-}
-
 /// How a phone says it stands, with each wait on its outbox: its Set up, texting and SIM, what
 /// waits on it to go, and what last went wrong. Kept as it last said it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

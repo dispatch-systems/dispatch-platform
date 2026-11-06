@@ -15,8 +15,7 @@ use crate::api::types::{
 };
 use crate::backend::{
     bytes, compose, elsewhere,
-    files::FileStatus,
-    model::{ConversationKind, ConversationState, Direction, PAGE},
+    model::{ConversationKind, ConversationState, Direction, FileStatus, PAGE},
     people::People,
     phone::files,
     search, today,

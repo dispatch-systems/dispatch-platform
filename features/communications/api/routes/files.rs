@@ -3,8 +3,10 @@
 use super::{id, slack_id};
 use crate::backend::{
     bytes, conversations,
-    files::{self, FileStatus, FileStore},
-    initials, previews, reply,
+    files::{self, FileStore},
+    initials,
+    model::FileStatus,
+    previews, reply,
 };
 use axum::{
     body::Body,

@@ -5,11 +5,10 @@ use crate::backend::{
     phone::{
         LIMITS,
         model::Status,
-        phones,
         storage::MOST_TEXTS,
         support::{paired, store},
     },
-    texts::storage::TextStore as _,
+    texts::{phones, storage::TextStore as _},
 };
 use dispatch_core::{db::now, testing};
 

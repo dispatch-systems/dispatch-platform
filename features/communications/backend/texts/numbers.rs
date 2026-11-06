@@ -3,7 +3,7 @@
 //! (`work_number`); and what the DSP keeps of the numbers that text it, and what its phones are
 //! called, to read its texts by (`Numbers`).
 use super::storage::ContactStore;
-use crate::backend::phone;
+use crate::backend::phone::storage::DeviceStore;
 use dispatch_core::{Result, db::Store};
 use std::collections::{BTreeSet, HashMap};
 
@@ -16,9 +16,10 @@ pub struct Numbers {
 }
 impl Numbers {
     pub fn read(db: &Store, dsp: &str) -> Result<Self> {
-        let phones = phone::phones(db, dsp)?
+        let phones = db
+            .phones_devices(dsp)?
             .into_iter()
-            .map(|phone| (phone.id, phone.name))
+            .map(|device| (device.id, device.name))
             .collect();
         Ok(Self {
             contacts: db.communications_contacts(dsp)?.into_iter().collect(),

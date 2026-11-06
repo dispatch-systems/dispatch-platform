@@ -1,7 +1,4 @@
-//! What every kind of conversation shares, as Communications keeps and reads them: what a
-//! conversation is (`ConversationKind`), the reference naming one of either transport
-//! (`Reference`), whether it waits on an answer (`ConversationState`), who wrote a message
-//! (`Direction`), and how many of them are read at a time (`PAGE`).
+//! Shared conversation and attachment models for Communications' transports.
 use dispatch_core::{Error, Result, db, text_enum};
 
 /// What a Slack conversation's ID begins with, before `_` and 32 hexadecimal digits.
@@ -42,6 +39,24 @@ text_enum! {
     pub enum Direction {
         In => "in",
         Out => "out",
+    }
+}
+
+dispatch_core::text_enum! {
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]
+    /// Where a file stands: being downloaded from Slack, or sent by a phone; kept in Dispatch;
+    /// too large to keep; not one Slack hosts, as a link to elsewhere; or given up after failing.
+    /// A text's video may be kept on its phone instead, until someone plays it, or be gone from
+    /// it; Slack's never are.
+    pub enum FileStatus {
+        Waiting => "waiting",
+        Kept => "kept",
+        TooLarge => "too_large",
+        Unavailable => "unavailable",
+        Failed => "failed",
+        OnPhone => "on_phone",
+        Gone => "gone",
     }
 }
 

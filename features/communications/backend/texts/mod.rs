@@ -1,8 +1,5 @@
-//! Texting: the texts the DSP's dispatch phones relay, as the phone side keeps them (`phone`), read
-//! by the page beside the Slack conversations and answered by text. A work phone's texts are a
-//! driver's, across days, which Today's Routes shows; any other number's are Messaging's: the
-//! number's conversation, with whoever Driver Match has the number for, else the name the DSP saved
-//! for it, else the number itself.
+//! Conversation attribution, reading and replies for texts kept by `phone`.
+//! Work-phone conversations follow drivers across days; other numbers have their own.
 pub(crate) mod contacts;
 pub(crate) mod filing;
 pub(crate) mod live_day;
@@ -17,37 +14,48 @@ pub(crate) mod workdays;
 
 use crate::{
     api::types::DispatchPhone,
-    backend::phone::{self, model::Phone},
+    backend::phone::{
+        model::Health,
+        storage::{Device, DeviceStore},
+    },
 };
 use chrono::{Duration, NaiveDate, NaiveTime, TimeZone};
 use chrono_tz::Tz;
-use dispatch_core::{Error, Result, db::Store};
+use dispatch_core::{
+    Error, Result,
+    db::{self, Store},
+};
 
 /// The minutes in a day: how far past its midnight a day may begin, as one clocks skip whole.
 const DAY_MINUTES: i64 = 24 * 60;
 
 /// The DSP's dispatch phones, and whether each is online: none until one is paired.
 pub fn phones(db: &Store, dsp: &str) -> Result<Vec<DispatchPhone>> {
-    Ok(phone::phones(db, dsp)?
+    let now = db::now();
+    Ok(db
+        .phones_devices(dsp)?
         .into_iter()
-        .map(dispatch_phone)
+        .map(|device| dispatch_phone(device, now))
         .collect())
 }
 /// The DSP's dispatch phones an app holds, leaving out the demo's stand-in.
 pub fn held_phones(db: &Store, dsp: &str) -> Result<Vec<DispatchPhone>> {
-    Ok(phone::phones(db, dsp)?
+    let now = db::now();
+    Ok(db
+        .phones_devices(dsp)?
         .into_iter()
-        .filter(|phone| !phone.stand_in)
-        .map(dispatch_phone)
+        .filter(|device| !device.stand_in)
+        .map(|device| dispatch_phone(device, now))
         .collect())
 }
-fn dispatch_phone(phone: Phone) -> DispatchPhone {
+fn dispatch_phone(device: Device, now: i64) -> DispatchPhone {
+    let online = device.online(now);
     DispatchPhone {
-        id: phone.id,
-        name: phone.name,
-        online: phone.online,
-        last_seen_at: phone.last_seen_at,
-        cant_send: phone.cant_send,
+        id: device.id,
+        name: device.name,
+        online,
+        last_seen_at: device.last_seen_at,
+        cant_send: device.health.as_ref().is_some_and(Health::cant_send),
     }
 }
 /// The DSP's own timezone, which its days are in.
