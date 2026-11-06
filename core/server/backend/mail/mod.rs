@@ -2,13 +2,12 @@ pub use crate::platform_owner::api::types::TransportHealth;
 use crate::{
     Result, State,
     accounts::{api::types::MailMessage, directories::ONLY_THERE},
-    db::{self, Store, n, s},
+    db::{self, FromRow, Row, Store, n},
     ensure,
     foundation::{config::Config, crypto},
     platform_owner::api::types::MailHealth,
 };
 use rusqlite::params;
-use serde_json::Value;
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
@@ -18,6 +17,23 @@ mod delivery;
 pub mod templates;
 pub use delivery::mailer;
 
+/// A queued message's delivery metadata; its encrypted payload stays private to mail.
+#[derive(Clone)]
+pub struct PendingMail {
+    pub id: String,
+    encrypted_message: String,
+    attempts: i64,
+}
+impl FromRow for PendingMail {
+    fn from_row(row: &Row<'_>) -> Result<Self> {
+        Ok(Self {
+            id: row.get("id")?,
+            encrypted_message: row.get("encrypted_message")?,
+            attempts: row.get("attempts")?,
+        })
+    }
+}
+
 /// Whether a waiting message of the outbox goes now: not while the DSP it names is disabled. It
 /// stays, unsent, and goes once the DSP is enabled; an invitation of one is discarded instead
 /// (`discard_stale`).
@@ -26,9 +42,9 @@ const SENDABLE: &str =
 
 /// The mail to send now, resets first, `most` at most, once what no longer stands is
 /// discarded: none held for a disabled DSP (`SENDABLE`).
-pub fn due(db: &Store, most: usize) -> Result<Vec<serde_json::Value>> {
+pub fn due(db: &Store, most: usize) -> Result<Vec<PendingMail>> {
     discard_stale(db)?;
-    db.platform.all(
+    db.platform.query_as(
         &format!(
             "SELECT id,encrypted_message,attempts FROM outbox \
              WHERE status='pending' AND available_at<=? AND {SENDABLE} \
@@ -104,18 +120,17 @@ fn captures(config: &Config) -> PathBuf {
 /// Captures the message `row`, picked to send, as development delivers mail, unless it no
 /// longer goes: none, or what became of capturing it. It's captured in the turn that finds it
 /// still goes, so none is once its row has gone (`forget_captured`).
-pub(crate) fn capture(db: &Store, row: &Value) -> Result<Option<Result<()>>> {
-    let id = s(row, "id");
-    if !sendable(db, id)? {
+pub(crate) fn capture(db: &Store, row: &PendingMail) -> Result<Option<Result<()>>> {
+    if !sendable(db, &row.id)? {
         return Ok(None);
     }
-    Ok(Some(write_capture(db, row, id)))
+    Ok(Some(write_capture(db, row)))
 }
-fn write_capture(db: &Store, row: &Value, id: &str) -> Result<()> {
-    let message = crypto::decrypt(&db.key, id, s(row, "encrypted_message"))?;
+fn write_capture(db: &Store, row: &PendingMail) -> Result<()> {
+    let message = crypto::decrypt(&db.key, &row.id, &row.encrypted_message)?;
     let folder = db::private_dir(&captures(&db.config))?;
     db::write_private(
-        &folder.join(format!("{id}.json")),
+        &folder.join(format!("{}.json", row.id)),
         &serde_json::to_vec(&message)?,
     )
 }
@@ -254,18 +269,22 @@ pub fn health(db: &Store, state: &State) -> Result<MailHealth> {
     })
 }
 
-pub fn record_delivery(db: &Store, id: &str, attempts: i64, error: Option<&str>) -> Result<()> {
+pub fn record_delivery(db: &Store, row: &PendingMail, error: Option<&str>) -> Result<()> {
     let changed = if let Some(error) = error {
         db.platform.exec(
             "UPDATE outbox SET \
             attempts=attempts+1,status=?,available_at=?,last_attempt_at=?,last_error=? WHERE \
             id=? AND status='pending'",
             params![
-                if attempts >= 4 { "failed" } else { "pending" },
-                db::now() + 60000 * 2_i64.pow(attempts.clamp(0, 8) as u32),
+                if row.attempts >= 4 {
+                    "failed"
+                } else {
+                    "pending"
+                },
+                db::now() + 60000 * 2_i64.pow(row.attempts.clamp(0, 8) as u32),
                 db::now(),
                 error,
-                id
+                row.id
             ],
         )?
     } else {
@@ -273,7 +292,7 @@ pub fn record_delivery(db: &Store, id: &str, attempts: i64, error: Option<&str>)
             "UPDATE outbox SET \
             status='sent',encrypted_message='',sent_at=?,last_attempt_at=?,last_error=NULL \
             WHERE id=? AND status='pending'",
-            params![db::iso(), db::now(), id],
+            params![db::iso(), db::now(), row.id],
         )?
     };
     ensure(changed == 1, "email_delivery_record_missing", 500)

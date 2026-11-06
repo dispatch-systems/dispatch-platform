@@ -365,7 +365,7 @@ async fn a_deleted_dsps_captured_mail_goes_and_none_is_after_nor_outlives_its_me
                 ],
             )
             .unwrap();
-        let row = db.platform.one(
+        let row = db.platform.one_as::<mail::PendingMail>(
             "SELECT id,encrypted_message,attempts FROM outbox WHERE id=?",
             [id],
         );
@@ -374,7 +374,7 @@ async fn a_deleted_dsps_captured_mail_goes_and_none_is_after_nor_outlives_its_me
     let late = picked.remove(1);
     let captures = db.config.platform().join("development-mail");
     for row in &picked {
-        let id = s(row, "id");
+        let id = &row.id;
         if id == "mail_north_sent" {
             std::fs::write(captures.join(format!("{id}.json")), "{}").unwrap();
         } else {

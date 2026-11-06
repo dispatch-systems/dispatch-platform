@@ -124,9 +124,7 @@ fn a_disabled_dsps_mail_waits_unsent_until_it_is_enabled() {
         .unwrap();
     let due = || -> Vec<String> {
         let rows = mail::due(&db, 5).unwrap();
-        rows.iter()
-            .map(|row| row["id"].as_str().unwrap().to_owned())
-            .collect()
+        rows.iter().map(|row| row.id.clone()).collect()
     };
     let status = |status: &str| common::set_dsp_status(&db, &north, status).unwrap();
     assert_eq!(due(), ["mail_member"]);
