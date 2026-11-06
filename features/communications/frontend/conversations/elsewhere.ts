@@ -28,6 +28,10 @@ export const elsewhereNow = (
       waiting: listed?.state === 'waiting',
     };
   });
+/** Whether any of whom a conversation is with's conversations is another than the one open,
+ * `current`, as their chips show only then. */
+export const goesElsewhere = (elsewhere: readonly Elsewhere[], current: string) =>
+  elsewhere.some((each) => each.conversationId !== current);
 /** What opens `elsewhere`, or starts it; none when it names too little. */
 export const targetOf = (elsewhere: Elsewhere): Target | undefined =>
   elsewhere.conversationId

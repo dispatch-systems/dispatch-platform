@@ -72,7 +72,7 @@ async fn the_work_chip_goes_to_the_id_with_a_work_phone_now_not_an_earlier_alias
 }
 
 /// On a day a driver doesn't work, with no route and no work phone, they have no Work chip, though
-/// they have a work conversation from a day they did.
+/// they have a work conversation from a day they did; their personal one stays, to go to from it.
 #[tokio::test]
 async fn a_driver_off_today_has_no_work_chip() {
     let (_root, state, dsp) = support::started();
@@ -95,9 +95,8 @@ async fn a_driver_off_today_has_no_work_chip() {
 
     let at_dsp = dsp.clone();
     let found = state.read(move |db| of(db, &at_dsp, &avery)).await.unwrap();
-    // Their personal one alone, which needs no chips.
     let kinds: Vec<ConversationKind> = found.into_iter().map(|each| each.kind).collect();
-    assert_eq!(kinds, []);
+    assert_eq!(kinds, [ConversationKind::Number]);
 }
 
 /// The Personal chip goes to the driver's default number, one someone added to theirs as their new

@@ -249,7 +249,7 @@ now; the one by text with their own number, their default, the
 first of Driver Match's numbers for them, one added to theirs before their sources' (a driver's
 new phone, so not the one they last wrote from); and their Slack one, in a workspace where
 Communications works, the latest written in, else their first account there. Shown, as chips,
-on each of them while they have two or more, each waiting as the page's list has it, so its dot
+on each of them while one is another than the conversation open, each waiting as the page's list has it, so its dot
 follows each update, and one started since is found by whom it's with. A driver with a work phone
 now has the work conversation of the ID that has it, as Driver Match may know them by several,
 started once they have none there; of several IDs with one, however many, the one whose route

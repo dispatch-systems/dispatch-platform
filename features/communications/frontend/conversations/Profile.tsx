@@ -23,6 +23,7 @@ import { phoneText } from '../../../../core/shell/frontend/lib/format.js';
 import { ErrorBox, Loading } from '../../../../core/shell/frontend/ui/index.js';
 import { clock } from '../shared/format.js';
 import { ElsewhereChip } from './ElsewhereChips.js';
+import { goesElsewhere } from './elsewhere.js';
 import { Face } from '../shared/Face.js';
 import { Panel } from '../shared/Panel.js';
 import { roleText } from '../shared/format.js';
@@ -99,7 +100,7 @@ export function Profile({
         workspace={workspace}
         timeZone={timeZone}
         ways={
-          elsewhere.length > 0 && (
+          goesElsewhere(elsewhere, conversation) && (
             <div className="profile-ways">
               {elsewhere.map((each) => (
                 <ElsewhereChip
