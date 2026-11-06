@@ -3,99 +3,19 @@
 //! normal job/driver/keeper path against an isolated DSP.
 use crate::{
     Error, Result, State,
-    collection::{api::jobs::JobStatus, registry::Provider},
+    collection::{api::jobs::JobStatus, connections::credential_lease, registry::Provider},
     db::{self, Store},
     ensure,
     foundation::{config::Config, crypto},
 };
-use fs2::FileExt;
 use rusqlite::OpenFlags;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
-    fs::{File, OpenOptions},
-    os::unix::fs::OpenOptionsExt,
+    fs::File,
     path::{Path, PathBuf},
     time::Duration,
 };
-
-/// Ticket investigations need provider/job health, never payroll records or credential
-/// labels. The caller supplies its already-authorized DSP and ticket-derived time window.
-pub fn diagnostics(db: &Store, dsp: &str, since: i64) -> Result<Value> {
-    db.ensure_dsp_active(dsp)?;
-    let since = since
-        .max(db::now() - 7 * 24 * 60 * 60 * 1000)
-        .min(db::now());
-    let connections = Provider::all()
-        .map(|provider| {
-            let connection = db.connection_for(dsp, provider)?;
-            Ok(json!({
-                "provider":provider.id(),
-                "enabled":connection.enabled,
-                "status":connection.status,
-                "error":connection.error.as_deref().map(error_code)
-            }))
-        })
-        .collect::<Result<Vec<_>>>()?;
-    let jobs = db
-        .recent_jobs(Some(dsp))?
-        .into_iter()
-        .filter(|job| {
-            chrono::DateTime::parse_from_rfc3339(&job.created_at)
-                .is_ok_and(|date| date.timestamp_millis() >= since)
-        })
-        .take(20)
-        .map(|job| {
-            json!({
-                "kind":job.kind,
-                "status":job.status,
-                "error":job.error.as_deref().map(error_code),
-                "createdAt":job.created_at,
-                "completedAt":job.completed_at
-            })
-        })
-        .collect::<Vec<_>>();
-    Ok(json!({"since":since,"connections":connections,"jobs":jobs}))
-}
-
-fn error_code(code: &str) -> &str {
-    if code.len() <= 64
-        && code
-            .bytes()
-            .all(|byte| byte.is_ascii_lowercase() || byte == b'_')
-    {
-        code
-    } else {
-        "provider_failed"
-    }
-}
-
-/// One account may be used by one provider browser or trusted verifier at a time, across
-/// processes as well as ordinary job scheduling. Dropping the file releases its lease.
-pub fn credential_lease(root: &Path, dsp: &str, provider: Provider) -> Result<File> {
-    ensure(db::identifier(dsp, "dsp_"), "invalid_dsp_id", 400)?;
-    let directory = db::private_dir(&root.join("dsps").join(dsp).join("state/credential-leases"))?;
-    let path = directory.join(format!("{}.lock", provider.id()));
-    db::private_file(&path, true)?;
-    let file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .custom_flags(libc::O_NOFOLLOW)
-        .open(path)?;
-    file.try_lock_exclusive()
-        .map_err(|_| Error::new("browser_capacity_busy", 429))?;
-    Ok(file)
-}
-
-impl Store {
-    /// The lease of the DSP's account with `provider` a provider browser starts with, as
-    /// `credential_lease`, while this backend serves the DSP: checked in the turn that takes it,
-    /// so a start Disable and Delete finish around makes nothing in the deleted DSP's folder.
-    pub fn browser_lease(&self, dsp: &str, provider: Provider) -> Result<File> {
-        self.ensure_dsp_active(dsp)?;
-        credential_lease(&self.config.root, dsp, provider)
-    }
-}
 
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

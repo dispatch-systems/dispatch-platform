@@ -3,6 +3,8 @@
 #[path = "../api/mod.rs"]
 pub mod api;
 pub mod browser;
+pub mod connections;
+pub mod diagnostics;
 pub mod jobs;
 pub mod live;
 pub mod metrics;

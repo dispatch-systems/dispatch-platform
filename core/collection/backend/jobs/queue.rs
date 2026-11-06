@@ -108,19 +108,6 @@ pub enum CancelJobs<'a> {
     },
     Dsp(&'a str),
 }
-/// What a worker needs to know about a provider's connection before it collects.
-pub(crate) struct ConnectionLease {
-    pub enabled: bool,
-    pub revision: i64,
-}
-impl FromRow for ConnectionLease {
-    fn from_row(row: &Row<'_>) -> Result<Self> {
-        Ok(Self {
-            enabled: row.get("enabled")?,
-            revision: row.get("revision")?,
-        })
-    }
-}
 struct Claimable {
     id: String,
     dsp_id: String,
@@ -160,16 +147,6 @@ impl<'a> From<&'a JobRow> for JobFacts<'a> {
     }
 }
 impl Store {
-    pub(crate) fn connection_lease(
-        &self,
-        dsp: &str,
-        provider: Provider,
-    ) -> Result<Option<ConnectionLease>> {
-        self.collector(dsp, provider)?.one_as(
-            "SELECT enabled,revision FROM connections WHERE provider=?",
-            [provider.id()],
-        )
-    }
     pub fn public_job(&self, row: JobRow) -> Result<PublicJob> {
         let name = self.find_dsp(&row.dsp_id)?.name;
         let metrics = self.metrics(&row.id)?;
