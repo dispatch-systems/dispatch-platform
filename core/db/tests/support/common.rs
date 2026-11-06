@@ -14,7 +14,7 @@ use crate::{
         self, Agents, Collector, Feature, Keeper, Permission, Registry, Schedules, feature,
         mandatory, optional, perm, schedules,
     },
-    server::operations,
+    server::{operations, startup},
 };
 use serde_json::Value;
 use std::{collections::BTreeSet, os::unix::fs::PermissionsExt, sync::Mutex};
@@ -184,7 +184,7 @@ pub fn store() -> (tempfile::TempDir, Store) {
     config.environment = Environment::Preview;
     config.standalone = true;
     config.objects = None;
-    let store = Store::initialize(config).unwrap();
+    let store = startup::prepare_storage(config).unwrap();
     (root, store)
 }
 

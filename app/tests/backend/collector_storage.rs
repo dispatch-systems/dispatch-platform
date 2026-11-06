@@ -4,7 +4,7 @@ use dispatch_core::{
     collection::registry::database_path,
     db::{self, Db, Store},
     foundation::config::Config,
-    server::operations,
+    server::{operations, startup},
 };
 use dispatch_cortex as cortex;
 use dispatch_paycom as paycom;
@@ -18,7 +18,7 @@ fn platform() -> (tempfile::TempDir, Store) {
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
     let mut config = Config::load().unwrap();
     config.root = root.path().into();
-    let store = Store::initialize(config).unwrap();
+    let store = startup::prepare_storage(config).unwrap();
     (root, store)
 }
 fn pending(store: &Store) -> String {
@@ -188,7 +188,7 @@ fn startup_opens_suspended_dsps_from_a_restored_backup() {
     operations::restore(&backup, &restored).unwrap();
     let mut config = store.config.clone();
     config.root = restored;
-    let reopened = Store::initialize(config).unwrap();
+    let reopened = startup::prepare_storage(config).unwrap();
     let provider = reopened.collector(&id, paycom::PROVIDER).unwrap();
     provider
         .one("SELECT count(*) FROM timecard_sources", [])
@@ -212,7 +212,7 @@ fn cortex_storage_opens_without_the_emptied_delivery_history_tables() {
     store.open_collectors(&id).unwrap();
     let config = store.config.clone();
     drop(store);
-    let reopened = Store::initialize(config).unwrap();
+    let reopened = startup::prepare_storage(config).unwrap();
     let cortex = reopened.collector(&id, cortex::PROVIDER).unwrap();
     assert!(cortex.one("SELECT count(*) FROM meal_breaks", []).is_err());
     cortex.one("SELECT count(*) FROM meal_records", []).unwrap();

@@ -1,10 +1,6 @@
 use common::{bootstrapped, seeded, store};
 use dispatch_core::testing as common;
-use dispatch_core::{
-    db::{self, Store},
-    foundation::crypto,
-    server::operations,
-};
+use dispatch_core::{db, foundation::crypto, server::startup};
 use serde_json::json;
 use std::os::unix::fs::{PermissionsExt, symlink};
 
@@ -42,7 +38,7 @@ fn recorded_core_identity_is_not_recreated_when_missing() {
     let config = db.config.clone();
     drop(db);
     assert_eq!(
-        Store::initialize(config).err().unwrap().code,
+        startup::prepare_storage(config).err().unwrap().code,
         "dsp_storage_identity_mismatch"
     );
 }
@@ -60,7 +56,7 @@ fn legacy_core_storage_is_adopted_once_without_losing_data() {
     let config = db.config.clone();
     drop(db);
 
-    let reopened = Store::initialize(config).unwrap();
+    let reopened = startup::prepare_storage(config).unwrap();
     let core = reopened.dsp(&id).unwrap();
     assert_eq!(
         core.setting("legacy.witness", serde_json::Value::Null)
@@ -105,7 +101,7 @@ fn startup_rejects_cross_dsp_core_database_substitution() {
     std::fs::rename(&swap, &second).unwrap();
 
     assert_eq!(
-        Store::initialize(config).err().unwrap().code,
+        startup::prepare_storage(config).err().unwrap().code,
         "dsp_storage_identity_mismatch"
     );
 }
@@ -118,12 +114,12 @@ fn startup_removes_owned_browseros_runs_and_rejects_unknown_entries() {
     for prefix in ["run", "browseros"] {
         db::private_dir(&runs.join(crypto::id(prefix).unwrap())).unwrap();
     }
-    operations::clean_browser_runs(&db.config).unwrap();
+    startup::clean_browser_runs(&db.config).unwrap();
     assert_eq!(std::fs::read_dir(&runs).unwrap().count(), 0);
     let unknown = runs.join("unrecognized");
     db::private_dir(&unknown).unwrap();
     assert_eq!(
-        operations::clean_browser_runs(&db.config).unwrap_err().code,
+        startup::clean_browser_runs(&db.config).unwrap_err().code,
         "unexpected_browser_run"
     );
     assert!(unknown.exists());
@@ -157,7 +153,7 @@ fn legacy_account_database_is_rejected_without_changing_its_schema() {
         .pragma_update(None, "user_version", 2)
         .unwrap();
     drop(db);
-    let error = Store::initialize(config.clone()).err().unwrap();
+    let error = startup::prepare_storage(config.clone()).err().unwrap();
     assert_eq!(error.code, "incompatible_database");
     let old = rusqlite::Connection::open(config.platform().join("accounts.sqlite")).unwrap();
     assert_eq!(

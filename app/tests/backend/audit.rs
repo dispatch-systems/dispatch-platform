@@ -1,10 +1,7 @@
 //! The activity log's areas as they stood before features declared the prefixes of their
 //! actions: the area each action is listed and counted under, in the platform's log and
 //! in a DSP's.
-use dispatch_core::{
-    db::{AuditQuery, Store},
-    foundation::config::Config,
-};
+use dispatch_core::{db::AuditQuery, foundation::config::Config, server::startup};
 use std::{collections::BTreeMap, os::unix::fs::PermissionsExt};
 
 /// An action, then its area in the platform's log and in its DSP's.
@@ -88,7 +85,7 @@ fn each_action_keeps_its_area() {
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
     let mut config = Config::load().unwrap();
     config.root = root.path().into();
-    let store = Store::initialize(config).unwrap();
+    let store = startup::prepare_storage(config).unwrap();
     let dsp = format!("dsp_{}", "a".repeat(32));
     store
         .platform

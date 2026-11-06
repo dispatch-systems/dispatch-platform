@@ -3,6 +3,7 @@ use dispatch_core::manifest::Collector;
 use dispatch_core::{
     accounts::Auth,
     db::{Store, s},
+    server::startup,
     testing as common,
 };
 use dispatch_cortex::{self as cortex, weekly_scorecard};
@@ -24,7 +25,7 @@ fn ready() -> (tempfile::TempDir, Store, String) {
 fn restart(db: Store) -> Store {
     let config = db.config.clone();
     drop(db);
-    Store::initialize(config).unwrap()
+    startup::prepare_storage(config).unwrap()
 }
 fn owner(db: &Store, dsp: &str) -> dispatch_core::accounts::Context {
     let actor = common::platform_owner(db);
@@ -199,7 +200,7 @@ fn prior_storage_config(db: Store, dsp: &str) -> dispatch_core::foundation::conf
     config
 }
 fn make_prior_database(db: Store, dsp: &str) -> Store {
-    Store::initialize(prior_storage_config(db, dsp)).unwrap()
+    startup::prepare_storage(prior_storage_config(db, dsp)).unwrap()
 }
 #[test]
 fn a_matching_existing_archive_finishes_the_transition_without_losing_history() {
@@ -211,7 +212,7 @@ fn a_matching_existing_archive_finishes_the_transition_without_losing_history() 
         dispatch_core::db::private_dir(&tenant.join("state/weekly_scorecard_migration_backup"))
             .unwrap();
     std::fs::copy(&old, archive.join("scorecard.sqlite")).unwrap();
-    let db = Store::initialize(config).unwrap();
+    let db = startup::prepare_storage(config).unwrap();
     assert!(!old.exists());
     assert!(archive.join("scorecard.sqlite").is_file());
     assert_eq!(
@@ -255,7 +256,7 @@ fn a_conflicting_archive_stops_before_the_marker_and_can_retry_after_recovery() 
         )
         .unwrap();
     drop(conflicting);
-    assert!(Store::initialize(config.clone()).is_err());
+    assert!(startup::prepare_storage(config.clone()).is_err());
     assert!(old.is_file());
     assert!(archive.join("scorecard.sqlite").is_file());
     let core = rusqlite::Connection::open(tenant.join("data/dispatch.sqlite")).unwrap();
@@ -279,7 +280,7 @@ fn a_conflicting_archive_stops_before_the_marker_and_can_retry_after_recovery() 
     );
     drop(core);
     std::fs::remove_dir_all(&archive).unwrap();
-    let db = Store::initialize(config).unwrap();
+    let db = startup::prepare_storage(config).unwrap();
     assert!(!old.exists());
     assert_eq!(
         db.weekly_scorecard_db(&dsp)
@@ -355,7 +356,7 @@ fn missing_marked_prior_storage_fails_closed() {
         .unwrap();
     let config = db.config.clone();
     drop(db);
-    assert!(Store::initialize(config).is_err());
+    assert!(startup::prepare_storage(config).is_err());
 }
 
 #[test]
@@ -376,7 +377,7 @@ fn conflicting_current_and_prior_storage_is_preserved_for_recovery() {
     )
     .unwrap();
     // A current marker without an import receipt must never archive the old data.
-    assert!(Store::initialize(config).is_err());
+    assert!(startup::prepare_storage(config).is_err());
     assert!(old.join("scorecard.sqlite").is_file());
     assert!(
         data.join("weekly_scorecard/weekly_scorecard.sqlite")

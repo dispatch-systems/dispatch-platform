@@ -7,4 +7,5 @@ pub mod live;
 pub mod mail;
 pub mod operations;
 pub mod presence;
+pub mod startup;
 pub(crate) mod state;

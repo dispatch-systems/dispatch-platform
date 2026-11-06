@@ -4,6 +4,7 @@ use dispatch_core::State;
 use dispatch_core::db::{Store, s};
 use dispatch_core::foundation::config::Environment;
 use dispatch_core::manifest::Section;
+use dispatch_core::server::startup;
 use dispatch_core::settings::{self, Saved};
 use dispatch_core::testing as common;
 use dispatch_cortex::{
@@ -1005,7 +1006,7 @@ fn a_stored_day_goes_through_storage_at_full_size() {
     config.root = root.into();
     config.environment = Environment::Preview;
     let started = std::time::Instant::now();
-    let db = Store::initialize(config).unwrap();
+    let db = startup::prepare_storage(config).unwrap();
     let opened_ms = started.elapsed().as_millis();
     let tasks_after_migration = count(&db, &id, "SELECT count(*) FROM tasks");
     let started = std::time::Instant::now();

@@ -1,6 +1,7 @@
 //! Feature switches over the catalog of every registered feature's pages and tabs.
 use dispatch_core::{
     db::Store,
+    server::startup,
     tenancy::{catalog::*, switches::SwitchedFeatures, visibility::Visibility},
 };
 
@@ -28,7 +29,7 @@ fn new_dsp() -> (tempfile::TempDir, Store, String, String) {
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
     let mut config = dispatch_core::foundation::config::Config::load().unwrap();
     config.root = root.path().into();
-    let db = Store::initialize(config).unwrap();
+    let db = startup::prepare_storage(config).unwrap();
     let owner = db
         .create_user(
             None,
@@ -58,7 +59,7 @@ fn a_new_dsp_starts_with_only_what_every_dsp_has_and_a_demo_dsp_with_all_but_liv
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
     let mut config = dispatch_core::foundation::config::Config::load().unwrap();
     config.root = root.path().into();
-    let db = Store::initialize(config).unwrap();
+    let db = startup::prepare_storage(config).unwrap();
     let owner = db
         .create_user(
             None,
@@ -126,7 +127,7 @@ fn a_tab_follows_its_page_and_the_last_one_takes_the_page() {
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
     let mut config = dispatch_core::foundation::config::Config::load().unwrap();
     config.root = root.path().into();
-    let db = Store::initialize(config).unwrap();
+    let db = startup::prepare_storage(config).unwrap();
     let owner = db
         .create_user(
             None,
@@ -182,7 +183,7 @@ fn a_part_needs_a_connection_of_its_own_beside_its_pages() {
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
     let mut config = dispatch_core::foundation::config::Config::load().unwrap();
     config.root = root.path().into();
-    let db = Store::initialize(config).unwrap();
+    let db = startup::prepare_storage(config).unwrap();
     let owner = db
         .create_user(
             None,
@@ -448,7 +449,7 @@ fn a_new_page_stays_on_for_every_dsp_that_had_what_it_gathers_on() {
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
     let mut config = dispatch_core::foundation::config::Config::load().unwrap();
     config.root = root.path().into();
-    let db = Store::initialize(config).unwrap();
+    let db = startup::prepare_storage(config).unwrap();
     let owner = db
         .create_user(
             None,

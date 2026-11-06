@@ -9,7 +9,7 @@ use dispatch_core::{
         config::{Config, Environment},
         crypto,
     },
-    server::operations,
+    server::{operations, startup},
 };
 use serde_json::{Value, json};
 use std::{os::unix::fs::PermissionsExt, sync::Arc};
@@ -144,7 +144,7 @@ impl Server {
         config.origin = origin.clone();
         config.invite_origin = format!("http://invite.localhost:{port}");
         config.dsp_origin = format!("http://{{code}}.localhost:{port}");
-        let store = Store::initialize(config.clone()).unwrap();
+        let store = startup::prepare_storage(config.clone()).unwrap();
         operations::seed(&store).unwrap();
         let prepared = prepare(&store);
         drop(store);

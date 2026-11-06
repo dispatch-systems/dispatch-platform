@@ -1,9 +1,10 @@
-use super::{lock::LOCK, recovery::recover};
+use super::lock::LOCK;
 use crate::{
     Result,
     db::{self, s},
     ensure,
     foundation::{config::Config, observability},
+    server::startup,
 };
 use serde_json::{Value, json};
 use std::{
@@ -82,7 +83,7 @@ pub fn status(config: &Config) -> Result<Value> {
 
 /// Starts the platform restored at `root` as `serve` does before it listens, under this binary
 /// and `config` but at `root`: every database brought up to its migrations, with what carries
-/// over at startup, and what the last server left recovered (`State::store`, `recover`). It
+/// over at startup, and what the last server left recovered (`startup`). It
 /// serves nothing and runs no job, reader or mailer, and reads and writes only under `root`. A
 /// root a server ever started on holds its lock file and is refused, so only a copy is ever
 /// changed. Answers what it found, with how startup ended: how many databases it migrated, the
@@ -99,7 +100,8 @@ pub fn upgrade_check(config: &Config, root: &Path) -> Result<(Value, Result<()>)
         ..config.clone()
     };
     let before = migrations_recorded(root)?;
-    let (started, events) = observability::recorded(|| recover(&crate::State::store(&config)?));
+    let (started, events) =
+        observability::recorded(|| startup::recover(&startup::prepare_server_store(&config)?));
     let after = migrations_recorded(root)?;
     let databases = after
         .iter()
