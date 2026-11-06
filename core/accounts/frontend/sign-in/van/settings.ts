@@ -1,4 +1,4 @@
-/** Presentation knobs; colors and contour styling live in auth.css. */
+/** Presentation knobs; colors and contour styling live in sign-in.css. */
 export const vanSettings = {
   rotationSeconds: 24,
   framesPerSecond: 30,

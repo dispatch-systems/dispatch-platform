@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { Brand } from '../../../shell/frontend/runtime/Brand.js';
 import { LoginVan } from './LoginVan.js';
 
-// Keep in sync with auth.css. Mobile never imports Three.js or fetches the model/poster.
+// Keep in sync with sign-in.css. Mobile never imports Three.js or fetches the model/poster.
 const desktopQuery = matchMedia('(min-width: 701px)');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const connection = (

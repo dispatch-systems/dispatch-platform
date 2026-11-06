@@ -11,7 +11,7 @@ each other; `app/tests/rules/dashboard-structure.test.ts` enforces that boundary
 UI primitives are allowed. Similar artwork is maintained separately by each screen.
 
 Member profile acceptance creates the account without logging in. The only navigation
-data sent to Sign In is an in-memory email and entrance flag in `app/sign-in-handoff.ts`.
+data sent to Sign In is an in-memory email and entrance flag in `core/accounts/frontend/sign-in-handoff.ts`.
 Passwords are never passed to Sign In or persisted by this flow. When the account signs in at
 another address, its DSP's, `signInAt` opens Sign In there instead, with nothing handed over.
 
