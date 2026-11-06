@@ -411,7 +411,7 @@ fn health(db: &Store, owner: &User, _: &Input) -> Result<Reply> {
         .into_iter()
         .collect();
     Reply::of(&PlatformHealth {
-        environment: db.config.env(),
+        environment: db.config.environment,
         release: db.config.release.clone(),
         jobs: counts,
         browsers: BrowserHealth {
@@ -437,7 +437,7 @@ fn diagnostics(db: &Store, owner: &User, _: &Input) -> Result<Reply> {
 fn load_test_dsp(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &[])?;
     ensure(
-        db.config.development || db.config.env().is_preview(),
+        db.config.development || db.config.environment.is_preview(),
         "test_dsps_unavailable",
         409,
     )?;
@@ -458,7 +458,7 @@ fn load_test_dsp(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
 fn diagnostics_report(db: &Store, state: &State) -> Result<Value> {
     let memory = operations::memory();
     Ok(json!({
-        "enabled":db.config.development || db.config.env().is_preview(),
+        "enabled":db.config.development || db.config.environment.is_preview(),
         "storageAvailableBytes":operations::available_space(&db.config.root)?,
         "runtime":{
             "name":"Shared platform (Rust)",

@@ -1,7 +1,11 @@
 //! Live results from both collectors, overlaid on Timecard's views before they publish.
 use dispatch_core::{
-    Result, State, collection::registry::Provider, db::s, foundation::config::Config,
-    manifest::people, server::operations,
+    Result, State,
+    collection::registry::Provider,
+    db::s,
+    foundation::config::{Config, Environment},
+    manifest::people,
+    server::operations,
 };
 use dispatch_cortex::{self as cortex, discovery::Scope, meals::Writer};
 use dispatch_paycom::{self as paycom, fixtures, timecards::Checkpoint};
@@ -19,7 +23,7 @@ async fn driver_results_overlay_both_views_without_publishing_and_revert_on_fail
     config.root = root.path().into();
     config.fixture = true;
     config.development = true;
-    config.environment = "preview".into();
+    config.environment = Environment::Preview;
     let state = State::new(config)?;
     let (dsp, paycom_job, old) = state
         .run(|db| {

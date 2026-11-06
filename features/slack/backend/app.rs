@@ -96,7 +96,7 @@ pub fn run(config: &Config, args: &[String]) -> Result<Value> {
 /// each other in a workspace.
 fn manifest(config: &Config) -> Value {
     let origin = &config.origin;
-    let (name, handle) = if config.env().is_production() {
+    let (name, handle) = if config.environment.is_production() {
         ("Dispatch", "dispatch")
     } else {
         ("Dispatch Dev", "dispatch-dev")

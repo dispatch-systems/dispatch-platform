@@ -69,7 +69,7 @@ fn try_tell_owners(db: &Store, key: &str, told: Told) -> Result<()> {
     db.notify_platform_owners(KIND, |to| {
         let described = ConnectedApp {
             origin: &db.config.origin,
-            dev: db.config.env().is_preview(),
+            dev: db.config.environment.is_preview(),
             to,
             connection: s(&app, "name"),
             app: s(&app, "client_name"),

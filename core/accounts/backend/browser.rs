@@ -138,7 +138,7 @@ fn claims(db: &Store, raw: &str, site: &Site) -> Result<Claims> {
     let at = now();
     ensure(
         value.origin == db.config.origin
-            && value.environment == db.config.environment
+            && value.environment == db.config.environment.as_str()
             && value.issued_at <= at
             && value.expires_at > at
             && value.expires_at.checked_sub(value.issued_at) == Some(LIFETIME)
@@ -243,7 +243,7 @@ pub fn mint(config: &Config, output: &Path, email: Option<&str>) -> Result<Value
         user,
         version,
         origin: config.origin.clone(),
-        environment: config.environment.clone(),
+        environment: config.environment.as_str().into(),
         issued_at,
         expires_at: issued_at + LIFETIME,
         nonce: crypto::token()?,

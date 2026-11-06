@@ -50,7 +50,7 @@ pub fn routes() -> Vec<Route> {
 fn health(state: &State) -> Reply {
     Reply::json(json!({
         "status":"ready",
-        "environment":state.config.environment,
+        "environment":state.config.environment.as_str(),
         "release":state.config.release,
         "source":state.config.source,
         "runtime":"rust"

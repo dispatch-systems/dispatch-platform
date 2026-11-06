@@ -146,7 +146,7 @@ impl Store {
         let id = self.invitation_dsp(hash)?.ok_or_else(expired)?;
         let dsp = self.find_dsp(&id).map_err(|_| expired())?;
         ensure(
-            dsp.status == DspStatus::Active && dsp.environment == self.config.env(),
+            dsp.status == DspStatus::Active && dsp.environment == self.config.environment,
             "invitation_expired",
             404,
         )?;
@@ -275,7 +275,7 @@ impl Store {
         let at = self.config.site_origin(&self.invitation_site(&dsp_id)?);
         let mail = email::invitation(&email::Invitation {
             origin: &self.config.origin,
-            dev: self.config.env().is_preview(),
+            dev: self.config.environment.is_preview(),
             to,
             inviter: inviter.trim(),
             dsp,

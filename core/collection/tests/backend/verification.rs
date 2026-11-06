@@ -1,4 +1,5 @@
 use super::*;
+use crate::foundation::config::Environment;
 use std::os::unix::fs::PermissionsExt;
 
 #[test]
@@ -70,7 +71,7 @@ fn native_verification_binds_the_configured_account_and_preserves_its_fixture_ur
     let profile = db.profile(&dsp)?;
     assert_eq!(profile.abbreviation, "TEST");
     assert_eq!(profile.station_code, "TST1");
-    db.config.environment = "production".into();
+    db.config.environment = Environment::Production;
     let refused = db
         .set_verification_profile(&dsp, "Changed", "UTC", "OTHER", "TST2")
         .unwrap_err();

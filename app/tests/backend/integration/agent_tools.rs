@@ -5,7 +5,7 @@ use common::{audits, bootstrapped};
 use dispatch_core::testing as common;
 use dispatch_core::{
     db::{self, Store, s},
-    foundation::crypto,
+    foundation::{config::Environment, crypto},
 };
 use dispatch_mcp::{
     KeyStore,
@@ -348,7 +348,7 @@ fn revoked_expired_or_orphaned_keys_stop_at_once() {
     let user = owner(&db);
     // A key made where the platform runs as production, stored like any other. It reaches every
     // DSP, since none of this platform's is production's to name.
-    let preview = std::mem::replace(&mut db.config.environment, "production".into());
+    let preview = std::mem::replace(&mut db.config.environment, Environment::Production);
     let live = db.create_agent_key(&user, &request(reach(&[]))).unwrap();
     db.config.environment = preview;
     assert!(live.token.starts_with("dsk_live_"));

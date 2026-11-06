@@ -37,7 +37,7 @@ pub fn directories(config: &Config) -> Result<Value> {
     // Every column, as a release before short codes has no `code` yet.
     for row in platform.all(
         "SELECT * FROM dsps WHERE environment=? ORDER BY name",
-        [&config.environment],
+        [config.environment],
     )? {
         let id = s(&row, "id");
         let database = config
@@ -65,7 +65,7 @@ pub fn directories(config: &Config) -> Result<Value> {
             },
         }));
     }
-    Ok(json!({"environment": config.environment, "dsps": dsps}))
+    Ok(json!({"environment": config.environment.as_str(), "dsps": dsps}))
 }
 /// Read-only CLI inspection is safe while the serving process owns the write lock.
 pub fn status(config: &Config) -> Result<Value> {
@@ -76,7 +76,7 @@ pub fn status(config: &Config) -> Result<Value> {
         rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
     let db = db::Db(connection);
     Ok(
-        json!({"environment":config.environment,"runtime":"rust","dsps":db.all("SELECT name,environment,status FROM dsps",[])?}),
+        json!({"environment":config.environment.as_str(),"runtime":"rust","dsps":db.all("SELECT name,environment,status FROM dsps",[])?}),
     )
 }
 

@@ -209,7 +209,7 @@ impl Store {
         ensure(c.allows(permission), "permission_denied", 403)?;
         ensure(c.dsp.status == DspStatus::Active, "dsp_unavailable", 409)?;
         ensure(
-            c.dsp.environment == self.config.env(),
+            c.dsp.environment == self.config.environment,
             "environment_mismatch",
             403,
         )?;

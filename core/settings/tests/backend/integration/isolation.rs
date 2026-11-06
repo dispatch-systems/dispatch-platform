@@ -5,7 +5,10 @@
 use dispatch_core::{
     State,
     db::{self, Store, s},
-    foundation::{config::Config, crypto},
+    foundation::{
+        config::{Config, Environment},
+        crypto,
+    },
     manifest::{Feature, feature, mandatory, settings::number, settings::section},
     server::operations,
     tenancy::roles,
@@ -70,7 +73,7 @@ impl Server {
         db::private_dir(&config.root).unwrap();
         config.development = true;
         config.fixture = true;
-        config.environment = "preview".into();
+        config.environment = Environment::Preview;
         config.standalone = true;
         config.dashboard = dashboard;
         config.port = port;

@@ -9,7 +9,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 pub fn browser_update_ready(config: &crate::foundation::config::Config) -> bool {
-    let channel = if config.env().is_production() {
+    let channel = if config.environment.is_production() {
         "production"
     } else {
         "dev"

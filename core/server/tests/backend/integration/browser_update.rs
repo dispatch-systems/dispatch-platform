@@ -1,4 +1,7 @@
-use dispatch_core::{foundation::config::Config, server::http::browser_update_ready};
+use dispatch_core::{
+    foundation::config::{Config, Environment},
+    server::http::browser_update_ready,
+};
 use serde_json::json;
 
 #[test]
@@ -9,8 +12,11 @@ fn browser_refresh_requires_completed_matching_activation() {
     config.development = false;
     config.release = "new-digest".into();
     std::fs::create_dir_all(config.platform()).unwrap();
-    for (environment, channel) in [("production", "production"), ("preview", "dev")] {
-        config.environment = environment.into();
+    for (environment, channel) in [
+        (Environment::Production, "production"),
+        (Environment::Preview, "dev"),
+    ] {
+        config.environment = environment;
         let status = config.platform().join(format!("{channel}-update.json"));
         let receipt = config.platform().join(format!("{channel}-activation.json"));
         assert!(!browser_update_ready(&config));

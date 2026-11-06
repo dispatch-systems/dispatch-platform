@@ -142,7 +142,7 @@ pub fn claim(db: &Store) -> Result<Option<SupportJob>> {
             id: id.into(), kind: s(&row, "kind").into(), version: row["version"].as_u64().unwrap_or(0) as u32,
             lease: raw, lease_until: expires, checkpoint: decode(s(&row, "checkpoint"))?,
             question_id: row["question_id"].as_str().map(str::to_owned),
-            environment: if db.config.environment == "production" { "production" } else { "dev" }.into(),
+            environment: if db.config.environment.is_production() { "production" } else { "dev" }.into(),
             origin: db.config.origin.clone(), detail: tickets::view(db, ticket, true)?,
         }))
     })

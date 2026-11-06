@@ -57,7 +57,7 @@ fn session(db: &Store, user: &User, _: &Input) -> Result<Reply> {
             summaries(db, user)?
         },
         development: db.config.development,
-        environment: db.config.env(),
+        environment: db.config.environment,
         release: db.config.release.clone(),
         provider_mode: if db.config.fixture {
             ProviderMode::Fixture
