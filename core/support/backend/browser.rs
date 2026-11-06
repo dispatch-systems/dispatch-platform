@@ -1,5 +1,8 @@
 //! A lease-bound browser identity with the reporter's current access and no write authority.
-use super::{jobs, tickets};
+use super::{
+    api::types::{SupportBrowserCookie, SupportBrowserGrant},
+    jobs, tickets,
+};
 use crate::{
     Result,
     accounts::Auth,
@@ -7,13 +10,12 @@ use crate::{
     ensure,
     foundation::{config::Site, crypto},
 };
-use serde_json::{Value, json};
 
 pub const PREFIX: &str = "support-read:";
 pub fn read_only(auth: &Auth) -> bool {
     auth.raw.starts_with(PREFIX)
 }
-pub fn issue(db: &Store, job: &str, lease: &str) -> Result<Value> {
+pub fn issue(db: &Store, job: &str, lease: &str) -> Result<SupportBrowserGrant> {
     let run = jobs::leased(db, job, lease)?;
     let ticket = tickets::record(db, &run.ticket)?;
     let scope = s(&ticket, "reporter_scope");
@@ -29,14 +31,29 @@ pub fn issue(db: &Store, job: &str, lease: &str) -> Result<Value> {
     let unsigned = format!("{PREFIX}{job}:{lease}");
     let token = format!("{unsigned}:{}", crypto::sign(&db.key, &unsigned));
     let secure = !db.config.development;
-    Ok(json!({
-        "origin":origin,"ticketId":run.ticket,"expiresAt":now()+90000,
-        "sourceSha":db.config.source.commit,"version":db.config.source.version,"release":db.config.release,
-        "cookie":{
-            "name":if secure {"__Host-dispatch_support_read"} else {"dispatch_support_read"},
-            "value":token,"url":origin,"path":"/","httpOnly":true,"secure":secure,"sameSite":"Strict"
-        }
-    }))
+    Ok(SupportBrowserGrant {
+        origin: origin.clone(),
+        ticket_id: run.ticket,
+        expires_at: now() + 90000,
+        source_sha: db.config.source.commit.clone(),
+        version: db.config.source.version.clone(),
+        release: db.config.release.clone(),
+        cookie: SupportBrowserCookie {
+            name: if secure {
+                "__Host-dispatch_support_read"
+            } else {
+                "dispatch_support_read"
+            }
+            .into(),
+            value: token,
+            url: origin,
+            path: "/".into(),
+            http_only: true,
+            secure,
+            same_site: "Strict".into(),
+            extra: Default::default(),
+        },
+    })
 }
 pub(crate) fn identity(db: &Store, raw: &str, site: &Site) -> Result<(String, Option<String>)> {
     ensure(raw.len() < 300, "sign_in_required", 401)?;

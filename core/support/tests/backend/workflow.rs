@@ -604,7 +604,7 @@ fn read_only_browser_authority_is_scoped_to_the_active_job_and_reporters_host() 
     report(&db, &owner(&db));
     let job = jobs::claim(&db).unwrap().unwrap();
     let cookie = browser::issue(&db, &job.id, &job.lease).unwrap();
-    let raw = cookie["cookie"]["value"].as_str().unwrap();
+    let raw = &cookie.cookie.value;
     let identity = db.authenticate(raw, &Site::Admin).unwrap();
     assert!(browser::read_only(&identity));
     assert_eq!(identity.user.id, owner(&db).user.id);

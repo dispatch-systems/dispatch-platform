@@ -6,7 +6,7 @@ use crate::{
     require, verification,
     worktrees::{Worktree, command, is_sha},
 };
-use dispatch_core::support::api::types::{SupportJob, SupportProposal};
+use dispatch_core::support::api::types::{SupportBrowserGrant, SupportJob, SupportProposal};
 use fs2::FileExt;
 use serde_json::{Value, json};
 use std::{
@@ -16,6 +16,10 @@ use std::{
 };
 
 type Checkpoint = Arc<Mutex<Value>>;
+
+#[cfg(test)]
+#[path = "../tests/backend/browser.rs"]
+mod browser_tests;
 
 /// One heavy job at a time protects the host, while every pending ticket remains durable.
 /// Sources are rotated after every claim; no daily, token, runtime or attempt quota exists.
@@ -183,12 +187,9 @@ fn rules(config: &Config) -> Result<String> {
     Ok(instructions)
 }
 
-fn browser(metadata: &Value) -> Result<Value> {
-    let origin = metadata["origin"]
-        .as_str()
-        .ok_or("Read-only browser origin missing")?;
-    let mut cookie = metadata["cookie"].clone();
-    require(cookie.is_object(), "Read-only browser cookie missing")?;
+fn browser(metadata: &SupportBrowserGrant) -> Result<Value> {
+    let origin = &metadata.origin;
+    let mut cookie = serde_json::to_value(&metadata.cookie)?;
     cookie["domain"] = url::Url::parse(origin)?
         .host_str()
         .ok_or("Browser cookie host missing")?
@@ -420,8 +421,9 @@ async fn investigate(
         } else if selected == "browser" {
             match platform.metadata(job).await {
                 Ok(metadata) => {
-                    observed_source = metadata["sourceSha"]
-                        .as_str()
+                    observed_source = metadata
+                        .source_sha
+                        .as_deref()
                         .filter(|source| is_sha(source))
                         .ok_or("The observed runtime source is unavailable")?
                         .into();
@@ -843,14 +845,25 @@ async fn release(
         .iter()
         .find(|origin| origin.environment == "production")
         .ok_or("Production support origin is not configured")?;
-    let metadata = if job.environment == "production" {
-        platform.metadata(job).await?
+    let grant = if job.environment == "production" {
+        Some(platform.metadata(job).await?)
+    } else {
+        None
+    };
+    let metadata = if let Some(grant) = &grant {
+        serde_json::to_value(grant)?
     } else {
         Platform::new(production)?.deployment().await?
     };
-    let source = metadata["sourceSha"]
-        .as_str()
-        .ok_or("Production runtime source is not available")?;
+    let source = match &grant {
+        Some(grant) => grant.source_sha.as_deref(),
+        None => metadata["sourceSha"].as_str(),
+    }
+    .ok_or("Production runtime source is not available")?;
+    let release = match &grant {
+        Some(grant) => json!(grant.release),
+        None => metadata["release"].clone(),
+    };
     let merge = job
         .detail
         .ticket
@@ -877,8 +890,8 @@ async fn release(
         .find(|proposal| proposal.version == job.version)
         .ok_or("Approved proposal not found")?;
     let tree = Worktree::prepare(config, job, Some(source)).await?;
-    let mut target = if job.environment == "production" {
-        browser(&metadata)?
+    let mut target = if let Some(grant) = &grant {
+        browser(grant)?
     } else {
         json!({"url":production.url,"readOnly":true})
     };
@@ -930,7 +943,7 @@ async fn release(
         .update(
             job,
             "complete",
-            json!({"result":{"release":metadata["release"],"mergeSha":merge,"headSha":source}}),
+            json!({"result":{"release":release,"mergeSha":merge,"headSha":source}}),
         )
         .await?;
     drop(counterpart);

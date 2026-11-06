@@ -213,11 +213,7 @@ fn wait(db: &Store, _: &Ctx<'_, ()>, input: &Input) -> Result<Reply> {
 }
 fn browser(db: &Store, _: &Ctx<'_, ()>, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &["lease"])?;
-    Ok(Reply::json(browser::issue(
-        db,
-        input.param("id"),
-        lease(input)?,
-    )?))
+    Reply::of(&browser::issue(db, input.param("id"), lease(input)?)?)
 }
 fn diagnostics(db: &Store, _: &Ctx<'_, ()>, input: &Input) -> Result<Reply> {
     let run = jobs::leased(db, input.param("id"), input.header("x-support-lease"))?;
