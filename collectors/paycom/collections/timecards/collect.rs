@@ -1,5 +1,5 @@
 use super::{
-    Checkpoint, EmployeeTimecardPeriod, extract, projection,
+    Checkpoint, EmployeeTimecardPeriod, projection,
     roster::{Roster, with_known_employees},
 };
 use crate::{codes, connection::Driver};
@@ -20,7 +20,7 @@ use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
     future::Future,
-    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+    sync::atomic::{AtomicBool, AtomicUsize},
     time::Duration,
 };
 use tokio::time::Instant;
