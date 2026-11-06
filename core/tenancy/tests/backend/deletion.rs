@@ -1,10 +1,16 @@
 //! A delete cut short once the DSP's rows are gone holds nothing up: the server starts again
 //! without the DSP, and its first upkeep finishes what the delete left. One stopped before
 //! leaves the DSP disabled, to delete again. A delete leaves what another DSP holds of the
-//! people they shared, or who once belonged there; and takes the mail development captured for
-//! the DSP, with none captured after, as no capture outlives its message.
+//! people they shared, or who once belonged there, and takes what the people it removed did to
+//! their accounts; and takes the mail development captured for the DSP, with none captured
+//! after, as no capture outlives its message.
 use super::*;
-use crate::{db::now, foundation::crypto, testing};
+use crate::{
+    accounts::{Auth, UserRow, api::types::PublicUser},
+    db::{now, s},
+    foundation::{config::Site, crypto},
+    testing,
+};
 use rusqlite::params;
 
 fn dsp_named(db: &Store, name: &str) -> String {
@@ -178,6 +184,125 @@ fn a_deleted_dsp_takes_nothing_another_dsp_holds_of_people_it_shared_or_had() {
     );
 }
 
+#[test]
+fn a_deleted_dsps_former_members_account_events_go_and_no_one_elses() {
+    testing::install(&[], &[]);
+    let (_root, db) = testing::seeded();
+    let (north, summit) = (
+        dsp_named(&db, "Northline Logistics"),
+        dsp_named(&db, "Summit Delivery"),
+    );
+    let owner = testing::platform_owner(&db);
+    let user = "INSERT INTO users(id,email,first_name,last_name,password,created_at) \
+        VALUES (?1,?1||'@dispatch.test','A','B','x','')";
+    let member = "INSERT INTO memberships(id,user_id,dsp_id,role) VALUES (?1||?2,?1,?2,'member')";
+    // One person moved from the platform's directory into both DSPs' with one ID, a member of
+    // Northline's own; and one of Summit's own.
+    db.platform.exec(user, ["usr_shared"]).unwrap();
+    for dsp in [&north, &summit] {
+        db.platform.exec(member, ["usr_shared", dsp]).unwrap();
+        db.dsp(dsp).unwrap().exec(user, ["usr_shared"]).unwrap();
+    }
+    let people = db.dsp(&north).unwrap();
+    let role = crate::tenancy::roles::default_role(&people, &north, "member").unwrap();
+    people
+        .exec(
+            "INSERT INTO memberships(id,user_id,dsp_id,role,role_id) \
+             VALUES ('mem_shared','usr_shared',?,'member',?)",
+            [&north, &role],
+        )
+        .unwrap();
+    drop(people);
+    let summits = db
+        .create_user(
+            Some(&summit),
+            "summit@dispatch.test",
+            "S",
+            "D",
+            "test-password-long",
+        )
+        .unwrap();
+    // Each signs in, and the platform owner too.
+    let account = |dsp: &str, id: &str| -> PublicUser {
+        let row: UserRow = db
+            .dsp(dsp)
+            .unwrap()
+            .one_as("SELECT * FROM users WHERE id=?", [id])
+            .unwrap()
+            .unwrap();
+        row.user
+    };
+    let jordan = db
+        .dsp(&north)
+        .unwrap()
+        .one(
+            "SELECT id FROM users WHERE email='member@dispatch.test'",
+            [],
+        )
+        .unwrap()
+        .unwrap();
+    let jordan = account(&north, s(&jordan, "id"));
+    for (person, dsp) in [
+        (&jordan, &north),
+        (&account(&north, "usr_shared"), &north),
+        (&summits, &summit),
+    ] {
+        db.audit_account(person, Some(dsp), "account.signed_in", "")
+            .unwrap();
+    }
+    let platform: PublicUser = serde_json::from_value(
+        json!({"id":owner,"email":"","firstName":"","lastName":"","platformOwner":true}),
+    )
+    .unwrap();
+    db.audit_account(&platform, None, "account.signed_in", "")
+        .unwrap();
+    // Northline removes Jordan and the shared person. Before DSPs had their own directories,
+    // a platform owner could be one of a DSP's members, and was removed as one.
+    let auth = Auth {
+        user: platform,
+        hash: String::new(),
+        csrf: String::new(),
+        raw: String::new(),
+        preview: None,
+        site: Site::Admin,
+        scope: None,
+    };
+    let context = db.context(&auth, &north, "members.manage").unwrap();
+    for person in [&jordan.id, "usr_shared"] {
+        let (membership,): (String,) = db
+            .dsp(&north)
+            .unwrap()
+            .one_as("SELECT id FROM memberships WHERE user_id=?", [person])
+            .unwrap()
+            .unwrap();
+        db.set_role(&context, &membership, None).unwrap();
+    }
+    db.audit_ref(
+        Some(&owner),
+        Some(&north),
+        "member.removed",
+        "",
+        Some("Platform Owner"),
+        &[],
+        Some(("member", &owner)),
+    )
+    .unwrap();
+
+    testing::set_dsp_status(&db, &north, "suspended").unwrap();
+    db.delete_dsp(&north, "Northline Logistics", &owner)
+        .unwrap();
+    let left: Vec<(String,)> = db
+        .platform
+        .query_as(
+            "SELECT COALESCE(actor_id,member_id) FROM audit \
+             WHERE action='account.signed_in' ORDER BY id",
+            [],
+        )
+        .unwrap();
+    let left: Vec<String> = left.into_iter().map(|(id,)| id).collect();
+    assert_eq!(left, ["usr_shared", summits.id.as_str(), owner.as_str()]);
+}
+
 #[tokio::test]
 async fn a_deleted_dsps_captured_mail_goes_and_none_is_after_nor_outlives_its_message() {
     testing::install(&[], &[]);
@@ -216,7 +341,7 @@ async fn a_deleted_dsps_captured_mail_goes_and_none_is_after_nor_outlives_its_me
     let late = picked.remove(1);
     let captures = db.config.platform().join("development-mail");
     for row in &picked {
-        let id = crate::db::s(row, "id");
+        let id = s(row, "id");
         if id == "mail_north_sent" {
             std::fs::write(captures.join(format!("{id}.json")), "{}").unwrap();
         } else {

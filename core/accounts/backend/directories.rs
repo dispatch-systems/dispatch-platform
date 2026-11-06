@@ -167,15 +167,16 @@ const ONLY_THERE: &str = "SELECT u.id FROM users u WHERE u.platform_owner=0 \
     AND NOT EXISTS (SELECT 1 FROM memberships m WHERE m.user_id=u.id AND m.dsp_id<>?1)";
 
 impl Store {
-    /// The DSP's people who are no other DSP's: of `own`, those its own directory holds, the
-    /// ones the platform's directory holds of no other DSP's, as a person moved from there into
-    /// each DSP's they belonged to keeps one ID in each; and the accounts the platform's holds
-    /// of its people alone.
+    /// The DSP's people who are no other DSP's: of `own`, those its own directory holds or
+    /// held, the ones the platform's directory holds of no other DSP's, as a person moved from
+    /// there into each DSP's they belonged to keeps one ID in each; and the accounts the
+    /// platform's holds of its people alone. Platform owners are never among them.
     pub fn people_alone(&self, dsp: &str, own: &[String]) -> Result<Vec<String>> {
         let people: Vec<(String,)> = self.platform.query_as(
             &format!(
                 "SELECT value FROM json_each(?2) WHERE NOT EXISTS \
                  (SELECT 1 FROM memberships m WHERE m.user_id=value AND m.dsp_id<>?1) \
+                 AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id=value AND u.platform_owner=1) \
                  UNION {ONLY_THERE}"
             ),
             [dsp, serde_json::to_string(own)?.as_str()],

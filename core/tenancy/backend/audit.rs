@@ -191,6 +191,16 @@ impl Store {
         )?;
         Ok(())
     }
+    /// The people the DSP's log names as removed from it: their accounts went then, and its
+    /// log is what still says they were its people.
+    pub fn removed_members(&self, dsp: &str) -> Result<Vec<String>> {
+        let removed: Vec<(String,)> = self.platform.query_as(
+            "SELECT DISTINCT json_extract(data,'$.ref.id') FROM audit WHERE dsp_id=? \
+             AND action='member.removed' AND json_extract(data,'$.ref.kind')='member'",
+            [dsp],
+        )?;
+        Ok(removed.into_iter().map(|(id,)| id).collect())
+    }
     pub fn platform_owner(&self, user: &str) -> Result<bool> {
         Ok(self
             .platform

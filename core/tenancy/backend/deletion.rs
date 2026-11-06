@@ -67,14 +67,19 @@ impl Store {
         ensure(!deleting().contains(&folder), "dsp_deleting", 409)
     }
     /// Deletes every row of the DSP `id` in the platform's database, as `ensure_deletable`
-    /// allows: its log, mail, support tickets and switches, what each feature and the agents
+    /// allows: its log, with what its people, those it has and those it removed, did to their
+    /// own accounts, its mail, support tickets and switches, what each feature and the agents
     /// keep of it there, what the platform's directory holds of its people, and its own row,
     /// which frees its short code. Notes that what it kept elsewhere is still to delete
     /// (`finish`), and records who deleted it, by its name, as nothing else names it now.
     pub fn delete_dsp(&self, id: &str, name: &str, actor: &str) -> Result<()> {
         self.ensure_deletable(id, name)?;
         let own: Vec<(String,)> = self.dsp(id)?.query_as("SELECT id FROM users", [])?;
-        let own: Vec<String> = own.into_iter().map(|(id,)| id).collect();
+        let own: Vec<String> = own
+            .into_iter()
+            .map(|(id,)| id)
+            .chain(self.removed_members(id)?)
+            .collect();
         self.platform.transaction(|| {
             self.forget_audit(id, &self.people_alone(id, &own)?)?;
             mail::forget_dsp(self, id)?;
