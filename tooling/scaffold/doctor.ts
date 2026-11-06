@@ -56,6 +56,15 @@ export const CHECKS: Check[] = [
     },
   },
   {
+    name: 'loopback',
+    run: (root) => {
+      const have = spawnSync('tooling/testing/loopback', [], { cwd: root, encoding: 'utf8' });
+      return have.status === 0
+        ? { ok: true }
+        : { ok: false, fix: 'sudo tooling/testing/loopback install', detail: [have.stderr.trim()] };
+    },
+  },
+  {
     name: 'wiring',
     run: (root) => {
       const stale = unwired(root);

@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# The loopback addresses the API tests connect from besides 127.0.0.1, as outside agents do:
+# Linux answers on all of 127.0.0.0/8, a Mac only on the addresses lo0 has. With no argument it
+# says whether this machine has them; `sudo tooling/testing/loopback install` adds them on a Mac,
+# now and at each boot, by a LaunchDaemon that holds the commands itself.
+set -euo pipefail
+addresses=(127.0.0.2 127.0.0.3)
+label=com.dspdispatch.test-loopback
+[[ $(uname -s) == Darwin ]] || exit 0
+case ${1:-} in
+  "")
+    have=$(/sbin/ifconfig lo0)
+    missing=()
+    for address in "${addresses[@]}"; do
+      grep -q "inet $address " <<<"$have" || missing+=("$address")
+    done
+    if ((${#missing[@]})); then
+      echo "lo0 lacks ${missing[*]}, which the API tests connect from: sudo tooling/testing/loopback install" >&2
+      exit 1
+    fi
+    ;;
+  install)
+    [[ $EUID == 0 ]] || { echo "Run it with sudo: sudo tooling/testing/loopback install" >&2; exit 1; }
+    plist=/Library/LaunchDaemons/$label.plist
+    commands=$(printf '/sbin/ifconfig lo0 alias %s up; ' "${addresses[@]}")
+    cat > "$plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>$label</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>$commands</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+</dict>
+</plist>
+PLIST
+    chown root:wheel "$plist"
+    chmod 644 "$plist"
+    launchctl bootout system "$plist" 2>/dev/null || true
+    launchctl bootstrap system "$plist"
+    ;;
+  *)
+    echo "Usage: tooling/testing/loopback [install]" >&2
+    exit 2
+    ;;
+esac
