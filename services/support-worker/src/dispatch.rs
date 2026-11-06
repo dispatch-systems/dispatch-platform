@@ -1,5 +1,7 @@
 use crate::{
-    Result, collection_verification,
+    Result,
+    checkpoint::{AnalysisProgress, Checkpoint},
+    collection_verification,
     config::Config,
     github, hermes,
     jobs::Platform,
@@ -11,13 +13,7 @@ use crate::{
 use dispatch_core::support::api::types::{SupportBrowserGrant, SupportJob, SupportProposal};
 use fs2::FileExt;
 use serde_json::{Value, json};
-use std::{
-    fs,
-    sync::{Arc, Mutex},
-    time::Duration,
-};
-
-type Checkpoint = Arc<Mutex<Value>>;
+use std::{fs, time::Duration};
 
 #[cfg(test)]
 #[path = "../tests/backend/browser.rs"]
@@ -74,12 +70,12 @@ pub async fn run(config: Config) -> Result<()> {
 }
 
 async fn leased(config: &Config, platform: &Platform, job: SupportJob) -> Result<()> {
-    let checkpoint = Arc::new(Mutex::new(job.checkpoint.clone()));
+    let checkpoint = Checkpoint::new(job.checkpoint.clone());
     let heartbeat = async {
         loop {
             tokio::time::sleep(Duration::from_secs(25)).await;
             platform
-                .update(&job, "heartbeat", json!({"checkpoint": saved(&checkpoint)}))
+                .update(&job, "heartbeat", json!({"checkpoint": checkpoint.saved()}))
                 .await?;
         }
         #[allow(unreachable_code)]
@@ -100,7 +96,7 @@ async fn leased(config: &Config, platform: &Platform, job: SupportJob) -> Result
     if let Err(error) = result {
         // Losing authorization/lease cancels execution before publishing. A failed wait is safe.
         if job.kind == "implement" {
-            if let Err(cancellation) = github::cancel(config, &job, &saved(&checkpoint)).await {
+            if let Err(cancellation) = github::cancel(config, &job, &checkpoint).await {
                 eprintln!("Support PR withdrawal requires attention: {cancellation}");
             }
         } else {
@@ -115,44 +111,9 @@ async fn leased(config: &Config, platform: &Platform, job: SupportJob) -> Result
         } else {
             "The agent is waiting for browser, provider or infrastructure access; private job diagnostics are available to the platform owner"
         };
-        let _ = platform.update(&job, "wait", json!({"reason":public_reason,"checkpoint":saved(&checkpoint),"retryAfterMs":60_000})).await;
+        let _ = platform.update(&job, "wait", json!({"reason":public_reason,"checkpoint":checkpoint.saved(),"retryAfterMs":60_000})).await;
         return Err(error);
     }
-    Ok(())
-}
-
-fn saved(checkpoint: &Checkpoint) -> Value {
-    checkpoint
-        .lock()
-        .unwrap_or_else(|error| error.into_inner())
-        .clone()
-}
-
-async fn progress(
-    platform: &Platform,
-    job: &SupportJob,
-    checkpoint: &Checkpoint,
-    status: &str,
-    message: &str,
-    fields: Value,
-) -> Result<()> {
-    let mut value = saved(checkpoint);
-    if !value.is_object() {
-        value = json!({});
-    }
-    if let Some(fields) = fields.as_object() {
-        for (key, item) in fields {
-            value[key] = item.clone();
-        }
-    }
-    platform
-        .update(
-            job,
-            "progress",
-            json!({"status":status,"progress":message,"checkpoint":value}),
-        )
-        .await?;
-    *checkpoint.lock().unwrap_or_else(|error| error.into_inner()) = value;
     Ok(())
 }
 
@@ -204,36 +165,6 @@ fn browser(metadata: &SupportBrowserGrant) -> Result<Value> {
     Ok(json!({"url":origin,"readOnly":true,"storageState":{"cookies":[cookie],"origins":[]}}))
 }
 
-async fn analysis_progress(
-    platform: &Platform,
-    job: &SupportJob,
-    checkpoint: &Checkpoint,
-    message: &str,
-    fields: Value,
-) -> Result<()> {
-    if job.kind != "answer" {
-        let status = if fields["phase"] == "routing" {
-            "triaging"
-        } else {
-            "investigating"
-        };
-        return progress(platform, job, checkpoint, status, message, fields).await;
-    }
-    // Owner answers must preserve approval/queued status while selecting their tools.
-    let mut value = saved(checkpoint);
-    if !value.is_object() {
-        value = json!({});
-    }
-    for (key, item) in fields.as_object().ok_or("Invalid analysis checkpoint")? {
-        value[key] = item.clone();
-    }
-    platform
-        .update(job, "heartbeat", json!({"checkpoint":value}))
-        .await?;
-    *checkpoint.lock().unwrap_or_else(|error| error.into_inner()) = value;
-    Ok(())
-}
-
 async fn report_images(config: &Config, platform: &Platform, job: &SupportJob) -> Result<Value> {
     let root = config
         .runtime_root
@@ -261,17 +192,17 @@ async fn investigate(
     use crate::intake::{Analysis, Decision, NextStep, Outcome, Route};
 
     // This is intentionally before source preparation, diagnostics, screenshots and grants.
-    let decision: Decision = if let Some(value) = saved(checkpoint).get("routingDecision") {
-        serde_json::from_value(value.clone())?
+    let decision: Decision = if let Some(value) = checkpoint.routing_decision() {
+        serde_json::from_value(value)?
     } else {
-        analysis_progress(
-            platform,
-            job,
-            checkpoint,
-            "Choosing the most useful response",
-            json!({"phase":"routing"}),
-        )
-        .await?;
+        checkpoint
+            .analysis(
+                platform,
+                job,
+                "Choosing the most useful response",
+                json!({"phase":"routing"}),
+            )
+            .await?;
         let mut result = hermes::analyze(
             config,
             job,
@@ -300,14 +231,14 @@ async fn investigate(
         )?;
         let decision: Decision = serde_json::from_value(result)?;
         decision.validate()?;
-        analysis_progress(
-            platform,
-            job,
-            checkpoint,
-            "Selected the useful investigation steps",
-            json!({"phase":"routing","routingDecision":decision,"routingSchema":1}),
-        )
-        .await?;
+        checkpoint
+            .analysis(
+                platform,
+                job,
+                "Selected the useful investigation steps",
+                json!({"phase":"routing","routingDecision":decision,"routingSchema":1}),
+            )
+            .await?;
         decision
     };
     decision.validate()?;
@@ -323,14 +254,14 @@ async fn investigate(
         return Ok(());
     }
 
-    analysis_progress(
-        platform,
-        job,
-        checkpoint,
-        "Preparing the selected investigation",
-        json!({"phase":"source_preparation"}),
-    )
-    .await?;
+    checkpoint
+        .analysis(
+            platform,
+            job,
+            "Preparing the selected investigation",
+            json!({"phase":"source_preparation"}),
+        )
+        .await?;
     let mut context = json!({"rules":rules(config)?,"pinnedSourceSha":job.detail.source_sha,"headSha":job.detail.source_sha,"routing":decision});
     let tree = if is_sha(&job.detail.source_sha) {
         match Worktree::prepare(config, job, Some(&job.detail.source_sha)).await {
@@ -344,35 +275,25 @@ async fn investigate(
         context["sourceUnavailable"] = "The submitted runtime source commit is unavailable; no source version has been guessed".into();
         None
     };
-    let mut selected = saved(checkpoint)["analysisStage"]
-        .as_str()
-        .map(str::to_owned)
-        .unwrap_or_else(|| {
-            if decision.route == Route::Source {
-                "source"
-            } else {
-                "browser"
-            }
-            .into()
-        });
-    let mut attempted = saved(checkpoint)["investigationAttempted"]
-        .as_bool()
-        .unwrap_or(false);
-    let mut usable = saved(checkpoint)["usableInvestigation"]
-        .as_bool()
-        .unwrap_or(false);
-    let mut browser_attempted = saved(checkpoint)["browserAttempted"]
-        .as_bool()
-        .unwrap_or(false);
-    let mut live_browser_attempted = saved(checkpoint)["liveBrowserAttempted"]
-        .as_bool()
-        .unwrap_or(false);
-    let mut live_browser_observed = saved(checkpoint)["liveBrowserObserved"]
-        .as_bool()
-        .unwrap_or(false);
+    let AnalysisProgress {
+        stage,
+        mut attempted,
+        mut usable,
+        mut browser_attempted,
+        mut live_browser_attempted,
+        mut live_browser_observed,
+    } = checkpoint.analysis_progress();
+    let mut selected = stage.unwrap_or_else(|| {
+        if decision.route == Route::Source {
+            "source"
+        } else {
+            "browser"
+        }
+        .into()
+    });
     let mut preview = None;
-    if let Some(prior) = saved(checkpoint).get("priorAnalysis") {
-        context["priorAnalysis"] = prior.clone();
+    if let Some(prior) = checkpoint.prior_analysis() {
+        context["priorAnalysis"] = prior;
     }
 
     loop {
@@ -391,14 +312,14 @@ async fn investigate(
                 .as_ref()
                 .ok_or("Pinned source is unavailable for isolated reproduction")?;
             if preview.is_none() {
-                analysis_progress(
-                    platform,
-                    job,
-                    checkpoint,
-                    "Preparing the requested isolated reproduction",
-                    json!({"phase":"isolated_reproduction","analysisStage":"isolated"}),
-                )
-                .await?;
+                checkpoint
+                    .analysis(
+                        platform,
+                        job,
+                        "Preparing the requested isolated reproduction",
+                        json!({"phase":"isolated_reproduction","analysisStage":"isolated"}),
+                    )
+                    .await?;
                 let baseline = async {
                     tree.build(config).await?;
                     NativePreview::start(config, tree, None).await
@@ -456,7 +377,7 @@ async fn investigate(
                 "Pinned source and useful browser access are unavailable; investigation needs infrastructure access",
             )?;
         }
-        analysis_progress(platform, job, checkpoint,
+        checkpoint.analysis(platform, job,
             if stage == AnalystStage::Source { "Reading the relevant source and prior context" } else { "Inspecting the relevant behavior in a real browser" },
             json!({"phase":"analysis","analysisStage":selected,"browserObservation":if stage == AnalystStage::Source { "skipped" } else { "granted" }})).await?;
         let mut result = hermes::analyze(
@@ -487,20 +408,20 @@ async fn investigate(
         browser_attempted |= actual_browser;
         live_browser_attempted |= actual_browser && selected != "isolated";
         live_browser_observed |= observed_browser && selected != "isolated";
-        analysis_progress(platform, job, checkpoint, "Recorded the tool observations", json!({"phase":"analysis","analysisStage":selected,"investigationAttempted":attempted,"usableInvestigation":usable,"browserAttempted":browser_attempted,"liveBrowserAttempted":live_browser_attempted,"liveBrowserObserved":live_browser_observed,"browserObservation":if observed_browser { "observed" } else if actual_browser { "attempted" } else if stage == AnalystStage::Source { "skipped" } else { "not_used" }})).await?;
+        checkpoint.analysis(platform, job, "Recorded the tool observations", json!({"phase":"analysis","analysisStage":selected,"investigationAttempted":attempted,"usableInvestigation":usable,"browserAttempted":browser_attempted,"liveBrowserAttempted":live_browser_attempted,"liveBrowserObserved":live_browser_observed,"browserObservation":if observed_browser { "observed" } else if actual_browser { "attempted" } else if stage == AnalystStage::Source { "skipped" } else { "not_used" }})).await?;
         if actual_browser {
             verification::investigation(config, platform, job, &observed_source).await?;
         }
         let analysis: Analysis = serde_json::from_value(result)?;
         analysis.validate(&job.detail.ticket.kind, attempted, usable)?;
-        analysis_progress(
-            platform,
-            job,
-            checkpoint,
-            "Recorded the investigation findings",
-            json!({"phase":"analysis","analysisStage":selected,"priorAnalysis":analysis}),
-        )
-        .await?;
+        checkpoint
+            .analysis(
+                platform,
+                job,
+                "Recorded the investigation findings",
+                json!({"phase":"analysis","analysisStage":selected,"priorAnalysis":analysis}),
+            )
+            .await?;
 
         match analysis.next_step {
             NextStep::Browser => {
@@ -557,14 +478,14 @@ async fn investigate(
             }
         }
         context["priorAnalysis"] = serde_json::to_value(&analysis)?;
-        analysis_progress(
-            platform,
-            job,
-            checkpoint,
-            "Continuing with the requested evidence",
-            json!({"phase":"analysis","analysisStage":selected}),
-        )
-        .await?;
+        checkpoint
+            .analysis(
+                platform,
+                job,
+                "Continuing with the requested evidence",
+                json!({"phase":"analysis","analysisStage":selected}),
+            )
+            .await?;
     }
 }
 
@@ -585,35 +506,29 @@ async fn implement(
         .find(|proposal| proposal.version == job.version)
         .ok_or("Approved proposal not found")?;
     let tree = Worktree::prepare(config, job, None).await?;
-    let mut failure = saved(checkpoint)["failure"]
-        .as_str()
-        .unwrap_or("")
-        .to_owned();
+    let mut failure = checkpoint.failure();
     'correction: loop {
-        let current = saved(checkpoint);
+        let current = checkpoint.published_pr();
         // `queued` is the platform's status for a published PR waiting to merge.
-        let merging = current["phase"] == "queued"
-            && current["headSha"] == tree.head().await?
-            && current["prNumber"].is_u64();
+        let merging = current.queued
+            && current.head_sha.as_deref() == Some(tree.head().await?.as_str())
+            && current.number.is_some();
         let (number, pr_url, head) = if merging {
             (
-                current["prNumber"].as_u64().ok_or("PR number missing")?,
-                current["prUrl"]
-                    .as_str()
-                    .ok_or("PR URL missing")?
-                    .to_owned(),
+                current.number.ok_or("PR number missing")?,
+                current.url.ok_or("PR URL missing")?,
                 tree.head().await?,
             )
         } else {
-            progress(
-                platform,
-                job,
-                checkpoint,
-                "implementing",
-                "Implementing the approved proposal",
-                json!({"phase":"build"}),
-            )
-            .await?;
+            checkpoint
+                .progress(
+                    platform,
+                    job,
+                    "implementing",
+                    "Implementing the approved proposal",
+                    json!({"phase":"build"}),
+                )
+                .await?;
             let summary;
             let checks;
             loop {
@@ -665,15 +580,15 @@ async fn implement(
                         continue;
                     }
                 }
-                progress(
-                    platform,
-                    job,
-                    checkpoint,
-                    "verifying",
-                    "An independent agent is testing the committed change in a real browser",
-                    json!({"phase":"verification","headSha":head}),
-                )
-                .await?;
+                checkpoint
+                    .progress(
+                        platform,
+                        job,
+                        "verifying",
+                        "An independent agent is testing the committed change in a real browser",
+                        json!({"phase":"verification","headSha":head}),
+                    )
+                    .await?;
                 let collections =
                     collection_verification::collect(config, &tree, job, proposal).await?;
                 for proof in &collections.proofs {
@@ -693,15 +608,15 @@ async fn implement(
                         "Independent browser verification failed:\n{}",
                         reviewed["findings"]
                     );
-                    progress(
-                        platform,
-                        job,
-                        checkpoint,
-                        "implementing",
-                        "Fixing issues found by independent browser verification",
-                        json!({"phase":"build","failure":failure}),
-                    )
-                    .await?;
+                    checkpoint
+                        .progress(
+                            platform,
+                            job,
+                            "implementing",
+                            "Fixing issues found by independent browser verification",
+                            json!({"phase":"build","failure":failure}),
+                        )
+                        .await?;
                     continue;
                 }
                 if let Err(error) = verification::record(
@@ -742,14 +657,16 @@ async fn implement(
             let head = tree.head().await?;
             // Recheck lease/approval before the trusted publisher can mutate GitHub.
             platform
-                .update(job, "heartbeat", json!({"checkpoint":saved(checkpoint)}))
+                .update(job, "heartbeat", json!({"checkpoint":checkpoint.saved()}))
                 .await?;
             let (number, url) = github::publish(config, job, &tree, &summary, &checks).await?;
             platform
                 .update(job, "github", json!({"prUrl":url,"headSha":head}))
                 .await?;
             github::register(config, job, &tree, number, &url).await?;
-            progress(platform, job, checkpoint, "queued", "The verified change merges once its checks pass", json!({"phase":"queued","headSha":head,"prNumber":number,"prUrl":url,"failure":null})).await?;
+            checkpoint
+                .queue_pr(platform, job, &head, number, &url)
+                .await?;
             (number, url, head)
         };
         {
@@ -784,7 +701,7 @@ async fn implement(
                     .update(job, "github", json!({"prUrl":pr_url,"headSha":head}))
                     .await?;
                 github::ready(config, &tree, number).await?;
-                platform.update(job, "wait", json!({"reason":"Waiting for GitHub to admit the verified head","checkpoint":saved(checkpoint),"retryAfterMs":15_000})).await?;
+                platform.update(job, "wait", json!({"reason":"Waiting for GitHub to admit the verified head","checkpoint":checkpoint.saved(),"retryAfterMs":15_000})).await?;
                 return Ok(());
             }
             if status["mergeable"] == "CONFLICTING" {
@@ -792,36 +709,34 @@ async fn implement(
                     Ok(_) => "Main changed; verify the reconciled implementation again".into(),
                     Err(error) => format!("Resolve the main-branch merge conflict:\n{error}"),
                 };
-                progress(
-                    platform,
-                    job,
-                    checkpoint,
-                    "implementing",
-                    "Reconciling the change with current main",
-                    json!({"phase":"build","failure":failure}),
-                )
-                .await?;
+                checkpoint
+                    .progress(
+                        platform,
+                        job,
+                        "implementing",
+                        "Reconciling the change with current main",
+                        json!({"phase":"build","failure":failure}),
+                    )
+                    .await?;
                 continue 'correction;
             }
             match github::checks(config, &tree, &head).await? {
-                github::Checks::Failed(run, logs)
-                    if run > saved(checkpoint)["lastHandledRun"].as_u64().unwrap_or(0) =>
-                {
+                github::Checks::Failed(run, logs) if run > checkpoint.last_handled_run() => {
                     failure = format!("The PR's required checks failed in run {run}:\n{logs}");
-                    progress(
-                        platform,
-                        job,
-                        checkpoint,
-                        "implementing",
-                        "Fixing the PR's required checks",
-                        json!({"phase":"build","failure":failure,"lastHandledRun":run}),
-                    )
-                    .await?;
+                    checkpoint
+                        .progress(
+                            platform,
+                            job,
+                            "implementing",
+                            "Fixing the PR's required checks",
+                            json!({"phase":"build","failure":failure,"lastHandledRun":run}),
+                        )
+                        .await?;
                     continue 'correction;
                 }
                 github::Checks::Passed if status["mergeable"] == "MERGEABLE" => {
                     platform
-                        .update(job, "heartbeat", json!({"checkpoint":saved(checkpoint)}))
+                        .update(job, "heartbeat", json!({"checkpoint":checkpoint.saved()}))
                         .await?;
                     github::merge(&tree, &status, &head).await?;
                 }
@@ -830,7 +745,7 @@ async fn implement(
             // Remote CI does not monopolize the local supervisor. The exact verified head
             // and PR remain checkpointed while other tickets can be investigated/answered.
             tree.relieve_disk_pressure(config).await?;
-            platform.update(job, "wait", json!({"reason":"Waiting for the PR's checks","checkpoint":saved(checkpoint),"retryAfterMs":15_000})).await?;
+            platform.update(job, "wait", json!({"reason":"Waiting for the PR's checks","checkpoint":checkpoint.saved(),"retryAfterMs":15_000})).await?;
             return Ok(());
         }
     }
@@ -882,7 +797,7 @@ async fn release(
         .await
         .is_err()
     {
-        platform.update(job, "wait", json!({"reason":"The merged change is awaiting a production release","checkpoint":saved(checkpoint),"retryAfterMs":60_000})).await?;
+        platform.update(job, "wait", json!({"reason":"The merged change is awaiting a production release","checkpoint":checkpoint.saved(),"retryAfterMs":60_000})).await?;
         return Ok(());
     }
     let proposal = job

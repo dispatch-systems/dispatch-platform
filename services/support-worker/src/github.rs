@@ -1,5 +1,6 @@
 use crate::{
     Result,
+    checkpoint::Checkpoint,
     config::Config,
     hermes::atomic_json,
     process::command,
@@ -241,12 +242,18 @@ pub async fn register(
 }
 
 /// Withdraw only this ticket's exact registered head when its lease/approval is lost.
-pub async fn cancel(config: &Config, job: &SupportJob, checkpoint: &Value) -> Result<()> {
-    let Some(number) = checkpoint["prNumber"].as_u64() else {
+pub(crate) async fn cancel(
+    config: &Config,
+    job: &SupportJob,
+    checkpoint: &Checkpoint,
+) -> Result<()> {
+    let published = checkpoint.published_pr();
+    let Some(number) = published.number else {
         return Ok(());
     };
-    let head = checkpoint["headSha"]
-        .as_str()
+    let head = published
+        .head_sha
+        .as_deref()
         .ok_or("Cancellation head missing")?;
     let registration = config
         .runtime_root
