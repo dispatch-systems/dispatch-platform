@@ -200,7 +200,7 @@ impl Grant for Agent {
         } else {
             (token::Kind::Key, "agent_key_invalid")
         };
-        if !token::well_formed(token, kind, state.config.env()) {
+        if !token::well_formed(token, kind, state.config.environment) {
             gate.refused(&input.ip);
             return Err(Error::new(code, 401));
         }

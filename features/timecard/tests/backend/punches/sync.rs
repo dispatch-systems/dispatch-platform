@@ -1,6 +1,9 @@
 use super::*;
 use crate::backend::TimecardStore;
-use dispatch_core::{foundation::config::Config, server::operations};
+use dispatch_core::{
+    foundation::config::{Config, Environment},
+    server::operations,
+};
 use dispatch_paycom::fixtures;
 use serde_json::json;
 use std::os::unix::fs::PermissionsExt;
@@ -17,7 +20,7 @@ fn a_scoped_publication_rejects_other_employees_periods_and_incomplete_captures(
     config.root = root.path().into();
     config.development = true;
     config.fixture = true;
-    config.environment = "preview".into();
+    config.environment = Environment::Preview;
     let store = Store::initialize(config)?;
     let bootstrap = operations::bootstrap(
         &store,

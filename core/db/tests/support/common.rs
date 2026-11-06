@@ -9,7 +9,7 @@ use crate::{
         schedules::Scheduled,
     },
     db::{self, Migration, Migrations, Store, migrations::Apply, s},
-    foundation::config::Config,
+    foundation::config::{Config, Environment},
     manifest::{
         self, Agents, Collector, Feature, Keeper, Permission, Registry, Schedules, feature,
         mandatory, optional, perm, schedules,
@@ -181,7 +181,7 @@ pub fn store() -> (tempfile::TempDir, Store) {
     config.root = root.path().to_owned();
     config.development = true;
     config.fixture = true;
-    config.environment = "preview".into();
+    config.environment = Environment::Preview;
     config.standalone = true;
     config.objects = None;
     let store = Store::initialize(config).unwrap();

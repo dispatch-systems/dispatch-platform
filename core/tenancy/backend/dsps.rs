@@ -134,7 +134,7 @@ impl Store {
         let waiting: Vec<(String,)> = self.platform.query_as(
             "SELECT id FROM dsps WHERE code IS NULL AND environment=? \
              AND status IN ('active','suspended')",
-            [self.config.environment.as_str()],
+            [self.config.environment],
         )?;
         for (id,) in waiting {
             let abbreviation = self.profile(&id)?.abbreviation;
@@ -163,14 +163,14 @@ impl Store {
         Ok(self.serves(&self.find_dsp(id)?))
     }
     pub fn serves(&self, dsp: &Dsp) -> bool {
-        dsp.status == DspStatus::Active && dsp.environment == self.config.env()
+        dsp.status == DspStatus::Active && dsp.environment == self.config.environment
     }
     /// The DSPs this backend serves, active and of its environment, by name.
     pub fn served_dsps(&self) -> Result<Vec<Dsp>> {
         self.platform.query_as(
             "SELECT * FROM dsps WHERE environment=? AND status='active' \
              ORDER BY name COLLATE NOCASE",
-            [self.config.env().as_str()],
+            [self.config.environment],
         )
     }
     /// The names of the DSPs of `ids` there are, by id, whatever their status.
@@ -408,7 +408,7 @@ impl Store {
         station: &str,
     ) -> Result<()> {
         ensure(
-            self.config.development && self.config.environment == "preview" && !self.config.fixture,
+            self.config.development && self.config.environment.is_preview() && !self.config.fixture,
             "support_verification_dev_only",
             403,
         )?;

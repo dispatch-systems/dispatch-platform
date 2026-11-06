@@ -459,7 +459,7 @@ impl OAuthStore for Store {
 
     fn authenticate_app(&self, token: &str, client: &str) -> Result<Caller> {
         ensure(
-            token::well_formed(token, Kind::Access, self.config.env()),
+            token::well_formed(token, Kind::Access, self.config.environment),
             "access_token_invalid",
             401,
         )?;
@@ -793,7 +793,7 @@ fn website_approved(db: &Store, client_id: &str) -> Result<bool> {
 /// again proves that the app's token family may be compromised and ends the connection.
 fn refresh(db: &Store, form: &Query, client_id: &str) -> Answer<Value> {
     let presented = form.required("refresh_token")?;
-    if !token::well_formed(presented, Kind::Refresh, db.config.env()) {
+    if !token::well_formed(presented, Kind::Refresh, db.config.environment) {
         return Err(grant("The refresh token is not one Dispatch issued"));
     }
     let row = db
@@ -868,7 +868,7 @@ fn replaced_apps(
 
 /// A new access and refresh token for a connected app, as the token endpoint answers.
 fn issue_tokens(db: &Store, key: &str, client_id: &str) -> Result<Value> {
-    let environment = db.config.env();
+    let environment = db.config.environment;
     let access = token::new(Kind::Access, environment)?;
     let refresh = token::new(Kind::Refresh, environment)?;
     for (value, kind, lifetime) in [

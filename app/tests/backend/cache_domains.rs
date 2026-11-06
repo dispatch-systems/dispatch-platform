@@ -1,5 +1,5 @@
 //! What the read cache evicts for every registered feature's writes.
-use dispatch_core::{Result, server::cache::*};
+use dispatch_core::{Result, foundation::config::Environment, server::cache::*};
 fn meals(dsp: &str) -> Scope {
     Scope::tenant("meals", dsp)
 }
@@ -15,7 +15,7 @@ async fn bookkeeping_preserves_cache_and_scoped_dsp_or_unknown_writes_invalidate
     config.root = root.path().into();
     config.fixture = true;
     config.development = true;
-    config.environment = "preview".into();
+    config.environment = Environment::Preview;
     let state = dispatch_core::State::new(config).unwrap();
     state
         .run(|db| {

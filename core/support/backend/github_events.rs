@@ -40,7 +40,7 @@ pub fn record(db: &Store, body: &Value) -> Result<()> {
         "invalid_input",
         400,
     )?;
-    let env = if db.config.environment == "production" {
+    let env = if db.config.environment.is_production() {
         "production"
     } else {
         "dev"

@@ -230,7 +230,7 @@ pub async fn sync(state: &Arc<State>, dsp: &str) -> Result<Vec<Share>> {
     }
     let at = dsp.to_owned();
     let origin = state.config.origin.clone();
-    let dev = state.config.env().is_preview();
+    let dev = state.config.environment.is_preview();
     // What Google made is kept, the DSP disabled meanwhile or not: the next sync once it's
     // enabled goes on from there.
     state

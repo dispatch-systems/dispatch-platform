@@ -165,7 +165,8 @@ fn deliver(
     let value = crypto::decrypt(key, &row.id, &row.encrypted_message)?;
     if let MailTransport::Cloudflare(client) = transport {
         ensure(
-            s(&value, "environment") == config.environment && s(&value, "origin") == config.origin,
+            s(&value, "environment") == config.environment.as_str()
+                && s(&value, "origin") == config.origin,
             "email_environment_mismatch",
             503,
         )?;

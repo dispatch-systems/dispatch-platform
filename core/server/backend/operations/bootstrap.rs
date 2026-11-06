@@ -23,7 +23,7 @@ pub fn bootstrap(
         409,
     )?;
     let owner = db.create_user(None, email, first, last, password)?;
-    let dsp = if db.config.env().is_preview() {
+    let dsp = if db.config.environment.is_preview() {
         let dsp = db.new_dsp("Dev DSP", "UTC", &owner.id, true)?;
         db.enable_all_features(&dsp.id)?;
         Some(dsp)

@@ -2,7 +2,12 @@
 //! the stock counts and the journal both write to.
 use super::*;
 use crate::api::types::{UniformEventKind, UniformFit, UniformVariantInput};
-use dispatch_core::{accounts::Auth, db::s, foundation::config::Config, server::operations};
+use dispatch_core::{
+    accounts::Auth,
+    db::s,
+    foundation::config::{Config, Environment},
+    server::operations,
+};
 use std::os::unix::fs::PermissionsExt;
 
 /// A preview platform's first DSP, every feature on, and its owner managing its uniforms.
@@ -13,7 +18,7 @@ fn ready() -> (tempfile::TempDir, Store, Context) {
     config.root = root.path().into();
     config.development = true;
     config.fixture = true;
-    config.environment = "preview".into();
+    config.environment = Environment::Preview;
     let store = Store::initialize(config).unwrap();
     let bootstrap = operations::bootstrap(
         &store,

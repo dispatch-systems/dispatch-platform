@@ -1,5 +1,6 @@
 use super::*;
 use crate::testing;
+use dispatch_core::foundation::config::Environment;
 use dispatch_cortex::{
     discovery::CollectionRequest,
     routes::{MAX_ITINERARIES, fixture},
@@ -15,7 +16,7 @@ fn retained_sweep_selection_rechecks_running_jobs_and_publication_activity() {
     config.root = root.path().into();
     config.fixture = true;
     config.development = true;
-    config.environment = "preview".into();
+    config.environment = Environment::Preview;
     let db = Store::initialize(config).unwrap();
     let bootstrap = dispatch_core::server::operations::bootstrap(
         &db,

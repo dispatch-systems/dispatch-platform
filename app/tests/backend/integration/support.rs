@@ -5,7 +5,10 @@
 use dispatch_core::{
     State,
     db::{self, Store, s},
-    foundation::{config::Config, crypto},
+    foundation::{
+        config::{Config, Environment},
+        crypto,
+    },
     server::operations,
 };
 use serde_json::{Value, json};
@@ -134,7 +137,7 @@ impl Server {
         db::private_dir(&config.root).unwrap();
         config.development = true;
         config.fixture = true;
-        config.environment = "preview".into();
+        config.environment = Environment::Preview;
         config.standalone = true;
         config.dashboard = dashboard;
         config.port = port;

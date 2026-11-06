@@ -120,7 +120,7 @@ pub async fn run() -> Result<()> {
             dispatch_core::foundation::observability::event(
                 "info",
                 "core.started",
-                serde_json::json!({"environment":config.environment,"port":config.port,"release":config.release}),
+                serde_json::json!({"environment":config.environment.as_str(),"port":config.port,"release":config.release}),
             );
             let sender = stop.clone();
             let mut shutdown_receiver = stop.subscribe();

@@ -50,7 +50,7 @@ pub struct VerificationAuthority {
 impl VerificationAuthority {
     pub fn load(config: &crate::foundation::config::Config) -> Result<Self> {
         ensure(
-            config.development && config.environment == "preview" && !config.fixture,
+            config.development && config.environment.is_preview() && !config.fixture,
             "support_verification_dev_only",
             403,
         )?;

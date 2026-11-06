@@ -300,7 +300,7 @@ impl Store {
     ) -> Result<()> {
         ensure(self.config.mail_available(), "email_unavailable", 503)?;
         let (text, html) = (&mail.text, Some(&mail.html));
-        let subject = if self.config.env().is_preview() {
+        let subject = if self.config.environment.is_preview() {
             format!("[Dispatch Dev] {}", mail.subject)
         } else {
             mail.subject.clone()
@@ -309,7 +309,7 @@ impl Store {
         let encrypted = crypto::encrypt(
             &self.key,
             &id,
-            &json!({"to":to,"subject":subject,"text":text,"html":html,"environment":self.config.environment,"origin":self.config.origin}),
+            &json!({"to":to,"subject":subject,"text":text,"html":html,"environment":self.config.environment.as_str(),"origin":self.config.origin}),
         )?;
         let (kind, invitation, user) = match context {
             MailContext::Invitation { hash } => ("invitation", Some(hash), None),

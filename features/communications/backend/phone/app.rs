@@ -46,7 +46,7 @@ pub struct App {
 
 /// The app this server hands out, if its build packed one.
 pub fn latest(config: &Config) -> Option<App> {
-    packed(&config.dashboard.join(FOLDER), config.env())
+    packed(&config.dashboard.join(FOLDER), config.environment)
 }
 /// The build of the app packed in `folder` for `environment`, while its APK is there whole.
 fn packed(folder: &Path, environment: Environment) -> Option<App> {

@@ -6,7 +6,7 @@ pub use security::SecurityPolicy;
 pub struct Config {
     pub security: SecurityPolicy,
     pub root: PathBuf,
-    pub environment: String,
+    pub environment: Environment,
     pub development: bool,
     pub trusted_proxy: crate::server::http::proxy::TrustedProxy,
     pub standalone: bool,
@@ -65,10 +65,11 @@ impl Config {
         let bundle = env::var_os("DISPATCH_ARTIFACT_ROOT")
             .map(PathBuf::from)
             .unwrap_or(env::current_dir()?);
-        let environment = variable("DISPATCH_ENVIRONMENT", "preview");
+        let environment = Environment::parse(&variable("DISPATCH_ENVIRONMENT", "preview"))
+            .ok_or_else(|| crate::Error::new("invalid_environment", 400))?;
         let mode = variable(
             "NODE_ENV",
-            if environment == "production" {
+            if environment.is_production() {
                 "production"
             } else {
                 "development"
@@ -81,11 +82,11 @@ impl Config {
         )?;
         let development = mode != "production";
         ensure(
-            environment != "production" || !development,
+            !environment.is_production() || !development,
             "production_configuration_required",
             400,
         )?;
-        if environment == "production" {
+        if environment.is_production() {
             ensure(
                 [
                     "DISPATCH_STATE_ROOT",
@@ -105,17 +106,13 @@ impl Config {
             "invalid_provider_mode",
             400,
         )?;
-        let mail_prefix = if environment == "preview" {
-            "DISPATCH_DEV"
-        } else {
-            "DISPATCH_PRODUCTION"
-        };
+        let mail_prefix = environment.variable_prefix();
         let mail_variable = |suffix: &str| {
             env::var(format!("{mail_prefix}_{suffix}"))
                 .ok()
                 .filter(|v| !v.trim().is_empty())
         };
-        let source = source(&bundle, environment == "production");
+        let source = source(&bundle, environment.is_production());
         let mut c = Self {
             security: SecurityPolicy::parse(&variable("DISPATCH_SECURITY_POLICY", "{}"))?,
             root: PathBuf::from(variable(
@@ -169,11 +166,6 @@ impl Config {
             "absolute_state_root_required",
             400,
         )?;
-        ensure(
-            ["preview", "production"].contains(&c.environment.as_str()),
-            "invalid_environment",
-            400,
-        )?;
         let origin = url::Url::parse(&c.origin)
             .map_err(|_| crate::Error::new("canonical_origin_required", 400))?;
         ensure(
@@ -186,7 +178,7 @@ impl Config {
         ensure(
             development
                 || (origin.scheme() == "https"
-                    && (!c.fixture || (c.standalone && c.environment == "preview"))),
+                    && (!c.fixture || (c.standalone && c.environment.is_preview()))),
             "production_configuration_required",
             400,
         )?;
@@ -325,11 +317,7 @@ impl Config {
         self.root.join("data/platform")
     }
     pub fn environment_root(&self) -> PathBuf {
-        self.root.join("data").join(&self.environment)
-    }
-    /// The validated environment. The field stays text because it also names a directory.
-    pub fn env(&self) -> Environment {
-        Environment::parse(&self.environment).unwrap_or(Environment::Preview)
+        self.root.join("data").join(self.environment.as_str())
     }
     pub fn mail_available(&self) -> bool {
         self.mail_mode != "disabled"
@@ -344,11 +332,7 @@ impl Config {
     }
     /// The variable a feature's setting `name` is read from in this environment.
     pub fn setting_variable(&self, name: &str) -> String {
-        let prefix = if self.environment == "preview" {
-            "DISPATCH_DEV"
-        } else {
-            "DISPATCH_PRODUCTION"
-        };
+        let prefix = self.environment.variable_prefix();
         format!("{prefix}_{name}")
     }
 }
@@ -467,6 +451,12 @@ text_enum! {
     }
 }
 impl Environment {
+    fn variable_prefix(self) -> &'static str {
+        match self {
+            Self::Preview => "DISPATCH_DEV",
+            Self::Production => "DISPATCH_PRODUCTION",
+        }
+    }
     pub fn is_preview(self) -> bool {
         self == Self::Preview
     }

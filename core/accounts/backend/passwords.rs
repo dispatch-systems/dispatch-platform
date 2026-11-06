@@ -60,7 +60,7 @@ impl Store {
                 )?;
                 let mail = email::reset(
                     &self.config.origin,
-                    self.config.env().is_preview(),
+                    self.config.environment.is_preview(),
                     &user.email,
                     &format!("{}/#reset?token={raw}", self.config.site_origin(site)),
                 );

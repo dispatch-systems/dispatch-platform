@@ -179,7 +179,7 @@ impl KeyStore for Store {
     fn create_agent_key(&self, user: &str, input: &AgentKeyRequest) -> Result<AgentKeyCreated> {
         check_agent_key(self, None, input, &[])?;
         let expires = expiry(input.expires_at.as_deref())?;
-        let token = token::new(token::Kind::Key, self.config.env())?;
+        let token = token::new(token::Kind::Key, self.config.environment)?;
         let id = crypto::id("agentkey")?;
         self.platform.transaction(|| {
             // What an older release reads it may read, run again in a rollback: nothing.
@@ -338,7 +338,7 @@ impl KeyStore for Store {
 
     fn authenticate_agent(&self, token: &str, client: &str) -> Result<Caller> {
         ensure(!token.is_empty(), "agent_key_required", 401)?;
-        let environment = self.config.env();
+        let environment = self.config.environment;
         ensure(
             token::well_formed(token, token::Kind::Key, environment),
             "agent_key_invalid",
@@ -422,7 +422,7 @@ impl KeyStore for Store {
                     .filter(|(_, level)| *level != ToolLevel::Off)
                     .collect(),
             },
-            environment: self.config.env(),
+            environment: self.config.environment,
             now: iso(),
             dsps,
         })

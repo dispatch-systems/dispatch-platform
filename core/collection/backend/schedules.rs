@@ -769,7 +769,7 @@ impl Store {
         let mut deadlines = Vec::new();
         let dsps: Vec<(String,)> = self.platform.query_as(
             "SELECT id FROM dsps WHERE status='active' AND environment=?",
-            [&self.config.environment],
+            [self.config.environment],
         )?;
         for (id,) in dsps {
             let enabled = self.features(&id)?;

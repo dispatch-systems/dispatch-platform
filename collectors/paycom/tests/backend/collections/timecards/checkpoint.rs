@@ -1,7 +1,10 @@
 use super::*;
 use crate as paycom;
 use crate::testing;
-use dispatch_core::{foundation::config::Config, server::operations};
+use dispatch_core::{
+    foundation::config::{Config, Environment},
+    server::operations,
+};
 use std::os::unix::fs::PermissionsExt;
 
 #[tokio::test]
@@ -13,7 +16,7 @@ async fn resume_is_bound_to_job_roster_period_revision_and_fixed_expiry() -> Res
     config.root = root.path().into();
     config.fixture = true;
     config.development = true;
-    config.environment = "preview".into();
+    config.environment = Environment::Preview;
     let state = State::new(config)?;
     let (dsp, job) = state
         .run(|db| {

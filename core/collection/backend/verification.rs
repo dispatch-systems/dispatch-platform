@@ -57,7 +57,7 @@ impl Drop for Credentials {
 
 fn install_credentials(db: &Store, request: &Request, provider: Provider) -> Result<Credentials> {
     ensure(
-        db.config.development && db.config.environment == "preview" && !db.config.fixture,
+        db.config.development && db.config.environment.is_preview() && !db.config.fixture,
         "support_verification_dev_only",
         403,
     )?;
@@ -205,7 +205,7 @@ pub async fn run(
     ensure(input.len() <= 16384, "invalid_input", 400)?;
     let request: Request = serde_json::from_slice(input)?;
     ensure(
-        config.development && config.environment == "preview" && !config.fixture,
+        config.development && config.environment.is_preview() && !config.fixture,
         "support_verification_dev_only",
         403,
     )?;
@@ -344,7 +344,7 @@ pub async fn run(
 /// collector registry, so branch code cannot add arbitrary network destinations.
 pub async fn provider_egress(config: Config, provider: &str, run: &Path) -> Result<()> {
     ensure(
-        config.development && config.environment == "preview",
+        config.development && config.environment.is_preview(),
         "support_verification_dev_only",
         403,
     )?;
