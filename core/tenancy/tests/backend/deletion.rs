@@ -1,9 +1,8 @@
 //! A delete cut short once the DSP's rows are gone holds nothing up: the server starts again
 //! without the DSP, and its first upkeep finishes what the delete left. One stopped before
-//! leaves the DSP disabled, to delete again. A delete leaves what
-//! another DSP holds of the people they shared, or who once belonged there; and takes the mail
-//! development captured for the DSP, as the release before named it too, with none captured
-//! after.
+//! leaves the DSP disabled, to delete again. A delete leaves what another DSP holds of the
+//! people they shared, or who once belonged there; and takes the mail development captured for
+//! the DSP, with none captured after, as no capture outlives its message.
 use super::*;
 use crate::{db::now, foundation::crypto, testing};
 use rusqlite::params;
@@ -180,7 +179,7 @@ fn a_deleted_dsp_takes_nothing_another_dsp_holds_of_people_it_shared_or_had() {
 }
 
 #[tokio::test]
-async fn a_deleted_dsps_captured_mail_goes_named_as_before_or_since_and_none_is_after() {
+async fn a_deleted_dsps_captured_mail_goes_and_none_is_after_nor_outlives_its_message() {
     testing::install(&[], &[]);
     let (_root, db) = testing::seeded();
     let (north, summit) = (
@@ -189,24 +188,23 @@ async fn a_deleted_dsps_captured_mail_goes_named_as_before_or_since_and_none_is_
     );
     let owner = testing::platform_owner(&db);
     // Mail picked to send: Northline's, Summit's and the platform's own captured, and another
-    // of Northline's still on its way as Northline is deleted; and Northline's and Summit's
-    // captured by the release before, named by their IDs alone.
+    // of Northline's still on its way as Northline is deleted; and one of Northline's sent over
+    // a month ago, captured by an earlier release, named by its ID alone as now.
     let mail = [
-        ("mail_north", Some(&north)),
-        ("mail_late", Some(&north)),
-        ("mail_summit", Some(&summit)),
-        ("mail_platform", None),
-        ("mail_north_before", Some(&north)),
-        ("mail_summit_before", Some(&summit)),
+        ("mail_north", Some(&north), now()),
+        ("mail_late", Some(&north), now()),
+        ("mail_summit", Some(&summit), now()),
+        ("mail_platform", None, now()),
+        ("mail_north_sent", Some(&north), now() - 31 * 86_400_000),
     ];
     let mut picked = Vec::new();
-    for (id, dsp) in mail {
+    for (id, dsp, created) in mail {
         let message = crypto::encrypt(&db.key, id, &json!({"to": "member@dispatch.test"}));
         db.platform
             .exec(
                 "INSERT INTO outbox(id,encrypted_message,available_at,created_at,dsp_id) \
                  VALUES (?1,?2,?3,?3,?4)",
-                params![id, message.unwrap(), now(), dsp],
+                params![id, message.unwrap(), created, dsp],
             )
             .unwrap();
         let row = db.platform.one(
@@ -219,12 +217,17 @@ async fn a_deleted_dsps_captured_mail_goes_named_as_before_or_since_and_none_is_
     let captures = db.config.platform().join("development-mail");
     for row in &picked {
         let id = crate::db::s(row, "id");
-        if id.ends_with("_before") {
+        if id == "mail_north_sent" {
             std::fs::write(captures.join(format!("{id}.json")), "{}").unwrap();
         } else {
             mail::capture(&db, row).unwrap().unwrap().unwrap();
         }
     }
+    // The month-old message was sent, and the outbox lets it go before Northline is deleted.
+    db.platform
+        .exec("UPDATE outbox SET status='sent' WHERE id='mail_north_sent'", [])
+        .unwrap();
+    mail::discard_stale(&db).unwrap();
 
     testing::set_dsp_status(&db, &north, "suspended").unwrap();
     db.delete_dsp(&north, "Northline Logistics", &owner)
@@ -237,12 +240,5 @@ async fn a_deleted_dsps_captured_mail_goes_named_as_before_or_since_and_none_is_
         .map(|file| file.unwrap().file_name().to_string_lossy().into_owned())
         .collect();
     captured.sort();
-    assert_eq!(
-        captured,
-        [
-            format!("{summit}.mail_summit.json"),
-            "mail_platform.json".to_owned(),
-            "mail_summit_before.json".to_owned()
-        ]
-    );
+    assert_eq!(captured, ["mail_platform.json", "mail_summit.json"]);
 }

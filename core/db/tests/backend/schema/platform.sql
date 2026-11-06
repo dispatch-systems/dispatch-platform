@@ -7,7 +7,7 @@ CREATE TABLE agent_keys ( id TEXT PRIMARY KEY, name TEXT NOT NULL, hash TEXT NOT
 CREATE TABLE audit (id INTEGER PRIMARY KEY, at TEXT NOT NULL, actor_id TEXT REFERENCES users(id), dsp_id TEXT REFERENCES dsps(id), action TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', actor_name TEXT, data TEXT, shown INTEGER, member_id TEXT);
 CREATE TABLE authenticator_apps ( user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, secret TEXT NOT NULL, created_at INTEGER NOT NULL, last_counter INTEGER NOT NULL DEFAULT -1 );
 CREATE TABLE driver_codes ( code TEXT PRIMARY KEY, dsp_id TEXT NOT NULL, created_at TEXT NOT NULL );
-CREATE TABLE dsp_deletions ( dsp_id TEXT PRIMARY KEY, started_at TEXT NOT NULL, mail TEXT NOT NULL DEFAULT '[]' );
+CREATE TABLE dsp_deletions ( dsp_id TEXT PRIMARY KEY, started_at TEXT NOT NULL );
 CREATE TABLE dsp_features ( dsp_id TEXT NOT NULL REFERENCES dsps(id), feature TEXT NOT NULL, enabled INTEGER NOT NULL CHECK(enabled IN (0,1)), changed_by TEXT, changed_at TEXT NOT NULL, shown INTEGER NOT NULL DEFAULT 1 CHECK (shown IN (0, 1)), beta INTEGER NOT NULL DEFAULT 0 CHECK (beta IN (0, 1)), PRIMARY KEY(dsp_id,feature) );
 CREATE TABLE dsps (id TEXT PRIMARY KEY, name TEXT NOT NULL, environment TEXT NOT NULL CHECK(environment IN ('production','preview')), status TEXT NOT NULL CHECK(status IN ('provisioning','active','suspended','failed')), timezone TEXT NOT NULL, permanent INTEGER NOT NULL DEFAULT 0 CHECK(permanent IN (0,1)), revision INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, code TEXT);
 CREATE TABLE feature_availability ( feature TEXT PRIMARY KEY, mandatory INTEGER NOT NULL CHECK (mandatory IN (0, 1)) );

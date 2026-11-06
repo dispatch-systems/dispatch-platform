@@ -9,7 +9,10 @@ use crate::{
 };
 use rusqlite::params;
 use serde_json::Value;
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+};
 
 mod delivery;
 pub mod templates;
@@ -48,7 +51,8 @@ pub fn sendable(db: &Store, id: &str) -> Result<bool> {
 /// Never send an expired, revoked or already consumed grant. Bound retained content. A
 /// notice about a connected app goes only to someone who is still an active platform owner,
 /// and what a feature writes a member only while the member's account is active. What a
-/// message is for lives in the directory of the DSP it names, or the platform's.
+/// message is for lives in the directory of the DSP it names, or the platform's. What
+/// development captured of what's discarded goes with it (`forget_captured`).
 pub fn discard_stale(db: &Store) -> Result<()> {
     db.platform.exec(
         "DELETE FROM outbox WHERE (status<>'pending' AND created_at<?1) OR \
@@ -74,19 +78,19 @@ pub fn discard_stale(db: &Store) -> Result<()> {
                 .exec("DELETE FROM outbox WHERE id=?", [text("id").unwrap_or("")])?;
         }
     }
-    Ok(())
+    forget_captured(db)
 }
 
 /// Deletes the mail of a DSP being deleted, sent or not: what names it, and its invitations'.
-/// Its invitations' routes are still there to find them by. Answers the messages' IDs, as what
-/// development captured of them goes once their rows have (`forget_captured`).
-pub fn forget_dsp(db: &Store, dsp: &str) -> Result<Vec<String>> {
-    let deleted: Vec<(String,)> = db.platform.query_as(
+/// Its invitations' routes are still there to find them by. What development captured of it
+/// goes once its rows have (`forget_captured`).
+pub fn forget_dsp(db: &Store, dsp: &str) -> Result<()> {
+    db.platform.exec(
         "DELETE FROM outbox WHERE dsp_id=?1 OR \
-         invitation_hash IN (SELECT hash FROM invitation_routes WHERE dsp_id=?1) RETURNING id",
+         invitation_hash IN (SELECT hash FROM invitation_routes WHERE dsp_id=?1)",
         [dsp],
     )?;
-    Ok(deleted.into_iter().map(|(id,)| id).collect())
+    Ok(())
 }
 
 /// Where development keeps the mail it captures rather than sends.
@@ -94,46 +98,37 @@ fn captures(config: &Config) -> PathBuf {
     config.platform().join("development-mail")
 }
 /// Captures the message `row`, picked to send, as development delivers mail, unless it no
-/// longer goes: none, or what became of capturing it. Its file is named for the DSP it's for,
-/// the one it names or its invitation's, so the DSP's delete finds it (`forget_captured`); and
-/// it's captured in the turn that finds it still goes, so none is once that delete took it.
+/// longer goes: none, or what became of capturing it. It's captured in the turn that finds it
+/// still goes, so none is once its row has gone (`forget_captured`).
 pub(crate) fn capture(db: &Store, row: &Value) -> Result<Option<Result<()>>> {
     let id = s(row, "id");
     if !sendable(db, id)? {
         return Ok(None);
     }
-    let dsp: Option<(Option<String>,)> = db.platform.one_as(
-        "SELECT COALESCE(o.dsp_id,r.dsp_id) FROM outbox o \
-         LEFT JOIN invitation_routes r ON r.hash=o.invitation_hash WHERE o.id=?",
-        [id],
-    )?;
-    let name = match dsp.and_then(|(dsp,)| dsp) {
-        Some(dsp) => format!("{dsp}.{id}.json"),
-        None => format!("{id}.json"),
-    };
-    Ok(Some(write_capture(db, row, &name)))
+    Ok(Some(write_capture(db, row, id)))
 }
-fn write_capture(db: &Store, row: &Value, name: &str) -> Result<()> {
-    let message = crypto::decrypt(&db.key, s(row, "id"), s(row, "encrypted_message"))?;
+fn write_capture(db: &Store, row: &Value, id: &str) -> Result<()> {
+    let message = crypto::decrypt(&db.key, id, s(row, "encrypted_message"))?;
     let folder = db::private_dir(&captures(&db.config))?;
-    db::write_private(&folder.join(name), &serde_json::to_vec(&message)?)
+    db::write_private(
+        &folder.join(format!("{id}.json")),
+        &serde_json::to_vec(&message)?,
+    )
 }
-/// Deletes what development captured of the mail of the DSP `dsp`, once its delete took the
-/// mail's rows (`capture`): each file named for it, and each named by one of the IDs `messages`
-/// of its mail alone, as development named them before.
-pub fn forget_captured(config: &Config, dsp: &str, messages: &[String]) -> Result<()> {
-    let captured = match std::fs::read_dir(captures(config)) {
+/// Deletes what development captured of mail the outbox no longer keeps, each file named by
+/// its message's ID, so none outlives its message: sent a month ago, discarded, or its DSP's,
+/// deleted. In a write, so none is captured meanwhile.
+pub fn forget_captured(db: &Store) -> Result<()> {
+    let captured = match std::fs::read_dir(captures(&db.config)) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         captured => captured?,
     };
-    let theirs = format!("{dsp}.");
+    let kept: Vec<(String,)> = db.platform.query_as("SELECT id FROM outbox", [])?;
+    let kept: HashSet<String> = kept.into_iter().map(|(id,)| id).collect();
     for file in captured {
         let file = file?;
         let name = file.file_name().to_string_lossy().into_owned();
-        let before = name
-            .strip_suffix(".json")
-            .is_some_and(|id| messages.iter().any(|theirs| theirs == id));
-        if name.starts_with(&theirs) || before {
+        if name.strip_suffix(".json").is_some_and(|id| !kept.contains(id)) {
             std::fs::remove_file(file.path())?;
         }
     }
