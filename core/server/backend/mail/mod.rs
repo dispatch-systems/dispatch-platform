@@ -128,7 +128,8 @@ pub fn forget_captured(db: &Store) -> Result<()> {
     for file in captured {
         let file = file?;
         let name = file.file_name().to_string_lossy().into_owned();
-        if name.strip_suffix(".json").is_some_and(|id| !kept.contains(id)) {
+        let message = name.strip_suffix(".json");
+        if message.is_some_and(|id| !kept.contains(id)) {
             std::fs::remove_file(file.path())?;
         }
     }

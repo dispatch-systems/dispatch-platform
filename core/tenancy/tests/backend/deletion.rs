@@ -225,7 +225,10 @@ async fn a_deleted_dsps_captured_mail_goes_and_none_is_after_nor_outlives_its_me
     }
     // The month-old message was sent, and the outbox lets it go before Northline is deleted.
     db.platform
-        .exec("UPDATE outbox SET status='sent' WHERE id='mail_north_sent'", [])
+        .exec(
+            "UPDATE outbox SET status='sent' WHERE id='mail_north_sent'",
+            [],
+        )
         .unwrap();
     mail::discard_stale(&db).unwrap();
 

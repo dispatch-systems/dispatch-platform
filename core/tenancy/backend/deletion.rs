@@ -98,10 +98,9 @@ impl Store {
     }
     /// The DSPs whose rows are gone and whose delete isn't finished.
     fn deletions(&self) -> Result<Vec<String>> {
-        let deleting: Vec<(String,)> = self.platform.query_as(
-            "SELECT dsp_id FROM dsp_deletions ORDER BY started_at",
-            [],
-        )?;
+        let deleting: Vec<(String,)> = self
+            .platform
+            .query_as("SELECT dsp_id FROM dsp_deletions ORDER BY started_at", [])?;
         Ok(deleting.into_iter().map(|(id,)| id).collect())
     }
     /// Moves the DSP's folder out of reach of anything looking for it, in a turn no other

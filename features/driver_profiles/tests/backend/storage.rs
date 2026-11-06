@@ -110,7 +110,10 @@ async fn photos_staged_as_their_dsp_is_deleted_make_nothing_of_its_folder_again(
     testing::install(&[&dispatch_cortex::COLLECTOR], &[&crate::FEATURE]);
     let (_root, store, _) = testing::bootstrapped();
     let owner = testing::platform_owner(&store);
-    let dsp = store.new_dsp("Deleted DSP", "UTC", &owner, false).unwrap().id;
+    let dsp = store
+        .new_dsp("Deleted DSP", "UTC", &owner, false)
+        .unwrap()
+        .id;
     store
         .set_profile(&dsp, json!({"abbreviation":"FXTR"}))
         .unwrap();
