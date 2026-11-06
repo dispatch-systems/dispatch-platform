@@ -2,8 +2,10 @@
 //! another. Only a disabled DSP is deleted, never the permanent one, and only by its name as
 //! the platform owner typed it.
 //!
-//! Each step holds if the server stops partway. What the DSP connected outside Dispatch is
-//! given back first, best effort. One transaction then deletes every row of it in the
+//! Each step holds if the server stops partway. The DSP is held for its delete from the first
+//! check that it can be deleted until its rows are gone, so it isn't enabled meanwhile; one that
+//! stops short of that stays disabled. What the DSP connected outside Dispatch is given back
+//! first, best effort. One transaction then deletes every row of it in the
 //! platform's database, its own row included, and notes the delete in `dsp_deletions`: from
 //! then on nothing finds the DSP, and startup no longer looks for its folder. `finish` deletes
 //! what it kept elsewhere, its jobs, the mail development captured for it and its folder, and
@@ -20,7 +22,27 @@ use crate::{
     tenancy::api::types::DspStatus,
 };
 use serde_json::json;
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    collections::BTreeSet,
+    path::PathBuf,
+    sync::{Arc, Mutex, MutexGuard},
+};
+
+/// The DSPs being deleted, by their folders: each from the turn that found it could be until
+/// its delete ends (`Reserved`).
+static DELETING: Mutex<BTreeSet<PathBuf>> = Mutex::new(BTreeSet::new());
+fn deleting() -> MutexGuard<'static, BTreeSet<PathBuf>> {
+    DELETING
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+/// A DSP held for its delete, until this drops.
+pub struct Reserved(PathBuf);
+impl Drop for Reserved {
+    fn drop(&mut self) {
+        deleting().remove(&self.0);
+    }
+}
 
 impl Store {
     /// Refuses deleting the DSP `id` unless it's disabled, isn't the permanent one, and `name`
@@ -30,6 +52,19 @@ impl Store {
         ensure(!dsp.permanent, "permanent_dev_required", 409)?;
         ensure(dsp.status == DspStatus::Suspended, "dsp_not_disabled", 409)?;
         ensure(dsp.name == name, "dsp_name_mismatch", 400)
+    }
+    /// Holds the DSP `id` for its delete, as `ensure_deletable` allows, until what it answers
+    /// drops: another delete and enabling it are refused meanwhile (`dsp_deleting`).
+    fn reserve_deletion(&self, id: &str, name: &str) -> Result<Reserved> {
+        self.ensure_deletable(id, name)?;
+        let folder = self.dsp_folder(id)?;
+        ensure(deleting().insert(folder.clone()), "dsp_deleting", 409)?;
+        Ok(Reserved(folder))
+    }
+    /// Refuses the DSP `id` while it's being deleted.
+    pub fn ensure_not_deleting(&self, id: &str) -> Result<()> {
+        let folder = self.dsp_folder(id)?;
+        ensure(!deleting().contains(&folder), "dsp_deleting", 409)
     }
     /// Deletes every row of the DSP `id` in the platform's database, as `ensure_deletable`
     /// allows: its log, mail, support tickets and switches, what each feature and the agents
@@ -89,6 +124,31 @@ impl Store {
         self.forget_dsp(dsp);
         Ok(aside)
     }
+}
+
+/// Deletes the DSP `dsp` for good, as `allowed` lets in each turn that acts on it, answering
+/// its name as the platform owner typed it and who they are. Held for the delete from the first
+/// (`reserve_deletion`), the DSP's connections outside Dispatch are given back, then its rows
+/// go, then what it kept elsewhere, then what the server holds of it in memory.
+pub async fn delete<F>(state: &Arc<State>, dsp: &str, allowed: F) -> Result<()>
+where
+    F: Fn(&Store) -> Result<(String, String)> + Clone + Send + 'static,
+{
+    let (at, asked) = (dsp.to_owned(), allowed.clone());
+    let _reserved = state
+        .read(move |db| db.reserve_deletion(&at, &asked(db)?.0))
+        .await?;
+    revoke(state, dsp).await;
+    let at = dsp.to_owned();
+    state
+        .run(move |db| {
+            let (name, actor) = allowed(db)?;
+            db.delete_dsp(&at, &name, &actor)
+        })
+        .await?;
+    finish(state).await;
+    forget(state, dsp).await;
+    Ok(())
 }
 
 /// Gives back what the DSP connected outside Dispatch through each feature, as its features

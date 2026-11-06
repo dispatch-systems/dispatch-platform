@@ -184,28 +184,14 @@ async fn enable_dsp(state: Arc<State>, input: Input, access: PlatformOwner) -> R
 }
 
 // Deleting a disabled DSP deletes everything of it for good, once the owner has typed its name
-// and verified who they are recently. What it connected outside Dispatch is given back first,
-// so that's checked before, and again as its rows go.
+// and verified who they are recently: checked in each turn the delete takes.
 async fn delete_dsp(state: Arc<State>, input: Input, access: PlatformOwner) -> Result<Reply> {
     let id = input.param("id").to_owned();
-    let (asked, dsp) = (input.clone(), id.clone());
-    state
-        .read(move |db| {
-            let name = typed_name(db, &access.authorize(db, &asked)?, &asked)?;
-            db.ensure_deletable(&dsp, &name)
-        })
-        .await?;
-    deletion::revoke(&state, &id).await;
-    let dsp = id.clone();
-    state
-        .run(move |db| {
-            let owner = access.authorize(db, &input)?;
-            let name = typed_name(db, &owner, &input)?;
-            db.delete_dsp(&dsp, &name, owner.user.id.as_str())
-        })
-        .await?;
-    deletion::finish(&state).await;
-    deletion::forget(&state, &id).await;
+    deletion::delete(&state, &id, move |db| {
+        let owner = access.authorize(db, &input)?;
+        Ok((typed_name(db, &owner, &input)?, owner.user.id.clone()))
+    })
+    .await?;
     Ok(Reply::json(json!({"ok": true})))
 }
 

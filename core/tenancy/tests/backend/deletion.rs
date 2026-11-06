@@ -1,5 +1,6 @@
 //! A delete cut short once the DSP's rows are gone holds nothing up: the server starts again
-//! without the DSP, and its first upkeep finishes what the delete left. A delete leaves what
+//! without the DSP, and its first upkeep finishes what the delete left. One stopped before
+//! leaves the DSP disabled, to delete again. A delete leaves what
 //! another DSP holds of the people they shared, or who once belonged there; and takes the mail
 //! development captured for the DSP, as the release before named it too, with none captured
 //! after.
@@ -56,6 +57,30 @@ async fn a_delete_cut_short_is_finished_once_the_server_starts_again() {
         .await
         .unwrap();
     assert_eq!(left, (0, 0));
+}
+
+#[tokio::test]
+async fn a_delete_stopped_before_its_rows_go_leaves_the_dsp_disabled_to_delete_again() {
+    testing::install(&[], &[]);
+    let (_root, db) = testing::seeded();
+    let id = dsp_named(&db, "Northline Logistics");
+    let owner = testing::platform_owner(&db);
+    testing::set_dsp_status(&db, &id, "suspended").unwrap();
+    let state = crate::State::new(db.config.clone()).unwrap();
+    // The owner's verification lapses once the delete has begun.
+    let turns = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let by = owner.clone();
+    let lapsing = move |_: &Store| {
+        let turn = turns.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        ensure(turn == 0, "reauthentication_required", 403)?;
+        Ok(("Northline Logistics".to_owned(), by.clone()))
+    };
+    let stopped = delete(&state, &id, lapsing).await;
+    assert_eq!(stopped.unwrap_err().code, "reauthentication_required");
+    assert_eq!(db.find_dsp(&id).unwrap().status, DspStatus::Suspended);
+    let allowed = move |_: &Store| Ok(("Northline Logistics".to_owned(), owner.clone()));
+    delete(&state, &id, allowed).await.unwrap();
+    assert_eq!(db.find_dsp(&id).unwrap_err().code, "dsp_not_found");
 }
 
 #[test]
