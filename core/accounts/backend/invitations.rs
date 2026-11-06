@@ -1,5 +1,5 @@
 use super::*;
-use crate::manifest::registry;
+use crate::{accounts::api::types::DspInvitation, manifest::registry};
 impl Store {
     /// Invites `email` to the DSP in `role`: the platform owner may, and a member holding the
     /// permission a feature declares to invite with, as Team's Invite Members. The invitation
@@ -97,8 +97,8 @@ impl Store {
         Ok(raw)
     }
     /// A DSP's last hundred invitations, open or accepted, the latest to expire first.
-    pub fn dsp_invitations(&self, dsp: &str) -> Result<Vec<Value>> {
-        self.dsp(dsp)?.all(
+    pub fn dsp_invitations(&self, dsp: &str) -> Result<Vec<DspInvitation>> {
+        self.dsp(dsp)?.query_as(
             "SELECT i.email,COALESCE(r.name,i.role) role,i.expires_at expiresAt,\
             i.used_at IS NOT NULL accepted FROM invitations i LEFT JOIN roles r ON r.id=i.role_id \
             WHERE i.dsp_id=? ORDER BY i.expires_at DESC LIMIT 100",

@@ -4,6 +4,7 @@ import type { Role as GeneratedRole } from './generated/Role';
 import type { DspView as GeneratedDspView } from './generated/DspView';
 export type { PublicUser as User } from './generated/PublicUser';
 export type { Member as Membership } from './generated/Member';
+export type { DspInvitation } from './generated/DspInvitation';
 import { permissions } from '../../tenancy/api/generated/access-catalog.js';
 export { permissions };
 export type Permission = (typeof permissions)[number];

@@ -88,7 +88,7 @@ fn set_member_role(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 }
 
 fn invitations(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
-    Ok(Reply::json(json!(db.dsp_invitations(c.dsp_id())?)))
+    Reply::of(&db.dsp_invitations(c.dsp_id())?)
 }
 
 fn revoke_invitation(db: &Store, c: &Member, input: &Input) -> Result<Reply> {

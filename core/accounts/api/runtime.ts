@@ -4,6 +4,7 @@ import { features } from '../../tenancy/api/index.js';
 import {
   permissions,
   type DspView,
+  type DspInvitation,
   type DspProfile,
   type DspSummary,
   type SessionView,
@@ -93,6 +94,12 @@ const accountSession = z.object({
   expiresAt: milliseconds,
   device: z.nullable(text),
 }) satisfies z.ZodMiniType<AccountSession>;
+const dspInvitation = z.object({
+  email: text,
+  role: text,
+  expiresAt: milliseconds,
+  accepted: z.union([z.literal(0), z.literal(1)]),
+}) satisfies z.ZodMiniType<DspInvitation>;
 const recoveryCodes = z.object({
   codes: z
     .array(text.check(z.regex(/^(?:[A-Za-z0-9_.]{4}(?:-[A-Za-z0-9_.]{4}){3}|[A-Za-z0-9_-]{43})$/)))
@@ -133,6 +140,7 @@ export const replies: Replies = (route, method) => {
     if (route === '/api/auth/security/passkeys') return z.array(passkeySummary);
     if (route === '/api/auth/security/sessions') return z.array(accountSession);
     if (route === '/api/platform/dsps') return z.array(dspSummary);
+    if (route === '/api/dsp/invitations') return z.array(dspInvitation);
     return undefined;
   }
   if (
