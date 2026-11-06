@@ -205,13 +205,16 @@ async fn finish_one(state: &Arc<State>, dsp: &str) -> Result<()> {
         .map_err(|_| Error::new("operation_failed", 500))??;
     forget(state, dsp).await;
     if let Some(objects) = &state.objects {
-        objects.delete_dsp(dsp).await?;
-        // An upload begun before the delete may yet end: its objects go again each pass until
-        // the longest an upload takes has gone by.
+        // No upload starts once the DSP is disabled, which it was before its delete began, and
+        // none lasts longer than `UPLOAD`: a listing begun once that has gone by since the delete
+        // began finds every object an upload left. One begun before, however long it takes, is
+        // done again on the next pass.
         let at = dsp.to_owned();
         let started = state.read(move |db| db.deletion_started(&at)).await?;
         let uploading = db::objects::UPLOAD.as_millis() as i64;
-        if started.is_some_and(|started| db::now() < started + uploading) {
+        let last = started.is_none_or(|started| db::now() >= started + uploading);
+        objects.delete_dsp(dsp).await?;
+        if !last {
             return Ok(());
         }
     }

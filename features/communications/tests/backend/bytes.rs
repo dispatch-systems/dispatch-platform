@@ -538,3 +538,17 @@ fn the_cache_lets_go_of_what_was_read_longest_ago_and_never_of_a_dsps_data() {
     assert!(!oldest.exists() && !older.exists());
     assert!(newer.exists() && newest.exists() && data.exists());
 }
+
+#[tokio::test]
+async fn a_disabled_dsps_bytes_start_no_upload() {
+    let fake = Fake::start().await;
+    let (_root, state, dsp, sha256, _) = added(Some(fake.store()), b"door");
+    let at = dsp.clone();
+    state
+        .run(move |db| testing::set_dsp_status(db, &at, "suspended"))
+        .await
+        .unwrap();
+    assert!(copied(&state, &dsp).await.is_empty());
+    let key = format!("dsps/{dsp}/phones/{sha256}");
+    assert_eq!(fake.asked(Method::PUT, &key), 0);
+}
