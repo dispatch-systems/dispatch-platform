@@ -202,7 +202,7 @@ export function CollectionSchedule({
             {collection.enabled && collection.nextRun ? (
               <>
                 {runDay(collection.nextRun, timezone)}
-                <small>{until(collection.nextRun)}</small>
+                <small>{until(collection.nextRun, timezone)}</small>
               </>
             ) : collection.rules.length ? (
               'Off'

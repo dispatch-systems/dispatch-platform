@@ -107,7 +107,7 @@ export function CollectorsTab({
                           </span>
                           <span className="collectors-name">
                             <span>
-                              {each.label}
+                              <span>{each.label}</span>
                               <i className={`dot run-${state(each)}`} />
                             </span>
                             <small>

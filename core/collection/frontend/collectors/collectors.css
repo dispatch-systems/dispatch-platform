@@ -2,7 +2,7 @@
    on the right, its rules each a card that opens to its pattern and fields, then its week. */
 .collectors {
   display: grid;
-  grid-template-columns: 272px minmax(0, 1fr);
+  grid-template-columns: 288px minmax(0, 1fr);
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--card);
@@ -74,7 +74,12 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
   white-space: nowrap;
+}
+.collectors-name > span > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .collectors-name small {
   overflow: hidden;
@@ -259,20 +264,19 @@
 }
 
 /* A rule, coloured as the week draws it. */
-.collectors-rule,
-.collectors-track i {
+.collectors [data-rule] {
   --rule: var(--series-1);
 }
-[data-rule='1'] {
+.collectors [data-rule='1'] {
   --rule: var(--series-2);
 }
-[data-rule='2'] {
+.collectors [data-rule='2'] {
   --rule: var(--series-3);
 }
-[data-rule='3'] {
+.collectors [data-rule='3'] {
   --rule: var(--series-4);
 }
-[data-rule='4'] {
+.collectors [data-rule='4'] {
   --rule: var(--series-5);
 }
 .collectors-rule {
