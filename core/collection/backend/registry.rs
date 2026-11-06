@@ -163,31 +163,6 @@ pub fn database_path(dsp_root: &Path, provider: Provider) -> Result<PathBuf> {
 }
 
 impl Store {
-    /// Credential changes reset only this collector's sessions. Call after its
-    /// browser worker closes; other collectors' profiles must survive unchanged.
-    pub fn clear_collector_browser_state(&self, id: &str, provider: Provider) -> Result<()> {
-        let browsers = self.area(id, "state")?.join("browsers");
-        if !browsers.try_exists()? {
-            return Ok(());
-        }
-        db::private_dir(&browsers)?;
-        for entry in provider.collector().browser_entries() {
-            let path = browsers.join(entry);
-            match std::fs::symlink_metadata(&path) {
-                Ok(stat) if stat.is_dir() => {
-                    db::private_dir(&path)?;
-                    std::fs::remove_dir_all(path)?;
-                }
-                Ok(_) => {
-                    db::private_file(&path, false)?;
-                    std::fs::remove_file(path)?;
-                }
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
-                Err(error) => return Err(error.into()),
-            }
-        }
-        Ok(())
-    }
     pub fn collector(&self, id: &str, provider: Provider) -> Result<DspLease<'_>> {
         let path = self.area(id, "data")?.join(provider.relative_path());
         let db = self.cached_database(&path, provider.database())?;

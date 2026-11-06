@@ -26,7 +26,7 @@ pub fn diagnostic_dsp(db: &Store, ticket: &str, dsp: &str, actor: &str) -> Resul
 pub(crate) fn worker(db: &Store, ticket: &str) -> Result<Value> {
     let row = tickets::record(db, ticket)?;
     let collected = match row["dsp_id"].as_str() {
-        Some(dsp) => crate::collection::verification::diagnostics(
+        Some(dsp) => crate::collection::diagnostics::diagnostics(
             db,
             dsp,
             row["created_at"].as_i64().unwrap_or(now()) - 86400000,
