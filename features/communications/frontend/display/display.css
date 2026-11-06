@@ -46,6 +46,13 @@
   grid-auto-columns: minmax(0, 1fr);
 }
 
+/* The sections, under the screen's switch and the buttons to them. */
+.display-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
 /* Each section, a press away. */
 .display-jump {
   position: sticky;
@@ -363,6 +370,37 @@
 }
 .display-screen.phone .communications-page {
   --page-gutter: 18px;
+}
+
+/* The page filling the window (DisplaySettings' `fillsWindow`): Settings' page and this section
+   take all its heading leaves, the preview beside the choices fills its side, and the sections
+   alone scroll, under the screen's switch and the buttons to them. */
+.main-area.fills .settings-page:has(.message-display),
+.main-area.fills .settings-page > :has(> .message-display) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.main-area.fills .message-display {
+  flex: 1;
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
+  min-height: 0;
+}
+.main-area.fills .display-choices {
+  min-height: 0;
+}
+.main-area.fills .display-sections {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.main-area.fills .display-preview {
+  position: static;
+  height: auto;
+  min-height: 0;
 }
 
 /* With no room for the conversation at its actual size beside the choices: the preview over

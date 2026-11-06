@@ -4,6 +4,7 @@ import type { DspView } from '../../../../core/accounts/api/index.js';
 import { saveSettings, useSettings } from '../../../../core/settings/api/client.js';
 import { ApiError } from '../../../../core/shell/frontend/runtime/api.js';
 import { dataCache } from '../../../../core/shell/frontend/runtime/data-cache.js';
+import { useFillsWindow } from '../../../../core/shell/frontend/runtime/fills.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { usePushKey } from '../../api/client.js';
 import type { MessageDisplay } from '../../api/index.js';
@@ -41,6 +42,11 @@ import './display.css';
 
 /** How long after a choice it's saved, so a slider dragged saves once. */
 const SAVE_MS = 400;
+
+// With room for the choices beside the preview, the page fills the window: the choices scroll by
+// the preview, which stays in view, as does all above them (display.css).
+const fillsWindow = '(width > 1240px) and (height >= 600px)';
+
 /**
  * The member's choices as they make them, saved by `autosave` through the page's action, which says
  * why a save failed at the top of the page until one succeeds; one refused because another session
@@ -132,6 +138,7 @@ function usePage(box: RefObject<HTMLElement | null>) {
 }
 
 export function DisplaySettings({ view, refresh }: { view: DspView; refresh: () => void }) {
+  useFillsWindow(fillsWindow);
   const choices = useChoices(refresh);
   const [screen, setScreen] = useState<Screen>(thisScreen);
   const shown = onScreen(choices.values, screen);
@@ -200,319 +207,321 @@ export function DisplaySettings({ view, refresh }: { view: DspView; refresh: () 
           ))}
         </nav>
 
-        <section className="settings-section" id={at('look')} aria-label="Look">
-          <div className="display-section-head">
-            <h2>Look</h2>
-            <button onClick={() => change(screenDefaults(screen))}>Reset</button>
-          </div>
-          <div className="display-looks" role="radiogroup" aria-label="Look">
-            {(Object.keys(looks) as Look[]).map((each) => (
-              <label key={each} className="display-look">
-                <input
-                  type="radio"
-                  name="message-display-look"
-                  checked={look === each}
-                  onChange={() => change(lookSizes(each))}
-                />
-                <b style={{ fontSize: lookSizes(each).text_size + 4 }}>Aa</b>
-                <span>{looks[each].label}</span>
-              </label>
-            ))}
-            {!look && (
-              <label className="display-look">
-                <input type="radio" name="message-display-look" checked readOnly />
-                <b>
-                  <SlidersHorizontal size={20} aria-hidden="true" />
-                </b>
-                <span>Custom</span>
-              </label>
-            )}
-          </div>
-        </section>
+        <div className="display-sections">
+          <section className="settings-section" id={at('look')} aria-label="Look">
+            <div className="display-section-head">
+              <h2>Look</h2>
+              <button onClick={() => change(screenDefaults(screen))}>Reset</button>
+            </div>
+            <div className="display-looks" role="radiogroup" aria-label="Look">
+              {(Object.keys(looks) as Look[]).map((each) => (
+                <label key={each} className="display-look">
+                  <input
+                    type="radio"
+                    name="message-display-look"
+                    checked={look === each}
+                    onChange={() => change(lookSizes(each))}
+                  />
+                  <b style={{ fontSize: lookSizes(each).text_size + 4 }}>Aa</b>
+                  <span>{looks[each].label}</span>
+                </label>
+              ))}
+              {!look && (
+                <label className="display-look">
+                  <input type="radio" name="message-display-look" checked readOnly />
+                  <b>
+                    <SlidersHorizontal size={20} aria-hidden="true" />
+                  </b>
+                  <span>Custom</span>
+                </label>
+              )}
+            </div>
+          </section>
 
-        <section className="settings-section" id={at('text')} aria-label="Text">
-          <h2>Text</h2>
-          <div className="settings-fields">
-            <Slider
-              label="Text size"
-              value={shown.text_size}
-              min={12}
-              max={20}
-              unit="px"
-              ends={[
-                'A',
-                <span key="large" className="display-large-a">
-                  A
-                </span>,
-              ]}
-              change={(text_size) => change({ text_size })}
-            />
-            <Segments
-              label="Line spacing"
-              value={shown.line_spacing}
-              options={[
-                ['tight', 'Tight'],
-                ['normal', 'Normal'],
-                ['relaxed', 'Relaxed'],
-              ]}
-              change={(line_spacing) => change({ line_spacing })}
-            />
-            <Segments
-              label="Spacing"
-              value={shown.spacing}
-              options={[
-                ['compact', 'Compact'],
-                ['comfortable', 'Comfortable'],
-                ['spacious', 'Spacious'],
-              ]}
-              change={(spacing) => change({ spacing })}
-            />
-          </div>
-        </section>
-
-        <section className="settings-section" id={at('messages')} aria-label="Messages">
-          <h2>Messages</h2>
-          <div className="settings-fields">
-            {!phone && (
-              <Tiles
-                label="Layout"
-                value={shown.layout}
-                options={[
-                  ['full', 'Full width', <Sketch key="full" kind="full" />],
-                  ['centred', 'Centred', <Sketch key="centred" kind="centred" />],
-                ]}
-                change={(layout) => change({ layout })}
-              />
-            )}
-            {!phone && shown.layout === 'centred' && (
+          <section className="settings-section" id={at('text')} aria-label="Text">
+            <h2>Text</h2>
+            <div className="settings-fields">
               <Slider
-                label="Column width"
-                value={shown.column_width}
-                min={600}
-                max={1200}
-                step={50}
+                label="Text size"
+                value={shown.text_size}
+                min={12}
+                max={20}
                 unit="px"
-                change={(column_width) => change({ column_width })}
-              />
-            )}
-            <Tiles
-              label="Style"
-              value={shown.style}
-              options={[
-                ['bubbles', 'Bubbles', <Sketch key="bubbles" kind="bubbles" />],
-                ['plain', 'Plain', <Sketch key="plain" kind="plain" />],
-              ]}
-              change={(style) => change({ style })}
-            />
-            {bubbles && (
-              <>
-                <Segments
-                  label="Your team"
-                  value={shown.team_side}
-                  options={[
-                    ['right', 'Right'],
-                    ['left', 'Left'],
-                  ]}
-                  change={(team_side) => change({ team_side })}
-                />
-                <Segments
-                  label="Bubble shape"
-                  value={shown.bubble_shape}
-                  options={[
-                    ['round', 'Round'],
-                    ['soft', 'Soft'],
-                    ['square', 'Square'],
-                  ]}
-                  change={(bubble_shape) => change({ bubble_shape })}
-                />
-                <Slider
-                  label="Bubble width"
-                  value={shown.bubble_width}
-                  min={phone ? 60 : 50}
-                  max={phone ? 100 : 90}
-                  step={5}
-                  unit="%"
-                  change={(bubble_width) => change({ bubble_width })}
-                />
-              </>
-            )}
-            <Segments
-              label="Times"
-              wide
-              value={shown.times}
-              options={[
-                ['each_message', 'Each message'],
-                ['each_group', 'Each group'],
-                // A phone has no hover.
-                ...(phone ? [] : [['on_hover', 'On hover'] as const]),
-                ['after_pause', 'After a pause'],
-              ]}
-              change={(times) => change({ times })}
-            />
-            <Switch
-              label="Photos"
-              on={shown.message_photos}
-              change={(message_photos) => change({ message_photos })}
-            />
-            {bubbles && (
-              <Switch
-                label="Team names"
-                on={shown.team_names}
-                change={(team_names) => change({ team_names })}
-              />
-            )}
-          </div>
-        </section>
-
-        <section className="settings-section" id={at('colors')} aria-label="Colors">
-          <h2>Colors</h2>
-          <div className="settings-fields">
-            <Swatches
-              label="Your team"
-              of="team"
-              value={shown.team_color}
-              options={[
-                ['blue', 'Blue'],
-                ['indigo', 'Indigo'],
-                ['teal', 'Teal'],
-                ['green', 'Green'],
-                ['purple', 'Purple'],
-                ['slate', 'Slate'],
-              ]}
-              change={(team_color) => change({ team_color })}
-            />
-            <Swatches
-              label="Employees"
-              of="employee"
-              value={shown.employee_color}
-              options={[
-                ['white', 'White'],
-                ['gray', 'Gray'],
-                ['blue', 'Blue'],
-                ['warm', 'Warm'],
-                ['green', 'Green'],
-              ]}
-              change={(employee_color) => change({ employee_color })}
-            />
-          </div>
-        </section>
-
-        <section className="settings-section" id={at('list')} aria-label="Conversation list">
-          <h2>Conversation list</h2>
-          <div className="settings-fields">
-            {!phone && (
-              <Segments
-                label="Width"
-                value={shown.list_width}
-                options={[
-                  ['narrow', 'Narrow'],
-                  ['medium', 'Medium'],
-                  ['wide', 'Wide'],
+                ends={[
+                  'A',
+                  <span key="large" className="display-large-a">
+                    A
+                  </span>,
                 ]}
-                change={(list_width) => change({ list_width })}
+                change={(text_size) => change({ text_size })}
               />
-            )}
-            <Segments
-              label="Rows"
-              value={shown.list_rows}
-              options={[
-                ['compact', 'Compact'],
-                ['comfortable', 'Comfortable'],
-              ]}
-              change={(list_rows) => change({ list_rows })}
-            />
-            <Segments
-              label="Preview"
-              value={shown.list_preview}
-              options={[
-                ['none', 'None'],
-                ['one', '1 line'],
-                ['two', '2 lines'],
-              ]}
-              change={(list_preview) => change({ list_preview })}
-            />
-            <Switch
-              label="Photos"
-              on={shown.list_photos}
-              change={(list_photos) => change({ list_photos })}
-            />
-            <Switch
-              label="Waiting time"
-              on={shown.waiting_time}
-              change={(waiting_time) => change({ waiting_time })}
-            />
-          </div>
-        </section>
+              <Segments
+                label="Line spacing"
+                value={shown.line_spacing}
+                options={[
+                  ['tight', 'Tight'],
+                  ['normal', 'Normal'],
+                  ['relaxed', 'Relaxed'],
+                ]}
+                change={(line_spacing) => change({ line_spacing })}
+              />
+              <Segments
+                label="Spacing"
+                value={shown.spacing}
+                options={[
+                  ['compact', 'Compact'],
+                  ['comfortable', 'Comfortable'],
+                  ['spacious', 'Spacious'],
+                ]}
+                change={(spacing) => change({ spacing })}
+              />
+            </div>
+          </section>
 
-        <section className="settings-section" id={at('profile')} aria-label="Profile">
-          <h2>Profile</h2>
-          <div className="settings-fields">
-            {!phone && (
-              <>
+          <section className="settings-section" id={at('messages')} aria-label="Messages">
+            <h2>Messages</h2>
+            <div className="settings-fields">
+              {!phone && (
                 <Tiles
-                  label="Opens"
-                  value={shown.profile_opens}
+                  label="Layout"
+                  value={shown.layout}
                   options={[
-                    ['beside', 'Beside', <Sketch key="beside" kind="beside" />],
-                    ['over', 'Over', <Sketch key="over" kind="over" />],
+                    ['full', 'Full width', <Sketch key="full" kind="full" />],
+                    ['centred', 'Centred', <Sketch key="centred" kind="centred" />],
                   ]}
-                  change={(profile_opens) => change({ profile_opens })}
+                  change={(layout) => change({ layout })}
                 />
+              )}
+              {!phone && shown.layout === 'centred' && (
                 <Slider
-                  label="Width"
-                  value={shown.profile_width}
-                  min={280}
-                  max={420}
-                  step={10}
+                  label="Column width"
+                  value={shown.column_width}
+                  min={600}
+                  max={1200}
+                  step={50}
                   unit="px"
-                  scale={shown.text_size / 14}
-                  change={(profile_width) => change({ profile_width })}
+                  change={(column_width) => change({ column_width })}
                 />
-              </>
-            )}
-            <Switch
-              label="Slide in"
-              on={shown.profile_slide}
-              change={(profile_slide) => change({ profile_slide })}
-            />
-            {!phone && (
-              <Switch
-                label="Keep profile open"
-                on={shown.keep_profile_open}
-                change={(keep_profile_open) => change({ keep_profile_open })}
+              )}
+              <Tiles
+                label="Style"
+                value={shown.style}
+                options={[
+                  ['bubbles', 'Bubbles', <Sketch key="bubbles" kind="bubbles" />],
+                  ['plain', 'Plain', <Sketch key="plain" kind="plain" />],
+                ]}
+                change={(style) => change({ style })}
               />
-            )}
-          </div>
-        </section>
-
-        <section className="settings-section" id={at('writing')} aria-label="Writing">
-          <h2>Writing</h2>
-          <div className="settings-fields">
-            <Switch
-              label="Enter sends"
-              on={shown.enter_sends}
-              change={(enter_sends) => change({ enter_sends })}
-            />
-          </div>
-        </section>
-
-        <section className="settings-section" id={at('alerts')} aria-label="New messages">
-          <h2>New messages</h2>
-          <div className="settings-fields">
-            <Switch
-              label="Sound"
-              on={choices.values.sound}
-              change={(sound) => choices.change({ sound })}
-            />
-            {offered && (
-              <Switch
-                label="Notifications"
-                on={choices.values.notifications && allowed}
-                change={(on) => void notifications(on)}
+              {bubbles && (
+                <>
+                  <Segments
+                    label="Your team"
+                    value={shown.team_side}
+                    options={[
+                      ['right', 'Right'],
+                      ['left', 'Left'],
+                    ]}
+                    change={(team_side) => change({ team_side })}
+                  />
+                  <Segments
+                    label="Bubble shape"
+                    value={shown.bubble_shape}
+                    options={[
+                      ['round', 'Round'],
+                      ['soft', 'Soft'],
+                      ['square', 'Square'],
+                    ]}
+                    change={(bubble_shape) => change({ bubble_shape })}
+                  />
+                  <Slider
+                    label="Bubble width"
+                    value={shown.bubble_width}
+                    min={phone ? 60 : 50}
+                    max={phone ? 100 : 90}
+                    step={5}
+                    unit="%"
+                    change={(bubble_width) => change({ bubble_width })}
+                  />
+                </>
+              )}
+              <Segments
+                label="Times"
+                wide
+                value={shown.times}
+                options={[
+                  ['each_message', 'Each message'],
+                  ['each_group', 'Each group'],
+                  // A phone has no hover.
+                  ...(phone ? [] : [['on_hover', 'On hover'] as const]),
+                  ['after_pause', 'After a pause'],
+                ]}
+                change={(times) => change({ times })}
               />
-            )}
-          </div>
-        </section>
+              <Switch
+                label="Photos"
+                on={shown.message_photos}
+                change={(message_photos) => change({ message_photos })}
+              />
+              {bubbles && (
+                <Switch
+                  label="Team names"
+                  on={shown.team_names}
+                  change={(team_names) => change({ team_names })}
+                />
+              )}
+            </div>
+          </section>
+
+          <section className="settings-section" id={at('colors')} aria-label="Colors">
+            <h2>Colors</h2>
+            <div className="settings-fields">
+              <Swatches
+                label="Your team"
+                of="team"
+                value={shown.team_color}
+                options={[
+                  ['blue', 'Blue'],
+                  ['indigo', 'Indigo'],
+                  ['teal', 'Teal'],
+                  ['green', 'Green'],
+                  ['purple', 'Purple'],
+                  ['slate', 'Slate'],
+                ]}
+                change={(team_color) => change({ team_color })}
+              />
+              <Swatches
+                label="Employees"
+                of="employee"
+                value={shown.employee_color}
+                options={[
+                  ['white', 'White'],
+                  ['gray', 'Gray'],
+                  ['blue', 'Blue'],
+                  ['warm', 'Warm'],
+                  ['green', 'Green'],
+                ]}
+                change={(employee_color) => change({ employee_color })}
+              />
+            </div>
+          </section>
+
+          <section className="settings-section" id={at('list')} aria-label="Conversation list">
+            <h2>Conversation list</h2>
+            <div className="settings-fields">
+              {!phone && (
+                <Segments
+                  label="Width"
+                  value={shown.list_width}
+                  options={[
+                    ['narrow', 'Narrow'],
+                    ['medium', 'Medium'],
+                    ['wide', 'Wide'],
+                  ]}
+                  change={(list_width) => change({ list_width })}
+                />
+              )}
+              <Segments
+                label="Rows"
+                value={shown.list_rows}
+                options={[
+                  ['compact', 'Compact'],
+                  ['comfortable', 'Comfortable'],
+                ]}
+                change={(list_rows) => change({ list_rows })}
+              />
+              <Segments
+                label="Preview"
+                value={shown.list_preview}
+                options={[
+                  ['none', 'None'],
+                  ['one', '1 line'],
+                  ['two', '2 lines'],
+                ]}
+                change={(list_preview) => change({ list_preview })}
+              />
+              <Switch
+                label="Photos"
+                on={shown.list_photos}
+                change={(list_photos) => change({ list_photos })}
+              />
+              <Switch
+                label="Waiting time"
+                on={shown.waiting_time}
+                change={(waiting_time) => change({ waiting_time })}
+              />
+            </div>
+          </section>
+
+          <section className="settings-section" id={at('profile')} aria-label="Profile">
+            <h2>Profile</h2>
+            <div className="settings-fields">
+              {!phone && (
+                <>
+                  <Tiles
+                    label="Opens"
+                    value={shown.profile_opens}
+                    options={[
+                      ['beside', 'Beside', <Sketch key="beside" kind="beside" />],
+                      ['over', 'Over', <Sketch key="over" kind="over" />],
+                    ]}
+                    change={(profile_opens) => change({ profile_opens })}
+                  />
+                  <Slider
+                    label="Width"
+                    value={shown.profile_width}
+                    min={280}
+                    max={420}
+                    step={10}
+                    unit="px"
+                    scale={shown.text_size / 14}
+                    change={(profile_width) => change({ profile_width })}
+                  />
+                </>
+              )}
+              <Switch
+                label="Slide in"
+                on={shown.profile_slide}
+                change={(profile_slide) => change({ profile_slide })}
+              />
+              {!phone && (
+                <Switch
+                  label="Keep profile open"
+                  on={shown.keep_profile_open}
+                  change={(keep_profile_open) => change({ keep_profile_open })}
+                />
+              )}
+            </div>
+          </section>
+
+          <section className="settings-section" id={at('writing')} aria-label="Writing">
+            <h2>Writing</h2>
+            <div className="settings-fields">
+              <Switch
+                label="Enter sends"
+                on={shown.enter_sends}
+                change={(enter_sends) => change({ enter_sends })}
+              />
+            </div>
+          </section>
+
+          <section className="settings-section" id={at('alerts')} aria-label="New messages">
+            <h2>New messages</h2>
+            <div className="settings-fields">
+              <Switch
+                label="Sound"
+                on={choices.values.sound}
+                change={(sound) => choices.change({ sound })}
+              />
+              {offered && (
+                <Switch
+                  label="Notifications"
+                  on={choices.values.notifications && allowed}
+                  change={(on) => void notifications(on)}
+                />
+              )}
+            </div>
+          </section>
+        </div>
       </div>
 
       <div className="display-preview">
