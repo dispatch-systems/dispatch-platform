@@ -12,9 +12,8 @@ import { marker } from './wire.js';
 // what they read from the repository, the edits that list a new owner in `app/`, and writing
 // it all, or with `--dry-run` only saying what they would write.
 //
-// The generators write the crate layout of the Phase B brief: a crate per owner, its manifest
-// as the crate root, `dispatch_core::` for core. The Rust paths they assume live in the
-// templates, so a renamed module is a find-and-replace in `templates/`.
+// The generators write a crate per owner, with its manifest as the crate root and
+// `dispatch_core::` for core. The Rust paths they assume live in `templates/`.
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 /** The repository the scaffold belongs to; `--root` points the generators at another. */
@@ -475,7 +474,7 @@ export function addWorkspaceMember(text: string, dir: string) {
   const separator = list[1]!.trim() ? ', ' : '';
   return `${text.slice(0, end).trimEnd()}${separator}"${dir}"${text.slice(end)}`;
 }
-/** The file that holds `pattern`, of `candidates`: Phase B may move the app's lists. */
+/** The first existing candidate file that holds `pattern`; fails when none does. */
 export function holding(root: string, candidates: string[], pattern: RegExp) {
   const file = candidates.find(
     (candidate) => exists(root, candidate) && pattern.test(read(root, candidate)),
@@ -485,7 +484,6 @@ export function holding(root: string, candidates: string[], pattern: RegExp) {
 }
 /** Where the app's backend lists every collector and feature. */
 export const appBackend = ['app/backend/features.rs', 'app/backend/lib.rs'];
-export const routeInventory = 'app/tests/backend/integration/http_routes.rs';
 /**
  * The last step for a new owner: the app's tests hold the whole product to snapshots, which it
  * changes. Rewriting them needs a build: `dispatchdev new` runs the command after writing.
@@ -494,8 +492,6 @@ export const snapshotsNote =
   "`dispatchdev generate` rewrites the snapshots of the whole product the app's tests hold, " +
   'such as the catalog, the databases and the tools agents use, and names each file that ' +
   'changed: review them with the rest.';
-/** The app's test that writes every owner's API types to TypeScript, which lists each type. */
-export const typescriptExport = 'app/tests/backend/export.rs';
 
 // ---- Writing
 
