@@ -42,6 +42,7 @@ const driver = (id: string, wave: number | null, conversation?: Conversation): R
     driverId: id,
     person: { userId: null, name: id, code: null, role: null, title: null, photo: null },
     today,
+    routed: true,
     conversation: conversation ?? null,
   };
 };
@@ -118,7 +119,7 @@ test('whom a conversation is with is working as the read that answered last has 
   const routed = (code: string, route: string | null): RouteDriver => {
     const each = driver('avery', 940, work('avery', 500));
     const today = { ...each.today, route, stops: route === null ? null : 120 };
-    return { ...each, person: { ...each.person, code }, today };
+    return { ...each, person: { ...each.person, code }, today, routed: route !== null };
   };
   const personal: Conversation = {
     ...work('avery-own', 600),
@@ -148,6 +149,12 @@ test('whom a conversation is with is working as the read that answered last has 
   // Read after Today's Routes, the conversation's own stands.
   const later = { ...before, at: 3_000 };
   assert.equal(dayOf(personal, later, off).working, true);
+  // On a route Today's Routes knows nothing of but that it's theirs: working all the same.
+  const bare = day([{ ...routed('P1', null), routed: true }]);
+  assert.equal(dayOf(personal, read, bare).working, true);
+  // Today's Routes, since, lists no day: no one is working, their route as the read had it.
+  const over = { value: { day: null, drivers: [], phones: [] }, at: 2_000 };
+  assert.deepEqual(dayOf(personal, before, over), { ...before.value, working: false });
 });
 
 test('Recents shows a driver’s route on each of their conversations Driver Match knows them in, while they have a route today', () => {
@@ -165,6 +172,7 @@ test('Recents shows a driver’s route on each of their conversations Driver Mat
     return {
       ...each,
       person: { ...each.person, code },
+      routed: route !== null,
       today: {
         ...each.today,
         route,

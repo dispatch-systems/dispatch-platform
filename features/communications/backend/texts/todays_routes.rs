@@ -82,6 +82,7 @@ pub fn read(db: &Store, state: &State, dsp: &str) -> Result<TodaysRoutes> {
                 &vans,
                 phones_now.get(driver).map(String::as_str),
             ),
+            routed: routes.contains_key(driver),
             conversation: theirs.remove(driver),
         })
         .collect();

@@ -337,11 +337,7 @@ pub fn opened(
             let ids = std::slice::from_ref(driver);
             // Working only on a route as live route data holds today, not on the day stopped.
             let (today, working) = match LiveDay::read(db, dsp)? {
-                Some(live) if live.source == *source => {
-                    let today = today::of_drivers(db, dsp, &live, ids)?;
-                    let working = today.as_ref().is_some_and(today::on_route);
-                    (today, working)
-                }
+                Some(live) if live.source == *source => today::of_drivers(db, dsp, &live, ids)?,
                 Some(_) => (None, false),
                 None => match Stopped::read(db, dsp, now())? {
                     Some(stopped) if stopped.source == *source => {

@@ -48,6 +48,9 @@ pub struct RouteDriver {
     pub driver_id: String,
     pub person: Correspondent,
     pub today: Today,
+    /// Whether live route data has them on a route today, whatever of it is known, as one gone
+    /// from the day's list isn't: whether they're working.
+    pub routed: bool,
     pub conversation: Option<Conversation>,
 }
 

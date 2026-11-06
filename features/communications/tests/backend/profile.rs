@@ -215,7 +215,19 @@ async fn only_a_route_live_route_data_holds_today_has_them_working_and_their_num
     phoned(&state, &dsp, Some(&today), Vec::new(), Vec::new()).await;
     assert_eq!(working().await.unwrap(), (false, false));
 
-    // With them on a route: working, in Slack and by their own number alike.
+    // With them on a route, however little of it is known yet: working, in Slack and by their
+    // own number alike.
+    let unknown = dispatch_routes_contract::RouteDay {
+        route_code: None,
+        vin: None,
+        wave_start_at: None,
+        stops: 0,
+        stops_completed: 0,
+        ..cx14.clone()
+    };
+    routed(&dsp, vec![unknown]);
+    phoned(&state, &dsp, Some(&today), Vec::new(), Vec::new()).await;
+    assert_eq!(working().await.unwrap(), (true, true));
     routed(&dsp, vec![cx14]);
     phoned(&state, &dsp, Some(&today), Vec::new(), Vec::new()).await;
     assert_eq!(working().await.unwrap(), (true, true));

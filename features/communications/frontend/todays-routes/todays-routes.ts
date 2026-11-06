@@ -96,12 +96,12 @@ export type Day = { today: Today | null; working: boolean };
  * answered last, Today's Routes' (`todays`), as it's read every minute while it shows, or their
  * conversation's (`read`), as each change to it is. While Today's Routes lists a day, they're
  * working as it has them on a route, by the driver a work conversation is with, else as Driver
- * Match knows them (`routeToday`), with the route it lists them on, and a driver's the work phone
- * it lists them with too; else the conversation's own stands. Once the day is over, as Today's Routes lists none, the
- * conversation's own stands, as it does for someone Today's Routes doesn't list: a driver's work
- * phone they had at the stop, for the two hours after, then none, each as the server notes their
- * conversation changed. A read failing, or another driver's change, leaves each as it last
- * answered.
+ * Match knows them, of several their busiest route, with what it lists of it, and a driver's the
+ * work phone it lists them with too; else the conversation's own stands. Once the day is over, as
+ * Today's Routes lists none, no one is, and the conversation's own route stands, as it does for
+ * someone Today's Routes doesn't list: a driver's work phone they had at the stop, for the two
+ * hours after, then none, each as the server notes their conversation changed. A read failing, or
+ * another driver's change, leaves each as it last answered.
  */
 export function dayOf(
   conversation: Conversation,
@@ -110,13 +110,18 @@ export function dayOf(
 ): Day {
   const own = read?.value ?? { today: null, working: false };
   if (!todays || (read && read.at > todays.at)) return own;
-  if (todays.value.day === null) return own;
-  const routed = routeToday(routeGroups(routeRows(todays.value, [])))(conversation);
-  const listed = todays.value.drivers.find(
-    (each) => conversation.driverId !== null && each.driverId === conversation.driverId,
-  )?.today;
-  return {
-    today: listed ?? routed ?? own.today,
-    working: routed !== undefined || (listed !== undefined && onRoute(listed)),
-  };
+  if (todays.value.day === null) return { ...own, working: false };
+  const { driverId, with: person } = conversation;
+  const theirs = todays.value.drivers.filter((each) =>
+    driverId !== null
+      ? each.driverId === driverId
+      : person.code !== null && each.person.code === person.code,
+  );
+  const routed = theirs
+    .filter((each) => each.routed)
+    .reduce<RouteDriver | undefined>(
+      (kept, each) => (!kept || (each.today.stops ?? 0) > (kept.today.stops ?? 0) ? each : kept),
+      undefined,
+    );
+  return { today: (routed ?? theirs[0])?.today ?? own.today, working: routed !== undefined };
 }

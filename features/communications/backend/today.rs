@@ -119,16 +119,9 @@ pub fn shown(
 /// working: on a route as live route data holds today. Routes' read alone is no proof.
 pub fn of_working(db: &Store, dsp: &str, person: &Person) -> Result<(Option<Today>, bool)> {
     if let Some(live) = LiveDay::read(db, dsp)? {
-        let today = of_drivers(db, dsp, &live, person.ids_of(live.reader.source()))?;
-        let working = today.as_ref().is_some_and(on_route);
-        return Ok((today, working));
+        return of_drivers(db, dsp, &live, person.ids_of(live.reader.source()));
     }
     Ok((planned(db, dsp, person)?, false))
-}
-
-/// Whether `today` is a route, not only a work phone.
-pub fn on_route(today: &Today) -> bool {
-    today.route.is_some() || today.stops.is_some()
 }
 
 /// The route `person` drives today as Routes has read it so far, with no work phone.
@@ -148,20 +141,27 @@ fn planned(db: &Store, dsp: &str, person: &Person) -> Result<Option<Today>> {
 }
 
 /// The route the driver holding `ids` of the live day's source drives today, and the work phone
-/// they have now, if they have either.
-pub fn of_drivers(db: &Store, dsp: &str, live: &LiveDay, ids: &[String]) -> Result<Option<Today>> {
+/// they have now, if they have either; and whether they're working, on a route of the live day,
+/// whatever of it is known.
+pub fn of_drivers(
+    db: &Store,
+    dsp: &str,
+    live: &LiveDay,
+    ids: &[String],
+) -> Result<(Option<Today>, bool)> {
     if ids.is_empty() {
-        return Ok(None);
+        return Ok((None, false));
     }
     let driven = live.routes_of(db, dsp, ids)?;
     let route = driven.values().max_by_key(|route| route.stops);
     let phone = live.phone_of(db, dsp, ids, &driven)?;
     let vans = vans(db, dsp, route.and_then(|route| route.vin.as_ref()))?;
-    Ok(known(shown(
+    let today = known(shown(
         route,
         &vans,
         phone.as_ref().map(|each| each.phone.as_str()),
-    )))
+    ));
+    Ok((today, route.is_some()))
 }
 
 /// The route the driver holding `ids` of the stopped day's source drove that day, and the work
