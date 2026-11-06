@@ -112,7 +112,8 @@ test('The card offers the app its DSP hands out: its download, an update to an o
     link: `http://${dispatch.at(demo.memberDsp).host}/api/communications/phone/app/download`,
     picture: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=',
   };
-  // Its stand-in phone runs an older version than that.
+  const lastSeenAt = Date.now() - 3 * 60_000;
+  // Its stand-in phone runs an older version than that and has been offline for three minutes.
   await page.route('**/api/dsp/communications/phones', async (route) => {
     const response = await route.fetch();
     const { phones } = (await response.json()) as Phones;
@@ -124,6 +125,17 @@ test('The card offers the app its DSP hands out: its download, an update to an o
       model: `Samsung Galaxy ${'A'.repeat(85)}`,
       appVersion: '1.3.0',
       update: true,
+      online: false,
+      lastSeenAt,
+      health: {
+        cantSend: false,
+        cantRead: false,
+        noSim: true,
+        noSignal: false,
+        setupUndone: false,
+        waiting: 0,
+        undownloaded: null,
+      },
     }));
     await route.fulfill({ response, json: { phones: older, app } });
   });
@@ -153,6 +165,32 @@ test('The card offers the app its DSP hands out: its download, an update to an o
     return hit !== null && element.contains(hit);
   });
   expect(drawn).toBe(true);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await row.scrollIntoViewIfNeeded();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  for (const element of [card, row]) {
+    const bounds = (await element.boundingBox())!;
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
+  }
+  const number = row.getByText('(206) 555-0100', { exact: true });
+  const details = row.getByText(/^Dispatch phone at the north station, by the loading dock ·/);
+  for (const text of [number, details]) {
+    await expect(text).toBeInViewport();
+    expect(await text.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  }
+  await expect(tag).toBeInViewport();
+  await expect(row.getByText('Offline · 3 min', { exact: true })).toBeInViewport();
+  await expect(row.getByText('No SIM', { exact: true })).toBeInViewport();
+  const actions = row.getByLabel(
+    'Actions for Dispatch phone at the north station, by the loading dock',
+  );
+  await expect(actions).toBeInViewport();
+  await actions.click();
+  await expect(row.getByRole('button', { name: 'Rename', exact: true })).toBeInViewport();
+  await expect(row.getByRole('button', { name: 'Remove', exact: true })).toBeInViewport();
+  await page.keyboard.press('Escape');
 
   await card.getByRole('button', { name: 'Add phone' }).click();
   const dialog = page.getByRole('dialog', { name: 'Add phone' });
