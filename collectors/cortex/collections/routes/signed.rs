@@ -9,7 +9,7 @@
 //! as downloads finish, so no signature waits long to be used. A read that fails is signed
 //! and downloaded once more; whatever is still unread is left to the application's moves.
 use super::capture::{ItineraryCapture, MAX_BODY};
-use super::collect::{CaptureBudget, ITINERARY, ROUTE_SUMMARIES, itinerary_path, owned_by};
+use super::protocol::{CaptureBudget, ITINERARY, ROUTE_SUMMARIES, itinerary_path, owned_by};
 use crate as cortex;
 use crate::{connection::Tab, discovery::Scope};
 use dispatch_core::{

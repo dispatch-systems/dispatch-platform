@@ -133,7 +133,7 @@ where
         let driver = self.driver;
         if *asking {
             let read = json!({
-                "endpoint": crate::collections::routes::collect::itinerary_path(&candidate.id),
+                "endpoint": crate::collections::routes::protocol::itinerary_path(&candidate.id),
                 "params": {
                     "documentType": "Itinerary",
                     "itineraryId": candidate.id,

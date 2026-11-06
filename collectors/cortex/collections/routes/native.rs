@@ -13,7 +13,7 @@
 use super::capture::{
     Capture, Collection, ItineraryCapture, MAX_BODY, MAX_ITINERARIES, Mode, listed, token,
 };
-use super::collect::{CaptureBudget, ROUTE_SUMMARIES, SUMMARIES, itinerary_path, owned_by};
+use super::protocol::{CaptureBudget, ROUTE_SUMMARIES, SUMMARIES, itinerary_path, owned_by};
 use crate as cortex;
 use crate::discovery::Scope;
 use base64::{Engine, engine::general_purpose::STANDARD};
