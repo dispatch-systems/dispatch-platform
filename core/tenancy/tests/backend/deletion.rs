@@ -1,7 +1,8 @@
 //! A delete cut short once the DSP's rows are gone holds nothing up: the server starts again
 //! without the DSP, and its first upkeep finishes what the delete left. A delete leaves what
 //! another DSP holds of the people they shared, or who once belonged there; and takes the mail
-//! development captured for the DSP, with none captured after.
+//! development captured for the DSP, as the release before named it too, with none captured
+//! after.
 use super::*;
 use crate::{db::now, foundation::crypto, testing};
 use rusqlite::params;
@@ -154,7 +155,7 @@ fn a_deleted_dsp_takes_nothing_another_dsp_holds_of_people_it_shared_or_had() {
 }
 
 #[tokio::test]
-async fn a_deleted_dsps_captured_mail_goes_and_none_is_captured_after() {
+async fn a_deleted_dsps_captured_mail_goes_named_as_before_or_since_and_none_is_after() {
     testing::install(&[], &[]);
     let (_root, db) = testing::seeded();
     let (north, summit) = (
@@ -163,12 +164,15 @@ async fn a_deleted_dsps_captured_mail_goes_and_none_is_captured_after() {
     );
     let owner = testing::platform_owner(&db);
     // Mail picked to send: Northline's, Summit's and the platform's own captured, and another
-    // of Northline's still on its way as Northline is deleted.
+    // of Northline's still on its way as Northline is deleted; and Northline's and Summit's
+    // captured by the release before, named by their IDs alone.
     let mail = [
         ("mail_north", Some(&north)),
         ("mail_late", Some(&north)),
         ("mail_summit", Some(&summit)),
         ("mail_platform", None),
+        ("mail_north_before", Some(&north)),
+        ("mail_summit_before", Some(&summit)),
     ];
     let mut picked = Vec::new();
     for (id, dsp) in mail {
@@ -187,8 +191,14 @@ async fn a_deleted_dsps_captured_mail_goes_and_none_is_captured_after() {
         picked.push(row.unwrap().unwrap());
     }
     let late = picked.remove(1);
+    let captures = db.config.platform().join("development-mail");
     for row in &picked {
-        mail::capture(&db, row).unwrap().unwrap().unwrap();
+        let id = crate::db::s(row, "id");
+        if id.ends_with("_before") {
+            std::fs::write(captures.join(format!("{id}.json")), "{}").unwrap();
+        } else {
+            mail::capture(&db, row).unwrap().unwrap().unwrap();
+        }
     }
 
     testing::set_dsp_status(&db, &north, "suspended").unwrap();
@@ -197,7 +207,7 @@ async fn a_deleted_dsps_captured_mail_goes_and_none_is_captured_after() {
     let state = crate::State::new(db.config.clone()).unwrap();
     finish(&state).await;
     assert!(mail::capture(&db, &late).unwrap().is_none());
-    let captured = std::fs::read_dir(db.config.platform().join("development-mail")).unwrap();
+    let captured = std::fs::read_dir(captures).unwrap();
     let mut captured: Vec<String> = captured
         .map(|file| file.unwrap().file_name().to_string_lossy().into_owned())
         .collect();
@@ -206,7 +216,8 @@ async fn a_deleted_dsps_captured_mail_goes_and_none_is_captured_after() {
         captured,
         [
             format!("{summit}.mail_summit.json"),
-            "mail_platform.json".to_owned()
+            "mail_platform.json".to_owned(),
+            "mail_summit_before.json".to_owned()
         ]
     );
 }

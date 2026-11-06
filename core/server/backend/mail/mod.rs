@@ -78,15 +78,15 @@ pub fn discard_stale(db: &Store) -> Result<()> {
 }
 
 /// Deletes the mail of a DSP being deleted, sent or not: what names it, and its invitations'.
-/// Its invitations' routes are still there to find them by. What development captured of it
-/// goes once its rows have (`forget_captured`).
-pub fn forget_dsp(db: &Store, dsp: &str) -> Result<()> {
-    db.platform.exec(
+/// Its invitations' routes are still there to find them by. Answers the messages' IDs, as what
+/// development captured of them goes once their rows have (`forget_captured`).
+pub fn forget_dsp(db: &Store, dsp: &str) -> Result<Vec<String>> {
+    let deleted: Vec<(String,)> = db.platform.query_as(
         "DELETE FROM outbox WHERE dsp_id=?1 OR \
-         invitation_hash IN (SELECT hash FROM invitation_routes WHERE dsp_id=?1)",
+         invitation_hash IN (SELECT hash FROM invitation_routes WHERE dsp_id=?1) RETURNING id",
         [dsp],
     )?;
-    Ok(())
+    Ok(deleted.into_iter().map(|(id,)| id).collect())
 }
 
 /// Where development keeps the mail it captures rather than sends.
@@ -119,8 +119,9 @@ fn write_capture(db: &Store, row: &Value, name: &str) -> Result<()> {
     db::write_private(&folder.join(name), &serde_json::to_vec(&message)?)
 }
 /// Deletes what development captured of the mail of the DSP `dsp`, once its delete took the
-/// mail's rows (`capture`).
-pub fn forget_captured(config: &Config, dsp: &str) -> Result<()> {
+/// mail's rows (`capture`): each file named for it, and each named by one of the IDs `messages`
+/// of its mail alone, as development named them before.
+pub fn forget_captured(config: &Config, dsp: &str, messages: &[String]) -> Result<()> {
     let captured = match std::fs::read_dir(captures(config)) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         captured => captured?,
@@ -128,7 +129,11 @@ pub fn forget_captured(config: &Config, dsp: &str) -> Result<()> {
     let theirs = format!("{dsp}.");
     for file in captured {
         let file = file?;
-        if file.file_name().to_string_lossy().starts_with(&theirs) {
+        let name = file.file_name().to_string_lossy().into_owned();
+        let before = name
+            .strip_suffix(".json")
+            .is_some_and(|id| messages.iter().any(|theirs| theirs == id));
+        if name.starts_with(&theirs) || before {
             std::fs::remove_file(file.path())?;
         }
     }

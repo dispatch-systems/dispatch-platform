@@ -42,7 +42,7 @@ impl Store {
         let own: Vec<String> = own.into_iter().map(|(id,)| id).collect();
         self.platform.transaction(|| {
             self.forget_audit(id, &self.people_alone(id, &own)?)?;
-            mail::forget_dsp(self, id)?;
+            let messages = serde_json::to_string(&mail::forget_dsp(self, id)?)?;
             support::tickets::forget_dsp(self, id)?;
             if let Some(agents) = registry().agents {
                 (agents.forget_dsp)(self, id)?;
@@ -55,18 +55,23 @@ impl Store {
                 .exec("DELETE FROM dsp_features WHERE dsp_id=?", [id])?;
             self.platform.exec("DELETE FROM dsps WHERE id=?", [id])?;
             self.platform.exec(
-                "INSERT INTO dsp_deletions(dsp_id,started_at) VALUES (?,?)",
-                [id, iso().as_str()],
+                "INSERT INTO dsp_deletions(dsp_id,started_at,mail) VALUES (?,?,?)",
+                [id, iso().as_str(), messages.as_str()],
             )?;
             self.audit(Some(actor), None, "dsp.deleted", name)
         })
     }
-    /// The DSPs whose rows are gone and whose delete isn't finished.
-    fn deletions(&self) -> Result<Vec<String>> {
-        let deleting: Vec<(String,)> = self
-            .platform
-            .query_as("SELECT dsp_id FROM dsp_deletions ORDER BY started_at", [])?;
-        Ok(deleting.into_iter().map(|(id,)| id).collect())
+    /// The DSPs whose rows are gone and whose delete isn't finished, each with the IDs of the
+    /// messages its delete took.
+    fn deletions(&self) -> Result<Vec<(String, Vec<String>)>> {
+        let deleting: Vec<(String, String)> = self.platform.query_as(
+            "SELECT dsp_id,mail FROM dsp_deletions ORDER BY started_at",
+            [],
+        )?;
+        deleting
+            .into_iter()
+            .map(|(id, messages)| Ok((id, serde_json::from_str(&messages)?)))
+            .collect()
     }
     /// Moves the DSP's folder out of reach of anything looking for it, in a turn no other
     /// work is under way in, and closes this store's connections to its databases: where the
@@ -103,14 +108,14 @@ pub async fn finish(state: &Arc<State>) {
         Ok(deleting) => deleting,
         Err(error) => return failed(None, &error),
     };
-    for dsp in deleting {
-        if let Err(error) = finish_one(state, &dsp).await {
+    for (dsp, messages) in deleting {
+        if let Err(error) = finish_one(state, &dsp, messages).await {
             failed(Some(&dsp), &error);
         }
     }
 }
 
-async fn finish_one(state: &Arc<State>, dsp: &str) -> Result<()> {
+async fn finish_one(state: &Arc<State>, dsp: &str, messages: Vec<String>) -> Result<()> {
     let at = dsp.to_owned();
     state
         .run_bookkeeping(move |db| db.forget_dsp_jobs(&at))
@@ -123,7 +128,7 @@ async fn finish_one(state: &Arc<State>, dsp: &str) -> Result<()> {
         .await?;
     let (config, at) = (state.config.clone(), dsp.to_owned());
     tokio::task::spawn_blocking(move || {
-        mail::forget_captured(&config, &at)?;
+        mail::forget_captured(&config, &at, &messages)?;
         remove(&aside)
     })
     .await
