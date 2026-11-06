@@ -2,6 +2,10 @@ use super::*;
 use std::{os::unix::fs::PermissionsExt, process::Command};
 
 #[test]
+#[cfg_attr(
+    not(target_os = "linux"),
+    ignore = "requires Linux: bubblewrap and its user namespaces"
+)]
 fn verifier_projection_survives_remapped_ownership_and_refuses_changed_boundaries() -> Result<()> {
     // The child reaches the real constructors in an actual remapped namespace. The
     // stand-in tools need no browser package or provider, and grant no network access.

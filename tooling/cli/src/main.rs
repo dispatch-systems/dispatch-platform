@@ -459,12 +459,12 @@ fn run() -> Result<()> {
         }
         "check" => {
             let root = line.root()?;
-            check::here(&root, "check", &Native)?;
             let plan = check::plan(&root, &Native)?;
             if line.flag("--plan") {
                 check::print(&plan);
                 return Ok(());
             }
+            check::here(&root, "check", &Native)?;
             let env = std::env::vars().collect();
             match check::execute(&root, &plan, &env, &Native)? {
                 true => {

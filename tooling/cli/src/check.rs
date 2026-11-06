@@ -350,7 +350,7 @@ pub fn print(plan: &Plan) {
 }
 /// Refuses `dispatchdev <command>`, the local check or tests, at once on a machine whose
 /// `python3` can't run them, as `tooling/ci/python.py` judges: `check`, `test` and `verify` ask
-/// it before anything else.
+/// it before they run a check or a test.
 pub fn here(root: &Path, command: &str, runner: &dyn Runner) -> Result<()> {
     runner
         .command(&["python3", "tooling/ci/python.py"], Some(root), 30)
