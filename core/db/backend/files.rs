@@ -5,7 +5,23 @@ use std::{
     io::Write,
     os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt},
     path::{Path, PathBuf},
+    sync::{Mutex, MutexGuard},
 };
+/// Folders nothing is made in again while the server runs, as a deleted DSP's: what was under
+/// way as it went, holding where it writes, would make it again otherwise.
+static RETIRED: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
+fn retired() -> MutexGuard<'static, Vec<PathBuf>> {
+    RETIRED
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+/// Makes nothing in `folder` again from now on (`private_dir`): before it's moved away or
+/// deleted, so what's made in it meanwhile goes with it.
+pub fn retire(folder: &Path) {
+    retired().push(folder.into());
+}
+/// The private folder `path`, made with each folder it's in that isn't there yet, except in a
+/// retired one (`retire`).
 pub fn private_dir(path: &Path) -> Result<PathBuf> {
     ensure(path.is_absolute(), "unsafe_storage_path", 500)?;
     let mut cursor = PathBuf::from("/");
@@ -16,12 +32,20 @@ pub fn private_dir(path: &Path) -> Result<PathBuf> {
             500,
         )?;
         cursor.push(part);
-        // Made by another meanwhile is as good: what's there is checked all the same.
-        if !cursor.try_exists()?
-            && let Err(error) = fs::DirBuilder::new().mode(0o700).create(&cursor)
-            && error.kind() != std::io::ErrorKind::AlreadyExists
-        {
-            return Err(error.into());
+        if !cursor.try_exists()? {
+            // Made while no folder it's in is retired, as retiring waits its turn.
+            let retired = retired();
+            ensure(
+                !retired.iter().any(|folder| cursor.starts_with(folder)),
+                "dsp_not_found",
+                404,
+            )?;
+            // Made by another meanwhile is as good: what's there is checked all the same.
+            if let Err(error) = fs::DirBuilder::new().mode(0o700).create(&cursor)
+                && error.kind() != std::io::ErrorKind::AlreadyExists
+            {
+                return Err(error.into());
+            }
         }
         let stat = fs::symlink_metadata(&cursor)?;
         ensure(

@@ -11,7 +11,7 @@
 //! pass, as the server starts too.
 use crate::{
     Error, Result, State,
-    db::{Store, iso},
+    db::{self, Store, iso},
     ensure,
     foundation::observability,
     manifest::registry,
@@ -75,9 +75,11 @@ impl Store {
     }
     /// Moves the DSP's folder out of reach of anything looking for it, in a turn no other
     /// work is under way in, and closes this store's connections to its databases: where the
-    /// folder is now, to delete. One a delete cut short moved is where it went.
+    /// folder is now, to delete. One a delete cut short moved is where it went. Nothing makes
+    /// the folder again, even what began writing in it before (`db::retire`).
     fn set_folder_aside(&self, dsp: &str) -> Result<PathBuf> {
         let folder = self.dsp_folder(dsp)?;
+        db::retire(&folder);
         let aside = folder.with_extension("deleting");
         if folder.try_exists()? {
             // What a delete cut short left aside goes first, as one folder takes its place.
