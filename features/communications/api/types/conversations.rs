@@ -274,6 +274,9 @@ pub struct Elsewhere {
     /// For a Slack one, the workspace and their ID in it.
     pub team_id: Option<String>,
     pub user_id: Option<String>,
+    /// For a work one of a driver who doesn't work today, that it isn't shown: kept so an update to
+    /// it, as their work phone given out, reads again what's read with it.
+    pub hidden: bool,
 }
 
 /// `GET /api/dsp/communications/conversations/{id}/profile`: what the profile beside a
@@ -288,8 +291,10 @@ pub struct Elsewhere {
 )]
 #[serde(rename_all = "camelCase")]
 pub struct Profile {
-    /// Their phone number and email address, the first Driver Match has from their sources.
-    pub phone: Option<String>,
+    /// Their phone numbers as Driver Match has them, their default first: the one a call and their
+    /// conversation by text go to.
+    pub phones: Vec<String>,
+    /// Their email address, the first Driver Match has from their sources.
     pub email: Option<String>,
     /// The name of the workspace the conversation is in, while the DSP has it.
     pub slack: Option<String>,

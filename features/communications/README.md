@@ -153,8 +153,9 @@ and every other number's in Recents.
   of its own covering nothing, and closes with its X or Escape. Its X and Escape put focus back
   on what opened it. Their photo, name and role; Call, while they have a phone number; Today:
   their route on the DSP's own day, its van, when its wave starts, how many stops it has and are
-  done, and its pace; and while live route data holds today, the work phone they have;
-  Contact: their phone number, email address and the workspace the conversation is in. Each is
+  done, and its pace; and while live route data holds today, the work phone they have, in full;
+  Contact: their phone numbers, their default first and marked Default while they have others,
+  which Call calls, email address and the workspace the conversation is in. Each is
   left out when nothing knows it, and Today when they have no route today. No feature has a page
   of a person to open, so it has no Full profile.
 - **New message** finds whom to write to by name, misspelt or not, and opens their
@@ -217,7 +218,8 @@ next day's drivers fill it as its live reads start.
   section closes it), so its route, van, stops and pace follow this read, as an update changes
   it only as their work phone does.
 - **A driver's conversation:** under its head, their route code, van and the work phone they have
-  now, and how long it has waited; chips to their conversation of each kind, Work (by the work
+  now, in full, as each of their conversations' heads says it ([Elsewhere](#elsewhere)), and how
+  long it has waited; chips to their conversation of each kind, Work (by the work
   phone they have), Personal (by their own number) and Slack, each marked with a dot while it
   waits, opening it or starting it ([Elsewhere](#elsewhere)). Each workday begins with a line
   across it, Today · Sun, Oct 25, Yesterday, or the date, with that day's route and van and the
@@ -236,24 +238,28 @@ next day's drivers fill it as its live reads start.
   conversation's head shows them, one source for both: whichever answered last of Today's Routes'
   read of the driver, while it shows, and the conversation's own, so a phone withdrawn shows at
   once and another driver's change takes nobody's progress back; none once Today's Routes says the
-  day is over; Contact: their phone number, email address and Slack
+  day is over; Contact: their phone numbers, their default marked, email address and Slack
   workspace.
 
 ## Elsewhere
 
 A person's conversation of each kind, which the page goes between: their work conversation, as a
-driver who had the DSP's work phones; the one by text with their own number, their default, the
+driver who had the DSP's work phones, while they work today, with a route today or a work phone
+now; the one by text with their own number, their default, the
 first of Driver Match's numbers for them, one added to theirs before their sources' (a driver's
 new phone, so not the one they last wrote from); and their Slack one, in a workspace where
 Communications works, the latest written in, else their first account there. Shown, as chips,
-on each of them while they have two or more, each waiting as the page's list has it, so its dot
+on each of them while one is another than the conversation open, each waiting as the page's list has it, so its dot
 follows each update, and one started since is found by whom it's with. A driver with a work phone
 now has the work conversation of the ID that has it, as Driver Match may know them by several,
 started once they have none there; of several IDs with one, however many, the one whose route
 today has the most stops, the route their Today shows, else the first linked; else the latest of
-any of their IDs. Under the head of their conversation by text with their own number and their
-Slack one, beside its number or their role, the van they drive today (Van 214), as their
-profile reads their route; none while they drive none, or Vans names it nothing.
+any of their IDs. The head of each says alike, as pieces side by side on one line, short of room the van and a
+workspace giving way first:
+their route code and van today (CX14, Van 214), as their profile reads their route, none while
+they drive none, then how this conversation reaches them: the work phone they have, the number
+it's with, while it isn't their name, or in Slack their role, and the workspace while the DSP
+has several.
 
 ## Messaging
 
@@ -765,8 +771,8 @@ The profile, the groups a group message can go to, and texts' filing read what o
 expose, each only while the feature offering it is on for the DSP, for anyone with
 `communications.use`, who needs no permission of theirs:
 
-- **`directory`** (Driver Match): who the member is, by their Slack ID, and their default phone
-  number, the latest added to theirs, else the first their sources have, and their sources'
+- **`directory`** (Driver Match): who the member is, by their Slack ID, and their phone numbers,
+  their default first, the latest added to theirs, else the first their sources have, and their sources'
   first email address (Driver Profiles' roster, Slack's profile); and who texts from a number,
   by any of their phone numbers.
 - **`live_route_data`** (Routes): the live day, its routes (`day`, and a driver's, `routes`) and
@@ -829,8 +835,8 @@ Behind `communications.use`:
 - `GET …/conversations/{id}/profile`: what the profile shows of whom it's with, a member of a
   workspace or a driver, besides the name, role and photo the conversation has: their route
   `today` (`route`, `van`, `waveAt`, `stops`, `stopsDone`, `pace`, and the work phone they have,
-  `phone`), `phone`, `email`, and the workspace's name (`slack`), each none
-  when unknown.
+  `phone`), their phone numbers (`phones`, their default first), `email`, and the workspace's
+  name (`slack`), each none when unknown.
 - `GET …/routes`: Today's Routes: the live day, its drivers by name, each with their route
   `today` and work conversation, and the work phones nobody had that texted today.
 - `POST …/conversations/{id}/driver` (`driverId`): Pick driver, for a work phone nobody has: the

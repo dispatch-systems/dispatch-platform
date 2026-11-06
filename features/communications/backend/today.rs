@@ -129,15 +129,28 @@ fn planned(db: &Store, dsp: &str, person: &Person) -> Result<Option<Today>> {
     let Some(reader) = routes::for_dsp(db, dsp)? else {
         return Ok(None);
     };
-    let ids = ids(person.ids_of(reader.source()));
+    let Some(route) = driven(db, dsp, reader, person.ids_of(reader.source()))? else {
+        return Ok(None);
+    };
+    let vans = vans(db, dsp, route.vin.as_ref())?;
+    Ok(known(shown(Some(&route), &vans, None)))
+}
+
+/// The route the driver holding `ids` of `reader`'s source drives today, as Routes has read it so
+/// far: of several, the one with the most stops.
+pub fn driven(
+    db: &Store,
+    dsp: &str,
+    reader: &dyn routes::DriverRoutes,
+    ids: &[String],
+) -> Result<Option<RouteDay>> {
+    let ids = self::ids(ids);
     if ids.is_empty() {
         return Ok(None);
     }
     let day = clock::today(zone(db, dsp)?).to_string();
     let driven = busiest(reader.routes(db, dsp, &ids, &day, &day)?.routes, driver);
-    let route = driven.values().max_by_key(|route| route.stops);
-    let vans = vans(db, dsp, route.and_then(|route| route.vin.as_ref()))?;
-    Ok(route.and_then(|route| known(shown(Some(route), &vans, None))))
+    Ok(driven.into_values().max_by_key(|route| route.stops))
 }
 
 /// The route the driver holding `ids` of the live day's source drives today, and the work phone

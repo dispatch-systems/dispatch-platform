@@ -1,13 +1,18 @@
 import type { ReactNode } from 'react';
+import { Phone, Smartphone } from 'lucide-react';
 import type { CommunicationsWorkspace, Conversation, RouteDriver, Today } from '../../api/index.js';
+import { phoneText } from '../../../../core/shell/frontend/lib/format.js';
+import { SlackLogo } from '../../../slack/frontend/index.js';
 import { lastFour, numberBeside, roleText } from '../shared/format.js';
 import { NumberActions } from '../texting/NumberActions.js';
 import { PickDriver } from '../todays-routes/PickDriver.js';
-import { RouteToday } from '../todays-routes/RouteFacts.js';
+import { Reach, RouteCode } from '../todays-routes/RouteFacts.js';
 import type { Party } from './party.js';
 
 // What the conversation open does for whom it's with, by who they are (`Party`), defined once
-// each: what its head says of them and what else it does there, the number a message goes to and whether one reaches them now, whom the box says it goes to, and
+// each: what its head says of them, alike on each of their conversations (`headLine`), and what
+// else it does there, the number a message goes to and whether one reaches them now, whom the box
+// says it goes to, and
 // whether its days are a driver's workdays.
 
 /** What the pane knows of the conversation open. */
@@ -49,8 +54,19 @@ type PartyPane = {
   workdays: boolean;
 };
 
-/** The van they drive today, as their work conversation's head says it. */
-const van = ({ today }: Open) => today?.van && `Van ${today.van}`;
+/** What the head says of whom it's with, alike on each of their conversations: the route they
+ * drive today and its van, then how this conversation reaches them (`reach`), on one line, the van
+ * and a workspace giving way first (`gives`); none while it would say nothing. */
+function headLine({ today }: Open, reach: ReactNode): ReactNode {
+  if (!today?.route && !today?.van && !reach) return null;
+  return (
+    <>
+      {today?.route && <RouteCode code={today.route} />}
+      {today?.van && <span className="gives">Van {today.van}</span>}
+      {reach}
+    </>
+  );
+}
 /** Their first name, as a message to someone Driver Match knows goes. */
 const firstName = ({ conversation }: Open) => conversation.with.name.split(' ')[0] ?? '';
 /** Their first name, once Driver Match knows them; else the name saved, or the number, whole. */
@@ -62,18 +78,28 @@ export const PARTIES: { [P in Party]: PartyPane } = {
     number: () => null,
     writable: ({ conversation, working }) =>
       working.some((workspace) => workspace.teamId === conversation.teamId),
-    about: (open) =>
-      [roleText(open.conversation.with), open.where, van(open)].filter(Boolean).join(' · '),
+    about: (open) => {
+      const role = roleText(open.conversation.with);
+      return headLine(
+        open,
+        (role || open.where) && (
+          <>
+            <Reach icon={<SlackLogo size={12} />}>{role || open.where}</Reach>
+            {role && open.where && <span className="gives">{open.where}</span>}
+          </>
+        ),
+      );
+    },
     whom: firstName,
     workdays: false,
   },
   number: {
     number: ({ conversation }) => conversation.number,
     writable: ({ texting }) => texting,
-    about: (open) =>
-      [numberBeside(open.conversation.with.name, open.conversation.number ?? ''), van(open)]
-        .filter(Boolean)
-        .join(' · '),
+    about: (open) => {
+      const number = numberBeside(open.conversation.with.name, open.conversation.number ?? '');
+      return headLine(open, number && <Reach icon={<Phone aria-hidden="true" />}>{number}</Reach>);
+    },
     actions: ({ conversation, drivers, show }) => (
       <NumberActions conversation={conversation} drivers={drivers} show={show} />
     ),
@@ -84,7 +110,13 @@ export const PARTIES: { [P in Party]: PartyPane } = {
     number: ({ today }) => today?.phone ?? null,
     reachable: ({ today }) => Boolean(today?.phone),
     writable: ({ texting }) => texting,
-    about: ({ today }) => today && <RouteToday today={today} />,
+    about: (open) =>
+      headLine(
+        open,
+        open.today?.phone && (
+          <Reach icon={<Smartphone aria-hidden="true" />}>{phoneText(open.today.phone)}</Reach>
+        ),
+      ),
     whom: named,
     workdays: true,
   },

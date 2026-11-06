@@ -155,7 +155,7 @@ export function sample(now: number) {
     phone: null,
   };
   const profile: Profile = {
-    phone: '+12065550148',
+    phones: ['+12065550148'],
     email: 'jamal.w@example.com',
     slack: workspace.name,
   };

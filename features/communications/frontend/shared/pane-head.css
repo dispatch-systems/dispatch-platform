@@ -51,7 +51,16 @@
   font-size: calc(var(--small-size) + 1px);
   white-space: nowrap;
 }
+/* What the head says of whom it's with, on one line: short of room, the van and a workspace give
+   way before the route's code and how the conversation reaches them. */
 .thread-head .who .about {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+.thread-head .who .about .gives {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

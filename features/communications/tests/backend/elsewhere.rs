@@ -1,5 +1,5 @@
-//! A person's conversations of each kind: their work one follows the ID with a work phone now,
-//! whichever of their IDs their earlier texts were under; of IDs with one, however many, the one
+//! A person's conversations of each kind: their work one, only on a day they work, follows the ID
+//! with a work phone now, whichever of their IDs their earlier texts were under; of IDs with one, however many, the one
 //! on the busiest route today, whose route and phone their profile shows; their personal one, their
 //! default number.
 use super::*;
@@ -9,25 +9,30 @@ use crate::backend::support::{
 use dispatch_core::{State, manifest::people::PersonRole};
 use std::{collections::BTreeMap, sync::Arc};
 
+/// Avery Diaz, one person to Driver Match by the drivers' IDs `ids`, with the numbers `phones`.
+fn avery(ids: &[&str], phones: &[&str]) -> Person {
+    Person {
+        code: "avery".into(),
+        name: "Avery Diaz".into(),
+        names: vec!["Avery Diaz".into()],
+        role: PersonRole::Driver,
+        title: None,
+        ids: BTreeMap::from([(DRIVERS, ids.iter().map(|id| (*id).to_owned()).collect())]),
+        emails: Vec::new(),
+        phones: phones.iter().map(|phone| (*phone).to_owned()).collect(),
+        added_phones: Vec::new(),
+        confirmed: true,
+        photo: None,
+    }
+}
+
 #[tokio::test]
 async fn the_work_chip_goes_to_the_id_with_a_work_phone_now_not_an_earlier_aliases() {
     let (_root, state, dsp) = support::started();
     let (zone, day) = today(&state, &dsp).await;
     let yesterday = day.pred_opt().unwrap();
     // Avery, one person to Driver Match, drove as A1 yesterday and as A2 today.
-    let avery = Person {
-        code: "avery".into(),
-        name: "Avery Diaz".into(),
-        names: vec!["Avery Diaz".into()],
-        role: PersonRole::Driver,
-        title: None,
-        ids: BTreeMap::from([(DRIVERS, vec!["A1".into(), "A2".into()])]),
-        emails: Vec::new(),
-        phones: vec!["(253) 555-0177".into()],
-        added_phones: Vec::new(),
-        confirmed: true,
-        photo: None,
-    };
+    let avery = avery(&["A1", "A2"], &["(253) 555-0177"]);
     support::know(&state, &dsp, vec![avery.clone()], Vec::new(), Vec::new());
     // Yesterday, as A1, they texted from 0101; today, as A2, they have 0202 and haven't texted.
     let then = at(zone, yesterday, 9, 0);
@@ -66,6 +71,43 @@ async fn the_work_chip_goes_to_the_id_with_a_work_phone_now_not_an_earlier_alias
     assert_eq!(work().await, a2);
 }
 
+/// On a day a driver doesn't work, with no route and no work phone, their work conversation from a
+/// day they did is hidden, no Work chip, but kept so a work phone given out reads theirs again; their
+/// personal one stays, to go to from it.
+#[tokio::test]
+async fn a_driver_off_today_has_no_work_chip() {
+    let (_root, state, dsp) = support::started();
+    let (zone, day) = today(&state, &dsp).await;
+    let yesterday = day.pred_opt().unwrap();
+    let avery = avery(&["A1"], &["(253) 555-0177"]);
+    support::know(&state, &dsp, vec![avery.clone()], Vec::new(), Vec::new());
+    // Yesterday, as A1, they texted from 0101; today only someone else has a work phone.
+    let earlier = saved(yesterday, &[("A1", "2065550101")]);
+    let others = phones(&[("B1", "2065550202")]);
+    phoned(&state, &dsp, Some(&day.to_string()), others, vec![earlier]).await;
+    texted(
+        &state,
+        &dsp,
+        "+12065550101",
+        "Leaving the station",
+        at(zone, yesterday, 9, 0),
+    )
+    .await;
+
+    let at_dsp = dsp.clone();
+    let found = state.read(move |db| of(db, &at_dsp, &avery)).await.unwrap();
+    let kinds: Vec<(ConversationKind, bool)> =
+        found.iter().map(|each| (each.kind, each.hidden)).collect();
+    assert_eq!(
+        kinds,
+        [
+            (ConversationKind::Work, true),
+            (ConversationKind::Number, false)
+        ]
+    );
+    assert!(found[0].conversation_id.is_some());
+}
+
 /// The Personal chip goes to the driver's default number, one someone added to theirs as their new
 /// phone, not the number Amazon has that they last wrote from.
 #[tokio::test]
@@ -73,17 +115,8 @@ async fn the_personal_chip_goes_to_the_default_number_not_the_one_last_written_f
     let (_root, state, dsp) = support::started();
     let (zone, day) = today(&state, &dsp).await;
     let avery = Person {
-        code: "avery".into(),
-        name: "Avery Diaz".into(),
-        names: vec!["Avery Diaz".into()],
-        role: PersonRole::Driver,
-        title: None,
-        ids: BTreeMap::from([(DRIVERS, vec!["A1".into()])]),
-        emails: Vec::new(),
-        phones: vec!["+12065550404".into(), "(253) 555-0177".into()],
         added_phones: vec!["+12065550404".into()],
-        confirmed: true,
-        photo: None,
+        ..avery(&["A1"], &["+12065550404", "(253) 555-0177"])
     };
     support::know(&state, &dsp, vec![avery.clone()], Vec::new(), Vec::new());
     let today = day.to_string();
@@ -118,19 +151,8 @@ async fn many_ids(state: &Arc<State>, dsp: &str) -> (Person, String, String) {
     let today = day.to_string();
     let most = dispatch_routes_contract::MOST_IDS;
     let ids: Vec<String> = (0..=most).map(|n| format!("A{n:02}")).collect();
-    let avery = Person {
-        code: "avery".into(),
-        name: "Avery Diaz".into(),
-        names: vec!["Avery Diaz".into()],
-        role: PersonRole::Driver,
-        title: None,
-        ids: BTreeMap::from([(DRIVERS, ids.clone())]),
-        emails: Vec::new(),
-        phones: vec!["(253) 555-0177".into()],
-        added_phones: Vec::new(),
-        confirmed: true,
-        photo: None,
-    };
+    let named: Vec<&str> = ids.iter().map(String::as_str).collect();
+    let avery = avery(&named, &["(253) 555-0177"]);
     support::know(state, dsp, vec![avery.clone()], Vec::new(), Vec::new());
     let wave = at(zone, day, 9, 0);
     let routed_on = |n: usize, id: &str| {

@@ -1,8 +1,9 @@
 //! The profile beside a conversation: what's known of whom it's with, besides the name, role and
-//! photo, and the route today, the conversation's read has: how to reach them, their phone number
-//! and email address as Driver Match has them (`directory`), and their Slack workspace: a Slack
-//! conversation's own, or for one by text, a driver's work conversation or one with someone's own
-//! number, the first of the DSP's workspaces they're in. What none knows is left out.
+//! photo, and the route today, the conversation's read has: how to reach them, their phone numbers,
+//! their default first, and email address as Driver Match has them (`directory`), and their Slack
+//! workspace: a Slack conversation's own, or for one by text, a driver's work conversation or one
+//! with someone's own number, the first of the DSP's workspaces they're in. What none knows is left
+//! out.
 use super::{
     conversations,
     people::People,
@@ -59,7 +60,9 @@ fn profile(person: Option<&Person>, workspaces: &[kit::Workspace], team: Option<
             .map(conversations::named)
     });
     Profile {
-        phone: person.and_then(|person| person.phones.first().cloned()),
+        phones: person
+            .map(|person| person.phones.clone())
+            .unwrap_or_default(),
         email: person.and_then(|person| person.emails.first().cloned()),
         slack,
     }

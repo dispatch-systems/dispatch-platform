@@ -426,6 +426,9 @@ struct Heard {
     day: Option<String>,
     /// The work phone each driver had then, by the source naming them and their ID.
     phones: HashMap<(String, String), String>,
+    /// The drivers on a route then, by the source naming them and their ID, as whether they work
+    /// today shows their Work chip (`elsewhere`).
+    routed: BTreeSet<(String, String)>,
 }
 impl Heard {
     /// The DSP's live day, as it is now.
@@ -438,9 +441,17 @@ impl Heard {
             .into_iter()
             .map(|(driver, phone)| ((live.source.clone(), driver), phone))
             .collect();
+        let routed = live
+            .reader
+            .day(db, dsp)?
+            .routes
+            .into_iter()
+            .map(|route| (live.source.clone(), route.driver_id))
+            .collect();
         Ok(Self {
             day: Some(live.day),
             phones,
+            routed,
         })
     }
 }
@@ -450,9 +461,10 @@ fn heard() -> MutexGuard<'static, HashMap<String, Heard>> {
 }
 /// Notes changed, for the pages waiting on changes, the work conversations today's route data
 /// changing changed, since the pages last heard it: as the live day began or ended, those waiting
-/// by their texts, as whether they wait counts only on the live day; and each driver's whose work
+/// by their texts, as whether they wait counts only on the live day; each driver's whose work
 /// phone changed (`LiveDay::phones`), one they had before as much as one they have now, so one open
-/// hears it, or none shown any more. Every driver's while what they had isn't known, as since the
+/// hears it, or none shown any more; and each driver's put on a route or taken off one, as their
+/// Work chip shows only while they work, so their other conversations read it again. Every driver's while what they had isn't known, as since the
 /// server started. Inside the write that refiles today's texts: whether any was.
 fn work_changed(db: &Store, dsp: &str) -> Result<bool> {
     let current = Heard::now(db, dsp)?;
@@ -469,6 +481,7 @@ fn work_changed(db: &Store, dsp: &str) -> Result<bool> {
                 .keys()
                 .chain(current.phones.keys())
                 .filter(|driver| before.phones.get(*driver) != current.phones.get(*driver))
+                .chain(before.routed.symmetric_difference(&current.routed))
                 .cloned()
                 .collect::<BTreeSet<_>>()
                 .into_iter()

@@ -3,6 +3,7 @@ import { Phone, Smartphone } from 'lucide-react';
 import type { ConversationKind, Elsewhere } from '../../api/index.js';
 import { SlackLogo } from '../../../slack/frontend/index.js';
 import { lastFour } from '../shared/format.js';
+import { goesElsewhere } from './elsewhere.js';
 import './elsewhere-chips.css';
 
 // Whom a conversation is with's conversation of each kind: their work conversation, by the work
@@ -46,7 +47,8 @@ export function ElsewhereChip({
   );
 }
 
-/** The chips under a conversation's head, while whom it's with has two or more conversations. */
+/** The chips under a conversation's head, while one of whom it's with's conversations is another
+ * than the one open. */
 export function ElsewhereChips({
   elsewhere,
   current,
@@ -57,7 +59,7 @@ export function ElsewhereChips({
   current: string;
   go: (elsewhere: Elsewhere) => void;
 }) {
-  if (elsewhere.length < 2) return null;
+  if (!goesElsewhere(elsewhere, current)) return null;
   return (
     <nav className="elsewhere-chips" aria-label="Conversations">
       {elsewhere.map((each) => (

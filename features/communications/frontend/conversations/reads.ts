@@ -95,7 +95,7 @@ export class ConversationReads {
     };
   }
   /** The latest update, `changed`: what it names, and each conversation whose read shows one it
-   * names among whom it's with's others (`elsewhere`), as a driver's work phone, is read again once
+   * names among whom it's with's others (`elsewhere`), shown or hidden, as a driver's work phone, is read again once
    * it's opened, and the one open now. */
   change(changed: Changed) {
     if (changed.at <= this.at) return;
