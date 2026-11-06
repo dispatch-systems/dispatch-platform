@@ -197,7 +197,11 @@ test('a driver’s work conversation keeps what’s being written while they hol
   await expect(picture).toBeVisible();
 
   // Their profile shows the work phone they hold, as their conversation's head does.
-  await conversation.getByRole('button', { name: /^Fixture Driver/ }).click();
+  // Who it's with, above, before their photo by their messages.
+  await conversation
+    .getByRole('button', { name: /^Fixture Driver/ })
+    .first()
+    .click();
   const profile = page.getByRole('dialog', { name: 'Fixture Driver' });
   await expect(profile.getByText('Work phone')).toBeVisible();
 
@@ -261,7 +265,11 @@ test('a driver’s progress stays as it was last read, though another driver’s
   const list = page.getByRole('region', { name: 'Conversations' });
   await list.getByRole('button', { name: /^Fixture Driver/ }).click();
   const conversation = page.getByRole('region', { name: 'Fixture Driver' });
-  await conversation.getByRole('button', { name: /^Fixture Driver/ }).click();
+  // Who it's with, above, before their photo by their messages.
+  await conversation
+    .getByRole('button', { name: /^Fixture Driver/ })
+    .first()
+    .click();
   const profile = page.getByRole('dialog', { name: 'Fixture Driver' });
   // As their conversation was read as it opened: the fixture's two stops, both done.
   await expect(profile.getByText('2 of 2 stops')).toBeVisible();
