@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Conversation, RouteDriver, Today } from '../../api/index.js';
 import {
-  driverToday,
+  dayOf,
   routeGroups,
   routeRows,
   routeToday,
@@ -42,6 +42,7 @@ const driver = (id: string, wave: number | null, conversation?: Conversation): R
     driverId: id,
     person: { userId: null, name: id, code: null, role: null, title: null, photo: null },
     today,
+    routed: true,
     conversation: conversation ?? null,
   };
 };
@@ -105,11 +106,69 @@ test('a driver’s work phone at the stop stands through the two hours after, th
     phone: '+12065550101',
   };
   // Their conversation, read half an hour after the stop, then Today's Routes a minute on.
-  const read = { value: stopped, at: 1_000 };
+  const avery = work('avery', 500);
+  const read = { value: { today: stopped, working: false }, at: 1_000 };
   const over = { value: { day: null, drivers: [], phones: [] }, at: 61_000 };
-  assert.equal(driverToday('avery', read, over)?.phone, '+12065550101');
+  assert.equal(dayOf(avery, read, over).today?.phone, '+12065550101');
   // As the two hours end, the conversation is read again, with none.
-  assert.equal(driverToday('avery', { value: null, at: 7_200_000 }, over), null);
+  const none = { value: { today: null, working: false }, at: 7_200_000 };
+  assert.equal(dayOf(avery, none, over).today, null);
+});
+
+test('whom a conversation is with is working as the read that answered last has them: Today’s Routes, read since, by their work conversation or as Driver Match knows them', () => {
+  const routed = (code: string, route: string | null): RouteDriver => {
+    const each = driver('avery', 940, work('avery', 500));
+    const today = { ...each.today, route, stops: route === null ? null : 120 };
+    return { ...each, person: { ...each.person, code }, today, routed: route !== null };
+  };
+  const personal: Conversation = {
+    ...work('avery-own', 600),
+    kind: 'number',
+    driverId: null,
+    with: { ...work('avery-own', 600).with, code: 'P1' },
+  };
+  const day = (drivers: RouteDriver[]) => ({
+    value: { day: '2026-11-05', drivers, phones: [] },
+    at: 2_000,
+  });
+  // Read before they had a route; Today's Routes, since, has them on one.
+  const read = { value: { today: null, working: false }, at: 1_000 };
+  const on = day([routed('P1', 'CX1')]);
+  assert.deepEqual(
+    [dayOf(work('avery', 500), read, on).working, dayOf(personal, read, on).working],
+    [true, true],
+  );
+  assert.equal(dayOf(personal, read, on).today?.route, 'CX1');
+  // Read since they had one, Today's Routes, since, has them on none.
+  const before = { value: { today: on.value.drivers[0]!.today, working: true }, at: 1_000 };
+  const off = day([routed('P1', null)]);
+  assert.deepEqual(
+    [dayOf(work('avery', 500), before, off).working, dayOf(personal, before, off).working],
+    [false, false],
+  );
+  // Read after Today's Routes, the conversation's own stands.
+  const later = { ...before, at: 3_000 };
+  assert.equal(dayOf(personal, later, off).working, true);
+  // On a route Today's Routes knows nothing of but that it's theirs: working all the same.
+  const bare = day([{ ...routed('P1', null), routed: true }]);
+  assert.equal(dayOf(personal, read, bare).working, true);
+  // Their work conversation by an earlier ID: working on today's route by another.
+  const earlier = {
+    ...work('avery-old', 400),
+    with: { ...work('avery-old', 400).with, code: 'P1' },
+  };
+  assert.equal(dayOf(earlier, read, on).working, true);
+  // Their busiest route by one ID, a work phone by another: that phone, as the server picks it.
+  const phone = { ...routed('P1', 'CX40'), driverId: 'avery-2' };
+  const split = day([
+    routed('P1', 'CX1'),
+    { ...phone, today: { ...phone.today, stops: 12, phone: '+12065550101' } },
+  ]);
+  const both = dayOf(personal, read, split).today;
+  assert.deepEqual([both?.route, both?.phone], ['CX1', '+12065550101']);
+  // Today's Routes, since, lists no day: no one is working, their route as the read had it.
+  const over = { value: { day: null, drivers: [], phones: [] }, at: 2_000 };
+  assert.deepEqual(dayOf(personal, before, over), { ...before.value, working: false });
 });
 
 test('Recents shows a driver’s route on each of their conversations Driver Match knows them in, while they have a route today', () => {
@@ -127,6 +186,7 @@ test('Recents shows a driver’s route on each of their conversations Driver Mat
     return {
       ...each,
       person: { ...each.person, code },
+      routed: route !== null,
       today: {
         ...each.today,
         route,

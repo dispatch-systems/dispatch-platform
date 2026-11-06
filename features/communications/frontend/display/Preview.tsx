@@ -43,6 +43,7 @@ export function Preview({
     open,
     messages,
     profile: known,
+    today,
     workspace,
     limits,
   } = useMemo(() => sample(now), [now]);
@@ -111,6 +112,7 @@ export function Preview({
                       title={title}
                       person={open.with}
                       profile={known}
+                      today={today}
                       error=""
                       workspace={workspace}
                       timeZone={timeZone}

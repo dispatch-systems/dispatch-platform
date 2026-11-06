@@ -31,13 +31,13 @@ import { PaceMark, Stops } from '../todays-routes/RouteFacts.js';
 import { WorkspaceMark } from '../slack/WorkspaceMark.js';
 import './profile.css';
 
-// The profile beside a conversation: whom it's with, a member or a driver, their route today and
-// how to reach them, over the conversation until its X, Escape, or a press anywhere else closes
-// it; or, on a wide page (`docked`), a column of its own beside it, covering nothing, until its X
-// or Escape does. A driver's, by their work conversation, goes to each of their conversations, and
+// The profile beside a conversation, while whom it's with is working: who they are, their route
+// today and how to reach them, over the conversation until its X, Escape, or a press anywhere else
+// closes it; or, on a wide page (`docked`), a column of its own beside it, covering nothing, until
+// its X or Escape does. It goes to each of their conversations; by their work conversation, it
 // shows how far their route has come and the work phone they hold as the conversation's head does,
-// live, gone once the day is over. Their phone numbers, their default first, which Call calls. What nobody knows of them is left out, as is a section left
-// with nothing.
+// live. Their phone numbers, their default first, which Call calls. What nobody knows of them is
+// left out, as is a section left with nothing.
 
 export function Profile({
   id,
@@ -62,9 +62,8 @@ export function Profile({
   workspace?: CommunicationsWorkspace;
   /** For a driver's, each of their conversations, and going to one. */
   elsewhere: readonly Elsewhere[];
-  /** For a driver's, their route today as their conversation has it, live, which the profile
-   * shows in place of the one it reads; none once the day is over. */
-  today?: Today | null;
+  /** Their route today, as the conversation has it, live. */
+  today: Today | null;
   go: (elsewhere: Elsewhere) => void;
   timeZone: string;
   /** Whether it's a column of its own beside the conversation. */
@@ -123,7 +122,7 @@ export function ProfileShown({
   title,
   person,
   profile,
-  today: live,
+  today,
   error,
   workspace,
   timeZone,
@@ -134,15 +133,14 @@ export function ProfileShown({
   person: Correspondent;
   /** What's known of them, once read, or why it couldn't be. */
   profile?: Profile;
-  /** Their route today, live, in place of the one read with what's known of them. */
-  today?: Today | null;
+  /** Their route today, as the conversation has it. */
+  today: Today | null;
   error: string;
   workspace?: CommunicationsWorkspace;
   timeZone: string;
   /** Each of their conversations, to go to, in place of Call. */
   ways?: ReactNode;
 }) {
-  const today = live !== undefined ? live : profile?.today;
   const role = roleText(person);
   const call = profile?.phones[0];
   return (

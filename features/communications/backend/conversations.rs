@@ -282,17 +282,21 @@ pub fn opened(
     if more {
         read.remove(0);
     }
-    // With someone Driver Match knows, the route they drive today, for its van, and their
-    // conversations of each kind.
-    let (today, elsewhere) = match people.member_of(&kept.team, &kept.user) {
-        Some(person) => (today::of(db, dsp, person)?, elsewhere::of(db, dsp, person)?),
-        None => (None, Vec::new()),
+    // With someone Driver Match knows, the route they drive today, for its van, whether they're
+    // working, and their conversations of each kind.
+    let ((today, working), elsewhere) = match people.member_of(&kept.team, &kept.user) {
+        Some(person) => (
+            today::of_working(db, dsp, person)?,
+            elsewhere::of(db, dsp, person)?,
+        ),
+        None => ((None, false), Vec::new()),
     };
     Ok(ConversationMessages {
         conversation: conversations(db, &people, dsp, vec![kept])?.remove(0),
         messages: messages(db, &people, dsp, read)?,
         more,
         today,
+        working,
         elsewhere,
         workdays: Vec::new(),
         limits: compose::SLACK.into(),

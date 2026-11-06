@@ -8,6 +8,7 @@ import type {
   PersonRole,
   Profile,
   Sender,
+  Today,
 } from '../../api/index.js';
 
 // What Message display's preview shows: a made-up morning at the DSP, never its own
@@ -144,16 +145,16 @@ export function sample(now: number) {
     phones: [],
     typing: { version: 0, writing: [] },
   };
+  const today: Today = {
+    route: 'CX14',
+    van: 'EDV 214',
+    waveAt: ago(-70),
+    stops: 168,
+    stopsDone: null,
+    pace: null,
+    phone: null,
+  };
   const profile: Profile = {
-    today: {
-      route: 'CX14',
-      van: 'EDV 214',
-      waveAt: ago(-70),
-      stops: 168,
-      stopsDone: null,
-      pace: null,
-      phone: null,
-    },
     phones: ['+12065550148'],
     email: 'jamal.w@example.com',
     slack: workspace.name,
@@ -165,5 +166,5 @@ export function sample(now: number) {
     largest: 20 * 1024 * 1024,
     kinds: ['image/png', 'image/jpeg', 'image/gif'],
   };
-  return { inbox, open, messages, profile, workspace, limits };
+  return { inbox, open, messages, profile, today, workspace, limits };
 }

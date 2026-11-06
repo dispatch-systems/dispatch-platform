@@ -15,7 +15,7 @@ import { PaneHead } from '../shared/PaneHead.js';
 import { ThreadPending } from '../shared/ThreadFrame.js';
 import { usePanel } from '../shared/usePanel.js';
 import { NoWorkPhone } from '../todays-routes/NoWorkPhone.js';
-import { driverToday, type TodaysRead } from '../todays-routes/todays-routes.js';
+import { dayOf, type TodaysRead } from '../todays-routes/todays-routes.js';
 import { Composer } from './Composer.js';
 import { ElsewhereChips } from './ElsewhereChips.js';
 import { elsewhereNow, targetOf } from './elsewhere.js';
@@ -38,9 +38,8 @@ import { useConversation } from './useConversation.js';
 // text through the DSP's phones, or for a driver holding no work phone, their other conversations
 // instead; above the box, who else at the DSP is writing in it, and before sending, whether one of
 // them replied since the member started writing. On a phone it takes the page, with a way back to
-// the list. In Slack, or a driver's, who it's with, or
-// their photo by their messages, opens their profile over it, or beside it on a wide page
-// (`docked`).
+// the list. While whom it's with is working, who it's with, or their photo by their messages,
+// opens their profile over it, or beside it on a wide page (`docked`).
 
 export function ConversationPane({
   id,
@@ -134,15 +133,12 @@ export function ConversationPane({
     const target = targetOf(to);
     if (target) open(target);
   };
+  // Whom it's with today, as the conversation or Today's Routes read it last.
+  const day =
+    conversation && dayOf(conversation, opened && { value: opened, at: opened.readAt }, todays);
   const shown: Open | undefined = conversation && {
     conversation,
-    today: conversation.driverId
-      ? driverToday(
-          conversation.driverId,
-          opened && { value: opened.today, at: opened.readAt },
-          todays,
-        )
-      : (opened?.today ?? null),
+    today: day?.today ?? null,
     // With several workspaces to tell apart, the one it's in.
     where:
       working.length > 1
@@ -186,14 +182,16 @@ export function ConversationPane({
   const [latest, setLatest] = useState(0);
   const person = conversation?.with;
   const about: ReactNode = shown && party?.about(shown);
-  // The profile, and what opened it, which focus goes back to as it closes: the photo by the
-  // messages, or who it's with when that photo is gone.
-  const profiled = party?.profile || undefined;
-  const profile = usePanel(kept && Boolean(profiled));
+  // Their profile, while they're working, and what opened it, which focus goes back to as it
+  // closes: the photo by the messages, or who it's with when that photo is gone. Once they're not,
+  // it's gone, as is its room.
+  const profiled = Boolean(day?.working);
+  const profile = usePanel(kept && profiled);
+  const profileOpen = profiled && profile.open;
   const opens = profiled ? profile.opens : undefined;
   return (
     <section
-      className={profile.open ? 'pane-thread profiled' : 'pane-thread'}
+      className={profileOpen ? 'pane-thread profiled' : 'pane-thread'}
       aria-label={person?.name ?? 'Conversation'}
     >
       <PaneHead
@@ -204,7 +202,7 @@ export function ConversationPane({
         waitingSince={conversation?.waitingSince ?? null}
         now={now}
         who={profile.who}
-        open={profile.open}
+        open={profileOpen}
         opens={opens}
         back={back}
         done={{ busy: done.busy, run: () => void done.run() }}
@@ -218,8 +216,8 @@ export function ConversationPane({
           conversation={id}
           person={person}
           workspace={workspaces.find((workspace) => workspace.teamId === conversation?.teamId)}
-          elsewhere={profiled.ways ? elsewhere : []}
-          today={profiled.today ? (shown?.today ?? null) : undefined}
+          elsewhere={elsewhere}
+          today={shown?.today ?? null}
           go={go}
           timeZone={timeZone}
           docked={docked}
@@ -240,7 +238,7 @@ export function ConversationPane({
           latest={latest}
           timeZone={timeZone}
           now={now}
-          profile={profiled?.fromPhoto ? opens : undefined}
+          profile={opens}
           openGroup={openGroup}
           retry={(failed) => void retry.run(failed)}
           workdays={party?.workdays ? opened.workdays : undefined}

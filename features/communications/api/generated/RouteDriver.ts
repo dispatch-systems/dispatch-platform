@@ -7,4 +7,9 @@ import type { Today } from "./Today";
  * A driver on a route today: who, by their ID of the source naming its drivers, their route as
  * live route data last read it, and their work conversation, if they have one.
  */
-export type RouteDriver = { driverId: string, person: Correspondent, today: Today, conversation: Conversation | null, };
+export type RouteDriver = { driverId: string, person: Correspondent, today: Today,
+/**
+ * Whether live route data has them on a route today, whatever of it is known, as one gone
+ * from the day's list isn't: whether they're working.
+ */
+routed: boolean, conversation: Conversation | null, };
