@@ -2,7 +2,7 @@
 //! channels, which Dispatch joins and leaves itself, and the private ones someone invited the bot
 //! to in Slack, which it may leave but not join again. Slack shows the bot only the channels it's
 //! in, so being in one is all the access Dispatch has there.
-use super::{bot::Bot, storage::SlackStore};
+use super::{bot::Bot, storage::workspaces::WorkspaceStore};
 use crate::api::types::{SlackChannel, SlackChannels};
 use dispatch_core::{Error, Result, State, accounts::Context, ensure, server::http::route::Dsp};
 use serde_json::{Value, json};

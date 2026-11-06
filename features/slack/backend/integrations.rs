@@ -5,7 +5,11 @@
 //! while it's on and its feature is on for the DSP. One that hears of what people write to the
 //! app directly (`message.im`) takes it from Slack, which otherwise answers it itself. A new
 //! one needs nothing here.
-use super::{bot::Bot, connection, storage::SlackStore};
+use super::{
+    bot::Bot,
+    connection,
+    storage::{integrations::IntegrationStore, workspaces::WorkspaceStore},
+};
 use crate::api::types::SlackAccount;
 use dispatch_core::{
     Error, Result,

@@ -7,7 +7,11 @@ use crate::backend::{
     app,
     channel_links::storage::{Link, LinkStore},
     slack::Tokens,
-    storage::{Member, SlackStore, Workspace},
+    storage::{
+        integrations::IntegrationStore,
+        members::{Member, MemberStore},
+        workspaces::{Workspace, WorkspaceStore},
+    },
     support,
 };
 use crate::integrations::import_files::{

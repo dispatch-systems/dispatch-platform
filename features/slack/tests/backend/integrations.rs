@@ -5,7 +5,7 @@
 use super::*;
 use crate::backend::{
     app,
-    storage::SlackStore,
+    storage::{integrations::IntegrationStore, workspaces::WorkspaceStore},
     support::{self, LISTENING, STARTING},
 };
 use dispatch_core::{State, testing};

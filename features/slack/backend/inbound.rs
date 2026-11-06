@@ -16,7 +16,7 @@ use super::{
     bot::Bot,
     connection, home, integrations, members, messages,
     slack::Slack,
-    storage::SlackStore,
+    storage::workspaces::WorkspaceStore,
     work,
 };
 use axum::{

@@ -1,7 +1,10 @@
 //! The members of the DSP's Slack workspaces, as Driver Match reads them: each member by
 //! their own ID, and one email address in several workspaces as one person. Slack lists who
 //! the DSP can reach, not whom it employs.
-use super::storage::{Member, SlackStore};
+use super::storage::{
+    members::{Member, MemberStore},
+    workspaces::WorkspaceStore,
+};
 use dispatch_core::{
     Result,
     db::Store,

@@ -14,7 +14,7 @@
 //! its choosing, showing the files it uploaded, and what it posted is kept for the server's run,
 //! which a test reads with `posted`. Requests it sends are signed with a secret the tests share.
 use super::slack::{Bytestream, Called, Installed, Tokens};
-use super::{app::scopes, storage::SlackStore};
+use super::{app::scopes, storage::workspaces::WorkspaceStore};
 use axum::body::Bytes;
 use dispatch_core::{
     Error, Result,

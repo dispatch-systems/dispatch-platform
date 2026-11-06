@@ -4,7 +4,12 @@
 //! Slack alone writes.
 use super::{
     logo, people,
-    storage::{Member, SlackStore, Workspace},
+    storage::{
+        integrations::IntegrationStore,
+        logos::LogoStore,
+        members::{Member, MemberStore},
+        workspaces::{Workspace, WorkspaceStore},
+    },
     work,
 };
 use dispatch_core::{

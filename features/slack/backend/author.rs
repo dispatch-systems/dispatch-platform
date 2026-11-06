@@ -5,7 +5,7 @@
 use super::{
     bot::Bot,
     members,
-    storage::{Member, SlackStore},
+    storage::members::{Member, MemberStore},
 };
 use dispatch_core::Result;
 use dispatch_documents_contract::Author;

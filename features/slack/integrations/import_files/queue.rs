@@ -5,7 +5,7 @@
 use super::{ID, LINKING, save, storage::ImportStore};
 use crate::backend::{
     channel_links::storage::LinkStore,
-    storage::SlackStore,
+    storage::integrations::IntegrationStore,
     work::{self, Queue},
 };
 use dispatch_core::{

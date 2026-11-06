@@ -5,7 +5,7 @@
 //! again once Slack gives it at another address. A workspace whose logo is Slack's own has none.
 use super::{
     bot::{self, Bot},
-    storage::{Logo, SlackStore},
+    storage::logos::{Logo, LogoStore},
 };
 use dispatch_core::{
     Error, Result, State, db::Store, foundation::observability, manifest::people::Photo,

@@ -6,7 +6,7 @@ use crate::backend::{
     app::SCOPES as APP,
     fixture,
     slack::Tokens,
-    storage::SlackStore,
+    storage::{members::MemberStore, workspaces::WorkspaceStore},
     support::{connect, platform},
 };
 use dispatch_core::{
