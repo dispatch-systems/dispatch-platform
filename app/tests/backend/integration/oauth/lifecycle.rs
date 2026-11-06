@@ -2,7 +2,7 @@ use super::harness::{
     CHATGPT, CHATGPT_REDIRECT, CLAUDE_CODE, Server, VERIFIER, everything, live_apps, logged,
     registered,
 };
-use crate::support::Who;
+use crate::support::{Answer, Who};
 use dispatch_core::{
     db::{self, s},
     foundation::crypto,

@@ -1,6 +1,5 @@
 use super::harness::{
-    CHATGPT, CHATGPT_REDIRECT, CLAUDE_CODE, Server, VERIFIER, asked, everything, live_apps, param,
-    registered,
+    CHATGPT, CLAUDE_CODE, Server, VERIFIER, asked, everything, live_apps, param, registered,
 };
 use crate::support::Answer;
 use dispatch_core::{
