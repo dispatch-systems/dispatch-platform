@@ -3,14 +3,6 @@
 //! Documents exposes), never their messages. Switched on in a workspace's Integrations, it's told
 //! of each file shared in a channel Dispatch is in, and saves those posted in a linked channel
 //! from when it was linked, while it's on.
-//!
-//! - `links`: what the workspace's settings show of it: its linked channels, which
-//!   `channel_links` links to folders as it does Sync Canvases', and what's been saved.
-//! - `queue`: each file noticed, kept until it's saved, and the minute's pass that saves what's
-//!   due.
-//! - `save`: saving one file, and who posted it, as `author` says.
-//! - `catch_up`: the hourly pass that notices the files Slack didn't tell of.
-//! - `storage`: what's kept.
 pub(crate) mod api;
 pub mod catch_up;
 pub mod links;
