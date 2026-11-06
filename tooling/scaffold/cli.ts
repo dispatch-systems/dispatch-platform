@@ -8,16 +8,9 @@ import { generator as feature } from './new-feature.js';
 import { generator as integration } from './new-integration.js';
 import { generator as slot } from './new-slot.js';
 import { generator as tool } from './new-tool.js';
-import {
-  UsageError,
-  asksUsage,
-  described,
-  failed,
-  make,
-  nextLines,
-  repositoryRoot,
-  type Generator,
-} from './scaffold.js';
+import { UsageError, repositoryRoot } from './common.js';
+import { asksUsage, failed, make, type Generator } from './scaffold.js';
+import { described, nextLines } from './plan.js';
 import { known, leftLines, listed, named, todos } from './todo.js';
 
 // What `dispatchdev new`, `add`, `generate`, `list`, `explain`, `doctor` and `todo` run, the

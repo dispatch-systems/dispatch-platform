@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { permissions } from '../../../core/accounts/api/index.js';
+import { read, root } from './support/repo.js';
+import { frontends, sourceFiles } from './support/source-inventory.js';
 
 /** Where the product's Rust lives. */
 const rustSourceRoots = ['app', 'core', 'collectors', 'features', 'mcp'];
@@ -32,13 +34,13 @@ function auditCalls(source: string): string[] {
 // without wording would fall back to its raw id, so every one must be covered.
 test('every audit action the backend records has wording in the audit log', () => {
   const sources = rustSourceRoots
-    .filter((root) => fs.existsSync(root))
-    .flatMap((root) =>
-      fs
-        .readdirSync(root, { recursive: true, encoding: 'utf8' })
-        .filter((file) => file.endsWith('.rs') && !/(^|\/)tests\//.test(file))
-        .map((file) => fs.readFileSync(path.join(root, file), 'utf8')),
+    .flatMap((directory) =>
+      sourceFiles.filter(
+        (file) =>
+          file.startsWith(`${directory}/`) && file.endsWith('.rs') && !/(^|\/)tests\//.test(file),
+      ),
     )
+    .map(read)
     .join('\n');
   const recorded = new Set<string>();
   for (const call of auditCalls(sources))
@@ -53,20 +55,12 @@ test('every audit action the backend records has wording in the audit log', () =
   const wordings = [
     'core/platform_owner/frontend/audit/wording.ts',
     'mcp/frontend/audit-wording.ts',
-    ...['core', 'features', 'collectors'].flatMap((top) =>
-      fs.readdirSync(top).flatMap((name) => {
-        // Its own, and each of its integrations' in its folder.
-        const integrations = path.join(top, name, 'integrations');
-        return [
-          path.join(top, name, 'frontend', 'audit-wording.ts'),
-          ...(fs.existsSync(integrations) ? fs.readdirSync(integrations) : []).map((each) =>
-            path.join(integrations, each, 'frontend', 'audit-wording.ts'),
-          ),
-        ].filter((file) => fs.existsSync(file));
-      }),
-    ),
+    ...frontends
+      .filter((directory) => /^(core|features|collectors)\//.test(directory))
+      .map((directory) => path.join(directory, 'audit-wording.ts'))
+      .filter((file) => fs.existsSync(path.join(root, file))),
   ];
-  const log = wordings.map((file) => fs.readFileSync(file, 'utf8')).join('\n');
+  const log = wordings.map(read).join('\n');
   const worded = new Set([...log.matchAll(/^ {2}'([a-z_.]+)':/gm)].map(([, action]) => action));
   assert.deepEqual(
     actions.filter((action) => !worded.has(action)),

@@ -1,20 +1,8 @@
 import { renderFeature, settingsNote, showing } from './new-feature.js';
-import {
-  UsageError,
-  exists,
-  features,
-  format,
-  names,
-  formatRust,
-  collectors,
-  files,
-  pageOf,
-  peopleSources,
-  parseArguments,
-  read,
-  type Generator,
-  type Plan,
-} from './scaffold.js';
+import { UsageError, names, parseArguments } from './common.js';
+import { exists, features, collectors, files, pageOf, peopleSources, read } from './repository.js';
+import { format, formatRust, type Plan } from './plan.js';
+import { type Generator } from './scaffold.js';
 import {
   closing,
   mergeImports,

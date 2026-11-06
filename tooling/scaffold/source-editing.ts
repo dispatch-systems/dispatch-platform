@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { UsageError, repositoryRoot } from './scaffold.js';
+import { UsageError, repositoryRoot } from './common.js';
 
 /** The manifest's fields a piece adds: lists join the feature's, others are added whole. */
 const FIELDS = [

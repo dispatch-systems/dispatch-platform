@@ -1,4 +1,5 @@
-import { files, read, type Plan } from './scaffold.js';
+import { files, read } from './repository.js';
+import { type Plan } from './plan.js';
 import { items } from './source-editing.js';
 
 /**

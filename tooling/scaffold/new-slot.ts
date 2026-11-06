@@ -1,18 +1,8 @@
 import path from 'node:path';
-import {
-  UsageError,
-  change,
-  emptyPlan,
-  exists,
-  formatRust,
-  names,
-  parseArguments,
-  read,
-  run,
-  template,
-  type Generator,
-  type Plan,
-} from './scaffold.js';
+import { UsageError, names, parseArguments, template } from './common.js';
+import { change, emptyPlan, formatRust, type Plan } from './plan.js';
+import { exists, read } from './repository.js';
+import { run, type Generator } from './scaffold.js';
 
 // `dispatchdev new slot <name> [options]`: a new kind of slot, something a feature declares in
 // its manifest and a host of core's reads. It writes the slot's backend module, with the

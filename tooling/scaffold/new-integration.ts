@@ -1,24 +1,10 @@
 import path from 'node:path';
 import { mergeRust, mergeToml, mergeTypeScript, rustfmt } from './source-editing.js';
 import { installing } from './test-registry.js';
-import {
-  UsageError,
-  change,
-  emptyPlan,
-  exists,
-  features,
-  files,
-  format,
-  formatRust,
-  isIcon,
-  names as namesOf,
-  parseArguments,
-  read,
-  run,
-  template,
-  type Generator,
-  type Plan,
-} from './scaffold.js';
+import { UsageError, isIcon, names as namesOf, parseArguments, template } from './common.js';
+import { change, emptyPlan, format, formatRust, type Plan } from './plan.js';
+import { exists, features, files, read } from './repository.js';
+import { run, type Generator } from './scaffold.js';
 
 // `dispatchdev new integration <name> [options]`: an integration through Slack, in a folder of
 // its own, `integrations/<name>/`, the same shape whoever owns it. One of Slack's own (the

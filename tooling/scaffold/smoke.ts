@@ -5,7 +5,8 @@ import path from 'node:path';
 import { generator as piece } from './add.js';
 import { KINDS } from './cli.js';
 import { duration, failure, generate } from './generate.js';
-import { make, repositoryRoot as root } from './scaffold.js';
+import { make } from './scaffold.js';
+import { repositoryRoot as root } from './common.js';
 
 // `npm run check:scaffold`: what every generator writes builds and passes the rules as written.
 // In a copy of the checkout it makes one of each kind with most of its options, as `dispatchdev

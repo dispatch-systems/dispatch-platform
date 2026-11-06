@@ -11,30 +11,9 @@ import {
   moduleSpecifiers,
   resolveModule,
 } from '../../../tooling/testing/source-analysis.js';
+import { read, root } from './support/repo.js';
+import { clients, frontends, sourceFiles } from './support/source-inventory.js';
 
-// Every owner: the app, core's parts, the features, the collectors and the MCP. An owner's
-// frontend is its frontend/ and its api/client.ts, the frontend's end of its API.
-const owners = [
-  'app',
-  ...['core', 'features', 'collectors'].flatMap((top) =>
-    fs.readdirSync(top).map((name) => path.join(top, name)),
-  ),
-  'mcp',
-];
-/** Each owner's frontend, and each of its integrations' (`integrations/<name>/frontend`). */
-const frontends = owners
-  .flatMap((directory) => {
-    const integrations = path.join(directory, 'integrations');
-    const own = fs.existsSync(integrations) ? fs.readdirSync(integrations) : [];
-    return [
-      path.join(directory, 'frontend'),
-      ...own.map((name) => path.join(integrations, name, 'frontend')),
-    ];
-  })
-  .filter((directory) => fs.existsSync(directory));
-const clients = owners
-  .map((directory) => path.join(directory, 'api', 'client.ts'))
-  .filter((file) => fs.existsSync(file));
 const SHELL = path.join('core', 'shell', 'frontend');
 const APP = path.join('app', 'frontend');
 const FEATURES = path.join(APP, 'features.ts');
@@ -47,19 +26,6 @@ type Module = {
   lazy: string[];
 };
 
-function walk(directory: string): string[] {
-  return fs
-    .readdirSync(directory, { withFileTypes: true })
-    .flatMap((entry) =>
-      entry.isDirectory()
-        ? walk(path.join(directory, entry.name))
-        : /\.tsx?$/.test(entry.name)
-          ? [path.join(directory, entry.name)]
-          : [],
-    );
-}
-
-const root = path.resolve('.');
 /** The owner whose frontend a file belongs to, as its directory. */
 function owner(file: string) {
   if (clients.includes(file)) return path.dirname(path.dirname(file));
@@ -76,8 +42,18 @@ const frontendModules = (file: string, specifiers: string[]) =>
   });
 // Every frontend module with the frontend modules it imports (type-only and lazy imports
 // included), those it loads with it, and those it loads lazily.
-const modules: Module[] = [...frontends.flatMap(walk), ...clients].map((file) => {
-  const text = fs.readFileSync(file, 'utf8');
+const modules: Module[] = [
+  ...frontends.flatMap((directory) =>
+    sourceFiles.filter(
+      (file) =>
+        file.startsWith(directory + path.sep) &&
+        /\.tsx?$/.test(file) &&
+        !fs.lstatSync(path.join(root, file)).isDirectory(),
+    ),
+  ),
+  ...clients,
+].map((file) => {
+  const text = read(file);
   return {
     file,
     dependencies: dependencies(file),
@@ -319,19 +295,17 @@ test('contracts, tooling, services and backends are independent of the frontends
   const frontendRoots = frontends.map((directory) => path.resolve(directory) + path.sep);
   const clientFiles = clients.map((file) => path.resolve(file));
   for (const directory of ['tooling', 'services', 'app', 'core', 'collectors', 'features', 'mcp']) {
-    const files = fs
-      .readdirSync(directory, { recursive: true, encoding: 'utf8' })
-      .filter((name) => /\.(tsx?|m?js|rs)$/.test(name))
-      .map((name) => path.join(directory, name))
+    const files = sourceFiles
+      .filter((file) => file.startsWith(directory + path.sep))
       .filter(
         (file) => !owner(file) && (file.endsWith('.rs') || !/(^|[\\/])tests[\\/]/.test(file)),
       );
     for (const file of files) {
       // Rust embeds use macros, while TS/JS dependencies use the compiler's AST.
       const targets = file.endsWith('.rs')
-        ? [
-            ...fs.readFileSync(file, 'utf8').matchAll(/include_(?:str|bytes)!\s*\(\s*"([^"]+)"/g),
-          ].map((match) => match[1]!)
+        ? [...read(file).matchAll(/include_(?:str|bytes)!\s*\(\s*"([^"]+)"/g)].map(
+            (match) => match[1]!,
+          )
         : dependencies(file)
             .map(({ specifier }) => specifier)
             .filter((target) => target.startsWith('.'));
