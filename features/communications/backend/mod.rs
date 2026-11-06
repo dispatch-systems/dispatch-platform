@@ -1,6 +1,7 @@
 //! Communications' private backend: Slack conversations, text conversations, phone transport
 //! and shared inbox, people, attachment and notification services. `feature.rs` re-exports the
 //! app's and declared dependants' entry points.
+pub(crate) mod attachments;
 pub(crate) mod bytes;
 pub(crate) mod changes;
 pub(crate) mod compose;

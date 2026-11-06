@@ -1,25 +1,7 @@
-/* The Communications page: the list of conversations beside the one open, on the page itself
-   under its heading, out to the window's edges, filling the window so each scrolls on its own.
-   Its sizes are the app's own, the same at every width; a wider page gives more room, measured
-   against the page itself (a container query, `communications`), so the sidebar showing or not
-   is counted.
-
-     page width   layout
-     < 680        one pane: the list, or the conversation open
-     680 –        the list beside the conversation; the profile over the conversation
-     docked       the profile, open, a column of its own beside the conversation, from room for
-                  the list, the profile and the conversation between them: 1150 at 14px
-
-   page/useLayout.ts tells the page the same widths, and when it docks (`dockAt`, display.ts),
-   which the page marks (`data-docked`).
-
-   How it looks is the member's own, as they chose in Settings' Message display: the page sets
-   its text size (`--text-size`, and `--scale`, that over 14px, which every other size goes by),
-   its spacing, line spacing, widths and bubbles' corners, and the rest as classes of its own
-   (`data-*`, display.ts). Unset, as in a popup outside the page, each is its default.
-
-   This stylesheet holds the page's layout and the variables its parts draw by; each part's own
-   rules, with their widths and Message display's choices, are in the stylesheet beside it. */
+/* Page layout and display variables; each part's rules stay beside it.
+   Container width includes the app sidebar: below 680px one pane, from 680px list and
+   conversation. page/useLayout.ts uses the same breakpoint; data-docked marks room for the
+   profile beside them, calculated by dockAt in display.ts (1150px at 14px text). */
 .communications {
   --bubble-in: #eef1f5;
   --bubble-in-edge: transparent;

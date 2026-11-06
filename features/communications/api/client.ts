@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { api as call, ApiError } from '../../../core/shell/frontend/runtime/api.js';
+import { wordedApi, ApiError } from '../../../core/shell/frontend/runtime/api.js';
 import { useCachedData, useData } from '../../../core/shell/frontend/runtime/data-reads.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { upload } from '../../../core/shell/frontend/runtime/transfer.js';
@@ -77,16 +77,13 @@ const wording: Readonly<Record<string, string>> = {
   slack_rate_limited: 'Slack is busy. Try again in a minute.',
   slack_refused: "Slack didn't take the message. Try again.",
 };
-/** A refusal as Communications words it, its code, status and request ID as they were. */
+/** An upload refusal as Communications words it, preserving its API metadata. */
 function worded(error: unknown) {
   const words = error instanceof ApiError && wording[error.code];
   return words ? new ApiError(error.code, words, error.status, error.requestId) : error;
 }
 /** One of its calls, a refusal worded as Communications words it. */
-const api = <T>(...asked: Parameters<typeof call>) =>
-  call<T>(...asked).catch((error: unknown) => {
-    throw worded(error);
-  });
+const api = wordedApi(wording);
 
 export const communicationsUrl = '/api/dsp/communications';
 /** `path` asking `asked`, what's left empty left out: as `team`, for one workspace's alone. */

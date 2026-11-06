@@ -11,8 +11,8 @@ use super::{
     storage::{FileStore, ReportedFile, Wanting},
 };
 use crate::backend::{
-    bytes::{self, Arrived, Folder},
-    previews,
+    attachments,
+    bytes::{Arrived, Folder},
 };
 use dispatch_core::{
     Error, Result, State,
@@ -108,14 +108,14 @@ pub async fn shown(
         Some(sha256) if theirs => {
             let (name, mime) = (&stored.file.name, &stored.file.mime);
             let small = match preview {
-                true => previews::answer(state, BYTES, dsp, sha256, name, mime).await?,
+                true => attachments::preview(state, BYTES, dsp, sha256, name, mime).await?,
                 false => None,
             };
             let reply = match small {
                 Some(small) => small,
                 None => answer(state, dsp, sha256, name, mime).await?,
             };
-            Ok(Some(bytes::as_asked(reply, version, sha256)))
+            Ok(Some(attachments::as_asked(reply, version, sha256)))
         }
         _ => Ok(None),
     }

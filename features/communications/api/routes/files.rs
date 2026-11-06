@@ -2,11 +2,11 @@
 //! kept, a workspace's logo, and the public image of someone's initials.
 use super::{id, slack_id};
 use crate::backend::{
-    bytes, conversations,
+    attachments, conversations,
     files::{self, FileStore},
     initials,
     model::FileStatus,
-    previews, reply,
+    reply,
 };
 use axum::{
     body::Body,
@@ -74,7 +74,7 @@ async fn shown(state: Arc<State>, input: Input, access: Dsp, preview: bool) -> R
     let sha256 = file.sha256.unwrap_or_default();
     let (dsp, name, mime) = (&c.dsp.id, &file.name, &file.mime);
     let small = match preview {
-        true => previews::answer(&state, files::BYTES, dsp, &sha256, name, mime).await?,
+        true => attachments::preview(&state, files::BYTES, dsp, &sha256, name, mime).await?,
         false => None,
     };
     let reply = match small {
@@ -87,7 +87,7 @@ async fn shown(state: Arc<State>, input: Input, access: Dsp, preview: bool) -> R
     // A preview may wait its turn to be made: access is checked again once it's ready.
     let ready = c.clone();
     state.read(move |db| access.revalidate(db, &ready)).await?;
-    Ok(bytes::as_asked(reply, asked, &sha256))
+    Ok(attachments::as_asked(reply, asked, &sha256))
 }
 /// A workspace's logo, as Slack keeps a copy of it. Its address carries its version, `v`, so the
 /// browser keeps it until the logo changes.
