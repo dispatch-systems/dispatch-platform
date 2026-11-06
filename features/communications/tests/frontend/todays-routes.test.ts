@@ -152,6 +152,20 @@ test('whom a conversation is with is working as the read that answered last has 
   // On a route Today's Routes knows nothing of but that it's theirs: working all the same.
   const bare = day([{ ...routed('P1', null), routed: true }]);
   assert.equal(dayOf(personal, read, bare).working, true);
+  // Their work conversation by an earlier ID: working on today's route by another.
+  const earlier = {
+    ...work('avery-old', 400),
+    with: { ...work('avery-old', 400).with, code: 'P1' },
+  };
+  assert.equal(dayOf(earlier, read, on).working, true);
+  // Their busiest route by one ID, a work phone by another: that phone, as the server picks it.
+  const phone = { ...routed('P1', 'CX40'), driverId: 'avery-2' };
+  const split = day([
+    routed('P1', 'CX1'),
+    { ...phone, today: { ...phone.today, stops: 12, phone: '+12065550101' } },
+  ]);
+  const both = dayOf(personal, read, split).today;
+  assert.deepEqual([both?.route, both?.phone], ['CX1', '+12065550101']);
   // Today's Routes, since, lists no day: no one is working, their route as the read had it.
   const over = { value: { day: null, drivers: [], phones: [] }, at: 2_000 };
   assert.deepEqual(dayOf(personal, before, over), { ...before.value, working: false });

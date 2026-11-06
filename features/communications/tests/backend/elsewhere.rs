@@ -196,3 +196,58 @@ async fn the_profile_shows_the_route_and_work_phone_of_the_id_the_work_chip_goes
         (Some(route.as_str()), Some(phone.as_str()))
     );
 }
+
+#[tokio::test]
+async fn their_work_conversation_by_an_earlier_id_has_them_working_on_todays_route_by_another() {
+    let (_root, state, dsp) = support::started();
+    let (zone, day) = today(&state, &dsp).await;
+    let yesterday = day.pred_opt().unwrap();
+    let avery = Person {
+        code: "avery".into(),
+        name: "Avery Diaz".into(),
+        names: vec!["Avery Diaz".into()],
+        role: PersonRole::Driver,
+        title: None,
+        ids: BTreeMap::from([(DRIVERS, vec!["A1".into(), "A2".into()])]),
+        emails: Vec::new(),
+        phones: Vec::new(),
+        added_phones: Vec::new(),
+        confirmed: true,
+        photo: None,
+    };
+    support::know(&state, &dsp, vec![avery], Vec::new(), Vec::new());
+    // Yesterday, as A1, they texted from 0101, filed in A1's work conversation; today, as A2,
+    // they drive CX14.
+    let today = day.to_string();
+    let earlier = saved(yesterday, &[("A1", "2065550101")]);
+    phoned(&state, &dsp, Some(&today), Vec::new(), vec![earlier]).await;
+    let then = at(zone, yesterday, 9, 0);
+    let text = texted(&state, &dsp, "+12065550101", "Leaving the station", then).await;
+    let a1 = support::filed(&state, &dsp, &text).await.id;
+    routed(
+        &dsp,
+        vec![route(
+            &today,
+            "A2",
+            "CX14",
+            "1FTVAN214",
+            168,
+            at(zone, day, 9, 0),
+        )],
+    );
+    phoned(&state, &dsp, Some(&today), Vec::new(), Vec::new()).await;
+
+    let (shared, at_dsp) = (state.clone(), dsp.clone());
+    let opened = state
+        .read(move |db| crate::backend::texts::reading::opened(db, &shared, &at_dsp, &a1, None))
+        .await
+        .unwrap();
+    assert_eq!(
+        (
+            opened.conversation.kind,
+            opened.conversation.driver_id.clone(),
+            opened.working
+        ),
+        (ConversationKind::Work, Some("A1".into()), true)
+    );
+}

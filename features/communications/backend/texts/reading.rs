@@ -335,9 +335,20 @@ pub fn opened(
     let (today, working, workdays) = match &kept.driver {
         Some((source, driver)) => {
             let ids = std::slice::from_ref(driver);
-            // Working only on a route as live route data holds today, not on the day stopped.
+            // Working only on a route as live route data holds today, not on the day stopped, by
+            // this ID or another Driver Match knows them by; their route and phone, this ID's.
             let (today, working) = match LiveDay::read(db, dsp)? {
-                Some(live) if live.source == *source => today::of_drivers(db, dsp, &live, ids)?,
+                Some(live) if live.source == *source => {
+                    let (today, routed) = today::of_drivers(db, dsp, &live, ids)?;
+                    let source = live.reader.source();
+                    let working = match people.everyone().holding(source, driver) {
+                        Some(person) if !routed => {
+                            !live.routes_of(db, dsp, person.ids_of(source))?.is_empty()
+                        }
+                        _ => routed,
+                    };
+                    (today, working)
+                }
                 Some(_) => (None, false),
                 None => match Stopped::read(db, dsp, now())? {
                     Some(stopped) if stopped.source == *source => {
