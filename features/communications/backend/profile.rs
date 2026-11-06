@@ -1,21 +1,19 @@
 //! The profile beside a conversation: what's known of whom it's with, besides the name, role and
-//! photo the conversation has. Their route today and the work phone they hold now (`today`); and
-//! how to reach them: their phone number and email address as Driver Match has them
-//! (`directory`), and their Slack workspace: a Slack conversation's own, or for a driver's work
-//! conversation, the first of the DSP's workspaces they're in. Each feature is asked only while
-//! it's on for the DSP, and what none knows is left out. A number's conversation has none.
+//! photo, and the route today, the conversation's read has: how to reach them, their phone number
+//! and email address as Driver Match has them (`directory`), and their Slack workspace: a Slack
+//! conversation's own, or for one by text, a driver's work conversation or one with someone's own
+//! number, the first of the DSP's workspaces they're in. What none knows is left out.
 use super::{
     conversations,
-    model::ConversationKind,
+    people::People,
     storage::CommunicationsStore,
-    texts::{live_day::LiveDay, storage::TextStore},
-    today,
+    texts::{reading, storage::TextStore},
 };
-use crate::api::types::{Profile, Today};
+use crate::api::types::Profile;
 use dispatch_core::{
     Error, Result, State,
     db::Store,
-    manifest::people::{self, Person, Source},
+    manifest::people::{self, Person},
 };
 use dispatch_slack::kit;
 
@@ -29,38 +27,19 @@ pub fn member(db: &Store, state: &State, dsp: &str, id: &str) -> Result<Profile>
         kit::SOURCE,
         &kit::member_id(&conversation.team, &conversation.user),
     );
-    let today = person
-        .map(|person| today::of(db, dsp, person))
-        .transpose()?
-        .flatten();
     let workspaces = kit::workspaces(db, dsp)?;
-    Ok(profile(
-        person,
-        today,
-        &workspaces,
-        Some(&conversation.team),
-    ))
+    Ok(profile(person, &workspaces, Some(&conversation.team)))
 }
 
-/// The profile of the driver whose work conversation by text `id` is: their Slack workspace, the
-/// first of the DSP's they're in.
-pub fn driver(db: &Store, state: &State, dsp: &str, id: &str) -> Result<Profile> {
+/// The profile of whom the conversation by text `id` is with: the driver whose work conversation
+/// it is, or whoever Driver Match has its number for; their Slack workspace, the first of the
+/// DSP's they're in.
+pub fn text(db: &Store, state: &State, dsp: &str, id: &str) -> Result<Profile> {
     let conversation = db
         .communications_text_conversation(dsp, id)?
-        .filter(|conversation| conversation.kind == ConversationKind::Work)
         .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
-    let (source, driver) = conversation
-        .driver
-        .ok_or_else(|| Error::new("invalid_input", 400))?;
-    let everyone = people::everyone(db, state, dsp)?;
-    let person = Source::parse(&source).and_then(|source| everyone.holding(source, &driver));
-    let today = match LiveDay::read(db, dsp)? {
-        Some(live) if live.source == source => today::of_drivers(db, dsp, &live, &[driver])?,
-        _ => person
-            .map(|person| today::of(db, dsp, person))
-            .transpose()?
-            .flatten(),
-    };
+    let people = People::read(db, state, dsp)?;
+    let person = reading::whose(&people, &conversation);
     let workspaces = kit::workspaces(db, dsp)?;
     let team = person.and_then(|person| {
         workspaces
@@ -68,16 +47,11 @@ pub fn driver(db: &Store, state: &State, dsp: &str, id: &str) -> Result<Profile>
             .find(|workspace| slack_member(person, &workspace.team))
             .map(|workspace| workspace.team.clone())
     });
-    Ok(profile(person, today, &workspaces, team.as_deref()))
+    Ok(profile(person, &workspaces, team.as_deref()))
 }
 
-/// The profile of `person`, driving `today`, in the workspace `team` of the DSP's `workspaces`.
-fn profile(
-    person: Option<&Person>,
-    today: Option<Today>,
-    workspaces: &[kit::Workspace],
-    team: Option<&str>,
-) -> Profile {
+/// The profile of `person`, in the workspace `team` of the DSP's `workspaces`.
+fn profile(person: Option<&Person>, workspaces: &[kit::Workspace], team: Option<&str>) -> Profile {
     let slack = team.and_then(|team| {
         workspaces
             .iter()
@@ -85,7 +59,6 @@ fn profile(
             .map(conversations::named)
     });
     Profile {
-        today,
         phone: person.and_then(|person| person.phones.first().cloned()),
         email: person.and_then(|person| person.emails.first().cloned()),
         slack,

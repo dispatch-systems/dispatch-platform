@@ -197,12 +197,17 @@ test('a driver’s work conversation keeps what’s being written while they hol
   await expect(picture).toBeVisible();
 
   // Their profile shows the work phone they hold, as their conversation's head does.
-  await conversation.getByRole('button', { name: /^Fixture Driver/ }).click();
+  // Who it's with, above, before their photo by their messages.
+  await conversation
+    .getByRole('button', { name: /^Fixture Driver/ })
+    .first()
+    .click();
   const profile = page.getByRole('dialog', { name: 'Fixture Driver' });
   await expect(profile.getByText('Work phone')).toBeVisible();
 
   // The day ends while Today's Routes can't be read: their conversation, read again, keeps the
-  // work phone they had at the stop for the two hours after, as the profile left open does.
+  // work phone they had at the stop for the two hours after, and the profile left open goes, as
+  // they're working no more.
   await page.route(routesRead, (route) =>
     route.fulfill({ status: 500, json: { error: 'internal', message: 'Something went wrong.' } }),
   );
@@ -214,8 +219,8 @@ test('a driver’s work conversation keeps what’s being written while they hol
   await northline.end();
   await readAgain;
   await expect(box).toHaveValue(draft);
-  await expect(profile.getByText('Work phone')).toBeVisible();
-  await page.keyboard.press('Escape');
+  await expect(profile).toHaveCount(0);
+  await expect(conversation.getByText('No work phone')).toHaveCount(0);
   // Read again, as the page comes back into view, Today's Routes says the day is over: the box
   // stays, the phone the conversation says theirs.
   await page.unroute(routesRead);
@@ -260,7 +265,11 @@ test('a driver’s progress stays as it was last read, though another driver’s
   const list = page.getByRole('region', { name: 'Conversations' });
   await list.getByRole('button', { name: /^Fixture Driver/ }).click();
   const conversation = page.getByRole('region', { name: 'Fixture Driver' });
-  await conversation.getByRole('button', { name: /^Fixture Driver/ }).click();
+  // Who it's with, above, before their photo by their messages.
+  await conversation
+    .getByRole('button', { name: /^Fixture Driver/ })
+    .first()
+    .click();
   const profile = page.getByRole('dialog', { name: 'Fixture Driver' });
   // As their conversation was read as it opened: the fixture's two stops, both done.
   await expect(profile.getByText('2 of 2 stops')).toBeVisible();
