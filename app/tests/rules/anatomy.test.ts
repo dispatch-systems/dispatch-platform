@@ -153,12 +153,11 @@ test("the MCP's root holds its crate, its README and its pieces, each with its t
     out.push('mcp has frontend/ and no frontend/feature.ts');
   if (isDirectory('mcp/frontend') && !isDirectory('mcp/tests/browser'))
     out.push('mcp has frontend/ and no tests/browser/');
-  // Every tool agents use comes with a test of its own, as `dispatchdev new tool` writes it.
-  for (const file of filesIn('mcp/tools').filter((file) => file.endsWith('.rs'))) {
-    const tool = file.slice('mcp/tools/'.length);
+  // Tool entry files sit directly in tools/, as the generator discovers them; each has a test.
+  for (const tool of entries('mcp/tools').filter((file) => file.endsWith('.rs'))) {
     if (tool === 'mod.rs') continue;
     if (!isRustTest(`mcp/tests/backend/tools/${tool}`))
-      out.push(`${file} has no test in mcp/tests/backend/tools/${tool}`);
+      out.push(`mcp/tools/${tool} has no test in mcp/tests/backend/tools/${tool}`);
   }
   holds('anatomy', 'the MCP', out);
 });
