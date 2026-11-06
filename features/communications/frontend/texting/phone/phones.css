@@ -55,6 +55,19 @@
   gap: 4px 12px;
   margin-top: 4px;
 }
+@media (max-width: 600px) {
+  .phones-row {
+    flex-wrap: wrap;
+  }
+  .phones-row-body {
+    flex-basis: calc(100% - 50px);
+    overflow-wrap: anywhere;
+  }
+  .phones-row-body small {
+    overflow: visible;
+    white-space: normal;
+  }
+}
 .phones-pairing {
   display: flex;
   flex-direction: column;

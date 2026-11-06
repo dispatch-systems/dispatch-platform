@@ -116,10 +116,10 @@ test('The card offers the app its DSP hands out: its download, an update to an o
   // Its stand-in phone runs an older version than that and has been offline for three minutes.
   await page.route('**/api/dsp/communications/phones', async (route) => {
     const response = await route.fetch();
-    const { phones } = (await response.json()) as Phones;
+    const data = (await response.json()) as Phones;
     // Long details, which the row cuts short, never hide the tag: a model as long as a phone may
     // report (`MODEL_MOST`).
-    const older = phones.map((phone) => ({
+    const older = data.phones.map((phone) => ({
       ...phone,
       name: 'Dispatch phone at the north station, by the loading dock',
       model: `Samsung Galaxy ${'A'.repeat(85)}`,
@@ -137,7 +137,7 @@ test('The card offers the app its DSP hands out: its download, an update to an o
         undownloaded: null,
       },
     }));
-    await route.fulfill({ response, json: { phones: older, app } });
+    await route.fulfill({ response, json: { ...data, phones: older, app } });
   });
   await login(page);
   await openDsp(page, 'Northline Logistics');
