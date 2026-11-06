@@ -9,46 +9,20 @@ import {
   type ReactNode,
 } from 'react';
 import { ArrowUp, LoaderCircle, Paperclip, Phone, X } from 'lucide-react';
-import type { CommunicationsUpload, ComposeLimits } from '../../api/index.js';
+import type { ComposeLimits } from '../../api/index.js';
 import type { Attachments } from '../../api/client.js';
-import { useFeedback } from '../../../../core/shell/frontend/runtime/feedback.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
-import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import { Shown } from '../display/display.js';
-import { size } from '../shared/format.js';
-import { randomId } from '../../../../core/shell/frontend/lib/random-id.js';
 import type { Drafts } from './drafts.js';
+import { useComposerPhotos } from './useComposerPhotos.js';
 import { EmojiPicker, finePointer } from './EmojiPicker.js';
 import { QuickReplies } from '../replies/QuickReplies.js';
 import './composer.css';
 
-// Writing a message, in a conversation or to a group: as much as one may carry, as the API says
-// (`limits`): its text's characters, and its photos, how many, of which kinds and how large, which
-// what refuses one says too. Photos upload as they're added, as the way it goes keeps them
-// (`attachments`): by text, to the DSP's phones, which send them with it. Enter sends, Shift+Enter
-// starts a new line; or, as the member may choose, Enter starts one and Ctrl or ⌘ with it sends.
-// An emoji picked, or one of the DSP's quick replies, goes in where the writer was, or after the one
-// picked before; with a mouse, the field takes focus back, where a phone's keyboard stays down.
-// While someone writes in a conversation, their teammates see they are, said again every few
-// seconds. A text says the number it goes to by its last digits, when the name doesn't. While what
-// it goes to can't be reached, as a driver holding no work phone, what says so takes the box's
-// place (`instead`), and what's written stays, with its photos, until it can be again. What's
-// written is kept by the page (`drafts`), so it's there again as the box opens again; sent, what
-// was written and photos added while it went stay. Above the box, who else is writing (`above`);
-// and where a teammate replied since the member started writing (`replied`), sending asks there
-// first, to send anyway or not.
+// Text editing, typing and reply acknowledgement, with composer-local photo ownership.
 
 /** How often writing is said again: the server counts it for six seconds. */
 const TYPING_MS = 3000;
-
-/** A photo added: shown at once, uploaded as it's added, and sent by what that answered. */
-type Added = {
-  key: string;
-  file: File;
-  shown: string;
-  uploaded?: CommunicationsUpload;
-  controller: AbortController;
-};
 
 export function Composer({
   drafts,
@@ -96,17 +70,23 @@ export function Composer({
    * they'd rather not send (`show`). */
   replied?: { check: () => string | undefined; seen: () => void; show: () => void };
 }) {
-  const { fail } = useFeedback();
   const text = useSyncExternalStore(
     useCallback((watch: () => void) => drafts.watch(draft, watch), [drafts, draft]),
     () => drafts.text(draft),
   );
   const { enter_sends: enterSends } = useContext(Shown);
-  const [photos, setPhotos] = useState<Added[]>([]);
+  const {
+    photos,
+    add,
+    remove,
+    uploading,
+    empty: photosEmpty,
+    capture,
+    finish,
+    settle,
+  } = useComposerPhotos(limits, attachments);
   // A teammate's reply, as it reads, asked about before sending.
   const [asking, setAsking] = useState<string>();
-  // The photos of a send under way, which are no part of what's written meanwhile.
-  const going = useRef<ReadonlySet<string>>(new Set());
   const picker = useRef<HTMLInputElement>(null);
   const field = useRef<HTMLTextAreaElement>(null);
   const said = useRef(0);
@@ -114,20 +94,6 @@ export function Composer({
   // the field.
   const caret = useRef<number>(undefined);
   const refocus = useRef(false);
-  // Photos still uploading stop, and their previews go, as the composer does.
-  const added = useRef(photos);
-  useEffect(() => {
-    added.current = photos;
-  }, [photos]);
-  useEffect(
-    () => () => {
-      for (const photo of added.current) {
-        photo.controller.abort();
-        URL.revokeObjectURL(photo.shown);
-      }
-    },
-    [],
-  );
   // The field grows with what's written, up to a few lines, and as it's drawn again with what was
   // kept while something else took its place.
   const away = Boolean(instead);
@@ -158,69 +124,30 @@ export function Composer({
   // A draft starts as an empty box gains text or a photo, beside what's going: what a teammate's
   // reply counts from, and what was asked about before is no longer the question.
   const starts = () => {
-    const empty = !text.trim() && photos.every((photo) => going.current.has(photo.key));
+    const empty = !text.trim() && photosEmpty();
     if (!empty) return;
     replied?.seen();
     setAsking(undefined);
   };
-  const remove = (key: string) => {
-    const photo = added.current.find((each) => each.key === key);
-    photo?.controller.abort();
-    if (photo) URL.revokeObjectURL(photo.shown);
-    setPhotos((now) => now.filter((each) => each.key !== key));
-  };
-  const add = (files: FileList | null) => {
-    const chosen = [...(files ?? [])];
-    if (!limits) return;
-    if (chosen.some((file) => !limits.kinds.includes(file.type)))
-      return fail(`Photos must be ${kindsText(limits.kinds)}.`);
-    if (chosen.some((file) => file.size > limits.largest))
-      return fail(`Photos must be ${bytesText(limits.largest)} or smaller.`);
-    if (photos.length + chosen.length > limits.photos)
-      return fail(`Add up to ${limits.photos} photos.`);
-    if (chosen.length) starts();
-    const adding = chosen.map((file) => ({
-      key: randomId(),
-      file,
-      shown: URL.createObjectURL(file),
-      controller: new AbortController(),
-    }));
-    setPhotos((now) => [...now, ...adding]);
-    for (const photo of adding)
-      attachments.add(photo.file, photo.controller.signal).then(
-        (uploaded) =>
-          setPhotos((now) =>
-            now.map((each) => (each.key === photo.key ? { ...each, uploaded } : each)),
-          ),
-        (cause) => {
-          if (photo.controller.signal.aborted) return;
-          remove(photo.key);
-          fail(messageOf(cause));
-        },
-      );
-  };
   const send = useAction(async () => {
-    const sent = new Set(photos.map((photo) => photo.key));
-    going.current = sent;
+    const sent = capture();
     // What goes leaves the box at once; what's written and photos added while it goes stay.
     drafts.sending(draft, text);
     caret.current = undefined;
     try {
       await deliver(
         text.trim(),
-        photos.map((photo) => photo.uploaded!.id),
+        sent.photos.map((photo) => photo.uploaded!.id),
       );
     } catch (cause) {
       drafts.failed(draft, text);
       throw cause;
     } finally {
-      going.current = new Set();
+      finish();
     }
-    for (const photo of photos) URL.revokeObjectURL(photo.shown);
-    setPhotos((now) => now.filter((photo) => !sent.has(photo.key)));
+    settle(sent);
     said.current = 0;
   });
-  const uploading = photos.some((photo) => !photo.uploaded);
   const open = writable && limits !== undefined;
   const ready =
     open && whom && !send.busy && !uploading && (text.trim().length > 0 || photos.length > 0);
@@ -305,7 +232,7 @@ export function Composer({
               multiple
               hidden
               onChange={(event) => {
-                add(event.currentTarget.files);
+                add(event.currentTarget.files, starts);
                 event.currentTarget.value = '';
               }}
             />
@@ -345,15 +272,4 @@ export function Composer({
       </div>
     </form>
   );
-}
-
-/** The kinds of photo a message carries, as their names read: "PNG, JPEG or GIF". */
-function kindsText(kinds: readonly string[]) {
-  const names = kinds.map((kind) => kind.replace(/^image\//, '').toUpperCase());
-  return names.length > 1 ? `${names.slice(0, -1).join(', ')} or ${names.at(-1)}` : names.join('');
-}
-/** The most bytes a photo may be, as it reads: "20 MB", or with a fraction, "2.5 MB". */
-function bytesText(bytes: number) {
-  const megabytes = bytes / 1024 ** 2;
-  return Number.isInteger(megabytes) ? `${megabytes} MB` : size(bytes);
 }
