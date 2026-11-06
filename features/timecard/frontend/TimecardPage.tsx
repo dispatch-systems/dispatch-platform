@@ -1,7 +1,7 @@
 import {
   readUpdateState,
   useUpdateState,
-} from '../../../core/shell/frontend/runtime/browser-update.js';
+} from '../../../core/shell/frontend/runtime/navigation-state.js';
 import {
   lazy,
   Suspense,

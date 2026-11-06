@@ -1,5 +1,5 @@
 import { performancePolicy } from '../../../../../core/shell/frontend/lib/performance-policy.js';
-import { useUpdateState } from '../../../../../core/shell/frontend/runtime/browser-update.js';
+import { useUpdateState } from '../../../../../core/shell/frontend/runtime/navigation-state.js';
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ArrowRight, Download, Globe, Info, RefreshCw } from 'lucide-react';
 import {

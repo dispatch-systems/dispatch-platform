@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowDownAZ, ArrowUpAZ, ChevronRight } from 'lucide-react';
 import type { EmployeeTimecardPeriod, EmployeeTimecardResponse } from '../../../api/index.js';
-import { useUpdateState } from '../../../../../core/shell/frontend/runtime/browser-update.js';
+import { useUpdateState } from '../../../../../core/shell/frontend/runtime/navigation-state.js';
 import { useFillsWindow } from '../../../../../core/shell/frontend/runtime/fills.js';
 import { employeeTimecardUrl, useEmployeeTimecard, useEmployees } from '../../../api/client.js';
 import {

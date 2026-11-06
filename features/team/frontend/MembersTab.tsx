@@ -1,7 +1,7 @@
 import { useDeferredValue, useMemo } from 'react';
 import { Ellipsis, RefreshCw } from 'lucide-react';
 import type { Membership, Role } from '../../../core/accounts/api/index.js';
-import { useUpdateState } from '../../../core/shell/frontend/runtime/browser-update.js';
+import { useUpdateState } from '../../../core/shell/frontend/runtime/navigation-state.js';
 import {
   Badge,
   ConfirmDialog,

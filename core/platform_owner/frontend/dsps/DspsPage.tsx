@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import type { DspSummary } from '../../../accounts/api/index.js';
-import { useUpdateState } from '../../../shell/frontend/runtime/browser-update.js';
+import { useUpdateState } from '../../../shell/frontend/runtime/navigation-state.js';
 import { api } from '../../../shell/frontend/runtime/api.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import { usePlatformDsps } from '../../api/client.js';

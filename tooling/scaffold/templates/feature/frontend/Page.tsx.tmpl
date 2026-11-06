@@ -1,7 +1,7 @@
 import type { DspView } from '{{toRoot}}{{dspView}}';
 import { {{#api}}DataState, {{/api}}Header{{#ownTabs}}, Tabs{{/ownTabs}} } from '{{toRoot}}core/shell/frontend/ui/index.js';
 {{#ownTabs}}
-import { useUpdateState } from '{{toRoot}}core/shell/frontend/runtime/browser-update.js';
+import { useUpdateState } from '{{toRoot}}core/shell/frontend/runtime/navigation-state.js';
 import { HostedTab, usePageTabs } from '{{toRoot}}core/shell/frontend/runtime/PageTabs.js';
 {{/ownTabs}}
 {{#api}}

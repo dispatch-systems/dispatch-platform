@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef, useSyncExternalStore } from 'react';
 import { backoff } from '../lib/backoff.js';
 import { performancePolicy } from '../lib/performance-policy.js';
-import { useReadAvailability } from '../lib/read-availability.js';
+import { useReadAvailability } from '../ui/useReadAvailability.js';
 import { api, ApiError } from './api.js';
 import { dataCache } from './data-cache.js';
 

@@ -1,5 +1,5 @@
 import type { TableSort, TableStateStore } from '../ui/index.js';
-import { useUpdateState } from './browser-update.js';
+import { useUpdateState } from './navigation-state.js';
 
 /**
  * The state of one table: it belongs to the visit and survives only an update reload.
