@@ -16,7 +16,7 @@ import {
 } from '../scaffold/generate.js';
 import { LISTS, explain, fields, frontendSlots, table } from '../scaffold/inventory.js';
 import { KINDS } from '../scaffold/cli.js';
-import { repositoryRoot as root } from '../scaffold/scaffold.js';
+import { repositoryRoot as root } from '../scaffold/common.js';
 
 // What `dispatchdev new`, `generate`, `list` and `explain` run: the scaffolder's dispatcher,
 // which answers its usage with success, and what it reads. Nothing here builds Rust.

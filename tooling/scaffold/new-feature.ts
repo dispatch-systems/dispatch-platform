@@ -1,38 +1,34 @@
 import path from 'node:path';
 import {
   UsageError,
-  addWorkspaceMember,
+  isIcon,
+  names as namesOf,
+  parseArguments,
+  template,
+  type Values,
+} from './common.js';
+import { addWorkspaceMember } from './workspace-editing.js';
+import {
   capabilitiesOf,
-  change,
   collectionOf,
   collectionsOf,
   collectors,
   coreParts,
   dspPages,
-  emptyPlan,
   exists,
   features,
-  format,
-  formatRust,
-  isIcon,
   keeperOf,
-  names as namesOf,
   nextPeopleOrder,
   nextPermissionOrder,
   nextSourceOrder,
   ownPermissionOrder,
   nextPlace,
   pageOf,
-  parseArguments,
   peopleSources,
   read,
-  run,
-  snapshotsNote,
-  template,
-  type Generator,
-  type Plan,
-  type Values,
-} from './scaffold.js';
+} from './repository.js';
+import { change, emptyPlan, format, formatRust, snapshotsNote, type Plan } from './plan.js';
+import { run, type Generator } from './scaffold.js';
 import {
   appManifest,
   crateOf,

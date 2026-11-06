@@ -1,20 +1,8 @@
 import path from 'node:path';
-import {
-  UsageError,
-  emptyPlan,
-  exists,
-  features,
-  files,
-  formatRust,
-  parseArguments,
-  read,
-  run,
-  snapshotsNote,
-  template,
-  type Generator,
-  type Plan,
-  type Values,
-} from './scaffold.js';
+import { UsageError, parseArguments, template, type Values } from './common.js';
+import { emptyPlan, formatRust, snapshotsNote, type Plan } from './plan.js';
+import { exists, features, files, read } from './repository.js';
+import { run, type Generator } from './scaffold.js';
 
 // `dispatchdev new tool <name> [options]`: a tool agents can use, in mcp/tools/: its file,
 // which works as written, and a test that calls it as an agent does. `dispatchdev generate`,

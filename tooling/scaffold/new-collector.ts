@@ -1,29 +1,14 @@
 import path from 'node:path';
+import { UsageError, names as namesOf, parseArguments, template, type Values } from './common.js';
 import {
-  UsageError,
   addDependency,
   addWorkspaceMember,
-  appBackend,
   appendToList,
-  change,
-  collectors,
-  coreParts,
-  emptyPlan,
-  exists,
   forwardFeature,
-  features,
-  format,
-  formatRust,
-  holding,
-  names as namesOf,
-  parseArguments,
-  run,
-  snapshotsNote,
-  template,
-  type Generator,
-  type Plan,
-  type Values,
-} from './scaffold.js';
+} from './workspace-editing.js';
+import { appBackend, collectors, coreParts, exists, features, holding } from './repository.js';
+import { change, emptyPlan, format, formatRust, snapshotsNote, type Plan } from './plan.js';
+import { run, type Generator } from './scaffold.js';
 
 // `dispatchdev new collector <site> [options]`: a collector for one outside site, as a crate of its
 // own listed in app/: its connection, one collection with its fixture, its connection card and a

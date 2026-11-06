@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { planFeature } from '../../scaffold/new-feature.js';
-import { repositoryRoot as root, type Plan } from '../../scaffold/scaffold.js';
+import { repositoryRoot as root } from '../../scaffold/common.js';
+import { type Plan } from '../../scaffold/plan.js';
 
 // What the generators' tests share. They run the generators with --dry-run: the files each flag
 // writes, what they say, and how the new owner is listed in app/. Nothing here builds Rust; the

@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { planCollector } from '../../scaffold/new-collector.js';
 import { planFeature, withPreset } from '../../scaffold/new-feature.js';
-import { render } from '../../scaffold/scaffold.js';
+import { render } from '../../scaffold/common.js';
 import { copyWorkspace, feature, file, refused, root, writes } from './support.js';
 
 // new feature: what each flag writes, and the names and flags it refuses.
