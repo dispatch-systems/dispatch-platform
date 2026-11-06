@@ -1,12 +1,13 @@
 //! Reads the fleet over plain HTTP with the browser's session: the company the DSP's code
 //! names, from the list the start's session check read when it had one, then every vehicle
 //! the fleet lists, active or not, in as many pages as its continuation keys ask. Nothing
-//! needs a page, so the browser closes as soon as its session is copied. Against the fleet
-//! page's own request this took 2.3 s and 2.0 CPU-seconds, not 4.2 and 5.7.
+//! needs a page, so the browser closes as soon as its session is copied.
 use super::capture::{Capture, Collection, MAX_VANS, Request, Van};
 use crate as cortex;
-use crate::collections::associates::collect::{COMPANIES, company, refusal};
-use crate::connection::Driver;
+use crate::connection::{
+    Driver,
+    companies::{COMPANIES, company, refusal},
+};
 use dispatch_core::{
     Error, Result,
     collection::browser::{Run, http::Http},
