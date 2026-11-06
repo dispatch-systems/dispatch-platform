@@ -5,13 +5,14 @@ own crate, `dispatch-mcp`, above the features (`app → mcp → features → col
 Core never names it: the app installs it as the registry's agents' piece (`backend/piece.rs`),
 through which core hands it its routes, migrations, upkeep and the requests agents send.
 
-| Folder        | Holds                                                                               |
-| ------------- | ----------------------------------------------------------------------------------- |
-| `backend/`    | Keys, Sign in with Dispatch (`oauth/`), the server, its tools (`tools/`), the log   |
-| `api/`        | Its routes and API types, and the Agents page's client                              |
-| `frontend/`   | The Agents page and Connect an app, and its words in the platform owner's audit log |
-| `migrations/` | Its tables in the platform's database, numbered with core's                         |
-| `tests/`      | Its own tests; the app's `tests/` hold those that need the whole product            |
+| Folder        | Holds                                                                                    |
+| ------------- | ---------------------------------------------------------------------------------------- |
+| `backend/`    | Keys, Sign in with Dispatch (`oauth/`), the server, tool machinery (`toolbox/`), the log |
+| `tools/`      | The tools agents call                                                                    |
+| `api/`        | Its routes and API types, and the Agents page's client                                   |
+| `frontend/`   | The Agents page and Connect an app, and its words in the platform owner's audit log      |
+| `migrations/` | Its tables in the platform's database, numbered with core's                              |
+| `tests/`      | Its own tests; the app's `tests/` hold those that need the whole product                 |
 
 It reads people and DSPs through core's functions, and a feature's data through the feature's,
 never their tables.

@@ -1,16 +1,29 @@
 //! The driver tool: whom a name finds, the days a lookup covers, what each feature is asked about
 //! them, how a long answer is cut to fit, and a call as an agent makes it.
-use super::*;
+use super::super::{Lookup, Readers, Span, answer, find, parse, range};
+use super::{ROOM, json_len};
 use crate::{
     api::types::ToolLevel,
     testing::{self, agent, call_tool, serving},
 };
+use chrono::Duration;
 use dispatch_core::{
-    manifest::people::{PersonRole, SourceInfo},
+    Result,
+    accounts::api::types::Dsp,
+    db::Store,
+    foundation::clock,
+    manifest::people::{Everyone, Person, PersonRole, Source, SourceInfo},
     testing::{self as common, bootstrapped},
 };
+use dispatch_daily_performance_contract::{self as performance, DailyMetrics};
+use dispatch_driver_profiles_contract::{self as profiles, AmazonRoster};
+use dispatch_dvic_contract::{self as dvic, Asked, ShortInspections};
+use dispatch_routes_contract::{self as route, DriverRoutes};
+use dispatch_slack_contract::{self as slack, ChatAccounts};
+use dispatch_timecard_contract as timecard;
+use dispatch_weekly_scorecard_contract::{self as scorecard, DriverScorecards};
 use serde_json::{Value, json};
-use std::sync::Mutex;
+use std::{collections::BTreeMap, sync::Mutex};
 
 static AMAZON: SourceInfo = source("amazon");
 static PAYCOM: SourceInfo = source("paycom");
@@ -592,7 +605,7 @@ fn cuts_long_lists_to_fit_keeping_the_newest_and_counting_the_rest() {
 #[cfg(feature = "dvic")]
 #[tokio::test]
 async fn an_agent_looks_up_a_driver_with_what_the_features_on_know_of_them() {
-    use super::super::dvic_short_inspections::tests::{publish, ready, request};
+    use super::super::super::dvic_short_inspections::tests::{publish, ready, request};
     use dispatch_driver_match::DriverMatchStore;
     let (_root, db, id) = ready();
     publish(
