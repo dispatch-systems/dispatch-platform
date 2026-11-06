@@ -1,7 +1,7 @@
 //! Authorization requests, browser binding, and the owner's one-use approval or denial.
 use super::{
     Answer, Authorized, Query, Refusal, SCOPE,
-    clients::{self, Client},
+    clients::{Client, redirects},
     issuer,
     protocol::{check_scope, redirect},
     resource,
@@ -56,7 +56,7 @@ pub(super) fn request(
     browser: &str,
 ) -> Result<OAuthRequest> {
     let request = waiting_request(db, id, browser)?;
-    let (redirect_host, redirect_scheme) = clients::destination(&request.redirect_uri);
+    let (redirect_host, redirect_scheme) = redirects::destination(&request.redirect_uri);
     let replaced = replaced_apps(
         db,
         name.unwrap_or(&request.client_name),
@@ -201,7 +201,7 @@ fn request_oauth(
         None => return page("unknown_app"),
     };
     let redirect_uri = match query.one("redirect_uri") {
-        Ok(Some(uri)) if clients::allowed(&client.redirect_uris, uri) => uri,
+        Ok(Some(uri)) if redirects::allowed(&client.redirect_uris, uri) => uri,
         _ => return page("invalid_redirect"),
     };
     // From here on the app hears why, at the redirect it registered.
