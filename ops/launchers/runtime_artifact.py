@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-import tempfile
 
 def require(value, message):
     if not value:
@@ -19,35 +18,6 @@ def command(*args, cwd=None, timeout=120, binary=False):
         problem = result.stderr if isinstance(result.stderr, str) else result.stderr.decode(errors="replace")
         raise RuntimeError(f"{' '.join(args[:3])} failed: {problem.strip()[-600:]}")
     return result.stdout if binary else result.stdout.strip()
-
-
-def private_directory(directory):
-    directory = Path(directory)
-    require(not directory.is_symlink(), "Private directory cannot be a symlink")
-    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-    info = directory.stat()
-    require(info.st_uid == os.getuid() and info.st_mode & 0o077 == 0,
-            "Private directory permissions required")
-    return directory
-
-
-def write_json(filename, value):
-    private_directory(filename.parent)
-    fd, temp = tempfile.mkstemp(prefix=".update-", dir=filename.parent)
-    try:
-        with os.fdopen(fd, "w") as out:
-            json.dump(value, out)
-            out.flush()
-            os.fsync(out.fileno())
-        os.replace(temp, filename)
-        fd = os.open(filename.parent, os.O_RDONLY)
-        try:
-            os.fsync(fd)
-        finally:
-            os.close(fd)
-    finally:
-        if os.path.exists(temp):
-            os.unlink(temp)
 
 
 def prebuilt_host(root):
@@ -108,15 +78,7 @@ def host(*args, value=None):
     return json.loads(stdout)
 
 
-def verify_artifact(directory, commit=None):
-    return host("artifact", "verify", directory, *([commit] if commit else []))
-
-
-def unpack(archive, destination):
-    return host("artifact", "unpack", archive, destination)
-
-
-def install_management(live, environment="dev", tooling=None):
+def install_management(live, environment="dev"):
     """Compatibility adapter; Rust installs the binary and embedded launchers together."""
     host(environment, "--root", Path(live), "--install-management")
 

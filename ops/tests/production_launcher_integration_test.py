@@ -6,7 +6,10 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from dev_updater_test import artifact, runtime
+from runtime_fixtures import TOOLING, artifact, write_json
+
+sys.path.insert(0, str(TOOLING))
+import runtime_artifact as runtime
 
 
 class ProductionLauncherIntegrationTests(unittest.TestCase):
@@ -20,7 +23,7 @@ class ProductionLauncherIntegrationTests(unittest.TestCase):
             shutil.copyfile(binary, active / "services/rust/dispatch-backend")
             (active / "tooling/build-info.json").write_text(json.dumps({"commit": "a" * 40, "hostManagement": 1}))
             runtime.host("artifact", "write", active, "0.1.0")
-            runtime.write_json(root / "config/updater.json", {"service": "dispatch-production.service", "healthUrl": "http://127.0.0.1:5180/api/health"})
+            write_json(root / "config/updater.json", {"service": "dispatch-production.service", "healthUrl": "http://127.0.0.1:5180/api/health"})
             runtime.install_management(root, "production")
             installed = root / "management/dispatch-host"
             self.assertEqual(installed.read_bytes(), binary.read_bytes())
