@@ -87,7 +87,14 @@ async fn the_personal_chip_goes_to_the_default_number_not_the_one_last_written_f
     };
     support::know(&state, &dsp, vec![avery.clone()], Vec::new(), Vec::new());
     let today = day.to_string();
-    phoned(&state, &dsp, Some(&today), phones(&[("A1", "2065550202")]), Vec::new()).await;
+    phoned(
+        &state,
+        &dsp,
+        Some(&today),
+        phones(&[("A1", "2065550202")]),
+        Vec::new(),
+    )
+    .await;
     let then = at(zone, day.pred_opt().unwrap(), 9, 0);
     texted(&state, &dsp, "+12535550177", "New phone soon", then).await;
 

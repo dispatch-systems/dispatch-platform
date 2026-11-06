@@ -776,7 +776,11 @@ fn a_number_added_is_the_drivers_default_whatever_a_collection_brings() {
     listing("+12065550100");
     let tony = code(&db.driver_match(&id).unwrap(), AMAZON, "TREYES");
     let theirs = || {
-        let person = people::read(&db, &id).unwrap().person(&tony).unwrap().clone();
+        let person = people::read(&db, &id)
+            .unwrap()
+            .person(&tony)
+            .unwrap()
+            .clone();
         (person.phones, person.added_phones)
     };
     assert_eq!(theirs().0, ["+12065550100"]);
