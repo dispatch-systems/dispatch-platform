@@ -31,6 +31,29 @@ use std::{
     time::{Duration, Instant},
 };
 
+/// The DSPs deleted since the server started, of which nothing is kept in memory: what was
+/// under way as one was deleted, a token's renewal or a folder's listing, would keep it once
+/// it's forgotten otherwise. Each keeper asks while it holds what it keeps in.
+static DELETED: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::default);
+fn deleted(dsp: &str) -> bool {
+    DELETED
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .contains(dsp)
+}
+/// Forgets what's kept in memory of the DSP's files once it's deleted, and keeps none after.
+pub fn forget_deleted(dsp: &str) {
+    DELETED
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(dsp.to_owned());
+    forget(dsp);
+    PICTURES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .retain(|(shown_by, _), _| shown_by != dsp);
+}
+
 /// The access tokens Google gave, by DSP, until a minute before each lapses.
 static ACCESS: LazyLock<Mutex<BTreeMap<String, (String, Instant)>>> =
     LazyLock::new(Default::default);
@@ -43,6 +66,15 @@ fn kept(dsp: &str) -> Option<String> {
         .filter(|(_, until)| Instant::now() < *until)
         .map(|(token, _)| token.clone())
 }
+/// Keeps the DSP's access token `token` until `until`, unless the DSP is deleted.
+fn keep(dsp: &str, token: &str, until: Instant) {
+    let mut tokens = ACCESS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if !deleted(dsp) {
+        tokens.insert(dsp.to_owned(), (token.to_owned(), until));
+    }
+}
 /// Forgets the DSP's access token, as a disconnect or a new account does.
 pub fn forget(dsp: &str) {
     ACCESS
@@ -51,18 +83,11 @@ pub fn forget(dsp: &str) {
         .remove(dsp);
 }
 
-/// Google's links to pictures of what each DSP's Documents showed. A picture is fetched only
-/// for a file kept here: so only one the DSP's own Documents showed, and never by a link a
-/// browser sent.
-static PICTURES: LazyLock<Mutex<Pictures>> = LazyLock::new(Default::default);
-#[derive(Default)]
-struct Pictures {
-    /// By DSP and file.
-    shown: HashMap<(String, String), Shown>,
-    /// The DSPs deleted since the server started, which keep none: a folder shown as its DSP
-    /// was deleted would otherwise keep its pictures once they're forgotten.
-    deleted: HashSet<String>,
-}
+/// Google's links to pictures of what each DSP's Documents showed, by DSP and file. A picture
+/// is fetched only for a file kept here: so only one the DSP's own Documents showed, and never
+/// by a link a browser sent.
+static PICTURES: LazyLock<Mutex<HashMap<(String, String), Shown>>> =
+    LazyLock::new(Default::default);
 /// Google's link to a file's picture, when Google gave the link, and when Documents showed
 /// the file.
 #[derive(Clone)]
@@ -76,21 +101,11 @@ struct Shown {
 const PICTURE_LINK_LASTS: Duration = Duration::from_secs(60 * 60);
 /// The most links kept across every DSP; past them, a card keeps its drawing.
 const PICTURE_LINKS: usize = 20_000;
-/// Forgets the pictures the DSP's Documents showed, once it's deleted, and keeps none it shows
-/// after.
-pub fn forget_pictures(dsp: &str) {
-    let mut pictures = PICTURES
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    pictures.shown.retain(|(shown_by, _), _| shown_by != dsp);
-    pictures.deleted.insert(dsp.to_owned());
-}
 /// The picture of the file `id`, when the DSP's Documents showed it within the hour.
 fn shown(dsp: &str, id: &str) -> Option<Shown> {
     PICTURES
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .shown
         .get(&(dsp.to_owned(), id.to_owned()))
         .filter(|shown| shown.shown.elapsed() < PICTURE_LINK_LASTS)
         .cloned()
@@ -138,10 +153,7 @@ pub(crate) async fn open(state: &Arc<State>, dsp: &str, fresh: bool) -> Result<D
             // Disabled while Google renewed it, nothing more reaches the DSP's Drive.
             active(state, dsp).await?;
             let until = Instant::now() + access.lasts.saturating_sub(Duration::from_secs(60));
-            ACCESS
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .insert(dsp.to_owned(), (access.token.clone(), until));
+            keep(dsp, &access.token, until);
             Ok(Drive {
                 google,
                 connection,
@@ -854,13 +866,12 @@ impl Described<'_> {
     /// picture's version, so the browser keeps each until the file changes.
     fn picture(&self, row: &Row) -> Option<String> {
         let link = row.thumbnail.as_deref()?.to_owned();
-        let mut pictures = PICTURES
+        let mut links = PICTURES
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if pictures.deleted.contains(self.dsp) {
+        if deleted(self.dsp) {
             return None;
         }
-        let links = &mut pictures.shown;
         let key = (self.dsp.to_owned(), row.id.to_string());
         if links.len() >= PICTURE_LINKS && !links.contains_key(&key) {
             links.retain(|_, shown| shown.shown.elapsed() < PICTURE_LINK_LASTS);

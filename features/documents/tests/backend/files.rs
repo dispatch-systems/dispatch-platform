@@ -1,5 +1,6 @@
 //! A DSP disabled while Google renews its access token, whose Drive is reached no more; and a
-//! deleted DSP's pictures, forgotten, with none kept of a folder shown as it was deleted.
+//! deleted DSP's token and pictures, forgotten, with none kept of a renewal or a folder shown as
+//! it was deleted.
 use super::*;
 use crate::backend::{
     drive::DOC,
@@ -33,9 +34,11 @@ async fn a_dsp_disabled_while_its_token_is_renewed_makes_nothing_in_its_drive() 
 }
 
 #[test]
-fn a_deleted_dsps_pictures_are_forgotten_and_none_kept_after_and_no_other_dsps() {
-    // What each DSP's Documents showed of a file.
+fn a_deleted_dsps_token_and_pictures_are_forgotten_and_none_kept_after_and_no_other_dsps() {
+    // Each DSP's access token, and what its Documents showed of a file.
+    let lasts = Instant::now() + Duration::from_secs(3600);
     for dsp in ["dsp_deleted", "dsp_other"] {
+        keep(dsp, &format!("token:{dsp}"), lasts);
         let now = Instant::now();
         let shown = Shown {
             link: format!("fixture:{dsp}"),
@@ -45,11 +48,10 @@ fn a_deleted_dsps_pictures_are_forgotten_and_none_kept_after_and_no_other_dsps()
         PICTURES
             .lock()
             .unwrap()
-            .shown
             .insert((dsp.to_owned(), "file".to_owned()), shown);
     }
     // A folder of the deleted DSP's was read before it was deleted, and is shown once it's
-    // forgotten.
+    // forgotten; and Google renewed its token as it was deleted, which is kept once it is.
     let tree = Tree::new("main", Vec::new());
     let (records, names) = (BTreeMap::new(), BTreeMap::new());
     let listing = Described {
@@ -63,8 +65,11 @@ fn a_deleted_dsps_pictures_are_forgotten_and_none_kept_after_and_no_other_dsps()
     listed.thumbnail_link = Some("fixture:dsp_deleted:listed".into());
     connection::forgotten("dsp_deleted");
     listing.item(&Row::from(listed), false);
+    keep("dsp_deleted", "token:renewed", lasts);
+    assert!(kept("dsp_deleted").is_none());
     assert!(shown("dsp_deleted", "file").is_none());
     assert!(shown("dsp_deleted", "listed").is_none());
+    assert_eq!(kept("dsp_other").unwrap(), "token:dsp_other");
     assert_eq!(
         shown("dsp_other", "file").unwrap().link,
         "fixture:dsp_other"

@@ -282,8 +282,7 @@ fn own_grant(db: &Store, dsp: &str) -> Result<Option<String>> {
 }
 /// Forgets what's held in memory of a deleted DSP's files.
 pub fn forgotten(dsp: &str) {
-    files::forget(dsp);
-    files::forget_pictures(dsp);
+    files::forget_deleted(dsp);
     mirror::forget(dsp);
 }
 
