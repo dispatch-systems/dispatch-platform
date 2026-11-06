@@ -1,4 +1,3 @@
-import { performancePolicy } from '../../../core/shell/frontend/lib/performance-policy.js';
 import {
   readUpdateState,
   useUpdateState,
@@ -7,7 +6,6 @@ import {
   lazy,
   Suspense,
   use,
-  useEffect,
   useLayoutEffect,
   useState,
   useTransition,
@@ -18,24 +16,15 @@ import type { DspView } from '../../../core/accounts/api/index.js';
 import type { EmployeeTimecardPeriod } from '../api/index.js';
 import { paycomDefaults } from './paycom.js';
 import { hasFeature } from '../../../core/shell/frontend/runtime/features.js';
-import {
-  syncMealBreaks,
-  useDailySyncStatus,
-  usePaycomStatus,
-  usePaycomSettings,
-} from '../api/client.js';
-import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
-import { collectionData } from '../../../core/shell/frontend/runtime/data-policy.js';
+import { usePaycomSettings } from '../api/client.js';
 import { useCollectionUpdates } from '../../../core/collection/frontend/live-collection.js';
 import { ErrorBox, Header, Loading, Tabs } from '../../../core/shell/frontend/ui/index.js';
 import { HostedTab, OpenPage, usePageTabs } from '../../../core/shell/frontend/runtime/PageTabs.js';
 import { settingsPage } from '../../../core/shell/frontend/runtime/slots.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
-import { randomId } from '../../../core/shell/frontend/lib/random-id.js';
 import { prefetchRouteData } from '../../../core/shell/frontend/runtime/route-prefetch.js';
 import { prefetchTimecardTab } from './prefetch.js';
 import { usePaycomDate } from './DateControls.js';
-import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import {
   dspHash,
   navigate,
@@ -44,6 +33,7 @@ import {
 } from '../../../core/shell/frontend/runtime/navigation.js';
 import { SourceSyncStatus } from './SourceSyncStatus.js';
 import { EmployeePeriodSync } from './tabs/employees/EmployeePeriodSync.js';
+import { useDailySync } from './useDailySync.js';
 
 const loadEmployees = () => import('./tabs/employees/EmployeesPage.js');
 const loadTimecards = () => import('./tabs/daily/TimecardsPage.js');
@@ -117,50 +107,16 @@ export function PaycomPage({ view }: { view: DspView }) {
     shownTabs.map(([id, label]) => [id, label]),
   );
   const tab = hosting.open?.id ?? ownTab;
-  const [syncRevision, setSyncRevision] = useState(0);
-  const [collecting, setCollecting] = useState(false);
   const meals = tab === 'meal-breaks';
   const timecards = tab === 'timecards';
   const daily = timecards || meals;
   const employees = tab === 'employees';
   // Where the Employees tab draws its sync, in the heading as the daily tabs draw theirs.
   const [employeeSync, setEmployeeSync] = useState<HTMLDivElement | null>(null);
-  const overview = usePaycomStatus();
-  const syncState = useDailySyncStatus(
-    date,
-    collecting ? performancePolicy.activeCollectionPollMs : performancePolicy.recoveryPollMs,
-    String(syncRevision),
-    daily,
-  );
-  // The last known state stays up while another date loads so the page does not shift.
-  const sourceState = syncState.data ?? syncState.stale;
-  const sourceCurrent = syncState.data?.date === date;
-  const { error, refresh } = overview;
+  const { overview, sourceState, activeSync, syncUnavailable, refreshKey, sync, onQueued } =
+    useDailySync(date, daily);
+  const { error } = overview;
   const data = overview.data?.connection;
-  const activeSync = daily && (sourceState?.paycom.active || sourceState?.flex.active);
-  useEffect(() => setCollecting(Boolean(activeSync)), [activeSync]);
-  const collectedAt = overview.data?.workforce.collectedAt;
-  useEffect(() => {
-    if (collectedAt) dataCache.observeVersion('paycom', collectedAt, collectionData);
-  }, [collectedAt]);
-  const refreshKey = String(syncRevision);
-  useEffect(() => {
-    if (sourceState?.flex.collectedAt)
-      dataCache.observeVersion('flex', sourceState.flex.collectedAt, (url) =>
-        url.startsWith('/api/dsp/paycom/meal-breaks'),
-      );
-  }, [sourceState?.flex.collectedAt]);
-  const syncUnavailable = daily
-    ? !sourceState
-      ? 'Checking connections…'
-      : !sourceState.paycom.enabled
-        ? 'Connect Paycom in Settings → Connections to sync.'
-        : !sourceState.flex.enabled
-          ? 'Connect Cortex in Settings → Connections to sync Flex.'
-          : !sourceState.scopeAvailable
-            ? 'Complete your DSP profile with a station code to sync Flex.'
-            : ''
-    : '';
   const canConnect = can(view, 'connections.manage');
   const connections = settingsHash(view.dsp.id, 'connections');
   // Its own page of Settings, for those who manage it.
@@ -172,30 +128,10 @@ export function PaycomPage({ view }: { view: DspView }) {
     if (host) prefetchRouteData(host, view);
   };
   const page = use(OpenPage);
-  const sync = useAction(
-    async () => {
-      try {
-        if (daily) await syncMealBreaks(date, randomId());
-      } finally {
-        refresh();
-        // Keep every Sync Now disabled until status read after this request arrives.
-        setSyncRevision((value) => value + 1);
-      }
-    },
-    { success: 'Flex and Paycom collections queued' },
-  );
   const syncButton = () =>
     canCollect && (
       <button
-        disabled={
-          !!syncUnavailable ||
-          !syncState.data ||
-          syncState.validatedKey !== String(syncRevision) ||
-          !!syncState.error ||
-          sync.busy ||
-          !!activeSync ||
-          !sourceCurrent
-        }
+        disabled={sync.disabled}
         title={
           syncUnavailable ||
           (activeSync && 'A collection is in progress for this DSP.') ||
@@ -240,7 +176,7 @@ export function PaycomPage({ view }: { view: DspView }) {
         )}
       </Header>
       {canConnect && <ErrorBox message={error} />}
-      {daily && canCollect && <ErrorBox message={syncState.error} />}
+      {daily && canCollect && <ErrorBox message={sync.error} />}
       <Tabs
         value={tab}
         onIntent={(value) => {
@@ -308,17 +244,14 @@ export function PaycomPage({ view }: { view: DspView }) {
                     onViewChange={setEmployeeView}
                     showMeals={hasFeature(view, 'timecard.meal_breaks')}
                     today={today}
-                    refreshKey={`${refreshKey}:${syncRevision}`}
+                    refreshKey={`${refreshKey}:${refreshKey}`}
                     actionsTarget={employeeSync}
                     actions={(timecard) => (
                       <EmployeePeriodSync
                         key={view.dsp.id}
                         period={employeeSelection?.period ?? timecard?.period}
                         refreshKey={refreshKey}
-                        onQueued={() => {
-                          refresh();
-                          setSyncRevision((value) => value + 1);
-                        }}
+                        onQueued={onQueued}
                       />
                     )}
                   />
