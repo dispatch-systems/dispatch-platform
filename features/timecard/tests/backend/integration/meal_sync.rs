@@ -52,7 +52,7 @@ fn first_sync_discovers_from_tenant_profile_and_replays_after_publication() {
     db.set_profile(&id, json!({"stationCode":"TST1", "abbreviation":"NLOG"}))
         .unwrap();
     assert_eq!(
-        db.meal_sync_status(&id, "2026-01-11").unwrap()["scopeAvailable"],
+        serde_json::to_value(db.meal_sync_status(&id, "2026-01-11").unwrap()).unwrap()["scopeAvailable"],
         true
     );
     let queued = db
@@ -126,18 +126,18 @@ fn combined_sync_reuses_tenant_scope_records_date_and_is_idempotent() {
             assert_eq!(request["timezone"], "America/Los_Angeles");
         }
     }
-    let status = db.meal_sync_status(&id, "2026-01-11").unwrap();
+    let status = serde_json::to_value(db.meal_sync_status(&id, "2026-01-11").unwrap()).unwrap();
     assert_eq!(status["paycom"]["active"], true);
     assert_eq!(status["flex"]["active"], true);
     assert_eq!(status["flex"]["collectedAt"], Value::Null);
     db.cancel_dsp(&id).unwrap();
     common::set_status_of_kind(&db, "cortex.meal_breaks.collect", "failed").unwrap();
     common::set_status_of_kind(&db, "paycom.collect", "succeeded").unwrap();
-    let status = db.meal_sync_status(&id, "2026-01-11").unwrap();
+    let status = serde_json::to_value(db.meal_sync_status(&id, "2026-01-11").unwrap()).unwrap();
     assert_eq!(status["flex"]["job"]["status"], "failed");
     assert_eq!(status["paycom"]["job"]["status"], "succeeded");
     assert_eq!(
-        db.meal_sync_status(&id, "2026-01-12").unwrap()["flex"]["job"],
+        serde_json::to_value(db.meal_sync_status(&id, "2026-01-12").unwrap()).unwrap()["flex"]["job"],
         Value::Null
     );
 }
@@ -179,7 +179,7 @@ fn invalid_dates_missing_connections_and_capacity_never_queue_half_a_sync() {
         "paycom.collect"
     );
     assert_eq!(
-        db.meal_sync_status(&id, "2026-01-10").unwrap()["paycom"]["active"],
+        serde_json::to_value(db.meal_sync_status(&id, "2026-01-10").unwrap()).unwrap()["paycom"]["active"],
         true
     );
     assert_eq!(
@@ -368,7 +368,7 @@ fn successful_station_does_not_hide_a_failed_station_in_the_same_sync() {
     let flex = s(&result["jobs"][1], "id");
     common::set_job_status(&db, flex, "failed").unwrap();
     common::set_job_created(&db, flex, "2026-01-01").unwrap();
-    let status = db.meal_sync_status(&id, "2026-01-11").unwrap();
+    let status = serde_json::to_value(db.meal_sync_status(&id, "2026-01-11").unwrap()).unwrap();
     assert_eq!(status["flex"]["job"]["status"], "failed");
     assert_eq!(status["flex"]["active"], false);
     assert_eq!(status["paycom"]["job"]["status"], "succeeded");
@@ -380,7 +380,7 @@ fn status_reads_allow_a_viewer_date_ahead_of_the_dsp_but_collection_does_not() {
     let (_root, db, id, actor) = fixture();
     let tomorrow = (chrono::Utc::now().date_naive() + chrono::Duration::days(1)).to_string();
     assert_eq!(
-        db.meal_sync_status(&id, &tomorrow).unwrap()["date"],
+        serde_json::to_value(db.meal_sync_status(&id, &tomorrow).unwrap()).unwrap()["date"],
         tomorrow
     );
     assert_eq!(
@@ -417,7 +417,7 @@ fn manual_sync_lock_and_original_date_follow_the_entire_batch() {
     };
     for status in ["queued", "running", "waiting_verification"] {
         common::set_job_status(&db, flex, status).unwrap();
-        let viewed = db.meal_sync_status(&id, "2026-01-12").unwrap();
+        let viewed = serde_json::to_value(db.meal_sync_status(&id, "2026-01-12").unwrap()).unwrap();
         assert_eq!(viewed["date"], "2026-01-12");
         assert_eq!(viewed["flex"]["jobDate"], "2026-01-11");
         assert_eq!(viewed["flex"]["active"], true);
@@ -442,7 +442,8 @@ fn manual_sync_lock_and_original_date_follow_the_entire_batch() {
     for status in ["succeeded", "failed", "cancelled"] {
         common::set_job_status(&db, flex, status).unwrap();
         assert_eq!(
-            db.meal_sync_status(&id, "2026-01-12").unwrap()["flex"]["active"],
+            serde_json::to_value(db.meal_sync_status(&id, "2026-01-12").unwrap()).unwrap()["flex"]
+                ["active"],
             false
         );
         let next = db

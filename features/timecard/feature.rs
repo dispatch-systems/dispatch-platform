@@ -15,6 +15,7 @@ pub use api::{
         PeriodMealGap,
     },
     settings::{NameOrder, PaycomSettings},
+    status::{DailySyncSource, DailySyncStatus, PaycomStatus, PaycomWorkforce},
     types::{
         DailyTimecard, DailyTimecardPage, DailyTimecards, Employee, EmployeeTimecard,
         EmployeeTimecardResponse, EmployeesResponse, InPunchKind, OutPunchKind, Punch, Timecard,
@@ -244,5 +245,9 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         EmployeeTimecardResponse,
         EmployeeSyncSource,
         EmployeeSyncStatus,
+        DailySyncSource,
+        DailySyncStatus,
+        PaycomStatus,
+        PaycomWorkforce,
     )
 }

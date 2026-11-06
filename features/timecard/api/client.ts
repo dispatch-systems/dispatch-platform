@@ -1,13 +1,15 @@
 import { useEffect } from 'react';
 import { performancePolicy } from '../../../core/shell/frontend/lib/performance-policy.js';
 import { wordedApi } from '../../../core/shell/frontend/runtime/api.js';
-import { useCachedData } from '../../../core/shell/frontend/runtime/data-reads.js';
+import { useCachedData, useData } from '../../../core/shell/frontend/runtime/data-reads.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { cancelPrefetches, prefetchData } from '../../../core/shell/frontend/runtime/prefetch.js';
 import type {
   DailyTimecards,
   DailyTimecard,
   DailyTimecardPage,
+  DailySyncStatus,
+  PaycomStatus,
   MealComparisonPage,
   EmployeeTimecardPeriod,
   EmployeeTimecardResponse,
@@ -26,6 +28,9 @@ import {
   mealPeriodGapsUrl,
   mealPeriodUrl,
   paycomSettingsPath,
+  paycomStatusPath,
+  dailySyncPath,
+  dailySyncUrl,
 } from './urls.js';
 
 export { dailyPageUrl, mealPageUrl, dailyTimecardsUrl, employeeTimecardUrl, mealComparisonUrl };
@@ -43,7 +48,22 @@ const api = wordedApi({
 
 /** Syncs a day's meal breaks from both their sources, once for `requestId`. */
 export const syncMealBreaks = (date: string, requestId: string) =>
-  api('/api/dsp/jobs/meal-breaks', { requestId, date });
+  api(dailySyncPath, { requestId, date });
+export const useDailySyncStatus = (
+  date: string,
+  poll: number,
+  refreshKey: string,
+  enabled = true,
+) =>
+  useData<DailySyncStatus>(
+    enabled ? dailySyncUrl(date) : '',
+    poll,
+    refreshKey,
+    `${date}:${refreshKey}`,
+    true,
+  );
+export const usePaycomStatus = () =>
+  useCachedData<PaycomStatus>(paycomStatusPath, performancePolicy.recoveryPollMs);
 export const syncEmployeePeriod = (period: EmployeeTimecardPeriod, requestId: string) =>
   api<EmployeeSyncStatus>('/api/dsp/jobs/employees', { requestId, ...period });
 export const useEmployeeTimecard = (
@@ -98,12 +118,7 @@ export const useDailyPunches = (date: string, code: string, refreshKey?: string 
     refreshKey,
   );
 export const exportDailyTimecards = (date: string, sort: string, desc: boolean) =>
-  api<DailyTimecards>(
-    dailyTimecardsUrl(date).replace(
-      'sort=name&direction=asc',
-      `sort=${sort}&direction=${desc ? 'desc' : 'asc'}`,
-    ),
-  );
+  api<DailyTimecards>(dailyTimecardsUrl(date, sort, desc));
 export const exportMealComparison = (
   date: string,
   query: string,

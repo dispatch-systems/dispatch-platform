@@ -4,6 +4,7 @@
 use crate::api::{
     employee_sync::EmployeeSyncStatus,
     meals::{MealComparison, MealPeriod, MealPeriodGaps},
+    status::DailySyncStatus,
     types::{DailyTimecards, EmployeeTimecardResponse, EmployeesResponse},
 };
 use dispatch_core::{Result, db::Store, manifest::people::Everyone};
@@ -127,7 +128,7 @@ pub trait TimecardStore {
         expected: &Scope,
     ) -> Result<Value>;
     fn meal_publications(&self, dsp: &str, date: &str) -> Result<Value>;
-    fn meal_sync_status(&self, id: &str, date: &str) -> Result<Value>;
+    fn meal_sync_status(&self, id: &str, date: &str) -> Result<DailySyncStatus>;
     fn enqueue_meals(
         &self,
         id: &str,
@@ -287,7 +288,7 @@ impl TimecardStore for Store {
     fn meal_publications(&self, dsp: &str, date: &str) -> Result<Value> {
         super::meals::meal_publications(self, dsp, date)
     }
-    fn meal_sync_status(&self, id: &str, date: &str) -> Result<Value> {
+    fn meal_sync_status(&self, id: &str, date: &str) -> Result<DailySyncStatus> {
         super::meals::sync::meal_sync_status(self, id, date)
     }
     fn enqueue_meals(

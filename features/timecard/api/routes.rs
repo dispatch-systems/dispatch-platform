@@ -1,6 +1,9 @@
 //! What Paycom and Cortex collected: employees, timecards and meal breaks, what the page
 //! shows them by, and the jobs and schedules that collect them.
-use crate::backend::{TimecardStore, punches::employees::identify, settings};
+use crate::{
+    api::status::{PaycomStatus, PaycomWorkforce},
+    backend::{TimecardStore, punches::employees::identify, settings},
+};
 use dispatch_core::{
     Error, Result,
     accounts::api::requests::CollectionRequest,
@@ -18,8 +21,6 @@ use dispatch_core::{
 };
 use dispatch_cortex::{self as cortex, discovery::Scope};
 use dispatch_paycom::{self as paycom, timecards::EmployeeTimecardPeriod};
-use serde_json::json;
-
 const VIEW: Dsp = Dsp("timecard.view");
 const RUN: Dsp = Dsp("collections.run");
 /// What the page keeps: the only jobs its job routes list or cancel. Every other feature's
@@ -429,13 +430,15 @@ fn sync_employees(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 }
 
 fn paycom_status(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
-    let publication = db
+    let publication: Option<(String,)> = db
         .collector(c.dsp_id(), paycom::PROVIDER)?
-        .one("SELECT collected_at FROM publications WHERE active=1", [])?;
-    Ok(Reply::json(json!({
-        "connection":connections::summary(db, c, paycom::PROVIDER)?,
-        "workforce":{"collectedAt":publication.map(|p| p["collected_at"].clone())}
-    })))
+        .one_as("SELECT collected_at FROM publications WHERE active=1", [])?;
+    Ok(Reply::json(serde_json::to_value(PaycomStatus {
+        connection: connections::summary(db, c, paycom::PROVIDER)?,
+        workforce: PaycomWorkforce {
+            collected_at: publication.map(|(at,)| at),
+        },
+    })?))
 }
 
 /// What the page shows by, of the DSP's settings, which Settings saves.
@@ -544,7 +547,9 @@ fn collect(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 fn meal_sync_status(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.query, &["date"])?;
     let date = v::text(&input.query, "date", 10, 10)?;
-    Ok(Reply::json(db.meal_sync_status(c.dsp_id(), date)?))
+    Ok(Reply::json(serde_json::to_value(
+        db.meal_sync_status(c.dsp_id(), date)?,
+    )?))
 }
 
 fn sync_meal_breaks(db: &Store, c: &Member, input: &Input) -> Result<Reply> {

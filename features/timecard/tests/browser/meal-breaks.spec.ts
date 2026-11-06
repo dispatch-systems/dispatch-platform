@@ -13,7 +13,9 @@ import {
 } from '../../../../core/shell/tests/support/fixtures.js';
 import { expectDate, setDate } from '../support/page.js';
 import type { MealSource } from '../../api/index.js';
+import type { Job } from '../../../../core/collection/api/index.js';
 import { paycomDefaults } from '../../frontend/paycom.js';
+import { syncJob } from '../support/status.js';
 
 const date = '2026-09-15';
 const paycomUrl = (code: string) =>
@@ -447,8 +449,8 @@ test('members can open real collected punch data without management controls', a
 test('sync remains locked across dates, tabs and reloads until both sources stop', async ({
   page,
 }) => {
-  let paycomStatus = 'succeeded';
-  let flexStatus = 'succeeded';
+  let paycomStatus: Job['status'] = 'succeeded';
+  let flexStatus: Job['status'] = 'succeeded';
   let jobDate: string | null = null;
   const submitted: string[] = [];
   const errors: string[] = [];
@@ -458,10 +460,10 @@ test('sync remains locked across dates, tabs and reloads until both sources stop
   const active = (status: string) => ['queued', 'running', 'waiting_verification'].includes(status);
   await page.route('**/api/dsp/jobs/meal-breaks?*', async (route) => {
     await holdStatus;
-    const source = (status: string) => ({
+    const source = (status: Job['status'], kind: Job['kind']) => ({
       enabled: true,
       active: active(status),
-      job: { status },
+      job: syncJob(status, kind),
       jobDate,
       collectedAt: null,
     });
@@ -469,8 +471,8 @@ test('sync remains locked across dates, tabs and reloads until both sources stop
       json: {
         date: new URL(route.request().url()).searchParams.get('date'),
         scopeAvailable: true,
-        paycom: source(paycomStatus),
-        flex: source(flexStatus),
+        paycom: source(paycomStatus, 'paycom.collect'),
+        flex: source(flexStatus, 'cortex.meal_breaks.collect'),
       },
     });
   });
@@ -577,7 +579,7 @@ test('sync remains locked across dates, tabs and reloads until both sources stop
   await page.reload();
   await expect(flex).toHaveText('Flex waiting verification · Sep 16');
   await expect(sync).toBeDisabled();
-  for (const terminal of ['succeeded', 'failed', 'cancelled']) {
+  for (const terminal of ['succeeded', 'failed', 'cancelled'] as const) {
     flexStatus = terminal;
     await page.reload();
     await expect(sync).toBeEnabled();
@@ -593,8 +595,8 @@ test('shared date and sync controls survive tabs, navigation, reload and collect
   page,
 }) => {
   await page.clock.install();
-  let syncStatus = 'succeeded';
-  let flexStatus = 'failed';
+  let syncStatus: Job['status'] = 'succeeded';
+  let flexStatus: Job['status'] = 'failed';
   let collectedAt = '2026-09-16T06:00:00Z';
   let syncRequests = 0;
   let mealReads = 0;
@@ -603,18 +605,14 @@ test('shared date and sync controls survive tabs, navigation, reload and collect
   await page.route('**/api/dsp/paycom/settings', (route) =>
     route.fulfill({ json: paycomDefaults }),
   );
-  await page.route('**/api/dsp/paycom/status', (route) =>
-    route.fulfill({
-      json: {
-        connection: { enabled: true, status: 'ready' },
-        workforce: { collectedAt },
-        jobs: [
-          { id: 'flex-job', kind: 'cortex.meal_breaks.collect', status: 'failed' },
-          { id: 'paycom-job', kind: 'paycom.collect', status: syncStatus },
-        ],
-      },
-    }),
-  );
+  await page.route('**/api/dsp/paycom/status', async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.connection.enabled = true;
+    body.connection.status = 'ready';
+    body.workforce.collectedAt = collectedAt;
+    await route.fulfill({ response, json: body });
+  });
   await page.route('**/api/dsp/paycom/meal-breaks/page?*', (route) => {
     mealReads++;
     const selected = new URL(route.request().url()).searchParams.get('date')!;
@@ -639,13 +637,15 @@ test('shared date and sync controls survive tabs, navigation, reload and collect
         paycom: {
           enabled: true,
           active: syncStatus === 'queued',
-          job: { status: syncStatus },
+          job: syncJob(syncStatus, 'paycom.collect'),
+          jobDate: null,
           collectedAt,
         },
         flex: {
           enabled: true,
           active: flexStatus === 'queued',
-          job: { status: flexStatus },
+          job: syncJob(flexStatus, 'cortex.meal_breaks.collect'),
+          jobDate: null,
           collectedAt,
         },
       },
@@ -781,8 +781,20 @@ test.describe('DSP calendar dates', () => {
         json: {
           date: new URL(route.request().url()).searchParams.get('date'),
           scopeAvailable: true,
-          paycom: { enabled: true, active: false, job: { status: 'succeeded' }, collectedAt },
-          flex: { enabled: true, active: false, job: { status: 'succeeded' }, collectedAt },
+          paycom: {
+            enabled: true,
+            active: false,
+            job: syncJob('succeeded', 'paycom.collect'),
+            jobDate: null,
+            collectedAt,
+          },
+          flex: {
+            enabled: true,
+            active: false,
+            job: syncJob('succeeded', 'cortex.meal_breaks.collect'),
+            jobDate: null,
+            collectedAt,
+          },
         },
       }),
     );

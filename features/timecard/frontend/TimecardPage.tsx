@@ -14,13 +14,16 @@ import {
   type ReactNode,
 } from 'react';
 import { ArrowRight, RefreshCw, Settings } from 'lucide-react';
-import type { Connection } from '../../../core/collection/api/index.js';
 import type { DspView } from '../../../core/accounts/api/index.js';
 import type { EmployeeTimecardPeriod } from '../api/index.js';
 import { paycomDefaults } from './paycom.js';
-import { useCachedData, useData } from '../../../core/shell/frontend/runtime/data-reads.js';
 import { hasFeature } from '../../../core/shell/frontend/runtime/features.js';
-import { syncMealBreaks, usePaycomSettings } from '../api/client.js';
+import {
+  syncMealBreaks,
+  useDailySyncStatus,
+  usePaycomStatus,
+  usePaycomSettings,
+} from '../api/client.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { collectionData } from '../../../core/shell/frontend/runtime/data-policy.js';
 import { useCollectionUpdates } from '../../../core/collection/frontend/live-collection.js';
@@ -39,7 +42,7 @@ import {
   pageHash,
   settingsHash,
 } from '../../../core/shell/frontend/runtime/navigation.js';
-import { SourceSyncStatus, type SyncSource } from './SourceSyncStatus.js';
+import { SourceSyncStatus } from './SourceSyncStatus.js';
 import { EmployeePeriodSync } from './tabs/employees/EmployeePeriodSync.js';
 
 const loadEmployees = () => import('./tabs/employees/EmployeesPage.js');
@@ -122,21 +125,12 @@ export function PaycomPage({ view }: { view: DspView }) {
   const employees = tab === 'employees';
   // Where the Employees tab draws its sync, in the heading as the daily tabs draw theirs.
   const [employeeSync, setEmployeeSync] = useState<HTMLDivElement | null>(null);
-  const overview = useCachedData<{
-    connection: Connection;
-    workforce: { collectedAt: string | null };
-  }>('/api/dsp/paycom/status', performancePolicy.recoveryPollMs);
-  const syncState = useData<{
-    date: string;
-    scopeAvailable: boolean;
-    paycom: SyncSource;
-    flex: SyncSource;
-  }>(
-    daily ? `/api/dsp/jobs/meal-breaks?date=${date}` : '',
+  const overview = usePaycomStatus();
+  const syncState = useDailySyncStatus(
+    date,
     collecting ? performancePolicy.activeCollectionPollMs : performancePolicy.recoveryPollMs,
     String(syncRevision),
-    `${date}:${syncRevision}`,
-    true,
+    daily,
   );
   // The last known state stays up while another date loads so the page does not shift.
   const sourceState = syncState.data ?? syncState.stale;
