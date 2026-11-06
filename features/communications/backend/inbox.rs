@@ -5,7 +5,7 @@
 use super::{
     changes::ChangeStore,
     conversations,
-    groups::{self, storage::GroupStore},
+    groups::{self, storage::groups::GroupStore},
     live,
     people::People,
     sections::{self, MESSAGING, Reading, SLACK, Section, TODAYS_ROUTES},

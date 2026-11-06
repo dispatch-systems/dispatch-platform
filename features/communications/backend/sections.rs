@@ -7,7 +7,7 @@
 //! the page reads.
 use super::{
     conversations,
-    groups::{self, storage::GroupStore},
+    groups::{self, storage::groups::GroupStore},
     model::ConversationKind,
     people::People,
     storage::conversations::ConversationStore,

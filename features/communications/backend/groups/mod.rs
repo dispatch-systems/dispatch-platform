@@ -4,11 +4,6 @@
 //! people are listed under it while it's what the DSP last wrote to them in and all they wait on
 //! answers a message to a group. An answer is what one of them wrote after a message to the
 //! group, until the DSP next writes to them alone.
-//!
-//! - `storage`: groups, their people, their messages, and each message going to each of them.
-//! - `choices`: whom a group message can go to, and the groups to choose from.
-//! - `send`: making a group and messaging it, and sending each message to each of its people in
-//!   the background, within Slack's limits, picking up where it was after a restart.
 pub(crate) mod choices;
 pub(crate) mod send;
 pub(crate) mod storage;
@@ -29,7 +24,7 @@ use crate::api::types::{
 };
 use dispatch_core::{Error, Result, State, db::Store, foundation::names, text_enum};
 use std::collections::HashMap;
-use storage::{Delivery, DeliveryStatus, GroupMessage, GroupStore, Outline, Progress};
+use storage::groups::{Delivery, DeliveryStatus, GroupMessage, GroupStore, Outline, Progress};
 
 /// How many of a group's people show it, as two faces.
 const FACES: usize = 2;
@@ -94,7 +89,7 @@ pub fn listed(
     db: &Store,
     people: &People,
     dsp: &str,
-    kept: Vec<storage::Group>,
+    kept: Vec<storage::groups::Group>,
 ) -> Result<Vec<Group>> {
     let ids: Vec<String> = kept.iter().map(|group| group.id.clone()).collect();
     let mut outlines: HashMap<String, Outline> = db
@@ -143,9 +138,9 @@ fn order((_, place, entry): &(String, String, GroupEntry)) -> (i64, &str, &str) 
 }
 
 /// The DSP's messages to groups and the answers, as a group's page reads them, each with its
-/// group and its place in its millisecond (`storage::place`), in the group's order: the DSP's under who sent them, with their photos and how far each
-/// has gone; the answers under who wrote them, with their photos and files and their
-/// conversation.
+/// group and its place in its millisecond (`storage::groups::place`), in the group's order: the
+/// DSP's under who sent them, with their photos and how far each has gone; the answers under who
+/// wrote them, with their photos and files and their conversation.
 fn entries(
     db: &Store,
     people: &People,
