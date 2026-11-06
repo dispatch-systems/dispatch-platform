@@ -487,7 +487,10 @@ async fn what_no_file_keeps_goes_from_the_object_store_once_a_day_and_only_the_d
     fake.put(&format!("dsps/{dsp}/phones/{dock}"), b"dock");
     // A DSP that isn't there is refused before anything's read.
     let theirs_read = BYTES.read(&state, &other, &dock).await;
-    assert!(!matches!(theirs_read, Ok(Some(_))), "not the other's");
+    assert!(
+        matches!(&theirs_read, Err(error) if error.is(dispatch_core::Code::DspNotFound)),
+        "not the other's"
+    );
     // The picture never sent is let go of: its cached copy with upkeep, then its object.
     let at = dsp.clone();
     state

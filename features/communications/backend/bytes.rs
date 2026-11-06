@@ -433,8 +433,8 @@ impl Folder {
         };
         let mut failed = Vec::new();
         for sha256 in waiting {
-            // None starts once the DSP is disabled, so a delete's last listing, begun once the
-            // longest an upload takes has gone by since, finds every one.
+            // None starts once the DSP is disabled, and one let through is given up `UPLOAD` after,
+            // so a delete's last listing, begun once that has gone by since, finds every one.
             let at = dsp.to_owned();
             match state.read(move |db| db.serves_dsp(&at)).await {
                 Ok(true) => {}
@@ -447,7 +447,10 @@ impl Folder {
             let (path, marked) = (kept.join(sha256), copied.join(sha256));
             let done = async {
                 if !tokio::fs::try_exists(&marked).await? {
-                    objects.put(dsp, self.owner, sha256, &path).await?;
+                    let put = objects.put(dsp, self.owner, sha256, &path);
+                    tokio::time::timeout(db::objects::UPLOAD, put)
+                        .await
+                        .map_err(|_| Error::new("object_store_unavailable", 503))??;
                     tokio::fs::write(&marked, b"").await?;
                 }
                 if objects.only() {

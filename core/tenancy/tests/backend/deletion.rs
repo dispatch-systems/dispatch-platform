@@ -445,7 +445,7 @@ async fn a_deleted_dsps_objects_go_none_an_upload_begun_before_leaves_nor_anothe
     assert_eq!((fake.keys(), pending().await), (vec![kept.clone()], 1));
     let (at, long_ago) = (
         north.clone(),
-        chrono::Utc::now() - chrono::Duration::minutes(11),
+        chrono::Utc::now() - chrono::Duration::minutes(12),
     );
     state
         .run(move |db| {

@@ -28,6 +28,9 @@ use std::{
     sync::{Arc, Mutex, MutexGuard},
 };
 
+/// How long the object store may take to settle an upload it was sent, once it's given up.
+const SETTLING: std::time::Duration = std::time::Duration::from_secs(60);
+
 /// The DSPs being deleted, by their folders: each from the turn that found it could be until
 /// its delete ends (`Reserved`).
 static DELETING: Mutex<BTreeSet<PathBuf>> = Mutex::new(BTreeSet::new());
@@ -206,12 +209,13 @@ async fn finish_one(state: &Arc<State>, dsp: &str) -> Result<()> {
     forget(state, dsp).await;
     if let Some(objects) = &state.objects {
         // No upload starts once the DSP is disabled, which it was before its delete began, and
-        // none lasts longer than `UPLOAD`: a listing begun once that has gone by since the delete
+        // one let through before is given up `UPLOAD` after: a listing begun once that, and a
+        // minute for the object store to settle what it was sent, has gone by since the delete
         // began finds every object an upload left. One begun before, however long it takes, is
         // done again on the next pass.
         let at = dsp.to_owned();
         let started = state.read(move |db| db.deletion_started(&at)).await?;
-        let uploading = db::objects::UPLOAD.as_millis() as i64;
+        let uploading = (db::objects::UPLOAD + SETTLING).as_millis() as i64;
         let last = started.is_none_or(|started| db::now() >= started + uploading);
         objects.delete_dsp(dsp).await?;
         if !last {
