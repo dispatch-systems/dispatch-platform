@@ -2,6 +2,28 @@
 //! one and "Antonio Reyes" in another; each is shown as people read it.
 use std::cmp::Ordering;
 
+/// Removes accents from supported lowercase Latin letters, leaving other characters unchanged.
+pub fn fold_latin(c: char) -> char {
+    match c {
+        'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' | 'ā' | 'ă' | 'ą' => 'a',
+        'ç' | 'ć' | 'č' => 'c',
+        'ď' | 'đ' => 'd',
+        'è' | 'é' | 'ê' | 'ë' | 'ē' | 'ė' | 'ę' | 'ě' => 'e',
+        'ğ' => 'g',
+        'ì' | 'í' | 'î' | 'ï' | 'ī' | 'į' | 'ı' => 'i',
+        'ł' | 'ľ' => 'l',
+        'ñ' | 'ń' | 'ň' => 'n',
+        'ò' | 'ó' | 'ô' | 'õ' | 'ö' | 'ø' | 'ō' | 'ő' => 'o',
+        'ř' => 'r',
+        'ś' | 'š' | 'ş' => 's',
+        'ť' | 'ţ' => 't',
+        'ù' | 'ú' | 'û' | 'ü' | 'ū' | 'ů' | 'ű' => 'u',
+        'ý' | 'ÿ' => 'y',
+        'ź' | 'ż' | 'ž' => 'z',
+        other => other,
+    }
+}
+
 /// A name as people read it: "First Last". A source that writes only capitals is put in
 /// ordinary case; any other spelling is kept as written.
 pub fn display(name: &str) -> String {
