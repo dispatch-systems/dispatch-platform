@@ -86,7 +86,9 @@ fn profile(
     });
     Profile {
         today,
-        phones: person.map(|person| person.phones.clone()).unwrap_or_default(),
+        phones: person
+            .map(|person| person.phones.clone())
+            .unwrap_or_default(),
         email: person.and_then(|person| person.emails.first().cloned()),
         slack,
     }

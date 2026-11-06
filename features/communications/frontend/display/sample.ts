@@ -154,7 +154,7 @@ export function sample(now: number) {
       pace: null,
       phone: null,
     },
-    phone: '+12065550148',
+    phones: ['+12065550148'],
     email: 'jamal.w@example.com',
     slack: workspace.name,
   };

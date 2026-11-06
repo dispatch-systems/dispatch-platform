@@ -84,7 +84,14 @@ async fn a_driver_off_today_has_no_work_chip() {
     let earlier = saved(yesterday, &[("A1", "2065550101")]);
     let others = phones(&[("B1", "2065550202")]);
     phoned(&state, &dsp, Some(&day.to_string()), others, vec![earlier]).await;
-    texted(&state, &dsp, "+12065550101", "Leaving the station", at(zone, yesterday, 9, 0)).await;
+    texted(
+        &state,
+        &dsp,
+        "+12065550101",
+        "Leaving the station",
+        at(zone, yesterday, 9, 0),
+    )
+    .await;
 
     let at_dsp = dsp.clone();
     let found = state.read(move |db| of(db, &at_dsp, &avery)).await.unwrap();
