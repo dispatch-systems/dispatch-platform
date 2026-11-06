@@ -1,8 +1,7 @@
 //! Feature switches over the catalog of every registered feature's pages and tabs.
 use dispatch_core::{
     db::Store,
-    platform_owner::api::types::{DspFeatures, Visibility},
-    tenancy::catalog::*,
+    tenancy::{catalog::*, switches::SwitchedFeatures, visibility::Visibility},
 };
 
 /// What a DSP has that it could be without: its features less the mandatory ones.
@@ -138,10 +137,10 @@ fn a_tab_follows_its_page_and_the_last_one_takes_the_page() {
         )
         .unwrap();
     let dsp = db.new_dsp("Tabs DSP", "UTC", &owner.id, false).unwrap().id;
-    let changes = |r: DspFeatures| -> Vec<(String, bool)> {
+    let changes = |r: SwitchedFeatures| -> Vec<(String, bool)> {
         r.changed
             .into_iter()
-            .map(|c| (c.feature, c.enabled))
+            .map(|(feature, enabled)| (feature.id.to_owned(), enabled))
             .collect()
     };
     let on = |id: &str| (id.to_owned(), true);
@@ -194,10 +193,10 @@ fn a_part_needs_a_connection_of_its_own_beside_its_pages() {
         )
         .unwrap();
     let dsp = db.new_dsp("Parts DSP", "UTC", &owner.id, false).unwrap().id;
-    let changes = |r: DspFeatures| -> Vec<(String, bool)> {
+    let changes = |r: SwitchedFeatures| -> Vec<(String, bool)> {
         r.changed
             .into_iter()
-            .map(|c| (c.feature, c.enabled))
+            .map(|(feature, enabled)| (feature.id.to_owned(), enabled))
             .collect()
     };
     let on = |id: &str| (id.to_owned(), true);
