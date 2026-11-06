@@ -4,6 +4,7 @@ mod checkpoint;
 pub(crate) mod collect;
 pub(crate) mod extract;
 pub(crate) mod projection;
+mod roster;
 mod types;
 mod validation;
 

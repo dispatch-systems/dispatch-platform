@@ -1,6 +1,19 @@
 //! Proving that a job's responses, read over HTTP, equal its rendered pages, before the job
 //! relies on them: which employees it renders to prove it, and whether reading direct is on.
-use super::*;
+use super::reading::{read_http, read_rendered, read_response};
+use dispatch_core::{
+    Result,
+    collection::{
+        browser::{http::Http, page::Page},
+        metrics::Recorder,
+    },
+    db::s,
+};
+use serde_json::Value;
+use std::{
+    collections::HashSet,
+    sync::atomic::{AtomicBool, AtomicU8, Ordering},
+};
 
 /// Whether this job's responses, read here, equal its rendered pages: at least one
 /// comparison covered punches and none differed.

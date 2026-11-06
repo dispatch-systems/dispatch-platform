@@ -1,9 +1,21 @@
 //! Host-validated tools projected read-only into the dedicated collection verifier.
 //! Normal browser construction retains its root ownership checks. Only the verifier CLI
 //! accepts this host-written receipt after checking its namespace and mount boundary.
-use super::*;
+use super::Runtime;
+use crate::{Result, db, ensure, foundation::crypto};
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use std::{io::Read, os::fd::AsRawFd};
+use std::{
+    fs::{self, OpenOptions},
+    io::Read,
+    os::{
+        fd::AsRawFd,
+        unix::fs::{MetadataExt, OpenOptionsExt},
+    },
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+use tokio::sync::Semaphore;
 
 const RECEIPT: &str = "/run/support-provider/browser-authority.json";
 const DISPLAY: &str = "/usr/bin/Xvfb";
