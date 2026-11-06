@@ -621,7 +621,7 @@ async fn what_a_number_sent_while_blocked_never_alerts_once_it_is_unblocked() {
 }
 
 #[tokio::test]
-async fn a_drivers_work_conversation_changes_as_their_work_phone_changes_with_no_text() {
+async fn a_drivers_work_conversation_changes_as_their_work_phone_or_route_changes_with_no_text() {
     let (_root, state, dsp) = started();
     let (zone, day) = today(&state, &dsp).await;
     let today = day.to_string();
@@ -675,6 +675,14 @@ async fn a_drivers_work_conversation_changes_as_their_work_phone_changes_with_no
     assert_eq!(heard(&[BLAKES]).await, (true, false));
     // Nothing changed: neither hears anything.
     assert_eq!(heard(&[BLAKES]).await, (false, false));
+    // Routes takes Blake off CX15, and puts them back, their phone the same: each is heard, as
+    // their Work chip shows only while they work.
+    let averys = route(&today, "A1", "CX14", "1FTVAN214", 120, at(zone, day, 9, 20));
+    routed(&dsp, vec![averys.clone()]);
+    assert_eq!(heard(&[BLAKES]).await, (false, true));
+    let blakes = route(&today, "B1", "CX15", "1FTVAN215", 110, at(zone, day, 9, 20));
+    routed(&dsp, vec![averys, blakes]);
+    assert_eq!(heard(&[BLAKES]).await, (false, true));
 }
 
 #[tokio::test]
