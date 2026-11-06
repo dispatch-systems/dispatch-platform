@@ -1,5 +1,6 @@
-//! Cancellation kills the entire assigned subprocess group before authority is relinquished.
+//! Checked command output and ownership of assigned subprocess groups.
 use crate::Result;
+use std::path::Path;
 use tokio::process::{Child, Command};
 
 pub struct Group(pub u32);
@@ -19,4 +20,22 @@ pub fn spawn(command: &mut Command) -> Result<(Child, Group)> {
     let child = command.kill_on_drop(true).spawn()?;
     let group = Group(child.id().ok_or("Child PID unavailable")?);
     Ok((child, group))
+}
+
+pub async fn command(directory: &Path, program: &str, args: &[&str]) -> Result<String> {
+    let output = Command::new(program)
+        .args(args)
+        .current_dir(directory)
+        .kill_on_drop(true)
+        .output()
+        .await?;
+    if !output.status.success() {
+        // Build and GitHub errors go into the private agent context, never a public event log.
+        return Err(format!(
+            "{program} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
 }
