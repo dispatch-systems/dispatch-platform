@@ -481,6 +481,7 @@ fn roster(db: &Store, id: &str, listed: &[(&str, &str, &str, &str)]) {
     collected(
         db,
         id,
+        "job-roster",
         listed.iter().map(|(transporter, name, status, roles)| {
             let email = format!("{}@example.com", name.to_lowercase().replace(' ', "."));
             json!({"transporter_id":transporter,"full_name":name,"email_address":email,
@@ -489,8 +490,8 @@ fn roster(db: &Store, id: &str, listed: &[(&str, &str, &str, &str)]) {
     );
 }
 /// A roster of the DSP's company listing `associates`, each as Amazon writes one, published as
-/// the roster's collection would.
-fn collected(db: &Store, id: &str, associates: impl IntoIterator<Item = Value>) {
+/// the roster's collection `job` would.
+fn collected(db: &Store, id: &str, job: &str, associates: impl IntoIterator<Item = Value>) {
     db.set_profile(id, json!({"abbreviation":"TST"})).unwrap();
     let request = json!({"collection":"associates","dspAbbreviation":"TST"});
     let collected = dispatch_cortex::COLLECTOR.fixture("UTC", &request).unwrap();
@@ -500,7 +501,7 @@ fn collected(db: &Store, id: &str, associates: impl IntoIterator<Item = Value>) 
         .into_iter()
         .map(|associate| associates::Associate::read(associate).unwrap().unwrap())
         .collect();
-    db.publish_roster(id, "job-roster", &capture).unwrap();
+    db.publish_roster(id, job, &capture).unwrap();
 }
 
 /// A person is shown by the first source's name in the sources' order, and an ID by the first
@@ -764,16 +765,17 @@ fn a_number_added_is_the_persons_and_follows_them_into_a_merge() {
 fn a_number_added_is_the_drivers_default_whatever_a_collection_brings() {
     dispatch_backend::install();
     let (_root, db, id, context) = ready();
-    let listing = |phone: &str| {
+    let listing = |job: &str, phone: &str| {
         collected(
             &db,
             &id,
+            job,
             [json!({"transporter_id":"TREYES","full_name":"Tony Reyes",
                 "operational_status":"ACTIVE","roles":"Driver","personal_phone_number":phone})],
         );
         pass(&db, &id).unwrap();
     };
-    listing("+12065550100");
+    listing("job-roster-1", "+12065550100");
     let tony = code(&db.driver_match(&id).unwrap(), AMAZON, "TREYES");
     let theirs = || {
         let person = people::read(&db, &id)
@@ -793,7 +795,7 @@ fn a_number_added_is_the_drivers_default_whatever_a_collection_brings() {
     assert_eq!(added_phones, added);
     assert_eq!(db.person_details(&id, &tony).unwrap().added_phones, added);
 
-    listing("+12065550111");
+    listing("job-roster-2", "+12065550111");
     let (phones, added_phones) = theirs();
     assert_eq!(phones, [added[0], added[1], "+12065550111"]);
     assert_eq!(added_phones, added);
