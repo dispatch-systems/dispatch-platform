@@ -60,14 +60,14 @@ type PartyPane = {
 };
 
 /** What the head says of whom it's with, alike on each of their conversations: the route they
- * drive today and its van, then how this conversation reaches them (`reach`); none while it
- * would say nothing. */
+ * drive today and its van, then how this conversation reaches them (`reach`), on one line, the van
+ * and a workspace giving way first (`gives`); none while it would say nothing. */
 function headLine({ today }: Open, reach: ReactNode): ReactNode {
   if (!today?.route && !today?.van && !reach) return null;
   return (
     <>
       {today?.route && <RouteCode code={today.route} />}
-      {today?.van && <span>Van {today.van}</span>}
+      {today?.van && <span className="gives">Van {today.van}</span>}
       {reach}
     </>
   );
@@ -91,7 +91,7 @@ export const PARTIES: { [P in Party]: PartyPane } = {
         (role || open.where) && (
           <>
             <Reach icon={<SlackLogo size={12} />}>{role || open.where}</Reach>
-            {role && open.where && <span>{open.where}</span>}
+            {role && open.where && <span className="gives">{open.where}</span>}
           </>
         ),
       );

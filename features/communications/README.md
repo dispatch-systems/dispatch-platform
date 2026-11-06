@@ -254,7 +254,8 @@ follows each update, and one started since is found by whom it's with. A driver 
 now has the work conversation of the ID that has it, as Driver Match may know them by several,
 started once they have none there; of several IDs with one, however many, the one whose route
 today has the most stops, the route their Today shows, else the first linked; else the latest of
-any of their IDs. The head of each says alike, as pieces side by side, wrapping short of room:
+any of their IDs. The head of each says alike, as pieces side by side on one line, short of room the van and a
+workspace giving way first:
 their route code and van today (CX14, Van 214), as their profile reads their route, none while
 they drive none, then how this conversation reaches them: the work phone they have, the number
 it's with, while it isn't their name, or in Slack their role, and the workspace while the DSP
