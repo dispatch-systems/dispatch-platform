@@ -2,7 +2,10 @@
 //! A probe that compares a collection with what the feature keeping it published needs
 //! the app's registry, so the app's tests run it. The probes that need Paycom alone are
 //! its ignored tests.
-use crate::{collections::timecards::collect as collection, connection::Driver};
+use crate::{
+    collections::timecards::{collect as collection, projection},
+    connection::Driver,
+};
 use dispatch_core::{
     Error, Result,
     collection::browser::{browseros, page::call},
@@ -245,7 +248,7 @@ async fn reference_timecard(driver: &Driver, code: &str, period: &Value) -> Resu
         .page
         .evaluate(&call(include_str!("../scripts/timecard.js"), &config))
         .await?;
-    collection::project(&record, code)
+    projection::project(&record, code)
 }
 
 // An explicit, read-only experiment. Raw HTML never leaves the authenticated
@@ -316,7 +319,7 @@ async fn inspect_responses(driver: &Driver, data: &Value, samples: usize) -> Res
             continue;
         }
         let value = &probe["value"];
-        let actual = collection::project(&value["record"], code);
+        let actual = projection::project(&value["record"], code);
         let reference = data["timecards"]
             .as_array()
             .unwrap()

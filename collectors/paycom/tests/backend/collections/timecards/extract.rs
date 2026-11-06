@@ -1,4 +1,5 @@
 use super::*;
+use crate::timecards::projection;
 use serde_json::json;
 
 const COLUMNS: &[&str] = &[
@@ -110,7 +111,7 @@ fn reads_the_shown_punch_times_and_reconciles_them_into_cards() {
     assert_eq!(sunday["punches"][0]["displayTime"], "08:00 AM");
     assert_eq!(sunday["punches"][1]["slot"], "o1");
     assert_eq!(sunday["punches"][1]["ordinal"], 2);
-    let cards = super::super::collect::project(&record, "AA01").unwrap();
+    let cards = projection::project(&record, "AA01").unwrap();
     assert_eq!(cards.len(), 14);
     assert_eq!(cards[0]["hours"], json!(8.0));
     assert_eq!(
