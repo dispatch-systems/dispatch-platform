@@ -14,6 +14,7 @@ pub mod scaffold;
 pub mod shot;
 pub mod slot;
 pub mod test;
+pub mod test_selection;
 pub mod verify;
 pub mod workspace;
 pub use dispatch_shared::{Native, REPOSITORY, Result, Runner, hex, require, to_hex};
