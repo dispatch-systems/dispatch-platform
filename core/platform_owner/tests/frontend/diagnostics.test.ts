@@ -56,6 +56,7 @@ test('Diagnostics validates reads and fixture replies, including large byte coun
       { ...populated, runtime: { ...populated.runtime, browsers: 0.5 } },
       { ...populated, dsps: [{ id: null, name: 'Test DSP', status: 'active' }] },
       { ...populated, dsps: [{ id: 'dsp_test', name: 'Test DSP', status: 'unknown' }] },
+      { ...populated, storageAvailableBytes: 1e-16 },
     ])
       await assert.rejects(parse(value), { message: 'invalid_api_response' });
   }

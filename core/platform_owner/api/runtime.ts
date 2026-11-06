@@ -41,7 +41,7 @@ export const platformHealthSchema = z.object({
 }) satisfies z.ZodMiniType<PlatformHealth>;
 
 // Rust's u64 byte counts can exceed JavaScript's safe integer range.
-const unsignedInteger = z.number().check(z.nonnegative(), z.multipleOf(1));
+const unsignedInteger = z.number().check(z.nonnegative(), z.refine(Number.isInteger));
 const platformDiagnosticsSchema = z.object({
   enabled: z.boolean(),
   storageAvailableBytes: unsignedInteger,
