@@ -1,39 +1,6 @@
-//! Communications' logic. It is private to the crate: `feature.rs` re-exports what the app or a
-//! declared dependant uses.
-//!
-//! - `model`: what every kind of conversation shares: its kind, whether it waits, and who wrote
-//!   a message.
-//! - `storage`: the Slack conversations and messages, and whether each waits on an answer;
-//!   `changes`, each change to a conversation of either kind, in order, for the pages waiting on
-//!   them; `files`, the photos and files attached, kept in the DSP's own data, and downloading
-//!   members' from Slack.
-//! - `bytes`: the bytes of every kind's files, kept by their SHA-256 in a folder of the DSP's own
-//!   data for each store of them: how they arrive, take their place, are read and let go, and
-//!   kept in the object store with a cached copy on the server; `copies`, the hourly upkeep that
-//!   copies them there and keeps the cache within its limit; `previews`, the small previews of
-//!   their pictures a thread shows until one is opened.
-//! - `dispatcher`: one conversation of either transport, by its reference: reading it, its
-//!   profile, sending in it, Done and who's writing.
-//! - `inbox`: the list of every kind as the page reads it, what changed in it, and what waits;
-//!   `sections`, the page's sections, each listing a kind of conversation: whether the DSP has it,
-//!   what waits in it, what's listed of it and how it's searched.
-//! - `conversations`: Slack's conversations as the page reads them; `people`, who each is with and
-//!   who at the DSP wrote in it, as every kind shows them; `elsewhere`, a person's conversation of
-//!   each kind; `contacts`, whom the DSP can message; `search`, finding people by a name typed;
-//!   `profile`, what else is known of whom a conversation is with: their route today (`today`) and
-//!   how to reach them.
-//! - `reply`: answering, and messaging someone first; `compose`, what a message may carry, checked
-//!   before it goes; `sender`, the name and photo an answer goes out under, and `initials`, the
-//!   image of someone's initials when they have no photo.
-//! - `groups`: messaging a group, each in their own direct message, and their answers together.
-//! - `live`: what reaches the page as it happens, and who is writing.
-//! - `texts`: the texts the DSP's dispatch phones relay, each filed in a conversation, and
-//!   answering by text; `phone`, the phones themselves, pairing them, the texts they relay and
-//!   Dispatch's queued for them, and their bytes, knowing nothing of conversations.
-//! - `push`: telling members of new messages with Dispatch closed, or on a phone (Web Push).
-//! - `text`: Slack's markup, as Communications keeps and sends text.
-//! - `display`: how the page looks to each member, their own in Settings; `quick_replies`, the
-//!   DSP's short answers to put in what's written, edited in Settings by anyone who uses it.
+//! Communications' private backend: Slack conversations, text conversations, phone transport
+//! and shared inbox, people, attachment and notification services. `feature.rs` re-exports the
+//! app's and declared dependants' entry points.
 pub(crate) mod bytes;
 pub(crate) mod changes;
 pub(crate) mod compose;

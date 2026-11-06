@@ -6,7 +6,7 @@
 //! another than the conversation open.
 use super::{
     model::{ConversationKind, ConversationState},
-    storage::CommunicationsStore,
+    storage::conversations::ConversationStore,
     texts::{
         live_day::{self, LiveDay},
         model::TextConversation,

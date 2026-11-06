@@ -14,7 +14,10 @@ use super::{
     model::{ConversationKind, Direction, PAGE},
     people::People,
     search,
-    storage::{self, CommunicationsStore},
+    storage::{
+        conversations::{Conversation as StoredConversation, ConversationStore},
+        messages::{Message as StoredMessage, MessageStore},
+    },
     today,
 };
 use crate::{
@@ -33,7 +36,7 @@ pub fn conversations(
     db: &Store,
     people: &People,
     dsp: &str,
-    kept: Vec<storage::Conversation>,
+    kept: Vec<StoredConversation>,
 ) -> Result<Vec<Conversation>> {
     let ids: Vec<String> = kept
         .iter()
@@ -74,7 +77,7 @@ pub fn messages(
     db: &Store,
     people: &People,
     dsp: &str,
-    kept: Vec<storage::Message>,
+    kept: Vec<StoredMessage>,
 ) -> Result<Vec<Message>> {
     let ids: Vec<String> = kept.iter().map(|message| message.id.clone()).collect();
     let mut files = attached(db.communications_files(dsp, &ids)?, |file| {
@@ -206,7 +209,7 @@ pub fn older(
     })
 }
 /// A conversation found by a name typed: how like it its name is, and its letters that matched.
-type Found = (f64, Vec<(u32, u32)>, storage::Conversation);
+type Found = (f64, Vec<(u32, u32)>, StoredConversation);
 /// The conversations, of the workspace `team` or every one, whose names are like `typed`, the
 /// closest first, fifty at most.
 pub fn search(

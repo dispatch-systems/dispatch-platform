@@ -7,7 +7,7 @@
 use super::{
     conversations,
     people::People,
-    storage::CommunicationsStore,
+    storage::conversations::ConversationStore,
     texts::{reading, storage::TextStore},
 };
 use crate::api::types::Profile;

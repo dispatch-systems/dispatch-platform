@@ -1,7 +1,7 @@
 //! A workspace forgotten, as on disconnecting it, keeps every message the DSP had there; and
 //! which of the DSP's workspaces need updating for Communications.
 use super::*;
-use crate::backend::{conversations, reply, storage::CommunicationsStore, support};
+use crate::backend::{conversations, reply, storage::conversations::ConversationStore, support};
 use dispatch_core::db::now;
 use dispatch_slack::testing as slack;
 use serde_json::json;

@@ -22,7 +22,7 @@ pub use routes::failing;
 use crate::api::types::Message;
 use crate::backend::{
     conversations,
-    storage::CommunicationsStore,
+    storage::conversations::{Conversation, ConversationStore},
     texts::{model::TextConversation, storage::TextStore},
 };
 use crate::integrations::messages::incoming;
@@ -325,7 +325,7 @@ pub async fn conversation_with(
     dsp: &str,
     team: &str,
     user: &str,
-) -> Option<crate::backend::storage::Conversation> {
+) -> Option<Conversation> {
     let (dsp, team, user) = (dsp.to_owned(), team.to_owned(), user.to_owned());
     state
         .read(move |db| db.communications_conversation_with(&dsp, &team, &user))

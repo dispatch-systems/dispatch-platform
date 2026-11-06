@@ -23,7 +23,12 @@ use super::{
     live,
     people::People,
     sender::{self, Identity},
-    storage::{self, CommunicationsStore, DOMAIN, Noted, Sent},
+    storage::{
+        DOMAIN,
+        conversations::{Conversation as StoredConversation, ConversationStore},
+        messages::Sent,
+        replies::{Noted, ReplyStore},
+    },
     text,
 };
 use crate::{
@@ -175,7 +180,7 @@ fn begin(
     text: &str,
     chosen: &[String],
     until: i64,
-) -> Result<(storage::Conversation, Vec<File>, Noted, bool)> {
+) -> Result<(StoredConversation, Vec<File>, Noted, bool)> {
     let conversation = db
         .communications_conversation(dsp, id)?
         .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
@@ -226,7 +231,7 @@ async fn deliver(
     state: &Arc<State>,
     c: &Context,
     access: Dsp,
-    conversation: &storage::Conversation,
+    conversation: &StoredConversation,
     written: &str,
     uploads: &[File],
     (noted, earlier): (Noted, bool),
@@ -329,7 +334,7 @@ async fn settle(state: &Arc<State>, dsp: &str) -> Result<()> {
             let noted = db.claim_communications_replies(&at, now(), now() + SENDING_MS)?;
             let on = kit::workspaces_on(db, &at, ID)?;
             let ids: Vec<String> = noted.iter().map(|each| each.conversation.clone()).collect();
-            let conversations: HashMap<String, storage::Conversation> = db
+            let conversations: HashMap<String, StoredConversation> = db
                 .communications_conversations(&at, &ids)?
                 .into_iter()
                 .map(|conversation| (conversation.id.clone(), conversation))

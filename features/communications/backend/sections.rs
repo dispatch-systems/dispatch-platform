@@ -10,7 +10,7 @@ use super::{
     groups::{self, storage::GroupStore},
     model::ConversationKind,
     people::People,
-    storage::CommunicationsStore,
+    storage::conversations::ConversationStore,
     texts::{live_day, numbers::Numbers, reading, todays_routes},
 };
 use crate::api::types::{Conversation, Conversations, Group};

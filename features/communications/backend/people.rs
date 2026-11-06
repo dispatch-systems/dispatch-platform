@@ -2,7 +2,7 @@
 //! conversation shows them: the people Driver Match tells apart (`directory`), by their Slack
 //! account, a driver's ID of a source, or a phone number, else by the name a conversation keeps
 //! for them; and the DSP's members, by their email address.
-use super::{storage, texts::numbers::shown};
+use super::{storage::messages::Message, texts::numbers::shown};
 use crate::api::types::{Correspondent, Sender, Typing};
 use dispatch_core::{
     Result, State,
@@ -100,7 +100,7 @@ impl People {
         )
     }
     /// Who at the DSP sent `message`, as the person their email address is, if any.
-    pub fn sender(&self, message: &storage::Message) -> Option<Sender> {
+    pub fn sender(&self, message: &Message) -> Option<Sender> {
         let user = message.sent_by.as_ref()?;
         Some(self.sent_by(user, message.sender_name.as_deref().unwrap_or_default()))
     }

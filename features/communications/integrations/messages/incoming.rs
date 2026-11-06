@@ -8,7 +8,10 @@
 use super::ID;
 use crate::backend::{
     files, live,
-    storage::{Attached, CommunicationsStore, DOMAIN, Written},
+    storage::{
+        DOMAIN,
+        messages::{Attached, MessageStore, Written},
+    },
     text,
 };
 use dispatch_core::{Result, State, db::Store};

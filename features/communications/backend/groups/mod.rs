@@ -19,7 +19,10 @@ use super::{
     files::FileStore,
     model::PAGE,
     people::People,
-    storage::{self as kept, CommunicationsStore},
+    storage::{
+        conversations::{Conversation, ConversationStore},
+        messages::Message,
+    },
 };
 use crate::api::types::{
     Group, GroupEntry, GroupMessages, GroupPeople, GroupPerson, GroupProgress,
@@ -148,7 +151,7 @@ fn entries(
     people: &People,
     dsp: &str,
     sent: Vec<GroupMessage>,
-    answers: Vec<kept::Message>,
+    answers: Vec<Message>,
 ) -> Result<Vec<(String, String, GroupEntry)>> {
     let sent_ids: Vec<String> = sent.iter().map(|message| message.id.clone()).collect();
     let mut photos =
@@ -167,7 +170,7 @@ fn entries(
         .iter()
         .map(|message| message.conversation.clone())
         .collect();
-    let writers: HashMap<String, kept::Conversation> = db
+    let writers: HashMap<String, Conversation> = db
         .communications_conversations(dsp, &of)?
         .into_iter()
         .map(|conversation| (conversation.id.clone(), conversation))
