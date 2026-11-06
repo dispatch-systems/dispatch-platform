@@ -400,13 +400,18 @@ impl Task {
             }
         }
     }
+    /// Writes what `f` writes of the DSP's reading, in a turn that finds the DSP still there:
+    /// once it's deleted, with all its reading recorded, nothing is written of it again.
     async fn write(
         &self,
         f: impl FnOnce(&Store, &str, &str) -> crate::Result<()> + Send + 'static,
     ) -> crate::Result<()> {
         let (reader, dsp) = (self.reader.id(), self.dsp.clone());
         self.state
-            .run_bookkeeping(move |db| f(db, reader, &dsp))
+            .run_bookkeeping(move |db| {
+                db.find_dsp(&dsp)?;
+                f(db, reader, &dsp)
+            })
             .await
     }
     /// Waits a minute, or until its plan changes, before trying again what failed.

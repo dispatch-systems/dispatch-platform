@@ -24,6 +24,14 @@ pub(super) fn valid_code(code: &str) -> bool {
     code.len() == LENGTH && code.bytes().all(|b| ALPHABET.contains(&b))
 }
 
+/// Lets the codes of a DSP being deleted go: its people go with it.
+pub(crate) fn forget_dsp(store: &Store, dsp: &str) -> Result<()> {
+    store
+        .platform
+        .exec("DELETE FROM driver_codes WHERE dsp_id=?", [dsp])?;
+    Ok(())
+}
+
 /// A person with a new code, listed in the platform's `driver_codes`.
 pub(super) fn new_person(
     store: &Store,

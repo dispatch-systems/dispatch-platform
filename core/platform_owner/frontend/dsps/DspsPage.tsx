@@ -18,6 +18,7 @@ import {
   ErrorBox,
   Header,
   Modal,
+  TypedConfirmDialog,
 } from '../../../shell/frontend/ui/index.js';
 import { DspDetail, type DspAction } from './DspDetail.js';
 import { DspListPane } from './DspListPane.js';
@@ -26,7 +27,7 @@ import { dspState, dspStates, stateLabels } from './status.js';
 import { field } from '../../../shell/frontend/lib/form.js';
 
 const none: DspSummary[] = [];
-const requests: Record<Exclude<DspAction, 'view' | 'code'>, [string, string]> = {
+const requests: Record<Exclude<DspAction, 'view' | 'code' | 'delete'>, [string, string]> = {
   enable: ['enable', 'DSP enabled'],
   retry: ['retry', 'DSP available'],
   disable: ['disable', 'DSP disabled'],
@@ -37,6 +38,7 @@ export function DspsPage() {
   const [query, setQuery] = useUpdateState('dsp-query', ''),
     [creating, setCreating] = useState(false),
     [confirming, setConfirming] = useState<DspSummary>(),
+    [deleting, setDeleting] = useState<DspSummary>(),
     [coding, setCoding] = useState<DspSummary>(),
     // The chosen DSP rides in the address, so a reload and a phone's back link keep it.
     [chosen, setChosen] = useState(() => hashQuery().get('dsp') ?? '');
@@ -69,8 +71,17 @@ export function DspsPage() {
     },
     { inline: true, success: (_, code) => `Short code set to ${code.toUpperCase()}` },
   );
+  const remove = useAction(
+    async (dsp: DspSummary, name: string) => {
+      await api(`/api/platform/dsps/${dsp.id}/delete`, { name });
+      setDeleting(undefined);
+      select();
+      refresh();
+    },
+    { success: () => 'DSP deleted' },
+  );
   const change = useAction(
-    async (dsp: DspSummary, action: Exclude<DspAction, 'view' | 'code'>) => {
+    async (dsp: DspSummary, action: Exclude<DspAction, 'view' | 'code' | 'delete'>) => {
       await api(`/api/platform/dsps/${dsp.id}/${requests[action][0]}`, {});
       setConfirming(undefined);
       refresh();
@@ -81,6 +92,7 @@ export function DspsPage() {
     if (action === 'view') open(dsp);
     else if (action === 'code') setCoding(dsp);
     else if (action === 'disable') setConfirming(dsp);
+    else if (action === 'delete') setDeleting(dsp);
     else void change.run(dsp, action);
   };
   return (
@@ -214,6 +226,17 @@ export function DspsPage() {
         >
           Members lose access and active collections are cancelled until you enable this DSP again.
         </ConfirmDialog>
+      )}
+      {deleting && (
+        <TypedConfirmDialog
+          title={`Delete ${deleting.name}?`}
+          label="DSP name"
+          expected={deleting.name}
+          confirm="Delete DSP"
+          busy={remove.busy}
+          onConfirm={(name) => void remove.run(deleting, name)}
+          onCancel={() => setDeleting(undefined)}
+        />
       )}
     </>
   );

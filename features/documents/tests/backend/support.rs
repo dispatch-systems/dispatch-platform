@@ -24,9 +24,13 @@ pub fn platform() -> (impl Drop, Arc<State>, String) {
 }
 /// Connects the DSP's Documents to fixture mode's Google, with a main folder of its own.
 pub async fn connect(state: &Arc<State>, dsp: &str) {
+    connect_as(state, dsp, ACCOUNT).await;
+}
+/// Connects the DSP's Documents as `connect` does, signed in as `account`, `fixture:<email>`.
+pub async fn connect_as(state: &Arc<State>, dsp: &str, account: &str) {
     let google = Google::of(&state.config).unwrap();
     let granted = google
-        .exchange(&state.config.origin, ACCOUNT, "-")
+        .exchange(&state.config.origin, account, "-")
         .await
         .unwrap();
     let folder_id = google

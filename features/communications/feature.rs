@@ -28,7 +28,7 @@ use dispatch_core::db::{
     migrations::Apply::{Code, Sql},
 };
 use dispatch_core::{
-    manifest::{Audit, Feature, feature, optional, perm},
+    manifest::{Audit, Deleting, Feature, feature, optional, perm},
     tenancy::api::audit::AuditArea::Connections,
 };
 use dispatch_routes_contract::RouteDataChanged;
@@ -238,6 +238,11 @@ pub const FEATURE: Feature = Feature {
     // On from the start in every workspace, in place of Slack's answer that DSP Messaging is
     // unavailable.
     integrations: &[integrations::messages::INTEGRATION],
+    // What it holds in memory of a deleted DSP's group messages goes.
+    deleting: Deleting {
+        forgotten: Some(backend::groups::send::forgotten),
+        ..Deleting::NONE
+    },
     ..feature("communications")
 };
 

@@ -18,7 +18,7 @@ use crate::{
         },
         mail, operations,
     },
-    tenancy::catalog,
+    tenancy::{catalog, deletion},
 };
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -38,6 +38,7 @@ pub fn routes() -> Vec<Route> {
             disable_dsp,
         ),
         async_post("/api/platform/dsps/{id}/enable", PlatformOwner, enable_dsp),
+        async_post("/api/platform/dsps/{id}/delete", PlatformOwner, delete_dsp),
         async_post(
             "/api/platform/dsps/{id}/support-visibility",
             PlatformOwner,
@@ -180,6 +181,26 @@ async fn enable_dsp(state: Arc<State>, input: Input, access: PlatformOwner) -> R
         Ok(json!(db.set_enabled(dsp, true, owner.user.id.as_str())?))
     })
     .await
+}
+
+// Deleting a disabled DSP deletes everything of it for good, once the owner has typed its name
+// and verified who they are recently: checked in each turn the delete takes.
+async fn delete_dsp(state: Arc<State>, input: Input, access: PlatformOwner) -> Result<Reply> {
+    let id = input.param("id").to_owned();
+    deletion::delete(&state, &id, move |db| {
+        let owner = access.authorize(db, &input)?;
+        Ok((typed_name(db, &owner, &input)?, owner.user.id.clone()))
+    })
+    .await?;
+    Ok(Reply::json(json!({"ok": true})))
+}
+
+/// The DSP's name, as the owner typed it to delete the DSP, once they've verified who they are
+/// recently.
+fn typed_name(db: &Store, owner: &Auth, input: &Input) -> Result<String> {
+    v::fields(&input.body, &["name"])?;
+    db.ensure_recent(owner)?;
+    Ok(v::text(&input.body, "name", 1, 256)?.to_owned())
 }
 
 async fn set_support_visibility(

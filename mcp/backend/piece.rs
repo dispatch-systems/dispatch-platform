@@ -1,7 +1,7 @@
 //! How the MCP plugs into core, as the agents' piece (`manifest::Agents`): its routes, tables
 //! and upkeep, what it keeps in memory, how an agent's request is signed in, and what it does
-//! when core tells it a request was answered, a password was reset or a backup restored. Core
-//! reaches it through these and nothing else.
+//! when core tells it a request was answered, a password was reset, a backup restored or a DSP
+//! deleted. Core reaches it through these and nothing else.
 use super::{
     Caller, activity,
     api::{
@@ -60,6 +60,8 @@ pub const fn piece(own: &'static Own) -> Agents {
         answered,
         password_reset,
         restored,
+        forget_dsp,
+        forgotten,
         check,
         own,
     }
@@ -338,6 +340,20 @@ fn restored(db: &rusqlite::Connection) -> Result<()> {
         db.execute("DELETE FROM oauth_codes WHERE used_at IS NULL", [])?;
     }
     Ok(())
+}
+
+/// A deleted DSP goes from every key and app given it, and from what agents did, which named
+/// it.
+fn forget_dsp(db: &Store, dsp: &str) -> Result<()> {
+    for table in ["agent_key_dsp_reads", "agent_key_dsps", "agent_activity"] {
+        db.platform
+            .exec(&format!("DELETE FROM {table} WHERE dsp_id=?"), [dsp])?;
+    }
+    Ok(())
+}
+/// What agents did at a deleted DSP and wait to be written down goes too.
+fn forgotten(state: &State, dsp: &str) {
+    Kept::of(state).activity.forget_dsp(dsp);
 }
 
 fn check() {

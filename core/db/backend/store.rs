@@ -130,17 +130,22 @@ impl Store {
     }
     /// One of a DSP's folders: `data`, `config`, `state`, `secrets`, or `cache`, where an
     /// owner keeps files it can collect again. Backups leave `cache` out, and it goes with
-    /// the DSP's folder.
+    /// the DSP's folder. Only provisioning makes the DSP's folder, so nothing makes it again
+    /// once the DSP is deleted.
     pub fn area(&self, dsp: &str, area: &str) -> Result<PathBuf> {
-        ensure(identifier(dsp, "dsp_"), "invalid_dsp_id", 400)?;
         ensure(
             ["data", "config", "state", "secrets", CACHE].contains(&area),
             "invalid_area",
             400,
         )?;
-        let root = self.config.root.join("dsps").join(dsp);
-        private_dir(&root)?;
+        let root = self.dsp_folder(dsp)?;
+        ensure(root.is_dir(), "dsp_not_found", 404)?;
         private_dir(&root.join(area))
+    }
+    /// Where the DSP's folder is, whether or not it's there.
+    pub fn dsp_folder(&self, dsp: &str) -> Result<PathBuf> {
+        ensure(identifier(dsp, "dsp_"), "invalid_dsp_id", 400)?;
+        Ok(self.config.root.join("dsps").join(dsp))
     }
     pub fn dsp(&self, id: &str) -> Result<DspLease<'_>> {
         let db = self.dsp_unverified(id)?;
@@ -170,7 +175,17 @@ impl Store {
             _store: std::marker::PhantomData,
         })
     }
+    /// Closes this store's connections to the DSP's databases, as once it's deleted: one still
+    /// leased closes as its lease ends.
+    pub fn forget_dsp(&self, dsp: &str) {
+        let folder = self.config.root.join("dsps").join(dsp);
+        self.dsp_cache
+            .0
+            .borrow_mut()
+            .retain(|(path, _)| !Path::new(path).starts_with(&folder));
+    }
     pub fn initialize_dsp(&self, id: &str) -> Result<Db> {
+        private_dir(&self.dsp_folder(id)?)?;
         for area in ["data", "config", "state", "secrets"] {
             self.area(id, area)?;
         }

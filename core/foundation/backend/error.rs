@@ -49,6 +49,7 @@ codes! {
     PermissionDenied => "permission_denied",
     ConnectionChanged => "connection_changed",
     DspUnavailable => "dsp_unavailable",
+    DspNotFound => "dsp_not_found",
     AccountLocked => "account_locked",
 }
 impl Code {

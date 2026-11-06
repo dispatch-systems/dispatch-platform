@@ -144,6 +144,14 @@ impl Store {
         )?;
         Ok(())
     }
+    /// Lets every read and day of the DSP go, of every reader, as it's deleted.
+    pub(crate) fn forget_reads(&self, dsp: &str) -> Result<()> {
+        self.jobs
+            .exec("DELETE FROM live_reads WHERE dsp_id=?", [dsp])?;
+        self.jobs
+            .exec("DELETE FROM live_days WHERE dsp_id=?", [dsp])?;
+        Ok(())
+    }
     /// Lets the DSP's reads from before the last two weeks go, and the days that stopped
     /// before then, whether any read was kept since or none.
     pub(super) fn prune_reads(&self, reader: &str, dsp: &str, at: i64) -> Result<()> {

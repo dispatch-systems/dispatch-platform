@@ -26,6 +26,7 @@ impl Maintenance {
             }
             let state = state.clone();
             self.tasks.spawn(async move {
+                crate::tenancy::deletion::finish(&state).await;
                 if let Err(error) = cleanup(&state, prune).await {
                     super::scheduler::failed("checkpoint_cleanup_failed", &error);
                 }

@@ -9,7 +9,7 @@ import { DspBetaTab } from './DspBetaTab.js';
 import { DspFeaturesTab } from './DspFeaturesTab.js';
 import { dspState, stateLabels } from './status.js';
 
-export type DspAction = 'view' | 'code' | 'enable' | 'retry' | 'disable';
+export type DspAction = 'view' | 'code' | 'enable' | 'retry' | 'disable' | 'delete';
 
 // The chosen DSP: its facts, its features, its beta testers and what the platform may do to it.
 export function DspDetail({
@@ -37,6 +37,7 @@ export function DspDetail({
     ['retry', 'Retry', dsp.status === 'failed'],
     ['enable', 'Enable DSP', dsp.status === 'suspended' && !dsp.permanent],
     ['disable', 'Disable DSP', dsp.status === 'active' && !dsp.permanent],
+    ['delete', 'Delete DSP', dsp.status === 'suspended' && !dsp.permanent],
   ];
   // The View button stands on its own; the menu holds everything else.
   const menu = actions.filter(([action, , shown]) => shown && action !== 'view');
@@ -103,7 +104,7 @@ export function DspDetail({
               {menu.map(([action, label]) => (
                 <button
                   key={action}
-                  className={action === 'disable' ? 'danger' : undefined}
+                  className={action === 'disable' || action === 'delete' ? 'danger' : undefined}
                   onClick={() => act(action)}
                 >
                   {label}

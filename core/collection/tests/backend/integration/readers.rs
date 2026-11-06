@@ -5,8 +5,8 @@
 //! browsers' memory turned away tried once more within its slot, and kept on record when the
 //! retry never starts, waits of five minutes at most however seldom a DSP reads, a stalled DSP
 //! started again alone, switching off mid-window, a switch or a saved window taking effect at
-//! once, the browser a hook opens, and how a DSP's reading goes as Settings shows it, its next
-//! read the one its task reads.
+//! once, the browser a hook opens, how a DSP's reading goes as Settings shows it, its next
+//! read the one its task reads, and a read kept as its DSP is deleted recording nothing after.
 //! A program of its own, as its registry holds the stand-ins, and a program holds one registry.
 use chrono::{DateTime, NaiveDate, Timelike, Weekday::*};
 use chrono_tz::Tz;
@@ -26,6 +26,7 @@ use dispatch_core::{
         time,
     },
     settings::{self, Saved},
+    tenancy::deletion,
     testing,
 };
 use serde_json::{Value, json};
@@ -98,6 +99,8 @@ enum Script {
     CutsOff,
     /// Each keeping opens the DSP's browser and waits for the probe's gate.
     KeepsBrowsing,
+    /// Each keeping waits for the probe's gate.
+    KeepsLate,
     /// Each stop fails, as one that emptied what its day kept and failed after does.
     FailsToStop,
     /// Each read finds the browsers' memory busy.
@@ -311,7 +314,11 @@ impl LiveReader for Reader {
                     tokio::time::sleep(2 * MINUTE).await;
                     return Err(Error::new("browser_memory_busy", 503));
                 }
-                Script::Reads | Script::Hangs | Script::KeepsBrowsing | Script::FailsToStop => {}
+                Script::Reads
+                | Script::Hangs
+                | Script::KeepsBrowsing
+                | Script::KeepsLate
+                | Script::FailsToStop => {}
             }
             flight.landed = true;
             Ok(held.0)
@@ -332,6 +339,9 @@ impl LiveReader for Reader {
                 set_script(&reading.dsp, Script::Reads);
                 let _hang = Hang(probe.clone(), reading.dsp.clone());
                 std::future::pending::<()>().await;
+            }
+            if script == Script::KeepsLate {
+                drop(probe.gate.acquire().await.unwrap());
             }
             if script == Script::KeepsBrowsing {
                 let _open = reading.browser(PROVIDER).await?;
@@ -1294,4 +1304,46 @@ async fn started_again_soon_after_a_late_read_a_dsp_reads_when_its_status_says()
     let reads = server.probe.reads(&late);
     assert!(all_near(&reads, &[freed, next]));
     assert!(near(next, back));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_read_kept_as_its_dsp_is_deleted_records_nothing_after() {
+    let server = Server::start().await;
+    let dsp = server.dsp(Script::KeepsLate).await;
+    let (start, open) = server.at(5);
+    let (stop, _) = server.at(120);
+    server.window(&dsp, &start, &stop).await;
+    server.switch(&dsp, true).await;
+    until(open + SECOND).await;
+    assert!(matches!(
+        server.probe.of(&dsp)[..],
+        [Seen::Read(1, _), Seen::Started(_)]
+    ));
+    // Its day started, its first read is still being kept as its DSP is disabled and deleted.
+    let (at, owner) = (dsp.clone(), server.owner.clone());
+    server
+        .state
+        .run(move |db| {
+            testing::set_dsp_status(db, &at, "suspended")?;
+            db.delete_dsp(&at, "Probe DSP", &owner)
+        })
+        .await
+        .unwrap();
+    deletion::finish(&server.state).await;
+    server.probe.gate.add_permits(1);
+    tokio::time::sleep(SECOND).await;
+    assert!(matches!(server.probe.of(&dsp)[..], [.., Seen::Kept(1)]));
+    let left = server
+        .state
+        .read(move |db| {
+            Ok((
+                db.jobs
+                    .count("SELECT count(*) FROM live_reads WHERE dsp_id=?", [&dsp])?,
+                db.jobs
+                    .count("SELECT count(*) FROM live_days WHERE dsp_id=?", [&dsp])?,
+            ))
+        })
+        .await
+        .unwrap();
+    assert_eq!(left, (0, 0));
 }

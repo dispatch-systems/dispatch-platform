@@ -17,6 +17,17 @@ fn call(at: i64, key: &str, outcome: &str) -> Call {
     }
 }
 
+/// A call about the DSP `id`, named `name` as the call found it.
+fn at_dsp(at: i64, id: &str, name: &str) -> Call {
+    Call {
+        dsp: Some(AgentDsp {
+            id: id.into(),
+            name: name.into(),
+        }),
+        ..call(at, "key_a", "ok")
+    }
+}
+
 #[test]
 fn a_full_buffer_drops_the_oldest_and_counts_them() {
     let activity = Activity::default();
@@ -178,21 +189,11 @@ fn every_page_of_the_log_reads_one_index_in_order() {
 }
 
 #[test]
-fn the_log_names_each_dsp_as_it_is_now_or_as_it_was_once_gone() {
+fn the_log_names_each_dsp_as_it_is_now() {
     crate::testing::install();
     let (_root, db, dsp) = dispatch_core::testing::bootstrapped();
-    let at_dsp = |at: i64, id: &str, name: &str| Call {
-        dsp: Some(AgentDsp {
-            id: id.into(),
-            name: name.into(),
-        }),
-        ..call(at, "key_a", "ok")
-    };
-    db.record_agent_activity(&[
-        at_dsp(now() - 2_000, &dsp, "Before its rename"),
-        at_dsp(now() - 1_000, "dsp_gone", "A DSP since removed"),
-    ])
-    .unwrap();
+    db.record_agent_activity(&[at_dsp(now() - 2_000, &dsp, "Before its rename")])
+        .unwrap();
     dispatch_core::testing::set_dsp(&db, &dsp, "Renamed Logistics", "UTC").unwrap();
     let page = db
         .agent_activity(&ActivityQuery {
@@ -208,11 +209,38 @@ fn the_log_names_each_dsp_as_it_is_now_or_as_it_was_once_gone() {
         .filter_map(|row| row.dsp.as_ref())
         .map(|dsp| (dsp.id.clone(), dsp.name.clone()))
         .collect();
-    assert_eq!(
-        named,
-        [
-            ("dsp_gone".to_owned(), "A DSP since removed".to_owned()),
-            (dsp, "Renamed Logistics".to_owned()),
-        ]
-    );
+    assert_eq!(named, [(dsp, "Renamed Logistics".to_owned())]);
+}
+
+#[tokio::test]
+async fn what_agents_did_at_a_dsp_is_never_written_down_once_it_is_deleted() {
+    crate::testing::install();
+    let (_root, db) = dispatch_core::testing::seeded();
+    let north = dispatch_core::testing::dsp_named(&db, "Northline Logistics");
+    let owner = dispatch_core::testing::platform_owner(&db);
+    dispatch_core::testing::set_dsp_status(&db, &north, "suspended").unwrap();
+    let state = crate::testing::serving(db);
+    let call = at_dsp(now(), &north, "Northline Logistics");
+    // Held as the DSP is deleted, and written down after, as a batch being written is.
+    Kept::of(&state).activity.record(call.clone());
+    let dsp = north.clone();
+    state
+        .run(move |db| db.delete_dsp(&dsp, "Northline Logistics", &owner))
+        .await
+        .unwrap();
+    flush(&state).await.unwrap();
+    // Held after, until the server lets go of the DSP.
+    Kept::of(&state).activity.record(call);
+    dispatch_core::tenancy::deletion::forget(&state, &north).await;
+    assert_eq!(Kept::of(&state).activity.pending(), 0);
+    let written = state
+        .read(move |db| {
+            db.platform.count(
+                "SELECT count(*) FROM agent_activity WHERE dsp_id=?",
+                [&north],
+            )
+        })
+        .await
+        .unwrap();
+    assert_eq!(written, 0);
 }

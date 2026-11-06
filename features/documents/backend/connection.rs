@@ -20,6 +20,7 @@ use dispatch_core::{
     ensure,
     foundation::observability,
     foundation::{config::Site, crypto},
+    manifest::Upkeep,
     server::http::route::Dsp,
 };
 use serde_json::json;
@@ -118,6 +119,12 @@ pub fn start(db: &Store, c: &Context, site: &Site) -> Result<GoogleSignIn> {
     })
 }
 
+/// One Google grant changes at a time on this server: a sign-in, from Google giving its tokens
+/// until they're kept, and a deleted DSP's account given back, from asking which DSP connects
+/// it until Google has ended the grant. So no DSP keeps tokens of a grant Google is ending,
+/// and none is ended while a DSP is keeping its tokens.
+static GRANTS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// Finishes the sign-in the member started with `state`, now that Google sent them back with
 /// `code`: keeps the account's token, and makes the DSP's main folder unless it has one.
 pub async fn finish(
@@ -136,6 +143,7 @@ pub async fn finish(
         })
         .await?;
     let google = Google::of(&state.config)?;
+    let granting = GRANTS.lock().await;
     let granted = google
         .exchange(&state.config.origin, &code, &verifier)
         .await?;
@@ -192,6 +200,7 @@ pub async fn finish(
             c.audit(db, action, &connection.account.email)
         })
         .await?;
+    drop(granting);
     // The team gets the folder shared with them while the owner looks around.
     let sharing = Arc::clone(state);
     let at = shared.clone();
@@ -236,6 +245,47 @@ pub async fn disconnect(state: &Arc<State>, c: Context, access: Dsp) -> Result<D
     account(state, &id).await
 }
 
+/// Gives back the Google account of a DSP being deleted, as disconnecting it does, unless
+/// another DSP connects that account too: best effort, as the DSP goes whatever Google answers.
+/// The folder stays in the account's Drive; the token goes with the DSP.
+pub fn revoke(state: Arc<State>, dsp: String) -> Upkeep {
+    Box::pin(async move {
+        let Ok(google) = Google::of(&state.config) else {
+            return;
+        };
+        let _granting = GRANTS.lock().await;
+        match state.read(move |db| own_grant(db, &dsp)).await {
+            Ok(Some(token)) => google.revoke(&token).await,
+            Ok(None) => {}
+            Err(error) => observability::event(
+                "error",
+                "documents_revoke_failed",
+                json!({"error": error.code}),
+            ),
+        }
+    })
+}
+/// The refresh token of the DSP's Google account, when no other DSP kept connects that
+/// account: Google ends the account's grant to Dispatch for every token given back, the other
+/// DSP's too.
+fn own_grant(db: &Store, dsp: &str) -> Result<Option<String>> {
+    let account = db
+        .documents_connection(dsp)?
+        .map(|found| found.account.email);
+    for other in db.kept_dsps()?.iter().filter(|other| *other != dsp) {
+        let connected = db.documents_connection(other)?;
+        if connected.is_some_and(|found| Some(&found.account.email) == account.as_ref()) {
+            return Ok(None);
+        }
+    }
+    db.documents_refresh_token(dsp)
+}
+/// Forgets what's held in memory of a deleted DSP's files.
+pub fn forgotten(dsp: &str) {
+    files::forget_deleted(dsp);
+    mirror::forget(dsp);
+}
+
 /// Marks the DSP's connection broken, as Google refused its token: once, in the activity log
 /// too, whoever noticed.
 pub(crate) fn broken(db: &Store, dsp: &str) -> Result<()> {
@@ -244,3 +294,7 @@ pub(crate) fn broken(db: &Store, dsp: &str) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/connection.rs"]
+mod tests;

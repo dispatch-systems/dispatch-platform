@@ -1,13 +1,18 @@
 pub use crate::platform_owner::api::types::TransportHealth;
 use crate::{
     Result, State,
-    accounts::api::types::MailMessage,
-    db::{self, Store, n},
+    accounts::{api::types::MailMessage, directories::ONLY_THERE},
+    db::{self, Store, n, s},
     ensure,
+    foundation::{config::Config, crypto},
     platform_owner::api::types::MailHealth,
 };
 use rusqlite::params;
-use std::collections::HashMap;
+use serde_json::Value;
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+};
 
 mod delivery;
 pub mod templates;
@@ -46,7 +51,8 @@ pub fn sendable(db: &Store, id: &str) -> Result<bool> {
 /// Never send an expired, revoked or already consumed grant. Bound retained content. A
 /// notice about a connected app goes only to someone who is still an active platform owner,
 /// and what a feature writes a member only while the member's account is active. What a
-/// message is for lives in the directory of the DSP it names, or the platform's.
+/// message is for lives in the directory of the DSP it names, or the platform's. What
+/// development captured of what's discarded goes with it (`forget_captured`).
 pub fn discard_stale(db: &Store) -> Result<()> {
     db.platform.exec(
         "DELETE FROM outbox WHERE (status<>'pending' AND created_at<?1) OR \
@@ -70,6 +76,65 @@ pub fn discard_stale(db: &Store) -> Result<()> {
         )? {
             db.platform
                 .exec("DELETE FROM outbox WHERE id=?", [text("id").unwrap_or("")])?;
+        }
+    }
+    forget_captured(db)
+}
+
+/// Deletes the mail of a DSP being deleted, sent or not: what names it, its invitations', and
+/// what was written, before mail named its DSP, to the accounts the platform's directory holds
+/// of its people alone. Its invitations' routes and its memberships there are still there to
+/// find them by. What development captured of it goes once its rows have (`forget_captured`).
+pub fn forget_dsp(db: &Store, dsp: &str) -> Result<()> {
+    db.platform.exec(
+        &format!(
+            "DELETE FROM outbox WHERE dsp_id=?1 OR \
+             invitation_hash IN (SELECT hash FROM invitation_routes WHERE dsp_id=?1) OR \
+             (dsp_id IS NULL AND user_id IN ({ONLY_THERE}))"
+        ),
+        [dsp],
+    )?;
+    Ok(())
+}
+
+/// Where development keeps the mail it captures rather than sends.
+fn captures(config: &Config) -> PathBuf {
+    config.platform().join("development-mail")
+}
+/// Captures the message `row`, picked to send, as development delivers mail, unless it no
+/// longer goes: none, or what became of capturing it. It's captured in the turn that finds it
+/// still goes, so none is once its row has gone (`forget_captured`).
+pub(crate) fn capture(db: &Store, row: &Value) -> Result<Option<Result<()>>> {
+    let id = s(row, "id");
+    if !sendable(db, id)? {
+        return Ok(None);
+    }
+    Ok(Some(write_capture(db, row, id)))
+}
+fn write_capture(db: &Store, row: &Value, id: &str) -> Result<()> {
+    let message = crypto::decrypt(&db.key, id, s(row, "encrypted_message"))?;
+    let folder = db::private_dir(&captures(&db.config))?;
+    db::write_private(
+        &folder.join(format!("{id}.json")),
+        &serde_json::to_vec(&message)?,
+    )
+}
+/// Deletes what development captured of mail the outbox no longer keeps, each file named by
+/// its message's ID, so none outlives its message: sent a month ago, discarded, or its DSP's,
+/// deleted. In a write, so none is captured meanwhile.
+pub fn forget_captured(db: &Store) -> Result<()> {
+    let captured = match std::fs::read_dir(captures(&db.config)) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        captured => captured?,
+    };
+    let kept: Vec<(String,)> = db.platform.query_as("SELECT id FROM outbox", [])?;
+    let kept: HashSet<String> = kept.into_iter().map(|(id,)| id).collect();
+    for file in captured {
+        let file = file?;
+        let name = file.file_name().to_string_lossy().into_owned();
+        let message = name.strip_suffix(".json");
+        if message.is_some_and(|id| !kept.contains(id)) {
+            std::fs::remove_file(file.path())?;
         }
     }
     Ok(())

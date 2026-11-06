@@ -13,6 +13,7 @@ pub mod audit;
 pub mod caching;
 pub mod collectors;
 pub mod commands;
+pub mod deleting;
 pub mod env;
 pub mod events;
 pub mod exposes;
@@ -31,6 +32,7 @@ pub use agents::Agents;
 pub use audit::Audit;
 pub use collectors::{Capability, Collection, Collector};
 pub use commands::{Commands, Demo};
+pub use deleting::Deleting;
 pub use keeping::{
     Keeper, MAX_QUEUE_CAPACITY, MIN_QUEUE_CAPACITY, ScheduleAlias, Schedules, schedules,
 };
@@ -138,6 +140,7 @@ impl Registry {
         storage::check(self);
         caching::check(self);
         audit::check(self);
+        deleting::check(self);
         agents::check(self);
         settings::check(self);
     }
@@ -231,6 +234,9 @@ pub struct Feature {
     /// What it does when something happens for a DSP, each by `on!`: a collection succeeding,
     /// or another feature's event, as its contract crate says it.
     pub on: &'static [events::On],
+    /// What it lets go of as a DSP is deleted: what the DSP connected through it, its rows
+    /// outside the DSP's folder and what it holds of the DSP in memory.
+    pub deleting: Deleting,
 }
 /// A feature that fills no slot yet. A manifest starts here and names what it adds:
 /// `Feature { …, ..feature("timecard") }`.
@@ -266,6 +272,7 @@ pub const fn feature(name: &'static str) -> Feature {
         people: &[],
         integrations: &[],
         exposes: &[],
+        deleting: Deleting::NONE,
         on: &[],
     }
 }

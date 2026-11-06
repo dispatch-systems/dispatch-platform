@@ -15,6 +15,7 @@ POST /api/platform/dsps/{id}/ai-support PlatformOwner Write
 POST /api/platform/dsps/{id}/beta-testers PlatformOwner Write
 POST /api/platform/dsps/{id}/beta-testers/{user}/remove PlatformOwner Write
 POST /api/platform/dsps/{id}/code PlatformOwner Async
+POST /api/platform/dsps/{id}/delete PlatformOwner Async
 POST /api/platform/dsps/{id}/disable PlatformOwner Async
 POST /api/platform/dsps/{id}/enable PlatformOwner Async
 POST /api/platform/dsps/{id}/features PlatformOwner Async

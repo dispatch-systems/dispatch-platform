@@ -26,10 +26,33 @@ use dispatch_core::{
 use dispatch_documents_contract::Author;
 use serde_json::json;
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     sync::{Arc, LazyLock, Mutex},
     time::{Duration, Instant},
 };
+
+/// The DSPs deleted since the server started, of which nothing is kept in memory: what was
+/// under way as one was deleted, a token's renewal or a folder's listing, would keep it once
+/// it's forgotten otherwise. Each keeper asks while it holds what it keeps in.
+static DELETED: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::default);
+fn deleted(dsp: &str) -> bool {
+    DELETED
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .contains(dsp)
+}
+/// Forgets what's kept in memory of the DSP's files once it's deleted, and keeps none after.
+pub fn forget_deleted(dsp: &str) {
+    DELETED
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(dsp.to_owned());
+    forget(dsp);
+    PICTURES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .retain(|(shown_by, _), _| shown_by != dsp);
+}
 
 /// The access tokens Google gave, by DSP, until a minute before each lapses.
 static ACCESS: LazyLock<Mutex<BTreeMap<String, (String, Instant)>>> =
@@ -42,6 +65,15 @@ fn kept(dsp: &str) -> Option<String> {
         .get(dsp)
         .filter(|(_, until)| Instant::now() < *until)
         .map(|(token, _)| token.clone())
+}
+/// Keeps the DSP's access token `token` until `until`, unless the DSP is deleted.
+fn keep(dsp: &str, token: &str, until: Instant) {
+    let mut tokens = ACCESS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if !deleted(dsp) {
+        tokens.insert(dsp.to_owned(), (token.to_owned(), until));
+    }
 }
 /// Forgets the DSP's access token, as a disconnect or a new account does.
 pub fn forget(dsp: &str) {
@@ -121,10 +153,7 @@ pub(crate) async fn open(state: &Arc<State>, dsp: &str, fresh: bool) -> Result<D
             // Disabled while Google renewed it, nothing more reaches the DSP's Drive.
             active(state, dsp).await?;
             let until = Instant::now() + access.lasts.saturating_sub(Duration::from_secs(60));
-            ACCESS
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .insert(dsp.to_owned(), (access.token.clone(), until));
+            keep(dsp, &access.token, until);
             Ok(Drive {
                 google,
                 connection,
@@ -833,13 +862,16 @@ impl Described<'_> {
         }
     }
     /// Where the page fetches Google's picture of `row`, keeping its link for the DSP to
-    /// fetch it by: none when Google made none. The address names the picture's version, so
-    /// the browser keeps each until the file changes.
+    /// fetch it by: none when Google made none, or the DSP is deleted. The address names the
+    /// picture's version, so the browser keeps each until the file changes.
     fn picture(&self, row: &Row) -> Option<String> {
         let link = row.thumbnail.as_deref()?.to_owned();
         let mut links = PICTURES
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if deleted(self.dsp) {
+            return None;
+        }
         let key = (self.dsp.to_owned(), row.id.to_string());
         if links.len() >= PICTURE_LINKS && !links.contains_key(&key) {
             links.retain(|_, shown| shown.shown.elapsed() < PICTURE_LINK_LASTS);

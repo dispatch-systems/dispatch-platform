@@ -712,13 +712,7 @@ impl State {
         let credential_lease = self
             .read({
                 let dsp = id.to_owned();
-                move |db| {
-                    crate::collection::verification::credential_lease(
-                        &db.config.root,
-                        &dsp,
-                        provider,
-                    )
-                }
+                move |db| db.browser_lease(&dsp, provider)
             })
             .await?;
         let (cancel, _) = watch::channel(false);

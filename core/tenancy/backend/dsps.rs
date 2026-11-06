@@ -181,6 +181,13 @@ impl Store {
         )?;
         Ok(named.into_iter().collect())
     }
+    /// Whether the DSP `id` is there, in any state: none once it's deleted.
+    pub fn dsp_exists(&self, id: &str) -> Result<bool> {
+        Ok(self
+            .platform
+            .count("SELECT count(*) FROM dsps WHERE id=?", [id])?
+            > 0)
+    }
     /// The IDs of the DSPs this backend serves, those whose upkeep runs: a disabled one's waits
     /// until it's enabled.
     pub fn served_ids(&self) -> Result<Vec<String>> {
@@ -434,10 +441,12 @@ impl Store {
     /// Disables the DSP, or enables it again. Nothing acts for a disabled DSP and nobody signs
     /// in to it, so disabling it signs its people out; enabling it runs its schedules from now
     /// on. What it had switched on and connected stays as it was. Either wakes the scheduler and
-    /// the live readers, so they stop or start at once. A permanent DSP is never disabled.
+    /// the live readers, so they stop or start at once. A permanent DSP is never disabled, nor
+    /// one being deleted enabled.
     pub fn set_enabled(&self, id: &str, enabled: bool, actor: &str) -> Result<Dsp> {
         let dsp = self.find_dsp(id)?;
         ensure(!dsp.permanent, "permanent_dev_required", 409)?;
+        self.ensure_not_deleting(id)?;
         let (from, to, action) = if enabled {
             (DspStatus::Suspended, DspStatus::Active, "dsp.resumed")
         } else {

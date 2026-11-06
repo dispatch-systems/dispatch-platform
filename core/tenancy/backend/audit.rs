@@ -11,7 +11,7 @@ const VISIT_WINDOW: i64 = 30 * 60 * 1000;
 // Activity older than a year is removed by the collector's periodic cleanup.
 const AUDIT_RETENTION: i64 = 365 * 24 * 60 * 60 * 1000;
 // Managing a DSP from the platform is never part of that DSP's own log.
-const PLATFORM_ONLY: [&str; 18] = [
+const PLATFORM_ONLY: [&str; 19] = [
     "dsp.created",
     "dsp.code_changed",
     "dsp.feature_enabled",
@@ -27,6 +27,7 @@ const PLATFORM_ONLY: [&str; 18] = [
     "dsp.restored",
     "dsp.suspended",
     "dsp.resumed",
+    "dsp.deleted",
     "dsp.support_visibility_changed",
     "diagnostics.fixtures_loaded",
     "development.fixtures_loaded",
@@ -176,6 +177,29 @@ impl Store {
             "DELETE FROM audit WHERE at<?",
             [at(now() - AUDIT_RETENTION)],
         )
+    }
+    /// Deletes the log of a DSP being deleted: what happened there, and what `people`, its
+    /// people who are no other DSP's, did to their own accounts, outside any DSP's log. What
+    /// happened at another DSP stays, whoever did it.
+    pub fn forget_audit(&self, dsp: &str, people: &[String]) -> Result<()> {
+        let people = serde_json::to_string(people)?;
+        self.platform.exec(
+            "DELETE FROM audit WHERE dsp_id=?1 OR (dsp_id IS NULL AND \
+             (actor_id IN (SELECT value FROM json_each(?2)) \
+             OR member_id IN (SELECT value FROM json_each(?2))))",
+            [dsp, people.as_str()],
+        )?;
+        Ok(())
+    }
+    /// The people the DSP's log names as removed from it: their accounts went then, and its
+    /// log is what still says they were its people.
+    pub fn removed_members(&self, dsp: &str) -> Result<Vec<String>> {
+        let removed: Vec<(String,)> = self.platform.query_as(
+            "SELECT DISTINCT json_extract(data,'$.ref.id') FROM audit WHERE dsp_id=? \
+             AND action='member.removed' AND json_extract(data,'$.ref.kind')='member'",
+            [dsp],
+        )?;
+        Ok(removed.into_iter().map(|(id,)| id).collect())
     }
     pub fn platform_owner(&self, user: &str) -> Result<bool> {
         Ok(self
@@ -331,8 +355,8 @@ const AREAS: &[(&str, &str)] = &[
     ("a.action LIKE 'account.%'", "'access'"),
     (
         "a.action IN ('dsp.created','dsp.removed','dsp.restored','dsp.suspended','dsp.resumed',\
-         'dsp.feature_enabled','dsp.feature_disabled','dsp.feature_hidden','dsp.feature_shown',\
-         'dsp.feature_beta','dsp.beta_tester_added','dsp.beta_tester_removed',\
+         'dsp.deleted','dsp.feature_enabled','dsp.feature_disabled','dsp.feature_hidden',\
+         'dsp.feature_shown','dsp.feature_beta','dsp.beta_tester_added','dsp.beta_tester_removed',\
          'dsp.ai_support_hidden','dsp.ai_support_shown')",
         "'dsps'",
     ),

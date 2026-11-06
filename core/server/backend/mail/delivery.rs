@@ -1,6 +1,6 @@
 use crate::{
     Error, Result, State,
-    db::{self, n, s},
+    db::{n, s},
     ensure,
     foundation::{config::Config, crypto},
 };
@@ -63,11 +63,16 @@ pub async fn mailer(state: Arc<State>, mut stop: tokio::sync::watch::Receiver<bo
                 again = false;
                 break;
             }
-            // Its DSP disabled since, it waits until it's enabled.
-            let id = s(&row, "id").to_owned();
-            match state.read(move |db| super::sendable(db, &id)).await {
-                Ok(true) => {}
-                Ok(false) => continue,
+            // Its DSP disabled since, it waits until it's enabled; deleted, it's gone.
+            let client = transport.as_ref().unwrap().clone();
+            let message = row.clone();
+            let delivered = match *client {
+                MailTransport::Capture => state.read(move |db| super::capture(db, &message)).await,
+                _ => send(&state, message, client).await,
+            };
+            let result = match delivered {
+                Ok(Some(result)) => result,
+                Ok(None) => continue,
                 Err(error) => {
                     again = false;
                     crate::foundation::observability::event(
@@ -77,16 +82,7 @@ pub async fn mailer(state: Arc<State>, mut stop: tokio::sync::watch::Receiver<bo
                     );
                     continue;
                 }
-            }
-            let config = state.config.clone();
-            let key = state.key.clone();
-            let message = row.clone();
-            let client = transport.as_ref().unwrap().clone();
-            let result =
-                tokio::task::spawn_blocking(move || deliver(&config, &key, &message, &client))
-                    .await;
-            let result =
-                result.unwrap_or_else(|_| Err(Error::new("email_delivery_task_failed", 500)));
+            };
             let error = result.err().map(|e| e.code);
             let id = s(&row, "id").to_owned();
             let attempts = n(&row, "attempts");
@@ -145,15 +141,27 @@ impl MailTransport {
         })
     }
 }
+/// Sends the message `row` by `transport`, unless it no longer goes: none, or what became of
+/// sending it. Development's captures are written by `capture`.
+async fn send(
+    state: &Arc<State>,
+    row: Value,
+    transport: Arc<MailTransport>,
+) -> Result<Option<Result<()>>> {
+    let id = s(&row, "id").to_owned();
+    if !state.read(move |db| super::sendable(db, &id)).await? {
+        return Ok(None);
+    }
+    let (config, key) = (state.config.clone(), state.key.clone());
+    let result =
+        tokio::task::spawn_blocking(move || deliver(&config, &key, &row, &transport)).await;
+    Ok(Some(result.unwrap_or_else(|_| {
+        Err(Error::new("email_delivery_task_failed", 500))
+    })))
+}
 fn deliver(config: &Config, key: &[u8], row: &Value, transport: &MailTransport) -> Result<()> {
     let value = crypto::decrypt(key, s(row, "id"), s(row, "encrypted_message"))?;
-    if let MailTransport::Capture = transport {
-        let directory = db::private_dir(&config.platform().join("development-mail"))?;
-        db::write_private(
-            &directory.join(format!("{}.json", s(row, "id"))),
-            &serde_json::to_vec(&value)?,
-        )?;
-    } else if let MailTransport::Cloudflare(client) = transport {
+    if let MailTransport::Cloudflare(client) = transport {
         ensure(
             s(&value, "environment") == config.environment && s(&value, "origin") == config.origin,
             "email_environment_mismatch",

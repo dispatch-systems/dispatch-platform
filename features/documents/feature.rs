@@ -16,7 +16,7 @@ use dispatch_core::{
         Kind, Migration, Migrations, OwnMigrations,
         migrations::Apply::{Code, Sql},
     },
-    manifest::{Audit, Feature, feature, optional, perm},
+    manifest::{Audit, Deleting, Feature, feature, optional, perm},
     tenancy::api::audit::AuditArea::Connections,
 };
 
@@ -103,6 +103,12 @@ pub const FEATURE: Feature = Feature {
         "Somewhere to keep a DSP's files, in folders, in its Google Drive.",
         shown,
     )],
+    // A deleted DSP's Google account no longer lists Dispatch.
+    deleting: Deleting {
+        revoke: Some(backend::connection::revoke),
+        forgotten: Some(backend::connection::forgotten),
+        ..Deleting::NONE
+    },
     ..feature("documents")
 };
 

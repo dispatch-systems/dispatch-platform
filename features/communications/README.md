@@ -352,7 +352,8 @@ decides ([Texts](#texts)).
 - **Removed:** a phone removed keeps its texts; its key works no more, and its next call is
   refused as `phones_removed`. The texts Dispatch queued that still wait on it fail as it's
   removed, with `phones_removed` as their error, filed as they fail; those waiting on a phone
-  offline fail as they expire ([Texts](#texts)).
+  offline fail as they expire ([Texts](#texts)). A phone calling an address no DSP has, as once its
+  DSP is deleted, is refused as `phones_removed` too, and unpairs.
 - **Their address:** `/api/communications/phone/…`, at the DSP's own address alone, never from a
   browser (a request with a cookie is refused) but for the app, while the DSP is active and
   Communications is on there (`phones_off` otherwise): pairing by the code, and the app, public;
@@ -524,7 +525,8 @@ in their own direct message with the app, and their answers come back together.
   given up, so sending picks up after a restart, from the pass every minute; a try that may have
   posted before the server stopped looks for its post in their direct message first
   (`im:history`, every page since), by the metadata each post carries, and keeps it rather than
-  send a second, even past the two hours.
+  send a second, even past the two hours. What it holds in memory
+  of a DSP's sending goes as the DSP is deleted (`deleting.forgotten`).
 - **The group** is listed among the conversations: two of its people's faces, its name and how
   many it went to, and the latest answer under its writer's first name, or the DSP's message. It
   waits while any conversation listed under it waits, by the longest wait, with a check that

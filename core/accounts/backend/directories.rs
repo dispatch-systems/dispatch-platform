@@ -159,3 +159,53 @@ impl Store {
         Ok(Some(moved))
     }
 }
+
+/// The accounts the platform's directory still holds of a DSP's people that belong to no other
+/// DSP: theirs alone. Platform owners stay.
+pub(crate) const ONLY_THERE: &str = "SELECT u.id FROM users u WHERE u.platform_owner=0 \
+    AND EXISTS (SELECT 1 FROM memberships m WHERE m.user_id=u.id AND m.dsp_id=?1) \
+    AND NOT EXISTS (SELECT 1 FROM memberships m WHERE m.user_id=u.id AND m.dsp_id<>?1)";
+
+impl Store {
+    /// The DSP's people who are no other DSP's: of `own`, those its own directory holds or
+    /// held, the ones the platform's directory holds of no other DSP's, as a person moved from
+    /// there into each DSP's they belonged to keeps one ID in each; and the accounts the
+    /// platform's holds of its people alone. Platform owners are never among them.
+    pub fn people_alone(&self, dsp: &str, own: &[String]) -> Result<Vec<String>> {
+        let people: Vec<(String,)> = self.platform.query_as(
+            &format!(
+                "SELECT value FROM json_each(?2) WHERE NOT EXISTS \
+                 (SELECT 1 FROM memberships m WHERE m.user_id=value AND m.dsp_id<>?1) \
+                 AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id=value AND u.platform_owner=1) \
+                 UNION {ONLY_THERE}"
+            ),
+            [dsp, serde_json::to_string(own)?.as_str()],
+        )?;
+        Ok(people.into_iter().map(|(id,)| id).collect())
+    }
+    /// Deletes what the platform's directory holds of a DSP being deleted: its roles,
+    /// memberships and invitations, the routes to its own invitations, and the accounts of its
+    /// people that belong to no other DSP, with their sign-ins and resets. An account another
+    /// DSP's rows still name stays, as the sender of its invitations or in its log, though it
+    /// belongs to no DSP now. What they did to their accounts goes before, with the DSP's log.
+    pub fn forget_legacy_people(&self, dsp: &str) -> Result<()> {
+        let people: Vec<(String,)> = self.platform.query_as(ONLY_THERE, [dsp])?;
+        for table in ["memberships", "invitations", "invitation_routes", "roles"] {
+            self.platform
+                .exec(&format!("DELETE FROM {table} WHERE dsp_id=?"), [dsp])?;
+        }
+        for (user,) in people {
+            for table in ["sessions", "resets"] {
+                self.platform
+                    .exec(&format!("DELETE FROM {table} WHERE user_id=?"), [&user])?;
+            }
+            self.platform.exec(
+                "DELETE FROM users WHERE id=?1 \
+                 AND NOT EXISTS (SELECT 1 FROM invitations WHERE created_by=?1) \
+                 AND NOT EXISTS (SELECT 1 FROM audit WHERE actor_id=?1)",
+                [&user],
+            )?;
+        }
+        Ok(())
+    }
+}

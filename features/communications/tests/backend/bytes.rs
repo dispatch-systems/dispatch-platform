@@ -485,7 +485,12 @@ async fn what_no_file_keeps_goes_from_the_object_store_once_a_day_and_only_the_d
     fake.put(&theirs, b"door");
     let dock = crypto::sha(b"dock");
     fake.put(&format!("dsps/{dsp}/phones/{dock}"), b"dock");
-    assert_eq!(read(&state, &other, &dock).await, None, "not the other's");
+    // A DSP that isn't there is refused before anything's read.
+    let theirs_read = BYTES.read(&state, &other, &dock).await;
+    assert!(
+        matches!(&theirs_read, Err(error) if error.is(dispatch_core::Code::DspNotFound)),
+        "not the other's"
+    );
     // The picture never sent is let go of: its cached copy with upkeep, then its object.
     let at = dsp.clone();
     state
@@ -535,4 +540,18 @@ fn the_cache_lets_go_of_what_was_read_longest_ago_and_never_of_a_dsps_data() {
     assert!(bound(root.path(), &["phones", "communications"], 25).is_empty());
     assert!(!oldest.exists() && !older.exists());
     assert!(newer.exists() && newest.exists() && data.exists());
+}
+
+#[tokio::test]
+async fn a_disabled_dsps_bytes_start_no_upload() {
+    let fake = Fake::start().await;
+    let (_root, state, dsp, sha256, _) = added(Some(fake.store()), b"door");
+    let at = dsp.clone();
+    state
+        .run(move |db| testing::set_dsp_status(db, &at, "suspended"))
+        .await
+        .unwrap();
+    assert!(copied(&state, &dsp).await.is_empty());
+    let key = format!("dsps/{dsp}/phones/{sha256}");
+    assert_eq!(fake.asked(Method::PUT, &key), 0);
 }

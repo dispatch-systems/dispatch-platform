@@ -78,3 +78,29 @@ fn native_verification_binds_the_configured_account_and_preserves_its_fixture_ur
     assert_eq!(db.find_dsp(&dsp)?.name, "Configured verification logistics");
     Ok(())
 }
+
+#[tokio::test]
+async fn a_browser_starting_as_its_dsp_is_disabled_and_deleted_makes_nothing_of_its_folder() {
+    crate::testing::install(&[], &[]);
+    let (_root, db) = crate::testing::seeded();
+    let (dsp,): (String,) = db
+        .platform
+        .one_as("SELECT id FROM dsps WHERE name='Northline Logistics'", [])
+        .unwrap()
+        .unwrap();
+    let owner = crate::testing::platform_owner(&db);
+    let state = crate::State::new(db.config.clone()).unwrap();
+    let paycom = Provider::new("paycom");
+    let lease = |dsp: &str| {
+        let at = dsp.to_owned();
+        state.read(move |db| db.browser_lease(&at, paycom).map(drop))
+    };
+    // A browser's start found the DSP active, and takes its account's lease only once the DSP
+    // is disabled, and again once it's deleted.
+    crate::testing::set_dsp_status(&db, &dsp, "suspended").unwrap();
+    assert_eq!(lease(&dsp).await.unwrap_err().code, "dsp_unavailable");
+    db.delete_dsp(&dsp, "Northline Logistics", &owner).unwrap();
+    crate::tenancy::deletion::finish(&state).await;
+    assert_eq!(lease(&dsp).await.unwrap_err().code, "dsp_not_found");
+    assert!(!db.dsp_folder(&dsp).unwrap().exists());
+}

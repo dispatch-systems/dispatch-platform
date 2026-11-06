@@ -35,6 +35,7 @@ const AREAS: &[(&str, &str, &str)] = &[
     ("dsp.restored", "dsps", "dsps"),
     ("dsp.suspended", "dsps", "dsps"),
     ("dsp.resumed", "dsps", "dsps"),
+    ("dsp.deleted", "dsps", "dsps"),
     ("dsp.feature_enabled", "dsps", "dsps"),
     ("dsp.feature_disabled", "dsps", "dsps"),
     ("dsp.ai_support_hidden", "dsps", "dsps"),
