@@ -2,8 +2,9 @@
 //! without the DSP, and its first upkeep finishes what the delete left. One stopped before
 //! leaves the DSP disabled, to delete again. A delete leaves what another DSP holds of the
 //! people they shared, or who once belonged there, and takes what the people it removed did to
-//! their accounts; and takes the mail development captured for the DSP, with none captured
-//! after, as no capture outlives its message.
+//! their accounts; and takes the DSP's mail and what development captured of it, mail of its
+//! people's from before mail named its DSP too, with none captured after, as no capture outlives
+//! its message.
 use super::*;
 use crate::{
     accounts::{Auth, UserRow, api::types::PublicUser},
@@ -312,24 +313,61 @@ async fn a_deleted_dsps_captured_mail_goes_and_none_is_after_nor_outlives_its_me
         dsp_named(&db, "Summit Delivery"),
     );
     let owner = testing::platform_owner(&db);
+    // Accounts the platform's directory holds: one of Northline's alone, one of both DSPs'.
+    let platform = |sql: &str, values: &[&str]| {
+        db.platform
+            .exec(sql, rusqlite::params_from_iter(values))
+            .unwrap();
+    };
+    for (person, dsps) in [
+        ("usr_legacy", vec![&north]),
+        ("usr_shared", vec![&north, &summit]),
+    ] {
+        platform(
+            "INSERT INTO users(id,email,first_name,last_name,password,created_at) \
+             VALUES (?1,?1||'@dispatch.test','A','B','x','')",
+            &[person],
+        );
+        for dsp in dsps {
+            platform(
+                "INSERT INTO memberships(id,user_id,dsp_id,role) VALUES (?1||?2,?1,?2,'member')",
+                &[person, dsp],
+            );
+        }
+    }
     // Mail picked to send: Northline's, Summit's and the platform's own captured, and another
-    // of Northline's still on its way as Northline is deleted; and one of Northline's sent over
-    // a month ago, captured by an earlier release, named by its ID alone as now.
+    // of Northline's still on its way as Northline is deleted; one of Northline's sent over a
+    // month ago, captured by an earlier release, named by its ID alone as now; and resets sent
+    // before mail named its DSP, to the platform owner and to each account.
     let mail = [
-        ("mail_north", Some(&north), now()),
-        ("mail_late", Some(&north), now()),
-        ("mail_summit", Some(&summit), now()),
-        ("mail_platform", None, now()),
-        ("mail_north_sent", Some(&north), now() - 31 * 86_400_000),
+        ("mail_north", Some(&north), None, now()),
+        ("mail_late", Some(&north), None, now()),
+        ("mail_summit", Some(&summit), None, now()),
+        ("mail_platform", None, Some(owner.as_str()), now()),
+        (
+            "mail_north_sent",
+            Some(&north),
+            None,
+            now() - 31 * 86_400_000,
+        ),
+        ("mail_legacy", None, Some("usr_legacy"), now()),
+        ("mail_shared", None, Some("usr_shared"), now()),
     ];
     let mut picked = Vec::new();
-    for (id, dsp, created) in mail {
+    for (id, dsp, user, created) in mail {
         let message = crypto::encrypt(&db.key, id, &json!({"to": "member@dispatch.test"}));
         db.platform
             .exec(
-                "INSERT INTO outbox(id,encrypted_message,available_at,created_at,dsp_id) \
-                 VALUES (?1,?2,?3,?3,?4)",
-                params![id, message.unwrap(), created, dsp],
+                "INSERT INTO outbox(id,encrypted_message,available_at,created_at,dsp_id,user_id,\
+                 kind) VALUES (?1,?2,?3,?3,?4,?5,?6)",
+                params![
+                    id,
+                    message.unwrap(),
+                    created,
+                    dsp,
+                    user,
+                    user.map(|_| "reset")
+                ],
             )
             .unwrap();
         let row = db.platform.one(
@@ -348,10 +386,10 @@ async fn a_deleted_dsps_captured_mail_goes_and_none_is_after_nor_outlives_its_me
             mail::capture(&db, row).unwrap().unwrap().unwrap();
         }
     }
-    // The month-old message was sent, and the outbox lets it go before Northline is deleted.
+    // Each was sent, and the outbox lets the month-old one go before Northline is deleted.
     db.platform
         .exec(
-            "UPDATE outbox SET status='sent' WHERE id='mail_north_sent'",
+            "UPDATE outbox SET status='sent' WHERE id='mail_north_sent' OR user_id IS NOT NULL",
             [],
         )
         .unwrap();
@@ -368,5 +406,8 @@ async fn a_deleted_dsps_captured_mail_goes_and_none_is_after_nor_outlives_its_me
         .map(|file| file.unwrap().file_name().to_string_lossy().into_owned())
         .collect();
     captured.sort();
-    assert_eq!(captured, ["mail_platform.json", "mail_summit.json"]);
+    assert_eq!(
+        captured,
+        ["mail_platform.json", "mail_shared.json", "mail_summit.json"]
+    );
 }

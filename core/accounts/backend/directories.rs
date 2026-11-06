@@ -162,7 +162,7 @@ impl Store {
 
 /// The accounts the platform's directory still holds of a DSP's people that belong to no other
 /// DSP: theirs alone. Platform owners stay.
-const ONLY_THERE: &str = "SELECT u.id FROM users u WHERE u.platform_owner=0 \
+pub(crate) const ONLY_THERE: &str = "SELECT u.id FROM users u WHERE u.platform_owner=0 \
     AND EXISTS (SELECT 1 FROM memberships m WHERE m.user_id=u.id AND m.dsp_id=?1) \
     AND NOT EXISTS (SELECT 1 FROM memberships m WHERE m.user_id=u.id AND m.dsp_id<>?1)";
 

@@ -1,7 +1,7 @@
 pub use crate::platform_owner::api::types::TransportHealth;
 use crate::{
     Result, State,
-    accounts::api::types::MailMessage,
+    accounts::{api::types::MailMessage, directories::ONLY_THERE},
     db::{self, Store, n, s},
     ensure,
     foundation::{config::Config, crypto},
@@ -81,13 +81,17 @@ pub fn discard_stale(db: &Store) -> Result<()> {
     forget_captured(db)
 }
 
-/// Deletes the mail of a DSP being deleted, sent or not: what names it, and its invitations'.
-/// Its invitations' routes are still there to find them by. What development captured of it
-/// goes once its rows have (`forget_captured`).
+/// Deletes the mail of a DSP being deleted, sent or not: what names it, its invitations', and
+/// what was written, before mail named its DSP, to the accounts the platform's directory holds
+/// of its people alone. Its invitations' routes and its memberships there are still there to
+/// find them by. What development captured of it goes once its rows have (`forget_captured`).
 pub fn forget_dsp(db: &Store, dsp: &str) -> Result<()> {
     db.platform.exec(
-        "DELETE FROM outbox WHERE dsp_id=?1 OR \
-         invitation_hash IN (SELECT hash FROM invitation_routes WHERE dsp_id=?1)",
+        &format!(
+            "DELETE FROM outbox WHERE dsp_id=?1 OR \
+             invitation_hash IN (SELECT hash FROM invitation_routes WHERE dsp_id=?1) OR \
+             (dsp_id IS NULL AND user_id IN ({ONLY_THERE}))"
+        ),
         [dsp],
     )?;
     Ok(())
