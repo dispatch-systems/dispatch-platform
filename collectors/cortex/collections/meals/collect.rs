@@ -82,14 +82,9 @@ struct Punch {
     start: i64,
     end: Option<i64>,
 }
-/// How a day's meals are read. The default was measured against the alternatives on real
-/// days of 36 to 51 routes (`measure_meal_method`): one tab of the hook waiting for twelve
-/// routes at once, its list read from the response the application fetched, read a
-/// finished 51-route day in 8.8 s instead of 26 to 42 s for three tabs waiting for one
-/// route each, with half the CPU and memory and the same records. More tabs read no
-/// faster. Asking the application's own API action for sixteen routes at once instead of
-/// moving it to twelve read a finished 41-route day in 5.7 s with 6.1 CPU-s rather than
-/// 6.7 s with 9.7, three runs each, with the same records route for route.
+/// How a day's meals are read. The default asks the application's API action in one
+/// tab without rendering, falling back to in-app moves. Compare the alternatives with
+/// the `measure_meal_method` operator probe.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct MealMethod {

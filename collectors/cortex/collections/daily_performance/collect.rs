@@ -17,9 +17,8 @@ use dispatch_core::{Error, Result, collection::browser::Run, db::now};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-/// Reads at once: every dataset of a run of days together. Cortex answered all 22 at once
-/// without throttling, in about a fifth of the time six at once took. Each reply is held
-/// until all have answered; the largest day seen was 2 MB, a week's range seven times that.
+/// Bounded dataset reads across runs of days. Every sibling read drains before its
+/// reply is released. Inspect dataset requests with the `probe_scorecard_api` operator probe.
 const LANES: usize = 22;
 
 /// The most days one range reads: a week, as read side by side with each day's own reads.

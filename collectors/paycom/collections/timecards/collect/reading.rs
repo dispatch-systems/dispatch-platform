@@ -1,7 +1,34 @@
-//! Reading the roster and each employee's timecard: in the browser tab, rendered; over HTTP,
+//! Reading each employee's timecard: in the browser tab, rendered; over HTTP,
 //! from the response, once `proof` allows; and the lanes that work through the roster.
-use super::*;
-use crate::timecards::projection;
+use super::{
+    PAGE_RETRY, UNSETTLED_PAGE, page_deadline,
+    proof::{Direct, Proof, prove},
+};
+use crate::{
+    codes,
+    connection::SEARCH,
+    timecards::{Checkpoint, extract, projection},
+};
+use dispatch_core::{
+    Error, Result,
+    collection::{
+        browser::{
+            http::{Http, Refusal},
+            page::Page,
+        },
+        metrics::Recorder,
+    },
+    db::s,
+    ensure,
+};
+use serde_json::{Value, json};
+use std::{
+    collections::BTreeMap,
+    future::Future,
+    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+    time::Duration,
+};
+use tokio::time::{Instant, sleep};
 
 pub(super) struct Queue<'a, F> {
     pub(super) employees: &'a [Value],
@@ -99,31 +126,6 @@ pub(super) enum Reader<'r> {
     Proving(&'r mut Page, &'r Http, &'r Proof),
     /// Over HTTP only, after the browser has closed.
     Http(&'r Http),
-}
-
-/// The roster request the search page made, sent again with the selected period.
-pub(super) async fn read_roster(
-    http: &Http,
-    url: &str,
-    headers: &serde_json::Map<String, Value>,
-    body: String,
-) -> Result<Value> {
-    let text = http
-        .post(url, headers, body, Duration::from_secs(55))
-        .await?;
-    let value: Value =
-        serde_json::from_str(&text).map_err(|_| Error::new("roster_not_complete", 409))?;
-    ensure(value.is_object(), "roster_not_complete", 409)?;
-    Ok(value)
-}
-
-/// Why a job reads through the browser after all. Fixed labels only.
-pub(super) fn fallback(stage: &str, code: &str) {
-    dispatch_core::foundation::observability::event(
-        "warn",
-        "paycom.http_fallback",
-        json!({"stage":stage,"error":code}),
-    );
 }
 
 /// One timecard read over HTTP and extracted here. With an `ordinal` it supplies
@@ -421,7 +423,7 @@ pub(super) async fn read_once(
                     if value["parsed"] == true && value["present"] == true && quiet {
                         // Validate the actual data, then require it to remain stable
                         // across polls. Images/fonts do not hold up a valid timecard.
-                        match extract(page, employee, period, &source).await {
+                        match super::extract(page, employee, period, &source).await {
                             Ok(records) => {
                                 if let Some((previous, since)) = &candidate
                                     && *previous == records && since.elapsed() >= Duration::from_millis(750) {
@@ -450,5 +452,5 @@ pub(super) async fn read_once(
         sleep(Duration::from_millis(200)).await;
     }
     metrics.page_stage(ordinal, "extraction");
-    extract(page, employee, period, &source).await
+    super::extract(page, employee, period, &source).await
 }
