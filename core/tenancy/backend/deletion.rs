@@ -102,6 +102,17 @@ impl Store {
         })
     }
     /// The DSPs whose rows are gone and whose delete isn't finished.
+    /// When the delete of `dsp` began: none once it's finished.
+    fn deletion_started(&self, dsp: &str) -> Result<Option<chrono::DateTime<chrono::Utc>>> {
+        let started: Vec<(String,)> = self
+            .platform
+            .query_as("SELECT started_at FROM dsp_deletions WHERE dsp_id=?", [dsp])?;
+        Ok(started.first().and_then(|(at,)| {
+            chrono::DateTime::parse_from_rfc3339(at)
+                .ok()
+                .map(|at| at.with_timezone(&chrono::Utc))
+        }))
+    }
     fn deletions(&self) -> Result<Vec<String>> {
         let deleting: Vec<(String,)> = self
             .platform
@@ -147,7 +158,6 @@ where
         })
         .await?;
     finish(state).await;
-    forget(state, dsp).await;
     Ok(())
 }
 
@@ -160,9 +170,10 @@ pub async fn revoke(state: &Arc<State>, dsp: &str) {
 }
 
 /// Finishes deleting each DSP whose rows are gone, one at a time: its jobs and what its live
-/// readers recorded, then the mail development captured for it and its folder, then the note
-/// that it was still to do. What fails is
-/// logged, and the next pass tries it again.
+/// readers recorded, then the mail development captured for it and its folder, then what the
+/// server holds of it in memory, then its objects in the object store, then the note that it was
+/// still to do. Each step is done again each pass until the note goes, a delete cut short
+/// included; what fails is logged, and the next pass tries it again.
 pub async fn finish(state: &Arc<State>) {
     static FINISHING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
     let _finishing = FINISHING.lock().await;
@@ -182,8 +193,6 @@ async fn finish_one(state: &Arc<State>, dsp: &str) -> Result<()> {
     state
         .run_bookkeeping(move |db| db.forget_dsp_jobs(&at))
         .await?;
-    // The DSP's objects in the object store go here, once the platform keeps them there
-    // (`Objects::delete_dsp`): this step is tried again until every one of them has gone.
     let at = dsp.to_owned();
     let aside = state
         .run_bookkeeping(move |db| {
@@ -194,6 +203,19 @@ async fn finish_one(state: &Arc<State>, dsp: &str) -> Result<()> {
     tokio::task::spawn_blocking(move || remove(&aside))
         .await
         .map_err(|_| Error::new("operation_failed", 500))??;
+    forget(state, dsp).await;
+    if let Some(objects) = &state.objects {
+        objects.delete_dsp(dsp).await?;
+        // An upload begun before the delete may yet end: its objects go again each pass until
+        // the longest an upload takes has gone by.
+        let at = dsp.to_owned();
+        let started = state.read(move |db| db.deletion_started(&at)).await?;
+        let uploading = chrono::Duration::from_std(db::objects::UPLOAD)
+            .map_err(|_| Error::new("operation_failed", 500))?;
+        if started.is_some_and(|started| chrono::Utc::now() < started + uploading) {
+            return Ok(());
+        }
+    }
     let at = dsp.to_owned();
     state
         .run_bookkeeping(move |db| {

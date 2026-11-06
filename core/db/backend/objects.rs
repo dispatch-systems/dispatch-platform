@@ -31,7 +31,7 @@ const SIGNED: &str = "host;x-amz-content-sha256;x-amz-date";
 /// How many bytes of a file are read at a time as it's sent.
 const CHUNK: usize = 64 * 1024;
 /// How long an upload may take, as long as the largest file takes on a slow link.
-const UPLOAD: Duration = Duration::from_secs(10 * 60);
+pub const UPLOAD: Duration = Duration::from_secs(10 * 60);
 /// How long R2 may go without answering, and an upload without sending any of its bytes.
 const STALLED: Duration = Duration::from_secs(30);
 

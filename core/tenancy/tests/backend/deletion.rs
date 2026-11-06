@@ -411,3 +411,57 @@ async fn a_deleted_dsps_captured_mail_goes_and_none_is_after_nor_outlives_its_me
         ["mail_platform.json", "mail_shared.json", "mail_summit.json"]
     );
 }
+
+#[tokio::test]
+async fn a_deleted_dsps_objects_go_none_an_upload_begun_before_leaves_nor_another_dsps() {
+    testing::install(&[], &[]);
+    let fake = crate::testing::objects::Fake::start().await;
+    let (_root, db) = testing::seeded();
+    let north = dsp_named(&db, "Northline Logistics");
+    let summit = dsp_named(&db, "Summit Delivery");
+    let owner = testing::platform_owner(&db);
+    testing::set_dsp_status(&db, &north, "suspended").unwrap();
+    let sha = "a".repeat(64);
+    let kept = format!("dsps/{summit}/phones/{sha}");
+    fake.put(&format!("dsps/{north}/phones/{sha}"), b"north");
+    fake.put(&kept, b"summit");
+    db.delete_dsp(&north, "Northline Logistics", &owner)
+        .unwrap();
+    let mut config = db.config.clone();
+    config.objects = Some(fake.store());
+    drop(db);
+    let state = crate::State::new(config).unwrap();
+    let pending = || {
+        let state = state.clone();
+        async move {
+            state
+                .read(|db| db.platform.count("SELECT count(*) FROM dsp_deletions", []))
+                .await
+                .unwrap()
+        }
+    };
+
+    finish(&state).await;
+    assert_eq!(fake.keys(), std::slice::from_ref(&kept));
+    // An upload begun before the delete ends after it: the delete waits for the longest an
+    // upload takes, letting go of what came meanwhile.
+    fake.put(&format!("dsps/{north}/communications/{sha}"), b"late");
+    finish(&state).await;
+    assert_eq!((fake.keys(), pending().await), (vec![kept.clone()], 1));
+    let (at, long_ago) = (
+        north.clone(),
+        chrono::Utc::now() - chrono::Duration::minutes(11),
+    );
+    state
+        .run(move |db| {
+            db.platform.exec(
+                "UPDATE dsp_deletions SET started_at=? WHERE dsp_id=?",
+                [long_ago.to_rfc3339(), at],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    finish(&state).await;
+    assert_eq!((fake.keys(), pending().await), (vec![kept], 0));
+}

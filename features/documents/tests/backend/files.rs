@@ -8,7 +8,7 @@ use crate::backend::{
     support::{ACCOUNT, connect, disabling, platform},
     tree::tests::item,
 };
-use dispatch_core::Code;
+use dispatch_core::{Code, testing};
 
 #[tokio::test]
 async fn a_dsp_disabled_while_its_token_is_renewed_makes_nothing_in_its_drive() {
@@ -74,4 +74,29 @@ fn a_deleted_dsps_token_and_pictures_are_forgotten_and_none_kept_after_and_no_ot
         shown("dsp_other", "file").unwrap().link,
         "fixture:dsp_other"
     );
+}
+
+#[tokio::test]
+async fn a_delete_whose_request_went_still_forgets_the_dsps_token() {
+    testing::install(&[], &[&crate::FEATURE]);
+    let (_root, db) = testing::seeded();
+    let (dsp,): (String,) = db
+        .platform
+        .query_as("SELECT id FROM dsps WHERE name='Northline Logistics'", [])
+        .unwrap()
+        .remove(0);
+    let owner = testing::platform_owner(&db);
+    testing::set_dsp_status(&db, &dsp, "suspended").unwrap();
+    keep(
+        &dsp,
+        "token:held",
+        Instant::now() + Duration::from_secs(3600),
+    );
+    db.delete_dsp(&dsp, "Northline Logistics", &owner).unwrap();
+    let config = db.config.clone();
+    drop(db);
+    // The request that deleted it went before finishing it; upkeep finishes it.
+    let state = dispatch_core::State::new(config).unwrap();
+    dispatch_core::tenancy::deletion::finish(&state).await;
+    assert!(kept(&dsp).is_none());
 }
