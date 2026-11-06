@@ -2,27 +2,7 @@
 //! Paycom, "Antonio Reyes" in Amazon's routes, sometimes with a middle name, a suffix or
 //! without accents. Comparisons ignore case, accents, punctuation and order, never spelling.
 
-/// A letter without its accent, for the Latin letters names use.
-fn plain(c: char) -> char {
-    match c {
-        'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' | 'ā' | 'ă' | 'ą' => 'a',
-        'ç' | 'ć' | 'č' => 'c',
-        'ď' | 'đ' => 'd',
-        'è' | 'é' | 'ê' | 'ë' | 'ē' | 'ė' | 'ę' | 'ě' => 'e',
-        'ğ' => 'g',
-        'ì' | 'í' | 'î' | 'ï' | 'ī' | 'į' | 'ı' => 'i',
-        'ł' | 'ľ' => 'l',
-        'ñ' | 'ń' | 'ň' => 'n',
-        'ò' | 'ó' | 'ô' | 'õ' | 'ö' | 'ø' | 'ō' | 'ő' => 'o',
-        'ř' => 'r',
-        'ś' | 'š' | 'ş' => 's',
-        'ť' | 'ţ' => 't',
-        'ù' | 'ú' | 'û' | 'ü' | 'ū' | 'ů' | 'ű' => 'u',
-        'ý' | 'ÿ' => 'y',
-        'ź' | 'ż' | 'ž' => 'z',
-        other => other,
-    }
-}
+use dispatch_core::foundation::names::fold_latin;
 
 /// A name as it is said, first name first: "Last, First" put in order.
 fn in_order(name: &str) -> std::borrow::Cow<'_, str> {
@@ -38,7 +18,7 @@ pub fn name_key(name: &str) -> String {
     in_order(name)
         .to_lowercase()
         .chars()
-        .map(plain)
+        .map(fold_latin)
         .filter(|c| c.is_alphanumeric())
         .collect()
 }

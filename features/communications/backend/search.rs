@@ -5,6 +5,8 @@
 //! and the closest come first, a name taking the words in the order typed before one that
 //! doesn't. Case and accents don't count.
 
+use dispatch_core::foundation::names::fold_latin;
+
 /// How like a word typed a word of a name must be, and a name the words typed, to be found.
 const LIKE: f64 = 0.5;
 /// How much more a name counts when its words come in the order typed.
@@ -114,24 +116,7 @@ fn words(text: &str) -> Vec<(usize, Vec<char>)> {
 /// A letter in lowercase, without its accent.
 pub(crate) fn plain(letter: char) -> char {
     let lower = letter.to_lowercase().next().unwrap_or(letter);
-    match lower {
-        'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' | 'ā' | 'ă' | 'ą' => 'a',
-        'ç' | 'ć' | 'č' => 'c',
-        'ď' | 'đ' => 'd',
-        'è' | 'é' | 'ê' | 'ë' | 'ē' | 'ė' | 'ę' | 'ě' => 'e',
-        'ğ' => 'g',
-        'ì' | 'í' | 'î' | 'ï' | 'ī' | 'į' | 'ı' => 'i',
-        'ł' | 'ľ' => 'l',
-        'ñ' | 'ń' | 'ň' => 'n',
-        'ò' | 'ó' | 'ô' | 'õ' | 'ö' | 'ø' | 'ō' | 'ő' => 'o',
-        'ř' => 'r',
-        'ś' | 'š' | 'ş' => 's',
-        'ť' | 'ţ' => 't',
-        'ù' | 'ú' | 'û' | 'ü' | 'ū' | 'ů' | 'ű' => 'u',
-        'ý' | 'ÿ' => 'y',
-        'ź' | 'ż' | 'ž' => 'z',
-        other => other,
-    }
+    fold_latin(lower)
 }
 
 /// The characters of `name` at `marked`, as runs of its UTF-16 code units: start and end.
