@@ -3,33 +3,31 @@
 mod cdp;
 mod loading;
 mod native;
+mod profile;
 mod projection;
+mod protocol;
 mod sandbox;
 mod worker;
 pub use projection::VerificationAuthority;
 
 use super::egress::Egress;
 use crate::{Error, Result, db, ensure, foundation::crypto};
-use fs2::FileExt;
-use serde::{Deserialize, Serialize};
+use protocol::{COMMAND_BYTES, RESPONSE_BYTES, WireCommand, frame, read_frame};
 use serde_json::{Value, json};
 use std::{
-    fs::{self, File, OpenOptions},
-    os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt},
-    path::{Component, Path, PathBuf},
-    process::Stdio,
+    fs,
+    os::unix::fs::DirBuilderExt,
+    path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
 };
 use tokio::{
-    io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
-    process::{Child, Command},
+    io::{AsyncWriteExt, BufReader},
+    process::Child,
     sync::{Semaphore, mpsc, oneshot, watch},
     time::{Instant, timeout, timeout_at},
 };
 
-const COMMAND_BYTES: u64 = 64 * 1024;
-const RESPONSE_BYTES: u64 = cdp::MAX_FRAME + 1024;
 const QUEUE_SIZE: usize = 8;
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(15);
 const START_TIMEOUT: Duration = Duration::from_secs(30);
@@ -127,32 +125,9 @@ impl Runtime {
             .clone()
             .try_acquire_owned()
             .map_err(|_| Error::new("browser_capacity_busy", 429))?;
-        let lease = profile_lease(profile)?;
-        scrub_reported(profile);
-        // Credentials belong to the DSP vault; password-manager chrome must not
-        // cover native PIN entry or persist another copy in the browser profile.
-        let defaults = db::private_dir(&profile.join("Default"))?;
-        let preferences = defaults.join("Preferences");
-        db::private_file(&preferences, false)?;
-        let mut settings: Value = if preferences.exists() {
-            ensure(
-                fs::metadata(&preferences)?.len() <= 4 * 1024 * 1024,
-                "browser_profile_invalid",
-                409,
-            )?;
-            serde_json::from_slice(&fs::read(&preferences)?)?
-        } else {
-            json!({})
-        };
-        ensure(
-            settings.is_object()
-                && (settings["profile"].is_null() || settings["profile"].is_object()),
-            "browser_profile_invalid",
-            409,
-        )?;
-        settings["credentials_enable_service"] = json!(false);
-        settings["profile"]["password_manager_enabled"] = json!(false);
-        db::write_private(&preferences, &serde_json::to_vec(&settings)?)?;
+        let lease = profile::lease(profile)?;
+        profile::scrub_reported(profile);
+        profile::prepare(profile)?;
         let run = RunDirectory::create(&self.runs)?;
         let egress = Egress::start_with_policy(&run.0, policy)?;
         let mut child = sandbox::launch(self, &run.0, profile, mode)?;
@@ -180,7 +155,7 @@ impl Runtime {
             // Release leases only after reaping the namespace supervisor, and after the
             // pages it opened left nothing behind.
             drop(child);
-            scrub_reported(&traced);
+            profile::scrub_reported(&traced);
             drop(egress);
             drop(run);
             drop(lease);
@@ -205,180 +180,6 @@ impl Runtime {
             }
         }
     }
-}
-
-/// What a browser keeps of the pages it opened: its caches, history, sessions, icons,
-/// page storage, and the stores its shopping and metrics features fill from what pages
-/// show. Everything a collection reads goes into a database, so none of it may stay in
-/// a profile: it is removed before every start and after every exit, leaving only what
-/// signing in needs (cookies, local storage, preferences).
-const PAGE_TRACES: &[&str] = &[
-    "Default/Cache",
-    "Default/Code Cache",
-    "Default/GPUCache",
-    "Default/DawnGraphiteCache",
-    "Default/DawnWebGPUCache",
-    "Default/History",
-    "Default/History-journal",
-    "Default/Visited Links",
-    "Default/Top Sites",
-    "Default/Top Sites-journal",
-    "Default/Favicons",
-    "Default/Favicons-journal",
-    "Default/Shortcuts",
-    "Default/Shortcuts-journal",
-    "Default/Network Action Predictor",
-    "Default/Network Action Predictor-journal",
-    "Default/Sessions",
-    "Default/Session Storage",
-    "Default/Service Worker",
-    "Default/blob_storage",
-    "Default/Shared Dictionary",
-    "Default/SharedStorage",
-    "Default/SharedStorage-shm",
-    "Default/SharedStorage-wal",
-    "Default/Reporting and NEL",
-    "Default/Reporting and NEL-journal",
-    "Default/BrowsingTopicsSiteData",
-    "Default/BrowsingTopicsSiteData-journal",
-    "Default/BrowsingTopicsState",
-    "Default/Site Characteristics Database",
-    "Default/optimization_guide_hint_cache_store",
-    "Default/parcel_tracking_db",
-    "Default/chrome_cart_db",
-    "Default/commerce_subscription_db",
-    "Default/discount_infos_db",
-    "Default/discounts_db",
-    "Default/DIPS",
-    "Default/DIPS-shm",
-    "Default/DIPS-wal",
-    "Default/DIPS-journal",
-    "Default/Web Data",
-    "Default/Web Data-journal",
-    "Default/Account Web Data",
-    "Default/Account Web Data-journal",
-    "Default/Segmentation Platform",
-    "Default/shared_proto_db",
-    "segmentation_platform",
-    "GPUPersistentCache",
-    "BrowserMetrics",
-    "BrowserMetrics-spare.pma",
-    "CrashpadMetrics-active.pma",
-    "config/browser-os/Crash Reports",
-];
-/// Removes every page trace from `profile`. Runs only while this process holds the
-/// profile's lease, so no browser is writing to it. A trace that cannot be removed does
-/// not keep the rest: every entry is tried, and the first failure is returned.
-pub(crate) fn scrub(profile: &Path) -> Result<()> {
-    let mut first = None;
-    for entry in PAGE_TRACES {
-        let result = remove_trace(profile, Path::new(entry));
-        match result {
-            Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
-                first.get_or_insert(error);
-            }
-            _ => (),
-        }
-    }
-    first.map_or(Ok(()), |error| Err(error.into()))
-}
-/// Refuse to traverse a link (or a file standing in for a directory) anywhere
-/// before the trace itself. The final component may be a link: unlinking that
-/// component removes the profile entry without touching its target.
-fn remove_trace(profile: &Path, entry: &Path) -> std::io::Result<()> {
-    let mut components = Vec::new();
-    for component in entry.components() {
-        match component {
-            Component::Normal(name) => components.push(name),
-            _ => {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "browser trace path is not relative",
-                ));
-            }
-        }
-    }
-    let Some((final_name, ancestors)) = components.split_last() else {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "browser trace path is empty",
-        ));
-    };
-    let mut path = profile.to_path_buf();
-    for component in ancestors {
-        let metadata = match fs::symlink_metadata(&path) {
-            Ok(metadata) => metadata,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-            Err(error) => return Err(error),
-        };
-        if metadata.file_type().is_symlink() || !metadata.is_dir() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::PermissionDenied,
-                "browser trace ancestor is not a directory",
-            ));
-        }
-        path.push(component);
-    }
-    let metadata = match fs::symlink_metadata(&path) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(error),
-    };
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::PermissionDenied,
-            "browser trace parent is not a directory",
-        ));
-    }
-    path.push(final_name);
-    match fs::symlink_metadata(&path) {
-        Ok(metadata) if metadata.file_type().is_symlink() => fs::remove_file(path),
-        Ok(metadata) if metadata.is_dir() => fs::remove_dir_all(path),
-        Ok(_) => fs::remove_file(path),
-        Err(error) => Err(error),
-    }
-}
-/// A scrub that failed is reported, never fatal: the browser still starts or stops, and
-/// the next start or exit tries again.
-fn scrub_reported(profile: &Path) {
-    if let Err(error) = scrub(profile) {
-        crate::foundation::observability::event(
-            "error",
-            "browser.scrub_failed",
-            serde_json::json!({"error":error.code}),
-        );
-    }
-}
-
-fn profile_lease(profile: &Path) -> Result<File> {
-    db::private_dir(profile)?;
-    let parent = profile
-        .parent()
-        .ok_or_else(|| Error::new("unsafe_storage_path", 500))?;
-    db::private_dir(parent)?;
-    let name = profile
-        .file_name()
-        .and_then(|s| s.to_str())
-        .ok_or_else(|| Error::new("unsafe_storage_path", 500))?;
-    let path = parent.join(format!(".{name}.browseros.lock"));
-    db::private_file(&path, true)?;
-    let file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .custom_flags(libc::O_NOFOLLOW)
-        .open(&path)?;
-    let stat = file.metadata()?;
-    ensure(
-        stat.is_file()
-            && stat.nlink() == 1
-            && stat.uid() == unsafe { libc::geteuid() }
-            && stat.mode() & 0o077 == 0,
-        "unsafe_storage_file",
-        500,
-    )?;
-    file.try_lock_exclusive()
-        .map_err(|_| Error::new("browser_profile_busy", 409))?;
-    Ok(file)
 }
 
 struct RunDirectory(PathBuf);
@@ -528,53 +329,6 @@ impl Session {
     }
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
-enum WireCommand {
-    Loading {
-        session: String,
-        loader: String,
-    },
-    Navigation {
-        session: String,
-        previous: String,
-    },
-    Event {
-        session: String,
-    },
-    NativeMove {
-        x: i32,
-        y: i32,
-    },
-    NativeClick {
-        x: i32,
-        y: i32,
-    },
-    NativeType {
-        text: String,
-    },
-    Cdp {
-        method: String,
-        params: Value,
-        session: Option<String>,
-    },
-    Close,
-}
-fn frame(value: &impl Serialize, limit: u64) -> Result<Vec<u8>> {
-    let mut bytes = serde_json::to_vec(value)?;
-    ensure(bytes.len() < limit as usize, "browser_frame_too_large", 413)?;
-    bytes.push(b'\n');
-    Ok(bytes)
-}
-async fn read_frame(reader: &mut (impl AsyncBufRead + Unpin), limit: u64) -> Result<Option<Value>> {
-    let mut bytes = Vec::new();
-    let count = reader.take(limit).read_until(b'\n', &mut bytes).await?;
-    if count == 0 {
-        return Ok(None);
-    }
-    ensure(bytes.last() == Some(&b'\n'), "browser_protocol_failed", 503)?;
-    Ok(Some(serde_json::from_slice(&bytes)?))
-}
 async fn cancelled(receiver: &mut watch::Receiver<bool>) {
     loop {
         if *receiver.borrow_and_update() || receiver.changed().await.is_err() {

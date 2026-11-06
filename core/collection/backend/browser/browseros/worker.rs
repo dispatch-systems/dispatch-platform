@@ -1,11 +1,26 @@
 //! Runs only inside the private browser namespace, before platform config is loaded.
-use super::{cdp::Cdp, *};
+use super::{
+    cdp::Cdp,
+    protocol::{COMMAND_BYTES, RESPONSE_BYTES, WireCommand, frame, read_frame},
+};
+use crate::{Error, Result, ensure};
+use serde_json::json;
 use std::{
-    io,
+    fs, io,
     os::fd::{AsRawFd, FromRawFd, OwnedFd},
     os::unix::net::UnixStream,
+    path::Path,
+    process::Stdio,
+    sync::Arc,
+    time::Duration,
 };
-use tokio::net::{TcpListener, UnixStream as AsyncUnixStream};
+use tokio::{
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    net::{TcpListener, UnixStream as AsyncUnixStream},
+    process::Command,
+    sync::Semaphore,
+    time::timeout,
+};
 
 struct Proxy(tokio::task::JoinHandle<()>);
 impl Drop for Proxy {
