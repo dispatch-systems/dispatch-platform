@@ -2,6 +2,7 @@ import { useRef, useState, type FormEvent } from 'react';
 import { ArrowLeft, CheckCircle2, ExternalLink, LockKeyhole, Send, XCircle } from 'lucide-react';
 import { attachmentUrl, reopenTicket, sendMessage, useTicket } from '../../api/client.js';
 import type { SupportDetail } from '../../api/index.js';
+import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import { DataState, ErrorBox } from '../../../shell/frontend/ui/index.js';
 import { TicketStatus, kindLabel, when } from '../format.js';
 import { Proposal } from '../owner/Proposal.js';
@@ -65,26 +66,21 @@ function TicketContent({
   const [body, setBody] = useState('');
   const reply = useRef<HTMLTextAreaElement>(null);
   const [target, setTarget] = useState<'reporter' | 'agent'>('reporter');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const {
+    run: mutate,
+    busy,
+    error,
+  } = useAction(
+    async (work: () => Promise<unknown>) => {
+      await work();
+      onChanged();
+    },
+    { inline: true },
+  );
   const focusReply = (nextTarget: 'reporter' | 'agent') => {
     setTarget(nextTarget);
     reply.current?.focus();
     reply.current?.scrollIntoView({ block: 'center' });
-  };
-  const mutate = async (work: () => Promise<unknown>) => {
-    setBusy(true);
-    setError('');
-    try {
-      await work();
-      onChanged();
-      return true;
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'The action could not be completed.');
-      return false;
-    } finally {
-      setBusy(false);
-    }
   };
   const send = async (event: FormEvent) => {
     event.preventDefault();

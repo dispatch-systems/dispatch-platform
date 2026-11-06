@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Check, GitPullRequest, MessageCircle, PauseCircle, X } from 'lucide-react';
 import { decideTicket, resumeTicket } from '../../api/client.js';
 import type { SupportProposal, SupportTicket } from '../../api/index.js';
+import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import { ErrorBox } from '../../../shell/frontend/ui/index.js';
 
 function Words({
@@ -40,27 +41,20 @@ export function Proposal({
   const [selected, setSelected] = useState<number>();
   const [decision, setDecision] = useState<'approve' | 'deny'>();
   const [note, setNote] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const { run, busy, error } = useAction(
+    async (work: () => Promise<unknown>) => {
+      await work();
+      setDecision(undefined);
+      setNote('');
+      onChanged();
+    },
+    { inline: true },
+  );
   const latest =
     proposals.find((proposal) => proposal.version === ticket.proposalVersion) ?? proposals.at(-1);
   const proposal = proposals.find((proposal) => proposal.version === selected) ?? latest;
   const current = proposal?.version === ticket.proposalVersion;
   const canDecide = Boolean(current && proposal && ticket.status === 'awaiting_approval');
-  const run = async (work: () => Promise<unknown>) => {
-    setBusy(true);
-    setError('');
-    try {
-      await work();
-      setDecision(undefined);
-      setNote('');
-      onChanged();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'The decision could not be saved.');
-    } finally {
-      setBusy(false);
-    }
-  };
   if (
     !proposal &&
     ['acknowledged', 'answered', 'unclear_bug', 'unclear_feature'].includes(ticket.status)
