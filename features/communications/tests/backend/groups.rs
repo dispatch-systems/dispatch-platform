@@ -31,7 +31,10 @@ use dispatch_routes_contract::RouteDay;
 use dispatch_slack::{kit, testing as slack};
 use serde_json::json;
 use std::{collections::BTreeMap, sync::Arc};
-use storage::{Delivered, GroupStore, Member, Writing};
+use storage::{
+    deliveries::{Delivered, DeliveryStore},
+    groups::{GroupMessage, GroupStore, Member, Writing},
+};
 
 const DRIVERS_TEAM: &str = "T0FIXTURE2";
 const OPERATIONS: &str = "T0FIXTURE1";
@@ -102,7 +105,7 @@ fn posts(team: &str, user: &str, message: &str) -> Vec<slack::Posted> {
         .collect()
 }
 /// The group's first message, as kept.
-async fn first_message(state: &Arc<State>, dsp: &str, group: &str) -> storage::GroupMessage {
+async fn first_message(state: &Arc<State>, dsp: &str, group: &str) -> GroupMessage {
     let (dsp, group) = (dsp.to_owned(), group.to_owned());
     state
         .read(move |db| Ok(db.communications_group_messages(&dsp, &group)?.remove(0)))

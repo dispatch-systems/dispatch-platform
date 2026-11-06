@@ -9,7 +9,7 @@ use super::{
     files::{File, FileStatus, FileStore},
     groups::{
         self,
-        storage::{Answered, GroupStore},
+        storage::groups::{Answered, GroupStore},
     },
     model::{ConversationKind, Direction, PAGE},
     people::People,

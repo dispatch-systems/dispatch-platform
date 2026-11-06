@@ -19,7 +19,10 @@
 //! (`im:history`) by the metadata each carries, and keeps that one rather than send a second.
 use super::{
     one,
-    storage::{Delivered, Due, GroupMessage, GroupStore, Member, Writing},
+    storage::{
+        deliveries::{Delivered, DeliveryStore, Due},
+        groups::{GroupMessage, GroupStore, Member, Writing},
+    },
 };
 use crate::{
     api::types::{Group, GroupEntry},

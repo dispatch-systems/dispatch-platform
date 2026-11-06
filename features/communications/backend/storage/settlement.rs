@@ -1,7 +1,5 @@
 //! Shared conversation and group settlement, within the caller's transaction.
-use crate::backend::{
-    changes::changed_conversation, groups::storage::settle_group, model::ConversationState,
-};
+use crate::backend::{changes::changed_conversation, model::ConversationState};
 use dispatch_core::{
     Error, Result,
     db::{Db, now},
@@ -102,4 +100,22 @@ pub(crate) fn settle_with(db: &Db, conversation: &str, mut touched: Vec<String>)
         settle_group(db, &group)?;
     }
     Ok(())
+}
+
+/// Keeps whether the group waits, since when, and when it was last written in, from the
+/// conversations listed under it, its messages and their answers, and notes it changed.
+pub(crate) fn settle_group(db: &Db, group: &str) -> Result<()> {
+    db.exec(
+        "UPDATE communications_groups SET \
+         waiting_since=(SELECT min(waiting_since) FROM communications_conversations \
+         WHERE group_id=?1 AND state='waiting'),\
+         state=CASE WHEN EXISTS (SELECT 1 FROM communications_conversations \
+         WHERE group_id=?1 AND state='waiting') THEN 'waiting' ELSE 'responded' END,\
+         last_at=max(\
+         coalesce((SELECT max(at) FROM communications_group_messages WHERE group_id=?1),0),\
+         coalesce((SELECT max(at) FROM communications_messages \
+         WHERE group_id=?1 AND direction='in'),0)) WHERE id=?1",
+        [group],
+    )?;
+    changed_conversation(db, group)
 }
