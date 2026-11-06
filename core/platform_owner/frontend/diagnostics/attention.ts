@@ -1,7 +1,6 @@
-import type { PlatformHealth } from '../../api/index.js';
+import type { PlatformDiagnostics, PlatformHealth } from '../../api/index.js';
 import { bytes } from '../../../shell/frontend/lib/format.js';
 import type { CollectionSource } from './collection-history.js';
-import type { Diagnostics } from './types.js';
 
 /** One line of Overview's "Needs attention". Add a check by adding an entry to `issues`. */
 export interface Issue {
@@ -18,7 +17,7 @@ const lowStorageBytes = 1024 ** 3;
 
 export function issues(
   health: PlatformHealth,
-  diagnostics: Diagnostics,
+  diagnostics: PlatformDiagnostics,
   sources: CollectionSource[],
 ): Issue[] {
   const { memory } = health.browsers;

@@ -1,5 +1,8 @@
-// The platform owner's API: health, mail, feature switches and the audit log.
+// The platform owner's API: health, Diagnostics, mail, feature switches and the audit log.
 export type { PlatformHealth } from './generated/PlatformHealth';
+export type { PlatformDiagnostics } from './generated/PlatformDiagnostics';
+export type { DiagnosticsRuntime } from './generated/DiagnosticsRuntime';
+export type { DiagnosticsDsp } from './generated/DiagnosticsDsp';
 export type { MailMessage } from '../../accounts/api/generated/MailMessage';
 export type { DspFeatures } from './generated/DspFeatures';
 export type { DspVisibility } from './generated/DspVisibility';

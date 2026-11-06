@@ -1,5 +1,5 @@
 import { z } from 'zod/mini';
-import type { AuditPage, PlatformHealth } from './index.js';
+import type { AuditPage, PlatformDiagnostics, PlatformHealth } from './index.js';
 import {
   count,
   environment,
@@ -39,6 +39,29 @@ export const platformHealthSchema = z.object({
   }),
   providerMode,
 }) satisfies z.ZodMiniType<PlatformHealth>;
+
+// Rust's u64 byte counts can exceed JavaScript's safe integer range.
+const unsignedInteger = z.number().check(z.nonnegative(), z.multipleOf(1));
+const platformDiagnosticsSchema = z.object({
+  enabled: z.boolean(),
+  storageAvailableBytes: unsignedInteger,
+  runtime: z.object({
+    name: text,
+    status: text,
+    memoryBytes: unsignedInteger,
+    coreMemoryBytes: unsignedInteger,
+    workerMemoryBytes: unsignedInteger,
+    browsers: unsignedInteger,
+  }),
+  dsps: z.array(
+    z.object({
+      id: text,
+      name: text,
+      status: z.enum(['provisioning', 'active', 'suspended', 'failed']),
+    }),
+  ),
+}) satisfies z.ZodMiniType<PlatformDiagnostics>;
+
 const area = z.enum([
   'team',
   'roles',
@@ -73,8 +96,9 @@ const auditPageSchema = z.object({
   dsps: z.array(named),
 }) satisfies z.ZodMiniType<AuditPage>;
 
-/** The replies of the platform's health and the audit log. */
+/** The replies of the platform's health, Diagnostics and the audit log. */
 export const replies: Replies = (route, method) => {
+  if (route === '/api/platform/diagnostics') return platformDiagnosticsSchema;
   if (method === 'GET') {
     if (route === '/api/platform/audit') return auditPageSchema;
     if (route === '/api/platform/health') return platformHealthSchema;

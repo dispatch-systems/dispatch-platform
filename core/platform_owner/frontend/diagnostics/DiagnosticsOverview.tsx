@@ -1,7 +1,7 @@
 import { AlertTriangle, ChevronRight, CircleX, Cpu, Globe, HardDrive, Mail } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { Job } from '../../../collection/api/index.js';
-import type { PlatformHealth } from '../../api/index.js';
+import type { PlatformDiagnostics, PlatformHealth } from '../../api/index.js';
 import {
   Badge,
   DataTable,
@@ -12,7 +12,6 @@ import {
 import { bytes, deviceTimezone, duration, time } from '../../../shell/frontend/lib/format.js';
 import { issues } from './attention.js';
 import { isUnderway, providerName, type CollectionSource as Source } from './collection-history.js';
-import type { Diagnostics } from './types.js';
 import { memory } from './RunDetail.js';
 
 function Tile({
@@ -52,7 +51,7 @@ export function DiagnosticsOverview({
   openEmail,
 }: {
   health: PlatformHealth;
-  diagnostics: Diagnostics;
+  diagnostics: PlatformDiagnostics;
   jobs: Job[];
   sources: Source[];
   /** Opens a source in Collections, with one of its runs expanded when named. */

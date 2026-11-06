@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { MailMessage, PlatformHealth } from '../../api/index.js';
+import type { MailMessage, PlatformDiagnostics, PlatformHealth } from '../../api/index.js';
+import { parseApiResponse } from '../../../shell/frontend/runtime/replies.js';
 import { issues } from '../../frontend/diagnostics/attention.js';
 import { stage } from '../../frontend/diagnostics/mail.js';
 
@@ -11,11 +12,53 @@ const health = (canStart: boolean, failed: number) =>
     },
     mail: { failed },
   }) as PlatformHealth;
-const diagnostics = (storageAvailableBytes: number) => ({
+const diagnostics = (storageAvailableBytes: number): PlatformDiagnostics => ({
   enabled: true,
   storageAvailableBytes,
-  runtime: { name: '', status: 'Running', memoryBytes: 0, browsers: 0 },
+  runtime: {
+    name: '',
+    status: 'Running',
+    memoryBytes: 0,
+    coreMemoryBytes: 0,
+    workerMemoryBytes: 0,
+    browsers: 0,
+  },
   dsps: [],
+});
+
+test('Diagnostics validates reads and fixture replies, including large byte counts and DSP records', async () => {
+  const empty = diagnostics(0);
+  const populated: PlatformDiagnostics = {
+    enabled: false,
+    storageAvailableBytes: 2 ** 63,
+    runtime: {
+      name: 'Shared platform (Rust)',
+      status: 'Running',
+      memoryBytes: 2 ** 63,
+      coreMemoryBytes: 2 ** 62,
+      workerMemoryBytes: 2 ** 62,
+      browsers: 1,
+    },
+    dsps: (['provisioning', 'active', 'suspended', 'failed'] as const).map((status, index) => ({
+      id: `dsp_${index}`,
+      name: `Test DSP ${index}`,
+      status,
+    })),
+  };
+  for (const method of ['GET', 'POST'] as const) {
+    const parse = (value: unknown) => parseApiResponse('/api/platform/diagnostics', method, value);
+    for (const value of [empty, populated]) assert.deepEqual(await parse(value), value);
+    for (const value of [
+      { ...populated, storageAvailableBytes: null },
+      { ...populated, runtime: { ...populated.runtime, coreMemoryBytes: undefined } },
+      { ...populated, runtime: { ...populated.runtime, workerMemoryBytes: '0' } },
+      { ...populated, runtime: { ...populated.runtime, memoryBytes: -1 } },
+      { ...populated, runtime: { ...populated.runtime, browsers: 0.5 } },
+      { ...populated, dsps: [{ id: null, name: 'Test DSP', status: 'active' }] },
+      { ...populated, dsps: [{ id: 'dsp_test', name: 'Test DSP', status: 'unknown' }] },
+    ])
+      await assert.rejects(parse(value), { message: 'invalid_api_response' });
+  }
 });
 
 test('a healthy platform needs no attention; memory, storage and failed mail each raise one issue', () => {

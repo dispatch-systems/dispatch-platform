@@ -4,11 +4,9 @@ import {
   parseHash,
   replaceHashQuery,
 } from '../../../shell/frontend/runtime/navigation.js';
-import { useData } from '../../../shell/frontend/runtime/data-reads.js';
-import { usePlatformJobs, usePlatformHealth } from '../../api/client.js';
+import { usePlatformDiagnostics, usePlatformJobs, usePlatformHealth } from '../../api/client.js';
 import { DataState, ErrorBox, Header, Tabs } from '../../../shell/frontend/ui/index.js';
 import { collectionHistory } from './collection-history.js';
-import type { Diagnostics } from './types.js';
 import { DiagnosticsCollections } from './DiagnosticsCollections.js';
 import { DiagnosticsEmail } from './DiagnosticsEmail.js';
 import { DiagnosticsOverview } from './DiagnosticsOverview.js';
@@ -28,8 +26,7 @@ function addressed() {
 export function DiagnosticsPage() {
   const [place, setPlace] = useState(addressed);
   const health = usePlatformHealth(['overview', 'email'].includes(place.tab) ? 10000 : 0);
-  const diagnostics = useData<Diagnostics>(
-    '/api/platform/diagnostics',
+  const diagnostics = usePlatformDiagnostics(
     ['overview', 'test-dsps'].includes(place.tab) ? 15000 : 0,
   );
   const jobs = usePlatformJobs(['overview', 'collections'].includes(place.tab) ? 5000 : -1);
