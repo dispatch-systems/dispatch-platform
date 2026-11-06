@@ -16,7 +16,7 @@ use crate::backend::{
         self,
         model::{Outgoing, Status},
         outbox,
-        storage::{MOST_TEXTS, Reported, TextStore as _},
+        storage::{DeviceStore, MOST_TEXTS, Reported, TextStore as _},
     },
     storage::DOMAIN,
     support::{
@@ -725,7 +725,7 @@ async fn texts_waiting_to_be_filed_are_each_filed_however_many_wait() {
     let at_dsp = dsp.clone();
     let came = state
         .run(move |db| {
-            let phone = phone::phones(db, &at_dsp)?.remove(0).id;
+            let phone = db.phones_devices(&at_dsp)?.remove(0).id;
             let texts = (0..=MOST_TEXTS as i64)
                 .map(|n| Reported {
                     client_id: format!("sms-{n}"),

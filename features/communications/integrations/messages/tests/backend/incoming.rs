@@ -4,8 +4,8 @@
 //! Slack is deleted here.
 use super::*;
 use crate::backend::{
-    files::{self, FileStatus, FileStore},
-    model::ConversationState,
+    files::{self, FileStore},
+    model::{ConversationState, FileStatus},
     support,
 };
 use dispatch_core::db::now;

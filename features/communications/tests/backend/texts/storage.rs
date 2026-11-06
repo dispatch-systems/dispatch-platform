@@ -9,9 +9,10 @@ use crate::backend::{
     inbox,
     model::ConversationKind,
     phone::{
-        self,
         model::{Direction, Outgoing, Status},
-        storage::{FileStore, Kept, Reported, ReportedFile, StatusReport, TextStore as _},
+        storage::{
+            DeviceStore, FileStore, Kept, Reported, ReportedFile, StatusReport, TextStore as _,
+        },
     },
     support::{self, DRIVERS, at, filed, migrate, phoned, phones, started, today},
     texts::{contacts, filing, model::Filed, reading},
@@ -41,7 +42,7 @@ fn before_filing(db: &Store, dsp: &str) {
 /// The text a phone reported from `number` at `at`, saying `body`, with `pictures` pictures whose
 /// bytes haven't come: its ID, and its pictures'.
 fn reported(db: &Store, dsp: &str, number: &str, body: &str, at: i64, pictures: usize) -> Kept {
-    let phone = phone::phones(db, dsp).unwrap().remove(0).id;
+    let phone = db.phones_devices(dsp).unwrap().remove(0).id;
     let text = Reported {
         client_id: format!("sms-{number}-{at}"),
         direction: Direction::In,
@@ -313,7 +314,7 @@ async fn texts_the_copy_never_read_before_migration_9_are_filed_by_the_next_upke
     let (pictured, picture, failed, failing_in, unread) = state
         .run(move |db| {
             before_filing(db, &at_dsp);
-            let phone = phone::phones(db, &at_dsp)?.remove(0).id;
+            let phone = db.phones_devices(&at_dsp)?.remove(0).id;
             let owner = testing::a_user(db);
             // Read by the copy: a text with a picture whose bytes hadn't come, and a question
             // with its answer, sent, in another conversation.

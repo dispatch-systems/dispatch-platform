@@ -3,10 +3,7 @@
 use super::texts::{self, Reported, TextStore};
 use crate::{
     api::types::PairingStatus,
-    backend::phone::{
-        model::{Health, Phone},
-        numbers::normal,
-    },
+    backend::phone::{model::Health, numbers::normal},
 };
 use dispatch_core::{
     Error, Result,
@@ -110,17 +107,6 @@ impl Device {
             self.name.clone()
         } else {
             format!("{} ({})", self.name, self.number)
-        }
-    }
-    pub fn phone(&self, now: i64) -> Phone {
-        Phone {
-            id: self.id.clone(),
-            name: self.name.clone(),
-            number: self.number.clone(),
-            online: self.online(now),
-            last_seen_at: self.last_seen_at,
-            cant_send: self.health.as_ref().is_some_and(Health::cant_send),
-            stand_in: self.stand_in,
         }
     }
 }
