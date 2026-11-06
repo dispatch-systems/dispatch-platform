@@ -2,7 +2,7 @@ use super::{
     capture::{Capture, Coverage, Itinerary},
     live::Writer,
 };
-use crate::{codes, collections::routes::collect::MOVE, connection::Driver, discovery::Scope};
+use crate::{codes, collections::routes::page::MOVE, connection::Driver, discovery::Scope};
 use dispatch_core::{
     Error, Result,
     collection::{

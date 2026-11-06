@@ -104,7 +104,7 @@ pub async fn measure_route_method<R: serde::Serialize>(
     sent: &AtomicU64,
     received: &AtomicU64,
 ) -> Result<()> {
-    use crate::collections::routes::collect::Method;
+    use crate::collections::routes::Method;
     let dsp = env_path("DISPATCH_BENCHMARK_DSP")?;
     let method: Method = match std::env::var("DISPATCH_BENCHMARK_METHOD").as_deref() {
         Ok("reload") => Method::reload(),

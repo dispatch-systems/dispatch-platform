@@ -2,8 +2,8 @@
 //! opens the DSP's Cortex browser only when it must (`readers::Reading::browser`), and reads
 //! with the native reader it hands back, with no browser, until that reader fails.
 use super::capture::{Request, fixture_in, fixture_scope};
-use super::collect::{Day, Method};
 use super::native::Native;
+use super::{Day, Method};
 use crate::{
     HOSTS,
     connection::{Tab, application},
