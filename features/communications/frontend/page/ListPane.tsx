@@ -38,6 +38,8 @@ export function ListPane({
   current,
   readOlder,
   olderFailed,
+  previousDays,
+  showPreviousDays,
   reach,
   show,
   routes,
@@ -64,6 +66,9 @@ export function ListPane({
   readOlder: (section: Section) => void;
   /** Whether the latest read of older ones failed. */
   olderFailed: boolean;
+  /** Whether Recents shows the days before today. */
+  previousDays: boolean;
+  showPreviousDays: (shown: boolean) => void;
   /** Opens the conversation with a contact, or starts one. */
   reach: (target: Target) => Promise<void>;
   /** Shows a conversation as the page's own writes left it. */
@@ -164,6 +169,8 @@ export function ListPane({
             below={view.below?.(routes.groups)}
             readOlder={() => readOlder(section)}
             olderFailed={olderFailed}
+            previousDays={previousDays}
+            showPreviousDays={showPreviousDays}
             {...listing}
           />
         )}

@@ -20,10 +20,11 @@ import {
   withConversation,
   withOlder,
 } from '../../frontend/inbox/inbox.js';
+import { atPreviousDays, byDay, byState } from '../../frontend/inbox/headings.js';
 import type { Section } from '../../frontend/inbox/sections.js';
 import { elsewhereNow } from '../../frontend/conversations/elsewhere.js';
 import { groupName, recipients, type Pick } from '../../frontend/slack/groups/groups.js';
-import { letter, waited } from '../../frontend/shared/format.js';
+import { dayOf, letter, waited } from '../../frontend/shared/format.js';
 import { marked } from '../../frontend/shared/marked.js';
 
 /** A conversation, waiting since `since` or answered, its latest message written at `at`, listed
@@ -178,6 +179,50 @@ test('each section’s list keeps the server’s order as it changes, with the p
   ]);
   assert.equal(readsNext(read, 'messaging'), undefined);
   assert.deepEqual(ids(read), ids(older));
+});
+
+test('Recents keeps the days before today, the DSP’s, under Previous days: hidden but for what’s open, then every one as they’re shown; whoever waits stays above them', () => {
+  const timeZone = 'America/Los_Angeles';
+  // 7 AM on Friday, November 6, there.
+  const now = Date.parse('2026-11-06T15:00:00Z');
+  const listed = [
+    conversation('this morning', Date.parse('2026-11-06T14:00:00Z')),
+    // Written in at 11:58 PM on Thursday, there, and still waiting.
+    conversation('late', Date.parse('2026-11-06T07:58:00Z'), Date.parse('2026-11-06T07:58:00Z')),
+    conversation('thursday', Date.parse('2026-11-05T20:00:00Z')),
+    conversation('open', Date.parse('2026-11-04T20:00:00Z')),
+    conversation('wednesday', Date.parse('2026-11-04T19:00:00Z')),
+  ].map((row) => ({ kind: 'conversation' as const, row }));
+  const split = (rows: typeof listed, shown: boolean) => {
+    const { current, previous, any } = atPreviousDays(
+      byState(rows, 1, (answered) => byDay(answered, { timeZone, now })),
+      dayOf(now, timeZone),
+      shown,
+      'open',
+    );
+    const ids = (headed: typeof current) =>
+      headed.map(({ key, rows }) => [key, rows.map(({ row }) => row.id)]);
+    return { current: ids(current), previous: ids(previous), any };
+  };
+  const above = [
+    ['waiting', ['late']],
+    ['2026-11-06', ['this morning']],
+  ];
+  assert.deepEqual(split(listed, false), {
+    current: above,
+    previous: [['2026-11-04', ['open']]],
+    any: true,
+  });
+  assert.deepEqual(split(listed, true), {
+    current: above,
+    previous: [
+      ['2026-11-05', ['thursday']],
+      ['2026-11-04', ['open', 'wednesday']],
+    ],
+    any: true,
+  });
+  // With nothing before today, there's nothing to show.
+  assert.deepEqual(split(listed.slice(0, 2), false), { current: above, previous: [], any: false });
 });
 
 test('Next waiting opens the one waiting longest of the section shown, but the one open, wherever the list has it, and nothing once no other waits', () => {
