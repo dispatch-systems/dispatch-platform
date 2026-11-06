@@ -1,6 +1,6 @@
 import type { Job } from '../../../core/collection/api/index.js';
 import { wordedApi } from '../../../core/shell/frontend/runtime/api.js';
-import type { DvicSummary, DvicInspectionPage, DvicInspectionDetail } from './index.js';
+import type { DvicSummary, DvicInspectionPage, DvicInspectionDetail, DvicStatus } from './index.js';
 import { useCachedData } from '../../../core/shell/frontend/runtime/data-reads.js';
 import { performancePolicy } from '../../../core/shell/frontend/lib/performance-policy.js';
 
@@ -12,6 +12,8 @@ const api = wordedApi({ dvic_week_not_available: 'That report week is not availa
 export const collectDvic = (requestId: string, viewing: string) =>
   api<Job>('/api/dsp/dvic/collect', { requestId, viewing });
 export const cancelDvicJob = (id: string) => api(`/api/dsp/dvic/jobs/${id}/cancel`, {});
+export const useDvicStatus = (poll: number) =>
+  useCachedData<DvicStatus>('/api/dsp/dvic/status', poll);
 /** Counts cover the whole selection; the driver page carries at most seven cells each. */
 export const summaryUrl = (from: string, to: string, query: string, vehicles: string, page = 0) =>
   `/api/dsp/dvic/summary?${new URLSearchParams({ from, to, q: query, vehicles, offset: String(page * 25) }).toString()}`;

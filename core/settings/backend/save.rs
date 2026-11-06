@@ -1,6 +1,4 @@
-//! Saving a section: what's sent checked and merged onto what's kept, at the revision it was
-//! read at, confirmed when its warning has words, and recorded in the DSP's log; and the
-//! values a feature kept itself before, carried into its section once.
+//! Section saves and one-time carry-over. Full policy: `core/settings/README.md`.
 use super::{kinds, store};
 use crate::{
     Error, Result,
@@ -20,15 +18,10 @@ pub enum Saved {
     Confirm(String),
 }
 
-/// Saves `values` of `section` for the DSP, or for a member's own section `actor`'s, as read
-/// at `revision`: any of its fields, each the rest keep. Refuses a field it hasn't or a value
-/// its kind doesn't hold (`invalid_input`), and a revision another save has passed
-/// (`settings_changed_reload_before_saving`). Unless `confirmed`, a save its `warn` has words
-/// for keeps nothing and answers them. Then, in one write, it keeps the values, does what the
-/// section's `saved` does, and records what changed in the DSP's log, as each field shows it,
-/// about the section by its label; a member's own changes aren't recorded. `dsp` is the one
-/// the caller was authorized for: only its database is read and written, and only it is
-/// handed to the section's own code.
+/// Partially saves a DSP section, or `actor`'s member section, at `revision`.
+/// Refuses invalid fields/values and stale revisions; an unconfirmed warning writes nothing.
+/// Values, callbacks and DSP audit commit atomically; member changes aren't audited.
+/// The caller must authorize `dsp`: only its database and callbacks are used.
 pub fn save(
     db: &Store,
     dsp: &str,
@@ -123,23 +116,12 @@ pub(crate) fn save_listing<'a>(
     ))
 }
 
-/// Moves values a feature kept itself into its declared `section`, as the DSP's first, from
-/// its `upgrade_storage` as each DSP opens: `old` reads them as the feature kept them, none
-/// when it kept none. It does so once, while the section has no record, never saved nor
-/// carried over before. Each field's value moves on its own, checked as a save checks it, but
-/// against no list a field takes as it's read, which may have dropped what was chosen then:
-/// one its field refuses now, or for a field the section hasn't, stays behind and reads as the
-/// default, and the others move still. What moves is kept at revision 1, and not recorded in
-/// the log, whose entries from before already say how it came to be. With nothing to move,
-/// none, the defaults themselves or only values its fields refuse now, it keeps a record of no
-/// values at revision 0: the defaults keep applying as the section declares them, and the
-/// first save is at revision 0 still.
-///
-/// It never stops a DSP opening: what fails, reading the old values or keeping them, is noted
-/// in the server's log as `settings.carry_over_failed`, with the DSP, the section and the
-/// error's code but never a value, and tried again as the DSP next opens, as nothing was kept.
-/// Once the section has a record, carried over or saved, it's one keyed read of it and `old`
-/// isn't called. Only `dsp`'s own database is read and written.
+/// Called by `upgrade_storage` on DSP open, once while `section` has no record.
+/// An existing record skips `old`; otherwise each valid field moves and refused fields use
+/// defaults. Dynamic option lists are deliberately ignored: old choices may no longer appear.
+/// Real moved values use revision 1; nothing beyond defaults writes an empty revision-0 marker
+/// so future defaults still apply. Only `dsp`'s database is used, without audit.
+/// Failure is nonfatal: log DSP, section and error code without values, then retry next open.
 pub fn carry_over(
     db: &Store,
     dsp: &str,
