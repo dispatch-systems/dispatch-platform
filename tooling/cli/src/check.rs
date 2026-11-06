@@ -1,8 +1,6 @@
 use crate::{
     Result, Runner,
     build::{self, Environment, frontend},
-    machine::Machine,
-    require,
     slot::{self, Slot},
     workspace,
 };
@@ -350,16 +348,14 @@ pub fn print(plan: &Plan) {
     );
     println!("{NEXT}");
 }
-/// Refuses `dispatchdev <command>`, the local check or tests, at once on a machine that runs
-/// none: `check`, `test` and `verify` ask it before anything else.
-pub fn here(machine: Machine, command: &str) -> Result<()> {
-    require(
-        machine.checks(),
-        &format!(
-            "dispatchdev {command} runs on Linux alone: the checks on the branch's PR run every \
-             check on GitHub."
-        ),
-    )
+/// Refuses `dispatchdev <command>`, the local check or tests, at once on a machine whose
+/// `python3` can't run them, as `tooling/ci/python.py` judges: `check`, `test` and `verify` ask
+/// it before they run a check or a test.
+pub fn here(root: &Path, command: &str, runner: &dyn Runner) -> Result<()> {
+    runner
+        .command(&["python3", "tooling/ci/python.py"], Some(root), 30)
+        .map(drop)
+        .map_err(|error| format!("dispatchdev {command} can't start: {error}").into())
 }
 /// The rule checks: everything a push can fail on without a build, side by side, in about a
 /// minute. What `dispatchdev check` adds, the TypeScript linter and clippy, the PR's checks run
@@ -1217,12 +1213,26 @@ mod tests {
         );
     }
     #[test]
-    fn on_a_mac_the_local_check_refuses_and_names_the_prs_checks() {
+    fn an_old_python3_stops_the_local_check_with_what_to_do() {
+        struct Old;
+        impl Runner for Old {
+            fn command(&self, args: &[&str], cwd: Option<&Path>, _: u64) -> Result<Vec<u8>> {
+                assert_eq!(
+                    (args, cwd),
+                    (
+                        &["python3", "tooling/ci/python.py"][..],
+                        Some(Path::new("/checkout"))
+                    )
+                );
+                Err("python3 tooling/ci/python.py failed: python3 is Python 3.9.6".into())
+            }
+        }
         assert_eq!(
-            here(Machine::Mac, "check").unwrap_err().to_string(),
-            "dispatchdev check runs on Linux alone: the checks on the branch's PR run every check \
-             on GitHub."
+            here(Path::new("/checkout"), "check", &Old)
+                .unwrap_err()
+                .to_string(),
+            "dispatchdev check can't start: python3 tooling/ci/python.py failed: python3 is \
+             Python 3.9.6"
         );
-        assert!(here(Machine::Linux, "check").is_ok());
     }
 }

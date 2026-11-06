@@ -27,6 +27,7 @@ sha256() { if command -v sha256sum >/dev/null; then sha256sum "$@"; else shasum 
 # The toolchains. Rust needs a C compiler to link, which takes an administrator to install.
 command -v git >/dev/null || fail "Install git first."
 command -v python3 >/dev/null || fail "Install Python 3 first."
+python3 tooling/ci/python.py || exit 1
 if ! command -v cc >/dev/null; then
   case $(uname -s) in
     Darwin) fail "Install Apple's command line tools first: xcode-select --install" ;;
@@ -88,6 +89,8 @@ if [[ ! -f node_modules/.package-lock.json || package-lock.json -nt node_modules
 fi
 npx playwright install chromium
 tooling/cli/dispatchdev build
+# The loopback addresses the API tests connect from, which a Mac adds only with sudo.
+tooling/testing/loopback || true
 
 # `dispatchdev` on PATH, in ~/.local/bin: it runs the dispatchdev of the checkout the current
 # directory is in, so a worktree runs its own, or this clone's outside one. Setup replaces only

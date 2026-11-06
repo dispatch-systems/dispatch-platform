@@ -106,6 +106,8 @@ test('an owner connects Slack from Communications, answers a member as they writ
   await conversation.getByRole('button', { name: 'Add emoji' }).click();
   const emoji = page.getByRole('dialog', { name: 'Add emoji' });
   await emoji.getByLabel('Search emoji').fill('thumbs up');
+  // The emoji load as the picker opens: Enter picks from what has shown.
+  await expect(emoji.getByRole('button', { name: 'thumbs up', exact: true })).toBeVisible();
   await emoji.getByLabel('Search emoji').press('Enter');
   await expect(box).toHaveValue('Thanks 👍!');
   await page.keyboard.press('Escape');

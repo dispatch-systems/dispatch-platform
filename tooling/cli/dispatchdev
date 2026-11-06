@@ -6,6 +6,8 @@
 # in the checkout's own target folder: Cargo copies out only a binary it rebuilt, so a target
 # shared by checkouts of different sources hands one of them the other's binary.
 set -euo pipefail
+# macOS before 15 has no sha256sum, and keeps it in /sbin after.
+if command -v sha256sum >/dev/null; then sha256=(sha256sum); else sha256=(shasum -a 256); fi
 source=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd -P)
 prebuilt="$source/.ci-tools/tools/dispatchdev"
 if [[ ${CI:-} == true && ${DISPATCH_CI_TOOLS:-} == "$source/.ci-tools" &&
@@ -16,9 +18,9 @@ cache="$(git -C "$source" rev-parse --path-format=absolute --git-common-dir)/dis
 version=$(
   cd "$source"
   {
-    find tooling/cli tooling/shared -type f -not -path '*/target/*' -print0 | sort -z | xargs -0 sha256sum
-    sha256sum Cargo.toml Cargo.lock rust-toolchain.toml
-  } | sha256sum | cut -c1-16
+    find tooling/cli tooling/shared -type f -not -path '*/target/*' -print0 | sort -z | xargs -0 "${sha256[@]}"
+    "${sha256[@]}" Cargo.toml Cargo.lock rust-toolchain.toml
+  } | "${sha256[@]}" | cut -c1-16
 )
 binary="$cache/$version/dispatchdev"
 if [[ ! -x $binary ]]; then

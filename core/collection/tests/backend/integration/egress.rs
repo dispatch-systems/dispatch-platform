@@ -11,6 +11,10 @@ use tokio::{
     net::{TcpListener, UnixStream},
 };
 #[tokio::test]
+#[cfg_attr(
+    not(target_os = "linux"),
+    ignore = "requires Linux: the egress socket is bound through /proc"
+)]
 async fn long_socket_paths_proxy_concurrent_fixture_requests_and_close_cleanly() {
     let root = tempfile::tempdir().unwrap();
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
@@ -64,6 +68,10 @@ fn site_host(host: &str) -> bool {
 static SITE_HOSTS: HostPolicy = HostPolicy { allowed: site_host };
 
 #[tokio::test]
+#[cfg_attr(
+    not(target_os = "linux"),
+    ignore = "requires Linux: the egress socket is bound through /proc"
+)]
 async fn denied_connections_and_failed_start_never_replace_existing_files() {
     let root = tempfile::tempdir().unwrap();
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
@@ -88,6 +96,10 @@ async fn denied_connections_and_failed_start_never_replace_existing_files() {
 }
 
 #[tokio::test]
+#[cfg_attr(
+    not(target_os = "linux"),
+    ignore = "requires Linux: the egress socket is bound through /proc"
+)]
 async fn buffered_connect_preserves_prefetched_tunnel_bytes() {
     let root = tempfile::tempdir().unwrap();
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();

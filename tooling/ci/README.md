@@ -60,9 +60,9 @@ lists it. `start` makes a change's worktree beside the clone, `pr` checks its PR
 body before opening it, and `finish` removes the change once it merged. `check`, `test` and
 `verify` look at a branch before its PR; `api` (signed-in calls)
 and `shot` (a PNG of a page, signed in once for each account) reach the dev server `npm run dev`
-runs in the checkout, which records itself in `.runtime/dev-server.json` while it runs. A Mac
-runs none of the local checks and tests (`tooling/cli/src/machine.rs`
-says why): there `check`, `test` and `verify` refuse, and the checks on the PR decide alone.
+runs in the checkout, which records itself in `.runtime/dev-server.json` while it runs. They run
+on Linux and macOS alike; `check`, `test` and `verify` first ask `tooling/ci/python.py` whether
+`python3` can run them.
 `dispatchdev build` builds the package's two executables, the backend and the support worker,
 in one Cargo pass, through a cache keyed by their exact inputs and the compiler's fingerprint,
 and packs the relay app's APKs CI signed, from the folder `DISPATCH_RELAY_APPS` names, in
