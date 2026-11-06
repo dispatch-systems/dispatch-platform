@@ -1,5 +1,6 @@
 import path from 'node:path';
-import { installing, mergeRust, mergeToml, mergeTypeScript, rustfmt } from './add.js';
+import { mergeRust, mergeToml, mergeTypeScript, rustfmt } from './source-editing.js';
+import { installing } from './test-registry.js';
 import {
   UsageError,
   change,

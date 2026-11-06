@@ -2,7 +2,8 @@ import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { mergeTypeScript, planAdd } from '../../scaffold/add.js';
+import { planAdd } from '../../scaffold/add.js';
+import { mergeTypeScript } from '../../scaffold/source-editing.js';
 import { planFeature } from '../../scaffold/new-feature.js';
 import { changed, copyWorkspace, feature, file, refused, root, writes } from './support.js';
 
