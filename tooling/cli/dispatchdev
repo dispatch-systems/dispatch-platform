@@ -9,6 +9,8 @@ set -euo pipefail
 # macOS before 15 has no sha256sum, and keeps it in /sbin after.
 if command -v sha256sum >/dev/null; then sha256=(sha256sum); else sha256=(shasum -a 256); fi
 source=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd -P)
+# Its review instructions review a checkout that has none, such as the agent docs'.
+export DISPATCHDEV_SOURCE="$source"
 prebuilt="$source/.ci-tools/tools/dispatchdev"
 if [[ ${CI:-} == true && ${DISPATCH_CI_TOOLS:-} == "$source/.ci-tools" &&
   -f $prebuilt && ! -L $prebuilt && -x $prebuilt ]]; then
