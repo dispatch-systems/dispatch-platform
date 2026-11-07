@@ -540,24 +540,10 @@ fn serving(root: &Path, runner: &dyn Runner) -> Result<dev::Status> {
     if status.running && status.source_matches == Some(true) {
         return Ok(status);
     }
-    if let Some(process) = status.process.as_ref().filter(|_| status.running) {
-        println!(
-            "Stopping the dev server {}: it serves other code.",
-            process.pid
-        );
-        // `dev::status` has just checked the process is the server it recorded.
-        unsafe { libc::kill(process.pid, libc::SIGTERM) };
-        let stopping = Instant::now();
-        while dev::status(root, runner)?.running {
-            require(
-                stopping.elapsed() < Duration::from_secs(30),
-                &format!(
-                    "The dev server {} didn't stop: stop it, then run this again.",
-                    process.pid
-                ),
-            )?;
-            std::thread::sleep(Duration::from_millis(500));
-        }
+    if status.running
+        && let Some(pid) = dev::stop(root, runner)?
+    {
+        println!("Stopped the dev server {pid}: it served other code.");
     }
     let log = workspace::checkout_scratch(root)?.join("dev-server.log");
     // One file for both streams, so neither writes over the other.

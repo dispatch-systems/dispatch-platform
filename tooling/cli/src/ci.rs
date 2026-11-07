@@ -85,6 +85,10 @@ fn latest(root: &Path, branch: &str, event: &str, runner: &dyn Runner) -> Result
 }
 
 pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
+    let branch = workspace::text(runner, &["git", "branch", "--show-current"], Some(root))?;
+    if branch == "main" {
+        return main(root, runner);
+    }
     let (branch, head) = review::pushed(root, runner)?;
     let Some(run) = latest(root, &branch, "pull_request", runner)?.filter(|run| run.head == head)
     else {
@@ -181,6 +185,62 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
         ));
     }
     println!("{}", workspace::next(&next));
+    Ok(())
+}
+
+/// `dispatchdev ci` on `main`: why main's latest run of the checks failed, which is main's to
+/// fix at once.
+fn main(root: &Path, runner: &dyn Runner) -> Result<()> {
+    let Some(run) = latest(root, "main", "push", runner)? else {
+        println!("main has no run of the checks yet.");
+        return Ok(());
+    };
+    if run.failed.is_empty() {
+        println!(
+            "Nothing failed in main's latest run, on {}{}.",
+            short(&run.head),
+            if run.done {
+                ""
+            } else {
+                " so far: the run goes on"
+            }
+        );
+        return Ok(());
+    }
+    let others = run
+        .failed
+        .iter()
+        .any(|job| job.name != crate::merge::REQUIRED);
+    for job in &run.failed {
+        if job.name == crate::merge::REQUIRED && others {
+            println!("FAIL {}: it fails because the jobs above did", job.name);
+            continue;
+        }
+        println!(
+            "FAIL {} ({}) on {}",
+            job.name,
+            job.conclusion,
+            short(&run.head)
+        );
+        let text = gh(
+            root,
+            &["run", "view", "--job", &job.id.to_string(), "--log-failed"],
+            runner,
+        )
+        .unwrap_or_default();
+        let failed = lines(&text);
+        for line in &failed[failed.len().saturating_sub(LINES)..] {
+            println!("    {line}");
+        }
+    }
+    println!(
+        "{}",
+        workspace::next(&[format!(
+            "It blocks every PR: fix it at once in its own PR off main, merged with no review; \
+             a flake unrelated to its commit runs again once, `gh run rerun {} --failed`",
+            run.id
+        )])
+    );
     Ok(())
 }
 

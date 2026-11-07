@@ -822,6 +822,8 @@ fn unknown(name: &str) -> Box<dyn std::error::Error + Send + Sync> {
     format!("Unknown command {name}. Run dispatchdev help.").into()
 }
 fn main() {
+    // A reader that stops early, as `| head` does, ends it quietly, as other commands end.
+    unsafe { libc::signal(libc::SIGPIPE, libc::SIG_DFL) };
     if let Err(error) = run() {
         let message = error.to_string();
         if !message.is_empty() {
