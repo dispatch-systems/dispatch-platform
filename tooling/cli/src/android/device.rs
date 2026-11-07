@@ -53,8 +53,17 @@ impl<'a> Device<'a> {
             lock.read_to_string(&mut owner)?;
             return Err(format!("{serial} has another dispatchdev operation: {owner}").into());
         }
-        lock.set_len(0)?;
-        write!(lock, "{} (pid {})", root.display(), std::process::id())?;
+        let mut device = Self {
+            serial,
+            _lock: lock,
+        };
+        device._lock.set_len(0)?;
+        write!(
+            device._lock,
+            "{} (pid {})",
+            root.display(),
+            std::process::id()
+        )?;
         let listed = String::from_utf8(tools.adb(&["devices"], runner)?)?;
         let matches: Vec<_> = listed
             .lines()
@@ -84,10 +93,7 @@ impl<'a> Device<'a> {
             get("sys.boot_completed")? == "1",
             "The selected emulator is still booting. Prepare it after T3 reports it ready.",
         )?;
-        Ok(Self {
-            serial,
-            _lock: lock,
-        })
+        Ok(device)
     }
 
     pub fn install(&self, apk: &Path, tools: &Tools, runner: &dyn Runner) -> Result<()> {
@@ -108,5 +114,12 @@ impl<'a> Device<'a> {
                 .any(|line| line.trim() == "Success"),
             "ADB did not confirm installation; the app was not prepared.",
         )
+    }
+}
+
+impl Drop for Device<'_> {
+    fn drop(&mut self) {
+        // A concurrent fork may still hold a copy until exec; the operation ends here.
+        let _ = FileExt::unlock(&self._lock);
     }
 }

@@ -341,6 +341,7 @@ fn invalid_targets_variants_and_failed_builds_never_install() {
 
 #[test]
 fn a_device_operation_cannot_overlap_another_checkout_and_releases_its_lock_on_failure() {
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
     let fixture = Fixture::new();
     let tools = Tools::find(&fixture.root, &fixture.env).unwrap();
     let held = Device::take(
@@ -357,7 +358,30 @@ fn a_device_operation_cannot_overlap_another_checkout_and_releases_its_lock_on_f
         .unwrap()
         .to_string();
     assert!(error.contains("another dispatchdev operation"), "{error}");
+    let mut pipe = [0; 2];
+    assert_eq!(unsafe { libc::pipe(pipe.as_mut_ptr()) }, 0);
+    let read = unsafe { OwnedFd::from_raw_fd(pipe[0]) };
+    let write = unsafe { OwnedFd::from_raw_fd(pipe[1]) };
+    let child = unsafe { libc::fork() };
+    assert!(child >= 0);
+    if child == 0 {
+        // After fork in a threaded test, use only async-signal-safe calls until _exit.
+        unsafe {
+            libc::close(write.as_raw_fd());
+            let mut byte = 0u8;
+            libc::read(read.as_raw_fd(), (&mut byte as *mut u8).cast(), 1);
+            libc::_exit(0);
+        }
+    }
+    drop(read);
     drop(held);
+    let reacquired = Device::take(&other, "emulator-5560", &tools, &fixture.env, &fixture);
+    drop(write);
+    assert_eq!(
+        unsafe { libc::waitpid(child, std::ptr::null_mut(), 0) },
+        child
+    );
+    drop(reacquired.unwrap());
     fixture.failure.set("offline");
     assert!(fixture.prepare("inventory", None).is_err());
     fixture.failure.set("");
