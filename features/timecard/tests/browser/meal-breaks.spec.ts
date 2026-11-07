@@ -606,8 +606,11 @@ test('shared date and sync controls survive tabs, navigation, reload and collect
     route.fulfill({ json: paycomDefaults }),
   );
   await page.route('**/api/dsp/paycom/status', async (route) => {
-    const response = await route.fetch();
-    const body = await response.json();
+    // The reload below drops a status still being read, and with it its response; the
+    // reloaded page asks for the status again.
+    const response = await route.fetch().catch(() => null);
+    const body = await response?.json().catch(() => null);
+    if (!response || !body) return;
     body.connection.enabled = true;
     body.connection.status = 'ready';
     body.workforce.collectedAt = collectedAt;
