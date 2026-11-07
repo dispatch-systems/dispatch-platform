@@ -1,6 +1,11 @@
 //! Bounded, supervised upkeep. Each declared task has at most one pass in flight;
-//! external services never hold the scheduler's turn at starting collections.
-use crate::{Error, Result, State, collection::registry::Provider, db::now, manifest::registry};
+//! external services never hold the scheduler's turn at starting collections. Once the first
+//! pass after the server starts has ended, every task's, it logs `upkeep.settled`: the tests'
+//! servers are handed over then, their data as that pass leaves it.
+use crate::{
+    Error, Result, State, collection::registry::Provider, db::now,
+    foundation::observability, manifest::registry,
+};
 use std::{collections::HashSet, sync::Arc};
 
 pub(super) struct Maintenance {
@@ -8,6 +13,8 @@ pub(super) struct Maintenance {
     running: HashSet<usize>,
     last: Vec<i64>,
     audit_pruned: i64,
+    /// Whether the first pass has ended.
+    settled: bool,
 }
 impl Maintenance {
     pub fn new() -> Self {
@@ -16,6 +23,7 @@ impl Maintenance {
             running: HashSet::new(),
             last: vec![0; declared().count()],
             audit_pruned: 0,
+            settled: false,
         }
     }
     pub fn start(&mut self, state: &Arc<State>) {
@@ -56,6 +64,10 @@ impl Maintenance {
         match result {
             Some(Ok(id)) => {
                 self.running.remove(&id);
+                if self.running.is_empty() && !self.settled {
+                    self.settled = true;
+                    observability::event("info", "upkeep.settled", serde_json::json!({}));
+                }
             }
             Some(Err(_)) => return Err(Error::new("maintenance_task_failed", 500)),
             None => {}

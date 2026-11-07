@@ -57,7 +57,7 @@ if (process.argv[2] === 'seed') process.exit(0);
 process.on('SIGTERM', () => {});
 require('node:http').createServer((_req, res) => res.end('{}'))
   .listen(Number(process.env.PORT), '127.0.0.1', () =>
-    console.log(JSON.stringify({event:'core.started'})));
+    console.log(JSON.stringify({event:'core.started'}) + '\n' + JSON.stringify({event:'upkeep.settled'})));
 `,
     { mode: 0o700 },
   );

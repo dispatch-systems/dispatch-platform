@@ -260,13 +260,6 @@ test('employee sync queues one driver and period, preserves the roster, and yiel
   const owner = await f.client();
   const north = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
   await owner.select(north.id);
-  // Driver Match gives the roster its codes in its first pass after the server starts: what the
-  // sync must leave as it was is the roster once it has them.
-  await until(async () =>
-    (await owner.read('/api/dsp/employees?limit=all')).employees.every(
-      (employee: { person: string | null }) => employee.person,
-    ),
-  );
   const latest = (await owner.get('/api/dsp/employees/E001')).value;
   const period = latest.previousPeriod;
   const url = `/api/dsp/employees/E001?from=${period.from}&to=${period.to}`;
