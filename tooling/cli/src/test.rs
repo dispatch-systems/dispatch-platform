@@ -82,18 +82,29 @@ pub fn changed(root: &Path, runner: &dyn Runner) -> Result<Vec<String>> {
 }
 /// The tests the change touches: those it changes and those watching a source it changes.
 pub fn affected(root: &Path, runner: &dyn Runner) -> Result<Vec<String>> {
-    Ok(selected(root, &changed(root, runner)?))
+    Ok(selected(root, &changed(root, runner)?).0)
 }
-fn selected(root: &Path, changed: &[String]) -> Vec<String> {
+/// The commands for the tests `changed` touches, and a note naming the changed tests
+/// `dispatchdev check` runs instead.
+fn selected(root: &Path, changed: &[String]) -> (Vec<String>, Vec<String>) {
     let plan = fs::read_to_string(root.join("tooling/ci/test-plan.json"))
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok())
         .unwrap_or(Value::Null);
     let workspace = Workspace::read(root).unwrap_or_default();
-    test_selection::affected(changed, &plan, &workspace)
+    let commands = test_selection::affected(changed, &plan, &workspace)
         .into_iter()
         .filter(|command| !command.starts_with("cargo clippy"))
-        .collect()
+        .collect();
+    let checked = test_selection::checked_tests(changed, &plan);
+    let notes = match checked.is_empty() {
+        true => vec![],
+        false => vec![format!(
+            "`dispatchdev check` runs these, with the rule tests: {}",
+            checked.join(", ")
+        )],
+    };
+    (commands, notes)
 }
 /// Every Rust test, and every Node test the CI api job runs: the browser and collector suites
 /// stay on GitHub.
@@ -475,7 +486,7 @@ pub fn plan(root: &Path, tests: Tests<'_>, runner: &dyn Runner) -> Result<Plan> 
             plan.scope = "affected".into();
             plan.base = Some(git(&["rev-parse", "origin/main"])?);
             plan.changed = changed(root, runner)?;
-            plan.commands = selected(root, &plan.changed);
+            (plan.commands, plan.notes) = selected(root, &plan.changed);
         }
         Tests::Owner { owner, only, file } => {
             plan.scope = owner.into();
