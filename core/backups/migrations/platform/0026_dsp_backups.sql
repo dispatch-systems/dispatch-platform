@@ -8,27 +8,34 @@ CREATE TABLE IF NOT EXISTS backup_schedules (
     revision INTEGER NOT NULL DEFAULT 0,
     generation TEXT NOT NULL
 );
--- Each rule of a DSP's backup schedule, in its order: on which days (Monday the lowest bit) and
--- when on each, as a collection's rules are, how long what it takes is kept, and which of the
--- DSP's data it leaves out, so what's added later is backed up too.
+-- Each rule of a DSP's backup schedule, in its order: on days of the week (`days`, Monday the
+-- lowest bit) or dates of the month (`dates`, the 1st bit 1, and its last day if `last_day`), at
+-- set times or every so often between two times; how long what it takes is kept, forever, for a
+-- while or as its newest few; and which of the DSP's data it leaves out, so what's added later is
+-- backed up too.
 CREATE TABLE IF NOT EXISTS backup_rules (
     id TEXT PRIMARY KEY,
     dsp_id TEXT NOT NULL,
     position INTEGER NOT NULL,
-    days INTEGER NOT NULL,
+    on_days TEXT NOT NULL CHECK(on_days IN ('week', 'month')),
+    days INTEGER NOT NULL DEFAULT 0,
+    dates INTEGER NOT NULL DEFAULT 0,
+    last_day INTEGER NOT NULL DEFAULT 0,
     times TEXT,
     every INTEGER,
     from_time TEXT,
     to_time TEXT,
-    keep_count INTEGER NOT NULL,
-    keep_unit TEXT NOT NULL CHECK(keep_unit IN ('day', 'week', 'month', 'year')),
+    keep TEXT NOT NULL CHECK(keep IN ('forever', 'for', 'last')),
+    keep_count INTEGER,
+    keep_unit TEXT CHECK(keep_unit IN ('day', 'week', 'month', 'year')),
     skipped TEXT NOT NULL DEFAULT '[]',
     next_run INTEGER
 );
 CREATE INDEX IF NOT EXISTS backup_rules_dsp ON backup_rules(dsp_id, position);
 -- Each backup of a DSP, from when it's asked for until it expires: the rule that took it, or none
--- for one taken by hand, and once it's taken, the files it holds by their objects. Kept after its
--- DSP is deleted until it expires.
+-- for one taken by hand; when it expires, none for one kept forever or as one of its rule's newest
+-- `keep_last`; and once it's taken, the files it holds by their objects. Kept after its DSP is
+-- deleted until it expires.
 CREATE TABLE IF NOT EXISTS backups (
     id TEXT PRIMARY KEY,
     dsp_id TEXT NOT NULL,
@@ -38,6 +45,7 @@ CREATE TABLE IF NOT EXISTS backups (
     created_at INTEGER NOT NULL,
     finished_at INTEGER,
     expires_at INTEGER,
+    keep_last INTEGER,
     size INTEGER,
     files TEXT,
     error TEXT

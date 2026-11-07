@@ -7,8 +7,9 @@ use serde_json::json;
 
 fn rule(id: Option<&str>, time: &str) -> Value {
     json!({
-        "id": id, "kind": "times", "days": [0, 1, 2, 3, 4, 5, 6], "times": [time],
-        "every": null, "from": null, "to": null, "keep": 7, "keepUnit": "day", "skipped": [],
+        "id": id, "on": "week", "days": [0, 1, 2, 3, 4, 5, 6], "dates": [], "lastDay": false,
+        "kind": "times", "times": [time], "every": null, "from": null, "to": null,
+        "keep": "for", "keepCount": 7, "keepUnit": "day", "skipped": [],
     })
 }
 
@@ -57,7 +58,7 @@ fn rules_save_over_the_schedule_they_were_read_from_and_run_when_due() {
     assert_eq!(foreign.code, "invalid_input");
     // A rule keeps what it takes for a while, and every backup holds the DSP's own data.
     let mut kept_for_none = rule(None, "05:00");
-    kept_for_none["keep"] = json!(0);
+    kept_for_none["keepCount"] = json!(0);
     let mut without_dispatch = rule(None, "05:00");
     without_dispatch["skipped"] = json!([contents::DISPATCH]);
     for wrong in [kept_for_none, without_dispatch] {
@@ -82,7 +83,7 @@ fn rules_save_over_the_schedule_they_were_read_from_and_run_when_due() {
     let moved = schedule(&db.platform, &north).unwrap().rules[0]
         .next_run
         .unwrap();
-    assert_eq!(moved, saved.rules[0].rule.next(tz, next).unwrap());
+    assert_eq!(moved, saved.rules[0].when.next(tz, next).unwrap());
     retry(&db.platform, &id, next).unwrap();
     let retried = schedule(&db.platform, &north).unwrap().rules[0]
         .next_run

@@ -1,65 +1,97 @@
-//! A DSP's backup schedule: whether it's on, and its rules, each on chosen days at set times or
-//! every so often between two times, as a collection's rules run (`collection::rules`), with how
-//! long what it takes is kept and what it leaves out. A DSP no one has scheduled has the first
-//! rule every DSP starts with: every day at 2:00 AM, kept 30 days, all but its pictures.
+//! A DSP's backup schedule: whether it's on, and its rules, each on days of the week or dates of
+//! the month at set times or every so often between two times (`when`), with how long what it
+//! takes is kept and what it leaves out. A DSP no one has scheduled has the first rule every DSP
+//! starts with: every day at 2:00 AM, kept 30 days, all but its pictures.
 use super::{
-    api::types::{BackupRule, KeepUnit},
+    api::types::{BackupOn, BackupRule, BackupTiming, KeepFor, KeepUnit},
     contents,
+    when::{self, EVERY_DAY, On, Timing, When},
 };
 use crate::{
     Error, Result,
-    collection::{
-        api::types::RuleKind,
-        rules::{self, Rule, Timing},
-    },
     db::{Db, FromRow, Row, Store, at, now},
     ensure,
     foundation::{crypto, validate as v},
 };
-use chrono::{Months, TimeZone, Utc};
+use chrono::{Months, NaiveDate, TimeZone, Utc};
 use chrono_tz::Tz;
 use rusqlite::params;
 use serde_json::Value;
 
 /// The most rules one DSP's schedule has.
 pub const MAX_RULES: usize = 10;
-/// The most of a unit a rule keeps what it takes for.
+/// The most of a unit a rule keeps what it takes for, and the most of its newest it keeps.
 pub const MAX_KEEP: i64 = 999;
+/// How many days of the coming weeks the Backups tab draws.
+pub const CALENDAR_DAYS: i64 = 35;
+
+/// How long what a rule takes is kept.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Keep {
+    Forever,
+    For(i64, KeepUnit),
+    /// Its newest this many.
+    Last(i64),
+}
+impl Keep {
+    /// When what's taken at `taken` expires: never, while kept forever or as one of its rule's
+    /// newest, which pruning counts.
+    pub fn expires(self, taken: i64) -> Option<i64> {
+        match self {
+            Self::For(count, unit) => Some(expires(taken, count, unit)),
+            Self::Forever | Self::Last(_) => None,
+        }
+    }
+    /// How many of its rule's newest it's kept as one of, when it's kept so.
+    pub fn last(self) -> Option<i64> {
+        match self {
+            Self::Last(count) => Some(count),
+            _ => None,
+        }
+    }
+}
 
 /// One rule of a DSP's backup schedule, as it's kept: none kept yet for the rule every DSP starts
 /// with.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Kept {
     pub id: Option<String>,
-    pub rule: Rule,
-    pub keep: i64,
-    pub unit: KeepUnit,
+    pub when: When,
+    pub keep: Keep,
     pub skipped: Vec<String>,
     pub next_run: Option<i64>,
 }
 impl FromRow for Kept {
     fn from_row(row: &Row<'_>) -> Result<Self> {
+        let on = match row.get::<BackupOn>("on_days")? {
+            BackupOn::Week => On::Week(row.get("days")?),
+            BackupOn::Month => On::Month {
+                dates: row.get("dates")?,
+                last: row.get("last_day")?,
+            },
+        };
         let timing = match row.get::<Option<i64>>("every")? {
             Some(every) => Timing::Repeat {
                 every,
-                from: rules::time(&row.get::<String>("from_time")?)?,
-                to: rules::time(&row.get::<String>("to_time")?)?,
+                from: when::time(&row.get::<String>("from_time")?)?,
+                to: when::time(&row.get::<String>("to_time")?)?,
             },
             None => Timing::At(
                 serde_json::from_str::<Vec<String>>(&row.get::<String>("times")?)?
                     .iter()
-                    .map(|at| rules::time(at))
+                    .map(|at| when::time(at))
                     .collect::<Result<_>>()?,
             ),
         };
+        let keep = match row.get::<KeepFor>("keep")? {
+            KeepFor::Forever => Keep::Forever,
+            KeepFor::For => Keep::For(row.get("keep_count")?, row.get("keep_unit")?),
+            KeepFor::Last => Keep::Last(row.get("keep_count")?),
+        };
         Ok(Self {
             id: Some(row.get("id")?),
-            rule: Rule {
-                days: row.get("days")?,
-                timing,
-            },
-            keep: row.get("keep_count")?,
-            unit: row.get("keep_unit")?,
+            when: When { on, timing },
+            keep,
             skipped: serde_json::from_str(&row.get::<String>("skipped")?)?,
             next_run: row.get("next_run")?,
         })
@@ -70,72 +102,87 @@ impl Kept {
     fn first() -> Self {
         Self {
             id: None,
-            rule: Rule {
-                days: rules::EVERY_DAY,
-                timing: Timing::At(vec![rules::time("02:00").expect("a time")]),
+            when: When {
+                on: On::Week(EVERY_DAY),
+                timing: Timing::At(vec![when::time("02:00").expect("a time")]),
             },
-            keep: 30,
-            unit: KeepUnit::Day,
+            keep: Keep::For(30, KeepUnit::Day),
             skipped: vec![contents::PICTURES.into()],
             next_run: None,
         }
     }
-    /// When what it takes at `taken` expires.
-    pub fn expires(&self, taken: i64) -> i64 {
-        expires(taken, self.keep, self.unit)
-    }
     /// It as the Backups tab shows it, its next run shown while the schedule is on.
     pub fn shown(&self, tz: Tz, enabled: bool) -> BackupRule {
-        let days = (0..7)
-            .filter(|day| self.rule.days & (1 << day) != 0)
-            .collect();
-        let (kind, times, every, from, to) = match &self.rule.timing {
+        let bits = |mask: i64, range: std::ops::RangeInclusive<i64>| {
+            range.filter(|bit| mask & (1 << bit) != 0).collect()
+        };
+        let (on, days, dates, last_day) = match self.when.on {
+            On::Week(days) => (BackupOn::Week, bits(days, 0..=6), vec![], false),
+            On::Month { dates, last } => (BackupOn::Month, vec![], bits(dates, 1..=31), last),
+        };
+        let (kind, times, every, from, to) = match &self.when.timing {
             Timing::At(times) => (
-                RuleKind::Times,
-                times.iter().map(|at| rules::text(*at)).collect(),
+                BackupTiming::Times,
+                times.iter().map(|at| when::text(*at)).collect(),
                 None,
                 None,
                 None,
             ),
             Timing::Repeat { every, from, to } => (
-                RuleKind::Repeat,
+                BackupTiming::Repeat,
                 vec![],
                 Some(*every),
-                Some(rules::text(*from)),
-                Some(rules::text(*to)),
+                Some(when::text(*from)),
+                Some(when::text(*to)),
             ),
         };
+        let (keep, keep_count, keep_unit) = match self.keep {
+            Keep::Forever => (KeepFor::Forever, None, None),
+            Keep::For(count, unit) => (KeepFor::For, Some(count), Some(unit)),
+            Keep::Last(count) => (KeepFor::Last, Some(count), None),
+        };
         let next_run = enabled
-            .then(|| self.next_run.or_else(|| self.rule.next(tz, now())))
+            .then(|| self.next_run.or_else(|| self.when.next(tz, now())))
             .flatten()
             .map(at);
         BackupRule {
             id: self.id.clone(),
-            kind,
+            on,
             days,
+            dates,
+            last_day,
+            kind,
             times,
             every,
             from,
             to,
-            keep: self.keep,
-            keep_unit: self.unit,
+            keep,
+            keep_count,
+            keep_unit,
             skipped: self.skipped.clone(),
             next_run,
         }
     }
-    /// A rule as a request states it: its timing as a collection's rule states it, with `keep`,
-    /// `keepUnit` and `skipped`; `id`, the rule it changes, if it's kept already.
+    /// A rule as a request states it: when it runs as `When::parse` reads it, with `keep`,
+    /// `keepCount`, `keepUnit` and `skipped`; `id`, the rule it changes, if it's kept already.
     fn parse(value: &Value) -> Result<Self> {
         v::fields(
             value,
             &[
-                "id", "kind", "days", "times", "every", "from", "to", "keep", "keepUnit", "skipped",
+                "id", "on", "days", "dates", "lastDay", "kind", "times", "every", "from", "to",
+                "keep", "keepCount", "keepUnit", "skipped",
             ],
         )?;
-        let rule = Rule::parse(value)?;
-        let keep = v::integer(value, "keep", 1, MAX_KEEP)?;
-        let unit = KeepUnit::parse(v::text(value, "keepUnit", 1, 8)?)
-            .ok_or_else(|| Error::new("invalid_input", 400))?;
+        let when = When::parse(value)?;
+        let keep = match v::choice(value, "keep", &["forever", "for", "last"])? {
+            "forever" => Keep::Forever,
+            "for" => Keep::For(
+                v::integer(value, "keepCount", 1, MAX_KEEP)?,
+                KeepUnit::parse(v::text(value, "keepUnit", 1, 8)?)
+                    .ok_or_else(|| Error::new("invalid_input", 400))?,
+            ),
+            _ => Keep::Last(v::integer(value, "keepCount", 1, MAX_KEEP)?),
+        };
         let skipped = value["skipped"]
             .as_array()
             .ok_or_else(|| Error::new("invalid_input", 400))?
@@ -158,9 +205,8 @@ impl Kept {
         };
         Ok(Self {
             id,
-            rule,
+            when,
             keep,
-            unit,
             skipped,
             next_run: None,
         })
@@ -261,22 +307,31 @@ pub fn generation_of(platform: &Db, dsp: &str) -> Result<String> {
     Ok(generation)
 }
 
-/// Replaces the DSP's rules with those `value` states, if its `revision` is the schedule's: a
-/// schedule changed since it was read is refused as `backup_schedule_changed`.
-pub fn save(db: &Store, dsp: &str, value: &Value) -> Result<()> {
-    v::fields(value, &["revision", "rules"])?;
-    let revision = v::integer(value, "revision", 0, i64::MAX)?;
-    let rules = value["rules"]
+/// The rules `value` states, at most `MAX_RULES` of them.
+fn parsed(value: &Value) -> Result<Vec<Kept>> {
+    value["rules"]
         .as_array()
         .filter(|rules| rules.len() <= MAX_RULES)
         .ok_or_else(|| Error::new("invalid_input", 400))?
         .iter()
         .map(Kept::parse)
-        .collect::<Result<Vec<_>>>()?;
+        .collect()
+}
+
+/// Replaces the DSP's rules with those `value` states, if its `revision` is the schedule's: a
+/// schedule changed since it was read is refused as `backup_schedule_changed`.
+pub fn save(db: &Store, dsp: &str, value: &Value) -> Result<()> {
+    v::fields(value, &["revision", "rules"])?;
+    let revision = v::integer(value, "revision", 0, i64::MAX)?;
+    let rules = parsed(value)?;
     let tz = timezone(db, dsp)?;
     db.platform.transaction(|| {
         let current = schedule(&db.platform, dsp)?;
-        ensure(current.revision == revision, "backup_schedule_changed", 409)?;
+        ensure(
+            current.revision == revision,
+            "backup_schedule_changed",
+            409,
+        )?;
         // A rule keeps its ID only if it's this DSP's.
         let ids: Vec<String> = current.rules.iter().filter_map(|k| k.id.clone()).collect();
         for rule in &rules {
@@ -299,10 +354,14 @@ pub fn save(db: &Store, dsp: &str, value: &Value) -> Result<()> {
 
 fn write_rules(platform: &Db, dsp: &str, rules: &[Kept], tz: Tz) -> Result<()> {
     for (position, kept) in rules.iter().enumerate() {
-        let (times, every, from, to) = match &kept.rule.timing {
+        let (on, days, dates, last) = match kept.when.on {
+            On::Week(days) => (BackupOn::Week, days, 0, false),
+            On::Month { dates, last } => (BackupOn::Month, 0, dates, last),
+        };
+        let (times, every, from, to) = match &kept.when.timing {
             Timing::At(times) => (
                 Some(serde_json::to_string(
-                    &times.iter().map(|at| rules::text(*at)).collect::<Vec<_>>(),
+                    &times.iter().map(|at| when::text(*at)).collect::<Vec<_>>(),
                 )?),
                 None,
                 None,
@@ -311,30 +370,40 @@ fn write_rules(platform: &Db, dsp: &str, rules: &[Kept], tz: Tz) -> Result<()> {
             Timing::Repeat { every, from, to } => (
                 None,
                 Some(*every),
-                Some(rules::text(*from)),
-                Some(rules::text(*to)),
+                Some(when::text(*from)),
+                Some(when::text(*to)),
             ),
+        };
+        let (keep, count, unit) = match kept.keep {
+            Keep::Forever => (KeepFor::Forever, None, None),
+            Keep::For(count, unit) => (KeepFor::For, Some(count), Some(unit)),
+            Keep::Last(count) => (KeepFor::Last, Some(count), None),
         };
         let id = match &kept.id {
             Some(id) => id.clone(),
             None => crypto::id("bkr")?,
         };
         platform.exec(
-            "INSERT INTO backup_rules(id,dsp_id,position,days,times,every,from_time,to_time,\
-             keep_count,keep_unit,skipped,next_run) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO backup_rules(id,dsp_id,position,on_days,days,dates,last_day,times,every,\
+             from_time,to_time,keep,keep_count,keep_unit,skipped,next_run) \
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             params![
                 id,
                 dsp,
                 position as i64,
-                kept.rule.days,
+                on,
+                days,
+                dates,
+                last,
                 times,
                 every,
                 from,
                 to,
-                kept.keep,
-                kept.unit,
+                keep,
+                count,
+                unit,
                 serde_json::to_string(&kept.skipped)?,
-                kept.rule.next(tz, now()),
+                kept.when.next(tz, now()),
             ],
         )?;
     }
@@ -351,42 +420,38 @@ pub fn switch(db: &Store, dsp: &str, enabled: bool) -> Result<()> {
             params![enabled, dsp],
         )?;
         if enabled {
-            moved_on(&db.platform, dsp, tz, now())?;
+            let rules: Vec<Kept> = db.platform.query_as(RULES, [dsp])?;
+            for kept in rules {
+                db.platform.exec(
+                    "UPDATE backup_rules SET next_run=? WHERE id=?",
+                    params![kept.when.next(tz, now()), kept.id],
+                )?;
+            }
         }
         Ok(())
     })
 }
 
-/// Moves each of the DSP's rules to the first time it runs after `after`.
-fn moved_on(platform: &Db, dsp: &str, tz: Tz, after: i64) -> Result<()> {
-    let rules: Vec<Kept> = platform.query_as(RULES, [dsp])?;
-    for kept in rules {
-        platform.exec(
-            "UPDATE backup_rules SET next_run=? WHERE id=?",
-            params![kept.rule.next(tz, after), kept.id],
-        )?;
-    }
-    Ok(())
-}
-
-/// The next `count` runs of the rules `value` states, in the DSP's timezone.
-pub fn preview(db: &Store, dsp: &str, value: &Value, count: usize) -> Result<Vec<String>> {
-    v::fields(value, &["rules"])?;
-    let rules = value["rules"]
-        .as_array()
-        .filter(|rules| rules.len() <= MAX_RULES)
-        .ok_or_else(|| Error::new("invalid_input", 400))?
-        .iter()
-        .map(|rule| Kept::parse(rule).map(|kept| kept.rule))
-        .collect::<Result<Vec<_>>>()?;
-    let tz = timezone(db, dsp)?;
-    Ok(rules::upcoming(&rules, tz, now(), count)
+/// When `rules` run, in the DSP's timezone `tz`: their next `count` runs, and which of them run on
+/// each of the coming weeks' days, from today.
+pub type Runs = (Vec<String>, Vec<(NaiveDate, Vec<usize>)>);
+pub fn runs(rules: &[When], tz: Tz, count: usize) -> Runs {
+    let upcoming = when::upcoming(rules, tz, now(), count)
         .into_iter()
         .map(at)
-        .collect())
+        .collect();
+    let today = Utc::now().with_timezone(&tz).date_naive();
+    (upcoming, when::calendar(rules, today, CALENDAR_DAYS))
 }
 
-/// A rule of the DSP's that's due by `now`, moved to its next run: its ID, and its keep.
+/// When the rules `value` states would run, in the DSP's timezone.
+pub fn preview(db: &Store, dsp: &str, value: &Value, count: usize) -> Result<Runs> {
+    v::fields(value, &["rules"])?;
+    let rules: Vec<When> = parsed(value)?.into_iter().map(|kept| kept.when).collect();
+    Ok(runs(&rules, timezone(db, dsp)?, count))
+}
+
+/// The rules of the DSP's that are due by `now`, each moved to its next run.
 pub fn due(platform: &Db, dsp: &str, tz: Tz, now: i64) -> Result<Vec<Kept>> {
     let rules: Vec<Kept> = platform.query_as(
         "SELECT r.* FROM backup_rules r JOIN backup_schedules s ON s.dsp_id=r.dsp_id \
@@ -397,7 +462,7 @@ pub fn due(platform: &Db, dsp: &str, tz: Tz, now: i64) -> Result<Vec<Kept>> {
     for kept in &rules {
         platform.exec(
             "UPDATE backup_rules SET next_run=? WHERE id=?",
-            params![kept.rule.next(tz, now), kept.id],
+            params![kept.when.next(tz, now), kept.id],
         )?;
     }
     Ok(rules)
@@ -408,7 +473,10 @@ pub fn due(platform: &Db, dsp: &str, tz: Tz, now: i64) -> Result<Vec<Kept>> {
 pub fn forget_dsp(platform: &Db, dsp: &str) -> Result<()> {
     platform.exec("DELETE FROM backup_rules WHERE dsp_id=?", [dsp])?;
     platform.exec("DELETE FROM backup_schedules WHERE dsp_id=?", [dsp])?;
-    platform.exec("UPDATE backups SET requested_by=NULL WHERE dsp_id=?", [dsp])?;
+    platform.exec(
+        "UPDATE backups SET requested_by=NULL WHERE dsp_id=?",
+        [dsp],
+    )?;
     platform.exec(
         "UPDATE backups SET status='failed',finished_at=?,error='dsp_deleted' \
          WHERE dsp_id=? AND status='queued'",

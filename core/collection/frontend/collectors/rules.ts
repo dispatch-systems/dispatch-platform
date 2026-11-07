@@ -1,4 +1,4 @@
-import type { ScheduleCollection, ScheduleRuleInput } from '../../api/index.js';
+import type { ScheduleCollection, ScheduleRule, ScheduleRuleInput } from '../../api/index.js';
 import { WEEKDAYS } from '../../../shell/frontend/lib/calendar.js';
 
 // A collection's schedule rules as the Collectors page shows and edits them: each on chosen days
@@ -20,17 +20,10 @@ export const PATTERNS: { pattern: Pattern; label: string }[] = [
   { pattern: 'few', label: 'A few times a day' },
   { pattern: 'repeat', label: 'Repeat during hours' },
 ];
-/** When a rule runs, as a collection's rules and every schedule made the same way say it. */
-export type RuleTiming = Pick<
-  ScheduleRuleInput,
-  'kind' | 'days' | 'times' | 'every' | 'from' | 'to'
->;
-/** A rule being edited, by the key it's listed by: times still being typed may be empty. */
-export type Editing = RuleTiming & { key: string };
-/** A collection's rule being edited: what's sent, with its key. */
+/** A rule being edited: what's sent, with times still being typed allowed empty. */
 export type Draft = ScheduleRuleInput & { key: string };
 
-export const patternOf = (rule: RuleTiming): Pattern =>
+export const patternOf = (rule: ScheduleRuleInput): Pattern =>
   rule.kind === 'repeat' ? 'repeat' : rule.times.length > 1 ? 'few' : 'once';
 
 /** A new rule of `collects`: once a day, every day, its time left to choose. */
@@ -46,7 +39,7 @@ export const newRule = (collects: ScheduleCollection, key: string): Draft => ({
   to: null,
 });
 /** `rule` made as `pattern`, keeping what still fits it. */
-export function withPattern<R extends RuleTiming>(rule: R, pattern: Pattern): R {
+export function withPattern(rule: Draft, pattern: Pattern): Draft {
   if (pattern === 'repeat') {
     const from = rule.times.find(Boolean) ?? rule.from ?? '';
     return { ...rule, kind: 'repeat', times: [], every: rule.every ?? 60, from, to: rule.to ?? '' };
@@ -63,7 +56,7 @@ export function withPattern<R extends RuleTiming>(rule: R, pattern: Pattern): R 
   };
 }
 /** A rule as the server keeps it, if it's whole: its times set and in order, each once. */
-export function finished<R extends Editing>(rule: R): Omit<R, 'key'> | undefined {
+export function finished(rule: Draft): ScheduleRuleInput | undefined {
   const { key: _key, ...input } = rule;
   if (!rule.days.length) return undefined;
   if (rule.kind === 'repeat')
@@ -79,7 +72,7 @@ const minutes = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.sl
  * The minutes after the start of a day it runs on that a rule runs at, ascending: past a day's
  * length, on the next day. All day runs up to the next day's first, which that day runs.
  */
-export function offsets(rule: RuleTiming): number[] {
+export function offsets(rule: ScheduleRuleInput): number[] {
   if (rule.kind === 'times') return rule.times.filter(isTime).map(minutes);
   if (!rule.every || !isTime(rule.from) || !isTime(rule.to)) return [];
   const start = minutes(rule.from);
@@ -90,7 +83,7 @@ export function offsets(rule: RuleTiming): number[] {
   return runs;
 }
 /** When each of `rules` runs on each day of a week, Monday first, in minutes from its start. */
-export function week(rules: RuleTiming[]): number[][] {
+export function week(rules: ScheduleRuleInput[]): number[][] {
   return WEEKDAYS.map((_, on) => {
     const runs = rules.flatMap((rule) =>
       rule.days.flatMap((day) =>
@@ -132,7 +125,7 @@ export function daysText(days: number[]) {
   return on.map((day) => WEEKDAYS[day]).join(', ');
 }
 /** How a rule reads: "Weekdays at 6:00 AM and 2:00 PM", or "Every day, every 30 min, 6:00 AM to 9:00 PM". */
-export function ruleText(rule: RuleTiming) {
+export function ruleText(rule: ScheduleRuleInput | ScheduleRule) {
   const days = daysText(rule.days);
   if (rule.kind === 'times') {
     const times = rule.times.filter(isTime).map(clock);

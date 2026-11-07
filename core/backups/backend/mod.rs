@@ -13,6 +13,7 @@ pub mod keeper;
 pub mod schedule;
 pub mod seal;
 mod take;
+pub mod when;
 
 pub use keeper::keeper;
 

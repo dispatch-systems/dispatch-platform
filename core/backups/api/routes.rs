@@ -77,8 +77,10 @@ fn switch(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
 
 /// When rules not saved yet would run next.
 fn preview(db: &Store, _: &User, input: &Input) -> Result<Reply> {
+    let (upcoming, calendar) = schedule::preview(db, input.param("id"), &input.body, 5)?;
     Reply::of(&BackupRuns {
-        upcoming: schedule::preview(db, input.param("id"), &input.body, 5)?,
+        upcoming,
+        calendar: history::days(calendar),
     })
 }
 

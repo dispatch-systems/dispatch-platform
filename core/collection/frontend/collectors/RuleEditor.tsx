@@ -1,5 +1,5 @@
 import { Check, ChevronUp, Pencil, Plus, Trash2, X } from 'lucide-react';
-import type { ReactNode } from 'react';
+import type { ScheduleChoice } from '../../api/index.js';
 import { DayPicker } from '../../../shell/frontend/ui/index.js';
 import { Glyph, Mark } from './glyph.js';
 import {
@@ -10,44 +10,37 @@ import {
   patternOf,
   ruleText,
   withPattern,
-  type Editing,
+  type Draft,
 } from './rules.js';
 
-// One rule of a schedule: its words, and opened, the pattern it's made from and that pattern's
-// fields, which change it as they're set. A collection's rules and every schedule made the same
-// way, a DSP's backups among them, are edited here.
+// One rule of a collection's schedule: its words, and opened, the pattern it's made from and
+// that pattern's fields, which change it as they're set.
 
-export function RuleEditor<R extends Editing>({
+export function RuleEditor({
   rule,
   place,
   open,
-  tags,
-  lead,
-  more,
+  choice,
   issue,
   disabled,
   change,
   toggle,
   remove,
 }: {
-  rule: R;
+  rule: Draft;
   /** Its place among the rules, which colours it as the week draws it. */
   place: number;
   open: boolean;
-  /** What its words are followed by, as a collection's rule names what it reads. */
-  tags?: ReactNode;
-  /** Its schedule's own fields before its days, as a collection's what it reads. */
-  lead?: ReactNode;
-  /** Its schedule's own fields after when it runs, as a backup's how long it's kept. */
-  more?: ReactNode;
+  choice: ScheduleChoice | null;
   /** Why its run waits, in words, if it does. */
   issue?: string;
   disabled: boolean;
-  change: (rule: R) => void;
+  change: (rule: Draft) => void;
   toggle: () => void;
   remove: () => void;
 }) {
   const pattern = patternOf(rule);
+  const chosen = choice?.options.find((option) => option.collection === rule.collects);
   const kind = PATTERNS.find((each) => each.pattern === pattern)!.label;
   return (
     <div className={`collectors-rule${open ? ' is-open' : ''}`} data-rule={place % 5}>
@@ -56,7 +49,7 @@ export function RuleEditor<R extends Editing>({
           <Mark pattern={pattern} />
         </span>
         <strong>{ruleText(rule)}</strong>
-        {tags}
+        {choice && chosen && <span className="collectors-tag">{chosen.label}</span>}
         {!open && <span className="collectors-kind">{kind}</span>}
         {issue && <span className="collectors-issue">{issue}</span>}
         <span className="collectors-rule-tools">
@@ -112,7 +105,24 @@ export function RuleEditor<R extends Editing>({
             ))}
           </div>
           <div className={`collectors-fields at-${pattern}`}>
-            {lead}
+            {choice && (
+              <>
+                <span className="collectors-label">{choice.label}</span>
+                <div className="settings-segments" role="radiogroup" aria-label={choice.label}>
+                  {choice.options.map((option) => (
+                    <label key={option.collection}>
+                      <input
+                        type="radio"
+                        name={`${rule.key}-collects`}
+                        checked={option.collection === rule.collects}
+                        onChange={() => change({ ...rule, collects: option.collection })}
+                      />
+                      {option.label}
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
             <span className="collectors-label">Days</span>
             <DayPicker
               days={rule.days}
@@ -155,7 +165,6 @@ export function RuleEditor<R extends Editing>({
                 </div>
               </>
             )}
-            {more}
           </div>
         </fieldset>
       )}
@@ -164,7 +173,7 @@ export function RuleEditor<R extends Editing>({
 }
 
 /** A rule's times: one, or a few, each changed, removed or added in place. */
-function Times<R extends Editing>({ rule, change }: { rule: R; change: (rule: R) => void }) {
+function Times({ rule, change }: { rule: Draft; change: (rule: Draft) => void }) {
   const set = (index: number, value: string) =>
     change({ ...rule, times: rule.times.map((time, at) => (at === index ? value : time)) });
   const repeated = (time: string, index: number) => rule.times.indexOf(time) !== index;

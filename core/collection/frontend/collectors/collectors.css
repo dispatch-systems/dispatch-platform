@@ -110,8 +110,7 @@
 .collectors-item[aria-current] .collectors-next {
   color: color-mix(in srgb, var(--primary) 75%, var(--muted-foreground));
 }
-.collectors .dot,
-.collectors-runs .dot {
+.collectors .dot {
   display: inline-block;
   flex-shrink: 0;
   width: 7px;
@@ -264,25 +263,20 @@
   font-size: 12px;
 }
 
-/* A rule, coloured as the week draws it: here, and wherever another schedule shows its rules. */
-.collectors-rule[data-rule],
-.collectors-track [data-rule] {
+/* A rule, coloured as the week draws it. */
+.collectors [data-rule] {
   --rule: var(--series-1);
 }
-.collectors-rule[data-rule='1'],
-.collectors-track [data-rule='1'] {
+.collectors [data-rule='1'] {
   --rule: var(--series-2);
 }
-.collectors-rule[data-rule='2'],
-.collectors-track [data-rule='2'] {
+.collectors [data-rule='2'] {
   --rule: var(--series-3);
 }
-.collectors-rule[data-rule='3'],
-.collectors-track [data-rule='3'] {
+.collectors [data-rule='3'] {
   --rule: var(--series-4);
 }
-.collectors-rule[data-rule='4'],
-.collectors-track [data-rule='4'] {
+.collectors [data-rule='4'] {
   --rule: var(--series-5);
 }
 .collectors-rule {
@@ -419,8 +413,6 @@
   display: block;
   width: 100%;
   height: auto;
-  /* However wide its card, its drawing keeps within it. */
-  max-height: 36px;
   overflow: visible;
 }
 .collectors-pattern > span:not(.collectors-art) {

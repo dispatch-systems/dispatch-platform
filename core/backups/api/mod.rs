@@ -8,11 +8,15 @@ pub fn typescript(cfg: &ts_rs::Config) -> crate::Typescript {
     crate::typescript!(
         cfg,
         types::Backup,
+        types::BackupDay,
         types::BackupItem,
+        types::BackupOn,
         types::BackupRule,
         types::BackupRuns,
         types::BackupStatus,
+        types::BackupTiming,
         types::DspBackups,
+        types::KeepFor,
         types::KeepUnit,
     )
 }

@@ -232,3 +232,42 @@ async fn a_rule_whose_backup_fails_runs_again_within_the_hour() {
     assert!(row["rule_id"].is_string());
     assert!(next <= now() + 60 * 60 * 1000, "{next}");
 }
+
+#[tokio::test]
+async fn a_rule_that_keeps_its_last_few_lets_older_ones_go_and_forever_keeps_all() {
+    let backups = Backups::start().await;
+    let dsp = backups.dsp.clone();
+    let left = backups
+        .sql(move |db| {
+            let taken = |id: &str, rule: &str, at: i64, last: Option<i64>| {
+                db.platform.exec(
+                    "INSERT INTO backups(id,dsp_id,rule_id,status,created_at,keep_last,files) \
+                     VALUES (?,?,?,'succeeded',?,?,'[]')",
+                    rusqlite::params![id, dsp, rule, at, last],
+                )
+            };
+            // Kept as its newest three, then two: the rule's newest says how many.
+            taken("bak_1", "bkr_a", 1, Some(3))?;
+            taken("bak_2", "bkr_a", 2, Some(3))?;
+            taken("bak_3", "bkr_a", 3, Some(2))?;
+            taken("bak_4", "bkr_a", 4, Some(2))?;
+            // Kept forever.
+            taken("bak_5", "bkr_b", 1, None)?;
+            history::outnumbered(&db.platform, 10)?;
+            let kept: Vec<(String, Option<i64>)> = db
+                .platform
+                .query_as("SELECT id,expires_at FROM backups ORDER BY id", [])?;
+            Ok(kept)
+        })
+        .await;
+    assert_eq!(
+        left,
+        [
+            ("bak_1".to_owned(), Some(10)),
+            ("bak_2".to_owned(), Some(10)),
+            ("bak_3".to_owned(), None),
+            ("bak_4".to_owned(), None),
+            ("bak_5".to_owned(), None),
+        ]
+    );
+}

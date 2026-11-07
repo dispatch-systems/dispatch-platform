@@ -144,8 +144,6 @@ const entries = [
   'core/collection/frontend/live-collection.ts',
   // How a live reader reads, which Settings shows with the section that sets when it reads.
   'core/collection/frontend/live-reading.tsx',
-  // A schedule's rules and week as Collectors edits and draws them, which Backups uses too.
-  'core/collection/frontend/schedule.ts',
 ];
 
 test('an owner reaches another only through a front door or public entry', () => {

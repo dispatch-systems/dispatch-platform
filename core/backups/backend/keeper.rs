@@ -56,7 +56,7 @@ pub async fn pass(state: &Arc<State>, vault: &Vault) -> Result<()> {
                             &dsp,
                             rule.id.as_deref(),
                             None,
-                            rule.expires(at),
+                            rule.keep,
                         )?;
                     }
                     Ok(())
@@ -129,7 +129,10 @@ pub async fn pass(state: &Arc<State>, vault: &Vault) -> Result<()> {
 /// keeps what an older one took.
 async fn prune(state: &Arc<State>, vault: &Vault) -> Result<()> {
     let expired = state
-        .run_bookkeeping(|db| history::expired(&db.platform, now()))
+        .run_bookkeeping(|db| {
+            history::outnumbered(&db.platform, now())?;
+            history::expired(&db.platform, now())
+        })
         .await?;
     for (dsp, gone) in expired {
         let held = {

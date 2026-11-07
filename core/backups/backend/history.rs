@@ -1,8 +1,9 @@
 //! Each DSP's backups as the platform keeps them: asked for, taken or not, and the files each
 //! holds by what they're kept as, until each expires.
 use super::{
-    api::types::{Backup, BackupItem, DspBackups},
-    contents, schedule,
+    api::types::{Backup, BackupDay, BackupItem, DspBackups, KeepUnit},
+    contents,
+    schedule::{self, Keep},
 };
 use crate::{
     Error, Result,
@@ -43,14 +44,11 @@ pub fn shown(db: &Store, dsp: &str, configured: bool) -> Result<DspBackups> {
         .iter()
         .map(|rule| rule.shown(tz, kept.enabled))
         .collect();
-    let upcoming = if kept.enabled {
-        let timings: Vec<_> = kept.rules.iter().map(|rule| rule.rule.clone()).collect();
-        crate::collection::rules::upcoming(&timings, tz, now(), 5)
-            .into_iter()
-            .map(at)
-            .collect()
+    let (upcoming, calendar) = if kept.enabled {
+        let whens: Vec<_> = kept.rules.iter().map(|rule| rule.when.clone()).collect();
+        schedule::runs(&whens, tz, 5)
     } else {
-        vec![]
+        (vec![], vec![])
     };
     let items = contents::items(&db.dsp_folder(dsp)?)
         .into_iter()
@@ -68,6 +66,7 @@ pub fn shown(db: &Store, dsp: &str, configured: bool) -> Result<DspBackups> {
         items,
         rules,
         upcoming,
+        calendar: days(calendar),
         backups: db.platform.query_as(
             "SELECT * FROM backups WHERE dsp_id=? ORDER BY created_at DESC LIMIT ?",
             params![dsp, LISTED],
@@ -75,19 +74,31 @@ pub fn shown(db: &Store, dsp: &str, configured: bool) -> Result<DspBackups> {
     })
 }
 
-/// Asks for a backup of the DSP: by the rule `rule`, or by hand by `by`, kept until `expires`.
+/// The coming weeks' days as the Backups tab draws them.
+pub fn days(calendar: Vec<(chrono::NaiveDate, Vec<usize>)>) -> Vec<BackupDay> {
+    calendar
+        .into_iter()
+        .map(|(date, rules)| BackupDay {
+            date: date.format("%Y-%m-%d").to_string(),
+            rules,
+        })
+        .collect()
+}
+
+/// Asks for a backup of the DSP: by the rule `rule`, or by hand by `by`, kept as `keep` says.
 pub fn ask(
     platform: &Db,
     dsp: &str,
     rule: Option<&str>,
     by: Option<&str>,
-    expires: i64,
+    keep: Keep,
 ) -> Result<String> {
     let id = crypto::id("bak")?;
+    let asked = now();
     platform.exec(
-        "INSERT INTO backups(id,dsp_id,rule_id,requested_by,status,created_at,expires_at) \
-         VALUES (?,?,?,?,'queued',?,?)",
-        params![id, dsp, rule, by, now(), expires],
+        "INSERT INTO backups(id,dsp_id,rule_id,requested_by,status,created_at,expires_at,\
+         keep_last) VALUES (?,?,?,?,'queued',?,?,?)",
+        params![id, dsp, rule, by, asked, keep.expires(asked), keep.last()],
     )?;
     Ok(id)
 }
@@ -99,13 +110,12 @@ pub fn ask_by_hand(platform: &Db, dsp: &str, by: &str) -> Result<()> {
         [dsp],
     )?;
     if waiting.is_none() {
-        let taken = now();
         ask(
             platform,
             dsp,
             None,
             Some(by),
-            schedule::expires(taken, BY_HAND_DAYS, super::api::types::KeepUnit::Day),
+            Keep::For(BY_HAND_DAYS, KeepUnit::Day),
         )?;
     }
     Ok(())
@@ -139,9 +149,17 @@ pub fn failed(platform: &Db, id: &str, error: &str, sent: &[String]) -> Result<(
         .iter()
         .map(|object| serde_json::json!({"object": object}))
         .collect();
+    // Kept to be seen for as long as one taken by hand, whatever its rule keeps.
+    let failed = now();
     platform.exec(
-        "UPDATE backups SET status='failed',finished_at=?,error=?,files=? WHERE id=?",
-        params![now(), error, serde_json::to_string(&files)?, id],
+        "UPDATE backups SET status='failed',finished_at=?,error=?,files=?,expires_at=? WHERE id=?",
+        params![
+            failed,
+            error,
+            serde_json::to_string(&files)?,
+            schedule::expires(failed, BY_HAND_DAYS, KeepUnit::Day),
+            id
+        ],
     )?;
     Ok(())
 }
@@ -152,6 +170,21 @@ pub fn interrupted(platform: &Db) -> Result<()> {
         "UPDATE backups SET status='failed',finished_at=?,error='backup_interrupted' \
          WHERE status='running'",
         [now()],
+    )?;
+    Ok(())
+}
+
+/// Lets each backup kept as one of its rule's newest go by `now` once that many newer were
+/// taken: as many as its rule's newest backup says, so a rule changed or removed since counts as
+/// it last kept.
+pub fn outnumbered(platform: &Db, now: i64) -> Result<()> {
+    platform.exec(
+        "UPDATE backups SET expires_at=?1 WHERE id IN (SELECT id FROM (SELECT id, \
+         ROW_NUMBER() OVER newest AS place, FIRST_VALUE(keep_last) OVER newest AS kept \
+         FROM backups WHERE status='succeeded' AND keep_last IS NOT NULL AND expires_at IS NULL \
+         WINDOW newest AS (PARTITION BY dsp_id, rule_id ORDER BY created_at DESC, id DESC)) \
+         WHERE place > kept)",
+        [now],
     )?;
     Ok(())
 }
@@ -204,7 +237,8 @@ fn objects(files: Option<&str>) -> Result<Vec<String>> {
 /// The files the DSP's backups that are kept past `now` hold, by what they're kept as.
 pub fn held(platform: &Db, dsp: &str, now: i64) -> Result<HashSet<String>> {
     let rows: Vec<(Option<String>,)> = platform.query_as(
-        "SELECT files FROM backups WHERE dsp_id=? AND status='succeeded' AND expires_at>?",
+        "SELECT files FROM backups WHERE dsp_id=? AND status='succeeded' \
+         AND (expires_at IS NULL OR expires_at>?)",
         params![dsp, now],
     )?;
     let mut held = HashSet::new();
