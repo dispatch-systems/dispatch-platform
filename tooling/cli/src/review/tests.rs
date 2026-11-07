@@ -34,6 +34,25 @@ fn a_change_is_light_standard_or_sensitive_by_the_paths_it_changes() {
             vec![],
         ),
         (vec![("tooling/review/rules.md", 2)], Tier::Standard, vec![]),
+        // A Rust module's tests.rs is held only under #[cfg(test)].
+        (
+            vec![("tooling/cli/src/build/tests.rs", 50)],
+            Tier::Light,
+            vec![],
+        ),
+        (
+            vec![
+                ("mcp/backend/toolbox/grants.rs", 3),
+                ("core/collection/backend/connections.rs", 3),
+                ("ops/scripts/backup.py", 3),
+            ],
+            Tier::Sensitive,
+            vec![
+                "MCP access",
+                "collector credentials",
+                "the host manager, releases, updates and backups",
+            ],
+        ),
         (
             vec![("README.md", 1), ("features/dvic/backend/week.rs", 40)],
             Tier::Standard,
@@ -256,7 +275,7 @@ impl Fixture {
         write(
             &fixture.scratch,
             "pr-body.md",
-            "# fix(dvic): keep the week when paging\n\n## Summary\n\nPaging keeps the week.\n\n\
+            "# fix(dvic): keep the week when paging\n\n## Summary\n\nPaging keeps the week, not {{rules}}.\n\n\
              ## Symptom\n\nPaging forgot the week.\n\n## Cause\n\nCaused by: unknown\n\n## Fix\n\nx\n\n\
              ## Risk\n\nx\n\n## Verification\n\nx\n\n## Review\n\nNot reviewed: yet\n",
         );
@@ -349,10 +368,23 @@ fn each_pass_is_pinned_to_the_pushed_head_and_later_ones_read_only_what_changed(
     );
     assert!(brief.contains("the whole change"), "{brief}");
     assert!(
-        brief.contains("> Paging keeps the week."),
+        brief.contains("> Paging keeps the week, not {{rules}}."),
         "the change's purpose: {brief}"
     );
     assert!(fixture.dir(1).join("security-brief.md").exists());
+    // A pass stays pinned to the head its reviewers read, and keeps a lane's results.
+    write(
+        root,
+        "features/dvic/backend/week.rs",
+        "fn week() { page(); }\n",
+    );
+    commit(root, "a later push");
+    git(root, &["push", "-q", "origin", "keep-week"]);
+    assert!(error(fixture.prepare(1)).contains("is pinned to"));
+    git(root, &["reset", "-q", "--hard", &first]);
+    git(root, &["push", "-q", "-f", "origin", "keep-week"]);
+    write(&fixture.dir(1), "security-findings.md", "No findings.\n");
+    assert!(error(fixture.prepare(1)).contains("reviewed already"));
 
     assert!(error(take(root, 1, &Native)).contains("findings.md is missing"));
     write(
@@ -360,7 +392,6 @@ fn each_pass_is_pinned_to_the_pushed_head_and_later_ones_read_only_what_changed(
         "findings.md",
         "## Important: features/dvic/backend/week.rs:1 forgets the DSP\nx\n",
     );
-    write(&fixture.dir(1), "security-findings.md", "No findings.\n");
     write(
         root,
         "features/dvic/backend/week.rs",
@@ -425,37 +456,92 @@ fn each_pass_is_pinned_to_the_pushed_head_and_later_ones_read_only_what_changed(
         "{brief}"
     );
     assert!(!fixture.dir(2).join("security-brief.md").exists());
+    assert!(
+        brief.contains(&format!("`git diff {first}..{}`", pass.head)),
+        "{brief}"
+    );
     assert!(error(fixture.prepare(3)).contains("Answer pass 2 first"));
     assert!(error(fixture.prepare(4)).contains("--over-cap"));
     write(&fixture.dir(2), "findings.md", "No findings.\n");
     assert!(error(fixture.prepare(2)).contains("reviewed already"));
-}
-
-#[test]
-fn a_change_of_documentation_and_tests_alone_needs_no_review() {
-    let fixture = Fixture::new();
-    write(
-        &fixture.root,
-        "features/dvic/tests/api/week.rs",
-        "#[test] fn week() {}\n",
-    );
-    write(&fixture.root, "features/dvic/README.md", "The week.\n");
-    commit(&fixture.root, "test the week");
-    git(&fixture.root, &["push", "-q", "-u", "origin", "keep-week"]);
-    fixture.prepare(1).unwrap();
-    assert!(!fixture.dir(1).exists());
-    prepare(
-        &fixture.root,
-        &Prepare {
-            pass: 1,
-            tier: Some("standard"),
-            over_cap: false,
+    take(root, 2, &Native).unwrap();
+    record(
+        root,
+        2,
+        &Models {
+            security: None,
+            ..models
         },
         &Native,
     )
     .unwrap();
+
+    // Once main is merged in, a pass reads only the branch's own files of what changed.
+    git(root, &["switch", "-q", "main"]);
+    write(root, "features/vans/backend/van.rs", "fn van() {}\n");
+    commit(root, "a van");
+    git(root, &["push", "-q", "origin", "main"]);
+    git(root, &["switch", "-q", "keep-week"]);
+    git(root, &["merge", "-q", "--no-edit", "main"]);
+    git(root, &["push", "-q", "origin", "keep-week"]);
+    fixture.prepare(3).unwrap();
+    let brief = fs::read_to_string(fixture.dir(3).join("brief.md")).unwrap();
     assert!(
-        fixture.dir(1).join("brief.md").exists(),
-        "a tier asked for runs"
+        brief.contains(" -- features/dvic/backend/week.rs"),
+        "{brief}"
     );
+    assert!(!brief.contains("features/vans"), "{brief}");
+}
+
+#[test]
+fn a_change_of_documentation_and_tests_alone_needs_no_review_unless_asked() {
+    let fixture = Fixture::new();
+    let root = &fixture.root;
+    write(
+        root,
+        "features/dvic/tests/api/week.rs",
+        "#[test] fn week() {}\n",
+    );
+    write(root, "features/dvic/README.md", "The week.\n");
+    commit(root, "test the week");
+    git(root, &["push", "-q", "-u", "origin", "keep-week"]);
+    fixture.prepare(1).unwrap();
+    assert!(!fixture.dir(1).exists());
+    let asked = Prepare {
+        pass: 1,
+        tier: Some("standard"),
+        over_cap: false,
+    };
+    prepare(root, &asked, &Native).unwrap();
+    write(&fixture.dir(1), "findings.md", "No findings.\n");
+    take(root, 1, &Native).unwrap();
+    let models = Models {
+        model: "gpt-6.1-sol",
+        security: None,
+    };
+    // A clean pass is done only at the head it read.
+    write(
+        root,
+        "features/dvic/tests/api/week.rs",
+        "#[test] fn weeks() {}\n",
+    );
+    commit(root, "unreviewed");
+    git(root, &["push", "-q", "origin", "keep-week"]);
+    assert!(error(record(root, 1, &models, &Native)).contains("reviewed by no one"));
+    git(root, &["reset", "-q", "--hard", "HEAD~1"]);
+    git(root, &["push", "-q", "-f", "origin", "keep-week"]);
+    record(root, 1, &models, &Native).unwrap();
+    // The tier asked for holds for the passes after it.
+    write(
+        root,
+        "features/dvic/tests/api/week.rs",
+        "#[test] fn weeks() {}\n",
+    );
+    commit(root, "rename");
+    git(root, &["push", "-q", "origin", "keep-week"]);
+    fixture.prepare(2).unwrap();
+    let pass: Pass = read_json(&fixture.dir(2).join("pass.json"))
+        .unwrap()
+        .unwrap();
+    assert_eq!((pass.tier, pass.asked), (Tier::Standard, true));
 }

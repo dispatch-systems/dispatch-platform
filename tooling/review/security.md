@@ -1,5 +1,5 @@
 Review a change to Dispatch for security, read-only: branch {{branch}} at {{head}} in
-{{worktree}}. This pass reviews {{scope}}: `git diff {{base}}..{{head}}`. Change nothing in the
+{{worktree}}. This pass reviews {{scope}}: `{{diff}}`. Change nothing in the
 worktree and write nothing to GitHub; the one file you write is {{findings}}.
 
 What the change is for:

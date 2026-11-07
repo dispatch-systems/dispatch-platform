@@ -65,6 +65,8 @@ pub fn sensitive(path: &str) -> Option<&'static str> {
     } else if under(".github/") || under("tooling/ci/") {
         Some("CI")
     } else if under("ops/host-manager/")
+        || under("ops/launchers/")
+        || under("ops/scripts/")
         || under("ops/systemd/")
         || path == "core/server/backend/operations/backup.rs"
     {
@@ -73,10 +75,14 @@ pub fn sensitive(path: &str) -> Option<&'static str> {
         path,
         "mcp/backend/gate.rs" | "mcp/backend/keys.rs" | "mcp/backend/token.rs"
     ) || under("mcp/backend/oauth/")
+        || path == "mcp/backend/toolbox/grants.rs"
+        || path == "mcp/backend/toolbox/cx.rs"
     {
         Some("MCP access")
     } else if (under("collectors/") && path.contains("/connection/"))
         || under("core/collection/backend/browser/")
+        || path == "core/collection/backend/connections.rs"
+        || path == "core/collection/backend/verification.rs"
     {
         Some("collector credentials")
     } else if under("android/relay/src/main/kotlin/com/dspdispatch/relay/pairing/")
@@ -88,12 +94,14 @@ pub fn sensitive(path: &str) -> Option<&'static str> {
     }
 }
 
-/// Whether a path holds tests alone.
+/// Whether a path holds tests alone: a tests folder, a TypeScript test, or a Rust module's
+/// `tests.rs`, which its parent holds only under `#[cfg(test)]`.
 pub fn test(path: &str) -> bool {
     path.split('/')
         .any(|part| matches!(part, "tests" | "test" | "androidTest" | "__tests__"))
         || path.ends_with(".test.ts")
         || path.ends_with(".test.tsx")
+        || path.ends_with("/tests.rs")
 }
 
 /// Whether a path is documentation the product doesn't read: Markdown, but not the AI Support

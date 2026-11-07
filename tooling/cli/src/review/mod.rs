@@ -24,8 +24,17 @@ pub struct Pass {
     pub pass: u32,
     pub head: String,
     pub base: String,
+    /// Where the branch left `main`: what a later pass's diff leaves out once it moved.
+    #[serde(default)]
+    pub main: String,
+    /// The diff the pass reviews, as its brief gives it.
+    #[serde(default)]
+    pub diff: String,
     pub tier: Tier,
     pub reasons: Vec<String>,
+    /// Whether the tier was asked for rather than judged: later passes keep it.
+    #[serde(default)]
+    pub asked: bool,
     /// Whether a security review runs beside it.
     pub security: bool,
 }
@@ -167,9 +176,23 @@ pub fn prepare(root: &Path, ask: &Prepare, runner: &dyn Runner) -> Result<()> {
     let (branch, head) = git.pushed()?;
     let dir = folder(root, n)?;
     require(
-        !dir.join(Review::Bugs.findings()).exists(),
+        [Review::Bugs, Review::Security]
+            .iter()
+            .all(|review| !dir.join(review.findings()).exists()),
         &format!("Pass {n} is reviewed already: prepare pass {}.", n + 1),
     )?;
+    if let Some(pinned) = read_json::<Pass>(&dir.join("pass.json"))? {
+        require(
+            pinned.head == head,
+            &format!(
+                "Pass {n} is pinned to {} already, and its reviewers may be reading it: once \
+                 they stop, delete {} to pin it to {} instead.",
+                short(&pinned.head),
+                dir.display(),
+                short(&head)
+            ),
+        )?;
+    }
     let previous = match n {
         1 => None,
         _ => {
@@ -206,9 +229,13 @@ pub fn prepare(root: &Path, ask: &Prepare, runner: &dyn Runner) -> Result<()> {
         "The branch changes nothing against origin/main.",
     )?;
     let judged = tier::judge(&changed);
-    let tier = match ask.tier {
-        Some(name) => Tier::parse(name).ok_or("A tier is light, standard or sensitive.")?,
-        None => judged.tier,
+    let (tier, asked) = match (ask.tier, &previous) {
+        (Some(name), _) => (
+            Tier::parse(name).ok_or("A tier is light, standard or sensitive.")?,
+            true,
+        ),
+        (None, Some(previous)) if previous.asked => (previous.tier, true),
+        (None, _) => (judged.tier, false),
     };
     if tier == Tier::Light {
         println!(
@@ -220,6 +247,15 @@ pub fn prepare(root: &Path, ask: &Prepare, runner: &dyn Runner) -> Result<()> {
     let base = previous
         .as_ref()
         .map_or(main.clone(), |pass| pass.head.clone());
+    let paths: Vec<&str> = changed.iter().map(|file| file.path.as_str()).collect();
+    // After `main` was merged in, what changed since the last pass holds `main`'s own changes
+    // too: the branch's files alone are its own.
+    let diff = match &previous {
+        Some(previous) if previous.main != main => {
+            format!("git diff {base}..{head} -- {}", paths.join(" "))
+        }
+        _ => format!("git diff {base}..{head}"),
+    };
     let security = tier == Tier::Sensitive
         && match &previous {
             None => true,
@@ -237,11 +273,13 @@ pub fn prepare(root: &Path, ask: &Prepare, runner: &dyn Runner) -> Result<()> {
         pass: n,
         head: head.clone(),
         base: base.clone(),
+        main: main.clone(),
+        diff,
         tier,
         reasons: judged.reasons,
+        asked,
         security,
     };
-    let paths: Vec<&str> = changed.iter().map(|file| file.path.as_str()).collect();
     let fill = Fill {
         root,
         dir: &dir,
@@ -326,7 +364,7 @@ impl Fill<'_> {
         let values = [
             ("branch", self.branch.to_owned()),
             ("head", self.pass.head.clone()),
-            ("base", self.pass.base.clone()),
+            ("diff", self.pass.diff.clone()),
             ("worktree", self.root.display().to_string()),
             ("scope", scope),
             (
@@ -345,15 +383,9 @@ impl Fill<'_> {
             ("reading", self.reading()?),
             ("earlier", earlier),
         ];
-        let mut text = template;
-        for (key, value) in values {
-            text = text.replace(&format!("{{{{{key}}}}}"), &value);
-        }
-        require(
-            !text.contains("{{"),
-            &format!("{} names a value prepare doesn't fill.", review.template()),
-        )?;
-        Ok(text)
+        fill(&template, &values).ok_or_else(|| {
+            format!("{} names a value prepare doesn't fill.", review.template()).into()
+        })
     }
     /// The instructions beyond the rules a reviewer reads for this change: `AGENTS.md`, its UI
     /// copy rule for a change to what a page shows, and the bar for tests for one to tests.
@@ -381,6 +413,23 @@ impl Fill<'_> {
         }
         Ok(lines.join("\n"))
     }
+}
+
+/// `template` with each `{{key}}` in it replaced by its value, read once from the template alone
+/// so a value's own text stays as it is; None if it names a key `values` lacks.
+fn fill(template: &str, values: &[(&str, String)]) -> Option<String> {
+    let mut text = String::new();
+    let mut rest = template;
+    while let Some(at) = rest.find("{{") {
+        let (before, after) = rest.split_at(at);
+        let end = after.find("}}")?;
+        let key = &after[2..end];
+        text.push_str(before);
+        text.push_str(&values.iter().find(|(name, _)| *name == key)?.1);
+        rest = &after[end + 2..];
+    }
+    text.push_str(rest);
+    Some(text)
 }
 
 /// Whether a path is part of what someone sees: a page's code or styles, or an Android screen.
@@ -517,13 +566,24 @@ pub fn record(root: &Path, n: u32, models: &Models, runner: &dyn Runner) -> Resu
     let changed = answers
         .iter()
         .any(|outcome| matches!(outcome.answer.as_str(), "fixed" | "changed"));
-    require(
-        !changed || head != pass.head,
-        &format!(
-            "Answers say fixed, but nothing was committed since {}.",
-            short(&pass.head)
-        ),
-    )?;
+    match changed {
+        true => require(
+            head != pass.head,
+            &format!(
+                "Answers say fixed, but nothing was committed since {}.",
+                short(&pass.head)
+            ),
+        )?,
+        false => require(
+            head == pass.head,
+            &format!(
+                "Commits since pass {n}'s {} were reviewed by no one, and no answer says it \
+                 fixed anything: prepare pass {} for them.",
+                short(&pass.head),
+                n + 1
+            ),
+        )?,
+    }
     let recorded = Recorded {
         model: models.model.to_owned(),
         security_model: models.security.map(str::to_owned),
