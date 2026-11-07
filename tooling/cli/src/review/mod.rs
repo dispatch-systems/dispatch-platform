@@ -510,11 +510,13 @@ fn fill(template: &str, values: &[(&str, String)]) -> Option<String> {
     Some(text)
 }
 
-/// Whether a path is part of what someone sees: a page's code or styles, or an Android screen.
+/// Whether a path is part of what someone sees: a page's code or styles, or an Android screen,
+/// but not the templates `tooling/` makes them from.
 pub fn ui(path: &str) -> bool {
-    path.contains("/frontend/")
-        || path.ends_with(".css")
-        || (path.starts_with("android/") && path.contains("/res/"))
+    !path.starts_with("tooling/")
+        && (path.contains("/frontend/")
+            || path.ends_with(".css")
+            || (path.starts_with("android/") && path.contains("/res/")))
 }
 
 /// What the change is for, from its PR body: the title, its Summary, and its Problem, Symptom

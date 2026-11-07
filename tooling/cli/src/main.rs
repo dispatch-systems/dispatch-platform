@@ -155,10 +155,14 @@ const COMMANDS: &[Spec] = &[
     ),
     spec(
         "preview",
-        &["preview approve"],
-        "Once the user approved how the change looks, keep its UI files as approved: pr opens \
-         no PR for a change to what a page shows until those are the files it pushes.",
+        &["preview [--pages <page,...>]", "preview approve"],
+        "Show the change as it is: serve it, restarting the dev server when it serves other \
+         code, and save a screenshot of each page it touches, or --pages, wide and on a phone, \
+         with the link to click through it. Once the user approved how it looks, approve keeps \
+         its UI files: pr opens no PR for a change to what a page shows until those are the \
+         files it pushes.",
     )
+    .options(&["--pages"])
     .arguments(1),
     spec(
         "finish",
@@ -545,9 +549,19 @@ fn run() -> Result<()> {
         "merge" => merge::run(&line.root()?, &Native),
         "ci" => ci::run(&line.root()?, &Native),
         "status" => status::run(&line.root()?, &Native),
-        "preview" => match line.name()? {
-            "approve" => preview::approve(&line.root()?, &Native),
-            _ => Err("Choose preview approve.".into()),
+        "preview" => match line.arguments.first().map(String::as_str) {
+            None => {
+                let pages: Vec<&str> = line
+                    .option("--pages")
+                    .map(|pages| pages.split(',').filter(|page| !page.is_empty()).collect())
+                    .unwrap_or_default();
+                preview::run(&line.root()?, &pages, &Native)
+            }
+            Some("approve") if line.option("--pages").is_none() => {
+                preview::approve(&line.root()?, &Native)
+            }
+            Some("approve") => Err("preview approve takes no --pages.".into()),
+            Some(_) => Err("Choose preview, or preview approve.".into()),
         },
         "review" => {
             let action = line.name()?;

@@ -1,8 +1,17 @@
-//! What a change shows, approved before its PR opens. `preview approve` keeps the UI files the
-//! user was shown, by their contents, once they approved them; `pr` opens no PR for a change to
-//! what a page shows until those are the files it would push.
-use crate::{Result, Runner, require, review, workspace};
-use std::{collections::BTreeMap, fs, path::Path};
+//! What a change shows, approved before its PR opens. `preview` serves the checkout as it is and
+//! saves a screenshot of each page the change touches, with a link to click through it;
+//! `preview approve` keeps the UI files the user was shown, by their contents, once they
+//! approved them, and `pr` opens no PR for a change to what a page shows until those are the
+//! files it would push.
+use crate::{Result, Runner, dev, require, review, shot, workspace};
+use std::{
+    collections::BTreeMap,
+    fs,
+    os::unix::process::CommandExt,
+    path::Path,
+    process::{Command, Stdio},
+    time::{Duration, Instant},
+};
 
 /// Where an approval is kept, in the checkout's scratch folder.
 const APPROVED: &str = "preview/approved.json";
@@ -105,5 +114,149 @@ pub fn approve(root: &Path, runner: &dyn Runner) -> Result<()> {
         "{}",
         workspace::next(&["Commit them, then `dispatchdev pr` opens the PR".to_owned()])
     );
+    Ok(())
+}
+
+/// How long a dev server has to start: a first build of the backend takes minutes.
+const STARTING: Duration = Duration::from_secs(600);
+
+/// The pages a change's UI files belong to: a feature's first page, as its `feature.ts` lists
+/// its routes, or the DSP's landing page, `None`, for the rest.
+fn pages(root: &Path, paths: &[&String]) -> Vec<Option<String>> {
+    let mut pages: Vec<Option<String>> = vec![];
+    for path in paths {
+        let page = path
+            .strip_prefix("features/")
+            .and_then(|rest| rest.split_once('/'))
+            .and_then(|(feature, _)| {
+                let routes = fs::read_to_string(
+                    root.join(format!("features/{feature}/frontend/feature.ts")),
+                )
+                .ok()?;
+                let id = routes.split("id: '").nth(1)?.split('\'').next()?;
+                Some(id.to_owned())
+            });
+        if !pages.contains(&page) {
+            pages.push(page);
+        }
+    }
+    pages
+}
+
+/// The checkout's dev server, serving its backend as it is now: the one running, else a new one,
+/// once the one it replaces, checked to be the server it recorded, has stopped.
+fn serving(root: &Path, runner: &dyn Runner) -> Result<dev::Status> {
+    let status = dev::status(root, runner)?;
+    if status.running && status.backend_matches == Some(true) {
+        return Ok(status);
+    }
+    if let Some(process) = status.process.as_ref().filter(|_| status.running) {
+        println!(
+            "Stopping the dev server {}: it serves other code.",
+            process.pid
+        );
+        // `dev::status` has just checked the process is the server it recorded.
+        unsafe { libc::kill(process.pid, libc::SIGTERM) };
+        let stopping = Instant::now();
+        while dev::status(root, runner)?.running {
+            require(
+                stopping.elapsed() < Duration::from_secs(30),
+                &format!(
+                    "The dev server {} didn't stop: stop it, then run this again.",
+                    process.pid
+                ),
+            )?;
+            std::thread::sleep(Duration::from_millis(500));
+        }
+    }
+    let log = workspace::checkout_scratch(root)?.join("dev-server.log");
+    let mut command = Command::new("npm");
+    command
+        .args(["run", "dev"])
+        .current_dir(root)
+        .stdin(Stdio::null())
+        .stdout(fs::File::create(&log)?)
+        .stderr(fs::File::create(&log)?.try_clone()?)
+        // Its own process group, so it outlives this command.
+        .process_group(0);
+    // Served on the tailnet's address, so the link opens on the user's phone or laptop.
+    if let Ok(host) = workspace::text(runner, &["tailscale", "ip", "-4"], Some(root))
+        && let Some(host) = host.lines().next().filter(|host| !host.is_empty())
+    {
+        command.env("DISPATCH_DEV_HOST", host);
+    }
+    let mut child = command.spawn()?;
+    println!("Starting the dev server; its log is {}.", log.display());
+    let starting = Instant::now();
+    loop {
+        std::thread::sleep(Duration::from_secs(2));
+        if let Some(exit) = child.try_wait()? {
+            return Err(format!("The dev server stopped ({exit}): see {}.", log.display()).into());
+        }
+        let status = dev::status(root, runner)?;
+        if status.running && status.backend_matches == Some(true) {
+            return Ok(status);
+        }
+        require(
+            starting.elapsed() < STARTING,
+            &format!(
+                "The dev server didn't start in time: see {}.",
+                log.display()
+            ),
+        )?;
+    }
+}
+
+/// `dispatchdev preview`: the checkout's change as it is, served, with a screenshot of each page
+/// it touches, or `pages`, wide and on a phone, and the link to click through it.
+pub fn run(root: &Path, named: &[&str], runner: &dyn Runner) -> Result<()> {
+    let files = files(root, true, runner)?;
+    require(
+        !files.is_empty() || !named.is_empty(),
+        "The change touches nothing a page shows: --pages names pages to show anyway.",
+    )?;
+    let web: Vec<&String> = files
+        .keys()
+        .filter(|path| !path.starts_with("android/"))
+        .collect();
+    let pages = match named.is_empty() {
+        true => pages(root, &web),
+        false => named.iter().map(|page| Some((*page).to_owned())).collect(),
+    };
+    if !pages.is_empty() {
+        let status = serving(root, runner)?;
+        for page in &pages {
+            for size in ["1440x1000", "390x844"] {
+                shot::run(
+                    root,
+                    &shot::Shot {
+                        open: shot::Open {
+                            page: page.as_deref(),
+                            dsp: None,
+                            platform: false,
+                            tab: None,
+                        },
+                        who: None,
+                        size,
+                        theme: "light",
+                    },
+                    runner,
+                )?;
+            }
+        }
+        if let Some(link) = &status.link {
+            println!("Link, for the chat alone:\n{link}");
+        }
+    }
+    let mut next = vec![];
+    if files.keys().any(|path| path.starts_with("android/")) {
+        next.push("It changes an app's screens too: show them from the emulator".to_owned());
+    }
+    next.push(
+        "Show the user the screenshots and the link; make what they ask and run this again. Once \
+         they approve, `dispatchdev preview approve`"
+            .to_owned(),
+    );
+    println!("{}", workspace::next(&next));
     Ok(())
 }

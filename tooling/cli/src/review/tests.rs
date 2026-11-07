@@ -561,6 +561,13 @@ fn a_change_to_what_a_page_shows_is_held_to_what_the_user_approved() {
     let fixture = Fixture::new();
     let root = &fixture.root;
     let approval = || preview::approval(root, &Native).unwrap();
+    // A template the scaffolder makes pages from isn't what a page shows.
+    write(
+        root,
+        "tooling/scaffold/templates/feature/frontend/Page.tsx.tmpl",
+        "x\n",
+    );
+    commit(root, "a template");
     assert_eq!(approval(), Approval::None);
     write(
         root,
