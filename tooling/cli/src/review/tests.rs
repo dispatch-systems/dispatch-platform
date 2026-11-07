@@ -175,6 +175,8 @@ fn the_review_line_counts_each_tag_by_its_answers_across_passes() {
         Recorded {
             model: "gpt-6.1-sol".to_owned(),
             security_model: Some("gpt-daybreak-blue-latest".to_owned()),
+            head: String::new(),
+            done: true,
             answers: vec![
                 outcome("Important", "fixed"),
                 outcome("Nit", "fixed"),
@@ -185,6 +187,8 @@ fn the_review_line_counts_each_tag_by_its_answers_across_passes() {
         Recorded {
             model: "gpt-6.1-sol".to_owned(),
             security_model: None,
+            head: String::new(),
+            done: true,
             answers: vec![outcome("Question", "kept")],
         },
     ];
@@ -197,6 +201,8 @@ fn the_review_line_counts_each_tag_by_its_answers_across_passes() {
         model: "gpt-6.1-sol".to_owned(),
         security_model: None,
         answers: vec![],
+        head: String::new(),
+        done: true,
     };
     assert_eq!(
         summary(Tier::Standard, &[clean]),
@@ -547,4 +553,84 @@ fn a_change_of_documentation_and_tests_alone_needs_no_review_unless_asked() {
         .unwrap();
     assert_eq!((pass.tier, pass.asked), (Tier::Standard, true));
     assert_eq!(pass.base, reviewed.head);
+}
+
+#[test]
+fn a_change_to_what_a_page_shows_is_held_to_what_the_user_approved() {
+    use preview::Approval;
+    let fixture = Fixture::new();
+    let root = &fixture.root;
+    let approval = || preview::approval(root, &Native).unwrap();
+    assert_eq!(approval(), Approval::None);
+    write(
+        root,
+        "features/dvic/frontend/Week.tsx",
+        "export const week = 1;\n",
+    );
+    commit(root, "the week's page");
+    assert_eq!(approval(), Approval::Missing);
+    // Approved as the worktree showed it, before it was committed.
+    write(
+        root,
+        "features/dvic/frontend/Week.tsx",
+        "export const week = 2;\n",
+    );
+    preview::approve(root, &Native).unwrap();
+    commit(root, "as shown");
+    assert_eq!(approval(), Approval::Approved);
+
+    git(root, &["push", "-q", "-u", "origin", "keep-week"]);
+    fixture.prepare(1).unwrap();
+    write(
+        &fixture.dir(1),
+        "findings.md",
+        "## Nit: features/dvic/frontend/Week.tsx:1 a clearer name\n",
+    );
+    take(root, 1, &Native).unwrap();
+    let answers = fixture.dir(1).join("answers.md");
+    let text = fs::read_to_string(&answers)
+        .unwrap()
+        .replace("name\nAnswer:", "name\nAnswer: fixed");
+    fs::write(&answers, text).unwrap();
+    write(
+        root,
+        "features/dvic/frontend/Week.tsx",
+        "export const weeks = 2;\n",
+    );
+    commit(root, "a clearer name");
+    git(root, &["push", "-q", "origin", "keep-week"]);
+    let models = Models {
+        model: "gpt-6.1-sol",
+        security: None,
+    };
+    record(root, 1, &models, &Native).unwrap();
+    assert_eq!(
+        approval(),
+        Approval::Changed(vec!["features/dvic/frontend/Week.tsx".to_owned()])
+    );
+    let written = fs::read_to_string(fixture.scratch.join("pr-body.md")).unwrap();
+    let body = pr::titled(&written).1;
+    assert!(
+        body.contains("· the UI changed after its preview: features/dvic/frontend/Week.tsx"),
+        "the review's fix is noted, not shown again: {body}"
+    );
+
+    // A Nit's fix needs no other pass, so the review is done at this head, and only there.
+    let unreviewed = |body: &str| {
+        let head = fixture.head();
+        crate::merge::unreviewed(root, body, &head, &Native).unwrap()
+    };
+    assert_eq!(unreviewed(body), None);
+    assert_eq!(unreviewed("## Review\n\nNot reviewed: main failed\n"), None);
+    let light = unreviewed("## Review\n\nTier light · not reviewed\n").unwrap();
+    assert!(light.contains("is standard now"), "{light}");
+    write(
+        root,
+        "features/dvic/frontend/Week.tsx",
+        "export const weeks = 3;\n",
+    );
+    commit(root, "after the review");
+    git(root, &["push", "-q", "origin", "keep-week"]);
+    let later = unreviewed(body).unwrap();
+    assert!(later.contains("before the latest commits"), "{later}");
 }

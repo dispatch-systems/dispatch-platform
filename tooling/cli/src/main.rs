@@ -1,6 +1,6 @@
 use dispatchdev_cli::{
-    Native, Result, Runner, android, api, build, change, check, observation, pr, review, scaffold,
-    shot, test, verify,
+    Native, Result, Runner, android, api, build, change, check, ci, merge, observation, pr,
+    preview, review, scaffold, shot, status, test, verify,
 };
 use std::{collections::BTreeMap, path::PathBuf};
 
@@ -131,6 +131,34 @@ const COMMANDS: &[Spec] = &[
     )
     .flags(&["--over-cap"])
     .options(&["--pass", "--tier", "--model", "--security-model"])
+    .arguments(1),
+    spec(
+        "merge",
+        &["merge"],
+        "Squash-merge the branch's PR once nothing stops it: its required check passed on the \
+         pushed head, its title and body on GitHub are pr-body.md's, and its review is done at \
+         that head, or its Review line says why it had none. Then what to tell the user: the \
+         review, and what it left for later.",
+    ),
+    spec(
+        "ci",
+        &["ci"],
+        "Why the checks on the PR's head failed: each failed job with the end of its log, and \
+         whether main's latest run fails it too, which makes the fix main's.",
+    ),
+    spec(
+        "status",
+        &["status"],
+        "Where the change stands, from branch to merge: committed and pushed, its tier, whether \
+         the user approved what it shows, its PR and required check, its review, and what \
+         comes next.",
+    ),
+    spec(
+        "preview",
+        &["preview approve"],
+        "Once the user approved how the change looks, keep its UI files as approved: pr opens \
+         no PR for a change to what a page shows until those are the files it pushes.",
+    )
     .arguments(1),
     spec(
         "finish",
@@ -306,7 +334,10 @@ const SECTIONS: &[(&str, &[&str])] = &[
         &["start", "pr", "finish"],
     ),
     ("Checking a branch:", &["check", "test", "verify"]),
-    ("Reviewing and merging:", &["review"]),
+    (
+        "Reviewing and merging:",
+        &["preview", "review", "ci", "merge", "status"],
+    ),
     ("Trying it:", &["api", "shot", "browser", "android"]),
     (
         "Making things, and reading what the product has:",
@@ -494,6 +525,13 @@ fn run() -> Result<()> {
                 let env = std::env::vars().collect();
                 pr::run(&line.root()?, line.flag("--check"), &env, &Native)
             }
+        },
+        "merge" => merge::run(&line.root()?, &Native),
+        "ci" => ci::run(&line.root()?, &Native),
+        "status" => status::run(&line.root()?, &Native),
+        "preview" => match line.name()? {
+            "approve" => preview::approve(&line.root()?, &Native),
+            _ => Err("Choose preview approve.".into()),
         },
         "review" => {
             let action = line.name()?;

@@ -6,7 +6,7 @@
 pub mod findings;
 pub mod tier;
 
-use crate::{Result, Runner, change::Clone, pr, require, workspace};
+use crate::{Result, Runner, change::Clone, pr, preview, require, workspace};
 use findings::{Answered, Tag};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -47,6 +47,12 @@ pub struct Recorded {
     pub model: String,
     pub security_model: Option<String>,
     pub answers: Vec<Outcome>,
+    /// The pushed head when it was recorded.
+    #[serde(default)]
+    pub head: String,
+    /// Whether the review is done at that head: nothing left that needs another pass.
+    #[serde(default)]
+    pub done: bool,
 }
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Outcome {
@@ -136,6 +142,74 @@ impl Checkout<'_> {
         )?;
         Ok((branch, head))
     }
+}
+
+/// The checkout's branch and head, committed and pushed as they are.
+pub fn pushed(root: &Path, runner: &dyn Runner) -> Result<(String, String)> {
+    Checkout { root, runner }.pushed()
+}
+
+/// Where a change's review stands, by its latest pass.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Progress {
+    NotStarted,
+    /// Its briefs are written; its reviewers haven't answered.
+    Prepared(u32),
+    /// Its reviewers answered; its findings aren't answered and recorded yet.
+    Answering(u32),
+    Recorded {
+        pass: u32,
+        done: bool,
+        head: String,
+    },
+}
+pub fn progress(root: &Path) -> Result<Progress> {
+    let mut latest = 0;
+    while folder(root, latest + 1)?.join("pass.json").exists() {
+        latest += 1;
+    }
+    if latest == 0 {
+        return Ok(Progress::NotStarted);
+    }
+    let dir = folder(root, latest)?;
+    if let Some(recorded) = read_json::<Recorded>(&dir.join("record.json"))? {
+        return Ok(Progress::Recorded {
+            pass: latest,
+            done: recorded.done,
+            head: recorded.head,
+        });
+    }
+    Ok(match dir.join(Review::Bugs.findings()).exists() {
+        true => Progress::Answering(latest),
+        false => Progress::Prepared(latest),
+    })
+}
+/// The Pre-existing and Out of scope findings of every recorded pass, for the merge message.
+pub fn left(root: &Path) -> Result<Vec<Outcome>> {
+    let mut left = vec![];
+    let mut n = 1;
+    while let Some(recorded) = read_json::<Recorded>(&folder(root, n)?.join("record.json"))? {
+        left.extend(
+            recorded
+                .answers
+                .into_iter()
+                .filter(|outcome| matches!(outcome.tag.as_str(), "Pre-existing" | "Out of scope")),
+        );
+        n += 1;
+    }
+    Ok(left)
+}
+/// The tier the change's paths give it now.
+pub fn judged(root: &Path, runner: &dyn Runner) -> Result<tier::Judged> {
+    let git = Checkout { root, runner };
+    let main = git.git(&["merge-base", "origin/main", "HEAD"])?;
+    Ok(tier::judge(&tier::numstat(&git.git(&[
+        "diff",
+        "--numstat",
+        "--no-renames",
+        "-z",
+        &format!("{main}..HEAD"),
+    ])?)))
 }
 
 /// The folder of pass `pass`.
@@ -577,10 +651,18 @@ pub fn record(root: &Path, n: u32, models: &Models, runner: &dyn Runner) -> Resu
             short(&pass.head)
         ),
     )?;
+    let important_fixed = answers
+        .iter()
+        .any(|outcome| outcome.tag == "Important" && outcome.answer == "fixed");
+    // Commits no answer accounts for were reviewed by no one: the pass is kept, but the review
+    // isn't done at this head.
+    let unreviewed = !changed && head != pass.head;
     let recorded = Recorded {
         model: models.model.to_owned(),
         security_model: models.security.map(str::to_owned),
         answers,
+        done: !unreviewed && (!important_fixed || n >= CAP),
+        head: head.clone(),
     };
     workspace::write_private(
         &dir.join("record.json"),
@@ -592,7 +674,13 @@ pub fn record(root: &Path, n: u32, models: &Models, runner: &dyn Runner) -> Resu
             .ok_or_else(|| format!("Pass {k} has no record: record it first."))?;
         passes.push(recorded);
     }
-    let line = summary(pass.tier, &passes);
+    let mut line = summary(pass.tier, &passes);
+    if let preview::Approval::Changed(paths) = preview::approval(root, runner)? {
+        line.push_str(&format!(
+            " · the UI changed after its preview: {}",
+            paths.join(", ")
+        ));
+    }
     let body = workspace::checkout_scratch(root)?.join("pr-body.md");
     let text = fs::read_to_string(&body)?;
     workspace::write_private(&body, &pr::with_review_line(&text, &line)?)?;
@@ -604,13 +692,6 @@ pub fn record(root: &Path, n: u32, models: &Models, runner: &dyn Runner) -> Resu
     {
         println!("  {}: {}", outcome.tag, outcome.what);
     }
-    let important_fixed = recorded
-        .answers
-        .iter()
-        .any(|outcome| outcome.tag == "Important" && outcome.answer == "fixed");
-    // Commits no answer accounts for were reviewed by no one: the pass is kept, but the review
-    // isn't done at this head.
-    let unreviewed = !changed && head != pass.head;
     let next = match (important_fixed || unreviewed, n < CAP) {
         (true, true) if unreviewed => format!(
             "Commits since pass {n}'s {} were reviewed by no one: `dispatchdev review prepare \
@@ -629,11 +710,11 @@ pub fn record(root: &Path, n: u32, models: &Models, runner: &dyn Runner) -> Resu
             n + 1
         ),
         (true, false) => format!(
-            "The review stops at pass {CAP}: `dispatchdev pr` updates the PR's body; merge once \
-             its checks pass, unless more passes were asked for (--over-cap)"
+            "The review stops at pass {CAP}: `dispatchdev pr` updates the PR's body; `dispatchdev merge` \
+             merges it once its checks pass, unless more passes were asked for (--over-cap)"
         ),
-        (false, _) => "The review is done: `dispatchdev pr` updates the PR's body; merge once \
-                       its checks pass"
+        (false, _) => "The review is done: `dispatchdev pr` updates the PR's body; `dispatchdev \
+                       merge` merges it once its checks pass"
             .to_owned(),
     };
     println!("{}", workspace::next(&[next]));

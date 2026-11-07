@@ -4,7 +4,7 @@
 //! `--skeleton --title` starts that file with the title and the sections its type needs, and
 //! `--check` checks all of it, and that `dispatchdev check` passed on the committed tree,
 //! without pushing.
-use crate::{REPOSITORY, Result, Runner, build::Environment, check, require, workspace};
+use crate::{REPOSITORY, Result, Runner, build::Environment, check, preview, require, workspace};
 use std::{io::Write, os::unix::fs::OpenOptionsExt, path::Path};
 
 const TYPES: &[&str] = &[
@@ -277,11 +277,6 @@ pub fn run(root: &Path, only_check: bool, env: &Environment, runner: &dyn Runner
             );
         }
     }
-    if only_check {
-        println!("The title, the body and `dispatchdev check` pass: `dispatchdev pr` pushes it.");
-        return Ok(());
-    }
-    git(&["push", "-q", "--force-with-lease", "-u", "origin", &branch])?;
     let gh = |args: &[&str]| {
         let mut command = vec!["gh"];
         command.extend_from_slice(args);
@@ -301,13 +296,40 @@ pub fn run(root: &Path, only_check: bool, env: &Environment, runner: &dyn Runner
         "--jq",
         ".[0] | select(.) | \"\\(.number) \\(.url)\"",
     ])?;
-    let (number, url) = match open.split_once(' ') {
+    // A change to what a page shows opens its PR only once the user approved how it looks.
+    if open.is_empty() {
+        match preview::approval(root, runner)? {
+            preview::Approval::None | preview::Approval::Approved => {}
+            preview::Approval::Missing => {
+                return Err(
+                    "This change alters what a page shows: show the user first with \
+                            `dispatchdev preview`, and once they approve, `dispatchdev preview \
+                            approve`."
+                        .into(),
+                );
+            }
+            preview::Approval::Changed(paths) => {
+                return Err(format!(
+                    "{} changed since the user approved the preview: show them again with \
+                     `dispatchdev preview`.",
+                    paths.join(", ")
+                )
+                .into());
+            }
+        }
+    }
+    if only_check {
+        println!("The title, the body and `dispatchdev check` pass: `dispatchdev pr` pushes it.");
+        return Ok(());
+    }
+    git(&["push", "-q", "--force-with-lease", "-u", "origin", &branch])?;
+    let url = match open.split_once(' ') {
         Some((number, url)) => {
             gh(&[
                 "pr", "edit", number, "--repo", REPOSITORY, "--title", title, "--body", text,
             ])?;
             println!("Updated #{number}: {url}");
-            (number.to_owned(), url.to_owned())
+            url.to_owned()
         }
         None => {
             let url = gh(&[
@@ -315,8 +337,7 @@ pub fn run(root: &Path, only_check: bool, env: &Environment, runner: &dyn Runner
                 "--title", title, "--body", text,
             ])?;
             println!("Opened {url}");
-            let number = url.rsplit('/').next().unwrap_or_default().to_owned();
-            (number, url)
+            url
         }
     };
     println!(
@@ -326,7 +347,7 @@ pub fn run(root: &Path, only_check: bool, env: &Environment, runner: &dyn Runner
                 "Its checks run on GitHub ({url}/checks): fix what they find and run `dispatchdev pr` again"
             ),
             "`dispatchdev review prepare --pass 1` judges how deep its review goes".to_owned(),
-            format!("Once they pass, `gh pr merge {number} --squash` merges it"),
+            "Once they pass and its review is done, `dispatchdev merge` merges it".to_owned(),
         ])
     );
     Ok(())
