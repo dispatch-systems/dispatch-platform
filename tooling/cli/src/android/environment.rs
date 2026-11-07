@@ -92,19 +92,25 @@ impl Tools {
         }
         command.extend(["./gradlew", "--console=plain", "--quiet"].map(str::to_owned));
         command.extend(args.iter().map(|value| (*value).to_owned()));
-        let log = workspace::checkout_scratch(root)?.join("android-gradle.log");
-        workspace::write_private(&log, "")?;
+        let log = tempfile::Builder::new()
+            .prefix("android-gradle-")
+            .suffix(".log")
+            .tempfile_in(workspace::checkout_scratch(root)?)?
+            .into_temp_path()
+            .keep()?;
         let command = command
             .iter()
             .map(|value| workspace::quote(value))
             .collect::<Vec<_>>()
             .join(" ");
         let log_arg = workspace::quote(log.to_str().ok_or("The log path is not UTF-8.")?);
-        let script = format!(
-            "if {command} >{log_arg} 2>&1; then cat {log_arg}; else cat {log_arg} >&2; exit 1; fi"
-        );
+        let script = format!("{command} 2>&1 | tee {log_arg}");
         runner
-            .command(&["sh", "-c", &script], Some(&root.join("android")), 900)
+            .command(
+                &["bash", "-o", "pipefail", "-c", &script],
+                Some(&root.join("android")),
+                900,
+            )
             .map_err(|error| format!("{error}\nGradle log: {}", log.display()).into())
     }
 }

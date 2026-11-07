@@ -12,19 +12,7 @@ pub(super) fn pair(
 ) -> Result<Value> {
     let server = api::Server::find(root)?;
     let port = server.local_port()?;
-    let session = api::request(
-        &server,
-        api::Call {
-            method: "GET",
-            path: "/api/session",
-            dsp: None,
-            who: None,
-            data: None,
-        },
-        runner,
-    )?;
-    require(session.status == 200, "Cannot read the fixture session.")?;
-    let session: Value = serde_json::from_str(&session.body)?;
+    let (_, session) = api::sign_in(&server, api::OWNER, None, runner)?;
     let dsps = session["dsps"]
         .as_array()
         .ok_or("The fixture session has no DSPs.")?;

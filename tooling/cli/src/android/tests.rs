@@ -94,6 +94,14 @@ impl Fixture {
     fn server(&self, origin: &str, link: &str) {
         self.write(api::RECORD, &json!({"pid": std::process::id(), "origin": origin, "link": link, "password": "fixture-only"}));
     }
+
+    fn gradlew(&self, script: &str) -> Tools {
+        use std::os::unix::fs::PermissionsExt;
+        let path = self.root.join("android/gradlew");
+        fs::write(&path, format!("#!/bin/sh\n{script}\n")).unwrap();
+        fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+        Tools::find(&self.root, &self.env).unwrap()
+    }
 }
 
 impl Drop for Fixture {
@@ -168,10 +176,10 @@ impl Runner for Fixture {
                 other => panic!("unexpected device command {other}"),
             };
         }
-        if args[0] == "sh" {
+        if args[0] == "bash" {
             assert_eq!(timeout, 900);
             assert_eq!(cwd, Some(self.root.join("android").as_path()));
-            let script = args[2];
+            let script = args.last().unwrap();
             if script.contains("dispatchdevApps") {
                 let report =
                     |name: &str| self.root.join(format!("android/{name}/build/report.json"));
@@ -289,7 +297,7 @@ fn prepare_builds_only_the_selected_app_and_installs_its_actual_apk_on_the_expli
         assert_eq!(installs.len(), 1);
         assert!(installs[0][6].ends_with(apk), "{installs:?}");
         let calls = fixture.calls.borrow();
-        assert_eq!(calls.iter().filter(|args| args[0] == "sh").count(), 2);
+        assert_eq!(calls.iter().filter(|args| args[0] == "bash").count(), 2);
         assert!(!calls.iter().any(|args| {
             args.iter()
                 .any(|arg| matches!(arg.as_str(), "clean" | "uninstall" | "clear" | "am"))
@@ -365,7 +373,7 @@ fn tools_are_explicit_and_app_discovery_does_not_build_an_apk() {
             .calls
             .borrow()
             .iter()
-            .filter(|args| args[0] == "sh")
+            .filter(|args| args[0] == "bash")
             .count(),
         1
     );
@@ -404,6 +412,15 @@ fn relay_pairing_reuses_fixture_auth_and_only_reverses_the_selected_emulator_por
         "dispatch-phone:pair?site=http://sum.localhost:41733&code=ABCD-1234"
     );
     assert_eq!(paired["expiresAt"], 123456);
+    assert_eq!(
+        fixture
+            .calls
+            .borrow()
+            .iter()
+            .filter(|args| args[0] == "curl" && args.last().unwrap().ends_with("/api/session"))
+            .count(),
+        2
+    );
     fixture.failure.set("pairing");
     assert!(
         relay::pair(&fixture.root, &device, "Summit", &tools, &fixture)
@@ -412,6 +429,84 @@ fn relay_pairing_reuses_fixture_auth_and_only_reverses_the_selected_emulator_por
             .contains("phones_off")
     );
     assert!(fixture.installations().is_empty());
+}
+
+#[test]
+fn gradle_output_reaches_the_bounded_runner_before_the_build_finishes() {
+    use std::{
+        io::{BufRead, BufReader, Read, Write},
+        os::{fd::OwnedFd, unix::net::UnixStream},
+        process::{Command, Stdio},
+        time::Duration,
+    };
+    struct Streaming {
+        observed: Cell<bool>,
+    }
+    impl Runner for Streaming {
+        fn command(&self, args: &[&str], cwd: Option<&Path>, _: u64) -> Result<Vec<u8>> {
+            let (read, write) = UnixStream::pair()?;
+            read.set_read_timeout(Some(Duration::from_secs(15)))?;
+            let mut child = Command::new(args[0])
+                .args(&args[1..])
+                .current_dir(cwd.unwrap())
+                .stdin(Stdio::piped())
+                .stdout(Stdio::from(OwnedFd::from(write)))
+                .stderr(Stdio::null())
+                .spawn()?;
+            let mut reader = BufReader::new(read);
+            let mut first = String::new();
+            self.observed
+                .set(reader.read_line(&mut first).is_ok() && first == "w: compiler output\n");
+            // Always release the finite stand-in, including when the old buffered path times out.
+            let released = child.stdin.take().unwrap().write_all(b"continue\n");
+            let mut output = first.into_bytes();
+            let read = reader.read_to_end(&mut output);
+            let status = child.wait()?;
+            released?;
+            read?;
+            require(status.success(), "Stand-in Gradle failed")?;
+            Ok(output)
+        }
+    }
+    let fixture = Fixture::new();
+    let tools = fixture.gradlew(
+        "printf 'w: compiler output\\n' >&2\nIFS= read -r proceed\nprintf 'build complete\\n'",
+    );
+    let runner = Streaming {
+        observed: Cell::new(false),
+    };
+    let output = tools.gradle(&fixture.root, &["report"], &runner).unwrap();
+    assert!(
+        runner.observed.get(),
+        "Gradle output was hidden until after the build finished"
+    );
+    assert_eq!(output, b"w: compiler output\nbuild complete\n");
+}
+
+#[test]
+fn failed_gradle_invocations_keep_separate_private_diagnostics_and_propagate_failure() {
+    use std::os::unix::fs::PermissionsExt;
+    let fixture = Fixture::new();
+    let tools = fixture.gradlew("printf '%s\\n' \"$*\" >&2\nexit 17");
+    let failed = |task| {
+        let error = tools
+            .gradle(&fixture.root, &[task], &crate::Native)
+            .unwrap_err()
+            .to_string();
+        PathBuf::from(error.rsplit_once("\nGradle log: ").unwrap().1)
+    };
+    let first = failed("first-task");
+    let second = failed("second-task");
+    assert_ne!(
+        first, second,
+        "The second invocation replaced the first log"
+    );
+    assert!(fs::read_to_string(&first).unwrap().contains("first-task"));
+    assert!(fs::read_to_string(&second).unwrap().contains("second-task"));
+    assert_eq!(
+        fs::metadata(first).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
 }
 
 #[test]
