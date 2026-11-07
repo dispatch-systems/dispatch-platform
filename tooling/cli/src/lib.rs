@@ -11,6 +11,7 @@ pub mod check;
 pub mod machine;
 pub mod observation;
 pub mod pr;
+pub mod review;
 pub mod scaffold;
 pub mod shot;
 pub mod slot;

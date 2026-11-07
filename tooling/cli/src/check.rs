@@ -104,15 +104,25 @@ pub fn here(root: &Path, command: &str, runner: &dyn Runner) -> Result<()> {
 /// minute. What `dispatchdev check` adds, the TypeScript linter and clippy, the PR's checks run
 /// too.
 pub const RULES: &str = "npm run check:rules";
+/// Everything `dispatchdev check` runs for `plan`.
+fn planned(plan: &Plan) -> Vec<String> {
+    [RULES.to_owned(), "npm run lint".to_owned()]
+        .into_iter()
+        .chain(plan.commands.iter().cloned())
+        .collect()
+}
+/// Whether `dispatchdev check` passed on the committed tree as it is: None where it keeps no
+/// passes, as `Pass::of` says.
+pub fn passed(root: &Path, env: &Environment, runner: &dyn Runner) -> Result<Option<bool>> {
+    let plan = plan(root, runner)?;
+    Ok(Pass::of(root, &planned(&plan), env, runner)?.map(|pass| pass.passed()))
+}
 /// `dispatchdev check`: the rule checks and the lints the plan names, side by side, a line for
 /// each as it ends; clippy builds in the checkout's own `target`, where its last run left it.
 /// A committed tree they all passed on passes again without running, and so does clippy on
 /// identical Rust inputs.
 pub fn execute(root: &Path, plan: &Plan, env: &Environment, runner: &dyn Runner) -> Result<bool> {
-    let planned: Vec<String> = [RULES.to_owned(), "npm run lint".to_owned()]
-        .into_iter()
-        .chain(plan.commands.iter().cloned())
-        .collect();
+    let planned = planned(plan);
     let pass = Pass::of(root, &planned, env, runner)?;
     if pass.as_ref().is_some_and(Pass::passed) {
         println!("ok     reused  all of them (passed on this commit's tree before)");

@@ -3,10 +3,32 @@
 What a review of a Dispatch change holds it to, by the paths each rule covers. Skip
 `package-lock.json`, `Cargo.lock` and anything under a `generated/` folder.
 
+## Findings
+
+- **Important**: the change breaks behavior, leaks data, blocks a rollback, breaks a contract
+  another owner or caller relies on, or adds needless complexity, such as a workaround on a
+  workaround or a copy of something that exists. Name the class of bug, and look for every
+  other instance of it in the change.
+- **Nit**: anything smaller worth saying. At most three; the author may decline one.
+- **Pre-existing**: a real bug in code the change didn't write. It isn't the change's to fix.
+- **Question**: a choice to justify, with what you'd do instead.
+- **Out of scope**: what would change what was approved.
+
+A finding that a rule here was broken quotes the rule and applies only where its paths cover
+the file. A claim about behavior cites the `path:line` that shows it, not an inference from a
+name. Don't report:
+
+- what CI already enforces: formatting, lint, types, the rule tests;
+- code that looks wrong but is correct;
+- nitpicks a senior engineer wouldn't raise;
+- general quality concerns, such as test coverage, that no rule here names.
+
 ## Every change
 
-- Review only what the changed lines introduce; older code in the same file is not a finding,
-  and do not ask for cleanup outside the change's scope.
+- A finding is about what the changed lines introduce. Older code is Pre-existing at most; do
+  not ask for cleanup outside the change's scope.
+- Flag a change that leaves `AGENTS.md`, a skill, a README or this file saying something
+  untrue.
 - Never accept a change that weakens a test, budget or check to get a pass: a deleted or
   loosened assertion, a skipped or removed test, a raised limit or budget, or a new suppression
   such as `#[allow]`, `eslint-disable`, `@ts-ignore` or `@ts-expect-error`. Flag each and ask

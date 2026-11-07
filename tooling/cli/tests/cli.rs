@@ -37,6 +37,12 @@ fn dispatchdev_shows_its_usage_and_refuses_what_it_does_not_take() {
     let (ok, _, error) = run(&["pr", "--skeleton"]);
     assert!(!ok);
     assert!(error.contains("--skeleton needs the --title"), "{error}");
+    let (ok, _, error) = run(&["review", "prepare"]);
+    assert!(!ok);
+    assert!(error.contains("review prepare needs --pass <n>"), "{error}");
+    let (ok, _, error) = run(&["review", "take", "--pass", "1", "--model", "m"]);
+    assert!(!ok);
+    assert!(error.contains("review take takes no --model"), "{error}");
     let (ok, _, error) = run(&["browser"]);
     assert!(!ok);
     assert!(

@@ -1,6 +1,6 @@
 use dispatchdev_cli::{
-    Native, Result, Runner, android, api, build, change, check, observation, pr, scaffold, shot,
-    test, verify,
+    Native, Result, Runner, android, api, build, change, check, observation, pr, review, scaffold,
+    shot, test, verify,
 };
 use std::{collections::BTreeMap, path::PathBuf};
 
@@ -103,14 +103,35 @@ const COMMANDS: &[Spec] = &[
     .arguments(1),
     spec(
         "pr",
-        &["pr [--skeleton --title <title>]"],
+        &["pr [--check]", "pr --skeleton --title <title>"],
         "Check the PR's title and body against the sections its type needs: the scratch \
-         folder's pr-body.md, whose first line is # <title>. Then push the branch and open its \
-         PR, or update the one open. --skeleton --title instead starts pr-body.md with the \
+         folder's pr-body.md, whose first line is # <title>. Once they follow them and check \
+         passed on the committed tree, push the branch and open its PR, or update the one open; \
+         --check stops before pushing. --skeleton --title instead starts pr-body.md with the \
          title and those sections, unless it's there already.",
     )
-    .flags(&["--skeleton"])
+    .flags(&["--skeleton", "--check"])
     .options(&["--title"]),
+    spec(
+        "review",
+        &[
+            "review prepare --pass <n>",
+            "       [--tier <tier>] [--over-cap]",
+            "review take --pass <n>",
+            "review record --pass <n>",
+            "       --model <model>",
+            "       [--security-model <model>]",
+        ],
+        "A pushed change's review, a pass at a time. prepare judges its tier from the paths it \
+         changes, light needing no review, and writes the pass's brief, with a security brief \
+         beside it for a sensitive change: the whole change first, then what changed since the \
+         pass before, up to three passes. take checks the reviewers left the worktree as it was \
+         and starts the answers to their findings; record checks each is answered and writes \
+         the PR body's Review line.",
+    )
+    .flags(&["--over-cap"])
+    .options(&["--pass", "--tier", "--model", "--security-model"])
+    .arguments(1),
     spec(
         "finish",
         &["finish <name> [--abandon]"],
@@ -285,6 +306,7 @@ const SECTIONS: &[(&str, &[&str])] = &[
         &["start", "pr", "finish"],
     ),
     ("Checking a branch:", &["check", "test", "verify"]),
+    ("Reviewing and merging:", &["review"]),
     ("Trying it:", &["api", "shot", "browser", "android"]),
     (
         "Making things, and reading what the product has:",
@@ -462,13 +484,66 @@ fn run() -> Result<()> {
             change::start(&line.root()?, name, base, &Native)
         }
         "pr" => match (line.flag("--skeleton"), line.option("--title")) {
+            (true, _) if line.flag("--check") => Err("Choose --check or --skeleton.".into()),
             (true, Some(title)) => pr::start_body(&line.root()?, title),
             (true, None) => Err("--skeleton needs the --title it starts with.".into()),
             (false, Some(_)) => {
                 Err("--title goes with --skeleton: then the body's first line gives it.".into())
             }
-            (false, None) => pr::run(&line.root()?, &Native),
+            (false, None) => {
+                let env = std::env::vars().collect();
+                pr::run(&line.root()?, line.flag("--check"), &env, &Native)
+            }
         },
+        "review" => {
+            let action = line.name()?;
+            let pass: u32 = line
+                .option("--pass")
+                .ok_or_else(|| format!("review {action} needs --pass <n>."))?
+                .parse()
+                .map_err(|_| "--pass is a number, from 1.")?;
+            let allowed: &[&str] = match action {
+                "prepare" => &["--pass", "--tier"],
+                "take" => &["--pass"],
+                "record" => &["--pass", "--model", "--security-model"],
+                _ => return Err("Choose review prepare, take or record.".into()),
+            };
+            if let Some(option) = line
+                .options
+                .keys()
+                .find(|key| key.as_str() != "--root" && !allowed.contains(&key.as_str()))
+            {
+                return Err(format!("review {action} takes no {option}.").into());
+            }
+            if line.flag("--over-cap") && action != "prepare" {
+                return Err(format!("review {action} takes no --over-cap.").into());
+            }
+            let root = line.root()?;
+            match action {
+                "prepare" => review::prepare(
+                    &root,
+                    &review::Prepare {
+                        pass,
+                        tier: line.option("--tier"),
+                        over_cap: line.flag("--over-cap"),
+                    },
+                    &Native,
+                ),
+                "take" => review::take(&root, pass, &Native),
+                _ => review::record(
+                    &root,
+                    pass,
+                    &review::Models {
+                        model: line
+                            .option("--model")
+                            .filter(|model| !model.is_empty())
+                            .ok_or("review record needs --model <model>.")?,
+                        security: line.option("--security-model"),
+                    },
+                    &Native,
+                ),
+            }
+        }
         "finish" => {
             let name = line.name()?;
             change::finish(&line.root()?, name, line.flag("--abandon"), &Native)
