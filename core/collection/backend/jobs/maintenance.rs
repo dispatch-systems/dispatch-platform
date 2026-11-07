@@ -3,8 +3,8 @@
 //! pass after the server starts has ended, every task's, it logs `upkeep.settled`: the tests'
 //! servers are handed over then, their data as that pass leaves it.
 use crate::{
-    Error, Result, State, collection::registry::Provider, db::now,
-    foundation::observability, manifest::registry,
+    Error, Result, State, collection::registry::Provider, db::now, foundation::observability,
+    manifest::registry,
 };
 use std::{collections::HashSet, sync::Arc};
 
