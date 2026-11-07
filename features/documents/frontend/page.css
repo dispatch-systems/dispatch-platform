@@ -274,6 +274,8 @@
   padding-bottom: 11px;
 }
 .documents-table td:first-child {
+  width: 100%;
+  max-width: 0;
   padding-left: 4px;
 }
 .documents-table .muted {
@@ -408,6 +410,9 @@
 }
 
 @media (width <= 760px) {
+  .documents-heading {
+    flex-wrap: wrap;
+  }
   .documents-heading .heading-actions {
     flex-wrap: wrap;
     justify-content: flex-start;
