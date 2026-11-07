@@ -502,15 +502,10 @@ impl Plan {
             println!("{note}");
         }
         for step in &self.steps {
-            println!(
-                "{} {}",
-                if builds(&step.command) {
-                    "Build:"
-                } else {
-                    "Run:"
-                },
-                step.command
-            );
+            // A build alone, or a step that also runs tests, as `cargo test` does.
+            let build = [BUILD, FIXTURE, PACKAGE, RELEASE_PACKAGE].contains(&step.command.as_str())
+                || step.command.starts_with("cargo build");
+            println!("{} {}", if build { "Build:" } else { "Run:" }, step.command);
         }
         if self.steps.is_empty() {
             println!("No tests selected.");

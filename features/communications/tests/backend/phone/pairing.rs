@@ -108,9 +108,9 @@ async fn guesses_from_an_address_answering_together_count_against_it_all_the_sam
     let guesses: Vec<_> = (0..=ADDRESS_GUESSES)
         .map(|_| {
             let (state, dsp, wrong) = (Arc::clone(&state), dsp.clone(), wrong.clone());
-            tokio::spawn(State::patiently(async move {
+            tokio::spawn(testing::requested(State::patiently(async move {
                 tried(&state, &dsp, "198.51.100.30", &wrong).await
-            }))
+            })))
         })
         .collect();
     while state.db_queue.available_permits() > free - guesses.len() {
