@@ -3,7 +3,10 @@
 //! costs most in.
 use std::fmt;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+/// Ordered from the least review to the most.
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum Tier {
     /// Documentation and tests alone: no review.
@@ -148,14 +151,15 @@ pub fn judge(changed: &[Changed]) -> Judged {
     Judged { tier, reasons }
 }
 
-/// Reads `git diff --numstat --no-renames` into changed files; a binary file counts no lines.
+/// Reads `git diff --numstat --no-renames -z` into changed files, each path as it is; a
+/// binary file counts no lines.
 pub fn numstat(text: &str) -> Vec<Changed> {
-    text.lines()
-        .filter_map(|line| {
-            let mut fields = line.splitn(3, '\t');
+    text.split('\0')
+        .filter_map(|entry| {
+            let mut fields = entry.trim_start_matches('\n').splitn(3, '\t');
             let added = fields.next()?;
             let deleted = fields.next()?;
-            let path = fields.next()?.to_owned();
+            let path = fields.next().filter(|path| !path.is_empty())?.to_owned();
             let lines = added.parse::<usize>().unwrap_or(0) + deleted.parse::<usize>().unwrap_or(0);
             Some(Changed { path, lines })
         })

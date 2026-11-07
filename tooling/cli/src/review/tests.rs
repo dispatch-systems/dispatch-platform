@@ -96,11 +96,11 @@ fn a_change_is_light_standard_or_sensitive_by_the_paths_it_changes() {
         assert_eq!(judged.reasons, reasons, "{paths:?}");
     }
     assert_eq!(
-        tier::numstat("3\t1\ta.rs\n-\t-\tlogo.png\n")
+        tier::numstat("3\t1\ta.rs\0-\t-\tlogo.png\0\n1\t0\tdocs/Review process.md\0")
             .iter()
             .map(|file| (file.path.as_str(), file.lines))
             .collect::<Vec<_>>(),
-        [("a.rs", 4), ("logo.png", 0)]
+        [("a.rs", 4), ("logo.png", 0), ("docs/Review process.md", 1)]
     );
 }
 
@@ -477,6 +477,7 @@ fn each_pass_is_pinned_to_the_pushed_head_and_later_ones_read_only_what_changed(
     git(root, &["switch", "-q", "keep-week"]);
     git(root, &["merge", "-q", "--no-edit", "main"]);
     fs::remove_file(root.join("features/dvic/migrations/0004_week.sql")).unwrap();
+    write(root, "features/dvic/backend/week notes.rs", "// x\n");
     commit(root, "no migration after all");
     git(root, &["push", "-q", "origin", "keep-week"]);
     fixture.prepare(3).unwrap();
@@ -489,6 +490,15 @@ fn each_pass_is_pinned_to_the_pushed_head_and_later_ones_read_only_what_changed(
         brief.contains("features/dvic/migrations/0004_week.sql"),
         "{brief}"
     );
+    assert!(
+        brief.contains("'features/dvic/backend/week notes.rs'"),
+        "{brief}"
+    );
+    // Without its migration the change is standard, but a later pass reviews no less.
+    let pass: Pass = read_json(&fixture.dir(3).join("pass.json"))
+        .unwrap()
+        .unwrap();
+    assert_eq!((pass.tier, pass.security), (Tier::Sensitive, true));
     assert!(!brief.contains("features/vans"), "{brief}");
 }
 

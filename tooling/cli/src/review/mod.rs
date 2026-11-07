@@ -225,6 +225,7 @@ pub fn prepare(root: &Path, ask: &Prepare, runner: &dyn Runner) -> Result<()> {
         "diff",
         "--numstat",
         "--no-renames",
+        "-z",
         &format!("{main}..HEAD"),
     ])?);
     require(
@@ -237,8 +238,10 @@ pub fn prepare(root: &Path, ask: &Prepare, runner: &dyn Runner) -> Result<()> {
             Tier::parse(name).ok_or("A tier is light, standard or sensitive.")?,
             true,
         ),
-        (None, Some(previous)) if previous.asked => (previous.tier, true),
-        (None, _) => (judged.tier, false),
+        // A later pass never reviews less than the one before: a fix that shrank the change
+        // still needs what found it.
+        (None, Some(previous)) => (previous.tier.max(judged.tier), previous.asked),
+        (None, None) => (judged.tier, false),
     };
     if tier == Tier::Light {
         println!(
@@ -262,6 +265,7 @@ pub fn prepare(root: &Path, ask: &Prepare, runner: &dyn Runner) -> Result<()> {
                     own.push(path);
                 }
             }
+            let own: Vec<String> = own.into_iter().map(workspace::quote).collect();
             format!("git diff {base}..{head} -- {}", own.join(" "))
         }
         _ => format!("git diff {base}..{head}"),
