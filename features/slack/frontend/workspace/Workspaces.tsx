@@ -16,12 +16,7 @@ import { INTEGRATIONS } from '../sections.js';
 import { WorkspaceHero } from './WorkspaceHero.js';
 import { WorkspacePick } from './WorkspacePick.js';
 
-// The DSP's workspaces' settings, Slack's custom section of its page of Settings, for those who
-// manage Slack: one workspace at a time, chosen from them when there are several, with its
-// sections down the side, Slack's own and those other features add for each workspace. An
-// integration's sections are listed under Integrations, while it's on in the workspace. A
-// feature switched off for the DSP takes its sections with it. The address names the workspace
-// and the section open, beside Settings' own page.
+// Hosts the selected workspace's Settings sections; the address keeps workspace and section.
 
 export function Workspaces({ session, view }: { session: SessionView; view: DspView }) {
   const account = useSlackAccount();

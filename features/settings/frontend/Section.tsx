@@ -27,14 +27,9 @@ export const sectionElement = (id: string, reveal?: RefCallback<HTMLElement>) =>
 });
 
 /**
- * A declared section: its heading, how the live reader it sets the schedule of reads when it
- * does, a control for each of its fields and Save for those it holds, then those that save
- * themselves. Its edits are its own, so typing in one section redraws no
- * other, and the page moves on only once they are saved or discarded. A save that would lose
- * something asks first, in the server's words. Edits begin at the section as it was read when
- * they began: once another session has saved it since, a save of them is refused, though the
- * page has read it again meanwhile, and the section is read again. They're kept in `whose`
- * Settings (drafts.ts), so the page drawn anew for the same view has them still.
+ * Edits capture their starting revision; rereads do not rebase an unsaved draft. Stale saves
+ * are refused and reread. drafts.ts keeps edits across remounts of the same whose view, and
+ * navigation waits for save or discard.
  */
 export function Section({
   section,

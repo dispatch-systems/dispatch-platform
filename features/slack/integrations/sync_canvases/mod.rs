@@ -5,15 +5,6 @@
 //! canvases of a channel's on their own. Slack doesn't tell apps which of a channel's folders
 //! holds a canvas, so a folder of Slack's is chosen as its canvases. Switched on in a
 //! workspace's Integrations, it's told of each file shared and changed where Dispatch is.
-//!
-//! - `choices`: the canvases chosen on their own, and the canvases of a channel to choose from;
-//!   the channels are linked by `channel_links`, as `LINKING` declares.
-//! - `overview`: what the workspace's settings show of it.
-//! - `queue`: each canvas to be synced, kept until it is, the minute's pass that syncs what's
-//!   due, and what Slack tells of; `check`, the pass that finds the canvases and edits Slack
-//!   didn't tell of.
-//! - `sync`: syncing one canvas, and `page`, a canvas as a page to write.
-//! - `storage`: what's kept.
 pub(crate) mod api;
 pub mod check;
 pub mod choices;

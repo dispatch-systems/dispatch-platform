@@ -1,0 +1,225 @@
+/* File kinds, ink on surface as the DSP avatars are drawn. Docs, Sheets and Slides keep the
+   hue people know from Google; uploads take the app's own tones. */
+:root {
+  --documents-doc: #2463d1;
+  --documents-doc-surface: #e8f0fd;
+  --documents-sheet: #18804a;
+  --documents-sheet-surface: #e5f4ec;
+  --documents-slides: #a86d00;
+  --documents-slides-surface: #fdf3dc;
+  --documents-pdf: #b42332;
+  --documents-pdf-surface: #fbeaec;
+}
+[data-theme='dark'] {
+  --documents-doc: #8fb4ff;
+  --documents-doc-surface: #22314f;
+  --documents-sheet: #77d3a2;
+  --documents-sheet-surface: #1f3a2d;
+  --documents-slides: #eec36a;
+  --documents-slides-surface: #3a3020;
+  --documents-pdf: #f49aaa;
+  --documents-pdf-surface: #432630;
+}
+.documents-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+}
+.documents-tile svg {
+  stroke-width: 1.8;
+}
+.documents-tile-folder,
+.documents-tile-file {
+  color: var(--slate);
+  background: var(--slate-surface);
+}
+.documents-tile-doc {
+  color: var(--documents-doc);
+  background: var(--documents-doc-surface);
+}
+.documents-tile-sheet {
+  color: var(--documents-sheet);
+  background: var(--documents-sheet-surface);
+}
+.documents-tile-slides {
+  color: var(--documents-slides);
+  background: var(--documents-slides-surface);
+}
+.documents-tile-pdf {
+  color: var(--documents-pdf);
+  background: var(--documents-pdf-surface);
+}
+.documents-tile-image {
+  color: var(--violet);
+  background: var(--violet-surface);
+}
+
+.documents-initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 600;
+}
+.documents-tone-slate {
+  color: var(--slate);
+  background: var(--slate-surface);
+}
+.documents-tone-sage {
+  color: var(--sage);
+  background: var(--sage-surface);
+}
+.documents-tone-violet {
+  color: var(--violet);
+  background: var(--violet-surface);
+}
+.documents-tone-steel {
+  color: var(--steel);
+  background: var(--steel-surface);
+}
+
+/* A drawing of a file's first page. */
+.documents-thumb {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  height: 132px;
+  overflow: hidden;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+/* Google's picture of a file in its place: a page from its top, a photo from its middle. */
+.documents-thumb-picture img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+.documents-thumb-photo img {
+  object-position: center;
+}
+.documents-page {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 66%;
+  height: 112px;
+  padding: 14px 14px 0;
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: 4px 4px 0 0;
+  background: var(--background);
+}
+.documents-page b {
+  display: block;
+  width: 55%;
+  height: 7px;
+  margin-bottom: 4px;
+  border-radius: 2px;
+  background: var(--documents-doc);
+  opacity: 0.75;
+}
+.documents-page i {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--muted);
+}
+.documents-page i.short {
+  width: 70%;
+}
+.documents-thumb-pdf .documents-page b {
+  background: var(--documents-pdf);
+}
+.documents-thumb-file .documents-page b {
+  background: var(--slate);
+}
+.documents-page.documents-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0;
+  padding: 0;
+}
+.documents-page.documents-grid i {
+  height: 13px;
+  border-radius: 0;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+}
+.documents-page.documents-grid i.head {
+  background: var(--documents-sheet-surface);
+}
+.documents-page.documents-grid i.key {
+  background: color-mix(in srgb, var(--documents-sheet) 10%, transparent);
+}
+.documents-thumb-slides {
+  align-items: center;
+}
+.documents-slide {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  width: 72%;
+  aspect-ratio: 16 / 9;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--background);
+}
+.documents-slide b {
+  display: block;
+  width: 60%;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--documents-slides);
+}
+.documents-slide i {
+  display: block;
+  width: 80%;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--muted);
+}
+.documents-slide i.short {
+  width: 50%;
+}
+.documents-thumb-image {
+  align-items: stretch;
+  background:
+    linear-gradient(90deg, transparent 47%, var(--border) 47% 53%, transparent 53%),
+    linear-gradient(0deg, transparent 58%, var(--border) 58% 63%, transparent 63%),
+    var(--violet-surface);
+}
+.documents-thumb-image span {
+  position: absolute;
+  width: 26%;
+  height: 22%;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--violet) 22%, transparent);
+}
+.documents-thumb-image span:nth-child(1) {
+  left: 10%;
+  top: 14%;
+}
+.documents-thumb-image span:nth-child(2) {
+  left: 62%;
+  top: 20%;
+  height: 30%;
+}
+.documents-thumb-image span:nth-child(3) {
+  left: 14%;
+  top: 70%;
+  width: 30%;
+  height: 18%;
+}
