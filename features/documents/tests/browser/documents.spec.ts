@@ -55,18 +55,19 @@ test('large folders keep one page mounted in both layouts, search every item and
     expect(measured.nodes).toBeLessThan(10_000);
   };
   const fileCount = 1500;
+  const longName = 'Route notes with a deliberately long descriptive filename.txt';
   try {
     await login(page);
     await openDsp(page, 'Northline Logistics');
     await connect(page);
     const items: DocumentsItem[] = Array.from({ length: fileCount }, (_, index) => ({
       id: `large-folder-${index}`,
-      name: `File ${String(index).padStart(4, '0')}.txt`,
+      name: index === 1 ? longName : `File ${String(index).padStart(4, '0')}.txt`,
       kind: 'file',
       size: 10,
       modifiedAt: '2026-01-05T12:00:00Z',
-      modifiedBy: null,
-      addedBy: null,
+      modifiedBy: 'Morgan Dispatcher',
+      addedBy: 'Alex Operations',
       items: null,
       url: `https://drive.google.com/file/d/large-folder-${index}/view`,
       location: null,
@@ -97,6 +98,39 @@ test('large folders keep one page mounted in both layouts, search every item and
     await expect(page.getByRole('button', { name: 'Rename', exact: true })).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.locator('.documents-table .row-menu .account-popover button')).toHaveCount(0);
+    const longRow = rows.filter({ has: page.getByRole('link', { name: longName, exact: true }) });
+    for (const width of [390, 760, 761, 1440]) {
+      await page.setViewportSize({ width, height: 1000 });
+      const fits = await page.locator('.documents-table').evaluate((table) => {
+        const wrap = table.parentElement!;
+        return {
+          page: document.documentElement.scrollWidth <= innerWidth,
+          list: wrap.scrollWidth <= wrap.clientWidth,
+        };
+      });
+      expect(fits, `Documents list fits at ${width}px`).toEqual({ page: true, list: true });
+      await expect(longRow.getByRole('link', { name: longName, exact: true })).toBeVisible();
+      await expect(longRow.getByText('Morgan Dispatcher', { exact: true })).toBeVisible();
+      await expect(
+        page.getByRole('columnheader', { name: 'Last edited', exact: true }),
+      ).toBeVisible();
+      for (const name of ['Type', 'Added by'])
+        await expect(page.getByRole('columnheader', { name, exact: true })).toBeVisible({
+          visible: width > 760,
+        });
+      await expect(longRow.getByText('Alex Operations', { exact: true })).toBeVisible({
+        visible: width > 760,
+      });
+      if (width === 390)
+        expect(
+          await longRow.locator('strong').evaluate((name) => name.scrollWidth > name.clientWidth),
+        ).toBe(true);
+      const actions = longRow.getByLabel(`Actions for ${longName}`, { exact: true });
+      await expect(actions).toBeInViewport({ ratio: 1 });
+      await actions.click();
+      await expect(page.getByRole('button', { name: 'Rename', exact: true })).toBeVisible();
+      await page.keyboard.press('Escape');
+    }
     await page.getByRole('button', { name: 'Next', exact: true }).click();
     await expect(page.getByRole('link', { name: 'File 0100.txt', exact: true })).toBeVisible();
     await expect(rows).toHaveCount(100);
