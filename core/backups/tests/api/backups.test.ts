@@ -15,20 +15,15 @@ test('only the platform owner schedules a DSP’s backups, and none is taken wit
   assert.equal((await member.get(backups)).status, 403);
   assert.equal((await member.post(`${backups}/now`)).status, 403);
 
-  // Unsaved, it has the rule every DSP starts with, holding all but its pictures.
+  // Unsaved, it has the rule every DSP starts with, kept 30 days, holding all but its pictures.
   const first = await owner.read(backups);
   assert.equal(first.configured, false);
+  const [starting] = first.rules;
   assert.deepEqual(
-    first.rules.map(
-      (rule: { times: string[]; keep: number; keepUnit: string; skipped: string[] }) => [
-        rule.times,
-        rule.keep,
-        rule.keepUnit,
-        rule.skipped,
-      ],
-    ),
-    [[['02:00'], 30, 'day', ['pictures']]],
+    [first.rules.length, starting.on, starting.times, starting.keep, starting.keepCount],
+    [1, 'week', ['02:00'], 'for', 30],
   );
+  assert.deepEqual(starting.skipped, ['pictures']);
   assert.deepEqual(
     first.items
       .filter((item: { always: boolean }) => item.always)
@@ -36,16 +31,21 @@ test('only the platform owner schedules a DSP’s backups, and none is taken wit
     ['dispatch'],
   );
 
+  // The 1st, the 15th and the last day of each month, kept as its last 12.
   const rule = {
     id: null,
-    kind: 'repeat',
-    days: [0, 1, 2, 3, 4],
-    times: [],
-    every: 240,
-    from: '06:00',
-    to: '22:00',
-    keep: 2,
-    keepUnit: 'week',
+    on: 'month',
+    days: [],
+    dates: [1, 15],
+    lastDay: true,
+    kind: 'times',
+    times: ['02:00'],
+    every: null,
+    from: null,
+    to: null,
+    keep: 'last',
+    keepCount: 12,
+    keepUnit: null,
     skipped: [],
   };
   const saved = await owner.post(`${backups}/schedule`, {
@@ -53,9 +53,10 @@ test('only the platform owner schedules a DSP’s backups, and none is taken wit
     rules: [rule],
   });
   assert.equal(saved.status, 200);
+  const [kept] = saved.value.rules;
   assert.deepEqual(
-    [saved.value.rules.length, saved.value.rules[0].every, saved.value.rules[0].keepUnit],
-    [1, 240, 'week'],
+    [saved.value.rules.length, kept.dates, kept.lastDay, kept.keep, kept.keepCount],
+    [1, [1, 15], true, 'last', 12],
   );
   const stale = await owner.post(`${backups}/schedule`, { revision: first.revision, rules: [] });
   assert.deepEqual([stale.status, stale.value.error], [409, 'backup_schedule_changed']);
