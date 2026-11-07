@@ -194,7 +194,10 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
         "{}",
         workspace::next(&[
             "Tell the user what merged; Dev installs it once main's checks pass".to_owned(),
-            format!("From outside the worktree, `dispatchdev finish {branch}`"),
+            format!(
+                "From outside the worktree, `dispatchdev finish {branch} --plan`, then \
+                 `dispatchdev finish {branch}`"
+            ),
         ])
     );
     Ok(())
