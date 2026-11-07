@@ -419,6 +419,8 @@
   display: block;
   width: 100%;
   height: auto;
+  /* However wide its card, its drawing keeps within it. */
+  max-height: 36px;
   overflow: visible;
 }
 .collectors-pattern > span:not(.collectors-art) {
