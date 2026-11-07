@@ -6,10 +6,10 @@
 //! files it would push.
 use crate::{Result, Runner, api, dev, require, review, shot, workspace};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashSet},
     fs,
     os::unix::process::CommandExt,
-    path::Path,
+    path::{Component, Path, PathBuf},
     process::{Command, Stdio},
     time::{Duration, Instant},
 };
@@ -208,12 +208,172 @@ fn routes(text: &str) -> Vec<Route> {
         })
         .collect()
 }
-/// The ids of the Settings sections a `feature.ts` draws in its `settingsSections: [...]`.
-fn sections(text: &str) -> Vec<String> {
-    entries(text, "settingsSections")
+/// A Settings section an owner draws, by its id, with the modules its `load` imports.
+struct Section {
+    id: String,
+    modules: Vec<PathBuf>,
+}
+/// The Settings sections the `feature.ts` at `file` draws in its `settingsSections: [...]`, each
+/// written there or a name it imports from another file.
+fn sections(file: &Path, text: &str) -> Vec<Section> {
+    items(text, "settingsSections")
         .iter()
-        .filter_map(|entry| field(entry, "id"))
+        .filter_map(|item| match item.starts_with('{') {
+            true => section(file, text, item),
+            false => {
+                let (from, text) = imported(file, text, item)?;
+                section(&from, &text, object(&text, item)?)
+            }
+        })
         .collect()
+}
+/// A section as `item`, in the file at `file` that holds `text`, declares it: its id, and what
+/// its `load` imports, there or in the function it names.
+fn section(file: &Path, text: &str, item: &str) -> Option<Section> {
+    let id = field(item, "id")?;
+    let mut modules = references(file, item);
+    if modules.is_empty() {
+        let name = match item.split("load: ").nth(1) {
+            Some(rest) => rest
+                .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                .next()?
+                .to_owned(),
+            None => "load".to_owned(),
+        };
+        let start = text.find(&format!("const {name} = "))?;
+        let statement = text[start..].split(";\n").next()?;
+        modules = references(file, statement);
+    }
+    Some(Section { id, modules })
+}
+/// The file `name` is imported from in the file at `file`, which holds `text`, and what it holds.
+fn imported(file: &Path, text: &str, name: &str) -> Option<(PathBuf, String)> {
+    text.split("import {").skip(1).find_map(|import| {
+        let (names, rest) = import.split_once("} from '")?;
+        if !names.split(',').any(|each| each.trim() == name) {
+            return None;
+        }
+        let from = resolve(file.parent()?, rest.split('\'').next()?)?;
+        let text = fs::read_to_string(&from).ok()?;
+        Some((from, text))
+    })
+}
+/// The object `const <name>` is declared as in `text`, from its `{` to its `}`.
+fn object<'a>(text: &'a str, name: &str) -> Option<&'a str> {
+    let start = text.find(&format!("const {name}"))?;
+    let open = start + text[start..].find('{')?;
+    let mut depth = 0;
+    for (at, c) in text[open..].char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(&text[open..=open + at]);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+/// Each item of the list `<key>: [...]` in `text`, whole, as written between its commas.
+fn items(text: &str, key: &str) -> Vec<String> {
+    let opening = format!("{key}: [");
+    let Some(start) = text.find(&opening) else {
+        return vec![];
+    };
+    let mut items = vec![];
+    let (mut depth, mut quote, mut item) = (0usize, None, String::new());
+    for c in text[start + opening.len()..].chars() {
+        match (quote, c) {
+            (Some(q), _) if c == q => quote = None,
+            (Some(_), _) => {}
+            (None, '\'' | '"' | '`') => quote = Some(c),
+            (None, '[' | '{' | '(') => depth += 1,
+            (None, ']' | '}' | ')') if depth == 0 => break,
+            (None, ']' | '}' | ')') => depth -= 1,
+            (None, ',') if depth == 0 => {
+                items.push(std::mem::take(&mut item));
+                continue;
+            }
+            _ => {}
+        }
+        item.push(c);
+    }
+    items.push(item);
+    items
+        .into_iter()
+        .map(|item| item.trim().to_owned())
+        .filter(|item| !item.is_empty())
+        .collect()
+}
+/// The files a module's text imports by a relative path, `import ... from`, a stylesheet's
+/// `import` and `import(...)`, as the file at `file` reaches them.
+fn references(file: &Path, text: &str) -> Vec<PathBuf> {
+    imports(file, text, &["from '", "import '", "import('"])
+}
+/// The files a module's text loads when they're needed, `import(...)`: a page's, as its owner's
+/// `feature.ts` loads it.
+fn loaded(file: &Path, text: &str) -> Vec<PathBuf> {
+    imports(file, text, &["import('"])
+}
+/// The files a module's text imports by a relative path after one of `keywords`.
+fn imports(file: &Path, text: &str, keywords: &[&str]) -> Vec<PathBuf> {
+    let Some(folder) = file.parent() else {
+        return vec![];
+    };
+    keywords
+        .iter()
+        .flat_map(|keyword| {
+            text.match_indices(keyword)
+                .map(move |(at, _)| at + keyword.len())
+        })
+        .filter_map(|at| text[at..].split('\'').next())
+        .filter(|spec| spec.starts_with('.'))
+        .filter_map(|spec| resolve(folder, spec))
+        .collect()
+}
+/// The file a relative import names from `folder`: as written, or for a `.js`, the TypeScript
+/// it's built from.
+fn resolve(folder: &Path, spec: &str) -> Option<PathBuf> {
+    let path = normal(&folder.join(spec));
+    let bare = path.with_extension("");
+    [
+        path.clone(),
+        bare.with_extension("ts"),
+        bare.with_extension("tsx"),
+    ]
+    .into_iter()
+    .find(|path| path.is_file())
+}
+/// A path with its `.` and `..` worked out, so a file reached two ways is named one way.
+fn normal(path: &Path) -> PathBuf {
+    let mut normal = PathBuf::new();
+    for part in path.components() {
+        match part {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normal.pop();
+            }
+            part => normal.push(part),
+        }
+    }
+    normal
+}
+/// Every file in `owner`'s folder that `modules` reach by their imports, themselves too.
+fn reach(owner: &Path, modules: &[PathBuf]) -> HashSet<PathBuf> {
+    let mut reached = HashSet::new();
+    let mut next = modules.to_vec();
+    while let Some(file) = next.pop() {
+        if !file.starts_with(owner) || !reached.insert(file.clone()) {
+            continue;
+        }
+        if let Ok(text) = fs::read_to_string(&file) {
+            next.extend(references(&file, &text));
+        }
+    }
+    reached
 }
 /// The text of each entry of the list a `feature.ts` declares as `<key>: [...]`, each entry's
 /// own: what's nested in it is left out.
@@ -250,13 +410,6 @@ fn field(entry: &str, name: &str) -> Option<String> {
     let rest = entry.split(&format!("{name}: '")).nth(1)?;
     Some(rest.split('\'').next()?.to_owned())
 }
-/// A name as file and folder names spell it, and ids: its letters and digits alone, lowercase.
-fn plain(name: &str) -> String {
-    name.chars()
-        .filter(char::is_ascii_alphanumeric)
-        .map(|c| c.to_ascii_lowercase())
-        .collect()
-}
 /// A component's name as a tab's id: `MealBreaks` is `meal-breaks`.
 fn kebab(name: &str) -> String {
     let mut id = String::new();
@@ -269,43 +422,47 @@ fn kebab(name: &str) -> String {
     id
 }
 
-/// The page a UI file belongs to. A file its owner's Settings section is named for, by its
-/// folder under `frontend/` or its own name, shows that section; so does any of an owner with
-/// sections and no routes, its first section. Otherwise, of the owner's routes, the one its folder
-/// is named for, else the first, on the tab a folder under `tabs/` or a `<Name>Tab` file is named
-/// for; the DSP's landing page when its owner has none.
+/// The page a UI file belongs to. A file a Settings section of its owner's reaches by its imports,
+/// and nothing else its owner's `feature.ts` loads when needed does, as its pages, shows that
+/// section; so does any of an
+/// owner with sections and no routes, its first section. Otherwise, of the owner's routes, the one
+/// its folder under `frontend/` is named for, else the first, on the tab a folder under `tabs/` or
+/// a `<Name>Tab` file is named for; the DSP's landing page when its owner has none.
 fn page(root: &Path, path: &str) -> Page {
     let landing = Page::default();
     let Some((owner, inside)) = path.split_once("/frontend/") else {
         return landing;
     };
-    let Ok(text) = fs::read_to_string(root.join(owner).join("frontend/feature.ts")) else {
+    let manifest = root.join(owner).join("frontend/feature.ts");
+    let Ok(text) = fs::read_to_string(&manifest) else {
         return landing;
     };
     let routes = routes(&text);
-    let sections = sections(&text);
+    let sections = sections(&manifest, &text);
+    let (owner, file) = (normal(&root.join(owner)), normal(&root.join(path)));
+    let drawn: Vec<&PathBuf> = sections.iter().flat_map(|s| &s.modules).collect();
+    let others: Vec<PathBuf> = loaded(&manifest, &text)
+        .into_iter()
+        .filter(|module| !drawn.contains(&module))
+        .collect();
+    let section = match reach(&owner, &others).contains(&file) {
+        true => None,
+        false => sections
+            .iter()
+            .find(|section| reach(&owner, &section.modules).contains(&file)),
+    }
+    .or(sections.first().filter(|_| routes.is_empty()));
+    if let Some(section) = section {
+        return Page {
+            tab: Some(Tab::Section(section.id.clone())),
+            ..landing
+        };
+    }
     let folder = inside.split('/').next().unwrap_or_default();
     let stem = Path::new(inside)
         .file_stem()
         .and_then(|stem| stem.to_str())
         .unwrap_or_default();
-    let named = ["Tab", "Page", "Section", "Settings"]
-        .iter()
-        .find_map(|suffix| stem.strip_suffix(suffix))
-        .unwrap_or(stem);
-    let section = sections
-        .iter()
-        .find(|id| {
-            let what = plain(id.rsplit('.').next().unwrap_or(id));
-            what == plain(folder) || what == plain(named)
-        })
-        .or(sections.first().filter(|_| routes.is_empty()));
-    if let Some(section) = section {
-        return Page {
-            tab: Some(Tab::Section(section.clone())),
-            ..landing
-        };
-    }
     let Some(route) = routes.iter().find(|r| r.id == folder).or(routes.first()) else {
         return landing;
     };
@@ -524,11 +681,13 @@ mod tests {
     fn a_ui_file_shows_the_page_tab_or_settings_section_its_owner_draws_it_on() {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path();
-        let owner = |path: &str, declared: &str| {
-            let file = root.join(path).join("frontend/feature.ts");
+        let file = |path: &str, text: &str| {
+            let file = root.join(path);
             fs::create_dir_all(file.parent().unwrap()).unwrap();
-            fs::write(file, declared).unwrap();
+            fs::write(file, text).unwrap();
         };
+        let owner =
+            |path: &str, declared: &str| file(&format!("{path}/frontend/feature.ts"), declared);
         owner(
             "features/timecard",
             "routes: [{ id: 'paycom', scope: 'dsp', label: 'Timecard' }]",
@@ -543,18 +702,81 @@ mod tests {
             "accountActions: [{ id: 'ai-support', label: 'AI Support' }],\n\
              routes: [{ id: 'support', scope: 'platform', tabs: [{ id: 'inbox', scope: 'dsp' }] }]",
         );
+        // A section loads its module inline, by a function it names, or as `load`, and is written
+        // in the list or imported by name; a file it reaches is its own unless a page reaches it.
         owner(
             "core/collection",
-            "settingsSections: [\n\
-               { id: 'collection.connections', render: ({ view }) => tab({ view }) },\n\
-               { id: 'collection.collectors', load },\n\
-             ],",
+            "const load = () =>\n  Promise.all([import('./index.js'), ...cards()]).then(([m]) => m);\n\
+             const loadCollectors = () => import('./collectors/index.js');\n\
+             export const feature = {\n  settingsSections: [\n\
+               { id: 'collection.connections', load, render: ({ view }) => tab({ view }) },\n\
+               { id: 'collection.collectors', load: loadCollectors },\n  ],\n};",
         );
+        file(
+            "core/collection/frontend/index.ts",
+            "import './connections.css';\nexport { ConnectionsTab } from './ConnectionsTab.js';",
+        );
+        file("core/collection/frontend/ConnectionsTab.tsx", "");
+        file("core/collection/frontend/connections.css", "");
+        file(
+            "core/collection/frontend/collectors/index.ts",
+            "export { Schedule } from './Schedule.js';",
+        );
+        file("core/collection/frontend/collectors/Schedule.tsx", "");
         owner(
             "features/communications",
-            "routes: [{ id: 'communications', scope: 'dsp' }],\n\
-             settingsSections: [{ id: 'communications.display' }, { id: 'communications.quick_replies' }],",
+            "const load = () => import('./index.js');\n\
+             const loadQuickReplies = () => import('./replies/QuickRepliesSettings.js');\n\
+             export const feature = {\n  routes: [{ id: 'communications', scope: 'dsp', preload: load }],\n\
+               settingsSections: [\n\
+                 { id: 'communications.alerts', load: () => import('./alerts/Alerts.js') },\n\
+                 { id: 'communications.quick_replies', load: loadQuickReplies },\n  ],\n};",
         );
+        file(
+            "features/communications/frontend/index.ts",
+            "export { Page } from './page/Page.js';",
+        );
+        file(
+            "features/communications/frontend/page/Page.tsx",
+            "import { QuickReplies } from '../replies/QuickReplies.js';\n\
+             import { notices } from '../alerts/notices.js';",
+        );
+        file(
+            "features/communications/frontend/replies/QuickReplies.tsx",
+            "import './quick-replies.css';",
+        );
+        file(
+            "features/communications/frontend/replies/quick-replies.css",
+            "",
+        );
+        file(
+            "features/communications/frontend/replies/QuickRepliesSettings.tsx",
+            "",
+        );
+        file(
+            "features/communications/frontend/alerts/Alerts.tsx",
+            "import { notices } from './notices.js';\nimport './alerts.css';",
+        );
+        file("features/communications/frontend/alerts/alerts.css", "");
+        file("features/communications/frontend/alerts/notices.ts", "");
+        owner(
+            "core/accounts",
+            "import { profileSection, securitySection } from './settings/sections.js';\n\
+             export const feature = { settingsSections: [profileSection, securitySection] };",
+        );
+        file(
+            "core/accounts/frontend/settings/sections.ts",
+            "const loadProfile = () => import('./ProfileBadge.js');\n\
+             const loadSecurity = () => import('./SecuritySettings.js');\n\
+             export const profileSection: CustomSection = { id: 'accounts.profile', load: loadProfile };\n\
+             export const securitySection: CustomSection = { id: 'accounts.security', load: loadSecurity };",
+        );
+        file("core/accounts/frontend/settings/ProfileBadge.tsx", "");
+        file(
+            "core/accounts/frontend/settings/SecuritySettings.tsx",
+            "import { PasswordPanel } from './PasswordPanel.js';",
+        );
+        file("core/accounts/frontend/settings/PasswordPanel.tsx", "");
         owner(
             "features/settings",
             "routes: [{ id: 'settings', scope: 'dsp', hostsSettings: true }]",
@@ -605,18 +827,39 @@ mod tests {
                 "core/collection/frontend/collectors/Schedule.tsx",
                 section("collection.collectors"),
             ),
-            // An owner with sections and no pages shows its first.
             (
                 "core/collection/frontend/connections.css",
                 section("collection.connections"),
             ),
+            // An owner with sections and no pages shows its first for a file none reaches.
             (
-                "features/communications/frontend/display/DisplaySettings.tsx",
-                section("communications.display"),
+                "core/collection/frontend/useVerification.ts",
+                section("collection.connections"),
             ),
             (
-                "features/communications/frontend/inbox/Inbox.tsx",
+                "features/communications/frontend/replies/QuickRepliesSettings.tsx",
+                section("communications.quick_replies"),
+            ),
+            (
+                "features/communications/frontend/alerts/alerts.css",
+                section("communications.alerts"),
+            ),
+            // The page's own, though a section's module is beside it or reaches it too.
+            (
+                "features/communications/frontend/replies/QuickReplies.tsx",
                 at("communications", false, None),
+            ),
+            (
+                "features/communications/frontend/replies/quick-replies.css",
+                at("communications", false, None),
+            ),
+            (
+                "features/communications/frontend/alerts/notices.ts",
+                at("communications", false, None),
+            ),
+            (
+                "core/accounts/frontend/settings/PasswordPanel.tsx",
+                section("accounts.security"),
             ),
             ("core/shell/frontend/styles/tokens.css", Page::default()),
         ] {
