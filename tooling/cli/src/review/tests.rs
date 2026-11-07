@@ -16,6 +16,23 @@ fn a_change_is_light_standard_or_sensitive_by_the_paths_it_changes() {
                 .collect::<Vec<_>>(),
         )
     };
+    for (path, shown) in [
+        (
+            "android/relay/src/main/kotlin/com/dspdispatch/relay/ui/SetupScreen.kt",
+            true,
+        ),
+        ("android/relay/src/main/res/values/strings.xml", true),
+        (
+            "android/relay/src/test/kotlin/com/dspdispatch/relay/ui/SetupTest.kt",
+            false,
+        ),
+        (
+            "android/relay/src/main/kotlin/com/dspdispatch/relay/sms/Sender.kt",
+            false,
+        ),
+    ] {
+        assert_eq!(ui(path), shown, "{path}");
+    }
     for (paths, tier, reasons) in [
         (
             vec![("README.md", 4), ("features/dvic/tests/api/week.rs", 30)],
@@ -582,8 +599,19 @@ fn a_change_to_what_a_page_shows_is_held_to_what_the_user_approved() {
         "features/dvic/frontend/Week.tsx",
         "export const week = 2;\n",
     );
+    write(root, "features/dvic/frontend/week.css", ".week {}\n");
     preview::approve(root, &Native).unwrap();
     commit(root, "as shown");
+    assert_eq!(approval(), Approval::Approved);
+    // A file approved and since put back as main has it no longer looks as approved.
+    fs::remove_file(root.join("features/dvic/frontend/week.css")).unwrap();
+    commit(root, "without its styles");
+    assert_eq!(
+        approval(),
+        Approval::Changed(vec!["features/dvic/frontend/week.css".to_owned()])
+    );
+    write(root, "features/dvic/frontend/week.css", ".week {}\n");
+    commit(root, "its styles again");
     assert_eq!(approval(), Approval::Approved);
 
     git(root, &["push", "-q", "-u", "origin", "keep-week"]);
@@ -640,4 +668,7 @@ fn a_change_to_what_a_page_shows_is_held_to_what_the_user_approved() {
     git(root, &["push", "-q", "origin", "keep-week"]);
     let later = unreviewed(body).unwrap();
     assert!(later.contains("before the latest commits"), "{later}");
+    // Recording the pass again doesn't vouch for what came after it.
+    let again = error(record(root, 1, &models, &Native));
+    assert!(again.contains("was recorded at"), "{again}");
 }

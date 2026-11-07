@@ -72,22 +72,32 @@ fn files(root: &Path, worktree: bool, runner: &dyn Runner) -> Result<BTreeMap<St
     Ok(files)
 }
 
-/// The committed change's UI files against what the user approved.
+/// The committed change's UI files against what the user approved: a file changed since, or
+/// approved and since put back as `main` has it, differs.
 pub fn approval(root: &Path, runner: &dyn Runner) -> Result<Approval> {
     let now = files(root, false, runner)?;
-    if now.is_empty() {
-        return Ok(Approval::None);
-    }
     let path = workspace::checkout_scratch(root)?.join(APPROVED);
-    let approved: BTreeMap<String, String> = match fs::read_to_string(&path) {
-        Ok(text) => serde_json::from_str(&text)?,
-        Err(_) => return Ok(Approval::Missing),
+    let approved: Option<BTreeMap<String, String>> = match fs::read_to_string(&path) {
+        Ok(text) => Some(serde_json::from_str(&text)?),
+        Err(_) => None,
     };
-    let changed: Vec<String> = now
+    let approved = match (approved, now.is_empty()) {
+        (None, true) => return Ok(Approval::None),
+        (None, false) => return Ok(Approval::Missing),
+        (Some(approved), _) => approved,
+    };
+    let mut changed: Vec<String> = now
         .iter()
         .filter(|(path, hash)| approved.get(*path) != Some(hash))
         .map(|(path, _)| path.clone())
         .collect();
+    changed.extend(
+        approved
+            .keys()
+            .filter(|path| !now.contains_key(*path))
+            .cloned(),
+    );
+    changed.sort();
     Ok(match changed.is_empty() {
         true => Approval::Approved,
         false => Approval::Changed(changed),
@@ -120,34 +130,76 @@ pub fn approve(root: &Path, runner: &dyn Runner) -> Result<()> {
 /// How long a dev server has to start: a first build of the backend takes minutes.
 const STARTING: Duration = Duration::from_secs(600);
 
-/// The pages a change's UI files belong to: a feature's first page, as its `feature.ts` lists
-/// its routes, or the DSP's landing page, `None`, for the rest.
-fn pages(root: &Path, paths: &[&String]) -> Vec<Option<String>> {
-    let mut pages: Vec<Option<String>> = vec![];
-    for path in paths {
-        let page = path
-            .strip_prefix("features/")
-            .and_then(|rest| rest.split_once('/'))
-            .and_then(|(feature, _)| {
-                let routes = fs::read_to_string(
-                    root.join(format!("features/{feature}/frontend/feature.ts")),
-                )
-                .ok()?;
-                let id = routes.split("id: '").nth(1)?.split('\'').next()?;
-                Some(id.to_owned())
-            });
-        if !pages.contains(&page) {
-            pages.push(page);
+/// A page to show: a route's id, `None` for the DSP's landing page, on the platform owner's
+/// own pages or a DSP's.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Page {
+    pub id: Option<String>,
+    pub platform: bool,
+}
+impl Page {
+    /// A page as `--pages` names it: `<id>`, or `platform:<id>` for the platform owner's own.
+    pub fn named(name: &str) -> Self {
+        match name.strip_prefix("platform:") {
+            Some(id) => Self {
+                id: Some(id.to_owned()),
+                platform: true,
+            },
+            None => Self {
+                id: Some(name.to_owned()),
+                platform: false,
+            },
         }
     }
-    pages
+}
+
+/// The routes a `feature.ts` declares, each by its id and whether it's the platform owner's.
+fn routes(text: &str) -> Vec<(String, bool)> {
+    text.split("id: '")
+        .skip(1)
+        .filter_map(|route| {
+            let id = route.split('\'').next()?.to_owned();
+            let platform = route
+                .split("scope: '")
+                .nth(1)
+                .is_some_and(|scope| scope.starts_with("platform'"));
+            Some((id, platform))
+        })
+        .collect()
+}
+
+/// The page a UI file belongs to: of its owner's routes, the one its folder under `frontend/` is
+/// named for, else the first; the DSP's landing page when its owner has none.
+fn page(root: &Path, path: &str) -> Page {
+    let landing = Page {
+        id: None,
+        platform: false,
+    };
+    let Some((owner, inside)) = path.split_once("/frontend/") else {
+        return landing;
+    };
+    let Ok(text) = fs::read_to_string(root.join(owner).join("frontend/feature.ts")) else {
+        return landing;
+    };
+    let routes = routes(&text);
+    let folder = inside.split('/').next().unwrap_or_default();
+    routes
+        .iter()
+        .find(|(id, _)| id == folder)
+        .or(routes.first())
+        .map_or(landing, |(id, platform)| Page {
+            id: Some(id.clone()),
+            platform: *platform,
+        })
 }
 
 /// The checkout's dev server, serving its backend as it is now: the one running, else a new one,
 /// once the one it replaces, checked to be the server it recorded, has stopped.
 fn serving(root: &Path, runner: &dyn Runner) -> Result<dev::Status> {
+    // Only a server started from the checkout as it is now serves it: a newer build on disk
+    // says nothing of what an older server runs.
     let status = dev::status(root, runner)?;
-    if status.running && status.backend_matches == Some(true) {
+    if status.running && status.source_matches == Some(true) {
         return Ok(status);
     }
     if let Some(process) = status.process.as_ref().filter(|_| status.running) {
@@ -170,13 +222,15 @@ fn serving(root: &Path, runner: &dyn Runner) -> Result<dev::Status> {
         }
     }
     let log = workspace::checkout_scratch(root)?.join("dev-server.log");
+    // One file for both streams, so neither writes over the other.
+    let output = fs::File::create(&log)?;
     let mut command = Command::new("npm");
     command
         .args(["run", "dev"])
         .current_dir(root)
         .stdin(Stdio::null())
-        .stdout(fs::File::create(&log)?)
-        .stderr(fs::File::create(&log)?.try_clone()?)
+        .stdout(output.try_clone()?)
+        .stderr(output)
         // Its own process group, so it outlives this command.
         .process_group(0);
     // Served on the tailnet's address, so the link opens on the user's phone or laptop.
@@ -194,7 +248,7 @@ fn serving(root: &Path, runner: &dyn Runner) -> Result<dev::Status> {
             return Err(format!("The dev server stopped ({exit}): see {}.", log.display()).into());
         }
         let status = dev::status(root, runner)?;
-        if status.running && status.backend_matches == Some(true) {
+        if status.running && status.source_matches == Some(true) {
             return Ok(status);
         }
         require(
@@ -219,10 +273,16 @@ pub fn run(root: &Path, named: &[&str], runner: &dyn Runner) -> Result<()> {
         .keys()
         .filter(|path| !path.starts_with("android/"))
         .collect();
-    let pages = match named.is_empty() {
-        true => pages(root, &web),
-        false => named.iter().map(|page| Some((*page).to_owned())).collect(),
+    let mut pages: Vec<Page> = vec![];
+    let wanted: Vec<Page> = match named.is_empty() {
+        true => web.iter().map(|path| page(root, path)).collect(),
+        false => named.iter().map(|name| Page::named(name)).collect(),
     };
+    for page in wanted {
+        if !pages.contains(&page) {
+            pages.push(page);
+        }
+    }
     if !pages.is_empty() {
         let status = serving(root, runner)?;
         for page in &pages {
@@ -231,9 +291,9 @@ pub fn run(root: &Path, named: &[&str], runner: &dyn Runner) -> Result<()> {
                     root,
                     &shot::Shot {
                         open: shot::Open {
-                            page: page.as_deref(),
+                            page: page.id.as_deref(),
                             dsp: None,
-                            platform: false,
+                            platform: page.platform,
                             tab: None,
                         },
                         who: None,
@@ -259,4 +319,56 @@ pub fn run(root: &Path, named: &[&str], runner: &dyn Runner) -> Result<()> {
     );
     println!("{}", workspace::next(&next));
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn a_ui_file_shows_the_page_its_owner_routes_it_to() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let owner = |path: &str, routes: &str| {
+            let file = root.join(path).join("frontend/feature.ts");
+            fs::create_dir_all(file.parent().unwrap()).unwrap();
+            fs::write(file, routes).unwrap();
+        };
+        owner(
+            "features/timecard",
+            "routes: [{ id: 'paycom', scope: 'dsp', label: 'Timecard' }]",
+        );
+        owner(
+            "core/platform_owner",
+            "routes: [{ id: 'dsps', scope: 'platform' }, { id: 'jobs', scope: 'platform' }]",
+        );
+        let at = |id: &str, platform| Page {
+            id: Some(id.to_owned()),
+            platform,
+        };
+        for (path, shown) in [
+            (
+                "features/timecard/frontend/Calendar.tsx",
+                at("paycom", false),
+            ),
+            (
+                "core/platform_owner/frontend/jobs/JobsPage.tsx",
+                at("jobs", true),
+            ),
+            (
+                "core/platform_owner/frontend/shared/Table.tsx",
+                at("dsps", true),
+            ),
+            (
+                "core/shell/frontend/styles/tokens.css",
+                Page {
+                    id: None,
+                    platform: false,
+                },
+            ),
+        ] {
+            assert_eq!(page(root, path), shown, "{path}");
+        }
+        assert_eq!(Page::named("platform:dsps"), at("dsps", true));
+        assert_eq!(Page::named("paycom"), at("paycom", false));
+    }
 }

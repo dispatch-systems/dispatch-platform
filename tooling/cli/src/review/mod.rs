@@ -510,13 +510,16 @@ fn fill(template: &str, values: &[(&str, String)]) -> Option<String> {
     Some(text)
 }
 
-/// Whether a path is part of what someone sees: a page's code or styles, or an Android screen,
-/// but not the templates `tooling/` makes them from.
+/// Whether a path is part of what someone sees: a page's code or styles, or an Android app's
+/// screens, their Compose code under `ui/` or its resources, but not the templates `tooling/`
+/// makes them from.
 pub fn ui(path: &str) -> bool {
     !path.starts_with("tooling/")
         && (path.contains("/frontend/")
             || path.ends_with(".css")
-            || (path.starts_with("android/") && path.contains("/res/")))
+            || (path.starts_with("android/")
+                && path.contains("/src/main/")
+                && (path.contains("/res/") || path.contains("/ui/"))))
 }
 
 /// What the change is for, from its PR body: the title, its Summary, and its Problem, Symptom
@@ -643,6 +646,20 @@ pub fn record(root: &Path, n: u32, models: &Models, runner: &dyn Runner) -> Resu
     }
     let git = Checkout { root, runner };
     let (_, head) = git.pushed()?;
+    // A pass is recorded at one head: recording it again later would vouch for what came after.
+    if let Some(earlier) =
+        read_json::<Recorded>(&dir.join("record.json"))?.filter(|earlier| !earlier.head.is_empty())
+    {
+        require(
+            earlier.head == head,
+            &format!(
+                "Pass {n} was recorded at {}: what came after is reviewed by `dispatchdev review \
+                 prepare --pass {}`.",
+                short(&earlier.head),
+                n + 1
+            ),
+        )?;
+    }
     let changed = answers
         .iter()
         .any(|outcome| matches!(outcome.answer.as_str(), "fixed" | "changed"));

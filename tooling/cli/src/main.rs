@@ -157,8 +157,8 @@ const COMMANDS: &[Spec] = &[
         "preview",
         &["preview [--pages <page,...>]", "preview approve"],
         "Show the change as it is: serve it, restarting the dev server when it serves other \
-         code, and save a screenshot of each page it touches, or --pages, wide and on a phone, \
-         with the link to click through it. Once the user approved how it looks, approve keeps \
+         code, and save a screenshot of each page it touches, or --pages, platform:<page> for \
+         the platform owner's own, wide and on a phone, with the link to click through it. Once the user approved how it looks, approve keeps \
          its UI files: pr opens no PR for a change to what a page shows until those are the \
          files it pushes.",
     )
