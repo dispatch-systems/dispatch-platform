@@ -37,7 +37,9 @@ async fn a_running_job_waits_its_turn_at_the_database_where_a_request_is_turned_
     let behind: Vec<_> = (0..state.db_slots.available_permits())
         .map(|_| {
             let state = Arc::clone(&state);
-            tokio::spawn(requested(async move { state.run_bookkeeping(|_| Ok(())).await }))
+            tokio::spawn(requested(
+                async move { state.run_bookkeeping(|_| Ok(())).await },
+            ))
         })
         .collect();
     while state.db_slots.available_permits() > 0 {
