@@ -14,9 +14,11 @@ test("a workspace's members reach Driver Match once it's connected, and whoever 
   const people = () => owner.read('/api/dsp/driver-match') as Promise<DriverMatch>;
   const holder = (result: DriverMatch, member: string) =>
     result.people.find((d) => d.ids.some((i) => i.source === 'slack' && i.id === member));
-  await until(async () => (await people()).sources.includes('slack'));
-  // Someone only Slack knows, and deactivated there, has left.
-  assert.equal(holder(await people(), `${drivers.teamId}:U0FIXGONE`)?.role, 'former');
+  // Slack's members count once Driver Match's pass has given them codes, after Slack is a
+  // source. Someone only Slack knows, and deactivated there, has left.
+  const gone = `${drivers.teamId}:U0FIXGONE`;
+  await until(async () => holder(await people(), gone) !== undefined);
+  assert.equal(holder(await people(), gone)?.role, 'former');
   // Someone joining the workspace is read as Slack tells of them, and works in the office.
   const joined = event(drivers.teamId, {
     type: 'team_join',
