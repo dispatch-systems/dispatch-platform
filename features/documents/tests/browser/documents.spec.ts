@@ -118,7 +118,8 @@ test('large folders keep one page mounted in both layouts, search every item and
         await expect(page.getByRole('columnheader', { name, exact: true })).toBeVisible({
           visible: width > 760,
         });
-      await expect(longRow.getByText('Alex Operations', { exact: true })).toBeVisible({
+      await expect(longRow.locator('.documents-person')).toContainText('Alex Operations');
+      await expect(longRow.locator('.documents-person')).toBeVisible({
         visible: width > 760,
       });
       if (width === 390)
