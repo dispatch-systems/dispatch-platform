@@ -1,6 +1,6 @@
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { featureList } from '../../scaffold/wire.js';
@@ -127,4 +127,17 @@ test('generate --check writes nothing, and fails naming what generate would chan
   } finally {
     fs.writeFileSync(list, wired);
   }
+});
+
+test('a reader that closes early ends the command quietly', async () => {
+  const child = spawn(process.execPath, [tsx, path.join(root, 'tooling/scaffold/cli.ts'), 'todo'], {
+    cwd: root,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  // As `| head` does once it has what it wants: the command writes after its reader is gone.
+  child.stdout.destroy();
+  let stderr = '';
+  child.stderr.on('data', (data: Buffer) => (stderr += String(data)));
+  await new Promise((resolve) => child.once('close', resolve));
+  assert.doesNotMatch(stderr, /EPIPE/);
 });
