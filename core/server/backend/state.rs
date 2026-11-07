@@ -59,6 +59,10 @@ pub struct State {
     pub agents: Option<Box<dyn std::any::Any + Send + Sync>>,
     /// The object store the DSPs' pictures are kept in, when the server has one.
     pub objects: Option<db::objects::Objects>,
+    /// Where the DSPs' backups are kept, when the server has somewhere.
+    pub backups: Option<crate::backups::Vault>,
+    // Wakes what takes backups when one is asked for by hand, rather than at its next minute.
+    pub backups_wake: tokio::sync::Notify,
 }
 impl State {
     /// Reads the registry, which the app installs before it builds one.
@@ -86,6 +90,11 @@ impl State {
             .as_ref()
             .map(db::objects::Objects::new)
             .transpose()?;
+        let backups = config
+            .backups
+            .as_ref()
+            .map(crate::backups::Vault::new)
+            .transpose()?;
         Ok(Arc::new(Self {
             key: store.key.clone(),
             assets: http::assets(&config.dashboard, &config.release)?,
@@ -109,6 +118,8 @@ impl State {
             presence: presence::Presence::default(),
             agents,
             objects,
+            backups,
+            backups_wake: tokio::sync::Notify::new(),
         }))
     }
     #[track_caller]

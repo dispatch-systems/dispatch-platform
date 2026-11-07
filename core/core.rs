@@ -3,6 +3,8 @@
 //! feature: it reaches them through the registry the app installs at startup (`manifest`).
 #[path = "accounts/backend/mod.rs"]
 pub mod accounts;
+#[path = "backups/backend/mod.rs"]
+pub mod backups;
 #[path = "collection/backend/mod.rs"]
 pub mod collection;
 #[path = "db/backend/mod.rs"]
@@ -56,6 +58,7 @@ macro_rules! typescript {
 pub fn typescript(cfg: &ts_rs::Config) -> Typescript {
     let mut all = Typescript::new();
     all.extend(accounts::api::typescript(cfg));
+    all.extend(backups::api::typescript(cfg));
     all.extend(collection::api::typescript(cfg));
     all.extend(foundation::config::typescript(cfg));
     all.extend(manifest::people::typescript(cfg));

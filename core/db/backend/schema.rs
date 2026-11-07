@@ -46,6 +46,9 @@ pub const TABLES: Tables = &[
             "dsps",
             "dsp_features",
             "dsp_deletions",
+            "backup_schedules",
+            "backup_rules",
+            "backups",
             "feature_availability",
             "memberships",
             "roles",
@@ -201,6 +204,13 @@ const PLATFORM: &[Migration] = &[
         name: "dsp_deletions",
         apply: Sql(include_str!(
             "../../tenancy/migrations/platform/0025_dsp_deletions.sql"
+        )),
+    },
+    Migration {
+        id: 26,
+        name: "dsp_backups",
+        apply: Sql(include_str!(
+            "../../backups/migrations/platform/0026_dsp_backups.sql"
         )),
     },
 ];

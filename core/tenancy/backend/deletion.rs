@@ -87,6 +87,7 @@ impl Store {
             self.forget_audit(id, &self.people_alone(id, &own)?)?;
             mail::forget_dsp(self, id)?;
             support::tickets::forget_dsp(self, id)?;
+            crate::backups::schedule::forget_dsp(&self.platform, id)?;
             if let Some(agents) = registry().agents {
                 (agents.forget_dsp)(self, id)?;
             }

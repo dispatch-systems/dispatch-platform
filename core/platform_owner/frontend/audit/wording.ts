@@ -125,6 +125,16 @@ const phrases: AuditPhrases = {
     ' as a beta tester at ',
     strong(e.dspName ?? 'a DSP'),
   ],
+  'dsp.backup_schedule_changed': (e) => [
+    e.detail === 'on'
+      ? 'turned on backups for '
+      : e.detail === 'off'
+        ? 'turned off backups for '
+        : 'changed the backup schedule of ',
+    strong(e.dspName ?? 'a DSP'),
+  ],
+  'dsp.backup_requested': (e) => ['backed up ', strong(e.dspName ?? 'a DSP')],
+  'dsp.backup_downloaded': (e) => ['downloaded a backup of ', strong(e.dspName ?? 'a DSP')],
   'dsp.ai_support_hidden': (e) => ['hid AI Support from ', strong(e.dspName ?? 'a DSP')],
   'dsp.ai_support_shown': (e) => ['showed AI Support to ', strong(e.dspName ?? 'a DSP')],
   'dsp.code_changed': (e) => [
