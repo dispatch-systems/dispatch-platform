@@ -63,16 +63,17 @@ impl Fixture {
         }
     }
 
-    fn run(&self, action: Action<'_>) -> Result<()> {
+    fn run(&self, action: Action<'_>) -> Result<Option<Value>> {
         execute(&self.root, action, &self.env, self)
     }
 
-    fn prepare(&self, app: &str, variant: Option<&str>) -> Result<()> {
+    fn prepare(&self, app: &str, variant: Option<&str>) -> Result<Value> {
         self.run(Action::Prepare {
             app,
             device: "emulator-5560",
             variant,
-        })
+        })?
+        .ok_or_else(|| "Preparation returned no result".into())
     }
 
     fn installations(&self) -> Vec<Vec<String>> {
@@ -156,8 +157,8 @@ impl Runner for Fixture {
                 }),
                 "install" if failure == "install" => Err("installation refused".into()),
                 "install" => {
-                    assert_eq!(args[4], "-r");
-                    assert_eq!(args.len(), 6);
+                    assert_eq!(&args[4..6], &["-r", "-d"]);
+                    assert_eq!(args.len(), 7);
                     Ok(b"Success\n".to_vec())
                 }
                 "reverse" => {
@@ -266,19 +267,27 @@ impl Runner for Fixture {
 
 #[test]
 fn prepare_builds_only_the_selected_app_and_installs_its_actual_apk_on_the_explicit_emulator() {
-    for (app, variant, apk) in [
-        ("inventory", None, "stock-local.apk"),
+    for (app, variant, apk, package) in [
+        (
+            "inventory",
+            None,
+            "stock-local.apk",
+            "com.example.stock.dev.debug",
+        ),
         (
             "ops:scanner",
             Some("qaPreview"),
             "scan-preview-universal.apk",
+            "org.example.scanner.qa",
         ),
     ] {
         let fixture = Fixture::new();
-        fixture.prepare(app, variant).unwrap();
+        let prepared = fixture.prepare(app, variant).unwrap();
+        assert_eq!(prepared["package"], package);
+        assert_eq!(prepared["device"], "emulator-5560");
         let installs = fixture.installations();
         assert_eq!(installs.len(), 1);
-        assert!(installs[0][5].ends_with(apk), "{installs:?}");
+        assert!(installs[0][6].ends_with(apk), "{installs:?}");
         let calls = fixture.calls.borrow();
         assert_eq!(calls.iter().filter(|args| args[0] == "sh").count(), 2);
         assert!(!calls.iter().any(|args| {

@@ -26,7 +26,8 @@ dispatchdev android prepare --app relay --device emulator-5554
 ```
 
 `prepare` builds only the selected application's variant, incrementally, and preserves installed
-app data. Gradle supplies the package and APK paths, so other application modules work too.
+app data, allowing replacement by a lower debug version when switching branches. Gradle supplies
+the package and APK paths, so other application modules work too.
 It chooses a unique `dev` variant or the app's only debuggable variant; otherwise name one with
 `--variant`. Its result identifies the APK, digest, source and device. Run it after app edits;
 backend-only work can reuse the installed build. It never opens, resets or controls the emulator.

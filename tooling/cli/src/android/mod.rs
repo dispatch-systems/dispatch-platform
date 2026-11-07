@@ -7,7 +7,7 @@ mod relay;
 use crate::{Result, Runner, build::Environment, require, to_hex};
 use device::Device;
 use environment::Tools;
-use serde_json::json;
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::path::Path;
 
@@ -28,12 +28,21 @@ pub enum Action<'a> {
 
 pub fn run(root: &Path, action: Action<'_>, runner: &dyn Runner) -> Result<()> {
     let env = std::env::vars().collect();
-    execute(root, action, &env, runner)
+    if let Some(value) = execute(root, action, &env, runner)? {
+        println!("{}", serde_json::to_string_pretty(&value)?);
+    }
+    Ok(())
 }
 
-fn execute(root: &Path, action: Action<'_>, env: &Environment, runner: &dyn Runner) -> Result<()> {
+fn execute(
+    root: &Path,
+    action: Action<'_>,
+    env: &Environment,
+    runner: &dyn Runner,
+) -> Result<Option<Value>> {
     if matches!(action, Action::Doctor) {
-        return environment::doctor(root, env, runner);
+        environment::doctor(root, env, runner)?;
+        return Ok(None);
     }
     if let Action::Pair { app, .. } = action {
         require(
@@ -65,22 +74,16 @@ fn execute(root: &Path, action: Action<'_>, env: &Environment, runner: &dyn Runn
             )?;
             let sha256 = to_hex(&Sha256::digest(std::fs::read(&apk)?));
             device.install(&apk, &tools, runner)?;
-            println!(
-                "{}",
-                serde_json::to_string_pretty(
-                    &json!({"app": selected.module, "variant": built.variant, "package": built.application_id, "device": device.serial, "apk": apk, "sha256": sha256, "source": source})
-                )?
-            );
+            return Ok(Some(
+                json!({"app": selected.module, "variant": built.variant, "package": built.application_id, "device": device.serial, "apk": apk, "sha256": sha256, "source": source}),
+            ));
         }
         Action::Pair { device, dsp, .. } => {
             let device = Device::take(root, device, &tools, env, runner)?;
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&relay::pair(root, &device, dsp, &tools, runner)?)?
-            );
+            return Ok(Some(relay::pair(root, &device, dsp, &tools, runner)?));
         }
     }
-    Ok(())
+    Ok(None)
 }
 
 #[cfg(test)]

@@ -97,6 +97,7 @@ impl<'a> Device<'a> {
                 self.serial,
                 "install",
                 "-r",
+                "-d",
                 apk.to_str().ok_or("The APK path is not UTF-8.")?,
             ],
             runner,
