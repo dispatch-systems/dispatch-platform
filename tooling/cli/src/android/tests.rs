@@ -10,6 +10,7 @@ use std::{
 struct Fixture {
     _temp: tempfile::TempDir,
     root: PathBuf,
+    scratch: PathBuf,
     env: Environment,
     calls: RefCell<Vec<Vec<String>>>,
     failure: Cell<&'static str>,
@@ -19,6 +20,9 @@ impl Fixture {
     fn new() -> Self {
         let temp = tempfile::tempdir().unwrap();
         let root = fs::canonicalize(temp.path()).unwrap();
+        let scratch = crate::workspace::scratch(root.file_name().unwrap().to_str().unwrap());
+        fs::create_dir(root.join("scratch")).unwrap();
+        std::os::unix::fs::symlink(root.join("scratch"), &scratch).unwrap();
         for folder in [
             "sdk/platform-tools",
             "android/inventory/src",
@@ -52,6 +56,7 @@ impl Fixture {
         Self {
             _temp: temp,
             root,
+            scratch,
             env,
             calls: RefCell::new(vec![]),
             failure: Cell::new(""),
@@ -87,6 +92,12 @@ impl Fixture {
 
     fn server(&self, origin: &str, link: &str) {
         self.write(api::RECORD, &json!({"pid": std::process::id(), "origin": origin, "link": link, "password": "fixture-only"}));
+    }
+}
+
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        fs::remove_file(&self.scratch).unwrap();
     }
 }
 

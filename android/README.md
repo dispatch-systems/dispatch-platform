@@ -15,8 +15,32 @@ From this folder, with the SDK at `~/Library/Android/sdk` (`ANDROID_HOME`) and J
 
 ```sh
 ./gradlew test lintDevDebug lintProductionRelease assembleDebug  # what CI runs
-./gradlew installDevDebug  # the dev app, debug build, on the phone or emulator adb sees
 ```
+
+For local development, open this task's emulator through T3, then run from the checkout:
+
+```sh
+dispatchdev android doctor
+dispatchdev android apps
+dispatchdev android prepare --app relay --device emulator-5554
+```
+
+`prepare` builds only the selected application's variant, incrementally, and preserves installed
+app data. Gradle supplies the package and APK paths, so other application modules work too.
+It chooses a unique `dev` variant or the app's only debuggable variant; otherwise name one with
+`--variant`. Its result identifies the APK, digest, source and device. Run it after app edits;
+backend-only work can reuse the installed build. It never opens, resets or controls the emulator.
+
+With `npm run dev` running in the same checkout, Relay can create a demo pairing link:
+
+```sh
+dispatchdev android pair --app relay --device emulator-5554 --dsp "Summit Delivery"
+```
+
+Open the returned link with the current T3 device session's bound `agent-device` command.
+Reuse an existing fixture pairing when possible. Pairing is Relay-specific; other apps need
+only `prepare`. T3's device ownership remains authoritative; the CLI lock prevents overlapping
+operations by different worktrees, and does not reserve the emulator after a command ends.
 
 Every app's tests run on Gradle's Java through `gradle/capped-jdk`, which caps any file they write
 at 1 GB, so a test that writes without end fails on its own write. Their temp folder is the app's
