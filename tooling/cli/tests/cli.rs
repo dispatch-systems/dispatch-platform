@@ -73,6 +73,11 @@ fn dispatchdev_shows_its_usage_and_refuses_what_it_does_not_take() {
     let (ok, help, _) = run(&["help", "generate"]);
     assert!(ok);
     assert!(help.starts_with("Usage: dispatchdev generate"), "{help}");
+    assert!(run(&["help", "--help"]).0);
+    assert!(run(&["help", "-h"]).0);
+    let (ok, _, error) = run(&["help", "build", "unexpected"]);
+    assert!(!ok);
+    assert!(error.contains("help takes no unexpected"), "{error}");
     let (ok, _, error) = run(&["browser", "dev"]);
     assert!(!ok);
     assert!(error.contains("Usage: dispatchdev browser"), "{error}");
@@ -94,6 +99,69 @@ fn dispatchdev_shows_its_usage_and_refuses_what_it_does_not_take() {
     let (ok, help, _) = run(&["android", "--help"]);
     assert!(ok);
     assert!(help.contains("android prepare --app <module>"), "{help}");
+}
+
+#[test]
+fn test_planning_on_dirty_main_selects_prerequisites_without_executing_or_creating_state() {
+    let fixture = checkout("main");
+    let file = "features/parking/tests/api/routes.test.ts";
+    let path = fixture.path().join(file);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, "throw new Error('the plan must not run tests');").unwrap();
+    let head = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(fixture.path())
+        .output()
+        .unwrap();
+    let head = String::from_utf8(head.stdout).unwrap();
+    let update = Command::new("git")
+        .args(["update-ref", "refs/remotes/origin/main", head.trim()])
+        .current_dir(fixture.path())
+        .status()
+        .unwrap();
+    assert!(update.success());
+    let result = Command::new(env!("CARGO_BIN_EXE_dispatchdev"))
+        .args([
+            "test",
+            "--plan",
+            "--json",
+            "--root",
+            fixture.path().to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let plan: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(plan["head"], head.trim());
+    assert_eq!(plan["dirty"], true);
+    assert!(
+        plan["changed"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|path| path == file)
+    );
+    assert!(
+        plan["steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|step| step["command"].as_str().unwrap().contains(file))
+    );
+    assert!(
+        plan["steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|step| step["command"] == "tooling/cli/dispatchdev build")
+    );
+    assert!(!fixture.path().join("target").exists());
+    assert!(!fixture.path().join(".test-build").exists());
+    assert!(!fixture.path().join(".runtime").exists());
 }
 
 /// A checkout with one commit, on `branch`.

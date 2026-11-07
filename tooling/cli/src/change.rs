@@ -2,11 +2,13 @@
 //! off `origin/main`, with its packages and its scratch folder, and `finish` removes them once
 //! its PR merged, or with `--abandon` for one that never will. Both work from any checkout of
 //! the repository.
-use crate::{REPOSITORY, Result, Runner, require, workspace};
+use crate::{Result, Runner, require, workspace};
 use std::{
     fs,
     path::{Path, PathBuf},
 };
+mod finish;
+pub use finish::{FinishPlan, finish, finish_plan};
 
 /// The clone a checkout shares Git's data with, and the folder beside it, `worktrees/`, its
 /// changes' worktrees go in.
@@ -95,95 +97,6 @@ pub fn start(from: &Path, name: &str, base: &str, runner: &dyn Runner) -> Result
             "`npm run dev` serves it; `dispatchdev shot` and `api` look at it".to_owned(),
             "`dispatchdev pr --skeleton --title \"<title>\"` starts its PR's body".to_owned(),
         ])
-    );
-    Ok(())
-}
-
-/// The newest PR of the branch `name`: its number and state.
-fn pull(clone: &Clone, name: &str, runner: &dyn Runner) -> Result<Option<(u64, String)>> {
-    let newest = workspace::text(
-        runner,
-        &[
-            "gh",
-            "pr",
-            "list",
-            "--repo",
-            REPOSITORY,
-            "--head",
-            name,
-            "--state",
-            "all",
-            "--json",
-            "number,state",
-            "--jq",
-            ".[0] | select(.) | \"\\(.number) \\(.state)\"",
-        ],
-        Some(&clone.root),
-    )?;
-    Ok(match newest.split_once(' ') {
-        Some((number, state)) => Some((number.parse()?, state.to_owned())),
-        None => None,
-    })
-}
-
-/// `dispatchdev finish <name>`: once the change's PR merged, or with `abandon` for one that
-/// never will, its worktree, its branches and its scratch folder go.
-pub fn finish(from: &Path, name: &str, abandon: bool, runner: &dyn Runner) -> Result<()> {
-    valid_name(name)?;
-    let clone = Clone::of(from, runner)?;
-    match (pull(&clone, name, runner)?, abandon) {
-        (Some((_, state)), false) if state == "MERGED" => {}
-        (Some((number, state)), false) => {
-            return Err(format!(
-                "#{number} is {}, not merged: finish it once it merges, or --abandon it.",
-                state.to_lowercase()
-            )
-            .into());
-        }
-        (None, false) => {
-            return Err(
-                format!("{name} has no PR: --abandon drops a change that never had one.").into(),
-            );
-        }
-        (Some((number, state)), true) if state == "OPEN" => {
-            return Err(
-                format!("#{number} is open: close it first (gh pr close {number}).").into(),
-            );
-        }
-        (_, true) => {}
-    }
-    let path = clone.worktrees.join(name);
-    if path.exists() {
-        require(
-            !std::env::current_dir()?.starts_with(&path),
-            "Run it from outside the worktree it removes.",
-        )?;
-        require(
-            workspace::text(runner, &["git", "status", "--porcelain"], Some(&path))?.is_empty(),
-            &format!(
-                "{} holds uncommitted changes: commit or drop them first.",
-                path.display()
-            ),
-        )?;
-        let target = path.to_str().ok_or("A worktree path that isn't UTF-8")?;
-        clone.git(runner, &["worktree", "remove", target])?;
-    }
-    if !clone.git(runner, &["branch", "--list", name])?.is_empty() {
-        clone.git(runner, &["branch", "-D", name])?;
-    }
-    if !clone
-        .git(runner, &["ls-remote", "--heads", "origin", name])?
-        .is_empty()
-    {
-        clone.git(runner, &["push", "-q", "origin", "--delete", name])?;
-    }
-    let scratch = workspace::scratch(name);
-    if scratch.exists() {
-        fs::remove_dir_all(&scratch)?;
-    }
-    println!(
-        "Finished {name}: its worktree, branches and scratch folder are gone{}.",
-        if abandon { ", unmerged" } else { "" }
     );
     Ok(())
 }
