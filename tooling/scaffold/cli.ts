@@ -23,6 +23,13 @@ export const KINDS: Generator[] = [feature, collector, integration, tool, slot];
 /** What `new` says last once it has generated too, in place of the notes naming generate. */
 const AGAIN = 'After changing what it declares, `dispatchdev generate` writes what follows again.';
 
+// A reader that stops early, as `| head` does, ends the command quietly, as dispatchdev's own
+// commands end; any other failure to write still fails it.
+for (const stream of [process.stdout, process.stderr])
+  stream.on('error', (error: NodeJS.ErrnoException) => {
+    if (error.code !== 'EPIPE') throw error;
+    process.exit(141);
+  });
 const out = (text: string) => process.stdout.write(`${text}\n`);
 const err = (text: string) => process.stderr.write(`${text}\n`);
 /** `--root <dir>` or `--root=<dir>` taken out of the arguments, or this checkout. */
