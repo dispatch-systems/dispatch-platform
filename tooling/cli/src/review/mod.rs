@@ -30,6 +30,9 @@ pub struct Pass {
     /// The diff the pass reviews, as its brief gives it.
     #[serde(default)]
     pub diff: String,
+    /// The files the branch changed against `main` at this head.
+    #[serde(default)]
+    pub paths: Vec<String>,
     pub tier: Tier,
     pub reasons: Vec<String>,
     /// Whether the tier was asked for rather than judged: later passes keep it.
@@ -247,39 +250,36 @@ pub fn prepare(root: &Path, ask: &Prepare, runner: &dyn Runner) -> Result<()> {
     let base = previous
         .as_ref()
         .map_or(main.clone(), |pass| pass.head.clone());
-    let paths: Vec<&str> = changed.iter().map(|file| file.path.as_str()).collect();
+    let paths: Vec<String> = changed.iter().map(|file| file.path.clone()).collect();
     // After `main` was merged in, what changed since the last pass holds `main`'s own changes
-    // too: the branch's files alone are its own.
+    // too: the branch's own are the files it changed then or changes now, so a fix that put a
+    // file back as `main` has it stays in.
     let diff = match &previous {
         Some(previous) if previous.main != main => {
-            format!("git diff {base}..{head} -- {}", paths.join(" "))
+            let mut own: Vec<&str> = previous.paths.iter().map(String::as_str).collect();
+            for path in &paths {
+                if !own.contains(&path.as_str()) {
+                    own.push(path);
+                }
+            }
+            format!("git diff {base}..{head} -- {}", own.join(" "))
         }
         _ => format!("git diff {base}..{head}"),
     };
-    let security = tier == Tier::Sensitive
-        && match &previous {
-            None => true,
-            Some(_) => git
-                .git(&[
-                    "diff",
-                    "--name-only",
-                    "--no-renames",
-                    &format!("{base}..HEAD"),
-                ])?
-                .lines()
-                .any(|path| tier::sensitive(path).is_some()),
-        };
+    let security = tier == Tier::Sensitive;
     let pass = Pass {
         pass: n,
         head: head.clone(),
         base: base.clone(),
         main: main.clone(),
         diff,
+        paths: paths.clone(),
         tier,
         reasons: judged.reasons,
         asked,
         security,
     };
+    let paths: Vec<&str> = paths.iter().map(String::as_str).collect();
     let fill = Fill {
         root,
         dir: &dir,
@@ -566,24 +566,13 @@ pub fn record(root: &Path, n: u32, models: &Models, runner: &dyn Runner) -> Resu
     let changed = answers
         .iter()
         .any(|outcome| matches!(outcome.answer.as_str(), "fixed" | "changed"));
-    match changed {
-        true => require(
-            head != pass.head,
-            &format!(
-                "Answers say fixed, but nothing was committed since {}.",
-                short(&pass.head)
-            ),
-        )?,
-        false => require(
-            head == pass.head,
-            &format!(
-                "Commits since pass {n}'s {} were reviewed by no one, and no answer says it \
-                 fixed anything: prepare pass {} for them.",
-                short(&pass.head),
-                n + 1
-            ),
-        )?,
-    }
+    require(
+        !changed || head != pass.head,
+        &format!(
+            "Answers say fixed, but nothing was committed since {}.",
+            short(&pass.head)
+        ),
+    )?;
     let recorded = Recorded {
         model: models.model.to_owned(),
         security_model: models.security.map(str::to_owned),
@@ -615,7 +604,21 @@ pub fn record(root: &Path, n: u32, models: &Models, runner: &dyn Runner) -> Resu
         .answers
         .iter()
         .any(|outcome| outcome.tag == "Important" && outcome.answer == "fixed");
-    let next = match (important_fixed, n < CAP) {
+    // Commits no answer accounts for were reviewed by no one: the pass is kept, but the review
+    // isn't done at this head.
+    let unreviewed = !changed && head != pass.head;
+    let next = match (important_fixed || unreviewed, n < CAP) {
+        (true, true) if unreviewed => format!(
+            "Commits since pass {n}'s {} were reviewed by no one: `dispatchdev review prepare \
+             --pass {}` reviews them",
+            short(&pass.head),
+            n + 1
+        ),
+        (true, false) if unreviewed => format!(
+            "Commits since pass {n}'s {} were reviewed by no one, and the review stops at pass \
+             {CAP}: another needs --over-cap, once it was asked for",
+            short(&pass.head)
+        ),
         (true, true) => format!(
             "`dispatchdev pr` updates the PR's body; then `dispatchdev review prepare --pass {}` \
              reviews what fixing the Important findings changed",

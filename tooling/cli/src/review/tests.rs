@@ -443,19 +443,19 @@ fn each_pass_is_pinned_to_the_pushed_head_and_later_ones_read_only_what_changed(
         "{body}"
     );
 
-    // The fix touched no sensitive path, so the second pass has no security review.
+    // Every pass of a sensitive change has its security review beside it.
     fixture.prepare(2).unwrap();
     let pass: Pass = read_json(&fixture.dir(2).join("pass.json"))
         .unwrap()
         .unwrap();
-    assert_eq!((pass.base.as_str(), pass.security), (first.as_str(), false));
+    assert_eq!((pass.base.as_str(), pass.security), (first.as_str(), true));
     let brief = fs::read_to_string(fixture.dir(2).join("brief.md")).unwrap();
     assert!(brief.contains("what changed since pass 1"), "{brief}");
     assert!(
         brief.contains("don't raise again what they settled"),
         "{brief}"
     );
-    assert!(!fixture.dir(2).join("security-brief.md").exists());
+    assert!(fixture.dir(2).join("security-brief.md").exists());
     assert!(
         brief.contains(&format!("`git diff {first}..{}`", pass.head)),
         "{brief}"
@@ -463,31 +463,30 @@ fn each_pass_is_pinned_to_the_pushed_head_and_later_ones_read_only_what_changed(
     assert!(error(fixture.prepare(3)).contains("Answer pass 2 first"));
     assert!(error(fixture.prepare(4)).contains("--over-cap"));
     write(&fixture.dir(2), "findings.md", "No findings.\n");
+    write(&fixture.dir(2), "security-findings.md", "No findings.\n");
     assert!(error(fixture.prepare(2)).contains("reviewed already"));
     take(root, 2, &Native).unwrap();
-    record(
-        root,
-        2,
-        &Models {
-            security: None,
-            ..models
-        },
-        &Native,
-    )
-    .unwrap();
+    record(root, 2, &models, &Native).unwrap();
 
-    // Once main is merged in, a pass reads only the branch's own files of what changed.
+    // Once main is merged in, a pass reads only the branch's own files of what changed: those it
+    // changes, and those it changed before, such as a migration a fix took back out.
     git(root, &["switch", "-q", "main"]);
     write(root, "features/vans/backend/van.rs", "fn van() {}\n");
     commit(root, "a van");
     git(root, &["push", "-q", "origin", "main"]);
     git(root, &["switch", "-q", "keep-week"]);
     git(root, &["merge", "-q", "--no-edit", "main"]);
+    fs::remove_file(root.join("features/dvic/migrations/0004_week.sql")).unwrap();
+    commit(root, "no migration after all");
     git(root, &["push", "-q", "origin", "keep-week"]);
     fixture.prepare(3).unwrap();
     let brief = fs::read_to_string(fixture.dir(3).join("brief.md")).unwrap();
     assert!(
         brief.contains(" -- features/dvic/backend/week.rs"),
+        "{brief}"
+    );
+    assert!(
+        brief.contains("features/dvic/migrations/0004_week.sql"),
         "{brief}"
     );
     assert!(!brief.contains("features/vans"), "{brief}");
@@ -519,7 +518,8 @@ fn a_change_of_documentation_and_tests_alone_needs_no_review_unless_asked() {
         model: "gpt-6.1-sol",
         security: None,
     };
-    // A clean pass is done only at the head it read.
+    // A clean pass recorded after later commits is kept, and the pass after it reviews them,
+    // at the tier asked for.
     write(
         root,
         "features/dvic/tests/api/week.rs",
@@ -527,21 +527,14 @@ fn a_change_of_documentation_and_tests_alone_needs_no_review_unless_asked() {
     );
     commit(root, "unreviewed");
     git(root, &["push", "-q", "origin", "keep-week"]);
-    assert!(error(record(root, 1, &models, &Native)).contains("reviewed by no one"));
-    git(root, &["reset", "-q", "--hard", "HEAD~1"]);
-    git(root, &["push", "-q", "-f", "origin", "keep-week"]);
+    let reviewed: Pass = read_json(&fixture.dir(1).join("pass.json"))
+        .unwrap()
+        .unwrap();
     record(root, 1, &models, &Native).unwrap();
-    // The tier asked for holds for the passes after it.
-    write(
-        root,
-        "features/dvic/tests/api/week.rs",
-        "#[test] fn weeks() {}\n",
-    );
-    commit(root, "rename");
-    git(root, &["push", "-q", "origin", "keep-week"]);
     fixture.prepare(2).unwrap();
     let pass: Pass = read_json(&fixture.dir(2).join("pass.json"))
         .unwrap()
         .unwrap();
     assert_eq!((pass.tier, pass.asked), (Tier::Standard, true));
+    assert_eq!(pass.base, reviewed.head);
 }
