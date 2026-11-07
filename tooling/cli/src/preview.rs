@@ -625,7 +625,7 @@ pub fn run(root: &Path, named: &[&str], runner: &dyn Runner) -> Result<()> {
                 Some(Tab::Id(tab)) => (page.id.clone(), Some(tab.clone())),
                 None => (page.id.clone(), None),
             };
-            for size in ["1440x1000", "390x844"] {
+            for size in [shot::DESKTOP, shot::PHONE] {
                 shot::run(
                     root,
                     &shot::Shot {

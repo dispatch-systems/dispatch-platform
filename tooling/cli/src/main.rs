@@ -244,7 +244,7 @@ const COMMANDS: &[Spec] = &[
          checkout's scratch folder, whose path it prints: as the owner, in the fixture's DSP or \
          the one --dsp names, or on the platform owner's own pages with --platform, or --as a \
          demo account at the address of the DSP --dsp names, signed in as api signs in, on its \
-         --tab, a page of Settings or a tab of the page. The window is --size, 1440x1000 unless \
+         --tab, a page of Settings or a tab of the page. The window is --size, 1920x1080 unless \
          told, in --theme, light unless told.",
     )
     .flags(&["--platform"])
@@ -764,7 +764,7 @@ fn run() -> Result<()> {
                     tab: line.option("--tab"),
                 },
                 who: line.option("--as"),
-                size: line.option("--size").unwrap_or("1440x1000"),
+                size: line.option("--size").unwrap_or(shot::DESKTOP),
                 theme: line.option("--theme").unwrap_or("light"),
             };
             shot::run(&line.root()?, &shot, &Native)
