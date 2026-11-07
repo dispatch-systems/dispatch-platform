@@ -1,0 +1,104 @@
+/* A DSP's Backups tab: its schedule drawn as the Collectors page draws a collection's, in a card
+   of its own, then its backups. */
+.dsp-backups {
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  overflow: hidden;
+}
+.backups-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+.backups-items label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.backups-spin {
+  color: var(--muted-foreground);
+  animation: backups-spin 1s linear infinite;
+}
+@keyframes backups-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.backups-history {
+  padding: 16px 24px 20px;
+  border-top: 1px solid var(--border);
+}
+.backups-history h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+.backups-history ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.backups-history li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.backups-history li + li {
+  border-top: 1px solid var(--border);
+}
+.backups-history .run-ok {
+  color: var(--success);
+}
+.backups-history .run-failed,
+.backups-error {
+  color: var(--destructive);
+}
+.backups-when {
+  min-width: 140px;
+}
+.backups-size {
+  min-width: 64px;
+  color: var(--muted-foreground);
+}
+.backups-by {
+  flex: 1;
+  min-width: 0;
+}
+.backups-rule {
+  background: color-mix(in srgb, var(--rule) 14%, var(--card));
+  color: color-mix(in srgb, var(--rule) 80%, var(--foreground));
+}
+.backups-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--control-height);
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+}
+.backups-download:hover {
+  background: var(--accent);
+}
+@media (max-width: 640px) {
+  .backups-history {
+    padding: 12px 16px 16px;
+  }
+  .backups-history li {
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    padding: 8px 0;
+  }
+  .backups-when {
+    min-width: 0;
+  }
+}

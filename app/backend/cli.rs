@@ -110,16 +110,16 @@ pub async fn run() -> Result<()> {
                 dispatch_core::collection::readers::start(state.clone(), receiver.clone()),
                 stop.clone(),
             ));
+            let backups = tokio::spawn(dispatch_core::supervise(
+                dispatch_core::backups::keeper(state.clone(), receiver.clone()),
+                stop.clone(),
+            ));
             let mail_state = state.clone();
             let mail = tokio::spawn(dispatch_core::supervise(
                 async move {
                     dispatch_core::server::mail::mailer(mail_state, receiver).await;
                     Ok(())
                 },
-                stop.clone(),
-            ));
-            let backups = tokio::spawn(dispatch_core::supervise(
-                dispatch_core::backups::keeper(state.clone(), receiver.clone()),
                 stop.clone(),
             ));
             dispatch_core::foundation::observability::event(

@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { ChevronDown, CircleCheck, CircleX, Globe, Plus, RefreshCw } from 'lucide-react';
-import type { ScheduledCollection, ScheduleRule, ScheduleRuleInput } from '../../api/index.js';
+import type {
+  ScheduleChoice,
+  ScheduledCollection,
+  ScheduleRule,
+  ScheduleRuleInput,
+} from '../../api/index.js';
 import { collectNow, previewRules, saveRules, switchSchedule } from '../../api/client.js';
 import { ApiError, errorLabel } from '../../../shell/frontend/runtime/api.js';
 import { useFeedback } from '../../../shell/frontend/runtime/feedback.js';
@@ -178,6 +183,8 @@ export function CollectionSchedule({
       rule.lastError ? (scheduleIssue(rule.lastError) ?? errorLabel(rule.lastError)) : undefined,
     ]),
   );
+  const change = (rule: Draft) => (next: Draft) =>
+    setDrafts((before) => before.map((each) => (each.key === rule.key ? next : each)));
   const add = () => {
     const rule = newRule(collection.collection, randomId());
     setDrafts((before) => [...before, rule]);
@@ -250,12 +257,15 @@ export function CollectionSchedule({
               rule={rule}
               place={place}
               open={open === rule.key}
-              choice={collection.choice}
+              tags={chosenTag(collection.choice, rule)}
+              lead={
+                collection.choice && (
+                  <Collects choice={collection.choice} rule={rule} change={change(rule)} />
+                )
+              }
               issue={collection.enabled ? issues.get(rule.id) : undefined}
               disabled={busy}
-              change={(next) =>
-                setDrafts((before) => before.map((each) => (each.key === rule.key ? next : each)))
-              }
+              change={change(rule)}
               toggle={() => setOpen(open === rule.key ? null : rule.key)}
               remove={() => setDrafts((before) => before.filter((each) => each.key !== rule.key))}
             />
@@ -387,5 +397,41 @@ function CollectNow({
         </button>
       ))}
     </Popover>
+  );
+}
+
+/** What a rule of a collection with a choice reads, beside its words. */
+function chosenTag(choice: ScheduleChoice | null, rule: Draft) {
+  const chosen = choice?.options.find((option) => option.collection === rule.collects);
+  return chosen && <span className="collectors-tag">{chosen.label}</span>;
+}
+
+/** Which of its collection's choice a rule reads by, as Routes' "Day". */
+function Collects({
+  choice,
+  rule,
+  change,
+}: {
+  choice: ScheduleChoice;
+  rule: Draft;
+  change: (rule: Draft) => void;
+}) {
+  return (
+    <>
+      <span className="collectors-label">{choice.label}</span>
+      <div className="settings-segments" role="radiogroup" aria-label={choice.label}>
+        {choice.options.map((option) => (
+          <label key={option.collection}>
+            <input
+              type="radio"
+              name={`${rule.key}-collects`}
+              checked={option.collection === rule.collects}
+              onChange={() => change({ ...rule, collects: option.collection })}
+            />
+            {option.label}
+          </label>
+        ))}
+      </div>
+    </>
   );
 }

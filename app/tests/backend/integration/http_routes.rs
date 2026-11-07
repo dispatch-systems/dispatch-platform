@@ -47,12 +47,14 @@ const OUTSIDE_THE_API: &[&str] = &[
 /// who can reach it, and a permission changed by accident fails a test.
 fn owners() -> Vec<(String, Vec<Route>)> {
     use dispatch_core::{
-        accounts, collection, manifest, platform_owner, server, settings, support, tenancy,
+        accounts, backups, collection, manifest, platform_owner, server, settings, support,
+        tenancy,
     };
     dispatch_backend::install();
     let registry = dispatch_core::manifest::registry();
     let mut owners = vec![
         ("core/accounts".to_owned(), accounts::api::routes()),
+        ("core/backups".to_owned(), backups::api::routes()),
         ("core/collection".to_owned(), collection::api::routes()),
         ("core/manifest".to_owned(), manifest::api::routes()),
         (

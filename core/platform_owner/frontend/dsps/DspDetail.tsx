@@ -5,13 +5,15 @@ import { connectionFeatures } from '../../../shell/frontend/runtime/features.js'
 import { dspAddress } from '../../../shell/frontend/runtime/site.js';
 import { Badge, DspAvatar, Popover, Tabs } from '../../../shell/frontend/ui/index.js';
 import { deviceTimezone, time } from '../../../shell/frontend/lib/format.js';
+import { DspBackupsTab } from '../../../backups/frontend/index.js';
 import { DspBetaTab } from './DspBetaTab.js';
 import { DspFeaturesTab } from './DspFeaturesTab.js';
 import { dspState, stateLabels } from './status.js';
 
 export type DspAction = 'view' | 'code' | 'enable' | 'retry' | 'disable' | 'delete';
 
-// The chosen DSP: its facts, its features, its beta testers and what the platform may do to it.
+// The chosen DSP: its facts, its features, its beta testers, its backups and what the platform may
+// do to it.
 export function DspDetail({
   dsp,
   back,
@@ -121,6 +123,7 @@ export function DspDetail({
           ['details', 'Details'],
           ['features', 'Features'],
           ['beta', 'Beta testers'],
+          ['backups', 'Backups'],
         ]}
         label="DSP"
       />
@@ -128,6 +131,8 @@ export function DspDetail({
         <DspFeaturesTab dsp={dsp} changed={changed} />
       ) : tab === 'beta' ? (
         <DspBetaTab dsp={dsp} />
+      ) : tab === 'backups' ? (
+        <DspBackupsTab dsp={dsp} />
       ) : (
         <dl className="dsp-facts">
           {facts.map(([label, value]) => (

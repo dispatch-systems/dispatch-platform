@@ -1,0 +1,9 @@
+# Every route backups registers: its method and path, who may call it, the database access its
+# work runs under, and whether it wakes the scheduler. Each changes with this file, so a reviewer
+# sees who can reach what.
+GET /api/platform/dsps/{id}/backups PlatformOwner Read
+GET /api/platform/dsps/{id}/backups/{backup}/download PlatformOwner Async
+POST /api/platform/dsps/{id}/backups/now PlatformOwner Async
+POST /api/platform/dsps/{id}/backups/preview PlatformOwner Write
+POST /api/platform/dsps/{id}/backups/schedule PlatformOwner Write
+POST /api/platform/dsps/{id}/backups/switch PlatformOwner Write

@@ -1,9 +1,8 @@
-import type { ScheduleRuleInput } from '../../api/index.js';
 import { WEEKDAYS } from '../../../shell/frontend/lib/calendar.js';
 import { dateFormatter } from '../../../shell/frontend/lib/date-format.js';
-import { week } from './rules.js';
+import { week, type RuleTiming } from './rules.js';
 
-// A collection's schedule as it would run: this week a strip a day, a tick a run, each rule in
+// A schedule as it would run: this week a strip a day, a tick a run, each rule in
 // its own colour; and the next runs, as the server works them out where the DSP is.
 
 const DAY = 24 * 60;
@@ -83,7 +82,7 @@ export function WeekPreview({
   off,
 }: {
   /** The rules as they'd be saved, each drawn in its place's colour. */
-  rules: (ScheduleRuleInput | undefined)[];
+  rules: (RuleTiming | undefined)[];
   timezone: string;
   /** The next runs, once the server has worked them out. */
   runs: string[] | undefined;
