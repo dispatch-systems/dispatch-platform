@@ -2,6 +2,25 @@ use super::*;
 use crate::Native;
 use std::sync::Mutex;
 
+#[test]
+fn repository_transports_keep_the_same_identity_and_refuse_other_authorities() {
+    let (user, host, project) = ("git", "github.com", REPOSITORY);
+    for url in [
+        format!("https://{host}/{project}.git"),
+        format!("ssh://{user}@{host}/{project}.git"),
+        format!("{user}@{host}:{project}.git"),
+    ] {
+        assert_eq!(repository(&url), Some(project));
+    }
+    for url in [
+        format!("https://{host}.example.test/{project}"),
+        format!("ssh://someone@{host}/{project}"),
+        "/tmp/another-repository".into(),
+    ] {
+        assert_eq!(repository(&url), None);
+    }
+}
+
 struct Fixture {
     _temp: tempfile::TempDir,
     root: PathBuf,
