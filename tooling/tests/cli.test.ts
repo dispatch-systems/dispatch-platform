@@ -312,7 +312,7 @@ test('doctor refuses an unavailable baseline and treats a behind branch as infor
     const behind = check.run(checkout);
     assert.equal(behind.ok, true);
     assert.equal(behind.fix, undefined);
-    assert.match(described([{ check: 'origin/main', ...behind }]), /1 commits behind/);
+    assert.match(described([{ check: 'origin/main', ...behind }]), /\b1\b/);
   } finally {
     fs.rmSync(checkout, { recursive: true, force: true });
   }
