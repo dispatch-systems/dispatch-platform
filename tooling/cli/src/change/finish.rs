@@ -90,6 +90,26 @@ fn inventory(path: &Path) -> Result<Vec<String>> {
     Ok(entries)
 }
 
+fn repository(url: &str) -> Option<&str> {
+    let repository = if let Some(repository) = url.strip_prefix("https://github.com/") {
+        repository
+    } else if let Some(ssh) = url.strip_prefix("ssh://") {
+        let (user, host) = ssh.split_once('@')?;
+        if user != "git" {
+            return None;
+        }
+        host.strip_prefix("github.com/")?
+    } else {
+        let (authority, repository) = url.split_once(':')?;
+        let (user, host) = authority.split_once('@')?;
+        if user != "git" || host != "github.com" {
+            return None;
+        }
+        repository
+    };
+    Some(repository.strip_suffix(".git").unwrap_or(repository))
+}
+
 pub fn finish_plan(
     from: &Path,
     name: &str,
@@ -101,16 +121,8 @@ pub fn finish_plan(
     let fetch_url = clone.git(runner, &["remote", "get-url", "origin"])?;
     let push_url = clone.git(runner, &["remote", "get-url", "--push", "origin"])?;
     for url in [&fetch_url, &push_url] {
-        let repository = [
-            "https://github.com/",
-            "git@github.com:",
-            "ssh://git@github.com/",
-        ]
-        .iter()
-        .find_map(|prefix| url.strip_prefix(prefix))
-        .map(|repository| repository.strip_suffix(".git").unwrap_or(repository));
         require(
-            repository
+            repository(url)
                 .is_some_and(|repository| dispatch_shared::REPOSITORIES.contains(&repository)),
             "Origin must name Dispatch's GitHub repository; inspect its fetch and push URLs before cleanup.",
         )?;
