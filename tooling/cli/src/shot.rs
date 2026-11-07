@@ -11,6 +11,10 @@ use serde_json::{Value, json};
 use std::path::Path;
 
 const SCRIPT: &str = "tooling/dev/shot.ts";
+/// The window a desktop screenshot is taken in: the owner's own screen, as they see a page.
+pub const DESKTOP: &str = "1920x1080";
+/// The window a phone screenshot is taken in.
+pub const PHONE: &str = "390x844";
 
 /// Where the page opens: a page, in a DSP or on the platform owner's own pages, on a tab of the
 /// page.
