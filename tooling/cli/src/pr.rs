@@ -1,8 +1,10 @@
 //! `dispatchdev pr`: the checkout's PR, opened or updated once its title and body follow the
 //! rules: they become the squash commit on `main`, and the release notes take its Summary. Both
 //! come from `pr-body.md` in the checkout's scratch folder, whose first line is `# <title>`;
-//! `--skeleton --title` starts that file with the title and the sections its type needs.
-use crate::{REPOSITORY, Result, Runner, require, workspace};
+//! `--skeleton --title` starts that file with the title and the sections its type needs, and
+//! `--check` checks all of it, and that `dispatchdev check` passed on the committed tree,
+//! without pushing.
+use crate::{REPOSITORY, Result, Runner, build::Environment, check, require, workspace};
 use std::{io::Write, os::unix::fs::OpenOptionsExt, path::Path};
 
 const TYPES: &[&str] = &[
@@ -51,7 +53,7 @@ pub fn sections(title: &str) -> Result<&'static [&'static str]> {
             "Summary",
             "Problem",
             "Change",
-            "Rollout",
+            "Risk",
             "Verification",
             "Review",
         ],
@@ -60,13 +62,62 @@ pub fn sections(title: &str) -> Result<&'static [&'static str]> {
             "Symptom",
             "Cause",
             "Fix",
+            "Risk",
             "Verification",
             "Review",
         ],
         ("ci", _) | (_, Some("host" | "release")) => {
             &["Summary", "Change", "Risk", "Verification", "Review"]
         }
-        _ => &["Summary", "Why", "Change", "Verification", "Review"],
+        _ => &["Summary", "Why", "Change", "Risk", "Verification", "Review"],
+    })
+}
+/// The text of the body's section `name`, trimmed, if it has one.
+pub fn section<'a>(body: &'a str, name: &str) -> Option<&'a str> {
+    let heading = format!("## {name}");
+    let start = body
+        .match_indices(&heading)
+        .find(|(at, _)| {
+            (*at == 0 || body[..*at].ends_with('\n'))
+                && body[at + heading.len()..]
+                    .chars()
+                    .next()
+                    .is_none_or(|c| c == '\n')
+        })?
+        .0
+        + heading.len();
+    let rest = &body[start..];
+    let end = rest.find("\n## ").unwrap_or(rest.len());
+    Some(rest[..end].trim())
+}
+/// Whether `line` opens a Review section: the line `review record` writes, `Tier light · not
+/// reviewed` for a change that needs none, or `Not reviewed:` and why.
+fn review_line(line: &str) -> bool {
+    line == "Tier light · not reviewed"
+        || ["Tier standard · ", "Tier sensitive · "]
+            .iter()
+            .any(|start| line.starts_with(start))
+        || line
+            .strip_prefix("Not reviewed:")
+            .is_some_and(|why| !why.trim().is_empty())
+}
+/// `body` with its Review section opening with `line`, in place of the line it opened with.
+pub fn with_review_line(body: &str, line: &str) -> Result<String> {
+    let heading = "\n## Review\n";
+    let at = body
+        .find(heading)
+        .ok_or("The PR body has no ## Review section.")?
+        + heading.len();
+    let (before, rest) = body.split_at(at);
+    let rest = rest.trim_start_matches('\n');
+    let rest = match rest.lines().next() {
+        Some(first) if review_line(first) => &rest[first.len()..],
+        _ => rest,
+    };
+    let rest = rest.trim_start_matches('\n');
+    Ok(match rest.is_empty() {
+        true => format!("{before}\n{line}\n"),
+        false => format!("{before}\n{line}\n\n{rest}"),
     })
 }
 /// What's wrong with a body for a change of `title`, if anything.
@@ -110,6 +161,32 @@ pub fn check_body(title: &str, body: &str) -> Result<()> {
     ] {
         require(!lower.contains(sign), rule)?;
     }
+    require(
+        section(body, "Risk").is_some_and(|risk| !risk.is_empty()),
+        "Risk says what could break and how to undo it.",
+    )?;
+    if wanted.contains(&"Cause") {
+        let cause = section(body, "Cause").unwrap_or_default();
+        let by = cause
+            .lines()
+            .find_map(|line| line.trim().strip_prefix("Caused by: "))
+            .unwrap_or_default();
+        require(
+            by == "unknown"
+                || by
+                    .strip_prefix('#')
+                    .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())),
+            "Cause names the PR that caused it on a line of its own: `Caused by: #<n>`, or \
+             `Caused by: unknown`.",
+        )?;
+    }
+    require(
+        section(body, "Review")
+            .and_then(|review| review.lines().next())
+            .is_some_and(review_line),
+        "Review opens with the line `dispatchdev review record` writes, `Tier light · not \
+         reviewed`, or `Not reviewed:` and why.",
+    )?;
     Ok(())
 }
 
@@ -157,8 +234,10 @@ pub fn start_body(root: &Path, title: &str) -> Result<()> {
     Ok(())
 }
 
-/// Opens the checkout's PR, or updates the one open, from its scratch folder's `pr-body.md`.
-pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
+/// Opens the checkout's PR, or updates the one open, from its scratch folder's `pr-body.md`,
+/// once its title and body follow the rules and `dispatchdev check` passed on the committed
+/// tree; with `only_check`, says whether they do and pushes nothing.
+pub fn run(root: &Path, only_check: bool, env: &Environment, runner: &dyn Runner) -> Result<()> {
     let body = workspace::checkout_scratch(root)?.join("pr-body.md");
     let text = std::fs::read_to_string(&body).map_err(|_| {
         format!(
@@ -183,6 +262,25 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
         git(&["status", "--porcelain"])?.is_empty(),
         "Commit the change before opening its PR.",
     )?;
+    match check::passed(root, env, runner)? {
+        Some(true) => {}
+        Some(false) => {
+            return Err(
+                "`dispatchdev check` hasn't passed on this commit's tree: run it first.".into(),
+            );
+        }
+        None => {
+            return Err(
+                "This checkout keeps no record of `dispatchdev check` passing: unset \
+                        CARGO_TARGET_DIR, RUSTFLAGS and CARGO_BUILD_*, then run it."
+                    .into(),
+            );
+        }
+    }
+    if only_check {
+        println!("The title, the body and `dispatchdev check` pass: `dispatchdev pr` pushes it.");
+        return Ok(());
+    }
     git(&["push", "-q", "--force-with-lease", "-u", "origin", &branch])?;
     let gh = |args: &[&str]| {
         let mut command = vec!["gh"];
@@ -227,6 +325,7 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
             format!(
                 "Its checks run on GitHub ({url}/checks): fix what they find and run `dispatchdev pr` again"
             ),
+            "`dispatchdev review prepare --pass 1` judges how deep its review goes".to_owned(),
             format!("Once they pass, `gh pr merge {number} --squash` merges it"),
         ])
     );
@@ -244,7 +343,7 @@ mod tests {
         );
         assert_eq!(
             sections("feat(timecard): add a total row").unwrap()[3],
-            "Rollout"
+            "Risk"
         );
         assert_eq!(
             sections("ci: run the browser shards in parallel").unwrap()[2],
@@ -296,8 +395,8 @@ mod tests {
     }
     #[test]
     fn a_body_holds_its_kinds_sections_in_order_and_nothing_it_never_may() {
-        let fix =
-            "## Summary\n\nx\n\n## Symptom\n\n## Cause\n\n## Fix\n\n## Verification\n\n## Review\n";
+        let fix = "## Summary\n\nx\n\n## Symptom\n\n## Cause\n\nCaused by: #812\n\n## Fix\n\n\
+                   ## Risk\n\nUndo: revert it.\n\n## Verification\n\n## Review\n\nNot reviewed: main failed\n";
         assert!(check_body("fix: x", fix).is_ok());
         assert!(check_body("fix: x", &format!("{fix}\n## Screenshots\n")).is_err());
         let swapped = fix.replace("## Symptom\n\n## Cause", "## Cause\n\n## Symptom");
@@ -315,5 +414,40 @@ mod tests {
                 "{added}"
             );
         }
+        for (from, to) in [
+            ("Caused by: #812", "Caused by: unknown"),
+            ("Not reviewed: main failed", "Tier light · not reviewed"),
+            (
+                "Not reviewed: main failed",
+                "Tier standard · 1 pass · gpt-6.1-sol · Important 0 · Nit 0 · Pre-existing 0",
+            ),
+        ] {
+            assert!(check_body("fix: x", &fix.replace(from, to)).is_ok(), "{to}");
+        }
+        for (from, to) in [
+            ("Caused by: #812", "Caused by #812"),
+            ("Caused by: #812", "Caused by: a refactor"),
+            ("Undo: revert it.", ""),
+            ("Not reviewed: main failed", "Not reviewed:"),
+            ("Not reviewed: main failed", "Reviewed twice."),
+        ] {
+            assert!(
+                check_body("fix: x", &fix.replace(from, to)).is_err(),
+                "{to}"
+            );
+        }
+    }
+    #[test]
+    fn the_review_line_replaces_the_one_the_section_opened_with() {
+        let body = "## Risk\n\nx\n\n## Review\n\nNot reviewed: yet\n\nPass 1 found the DSP.\n";
+        let line = "Tier standard · 1 pass · m · Important 1 (fixed 1) · Nit 0 · Pre-existing 0";
+        let written = with_review_line(body, line).unwrap();
+        assert_eq!(
+            written,
+            format!("## Risk\n\nx\n\n## Review\n\n{line}\n\nPass 1 found the DSP.\n")
+        );
+        assert_eq!(with_review_line(&written, line).unwrap(), written);
+        assert_eq!(section(&written, "Risk"), Some("x"));
+        assert!(with_review_line("## Risk\n\nx\n", line).is_err());
     }
 }

@@ -41,7 +41,8 @@ dispatchdev start <name>   # a worktree for the change in ../worktrees/<name>, o
 npm run dev                # in it: the dashboard on demo data, at the link it prints
 dispatchdev check          # once it's committed: the rule checks, the linter and clippy
 dispatchdev pr --skeleton --title "<title>"   # starts the PR's body; write it, then:
-dispatchdev pr             # checks the title and body, pushes, and opens or updates the PR
+dispatchdev pr             # checks the title, body and check's pass, pushes, opens or updates the PR
+dispatchdev review prepare --pass 1   # its tier, and the pass's brief unless it needs no review
 gh pr merge <n> --squash   # once its checks pass
 dispatchdev finish <name>  # once it merged: the worktree, its branches and scratch folder go
 ```
