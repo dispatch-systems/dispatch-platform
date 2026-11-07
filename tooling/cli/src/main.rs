@@ -1,6 +1,6 @@
 use dispatchdev_cli::{
-    Native, Result, Runner, api, build, change, check, observation, pr, scaffold, shot, test,
-    verify,
+    Native, Result, Runner, android, api, build, change, check, observation, pr, scaffold, shot,
+    test, verify,
 };
 use std::{collections::BTreeMap, path::PathBuf};
 
@@ -195,6 +195,22 @@ const COMMANDS: &[Spec] = &[
     .options(&["--out"])
     .arguments(1),
     spec(
+        "android",
+        &[
+            "android <doctor | apps>",
+            "android prepare --app <module>",
+            "        --device <serial>",
+            "        [--variant <variant>]",
+            "android pair --app relay",
+            "        --device <serial> --dsp <dsp>",
+        ],
+        "Check Android tools, list apps, build and install one app incrementally, or create a \
+         local fixture pairing link. Use the emulator this task opened in T3; T3 keeps control \
+         of its screen. Preparation preserves app data and reports the installed APK and source.",
+    )
+    .options(&["--app", "--device", "--variant", "--dsp"])
+    .arguments(1),
+    spec(
         "new",
         &["new <kind> <name> [options]", "    [--dry-run] [--json]"],
         "On a branch, a feature, collector, Slack integration, agent tool or kind of slot that \
@@ -269,7 +285,7 @@ const SECTIONS: &[(&str, &[&str])] = &[
         &["start", "pr", "finish"],
     ),
     ("Checking a branch:", &["check", "test", "verify"]),
-    ("Trying it:", &["api", "shot", "browser"]),
+    ("Trying it:", &["api", "shot", "browser", "android"]),
     (
         "Making things, and reading what the product has:",
         &[
@@ -516,6 +532,43 @@ fn run() -> Result<()> {
                 true => Ok(()),
                 false => Err("The call failed.".into()),
             }
+        }
+        "android" => {
+            let action = line.name()?;
+            let allowed: &[&str] = match action {
+                "doctor" | "apps" => &[],
+                "prepare" => &["--app", "--device", "--variant"],
+                "pair" => &["--app", "--device", "--dsp"],
+                _ => return Err("Choose android doctor, apps, prepare or pair.".into()),
+            };
+            if let Some(option) = line
+                .options
+                .keys()
+                .find(|key| key.as_str() != "--root" && !allowed.contains(&key.as_str()))
+            {
+                return Err(format!("android {action} takes no {option}.").into());
+            }
+            let required = |name| {
+                line.option(name)
+                    .filter(|value| !value.is_empty())
+                    .ok_or_else(|| format!("android {action} needs {name}."))
+            };
+            let action = match action {
+                "doctor" => android::Action::Doctor,
+                "apps" => android::Action::Apps,
+                "prepare" => android::Action::Prepare {
+                    app: required("--app")?,
+                    device: required("--device")?,
+                    variant: line.option("--variant"),
+                },
+                "pair" => android::Action::Pair {
+                    app: required("--app")?,
+                    device: required("--device")?,
+                    dsp: required("--dsp")?,
+                },
+                _ => unreachable!(),
+            };
+            android::run(&line.root()?, action, &Native)
         }
         "shot" => {
             let shot = shot::Shot {
