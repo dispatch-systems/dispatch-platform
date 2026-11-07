@@ -90,10 +90,15 @@ pub fn section<'a>(body: &'a str, name: &str) -> Option<&'a str> {
     let end = rest.find("\n## ").unwrap_or(rest.len());
     Some(rest[..end].trim())
 }
+/// The Review section's first line while the change's review is still to come: `review record`
+/// replaces it, and `merge` treats it as not reviewed.
+pub const PENDING: &str = "Under review";
 /// Whether `line` opens a Review section: the line `review record` writes, `Tier light · not
-/// reviewed` for a change that needs none, or `Not reviewed:` and why.
+/// reviewed` for a change that needs none, `Not reviewed:` and why for one merged without a
+/// review, or `PENDING` until its review is recorded.
 fn review_line(line: &str) -> bool {
-    line == "Tier light · not reviewed"
+    line == PENDING
+        || line == "Tier light · not reviewed"
         || ["Tier standard · ", "Tier sensitive · "]
             .iter()
             .any(|start| line.starts_with(start))
@@ -184,8 +189,8 @@ pub fn check_body(title: &str, body: &str) -> Result<()> {
         section(body, "Review")
             .and_then(|review| review.lines().next())
             .is_some_and(review_line),
-        "Review opens with the line `dispatchdev review record` writes, `Tier light · not \
-         reviewed`, or `Not reviewed:` and why.",
+        "Review opens with `Under review` until `dispatchdev review record` writes its line, \
+         `Tier light · not reviewed`, or `Not reviewed:` and why.",
     )?;
     Ok(())
 }
@@ -195,7 +200,10 @@ pub fn check_body(title: &str, body: &str) -> Result<()> {
 pub fn skeleton(title: &str, path: &Path) -> Result<&'static [&'static str]> {
     let wanted = sections(title)?;
     let text: Vec<String> = std::iter::once(format!("# {title}\n"))
-        .chain(wanted.iter().map(|name| format!("## {name}\n")))
+        .chain(wanted.iter().map(|name| match *name {
+            "Review" => format!("## {name}\n\n{PENDING}\n"),
+            _ => format!("## {name}\n"),
+        }))
         .collect();
     let mut file = std::fs::OpenOptions::new()
         .write(true)
@@ -398,6 +406,10 @@ mod tests {
         skeleton("fix(dvic): keep the week when paging", &body).unwrap();
         let begun = std::fs::read_to_string(&body).unwrap();
         assert!(begun.starts_with("# fix(dvic): keep the week when paging\n\n## Summary\n"));
+        assert!(
+            begun.ends_with("## Review\n\nUnder review\n"),
+            "a review to come: {begun}"
+        );
         assert_eq!(
             titled(&begun),
             (
@@ -437,6 +449,7 @@ mod tests {
         }
         for (from, to) in [
             ("Caused by: #812", "Caused by: unknown"),
+            ("Not reviewed: main failed", "Under review"),
             ("Not reviewed: main failed", "Tier light · not reviewed"),
             (
                 "Not reviewed: main failed",
