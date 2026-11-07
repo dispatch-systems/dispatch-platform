@@ -169,8 +169,20 @@ impl Kept {
         v::fields(
             value,
             &[
-                "id", "on", "days", "dates", "lastDay", "kind", "times", "every", "from", "to",
-                "keep", "keepCount", "keepUnit", "skipped",
+                "id",
+                "on",
+                "days",
+                "dates",
+                "lastDay",
+                "kind",
+                "times",
+                "every",
+                "from",
+                "to",
+                "keep",
+                "keepCount",
+                "keepUnit",
+                "skipped",
             ],
         )?;
         let when = When::parse(value)?;
@@ -327,11 +339,7 @@ pub fn save(db: &Store, dsp: &str, value: &Value) -> Result<()> {
     let tz = timezone(db, dsp)?;
     db.platform.transaction(|| {
         let current = schedule(&db.platform, dsp)?;
-        ensure(
-            current.revision == revision,
-            "backup_schedule_changed",
-            409,
-        )?;
+        ensure(current.revision == revision, "backup_schedule_changed", 409)?;
         // A rule keeps its ID only if it's this DSP's.
         let ids: Vec<String> = current.rules.iter().filter_map(|k| k.id.clone()).collect();
         for rule in &rules {
@@ -440,7 +448,7 @@ pub fn runs(rules: &[When], tz: Tz, count: usize) -> Runs {
         .into_iter()
         .map(at)
         .collect();
-    let today = Utc::now().with_timezone(&tz).date_naive();
+    let today = crate::foundation::clock::today(tz);
     (upcoming, when::calendar(rules, today, CALENDAR_DAYS))
 }
 
@@ -473,10 +481,7 @@ pub fn due(platform: &Db, dsp: &str, tz: Tz, now: i64) -> Result<Vec<Kept>> {
 pub fn forget_dsp(platform: &Db, dsp: &str) -> Result<()> {
     platform.exec("DELETE FROM backup_rules WHERE dsp_id=?", [dsp])?;
     platform.exec("DELETE FROM backup_schedules WHERE dsp_id=?", [dsp])?;
-    platform.exec(
-        "UPDATE backups SET requested_by=NULL WHERE dsp_id=?",
-        [dsp],
-    )?;
+    platform.exec("UPDATE backups SET requested_by=NULL WHERE dsp_id=?", [dsp])?;
     platform.exec(
         "UPDATE backups SET status='failed',finished_at=?,error='dsp_deleted' \
          WHERE dsp_id=? AND status='queued'",

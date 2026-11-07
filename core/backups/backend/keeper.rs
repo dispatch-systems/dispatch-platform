@@ -51,13 +51,7 @@ pub async fn pass(state: &Arc<State>, vault: &Vault) -> Result<()> {
                 db.platform.transaction(|| {
                     let at = now();
                     for rule in schedule::due(&db.platform, &dsp, tz, at)? {
-                        history::ask(
-                            &db.platform,
-                            &dsp,
-                            rule.id.as_deref(),
-                            None,
-                            rule.keep,
-                        )?;
+                        history::ask(&db.platform, &dsp, rule.id.as_deref(), None, rule.keep)?;
                     }
                     Ok(())
                 })?;

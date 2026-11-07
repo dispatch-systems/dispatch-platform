@@ -66,7 +66,10 @@ fn mask(value: &Value, key: &str, range: std::ops::RangeInclusive<i64>) -> Resul
     let invalid = || Error::new("invalid_schedule_days", 400);
     let mut mask = 0;
     for item in value[key].as_array().ok_or_else(invalid)? {
-        let item = item.as_i64().filter(|item| range.contains(item)).ok_or_else(invalid)?;
+        let item = item
+            .as_i64()
+            .filter(|item| range.contains(item))
+            .ok_or_else(invalid)?;
         ensure(mask & (1 << item) == 0, "invalid_schedule_days", 400)?;
         mask |= 1 << item;
     }
@@ -144,8 +147,7 @@ impl When {
             On::Month { dates, last } => {
                 let date = day.day() as i64;
                 let length = day.num_days_in_month() as i64;
-                dates & (1 << date) != 0
-                    || (date == length && (last || dates >> (length + 1) != 0))
+                dates & (1 << date) != 0 || (date == length && (last || dates >> (length + 1) != 0))
             }
         }
     }
