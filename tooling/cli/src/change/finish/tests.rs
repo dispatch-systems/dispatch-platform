@@ -139,8 +139,19 @@ impl Runner for Github {
 
 #[test]
 fn cleanup_rejects_an_unrelated_origin_before_contacting_github() {
+    struct NoGithub;
+    impl Runner for NoGithub {
+        fn command(&self, args: &[&str], cwd: Option<&Path>, timeout: u64) -> Result<Vec<u8>> {
+            assert_ne!(
+                args.first(),
+                Some(&"gh"),
+                "an unrelated origin must be refused before a GitHub lookup"
+            );
+            Native.command(args, cwd, timeout)
+        }
+    }
     let fixture = Fixture::new();
-    let error = finish_plan(&fixture.root, &fixture.name, false, &Native)
+    let error = finish_plan(&fixture.root, &fixture.name, false, &NoGithub)
         .unwrap_err()
         .to_string();
     assert!(error.contains("Origin must name Dispatch"), "{error}");
