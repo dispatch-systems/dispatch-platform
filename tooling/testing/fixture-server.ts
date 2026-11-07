@@ -39,15 +39,26 @@ export type FixtureOptions = {
 const defaultBinary = path.resolve(
   process.env.DISPATCH_TEST_BINARY ?? 'target/debug/dispatch-backend',
 );
+/**
+ * Ports a fixture takes: below the ranges Linux (from 32768) and macOS (from 49152) hand out
+ * for a port asked for as 0 and for outgoing connections, so other processes don't land on
+ * one a fixture's server has let go of.
+ */
+const PORTS = { first: 20000, last: 32767 };
 export async function freePort() {
-  const listener = net.createServer();
-  await new Promise<void>((resolve, reject) => {
-    listener.once('error', reject);
-    listener.listen(0, '127.0.0.1', resolve);
-  });
-  const port = (listener.address() as net.AddressInfo).port;
-  await new Promise<void>((resolve) => listener.close(() => resolve()));
-  return port;
+  for (let tries = 0; ; tries++) {
+    const port = PORTS.first + Math.floor(Math.random() * (PORTS.last - PORTS.first + 1));
+    const listener = net.createServer();
+    const free = await new Promise<boolean>((resolve) => {
+      listener.once('error', () => resolve(false));
+      listener.listen(port, '127.0.0.1', () => resolve(true));
+    });
+    if (free) {
+      await new Promise<void>((resolve) => listener.close(() => resolve()));
+      return port;
+    }
+    assert(tries < 50, `No free port between ${PORTS.first} and ${PORTS.last}`);
+  }
 }
 /** Private state, environment and seeded data for a server that is not running yet. */
 export async function prepare(options: boolean | FixtureOptions = true) {
@@ -181,7 +192,27 @@ export async function fixture(options: boolean | FixtureOptions = true) {
   };
   // Whether a server of this fixture has served, after which its origin can no longer move.
   let served = false;
+  // While a served fixture's server is stopped, its port, which its origin names, is held here
+  // for its next start: taken by another process in between, the restart would have nowhere
+  // to listen.
+  let held: net.Server | undefined;
+  const hold = () =>
+    new Promise<void>((resolve) => {
+      const placeholder = net.createServer((socket) => socket.destroy());
+      // Already taken: the next start says so.
+      placeholder.once('error', () => resolve());
+      placeholder.listen(Number(env.PORT), '127.0.0.1', () => {
+        held = placeholder;
+        resolve();
+      });
+    });
+  const release = async () => {
+    const placeholder = held;
+    held = undefined;
+    if (placeholder) await new Promise<void>((resolve) => placeholder.close(() => resolve()));
+  };
   const start = async (): Promise<void> => {
+    await release();
     const child = spawn(binary, ['serve'], {
       env,
       stdio: inherit ? ['ignore', 'inherit', 'inherit'] : ['ignore', 'pipe', 'pipe'],
@@ -267,6 +298,7 @@ export async function fixture(options: boolean | FixtureOptions = true) {
         });
         process.kill(signal);
       });
+      if (served && !held) await hold();
     }
   };
   const database = <T>(area: string, callback: (db: DatabaseSync) => T): T => {
@@ -343,6 +375,7 @@ export async function fixture(options: boolean | FixtureOptions = true) {
     try {
       await stop();
     } finally {
+      await release();
       cleanup();
     }
   };

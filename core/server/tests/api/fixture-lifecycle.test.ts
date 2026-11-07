@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fixture, prepare } from '../../../shell/tests/support/support.js';
@@ -81,4 +82,37 @@ require('node:http').createServer((_req, res) => res.end('{}'))
   assert.match(error.message, /Server failed to stop:/);
   assert.equal(reaped, true, 'the forced child exit precedes close completion');
   assert.equal(fs.existsSync(f.root), false);
+});
+
+test('a stopped server keeps its port until it starts again', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-fixture-port-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const binary = path.join(root, 'fixture-backend');
+  fs.writeFileSync(
+    binary,
+    `#!${process.execPath}
+if (process.argv[2] === 'seed') process.exit(0);
+require('node:http').createServer((_req, res) => res.end('{}'))
+  .listen(Number(process.env.PORT), '127.0.0.1', () => {
+    console.log(JSON.stringify({event:'core.started'}));
+    console.log(JSON.stringify({event:'upkeep.settled'}));
+  });
+`,
+    { mode: 0o700 },
+  );
+  const f = await fixture({ binary });
+  t.after(f.close);
+  const port = Number(f.env.PORT);
+  await f.stop();
+  // Another process asking for the port while the server is down doesn't get it.
+  const other = net.createServer();
+  const error = await new Promise<NodeJS.ErrnoException | undefined>((resolve) => {
+    other.once('error', resolve);
+    other.listen(port, '127.0.0.1', () => resolve(undefined));
+  });
+  if (!error) await new Promise<void>((resolve) => other.close(() => resolve()));
+  assert.equal(error?.code, 'EADDRINUSE');
+  await f.start();
+  assert.equal(f.env.PORT, String(port));
+  assert.equal((await f.request('/api/health')).status, 200);
 });
