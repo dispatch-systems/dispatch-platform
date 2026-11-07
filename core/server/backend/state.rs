@@ -17,6 +17,9 @@ tokio::task_local! {
 /// How long a running job's database call waits for its turn: past the longest write it may
 /// queue behind, such as another DSP's publication, where a request gives up after two seconds.
 const PATIENCE: std::time::Duration = std::time::Duration::from_secs(60);
+/// How many of the database's slots work outside a request holds at once. The rest are left to
+/// requests, so every DSP's upkeep starting together keeps no page waiting behind it.
+const BACKGROUND_SLOTS: usize = 2;
 
 enum CacheChange {
     All,
@@ -29,6 +32,8 @@ pub struct State {
     pub key: Vec<u8>,
     pub assets: std::collections::HashMap<String, http::Asset>,
     pub db_slots: Arc<Semaphore>,
+    /// The turns at `db_slots` work outside a request takes: `BACKGROUND_SLOTS` at once.
+    pub background_slots: Arc<Semaphore>,
     pub db_queue: Arc<Semaphore>,
     // Serializes short state transitions across the platform, jobs and tenant databases.
     pub transition: RwLock<()>,
@@ -86,6 +91,7 @@ impl State {
             assets: http::assets(&config.dashboard, &config.release)?,
             config,
             db_slots: Arc::new(Semaphore::new(4)),
+            background_slots: Arc::new(Semaphore::new(BACKGROUND_SLOTS)),
             db_queue: Arc::new(Semaphore::new(64)),
             transition: RwLock::new(()),
             pool: Mutex::new(vec![store]),
@@ -105,28 +111,31 @@ impl State {
             objects,
         }))
     }
-    pub async fn run<T: Send + 'static>(
+    #[track_caller]
+    pub fn run<T: Send + 'static>(
         self: &Arc<Self>,
         f: impl FnOnce(&db::Store) -> Result<T> + Send + 'static,
-    ) -> Result<T> {
-        self.database(true, CacheChange::All, f).await
+    ) -> impl Future<Output = Result<T>> + Send {
+        self.database(true, CacheChange::All, f)
     }
     /// Writes only reviewed bookkeeping: metrics, leases, outbox or invisible cleanup.
     /// Authorization still reads the database on every request; this skips derived-data
     /// invalidation, never the exclusive transition lock.
-    pub async fn run_bookkeeping<T: Send + 'static>(
+    #[track_caller]
+    pub fn run_bookkeeping<T: Send + 'static>(
         self: &Arc<Self>,
         f: impl FnOnce(&db::Store) -> Result<T> + Send + 'static,
-    ) -> Result<T> {
-        self.database(true, CacheChange::Bookkeeping, f).await
+    ) -> impl Future<Output = Result<T>> + Send {
+        self.database(true, CacheChange::Bookkeeping, f)
     }
     /// A write that says what it changes with `changed`, under the exclusive lock, once it
     /// knows and before it changes anything: a write route, once its caller is authorized.
-    pub(crate) async fn run_declaring<T: Send + 'static>(
+    #[track_caller]
+    pub(crate) fn run_declaring<T: Send + 'static>(
         self: &Arc<Self>,
         f: impl FnOnce(&db::Store) -> Result<T> + Send + 'static,
-    ) -> Result<T> {
-        self.database(true, CacheChange::Bookkeeping, f).await
+    ) -> impl Future<Output = Result<T>> + Send {
+        self.database(true, CacheChange::Bookkeeping, f)
     }
     /// What a `run_declaring` write changes: one DSP's data, which evicts that DSP's cached
     /// reads and those every DSP shares, or with none, anything, which advances the global
@@ -162,49 +171,62 @@ impl State {
         }
     }
     /// A tenant mutation with known dependencies. Unknown writes must keep using `run`.
-    pub async fn run_scoped<T: Send + 'static>(
+    #[track_caller]
+    pub fn run_scoped<T: Send + 'static>(
         self: &Arc<Self>,
         dsp: impl Into<String>,
         domain: cache::DataDomain,
         f: impl FnOnce(&db::Store) -> Result<T> + Send + 'static,
-    ) -> Result<T> {
+    ) -> impl Future<Output = Result<T>> + Send {
         self.database(true, CacheChange::Tenant(dsp.into(), domain), f)
-            .await
     }
     /// A write in the DSP's data by work acting for it, as upkeep, as `run_scoped`: made only
     /// while this backend serves the DSP, checked in the same turn, so work begun before the DSP
     /// was disabled changes nothing of it after (`dsp_unavailable`).
-    pub async fn run_serving<T: Send + 'static>(
+    #[track_caller]
+    pub fn run_serving<T: Send + 'static>(
         self: &Arc<Self>,
         dsp: impl Into<String>,
         domain: cache::DataDomain,
         f: impl FnOnce(&db::Store) -> Result<T> + Send + 'static,
-    ) -> Result<T> {
+    ) -> impl Future<Output = Result<T>> + Send {
         let dsp = dsp.into();
         let at = dsp.clone();
         self.run_scoped(dsp, domain, move |db| {
             db.ensure_dsp_active(&at)?;
             f(db)
         })
-        .await
     }
-    /// Runs a claimed job's work. Its database calls wait their turn for up to a minute, where
-    /// a request's are turned away with `platform_busy` after two seconds: a job has no one to
-    /// try again for it, and a refusal would cost it an attempt.
+    /// Runs a request's work that has no one to try it again, as a save. Its database calls wait
+    /// their turn for up to a minute, where a request's are turned away with `platform_busy`
+    /// after two seconds. Work outside a request, as a claimed job's, always waits so.
     pub async fn patiently<F: std::future::Future>(work: F) -> F::Output {
         PATIENT.scope((), work).await
     }
-    pub async fn read<T: Send + 'static>(
+    #[track_caller]
+    pub fn read<T: Send + 'static>(
         self: &Arc<Self>,
         f: impl FnOnce(&db::Store) -> Result<T> + Send + 'static,
-    ) -> Result<T> {
-        self.database(false, CacheChange::Bookkeeping, f).await
+    ) -> impl Future<Output = Result<T>> + Send {
+        self.database(false, CacheChange::Bookkeeping, f)
     }
-    async fn database<T: Send + 'static>(
+    /// The database work `f`, named in the log by the line that asked for it.
+    #[track_caller]
+    fn database<T: Send + 'static>(
         self: &Arc<Self>,
         write: bool,
         change: CacheChange,
         f: impl FnOnce(&db::Store) -> Result<T> + Send + 'static,
+    ) -> impl Future<Output = Result<T>> + Send {
+        let caller = std::panic::Location::caller();
+        self.turn(write, change, f, caller)
+    }
+    async fn turn<T: Send + 'static>(
+        self: &Arc<Self>,
+        write: bool,
+        change: CacheChange,
+        f: impl FnOnce(&db::Store) -> Result<T> + Send + 'static,
+        caller: &'static std::panic::Location<'static>,
     ) -> Result<T> {
         // Bound both queued requests and blocking threads. Short bursts wait without
         // allocating another database pool or failing otherwise healthy requests.
@@ -212,10 +234,17 @@ impl State {
         let trace = observability::REQUEST_TRACE.try_with(Clone::clone).ok();
         let busy = || Error::new("platform_busy", 503);
         let unavailable = |_| Error::new("platform_unavailable", 503);
-        let (queued, permit) = if PATIENT.try_with(|_| ()).is_ok() {
+        // Work outside a request has no one to try it again, so it waits as a job's does, and
+        // takes one of the background turns first, so it never holds every slot.
+        let background = trace.is_none();
+        let (turn, queued, permit) = if background || PATIENT.try_with(|_| ()).is_ok() {
             tokio::time::timeout(PATIENCE, async {
-                let queued = self.db_queue.clone().acquire_owned().await;
-                Ok((queued?, self.db_slots.clone().acquire_owned().await?))
+                let turn = match background {
+                    true => Some(self.background_slots.clone().acquire_owned().await?),
+                    false => None,
+                };
+                let queued = self.db_queue.clone().acquire_owned().await?;
+                Ok((turn, queued, self.db_slots.clone().acquire_owned().await?))
             })
             .await
             .map_err(|_| busy())?
@@ -233,13 +262,14 @@ impl State {
             .await
             .map_err(|_| busy())?
             .map_err(unavailable)?;
-            (queued, permit)
+            (None, queued, permit)
         };
         let queued_ms = started.elapsed().as_secs_f64() * 1000.0;
         let state = self.clone();
         tokio::task::spawn_blocking(move || {
             let _permit = permit;
             let _queued = queued;
+            let _turn = turn;
             let pooled = state
                 .pool
                 .lock()
@@ -304,6 +334,7 @@ impl State {
                     "database.slow",
                     serde_json::json!({
                         "requestId":context.as_ref().and_then(|c| c.request_id.as_deref()),
+                        "work":format!("{}:{}", caller.file(), caller.line()),
                         "route":context.as_ref().and_then(|c| c.route),
                         "dspId":context.as_ref().and_then(|c| c.tenant.as_deref()),
                         "write":write, "queueMs":queued_ms, "lockMs":lock_ms, "workMs":work_ms,
