@@ -1,9 +1,10 @@
 //! What a change shows, approved before its PR opens. `preview` serves the checkout as it is and
-//! saves a screenshot of each page the change touches, with a link to click through it;
+//! saves a screenshot of each page the change touches, on the tab or Settings section it touches,
+//! with a link to click through it;
 //! `preview approve` keeps the UI files the user was shown, by their contents, once they
 //! approved them, and `pr` opens no PR for a change to what a page shows until those are the
 //! files it would push.
-use crate::{Result, Runner, dev, require, review, shot, workspace};
+use crate::{Result, Runner, api, dev, require, review, shot, workspace};
 use std::{
     collections::BTreeMap,
     fs,
@@ -149,37 +150,81 @@ pub fn approve(root: &Path, runner: &dyn Runner) -> Result<()> {
 const STARTING: Duration = Duration::from_secs(600);
 
 /// A page to show: a route's id, `None` for the DSP's landing page, on the platform owner's
-/// own pages or a DSP's.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// own pages or a DSP's, on one of its tabs.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Page {
     pub id: Option<String>,
     pub platform: bool,
+    pub tab: Option<Tab>,
+}
+/// A tab a page opens on.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Tab {
+    /// By its id, as the page's tab strip or the address (`?tab=`) names it.
+    Id(String),
+    /// A section of Settings, by its id: the tab is the page of Settings the server puts it on.
+    Section(String),
 }
 impl Page {
-    /// A page as `--pages` names it: `<id>`, or `platform:<id>` for the platform owner's own.
+    /// A page as `--pages` names it: `<id>`, or `platform:<id>` for the platform owner's own,
+    /// each with `/<tab>` for one of its tabs.
     pub fn named(name: &str) -> Self {
-        match name.strip_prefix("platform:") {
-            Some(id) => Self {
-                id: Some(id.to_owned()),
-                platform: true,
-            },
-            None => Self {
-                id: Some(name.to_owned()),
-                platform: false,
-            },
+        let (platform, name) = match name.strip_prefix("platform:") {
+            Some(name) => (true, name),
+            None => (false, name),
+        };
+        let (id, tab) = match name.split_once('/') {
+            Some((id, tab)) => (id, Some(Tab::Id(tab.to_owned()))),
+            None => (name, None),
+        };
+        Self {
+            id: Some(id.to_owned()),
+            platform,
+            tab,
         }
     }
 }
 
-/// The routes a `feature.ts` declares in its `routes: [...]`, each by its id and whether it's
-/// the platform owner's: the id and scope at each entry's own level, not those of what it holds.
-fn routes(text: &str) -> Vec<(String, bool)> {
-    let Some(start) = text.find("routes: [") else {
+/// A route a `feature.ts` declares: its id, whether it's the platform owner's, and whether it
+/// draws a DSP's Settings.
+#[derive(Debug, PartialEq, Eq)]
+struct Route {
+    id: String,
+    platform: bool,
+    settings: bool,
+}
+
+/// The routes a `feature.ts` declares in its `routes: [...]`: the id and scope at each entry's
+/// own level, not those of what it holds.
+fn routes(text: &str) -> Vec<Route> {
+    entries(text, "routes")
+        .iter()
+        .filter_map(|entry| {
+            Some(Route {
+                id: field(entry, "id")?,
+                platform: field(entry, "scope").as_deref() == Some("platform"),
+                settings: entry.contains("hostsSettings: true"),
+            })
+        })
+        .collect()
+}
+/// The ids of the Settings sections a `feature.ts` draws in its `settingsSections: [...]`.
+fn sections(text: &str) -> Vec<String> {
+    entries(text, "settingsSections")
+        .iter()
+        .filter_map(|entry| field(entry, "id"))
+        .collect()
+}
+/// The text of each entry of the list a `feature.ts` declares as `<key>: [...]`, each entry's
+/// own: what's nested in it is left out.
+fn entries(text: &str, key: &str) -> Vec<String> {
+    let opening = format!("{key}: [");
+    let Some(start) = text.find(&opening) else {
         return vec![];
     };
-    let mut routes = vec![];
+    let mut entries = vec![];
     let (mut depth, mut entry) = (0usize, String::new());
-    for c in text[start + "routes: ".len()..].chars() {
+    for c in text[start + opening.len() - 1..].chars() {
         match c {
             '[' | '{' | '(' => depth += 1,
             ']' | '}' | ')' => {
@@ -188,36 +233,49 @@ fn routes(text: &str) -> Vec<(String, bool)> {
                     break;
                 }
                 if depth == 1 && c == '}' {
-                    routes.extend(route(&entry));
-                    entry.clear();
+                    entries.push(std::mem::take(&mut entry));
                 }
                 continue;
             }
             _ => {}
         }
-        // Only an entry's own text: what's nested in it is left out.
         if depth == 2 && !matches!(c, '{') {
             entry.push(c);
         }
     }
-    routes
+    entries
 }
-/// A route entry's id and whether its scope is the platform owner's.
-fn route(entry: &str) -> Option<(String, bool)> {
-    let field = |name: &str| {
-        let rest = entry.split(&format!("{name}: '")).nth(1)?;
-        Some(rest.split('\'').next()?.to_owned())
-    };
-    Some((field("id")?, field("scope").as_deref() == Some("platform")))
+/// The quoted value of `name` in an entry's own text.
+fn field(entry: &str, name: &str) -> Option<String> {
+    let rest = entry.split(&format!("{name}: '")).nth(1)?;
+    Some(rest.split('\'').next()?.to_owned())
+}
+/// A name as file and folder names spell it, and ids: its letters and digits alone, lowercase.
+fn plain(name: &str) -> String {
+    name.chars()
+        .filter(char::is_ascii_alphanumeric)
+        .map(|c| c.to_ascii_lowercase())
+        .collect()
+}
+/// A component's name as a tab's id: `MealBreaks` is `meal-breaks`.
+fn kebab(name: &str) -> String {
+    let mut id = String::new();
+    for c in name.chars() {
+        if c.is_ascii_uppercase() && !id.is_empty() {
+            id.push('-');
+        }
+        id.push(c.to_ascii_lowercase());
+    }
+    id
 }
 
-/// The page a UI file belongs to: of its owner's routes, the one its folder under `frontend/` is
-/// named for, else the first; the DSP's landing page when its owner has none.
+/// The page a UI file belongs to. A file its owner's Settings section is named for, by its
+/// folder under `frontend/` or its own name, shows that section; so does any of an owner with
+/// sections and no routes, its first section. Otherwise, of the owner's routes, the one its folder
+/// is named for, else the first, on the tab a folder under `tabs/` or a `<Name>Tab` file is named
+/// for; the DSP's landing page when its owner has none.
 fn page(root: &Path, path: &str) -> Page {
-    let landing = Page {
-        id: None,
-        platform: false,
-    };
+    let landing = Page::default();
     let Some((owner, inside)) = path.split_once("/frontend/") else {
         return landing;
     };
@@ -225,15 +283,95 @@ fn page(root: &Path, path: &str) -> Page {
         return landing;
     };
     let routes = routes(&text);
+    let sections = sections(&text);
     let folder = inside.split('/').next().unwrap_or_default();
-    routes
+    let stem = Path::new(inside)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or_default();
+    let named = ["Tab", "Page", "Section", "Settings"]
         .iter()
-        .find(|(id, _)| id == folder)
-        .or(routes.first())
-        .map_or(landing, |(id, platform)| Page {
-            id: Some(id.clone()),
-            platform: *platform,
+        .find_map(|suffix| stem.strip_suffix(suffix))
+        .unwrap_or(stem);
+    let section = sections
+        .iter()
+        .find(|id| {
+            let what = plain(id.rsplit('.').next().unwrap_or(id));
+            what == plain(folder) || what == plain(named)
         })
+        .or(sections.first().filter(|_| routes.is_empty()));
+    if let Some(section) = section {
+        return Page {
+            tab: Some(Tab::Section(section.clone())),
+            ..landing
+        };
+    }
+    let Some(route) = routes.iter().find(|r| r.id == folder).or(routes.first()) else {
+        return landing;
+    };
+    let tab = match inside.strip_prefix("tabs/") {
+        Some(rest) => Path::new(rest)
+            .components()
+            .next()
+            .and_then(|first| Path::new(first.as_os_str()).file_stem()?.to_str())
+            .map(str::to_owned),
+        None => stem.strip_suffix("Tab").map(kebab),
+    };
+    Page {
+        id: Some(route.id.clone()),
+        platform: route.platform,
+        tab: tab.map(Tab::Id),
+    }
+}
+
+/// The route that draws a DSP's Settings, of every owner's.
+fn settings_route(root: &Path) -> Option<String> {
+    let owners = fs::read_dir(root)
+        .ok()?
+        .flatten()
+        .filter(|kind| !kind.file_name().to_string_lossy().starts_with('.'))
+        .filter_map(|kind| fs::read_dir(kind.path()).ok())
+        .flatten()
+        .flatten();
+    owners
+        .filter_map(|owner| fs::read_to_string(owner.path().join("frontend/feature.ts")).ok())
+        .flat_map(|text| routes(&text))
+        .find(|route| route.settings)
+        .map(|route| route.id)
+}
+/// The page of Settings the server puts `section` on, as the owner sees the first DSP's.
+fn settings_page(root: &Path, section: &str, runner: &dyn Runner) -> Result<Option<String>> {
+    let server = api::Server::find(root)?;
+    let (_, session) = api::sign_in(&server, api::OWNER, None, runner)?;
+    let dsp = session["dsps"][0]["id"]
+        .as_str()
+        .ok_or("The dev server has no DSP to open.")?;
+    let answer = api::request(
+        &server,
+        api::Call {
+            method: "GET",
+            path: "/api/dsp/settings",
+            dsp: Some(dsp),
+            who: None,
+            data: None,
+        },
+        runner,
+    )?;
+    require(
+        answer.status == 200,
+        &format!("Settings answered {}: {}", answer.status, answer.body),
+    )?;
+    let settings: serde_json::Value = serde_json::from_str(&answer.body)?;
+    Ok(placed(&settings, section))
+}
+/// The page a Settings answer puts `section` on.
+fn placed(settings: &serde_json::Value, section: &str) -> Option<String> {
+    settings["sections"]
+        .as_array()?
+        .iter()
+        .find(|each| each["id"] == section)?["page"]
+        .as_str()
+        .map(str::to_owned)
 }
 
 /// The checkout's dev server, serving its backend as it is now: the one running, else a new one,
@@ -329,15 +467,30 @@ pub fn run(root: &Path, named: &[&str], runner: &dyn Runner) -> Result<()> {
     if !pages.is_empty() {
         let status = serving(root, runner)?;
         for page in &pages {
+            let (id, tab) = match &page.tab {
+                Some(Tab::Section(section)) => {
+                    let id = settings_route(root).ok_or("No route draws a DSP's Settings.")?;
+                    let tab = settings_page(root, section, runner)?;
+                    if tab.is_none() {
+                        println!(
+                            "Settings shows the owner no section {section}: shown on Settings' \
+                             first page."
+                        );
+                    }
+                    (Some(id), tab)
+                }
+                Some(Tab::Id(tab)) => (page.id.clone(), Some(tab.clone())),
+                None => (page.id.clone(), None),
+            };
             for size in ["1440x1000", "390x844"] {
                 shot::run(
                     root,
                     &shot::Shot {
                         open: shot::Open {
-                            page: page.id.as_deref(),
+                            page: id.as_deref(),
                             dsp: None,
                             platform: page.platform,
-                            tab: None,
+                            tab: tab.as_deref(),
                         },
                         who: None,
                         size,
@@ -368,17 +521,21 @@ pub fn run(root: &Path, named: &[&str], runner: &dyn Runner) -> Result<()> {
 mod tests {
     use super::*;
     #[test]
-    fn a_ui_file_shows_the_page_its_owner_routes_it_to() {
+    fn a_ui_file_shows_the_page_tab_or_settings_section_its_owner_draws_it_on() {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path();
-        let owner = |path: &str, routes: &str| {
+        let owner = |path: &str, declared: &str| {
             let file = root.join(path).join("frontend/feature.ts");
             fs::create_dir_all(file.parent().unwrap()).unwrap();
-            fs::write(file, routes).unwrap();
+            fs::write(file, declared).unwrap();
         };
         owner(
             "features/timecard",
             "routes: [{ id: 'paycom', scope: 'dsp', label: 'Timecard' }]",
+        );
+        owner(
+            "features/team",
+            "routes: [{ id: 'team', scope: 'dsp', render: ({ view }) => draw({ view }) }]",
         );
         // Ids outside `routes`, and those of what a route holds, aren't pages.
         owner(
@@ -388,51 +545,105 @@ mod tests {
         );
         owner(
             "core/collection",
-            "settings: [{ id: 'collection.connections', label: 'Connections' }]",
+            "settingsSections: [\n\
+               { id: 'collection.connections', render: ({ view }) => tab({ view }) },\n\
+               { id: 'collection.collectors', load },\n\
+             ],",
+        );
+        owner(
+            "features/communications",
+            "routes: [{ id: 'communications', scope: 'dsp' }],\n\
+             settingsSections: [{ id: 'communications.display' }, { id: 'communications.quick_replies' }],",
+        );
+        owner(
+            "features/settings",
+            "routes: [{ id: 'settings', scope: 'dsp', hostsSettings: true }]",
         );
         owner(
             "core/platform_owner",
             "routes: [{ id: 'dsps', scope: 'platform' }, { id: 'jobs', scope: 'platform' }]",
         );
-        let at = |id: &str, platform| Page {
+        let at = |id: &str, platform, tab: Option<&str>| Page {
             id: Some(id.to_owned()),
             platform,
+            tab: tab.map(|tab| Tab::Id(tab.to_owned())),
+        };
+        let section = |id: &str| Page {
+            tab: Some(Tab::Section(id.to_owned())),
+            ..Page::default()
         };
         for (path, shown) in [
             (
-                "features/timecard/frontend/Calendar.tsx",
-                at("paycom", false),
+                "features/timecard/frontend/TimecardPage.tsx",
+                at("paycom", false, None),
+            ),
+            (
+                "features/timecard/frontend/tabs/employees/EmployeeList.tsx",
+                at("paycom", false, Some("employees")),
+            ),
+            (
+                "features/team/frontend/RolesTab.tsx",
+                at("team", false, Some("roles")),
             ),
             (
                 "core/platform_owner/frontend/jobs/JobsPage.tsx",
-                at("jobs", true),
+                at("jobs", true, None),
             ),
             (
                 "core/platform_owner/frontend/shared/Table.tsx",
-                at("dsps", true),
+                at("dsps", true, None),
             ),
             (
                 "core/support/frontend/owner/SupportPage.tsx",
-                at("support", true),
+                at("support", true, None),
             ),
             (
-                "core/collection/frontend/ConnectionsPage.tsx",
-                Page {
-                    id: None,
-                    platform: false,
-                },
+                "core/collection/frontend/ConnectionsTab.tsx",
+                section("collection.connections"),
             ),
             (
-                "core/shell/frontend/styles/tokens.css",
-                Page {
-                    id: None,
-                    platform: false,
-                },
+                "core/collection/frontend/collectors/Schedule.tsx",
+                section("collection.collectors"),
             ),
+            // An owner with sections and no pages shows its first.
+            (
+                "core/collection/frontend/connections.css",
+                section("collection.connections"),
+            ),
+            (
+                "features/communications/frontend/display/DisplaySettings.tsx",
+                section("communications.display"),
+            ),
+            (
+                "features/communications/frontend/inbox/Inbox.tsx",
+                at("communications", false, None),
+            ),
+            ("core/shell/frontend/styles/tokens.css", Page::default()),
         ] {
             assert_eq!(page(root, path), shown, "{path}");
         }
-        assert_eq!(Page::named("platform:dsps"), at("dsps", true));
-        assert_eq!(Page::named("paycom"), at("paycom", false));
+        assert_eq!(settings_route(root).as_deref(), Some("settings"));
+        assert_eq!(Page::named("platform:dsps"), at("dsps", true, None));
+        assert_eq!(Page::named("paycom"), at("paycom", false, None));
+        assert_eq!(
+            Page::named("paycom/meal-breaks"),
+            at("paycom", false, Some("meal-breaks"))
+        );
+        assert_eq!(
+            Page::named("platform:support/inbox"),
+            at("support", true, Some("inbox"))
+        );
+    }
+    #[test]
+    fn a_settings_section_opens_on_the_page_the_server_puts_it_on() {
+        let settings = serde_json::json!({"pages": [{"id": "connections"}], "sections": [
+            {"id": "collection.connections", "page": "connections"},
+            {"id": "timecard.roster", "page": "timecard"},
+        ]});
+        assert_eq!(
+            placed(&settings, "timecard.roster").as_deref(),
+            Some("timecard")
+        );
+        assert_eq!(placed(&settings, "slack.workspaces"), None);
     }
 }
