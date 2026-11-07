@@ -77,7 +77,7 @@ pub fn plan(root: &Path, runner: &dyn Runner) -> Result<Plan> {
 /// What follows a passing check.
 pub const NEXT: &str = "Next, dispatchdev pr opens its PR from the scratch folder's \
      pr-body.md, which dispatchdev pr --skeleton --title starts; once its checks on GitHub \
-     pass, gh pr merge --squash merges it.";
+     pass and its review is done, dispatchdev merge merges it.";
 /// `dispatchdev check --plan`: what to run, without running it.
 pub fn print(plan: &Plan) {
     println!(

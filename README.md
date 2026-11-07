@@ -40,10 +40,11 @@ cd repo && ./setup
 dispatchdev start <name>   # a worktree for the change in ../worktrees/<name>, off origin/main
 npm run dev                # in it: the dashboard on demo data, at the link it prints
 dispatchdev check          # once it's committed: the rule checks, the linter and clippy
+dispatchdev preview        # a change to what a page shows: screenshots and a link, before its PR
 dispatchdev pr --skeleton --title "<title>"   # starts the PR's body; write it, then:
 dispatchdev pr             # checks the title, body and check's pass, pushes, opens or updates the PR
 dispatchdev review prepare --pass 1   # its tier, and the pass's brief unless it needs no review
-gh pr merge <n> --squash   # once its checks pass
+dispatchdev merge          # once its checks pass and its review is done
 dispatchdev finish <name>  # once it merged: the worktree, its branches and scratch folder go
 ```
 
