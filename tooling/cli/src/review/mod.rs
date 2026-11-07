@@ -562,6 +562,7 @@ pub fn take(root: &Path, n: u32, runner: &dyn Runner) -> Result<()> {
             short(&pass.head)
         ),
     )?;
+    let mut any = false;
     for review in reviews(&pass) {
         let found = dir.join(review.findings());
         let text = fs::read_to_string(&found).map_err(|_| {
@@ -571,6 +572,7 @@ pub fn take(root: &Path, n: u32, runner: &dyn Runner) -> Result<()> {
             )
         })?;
         let (findings, dropped) = findings::parse(&text)?;
+        any |= !findings.is_empty();
         let answers = dir.join(review.answers());
         if !answers.exists() {
             workspace::write_private(&answers, &findings::skeleton(&findings))?;
@@ -590,23 +592,27 @@ pub fn take(root: &Path, n: u32, runner: &dyn Runner) -> Result<()> {
             }
         );
     }
+    let record = format!(
+        "`dispatchdev review record --pass {n} --model <model>{}`",
+        if pass.security {
+            " --security-model <model>"
+        } else {
+            ""
+        }
+    );
     println!(
         "{}",
-        workspace::next(&[
-            format!(
-                "Check each finding against the code and answer it in {}",
-                dir.join("answers.md").display()
-            ),
-            "Commit the fixes and push them with `dispatchdev pr`".to_owned(),
-            format!(
-                "Then `dispatchdev review record --pass {n} --model <model>{}`",
-                if pass.security {
-                    " --security-model <model>"
-                } else {
-                    ""
-                }
-            ),
-        ])
+        workspace::next(&match any {
+            true => vec![
+                format!(
+                    "Check each finding against the code and answer it in {}",
+                    dir.join("answers.md").display()
+                ),
+                "Commit the fixes and push them with `dispatchdev pr`".to_owned(),
+                format!("Then {record}"),
+            ],
+            false => vec![format!("Nothing to answer: {record}")],
+        })
     );
     Ok(())
 }
