@@ -32,15 +32,15 @@ pub async fn download(state: &Arc<State>, vault: &Vault, dsp: &str, id: &str) ->
                     .ok_or_else(|| Error::new("backup_not_found", 404))?
                     .with_timezone(&tz)
                     .format("%Y-%m-%d-%H%M");
-                Ok((
-                    format!("{}-backup-{when}.zip", code.unwrap_or(&dsp)),
-                    files,
-                ))
+                Ok((format!("{}-backup-{when}.zip", code.unwrap_or(&dsp)), files))
             })
             .await?
     };
     let here = db::private_dir(&take::staging(state))?;
-    let path = here.join(format!("download-{}.zip", crypto::hex(&crypto::random::<8>()?)));
+    let path = here.join(format!(
+        "download-{}.zip",
+        crypto::hex(&crypto::random::<8>()?)
+    ));
     let made = zipped(vault, &dsp, &files, &path).await;
     let file = made.and_then(|()| Ok(std::fs::File::open(&path)?));
     // Sent from the open file, gone from the folder already.

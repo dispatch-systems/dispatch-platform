@@ -86,7 +86,9 @@ impl Kept {
     }
     /// It as the Backups tab shows it, its next run shown while the schedule is on.
     pub fn shown(&self, tz: Tz, enabled: bool) -> BackupRule {
-        let days = (0..7).filter(|day| self.rule.days & (1 << day) != 0).collect();
+        let days = (0..7)
+            .filter(|day| self.rule.days & (1 << day) != 0)
+            .collect();
         let (kind, times, every, from, to) = match &self.rule.timing {
             Timing::At(times) => (
                 RuleKind::Times,
@@ -127,8 +129,7 @@ impl Kept {
         v::fields(
             value,
             &[
-                "id", "kind", "days", "times", "every", "from", "to", "keep", "keepUnit",
-                "skipped",
+                "id", "kind", "days", "times", "every", "from", "to", "keep", "keepUnit", "skipped",
             ],
         )?;
         let rule = Rule::parse(value)?;
@@ -199,7 +200,8 @@ pub fn timezone(db: &Store, dsp: &str) -> Result<Tz> {
         .platform
         .one_as("SELECT timezone FROM dsps WHERE id=?", [dsp])?
         .ok_or_else(|| Error::new("dsp_not_found", 404))?;
-    zone.parse().map_err(|_| Error::new("invalid_timezone", 400))
+    zone.parse()
+        .map_err(|_| Error::new("invalid_timezone", 400))
 }
 
 /// The DSP's schedule as it's kept, or as every DSP's starts.
@@ -227,7 +229,10 @@ pub fn schedule(platform: &Db, dsp: &str) -> Result<Schedule> {
 pub fn start(db: &Store, dsp: &str, tz: Tz) -> Result<()> {
     if db
         .platform
-        .one_as::<(i64,)>("SELECT revision FROM backup_schedules WHERE dsp_id=?", [dsp])?
+        .one_as::<(i64,)>(
+            "SELECT revision FROM backup_schedules WHERE dsp_id=?",
+            [dsp],
+        )?
         .is_some()
     {
         return Ok(());
@@ -248,7 +253,10 @@ fn generation() -> Result<String> {
 /// The generation the DSP's backups' files are named for, once its schedule is kept.
 pub fn generation_of(platform: &Db, dsp: &str) -> Result<String> {
     let (generation,): (String,) = platform
-        .one_as("SELECT generation FROM backup_schedules WHERE dsp_id=?", [dsp])?
+        .one_as(
+            "SELECT generation FROM backup_schedules WHERE dsp_id=?",
+            [dsp],
+        )?
         .ok_or_else(|| Error::new("backup_schedule_missing", 409))?;
     Ok(generation)
 }
@@ -268,11 +276,7 @@ pub fn save(db: &Store, dsp: &str, value: &Value) -> Result<()> {
     let tz = timezone(db, dsp)?;
     db.platform.transaction(|| {
         let current = schedule(&db.platform, dsp)?;
-        ensure(
-            current.revision == revision,
-            "backup_schedule_changed",
-            409,
-        )?;
+        ensure(current.revision == revision, "backup_schedule_changed", 409)?;
         // A rule keeps its ID only if it's this DSP's.
         let ids: Vec<String> = current.rules.iter().filter_map(|k| k.id.clone()).collect();
         for rule in &rules {

@@ -25,7 +25,10 @@ fn a_sealed_file_opens_only_whole_and_for_its_own() {
     let bytes = noise(PIECE * 2 + 1000);
     std::fs::write(&plain, &bytes).unwrap();
     let (sha256, size) = seal(&KEY, DSP, &plain, &sealed).unwrap();
-    assert_eq!((sha256.as_str(), size), (crypto::sha(&bytes).as_str(), bytes.len() as u64));
+    assert_eq!(
+        (sha256.as_str(), size),
+        (crypto::sha(&bytes).as_str(), bytes.len() as u64)
+    );
     let mut opened = Vec::new();
     open(&KEY, DSP, &sealed, &mut opened, &sha256).unwrap();
     assert_eq!(opened, bytes);

@@ -119,7 +119,11 @@ pub fn seal(key: &[u8; 32], binding: &str, from: &Path, to: &Path) -> Result<(St
         size += read as u64;
         compressed.write_all(&buffer[..read])?;
     }
-    compressed.finish()?.finish()?.into_inner().map_err(|e| e.into_error())?;
+    compressed
+        .finish()?
+        .finish()?
+        .into_inner()
+        .map_err(|e| e.into_error())?;
     Ok((crypto::hex(&hash.finalize()), size))
 }
 
@@ -204,7 +208,13 @@ impl<R: Read> Read for Opener<R> {
 
 /// The sealed file `from`, opened for `binding` and written to `to` as it was sealed, checked
 /// against the SHA-256 it was sealed with: `invalid_backup` for anything else.
-pub fn open(key: &[u8; 32], binding: &str, from: &Path, to: &mut impl Write, sha256: &str) -> Result<u64> {
+pub fn open(
+    key: &[u8; 32],
+    binding: &str,
+    from: &Path,
+    to: &mut impl Write,
+    sha256: &str,
+) -> Result<u64> {
     let opener = Opener::new(BufReader::new(File::open(from)?), key, binding)?;
     let mut plain = GzDecoder::new(opener);
     let mut hash = Sha256::new();
@@ -230,7 +240,12 @@ pub fn open(key: &[u8; 32], binding: &str, from: &Path, to: &mut impl Write, sha
 }
 
 /// Seals `value` as JSON for `binding`, as a backup's description is kept: in memory, small.
-pub fn seal_json(key: &[u8; 32], binding: &str, value: &serde_json::Value, to: &Path) -> Result<String> {
+pub fn seal_json(
+    key: &[u8; 32],
+    binding: &str,
+    value: &serde_json::Value,
+    to: &Path,
+) -> Result<String> {
     let from = to.with_extension("json");
     std::fs::write(&from, serde_json::to_vec(value)?)?;
     let (sha256, _) = seal(key, binding, &from, to)?;

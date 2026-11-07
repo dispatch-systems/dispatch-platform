@@ -29,12 +29,21 @@ fn each_file_of_a_dsps_folder_belongs_to_one_item() {
     std::os::unix::fs::symlink(at("secrets/vault.key"), at("state/browsers/link")).unwrap();
     fs::hard_link(at("config/settings.json"), at("config/linked.json")).unwrap();
 
-    let every: Vec<String> = items(folder.path()).into_iter().map(|item| item.id).collect();
+    let every: Vec<String> = items(folder.path())
+        .into_iter()
+        .map(|item| item.id)
+        .collect();
     assert_eq!(every, [DISPATCH, LOGINS, PICTURES]);
     let found: Vec<(String, String, bool)> = files(folder.path(), &every)
         .unwrap()
         .into_iter()
-        .map(|found| (found.path.to_string_lossy().into_owned(), found.item, found.database))
+        .map(|found| {
+            (
+                found.path.to_string_lossy().into_owned(),
+                found.item,
+                found.database,
+            )
+        })
         .collect();
     let expected = [
         ("data/dispatch.sqlite", DISPATCH, true),
@@ -54,5 +63,8 @@ fn each_file_of_a_dsps_folder_belongs_to_one_item() {
         .into_iter()
         .map(|found| found.path.to_string_lossy().into_owned())
         .collect();
-    assert_eq!(held, ["data/dispatch.sqlite", "state/credential-leases/paycom"]);
+    assert_eq!(
+        held,
+        ["data/dispatch.sqlite", "state/credential-leases/paycom"]
+    );
 }

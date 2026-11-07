@@ -14,9 +14,21 @@ use std::sync::Arc;
 pub fn routes() -> Vec<Route> {
     vec![
         read("/api/platform/dsps/{id}/backups", PlatformOwner, backups),
-        write("/api/platform/dsps/{id}/backups/schedule", PlatformOwner, save),
-        write("/api/platform/dsps/{id}/backups/switch", PlatformOwner, switch),
-        write("/api/platform/dsps/{id}/backups/preview", PlatformOwner, preview),
+        write(
+            "/api/platform/dsps/{id}/backups/schedule",
+            PlatformOwner,
+            save,
+        ),
+        write(
+            "/api/platform/dsps/{id}/backups/switch",
+            PlatformOwner,
+            switch,
+        ),
+        write(
+            "/api/platform/dsps/{id}/backups/preview",
+            PlatformOwner,
+            preview,
+        ),
         async_post("/api/platform/dsps/{id}/backups/now", PlatformOwner, now),
         async_get(
             "/api/platform/dsps/{id}/backups/{backup}/download",
@@ -39,7 +51,12 @@ fn backups(db: &Store, _: &User, input: &Input) -> Result<Reply> {
 fn save(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
     let dsp = input.param("id");
     schedule::save(db, dsp, &input.body)?;
-    db.audit(Some(owner.actor()), Some(dsp), "dsp.backup_schedule_changed", "")?;
+    db.audit(
+        Some(owner.actor()),
+        Some(dsp),
+        "dsp.backup_schedule_changed",
+        "",
+    )?;
     shown(db, dsp)
 }
 
@@ -89,14 +106,22 @@ async fn saved(state: Arc<State>, input: Input, access: PlatformOwner) -> Result
         .backups
         .as_ref()
         .ok_or_else(|| Error::new("backups_not_configured", 409))?;
-    let (dsp, id) = (input.param("id").to_owned(), input.param("backup").to_owned());
+    let (dsp, id) = (
+        input.param("id").to_owned(),
+        input.param("backup").to_owned(),
+    );
     {
         let (dsp, id) = (dsp.clone(), id.clone());
         state
             .run(move |db| {
                 let owner = access.authorize(db, &input)?;
                 history::files(&db.platform, &dsp, &id)?;
-                db.audit(Some(&owner.user.id), Some(&dsp), "dsp.backup_downloaded", &id)
+                db.audit(
+                    Some(&owner.user.id),
+                    Some(&dsp),
+                    "dsp.backup_downloaded",
+                    &id,
+                )
             })
             .await?;
     }

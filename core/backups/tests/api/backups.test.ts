@@ -19,16 +19,20 @@ test('only the platform owner schedules a DSP’s backups, and none is taken wit
   const first = await owner.read(backups);
   assert.equal(first.configured, false);
   assert.deepEqual(
-    first.rules.map((rule: { times: string[]; keep: number; keepUnit: string; skipped: string[] }) => [
-      rule.times,
-      rule.keep,
-      rule.keepUnit,
-      rule.skipped,
-    ]),
+    first.rules.map(
+      (rule: { times: string[]; keep: number; keepUnit: string; skipped: string[] }) => [
+        rule.times,
+        rule.keep,
+        rule.keepUnit,
+        rule.skipped,
+      ],
+    ),
     [[['02:00'], 30, 'day', ['pictures']]],
   );
   assert.deepEqual(
-    first.items.filter((item: { always: boolean }) => item.always).map((item: { id: string }) => item.id),
+    first.items
+      .filter((item: { always: boolean }) => item.always)
+      .map((item: { id: string }) => item.id),
     ['dispatch'],
   );
 
@@ -44,7 +48,10 @@ test('only the platform owner schedules a DSP’s backups, and none is taken wit
     keepUnit: 'week',
     skipped: [],
   };
-  const saved = await owner.post(`${backups}/schedule`, { revision: first.revision, rules: [rule] });
+  const saved = await owner.post(`${backups}/schedule`, {
+    revision: first.revision,
+    rules: [rule],
+  });
   assert.equal(saved.status, 200);
   assert.deepEqual(
     [saved.value.rules.length, saved.value.rules[0].every, saved.value.rules[0].keepUnit],

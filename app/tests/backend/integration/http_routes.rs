@@ -47,8 +47,7 @@ const OUTSIDE_THE_API: &[&str] = &[
 /// who can reach it, and a permission changed by accident fails a test.
 fn owners() -> Vec<(String, Vec<Route>)> {
     use dispatch_core::{
-        accounts, backups, collection, manifest, platform_owner, server, settings, support,
-        tenancy,
+        accounts, backups, collection, manifest, platform_owner, server, settings, support, tenancy,
     };
     dispatch_backend::install();
     let registry = dispatch_core::manifest::registry();

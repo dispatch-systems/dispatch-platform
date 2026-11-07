@@ -7,6 +7,11 @@
   background: var(--card);
   overflow: hidden;
 }
+/* Its head begins with its stats, as a collection's begins with its name. */
+.dsp-backups .collectors-stat:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
 .backups-items {
   display: flex;
   flex-wrap: wrap;

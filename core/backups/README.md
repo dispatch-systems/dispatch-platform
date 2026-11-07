@@ -44,8 +44,9 @@ and each file with what it belongs to. A restore needs nothing else.
   the zip a backup is downloaded as. What takes them (`keeper.rs`) runs beside the server,
   outside requests, once a minute or at once when one is asked for by hand, one at a time.
 - `api/` owns the routes, Rust wire types, generated TypeScript and the browser's calls.
-- `frontend/` owns the Backups tab. It edits rules with the Collectors page's editor and week,
-  which `core/collection/frontend/schedule.ts` shares.
+- The Backups tab is the platform owner's (`core/platform_owner/frontend/dsps/DspBackupsTab.tsx`),
+  calling these routes through `api/client.ts`. It edits rules with the Collectors page's editor
+  and week, which `core/collection/frontend/schedule.ts` shares.
 - `migrations/platform/0026_dsp_backups.sql` adds the schedules, rules and backups to the
   platform database, beside each DSP's folder, so a restore of that folder neither forgets the
   backups taken since nor moves when they run.

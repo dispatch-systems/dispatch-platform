@@ -38,8 +38,12 @@ impl FromRow for Backup {
 pub fn shown(db: &Store, dsp: &str, configured: bool) -> Result<DspBackups> {
     let tz = schedule::timezone(db, dsp)?;
     let kept = schedule::schedule(&db.platform, dsp)?;
-    let rules: Vec<_> = kept.rules.iter().map(|rule| rule.shown(tz, kept.enabled)).collect();
-    let upcoming = if kept.enabled && configured {
+    let rules: Vec<_> = kept
+        .rules
+        .iter()
+        .map(|rule| rule.shown(tz, kept.enabled))
+        .collect();
+    let upcoming = if kept.enabled {
         let timings: Vec<_> = kept.rules.iter().map(|rule| rule.rule.clone()).collect();
         crate::collection::rules::upcoming(&timings, tz, now(), 5)
             .into_iter()
@@ -131,7 +135,10 @@ pub fn succeeded(platform: &Db, id: &str, files: &[Value], size: i64) -> Result<
 /// The backup `id` wasn't taken, for `error`, though it sent the files `sent`, which it holds
 /// until it expires.
 pub fn failed(platform: &Db, id: &str, error: &str, sent: &[String]) -> Result<()> {
-    let files: Vec<Value> = sent.iter().map(|object| serde_json::json!({"object": object})).collect();
+    let files: Vec<Value> = sent
+        .iter()
+        .map(|object| serde_json::json!({"object": object}))
+        .collect();
     platform.exec(
         "UPDATE backups SET status='failed',finished_at=?,error=?,files=? WHERE id=?",
         params![now(), error, serde_json::to_string(&files)?, id],

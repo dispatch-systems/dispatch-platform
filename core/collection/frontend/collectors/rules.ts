@@ -21,7 +21,10 @@ export const PATTERNS: { pattern: Pattern; label: string }[] = [
   { pattern: 'repeat', label: 'Repeat during hours' },
 ];
 /** When a rule runs, as a collection's rules and every schedule made the same way say it. */
-export type RuleTiming = Pick<ScheduleRuleInput, 'kind' | 'days' | 'times' | 'every' | 'from' | 'to'>;
+export type RuleTiming = Pick<
+  ScheduleRuleInput,
+  'kind' | 'days' | 'times' | 'every' | 'from' | 'to'
+>;
 /** A rule being edited, by the key it's listed by: times still being typed may be empty. */
 export type Editing = RuleTiming & { key: string };
 /** A collection's rule being edited: what's sent, with its key. */

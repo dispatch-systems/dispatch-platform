@@ -305,7 +305,7 @@
 .dsp-feature-row.off strong {
   color: var(--muted-foreground);
 }
-.dsp-feature-row input[role='switch'] {
+:is(.dsp-feature-row, .dsp-backups) input[role='switch'] {
   appearance: none;
   position: relative;
   width: 28px;
@@ -319,7 +319,7 @@
   cursor: pointer;
   flex-shrink: 0;
 }
-.dsp-feature-row input[role='switch']::before {
+:is(.dsp-feature-row, .dsp-backups) input[role='switch']::before {
   content: '';
   position: absolute;
   width: 10px;
@@ -329,15 +329,15 @@
   border-radius: 50%;
   background: var(--foreground);
 }
-.dsp-feature-row input[role='switch']:checked {
+:is(.dsp-feature-row, .dsp-backups) input[role='switch']:checked {
   background: var(--primary);
   border-color: var(--primary);
 }
-.dsp-feature-row input[role='switch']:checked::before {
+:is(.dsp-feature-row, .dsp-backups) input[role='switch']:checked::before {
   left: 14px;
   background: var(--primary-foreground);
 }
-.dsp-feature-row input[role='switch']:disabled {
+:is(.dsp-feature-row, .dsp-backups) input[role='switch']:disabled {
   opacity: 0.5;
   cursor: default;
 }

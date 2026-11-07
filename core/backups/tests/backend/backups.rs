@@ -63,7 +63,10 @@ impl Backups {
         let dsp = self.dsp.clone();
         self.sql(move |db| {
             db.platform
-                .one("SELECT * FROM backups WHERE dsp_id=? ORDER BY created_at DESC LIMIT 1", [dsp])
+                .one(
+                    "SELECT * FROM backups WHERE dsp_id=? ORDER BY created_at DESC LIMIT 1",
+                    [dsp],
+                )
                 .map(Option::unwrap)
         })
         .await
@@ -118,7 +121,12 @@ async fn a_backup_holds_the_dsps_files_each_sent_once_and_expires_without_what_o
     assert_eq!(path_of("data/dispatch.sqlite")["item"], contents::DISPATCH);
     let kept_picture = path_of(&format!("objects/phones/{sha}"));
     assert_eq!(kept_picture["item"], contents::PICTURES);
-    assert_eq!(first["size"].as_i64().unwrap(), held.iter().map(|f| f["size"].as_i64().unwrap()).sum::<i64>());
+    assert_eq!(
+        first["size"].as_i64().unwrap(),
+        held.iter()
+            .map(|f| f["size"].as_i64().unwrap())
+            .sum::<i64>()
+    );
 
     // Its description and each file open with the bucket and the key alone.
     let vault = backups.state.backups.as_ref().unwrap();
@@ -127,9 +135,18 @@ async fn a_backup_holds_the_dsps_files_each_sent_once_and_expires_without_what_o
     let manifest_key = backups.key(MANIFESTS, &vault.manifest(&id));
     let manifest =
         seal::open_json(&KEY, &backups.dsp, &backups.fetched(&manifest_key, &folder)).unwrap();
-    assert_eq!((manifest["dsp"]["id"].as_str(), manifest["files"].as_array().map(Vec::len)), (Some(backups.dsp.as_str()), Some(held.len())));
+    assert_eq!(
+        (
+            manifest["dsp"]["id"].as_str(),
+            manifest["files"].as_array().map(Vec::len)
+        ),
+        (Some(backups.dsp.as_str()), Some(held.len()))
+    );
     let mut opened = Vec::new();
-    let sealed = backups.fetched(&backups.key(FILES, kept_picture["object"].as_str().unwrap()), &folder);
+    let sealed = backups.fetched(
+        &backups.key(FILES, kept_picture["object"].as_str().unwrap()),
+        &folder,
+    );
     seal::open(&KEY, &backups.dsp, &sealed, &mut opened, &sha).unwrap();
     assert_eq!(opened, picture);
 
@@ -137,7 +154,13 @@ async fn a_backup_holds_the_dsps_files_each_sent_once_and_expires_without_what_o
     let second = backups.taken().await;
     assert_eq!(second["status"], "succeeded", "{second}");
     for object in objects(&first) {
-        assert_eq!(backups.bucket.asked(Method::PUT, &backups.key(FILES, &object)), 1, "{object}");
+        assert_eq!(
+            backups
+                .bucket
+                .asked(Method::PUT, &backups.key(FILES, &object)),
+            1,
+            "{object}"
+        );
     }
 
     // Expired, the first lets go of its description, but not of what the second holds.
@@ -149,7 +172,10 @@ async fn a_backup_holds_the_dsps_files_each_sent_once_and_expires_without_what_o
     let expire = |id: Value| async move {
         let id = id.as_str().unwrap().to_owned();
         backups
-            .sql(move |db| db.platform.exec("UPDATE backups SET expires_at=1 WHERE id=?", [id]))
+            .sql(move |db| {
+                db.platform
+                    .exec("UPDATE backups SET expires_at=1 WHERE id=?", [id])
+            })
             .await;
         backups.pass().await;
     };
@@ -166,7 +192,12 @@ async fn a_backup_holds_the_dsps_files_each_sent_once_and_expires_without_what_o
         .filter(|key| key.starts_with(&format!("dsps/{}/", backups.dsp)))
         .collect();
     assert_eq!(left, Vec::<String>::new());
-    assert!(backups.pictures.object(&format!("dsps/{}/phones/{sha}", backups.dsp)).is_some());
+    assert!(
+        backups
+            .pictures
+            .object(&format!("dsps/{}/phones/{sha}", backups.dsp))
+            .is_some()
+    );
 }
 
 #[tokio::test]
@@ -175,7 +206,10 @@ async fn a_rule_whose_backup_fails_runs_again_within_the_hour() {
     backups.pass().await;
     let dsp = backups.dsp.clone();
     backups
-        .sql(move |db| db.platform.exec("UPDATE backup_rules SET next_run=1 WHERE dsp_id=?", [dsp]))
+        .sql(move |db| {
+            db.platform
+                .exec("UPDATE backup_rules SET next_run=1 WHERE dsp_id=?", [dsp])
+        })
         .await;
     backups.bucket.down(true);
     backups.pass().await;
@@ -183,12 +217,18 @@ async fn a_rule_whose_backup_fails_runs_again_within_the_hour() {
     let dsp = backups.dsp.clone();
     let (row, next) = backups
         .sql(move |db| {
-            let row = db.platform.one("SELECT * FROM backups WHERE dsp_id=?", [&dsp])?.unwrap();
+            let row = db
+                .platform
+                .one("SELECT * FROM backups WHERE dsp_id=?", [&dsp])?
+                .unwrap();
             let kept = schedule::schedule(&db.platform, &dsp)?;
             Ok((row, kept.rules[0].next_run.unwrap()))
         })
         .await;
-    assert_eq!((row["status"].as_str(), row["error"].as_str()), (Some("failed"), Some("object_store_unavailable")));
+    assert_eq!(
+        (row["status"].as_str(), row["error"].as_str()),
+        (Some("failed"), Some("object_store_unavailable"))
+    );
     assert!(row["rule_id"].is_string());
     assert!(next <= now() + 60 * 60 * 1000, "{next}");
 }

@@ -2,12 +2,7 @@
 //! collector's database and each feature's added databases, by the registry, under their own
 //! names; the DSP's saved sign-ins; and its pictures. Each file of the DSP's folder belongs to one
 //! of them, and `cache`, what its owners collect again, to none.
-use crate::{
-    Result,
-    collection::registry::Provider,
-    manifest::registry,
-    tenancy::catalog,
-};
+use crate::{Result, collection::registry::Provider, manifest::registry, tenancy::catalog};
 use serde::Serialize;
 use std::{
     collections::BTreeMap,

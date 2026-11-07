@@ -100,21 +100,23 @@ pub async fn pass(state: &Arc<State>, vault: &Vault) -> Result<()> {
             Err(error) => (Some(error.code.clone()), 0),
         };
         state
-            .run_bookkeeping(move |db| {
-                match result {
-                    Ok(taken) => history::succeeded(&db.platform, &id, &taken.files, taken.size),
-                    Err(error) => {
-                        if let Some(rule) = &rule_id {
-                            schedule::retry(&db.platform, rule, now())?;
-                        }
-                        history::failed(&db.platform, &id, &error.code, &sent)
+            .run_bookkeeping(move |db| match result {
+                Ok(taken) => history::succeeded(&db.platform, &id, &taken.files, taken.size),
+                Err(error) => {
+                    if let Some(rule) = &rule_id {
+                        schedule::retry(&db.platform, rule, now())?;
                     }
+                    history::failed(&db.platform, &id, &error.code, &sent)
                 }
             })
             .await?;
         observability::event(
             if code.is_some() { "error" } else { "info" },
-            if code.is_some() { "backups.failed" } else { "backups.taken" },
+            if code.is_some() {
+                "backups.failed"
+            } else {
+                "backups.taken"
+            },
             json!({"dsp": dsp, "error": code, "size": size}),
         );
     }

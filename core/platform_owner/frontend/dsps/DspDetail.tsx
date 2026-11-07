@@ -5,7 +5,7 @@ import { connectionFeatures } from '../../../shell/frontend/runtime/features.js'
 import { dspAddress } from '../../../shell/frontend/runtime/site.js';
 import { Badge, DspAvatar, Popover, Tabs } from '../../../shell/frontend/ui/index.js';
 import { deviceTimezone, time } from '../../../shell/frontend/lib/format.js';
-import { DspBackupsTab } from '../../../backups/frontend/index.js';
+import { DspBackupsTab } from './DspBackupsTab.js';
 import { DspBetaTab } from './DspBetaTab.js';
 import { DspFeaturesTab } from './DspFeaturesTab.js';
 import { dspState, stateLabels } from './status.js';

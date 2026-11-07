@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CircleCheck, CircleX, Download, Globe, LoaderCircle, Plus } from 'lucide-react';
-import type { DspSummary } from '../../accounts/api/index.js';
+import type { DspSummary } from '../../../accounts/api/index.js';
 import type {
   Backup,
   BackupItem,
@@ -8,7 +8,7 @@ import type {
   BackupRuleInput,
   DspBackups,
   KeepUnit,
-} from '../api/index.js';
+} from '../../../backups/api/index.js';
 import {
   backUpNow,
   backupDownload,
@@ -16,7 +16,7 @@ import {
   saveBackupRules,
   switchBackups,
   useDspBackups,
-} from '../api/client.js';
+} from '../../../backups/api/client.js';
 import {
   EVERY_DAY,
   RuleEditor,
@@ -25,13 +25,13 @@ import {
   ruleText,
   runDay,
   until,
-} from '../../collection/frontend/schedule.js';
-import { ApiError, errorLabel } from '../../shell/frontend/runtime/api.js';
-import { useFeedback } from '../../shell/frontend/runtime/feedback.js';
-import { messageOf } from '../../shell/frontend/lib/errors.js';
-import { randomId } from '../../shell/frontend/lib/random-id.js';
-import { timezoneName } from '../../shell/frontend/lib/format.js';
-import { Empty, ErrorBox } from '../../shell/frontend/ui/index.js';
+} from '../../../collection/frontend/schedule.js';
+import { ApiError, errorLabel } from '../../../shell/frontend/runtime/api.js';
+import { useFeedback } from '../../../shell/frontend/runtime/feedback.js';
+import { messageOf } from '../../../shell/frontend/lib/errors.js';
+import { randomId } from '../../../shell/frontend/lib/random-id.js';
+import { timezoneName } from '../../../shell/frontend/lib/format.js';
+import { Empty, ErrorBox } from '../../../shell/frontend/ui/index.js';
 import './backups.css';
 
 // A DSP's Backups tab: when it was last backed up and is next, on or off and Back up now; its
@@ -128,7 +128,17 @@ function Backups({
   }
   const save = async () => {
     if (working || !whole) return;
-    if (await act(() => saveBackupRules(dsp.id, rules.map((rule) => rule!), base.revision), 'Schedule saved'))
+    if (
+      await act(
+        () =>
+          saveBackupRules(
+            dsp.id,
+            rules.map((rule) => rule!),
+            base.revision,
+          ),
+        'Schedule saved',
+      )
+    )
       setOpen(null);
   };
   const switching = useRef(false);
@@ -244,16 +254,14 @@ function Backups({
           </dd>
         </dl>
         <div className="collectors-head-actions">
-          <label className="settings-toggle">
-            <input
-              type="checkbox"
-              role="switch"
-              aria-label="On schedule"
-              checked={backups.enabled}
-              disabled={working}
-              onChange={(e) => void turn(e.target.checked)}
-            />
-          </label>
+          <input
+            type="checkbox"
+            role="switch"
+            aria-label="On schedule"
+            checked={backups.enabled}
+            disabled={working}
+            onChange={(e) => void turn(e.target.checked)}
+          />
           <button
             type="button"
             disabled={working || !backups.configured || backups.backups.some(taking)}
@@ -354,11 +362,17 @@ function Backups({
                         {ruleText(rule)}
                       </span>
                     ) : (
-                      <span className="collectors-tag">{backup.ruleId ? 'Removed rule' : 'Manual'}</span>
+                      <span className="collectors-tag">
+                        {backup.ruleId ? 'Removed rule' : 'Manual'}
+                      </span>
                     )}
                   </span>
                   {backup.status === 'succeeded' && (
-                    <a className="backups-download" href={backupDownload(dsp.id, backup.id)} download>
+                    <a
+                      className="backups-download"
+                      href={backupDownload(dsp.id, backup.id)}
+                      download
+                    >
                       <Download size={14} aria-hidden="true" />
                       Download
                     </a>
@@ -418,7 +432,9 @@ function Kept({
           max={999}
           required
           value={rule.keep}
-          onChange={(e) => change({ ...rule, keep: Math.max(1, Math.round(Number(e.target.value))) })}
+          onChange={(e) =>
+            change({ ...rule, keep: Math.max(1, Math.round(Number(e.target.value))) })
+          }
         />
         <select
           aria-label="Keep unit"

@@ -63,7 +63,12 @@ pub async fn take(
                 "SELECT * FROM dsp_features WHERE dsp_id=? ORDER BY feature",
                 [&dsp],
             )?;
-            Ok((db.dsp_folder(&dsp)?, row, features, super::history::sizes(&db.platform, &dsp)?))
+            Ok((
+                db.dsp_folder(&dsp)?,
+                row,
+                features,
+                super::history::sizes(&db.platform, &dsp)?,
+            ))
         })
         .await?;
     let held: Vec<String> = contents::items(&folder)
@@ -73,7 +78,12 @@ pub async fn take(
         .collect();
     let here = db::private_dir(&staging(state).join(&asked.id))?;
     let taken = async {
-        let files = send(state, vault, asked, &folder, &here, &held, &sizes, sent).await?;
+        let holds = Holds {
+            folder: &folder,
+            items: &held,
+            sizes: &sizes,
+        };
+        let files = send(state, vault, asked, &holds, &here, sent).await?;
         let manifest = json!({
             "format": FORMAT,
             "backup": asked.id,
@@ -91,21 +101,40 @@ pub async fn take(
     .await;
     let _ = fs::remove_dir_all(&here);
     let files: Vec<Value> = taken?;
-    let size = files.iter().map(|file| file["size"].as_i64().unwrap_or(0)).sum();
+    let size = files
+        .iter()
+        .map(|file| file["size"].as_i64().unwrap_or(0))
+        .sum();
     Ok(Taken { files, size })
+}
+
+/// What a backup holds: the DSP's folder, the items of it it holds, and how many bytes each file
+/// its earlier backups hold holds, by what it's kept as.
+struct Holds<'a> {
+    folder: &'a Path,
+    items: &'a [String],
+    sizes: &'a HashMap<String, i64>,
 }
 
 async fn send(
     state: &Arc<State>,
     vault: &Vault,
     asked: &Asked,
-    folder: &Path,
+    holds: &Holds<'_>,
     here: &Path,
-    held: &[String],
-    sizes: &HashMap<String, i64>,
     sending: &mut Vec<String>,
 ) -> Result<Vec<Value>> {
-    let mut kept: HashSet<String> = vault.objects.listed(&asked.dsp, FILES).await?.into_iter().collect();
+    let Holds {
+        folder,
+        items: held,
+        sizes,
+    } = *holds;
+    let mut kept: HashSet<String> = vault
+        .objects
+        .listed(&asked.dsp, FILES)
+        .await?
+        .into_iter()
+        .collect();
     let mut files = Vec::new();
     let found = {
         let folder = folder.to_owned();
@@ -165,10 +194,12 @@ async fn send(
                     continue;
                 };
                 written(fetched, &plain).await?;
-                let (key, dsp, from, to) = (vault.key, asked.dsp.clone(), plain.clone(), sealed.clone());
-                let (read, size) = tokio::task::spawn_blocking(move || seal::seal(&key, &dsp, &from, &to))
-                    .await
-                    .map_err(|_| Error::new("backup_failed", 500))??;
+                let (key, dsp, from, to) =
+                    (vault.key, asked.dsp.clone(), plain.clone(), sealed.clone());
+                let (read, size) =
+                    tokio::task::spawn_blocking(move || seal::seal(&key, &dsp, &from, &to))
+                        .await
+                        .map_err(|_| Error::new("backup_failed", 500))??;
                 fs::remove_file(&plain)?;
                 // A picture is kept by the SHA-256 of what it holds: one that came down otherwise
                 // isn't the picture.
@@ -239,7 +270,8 @@ async fn sent(
 async fn describe(vault: &Vault, dsp: &str, id: &str, manifest: &Value, here: &Path) -> Result<()> {
     let sealed = here.join("manifest.sealed");
     {
-        let (key, binding, manifest, to) = (vault.key, dsp.to_owned(), manifest.clone(), sealed.clone());
+        let (key, binding, manifest, to) =
+            (vault.key, dsp.to_owned(), manifest.clone(), sealed.clone());
         tokio::task::spawn_blocking(move || seal::seal_json(&key, &binding, &manifest, &to))
             .await
             .map_err(|_| Error::new("backup_failed", 500))??;
