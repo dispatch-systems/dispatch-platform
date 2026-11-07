@@ -55,8 +55,10 @@ fn native_runner_bounds_output_timeout_and_honors_cwd() {
     let temp = tempfile::tempdir().unwrap();
     let bytes = Native.command(&["pwd"], Some(temp.path()), 1).unwrap();
     assert_eq!(
-        PathBuf::from(String::from_utf8(bytes).unwrap().trim()),
-        temp.path()
+        PathBuf::from(String::from_utf8(bytes).unwrap().trim())
+            .canonicalize()
+            .unwrap(),
+        temp.path().canonicalize().unwrap()
     );
     assert!(Native.command(&["sh", "-c", "sleep 10"], None, 0).is_err());
     assert!(
