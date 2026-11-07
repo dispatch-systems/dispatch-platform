@@ -79,6 +79,15 @@ fn dispatchdev_shows_its_usage_and_refuses_what_it_does_not_take() {
     let (ok, _, error) = run(&["test", "--only", "rust"]);
     assert!(!ok);
     assert!(error.contains("an --owner's tests"), "{error}");
+    let (ok, _, error) = run(&["android", "prepare", "--app", "relay"]);
+    assert!(!ok);
+    assert!(error.contains("needs --device"), "{error}");
+    let (ok, _, error) = run(&["android", "doctor", "--app", "relay"]);
+    assert!(!ok);
+    assert!(error.contains("takes no --app"), "{error}");
+    let (ok, help, _) = run(&["android", "--help"]);
+    assert!(ok);
+    assert!(help.contains("android prepare --app <module>"), "{help}");
 }
 
 /// A checkout with one commit, on `branch`.

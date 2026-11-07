@@ -3,6 +3,7 @@
 //! tests a change touches, signs in to the dev server `npm run dev` runs, builds the
 //! backend and support worker through an exact-input cache, and makes features, collectors and
 //! the rest from what the owners declare.
+pub mod android;
 pub mod api;
 pub mod build;
 pub mod change;

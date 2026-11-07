@@ -15,9 +15,9 @@ pub struct Call<'a> {
     pub data: Option<&'a str>,
 }
 /// What one request answered.
-struct Answer {
-    status: u16,
-    body: String,
+pub(crate) struct Answer {
+    pub(crate) status: u16,
+    pub(crate) body: String,
 }
 fn curl(runner: &dyn Runner, jar: &Path, args: &[&str]) -> Result<Answer> {
     // The jar holds a session: only this user may read it. curl keeps the mode it finds.
@@ -144,6 +144,17 @@ pub(crate) struct Server {
     pub(crate) scratch: PathBuf,
 }
 impl Server {
+    pub(crate) fn local_port(&self) -> Result<u16> {
+        require(
+            matches!(self.host.as_str(), "127.0.0.1" | "localhost")
+                && self
+                    .link
+                    .starts_with(&format!("http://{}:{}/__preview/", self.host, self.port)),
+            "Android pairing uses only this checkout's local fixture server. Start npm run dev without DISPATCH_DEV_HOST.",
+        )?;
+        Ok(self.port)
+    }
+
     /// The server `npm run dev` runs in the checkout at `root`, or what to do without one.
     pub(crate) fn find(root: &Path) -> Result<Self> {
         let start = "No dev server runs in this checkout: start npm run dev in it first.";
@@ -215,7 +226,19 @@ pub(crate) fn sign_in(
 
 pub fn run(root: &Path, call: Call<'_>, runner: &dyn Runner) -> Result<bool> {
     let server = Server::find(root)?;
-    let (site, session) = sign_in(&server, call.who.unwrap_or(OWNER), call.dsp, runner)?;
+    let reply = request(&server, call, runner)?;
+    // The body alone on stdout, so it pipes into `jq`.
+    eprintln!("HTTP {}", reply.status);
+    match serde_json::from_str::<Value>(&reply.body) {
+        Ok(value) => println!("{}", serde_json::to_string_pretty(&value)?),
+        Err(_) if !reply.body.is_empty() => println!("{}", reply.body),
+        Err(_) => {}
+    }
+    Ok(reply.status < 400)
+}
+
+pub(crate) fn request(server: &Server, call: Call<'_>, runner: &dyn Runner) -> Result<Answer> {
+    let (site, session) = sign_in(server, call.who.unwrap_or(OWNER), call.dsp, runner)?;
     let csrf = session["csrf"]
         .as_str()
         .ok_or("The session has no CSRF token")?;
@@ -278,15 +301,7 @@ pub fn run(root: &Path, call: Call<'_>, runner: &dyn Runner) -> Result<bool> {
         ]);
     }
     args.push(&url);
-    let reply = site.curl(runner, &args)?;
-    // The body alone on stdout, so it pipes into `jq`.
-    eprintln!("HTTP {}", reply.status);
-    match serde_json::from_str::<Value>(&reply.body) {
-        Ok(value) => println!("{}", serde_json::to_string_pretty(&value)?),
-        Err(_) if !reply.body.is_empty() => println!("{}", reply.body),
-        Err(_) => {}
-    }
-    Ok(reply.status < 400)
+    site.curl(runner, &args)
 }
 
 #[cfg(test)]
