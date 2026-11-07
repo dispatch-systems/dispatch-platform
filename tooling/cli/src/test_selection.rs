@@ -179,6 +179,30 @@ fn owner(file: &str) -> Option<String> {
 /// test files it changes or that watch a source it changes, from `tooling/ci/test-plan.json`.
 /// `npm run check:rules` already runs the rule and dashboard tests, found by where they live and
 /// in the plan's `rules`, so they are left out, and `npm run lint` the linter.
+/// Whether a changed file is a Node or browser test: one `affected` can name.
+fn test_file(file: &str) -> bool {
+    (file.starts_with("tests/") || file.contains("/tests/"))
+        && (file.ends_with(".test.ts") || file.ends_with(".spec.ts"))
+}
+/// Whether `test` is one of the rule tests `dispatchdev check` runs, which `affected` leaves
+/// out: the app's rules, the frontends' tests and those the plan lists as rules.
+fn checked(test: &str, plan: &Value) -> bool {
+    test.starts_with("app/tests/rules/")
+        || test.contains("/tests/frontend/")
+        || plan["rules"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|file| file.as_str() == Some(test))
+}
+/// The changed tests `dispatchdev check` runs as rule tests, which `affected` leaves out.
+pub fn checked_tests(changed: &[String], plan: &Value) -> Vec<String> {
+    changed
+        .iter()
+        .filter(|file| test_file(file) && checked(file, plan))
+        .cloned()
+        .collect()
+}
 pub fn affected(changed: &[String], plan: &Value, workspace: &Workspace) -> Vec<String> {
     let list = |value: &Value| -> Vec<String> {
         value
@@ -191,10 +215,7 @@ pub fn affected(changed: &[String], plan: &Value, workspace: &Workspace) -> Vec<
     };
     let mut tests: BTreeSet<String> = changed
         .iter()
-        .filter(|file| {
-            (file.starts_with("tests/") || file.contains("/tests/"))
-                && (file.ends_with(".test.ts") || file.ends_with(".spec.ts"))
-        })
+        .filter(|file| test_file(file))
         .cloned()
         .collect();
     for group in plan["watch"].as_array().into_iter().flatten() {
@@ -245,12 +266,7 @@ pub fn affected(changed: &[String], plan: &Value, workspace: &Workspace) -> Vec<
         let packages: Vec<_> = crates.iter().map(|name| format!("-p {name}")).collect();
         commands.push(format!("cargo test --locked {}", packages.join(" ")));
     }
-    let listed = list(&plan["rules"]);
-    let rule = |test: &str| {
-        test.starts_with("app/tests/rules/")
-            || test.contains("/tests/frontend/")
-            || listed.iter().any(|file| file == test)
-    };
+    let rule = |test: &str| checked(test, plan);
     let shard = |test: &str| {
         plan["native"]
             .as_object()
@@ -384,6 +400,21 @@ mod tests {
             [
                 "cargo clippy --locked --all-targets -- -D warnings",
                 "cargo test --locked -p dispatch-backend -p dispatch-core -p dispatch-cortex -p dispatch-host -p dispatch-paycom -p dispatch-shared",
+            ]
+        );
+        // Those it leaves out are named, for `test --plan` to say where they run.
+        let files: Vec<String> = [
+            "tooling/tests/test-plan.test.ts",
+            "app/tests/rules/names.test.ts",
+            "core/tenancy/tests/api/roles.test.ts",
+        ]
+        .map(str::to_owned)
+        .to_vec();
+        assert_eq!(
+            checked_tests(&files, &plan),
+            [
+                "tooling/tests/test-plan.test.ts",
+                "app/tests/rules/names.test.ts"
             ]
         );
         // The hosts' crate runs its own tests, and the app's, which builds on it.
