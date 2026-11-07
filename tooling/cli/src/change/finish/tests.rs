@@ -94,25 +94,80 @@ impl Fixture {
                 is_cross_repository: false,
             },
             race: Mutex::new(None),
+            local_race: Mutex::new(None),
+            remote: self.remote.clone(),
         }
     }
 }
 struct Github {
     pull: Pull,
     race: Mutex<Option<(PathBuf, String, String)>>,
+    local_race: Mutex<Option<(String, String)>>,
+    remote: PathBuf,
 }
 impl Runner for Github {
     fn command(&self, args: &[&str], cwd: Option<&Path>, timeout: u64) -> Result<Vec<u8>> {
         if args.first() == Some(&"gh") {
             return Ok(serde_json::to_vec(&[&self.pull])?);
         }
+        if args.get(1..3) == Some(&["remote", "get-url"][..]) {
+            return Ok(b"https://github.com/dispatch-systems/dispatch-platform.git\n".to_vec());
+        }
         if args.get(1) == Some(&"push")
             && let Some((remote, reference, head)) = self.race.lock().unwrap().take()
         {
             Native.command(&["git", "update-ref", &reference, &head], Some(&remote), 30)?;
         }
-        Native.command(args, cwd, timeout)
+        if args.get(1..3) == Some(&["update-ref", "-d"][..])
+            && let Some((reference, head)) = self.local_race.lock().unwrap().take()
+        {
+            Native.command(&["git", "update-ref", &reference, &head], cwd, 30)?;
+        }
+        let args: Vec<_> = args
+            .iter()
+            .map(|arg| {
+                if *arg == "https://github.com/dispatch-systems/dispatch-platform.git" {
+                    self.remote.to_str().unwrap()
+                } else {
+                    *arg
+                }
+            })
+            .collect();
+        Native.command(&args, cwd, timeout)
     }
+}
+
+#[test]
+fn cleanup_rejects_an_unrelated_origin_before_contacting_github() {
+    let fixture = Fixture::new();
+    let error = finish_plan(&fixture.root, &fixture.name, false, &Native)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("Origin must name Dispatch"), "{error}");
+    assert!(fixture.worktree.exists());
+}
+
+#[test]
+fn conditional_local_ref_deletion_preserves_a_commit_added_during_cleanup() {
+    let fixture = Fixture::new();
+    let github = fixture.reviewer("MERGED");
+    let tree = fixture.git(&["rev-parse", "HEAD^{tree}"]);
+    let newer = fixture.git(&[
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit-tree",
+        &tree,
+        "-p",
+        &fixture.head,
+        "-m",
+        "local advanced",
+    ]);
+    *github.local_race.lock().unwrap() =
+        Some((format!("refs/heads/{}", fixture.name), newer.clone()));
+    assert!(finish(&fixture.root, &fixture.name, false, &github).is_err());
+    assert_eq!(fixture.git(&["rev-parse", &fixture.name]), newer);
 }
 
 #[test]

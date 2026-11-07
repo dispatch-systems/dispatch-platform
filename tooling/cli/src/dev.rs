@@ -192,19 +192,17 @@ pub fn status(root: &Path, runner: &dyn Runner) -> Result<Status> {
         reason: None,
     };
     let path = root.join(api::RECORD);
-    if let Ok(metadata) = fs::symlink_metadata(&path) {
-        if !metadata.is_file()
+    if let Ok(metadata) = fs::symlink_metadata(&path)
+        && (!metadata.is_file()
             || metadata.file_type().is_symlink()
             || metadata.uid() != unsafe { libc::geteuid() }
             || metadata.permissions().mode() & 0o077 != 0
-            || fs::canonicalize(path.parent().expect("receipt parent"))? != path.parent().unwrap()
-        {
-            status.reason = Some(
-                "Fixture receipt must be this user's private regular file inside the checkout."
-                    .into(),
-            );
-            return Ok(status);
-        }
+            || fs::canonicalize(path.parent().expect("receipt parent"))? != path.parent().unwrap())
+    {
+        status.reason = Some(
+            "Fixture receipt must be this user's private regular file inside the checkout.".into(),
+        );
+        return Ok(status);
     }
     let text = match fs::read_to_string(&path) {
         Ok(text) => text,

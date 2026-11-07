@@ -24,6 +24,8 @@ pub struct FinishPlan {
     pub root: PathBuf,
     pub worktree: PathBuf,
     pub scratch: PathBuf,
+    pub fetch_url: String,
+    pub push_url: String,
     pub abandon: bool,
     pub pull: Option<Pull>,
     pub local_head: Option<String>,
@@ -96,6 +98,23 @@ pub fn finish_plan(
 ) -> Result<FinishPlan> {
     valid_name(name)?;
     let clone = Clone::of(from, runner)?;
+    let fetch_url = clone.git(runner, &["remote", "get-url", "origin"])?;
+    let push_url = clone.git(runner, &["remote", "get-url", "--push", "origin"])?;
+    for url in [&fetch_url, &push_url] {
+        let repository = [
+            "https://github.com/",
+            "git@github.com:",
+            "ssh://git@github.com/",
+        ]
+        .iter()
+        .find_map(|prefix| url.strip_prefix(prefix))
+        .map(|repository| repository.strip_suffix(".git").unwrap_or(repository));
+        require(
+            repository
+                .is_some_and(|repository| dispatch_shared::REPOSITORIES.contains(&repository)),
+            "Origin must name Dispatch's GitHub repository; inspect its fetch and push URLs before cleanup.",
+        )?;
+    }
     let pulls: Vec<Pull> = serde_json::from_str(&workspace::text(
         runner,
         &[
@@ -124,7 +143,7 @@ pub fn finish_plan(
     let local_head = refs
         .lines()
         .find_map(|line| line.strip_prefix(&format!("{branch} ")).map(str::to_owned));
-    let remote = clone.git(runner, &["ls-remote", "--heads", "origin", &branch])?;
+    let remote = clone.git(runner, &["ls-remote", "--heads", &fetch_url, &branch])?;
     let remote_head = remote.lines().find_map(|line| {
         let (head, reference) = line.split_once('\t')?;
         (reference == branch).then(|| head.to_owned())
@@ -136,6 +155,8 @@ pub fn finish_plan(
         root: clone.root.clone(),
         worktree,
         scratch,
+        fetch_url,
+        push_url,
         abandon,
         pull,
         local_head,
@@ -240,7 +261,7 @@ pub fn finish(from: &Path, name: &str, abandon: bool, runner: &dyn Runner) -> Re
                 "push",
                 "-q",
                 &format!("--force-with-lease={branch}:{head}"),
-                "origin",
+                &plan.push_url,
                 &format!(":{branch}"),
             ],
         )?;
