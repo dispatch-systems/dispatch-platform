@@ -273,5 +273,27 @@ pub fn status(root: &Path, runner: &dyn Runner) -> Result<Status> {
     Ok(status)
 }
 
+/// Stops the checkout's dev server, once `status` has checked it's the server its record names,
+/// and waits for it to end: the process it stopped, if one ran.
+pub fn stop(root: &Path, runner: &dyn Runner) -> Result<Option<i32>> {
+    let status = status(root, runner)?;
+    let Some(process) = status.process.filter(|_| status.running) else {
+        return Ok(None);
+    };
+    unsafe { libc::kill(process.pid, libc::SIGTERM) };
+    let stopping = std::time::Instant::now();
+    while self::status(root, runner)?.running {
+        crate::require(
+            stopping.elapsed() < std::time::Duration::from_secs(30),
+            &format!(
+                "The dev server {} didn't stop: stop it, then run this again.",
+                process.pid
+            ),
+        )?;
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+    Ok(Some(process.pid))
+}
+
 #[cfg(test)]
 mod tests;

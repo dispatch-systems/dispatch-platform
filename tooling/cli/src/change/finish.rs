@@ -1,5 +1,5 @@
 use super::{Clone, valid_name};
-use crate::{REPOSITORY, Result, Runner, require, workspace};
+use crate::{REPOSITORY, Result, Runner, dev, require, workspace};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -32,6 +32,8 @@ pub struct FinishPlan {
     pub remote_head: Option<String>,
     pub worktree_present: bool,
     pub ignored: Vec<String>,
+    /// The worktree's running dev server, which `finish` stops first.
+    pub dev_server: Option<i32>,
     pub scratch_entries: Vec<String>,
     pub blockers: Vec<String>,
     pub can_finish: bool,
@@ -51,6 +53,13 @@ impl FinishPlan {
             },
             self.name
         );
+        // What stops it first, before the long lists.
+        for blocker in &self.blockers {
+            println!("  {blocker}");
+        }
+        if let Some(pid) = self.dev_server {
+            println!("Stop its dev server: {pid}");
+        }
         if self.worktree_present {
             println!("Remove worktree: {}", self.worktree.display());
         }
@@ -66,9 +75,6 @@ impl FinishPlan {
         }
         for entry in &self.ignored {
             println!("Ignored worktree data: {entry}");
-        }
-        for blocker in &self.blockers {
-            println!("  {blocker}");
         }
     }
 }
@@ -175,6 +181,7 @@ pub fn finish_plan(
         remote_head,
         worktree_present: false,
         ignored: vec![],
+        dev_server: None,
         scratch_entries: vec![],
         blockers: vec![],
         can_finish: false,
@@ -225,6 +232,10 @@ pub fn finish_plan(
                     if !status.is_empty() { plan.blockers.push("The worktree holds uncommitted changes: commit or drop them first.".into()); }
                     let ignored = workspace::text(runner, &["git", "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"], Some(&real))?;
                     plan.ignored = ignored.split('\0').filter(|name| !name.is_empty()).map(str::to_owned).collect();
+                    plan.dev_server = dev::status(&real, runner)
+                        .ok()
+                        .filter(|status| status.running)
+                        .and_then(|status| status.process.map(|process| process.pid));
                 }
                 _ => plan.blockers.push("The directory is not this branch's registered worktree: inspect it before cleanup.".into()),
             }
@@ -277,6 +288,9 @@ pub fn finish(from: &Path, name: &str, abandon: bool, runner: &dyn Runner) -> Re
                 &format!(":{branch}"),
             ],
         )?;
+    }
+    if plan.dev_server.is_some() {
+        dev::stop(&plan.worktree, runner)?;
     }
     if plan.worktree_present {
         clone.git(
