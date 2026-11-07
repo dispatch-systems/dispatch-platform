@@ -628,7 +628,7 @@ pub fn take(root: &Path, n: u32, runner: &dyn Runner) -> Result<()> {
                     "Check each finding against the code and answer it in {}",
                     dir.join("answers.md").display()
                 ),
-                "Commit the fixes and push them with `dispatchdev pr`".to_owned(),
+                format!("Commit the fixes and {}", publishing(root).0),
                 format!("Then {record}"),
             ],
             false => vec![format!("Nothing to answer: {record}")],
@@ -738,6 +738,7 @@ pub fn record(root: &Path, n: u32, models: &Models, runner: &dyn Runner) -> Resu
     {
         println!("  {}: {}", outcome.tag, outcome.what);
     }
+    let (_, update, merge) = publishing(root);
     let next = match (important_fixed || unreviewed, n < CAP) {
         (true, true) if unreviewed => format!(
             "Commits since pass {n}'s {} were reviewed by no one: `dispatchdev review prepare \
@@ -751,20 +752,35 @@ pub fn record(root: &Path, n: u32, models: &Models, runner: &dyn Runner) -> Resu
             short(&pass.head)
         ),
         (true, true) => format!(
-            "`dispatchdev pr` updates the PR's body; then `dispatchdev review prepare --pass {}` \
-             reviews what fixing the Important findings changed",
+            "{update}; then `dispatchdev review prepare --pass {}` reviews what fixing the \
+             Important findings changed",
             n + 1
         ),
         (true, false) => format!(
-            "The review stops at pass {CAP}: `dispatchdev pr` updates the PR's body; `dispatchdev merge` \
-             merges it once its checks pass, unless more passes were asked for (--over-cap)"
+            "The review stops at pass {CAP}: {update}; {merge}, unless more passes were asked \
+             for (--over-cap)"
         ),
-        (false, _) => "The review is done: `dispatchdev pr` updates the PR's body; `dispatchdev \
-                       merge` merges it once its checks pass"
-            .to_owned(),
+        (false, _) => format!("The review is done: {update}; {merge}"),
     };
     println!("{}", workspace::next(&[next]));
     Ok(())
+}
+/// How the checkout's PR takes its new body and merges: through `dispatchdev` on the platform,
+/// through `gh` in a checkout without the CLI, such as the agent docs', as their skill says.
+/// Each is a step: pushing fixes, updating the body, merging.
+fn publishing(root: &Path) -> (&'static str, &'static str, &'static str) {
+    match root.join("tooling/cli/dispatchdev").is_file() {
+        true => (
+            "push them with `dispatchdev pr`",
+            "`dispatchdev pr` updates the PR's body",
+            "`dispatchdev merge` merges it once its checks pass",
+        ),
+        false => (
+            "push them with `git push`",
+            "`gh pr edit <n> --body \"$(tail -n +3 <scratch>/pr-body.md)\"` updates the PR's body",
+            "`gh pr merge <n> --squash --match-head-commit <head>` merges it",
+        ),
+    }
 }
 fn outcome(answered: Answered, security: bool) -> Outcome {
     Outcome {
