@@ -91,12 +91,30 @@ pub fn approval(root: &Path, runner: &dyn Runner) -> Result<Approval> {
         .filter(|(path, hash)| approved.get(*path) != Some(hash))
         .map(|(path, _)| path.clone())
         .collect();
-    changed.extend(
-        approved
-            .keys()
-            .filter(|path| !now.contains_key(*path))
-            .cloned(),
-    );
+    // An approved file the change no longer touches: put back as main had it, or the same as
+    // approved because main has it now.
+    for (path, hash) in approved.iter().filter(|(path, _)| !now.contains_key(*path)) {
+        let committed = workspace::text(
+            runner,
+            &[
+                "git",
+                "rev-parse",
+                "--verify",
+                "-q",
+                &format!("HEAD:{path}"),
+            ],
+            Some(root),
+        )
+        .unwrap_or_default();
+        let committed = if committed.is_empty() {
+            "deleted"
+        } else {
+            &committed
+        };
+        if committed != hash {
+            changed.push(path.clone());
+        }
+    }
     changed.sort();
     Ok(match changed.is_empty() {
         true => Approval::Approved,
@@ -153,19 +171,44 @@ impl Page {
     }
 }
 
-/// The routes a `feature.ts` declares, each by its id and whether it's the platform owner's.
+/// The routes a `feature.ts` declares in its `routes: [...]`, each by its id and whether it's
+/// the platform owner's: the id and scope at each entry's own level, not those of what it holds.
 fn routes(text: &str) -> Vec<(String, bool)> {
-    text.split("id: '")
-        .skip(1)
-        .filter_map(|route| {
-            let id = route.split('\'').next()?.to_owned();
-            let platform = route
-                .split("scope: '")
-                .nth(1)
-                .is_some_and(|scope| scope.starts_with("platform'"));
-            Some((id, platform))
-        })
-        .collect()
+    let Some(start) = text.find("routes: [") else {
+        return vec![];
+    };
+    let mut routes = vec![];
+    let (mut depth, mut entry) = (0usize, String::new());
+    for c in text[start + "routes: ".len()..].chars() {
+        match c {
+            '[' | '{' | '(' => depth += 1,
+            ']' | '}' | ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    break;
+                }
+                if depth == 1 && c == '}' {
+                    routes.extend(route(&entry));
+                    entry.clear();
+                }
+                continue;
+            }
+            _ => {}
+        }
+        // Only an entry's own text: what's nested in it is left out.
+        if depth == 2 && !matches!(c, '{') {
+            entry.push(c);
+        }
+    }
+    routes
+}
+/// A route entry's id and whether its scope is the platform owner's.
+fn route(entry: &str) -> Option<(String, bool)> {
+    let field = |name: &str| {
+        let rest = entry.split(&format!("{name}: '")).nth(1)?;
+        Some(rest.split('\'').next()?.to_owned())
+    };
+    Some((field("id")?, field("scope").as_deref() == Some("platform")))
 }
 
 /// The page a UI file belongs to: of its owner's routes, the one its folder under `frontend/` is
@@ -337,6 +380,16 @@ mod tests {
             "features/timecard",
             "routes: [{ id: 'paycom', scope: 'dsp', label: 'Timecard' }]",
         );
+        // Ids outside `routes`, and those of what a route holds, aren't pages.
+        owner(
+            "core/support",
+            "accountActions: [{ id: 'ai-support', label: 'AI Support' }],\n\
+             routes: [{ id: 'support', scope: 'platform', tabs: [{ id: 'inbox', scope: 'dsp' }] }]",
+        );
+        owner(
+            "core/collection",
+            "settings: [{ id: 'collection.connections', label: 'Connections' }]",
+        );
         owner(
             "core/platform_owner",
             "routes: [{ id: 'dsps', scope: 'platform' }, { id: 'jobs', scope: 'platform' }]",
@@ -357,6 +410,17 @@ mod tests {
             (
                 "core/platform_owner/frontend/shared/Table.tsx",
                 at("dsps", true),
+            ),
+            (
+                "core/support/frontend/owner/SupportPage.tsx",
+                at("support", true),
+            ),
+            (
+                "core/collection/frontend/ConnectionsPage.tsx",
+                Page {
+                    id: None,
+                    platform: false,
+                },
             ),
             (
                 "core/shell/frontend/styles/tokens.css",

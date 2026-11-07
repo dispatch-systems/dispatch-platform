@@ -138,9 +138,10 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
                 "the change's own: main's latest run passes it"
             }
             Some(theirs) => {
-                let theirs = log(theirs.id);
-                let theirs = signature(&lines(&theirs));
-                if signature(&failed).iter().any(|line| theirs.contains(line)) {
+                let theirs = failing(&lines(&log(theirs.id)));
+                let ours = failing(&failed);
+                // Main's only when every test that fails here fails there too.
+                if !ours.is_empty() && ours.iter().all(|test| theirs.contains(test)) {
                     shared += 1;
                     "main's latest run fails it the same way"
                 } else {
@@ -185,47 +186,82 @@ fn lines(log: &str) -> Vec<&str> {
         })
         .collect()
 }
-/// The lines of a failed log that name what failed: a failing test or check, or an error.
-fn signature<'a>(lines: &[&'a str]) -> Vec<&'a str> {
-    lines
+/// The failing tests a failed log names, each as its own line without what differs between
+/// runs: the worker's number, the duration, the thread's id. A summary such as `[fail] test:ui`
+/// or a bare error names no test, so it isn't one.
+fn failing(lines: &[&str]) -> Vec<String> {
+    let varies = |token: &str| {
+        let token = token.trim_matches(['(', ')', '[', ']']);
+        let number = token
+            .strip_suffix("ms")
+            .or_else(|| token.strip_suffix('s'))
+            .unwrap_or(token);
+        !number.is_empty() && number.bytes().all(|b| b.is_ascii_digit() || b == b'.')
+    };
+    let mut failing: Vec<String> = lines
         .iter()
         .map(|line| line.trim())
         .filter(|line| {
-            ["✘", "✖", "FAIL", "[fail]", "panicked", "error[", "Error:"]
-                .iter()
-                .any(|sign| line.contains(sign))
+            line.starts_with('✘')
+                || line.starts_with('✖')
+                || line.starts_with("FAIL [")
+                || line.starts_with("test at ")
+                || line.contains(" panicked at ")
         })
-        // A test's own line, without its duration, which differs between runs.
-        .map(|line| line.rsplit_once(" (").map_or(line, |(line, _)| line))
-        .collect()
+        .map(|line| {
+            line.split_whitespace()
+                .filter(|token| !varies(token))
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .collect();
+    failing.sort();
+    failing.dedup();
+    failing
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
-    fn a_failure_is_mains_only_when_its_log_fails_the_same_way() {
-        let log = |test: &str| {
-            format!(
-                "browser (2)\tRun\t2026-11-07T04:45:05.9Z   ✘  22 {test} (7.8s)\n\
-                 browser (2)\tRun\t2026-11-07T04:45:06.6Z     Error: Response has been disposed\n"
-            )
+    fn a_failure_is_mains_only_when_main_fails_the_same_tests() {
+        let log = |tests: &[(&str, &str)]| {
+            tests
+                .iter()
+                .map(|(worker, test)| {
+                    format!(
+                        "browser (2)\tRun\t2026-11-07T04:45:05.9Z   ✘  {worker} {test} (7.8s)\n\
+                         browser (2)\tRun\t2026-11-07T04:45:06.6Z     Error: disposed\n\
+                         browser (2)\tRun\t2026-11-07T04:45:07.0Z [fail] test:ui (41.6s)\n"
+                    )
+                })
+                .collect::<String>()
         };
-        let ours = log("meal-breaks.spec.ts:594:1 › survives a reload");
-        let ours = signature(&lines(&ours));
-        let shared = |theirs: &str| {
-            let theirs = signature(&lines(theirs));
-            ours.iter().any(|line| theirs.contains(line))
+        let reload = "meal-breaks.spec.ts:594:1 › survives a reload";
+        let home = "home.spec.ts:3:1 › opens";
+        let ours = failing(&lines(&log(&[("22", reload)])));
+        assert_eq!(ours, [format!("✘ {reload}")]);
+        let shared = |theirs: &[(&str, &str)]| {
+            let theirs = failing(&lines(&log(theirs)));
+            ours.iter().all(|test| theirs.contains(test))
         };
-        assert!(shared(
-            &log("meal-breaks.spec.ts:594:1 › survives a reload").replace("(7.8s)", "(9.1s)")
-        ));
-        assert!(!shared(
-            "browser (2)\tRun\t2026-11-07T04:45:05.9Z   ✘  3 home.spec.ts:3:1 › opens (30.1s)\n"
-        ));
+        assert!(
+            shared(&[("7", reload), ("3", home)]),
+            "another worker, another duration"
+        );
+        assert!(
+            !shared(&[("3", home)]),
+            "the same wrapper and error lines aren't the same test"
+        );
+        assert!(
+            failing(&lines(
+                "x\ty\t2026-11-07T04:45:07.0Z [fail] test:ui (41.6s)\n"
+            ))
+            .is_empty()
+        );
         assert_eq!(
-            lines(&log("x")),
-            ["  ✘  22 x (7.8s)", "    Error: Response has been disposed"]
+            failing(&["thread 'week' (18381410) panicked at a.rs:3:5:"]),
+            ["thread 'week' panicked at a.rs:3:5:"]
         );
     }
 }

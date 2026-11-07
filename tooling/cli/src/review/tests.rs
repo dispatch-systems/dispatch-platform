@@ -613,6 +613,15 @@ fn a_change_to_what_a_page_shows_is_held_to_what_the_user_approved() {
     write(root, "features/dvic/frontend/week.css", ".week {}\n");
     commit(root, "its styles again");
     assert_eq!(approval(), Approval::Approved);
+    // Once main has the same styles, the change no longer touches them, and they still look
+    // as approved.
+    git(root, &["switch", "-q", "main"]);
+    write(root, "features/dvic/frontend/week.css", ".week {}\n");
+    commit(root, "the week's styles");
+    git(root, &["push", "-q", "origin", "main"]);
+    git(root, &["switch", "-q", "keep-week"]);
+    git(root, &["merge", "-q", "--no-edit", "main"]);
+    assert_eq!(approval(), Approval::Approved);
 
     git(root, &["push", "-q", "-u", "origin", "keep-week"]);
     fixture.prepare(1).unwrap();
