@@ -511,10 +511,11 @@ fn fill(template: &str, values: &[(&str, String)]) -> Option<String> {
 }
 
 /// Whether a path is part of what someone sees: a page's code or styles, or an Android app's
-/// screens, their Compose code under `ui/` or its resources, but not the templates `tooling/`
-/// makes them from.
+/// screens, their Compose code under `ui/` or its resources, but not their tests, nor the
+/// templates `tooling/` makes them from.
 pub fn ui(path: &str) -> bool {
     !path.starts_with("tooling/")
+        && !tier::test(path)
         && (path.contains("/frontend/")
             || path.ends_with(".css")
             || (path.starts_with("android/")

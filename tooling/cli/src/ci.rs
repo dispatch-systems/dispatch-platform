@@ -140,13 +140,16 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
             Some(theirs) => {
                 let theirs = failing(&lines(&log(theirs.id)));
                 let ours = failing(&failed);
-                // Main's only when every test that fails here fails there too.
-                if !ours.is_empty() && ours.iter().all(|test| theirs.contains(test)) {
+                // Main's only when everything that fails here fails there too.
+                if ours.is_empty() || theirs.is_empty() {
+                    unsure += 1;
+                    "main's latest run fails it too; its log doesn't say whether the same way"
+                } else if ours.iter().all(|test| theirs.contains(test)) {
                     shared += 1;
                     "main's latest run fails it the same way"
                 } else {
-                    unsure += 1;
-                    "main's latest run fails it too, but not the same way"
+                    own += 1;
+                    "the change's own: main's latest run fails it, but not the same way"
                 }
             }
         };
@@ -156,10 +159,17 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
         }
     }
     let mut next = vec![];
-    if own + unsure > 0 {
+    if own > 0 {
         next.push(
             "Fix what is the change's own, commit, and push with `dispatchdev pr`; a flake \
              unrelated to the diff runs again once"
+                .to_owned(),
+        );
+    }
+    if unsure > 0 {
+        next.push(
+            "Compare the logs where it couldn't: failing the same way as main is main's to \
+             fix, otherwise the change's own"
                 .to_owned(),
         );
     }
@@ -186,26 +196,35 @@ fn lines(log: &str) -> Vec<&str> {
         })
         .collect()
 }
-/// The failing tests a failed log names, each as its own line without what differs between
-/// runs: the worker's number, the duration, the thread's id. A summary such as `[fail] test:ui`
-/// or a bare error names no test, so it isn't one.
+/// What a failed log says failed, each as its own line without what differs between runs (the
+/// worker's number, the duration, the thread's id): failing tests, compiler and lint errors by
+/// their code, and what `cargo audit` denies. A summary such as `[fail] test:ui`, or a bare
+/// error, names nothing that failed, so it isn't one.
 fn failing(lines: &[&str]) -> Vec<String> {
+    // A worker's number, a duration, a thread's id: a bare count, or a number with a unit or in
+    // brackets. A version such as 0.3.41 stays.
     let varies = |token: &str| {
-        let token = token.trim_matches(['(', ')', '[', ']']);
-        let number = token
+        let inner = token.trim_matches(['(', ')', '[', ']']);
+        let number = inner
             .strip_suffix("ms")
-            .or_else(|| token.strip_suffix('s'))
-            .unwrap_or(token);
-        !number.is_empty() && number.bytes().all(|b| b.is_ascii_digit() || b == b'.')
+            .or_else(|| inner.strip_suffix('s'))
+            .unwrap_or(inner);
+        let numeric = !number.is_empty() && number.bytes().all(|b| b.is_ascii_digit() || b == b'.');
+        numeric && (number.bytes().all(|b| b.is_ascii_digit()) || number != inner || inner != token)
     };
+    // The advisories `cargo audit denies:` lists, a `- ` line each, until another line.
+    let mut denied = false;
     let mut failing: Vec<String> = lines
         .iter()
         .map(|line| line.trim())
         .filter(|line| {
-            line.starts_with('✘')
+            denied = (denied && line.starts_with("- ")) || line.starts_with("cargo audit denies:");
+            (denied && line.starts_with("- "))
+                || line.starts_with('✘')
                 || line.starts_with('✖')
                 || line.starts_with("FAIL [")
                 || line.starts_with("test at ")
+                || line.starts_with("error[")
                 || line.contains(" panicked at ")
         })
         .map(|line| {
@@ -252,6 +271,24 @@ mod tests {
         assert!(
             !shared(&[("3", home)]),
             "the same wrapper and error lines aren't the same test"
+        );
+        assert_eq!(
+            failing(
+                &[
+                    "cargo audit denies:",
+                    "- RUSTSEC-2026-0012 on time 0.3.41",
+                    "- yanked ring 0.17.9",
+                    "- not after the list",
+                ][..3]
+            ),
+            ["- RUSTSEC-2026-0012 on time 0.3.41", "- yanked ring 0.17.9"]
+        );
+        assert_eq!(
+            failing(&[
+                "error[E0308]: mismatched types",
+                "error: could not compile `core`"
+            ]),
+            ["error[E0308]: mismatched types"]
         );
         assert!(
             failing(&lines(

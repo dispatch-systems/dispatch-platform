@@ -30,6 +30,11 @@ fn a_change_is_light_standard_or_sensitive_by_the_paths_it_changes() {
             "android/relay/src/main/kotlin/com/dspdispatch/relay/sms/Sender.kt",
             false,
         ),
+        (
+            "features/communications/tests/frontend/inbox.test.ts",
+            false,
+        ),
+        ("features/communications/frontend/Inbox.test.tsx", false),
     ] {
         assert_eq!(ui(path), shown, "{path}");
     }
