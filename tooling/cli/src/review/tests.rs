@@ -542,6 +542,16 @@ fn a_change_of_documentation_and_tests_alone_needs_no_review_unless_asked() {
     write(root, "features/dvic/README.md", "The week.\n");
     commit(root, "test the week");
     git(root, &["push", "-q", "-u", "origin", "keep-week"]);
+    // A PR opened before its review is pending, and merging isn't done until it's recorded.
+    let pending = crate::merge::unreviewed(
+        root,
+        "## Review\n\nUnder review\n",
+        &fixture.head(),
+        &Native,
+    )
+    .unwrap()
+    .unwrap();
+    assert!(pending.contains("isn't reviewed"), "{pending}");
     fixture.prepare(1).unwrap();
     assert!(!fixture.dir(1).exists());
     let asked = Prepare {
