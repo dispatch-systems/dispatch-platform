@@ -274,3 +274,74 @@ test('doctor names each file a generator left to write, and says what fixes it',
     fs.rmSync(checkout, { recursive: true, force: true });
   }
 });
+
+test('doctor refuses an unavailable baseline and treats a behind branch as information', () => {
+  const checkout = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-doctor-git-'));
+  const git = (...args: string[]) => {
+    const result = spawnSync('git', args, { cwd: checkout, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout.trim();
+  };
+  try {
+    git('init', '-qb', 'main');
+    git(
+      '-c',
+      'user.name=Test',
+      '-c',
+      'user.email=test@example.com',
+      'commit',
+      '-qm',
+      'base',
+      '--allow-empty',
+    );
+    const check = CHECKS.find((check) => check.name === 'origin/main')!;
+    assert.equal(check.run(checkout).ok, false);
+    const base = git('rev-parse', 'HEAD');
+    git(
+      '-c',
+      'user.name=Test',
+      '-c',
+      'user.email=test@example.com',
+      'commit',
+      '-qm',
+      'later',
+      '--allow-empty',
+    );
+    git('update-ref', 'refs/remotes/origin/main', 'HEAD');
+    git('reset', '--hard', base);
+    const behind = check.run(checkout);
+    assert.equal(behind.ok, true);
+    assert.equal(behind.fix, undefined);
+    assert.match(described([{ check: 'origin/main', ...behind }]), /1 commits behind/);
+  } finally {
+    fs.rmSync(checkout, { recursive: true, force: true });
+  }
+});
+
+test('doctor catches declaration drift and stale installed packages despite an unchanged install receipt', () => {
+  const checkout = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-doctor-packages-'));
+  const write = (file: string, value: unknown) => {
+    const target = path.join(checkout, file);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, JSON.stringify(value));
+  };
+  try {
+    const dependencies = { example: '^1.0.0' };
+    const packages = { '': { dependencies }, 'node_modules/example': { version: '1.2.0' } };
+    write('package.json', { dependencies });
+    write('package-lock.json', { packages });
+    write('node_modules/.package-lock.json', { packages });
+    write('node_modules/example/package.json', { version: '1.2.0' });
+    const check = CHECKS.find((check) => check.name === 'packages')!;
+    assert.equal(check.run(checkout).ok, true);
+    write('node_modules/example/package.json', { version: '1.1.0' });
+    assert.equal(check.run(checkout).ok, false);
+    assert.deepEqual(check.run(checkout).detail, ['example']);
+    write('node_modules/example/package.json', { version: '1.2.0' });
+    write('package.json', { dependencies: { example: '^2.0.0' } });
+    assert.equal(check.run(checkout).ok, false);
+    assert.match(check.run(checkout).fix!, /package-lock.json/);
+  } finally {
+    fs.rmSync(checkout, { recursive: true, force: true });
+  }
+});
