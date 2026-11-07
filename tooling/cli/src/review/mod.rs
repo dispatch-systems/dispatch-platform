@@ -238,6 +238,23 @@ pub struct Prepare<'a> {
     pub tier: Option<&'a str>,
     /// Whether a pass past `CAP` was asked for.
     pub over_cap: bool,
+    /// The platform checkout the CLI runs from: a checkout with no review instructions of its
+    /// own, such as the agent docs', is reviewed by these.
+    pub source: Option<&'a Path>,
+}
+/// The checkout whose `tooling/review/` instructions a review of `root` follows: its own, else
+/// those of the platform checkout the CLI runs from.
+fn instructions<'a>(root: &'a Path, source: Option<&'a Path>) -> Result<&'a Path> {
+    let has = |checkout: &Path| checkout.join(Review::Bugs.template()).is_file();
+    match (has(root), source.filter(|source| has(source))) {
+        (true, _) => Ok(root),
+        (false, Some(source)) => Ok(source),
+        (false, None) => Err(
+            "This checkout has no review instructions (tooling/review/): run it \
+                              through a platform checkout's dispatchdev."
+                .into(),
+        ),
+    }
 }
 
 /// `dispatchdev review prepare`: the change's tier, and pass `pass`'s briefs, unless it needs
@@ -360,6 +377,7 @@ pub fn prepare(root: &Path, ask: &Prepare, runner: &dyn Runner) -> Result<()> {
     let paths: Vec<&str> = paths.iter().map(String::as_str).collect();
     let fill = Fill {
         root,
+        instructions: instructions(root, ask.source)?,
         dir: &dir,
         branch: &branch,
         pass: &pass,
@@ -404,6 +422,8 @@ pub fn prepare(root: &Path, ask: &Prepare, runner: &dyn Runner) -> Result<()> {
 /// What a brief is written from.
 struct Fill<'a> {
     root: &'a Path,
+    /// Where the templates and rules come from.
+    instructions: &'a Path,
     dir: &'a Path,
     branch: &'a str,
     pass: &'a Pass,
@@ -412,7 +432,7 @@ struct Fill<'a> {
 }
 impl Fill<'_> {
     fn brief(&self, review: Review) -> Result<String> {
-        let template = fs::read_to_string(self.root.join(review.template()))?;
+        let template = fs::read_to_string(self.instructions.join(review.template()))?;
         let scratch = workspace::checkout_scratch(self.root)?;
         let decisions = scratch.join("decisions.md");
         require(
@@ -453,7 +473,7 @@ impl Fill<'_> {
             ("decisions", decisions.display().to_string()),
             (
                 "rules",
-                self.root
+                self.instructions
                     .join("tooling/review/rules.md")
                     .display()
                     .to_string(),

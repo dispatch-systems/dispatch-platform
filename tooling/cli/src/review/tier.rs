@@ -107,10 +107,15 @@ pub fn test(path: &str) -> bool {
         || path.ends_with("/tests.rs")
 }
 
-/// Whether a path is documentation the product doesn't read: Markdown, but not the AI Support
-/// worker's prompts and skills under `services/`, nor the review's own instructions.
+/// Whether a path is documentation nothing acts on: Markdown, but not what agents follow: the AI
+/// Support worker's prompts and skills under `services/`, the review's own instructions, and in
+/// the agent docs' checkout, the skills and `AGENTS.md`.
 fn documentation(path: &str) -> bool {
-    path.ends_with(".md") && !path.starts_with("services/") && !path.starts_with("tooling/review/")
+    path.ends_with(".md")
+        && !["services/", "tooling/review/", "skills/"]
+            .iter()
+            .any(|prefix| path.starts_with(prefix))
+        && path != "AGENTS.md"
 }
 
 /// Whether a path's lines count towards a change's size: lockfiles and generated files don't.

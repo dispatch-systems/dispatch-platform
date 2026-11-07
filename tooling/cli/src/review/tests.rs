@@ -56,6 +56,14 @@ fn a_change_is_light_standard_or_sensitive_by_the_paths_it_changes() {
             vec![],
         ),
         (vec![("tooling/review/rules.md", 2)], Tier::Standard, vec![]),
+        // In the agent docs' checkout, the skills and AGENTS.md are what agents follow.
+        (
+            vec![("skills/dispatch-development/references/workflow.md", 4)],
+            Tier::Standard,
+            vec![],
+        ),
+        (vec![("AGENTS.md", 1)], Tier::Standard, vec![]),
+        (vec![("README.md", 1)], Tier::Light, vec![]),
         // A Rust module's tests.rs is held only under #[cfg(test)].
         (
             vec![("tooling/cli/src/build/tests.rs", 50)],
@@ -316,6 +324,7 @@ impl Fixture {
                 pass,
                 tier: None,
                 over_cap: false,
+                source: None,
             },
             &Native,
         )
@@ -558,6 +567,7 @@ fn a_change_of_documentation_and_tests_alone_needs_no_review_unless_asked() {
         pass: 1,
         tier: Some("standard"),
         over_cap: false,
+        source: None,
     };
     prepare(root, &asked, &Native).unwrap();
     write(&fixture.dir(1), "findings.md", "No findings.\n");
@@ -695,4 +705,33 @@ fn a_change_to_what_a_page_shows_is_held_to_what_the_user_approved() {
     // Recording the pass again doesn't vouch for what came after it.
     let again = error(record(root, 1, &models, &Native));
     assert!(again.contains("was recorded at"), "{again}");
+}
+
+#[test]
+fn a_checkout_without_review_instructions_is_reviewed_by_the_clis_own() {
+    let fixture = Fixture::new();
+    let root = &fixture.root;
+    fs::remove_dir_all(root.join("tooling/review")).unwrap();
+    write(
+        root,
+        "skills/dispatch-development/SKILL.md",
+        "Review by tier.\n",
+    );
+    commit(root, "a skill");
+    git(root, &["push", "-q", "-u", "origin", "keep-week"]);
+    let ask = |source| Prepare {
+        pass: 1,
+        tier: None,
+        over_cap: false,
+        source,
+    };
+    let refused = error(prepare(root, &ask(None), &Native));
+    assert!(refused.contains("no review instructions"), "{refused}");
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    prepare(root, &ask(Some(&source)), &Native).unwrap();
+    let brief = fs::read_to_string(fixture.dir(1).join("brief.md")).unwrap();
+    assert!(
+        brief.contains(&source.join("tooling/review/rules.md").display().to_string()),
+        "{brief}"
+    );
 }

@@ -596,6 +596,9 @@ fn run() -> Result<()> {
                         pass,
                         tier: line.option("--tier"),
                         over_cap: line.flag("--over-cap"),
+                        source: std::env::var_os("DISPATCHDEV_SOURCE")
+                            .as_deref()
+                            .map(std::path::Path::new),
                     },
                     &Native,
                 ),
