@@ -33,15 +33,37 @@ export const CHECKS: Check[] = [
   {
     name: 'packages',
     run: (root) => {
+      const manifest = JSON.parse(read(root, 'package.json')) as Record<string, unknown>;
+      const lock = JSON.parse(read(root, 'package-lock.json')) as {
+        packages: Record<
+          string,
+          { version?: string; optional?: boolean } & Record<string, unknown>
+        >;
+      };
+      const declarations = (value: unknown) =>
+        JSON.stringify(Object.entries((value ?? {}) as Record<string, string>).sort());
+      if (
+        ['dependencies', 'devDependencies', 'optionalDependencies'].some(
+          (kind) => declarations(manifest[kind]) !== declarations(lock.packages['']?.[kind]),
+        )
+      )
+        return { ok: false, fix: 'update package-lock.json to match package.json, then npm ci' };
       const installed = path.join(root, 'node_modules/.package-lock.json');
       if (!fs.existsSync(installed)) return { ok: false, fix: 'npm ci' };
       type Lock = { packages: Record<string, { version?: string; optional?: boolean }> };
-      const wanted = (JSON.parse(read(root, 'package-lock.json')) as Lock).packages;
+      const wanted = lock.packages;
       const have = (JSON.parse(fs.readFileSync(installed, 'utf8')) as Lock).packages;
       // Optional packages are other platforms' builds, never installed here.
       const stale = Object.entries(wanted)
         .filter(([name, entry]) => name.startsWith('node_modules/') && !entry.optional)
-        .filter(([name, entry]) => have[name]?.version !== entry.version)
+        .filter(([name, entry]) => {
+          if (have[name]?.version !== entry.version) return true;
+          try {
+            return JSON.parse(read(root, `${name}/package.json`)).version !== entry.version;
+          } catch {
+            return true;
+          }
+        })
         .map(([name]) => name.slice('node_modules/'.length));
       return stale.length ? { ok: false, fix: 'npm ci', detail: stale.slice(0, 10) } : { ok: true };
     },
@@ -100,9 +122,16 @@ export const CHECKS: Check[] = [
     run: (root) => {
       const behind = git(root, ['rev-list', '--count', 'HEAD..origin/main']);
       const count = Number(behind.stdout.trim());
-      return behind.status !== 0 || count === 0
-        ? { ok: true }
-        : { ok: false, fix: 'git rebase origin/main', detail: [`${count} commits behind`] };
+      if (behind.status !== 0 || !Number.isFinite(count))
+        return {
+          ok: false,
+          fix: 'make origin/main available before planning the diff',
+          detail: [behind.stderr.trim() || 'Git could not read the baseline'],
+        };
+      return {
+        ok: true,
+        detail: count ? [`${count} commits behind; update only if resolving a conflict`] : [],
+      };
     },
   },
   {
@@ -126,7 +155,7 @@ export function described(findings: Finding[]) {
   return findings
     .flatMap((finding) => [
       `${finding.ok ? 'ok  ' : 'FIX '}  ${finding.check}${finding.fix && !finding.ok ? `: ${finding.fix}` : ''}`,
-      ...(finding.ok ? [] : (finding.detail ?? []).map((line) => `        ${line}`)),
+      ...(finding.detail ?? []).map((line) => `        ${line}`),
     ])
     .join('\n');
 }

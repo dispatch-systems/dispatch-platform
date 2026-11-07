@@ -7,6 +7,7 @@ use crate::{
     test_selection::{self, Workspace},
     workspace,
 };
+use serde::Serialize;
 use serde_json::Value;
 use std::{
     ffi::OsStr,
@@ -32,7 +33,7 @@ const FIXTURE: &str = "dispatchdev build --fixture";
 const BUILD: &str = "tooling/cli/dispatchdev build";
 
 /// One command of a run, in the run's build folder.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub struct Step {
     pub command: String,
 }
@@ -69,9 +70,10 @@ fn builds(command: &str) -> bool {
 pub fn changed(root: &Path, runner: &dyn Runner) -> Result<Vec<String>> {
     let git = |args: &[&str]| workspace::text(runner, &[&["git"][..], args].concat(), Some(root));
     let base = git(&["merge-base", "origin/main", "HEAD"])?;
-    let mut files: Vec<String> = git(&["diff", "--name-only", "--diff-filter=d", &base])?
-        .lines()
-        .chain(git(&["ls-files", "--others", "--exclude-standard"])?.lines())
+    let mut files: Vec<String> = git(&["diff", "--name-only", "--diff-filter=d", "-z", &base])?
+        .split('\0')
+        .chain(git(&["ls-files", "--others", "--exclude-standard", "-z"])?.split('\0'))
+        .filter(|file| !file.is_empty())
         .map(str::to_owned)
         .collect();
     files.sort();
@@ -80,17 +82,18 @@ pub fn changed(root: &Path, runner: &dyn Runner) -> Result<Vec<String>> {
 }
 /// The tests the change touches: those it changes and those watching a source it changes.
 pub fn affected(root: &Path, runner: &dyn Runner) -> Result<Vec<String>> {
+    Ok(selected(root, &changed(root, runner)?))
+}
+fn selected(root: &Path, changed: &[String]) -> Vec<String> {
     let plan = fs::read_to_string(root.join("tooling/ci/test-plan.json"))
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok())
         .unwrap_or(Value::Null);
     let workspace = Workspace::read(root).unwrap_or_default();
-    Ok(
-        test_selection::affected(&changed(root, runner)?, &plan, &workspace)
-            .into_iter()
-            .filter(|command| !command.starts_with("cargo clippy"))
-            .collect(),
-    )
+    test_selection::affected(changed, &plan, &workspace)
+        .into_iter()
+        .filter(|command| !command.starts_with("cargo clippy"))
+        .collect()
 }
 /// Every Rust test, and every Node test the CI api job runs: the browser and collector suites
 /// stay on GitHub.
@@ -267,12 +270,15 @@ fn sweep(builds: &Path) {
         return;
     };
     for entry in entries.filter_map(|entry| entry.ok()) {
-        let alive = entry
+        let pid = entry
             .file_name()
             .to_str()
-            .and_then(|name| name.parse::<u32>().ok())
-            .is_some_and(|pid| Path::new(&format!("/proc/{pid}")).exists());
-        if !alive {
+            .and_then(|name| name.parse::<i32>().ok())
+            .filter(|pid| *pid > 0);
+        if let Some(pid) = pid
+            && unsafe { libc::kill(pid, 0) } != 0
+            && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
+        {
             let _ = fs::remove_dir_all(entry.path());
         }
     }
@@ -432,27 +438,93 @@ pub enum Tests<'a> {
         file: Option<&'a str>,
     },
 }
+/// The same selection execution consumes, before any runtime readiness checks or build setup.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Plan {
+    pub scope: String,
+    pub head: String,
+    pub tree: String,
+    pub dirty: bool,
+    pub base: Option<String>,
+    pub changed: Vec<String>,
+    pub commands: Vec<String>,
+    pub steps: Vec<Step>,
+    pub notes: Vec<String>,
+}
+pub fn plan(root: &Path, tests: Tests<'_>, runner: &dyn Runner) -> Result<Plan> {
+    let git = |args: &[&str]| workspace::text(runner, &[&["git"][..], args].concat(), Some(root));
+    let mut plan = Plan {
+        scope: String::new(),
+        head: git(&["rev-parse", "HEAD"])?,
+        tree: git(&["rev-parse", "HEAD^{tree}"])?,
+        dirty: !git(&["--no-optional-locks", "status", "--porcelain", "-z"])?.is_empty(),
+        base: None,
+        changed: vec![],
+        commands: vec![],
+        steps: vec![],
+        notes: vec![],
+    };
+    match tests {
+        Tests::All => {
+            plan.scope = "all".into();
+            plan.commands = everything(root, runner)?;
+            plan.notes.push("--all runs the Rust workspace and CI's core API tests; browser and collector jobs remain on GitHub.".into());
+        }
+        Tests::Affected => {
+            plan.scope = "affected".into();
+            plan.base = Some(git(&["rev-parse", "origin/main"])?);
+            plan.changed = changed(root, runner)?;
+            plan.commands = selected(root, &plan.changed);
+        }
+        Tests::Owner { owner, only, file } => {
+            plan.scope = owner.into();
+            let file = file.map(|file| from_root(root, file));
+            (plan.commands, plan.notes) = owned(root, owner, only, file.as_deref(), runner)?;
+        }
+    }
+    plan.steps = steps(&plan.commands);
+    Ok(plan)
+}
+impl Plan {
+    pub fn print(&self) {
+        println!(
+            "Tests for {} at {}{}:",
+            self.scope,
+            self.head,
+            if self.dirty {
+                " (with uncommitted changes)"
+            } else {
+                ""
+            }
+        );
+        for note in &self.notes {
+            println!("{note}");
+        }
+        for step in &self.steps {
+            println!(
+                "{} {}",
+                if builds(&step.command) {
+                    "Build:"
+                } else {
+                    "Run:"
+                },
+                step.command
+            );
+        }
+        if self.steps.is_empty() {
+            println!("No tests selected.");
+        }
+    }
+}
 /// `dispatchdev test`.
 pub fn run(root: &Path, tests: Tests<'_>, keep: bool, runner: &dyn Runner) -> Result<bool> {
     check::here(root, "test", runner)?;
-    let commands = match tests {
-        Tests::All => everything(root, runner)?,
-        Tests::Affected => affected(root, runner)?,
-        Tests::Owner { owner, only, file } => {
-            let file = file.map(|file| from_root(root, file));
-            let (commands, notes) = owned(root, owner, only, file.as_deref(), runner)?;
-            for note in &notes {
-                println!("{note}");
-            }
-            if commands.is_empty() {
-                if notes.is_empty() {
-                    println!("{owner} has no such tests.");
-                }
-                return Ok(true);
-            }
-            commands
-        }
-    };
+    let plan = plan(root, tests, runner)?;
+    for note in &plan.notes {
+        println!("{note}");
+    }
+    let commands = plan.commands;
     if commands.is_empty() {
         println!("Nothing the diff touches has tests beyond npm run check:rules.");
         return Ok(true);
@@ -587,6 +659,27 @@ mod tests {
         assert!(run_commands(&root, &command("true"), false).unwrap());
         assert!(!dead.exists() && !root.join(BUILDS).exists());
         let _ = fs::remove_dir_all(workspace::scratch("run-test-checkout"));
+    }
+    #[test]
+    fn a_new_run_preserves_another_live_process_build() {
+        use std::process::{Command, Stdio};
+        let temp = tempfile::tempdir().unwrap();
+        let mut child = Command::new("cat")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .spawn()
+            .unwrap();
+        let build = temp.path().join(BUILDS).join(child.id().to_string());
+        fs::create_dir_all(&build).unwrap();
+        fs::write(build.join("active"), "keep").unwrap();
+        let result = run_commands(temp.path(), &["true".into()], false);
+        let preserved = build.join("active").exists();
+        drop(child.stdin.take());
+        child.wait().unwrap();
+        assert!(result.unwrap());
+        assert!(preserved, "another live process owns this build");
+        assert!(run_commands(temp.path(), &["true".into()], false).unwrap());
+        assert!(!build.exists(), "the ended process's build can be swept");
     }
     #[test]
     fn an_old_python3_stops_the_tests_and_verify_before_anything_runs() {

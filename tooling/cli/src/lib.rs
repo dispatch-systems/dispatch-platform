@@ -8,6 +8,7 @@ pub mod api;
 pub mod build;
 pub mod change;
 pub mod check;
+pub mod dev;
 pub mod machine;
 pub mod observation;
 pub mod pr;
