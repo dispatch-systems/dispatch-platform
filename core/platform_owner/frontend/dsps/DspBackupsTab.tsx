@@ -333,7 +333,11 @@ function Backups({
         </footer>
       )}
       <div className="backups-history">
-        <h3>Backups</h3>
+        <div className="collectors-section-head">
+          <div>
+            <h3>Backups</h3>
+          </div>
+        </div>
         {backups.backups.length ? (
           <ul>
             {backups.backups.map((backup) => {
@@ -424,7 +428,7 @@ function Kept({
   return (
     <>
       <span className="collectors-label">Keep</span>
-      <div className="collectors-sentence">
+      <div className="collectors-sentence backups-keep">
         <input
           type="number"
           aria-label="Keep for"
