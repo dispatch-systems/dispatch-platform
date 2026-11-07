@@ -348,16 +348,18 @@ pub fn run(root: &Path, only_check: bool, env: &Environment, runner: &dyn Runner
             url
         }
     };
-    println!(
-        "{}",
-        workspace::next(&[
-            format!(
-                "Its checks run on GitHub ({url}/checks): fix what they find and run `dispatchdev pr` again"
-            ),
+    // Only a review still to come needs starting; a recorded or skipped one is done.
+    let pending = section(text, "Review").and_then(|review| review.lines().next()) == Some(PENDING);
+    let mut next = vec![format!(
+        "Its checks run on GitHub ({url}/checks): fix what they find and run `dispatchdev pr` again"
+    )];
+    if pending {
+        next.push(
             "`dispatchdev review prepare --pass 1` judges how deep its review goes".to_owned(),
-            "Once they pass and its review is done, `dispatchdev merge` merges it".to_owned(),
-        ])
-    );
+        );
+    }
+    next.push("Once they pass and its review is done, `dispatchdev merge` merges it".to_owned());
+    println!("{}", workspace::next(&next));
     Ok(())
 }
 
