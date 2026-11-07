@@ -1,6 +1,6 @@
 use dispatchdev_cli::{
-    Native, Result, Runner, android, api, build, change, check, observation, pr, scaffold, shot,
-    test, verify,
+    Native, Result, Runner, android, api, build, change, check, dev, observation, pr, scaffold,
+    shot, test, verify,
 };
 use std::{collections::BTreeMap, path::PathBuf};
 
@@ -113,11 +113,12 @@ const COMMANDS: &[Spec] = &[
     .options(&["--title"]),
     spec(
         "finish",
-        &["finish <name> [--abandon]"],
+        &["finish <name> [--abandon]", "       [--plan [--json]]"],
         "Once the change's PR merged, or with --abandon for one that never will, its worktree, \
-         its branches and its scratch folder go.",
+         its branches and its scratch folder go, only at the inspected heads. --plan lists \
+         their identity, data and blockers without removing anything.",
     )
-    .flags(&["--abandon"])
+    .flags(&["--abandon", "--plan", "--json"])
     .arguments(1),
     spec(
         "check",
@@ -134,16 +135,26 @@ const COMMANDS: &[Spec] = &[
             "test [--all | --owner <owner>]",
             "     [--only <kind>]",
             "     [--file <path>] [--keep]",
+            "     [--plan [--json]]",
         ],
         "The tests the diff touches, or --all of them, one line each, stopping at the first \
          failure: for fixing a test, as the checks on GitHub run them. --owner runs one owner's \
          of every kind, as feature:<name>, collector:<site>, core:<part>, integration:<name>, \
          app, mcp or a name alone, or --only its rust, api, frontend, browser or native ones, or \
          one --file of them. Each run builds in a folder of its own, deleted when it ends unless \
-         --keep.",
+         --keep. --plan shows the same selection and build prerequisites without running \
+         them, including on an uncommitted checkout.",
     )
-    .flags(&["--all", "--keep"])
+    .flags(&["--all", "--keep", "--plan", "--json"])
     .options(&["--owner", "--only", "--file"]),
+    spec(
+        "dev",
+        &["dev status [--json]"],
+        "The checkout's fixture server, its process and served source identity, without \
+         starting, stopping or signing in. JSON omits the sign-in link and password.",
+    )
+    .flags(&["--json"])
+    .arguments(1),
     spec(
         "verify",
         &["verify <feature>"],
@@ -285,7 +296,7 @@ const SECTIONS: &[(&str, &[&str])] = &[
         &["start", "pr", "finish"],
     ),
     ("Checking a branch:", &["check", "test", "verify"]),
-    ("Trying it:", &["api", "shot", "browser", "android"]),
+    ("Trying it:", &["dev", "api", "shot", "browser", "android"]),
     (
         "Making things, and reading what the product has:",
         &[
@@ -437,7 +448,12 @@ fn run() -> Result<()> {
     let command = args.next().ok_or_else(help)?;
     let rest: Vec<String> = args.collect();
     if matches!(command.as_str(), "help" | "--help" | "-h") {
-        match rest.first() {
+        let rest = rest
+            .into_iter()
+            .filter(|arg| !matches!(arg.as_str(), "--help" | "-h"))
+            .collect();
+        let line = parse(find("help").expect("help command"), rest)?;
+        match line.arguments.first() {
             Some(name) => {
                 let spec = find(name).ok_or_else(|| unknown(name))?;
                 println!("Usage: dispatchdev {}\n\n{}", spec.line(), spec.about);
@@ -471,6 +487,19 @@ fn run() -> Result<()> {
         },
         "finish" => {
             let name = line.name()?;
+            if line.flag("--json") && !line.flag("--plan") {
+                return Err("--json needs --plan.".into());
+            }
+            if line.flag("--plan") {
+                let plan =
+                    change::finish_plan(&line.root()?, name, line.flag("--abandon"), &Native)?;
+                if line.flag("--json") {
+                    println!("{}", serde_json::to_string_pretty(&plan)?);
+                } else {
+                    plan.print();
+                }
+                return Ok(());
+            }
             change::finish(&line.root()?, name, line.flag("--abandon"), &Native)
         }
         "check" => {
@@ -491,6 +520,9 @@ fn run() -> Result<()> {
             }
         }
         "test" => {
+            if line.flag("--json") && !line.flag("--plan") {
+                return Err("--json needs --plan.".into());
+            }
             let (only, file) = (line.option("--only"), line.option("--file"));
             let tests = match (line.flag("--all"), line.option("--owner")) {
                 (true, Some(_)) => return Err("Choose --all or --owner.".into()),
@@ -504,10 +536,31 @@ fn run() -> Result<()> {
                 (true, None) => test::Tests::All,
                 (false, None) => test::Tests::Affected,
             };
+            if line.flag("--plan") {
+                let plan = test::plan(&line.root()?, tests, &Native)?;
+                if line.flag("--json") {
+                    println!("{}", serde_json::to_string_pretty(&plan)?);
+                } else {
+                    plan.print();
+                }
+                return Ok(());
+            }
             match test::run(&line.root()?, tests, line.flag("--keep"), &Native)? {
                 true => Ok(()),
                 false => Err("A test failed.".into()),
             }
+        }
+        "dev" => {
+            if line.name()? != "status" {
+                return Err("Use dispatchdev dev status [--json].".into());
+            }
+            let status = dev::status(&line.root()?, &Native)?;
+            if line.flag("--json") {
+                println!("{}", serde_json::to_string_pretty(&status)?);
+            } else {
+                status.print();
+            }
+            Ok(())
         }
         "verify" => {
             let feature = line.name()?;
