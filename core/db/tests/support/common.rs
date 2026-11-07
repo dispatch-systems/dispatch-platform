@@ -23,6 +23,17 @@ use std::{collections::BTreeSet, os::unix::fs::PermissionsExt, sync::Mutex};
 #[path = "objects.rs"]
 pub mod objects;
 
+/// Runs `work` as a request's, as the server's middleware runs each request: its database calls
+/// may take every slot, and a request's give up with `platform_busy` after two seconds.
+pub async fn requested<F: std::future::Future>(work: F) -> F::Output {
+    let trace = std::sync::Arc::new(std::sync::Mutex::new(
+        crate::foundation::observability::RequestContext::default(),
+    ));
+    crate::foundation::observability::REQUEST_TRACE
+        .scope(trace, work)
+        .await
+}
+
 /// Installs a registry of `collectors` and `features`, what a test needs beside core,
 /// unless one holding them is installed already. A test binary holds one registry: core's
 /// own tests get core alone, each integration test just what it names, and the app's module
