@@ -155,12 +155,13 @@ const COMMANDS: &[Spec] = &[
     ),
     spec(
         "preview",
-        &["preview [--pages <page,...>]", "preview approve"],
+        &["preview [--pages <page[/tab],...>]", "preview approve"],
         "Show the change as it is: serve it, restarting the dev server when it serves other \
-         code, and save a screenshot of each page it touches, or --pages, platform:<page> for \
-         the platform owner's own, wide and on a phone, with the link to click through it. Once the user approved how it looks, approve keeps \
-         its UI files: pr opens no PR for a change to what a page shows until those are the \
-         files it pushes.",
+         code, and save a screenshot of each page it touches, on the tab or Settings section it \
+         touches, or --pages, <page>/<tab> for a tab and platform:<page> for the platform owner's \
+         own, wide and on a phone, with the link to click through it. Once the user approved how \
+         it looks, approve keeps its UI files: pr opens no PR for a change to what a page shows \
+         until those are the files it pushes.",
     )
     .options(&["--pages"])
     .arguments(1),
@@ -242,8 +243,9 @@ const COMMANDS: &[Spec] = &[
         "A PNG of a page of the dev server npm run dev runs in the checkout, saved in the \
          checkout's scratch folder, whose path it prints: as the owner, in the fixture's DSP or \
          the one --dsp names, or on the platform owner's own pages with --platform, or --as a \
-         demo account at the address of the DSP --dsp names, signed in as api signs in. The \
-         window is --size, 1440x1000 unless told, in --theme, light unless told.",
+         demo account at the address of the DSP --dsp names, signed in as api signs in, on its \
+         --tab, a page of Settings or a tab of the page. The window is --size, 1440x1000 unless \
+         told, in --theme, light unless told.",
     )
     .flags(&["--platform"])
     .options(&["--page", "--tab", "--dsp", "--as", "--size", "--theme"]),

@@ -22,6 +22,8 @@ export function Tabs({
           key={id}
           type="button"
           role="tab"
+          // Its id, as `dispatchdev shot --tab` opens it.
+          data-tab={id}
           aria-selected={value === id}
           tabIndex={value === id ? 0 : -1}
           onPointerEnter={() => onIntent?.(id)}

@@ -1,7 +1,7 @@
 //! `dispatchdev shot`: a PNG of a page of the dev server `npm run dev` runs in the checkout,
 //! kept in the checkout's scratch folder. The account is signed in as `dispatchdev api` signs it
 //! in, once a run of the server, and the checkout's own `tooling/dev/shot.ts` opens the page with
-//! that session in the browser tests' Chromium.
+//! that session in the browser tests' Chromium, on the tab it names.
 use crate::{
     Result, Runner,
     api::{self, OWNER, Server},
@@ -182,28 +182,34 @@ pub fn run(root: &Path, shot: &Shot<'_>, runner: &dyn Runner) -> Result<()> {
         storage.to_str().ok_or("Non-UTF8 path")?,
         png.to_str().ok_or("Non-UTF8 path")?,
     );
-    runner.command(
-        &[
-            "node",
-            "node_modules/tsx/dist/cli.mjs",
-            SCRIPT,
-            "--url",
-            &url,
-            "--storage",
-            storage,
-            // A DSP's own address is a name under localhost, which the server's host answers.
-            "--host",
-            &server.host,
-            "--size",
-            shot.size,
-            "--theme",
-            shot.theme,
-            "--out",
-            png,
-        ],
-        Some(root),
-        120,
-    )?;
+    let mut args = vec![
+        "node",
+        "node_modules/tsx/dist/cli.mjs",
+        SCRIPT,
+        "--url",
+        &url,
+        "--storage",
+        storage,
+        // A DSP's own address is a name under localhost, which the server's host answers.
+        "--host",
+        &server.host,
+        "--size",
+        shot.size,
+        "--theme",
+        shot.theme,
+        "--out",
+        png,
+    ];
+    // The address opens Settings' pages and the tabs other owners add; the script clicks the rest.
+    if let Some(tab) = open.tab {
+        args.extend(["--tab", tab]);
+    }
+    // What the script says of the page, as a tab it lacks.
+    let said = runner.command(&args, Some(root), 120)?;
+    let said = String::from_utf8_lossy(&said);
+    if !said.trim().is_empty() {
+        println!("{}", said.trim());
+    }
     println!("{png}");
     Ok(())
 }
