@@ -220,11 +220,14 @@ export async function fixture(options: boolean | FixtureOptions = true) {
     keep(child.stderr);
     // The port was free when prepare() chose it, but another process can listen on it before
     // this server binds, and would answer the health check in its place. Only this server's
-    // own start line, logged once it holds the port, proves the answer is its own.
+    // own start line, logged once it holds the port, proves the answer is its own. A test gets
+    // the server once its first pass of upkeep has ended too (`upkeep.settled`): its data as
+    // that pass leaves it, which a request no longer waits behind.
     await until(async () => {
       if (startupError) throw startupError;
       if (child.exitCode !== null || child.signalCode !== null) return true;
       if (!inherit && !logs.includes('"event":"core.started"', from)) return false;
+      if (!inherit && !logs.includes('"event":"upkeep.settled"', from)) return false;
       try {
         return (await request('/api/health')).status === 200;
       } catch {
