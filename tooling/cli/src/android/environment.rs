@@ -90,7 +90,7 @@ impl Tools {
         if let Some(java) = &self.java {
             command.push(format!("JAVA_HOME={}", java.display()));
         }
-        command.extend(["./gradlew", "--console=plain", "--quiet"].map(str::to_owned));
+        command.extend(["./gradlew", "--console=plain"].map(str::to_owned));
         command.extend(args.iter().map(|value| (*value).to_owned()));
         let log = tempfile::Builder::new()
             .prefix("android-gradle-")
