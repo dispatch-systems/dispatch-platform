@@ -410,6 +410,9 @@
 }
 
 @media (width <= 760px) {
+  .documents-heading {
+    flex-wrap: wrap;
+  }
   .documents-heading .heading-actions {
     flex-wrap: wrap;
     justify-content: flex-start;
