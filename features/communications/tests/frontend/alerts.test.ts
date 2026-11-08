@@ -35,6 +35,7 @@ const waits = (conversation: string, id: string, group: string | null = null): W
     error: null,
     sender: null,
     files: [],
+    gif: null,
     group: null,
     number: null,
     moved: false,

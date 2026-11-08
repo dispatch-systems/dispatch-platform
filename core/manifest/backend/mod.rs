@@ -279,7 +279,7 @@ pub const fn feature(name: &'static str) -> Feature {
         integrations: &[],
         exposes: &[],
         deleting: Deleting::NONE,
-        on: &[],
         page_sources: &[],
+        on: &[],
     }
 }
