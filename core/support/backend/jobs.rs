@@ -9,6 +9,9 @@ use rusqlite::params;
 use serde_json::{Value, json};
 
 const LEASE_MS: i64 = 90_000;
+const READY: &str = "((j.status='queued' AND j.available_at<=?) OR (j.status='running' AND j.lease_until<=?)) \
+     AND t.status NOT IN ('denied','resolved') \
+     AND (j.kind NOT IN ('implement','release') OR j.version=t.approved_version)";
 /// Whether the ticket `t` is of no disabled DSP: a disabled DSP's tickets' jobs wait until it's
 /// enabled. None is claimed, and a lease on one holds no more, so its worker stops; the job keeps
 /// its last checkpoint, for the claim once the DSP is enabled and the lease has run out.
@@ -118,15 +121,28 @@ pub(crate) fn leased(db: &Store, job: &str, lease: &str) -> Result<Lease> {
     }
     Ok(run)
 }
+/// An idle poll uses only a shared database turn. This is a hint, never a lease: the claim
+/// checks the same current eligibility again in its transaction under the write lock.
+pub fn pending(db: &Store) -> Result<bool> {
+    let time = now();
+    Ok(db
+        .platform
+        .one_as::<(i64,)>(
+            &format!(
+                "SELECT 1 FROM support_jobs j JOIN support_tickets t ON t.id=j.ticket_id \
+                  WHERE {READY} AND {SERVED} LIMIT 1"
+            ),
+            params![time, time],
+        )?
+        .is_some())
+}
 /// The next job due, leased to the worker: none of a ticket from a disabled DSP (`SERVED`).
 pub fn claim(db: &Store) -> Result<Option<SupportJob>> {
     db.platform.transaction(|| {
         let time = now();
         let next = db.platform.one(
             &format!("SELECT j.* FROM support_jobs j JOIN support_tickets t ON t.id=j.ticket_id \
-             WHERE ((j.status='queued' AND j.available_at<=?) OR (j.status='running' AND j.lease_until<=?)) \
-             AND t.status NOT IN ('denied','resolved') AND {SERVED} \
-             AND (j.kind NOT IN ('implement','release') OR j.version=t.approved_version) \
+             WHERE {READY} AND {SERVED} \
              ORDER BY j.available_at,j.created_at,j.id LIMIT 1"), params![time, time],
         )?;
         let Some(row) = next else { return Ok(None); };

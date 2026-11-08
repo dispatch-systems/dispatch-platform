@@ -17,7 +17,7 @@ POST /api/support/notifications/read Session Write
 POST /api/support/tickets Session Write
 POST /api/support/tickets/{id}/messages Session Write
 POST /api/support/tickets/{id}/reopen Session Write
-POST /api/v1/support/worker/claim Agent("support worker") Bookkeeping
+POST /api/v1/support/worker/claim Agent("support worker") Async
 POST /api/v1/support/worker/github/events Agent("support github") Write
 POST /api/v1/support/worker/jobs/{id}/attachments Agent("support worker") Upload
 POST /api/v1/support/worker/jobs/{id}/browser Agent("support worker") Write

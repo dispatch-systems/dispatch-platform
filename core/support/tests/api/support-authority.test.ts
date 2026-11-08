@@ -62,9 +62,17 @@ test('support credentials stay separate from agent keys and its browser remains 
   const malformedEvent = await f.request(eventPath, {}, github);
   assert.equal(malformedEvent.status, 400);
   assert.equal(malformedEvent.value.error, 'invalid_input');
-  const claimed = await f.request('/api/v1/support/worker/claim', {}, machine);
-  assert.equal(claimed.status, 200);
-  const job = claimed.value;
+  const claims = await Promise.all([
+    f.request(claimPath, {}, machine),
+    f.request(claimPath, {}, machine),
+  ]);
+  assert.ok(claims.every((answer) => answer.status === 200));
+  assert.equal(claims.filter((answer) => answer.value === null).length, 1);
+  const job = claims.find((answer) => answer.value !== null)!.value;
+  assert.equal((await f.request(claimPath, {}, machine)).value, null);
+  const malformedClaim = await f.request(claimPath, { unexpected: true }, machine);
+  assert.equal(malformedClaim.status, 400);
+  assert.equal(malformedClaim.value.error, 'invalid_input');
   const browser = await f.request(
     `/api/v1/support/worker/jobs/${job.id}/browser`,
     { lease: job.lease },
@@ -112,5 +120,8 @@ test('support credentials stay separate from agent keys and its browser remains 
     machine,
   );
   assert.equal(wait.status, 200);
+  const idle = await f.request(claimPath, {}, machine);
+  assert.equal(idle.status, 200);
+  assert.equal(idle.value, null);
   assert.equal((await f.request('/api/session', undefined, headers)).status, 401);
 });
