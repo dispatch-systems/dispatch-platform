@@ -134,30 +134,25 @@ async fn those_asking_for_a_preview_at_once_share_one_download_of_its_picture() 
 
 #[tokio::test]
 async fn cancelling_header_preparation_holds_its_turn_until_the_blocking_reader_finishes() {
-    use std::{ffi::CString, os::unix::ffi::OsStrExt};
-    let folder = tempfile::tempdir().unwrap();
-    let path = folder.path().join("picture");
-    let c_path = CString::new(path.as_os_str().as_bytes()).unwrap();
-    // SAFETY: this path belongs to the test's temporary directory and is NUL-terminated.
-    assert_eq!(unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) }, 0);
     let slots = Arc::new(Semaphore::new(1));
     let turn = slots.clone().acquire_owned().await.unwrap();
-    let reader = tokio::spawn(prepare(path.clone(), turn));
-    // Opening the writer confirms the header worker has opened its reader. Its read cannot
-    // finish until bytes or EOF arrive.
-    let mut writer = tokio::fs::OpenOptions::new()
-        .write(true)
-        .open(&path)
-        .await
-        .unwrap();
+    let (started, reading) = tokio::sync::oneshot::channel();
+    let (release, released) = std::sync::mpsc::channel();
+    let (finished, done) = tokio::sync::oneshot::channel();
+    let reader = tokio::spawn(prepare(turn, move || {
+        started.send(()).unwrap();
+        released.recv().unwrap();
+        let _ = finished.send(());
+    }));
+    reading.await.unwrap();
     reader.abort();
     assert!(reader.await.unwrap_err().is_cancelled());
     let next = slots.clone().try_acquire_owned();
     let still_held = next.is_err();
     drop(next);
-    // Always release the blocking read before asserting, including on the original failure.
-    writer.write_all(b"not a picture at all").await.unwrap();
-    drop(writer);
+    // Always finish the blocking worker before asserting, including on the original failure.
+    release.send(()).unwrap();
+    done.await.unwrap();
     let _finished = slots.acquire_owned().await.unwrap();
     assert!(
         still_held,
