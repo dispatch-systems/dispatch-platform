@@ -71,7 +71,7 @@ test('only the platform owner schedules a DSP’s backups, and none is taken wit
     (event: Logged) => event.action === 'dsp.backup_schedule_changed',
   );
   assert.equal(logged.length, 1);
-  const [{ field, from, to }] = logged[0]!.changes;
+  const { field, from, to } = logged[0]!.changes[0]!;
   const rules = (value: string) =>
     (JSON.parse(value) as { on: string; dates: number[]; keep: string }[]).map((each) => [
       each.on,
