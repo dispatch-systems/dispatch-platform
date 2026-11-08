@@ -54,45 +54,60 @@ test('an owner adds Slack workspaces from New, each on a card under its name, us
   const hero = page.getByRole('heading', { level: 2, name: 'Dispatch Ops' });
   await expect(hero).toBeVisible();
   await expect(page.locator('header', { has: hero }).locator('img')).toBeVisible();
-  // It moves to Joined at once, every other channel's button left as it was while it saves.
-  const joining = '**/channels/*/join';
+  // It moves to Joined at once, every other channel's button left as it was while it saves; left
+  // before Slack answers, it moves back, the join's answer not moving it again.
+  const channels = '**/channels/*/*';
   let release = () => {};
   const held = new Promise<void>((resolve) => (release = resolve));
-  await page.route(joining, async (route) => {
+  await page.route(channels, async (route) => {
     await held;
     await route.continue();
   });
-  await page.getByRole('button', { name: 'Join photos' }).click();
   const joined = page.getByRole('list', { name: 'Joined', exact: true });
+  const notJoined = page.getByRole('list', { name: 'Not joined', exact: true });
+  await page.getByRole('button', { name: 'Join photos' }).click();
   await expect(joined).toContainText('photos');
-  await expect(
-    page.getByRole('list', { name: 'Not joined', exact: true }).getByRole('button').first(),
-  ).toBeEnabled();
-  const answered = page.waitForResponse((response) => response.url().includes('/join'));
+  await expect(notJoined.getByRole('button').first()).toBeEnabled();
+  await page.getByRole('button', { name: 'Leave photos' }).click();
+  await expect(notJoined).toContainText('photos');
+  const left = page.waitForResponse((response) => response.url().endsWith('/leave'));
   release();
-  await answered;
-  await page.unroute(joining);
+  await left;
+  await page.unroute(channels);
+  await expect(notJoined).toContainText('photos');
+  // Two Slack refuses leave it as Slack last had it.
+  await page.route(channels, (route) =>
+    route.fulfill({ status: 502, json: { error: 'slack_unavailable', message: 'Slack is down' } }),
+  );
+  await page.getByRole('button', { name: 'Join photos' }).click();
+  await page.getByRole('button', { name: 'Leave photos' }).click();
+  await expect(page.getByText('Slack is down')).toBeVisible();
+  await expect(notJoined).toContainText('photos');
+  await page.unroute(channels);
+  await page.getByRole('button', { name: 'Join photos' }).click();
   await expect(joined).toContainText('photos');
-  // An integration switched shows as switched as its question closes, before the workspace is
-  // read again.
+  // An integration switched shows as switched as its question closes, while the switch saves.
   await page
     .getByRole('navigation', { name: 'Sections' })
     .getByRole('button', { name: 'Integrations', exact: true })
     .click();
   const files = page.getByRole('switch', { name: 'Import Files', exact: true });
   const was = await files.isChecked();
-  const reading = '**/api/dsp/slack/account';
-  let read = () => {};
-  const waiting = new Promise<void>((resolve) => (read = resolve));
-  await files.click();
-  await page.route(reading, async (route) => {
-    await waiting;
+  const switching = '**/integrations/*';
+  let switched = () => {};
+  const holding = new Promise<void>((resolve) => (switched = resolve));
+  await page.route(switching, async (route) => {
+    await holding;
     await route.continue();
   });
+  await files.click();
   await page.getByRole('button', { name: was ? 'Turn off' : 'Turn on', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(files).toBeChecked({ checked: !was });
-  read();
-  await page.unroute(reading);
+  const answered = page.waitForResponse((response) => response.url().includes('/integrations/'));
+  switched();
+  await answered;
+  await page.unroute(switching);
   await expect(files).toBeChecked({ checked: !was });
   await page
     .getByRole('navigation', { name: 'Sections' })

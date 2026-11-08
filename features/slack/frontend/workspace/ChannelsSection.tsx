@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { Hash, Lock } from 'lucide-react';
-import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
+import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { DataState, ErrorBox, SearchInput } from '../../../../core/shell/frontend/ui/index.js';
 import { setSlackChannel, useSlackChannels, type SlackChannel } from '../../api/client.js';
 
@@ -11,23 +11,35 @@ import { setSlackChannel, useSlackChannels, type SlackChannel } from '../../api/
 
 export function ChannelsSection({ team }: { team: string }) {
   const channels = useSlackChannels(team);
-  // Each channel as joining or leaving it left it, or as asked while that saves, over what was
-  // read.
-  const [changed, setChanged] = useState<Record<string, SlackChannel>>({});
-  const [error, setError] = useState('');
+  // Each channel as Slack last answered joining or leaving it, over what was read; and, while
+  // asked and not yet answered, whether the latest asked joins it, with which asking that was.
+  const [answered, setAnswered] = useState<Record<string, SlackChannel>>({});
+  const [requested, setRequested] = useState<Record<string, { member: boolean; asking: number }>>(
+    {},
+  );
   const [query, setQuery] = useState('');
   const queue = useRef(Promise.resolve());
+  const askings = useRef(0);
+  const saving = useAction(
+    async (channel: string, member: boolean) => {
+      const after = await setSlackChannel(team, channel, member);
+      setAnswered((was) => ({ ...was, [after.id]: after }));
+    },
+    { inline: true },
+  );
+  // Each asking saves after those before it; once answered, or failed, it shows what Slack last
+  // answered unless another was asked since.
   const set = (channel: SlackChannel, member: boolean) => {
-    setError('');
-    setChanged((was) => ({ ...was, [channel.id]: { ...channel, member } }));
+    askings.current += 1;
+    const asking = askings.current;
+    setRequested((was) => ({ ...was, [channel.id]: { member, asking } }));
     queue.current = queue.current.then(async () => {
-      try {
-        const after = await setSlackChannel(team, channel.id, member);
-        setChanged((was) => ({ ...was, [after.id]: after }));
-      } catch (cause) {
-        setChanged((was) => ({ ...was, [channel.id]: channel }));
-        setError(messageOf(cause));
-      }
+      await saving.run(channel.id, member);
+      setRequested((was) => {
+        if (was[channel.id]?.asking !== asking) return was;
+        const { [channel.id]: _done, ...rest } = was;
+        return rest;
+      });
     });
   };
   const asked = query.trim().replace(/^#/, '').toLowerCase();
@@ -35,7 +47,11 @@ export function ChannelsSection({ team }: { team: string }) {
     <DataState data={channels.data} error={channels.error} retry={channels.refresh}>
       {(data) => {
         const shown = data.channels
-          .map((channel) => changed[channel.id] ?? channel)
+          .map((channel) => {
+            const known = answered[channel.id] ?? channel;
+            const latest = requested[channel.id];
+            return latest ? { ...known, member: latest.member } : known;
+          })
           .filter((channel) => !channel.private || channel.member)
           .filter((channel) => channel.name.toLowerCase().includes(asked));
         const group = (member: boolean) => shown.filter((channel) => channel.member === member);
@@ -47,7 +63,7 @@ export function ChannelsSection({ team }: { team: string }) {
               value={query}
               onChange={setQuery}
             />
-            <ErrorBox message={error} />
+            <ErrorBox message={saving.error} />
             {[true, false].map((member) => {
               const listed = group(member);
               if (!listed.length) return null;

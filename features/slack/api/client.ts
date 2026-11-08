@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
 import { wordedApi } from '../../../core/shell/frontend/runtime/api.js';
 import { useData } from '../../../core/shell/frontend/runtime/data-reads.js';
 import type { Linking } from '../frontend/linked/linking.js';
@@ -64,6 +64,20 @@ export const slackAccountUrl = '/api/dsp/slack/account';
 const readAccount = (signal: AbortSignal) => call<SlackAccount>(slackAccountUrl, undefined, signal);
 /** How each reading of the account reads it again, when another changed it. */
 const readers = new Set<() => void>();
+// Integrations switched here and not yet read as switched, by workspace and integration: every
+// reading of the account shows them at once. Each goes once a reading has it as switched, or
+// once its switch fails.
+const switching = new Map<string, Map<string, boolean>>();
+const watchers = new Set<() => void>();
+let switched = 0;
+const switchingChanged = () => {
+  switched += 1;
+  for (const watch of watchers) watch();
+};
+const watchSwitching = (watch: () => void) => {
+  watchers.add(watch);
+  return () => void watchers.delete(watch);
+};
 export function useSlackAccount() {
   const account = useData<SlackAccount>(
     slackAccountUrl,
@@ -73,12 +87,39 @@ export function useSlackAccount() {
     false,
     readAccount,
   );
-  const { refresh } = account;
+  const { refresh, data: read } = account;
   useEffect(() => {
     readers.add(refresh);
     return () => void readers.delete(refresh);
   }, [refresh]);
-  return account;
+  const version = useSyncExternalStore(watchSwitching, () => switched);
+  // A reading that has a switch as it was made retires it.
+  useEffect(() => {
+    let retired = false;
+    for (const workspace of read?.workspaces ?? [])
+      for (const [id, on] of switching.get(workspace.teamId) ?? [])
+        if (workspace.integrations.includes(id) === on) {
+          switching.get(workspace.teamId)!.delete(id);
+          retired = true;
+        }
+    if (retired) switchingChanged();
+  }, [read]);
+  const data = useMemo(
+    () =>
+      read && {
+        ...read,
+        workspaces: read.workspaces.map((workspace) => {
+          const asked = switching.get(workspace.teamId);
+          if (!asked?.size) return workspace;
+          const integrations = workspace.integrations.filter((id) => asked.get(id) !== false);
+          for (const [id, on] of asked) if (on && !integrations.includes(id)) integrations.push(id);
+          return { ...workspace, integrations };
+        }),
+      },
+    // A switch made or retired shows in the next reading of it.
+    [read, version],
+  );
+  return { ...account, data };
 }
 /** Has every reading of the account read it again, after a change: New's, shown on the cards. */
 export const slackAccountChanged = () => {
@@ -121,9 +162,25 @@ export const setSlackChannel = (team: string, channel: string, member: boolean) 
     `${workspaceUrl(team)}/channels/${encodeURIComponent(channel)}/${member ? 'join' : 'leave'}`,
     {},
   );
-/** Switches the integration `id` on or off in the workspace `team`. */
-export const switchSlackIntegration = (team: string, id: string, on: boolean) =>
-  call<SlackAccount>(`${workspaceUrl(team)}/integrations/${encodeURIComponent(id)}`, { on });
+/**
+ * Switches the integration `id` on or off in the workspace `team`: every reading of the account
+ * shows it switched at once, and reads the account again once it is; one that fails is taken back.
+ */
+export async function switchSlackIntegration(team: string, id: string, on: boolean) {
+  const asked = switching.get(team) ?? new Map<string, boolean>();
+  switching.set(team, asked.set(id, on));
+  switchingChanged();
+  try {
+    await call<SlackAccount>(`${workspaceUrl(team)}/integrations/${encodeURIComponent(id)}`, {
+      on,
+    });
+  } catch (cause) {
+    asked.delete(id);
+    switchingChanged();
+    throw cause;
+  }
+  slackAccountChanged();
+}
 /**
  * How the integration whose endpoints are under `path` links channels to folders: browsing the
  * folders, and linking, moving and unlinking a channel, each change read again by `changed`.
