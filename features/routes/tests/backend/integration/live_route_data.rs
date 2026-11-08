@@ -203,9 +203,7 @@ fn rows(db: &Db, table: &str) -> Vec<Map<String, Value>> {
     }
     rows
 }
-/// How live route data reads otherwise than historical route data, table by table, once the day
-/// saved from it is the day's read there: none. Historical route data names the drivers whose
-/// itineraries it holds; live route data also those only assigned to a route yet.
+/// The rows the live day retains, by table.
 fn held(db: &Db) -> Vec<Vec<Map<String, Value>>> {
     shared_tables()
         .into_iter()
@@ -213,6 +211,9 @@ fn held(db: &Db) -> Vec<Vec<Map<String, Value>>> {
         .collect()
 }
 
+/// How live route data reads otherwise than historical route data, table by table, once the day
+/// saved from it is the day's read there: none. Historical route data names the drivers whose
+/// itineraries it holds; live route data also those only assigned to a route yet.
 fn differences(db: &Store, dsp: &str) -> Vec<String> {
     while db.sweep_routes(dsp).unwrap() {}
     let (live, historical) = (db.routes_live_db(dsp).unwrap(), db.routes_db(dsp).unwrap());
