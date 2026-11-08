@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Split } from 'lucide-react';
 import type { Person, PersonId } from '../../api/index.js';
 import { confirmLink } from '../../api/client.js';
@@ -24,11 +25,23 @@ export function SheetIds({
     inline: true,
     success: (id) => `${sourceLabel(id.source)} ID ${shortId(id)} is confirmed`,
   });
+  // IDs confirmed here show confirmed at once, and go back if that fails.
+  const [confirmed, setConfirmed] = useState<string[]>([]);
+  const keyOf = (id: PersonId) => `${id.source}:${id.id}`;
+  const confirmIt = (id: PersonId) => {
+    setConfirmed((before) => [...before, keyOf(id)]);
+    void confirm.run(id).then((done) => {
+      if (!done) setConfirmed((before) => before.filter((each) => each !== keyOf(id)));
+    });
+  };
+  const ids = person.ids.map((id) =>
+    confirmed.includes(keyOf(id)) ? { ...id, confirmable: false, linkedBy: 'person' as const } : id,
+  );
   return (
     <section className="driver-sheet-section" aria-labelledby="driver-ids">
       <h3 id="driver-ids">IDs</h3>
       <ErrorBox message={confirm.error} />
-      {person.ids.map((id) => (
+      {ids.map((id) => (
         <div className="driver-id" key={`${id.source}:${id.id}`}>
           <div>
             <div className="driver-id-head">
@@ -58,11 +71,7 @@ export function SheetIds({
           <LinkTag link={id.linkedBy} />
           {(id.confirmable || person.ids.length > 1) && (
             <div className="driver-id-actions">
-              {id.confirmable && (
-                <button disabled={confirm.busy} onClick={() => void confirm.run(id)}>
-                  Confirm
-                </button>
-              )}
+              {id.confirmable && <button onClick={() => confirmIt(id)}>Confirm</button>}
               {person.ids.length > 1 && (
                 <button onClick={() => onSplit(id)}>
                   <Split size={14} aria-hidden="true" />

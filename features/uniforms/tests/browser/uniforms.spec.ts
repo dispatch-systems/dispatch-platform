@@ -100,10 +100,28 @@ test('custom fits, sizes, categories and names update other users without overwr
   await expect(
     page.getByRole('button', { name: 'Add one Rain gear, Women’s, XL', exact: true }),
   ).toHaveCount(0);
-  await page.getByRole('button', { name: 'Add one Rain gear, Unisex, XS/S', exact: true }).click();
-  await expect(page.getByLabel('Rain gear, Unisex, XS/S in stock', { exact: true })).toHaveText(
-    '1',
-  );
+  // Each press counts at once, before the server has, and they save in turn.
+  const counting = '**/api/dsp/uniforms/stock/*';
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route(counting, async (route) => {
+    await held;
+    await route.continue();
+  });
+  const add = page.getByRole('button', { name: 'Add one Rain gear, Unisex, XS/S', exact: true });
+  const count = page.getByLabel('Rain gear, Unisex, XS/S in stock', { exact: true });
+  await add.click();
+  await add.click();
+  await expect(count).toHaveText('2');
+  await expect(add).toBeEnabled();
+  await page
+    .getByRole('button', { name: 'Remove one Rain gear, Unisex, XS/S', exact: true })
+    .click();
+  await expect(count).toHaveText('1');
+  release();
+  await page.unroute(counting);
+  await expect(page.locator('.uniform-counter[aria-busy="true"]')).toHaveCount(0);
+  await expect(count).toHaveText('1');
   const context = await browser.newContext({ baseURL: dispatch.env.DISPATCH_ORIGIN });
   try {
     const other = await context.newPage();

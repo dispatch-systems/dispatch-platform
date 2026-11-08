@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Minus, Plus } from 'lucide-react';
 import type { UniformAdjustment, UniformVariant } from '../api/index.js';
 import { uniformFitLabels } from '../api/index.js';
@@ -7,6 +7,9 @@ import { adjustUniform } from '../api/client.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import { randomId } from '../../../core/shell/frontend/lib/random-id.js';
 
+// A uniform's count in one fit and size, with − and + for those who may change it. Each press shows
+// at once, and presses save one after another in the order made, so the count never jumps back;
+// one that fails is taken back and the stock read again.
 export function StockCounter({
   variant,
   uniformName,
@@ -23,6 +26,10 @@ export function StockCounter({
   refresh: () => void;
 }) {
   const [pending, setPending] = useState(0);
+  // The presses not yet saved, over the count as last answered.
+  const [ahead, setAhead] = useState(0);
+  const quantity = variant.quantity + ahead;
+  const queue = useRef(Promise.resolve());
   const action = useAction(async (delta: 1 | -1) => {
     const requestId = randomId();
     const token = view;
@@ -54,8 +61,15 @@ export function StockCounter({
       throw cause;
     } finally {
       setPending((n) => n - 1);
+      setAhead((n) => n - delta);
     }
   });
+  const press = (delta: 1 | -1) => {
+    setAhead((n) => n + delta);
+    queue.current = queue.current.then(async () => {
+      await action.run(delta);
+    });
+  };
   const label = `${uniformName}, ${uniformFitLabels[variant.fit]}, ${variant.size}`;
   return (
     <div className="uniform-counter" aria-busy={pending > 0}>
@@ -63,19 +77,19 @@ export function StockCounter({
         <button
           type="button"
           aria-label={`Remove one ${label}`}
-          disabled={!live || variant.quantity === 0}
-          onClick={() => void action.run(-1)}
+          disabled={!live || quantity === 0}
+          onClick={() => press(-1)}
         >
           <Minus size={14} />
         </button>
       )}
-      <output aria-label={`${label} in stock`}>{variant.quantity}</output>
+      <output aria-label={`${label} in stock`}>{quantity}</output>
       {canAdjust && (
         <button
           type="button"
           aria-label={`Add one ${label}`}
-          disabled={!live || variant.quantity >= 1_000_000}
-          onClick={() => void action.run(1)}
+          disabled={!live || quantity >= 1_000_000}
+          onClick={() => press(1)}
         >
           <Plus size={14} />
         </button>

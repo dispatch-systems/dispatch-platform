@@ -83,7 +83,20 @@ test('Driver Match asks who might be listed twice and makes them one person', as
   await expect(page.getByText(/is now its own person/)).toBeVisible();
   await expect(sheet.locator('.driver-id')).toHaveCount(1);
   // A title says what the sources can't, and puts them under Management.
-  await sheet.getByRole('combobox', { name: 'Role' }).selectOption('Dispatch');
+  // Chosen, it stays as chosen and can be chosen again while it saves.
+  const giving = '**/role';
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route(giving, async (route) => {
+    await held;
+    await route.continue();
+  });
+  const role = sheet.getByRole('combobox', { name: 'Role' });
+  await role.selectOption('Dispatch');
+  await expect(role.locator('option:checked')).toHaveText('Dispatch');
+  await expect(role).toBeEnabled();
+  release();
+  await page.unroute(giving);
   await expect(page.getByText('Benjamin Collins is now Dispatch', { exact: true })).toBeVisible();
   await sheet.getByRole('button', { name: 'Close dialog' }).click();
   await expect(row('Ben Collins')).toHaveCount(1);

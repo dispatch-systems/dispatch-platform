@@ -1,5 +1,5 @@
 import { GitMerge } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { GivenRole, Person, PersonDetails, PersonId } from '../../api/index.js';
 import { giveRole, removePhone, splitOff, usePersonDetails } from '../../api/client.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
@@ -106,23 +106,34 @@ export function PersonSheet({
   );
 }
 
-/** The phone numbers someone added to theirs, beside their sources', each taken off by Remove. */
+/**
+ * The phone numbers someone added to theirs, beside their sources', each taken off by Remove: gone
+ * at once, and back if that fails.
+ */
 function AddedPhones({ code, phones }: { code: string; phones: string[] }) {
   const remove = useAction((phone: string) => removePhone(code, phone), {
     inline: true,
     success: (phone) => `${phoneText(phone)} is removed`,
   });
+  // Numbers removed here, gone until the person is read again without them.
+  const [removed, setRemoved] = useState<string[]>([]);
+  const take = (phone: string) => {
+    setRemoved((before) => [...before, phone]);
+    void remove.run(phone).then((done) => {
+      if (!done) setRemoved((before) => before.filter((each) => each !== phone));
+    });
+  };
+  const shown = phones.filter((phone) => !removed.includes(phone));
+  if (!shown.length && !remove.error) return null;
   return (
     <section className="driver-sheet-section" aria-labelledby="driver-phones">
       <h3 id="driver-phones">Added numbers</h3>
       <ErrorBox message={remove.error} />
-      {phones.map((phone) => (
+      {shown.map((phone) => (
         <div className="driver-id" key={phone}>
           <strong>{phoneText(phone)}</strong>
           <div className="driver-id-actions">
-            <button disabled={remove.busy} onClick={() => void remove.run(phone)}>
-              Remove
-            </button>
+            <button onClick={() => take(phone)}>Remove</button>
           </div>
         </div>
       ))}
@@ -152,8 +163,8 @@ function SheetTitle({ person }: { person: Person }) {
 }
 
 /**
- * The role someone gave them, else Automatic, from their sources: saved as it's chosen; one
- * that fails goes back to what it was.
+ * The role someone gave them, else Automatic, from their sources: saved as it's chosen, one
+ * choice after another in the order made; one that fails goes back to what it was.
  */
 function RolePicker({ person }: { person: Person }) {
   const [chosen, setChosen] = useState(person.given ?? '');
@@ -162,6 +173,7 @@ function RolePicker({ person }: { person: Person }) {
     success: (role) =>
       role ? `${person.name} is now ${givenLabel(role)}` : `${person.name}'s role is automatic`,
   });
+  const queue = useRef(Promise.resolve());
   return (
     <section className="driver-sheet-section" aria-labelledby="driver-role">
       <h3 id="driver-role">Role</h3>
@@ -169,11 +181,12 @@ function RolePicker({ person }: { person: Person }) {
       <select
         aria-labelledby="driver-role"
         value={chosen}
-        disabled={save.busy}
-        onChange={async (event) => {
+        onChange={(event) => {
           const role = event.target.value as GivenRole | '';
           setChosen(role);
-          if (!(await save.run(role || null))) setChosen(person.given ?? '');
+          queue.current = queue.current.then(async () => {
+            if (!(await save.run(role || null))) setChosen(person.given ?? '');
+          });
         }}
       >
         <option value="">Automatic</option>
