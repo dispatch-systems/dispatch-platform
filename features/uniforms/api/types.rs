@@ -87,6 +87,9 @@ pub struct UniformAdjustment {
     pub revision: i64,
     pub variant_id: String,
     pub quantity: u32,
+    /// The request that made it, so the page that asked knows its own once it comes back: none
+    /// for a change that wasn't a count's.
+    pub request_id: Option<String>,
 }
 impl FromRow for UniformAdjustment {
     fn from_row(row: &Row<'_>) -> Result<Self> {
@@ -94,6 +97,7 @@ impl FromRow for UniformAdjustment {
             revision: row.get("revision")?,
             variant_id: row.get("variant_id")?,
             quantity: row.get("quantity")?,
+            request_id: row.get("request_id")?,
         })
     }
 }

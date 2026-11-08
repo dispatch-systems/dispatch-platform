@@ -132,7 +132,7 @@ impl UniformsStore for Store {
                 revision: current,
                 inventory: if reset { Some(inventory(&db)?) } else { None },
                 adjustments: if reset { vec![] } else { db.query_as(
-                    "SELECT revision,variant_id,quantity FROM uniform_events WHERE revision>? ORDER BY revision", [after],
+                    "SELECT revision,variant_id,quantity,request_id FROM uniform_events WHERE revision>? ORDER BY revision", [after],
                 )? },
             })
         })

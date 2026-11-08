@@ -4,14 +4,15 @@ import type { UniformAdjustment, UniformVariant } from '../api/index.js';
 import { uniformFitLabels } from '../api/index.js';
 import { ApiError, view } from '../../../core/shell/frontend/runtime/api.js';
 import { adjustUniform } from '../api/client.js';
+import { madeAt } from './uniforms.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import { randomId } from '../../../core/shell/frontend/lib/random-id.js';
 
 // A uniform's count in one fit and size, with − and + for those who may change it. Each press shows
-// at once, and presses save one after another in the order made. While they do, the count is the
-// one they started from and what they add, so a live update of a press already counted isn't
-// counted again; once the last is done it's the live count again. One that fails is taken back
-// with the presses after it, which counted on it, and the stock is read again.
+// at once over the live count, and presses save one after another in the order made: a press counts
+// until its own change is in the live count, live or as its answer, so it's never counted twice and
+// anyone else's changes show as they come. One that fails is taken back with the presses after it,
+// which counted on it, and the stock is read again.
 export function StockCounter({
   variant,
   uniformName,
@@ -28,14 +29,20 @@ export function StockCounter({
   refresh: () => void;
 }) {
   const [pending, setPending] = useState(0);
-  const [pressed, setPressed] = useState<{ from: number; ahead: number }>();
-  const quantity = pressed ? pressed.from + pressed.ahead : variant.quantity;
+  // The presses not yet answered, each by its request.
+  const [presses, setPresses] = useState<{ requestId: string; delta: 1 | -1 }[]>([]);
+  const counted = (press: { requestId: string }) => {
+    const at = madeAt.get(press.requestId);
+    return at !== undefined && at <= variant.revision;
+  };
+  const quantity = presses.reduce(
+    (sum, press) => (counted(press) ? sum : sum + press.delta),
+    variant.quantity,
+  );
   const queue = useRef(Promise.resolve());
-  const waiting = useRef(0);
   // Which run of presses a press belongs to: a failure starts another, dropping those queued.
   const run = useRef(0);
-  const action = useAction(async (delta: 1 | -1) => {
-    const requestId = randomId();
+  const action = useAction(async (delta: 1 | -1, requestId: string) => {
     const token = view;
     setPending((n) => n + 1);
     try {
@@ -68,21 +75,13 @@ export function StockCounter({
     }
   });
   const press = (delta: 1 | -1) => {
-    waiting.current += 1;
-    const from = variant.quantity;
+    const requestId = randomId();
     const of = run.current;
-    setPressed((before) => ({
-      from: before?.from ?? from,
-      ahead: (before?.ahead ?? 0) + delta,
-    }));
+    setPresses((before) => [...before, { requestId, delta }]);
     queue.current = queue.current.then(async () => {
-      const saved = run.current === of && (await action.run(delta));
+      const saved = run.current === of && (await action.run(delta, requestId));
       if (!saved && run.current === of) run.current += 1;
-      waiting.current -= 1;
-      const last = !waiting.current;
-      setPressed((before) =>
-        last || !before ? undefined : { ...before, ahead: before.ahead - (saved ? 0 : delta) },
-      );
+      setPresses((before) => before.filter((each) => each.requestId !== requestId));
     });
   };
   const label = `${uniformName}, ${uniformFitLabels[variant.fit]}, ${variant.size}`;

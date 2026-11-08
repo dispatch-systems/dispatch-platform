@@ -204,4 +204,28 @@ test('disconnected and returning tabs retain known counts and block edits until 
     document.dispatchEvent(new Event('visibilitychange'));
   });
   await expect(counter).toHaveText('2');
+  // A press held before it reaches the server counts at once, and someone else's change shows
+  // beside it as it comes; once it's saved, it counts once.
+  const counting = '**/api/dsp/uniforms/stock/*';
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route(counting, async (route) => {
+    await held;
+    await route.continue();
+  });
+  await page
+    .getByRole('button', { name: 'Add one Short Sleeve Polo, Men’s, XS', exact: true })
+    .click();
+  await expect(counter).toHaveText('3');
+  await owner.post(`/api/dsp/uniforms/stock/${variant.id}`, {
+    delta: 1,
+    requestId: crypto.randomUUID(),
+  });
+  await expect(counter).toHaveText('4');
+  const saved = page.waitForResponse((response) => response.url().includes('/uniforms/stock/'));
+  release();
+  await saved;
+  await page.unroute(counting);
+  await expect(page.locator('.uniform-counter[aria-busy="true"]')).toHaveCount(0);
+  await expect(counter).toHaveText('4');
 });

@@ -3,11 +3,22 @@ import type { Uniform, UniformAdjustment, UniformInventory, UniformUpdates } fro
 export const uniformTotal = (uniform: Uniform) =>
   uniform.variants.reduce((sum, v) => sum + v.quantity, 0);
 
+/**
+ * The revision each request's count change was made at, as it came back, live or as its answer: a
+ * page that asked can tell its own change once it's in what it was read with.
+ */
+export const madeAt = new Map<string, number>();
+const noteMade = (adjustments: UniformAdjustment[]) => {
+  for (const change of adjustments)
+    if (change.requestId) madeAt.set(change.requestId, change.revision);
+};
+
 /** A delayed mutation response can never move a quantity backwards. */
 export function applyUniformAdjustments(
   inventory: UniformInventory,
   adjustments: UniformAdjustment[],
 ): UniformInventory {
+  noteMade(adjustments);
   const latest = new Map<string, UniformAdjustment>();
   for (const change of adjustments) {
     if (change.revision > (latest.get(change.variantId)?.revision ?? -1))
@@ -41,7 +52,7 @@ export function applyUniformSnapshot(
   const newer = current.uniforms
     .flatMap((u) => u.variants)
     .filter((v) => v.revision > next.revision)
-    .map((v) => ({ variantId: v.id, revision: v.revision, quantity: v.quantity }));
+    .map((v) => ({ variantId: v.id, revision: v.revision, quantity: v.quantity, requestId: null }));
   return applyUniformAdjustments(next, newer);
 }
 export function applyUniformUpdates(

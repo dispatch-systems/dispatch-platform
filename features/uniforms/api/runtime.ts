@@ -31,6 +31,7 @@ export const uniformAdjustmentSchema = z.object({
   revision: count,
   variantId: z.string(),
   quantity: count,
+  requestId: z.nullable(z.string()),
 }) satisfies z.ZodMiniType<UniformAdjustment>;
 export const uniformUpdatesSchema = z.object({
   revision: count,
