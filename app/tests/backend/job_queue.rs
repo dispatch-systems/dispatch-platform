@@ -56,7 +56,8 @@ fn only_a_kind_a_registered_collector_collects_is_queued() {
 #[test]
 fn queued_jobs_beyond_unknown_and_ineligible_pages_remain_claimable() {
     crate::install();
-    let (_root, store) = dispatch_core::testing::store();
+    let (_root, mut store) = dispatch_core::testing::store();
+    store.config.browser_capacity = 2;
     let kind = Provider::all()
         .flat_map(Provider::job_kinds)
         .next()
