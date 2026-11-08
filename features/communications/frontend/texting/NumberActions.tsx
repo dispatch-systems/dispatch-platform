@@ -11,18 +11,22 @@ import './number-actions.css';
 
 // What someone at the DSP does with the number a conversation texts: add it to a driver or save a
 // name for it, shared with everyone at the DSP, while Driver Match knows no one by it; take it off
-// the driver it was added to; copy it; block it, once asked whether to, or unblock it.
+// the driver it was added to; copy it; block it, once asked whether to, or unblock it, which shows
+// at once and is put back if it fails.
 
 export function NumberActions({
   conversation,
   drivers,
   show,
+  readAfresh,
 }: {
   conversation: Conversation;
   /** Today's drivers, listed first to add the number to. */
   drivers: readonly RouteDriver[];
   /** Shows the conversation as the page's own writes left it. */
   show: (conversation: Conversation) => void;
+  /** Has the page read the list afresh, as after a write that failed. */
+  readAfresh: () => void;
 }) {
   const copy = useAction(() => toClipboard(conversation.number ?? ''), {
     success: 'Number copied',
@@ -32,6 +36,15 @@ export function NumberActions({
     show(await blockNumber(conversation.id, blocked));
     setBlocking(false);
   });
+  // Unblock shows at once; one that fails has the page read the list afresh, as the server has it,
+  // in turn with every update.
+  const unblocking = useAction(async () => show(await blockNumber(conversation.id, false)));
+  const unblock = () => {
+    show({ ...conversation, blocked: false });
+    void unblocking.run().then((saved) => {
+      if (!saved) readAfresh();
+    });
+  };
   const remove = useAction(async (code: string) =>
     show(await removeFromPerson(conversation.id, code)),
   );
@@ -57,7 +70,7 @@ export function NumberActions({
           </button>
         )}
         {conversation.blocked ? (
-          <button onClick={() => void block.run(false)}>
+          <button onClick={unblock}>
             <Phone size={15} />
             Unblock
           </button>

@@ -33,6 +33,8 @@ export type Open = {
   timeZone: string;
   /** Shows a conversation as the page's own writes left it. */
   show: (conversation: Conversation) => void;
+  /** Has the page read the list afresh, as after a write that failed. */
+  readAfresh: () => void;
   /** Opens another conversation, as the page's own write left it. */
   follow: (conversation: Conversation) => void;
 };
@@ -100,8 +102,13 @@ export const PARTIES: { [P in Party]: PartyPane } = {
       const number = numberBeside(open.conversation.with.name, open.conversation.number ?? '');
       return headLine(open, number && <Reach icon={<Phone aria-hidden="true" />}>{number}</Reach>);
     },
-    actions: ({ conversation, drivers, show }) => (
-      <NumberActions conversation={conversation} drivers={drivers} show={show} />
+    actions: ({ conversation, drivers, show, readAfresh }) => (
+      <NumberActions
+        conversation={conversation}
+        drivers={drivers}
+        show={show}
+        readAfresh={readAfresh}
+      />
     ),
     whom: named,
     workdays: false,

@@ -57,6 +57,7 @@ export function ConversationPane({
   timeZone,
   now,
   show,
+  readAfresh,
   back,
   closed,
   openGroup,
@@ -91,6 +92,8 @@ export function ConversationPane({
   now: number;
   /** Shows the conversation in the list as the page's own writes left it. */
   show: (conversation: Conversation) => void;
+  /** Has the page read the list afresh, as after a write that failed. */
+  readAfresh: () => void;
   back: () => void;
   /** Leaves a conversation that's no longer there. */
   closed: () => void;
@@ -152,16 +155,26 @@ export function ConversationPane({
     drivers: todays?.value.drivers ?? [],
     timeZone,
     show,
+    readAfresh,
     follow,
   };
   const number = (shown && party?.number(shown)) ?? '';
   // One that can't reach them now, as a driver holding no work phone, once it's read.
   const unreachable = shown && opened !== undefined && party?.reachable?.(shown) === false;
-  const done = useAction(async () => {
-    const after = await markDone(id, opened?.messages.at(-1) ?? conversation?.last);
+  // Done shows it done in the list at once, and as the server had it once that's saved. One that
+  // fails has the page read the list afresh, as the server has it, in turn with every update.
+  const marking = useAction(async (seen: Message | null | undefined) => {
+    const after = await markDone(id, seen);
     read.show(after);
     show(after);
   });
+  const done = () => {
+    if (!conversation) return;
+    show({ ...conversation, state: 'done', waitingSince: null });
+    void marking.run(opened?.messages.at(-1) ?? conversation.last).then((saved) => {
+      if (!saved) readAfresh();
+    });
+  };
   const sent = ({ conversation: theirs, message }: SentMessage) => {
     // Filed in another conversation, as its number changed hands as it went: follow it there.
     if (theirs.id !== id) return follow(theirs);
@@ -208,7 +221,7 @@ export function ConversationPane({
         open={profileOpen}
         opens={opens}
         back={back}
-        done={{ busy: done.busy, run: () => void done.run() }}
+        done={done}
         next={next}
         actions={shown && party?.actions?.(shown)}
       />

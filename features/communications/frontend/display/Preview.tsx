@@ -106,7 +106,7 @@ export function Preview({
                   open={profile}
                   opens={{}}
                   back={nothing}
-                  done={{ busy: false, run: nothing }}
+                  done={nothing}
                 />
                 {profile && (
                   <aside className="panel profile" aria-labelledby={title}>

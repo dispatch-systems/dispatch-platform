@@ -36,6 +36,7 @@ export function GroupPane({
   timeZone,
   now,
   show,
+  readAfresh,
   back,
   closed,
   reply,
@@ -57,6 +58,8 @@ export function GroupPane({
   now: number;
   /** Shows the group in the list as the page's own writes left it. */
   show: (group: Group) => void;
+  /** Has the page read the list afresh, as after a write that failed. */
+  readAfresh: () => void;
   back: () => void;
   /** Leaves a group that's no longer there. */
   closed: () => void;
@@ -79,11 +82,20 @@ export function GroupPane({
   const writable = workspaces.some(
     (workspace) => workspace.on && group?.teamIds.includes(workspace.teamId),
   );
-  const done = useAction(async () => {
-    const after = await markGroupDone(id, opened?.entries.at(-1) ?? group?.last);
+  // Done shows it done in the list at once, and as the server had it once that's saved. One that
+  // fails has the page read the list afresh, as the server has it, in turn with every update.
+  const marking = useAction(async (seen: GroupEntry | null | undefined) => {
+    const after = await markGroupDone(id, seen);
     read.show(after);
     show(after);
   });
+  const done = () => {
+    if (!group) return;
+    show({ ...group, state: 'done', waitingSince: null });
+    void marking.run(opened?.entries.at(-1) ?? group.last).then((saved) => {
+      if (!saved) readAfresh();
+    });
+  };
   const people = usePanel();
   // Who they are is read again as the group is.
   const refresh = `${opened?.read ?? 0}`;
@@ -103,7 +115,7 @@ export function GroupPane({
         open={people.open}
         opens={people.opens}
         back={back}
-        done={{ busy: done.busy, run: () => void done.run() }}
+        done={done}
         next={next}
       />
       {people.drawn && group && (
