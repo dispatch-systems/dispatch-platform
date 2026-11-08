@@ -24,7 +24,11 @@ import './group-thread.css';
 // shown as an answer is pointed at or reached by the keyboard (Tab reaches the name, then Reply).
 
 /** Answers one after another from the same person, within a few minutes, shown together. */
-type Run = { key: string; entries: GroupEntry[] };
+type Run = {
+  key: string;
+  entries: GroupEntry[];
+  sentBefore: GroupEntry['sender'] | undefined;
+};
 
 /** The entries under each day they were written, each of the DSP's on its own and the answers in
  * runs by who wrote them. */
@@ -41,7 +45,12 @@ function runs(entries: readonly GroupEntry[], timeZone: string) {
       last?.conversationId === entry.conversationId &&
       entry.at - last.at < PAUSE_MS;
     if (together) run!.entries.push(entry);
-    else current.runs.push({ key: entry.id, entries: [entry] });
+    else
+      current.runs.push({
+        key: entry.id,
+        entries: [entry],
+        sentBefore: run?.entries[0]?.sender ?? run?.sentBefore,
+      });
   }
   return days;
 }
@@ -79,7 +88,7 @@ export function GroupThread({
       {runs(entries, timeZone).map(({ day, at, runs }) => (
         <Fragment key={day}>
           <DayLabel>{dayLabel(at, timeZone, now)}</DayLabel>
-          {runs.map(({ key, entries: written }, at) => {
+          {runs.map(({ key, entries: written, sentBefore }, at) => {
             const first = written[0]!;
             const last = written.at(-1)!;
             const pause = pauses && paused(runs[at - 1]?.entries.at(-1)?.at, first.at) && (
@@ -87,8 +96,6 @@ export function GroupThread({
             );
             if (first.sender) {
               const gone = first.progress && progressText(first.progress);
-              const sentBefore = runs.slice(0, at).findLast((each) => each.entries[0]?.sender)
-                ?.entries[0]?.sender;
               return (
                 <Fragment key={key}>
                   {pause}

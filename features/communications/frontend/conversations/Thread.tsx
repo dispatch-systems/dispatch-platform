@@ -90,15 +90,13 @@ export function Thread({
           ) : (
             <DayLabel>{dayLabel(at, timeZone, now)}</DayLabel>
           )}
-          {runs.map(({ key, messages: written }, at) => {
+          {runs.map(({ key, messages: written, sentBefore }, at) => {
             const first = written[0]!;
             const sender = first.sender;
             const previous = runs[at - 1]?.messages;
             const before = previous?.[0]?.number;
             const switched = workdays && before && first.number && first.number !== before;
             // The DSP's sender is named once another sent the DSP's before them that day.
-            const sentBefore = runs.slice(0, at).findLast((each) => each.messages[0]?.sender)
-              ?.messages[0]?.sender;
             const named = plain || (sender && (!sameSender(sentBefore, sender) || first.group));
             return (
               <Fragment key={key}>

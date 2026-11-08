@@ -11,6 +11,7 @@ export function useConversationReads(dsp: string, changed: Changed) {
   const [reads, setReads] = useState(() => ({ dsp, reads: new ConversationReads() }));
   if (reads.dsp !== dsp) setReads({ dsp, reads: new ConversationReads() });
   useLayoutEffect(() => reads.reads.change(changed), [reads, changed]);
+  useEffect(() => () => reads.reads.dispose(), [reads]);
   return reads.reads;
 }
 

@@ -73,6 +73,25 @@ test('texts two phones sent from their own apps minutes apart are a run under ea
   );
 });
 
+test('sender labels remember the last outgoing sender across replies, pauses and a day boundary', () => {
+  const [dispatch, station] = [phone('dispatch', 'Dispatch'), phone('station', 'Station')];
+  const days = runs(
+    [
+      text('first', 0, dispatch),
+      text('reply', 1),
+      text('again', 20, dispatch),
+      text('reply again', 21),
+      text('other phone', 22, station),
+      text('next day', 24 * 60, station),
+    ],
+    'America/Los_Angeles',
+  );
+  assert.deepEqual(
+    days.map((day) => day.runs.map((run) => run.sentBefore?.phoneId)),
+    [[undefined, 'dispatch', 'dispatch', 'dispatch', 'dispatch'], [undefined]],
+  );
+});
+
 test('the page shows pictures of the kinds browsers show, and offers others to download', () => {
   for (const kind of ['png', 'jpeg', 'gif', 'webp', 'avif']) assert.ok(isPhoto(`image/${kind}`));
   for (const kind of ['image/heic', 'image/heif', 'image/svg+xml', 'application/pdf'])
