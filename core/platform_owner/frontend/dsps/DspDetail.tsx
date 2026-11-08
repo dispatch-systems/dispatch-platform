@@ -89,10 +89,12 @@ export function DspDetail({
             {dsp.profile.abbreviation && <span>{dsp.profile.abbreviation}</span>}
             {dsp.ownerEmail && <span className="dsp-detail-owner">{dsp.ownerEmail}</span>}
             {dsp.code && (
-              <a href={dspAddress(dsp.code)} target="_blank" rel="noopener noreferrer">
-                {new URL(dspAddress(dsp.code)).host}
-                <ExternalLink size={12} />
-              </a>
+              <span>
+                <a href={dspAddress(dsp.code)} target="_blank" rel="noopener noreferrer">
+                  {new URL(dspAddress(dsp.code)).host}
+                  <ExternalLink size={12} />
+                </a>
+              </span>
             )}
           </small>
         </div>
