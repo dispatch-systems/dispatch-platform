@@ -546,7 +546,10 @@ test("A GIF goes to a phone as KLIPY's sizes of it, never to an app too old to s
   };
 
   // One not of KLIPY's addresses, or beside photos, is refused.
-  const elsewhere = { ...gif, versions: [{ ...gif.versions[0], url: 'https://example.com/a.gif' }] };
+  const elsewhere = {
+    ...gif,
+    versions: [{ ...gif.versions[0], url: 'https://example.com/a.gif' }],
+  };
   const refused = await owner.post(messages, { text: '', gif: elsewhere });
   assert.deepEqual([refused.status, refused.value.error], [400, 'invalid_input']);
 
