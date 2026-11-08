@@ -27,17 +27,6 @@ impl Store {
         let Some(scope) = self.site_directory(site)? else {
             return Ok(());
         };
-        let first = self.platform.exec(
-            "UPDATE throttle SET count=count+1 WHERE key=? AND count=? AND reset_at>=?",
-            params![
-                crypto::sha(attempts_key(scope.as_deref(), email)),
-                self.config.security.password_account_attempts,
-                now()
-            ],
-        )? == 1;
-        if !first {
-            return Ok(());
-        }
         let directory = self.directory(scope.as_deref())?;
         let Some(row) = UserRow::find(&directory, "email", email)? else {
             return Ok(());
@@ -46,7 +35,22 @@ impl Store {
             return Ok(());
         }
         drop(directory);
-        self.audit_account(&row.user, scope.as_deref(), "account.locked_out", "")
+        // The mark and the event commit together: a note that fails leaves the next refusal
+        // of the window to note it.
+        self.platform.transaction(|| {
+            let first = self.platform.exec(
+                "UPDATE throttle SET count=count+1 WHERE key=? AND count=? AND reset_at>=?",
+                params![
+                    crypto::sha(attempts_key(scope.as_deref(), email)),
+                    self.config.security.password_account_attempts,
+                    now()
+                ],
+            )? == 1;
+            if !first {
+                return Ok(());
+            }
+            self.audit_account(&row.user, scope.as_deref(), "account.locked_out", "")
+        })
     }
     /// Notes in the audit log a wrong password tried for `user`, of `dsp`'s directory or the
     /// platform's: nothing once their DSP is gone, as one deleted while the password was checked.
