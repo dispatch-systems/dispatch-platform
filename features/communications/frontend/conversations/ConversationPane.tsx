@@ -9,6 +9,7 @@ import type {
 } from '../../api/index.js';
 import { markDone, retryText, sayTyping, sendMessage } from '../../api/client.js';
 import { ErrorBox } from '../../../../core/shell/frontend/ui/index.js';
+import { useFeedback } from '../../../../core/shell/frontend/runtime/feedback.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { lastFour } from '../shared/format.js';
 import { PaneHead } from '../shared/PaneHead.js';
@@ -157,11 +158,26 @@ export function ConversationPane({
   const number = (shown && party?.number(shown)) ?? '';
   // One that can't reach them now, as a driver holding no work phone, once it's read.
   const unreachable = shown && opened !== undefined && party?.reachable?.(shown) === false;
-  const done = useAction(async () => {
-    const after = await markDone(id, opened?.messages.at(-1) ?? conversation?.last);
-    read.show(after);
-    show(after);
-  });
+  // Done shows it done at once, and as the server had it once that's saved; one that fails puts
+  // it back as it was.
+  const { perform } = useFeedback();
+  const done = () => {
+    if (!conversation) return;
+    const seen = opened?.messages.at(-1) ?? conversation.last;
+    const was = conversation;
+    const marked = { ...conversation, state: 'done' as const, waitingSince: null };
+    read.show(marked);
+    show(marked);
+    void perform(async () => {
+      const after = await markDone(id, seen);
+      read.show(after);
+      show(after);
+    }).then((saved) => {
+      if (saved) return;
+      read.show(was);
+      show(was);
+    });
+  };
   const sent = ({ conversation: theirs, message }: SentMessage) => {
     // Filed in another conversation, as its number changed hands as it went: follow it there.
     if (theirs.id !== id) return follow(theirs);
@@ -208,7 +224,7 @@ export function ConversationPane({
         open={profileOpen}
         opens={opens}
         back={back}
-        done={{ busy: done.busy, run: () => void done.run() }}
+        done={done}
         next={next}
         actions={shown && party?.actions?.(shown)}
       />

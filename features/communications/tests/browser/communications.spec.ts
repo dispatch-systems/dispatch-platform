@@ -418,8 +418,21 @@ test('an owner messages a group from New message, its answers come back together
   await group.getByRole('button', { name: 'Reply to Cameron Hayes' }).click();
   const cameron = page.getByRole('region', { name: 'Cameron Hayes' });
   await cameron.getByRole('button', { name: 'Cameron and Casey' }).click();
-  // Done marks everything waiting under it done.
+  // Done marks everything waiting under it done, at once, before the server has.
+  const marking = '**/groups/*/done';
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route(marking, async (route) => {
+    await held;
+    await route.continue();
+  });
   await group.getByRole('button', { name: 'Done' }).click();
+  await expect(list.getByRole('heading', { name: /^Waiting/ })).toHaveCount(0);
+  await expect(group.getByRole('button', { name: 'Done' })).toHaveCount(0);
+  const answered = page.waitForResponse((response) => response.url().endsWith('/done'));
+  release();
+  await answered;
+  await page.unroute(marking);
   await expect(list.getByRole('heading', { name: /^Waiting/ })).toHaveCount(0);
 });
 

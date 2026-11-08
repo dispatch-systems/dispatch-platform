@@ -7,7 +7,7 @@ import type {
 } from '../../../api/index.js';
 import { markGroupDone, messageGroup, slackAttachments } from '../../../api/client.js';
 import { ErrorBox } from '../../../../../core/shell/frontend/ui/index.js';
-import { useAction } from '../../../../../core/shell/frontend/runtime/useAction.js';
+import { useFeedback } from '../../../../../core/shell/frontend/runtime/feedback.js';
 import { peopleText } from './groups.js';
 import { Composer } from '../../conversations/Composer.js';
 import type { Drafts } from '../../conversations/drafts.js';
@@ -79,11 +79,26 @@ export function GroupPane({
   const writable = workspaces.some(
     (workspace) => workspace.on && group?.teamIds.includes(workspace.teamId),
   );
-  const done = useAction(async () => {
-    const after = await markGroupDone(id, opened?.entries.at(-1) ?? group?.last);
-    read.show(after);
-    show(after);
-  });
+  // Done shows it done at once, and as the server had it once that's saved; one that fails puts
+  // it back as it was.
+  const { perform } = useFeedback();
+  const done = () => {
+    if (!group) return;
+    const seen = opened?.entries.at(-1) ?? group.last;
+    const was = group;
+    const marked = { ...group, state: 'done' as const, waitingSince: null };
+    read.show(marked);
+    show(marked);
+    void perform(async () => {
+      const after = await markGroupDone(id, seen);
+      read.show(after);
+      show(after);
+    }).then((saved) => {
+      if (saved) return;
+      read.show(was);
+      show(was);
+    });
+  };
   const people = usePanel();
   // Who they are is read again as the group is.
   const refresh = `${opened?.read ?? 0}`;
@@ -103,7 +118,7 @@ export function GroupPane({
         open={people.open}
         opens={people.opens}
         back={back}
-        done={{ busy: done.busy, run: () => void done.run() }}
+        done={done}
         next={next}
       />
       {people.drawn && group && (

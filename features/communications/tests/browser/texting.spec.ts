@@ -121,12 +121,22 @@ test('with its phone and no Slack, Communications opens on Recents, where its te
   await expect(list.getByRole('listitem').filter({ hasText: 'Jamie Ortiz' })).toHaveCount(0);
   await page.getByRole('tab', { name: 'Contacts' }).click();
   const contacts = page.getByRole('region', { name: 'Contacts' });
+  // Unblocked, it leaves Blocked at once, before the server has.
+  const unblocking = '**/conversations/*/unblock';
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route(unblocking, async (route) => {
+    await held;
+    await route.continue();
+  });
   await contacts
     .getByRole('listitem')
     .filter({ hasText: 'Jamie Ortiz' })
     .getByRole('button', { name: 'Unblock' })
     .click();
   await expect(contacts.getByRole('button', { name: 'Unblock' })).toHaveCount(0);
+  release();
+  await page.unroute(unblocking);
   await expect(contacts.getByRole('listitem').filter({ hasText: 'Jamie Ortiz' })).toContainText(
     '(425) 555-0199',
   );

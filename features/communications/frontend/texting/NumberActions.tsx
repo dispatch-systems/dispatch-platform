@@ -4,6 +4,7 @@ import type { Conversation, RouteDriver } from '../../api/index.js';
 import { blockNumber, removeFromPerson } from '../../api/client.js';
 import { phoneText } from '../../../../core/shell/frontend/lib/format.js';
 import { toClipboard } from '../../../../core/shell/frontend/runtime/clipboard.js';
+import { useFeedback } from '../../../../core/shell/frontend/runtime/feedback.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { ConfirmDialog, Popover } from '../../../../core/shell/frontend/ui/index.js';
 import { SaveContact } from './SaveContact.js';
@@ -11,7 +12,8 @@ import './number-actions.css';
 
 // What someone at the DSP does with the number a conversation texts: add it to a driver or save a
 // name for it, shared with everyone at the DSP, while Driver Match knows no one by it; take it off
-// the driver it was added to; copy it; block it, once asked whether to, or unblock it.
+// the driver it was added to; copy it; block it, once asked whether to, or unblock it, which shows
+// at once and is put back if it fails.
 
 export function NumberActions({
   conversation,
@@ -32,6 +34,13 @@ export function NumberActions({
     show(await blockNumber(conversation.id, blocked));
     setBlocking(false);
   });
+  const { perform } = useFeedback();
+  const unblock = () => {
+    show({ ...conversation, blocked: false });
+    void perform(async () => show(await blockNumber(conversation.id, false))).then((done) => {
+      if (!done) show(conversation);
+    });
+  };
   const remove = useAction(async (code: string) =>
     show(await removeFromPerson(conversation.id, code)),
   );
@@ -57,7 +66,7 @@ export function NumberActions({
           </button>
         )}
         {conversation.blocked ? (
-          <button onClick={() => void block.run(false)}>
+          <button onClick={unblock}>
             <Phone size={15} />
             Unblock
           </button>
