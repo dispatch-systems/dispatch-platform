@@ -13,6 +13,7 @@ use dispatch_core::{
 };
 use dispatch_cortex::routes::Mode;
 use serde_json::Value;
+use std::collections::HashMap;
 
 /// Every day with a publication at the DSP's station, newest first.
 pub(super) fn route_days(store: &Store, id: &str) -> Result<RouteDays> {
@@ -100,6 +101,15 @@ pub(super) fn route_itinerary(
          WHERE t.publication_id=? AND t.itinerary_id=? ORDER BY t.executed_at,t.task_id",
         [&publication_id, itinerary_id],
     )?;
+    // Preserve the query's task ordering while indexing each active task once.
+    let mut by_stop: HashMap<&str, Vec<&Value>> = HashMap::new();
+    for task in &tasks {
+        if task["active"] != 0
+            && let Some(stop) = task["stop_id"].as_str()
+        {
+            by_stop.entry(stop).or_default().push(task);
+        }
+    }
     let stops = db
         .all(
             "SELECT s.*,a.address1,a.city,a.state,a.postal_code,a.latitude,a.longitude \
@@ -115,9 +125,10 @@ pub(super) fn route_itinerary(
             planned_start_at: stop["planned_start_at"].as_i64(),
             planned_end_at: stop["planned_end_at"].as_i64(),
             address: address_from(stop, "latitude", "longitude"),
-            tasks: tasks
-                .iter()
-                .filter(|t| t["stop_id"] == stop["stop_id"] && t["active"] != 0)
+            tasks: by_stop
+                .remove(s(stop, "stop_id"))
+                .unwrap_or_default()
+                .into_iter()
                 .map(task_from)
                 .collect(),
         })

@@ -1,5 +1,9 @@
 //! Staging a checked capture one itinerary at a time, with ownership rechecked at each write.
-use super::{DOMAIN, RoutesStore, shaping::Shaper};
+use super::{
+    RoutesStore,
+    shaping::{Shaper, prepare_lists},
+    storage::stage_prepared_routes_start,
+};
 use dispatch_core::{Error, Result, db::Store, foundation::observability};
 use dispatch_cortex::routes::{Capture, Collection, Request};
 use serde::{Deserialize, Serialize};
@@ -54,10 +58,11 @@ pub(super) async fn stage_capture(
     mine: impl Fn(&Store) -> Result<()> + Clone + Send + 'static,
 ) -> Result<Staged> {
     let blocking = blocking("routes.stage_failed");
-    let capture_checked = tokio::task::spawn_blocking(move || {
+    let (capture_checked, responses) = tokio::task::spawn_blocking(move || {
         capture.validate(&request)?;
         capture.validate_response_budget()?;
-        Ok::<_, Error>(capture)
+        let responses = prepare_lists(&capture)?;
+        Ok::<_, Error>((capture, responses))
     })
     .await
     .map_err(blocking)??;
@@ -67,9 +72,9 @@ pub(super) async fn stage_capture(
     let count = itineraries.len();
     let (d, k, check) = (dsp.to_owned(), key.to_owned(), mine.clone());
     let staged = state
-        .run_scoped(dsp, DOMAIN, move |db| {
+        .run_unpublished(dsp, move |db| {
             check(db)?;
-            db.stage_routes_start(&d, &k, &capture, count)
+            stage_prepared_routes_start(db, &d, &k, &capture, count, &responses)
         })
         .await?;
     for captured in itineraries {
@@ -79,7 +84,7 @@ pub(super) async fn stage_capture(
             .map_err(blocking)??;
         let (d, staged, check) = (dsp.to_owned(), staged.clone(), mine.clone());
         state
-            .run_scoped(dsp, DOMAIN, move |db| {
+            .run_unpublished(dsp, move |db| {
                 check(db)?;
                 db.stage_routes_itinerary(&d, &staged, &shaped)
             })

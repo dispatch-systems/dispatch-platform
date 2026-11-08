@@ -32,6 +32,10 @@ impl Default for ReadTurns {
 }
 impl ReadTurns {
     pub async fn enter(&self, key: String) -> Result<ReadTurn> {
+        self.enter_for(key, Duration::from_secs(15)).await
+    }
+    /// Takes a keyed turn with the caller's waiting budget, before entering the database pool.
+    pub(crate) async fn enter_for(&self, key: String, wait: Duration) -> Result<ReadTurn> {
         let busy = || Error::new("platform_busy", 503);
         let slot = self.slots.clone().try_acquire_owned().map_err(|_| busy())?;
         let lock = {
@@ -45,7 +49,7 @@ impl ReadTurns {
                 lock
             }
         };
-        let lock = tokio::time::timeout(Duration::from_secs(15), lock.lock_owned())
+        let lock = tokio::time::timeout(wait, lock.lock_owned())
             .await
             .map_err(|_| busy())?;
         Ok(ReadTurn {

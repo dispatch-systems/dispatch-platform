@@ -13,6 +13,29 @@ use serde::Serialize;
 use serde_json::{Map, Value, json};
 use std::io::Write;
 
+/// One list response compressed before its database write.
+pub(super) struct PreparedResponse {
+    pub name: &'static str,
+    pub bytes: usize,
+    pub body: Vec<u8>,
+}
+pub(super) fn prepare_lists(capture: &Capture) -> Result<Vec<PreparedResponse>> {
+    [
+        ("summaries", &capture.summaries),
+        ("route_summaries", &capture.route_summaries),
+    ]
+    .into_iter()
+    .map(|(name, list)| {
+        let bytes = serde_json::to_vec(list)?;
+        Ok(PreparedResponse {
+            name,
+            bytes: bytes.len(),
+            body: gzip(&bytes)?,
+        })
+    })
+    .collect()
+}
+
 /// One itinerary's rows, shaped and compressed ahead of its insert.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
