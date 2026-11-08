@@ -199,10 +199,24 @@ struct SharedRead {
     revision: u64,
 }
 #[derive(Default)]
+struct SharedValue(Mutex<()>);
+impl SharedValue {
+    fn read<T: Send + Sync + 'static>(
+        &self,
+        load: impl FnOnce() -> Result<Arc<T>>,
+    ) -> Result<Arc<T>> {
+        let _turn = self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        load()
+    }
+}
+#[derive(Default)]
 pub struct ReadCache {
     entries: Mutex<VecDeque<Entry>>,
     /// Only live shared calculations retain a turn; a later miss can retry an error or panic.
-    making: Mutex<HashMap<SharedRead, Weak<Mutex<()>>>>,
+    making: Mutex<HashMap<SharedRead, Weak<SharedValue>>>,
 }
 impl ReadCache {
     /// Keep one immutable derived result when pages need different slices of it.
@@ -217,40 +231,36 @@ impl ReadCache {
         if let Some(value) = self.cached(&scope, &key, revision) {
             return Ok(value);
         }
-        // One immutable derived result is calculated once on a concurrent miss. Hold no cache
-        // mutex while it is made, so another DSP or another read still proceeds independently.
-        let making = {
-            let mut keys = self
-                .making
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            keys.retain(|_, lock| lock.strong_count() > 0);
-            let named = SharedRead {
-                scope: scope.clone(),
-                key: key.clone(),
+        let making = self.begin_shared(SharedRead {
+            scope: scope.clone(),
+            key: key.clone(),
+            revision,
+        });
+        making.read(|| {
+            self.read_sized(
+                scope,
+                key,
                 revision,
-            };
-            match keys.get(&named).and_then(Weak::upgrade) {
-                Some(lock) => lock,
-                None => {
-                    let lock = Arc::new(Mutex::new(()));
-                    keys.insert(named, Arc::downgrade(&lock));
-                    lock
-                }
-            }
-        };
-        let _turn = making
+                || Ok(Arc::new(load()?)),
+                |value| Ok(serde_json::to_vec(value.as_ref())?.len().saturating_mul(2)),
+            )
+        })
+    }
+    /// Join before waiting: every joined reader holds the same in-flight value alive.
+    fn begin_shared(&self, named: SharedRead) -> Arc<SharedValue> {
+        let mut keys = self
+            .making
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        // Authorization stays with each caller, and the cache is checked only once its turn
-        // comes. Neither errors nor panics become cached results.
-        self.read_sized(
-            scope,
-            key,
-            revision,
-            || Ok(Arc::new(load()?)),
-            |value| Ok(serde_json::to_vec(value.as_ref())?.len().saturating_mul(2)),
-        )
+        keys.retain(|_, value| value.strong_count() > 0);
+        match keys.get(&named).and_then(Weak::upgrade) {
+            Some(value) => value,
+            None => {
+                let value = Arc::new(SharedValue::default());
+                keys.insert(named, Arc::downgrade(&value));
+                value
+            }
+        }
     }
     /// Call under the transition write lock, before the first mutation. Evict on
     /// errors too: a later database may fail after an earlier one committed.

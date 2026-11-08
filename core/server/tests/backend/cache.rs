@@ -104,61 +104,98 @@ fn simultaneous_misses_compute_without_serializing_and_store_one_entry() {
 }
 
 #[test]
-fn shared_misses_reuse_one_calculation_while_another_tenant_can_finish() {
+fn joined_shared_reads_reuse_successes_even_when_oversized_or_evicted() {
     use std::sync::{
         atomic::{AtomicUsize, Ordering},
         mpsc,
     };
-    let cache = Arc::new(ReadCache::default());
-    let loads = Arc::new(AtomicUsize::new(0));
-    let (started, loading) = mpsc::channel();
-    let (release, released) = mpsc::channel();
-    std::thread::scope(|threads| {
-        let (first_cache, first_loads) = (cache.clone(), loads.clone());
-        let first = threads.spawn(move || {
-            first_cache
-                .shared(meals("a"), "people".into(), 1, || {
-                    first_loads.fetch_add(1, Ordering::SeqCst);
-                    started.send(()).unwrap();
-                    released.recv().unwrap();
-                    Ok(7)
+    for (bytes, evict) in [(7, false), (LARGEST, false), (7, true)] {
+        let cache = Arc::new(ReadCache::default());
+        let loads = Arc::new(AtomicUsize::new(0));
+        let (started, loading) = mpsc::channel();
+        let (release, released) = mpsc::channel();
+        std::thread::scope(|threads| {
+            let (first_cache, first_loads) = (cache.clone(), loads.clone());
+            let first = threads.spawn(move || {
+                first_cache
+                    .shared(meals("a"), "people".into(), 1, || {
+                        first_loads.fetch_add(1, Ordering::SeqCst);
+                        started.send(()).unwrap();
+                        released.recv().unwrap();
+                        Ok("x".repeat(bytes))
+                    })
+                    .unwrap()
+            });
+            loading.recv().unwrap();
+            // Join the real admission path before releasing the calculation. A signal before
+            // calling shared() would allow every duplicate to arrive only after it finished.
+            let duplicates: Vec<_> = (0..8)
+                .map(|_| {
+                    cache.begin_shared(SharedRead {
+                        scope: meals("a"),
+                        key: "people".into(),
+                        revision: 1,
+                    })
                 })
-                .unwrap()
-        });
-        loading.recv().unwrap();
-        let (ready, readers) = mpsc::channel();
-        let duplicates: Vec<_> = (0..8)
-            .map(|_| {
-                let (cache, loads, ready) = (cache.clone(), loads.clone(), ready.clone());
-                threads.spawn(move || {
-                    ready.send(()).unwrap();
-                    cache
-                        .shared(meals("a"), "people".into(), 1, || {
-                            loads.fetch_add(1, Ordering::SeqCst);
-                            Ok(7)
-                        })
+                .collect();
+            assert_eq!(
+                *cache
+                    .shared(meals("b"), "people".into(), 1, || Ok(9))
+                    .unwrap(),
+                9
+            );
+            release.send(()).unwrap();
+            let first = first.join().unwrap();
+            if bytes == LARGEST {
+                assert!(
+                    !cache
+                        .entries
+                        .lock()
                         .unwrap()
+                        .iter()
+                        .any(|entry| entry.scope == meals("a"))
+                );
+            }
+            if evict {
+                for key in 0..ENTRIES {
+                    cache
+                        .read(meals("b"), format!("other-{key}"), 1, || Ok(key))
+                        .unwrap();
+                }
+                assert!(
+                    !cache
+                        .entries
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .any(|entry| entry.scope == meals("a"))
+                );
+            }
+            // These readers already joined while the first calculation was held. Even if
+            // scheduled after it completes, their admission keeps its successful Arc alive.
+            let readers: Vec<_> = duplicates
+                .into_iter()
+                .map(|pending| {
+                    let loads = loads.clone();
+                    threads.spawn(move || {
+                        pending
+                            .read(|| {
+                                loads.fetch_add(1, Ordering::SeqCst);
+                                Ok(Arc::new("duplicate".to_owned()))
+                            })
+                            .unwrap()
+                    })
                 })
-            })
-            .collect();
-        for _ in 0..8 {
-            readers.recv().unwrap();
-        }
-        // The first calculation is still held. Another DSP finishes before it is released.
-        assert_eq!(
-            *cache
-                .shared(meals("b"), "people".into(), 1, || Ok(9))
-                .unwrap(),
-            9
-        );
-        release.send(()).unwrap();
-        let first = first.join().unwrap();
-        for reader in duplicates {
-            let value = reader.join().unwrap();
-            assert!(Arc::ptr_eq(&first, &value));
-        }
-    });
-    assert_eq!(loads.load(Ordering::SeqCst), 1);
+                .collect();
+            for reader in readers {
+                assert!(
+                    Arc::ptr_eq(&first, &reader.join().unwrap()),
+                    "bytes={bytes}, evict={evict}"
+                );
+            }
+        });
+        assert_eq!(loads.load(Ordering::SeqCst), 1);
+    }
 }
 
 #[test]
