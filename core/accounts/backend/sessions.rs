@@ -24,7 +24,7 @@ impl Store {
     fn account_limited(&self, dsp: Option<&str>, email: &str) -> Result<bool> {
         let tried = self.platform.count(
             "SELECT coalesce(max(count),0) FROM throttle WHERE key=? AND reset_at>=?",
-            params![crypto::sha(&attempts_key(dsp, email)), now()],
+            params![crypto::sha(attempts_key(dsp, email)), now()],
         )?;
         Ok(tried >= self.config.security.password_account_attempts)
     }
