@@ -295,8 +295,19 @@ test('the platform puts a feature in beta at a DSP, and only the testers it adds
   await refresh();
   await expect(memberLink).toBeVisible();
 
-  // Removed, they lose it again.
+  // Removed, they leave the list at once, and lose it again.
+  const removing = '**/beta-testers/*/remove';
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route(removing, async (route) => {
+    await held;
+    await route.continue();
+  });
   await testers.getByRole('button', { name: 'Remove Jordan Ellis' }).click();
+  await expect(testers).not.toContainText('Jordan Ellis');
+  release();
+  await page.unroute(removing);
+  await expect(page.getByText('Jordan Ellis removed from beta testers')).toBeVisible();
   await expect(testers).not.toContainText('Jordan Ellis');
   await refresh();
   await expect(memberLink).toHaveCount(0);
@@ -349,6 +360,33 @@ test('a part reaches no more people than its feature, the list finds a feature b
   const sight = pane.getByRole('radiogroup', { name: 'Who sees Timecard' });
   const meals = pane.getByRole('combobox', { name: 'Who sees Meal Breaks tab' });
   await expect(meals).toHaveValue('shown');
+  // A change shows at once, every control left as it was while it saves.
+  const saving = '**/api/platform/dsps/*/features/visibility';
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route(saving, async (route) => {
+    await held;
+    await route.continue();
+  });
+  await meals.selectOption('hidden');
+  await expect(meals).toHaveValue('hidden');
+  await expect(meals).toBeEnabled();
+  await expect(sight.getByRole('radio', { name: 'Beta testers' })).toBeEnabled();
+  await expect(pane.getByRole('switch', { name: 'Meal Breaks tab', exact: true })).toBeEnabled();
+  release();
+  await page.unroute(saving);
+  await expect(page.getByText('Meal Breaks tab hidden from Northline Logistics')).toBeVisible();
+  await expect(meals).toHaveValue('hidden');
+  await meals.selectOption('shown');
+  await expect(page.getByText('Meal Breaks tab shown to Northline Logistics')).toBeVisible();
+  // One the server refuses goes back to what it saved, though reading it again finds no change.
+  await page.route(saving, (route) =>
+    route.fulfill({ status: 409, json: { error: 'not_now', message: 'Not now' } }),
+  );
+  await meals.selectOption('beta');
+  await expect(page.getByText('Not now')).toBeVisible();
+  await expect(meals).toHaveValue('shown');
+  await page.unroute(saving);
   // In beta, the feature takes its parts there, and what a part was shown to waits for it.
   await sight.getByRole('radio', { name: 'Beta testers' }).click();
   await expect(meals).toHaveValue('beta');

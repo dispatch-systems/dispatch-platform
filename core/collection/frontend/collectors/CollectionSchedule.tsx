@@ -67,17 +67,30 @@ export function CollectionSchedule({
   }, [collection, base.revision, dirty]);
   const rules = useMemo(() => drafts.map(finished), [drafts]);
   const whole = rules.every(Boolean);
+  // Its saves, the switch's and the rules', go one after another, each from the revision the one
+  // before answered with.
+  const queue = useRef(Promise.resolve());
+  const revision = useRef(base.revision);
+  revision.current = base.revision;
 
   async function save(): Promise<boolean> {
     if (busy || !whole) return false;
     setBusy(true);
     setError('');
     try {
-      const answer = await saveRules(
-        collection.collection,
-        rules.map((rule) => rule!),
-        base.revision,
+      const saving = queue.current.then(() =>
+        saveRules(
+          collection.collection,
+          rules.map((rule) => rule!),
+          revision.current,
+        ),
       );
+      queue.current = saving.then(
+        () => undefined,
+        () => undefined,
+      );
+      const answer = await saving;
+      revision.current = answer.revision;
       const fresh = { drafts: draftsOf(answer.rules), revision: answer.revision };
       setBase(fresh);
       setDrafts(fresh.drafts);
@@ -142,24 +155,37 @@ export function CollectionSchedule({
     };
   }, [collection.collection, asked]);
 
-  const switching = useRef(false);
-  async function turn(enabled: boolean) {
-    if (switching.current) return;
-    switching.current = true;
-    setBusy(true);
+  // The switch shows as turned at once and saves behind it, nothing else held back; turns made
+  // while it saves are sent after it, the last one winning, and it shows the collection's own
+  // answer once they are done.
+  const [turned, setTurned] = useState<boolean>();
+  const wanted = useRef<boolean>(undefined);
+  const on = turned ?? collection.enabled;
+  function turn(enabled: boolean) {
+    setTurned(enabled);
     setError('');
-    try {
-      const answer = await switchSchedule(collection.collection, enabled, collection.revision);
-      // The rules are as they were: edits of them carry on from the new revision.
-      setBase((before) => ({ ...before, revision: answer.revision }));
-      saved(answer);
-    } catch (cause) {
-      setError(messageOf(cause));
-      if (cause instanceof ApiError && cause.code === 'schedule_changed') refresh();
-    } finally {
-      switching.current = false;
-      setBusy(false);
-    }
+    const under = wanted.current !== undefined;
+    wanted.current = enabled;
+    if (under) return;
+    queue.current = queue.current.then(async () => {
+      try {
+        let sent: boolean | undefined;
+        while (wanted.current !== sent) {
+          sent = wanted.current!;
+          const answer = await switchSchedule(collection.collection, sent, revision.current);
+          // The rules are as they were: edits of them carry on from the new revision.
+          revision.current = answer.revision;
+          setBase((before) => ({ ...before, revision: answer.revision }));
+          saved(answer);
+        }
+      } catch (cause) {
+        setError(messageOf(cause));
+        if (cause instanceof ApiError && cause.code === 'schedule_changed') refresh();
+      } finally {
+        wanted.current = undefined;
+        setTurned(undefined);
+      }
+    });
   }
   async function collect(collects: ScheduledCollection['collection']) {
     setError('');
@@ -199,7 +225,7 @@ export function CollectionSchedule({
         <dl className="collectors-stat">
           <dt>Next run</dt>
           <dd>
-            {collection.enabled && collection.nextRun ? (
+            {on && collection.nextRun ? (
               <>
                 {runDay(collection.nextRun, timezone)}
                 <small>{until(collection.nextRun, timezone)}</small>
@@ -218,8 +244,7 @@ export function CollectionSchedule({
                 type="checkbox"
                 role="switch"
                 aria-label="On schedule"
-                checked={collection.enabled}
-                disabled={busy}
+                checked={on}
                 onChange={(e) => void turn(e.target.checked)}
               />
             </label>
@@ -269,7 +294,7 @@ export function CollectionSchedule({
           rules={rules}
           timezone={timezone}
           runs={runs}
-          off={collection.rules.length > 0 && !collection.enabled}
+          off={collection.rules.length > 0 && !on}
         />
       )}
       {(dirty || error) && (

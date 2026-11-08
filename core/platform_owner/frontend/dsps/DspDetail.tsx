@@ -154,7 +154,7 @@ export function DspDetail({
       {tab === 'features' ? (
         <DspFeaturesTab dsp={dsp} changed={changed} />
       ) : tab === 'beta' ? (
-        <DspBetaTab dsp={dsp} />
+        <DspBetaTab key={dsp.id} dsp={dsp} />
       ) : tab === 'backups' ? (
         <DspBackupsTab dsp={dsp} />
       ) : (
