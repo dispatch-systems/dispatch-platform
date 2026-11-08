@@ -35,6 +35,7 @@ pub fn issue(db: &Store, job: &str, lease: &str) -> Result<SupportBrowserGrant> 
         "support.browser_opened",
         s(&ticket, "reporter_name"),
         Some(s(&ticket, "title")),
+        (tickets::TICKET, &run.ticket),
     )?;
     let unsigned = format!("{PREFIX}{job}:{lease}");
     let token = format!("{unsigned}:{}", crypto::sign(&db.key, &unsigned));

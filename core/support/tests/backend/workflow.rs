@@ -631,9 +631,27 @@ fn read_only_browser_authority_is_scoped_to_the_active_job_and_reporters_host() 
     report(&db, &owner(&db));
     let job = jobs::claim(&db).unwrap().unwrap();
     let cookie = browser::issue(&db, &job.id, &job.lease).unwrap();
-    // Seeing Dispatch as the reporter is in the audit log, once a half hour however often.
+    // Seeing Dispatch as the reporter is in the audit log, once a half hour a ticket however
+    // often, and once for another ticket of theirs under the same title.
     browser::issue(&db, &job.id, &job.lease).unwrap();
     assert_eq!(logged(&db), ["support.browser_opened"]);
+    tickets::create(
+        &db,
+        &owner(&db),
+        &json!({
+            "requestId":"another-valid-client-idempotency-key", "kind":"bug",
+            "title":"Selection disappears", "description":"Again, on another page.",
+            "attachmentIds":[]
+        }),
+    )
+    .unwrap();
+    let another = jobs::claim(&db).unwrap().unwrap();
+    assert_ne!(another.detail.ticket.id, job.detail.ticket.id);
+    browser::issue(&db, &another.id, &another.lease).unwrap();
+    assert_eq!(
+        logged(&db),
+        ["support.browser_opened", "support.browser_opened"]
+    );
     let raw = &cookie.cookie.value;
     let identity = db.authenticate(raw, &Site::Admin).unwrap();
     assert!(browser::read_only(&identity));
