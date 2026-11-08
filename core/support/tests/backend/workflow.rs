@@ -8,6 +8,18 @@ use crate::{
 };
 use serde_json::json;
 
+/// The actions of the audit log's AI Support events, oldest first.
+fn logged(db: &Store) -> Vec<String> {
+    let logged: Vec<(String,)> = db
+        .platform
+        .query_as(
+            "SELECT action FROM audit WHERE action LIKE 'support.%' ORDER BY id",
+            [],
+        )
+        .unwrap();
+    logged.into_iter().map(|(action,)| action).collect()
+}
+
 fn owner(db: &Store) -> Auth {
     Auth {
         user: db.active_platform_owners().unwrap().remove(0),
@@ -553,6 +565,10 @@ fn merge_and_resolution_require_current_commit_browser_proof_and_are_separate_st
     );
     assert!(notifications::unread(&db, &a).unwrap() > 0);
     tickets::reopen(&db, &a, &job.detail.ticket.id).unwrap();
+    assert_eq!(
+        logged(&db).last().map(String::as_str),
+        Some("support.reopened")
+    );
     let reopened = jobs::claim(&db).unwrap().unwrap();
     assert_eq!(reopened.kind, "investigate");
     assert_eq!(reopened.detail.ticket.pr_url, None);
@@ -595,6 +611,17 @@ fn waiting_can_resume_without_an_attempt_limit_and_a_denial_cancels_work() {
     .unwrap();
     assert!(jobs::heartbeat(&db, &resumed.id, &resumed.lease, &json!({})).is_err());
     assert!(jobs::claim(&db).unwrap().is_none());
+    // Each decision and the resume are in the audit log; a resume refused, with nothing
+    // waiting, is not.
+    assert!(approvals::resume(&db, &auth, &job.detail.ticket.id).is_err());
+    assert_eq!(
+        logged(&db),
+        [
+            "support.change_approved",
+            "support.resumed",
+            "support.change_declined"
+        ]
+    );
 }
 
 #[test]
@@ -604,6 +631,27 @@ fn read_only_browser_authority_is_scoped_to_the_active_job_and_reporters_host() 
     report(&db, &owner(&db));
     let job = jobs::claim(&db).unwrap().unwrap();
     let cookie = browser::issue(&db, &job.id, &job.lease).unwrap();
+    // Seeing Dispatch as the reporter is in the audit log, once a half hour a ticket however
+    // often, and once for another ticket of theirs under the same title.
+    browser::issue(&db, &job.id, &job.lease).unwrap();
+    assert_eq!(logged(&db), ["support.browser_opened"]);
+    tickets::create(
+        &db,
+        &owner(&db),
+        &json!({
+            "requestId":"another-valid-client-idempotency-key", "kind":"bug",
+            "title":"Selection disappears", "description":"Again, on another page.",
+            "attachmentIds":[]
+        }),
+    )
+    .unwrap();
+    let another = jobs::claim(&db).unwrap().unwrap();
+    assert_ne!(another.detail.ticket.id, job.detail.ticket.id);
+    browser::issue(&db, &another.id, &another.lease).unwrap();
+    assert_eq!(
+        logged(&db),
+        ["support.browser_opened", "support.browser_opened"]
+    );
     let raw = &cookie.cookie.value;
     let identity = db.authenticate(raw, &Site::Admin).unwrap();
     assert!(browser::read_only(&identity));

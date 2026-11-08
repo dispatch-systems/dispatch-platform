@@ -137,6 +137,22 @@ const phrases: AuditPhrases = {
   'dsp.backup_downloaded': (e) => ['downloaded a backup of ', strong(e.dspName ?? 'a DSP')],
   'dsp.ai_support_hidden': (e) => ['hid AI Support from ', strong(e.dspName ?? 'a DSP')],
   'dsp.ai_support_shown': (e) => ['showed AI Support to ', strong(e.dspName ?? 'a DSP')],
+  'support.change_approved': (e) => [
+    'approved the change for AI Support ticket ',
+    strong(e.target ?? 'a ticket'),
+  ],
+  'support.change_declined': (e) => [
+    'declined the change for AI Support ticket ',
+    strong(e.target ?? 'a ticket'),
+  ],
+  'support.resumed': (e) => ['resumed AI Support ticket ', strong(e.target ?? 'a ticket')],
+  'support.reopened': (e) => ['reopened AI Support ticket ', strong(e.target ?? 'a ticket')],
+  'support.browser_opened': (e) => [
+    'let AI Support see Dispatch as ',
+    strong(e.detail),
+    ' for ',
+    strong(e.target ?? 'a ticket'),
+  ],
   'dsp.code_changed': (e) => [
     'gave ',
     strong(e.dspName ?? 'a DSP'),
@@ -196,6 +212,7 @@ export const facts = new Set([
   'automatic',
   'reason',
   'openUntil',
+  'ticket',
 ]);
 const fact = (event: AuditEvent, field: string) =>
   event.changes.find((change) => change.field === field)?.to ?? '';
@@ -262,6 +279,7 @@ const spoken = new Set([
   'dsp.feature_beta',
   'dsp.ai_support_hidden',
   'dsp.ai_support_shown',
+  'support.browser_opened',
   'settings.changed',
 ]);
 export const isSpoken = (action: string) =>

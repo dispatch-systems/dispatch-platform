@@ -53,6 +53,9 @@ re-verifies and keeps working until GitHub confirms merge.
 `merged` means the checked change reached main and is awaiting production release. It becomes
 `resolved` only after a deployed production release contains the merge and its browser behavior
 has been verified. Reporters can reopen a declined, merged or resolved ticket for a new analysis.
+The audit log keeps, by the ticket's title, each change approved or declined
+(`support.change_approved`, `support.change_declined`), each Resume (`support.resumed`) and each
+Reopen (`support.reopened`), with who did it.
 
 ## Routes and configuration
 
@@ -70,7 +73,9 @@ fixtures and do not contact Hermes, GitHub or collection providers.
 
 The investigation browser receives a dedicated read-only cookie tied to its active job and the
 reporter's current account access. The server rejects writes, including public routes; opening a
-DSP view skips its audit write. This identity cannot change account security, submit support
+DSP view skips its audit write. Issuing the cookie is in the audit log instead, as
+`support.browser_opened` under Access, by the reporter's name and the ticket's title, once a half
+hour a ticket, as a person's visits are. This identity cannot change account security, submit support
 messages or use worker credentials. Screenshots are authenticated PNG, JPEG, WebP or GIF uploads
 up to 20 MiB; staged uploads expire after a day if unused. Screenshot content is stored privately
 and is never automatically posted in a public PR.
