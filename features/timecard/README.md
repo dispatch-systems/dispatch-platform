@@ -78,7 +78,10 @@ through Driver Match.
   `settings.changed`; `paycom.settings_updated`, which it logged before, keeps its wording for
   the entries history holds.
 - **People:** its employees and its meal breaks' drivers are Driver Match's `timecards` and
-  `meal_breaks` kinds of data.
+  `meal_breaks` kinds of data. Paycom's directory reads compact roster and workday summaries,
+  refreshed with each period publication, including unchanged collections whose collection
+  time advances. Original publications stay intact. Legacy writes mark the summaries dirty;
+  reads use history until the next publication or hourly upkeep rebuilds them.
 - **Storage:** in the collectors' own databases, which it migrates: Paycom's (`paycom`) and
   Cortex's (`cortex`). Its settings are core's, in the DSP's own database; the preferences it
   kept in Paycom's `settings` before (`paycom.preferences`) move into them once, as the DSP

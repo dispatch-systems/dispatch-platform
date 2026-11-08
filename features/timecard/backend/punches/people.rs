@@ -2,7 +2,7 @@
 //! seen on the days they worked.
 use dispatch_core::{
     Result,
-    db::{Store, n, s},
+    db::{Db, Store, n, s},
     manifest::people::{self, KindInfo, Named, People, Workdays},
 };
 use dispatch_paycom as paycom;
@@ -21,17 +21,41 @@ pub const PEOPLE: People = People::new(
     employees,
 )
 .records("day", |store, dsp| {
-    people::records(
-        &*store.collector(dsp, paycom::PROVIDER)?,
+    let db = store.collector(dsp, paycom::PROVIDER)?;
+    let sql = if super::people_summary::valid(&db)? {
+        "SELECT employee_code id,count(*) count,max(date) last \
+         FROM paycom_people_workdays GROUP BY employee_code"
+    } else {
         "SELECT employee_code id,count(DISTINCT date) count,max(date) last \
-         FROM timecards WHERE hours>0 GROUP BY employee_code",
-    )
+         FROM timecards WHERE hours>0 GROUP BY employee_code"
+    };
+    people::records(&db, sql)
 })
 .workdays(workdays)
 .driver_departments(driver_departments);
 
 fn employees(store: &Store, dsp: &str) -> Result<Vec<Named>> {
     let paycom = store.collector(dsp, paycom::PROVIDER)?;
+    if super::people_summary::valid(&paycom)? {
+        return super::people_summary::employees(&paycom);
+    }
+    let mut found = roster(&paycom)?;
+    // Days worked say when an employee was really there; the roster only that they were
+    // listed. Worked days replace the roster's wherever there are any.
+    for row in paycom.all(
+        "SELECT employee_code code,min(date) first,max(date) last FROM timecards \
+         WHERE hours>0 GROUP BY employee_code",
+        [],
+    )? {
+        if let Some(entry) = found.get_mut(s(&row, "code")) {
+            entry.first_seen = Some(s(&row, "first").to_owned());
+            entry.last_seen = Some(s(&row, "last").to_owned());
+        }
+    }
+    Ok(found.into_values().collect())
+}
+/// The historical roster naming rules, shared with summary publication.
+pub(super) fn roster(paycom: &Db) -> Result<BTreeMap<String, Named>> {
     let mut found: BTreeMap<String, Named> = BTreeMap::new();
     // The newest roster names an employee as Paycom lists them now.
     for row in paycom.all(
@@ -53,23 +77,21 @@ fn employees(store: &Store, dsp: &str) -> Result<Vec<Named>> {
         entry.seen(day, day);
         entry.listed |= n(&row, "listed") == 1;
     }
-    // Days worked say when an employee was really there; the roster only that they were
-    // listed. Worked days replace the roster's wherever there are any.
-    for row in paycom.all(
-        "SELECT employee_code code,min(date) first,max(date) last FROM timecards \
-         WHERE hours>0 GROUP BY employee_code",
-        [],
-    )? {
-        if let Some(entry) = found.get_mut(s(&row, "code")) {
-            entry.first_seen = Some(s(&row, "first").to_owned());
-            entry.last_seen = Some(s(&row, "last").to_owned());
-        }
-    }
-    Ok(found.into_values().collect())
+    Ok(found)
 }
 /// When Paycom shows hours, and the days its periods were collected for.
 fn workdays(store: &Store, dsp: &str) -> Result<Workdays> {
     let paycom = store.collector(dsp, paycom::PROVIDER)?;
+    if super::people_summary::valid(&paycom)? {
+        return Ok(Workdays {
+            worked: paycom.query_as("SELECT employee_code,date FROM paycom_people_workdays", [])?,
+            collected: paycom
+                .query_as::<(String,)>("SELECT date FROM paycom_people_collected_days", [])?
+                .into_iter()
+                .map(|(date,)| date)
+                .collect(),
+        });
+    }
     let worked = paycom.query_as::<(String, String)>(
         "SELECT DISTINCT employee_code,date FROM timecards WHERE hours>0",
         [],
@@ -90,3 +112,7 @@ fn driver_departments(store: &Store, dsp: &str) -> Result<Option<BTreeSet<String
     let drivers = crate::backend::settings::driver_departments(store, dsp)?;
     Ok(drivers.map(|list| list.into_iter().collect()))
 }
+
+#[cfg(test)]
+#[path = "../../tests/backend/punches/people.rs"]
+mod tests;

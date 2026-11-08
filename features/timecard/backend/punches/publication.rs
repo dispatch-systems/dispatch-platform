@@ -29,6 +29,7 @@ pub(crate) fn publish_timecards(store: &Store, id: &str, value: &Value) -> Resul
     }
     let fingerprint = crypto::sha(serde_json::to_vec(&fingerprint)?);
     db.transaction(|| {
+        super::people_summary::prepare(&db)?;
         let previous = db.setting("paycom.publicationFingerprint", Value::Null)?;
         if s(&previous, "digest") == fingerprint {
             let updated = db.exec(
@@ -41,6 +42,7 @@ pub(crate) fn publish_timecards(store: &Store, id: &str, value: &Value) -> Resul
                 ],
             )?;
             if updated == 1 {
+                super::people_summary::published(&db, s(&previous, "id"))?;
                 return Ok(());
             }
         }
@@ -111,6 +113,7 @@ pub(crate) fn publish_timecards(store: &Store, id: &str, value: &Value) -> Resul
                 &json!({"id":publication,"digest":fingerprint}),
             )?;
         }
+        super::people_summary::published(&db, &publication)?;
         Ok(())
     })?;
     Ok(

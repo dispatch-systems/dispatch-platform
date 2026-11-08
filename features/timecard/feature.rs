@@ -34,7 +34,10 @@ use dispatch_core::testing;
 
 use backend::{meals, punches};
 use dispatch_core::{
-    db::{Migration, Migrations, OwnMigrations, migrations::Apply::Sql},
+    db::{
+        Migration, Migrations, OwnMigrations,
+        migrations::Apply::{Code, Sql},
+    },
     manifest::{
         Audit,
         DefaultRole::{Manager, Member},
@@ -89,6 +92,10 @@ pub const FEATURE: Feature = Feature {
                 "timecards",
                 "timecard_sources",
                 "employee_timecard_syncs",
+                "paycom_people",
+                "paycom_people_workdays",
+                "paycom_people_collected_days",
+                "paycom_people_state",
                 "settings",
             ],
         ),
@@ -145,16 +152,27 @@ pub const FEATURE: Feature = Feature {
             ],
         },
     ],
-    own_migrations: &[OwnMigrations {
-        kind: cortex::DATABASE,
-        list: &[Migration {
-            id: 1,
-            name: "meal_publication_jobs",
-            apply: Sql(include_str!(
-                "migrations/cortex/0001_meal_publication_jobs.sql"
-            )),
-        }],
-    }],
+    own_migrations: &[
+        OwnMigrations {
+            kind: cortex::DATABASE,
+            list: &[Migration {
+                id: 1,
+                name: "meal_publication_jobs",
+                apply: Sql(include_str!(
+                    "migrations/cortex/0001_meal_publication_jobs.sql"
+                )),
+            }],
+        },
+        OwnMigrations {
+            kind: paycom::DATABASE,
+            list: &[Migration {
+                id: 1,
+                name: "people_summaries",
+                apply: Code(punches::people_summary::install),
+            }],
+        },
+    ],
+    maintenance: &[punches::people_summary::MAINTENANCE],
     domains: &[punches::DOMAIN, meals::DOMAIN],
     cached: &[
         Cached {
