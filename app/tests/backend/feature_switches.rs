@@ -202,12 +202,17 @@ fn a_part_needs_a_connection_of_its_own_beside_its_pages() {
     };
     let on = |id: &str| (id.to_owned(), true);
     let off = |id: &str| (id.to_owned(), false);
-    // Timecard needs Paycom's timecards; its Meal Breaks tab, Cortex's meal breaks too.
+    // Timecard needs Paycom's timecards, and comes on with its first tab alone.
     let timecard = db.set_feature(&dsp, "timecard", true, &owner.id).unwrap();
     assert_eq!(
         changes(timecard),
-        [on("paycom"), on("timecard"), on("cortex")]
+        [on("paycom"), on("timecard"), on("timecard.daily")]
     );
+    // Its Meal Breaks tab needs Cortex's meal breaks too.
+    let meals = db
+        .set_feature(&dsp, "timecard.meal_breaks", true, &owner.id)
+        .unwrap();
+    assert_eq!(changes(meals), [on("cortex"), on("timecard.meal_breaks")]);
     // Without Cortex, only the tab that needs it goes.
     let cortex = db.set_feature(&dsp, "cortex", false, &owner.id).unwrap();
     assert_eq!(
@@ -226,7 +231,9 @@ fn a_part_needs_a_connection_of_its_own_beside_its_pages() {
 #[test]
 fn a_hidden_feature_keeps_running_out_of_its_members_sight() {
     let (_root, db, owner, dsp) = new_dsp();
-    db.set_feature(&dsp, "timecard", true, &owner).unwrap();
+    for feature in ["timecard", "timecard.meal_breaks", "timecard.employees"] {
+        db.set_feature(&dsp, feature, true, &owner).unwrap();
+    }
     let shown = |db: &Store| -> Vec<String> {
         db.shown_features(&dsp, false)
             .unwrap()
@@ -288,7 +295,9 @@ fn a_hidden_feature_keeps_running_out_of_its_members_sight() {
 #[test]
 fn a_page_in_beta_is_its_testers_alone_with_its_parts_and_their_permissions() {
     let (_root, db, owner, dsp) = new_dsp();
-    db.set_feature(&dsp, "timecard", true, &owner).unwrap();
+    for feature in ["timecard", "timecard.meal_breaks", "timecard.employees"] {
+        db.set_feature(&dsp, feature, true, &owner).unwrap();
+    }
     let seen = |db: &Store, tester: bool| -> Vec<String> {
         db.shown_features(&dsp, tester)
             .unwrap()
