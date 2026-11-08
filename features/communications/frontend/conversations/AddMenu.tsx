@@ -21,7 +21,7 @@ export function AddMenu({ disabled, choices }: { disabled: boolean; choices: Add
       className="add-menu"
       triggerClassName="round"
       panelClassName="add-menu-panel"
-      label="Add to message"
+      label="Attach"
       trigger={<Plus size={18} />}
       open={open}
       disabled={disabled}
