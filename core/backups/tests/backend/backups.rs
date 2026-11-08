@@ -201,7 +201,7 @@ async fn a_backup_holds_the_dsps_files_each_sent_once_and_expires_without_what_o
 }
 
 #[tokio::test]
-async fn a_rule_whose_backup_fails_runs_again_within_the_hour() {
+async fn a_rule_whose_backup_fails_or_is_cut_short_runs_again_within_the_hour() {
     let backups = Backups::start().await;
     backups.pass().await;
     let dsp = backups.dsp.clone();
@@ -230,6 +230,36 @@ async fn a_rule_whose_backup_fails_runs_again_within_the_hour() {
         (Some("failed"), Some("object_store_unavailable"))
     );
     assert!(row["rule_id"].is_string());
+    assert!(next <= now() + 60 * 60 * 1000, "{next}");
+    assert!(row["expires_at"].is_i64());
+
+    // One the last server was taking when it stopped fails the same way, holding what it sent.
+    let dsp = backups.dsp.clone();
+    let rule = row["rule_id"].as_str().unwrap().to_owned();
+    let (row, next) = backups
+        .sql(move |db| {
+            db.platform.exec(
+                "UPDATE backup_rules SET next_run=? WHERE id=?",
+                rusqlite::params![now() + 30 * 24 * 60 * 60 * 1000, rule],
+            )?;
+            db.platform.exec(
+                "INSERT INTO backups(id,dsp_id,rule_id,status,created_at,keep_last) \
+                 VALUES ('bak_cut',?,?,'running',1,3)",
+                rusqlite::params![dsp, rule],
+            )?;
+            history::uploading(&db.platform, "bak_cut", &"c".repeat(64))?;
+            history::interrupted(&db.platform)?;
+            let row = db
+                .platform
+                .one("SELECT * FROM backups WHERE id='bak_cut'", [])?
+                .unwrap();
+            let kept = schedule::schedule(&db.platform, &dsp)?;
+            Ok((row, kept.rules[0].next_run.unwrap()))
+        })
+        .await;
+    assert_eq!(row["status"], "failed");
+    assert!(row["expires_at"].is_i64());
+    assert!(row["files"].as_str().unwrap().contains(&"c".repeat(64)));
     assert!(next <= now() + 60 * 60 * 1000, "{next}");
 }
 

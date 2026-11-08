@@ -418,26 +418,42 @@ fn write_rules(platform: &Db, dsp: &str, rules: &[Kept], tz: Tz) -> Result<()> {
     Ok(())
 }
 
-/// Turns the DSP's schedule on or off: on, each rule runs next when it would from now.
+/// Turns the DSP's schedule on or off, its rules as they are, so rules being edited still save
+/// over it: on, each rule runs next when it would from now.
 pub fn switch(db: &Store, dsp: &str, enabled: bool) -> Result<()> {
     let tz = timezone(db, dsp)?;
     start(db, dsp, tz)?;
     db.platform.transaction(|| {
         db.platform.exec(
-            "UPDATE backup_schedules SET enabled=?,revision=revision+1 WHERE dsp_id=?",
+            "UPDATE backup_schedules SET enabled=? WHERE dsp_id=?",
             params![enabled, dsp],
         )?;
         if enabled {
-            let rules: Vec<Kept> = db.platform.query_as(RULES, [dsp])?;
-            for kept in rules {
-                db.platform.exec(
-                    "UPDATE backup_rules SET next_run=? WHERE id=?",
-                    params![kept.when.next(tz, now()), kept.id],
-                )?;
-            }
+            moved_on(&db.platform, dsp, tz)?;
         }
         Ok(())
     })
+}
+
+/// Moves each of the DSP's rules to the first time it runs from now where the DSP is, `tz`: as
+/// the schedule is turned on, or the DSP moves to another timezone.
+fn moved_on(platform: &Db, dsp: &str, tz: Tz) -> Result<()> {
+    let rules: Vec<Kept> = platform.query_as(RULES, [dsp])?;
+    for kept in rules {
+        platform.exec(
+            "UPDATE backup_rules SET next_run=? WHERE id=?",
+            params![kept.when.next(tz, now()), kept.id],
+        )?;
+    }
+    Ok(())
+}
+
+/// Runs the DSP's rules where it is now, `zone`, after its timezone changed.
+pub fn retime(platform: &Db, dsp: &str, zone: &str) -> Result<()> {
+    let tz: Tz = zone
+        .parse()
+        .map_err(|_| Error::new("invalid_timezone", 400))?;
+    moved_on(platform, dsp, tz)
 }
 
 /// When `rules` run, in the DSP's timezone `tz`: their next `count` runs, and which of them run on

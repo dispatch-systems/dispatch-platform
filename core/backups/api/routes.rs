@@ -102,7 +102,8 @@ async fn now(state: Arc<State>, input: Input, access: PlatformOwner) -> Result<R
     Ok(reply)
 }
 
-/// One of the DSP's backups, as a zip of its files.
+/// One of the DSP's backups, as a zip of its files: the owner is asked for again once it's put
+/// together, before any of it is sent.
 async fn saved(state: Arc<State>, input: Input, access: PlatformOwner) -> Result<Reply> {
     let vault = state
         .backups
@@ -113,19 +114,25 @@ async fn saved(state: Arc<State>, input: Input, access: PlatformOwner) -> Result
         input.param("backup").to_owned(),
     );
     {
-        let (dsp, id) = (dsp.clone(), id.clone());
+        let (dsp, id, input) = (dsp.clone(), id.clone(), input.clone());
         state
             .run(move |db| {
-                let owner = access.authorize(db, &input)?;
-                history::files(&db.platform, &dsp, &id)?;
-                db.audit(
-                    Some(&owner.user.id),
-                    Some(&dsp),
-                    "dsp.backup_downloaded",
-                    &id,
-                )
+                access.authorize(db, &input)?;
+                history::files(&db.platform, &dsp, &id).map(drop)
             })
             .await?;
     }
-    download::download(&state, vault, &dsp, &id).await
+    let zipped = download::download(&state, vault, &dsp, &id).await?;
+    state
+        .run(move |db| {
+            let owner = access.authorize(db, &input)?;
+            db.audit(
+                Some(&owner.user.id),
+                Some(&dsp),
+                "dsp.backup_downloaded",
+                &id,
+            )
+        })
+        .await?;
+    Ok(zipped.reply())
 }

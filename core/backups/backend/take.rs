@@ -8,7 +8,9 @@ use super::{FILES, MANIFESTS, Vault, contents, seal};
 use crate::{
     Error, Result, State,
     db::{self, at, now, objects::Fetched},
+    ensure,
 };
+use base64::{Engine, engine::general_purpose::STANDARD as B64};
 use futures_util::StreamExt;
 use rusqlite::OpenFlags;
 use serde_json::{Value, json};
@@ -44,14 +46,9 @@ pub fn staging(state: &State) -> PathBuf {
     state.config.environment_root().join("backups")
 }
 
-/// Takes the backup `asked` for, naming in `sent` each file it sends as it's sent, so a backup
-/// that fails part way lets go of them when it expires.
-pub async fn take(
-    state: &Arc<State>,
-    vault: &Vault,
-    asked: &Asked,
-    sent: &mut Vec<String>,
-) -> Result<Taken> {
+/// Takes the backup `asked` for, noting each file it sends as it's sent, so a backup that stops
+/// part way, by failing or by the server stopping, lets go of them when it expires.
+pub async fn take(state: &Arc<State>, vault: &Vault, asked: &Asked) -> Result<Taken> {
     let dsp = asked.dsp.clone();
     let (folder, row, features, sizes) = state
         .run_bookkeeping(move |db| {
@@ -83,7 +80,7 @@ pub async fn take(
             items: &held,
             sizes: &sizes,
         };
-        let files = send(state, vault, asked, &holds, &here, sent).await?;
+        let files = send(state, vault, asked, &holds, &here).await?;
         let manifest = json!({
             "format": FORMAT,
             "backup": asked.id,
@@ -91,6 +88,9 @@ pub async fn take(
             "features": features,
             "release": state.config.release,
             "generation": asked.generation,
+            // What the DSP's people's authenticator apps are sealed with, which a platform
+            // started over doesn't have.
+            "platformKey": B64.encode(&state.key),
             "takenAt": at(now()),
             "holds": held,
             "files": files,
@@ -116,13 +116,63 @@ struct Holds<'a> {
     sizes: &'a HashMap<String, i64>,
 }
 
+/// A file copied aside, still to be sealed and sent: where it is in the DSP's folder, and what it
+/// belongs to.
+struct Copied {
+    path: PathBuf,
+    item: String,
+    plain: PathBuf,
+}
+
+/// Copies the DSP's files aside: its databases first, each as it is at one moment, then the files
+/// beside them, found once those are copied, so a file a database names is there too.
+async fn copied(folder: &Path, held: &[String], here: &Path) -> Result<Vec<Copied>> {
+    let (folder, held, here) = (folder.to_owned(), held.to_vec(), here.to_owned());
+    tokio::task::spawn_blocking(move || -> Result<Vec<Copied>> {
+        let mut copied = Vec::new();
+        let mut copy_each = |found: Vec<contents::Found>| -> Result<()> {
+            for file in found {
+                let plain = here.join(format!("{}", copied.len()));
+                copy(&folder.join(&file.path), &plain, file.database)?;
+                copied.push(Copied {
+                    path: file.path,
+                    item: file.item,
+                    plain,
+                });
+            }
+            Ok(())
+        };
+        let databases: Vec<_> = contents::files(&folder, &held)?
+            .into_iter()
+            .filter(|file| file.database)
+            .collect();
+        // Every backup holds the DSP's own database: one that can't is no backup.
+        ensure(
+            databases
+                .iter()
+                .any(|file| file.path == Path::new(contents::DSP_DATABASE)),
+            "backup_incomplete",
+            500,
+        )?;
+        copy_each(databases)?;
+        copy_each(
+            contents::files(&folder, &held)?
+                .into_iter()
+                .filter(|file| !file.database)
+                .collect(),
+        )?;
+        Ok(copied)
+    })
+    .await
+    .map_err(|_| Error::new("backup_failed", 500))?
+}
+
 async fn send(
     state: &Arc<State>,
     vault: &Vault,
     asked: &Asked,
     holds: &Holds<'_>,
     here: &Path,
-    sending: &mut Vec<String>,
 ) -> Result<Vec<Value>> {
     let Holds {
         folder,
@@ -136,27 +186,16 @@ async fn send(
         .into_iter()
         .collect();
     let mut files = Vec::new();
-    let found = {
-        let folder = folder.to_owned();
-        let held = held.to_vec();
-        tokio::task::spawn_blocking(move || contents::files(&folder, &held))
-            .await
-            .map_err(|_| Error::new("backup_failed", 500))??
-    };
-    for (index, file) in found.into_iter().enumerate() {
-        let plain = here.join(format!("{index}"));
-        let sealed = here.join(format!("{index}.sealed"));
+    for file in copied(folder, held, here).await? {
+        let sealed = file.plain.with_extension("sealed");
         let (sha256, size) = {
-            let (from, plain, sealed, key, dsp) = (
-                folder.join(&file.path),
-                plain.clone(),
+            let (plain, sealed, key, dsp) = (
+                file.plain.clone(),
                 sealed.clone(),
                 vault.key,
                 asked.dsp.clone(),
             );
-            let database = file.database;
             tokio::task::spawn_blocking(move || -> Result<(String, u64)> {
-                copy(&from, &plain, database)?;
                 let sealed = seal::seal(&key, &dsp, &plain, &sealed);
                 fs::remove_file(&plain)?;
                 sealed
@@ -166,7 +205,7 @@ async fn send(
         };
         let object = vault.file(&asked.generation, &sha256);
         if !kept.contains(&object) {
-            sending.push(object.clone());
+            uploading(state, &asked.id, &object).await?;
             sent(vault, &asked.dsp, &object, &sealed, &sha256, here).await?;
             kept.insert(object.clone());
         }
@@ -190,9 +229,11 @@ async fn send(
             } else {
                 let plain = here.join("picture");
                 let sealed = here.join("picture.sealed");
-                let Some(fetched) = pictures.get(&asked.dsp, &owner, &sha256).await? else {
-                    continue;
-                };
+                // Listed, then gone: let go of while it was taken, so the backup isn't whole.
+                let fetched = pictures
+                    .get(&asked.dsp, &owner, &sha256)
+                    .await?
+                    .ok_or_else(|| Error::new("backup_incomplete", 502))?;
                 written(fetched, &plain).await?;
                 let (key, dsp, from, to) =
                     (vault.key, asked.dsp.clone(), plain.clone(), sealed.clone());
@@ -207,12 +248,13 @@ async fn send(
                     fs::remove_file(&sealed)?;
                     return Err(Error::new("object_store_mismatch", 502));
                 }
-                sending.push(object.clone());
+                uploading(state, &asked.id, &object).await?;
                 sent(vault, &asked.dsp, &object, &sealed, &sha256, here).await?;
                 fs::remove_file(&sealed)?;
                 kept.insert(object.clone());
                 size
             };
+
             files.push(json!({
                 "path": path,
                 "item": contents::PICTURES,
@@ -236,6 +278,15 @@ fn copy(from: &Path, to: &Path, database: bool) -> Result<()> {
         fs::copy(from, to)?;
     }
     Ok(())
+}
+
+/// Notes that the backup `id` is sending `object`, before it's sent, so whatever ends the backup,
+/// it's let go of once the backup expires.
+async fn uploading(state: &Arc<State>, id: &str, object: &str) -> Result<()> {
+    let (id, object) = (id.to_owned(), object.to_owned());
+    state
+        .run_bookkeeping(move |db| super::history::uploading(&db.platform, &id, &object))
+        .await
 }
 
 /// Sends the sealed file `sealed` as `object`, then reads it back to check it opens as what has

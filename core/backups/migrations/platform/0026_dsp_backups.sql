@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS backup_rules (
 );
 CREATE INDEX IF NOT EXISTS backup_rules_dsp ON backup_rules(dsp_id, position);
 -- Each backup of a DSP, from when it's asked for until it expires: the rule that took it, or none
--- for one taken by hand; when it expires, none for one kept forever or as one of its rule's newest
+-- for one taken by hand, and what of the DSP it leaves out, as that rule said when it was asked; when it expires, none for one kept forever or as one of its rule's newest
 -- `keep_last`; and once it's taken, the files it holds by their objects. Kept after its DSP is
 -- deleted until it expires.
 CREATE TABLE IF NOT EXISTS backups (
@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS backups (
     finished_at INTEGER,
     expires_at INTEGER,
     keep_last INTEGER,
+    skipped TEXT NOT NULL DEFAULT '[]',
     size INTEGER,
     files TEXT,
     error TEXT

@@ -14,8 +14,11 @@ use std::{
 /// The DSP's own data: its database, settings and the state its features keep. Always held.
 pub const DISPATCH: &str = "dispatch";
 /// Its saved sign-ins: the credentials of its connections, sealed beside the key they're
-/// sealed with, and the browsers' signed-in profiles.
+/// sealed with. The browsers' signed-in profiles aren't held: a browser in use can't be copied
+/// whole, and they sign in again with these.
 pub const LOGINS: &str = "logins";
+/// The DSP's own database, which every backup holds.
+pub const DSP_DATABASE: &str = "data/dispatch.sqlite";
 /// The files its features keep that aren't databases, and those kept in the object store.
 pub const PICTURES: &str = "pictures";
 
@@ -114,7 +117,7 @@ pub fn files(folder: &Path, held: &[String]) -> Result<Vec<Found>> {
 fn item_of(owners: &BTreeMap<&'static str, (String, String)>, path: &Path) -> String {
     let parts: Vec<&str> = path.iter().filter_map(|part| part.to_str()).collect();
     match parts.as_slice() {
-        ["secrets", ..] | ["state", "browsers", ..] => LOGINS.into(),
+        ["secrets", ..] => LOGINS.into(),
         ["data", folder, _, ..] => owners
             .get(folder)
             .map(|(id, _)| id.clone())
@@ -123,10 +126,16 @@ fn item_of(owners: &BTreeMap<&'static str, (String, String)>, path: &Path) -> St
     }
 }
 
+/// Each file under `relative`, but the browsers' profiles: a folder that isn't there holds none,
+/// and one that can't be read fails the backup rather than leave it out.
 fn walk(folder: &Path, relative: &Path, each: &mut impl FnMut(&Path)) -> Result<()> {
-    let at = folder.join(relative);
-    let Ok(entries) = fs::read_dir(&at) else {
+    if relative == Path::new("state/browsers") {
         return Ok(());
+    }
+    let entries = match fs::read_dir(folder.join(relative)) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
     };
     for entry in entries {
         let entry = entry?;

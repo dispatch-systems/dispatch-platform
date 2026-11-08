@@ -50,7 +50,6 @@ fn each_file_of_a_dsps_folder_belongs_to_one_item() {
         ("data/phones/files/a1", PICTURES, false),
         ("secrets/paycom.enc", LOGINS, false),
         ("secrets/vault.key", LOGINS, false),
-        ("state/browsers/paycom/Cookies", LOGINS, false),
         ("state/credential-leases/paycom", DISPATCH, false),
     ];
     assert_eq!(
@@ -67,4 +66,18 @@ fn each_file_of_a_dsps_folder_belongs_to_one_item() {
         held,
         ["data/dispatch.sqlite", "state/credential-leases/paycom"]
     );
+}
+
+#[test]
+fn a_folder_that_cant_be_read_fails_rather_than_drops_out() {
+    use std::os::unix::fs::PermissionsExt;
+    crate::testing::install(&[], &[]);
+    let folder = tempfile::tempdir().unwrap();
+    let locked = folder.path().join("data/paycom");
+    fs::create_dir_all(&locked).unwrap();
+    fs::write(locked.join("paycom.sqlite"), "").unwrap();
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+    let read = files(folder.path(), &[DISPATCH.into(), PICTURES.into()]);
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o700)).unwrap();
+    assert!(read.is_err());
 }

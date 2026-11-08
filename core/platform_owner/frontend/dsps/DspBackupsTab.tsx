@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CircleCheck, CircleX, Download, Globe, LoaderCircle, Plus } from 'lucide-react';
 import type { DspSummary } from '../../../accounts/api/index.js';
 import type {
@@ -20,8 +20,7 @@ import { BackupCalendar } from './BackupCalendar.js';
 import { BackupRuleEditor } from './BackupRuleEditor.js';
 import { finished, newRule, ruleText, until, when, type Draft } from './backupRules.js';
 import { ApiError, errorLabel } from '../../../shell/frontend/runtime/api.js';
-import { useFeedback } from '../../../shell/frontend/runtime/feedback.js';
-import { messageOf } from '../../../shell/frontend/lib/errors.js';
+import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import { randomId } from '../../../shell/frontend/lib/random-id.js';
 import { timezoneName } from '../../../shell/frontend/lib/format.js';
 import { Empty, ErrorBox } from '../../../shell/frontend/ui/index.js';
@@ -54,7 +53,9 @@ export function DspBackupsTab({ dsp }: { dsp: DspSummary }) {
   const [poll, setPoll] = useState(0);
   const { data, error, refresh } = useDspBackups(dsp.id, poll);
   const busy = !!data?.backups.some(taking);
-  useEffect(() => setPoll(busy ? 3000 : 0), [busy]);
+  // Read again often while one is being taken, and every minute besides, so one the schedule
+  // takes shows without a reload.
+  useEffect(() => setPoll(busy ? 3000 : 60_000), [busy]);
   if (!data) return <ErrorBox message={error} />;
   return <Backups key={dsp.id} dsp={dsp} backups={data} refresh={refresh} error={error} />;
 }
@@ -70,7 +71,6 @@ function Backups({
   refresh: () => void;
   error: string;
 }) {
-  const { notify } = useFeedback();
   const zone = backups.timezone;
   // The rules as read, and the revision they were read at: edits are made against them.
   const [base, setBase] = useState(() => ({
@@ -79,8 +79,6 @@ function Backups({
   }));
   const [drafts, setDrafts] = useState(base.drafts);
   const [open, setOpen] = useState<string | null>(null);
-  const [working, setWorking] = useState(false);
-  const [error, setError] = useState('');
   const [stale, setStale] = useState(false);
   const dirty = !same(drafts, base.drafts);
   // The backups read afresh replace the rules unless they're being edited.
@@ -94,58 +92,51 @@ function Backups({
   const rules = useMemo(() => drafts.map(finished), [drafts]);
   const whole = rules.every(Boolean);
 
-  async function act(work: () => Promise<DspBackups>, done?: string) {
-    setWorking(true);
-    setError('');
-    try {
-      const answer = await work();
-      const fresh = { drafts: draftsOf(answer.rules), revision: answer.revision };
-      setBase(fresh);
-      if (!dirty || done === 'Schedule saved') setDrafts(fresh.drafts);
-      if (done) notify(done);
+  const saving = useAction(
+    async () => {
+      try {
+        const answer = await saveBackupRules(
+          dsp.id,
+          rules.map((rule) => rule!),
+          base.revision,
+        );
+        const fresh = { drafts: draftsOf(answer.rules), revision: answer.revision };
+        setBase(fresh);
+        setDrafts(fresh.drafts);
+        setOpen(null);
+        setStale(false);
+        refresh();
+      } catch (cause) {
+        // Saved since by another session: read as it is now, to reload the edits from.
+        if (cause instanceof ApiError && cause.code === 'backup_schedule_changed') {
+          setStale(true);
+          refresh();
+        }
+        throw cause;
+      }
+    },
+    { success: 'Schedule saved', inline: true },
+  );
+  // Neither changes the rules: edits carry on against the schedule they were read from.
+  const switching = useAction(
+    async (enabled: boolean) => {
+      await switchBackups(dsp.id, enabled);
       refresh();
-      return true;
-    } catch (cause) {
-      setError(messageOf(cause));
-      const changed = cause instanceof ApiError && cause.code === 'backup_schedule_changed';
-      setStale(changed);
-      if (changed) refresh();
-      return false;
-    } finally {
-      setWorking(false);
-    }
-  }
-  const save = async () => {
-    if (working || !whole) return;
-    if (
-      await act(
-        () =>
-          saveBackupRules(
-            dsp.id,
-            rules.map((rule) => rule!),
-            base.revision,
-          ),
-        'Schedule saved',
-      )
-    )
-      setOpen(null);
-  };
-  const switching = useRef(false);
-  const turn = async (enabled: boolean) => {
-    if (switching.current) return;
-    switching.current = true;
-    // The rules are as they were: edits of them carry on from the new revision.
-    await act(async () => {
-      const answer = await switchBackups(dsp.id, enabled);
-      setBase((before) => ({ ...before, revision: answer.revision }));
-      return answer;
-    });
-    switching.current = false;
-  };
+    },
+    { inline: true },
+  );
+  const backingUp = useAction(
+    async () => {
+      await backUpNow(dsp.id);
+      refresh();
+    },
+    { inline: true },
+  );
+  const working = saving.busy || switching.busy || backingUp.busy;
+  const error = saving.error || switching.error || backingUp.error;
   const discard = () => {
     setDrafts(base.drafts);
     setOpen(null);
-    setError('');
     setStale(false);
   };
   const reload = () => {
@@ -153,7 +144,6 @@ function Backups({
     setBase(fresh);
     setDrafts(fresh.drafts);
     setOpen(null);
-    setError('');
     setStale(false);
   };
   const add = () => {
@@ -237,12 +227,12 @@ function Backups({
             aria-label="On schedule"
             checked={backups.enabled}
             disabled={working}
-            onChange={(e) => void turn(e.target.checked)}
+            onChange={(e) => void switching.run(e.target.checked)}
           />
           <button
             type="button"
             disabled={working || !backups.configured || backups.backups.some(taking)}
-            onClick={() => void act(() => backUpNow(dsp.id))}
+            onClick={() => void backingUp.run()}
           >
             Back up now
           </button>
@@ -305,7 +295,7 @@ function Backups({
                 type="button"
                 className="primary"
                 disabled={working || !whole || stale}
-                onClick={() => void save()}
+                onClick={() => void saving.run()}
               >
                 {working ? 'Saving…' : 'Save'}
               </button>

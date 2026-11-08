@@ -85,20 +85,31 @@ pub fn days(calendar: Vec<(chrono::NaiveDate, Vec<usize>)>) -> Vec<BackupDay> {
         .collect()
 }
 
-/// Asks for a backup of the DSP: by the rule `rule`, or by hand by `by`, kept as `keep` says.
+/// Asks for a backup of the DSP: by the rule `rule`, or by hand by `by`, kept as `keep` says and
+/// leaving out `skipped`, whatever becomes of the rule before it's taken.
 pub fn ask(
     platform: &Db,
     dsp: &str,
     rule: Option<&str>,
     by: Option<&str>,
     keep: Keep,
+    skipped: &[String],
 ) -> Result<String> {
     let id = crypto::id("bak")?;
     let asked = now();
     platform.exec(
         "INSERT INTO backups(id,dsp_id,rule_id,requested_by,status,created_at,expires_at,\
-         keep_last) VALUES (?,?,?,?,'queued',?,?,?)",
-        params![id, dsp, rule, by, asked, keep.expires(asked), keep.last()],
+         keep_last,skipped) VALUES (?,?,?,?,'queued',?,?,?,?)",
+        params![
+            id,
+            dsp,
+            rule,
+            by,
+            asked,
+            keep.expires(asked),
+            keep.last(),
+            serde_json::to_string(skipped)?
+        ],
     )?;
     Ok(id)
 }
@@ -116,17 +127,32 @@ pub fn ask_by_hand(platform: &Db, dsp: &str, by: &str) -> Result<()> {
             None,
             Some(by),
             Keep::For(BY_HAND_DAYS, KeepUnit::Day),
+            &[],
         )?;
     }
     Ok(())
 }
 
-/// The backup that has waited longest: its ID, DSP and rule.
-pub fn next(platform: &Db) -> Result<Option<(String, String, Option<String>)>> {
-    platform.one_as(
-        "SELECT id,dsp_id,rule_id FROM backups WHERE status='queued' ORDER BY created_at,id LIMIT 1",
+/// The backup that has waited longest: its ID, DSP, rule and what it leaves out.
+pub fn next(platform: &Db) -> Result<Option<(String, String, Option<String>, Vec<String>)>> {
+    let row: Option<(String, String, Option<String>, String)> = platform.one_as(
+        "SELECT id,dsp_id,rule_id,skipped FROM backups WHERE status='queued' \
+         ORDER BY created_at,id LIMIT 1",
         [],
-    )
+    )?;
+    row.map(|(id, dsp, rule, skipped)| Ok((id, dsp, rule, serde_json::from_str(&skipped)?)))
+        .transpose()
+}
+
+/// Notes that the backup `id` is sending `object`: what it sent is let go of once it expires,
+/// however it ends.
+pub fn uploading(platform: &Db, id: &str, object: &str) -> Result<()> {
+    platform.exec(
+        "UPDATE backups SET files=json_insert(COALESCE(files,'[]'),'$[#]',json_object('object',?)) \
+         WHERE id=?",
+        params![object, id],
+    )?;
+    Ok(())
 }
 
 pub fn started(platform: &Db, id: &str) -> Result<()> {
@@ -142,35 +168,35 @@ pub fn succeeded(platform: &Db, id: &str, files: &[Value], size: i64) -> Result<
     Ok(())
 }
 
-/// The backup `id` wasn't taken, for `error`, though it sent the files `sent`, which it holds
-/// until it expires.
-pub fn failed(platform: &Db, id: &str, error: &str, sent: &[String]) -> Result<()> {
-    let files: Vec<Value> = sent
-        .iter()
-        .map(|object| serde_json::json!({"object": object}))
-        .collect();
-    // Kept to be seen for as long as one taken by hand, whatever its rule keeps.
+/// The backup `id` wasn't taken, for `error`: it holds what it sent, kept to be seen as long as
+/// one taken by hand, whatever its rule keeps, and its rule, if it has one, runs again within the
+/// hour.
+pub fn failed(platform: &Db, id: &str, error: &str) -> Result<()> {
     let failed = now();
+    let rule: Option<(Option<String>,)> =
+        platform.one_as("SELECT rule_id FROM backups WHERE id=?", [id])?;
     platform.exec(
-        "UPDATE backups SET status='failed',finished_at=?,error=?,files=?,expires_at=? WHERE id=?",
+        "UPDATE backups SET status='failed',finished_at=?,error=?,expires_at=? WHERE id=?",
         params![
             failed,
             error,
-            serde_json::to_string(&files)?,
             schedule::expires(failed, BY_HAND_DAYS, KeepUnit::Day),
             id
         ],
     )?;
+    if let Some((Some(rule),)) = rule {
+        schedule::retry(platform, &rule, failed)?;
+    }
     Ok(())
 }
 
-/// Ends each backup the last server was taking when it stopped.
+/// Fails each backup the last server was taking when it stopped, as any backup fails.
 pub fn interrupted(platform: &Db) -> Result<()> {
-    platform.exec(
-        "UPDATE backups SET status='failed',finished_at=?,error='backup_interrupted' \
-         WHERE status='running'",
-        [now()],
-    )?;
+    let running: Vec<(String,)> =
+        platform.query_as("SELECT id FROM backups WHERE status='running'", [])?;
+    for (id,) in running {
+        failed(platform, &id, "backup_interrupted")?;
+    }
     Ok(())
 }
 

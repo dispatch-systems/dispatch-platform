@@ -51,7 +51,14 @@ pub async fn pass(state: &Arc<State>, vault: &Vault) -> Result<()> {
                 db.platform.transaction(|| {
                     let at = now();
                     for rule in schedule::due(&db.platform, &dsp, tz, at)? {
-                        history::ask(&db.platform, &dsp, rule.id.as_deref(), None, rule.keep)?;
+                        history::ask(
+                            &db.platform,
+                            &dsp,
+                            rule.id.as_deref(),
+                            None,
+                            rule.keep,
+                            &rule.skipped,
+                        )?;
                     }
                     Ok(())
                 })?;
@@ -59,36 +66,26 @@ pub async fn pass(state: &Arc<State>, vault: &Vault) -> Result<()> {
             Ok(())
         })
         .await?;
-    while let Some((id, dsp, rule)) = state
+    while let Some((id, dsp, _, skipped)) = state
         .run_bookkeeping(|db| history::next(&db.platform))
         .await?
     {
-        let (asked, rule_id) = {
-            let (id, dsp, rule) = (id.clone(), dsp.clone(), rule.clone());
+        let asked = {
+            let (id, dsp) = (id.clone(), dsp.clone());
             state
                 .run_bookkeeping(move |db| {
                     history::started(&db.platform, &id)?;
-                    let kept = schedule::schedule(&db.platform, &dsp)?;
-                    let skipped = rule
-                        .as_ref()
-                        .and_then(|rule| kept.rules.iter().find(|k| k.id.as_ref() == Some(rule)))
-                        .map(|kept| kept.skipped.clone())
-                        .unwrap_or_default();
                     let generation = schedule::generation_of(&db.platform, &dsp)?;
-                    Ok((
-                        Asked {
-                            id,
-                            dsp,
-                            skipped,
-                            generation,
-                        },
-                        rule,
-                    ))
+                    Ok(Asked {
+                        id,
+                        dsp,
+                        skipped,
+                        generation,
+                    })
                 })
                 .await?
         };
-        let mut sent = Vec::new();
-        let result = take::take(state, vault, &asked, &mut sent).await;
+        let result = take::take(state, vault, &asked).await;
         let (code, size) = match &result {
             Ok(taken) => (None, taken.size),
             Err(error) => (Some(error.code.clone()), 0),
@@ -96,12 +93,7 @@ pub async fn pass(state: &Arc<State>, vault: &Vault) -> Result<()> {
         state
             .run_bookkeeping(move |db| match result {
                 Ok(taken) => history::succeeded(&db.platform, &id, &taken.files, taken.size),
-                Err(error) => {
-                    if let Some(rule) = &rule_id {
-                        schedule::retry(&db.platform, rule, now())?;
-                    }
-                    history::failed(&db.platform, &id, &error.code, &sent)
-                }
+                Err(error) => history::failed(&db.platform, &id, &error.code),
             })
             .await?;
         observability::event(
