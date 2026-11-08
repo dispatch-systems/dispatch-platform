@@ -23,7 +23,10 @@ Agent keys and connected apps, Sign in with Dispatch (`oauth`), usage limits and
 log, and the MCP server at `/api/v1/mcp`. A key or app belongs to the platform owner who made or
 approved it, reaches the DSPs it was given, and stops at once when revoked, when it expires or
 when its owner stops being an active platform owner. Every call checks the key again before it
-answers. `GET /api/v1/whoami` answers what the `whoami` tool does, over REST.
+answers. `GET /api/v1/whoami` answers what the `whoami` tool does, over REST. The audit log keeps
+each app's request as the owner answers it, approved (`agent.app_approved`) or refused
+(`agent.app_denied`), by the app's name, and its connection once it collects its tokens
+(`agent.app_connected`).
 
 ## Tools
 

@@ -98,7 +98,7 @@ it is live route data, in a database of its own, `routelive`.
   `routes.collect`, `POST /api/dsp/routes/collect` and `…/jobs/{id}/cancel`. The platform
   owner rebuilds a DSP's rows from its stored responses with
   `POST /api/platform/dsps/{id}/routes/reprocess`, for every day or one, after a release that
-  reads fields the earlier one didn't.
+  reads fields the earlier one didn't, in the audit log as `routes.reprocessed`, with the day.
 - **Data:** each itinerary's work phone in its row, in both; in historical route data found by
   the phone too, for whether a number was ever one. Live route data, in `routelive`: today's one
   read, in historical route data's tables
