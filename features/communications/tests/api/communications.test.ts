@@ -235,19 +235,19 @@ test('a DSP’s texts are its own: listed by number, answered through its phone 
   await owner.post(`${route}/conversations/${asked.id}/contact`, { name: 'New hire' });
   for (const step of ['block', 'unblock', 'unblock'])
     assert.equal((await owner.post(`${route}/conversations/${asked.id}/${step}`)).status, 200);
-  type Logged = { action: string; target: string; changes: unknown[] };
+  type Logged = { action: string; target: string; detail: string; changes: unknown[] };
   const logged: Logged[] = (await owner.read('/api/platform/audit')).events.filter(
     (event: Logged) => event.action.startsWith('communications.'),
   );
-  assert.deepEqual(logged.map((event) => [event.action, event.target, event.changes]).reverse(), [
+  const number = '(425) 555-0199';
+  assert.deepEqual(
+    logged.map((event) => [event.action, event.target, event.detail, event.changes]).reverse(),
     [
-      'communications.contact_saved',
-      '(425) 555-0199',
-      [{ field: 'name', from: null, to: 'New hire' }],
+      ['communications.contact_saved', number, '', [{ field: 'name', from: null, to: 'New hire' }]],
+      ['communications.number_blocked', number, `New hire, ${number}`, []],
+      ['communications.number_unblocked', number, `New hire, ${number}`, []],
     ],
-    ['communications.number_blocked', 'New hire, (425) 555-0199', []],
-    ['communications.number_unblocked', 'New hire, (425) 555-0199', []],
-  ]);
+  );
 
   // A picture goes with a text through the phone, which keeps it and delivers it. It's sent as
   // the browser sends it, its own body, at the address the client signs in at, which `fetch`
