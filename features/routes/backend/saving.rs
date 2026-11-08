@@ -75,7 +75,8 @@ impl Drop for Saving {
 /// snapshot of another day than it was then (`routes_day_not_available`); a DSP without a station
 /// (`routes_station_required`); a capture that isn't one of its station's day in that scope
 /// as listed (`routes_scope_mismatch`, `routes_capture_invalid`, `routes_source_too_large`);
-/// and saving while Routes is off for the DSP (`routes_off`).
+/// saving while Routes is off for the DSP (`routes_off`); and publishing while the DSP is not
+/// active (`dsp_unavailable`).
 pub async fn save_day(state: &Arc<State>, dsp: &str, key: &str, capture: Capture) -> Result<bool> {
     save_keeping(state, dsp, key, capture, Stored::default()).await
 }
@@ -128,7 +129,7 @@ pub(super) async fn save_keeping(
         let staged = stage_capture(state, dsp, key, request, capture, on.clone()).await?;
         let (d, k) = (dsp.to_owned(), key.to_owned());
         let current = state
-            .run_scoped(dsp, DOMAIN, move |db| {
+            .run_serving(dsp, DOMAIN, move |db| {
                 on(db)?;
                 publish_day(&*db.routes_db(&d)?, &k, &staged, stored)
             })
