@@ -21,7 +21,7 @@ import org.junit.Test
 class GifsTest {
     private val server = MockWebServer()
     private val folder = Files.createTempDirectory("gifs").toFile()
-    private val gifs = Gifs(OkHttpClient()) { it.host == server.hostName }
+    private val gifs = Gifs(toServer(server))
 
     @Before
     fun start() = server.start()
@@ -54,7 +54,7 @@ class GifsTest {
         assertFalse(klipy("https://static.klipy.com.example.com/b.gif".toHttpUrl()))
         assertFalse(klipy("https://example.com/b.gif".toHttpUrl()))
         assertThrows(IllegalArgumentException::class.java) {
-            runTest { Gifs(OkHttpClient()).download("https://example.com/b.gif", folder.resolve("b.gif"), 10) }
+            runTest { gifs.download("https://example.com/b.gif", folder.resolve("b.gif"), 10) }
         }
         assertEquals(0, server.requestCount)
     }
@@ -64,20 +64,43 @@ class GifsTest {
         val bytes = ByteArray(20_000) { it.toByte() }
         server.enqueue(MockResponse.Builder().code(200).body(Buffer().write(bytes)).build())
         val into = folder.resolve("wave.gif")
-        assertTrue(gifs.download(server.url("/ii/wave.gif").toString(), into, 20_000))
+        assertTrue(gifs.download("https://static.klipy.com/ii/wave.gif", into, 20_000))
         assertArrayEquals(bytes, into.readBytes())
         assertEquals("/ii/wave.gif", server.takeRequest().url.encodedPath)
 
         // Larger than KLIPY said: what's past the room isn't kept.
         server.enqueue(MockResponse.Builder().code(200).body(Buffer().write(bytes)).build())
-        assertFalse(gifs.download(server.url("/ii/wave.gif").toString(), into, 10_000))
+        assertFalse(gifs.download("https://static.klipy.com/ii/wave.gif", into, 10_000))
     }
 
     @Test
     fun tellsAGifKlipyNoLongerHasFromOneItCouldntSend() {
         server.enqueue(MockResponse.Builder().code(404).build())
-        assertThrows(Gone::class.java) { runTest { gifs.download(server.url("/gone.gif").toString(), folder.resolve("g.gif"), 10) } }
+        assertThrows(Gone::class.java) { runTest { gifs.download("https://static.klipy.com/gone.gif", folder.resolve("g.gif"), 10) } }
         server.enqueue(MockResponse.Builder().code(503).build())
-        assertThrows(java.io.IOException::class.java) { runTest { gifs.download(server.url("/busy.gif").toString(), folder.resolve("g.gif"), 10) } }
+        assertThrows(java.io.IOException::class.java) { runTest { gifs.download("https://static.klipy.com/busy.gif", folder.resolve("g.gif"), 10) } }
+    }
+
+    @Test
+    fun neverFollowsARedirectAwayFromKlipy() {
+        val elsewhere = MockWebServer().apply { start() }
+        try {
+            server.enqueue(MockResponse.Builder().code(302).addHeader("Location", elsewhere.url("/a.gif").toString()).build())
+            assertThrows(java.io.IOException::class.java) {
+                runTest { gifs.download("https://static.klipy.com/moved.gif", folder.resolve("m.gif"), 10_000) }
+            }
+            assertEquals(0, elsewhere.requestCount)
+        } finally {
+            elsewhere.close()
+        }
     }
 }
+
+/** A client whose calls to KLIPY's addresses reach [server] instead, as plain HTTP. */
+internal fun toServer(server: MockWebServer): OkHttpClient = OkHttpClient.Builder()
+    .addInterceptor { chain ->
+        val asked = chain.request()
+        val to = if (klipy(asked.url)) asked.url.newBuilder().scheme("http").host(server.hostName).port(server.port).build() else asked.url
+        chain.proceed(asked.newBuilder().url(to).build())
+    }
+    .build()

@@ -51,7 +51,7 @@ class SenderTest {
         own,
         radio,
         PictureMessage(pictures),
-        Gifs(OkHttpClient()) { it.host == server.hostName },
+        Gifs(toServer(server)),
         statuses,
         folder,
         { mmsWhenBusy },
@@ -503,7 +503,7 @@ class SenderTest {
         OutgoingText("text_1", "+14255550199", "Nice work", 1, gif = OutgoingGif("wave.gif", versions.toList()))
 
     private fun version(size: String, width: Int, height: Int, bytes: Long) =
-        GifVersion(server.url("/ii/$size.gif").toString(), width, height, bytes)
+        GifVersion("https://static.klipy.com/ii/$size.gif", width, height, bytes)
 
     /** The app's row of a text it sent, as Android writes it, just after it was handed. */
     private fun sms(id: Long, body: String, creator: String? = APP) =

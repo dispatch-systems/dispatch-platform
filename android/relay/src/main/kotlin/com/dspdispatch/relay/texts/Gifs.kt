@@ -15,11 +15,15 @@ import okio.buffer
 import okio.sink
 
 /**
- * KLIPY's GIFs, fetched as a text with one is sent, from where [from] says KLIPY delivers them
- * ([klipy]): never from anywhere else.
+ * KLIPY's GIFs, fetched as a text with one is sent, from where KLIPY delivers them ([klipy]):
+ * never from anywhere else, a redirect elsewhere included, which isn't followed.
  */
-class Gifs(http: OkHttpClient, private val from: (HttpUrl) -> Boolean = ::klipy) {
-    private val http = http.newBuilder().cookieJar(CookieJar.NO_COOKIES).build()
+class Gifs(http: OkHttpClient) {
+    private val http = http.newBuilder()
+        .cookieJar(CookieJar.NO_COOKIES)
+        .followRedirects(false)
+        .followSslRedirects(false)
+        .build()
 
     /**
      * Writes the GIF at [url] into [to], streamed as it comes, answering whether it was at most
@@ -28,7 +32,7 @@ class Gifs(http: OkHttpClient, private val from: (HttpUrl) -> Boolean = ::klipy)
      */
     suspend fun download(url: String, to: File, most: Long): Boolean {
         val address = url.toHttpUrl()
-        require(from(address)) { "Not where KLIPY delivers its GIFs: ${address.host}" }
+        require(klipy(address)) { "Not where KLIPY delivers its GIFs: ${address.host}" }
         return withContext(Dispatchers.IO) {
             http.newCall(Request.Builder().url(address).build()).await().use { response ->
                 if (response.code == NOT_FOUND || response.code == GONE) throw Gone()
