@@ -45,7 +45,9 @@ test('completed update waits for two idle seconds, restores filters, and reloads
     .toBe(initialLoads + 1);
   await clockVisible(page, page.getByLabel('Search DSPs'));
   await expect(page.getByLabel('Search DSPs')).toHaveValue('Summit');
-  await expect(page.locator('.dsp-row')).toHaveCount(1);
+  const dsps = page.getByRole('region', { name: 'DSPs', exact: true });
+  await expect(dsps.getByRole('button', { name: /Summit Delivery/ })).toBeVisible();
+  await expect(dsps.getByRole('button', { name: /Northline Logistics/ })).toHaveCount(0);
   await runAnswered(page, 12000);
   expect(loads).toBe(initialLoads + 1);
   expect(errors).toEqual([]);
