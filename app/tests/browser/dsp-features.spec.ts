@@ -1,4 +1,12 @@
+import type { Locator } from '@playwright/test';
 import { test, expect, login } from '../../../core/shell/tests/support/fixtures.js';
+
+// A feature's row in the Features tab's list, which opens its panel.
+const item = (pane: Locator, name: string) =>
+  pane
+    .getByRole('navigation', { name: 'Features', exact: true })
+    .getByRole('button')
+    .filter({ has: pane.page().getByText(name, { exact: true }) });
 
 test('the platform switches a DSP’s features, their parts and connections, and the team’s pages follow', async ({
   page,
@@ -10,30 +18,23 @@ test('the platform switches a DSP’s features, their parts and connections, and
   await list.getByRole('button', { name: /Northline Logistics/ }).click();
   const pane = page.getByRole('region', { name: 'Northline Logistics', exact: true });
   await pane.getByRole('tab', { name: 'Features', exact: true }).click();
-  const features = pane.getByRole('region', { name: 'Features', exact: true });
   const toggle = (name: string) => pane.getByRole('switch', { name, exact: true });
   const tab = (name: string) => toggle(`${name} tab`);
   const timecard = toggle('Timecard');
-  // A feature's row: the list item holding its own switch.
-  const row = (name: string) =>
-    features
-      .getByRole('listitem')
-      .filter({ has: page.getByRole('switch', { name, exact: true }) })
-      .first();
   const cortex = toggle('Cortex');
   // What every DSP has shows on, and nobody switches it.
   for (const name of ['Home Page', 'Team & Roles', 'Settings']) {
+    await item(pane, name).click();
     await expect(toggle(name)).toBeChecked();
     await expect(toggle(name)).toBeDisabled();
   }
+  // A feature's panel holds its parts.
+  await item(pane, 'Timecard').click();
   await expect(timecard).toBeChecked();
-  await expect(row('Timecard')).toContainText('3 of 3 parts');
-  // A feature's parts show once it is opened.
-  await expect(tab('Meal Breaks')).toHaveCount(0);
-  await features.getByRole('button', { name: "Timecard's parts", exact: true }).click();
   await expect(tab('Meal Breaks')).toBeChecked();
 
   // A connection takes what needs it along: of Timecard, only its Meal Breaks tab.
+  await item(pane, 'Cortex').click();
   await cortex.click();
   const off = page.getByRole('dialog', { name: 'Switch off Cortex?' });
   await expect(off).toContainText('Also switches off:');
@@ -56,10 +57,11 @@ test('the platform switches a DSP’s features, their parts and connections, and
     'Daily Performance',
     'Vans',
   ])
-    await expect(toggle(name)).not.toBeChecked();
+    await expect(item(pane, name)).toContainText('Off');
+  await expect(item(pane, 'Uniform Inventory')).toContainText('On');
+  await item(pane, 'Timecard').click();
   await expect(timecard).toBeChecked();
   await expect(tab('Meal Breaks')).not.toBeChecked();
-  await expect(toggle('Uniform Inventory')).toBeChecked();
 
   const context = await browser.newContext();
   const member = await context.newPage();
@@ -118,20 +120,13 @@ test('a feature switched back on brings its parts as they were, and a part the c
   await list.getByRole('button', { name: /Northline Logistics/ }).click();
   const pane = page.getByRole('region', { name: 'Northline Logistics', exact: true });
   await pane.getByRole('tab', { name: 'Features', exact: true }).click();
-  const features = pane.getByRole('region', { name: 'Features', exact: true });
   const toggle = (name: string) => pane.getByRole('switch', { name, exact: true });
   const tab = (name: string) => toggle(`${name} tab`);
   const timecard = toggle('Timecard');
-  const cortex = toggle('Cortex');
-  // A feature's row: the list item holding its own switch.
-  const row = (name: string) =>
-    features
-      .getByRole('listitem')
-      .filter({ has: page.getByRole('switch', { name, exact: true }) })
-      .first();
   // A switch that takes nothing with it asks nothing. Switched off and on before the member
   // signs in: a view the member reopened in between would lack the page their next request uses.
   const uniforms = toggle('Uniform Inventory');
+  await item(pane, 'Uniform Inventory').click();
   await uniforms.click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(uniforms).not.toBeChecked();
@@ -143,10 +138,10 @@ test('a feature switched back on brings its parts as they were, and a part the c
   await expect(member.getByRole('link', { name: 'Timecard', exact: true })).toHaveCount(0);
 
   // Switched back on, the feature brings its parts back as they were.
+  await item(pane, 'Timecard').click();
   await timecard.click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(timecard).toBeChecked();
-  await features.getByRole('button', { name: "Timecard's parts", exact: true }).click();
   await expect(tab('Timecard')).toBeChecked();
   await expect(tab('Meal Breaks')).not.toBeChecked();
   // A part brings the connection it needs, and says so first.
@@ -157,12 +152,11 @@ test('a feature switched back on brings its parts as they were, and a part the c
   ]);
   await on.getByRole('button', { name: 'Switch on', exact: true }).click();
   await expect(tab('Meal Breaks')).toBeChecked();
-  await expect(cortex).toBeChecked();
+  await expect(item(pane, 'Cortex')).not.toContainText('Off');
   // A tab switches alone; the last one on takes its page, and says so first.
   await tab('Employee Search').click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(tab('Employee Search')).not.toBeChecked();
-  await expect(row('Timecard')).toContainText('2 of 3 parts');
   // The next switch goes by what the last one answered, before the DSP's features are read
   // again, so the last tab on still asks first.
   const reading = `**/api/platform/dsps/${north.id}/features`;
@@ -205,10 +199,14 @@ test('the platform hides a feature from a DSP, and only the Platform Owner view 
   const uniforms = pane.getByRole('switch', { name: 'Uniform Inventory', exact: true });
   const sight = pane.getByRole('radiogroup', { name: 'Who sees Uniform Inventory' });
   const hide = sight.getByRole('radio', { name: 'Hidden' });
-  const show = sight.getByRole('radio', { name: 'Shown' });
+  const show = sight.getByRole('radio', { name: 'Everyone' });
   // What every DSP has is always shown, and a connection has nothing to show.
-  for (const name of ['Home Page', 'Team & Roles', 'Settings', 'Cortex', 'Paycom'])
+  for (const name of ['Home Page', 'Team & Roles', 'Settings', 'Cortex', 'Paycom']) {
+    await item(pane, name).click();
+    await expect(pane.getByRole('region', { name, exact: true })).toBeVisible();
     await expect(pane.getByRole('radiogroup', { name: `Who sees ${name}` })).toHaveCount(0);
+  }
+  await item(pane, 'Uniform Inventory').click();
   await expect(show).toBeChecked();
 
   const context = await browser.newContext();
@@ -221,12 +219,7 @@ test('the platform hides a feature from a DSP, and only the Platform Owner view 
   await hide.click();
   await expect(hide).toBeChecked();
   await expect(uniforms).toBeChecked();
-  // Its row: the list item holding its own switch.
-  const row = pane
-    .getByRole('listitem')
-    .filter({ has: page.getByRole('switch', { name: 'Uniform Inventory', exact: true }) })
-    .first();
-  await expect(row).toContainText('Hidden from DSP');
+  await expect(item(pane, 'Uniform Inventory')).toContainText('Hidden');
   await member.getByRole('link', { name: 'Timecard', exact: true }).click();
   await expect(memberLink).toHaveCount(0);
 
@@ -251,6 +244,7 @@ test('the platform hides a feature from a DSP, and only the Platform Owner view 
   // Shown again, the member's next request has it back.
   await list.getByRole('button', { name: /Northline Logistics/ }).click();
   await pane.getByRole('tab', { name: 'Features', exact: true }).click();
+  await item(pane, 'Uniform Inventory').click();
   await show.click();
   await expect(show).toBeChecked();
   await member.getByRole('link', { name: 'Home Page', exact: true }).click();
@@ -268,6 +262,7 @@ test('the platform puts a feature in beta at a DSP, and only the testers it adds
   await list.getByRole('button', { name: /Northline Logistics/ }).click();
   const pane = page.getByRole('region', { name: 'Northline Logistics', exact: true });
   await pane.getByRole('tab', { name: 'Features', exact: true }).click();
+  await item(pane, 'Uniform Inventory').click();
   const sight = pane.getByRole('radiogroup', { name: 'Who sees Uniform Inventory' });
   const context = await browser.newContext();
   const member = await context.newPage();
@@ -281,8 +276,8 @@ test('the platform puts a feature in beta at a DSP, and only the testers it adds
     await member.getByRole('link', { name: 'Timecard', exact: true }).click();
   };
 
-  await sight.getByRole('radio', { name: 'Beta' }).click();
-  await expect(sight.getByRole('radio', { name: 'Beta' })).toBeChecked();
+  await sight.getByRole('radio', { name: 'Beta testers' }).click();
+  await expect(sight.getByRole('radio', { name: 'Beta testers' })).toBeChecked();
   await refresh();
   await expect(memberLink).toHaveCount(0);
 
@@ -306,4 +301,43 @@ test('the platform puts a feature in beta at a DSP, and only the testers it adds
   await refresh();
   await expect(memberLink).toHaveCount(0);
   await context.close();
+});
+
+test('a part reaches no more people than its feature, and the list finds a feature by its parts', async ({
+  page,
+}) => {
+  await login(page);
+  await page
+    .getByRole('region', { name: 'DSPs', exact: true })
+    .getByRole('button', { name: /Northline Logistics/ })
+    .click();
+  const pane = page.getByRole('region', { name: 'Northline Logistics', exact: true });
+  await pane.getByRole('tab', { name: 'Features', exact: true }).click();
+  const list = pane.getByRole('navigation', { name: 'Features', exact: true });
+  // A part's name finds its feature.
+  const search = list.getByLabel('Search features');
+  await search.fill('meal');
+  await expect(list.getByRole('button').filter({ hasText: 'Timecard' })).toHaveCount(1);
+  await expect(item(pane, 'Uniform Inventory')).toHaveCount(0);
+  await search.fill('');
+
+  await item(pane, 'Timecard').click();
+  const sight = pane.getByRole('radiogroup', { name: 'Who sees Timecard' });
+  const meals = pane.getByRole('combobox', { name: 'Who sees Meal Breaks tab' });
+  await expect(meals).toHaveValue('shown');
+  // In beta, the feature takes its parts there, and what a part was shown to waits for it.
+  await sight.getByRole('radio', { name: 'Beta testers' }).click();
+  await expect(meals).toHaveValue('beta');
+  await expect(meals.getByRole('option', { name: 'Everyone' })).toBeDisabled();
+  await sight.getByRole('radio', { name: 'Everyone' }).click();
+  await expect(meals).toHaveValue('shown');
+
+  // A part in beta lists its feature among what is in beta.
+  await meals.selectOption('beta');
+  await expect(meals).toHaveValue('beta');
+  await list.getByRole('group', { name: 'Show' }).getByRole('button', { name: /^Beta/ }).click();
+  await expect(item(pane, 'Timecard')).toBeVisible();
+  await expect(item(pane, 'Home Page')).toHaveCount(0);
+  await meals.selectOption('shown');
+  await expect(meals).toHaveValue('shown');
 });

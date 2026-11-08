@@ -12,6 +12,10 @@ test('Daily Performance has its switch on the DSPs page, on for the seeded DSP',
     .click();
   const pane = page.getByRole('region', { name: 'Northline Logistics', exact: true });
   await pane.getByRole('tab', { name: 'Features', exact: true }).click();
+  await pane
+    .getByRole('navigation', { name: 'Features', exact: true })
+    .getByRole('button', { name: /^Daily Performance/ })
+    .click();
   await expect(pane.getByRole('switch', { name: 'Daily Performance', exact: true })).toBeChecked();
 });
 
