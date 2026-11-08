@@ -1,8 +1,9 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
 import { wordedApi } from '../../../core/shell/frontend/runtime/api.js';
 import { useData } from '../../../core/shell/frontend/runtime/data-reads.js';
 import type { Linking } from '../frontend/linked/linking.js';
 import type { SlackAccount } from './generated/SlackAccount.js';
+import type { SlackWorkspace } from './generated/SlackWorkspace.js';
 import type { SlackChannel } from './generated/SlackChannel.js';
 import type { SlackChannels } from './generated/SlackChannels.js';
 import type { SlackFolders } from './generated/SlackFolders.js';
@@ -60,10 +61,47 @@ export const call = wordedApi(wording);
 
 /** The DSP's workspaces and install link, as those who manage its connections see them. */
 export const slackAccountUrl = '/api/dsp/slack/account';
-// A reader stays the same function from one render to the next: a new one reads again.
-const readAccount = (signal: AbortSignal) => call<SlackAccount>(slackAccountUrl, undefined, signal);
 /** How each reading of the account reads it again, when another changed it. */
 const readers = new Set<() => void>();
+// Integrations switched here, by workspace and integration: the latest asked, how many of its
+// switches are still saving, one after another, and what the server last answered with the
+// count of answers when it did. Every reading of the account shows the latest asked while any
+// saves, then what was answered, until a reading taken after that answer has it.
+type Asked = {
+  on: boolean;
+  saving: number;
+  answered?: { on: boolean; at: number };
+  queue: Promise<void>;
+};
+const asks = new Map<string, Map<string, Asked>>();
+const watchers = new Set<() => void>();
+let changes = 0;
+let answers = 0;
+// How many answers to switches had come when each reading of the account was asked for: those
+// after it may not be in it.
+const askedAt = new WeakMap<SlackAccount, number>();
+// A reader stays the same function from one render to the next: a new one reads again.
+const readAccount = async (signal: AbortSignal) => {
+  const at = answers;
+  const account = await call<SlackAccount>(slackAccountUrl, undefined, signal);
+  askedAt.set(account, at);
+  return account;
+};
+const asksChanged = () => {
+  changes += 1;
+  for (const watch of watchers) watch();
+};
+const watchAsks = (watch: () => void) => {
+  watchers.add(watch);
+  return () => void watchers.delete(watch);
+};
+/** Whether `id` shows on in `workspace`, as read when `answers` answers had come. */
+function shownOn(workspace: SlackWorkspace, id: string, readAt: number) {
+  const asked = asks.get(workspace.teamId)?.get(id);
+  if (asked?.saving) return asked.on;
+  if (asked?.answered && asked.answered.at > readAt) return asked.answered.on;
+  return workspace.integrations.includes(id);
+}
 export function useSlackAccount() {
   const account = useData<SlackAccount>(
     slackAccountUrl,
@@ -73,12 +111,32 @@ export function useSlackAccount() {
     false,
     readAccount,
   );
-  const { refresh } = account;
+  const { refresh, data: read } = account;
   useEffect(() => {
     readers.add(refresh);
     return () => void readers.delete(refresh);
   }, [refresh]);
-  return account;
+  const version = useSyncExternalStore(watchAsks, () => changes);
+  // How many answers had come when this reading was asked for: those after it still show over it.
+  const readAt = (read && askedAt.get(read)) ?? 0;
+  const data = useMemo(
+    () =>
+      read && {
+        ...read,
+        workspaces: read.workspaces.map((workspace) => {
+          const asked = asks.get(workspace.teamId);
+          if (!asked?.size) return workspace;
+          const ids = new Set([...workspace.integrations, ...asked.keys()]);
+          return {
+            ...workspace,
+            integrations: [...ids].filter((id) => shownOn(workspace, id, readAt)),
+          };
+        }),
+      },
+    // A switch asked or answered shows in the next rendering of the reading.
+    [read, readAt, version],
+  );
+  return { ...account, data };
 }
 /** Has every reading of the account read it again, after a change: New's, shown on the cards. */
 export const slackAccountChanged = () => {
@@ -121,9 +179,36 @@ export const setSlackChannel = (team: string, channel: string, member: boolean) 
     `${workspaceUrl(team)}/channels/${encodeURIComponent(channel)}/${member ? 'join' : 'leave'}`,
     {},
   );
-/** Switches the integration `id` on or off in the workspace `team`. */
-export const switchSlackIntegration = (team: string, id: string, on: boolean) =>
-  call<SlackAccount>(`${workspaceUrl(team)}/integrations/${encodeURIComponent(id)}`, { on });
+/**
+ * Switches the integration `id` on or off in the workspace `team`: every reading of the account
+ * shows it switched at once. Switches of one integration save one after another, so the last
+ * asked is the last saved; once one is, the account is read again.
+ */
+export function switchSlackIntegration(team: string, id: string, on: boolean) {
+  const workspace = asks.get(team) ?? new Map<string, Asked>();
+  asks.set(team, workspace);
+  const asked = workspace.get(id) ?? { on, saving: 0, queue: Promise.resolve() };
+  workspace.set(id, asked);
+  asked.on = on;
+  asked.saving += 1;
+  asksChanged();
+  const saved = asked.queue.then(async () => {
+    try {
+      const account = await call<SlackAccount>(
+        `${workspaceUrl(team)}/integrations/${encodeURIComponent(id)}`,
+        { on },
+      );
+      const after = account.workspaces.find((each) => each.teamId === team);
+      answers += 1;
+      asked.answered = { on: after ? after.integrations.includes(id) : on, at: answers };
+    } finally {
+      asked.saving -= 1;
+      asksChanged();
+    }
+  });
+  asked.queue = saved.catch(() => undefined);
+  return saved.then(slackAccountChanged);
+}
 /**
  * How the integration whose endpoints are under `path` links channels to folders: browsing the
  * folders, and linking, moving and unlinking a channel, each change read again by `changed`.

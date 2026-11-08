@@ -54,8 +54,138 @@ test('an owner adds Slack workspaces from New, each on a card under its name, us
   const hero = page.getByRole('heading', { level: 2, name: 'Dispatch Ops' });
   await expect(hero).toBeVisible();
   await expect(page.locator('header', { has: hero }).locator('img')).toBeVisible();
+  // It moves to Joined at once, every other channel's button left as it was while it saves; left
+  // before Slack answers, it moves back, the join's answer not moving it again.
+  const channels = '**/channels/*/*';
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route(channels, async (route) => {
+    await held;
+    await route.continue();
+  });
+  const joined = page.getByRole('list', { name: 'Joined', exact: true });
+  const notJoined = page.getByRole('list', { name: 'Not joined', exact: true });
   await page.getByRole('button', { name: 'Join photos' }).click();
-  await expect(page.getByRole('list', { name: 'Joined', exact: true })).toContainText('photos');
+  await expect(joined).toContainText('photos');
+  await expect(notJoined.getByRole('button').first()).toBeEnabled();
+  await page.getByRole('button', { name: 'Leave photos' }).click();
+  await expect(notJoined).toContainText('photos');
+  const left = page.waitForResponse((response) => response.url().endsWith('/leave'));
+  release();
+  await left;
+  await page.unroute(channels);
+  await expect(notJoined).toContainText('photos');
+  // Both refused, it shows as Slack last had it, not as the first asked.
+  let refuse = () => {};
+  const refusing = new Promise<void>((resolve) => (refuse = resolve));
+  await page.route(channels, async (route) => {
+    await refusing;
+    await route.fulfill({
+      status: 502,
+      json: { error: 'refused', message: 'Slack is down' },
+    });
+  });
+  await page.getByRole('button', { name: 'Join photos' }).click();
+  await page.getByRole('button', { name: 'Leave photos' }).click();
+  await expect(notJoined).toContainText('photos');
+  refuse();
+  await expect(page.getByText('Slack is down')).toBeVisible();
+  await expect(notJoined).toContainText('photos');
+  await page.unroute(channels);
+  await page.getByRole('button', { name: 'Join photos' }).click();
+  await expect(joined).toContainText('photos');
+  // An integration switched shows as switched as its question closes, while the switch saves.
+  await page
+    .getByRole('navigation', { name: 'Sections' })
+    .getByRole('button', { name: 'Integrations', exact: true })
+    .click();
+  const files = page.getByRole('switch', { name: 'Import Files', exact: true });
+  const was = await files.isChecked();
+  const switching = '**/integrations/*';
+  let switched = () => {};
+  const holding = new Promise<void>((resolve) => (switched = resolve));
+  await page.route(switching, async (route) => {
+    await holding;
+    await route.continue();
+  });
+  await files.click();
+  await page.getByRole('button', { name: was ? 'Turn off' : 'Turn on', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(files).toBeChecked({ checked: !was });
+  const answered = page.waitForResponse((response) => response.url().includes('/integrations/'));
+  switched();
+  await answered;
+  await page.unroute(switching);
+  await expect(files).toBeChecked({ checked: !was });
+  // Switched back and forth while the first is held, the last asked is what's saved: it isn't
+  // sent until the first is answered, so it can't reach the server first.
+  let saveBoth = () => {};
+  const both = new Promise<void>((resolve) => (saveBoth = resolve));
+  let switches = 0;
+  await page.route(switching, async (route) => {
+    switches += 1;
+    if (switches === 1) await both;
+    await route.continue();
+  });
+  const turn = async (to: boolean) => {
+    await files.click();
+    await page.getByRole('button', { name: to ? 'Turn on' : 'Turn off', exact: true }).click();
+    await expect(files).toBeChecked({ checked: to });
+  };
+  await turn(was);
+  await turn(!was);
+  const second = page.waitForResponse(
+    (response) =>
+      response.url().includes('/integrations/') && response.request().postDataJSON()?.on === !was,
+  );
+  saveBoth();
+  await second;
+  await page.unroute(switching);
+  await page.reload();
+  await page
+    .getByRole('navigation', { name: 'Sections' })
+    .getByRole('button', { name: 'Integrations', exact: true })
+    .click();
+  await expect(files).toBeChecked({ checked: !was });
+  // One refused shows what was saved last.
+  await page.route(switching, (route) =>
+    route.fulfill({ status: 409, json: { error: 'refused', message: 'Not now' } }),
+  );
+  await files.click();
+  await page.getByRole('button', { name: was ? 'Turn on' : 'Turn off', exact: true }).click();
+  await expect(page.getByText('Not now')).toBeVisible();
+  await expect(files).toBeChecked({ checked: !was });
+  await page.unroute(switching);
+  // A reading asked for before a switch's answer, though it lands after, doesn't undo it.
+  const canvases = page.getByRole('switch', { name: 'Sync Canvases', exact: true });
+  const before = await canvases.isChecked();
+  const reading = '**/api/dsp/slack/account';
+  const heldReads: (() => void)[] = [];
+  // Each is answered by the server as it's asked, and handed over only when let go.
+  await page.route(reading, async (route) => {
+    const response = await route.fetch();
+    await new Promise<void>((resolve) => heldReads.push(resolve));
+    await route.fulfill({ response });
+  });
+  const firstSaved = page.waitForResponse((response) => response.url().includes('/integrations/'));
+  await files.click();
+  await page.getByRole('button', { name: was ? 'Turn on' : 'Turn off', exact: true }).click();
+  await firstSaved;
+  await expect.poll(() => heldReads.length).toBeGreaterThan(0);
+  const asked = heldReads.length;
+  const secondSaved = page.waitForResponse((response) => response.url().includes('/integrations/'));
+  await canvases.click();
+  await page.getByRole('button', { name: before ? 'Turn off' : 'Turn on', exact: true }).click();
+  await secondSaved;
+  for (const read of heldReads.slice(0, asked)) read();
+  await expect(canvases).toBeChecked({ checked: !before });
+  await page.unroute(reading);
+  for (const read of heldReads.slice(asked)) read();
+  await expect(canvases).toBeChecked({ checked: !before });
+  await page
+    .getByRole('navigation', { name: 'Sections' })
+    .getByRole('button', { name: 'Channels', exact: true })
+    .click();
   await page.getByRole('button', { name: 'Rename' }).click();
   const rename = page.getByRole('dialog', { name: 'Rename connection' });
   await rename.getByLabel('Name').fill('Dispatch Crew');
