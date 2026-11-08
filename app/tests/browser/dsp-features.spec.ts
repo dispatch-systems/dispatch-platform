@@ -368,6 +368,14 @@ test('a part reaches no more people than its feature, the list finds a feature b
   await expect(meals).toHaveValue('hidden');
   await meals.selectOption('shown');
   await expect(page.getByText('Meal Breaks tab shown to Northline Logistics')).toBeVisible();
+  // One the server refuses goes back to what it saved, though reading it again finds no change.
+  await page.route(saving, (route) =>
+    route.fulfill({ status: 409, json: { error: 'not_now', message: 'Not now' } }),
+  );
+  await meals.selectOption('beta');
+  await expect(page.getByText('Not now')).toBeVisible();
+  await expect(meals).toHaveValue('shown');
+  await page.unroute(saving);
   // In beta, the feature takes its parts there, and what a part was shown to waits for it.
   await sight.getByRole('radio', { name: 'Beta testers' }).click();
   await expect(meals).toHaveValue('beta');

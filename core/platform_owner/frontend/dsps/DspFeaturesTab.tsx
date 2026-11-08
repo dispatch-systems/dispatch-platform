@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { DspSummary } from '../../../accounts/api/index.js';
-import type { DspFeatureReport, DspFeatures, Visibility } from '../../api/index.js';
+import type { Visibility } from '../../api/index.js';
 import {
   setDspFeature,
   setDspVisibility,
@@ -22,7 +22,8 @@ import {
   parseHash,
   replaceHashQuery,
 } from '../../../shell/frontend/runtime/navigation.js';
-import { useFeedback } from '../../../shell/frontend/runtime/feedback.js';
+import { useChanges } from '../../../shell/frontend/runtime/changes.js';
+import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import { Badge, Empty, ErrorBox, SearchInput } from '../../../shell/frontend/ui/index.js';
 import { FeatureSwitchDialog } from './FeatureSwitchDialog.js';
 import { previewSwitch, sideEffects, switchLabel } from './switches.js';
@@ -77,20 +78,11 @@ const filters = [
   ['hidden', 'Hidden'],
 ] as const;
 type Filter = (typeof filters)[number][0];
-// What was changed here at one DSP and not yet read back: what is switched on and who sees
-// what; how many of its saves are still to be done, and the reading they followed.
-type Made = {
-  dsp: string;
-  saving?: number;
-  read?: DspFeatureReport;
-  enabled?: string[];
-  sights: Record<string, Visibility>;
-};
+// What the tab shows of a DSP: what is switched on, who sees what, and AI Support's button.
+type Shown = { enabled: string[]; sights: Record<string, Visibility>; support: boolean };
+type SwitchChanges = readonly { feature: string; enabled: boolean }[];
 // What is switched on once `changes` are made.
-function switchedAs(
-  enabled: readonly string[],
-  changes: readonly { feature: string; enabled: boolean }[],
-) {
+function switchedAs(enabled: readonly string[], changes: SwitchChanges) {
   const on = new Set(enabled);
   for (const change of changes) {
     if (change.enabled) on.add(change.feature);
@@ -125,27 +117,30 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
   const [chosen, setChosen] = useState(() => hashQuery().get('feature') ?? '');
   // A switch that takes other features with it, asked about before it is made.
   const [asking, setAsking] = useState<{ feature: FeatureEntry; on: boolean }>();
-  // What was changed here shows at once, held until the DSP's features are read again once the
-  // last of its saves is done.
-  const [made, setMade] = useState<Made>({ dsp: dsp.id, sights: {} });
-  const latest = useRef(data);
-  latest.current = data;
-  const holds = made.dsp === dsp.id && (Boolean(made.saving) || made.read === data);
-  // AI Support's button as last switched here, until the DSP's profile is read again.
-  const [support, setSupport] = useState<{ dsp: string; shown: boolean }>();
-  const supportShown = support?.dsp === dsp.id ? support.shown : !dsp.profile.aiSupportHidden;
-  // What is switched on, parts of a feature that is off included, so they come back as they were.
-  const enabled =
-    holds && made.enabled
-      ? made.enabled
-      : data
+  // As read, with what was changed here over it: each change shows at once and saves behind the
+  // ones before it, and once the last is saved the DSP's features are read again and the list's
+  // counts follow.
+  const read = useMemo<Shown>(
+    () => ({
+      enabled: data
         ? data.features.filter((state) => state.enabled).map((state) => state.feature)
-        : dsp.features;
+        : dsp.features,
+      sights: Object.fromEntries(
+        (data?.features ?? []).map((state) => [state.feature, state.visibility]),
+      ),
+      support: !dsp.profile.aiSupportHidden,
+    }),
+    [data, dsp.features, dsp.profile.aiSupportHidden],
+  );
+  const { shown, change } = useChanges(read, dsp.id, () => {
+    refresh();
+    changed();
+  });
+  const supportShown = shown.support;
+  // What is switched on, parts of a feature that is off included, so they come back as they were.
+  const enabled = shown.enabled;
   const switched = (id: string) => enabled.includes(id);
-  const stored = (id: string): Visibility =>
-    (holds ? made.sights[id] : undefined) ??
-    data?.features.find((state) => state.feature === id)?.visibility ??
-    'shown';
+  const stored = (id: string): Visibility => shown.sights[id] ?? 'shown';
   const visibility = (feature: FeatureEntry) => stored(feature.id);
   // Who sees it: a part no more people than its feature, whatever its own choice.
   const reaches = (feature: FeatureEntry) =>
@@ -195,82 +190,46 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
     setChosen(id);
     nameInAddress(id);
   };
-  // Saves go one after another, in the order made, so the last change wins; none dims a control
-  // or holds it back. Once the last is done the DSP's features are read again, which also takes
-  // back what a failed one showed.
-  const { perform } = useFeedback();
-  const queue = useRef(Promise.resolve());
-  const saving = useRef(0);
-  const change = (
-    shown: Partial<Made>,
-    work: () => Promise<unknown>,
-    success: string,
-    undo?: () => void,
-  ) => {
-    saving.current += 1;
-    const count = saving.current;
-    setMade((m) => {
-      const here = m.dsp === dsp.id ? m : { dsp: dsp.id, sights: {} };
-      return { ...here, ...shown, sights: { ...here.sights, ...shown.sights }, saving: count };
-    });
-    queue.current = queue.current.then(async () => {
-      if (!(await perform(work, success))) undo?.();
-      settled();
-    });
-  };
-  // One save done: once the last is, the DSP's features are read again and the list's counts
-  // follow, what was made here shown until that reading lands.
-  const settled = () => {
-    saving.current -= 1;
-    const count = saving.current;
-    const read = latest.current;
-    setMade((m) => ({ ...m, saving: count, read }));
-    if (count) return;
-    refresh();
-    changed();
-  };
-  // A switch asked about first is saved from its question: its answer shows until the reading.
-  const asked = (answer: DspFeatures) => {
-    const read = latest.current;
-    setMade((m) => ({
-      ...(m.dsp === dsp.id ? m : { dsp: dsp.id, sights: {} }),
-      enabled: answer.features,
-      read,
-    }));
-    if (saving.current) return;
-    refresh();
-    changed();
-  };
+  // A save, saying what it did once it has.
+  const saving = useAction((work: () => Promise<unknown>, _done: string) => work(), {
+    success: (_work, done) => done,
+  });
+  const switchTo = (feature: FeatureEntry, on: boolean, changes: SwitchChanges) =>
+    change(
+      (value) => ({ ...value, enabled: switchedAs(value.enabled, changes) }),
+      () =>
+        saving.run(
+          () => setDspFeature(dsp.id, feature.id, on),
+          `${switchLabel(feature)} switched ${on ? 'on' : 'off'}`,
+        ),
+    );
   const toggle = (feature: FeatureEntry, on: boolean) => {
     const preview = previewSwitch(enabled, feature.id, on);
     // Alone, or already as asked: no question to ask.
     if (preview && !sideEffects(feature, preview).length) {
-      if (preview.length)
-        change(
-          { enabled: switchedAs(enabled, preview) },
-          () => setDspFeature(dsp.id, feature.id, on),
-          `${switchLabel(feature)} switched ${on ? 'on' : 'off'}`,
-        );
+      if (preview.length) switchTo(feature, on, preview);
       return;
     }
     setAsking({ feature, on });
   };
   const see = (feature: FeatureEntry, to: Visibility) =>
     change(
-      { sights: { [feature.id]: to } },
-      () => setDspVisibility(dsp.id, feature.id, to),
-      `${switchLabel(feature)} ${seenBy[to]} ${dsp.name}`,
+      (value) => ({ ...value, sights: { ...value.sights, [feature.id]: to } }),
+      () =>
+        saving.run(
+          () => setDspVisibility(dsp.id, feature.id, to),
+          `${switchLabel(feature)} ${seenBy[to]} ${dsp.name}`,
+        ),
     );
-  const showSupport = (shown: boolean) => {
-    const was = supportShown;
-    setSupport({ dsp: dsp.id, shown });
+  const showSupport = (on: boolean) =>
     change(
-      {},
-      () => showDspAiSupport(dsp.id, shown),
-      `AI Support ${shown ? 'shown to' : 'hidden from'} ${dsp.name}`,
-      () => setSupport({ dsp: dsp.id, shown: was }),
+      (value) => ({ ...value, support: on }),
+      () =>
+        saving.run(
+          () => showDspAiSupport(dsp.id, on),
+          `AI Support ${on ? 'shown to' : 'hidden from'} ${dsp.name}`,
+        ),
     );
-  };
   const control = (feature: FeatureEntry, locked = false) => (
     <input
       type="checkbox"
@@ -484,14 +443,13 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
       </div>
       {asking && data && (
         <FeatureSwitchDialog
-          dsp={dsp}
           feature={asking.feature}
           on={asking.on}
           enabled={enabled}
           onClose={() => setAsking(undefined)}
-          onDone={(answer) => {
+          onConfirm={(changes) => {
             setAsking(undefined);
-            asked(answer);
+            switchTo(asking.feature, asking.on, changes);
           }}
         />
       )}
