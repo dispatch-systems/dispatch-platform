@@ -30,8 +30,26 @@ fn measured(bytes: &[u8]) -> (u32, u32) {
 
 #[test]
 fn a_large_picture_previews_at_its_shape_no_larger_than_a_thread_needs() {
-    let (_folder, path) = kept(&picture(1_600, 800, ImageFormat::Png));
-    assert_eq!(measured(&made(&path).unwrap()), (640, 320));
+    for format in [ImageFormat::Png, ImageFormat::Jpeg] {
+        let (_folder, path) = kept(&picture(3_200, 1_600, format));
+        assert_eq!(measured(&made(&path).unwrap()), (640, 320));
+    }
+    // A grey camera image stays grey through the scaled JPEG path.
+    let mut grey = std::io::Cursor::new(Vec::new());
+    DynamicImage::ImageLuma8(image::GrayImage::from_pixel(
+        3_200,
+        1_600,
+        image::Luma([90]),
+    ))
+    .write_to(&mut grey, ImageFormat::Jpeg)
+    .unwrap();
+    let (_folder, path) = kept(&grey.into_inner());
+    let preview = image::load_from_memory(&made(&path).unwrap())
+        .unwrap()
+        .to_rgb8();
+    assert_eq!(preview.dimensions(), (640, 320));
+    let [red, green, blue] = preview.get_pixel(0, 0).0;
+    assert_eq!((red, green), (green, blue));
 }
 
 #[test]
@@ -112,4 +130,32 @@ async fn those_asking_for_a_preview_at_once_share_one_download_of_its_picture() 
         assert!(shown.unwrap().is_some());
     }
     assert_eq!(fake.asked(Method::GET, &key), 1);
+}
+
+#[tokio::test]
+async fn cancelling_header_preparation_holds_its_turn_until_the_blocking_reader_finishes() {
+    let slots = Arc::new(Semaphore::new(1));
+    let turn = slots.clone().acquire_owned().await.unwrap();
+    let (started, reading) = tokio::sync::oneshot::channel();
+    let (release, released) = std::sync::mpsc::channel();
+    let (finished, done) = tokio::sync::oneshot::channel();
+    let reader = tokio::spawn(prepare(turn, move || {
+        started.send(()).unwrap();
+        released.recv().unwrap();
+        let _ = finished.send(());
+    }));
+    reading.await.unwrap();
+    reader.abort();
+    assert!(reader.await.unwrap_err().is_cancelled());
+    let next = slots.clone().try_acquire_owned();
+    let still_held = next.is_err();
+    drop(next);
+    // Always finish the blocking worker before asserting, including on the original failure.
+    release.send(()).unwrap();
+    done.await.unwrap();
+    let _finished = slots.acquire_owned().await.unwrap();
+    assert!(
+        still_held,
+        "cancelled header worker released its admission turn before finishing"
+    );
 }

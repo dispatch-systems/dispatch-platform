@@ -990,6 +990,7 @@ dependencies = [
  "futures-util",
  "hkdf",
  "image",
+ "jpeg-decoder",
  "libc",
  "p256",
  "qrcode",

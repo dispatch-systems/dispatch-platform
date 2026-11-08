@@ -11,17 +11,20 @@
 use super::bytes::{self, Folder, Reading};
 use dispatch_core::{Error, Result, State, foundation::crypto, foundation::observability};
 use image::{
-    DynamicImage, ImageDecoder, ImageReader, Limits, Rgb, RgbImage, codecs::jpeg::JpegEncoder,
+    DynamicImage, GrayImage, ImageDecoder, ImageFormat, ImageReader, Limits, Rgb, RgbImage,
+    codecs::jpeg::JpegEncoder,
 };
 use serde_json::json;
 use std::{
     collections::HashMap,
+    fs::File,
+    io::BufReader,
     path::{Path, PathBuf},
     sync::{Arc, LazyLock, Mutex, PoisonError},
 };
 use tokio::{
     io::AsyncWriteExt,
-    sync::{OwnedMutexGuard, Semaphore},
+    sync::{OwnedMutexGuard, OwnedSemaphorePermit, Semaphore},
 };
 
 /// What a preview is.
@@ -35,6 +38,9 @@ const MOST_SIDE: u32 = 12_000;
 const MOST_MEMORY: u64 = 512 * 1024 * 1024;
 /// How many previews are made at once.
 static MAKING: LazyLock<Arc<Semaphore>> = LazyLock::new(|| Arc::new(Semaphore::new(2)));
+/// Aggregate decoded pixel storage admitted at once, in MiB. Decoder scratch and the upright
+/// copy also take memory; this bounds their inputs rather than treating every photo alike.
+static PIXELS: LazyLock<Arc<Semaphore>> = LazyLock::new(|| Arc::new(Semaphore::new(512)));
 /// The previews asked for, by where each is kept.
 static UNDERWAY: LazyLock<Mutex<HashMap<PathBuf, Asked>>> = LazyLock::new(Mutex::default);
 
@@ -83,9 +89,24 @@ pub async fn preview(
         .acquire_owned()
         .await
         .map_err(|_| Error::new("preview_unavailable", 503))?;
-    // The turn goes with the making, which runs on once begun, even for a page gone meanwhile.
+    // Header reads do no pixel decoding. Keep the making slot while waiting for this picture's
+    // share of the aggregate pixel budget, so waiting requests retain no decoded image.
+    let ((bytes, memory), turn) = prepare(turn, move || {
+        let memory = pixel_memory(&bytes);
+        (bytes, memory)
+    })
+    .await?;
+    let Some(memory) = memory else {
+        return Ok(None);
+    };
+    let pixels = PIXELS
+        .clone()
+        .acquire_many_owned(memory)
+        .await
+        .map_err(|_| Error::new("preview_unavailable", 503))?;
+    // Both permits go with the making, which runs on once begun, even for a page gone.
     let made = tokio::task::spawn_blocking(move || {
-        let _turn = turn;
+        let (_turn, _pixels) = (turn, pixels);
         made(&bytes)
     })
     .await
@@ -175,15 +196,45 @@ impl Drop for Underway {
     }
 }
 
-/// The preview of the picture `bytes`, as a JPEG: none for one that fits already, or that can't
-/// be read as a picture within the limits.
-fn made(bytes: &Path) -> Option<Vec<u8>> {
+/// Runs header preparation under its making turn, returning it for the later decode.
+async fn prepare<T: Send + 'static>(
+    turn: OwnedSemaphorePermit,
+    read: impl FnOnce() -> T + Send + 'static,
+) -> Result<(T, OwnedSemaphorePermit)> {
+    // The worker owns the turn from admission until its work finishes, even if the
+    // requesting future is cancelled while waiting for it.
+    tokio::task::spawn_blocking(move || (read(), turn))
+        .await
+        .map_err(|_| Error::new("preview_unavailable", 503))
+}
+
+/// The decoded pixel storage a picture needs, rounded up to MiB; none for a picture that
+/// needs no preview or exceeds its limits. Only headers are read.
+fn pixel_memory(bytes: &Path) -> Option<u32> {
+    let decoder = reader(bytes)?.into_decoder().ok()?;
+    let (width, height) = decoder.dimensions();
+    if width <= SIDE && height <= SIDE || decoder.total_bytes() > MOST_MEMORY {
+        return None;
+    }
+    Some(decoder.total_bytes().div_ceil(1024 * 1024).max(1) as u32)
+}
+
+/// A picture's reader, with the same limits for its header and its later decoding.
+fn reader(bytes: &Path) -> Option<ImageReader<BufReader<File>>> {
     let mut reader = ImageReader::open(bytes).ok()?.with_guessed_format().ok()?;
     let mut limits = Limits::default();
     limits.max_image_width = Some(MOST_SIDE);
     limits.max_image_height = Some(MOST_SIDE);
     limits.max_alloc = Some(MOST_MEMORY);
     reader.limits(limits);
+    Some(reader)
+}
+
+/// The preview of the picture `bytes`, as a JPEG: none for one that fits already, or that can't
+/// be read as a picture within the limits.
+fn made(bytes: &Path) -> Option<Vec<u8>> {
+    let reader = reader(bytes)?;
+    let jpeg = reader.format() == Some(ImageFormat::Jpeg);
     let mut decoder = reader.into_decoder().ok()?;
     let (width, height) = decoder.dimensions();
     if width <= SIDE && height <= SIDE {
@@ -193,7 +244,13 @@ fn made(bytes: &Path) -> Option<Vec<u8>> {
         return None;
     }
     let orientation = decoder.orientation().ok()?;
-    let mut picture = DynamicImage::from_decoder(decoder).ok()?;
+    // JPEG can decode directly at a half, quarter or eighth of its size. Other formats and
+    // JPEG variants the scaled decoder does not support keep the existing decoder path.
+    let mut picture = if jpeg {
+        scaled_jpeg(bytes).or_else(|| DynamicImage::from_decoder(decoder).ok())?
+    } else {
+        DynamicImage::from_decoder(decoder).ok()?
+    };
     picture.apply_orientation(orientation);
     let small = flattened(&picture.thumbnail(SIDE, SIDE));
     let mut jpeg = Vec::new();
@@ -201,6 +258,32 @@ fn made(bytes: &Path) -> Option<Vec<u8>> {
         .encode_image(&small)
         .ok()?;
     Some(jpeg)
+}
+
+/// A sequential JPEG's pixels at the smallest supported size still covering the preview.
+/// Progressive and lossless pictures use the existing bounded decoder: their full coefficient
+/// storage does not benefit from the row decoder's reduced output size.
+fn scaled_jpeg(bytes: &Path) -> Option<DynamicImage> {
+    let mut decoder = jpeg_decoder::Decoder::new(BufReader::new(File::open(bytes).ok()?));
+    decoder.set_max_decoding_buffer_size(MOST_MEMORY as usize);
+    decoder.read_info().ok()?;
+    let info = decoder.info()?;
+    if info.coding_process != jpeg_decoder::CodingProcess::DctSequential {
+        return None;
+    }
+    let (width, height) = decoder.scale(SIDE as u16, SIDE as u16).ok()?;
+    let pixels = decoder.decode().ok()?;
+    let (width, height) = (u32::from(width), u32::from(height));
+    match info.pixel_format {
+        jpeg_decoder::PixelFormat::L8 => {
+            GrayImage::from_raw(width, height, pixels).map(DynamicImage::ImageLuma8)
+        }
+        jpeg_decoder::PixelFormat::RGB24 => {
+            RgbImage::from_raw(width, height, pixels).map(DynamicImage::ImageRgb8)
+        }
+        // Keep the existing decoder's colour conversion and precision for other variants.
+        _ => None,
+    }
 }
 
 /// `picture` on white, as a JPEG has no see-through parts.
