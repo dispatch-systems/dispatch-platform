@@ -115,6 +115,13 @@ test('a day of routes is collected on request, stored in normalized rows and lis
   assert.equal(reprocessed.status, 200, reprocessed.body);
   assert.equal(reprocessed.value.publications.length, 1);
   assert.equal(reprocessed.value.publications[0].taskCount, 8);
+  const rebuilt = (await owner.read('/api/platform/audit')).events.filter(
+    (event: { action: string }) => event.action === 'routes.reprocessed',
+  );
+  assert.deepEqual(
+    rebuilt.map((event: { detail: string; dspId: string }) => [event.detail, event.dspId]),
+    [['2026-09-25', dsp.id]],
+  );
   const stored = f.database(`dsps/${dsp.id}/data/routedata/routedata.sqlite`, (db) => ({
     identity: db
       .prepare('SELECT provider,source FROM storage_identity')
@@ -282,4 +289,12 @@ test("routes' schedules and jobs stay when the timecard is switched off, and onl
   assert.equal(cancelled.status, 200, cancelled.body);
   assert.equal(cancelled.value.status, 'cancelled');
   assert.equal((await jobOf()).status, 'cancelled');
+  // The audit log names what was cancelled as its outcome would: its job's kind and its day.
+  type Fact = { field: string; to: string };
+  const [stopped] = (await owner.read('/api/platform/audit')).events.filter(
+    (event: { action: string }) => event.action === 'collection.cancelled',
+  );
+  const fact = (field: string) =>
+    stopped.changes.find((change: Fact) => change.field === field)?.to;
+  assert.deepEqual([fact('collection'), fact('date')], ['cortex.routes.collect', '2026-09-25']);
 });

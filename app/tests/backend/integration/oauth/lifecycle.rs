@@ -238,13 +238,16 @@ async fn connecting_an_app_again_replaces_its_earlier_connection() {
         .map(|event| s(event, "action"))
         .filter(|action| action.starts_with("agent."))
         .collect();
-    // Newest first, after the owner opened the pairing window for the first connection.
+    // Newest first, after the owner opened the pairing window for the first connection: each
+    // approval as the owner gave it, and each connection as the app collected its tokens.
     assert_eq!(
         actions,
         [
             "agent.app_connected",
             "agent.app_revoked",
+            "agent.app_approved",
             "agent.app_connected",
+            "agent.app_approved",
             "agent.pairing_opened"
         ]
     );

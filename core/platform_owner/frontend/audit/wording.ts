@@ -11,6 +11,8 @@ import {
 import { permissionLabels } from '../../../shell/frontend/runtime/permissions.js';
 import { featureCatalog, featureLabel } from '../../../shell/frontend/runtime/features.js';
 import { collections } from '../../../collection/api/generated/collections.js';
+import type { BackupRuleInput } from '../../../backups/api/index.js';
+import { keepText, ruleText } from '../dsps/backupRules.js';
 import type {
   AuditPart,
   AuditPhrases,
@@ -49,7 +51,18 @@ const phrases: AuditPhrases = {
   'role.created': (e) => ['created ', ...named('role', e.detail)],
   'role.updated': (e) => ['updated ', ...named('role', e.target ?? e.detail)],
   'role.deleted': (e) => ['deleted ', ...named('role', e.detail)],
-  'collection.cancelled': () => ['cancelled a collection'],
+  'collection.cancelled': (e) => {
+    if (e.target) return ['cancelled scheduled collection ', strong(e.target)];
+    const name = collected(e);
+    const date = fact(e, 'date');
+    const through = fact(e, 'through');
+    return [
+      'cancelled ',
+      ...(name ? ['the ', strong(`${name} collection`)] : ['a collection']),
+      ...(date ? [' for ', strong(day(date))] : []),
+      ...(date && through ? [' to ', strong(day(through))] : []),
+    ];
+  },
   'collection.started': (e) => ['started collecting ', strong(e.detail)],
   'schedule.created': (e) => ['created ', ...named('schedule', e.detail)],
   'schedule.updated': (e) => ['updated ', ...named('schedule', e.target ?? e.detail)],
@@ -68,6 +81,7 @@ const phrases: AuditPhrases = {
   'connection.disabled': (e) => [
     'disconnected ',
     strong(connectionName(e.detail) ?? title(e.detail || 'a connection')),
+    ...(fact(e, 'login') === 'deleted' ? [' and deleted its saved login'] : []),
   ],
   'connection.verification_submitted': (e) => [
     'submitted verification for ',
@@ -166,6 +180,11 @@ const phrases: AuditPhrases = {
   'mail.retried': (e) => ['retried an email', ...(e.target ? [' to ', strong(e.target)] : [])],
   'mail.discarded': (e) => ['discarded an email', ...(e.target ? [' to ', strong(e.target)] : [])],
   'dsp.created': (e) => ['created ', strong(e.dspName ?? 'a DSP')],
+  'dsp.setup_retried': (e) => [
+    'retried setting up ',
+    strong(e.dspName ?? 'a DSP'),
+    ...(e.changes.some((change) => change.field === 'error') ? [', which failed again'] : []),
+  ],
   'dsp.removed': (e) => ['removed ', strong(e.dspName ?? 'a DSP')],
   'dsp.restored': (e) => ['restored ', strong(e.dspName ?? 'a DSP')],
   'dsp.suspended': (e) => ['disabled ', strong(e.dspName ?? 'a DSP')],
@@ -212,6 +231,9 @@ export const facts = new Set([
   'automatic',
   'reason',
   'openUntil',
+  'login',
+  'error',
+  'verified',
   'ticket',
 ]);
 const fact = (event: AuditEvent, field: string) =>
@@ -311,6 +333,7 @@ const fields: Record<string, string> = {
   collection: 'Collects',
   cadence: 'Repeats',
   interval: 'Every',
+  backupRules: 'Rules',
   time: 'Time',
   enabled: 'Status',
   cause: 'With',
@@ -342,12 +365,33 @@ export function changeValue(field: string, value: string) {
     return scheduleLabel(value) ?? ownerValue(field, value) ?? title(value);
   if (field === 'cadence') return title(value);
   if (field === 'interval') return `${value} min`;
+  if (field === 'backupRules') return backupRulesText(value);
   const read = ownerValue(field, value);
   if (read !== undefined) return read;
   if (field === 'time' && /^\d{2}:\d{2}$/.test(value)) return clockTime(value);
   if (field === 'expires' && value !== 'never') return calendarDay(value);
   return value;
 }
+// A DSP's backup rules as the log keeps them, each as the Backups tab reads it.
+function backupRulesText(value: string) {
+  const rules = JSON.parse(value) as BackupRuleInput[];
+  return rules
+    .map((rule) => {
+      const without = rule.skipped.map(backupContent);
+      const left = without.length ? `, without ${without.join(', ')}` : '';
+      return `${ruleText(rule)}, ${keepText(rule).toLowerCase()}${left}`;
+    })
+    .join('; ');
+}
+// What a backup can leave out, as its Backups tab names it.
+const backupContent = (id: string) =>
+  id === 'logins'
+    ? 'saved logins'
+    : id === 'pictures'
+      ? 'pictures'
+      : id.startsWith('feature.')
+        ? featureLabel(id.slice('feature.'.length))
+        : (connectionName(id) ?? id);
 export function changeText(change: AuditChange) {
   const value = (side: string | null) => (side === null ? '' : changeValue(change.field, side));
   if (change.field === 'permission')

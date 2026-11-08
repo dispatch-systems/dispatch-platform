@@ -67,7 +67,17 @@ async fn cancel(
                 .is_leased()
                 .then(|| (row.connection_revision, row.provider()));
             let result = db.cancel(&job, &c.dsp.id)?;
-            c.audit(db, "collection.cancelled", "")?;
+            // Named as its outcome would have been: its collection, its days and its schedule.
+            let (schedule, facts) = db.job_facts(&c.dsp.id, &(&row).into());
+            db.audit_ref(
+                Some(c.actor()),
+                Some(&c.dsp.id),
+                "collection.cancelled",
+                "",
+                schedule.as_deref(),
+                &facts,
+                Some(("job", &job)),
+            )?;
             Ok((c, result, active_revision, required))
         })
         .await?;

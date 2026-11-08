@@ -1,6 +1,6 @@
 //! What only a platform owner sees: every DSP, the platform's health and diagnostics.
 use crate::{
-    Result, State,
+    Code, Result, State,
     accounts::Auth,
     collection::{api::jobs::JobStatus, registry::Provider},
     db::{Store, iso},
@@ -133,10 +133,28 @@ fn create_dsp(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
     Ok(Reply::status(out, 201))
 }
 
-fn retry_dsp(db: &Store, _: &User, input: &Input) -> Result<Reply> {
+fn retry_dsp(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &[])?;
     let id = input.param("id");
-    db.provision(id)?;
+    let retried = db.provision(id);
+    // A retry refused before it began isn't one; one that failed again is, with its error.
+    let refused = retried
+        .as_ref()
+        .is_err_and(|error| error.is_any(&[Code::DspNotFound, Code::DspAlreadyInitialized]));
+    if !refused {
+        let failed = retried.as_ref().err().map(|error| error.code.clone());
+        db.audit_with(
+            Some(&owner.user.id),
+            Some(id),
+            "dsp.setup_retried",
+            "",
+            None,
+            &failed
+                .map(|code| vec![("error", None, Some(code))])
+                .unwrap_or_default(),
+        )?;
+    }
+    retried?;
     Reply::of(&db.find_dsp(id)?)
 }
 
