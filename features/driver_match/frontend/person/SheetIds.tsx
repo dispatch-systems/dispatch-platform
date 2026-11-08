@@ -1,7 +1,7 @@
-import { useState } from 'react';
 import { Split } from 'lucide-react';
 import type { Person, PersonId } from '../../api/index.js';
 import { confirmLink } from '../../api/client.js';
+import { useChanges } from '../../../../core/shell/frontend/runtime/changes.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { ErrorBox } from '../../../../core/shell/frontend/ui/index.js';
 import { phoneText } from '../../../../core/shell/frontend/lib/format.js';
@@ -25,18 +25,19 @@ export function SheetIds({
     inline: true,
     success: (id) => `${sourceLabel(id.source)} ID ${shortId(id)} is confirmed`,
   });
-  // IDs confirmed here show confirmed at once, and go back if that fails.
-  const [confirmed, setConfirmed] = useState<string[]>([]);
-  const keyOf = (id: PersonId) => `${id.source}:${id.id}`;
-  const confirmIt = (id: PersonId) => {
-    setConfirmed((before) => [...before, keyOf(id)]);
-    void confirm.run(id).then((done) => {
-      if (!done) setConfirmed((before) => before.filter((each) => each !== keyOf(id)));
-    });
-  };
-  const ids = person.ids.map((id) =>
-    confirmed.includes(keyOf(id)) ? { ...id, confirmable: false, linkedBy: 'person' as const } : id,
-  );
+  // IDs confirmed here show confirmed at once and until the person is read again after; one that
+  // fails goes back.
+  const { shown: ids, change } = useChanges(person.ids, person.code);
+  const confirmIt = (id: PersonId) =>
+    change(
+      (listed) =>
+        listed.map((each) =>
+          each.source === id.source && each.id === id.id
+            ? { ...each, confirmable: false, linkedBy: 'person' as const }
+            : each,
+        ),
+      () => confirm.run(id),
+    );
   return (
     <section className="driver-sheet-section" aria-labelledby="driver-ids">
       <h3 id="driver-ids">IDs</h3>

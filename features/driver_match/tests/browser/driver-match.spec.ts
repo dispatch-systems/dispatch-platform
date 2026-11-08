@@ -98,6 +98,25 @@ test('Driver Match asks who might be listed twice and makes them one person', as
   release();
   await page.unroute(giving);
   await expect(page.getByText('Benjamin Collins is now Dispatch', { exact: true })).toBeVisible();
+  // Chosen again while one saves, after one that saved was read back, it shows the last chosen,
+  // and the last chosen is the one saved.
+  let second = () => {};
+  const holding = new Promise<void>((resolve) => (second = resolve));
+  let gives = 0;
+  await page.route(giving, async (route) => {
+    gives += 1;
+    if (gives === 2) await holding;
+    await route.continue();
+  });
+  await role.selectOption('Driver');
+  await expect(page.getByText('Benjamin Collins is now Driver', { exact: true })).toBeVisible();
+  await role.selectOption('Helper');
+  await role.selectOption('Dispatch');
+  await expect(role.locator('option:checked')).toHaveText('Dispatch');
+  second();
+  await expect(page.getByText('Benjamin Collins is now Dispatch', { exact: true })).toBeVisible();
+  await page.unroute(giving);
+  await expect(role.locator('option:checked')).toHaveText('Dispatch');
   await sheet.getByRole('button', { name: 'Close dialog' }).click();
   await expect(row('Ben Collins')).toHaveCount(1);
   await show.getByRole('button', { name: /^Management/ }).click();

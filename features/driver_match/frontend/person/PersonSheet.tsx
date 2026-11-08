@@ -1,7 +1,8 @@
 import { GitMerge } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import type { GivenRole, Person, PersonDetails, PersonId } from '../../api/index.js';
 import { giveRole, removePhone, splitOff, usePersonDetails } from '../../api/client.js';
+import { useChanges } from '../../../../core/shell/frontend/runtime/changes.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { phoneText, time } from '../../../../core/shell/frontend/lib/format.js';
 import {
@@ -61,9 +62,7 @@ export function PersonSheet({
         {(data) => (
           <>
             {/* The former keep the role someone gave them, unseen, for when they come back. */}
-            {data.person.role !== 'former' && (
-              <RolePicker key={data.person.given ?? ''} person={data.person} />
-            )}
+            {data.person.role !== 'former' && <RolePicker person={data.person} />}
             <SheetIds person={data.person} today={today} onSplit={setSplitting} />
             {data.addedPhones.length > 0 && (
               <AddedPhones code={data.person.code} phones={data.addedPhones} />
@@ -115,15 +114,14 @@ function AddedPhones({ code, phones }: { code: string; phones: string[] }) {
     inline: true,
     success: (phone) => `${phoneText(phone)} is removed`,
   });
-  // Numbers removed here, gone until the person is read again without them.
-  const [removed, setRemoved] = useState<string[]>([]);
-  const take = (phone: string) => {
-    setRemoved((before) => [...before, phone]);
-    void remove.run(phone).then((done) => {
-      if (!done) setRemoved((before) => before.filter((each) => each !== phone));
-    });
-  };
-  const shown = phones.filter((phone) => !removed.includes(phone));
+  // Numbers removed here, gone at once and until the person is read again after; one that fails
+  // comes back.
+  const { shown, change } = useChanges(phones, code);
+  const take = (phone: string) =>
+    change(
+      (listed) => listed.filter((each) => each !== phone),
+      () => remove.run(phone),
+    );
   if (!shown.length && !remove.error) return null;
   return (
     <section className="driver-sheet-section" aria-labelledby="driver-phones">
@@ -163,17 +161,17 @@ function SheetTitle({ person }: { person: Person }) {
 }
 
 /**
- * The role someone gave them, else Automatic, from their sources: saved as it's chosen, one
- * choice after another in the order made; one that fails goes back to what it was.
+ * The role someone gave them, else Automatic, from their sources: shown as it's chosen and saved
+ * behind it, one choice after another in the order made. One that fails is dropped, showing the
+ * latest still saving, else the role saved.
  */
 function RolePicker({ person }: { person: Person }) {
-  const [chosen, setChosen] = useState(person.given ?? '');
   const save = useAction((role: GivenRole | null) => giveRole(person.code, role), {
     inline: true,
     success: (role) =>
       role ? `${person.name} is now ${givenLabel(role)}` : `${person.name}'s role is automatic`,
   });
-  const queue = useRef(Promise.resolve());
+  const { shown: chosen, change } = useChanges<GivenRole | ''>(person.given ?? '', person.code);
   return (
     <section className="driver-sheet-section" aria-labelledby="driver-role">
       <h3 id="driver-role">Role</h3>
@@ -183,10 +181,10 @@ function RolePicker({ person }: { person: Person }) {
         value={chosen}
         onChange={(event) => {
           const role = event.target.value as GivenRole | '';
-          setChosen(role);
-          queue.current = queue.current.then(async () => {
-            if (!(await save.run(role || null))) setChosen(person.given ?? '');
-          });
+          change(
+            () => role,
+            () => save.run(role || null),
+          );
         }}
       >
         <option value="">Automatic</option>
