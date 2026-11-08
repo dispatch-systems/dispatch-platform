@@ -117,11 +117,14 @@ test('an owner adds Slack workspaces from New, each on a card under its name, us
   await answered;
   await page.unroute(switching);
   await expect(files).toBeChecked({ checked: !was });
-  // Switched back and forth while held, the last asked is what's saved.
+  // Switched back and forth while the first is held, the last asked is what's saved: it isn't
+  // sent until the first is answered, so it can't reach the server first.
   let saveBoth = () => {};
   const both = new Promise<void>((resolve) => (saveBoth = resolve));
+  let switches = 0;
   await page.route(switching, async (route) => {
-    await both;
+    switches += 1;
+    if (switches === 1) await both;
     await route.continue();
   });
   const turn = async (to: boolean) => {
