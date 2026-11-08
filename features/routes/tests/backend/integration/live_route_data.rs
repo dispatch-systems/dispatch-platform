@@ -475,11 +475,11 @@ async fn suspension_before_final_publication_keeps_the_live_capture_for_resumpti
     let at = dsp.clone();
     state.run_bookkeeping(move |db| {
         let routes = db.routes_db(&at)?;
-        let mut began = Some(began);
+        let began = Mutex::new(Some(began));
         routes.0.create_scalar_function(
             "last_itinerary_staged", 0, rusqlite::functions::FunctionFlags::SQLITE_UTF8,
             move |_| {
-                if let Some(began) = began.take() {
+                if let Some(began) = began.lock().unwrap().take() {
                     let _ = began.send(());
                     let _ = wait.recv();
                 }
