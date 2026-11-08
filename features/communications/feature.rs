@@ -206,6 +206,13 @@ pub const FEATURE: Feature = Feature {
                 name: "communications_gifs",
                 apply: Code(backend::gifs::add_gifs),
             },
+            Migration {
+                id: 20,
+                name: "communications_incoming_indexes",
+                apply: Sql(include_str!(
+                    "migrations/dsp/0020_communications_incoming_indexes.sql"
+                )),
+            },
         ],
     }],
     // Its dispatch phones are the DSP's own, managed on DSP Connections.
