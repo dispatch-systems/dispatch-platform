@@ -134,7 +134,7 @@ export function DspDetail({
         label="DSP"
       />
       {tab === 'beta' ? (
-        <DspBetaTab dsp={dsp} />
+        <DspBetaTab key={dsp.id} dsp={dsp} />
       ) : tab === 'backups' ? (
         <DspBackupsTab dsp={dsp} />
       ) : (

@@ -295,8 +295,19 @@ test('the platform puts a feature in beta at a DSP, and only the testers it adds
   await refresh();
   await expect(memberLink).toBeVisible();
 
-  // Removed, they lose it again.
+  // Removed, they leave the list at once, and lose it again.
+  const removing = '**/beta-testers/*/remove';
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route(removing, async (route) => {
+    await held;
+    await route.continue();
+  });
   await testers.getByRole('button', { name: 'Remove Jordan Ellis' }).click();
+  await expect(testers).not.toContainText('Jordan Ellis');
+  release();
+  await page.unroute(removing);
+  await expect(page.getByText('Jordan Ellis removed from beta testers')).toBeVisible();
   await expect(testers).not.toContainText('Jordan Ellis');
   await refresh();
   await expect(memberLink).toHaveCount(0);
