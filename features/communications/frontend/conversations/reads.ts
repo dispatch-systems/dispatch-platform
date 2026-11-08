@@ -65,7 +65,18 @@ type Entry = {
 
 /** Sends stay separate from the contiguous server window until that window reaches them.
  * An old retry must never become the backward-paging cursor across an unread gap. */
-function withSends(entry: Entry, window: { messages: Message[]; more: boolean }) {
+function withSends(
+  entry: Entry,
+  window: { messages: Message[]; more: boolean },
+  read: readonly Message[] = [],
+) {
+  // A returned row is authoritative, as fresh() has always treated it. Keep its version in
+  // the separate record too, so an old send response cannot replay waiting over failed/sent.
+  for (const message of read) {
+    const pending = entry.sent.get(message.id);
+    if (pending) entry.sent.set(message.id, { ...pending, message });
+  }
+  if (!entry.sent.size) return window.messages;
   const first = window.more ? window.messages[0] : undefined;
   const sent = [...entry.sent.values()]
     .map(({ message }) => message)
@@ -175,7 +186,7 @@ export class ConversationReads {
         };
         this.hold(id, {
           ...this.held(id),
-          opened: { ...opened, messages: withSends(entry, opened) },
+          opened: { ...opened, messages: withSends(entry, opened, page.messages) },
         });
       }
     } catch (cause) {
@@ -273,7 +284,7 @@ export class ConversationReads {
       this.hold(id, {
         ...entry.held,
         error: '',
-        opened: { ...opened, messages: withSends(entry, opened) },
+        opened: { ...opened, messages: withSends(entry, opened, latest.messages) },
       });
     }
     this.trim(id);
