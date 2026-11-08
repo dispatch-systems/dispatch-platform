@@ -1,6 +1,6 @@
 //! Staging a checked capture one itinerary at a time, with ownership rechecked at each write.
 use super::{
-    DOMAIN, RoutesStore,
+    RoutesStore,
     shaping::{Shaper, prepare_lists},
     storage::stage_prepared_routes_start,
 };
@@ -72,7 +72,7 @@ pub(super) async fn stage_capture(
     let count = itineraries.len();
     let (d, k, check) = (dsp.to_owned(), key.to_owned(), mine.clone());
     let staged = state
-        .run_scoped(dsp, DOMAIN, move |db| {
+        .run_unpublished(dsp, move |db| {
             check(db)?;
             stage_prepared_routes_start(db, &d, &k, &capture, count, &responses)
         })
@@ -84,7 +84,7 @@ pub(super) async fn stage_capture(
             .map_err(blocking)??;
         let (d, staged, check) = (dsp.to_owned(), staged.clone(), mine.clone());
         state
-            .run_scoped(dsp, DOMAIN, move |db| {
+            .run_unpublished(dsp, move |db| {
                 check(db)?;
                 db.stage_routes_itinerary(&d, &staged, &shaped)
             })

@@ -21,6 +21,13 @@ const PATIENCE: std::time::Duration = std::time::Duration::from_secs(60);
 /// requests, so every DSP's upkeep starting together keeps no page waiting behind it.
 const BACKGROUND_SLOTS: usize = 2;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Access {
+    Read,
+    Write,
+    Unpublished,
+}
+
 enum CacheChange {
     All,
     Bookkeeping,
@@ -40,6 +47,8 @@ pub struct State {
     pub pool: Mutex<Vec<db::Store>>,
     pub read_cache: cache::ReadCache,
     pub read_turns: cache::ReadTurns,
+    // Unpublished writers serialize by DSP before taking any database worker.
+    unpublished_turns: cache::ReadTurns,
     pub data_revision: std::sync::atomic::AtomicU64,
     pub schedule_revision: std::sync::atomic::AtomicU64,
     pub password_slots: Arc<Semaphore>,
@@ -106,6 +115,7 @@ impl State {
             pool: Mutex::new(vec![store]),
             read_cache: cache::ReadCache::default(),
             read_turns: cache::ReadTurns::default(),
+            unpublished_turns: cache::ReadTurns::default(),
             data_revision: std::sync::atomic::AtomicU64::new(0),
             schedule_revision: std::sync::atomic::AtomicU64::new(0),
             password_slots: Arc::new(Semaphore::new(2)),
@@ -127,7 +137,7 @@ impl State {
         self: &Arc<Self>,
         f: impl FnOnce(&db::Store) -> Result<T> + Send + 'static,
     ) -> impl Future<Output = Result<T>> + Send {
-        self.database(true, CacheChange::All, f)
+        self.database(Access::Write, CacheChange::All, f)
     }
     /// Writes only reviewed bookkeeping: metrics, leases, outbox or invisible cleanup.
     /// Authorization still reads the database on every request; this skips derived-data
@@ -137,7 +147,47 @@ impl State {
         self: &Arc<Self>,
         f: impl FnOnce(&db::Store) -> Result<T> + Send + 'static,
     ) -> impl Future<Output = Result<T>> + Send {
-        self.database(true, CacheChange::Bookkeeping, f)
+        self.database(Access::Write, CacheChange::Bookkeeping, f)
+    }
+    /// Writes only unpublished rows that foreground readers ignore. Each caller must recheck
+    /// its ownership and feature/connection authority in `f`; final publication still uses an
+    /// exclusive write. The shared transition protects tenant lifetime while WAL readers proceed.
+    #[track_caller]
+    pub fn run_unpublished<T: Send + 'static>(
+        self: &Arc<Self>,
+        dsp: impl Into<String>,
+        f: impl FnOnce(&db::Store) -> Result<T> + Send + 'static,
+    ) -> impl Future<Output = Result<T>> + Send {
+        let caller = std::panic::Location::caller();
+        let dsp = dsp.into();
+        async move {
+            let waiting = std::time::Instant::now();
+            let turn = self
+                .unpublished_turns
+                .enter_for(dsp.clone(), PATIENCE)
+                .await?;
+            let wait_ms = waiting.elapsed().as_secs_f64() * 1000.0;
+            if wait_ms >= 25.0 {
+                observability::event(
+                    "info",
+                    "database.unpublished_wait",
+                    serde_json::json!({"dspId":dsp,"waitMs":wait_ms,
+                        "work":format!("{}:{}",caller.file(),caller.line())}),
+                );
+            }
+            self.turn(
+                Access::Unpublished,
+                CacheChange::Bookkeeping,
+                move |db| {
+                    // Once begun, the worker retains this turn even if its caller leaves.
+                    let _turn = turn;
+                    db.ensure_dsp_active(&dsp)?;
+                    f(db)
+                },
+                caller,
+            )
+            .await
+        }
     }
     /// A write that says what it changes with `changed`, under the exclusive lock, once it
     /// knows and before it changes anything: a write route, once its caller is authorized.
@@ -146,7 +196,7 @@ impl State {
         self: &Arc<Self>,
         f: impl FnOnce(&db::Store) -> Result<T> + Send + 'static,
     ) -> impl Future<Output = Result<T>> + Send {
-        self.database(true, CacheChange::Bookkeeping, f)
+        self.database(Access::Write, CacheChange::Bookkeeping, f)
     }
     /// What a `run_declaring` write changes: one DSP's data, which evicts that DSP's cached
     /// reads and those every DSP shares, or with none, anything, which advances the global
@@ -189,7 +239,7 @@ impl State {
         domain: cache::DataDomain,
         f: impl FnOnce(&db::Store) -> Result<T> + Send + 'static,
     ) -> impl Future<Output = Result<T>> + Send {
-        self.database(true, CacheChange::Tenant(dsp.into(), domain), f)
+        self.database(Access::Write, CacheChange::Tenant(dsp.into(), domain), f)
     }
     /// A write in the DSP's data by work acting for it, as upkeep, as `run_scoped`: made only
     /// while this backend serves the DSP, checked in the same turn, so work begun before the DSP
@@ -219,22 +269,22 @@ impl State {
         self: &Arc<Self>,
         f: impl FnOnce(&db::Store) -> Result<T> + Send + 'static,
     ) -> impl Future<Output = Result<T>> + Send {
-        self.database(false, CacheChange::Bookkeeping, f)
+        self.database(Access::Read, CacheChange::Bookkeeping, f)
     }
     /// The database work `f`, named in the log by the line that asked for it.
     #[track_caller]
     fn database<T: Send + 'static>(
         self: &Arc<Self>,
-        write: bool,
+        access: Access,
         change: CacheChange,
         f: impl FnOnce(&db::Store) -> Result<T> + Send + 'static,
     ) -> impl Future<Output = Result<T>> + Send {
         let caller = std::panic::Location::caller();
-        self.turn(write, change, f, caller)
+        self.turn(access, change, f, caller)
     }
     async fn turn<T: Send + 'static>(
         self: &Arc<Self>,
-        write: bool,
+        access: Access,
         change: CacheChange,
         f: impl FnOnce(&db::Store) -> Result<T> + Send + 'static,
         caller: &'static std::panic::Location<'static>,
@@ -293,7 +343,7 @@ impl State {
             let waiting = std::time::Instant::now();
             let lock_ms;
             let work_started;
-            let result = if write {
+            let result = if access == Access::Write {
                 let _guard = state
                     .transition
                     .write()
@@ -348,7 +398,8 @@ impl State {
                         "work":format!("{}:{}", caller.file(), caller.line()),
                         "route":context.as_ref().and_then(|c| c.route),
                         "dspId":context.as_ref().and_then(|c| c.tenant.as_deref()),
-                        "write":write, "queueMs":queued_ms, "lockMs":lock_ms, "workMs":work_ms,
+                        "write":access != Access::Read,
+                        "unpublished":access == Access::Unpublished, "queueMs":queued_ms, "lockMs":lock_ms, "workMs":work_ms,
                         "totalMs":started.elapsed().as_secs_f64()*1000.0
                     }),
                 );

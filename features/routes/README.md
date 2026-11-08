@@ -156,6 +156,9 @@ it is live route data, in a database of its own, `routelive`.
   itinerary's work phone on any day kept, live or historical (`ever_work_phone`).
 
 
-Historical staging prepares both summary responses before its database turn. Shared driver
+Historical staging prepares both summary responses before its database turn. Inactive writes
+serialize per DSP before entering the database pool and retain a shared transition lock, so
+foreground WAL reads can proceed. Every turn rechecks tenant lifetime and the caller's job,
+feature and connection guards; final publication remains exclusive. Shared driver
 and address merges leave identical rows unwritten while preserving seen-day bounds. Itinerary
 reads group active tasks by stop once and keep the stored task order and inactive-task history.
