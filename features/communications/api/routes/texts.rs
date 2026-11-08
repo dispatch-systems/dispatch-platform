@@ -80,7 +80,8 @@ pub(super) fn block(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         c.state,
         c.dsp_id(),
         &conversation,
-        Some(c.actor()),
+        c.actor(),
+        true,
     )?)
 }
 pub(super) fn unblock(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
@@ -91,7 +92,8 @@ pub(super) fn unblock(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         c.state,
         c.dsp_id(),
         &conversation,
-        None,
+        c.actor(),
+        false,
     )?)
 }
 /// Opens the conversation with a `number`, or one of today's drivers, `driverId`, to text them

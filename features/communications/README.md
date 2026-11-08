@@ -497,6 +497,11 @@ queues a text for a phone.
   phone offline then, not checked in for two minutes, fails, by every minute's upkeep, with
   `phones_offline` as its error, filed as it fails, so its conversation waits again and Retry
   sends it anew. Should the phone say that attempt was sent after all, it counts.
+- **Log:** in the DSP's audit log, under Settings: a name saved for a number, or changed,
+  `communications.contact_saved`, by the number, with the name before and after; a number
+  blocked or unblocked, `communications.number_blocked` and `communications.number_unblocked`,
+  by who it's with and the number. Saving the name it has, or blocking a number blocked
+  already, changes nothing and logs nothing.
 
 ## Messaging a group
 
@@ -958,14 +963,18 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   (`phones_texts`, below) the conversation it's filed in, none while it waits to be, the name its
   sender was shown by, whether its number was blocked as it came and the Done that covered it
   (migration 9, which copied each from `communications_texts`, since dropped),
-  `communications_contacts` (the names saved for numbers, by whom and when),
-  `communications_blocked` (the numbers blocked, by whom and when) and `communications_picked`
+  `communications_contacts` (the names saved for numbers, by whom and when, the latest alone:
+  the audit log keeps each),
+  `communications_blocked` (the numbers blocked, by whom and when, until unblocked: the audit log
+  keeps each) and `communications_picked`
   (the driver picked for a work phone on a day, by whom and when); and, from migration 17,
   `communications_refiling` (each day still to be filed again, and since when),
   `communications_live_days` (each day live route data was seen holding, when it was first seen
   not to, and whether the pages heard the two hours after end) and, on each text waiting to be
   filed, since when it couldn't be placed (`phones_texts.unfiled_since`), and on each Dispatch
-  sent, the conversation it was written in (`phones_texts.queued_in`). The DSP's quick replies,
+  sent, the conversation it was written in (`phones_texts.queued_in`); and, from migration 19,
+  the GIF of KLIPY's a message carries, by its addresses (`gif`, on `communications_messages`,
+  `communications_replies` and `phones_texts`). The DSP's quick replies,
   with their revision, in its `settings` table under `communications.quick_replies`. For pushes,
   `communications_push` (each browser a member is told in, by where its pushes go, with the keys
   they're encrypted for and the address it was subscribed at: migration 18), kept until it's let

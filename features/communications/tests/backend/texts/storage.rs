@@ -290,7 +290,7 @@ async fn texts_filed_before_migration_9_read_as_they_did_their_done_block_and_se
     // sent while it was.
     let (shared, at_dsp, unblocked) = (state.clone(), dsp.clone(), spam.clone());
     state
-        .run(move |db| contacts::block(db, &shared, &at_dsp, &unblocked, None))
+        .run(move |db| contacts::block(db, &shared, &at_dsp, &unblocked, "me", false))
         .await
         .unwrap();
     let (shared, at_dsp) = (state.clone(), dsp.clone());

@@ -53,9 +53,8 @@ async fn block(
     blocked: bool,
 ) -> (bool, ConversationState) {
     let (shared, dsp, id) = (state.clone(), dsp.to_owned(), id.to_owned());
-    let by = blocked.then_some("me");
     let after = state
-        .run(move |db| contacts::block(db, &shared, &dsp, &id, by))
+        .run(move |db| contacts::block(db, &shared, &dsp, &id, "me", blocked))
         .await
         .unwrap();
     (after.blocked, after.state)
