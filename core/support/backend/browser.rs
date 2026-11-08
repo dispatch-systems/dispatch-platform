@@ -28,6 +28,14 @@ pub fn issue(db: &Store, job: &str, lease: &str) -> Result<SupportBrowserGrant> 
             .ok_or_else(|| crate::Error::new("support_browser_unavailable", 409))?;
         db.config.dsp_url(&code)
     };
+    // Seeing the DSP as its reporter is noted as their visits are, once a half hour a ticket.
+    db.audit_once(
+        None,
+        Some(scope).filter(|scope| !scope.is_empty()),
+        "support.browser_opened",
+        s(&ticket, "reporter_name"),
+        Some(s(&ticket, "title")),
+    )?;
     let unsigned = format!("{PREFIX}{job}:{lease}");
     let token = format!("{unsigned}:{}", crypto::sign(&db.key, &unsigned));
     let secure = !db.config.development;

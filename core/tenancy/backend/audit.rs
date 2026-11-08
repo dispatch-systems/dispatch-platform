@@ -158,6 +158,25 @@ impl Store {
         }
         self.audit(Some(actor), Some(dsp), action, detail)
     }
+    /// `audit_with`, once a half hour for the actor, DSP, action, detail and target.
+    pub fn audit_once(
+        &self,
+        actor: Option<&str>,
+        dsp: Option<&str>,
+        action: &str,
+        detail: &str,
+        target: Option<&str>,
+    ) -> Result<()> {
+        let recent = self.platform.one(
+            "SELECT 1 FROM audit WHERE COALESCE(actor_id,member_id) IS ? AND dsp_id IS ? \
+             AND action=? AND detail=? AND json_extract(data,'$.target') IS ? AND at>=? LIMIT 1",
+            rusqlite::params![actor, dsp, action, detail, target, at(now() - VISIT_WINDOW)],
+        )?;
+        if recent.is_some() {
+            return Ok(());
+        }
+        self.audit_with(actor, dsp, action, detail, target, &[])
+    }
     // Taking a copy of everyone's activity is itself recorded, after the copy is
     // read so an export never lists itself.
     pub fn audit_export(&self, actor: &str, query: AuditQuery) -> Result<AuditPage> {
@@ -355,7 +374,10 @@ const AREAS: &[(&str, &str)] = &[
         "a.action IN ('dsp.view_opened','dsp.owner_view_opened')",
         "CASE WHEN ?1 IS NULL THEN 'access' ELSE 'team' END",
     ),
-    ("a.action LIKE 'account.%'", "'access'"),
+    (
+        "a.action LIKE 'account.%' OR a.action='support.browser_opened'",
+        "'access'",
+    ),
     (
         "a.action IN ('dsp.created','dsp.removed','dsp.restored','dsp.suspended','dsp.resumed',\
          'dsp.deleted','dsp.feature_enabled','dsp.feature_disabled','dsp.feature_hidden',\

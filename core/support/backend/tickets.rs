@@ -149,6 +149,13 @@ pub fn create(db: &Store, auth: &Auth, body: &Value) -> Result<SupportDetail> {
     })
 }
 
+/// Notes in the audit log that `by` did `action` to the ticket `row`, by its title, with the DSP
+/// it's of.
+pub(crate) fn audited(db: &Store, by: &str, row: &Value, action: &str) -> Result<()> {
+    let dsp = Some(s(row, "dsp_id")).filter(|dsp| !dsp.is_empty());
+    db.audit_with(Some(by), dsp, action, "", Some(s(row, "title")), &[])
+}
+
 pub(crate) fn progress(db: &Store, id: &str, status: &str, message: &str) -> Result<()> {
     db.platform.exec(
         "UPDATE support_tickets SET status=?,progress=?,updated_at=? WHERE id=?",
@@ -169,6 +176,7 @@ pub fn reopen(db: &Store, auth: &Auth, id: &str) -> Result<SupportDetail> {
         )?;
         jobs::cancel(db, id)?;
         progress(db, id, "investigating", "Reopened · queued for a fresh investigation")?;
+        audited(db, &auth.user.id, &row, "support.reopened")?;
         let version = row["proposal_version"].as_u64().unwrap_or(0) as u32;
         jobs::enqueue(db, id, "investigate", version, None)?;
         super::notifications::owners(db, id, "AI Support ticket reopened")?;
