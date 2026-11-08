@@ -213,6 +213,11 @@ const PLATFORM: &[Migration] = &[
             "../../backups/migrations/platform/0026_dsp_backups.sql"
         )),
     },
+    Migration {
+        id: 27,
+        name: "feature_defaults",
+        apply: Code(feature_defaults),
+    },
 ];
 const JOBS: &[Migration] = &[
     Migration {
@@ -358,6 +363,16 @@ fn feature_beta(db: &Db) -> Result<()> {
         "dsp_features",
         "beta",
         "INTEGER NOT NULL DEFAULT 0 CHECK (beta IN (0, 1))",
+    )
+}
+// What each feature and part defaulted to when the server last started, so a default changed
+// later leaves every DSP as it was: none until a start records them.
+fn feature_defaults(db: &Db) -> Result<()> {
+    add_column(
+        db,
+        "feature_availability",
+        "default_on",
+        "INTEGER CHECK (default_on IN (0, 1))",
     )
 }
 // Each DSP's short code, which names its address, in lowercase: none until it is set up.

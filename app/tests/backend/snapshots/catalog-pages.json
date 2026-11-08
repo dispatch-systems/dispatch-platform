@@ -145,7 +145,7 @@
       "tab": true,
       "permissions": [],
       "requires": [],
-      "default": true,
+      "default": false,
       "mandatory": false
     },
     {
@@ -155,7 +155,7 @@
       "tab": true,
       "permissions": [],
       "requires": ["meal_breaks"],
-      "default": true,
+      "default": false,
       "mandatory": false
     },
     {
@@ -165,7 +165,7 @@
       "tab": true,
       "permissions": [],
       "requires": [],
-      "default": true,
+      "default": false,
       "mandatory": false
     },
     {
@@ -175,7 +175,7 @@
       "tab": true,
       "permissions": [],
       "requires": [],
-      "default": true,
+      "default": false,
       "mandatory": false
     },
     {
@@ -185,7 +185,7 @@
       "tab": true,
       "permissions": [],
       "requires": [],
-      "default": true,
+      "default": false,
       "mandatory": false
     }
   ],

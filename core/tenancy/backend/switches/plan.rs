@@ -69,11 +69,11 @@ pub fn plan(mut current: Vec<String>, feature: &'static Feature, enabled: bool) 
         };
         connect(&mut current, &mut changed, feature)?;
         flip(&mut current, &mut changed, feature, true);
-        let own: Vec<_> = tabs(feature.id).collect();
-        if !own.iter().any(|t| current.iter().any(|e| e == t.id)) {
-            for tab in own {
-                flip(&mut current, &mut changed, tab, true);
-            }
+        // A page shows one of its tabs at least: its first, when none is on.
+        if !tabs(feature.id).any(|t| current.iter().any(|e| e == t.id))
+            && let Some(first) = tabs(feature.id).next()
+        {
+            flip(&mut current, &mut changed, first, true);
         }
         // A page's parts that come on with it need their connections too.
         let parts: Vec<&'static Feature> = all
