@@ -272,10 +272,9 @@ impl TextStore for Store {
         texts(
             self,
             dsp,
-            "SELECT t.* FROM phones_texts t \
-             WHERE t.conversation_id IN (SELECT value FROM json_each(?)) AND t.id=(\
-             SELECT id FROM phones_texts WHERE conversation_id=t.conversation_id \
-             ORDER BY at DESC,id DESC LIMIT 1)",
+            "SELECT * FROM phones_texts WHERE id IN (\
+             SELECT (SELECT id FROM phones_texts WHERE conversation_id=requested.value \
+             ORDER BY at DESC,id DESC LIMIT 1) FROM json_each(?) requested)",
             [serde_json::to_string(ids)?],
         )
     }
@@ -283,10 +282,10 @@ impl TextStore for Store {
         texts(
             self,
             dsp,
-            "SELECT t.* FROM phones_texts t \
-             WHERE t.conversation_id IN (SELECT value FROM json_each(?)) AND t.id=(\
-             SELECT id FROM phones_texts WHERE conversation_id=t.conversation_id \
-             AND direction='in' AND blocked=0 ORDER BY at DESC,id DESC LIMIT 1)",
+            "SELECT * FROM phones_texts WHERE id IN (\
+             SELECT (SELECT id FROM phones_texts WHERE conversation_id=requested.value \
+             AND direction='in' AND blocked=0 ORDER BY at DESC,id DESC LIMIT 1) \
+             FROM json_each(?) requested)",
             [serde_json::to_string(ids)?],
         )
     }

@@ -206,19 +206,17 @@ impl MessageStore for Store {
     }
     fn latest_communications_messages(&self, dsp: &str, ids: &[String]) -> Result<Vec<Message>> {
         self.dsp(dsp)?.query_as(
-            "SELECT m.* FROM communications_messages m \
-             WHERE m.conversation_id IN (SELECT value FROM json_each(?)) AND m.id=(\
-             SELECT id FROM communications_messages WHERE conversation_id=m.conversation_id \
-             ORDER BY ts DESC LIMIT 1)",
+            "SELECT * FROM communications_messages WHERE id IN (\
+             SELECT (SELECT id FROM communications_messages WHERE conversation_id=requested.value \
+             ORDER BY ts DESC LIMIT 1) FROM json_each(?) requested)",
             [serde_json::to_string(ids)?],
         )
     }
     fn latest_communications_written(&self, dsp: &str, ids: &[String]) -> Result<Vec<Message>> {
         self.dsp(dsp)?.query_as(
-            "SELECT m.* FROM communications_messages m \
-             WHERE m.conversation_id IN (SELECT value FROM json_each(?)) AND m.id=(\
-             SELECT id FROM communications_messages WHERE conversation_id=m.conversation_id \
-             AND direction='in' ORDER BY ts DESC LIMIT 1)",
+            "SELECT * FROM communications_messages WHERE id IN (\
+             SELECT (SELECT id FROM communications_messages WHERE conversation_id=requested.value \
+             AND direction='in' ORDER BY ts DESC LIMIT 1) FROM json_each(?) requested)",
             [serde_json::to_string(ids)?],
         )
     }

@@ -7,5 +7,6 @@ CREATE TABLE schema_migrations (id INTEGER PRIMARY KEY, name TEXT NOT NULL, appl
 CREATE INDEX jobs_claim ON jobs(status,available_at,created_at);
 CREATE INDEX jobs_created ON jobs(created_at DESC);
 CREATE INDEX jobs_dsp ON jobs(dsp_id,created_at DESC);
+CREATE INDEX jobs_dsp_completed ON jobs(dsp_id,completed_at);
 CREATE INDEX live_reads_dsp ON live_reads(reader,dsp_id,at);
 CREATE UNIQUE INDEX one_active_dsp ON jobs(dsp_id) WHERE status IN ('running','waiting_verification');
