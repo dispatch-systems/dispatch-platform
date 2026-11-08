@@ -50,6 +50,11 @@ impl Vault {
     fn manifest(&self, id: &str) -> String {
         self.named(&format!("manifest:{id}"))
     }
+    /// What the description of the DSP's backup `id` is sealed for: that backup alone, so one
+    /// can't pass for another, nor a file for a description.
+    fn described(dsp: &str, id: &str) -> String {
+        format!("{dsp}\nmanifest\n{id}")
+    }
     fn named(&self, value: &str) -> String {
         let mut mac = <Hmac<Sha256> as KeyInit>::new_from_slice(&self.key)
             .expect("HMAC supports any key length");

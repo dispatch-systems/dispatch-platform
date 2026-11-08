@@ -90,11 +90,25 @@ async fn zipped(vault: &Vault, dsp: &str, id: &str, files: &[Value], path: &Path
             .await?
             .ok_or_else(|| Error::new("backup_incomplete", 502))?;
         take::written(fetched, &sealed).await?;
-        let (key, binding, from) = (vault.key, dsp.to_owned(), sealed.clone());
+        let (key, binding, from) = (vault.key, Vault::described(dsp, id), sealed.clone());
         tokio::task::spawn_blocking(move || seal::open_json(&key, &binding, &from))
             .await
             .map_err(|_| Error::new("backup_failed", 500))??
     };
+    // The description is this backup's: of its DSP, by its ID, naming the files it holds.
+    let named: Vec<&str> = manifest["files"]
+        .as_array()
+        .map(|named| named.iter().map(|file| s(file, "object")).collect())
+        .unwrap_or_default();
+    let held: Vec<&str> = files.iter().map(|file| s(file, "object")).collect();
+    crate::ensure(
+        manifest["format"] == take::FORMAT
+            && manifest["backup"] == id
+            && manifest["dsp"]["id"] == dsp
+            && named == held,
+        "invalid_backup",
+        502,
+    )?;
     // The platform's key goes nowhere but a restore.
     if let Some(manifest) = manifest.as_object_mut() {
         manifest.remove("platformKey");

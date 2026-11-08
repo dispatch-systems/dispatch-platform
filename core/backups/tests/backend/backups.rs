@@ -133,8 +133,19 @@ async fn a_backup_holds_the_dsps_files_each_sent_once_and_expires_without_what_o
     let id = first["id"].as_str().unwrap().to_owned();
     let folder = tempfile::tempdir().unwrap();
     let manifest_key = backups.key(MANIFESTS, &vault.manifest(&id));
+    let sealed_manifest = backups.fetched(&manifest_key, &folder);
     let manifest =
-        seal::open_json(&KEY, &backups.dsp, &backups.fetched(&manifest_key, &folder)).unwrap();
+        seal::open_json(&KEY, &Vault::described(&backups.dsp, &id), &sealed_manifest).unwrap();
+    // Sealed for this backup alone: not as another of the DSP's files, nor another backup's.
+    assert!(seal::open_json(&KEY, &backups.dsp, &sealed_manifest).is_err());
+    assert!(
+        seal::open_json(
+            &KEY,
+            &Vault::described(&backups.dsp, "bak_other"),
+            &sealed_manifest
+        )
+        .is_err()
+    );
     assert_eq!(
         (
             manifest["dsp"]["id"].as_str(),

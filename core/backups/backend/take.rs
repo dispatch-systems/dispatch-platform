@@ -27,7 +27,7 @@ use std::{
 };
 
 /// The description a backup's files are kept under, as it's written.
-const FORMAT: i64 = 1;
+pub const FORMAT: i64 = 1;
 
 /// A backup to take: of which DSP, and what it leaves out.
 pub struct Asked {
@@ -392,8 +392,12 @@ async fn sent(
 async fn describe(vault: &Vault, dsp: &str, id: &str, manifest: &Value, here: &Path) -> Result<()> {
     let sealed = here.join("manifest.sealed");
     {
-        let (key, binding, manifest, to) =
-            (vault.key, dsp.to_owned(), manifest.clone(), sealed.clone());
+        let (key, binding, manifest, to) = (
+            vault.key,
+            Vault::described(dsp, id),
+            manifest.clone(),
+            sealed.clone(),
+        );
         tokio::task::spawn_blocking(move || seal::seal_json(&key, &binding, &manifest, &to))
             .await
             .map_err(|_| Error::new("backup_failed", 500))??;
@@ -407,7 +411,7 @@ async fn describe(vault: &Vault, dsp: &str, id: &str, manifest: &Value, here: &P
         .await?
         .ok_or_else(|| Error::new("backup_not_kept", 502))?;
     written(fetched, &back).await?;
-    let (key, binding) = (vault.key, dsp.to_owned());
+    let (key, binding) = (vault.key, Vault::described(dsp, id));
     let read = tokio::task::spawn_blocking(move || seal::open_json(&key, &binding, &back))
         .await
         .map_err(|_| Error::new("backup_failed", 500))??;
