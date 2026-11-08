@@ -214,12 +214,28 @@ test('an owner connects Slack from Communications, answers a member as they writ
   await answered;
   await page.unroute(marking);
   await expect(list.getByRole('heading', { name: /^Waiting/ })).toHaveCount(0);
-  // Written to again and Done refused, it shows as the server has it, waiting.
+  // Written to again and Done refused, it shows as the server has it, waiting, though the first
+  // reading of it again fails too.
   expect((await write('And again')).status).toBe(200);
   await expect(list.getByRole('heading', { name: /^Waiting/ })).toBeVisible();
   await page.route(marking, (route) =>
     route.fulfill({ status: 409, json: { error: 'refused', message: 'Not now' } }),
   );
+  // The first reading of the list, and of the conversation, fails.
+  const reading = (url: URL) =>
+    url.pathname === '/api/dsp/communications' ||
+    /^\/api\/dsp\/communications\/conversations\/[^/]+$/.test(url.pathname);
+  const failed = new Set<string>();
+  await page.route(reading, (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (
+      route.request().method() !== 'GET' ||
+      failed.has(path === '/api/dsp/communications' ? 'list' : 'one')
+    )
+      return route.continue();
+    failed.add(path === '/api/dsp/communications' ? 'list' : 'one');
+    return route.fulfill({ status: 503, json: { error: 'unavailable', message: 'Busy' } });
+  });
   await page
     .getByRole('region', { name: 'Jordan Ellis' })
     .locator('.thread-head')
@@ -228,6 +244,7 @@ test('an owner connects Slack from Communications, answers a member as they writ
   await expect(page.getByText('Not now')).toBeVisible();
   await expect(list.getByRole('heading', { name: /^Waiting/ })).toBeVisible();
   await page.unroute(marking);
+  await page.unroute(reading);
   await jordan.getByRole('button', { name: 'Done: Jordan Ellis' }).click();
   await expect(list.getByRole('heading', { name: /^Waiting/ })).toHaveCount(0);
 
