@@ -292,14 +292,67 @@
 .dsp-view-banner > button {
   flex-shrink: 0;
 }
-@media (width <= 640px) {
+/* Where the drawer replaces the sidebar, the banner gives way to the drawer's panel, and a dot on
+   the menu button marks the view. */
+.dsp-view-panel {
+  display: none;
+}
+@media (width <= 980px) {
   .dsp-view-banner {
-    gap: 8px;
-    padding: 12px 16px;
-  }
-  .dsp-view-banner > svg {
     display: none;
   }
+  .dsp-view-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 4px 12px 0;
+    padding: 12px;
+    border: 1px solid var(--violet);
+    border-radius: var(--radius);
+    background: var(--violet-surface);
+  }
+}
+.dsp-view-panel strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.dsp-view-panel strong svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--violet);
+}
+.dsp-view-panel > div {
+  display: flex;
+  gap: 8px;
+}
+.dsp-view-panel .view-role-menu {
+  flex: 1;
+  min-width: 0;
+  margin-left: 0;
+}
+.dsp-view-panel .view-role-menu summary {
+  justify-content: space-between;
+  max-width: none;
+}
+.dsp-view-panel > div > button {
+  flex-shrink: 0;
+}
+.mobile-menu {
+  position: relative;
+}
+.view-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--background);
+  border-radius: 50%;
+  background: var(--violet);
 }
 .nav-item {
   transition:

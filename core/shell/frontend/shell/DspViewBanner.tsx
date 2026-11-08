@@ -56,6 +56,13 @@ function ViewRoleMenu({ view, viewAs }: { view: DspView; viewAs: (roleId?: strin
   );
 }
 
+/** What a platform owner viewing a DSP has: the view, and how to change or leave it. */
+type ViewProps = {
+  view: DspView;
+  viewAs: (roleId?: string) => void;
+  exitView: () => void;
+};
+
 /**
  * The banner over a DSP a platform owner is viewing: as whom, and the way out. It loads only
  * then, with the menu, so nobody else's first load carries either.
@@ -65,12 +72,7 @@ export function DspViewBanner({
   viewAs,
   exitView,
   readOnly,
-}: {
-  view: DspView;
-  viewAs: (roleId?: string) => void;
-  exitView: () => void;
-  readOnly?: boolean;
-}) {
+}: ViewProps & { readOnly?: boolean }) {
   return (
     <div className="dsp-view-banner" data-sticky-banner role="region" aria-label="DSP viewing mode">
       <Eye aria-hidden="true" />
@@ -86,6 +88,25 @@ export function DspViewBanner({
       </div>
       <ViewRoleMenu view={view} viewAs={viewAs} />
       <button onClick={exitView}>Exit view</button>
+    </div>
+  );
+}
+
+/**
+ * The same at the top of the navigation drawer, in the banner's place where the drawer replaces
+ * the sidebar (shell.css): on a phone the banner would take much of the screen.
+ */
+export function DspViewPanel({ view, viewAs, exitView }: ViewProps) {
+  return (
+    <div className="dsp-view-panel" role="region" aria-label="DSP viewing mode">
+      <strong>
+        <Eye aria-hidden="true" />
+        Viewing {view.dsp.name}
+      </strong>
+      <div>
+        <ViewRoleMenu view={view} viewAs={viewAs} />
+        <button onClick={exitView}>Exit view</button>
+      </div>
     </div>
   );
 }

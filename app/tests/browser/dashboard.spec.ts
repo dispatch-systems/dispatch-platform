@@ -269,6 +269,24 @@ test('platform owner looks through a DSP role until they leave the DSP', async (
   await expect(banner).toContainText('as Platform Owner');
   await expect(page.getByRole('link', { name: 'Team & Roles', exact: true })).toBeVisible();
 });
+test('on a phone, a platform owner changes and leaves a DSP view from the drawer', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await page.getByRole('button', { name: 'Open navigation' }).click();
+  // The drawer holds the view's controls in the banner's place: only one of them shows.
+  const controls = page.getByRole('region', { name: 'DSP viewing mode' });
+  await expect(controls).toContainText('Viewing Northline Logistics');
+  await expect(controls).toHaveCount(1);
+  const menu = controls.getByLabel('View as role');
+  await menu.click();
+  await controls.getByRole('button', { name: 'Member', exact: true }).click();
+  await expect(menu).toHaveText('Member');
+  await controls.getByRole('button', { name: 'Exit view', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'DSPs', exact: true })).toBeVisible();
+});
 test('create a DSP and accept its owner invitation while another account is signed in', async ({
   page,
   dispatch,
