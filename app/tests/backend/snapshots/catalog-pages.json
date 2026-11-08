@@ -195,7 +195,7 @@
       "tab": false,
       "permissions": [],
       "requires": [],
-      "default": true,
+      "default": false,
       "mandatory": false
     }
   ],
