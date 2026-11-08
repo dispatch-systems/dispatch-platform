@@ -28,6 +28,8 @@ mod network_policy;
 mod oauth;
 #[cfg(feature = "communications")]
 mod on_behalf;
+#[cfg(feature = "communications")]
+mod phone_admission;
 #[cfg(all(feature = "routes", feature = "communications"))]
 mod todays_routes;
 #[cfg(feature = "weekly_scorecard")]
