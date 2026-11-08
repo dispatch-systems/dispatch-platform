@@ -241,7 +241,16 @@ test('closing deep history bounds the cache and opening it can read every older 
   for (let page = 0; page < 3; page++) await reads.readOlder('tc_a');
   assert.equal(reads.held('tc_a').opened?.messages.length, 400);
   assert.equal(reads.held('tc_a').opened?.more, false);
+  const retried = (index: number): Message => ({
+    ...messages[index]!,
+    direction: 'out',
+    sender: { userId: 'user_dispatch', phoneId: null, name: 'Dispatch', code: null, photo: null },
+    status: 'waiting',
+  });
+  reads.show(read('tc_a').conversation, retried(10));
   close();
+  // A retry begun before closure can also answer after the cached window was trimmed.
+  reads.show(read('tc_a').conversation, retried(20));
   const closed = reads.held('tc_a').opened!;
   assert.equal(closed.messages.length, 150);
   assert.equal(closed.messages[0]?.id, 'm250');
@@ -255,6 +264,11 @@ test('closing deep history bounds the cache and opening it can read every older 
     messages.map((message) => message.id),
   );
   assert.equal(reads.held('tc_a').opened?.more, false);
+  for (const index of [10, 20])
+    assert.equal(
+      reads.held('tc_a').opened?.messages.find((message) => message.id === `m${index}`)?.status,
+      'waiting',
+    );
   closeAgain();
   reads.dispose();
 });
