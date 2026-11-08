@@ -36,7 +36,7 @@ test('a switch brings its dependencies along, as the backend does', () => {
     { feature: 'timecard', enabled: false },
   ]);
   // Enabling a page enables the one provider of each capability it lacks, then what its parts
-  // on with it lack. Tabs default on.
+  // on with it lack.
   const tabs = features.filter((f) => f.startsWith('timecard.'));
   assert.deepEqual(previewSwitch(['uniforms', 'paycom', ...tabs], 'timecard', true), [
     { feature: 'timecard', enabled: true },
@@ -58,7 +58,7 @@ test('a switch brings its dependencies along, as the backend does', () => {
   ]);
 });
 
-test('a tab goes alone, but the last one takes its page and a page brings them back', () => {
+test('a tab goes alone, but the last one takes its page and a page brings its first back', () => {
   const all = [...features];
   assert.deepEqual(previewSwitch(all, 'dvic.day', false), [
     { feature: 'dvic.day', enabled: false },
@@ -68,13 +68,12 @@ test('a tab goes alone, but the last one takes its page and a page brings them b
     { feature: 'dvic.week', enabled: false },
     { feature: 'dvic', enabled: false },
   ]);
-  // A page switched off keeps its tabs; switched on without any, it brings them all.
+  // A page switched off keeps its tabs; switched on without any, it brings its first.
   assert.deepEqual(previewSwitch(all, 'dvic', false), [{ feature: 'dvic', enabled: false }]);
   const bare = all.filter((f) => !f.startsWith('dvic'));
   assert.deepEqual(previewSwitch(bare, 'dvic', true), [
     { feature: 'dvic', enabled: true },
     { feature: 'dvic.day', enabled: true },
-    { feature: 'dvic.week', enabled: true },
   ]);
   assert.deepEqual(previewSwitch([...bare, 'dvic.week'], 'dvic', true), [
     { feature: 'dvic', enabled: true },

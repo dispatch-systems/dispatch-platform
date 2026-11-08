@@ -60,10 +60,10 @@ fn managing_dsp_connections_exists_while_a_connection_or_a_page_adding_one_is_on
     }
 }
 
-// A mandatory feature is never switched on, so a part of it that started on would reach every
-// DSP the day it shipped: an optional one starts off, as a new feature does.
+// An optional part starts off, as a new feature does, whether its feature is mandatory or
+// switched on per DSP; only a mandatory part starts on.
 #[test]
-fn a_mandatory_features_optional_part_starts_off_and_its_mandatory_part_on() {
+fn an_optional_part_starts_off_and_a_mandatory_part_on() {
     static HOST: manifest::Feature = manifest::Feature {
         switch: manifest::mandatory("host", "Host"),
         subfeatures: &[
@@ -72,13 +72,28 @@ fn a_mandatory_features_optional_part_starts_off_and_its_mandatory_part_on() {
         ],
         ..manifest::feature("host")
     };
-    let page = page(&HOST);
-    assert!(page.mandatory && page.default);
+    static NOTES: manifest::Feature = manifest::Feature {
+        switch: manifest::optional("notes", "Notes", &[]),
+        subfeatures: &[
+            manifest::tab("notes.list", "List"),
+            manifest::sub("notes.uploads", "Uploads"),
+        ],
+        ..manifest::feature("notes")
+    };
+    let host = page(&HOST);
+    assert!(host.mandatory && host.default);
+    assert!(!page(&NOTES).default);
     let parts: Vec<_> = page_subs(&HOST)
+        .chain(page_subs(&NOTES))
         .map(|part| (part.id, part.default, part.mandatory))
         .collect();
     assert_eq!(
         parts,
-        [("host.extra", false, false), ("host.main", true, true)]
+        [
+            ("host.extra", false, false),
+            ("host.main", true, true),
+            ("notes.list", false, false),
+            ("notes.uploads", false, false),
+        ]
     );
 }

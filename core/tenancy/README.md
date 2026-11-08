@@ -5,7 +5,7 @@ view. Screens and routes check permissions, never features: a permission exists 
 feature is on. Every feature is mandatory, which every DSP has, or optional, off for every DSP
 until the platform owner switches it on. Switching one off removes its pages, permissions and
 automation for that DSP and deletes nothing it stored. One made optional later stays on, once,
-for every DSP that had it. A development or preview DSP's demo has every feature on but those
+for every DSP that had it, and one whose default changes stays as each DSP read it. A development or preview DSP's demo has every feature on but those
 that read a provider live (`live_readers`), so nothing reads a provider for it unasked until a
 preview or a test switches one on. Whether a DSP has a feature is `feature_enabled`, and when it came
 on, `feature_on_since`: none while it's off, and never before it came on, as hiding or showing
@@ -20,8 +20,9 @@ existing platform-owner API reexport and generated TypeScript path.
 
 A page's parts switch on their own inside it: its tabs, and any other part a feature declares
 as a sub-feature, each with the permissions it owns, which exist while it and its page are on.
-Only a mandatory feature's parts may be mandatory. A part may need a connection of its own;
-switched off, a page keeps its parts as they were, and they come back with it.
+Only a mandatory feature's parts may be mandatory, and an optional part starts off: switching
+its page on brings only its first tab, which it needs to show. A part may need a connection of
+its own; switched off, a page keeps its parts as they were, and they come back with it.
 
 The platform owner can also hide an optional feature or part from a DSP: its members, owners
 included, lose its pages, tabs and permissions as if it were off, while everything it runs

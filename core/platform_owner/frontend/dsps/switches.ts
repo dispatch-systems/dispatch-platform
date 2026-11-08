@@ -22,7 +22,7 @@ export const capabilityLabel = (capability: string): string =>
 /**
  * What switching `id` would change, mirroring `set_feature` in the backend: enabling a page
  * or a part enables the one provider of each capability it, or a page's parts on with it,
- * lacks, and a page's tabs when none is on; enabling a provider switches off another of the
+ * lacks, and a page's first tab when none is on; enabling a provider switches off another of the
  * same capability; disabling a provider disables the pages and parts left without one; a page
  * left with none of its tabs on is disabled. A page switched off keeps its parts' switches.
  * `enabled` is what is switched on, parts of a page that is off included. Undefined when a
@@ -62,8 +62,9 @@ export function previewSwitch(enabled: readonly string[], id: Feature, on: boole
     };
     if (!connect(feature)) return undefined;
     flip(feature, true);
+    // A page shows one of its tabs at least: its first, when none is on.
     const own = tabsOf(feature.id);
-    if (!own.some((t) => current.has(t.id))) for (const t of own) flip(t, true);
+    if (own[0] && !own.some((t) => current.has(t.id))) flip(own[0], true);
     // A page's parts that come on with it need their connections too.
     for (const part of subsOf(feature.id)) if (live(part) && !connect(part)) return undefined;
   } else {
@@ -85,7 +86,7 @@ export function previewSwitch(enabled: readonly string[], id: Feature, on: boole
 }
 /**
  * The switches of `changes` worth asking about before switching `feature`: every one but
- * the feature's own, and a page's tabs coming on with it.
+ * the feature's own, and a page's tab coming on with it.
  */
 export const sideEffects = (
   feature: FeatureEntry,

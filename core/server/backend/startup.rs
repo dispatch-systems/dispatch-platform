@@ -27,7 +27,7 @@ pub fn prepare_storage(config: Config) -> Result<Store> {
 
 fn upgrade_platform(store: &Store) -> Result<()> {
     retirement::platform(store)?;
-    store.keep_mandatory_features()?;
+    store.keep_switches()?;
     roles::backfill(&store.platform)
 }
 

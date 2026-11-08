@@ -146,32 +146,32 @@ fn a_tab_follows_its_page_and_the_last_one_takes_the_page() {
     };
     let on = |id: &str| (id.to_owned(), true);
     let off = |id: &str| (id.to_owned(), false);
-    // A new DSP's tabs are switched on, but none exists before its page does.
+    // A new DSP's tabs start off: switching their page on brings its first alone.
     let dvic = db.set_feature(&dsp, "dvic", true, &owner.id).unwrap();
-    assert_eq!(changes(dvic), [on("cortex"), on("dvic")]);
-    assert_eq!(
-        switched(&db, &dsp),
-        ["dvic", "dvic.day", "dvic.week", "cortex"]
-    );
+    assert_eq!(changes(dvic), [on("cortex"), on("dvic"), on("dvic.day")]);
+    assert_eq!(switched(&db, &dsp), ["dvic", "dvic.day", "cortex"]);
+    let week = db.set_feature(&dsp, "dvic.week", true, &owner.id).unwrap();
+    assert_eq!(changes(week), [on("dvic.week")]);
     // One tab goes alone; the last takes its page, which keeps the tab's switch.
     let day = db.set_feature(&dsp, "dvic.day", false, &owner.id).unwrap();
     assert_eq!(changes(day), [off("dvic.day")]);
     let week = db.set_feature(&dsp, "dvic.week", false, &owner.id).unwrap();
     assert_eq!(changes(week), [off("dvic.week"), off("dvic")]);
     assert_eq!(switched(&db, &dsp), ["cortex"]);
-    // A page switched on without a tab brings every tab back.
+    // A page switched on without a tab brings its first back.
     let back = db.set_feature(&dsp, "dvic", true, &owner.id).unwrap();
-    assert_eq!(changes(back), [on("dvic"), on("dvic.day"), on("dvic.week")]);
+    assert_eq!(changes(back), [on("dvic"), on("dvic.day")]);
     // A page switched off keeps its tabs as they were, and switching it on finds them.
-    db.set_feature(&dsp, "dvic.week", false, &owner.id).unwrap();
+    db.set_feature(&dsp, "dvic.week", true, &owner.id).unwrap();
+    db.set_feature(&dsp, "dvic.day", false, &owner.id).unwrap();
     db.set_feature(&dsp, "dvic", false, &owner.id).unwrap();
     assert_eq!(switched(&db, &dsp), ["cortex"]);
     let report = db.feature_report(&dsp).unwrap().features;
     let state = |id: &str| report.iter().find(|s| s.feature == id).unwrap().enabled;
-    assert!(state("dvic.day") && !state("dvic.week"));
+    assert!(!state("dvic.day") && state("dvic.week"));
     let again = db.set_feature(&dsp, "dvic", true, &owner.id).unwrap();
     assert_eq!(changes(again), [on("dvic")]);
-    assert_eq!(switched(&db, &dsp), ["dvic", "dvic.day", "cortex"]);
+    assert_eq!(switched(&db, &dsp), ["dvic", "dvic.week", "cortex"]);
 }
 
 #[cfg(feature = "timecard")]
@@ -348,12 +348,51 @@ fn a_feature_made_optional_stays_on_for_every_dsp_that_had_it() {
             [optional],
         )
         .unwrap();
-    db.keep_mandatory_features().unwrap();
+    db.keep_switches().unwrap();
     assert!(db.feature_enabled(&dsp, optional).unwrap());
     // Once: a DSP that switches it off later keeps it off.
     db.set_feature(&dsp, optional, false, &owner).unwrap();
-    db.keep_mandatory_features().unwrap();
+    db.keep_switches().unwrap();
     assert!(!db.feature_enabled(&dsp, optional).unwrap());
+}
+#[cfg(feature = "dvic")]
+#[test]
+fn a_changed_default_leaves_every_dsp_as_it_read_it() {
+    let (_root, db, owner, dsp) = new_dsp();
+    let raw = |db: &Store| {
+        let report = db.feature_report(&dsp).unwrap().features;
+        report.iter().find(|s| s.feature == "dvic.week").unwrap().enabled
+    };
+    // A DSP made before the part has no switch of its own for it, and reads its default.
+    let unswitched = |db: &Store| {
+        db.platform
+            .exec(
+                "DELETE FROM dsp_features WHERE dsp_id=? AND feature='dvic.week'",
+                [&dsp],
+            )
+            .unwrap();
+    };
+    // On at the last start, as recorded, or as a part of an optional page was before
+    // defaults were recorded: it stays on now that it starts off.
+    for earlier in [Some(true), None] {
+        unswitched(&db);
+        db.platform
+            .exec(
+                "UPDATE feature_availability SET default_on=? WHERE feature='dvic.week'",
+                [earlier],
+            )
+            .unwrap();
+        db.keep_switches().unwrap();
+        assert!(raw(&db), "{earlier:?}");
+    }
+    // Once: switched off later, it stays off.
+    db.set_feature(&dsp, "dvic.week", false, &owner).unwrap();
+    db.keep_switches().unwrap();
+    assert!(!raw(&db));
+    // A default unchanged since the last start keeps nothing.
+    unswitched(&db);
+    db.keep_switches().unwrap();
+    assert!(!raw(&db));
 }
 #[test]
 fn when_a_feature_came_on_is_known_while_it_is_on_and_never_early() {
@@ -400,9 +439,9 @@ fn the_catalog_is_consistent() {
                 let page = find(page).filter(|p| p.kind == Kind::Page).unwrap();
                 assert!(feature.provides.is_empty());
                 // Only a mandatory feature's parts may be, and need no connection; an
-                // optional feature's start on with it, a mandatory one's off.
+                // optional one starts off.
                 assert!(!feature.mandatory || (page.mandatory && feature.requires.is_empty()));
-                assert_eq!(feature.default, feature.mandatory || !page.mandatory);
+                assert_eq!(feature.default, feature.mandatory);
             }
             Kind::Connection => {
                 assert!(!feature.provides.is_empty() && feature.requires.is_empty())
@@ -502,7 +541,7 @@ fn a_new_page_stays_on_for_every_dsp_that_had_what_it_gathers_on() {
                 [page.id],
             )
             .unwrap();
-        db.keep_mandatory_features().unwrap();
+        db.keep_switches().unwrap();
         assert!(db.feature_enabled(&had, page.id).unwrap(), "{}", page.id);
         assert!(
             !db.feature_enabled(&lacked, page.id).unwrap(),
@@ -511,7 +550,7 @@ fn a_new_page_stays_on_for_every_dsp_that_had_what_it_gathers_on() {
         );
         // Once: switched off later, it stays off.
         db.set_feature(&had, page.id, false, &owner.id).unwrap();
-        db.keep_mandatory_features().unwrap();
+        db.keep_switches().unwrap();
         assert!(!db.feature_enabled(&had, page.id).unwrap(), "{}", page.id);
     }
 }

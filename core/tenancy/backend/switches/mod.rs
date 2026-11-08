@@ -46,16 +46,28 @@ impl Store {
     /// Keeps what every DSP had: a feature or part that was mandatory when the server last
     /// started, and is optional now, is switched on, once, for every DSP there is, so making
     /// it optional takes it from none of them; a DSP made later starts with it off, as with
-    /// any optional feature. A page new since the last start that gathers parts DSPs had on
-    /// before, as when a page becomes another's part, or that grew from another feature, is
-    /// switched on, once, for each DSP with one of those on, so they keep it. Then records
-    /// what is mandatory now.
-    pub fn keep_mandatory_features(&self) -> Result<()> {
+    /// any optional feature. One whose default changed since then is kept at the old one, once,
+    /// for every DSP without a switch of its own for it, which read it at its default. A page
+    /// new since the last start that gathers parts DSPs had on before, as when a page becomes
+    /// another's part, or that grew from another feature, is switched on, once, for each DSP
+    /// with one of those on, so they keep it. Then records what is mandatory, and each default,
+    /// now.
+    pub fn keep_switches(&self) -> Result<()> {
         self.platform.transaction(|| {
-            let recorded: BTreeMap<String, bool> = self
-                .platform
-                .query_as("SELECT feature,mandatory FROM feature_availability", [])?
-                .into_iter()
+            let found: Vec<(String, bool, Option<bool>)> = self.platform.query_as(
+                "SELECT feature,mandatory,default_on FROM feature_availability",
+                [],
+            )?;
+            let recorded: BTreeMap<&str, bool> = found
+                .iter()
+                .map(|(f, mandatory, _)| (f.as_str(), *mandatory))
+                .collect();
+            let defaults: BTreeMap<&str, bool> = found
+                .iter()
+                .filter_map(|(f, _, default)| {
+                    let feature = find(f)?;
+                    Some((feature.id, default.unwrap_or_else(|| earlier_default(feature))))
+                })
                 .collect();
             // A platform starting for the first time has nothing to keep.
             let new_pages = catalog()
@@ -96,11 +108,24 @@ impl Store {
                     }
                 }
             }
+            for feature in catalog() {
+                let Some(&was) = defaults.get(feature.id) else {
+                    continue;
+                };
+                if was != feature.default {
+                    self.platform.exec(
+                        "INSERT OR IGNORE INTO dsp_features(dsp_id,feature,enabled,changed_at) \
+                         SELECT id,?1,?2,?3 FROM dsps",
+                        params![feature.id, was, iso()],
+                    )?;
+                }
+            }
             for feature in catalog().iter().filter(|f| f.kind != Kind::Connection) {
                 self.platform.exec(
-                    "INSERT INTO feature_availability(feature,mandatory) VALUES (?,?) \
-                     ON CONFLICT(feature) DO UPDATE SET mandatory=excluded.mandatory",
-                    params![feature.id, feature.mandatory],
+                    "INSERT INTO feature_availability(feature,mandatory,default_on) \
+                     VALUES (?,?,?) ON CONFLICT(feature) DO UPDATE SET \
+                     mandatory=excluded.mandatory,default_on=excluded.default_on",
+                    params![feature.id, feature.mandatory, feature.default],
                 )?;
             }
             Ok(())
@@ -155,7 +180,7 @@ impl Store {
     }
     /// Switches one optional feature, and with it whatever depends on it: enabling a page
     /// or a part enables a provider of each capability it, or a page's parts on with it,
-    /// lacks, and a page's tabs when none is on; enabling a provider switches off another of
+    /// lacks, and a page's first tab when none is on; enabling a provider switches off another of
     /// the same capability; disabling a provider disables the pages and parts left without
     /// one; a page left with none of its tabs on is disabled. A page switched off keeps its
     /// parts' switches as they are, so they come back as they were. A mandatory feature or
@@ -209,5 +234,14 @@ impl Store {
                 changed,
             })
         })
+    }
+}
+
+/// What `feature` defaulted to at the last start, recorded before defaults were: then, a part
+/// of an optional page started on with it.
+fn earlier_default(feature: &Feature) -> bool {
+    match feature.kind {
+        Kind::Sub(page) => feature.default || find(page).is_some_and(|page| !page.mandatory),
+        _ => feature.default,
     }
 }
