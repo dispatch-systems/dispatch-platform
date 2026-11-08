@@ -6,7 +6,7 @@ use super::{
     filing,
     live_day::LiveDay,
     model::Filed,
-    numbers::ten_digits,
+    numbers::{shown, ten_digits},
     reading,
     storage::{PickStore, TextStore},
 };
@@ -51,7 +51,16 @@ pub fn pick(
     filing::refiled(db, dsp)?;
     let theirs = db.open_communications_text(dsp, &picked)?;
     live::changed(state, dsp);
-    reading::one(db, state, dsp, &theirs.id)
+    let theirs = reading::one(db, state, dsp, &theirs.id)?;
+    db.audit_with(
+        Some(by),
+        Some(dsp),
+        "communications.driver_picked",
+        &shown(&phone),
+        Some(&theirs.with.name),
+        &[],
+    )?;
+    Ok(theirs)
 }
 
 #[cfg(test)]

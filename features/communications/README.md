@@ -500,8 +500,9 @@ queues a text for a phone.
 - **Log:** in the audit log, under Settings, with the DSP: a name saved for a number, or changed,
   `communications.contact_saved`, by the number, with the name before and after; a number
   blocked or unblocked, `communications.number_blocked` and `communications.number_unblocked`,
-  by who it's with and the number. Saving the name it has, or blocking a number blocked
-  already, changes nothing and logs nothing.
+  by who it's with and the number; and each driver picked for a work phone,
+  `communications.driver_picked`, by the driver's name and the phone's number. Saving the name
+  it has, or blocking a number blocked already, changes nothing and logs nothing.
 
 ## Messaging a group
 
@@ -841,7 +842,9 @@ Behind `communications.use`:
 - `GET …/quick-replies`: the DSP's quick replies, in their order, and their `revision`;
   `POST …/quick-replies`, `{replies, revision}`: keeps them, each trimmed, as the revision they
   were read at, refused past 30, one empty or over 500 characters (`invalid_input`), or once
-  another save passed it (409 `settings_changed_reload_before_saving`).
+  another save passed it (409 `settings_changed_reload_before_saving`). A save that changed them
+  is in the audit log, under Settings, as `communications.quick_replies_saved`, with each reply it
+  added and removed.
 - `GET …/waiting`: how many conversations wait, and since when each has, for the sidebar; the
   latest message from whom each is with (`latest`: the conversation, the group it's listed under,
   their name and the message), for alerts; and the DSP's phones an app holds, each online or not,
