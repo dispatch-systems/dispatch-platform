@@ -212,6 +212,7 @@ export const facts = new Set([
   'automatic',
   'reason',
   'openUntil',
+  'ticket',
 ]);
 const fact = (event: AuditEvent, field: string) =>
   event.changes.find((change) => change.field === field)?.to ?? '';

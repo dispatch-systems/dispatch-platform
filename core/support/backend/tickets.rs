@@ -150,22 +150,15 @@ pub fn create(db: &Store, auth: &Auth, body: &Value) -> Result<SupportDetail> {
 }
 
 /// Notes in the audit log that `by` did `action` to the ticket `row`, by its title, with the DSP
-/// it's of: the event refers to the ticket, so the log gathers each of its own.
+/// it's of and the ticket's ID as a fact of the event.
 pub(crate) fn audited(db: &Store, by: &str, row: &Value, action: &str) -> Result<()> {
     let dsp = Some(s(row, "dsp_id")).filter(|dsp| !dsp.is_empty());
-    let ticket = Some((TICKET, s(row, "id")));
-    db.audit_ref(
-        Some(by),
-        dsp,
-        action,
-        "",
-        Some(s(row, "title")),
-        &[],
-        ticket,
-    )
+    let ticket = [(TICKET, None, Some(s(row, "id").to_owned()))];
+    db.audit_with(Some(by), dsp, action, "", Some(s(row, "title")), &ticket)
 }
 
-/// What the audit log's events about a ticket refer to it as.
+/// The fact of an audit event that names the ticket it's about. A fact, not a reference, as
+/// releases before it read every event's reference as one of the kinds they know.
 pub(crate) const TICKET: &str = "ticket";
 
 pub(crate) fn progress(db: &Store, id: &str, status: &str, message: &str) -> Result<()> {

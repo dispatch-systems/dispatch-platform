@@ -158,7 +158,8 @@ impl Store {
         }
         self.audit(Some(actor), Some(dsp), action, detail)
     }
-    /// `audit_ref`, once a half hour for the actor, DSP, action and the record it's about.
+    /// `audit_with`, once a half hour for the actor, DSP, action and the record it's about, which
+    /// it keeps as a fact of the event (`field`, the record's `id`).
     pub fn audit_once(
         &self,
         actor: Option<&str>,
@@ -166,18 +167,19 @@ impl Store {
         action: &str,
         detail: &str,
         target: Option<&str>,
-        (kind, id): (&str, &str),
+        (field, id): (&'static str, &str),
     ) -> Result<()> {
         let recent = self.platform.one(
-            "SELECT 1 FROM audit WHERE COALESCE(actor_id,member_id) IS ? AND dsp_id IS ? \
-             AND action=? AND json_extract(data,'$.ref.kind')=? \
-             AND json_extract(data,'$.ref.id')=? AND at>=? LIMIT 1",
-            rusqlite::params![actor, dsp, action, kind, id, at(now() - VISIT_WINDOW)],
+            "SELECT 1 FROM audit a WHERE COALESCE(a.actor_id,a.member_id) IS ? AND a.dsp_id IS ? \
+             AND a.action=? AND a.at>=? AND EXISTS (SELECT 1 FROM json_each(a.data,'$.changes') \
+             WHERE json_extract(value,'$.field')=? AND json_extract(value,'$.to')=?) LIMIT 1",
+            rusqlite::params![actor, dsp, action, at(now() - VISIT_WINDOW), field, id],
         )?;
         if recent.is_some() {
             return Ok(());
         }
-        self.audit_ref(actor, dsp, action, detail, target, &[], Some((kind, id)))
+        let fact = [(field, None, Some(id.to_owned()))];
+        self.audit_with(actor, dsp, action, detail, target, &fact)
     }
     // Taking a copy of everyone's activity is itself recorded, after the copy is
     // read so an export never lists itself.
