@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { DspSummary } from '../../../accounts/api/index.js';
-import type { DspFeatureReport, DspFeatures, Visibility } from '../../api/index.js';
+import type { Visibility } from '../../api/index.js';
 import {
   setDspFeature,
   setDspVisibility,
@@ -22,6 +22,7 @@ import {
   parseHash,
   replaceHashQuery,
 } from '../../../shell/frontend/runtime/navigation.js';
+import { useChanges } from '../../../shell/frontend/runtime/changes.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import { Badge, Empty, ErrorBox, SearchInput } from '../../../shell/frontend/ui/index.js';
 import { FeatureSwitchDialog } from './FeatureSwitchDialog.js';
@@ -77,6 +78,18 @@ const filters = [
   ['hidden', 'Hidden'],
 ] as const;
 type Filter = (typeof filters)[number][0];
+// What the tab shows of a DSP's features: what is switched on, and who sees what.
+type Shown = { enabled: string[]; sights: Record<string, Visibility> };
+type SwitchChanges = readonly { feature: string; enabled: boolean }[];
+// What is switched on once `changes` are made.
+function switchedAs(enabled: readonly string[], changes: SwitchChanges) {
+  const on = new Set(enabled);
+  for (const change of changes) {
+    if (change.enabled) on.add(change.feature);
+    else on.delete(change.feature);
+  }
+  return [...on];
+}
 // Names the chosen feature in the address, or none.
 function nameInAddress(id: string) {
   const { feature = '', ...rest } = Object.fromEntries(hashQuery());
@@ -94,32 +107,42 @@ function nameInAddress(id: string) {
 // wider choices wait, the part's own kept, until the feature reaches further again. A part
 // can't be switched while its feature is off, and shows off; switching the feature back on
 // brings each part back as it was. Then the connections it needs. A connection's panel lists
-// what uses it. A switch acts at once; one that takes other features with it asks first. AI
-// Support's switch hides only its button from the DSP's members; the platform owner keeps it.
+// what uses it. A change shows at once and saves behind it; a switch that takes other features
+// with it asks first. AI Support's switch hides only its button from the DSP's members; the
+// platform owner keeps it.
 export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () => void }) {
   const { data, error, refresh } = useDspFeatures(dsp.id);
   const [query, setQuery] = useUpdateState('dsp-feature-query', '');
   const [filter, setFilter] = useUpdateState<Filter>('dsp-feature-filter', 'all');
   const [chosen, setChosen] = useState(() => hashQuery().get('feature') ?? '');
-  const [pending, setPending] = useState<{ feature: FeatureEntry; on: boolean }>();
-  // As the switch last answered, until the DSP's profile is read again.
-  const [support, setSupport] = useState<{ dsp: string; shown: boolean }>();
-  const supportShown = support?.dsp === dsp.id ? support.shown : !dsp.profile.aiSupportHidden;
-  // What the last switch answered is on, until the DSP's features are read again: a switch made
-  // before that reading lands goes by the answer, not by the reading before it.
-  const [answered, setAnswered] = useState<{ read?: DspFeatureReport; features: string[] }>();
-  const latest = useRef(data);
-  latest.current = data;
-  // What is switched on, parts of a feature that is off included, so they come back as they were.
-  const enabled =
-    answered && answered.read === data
-      ? answered.features
-      : data
+  // A switch that takes other features with it, asked about before it is made.
+  const [asking, setAsking] = useState<{ feature: FeatureEntry; on: boolean }>();
+  // As read, with what was changed here over it: each change shows at once and saves behind the
+  // ones before it, and once the last is saved the DSP's features are read again and the list's
+  // counts follow. Before the features are read, what the DSP's summary says is on.
+  const before = data ? undefined : dsp.features;
+  const read = useMemo<Shown>(
+    () => ({
+      enabled: data
         ? data.features.filter((state) => state.enabled).map((state) => state.feature)
-        : dsp.features;
+        : (before ?? []),
+      sights: Object.fromEntries(
+        (data?.features ?? []).map((state) => [state.feature, state.visibility]),
+      ),
+    }),
+    [data, before],
+  );
+  const { shown, change } = useChanges(read, dsp.id, () => {
+    refresh();
+    changed();
+  });
+  // AI Support's button, as the DSP's profile says, with what was switched here over it.
+  const support = useChanges(!dsp.profile.aiSupportHidden, dsp.id, changed);
+  const supportShown = support.shown;
+  // What is switched on, parts of a feature that is off included, so they come back as they were.
+  const enabled = shown.enabled;
   const switched = (id: string) => enabled.includes(id);
-  const stored = (id: string): Visibility =>
-    data?.features.find((state) => state.feature === id)?.visibility ?? 'shown';
+  const stored = (id: string): Visibility => shown.sights[id] ?? 'shown';
   const visibility = (feature: FeatureEntry) => stored(feature.id);
   // Who sees it: a part no more people than its feature, whatever its own choice.
   const reaches = (feature: FeatureEntry) =>
@@ -169,44 +192,46 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
     setChosen(id);
     nameInAddress(id);
   };
-  const done = () => {
-    refresh();
-    changed();
-  };
-  const switchedTo = (answer: DspFeatures) => {
-    setAnswered({ read: latest.current, features: answer.features });
-    done();
-  };
-  const direct = useAction(
-    async (feature: FeatureEntry, on: boolean) => {
-      switchedTo(await setDspFeature(dsp.id, feature.id, on));
-    },
-    { success: (feature, on) => `${switchLabel(feature)} switched ${on ? 'on' : 'off'}` },
-  );
-  const seeing = useAction(
-    async (feature: FeatureEntry, to: Visibility) => {
-      await setDspVisibility(dsp.id, feature.id, to);
-      done();
-    },
-    { success: (feature, to) => `${switchLabel(feature)} ${seenBy[to]} ${dsp.name}` },
-  );
-  const supporting = useAction(
-    async (shown: boolean) => {
-      const profile = await showDspAiSupport(dsp.id, shown);
-      setSupport({ dsp: dsp.id, shown: !profile.aiSupportHidden });
-      changed();
-    },
-    { success: (shown) => `AI Support ${shown ? 'shown to' : 'hidden from'} ${dsp.name}` },
-  );
+  // A save, saying what it did once it has.
+  const saving = useAction((work: () => Promise<unknown>, _done: string) => work(), {
+    success: (_work, done) => done,
+  });
+  const switchTo = (feature: FeatureEntry, on: boolean, changes: SwitchChanges) =>
+    change(
+      (value) => ({ ...value, enabled: switchedAs(value.enabled, changes) }),
+      () =>
+        saving.run(
+          () => setDspFeature(dsp.id, feature.id, on),
+          `${switchLabel(feature)} switched ${on ? 'on' : 'off'}`,
+        ),
+    );
   const toggle = (feature: FeatureEntry, on: boolean) => {
     const preview = previewSwitch(enabled, feature.id, on);
     // Alone, or already as asked: no question to ask.
     if (preview && !sideEffects(feature, preview).length) {
-      if (preview.length) void direct.run(feature, on);
+      if (preview.length) switchTo(feature, on, preview);
       return;
     }
-    setPending({ feature, on });
+    setAsking({ feature, on });
   };
+  const see = (feature: FeatureEntry, to: Visibility) =>
+    change(
+      (value) => ({ ...value, sights: { ...value.sights, [feature.id]: to } }),
+      () =>
+        saving.run(
+          () => setDspVisibility(dsp.id, feature.id, to),
+          `${switchLabel(feature)} ${seenBy[to]} ${dsp.name}`,
+        ),
+    );
+  const showSupport = (on: boolean) =>
+    support.change(
+      () => on,
+      () =>
+        saving.run(
+          () => showDspAiSupport(dsp.id, on),
+          `AI Support ${on ? 'shown to' : 'hidden from'} ${dsp.name}`,
+        ),
+    );
   const control = (feature: FeatureEntry, locked = false) => (
     <input
       type="checkbox"
@@ -214,7 +239,7 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
       aria-label={switchLabel(feature)}
       title={feature.mandatory ? 'Every DSP has it' : undefined}
       checked={has(feature)}
-      disabled={!data || direct.busy || locked || Boolean(feature.mandatory)}
+      disabled={!data || locked || Boolean(feature.mandatory)}
       onChange={(event) => toggle(feature, event.target.checked)}
     />
   );
@@ -258,8 +283,8 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
                   aria-label={`Who sees ${switchLabel(part)}`}
                   data-sight={sight}
                   value={sight}
-                  disabled={!data || seeing.busy || widest === sights.length - 1}
-                  onChange={(event) => void seeing.run(part, event.target.value as Visibility)}
+                  disabled={!data || widest === sights.length - 1}
+                  onChange={(event) => see(part, event.target.value as Visibility)}
                 >
                   {sights.map(([to, label], index) => (
                     <option key={to} value={to} disabled={index < widest}>
@@ -311,9 +336,9 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
                   data-sight={to}
                   role="radio"
                   aria-checked={visibility(item) === to}
-                  disabled={!data || seeing.busy}
+                  disabled={!data}
                   onClick={() => {
-                    if (visibility(item) !== to) void seeing.run(item, to);
+                    if (visibility(item) !== to) see(item, to);
                   }}
                 >
                   {label}
@@ -407,8 +432,7 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
                     aria-label="AI Support"
                     title="The AI Support button in the DSP's account menu"
                     checked={supportShown}
-                    disabled={supporting.busy}
-                    onChange={(event) => void supporting.run(event.target.checked)}
+                    onChange={(event) => showSupport(event.target.checked)}
                   />
                 ) : (
                   control(selected)
@@ -419,16 +443,15 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
           </section>
         )}
       </div>
-      {pending && data && (
+      {asking && data && (
         <FeatureSwitchDialog
-          dsp={dsp}
-          feature={pending.feature}
-          on={pending.on}
+          feature={asking.feature}
+          on={asking.on}
           enabled={enabled}
-          onClose={() => setPending(undefined)}
-          onDone={(answer) => {
-            setPending(undefined);
-            switchedTo(answer);
+          onClose={() => setAsking(undefined)}
+          onConfirm={(changes) => {
+            setAsking(undefined);
+            switchTo(asking.feature, asking.on, changes);
           }}
         />
       )}
