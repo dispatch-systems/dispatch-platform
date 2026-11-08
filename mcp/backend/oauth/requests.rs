@@ -11,7 +11,7 @@ use crate::api::types::{OAuthApp, OAuthApproval, OAuthRedirect, OAuthReplaced, O
 use crate::{ClientStore, GuardStore, keys};
 use dispatch_core::{
     Error, Result,
-    db::{FromRow, Row, Store, at, iso, now},
+    db::{AuditChange, FromRow, Row, Store, at, iso, now},
     ensure,
     foundation::crypto,
 };
@@ -151,7 +151,7 @@ pub(super) fn approve(
             "agent.app_approved",
             "",
             Some(&approval.name),
-            &[],
+            &asked_by(&request),
         )
     })?;
     Ok(OAuthRedirect {
@@ -176,7 +176,7 @@ pub(super) fn deny(db: &Store, owner: &str, id: &str, browser: &str) -> Result<O
             "agent.app_denied",
             "",
             Some(&request.client_name),
-            &[],
+            &asked_by(&request),
         )
     })?;
     Ok(OAuthRedirect {
@@ -189,6 +189,15 @@ pub(super) fn deny(db: &Store, owner: &str, id: &str, browser: &str) -> Result<O
             ],
         ),
     })
+}
+
+/// Which app asked, as a decision's audit event keeps it: its client ID, which its name can't
+/// stand in for, as an app that isn't verified names itself; and whether it's verified.
+fn asked_by(request: &WaitingRequest) -> [AuditChange; 2] {
+    [
+        ("client", None, Some(request.client_id.clone())),
+        ("verified", None, Some((request.verified == 1).to_string())),
+    ]
 }
 
 /// The request made, waiting for the owner in the browser given `nonce`; or where a

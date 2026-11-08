@@ -55,10 +55,12 @@ const phrases: AuditPhrases = {
     if (e.target) return ['cancelled scheduled collection ', strong(e.target)];
     const name = collected(e);
     const date = fact(e, 'date');
+    const through = fact(e, 'through');
     return [
       'cancelled ',
       ...(name ? ['the ', strong(`${name} collection`)] : ['a collection']),
       ...(date ? [' for ', strong(day(date))] : []),
+      ...(date && through ? [' to ', strong(day(through))] : []),
     ];
   },
   'collection.started': (e) => ['started collecting ', strong(e.detail)],
@@ -162,7 +164,11 @@ const phrases: AuditPhrases = {
   'mail.retried': (e) => ['retried an email', ...(e.target ? [' to ', strong(e.target)] : [])],
   'mail.discarded': (e) => ['discarded an email', ...(e.target ? [' to ', strong(e.target)] : [])],
   'dsp.created': (e) => ['created ', strong(e.dspName ?? 'a DSP')],
-  'dsp.setup_retried': (e) => ['retried setting up ', strong(e.dspName ?? 'a DSP')],
+  'dsp.setup_retried': (e) => [
+    'retried setting up ',
+    strong(e.dspName ?? 'a DSP'),
+    ...(e.changes.some((change) => change.field === 'error') ? [', which failed again'] : []),
+  ],
   'dsp.removed': (e) => ['removed ', strong(e.dspName ?? 'a DSP')],
   'dsp.restored': (e) => ['restored ', strong(e.dspName ?? 'a DSP')],
   'dsp.suspended': (e) => ['disabled ', strong(e.dspName ?? 'a DSP')],
@@ -210,6 +216,8 @@ export const facts = new Set([
   'reason',
   'openUntil',
   'login',
+  'error',
+  'verified',
 ]);
 const fact = (event: AuditEvent, field: string) =>
   event.changes.find((change) => change.field === field)?.to ?? '';
@@ -349,8 +357,23 @@ export function changeValue(field: string, value: string) {
 // A DSP's backup rules as the log keeps them, each as the Backups tab reads it.
 function backupRulesText(value: string) {
   const rules = JSON.parse(value) as BackupRuleInput[];
-  return rules.map((rule) => `${ruleText(rule)}, ${keepText(rule).toLowerCase()}`).join('; ');
+  return rules
+    .map((rule) => {
+      const without = rule.skipped.map(backupContent);
+      const left = without.length ? `, without ${without.join(', ')}` : '';
+      return `${ruleText(rule)}, ${keepText(rule).toLowerCase()}${left}`;
+    })
+    .join('; ');
 }
+// What a backup can leave out, as its Backups tab names it.
+const backupContent = (id: string) =>
+  id === 'logins'
+    ? 'saved logins'
+    : id === 'pictures'
+      ? 'pictures'
+      : id.startsWith('feature.')
+        ? featureLabel(id.slice('feature.'.length))
+        : (connectionName(id) ?? id);
 export function changeText(change: AuditChange) {
   const value = (side: string | null) => (side === null ? '' : changeValue(change.field, side));
   if (change.field === 'permission')

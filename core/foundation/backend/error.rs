@@ -49,6 +49,7 @@ codes! {
     ConnectionChanged => "connection_changed",
     DspUnavailable => "dsp_unavailable",
     DspNotFound => "dsp_not_found",
+    DspAlreadyInitialized => "dsp_already_initialized",
     AccountLocked => "account_locked",
 }
 impl Code {

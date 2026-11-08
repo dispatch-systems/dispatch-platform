@@ -1,6 +1,6 @@
 use crate::collection::registry::Provider;
 use crate::{
-    Error, Result,
+    Code, Error, Result,
     accounts::{
         Auth, Context,
         api::{
@@ -229,7 +229,7 @@ impl Store {
         let dsp = self.find_dsp(id)?;
         ensure(
             [DspStatus::Provisioning, DspStatus::Failed].contains(&dsp.status),
-            "dsp_already_initialized",
+            Code::DspAlreadyInitialized.as_str(),
             409,
         )?;
         let result = (|| {

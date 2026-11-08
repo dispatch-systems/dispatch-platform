@@ -1,16 +1,31 @@
 import { title } from '../../core/shell/frontend/lib/format.js';
+import type { AuditEvent } from '../../core/platform_owner/api/index.js';
 import type { AuditPhrases, AuditWording } from '../../core/shell/frontend/runtime/slots.js';
 
 // How the MCP's events read in the platform owner's audit log: the keys and apps made,
 // changed and revoked, and which apps may connect.
+
+// An app that isn't verified names itself, so its decisions say so beside its name.
+const unverified = (e: AuditEvent) =>
+  e.changes.some((change) => change.field === 'verified' && change.to === 'false')
+    ? [' (unverified)']
+    : [];
 
 const phrases: AuditPhrases = {
   'agent.key_created': (e, { strong }) => ['created the agent key ', strong(e.target ?? 'a key')],
   'agent.key_updated': (e, { strong }) => ['changed the agent key ', strong(e.target ?? 'a key')],
   'agent.key_revoked': (e, { strong }) => ['revoked the agent key ', strong(e.target ?? 'a key')],
   'agent.app_connected': (e, { strong }) => ['connected the app ', strong(e.target ?? 'an app')],
-  'agent.app_approved': (e, { strong }) => ['approved connecting ', strong(e.target ?? 'an app')],
-  'agent.app_denied': (e, { strong }) => ['refused to connect ', strong(e.target ?? 'an app')],
+  'agent.app_approved': (e, { strong }) => [
+    'approved connecting ',
+    strong(e.target ?? 'an app'),
+    ...unverified(e),
+  ],
+  'agent.app_denied': (e, { strong }) => [
+    'refused to connect ',
+    strong(e.target ?? 'an app'),
+    ...unverified(e),
+  ],
   'agent.app_updated': (e, { strong }) => [
     'changed the connected app ',
     strong(e.target ?? 'an app'),
@@ -41,6 +56,7 @@ const fields: Record<string, string> = {
   dsp_reads: 'DSP settings',
   tools: 'Tools',
   locations: 'Addresses and GPS',
+  client: 'Client ID',
 };
 const values: Record<string, string> = {
   read: 'Read only',

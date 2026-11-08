@@ -13,7 +13,9 @@ const phrases: AuditPhrases = {
       ? ['set route data to be kept ', strong('indefinitely')]
       : ['set route data to be kept for ', strong(`${e.detail} days`)],
   'routes.reprocessed': (e, { strong, day }) => [
-    'rebuilt the route data',
+    e.changes.some((change) => change.field === 'error')
+      ? 'tried to rebuild the route data'
+      : 'rebuilt the route data',
     ...(e.detail ? [' of ', strong(day(e.detail))] : [' of every day']),
   ],
   'routes.data_expired': (e, { strong, day }) => [
