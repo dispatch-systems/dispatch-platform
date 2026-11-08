@@ -11,18 +11,22 @@ export function IntegrationSwitch({
   team,
   integration,
   on,
+  switched,
   close,
 }: {
   team: string;
   integration: ListedIntegration;
   /** Whether it's being switched on, or off. */
   on: boolean;
+  /** Once it's switched. */
+  switched: () => void;
   /** Once it's switched, or not after all. */
   close: () => void;
 }) {
   const switching = useAction(
     async () => {
       await switchSlackIntegration(team, integration.id, on);
+      switched();
       slackAccountChanged();
       close();
     },

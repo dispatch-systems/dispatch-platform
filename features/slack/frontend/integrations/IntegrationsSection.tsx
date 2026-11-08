@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   connectionIntegrations,
   connectionSections,
@@ -23,6 +23,11 @@ export function IntegrationsSection({
   const account = useSlackAccount();
   // The integration being switched, and to what, while its switch asks.
   const [asked, setAsked] = useState<{ integration: ListedIntegration; on: boolean }>();
+  // Each integration as switched here, shown at once over the reading it was switched from until
+  // the workspace is read again.
+  const [switched, setSwitched] = useState<{ read: unknown; on: Record<string, boolean> }>();
+  const latest = useRef<unknown>(account.data);
+  latest.current = account.data;
   if (!view) return null;
   const integrations = connectionIntegrations('slack', view);
   const sections = connectionSections('slack', view);
@@ -38,7 +43,10 @@ export function IntegrationsSection({
                 key={integration.id}
                 integration={integration}
                 context={{ session, view, account: team }}
-                on={workspace.integrations.includes(integration.id)}
+                on={
+                  (switched?.read === data ? switched.on[integration.id] : undefined) ??
+                  workspace.integrations.includes(integration.id)
+                }
                 locked={workspace.status === 'broken'}
                 settings={sections.find((section) => section.integration === integration.id)}
                 switchTo={(on) => setAsked({ integration, on })}
@@ -50,6 +58,15 @@ export function IntegrationsSection({
                 team={team}
                 integration={asked.integration}
                 on={asked.on}
+                switched={() =>
+                  setSwitched((before) => ({
+                    read: latest.current,
+                    on: {
+                      ...(before && before.read === latest.current ? before.on : {}),
+                      [asked.integration.id]: asked.on,
+                    },
+                  }))
+                }
                 close={() => setAsked(undefined)}
               />
             )}

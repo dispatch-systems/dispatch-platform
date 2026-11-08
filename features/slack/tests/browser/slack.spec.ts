@@ -54,8 +54,50 @@ test('an owner adds Slack workspaces from New, each on a card under its name, us
   const hero = page.getByRole('heading', { level: 2, name: 'Dispatch Ops' });
   await expect(hero).toBeVisible();
   await expect(page.locator('header', { has: hero }).locator('img')).toBeVisible();
+  // It moves to Joined at once, every other channel's button left as it was while it saves.
+  const joining = '**/channels/*/join';
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route(joining, async (route) => {
+    await held;
+    await route.continue();
+  });
   await page.getByRole('button', { name: 'Join photos' }).click();
-  await expect(page.getByRole('list', { name: 'Joined', exact: true })).toContainText('photos');
+  const joined = page.getByRole('list', { name: 'Joined', exact: true });
+  await expect(joined).toContainText('photos');
+  await expect(
+    page.getByRole('list', { name: 'Not joined', exact: true }).getByRole('button').first(),
+  ).toBeEnabled();
+  const answered = page.waitForResponse((response) => response.url().includes('/join'));
+  release();
+  await answered;
+  await page.unroute(joining);
+  await expect(joined).toContainText('photos');
+  // An integration switched shows as switched as its question closes, before the workspace is
+  // read again.
+  await page
+    .getByRole('navigation', { name: 'Sections' })
+    .getByRole('button', { name: 'Integrations', exact: true })
+    .click();
+  const files = page.getByRole('switch', { name: 'Import Files', exact: true });
+  const was = await files.isChecked();
+  const reading = '**/api/dsp/slack/account';
+  let read = () => {};
+  const waiting = new Promise<void>((resolve) => (read = resolve));
+  await files.click();
+  await page.route(reading, async (route) => {
+    await waiting;
+    await route.continue();
+  });
+  await page.getByRole('button', { name: was ? 'Turn off' : 'Turn on', exact: true }).click();
+  await expect(files).toBeChecked({ checked: !was });
+  read();
+  await page.unroute(reading);
+  await expect(files).toBeChecked({ checked: !was });
+  await page
+    .getByRole('navigation', { name: 'Sections' })
+    .getByRole('button', { name: 'Channels', exact: true })
+    .click();
   await page.getByRole('button', { name: 'Rename' }).click();
   const rename = page.getByRole('dialog', { name: 'Rename connection' });
   await rename.getByLabel('Name').fill('Dispatch Crew');
