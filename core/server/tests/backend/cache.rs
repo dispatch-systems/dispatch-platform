@@ -176,12 +176,24 @@ fn joined_shared_reads_reuse_successes_even_when_oversized_or_evicted() {
             let readers: Vec<_> = duplicates
                 .into_iter()
                 .map(|pending| {
-                    let loads = loads.clone();
+                    let (cache, loads) = (cache.clone(), loads.clone());
                     threads.spawn(move || {
                         pending
                             .read(|| {
-                                loads.fetch_add(1, Ordering::SeqCst);
-                                Ok(Arc::new("duplicate".to_owned()))
+                                cache.read_sized(
+                                    meals("a"),
+                                    "people".into(),
+                                    1,
+                                    || {
+                                        loads.fetch_add(1, Ordering::SeqCst);
+                                        Ok(Arc::new("duplicate".to_owned()))
+                                    },
+                                    |value| {
+                                        Ok(serde_json::to_vec(value.as_ref())?
+                                            .len()
+                                            .saturating_mul(2))
+                                    },
+                                )
                             })
                             .unwrap()
                     })
