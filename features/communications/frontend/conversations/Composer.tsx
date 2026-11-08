@@ -8,13 +8,14 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from 'react';
-import { ArrowUp, LoaderCircle, Paperclip, Phone, X } from 'lucide-react';
+import { ArrowUp, ImagePlus, LoaderCircle, Phone, X } from 'lucide-react';
 import type { ComposeLimits } from '../../api/index.js';
 import type { Attachments } from '../../api/client.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { Shown } from '../display/display.js';
 import type { Drafts } from './drafts.js';
 import { useComposerPhotos } from './useComposerPhotos.js';
+import { AddMenu, type Adding } from './AddMenu.js';
 import { EmojiPicker, finePointer } from './EmojiPicker.js';
 import { QuickReplies } from '../replies/QuickReplies.js';
 import './composer.css';
@@ -174,6 +175,17 @@ export function Composer({
     }
   };
   const sending = send.busy ? <LoaderCircle className="spin" size={18} /> : <ArrowUp size={18} />;
+  const adding: Adding[] =
+    limits && limits.photos > 0
+      ? [
+          {
+            label: 'Attach Image',
+            icon: <ImagePlus size={16} />,
+            disabled: photos.length >= limits.photos,
+            choose: () => picker.current?.click(),
+          },
+        ]
+      : [];
   if (instead) return <div className="composer">{instead}</div>;
   return (
     <form
@@ -213,30 +225,19 @@ export function Composer({
         </ul>
       )}
       <div className={label && text ? 'box writing' : 'box'}>
+        <AddMenu disabled={!open} choices={adding} />
         {limits && limits.photos > 0 && (
-          <>
-            <button
-              type="button"
-              className="round"
-              aria-label="Add photo"
-              title="Add photo"
-              disabled={!open || photos.length >= limits.photos}
-              onClick={() => picker.current?.click()}
-            >
-              <Paperclip size={18} />
-            </button>
-            <input
-              ref={picker}
-              type="file"
-              accept={limits.kinds.join(',')}
-              multiple
-              hidden
-              onChange={(event) => {
-                add(event.currentTarget.files, starts);
-                event.currentTarget.value = '';
-              }}
-            />
-          </>
+          <input
+            ref={picker}
+            type="file"
+            accept={limits.kinds.join(',')}
+            multiple
+            hidden
+            onChange={(event) => {
+              add(event.currentTarget.files, starts);
+              event.currentTarget.value = '';
+            }}
+          />
         )}
         <EmojiPicker disabled={!open} pick={put} />
         <QuickReplies disabled={!open} pick={put} />

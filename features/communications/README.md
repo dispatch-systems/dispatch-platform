@@ -123,7 +123,7 @@ and every other number's in Recents.
   once a read of them failed, as Try again is pressed. A read that failed says why, with Try
   again. Right above its box, however its messages are scrolled, who else at the DSP is writing
   in it, "Keisha is typing…", said to a screen reader as it changes. Writing in it: text, with
-  photos added (Add photo), as much as one message carries as the conversation's read says
+  photos added (**Attach Image**, under the plus at the box's start), as much as one message carries as the conversation's read says
   (`limits`), which what's refused says too, and nothing until it's read; **Quick replies**,
   beside the smiley while the DSP has some, on a phone under the field with attaching and Send,
   opens them, and the one chosen goes in where the writer was, as an emoji does, never sent by
