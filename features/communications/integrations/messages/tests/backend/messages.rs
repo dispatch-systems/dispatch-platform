@@ -40,9 +40,16 @@ async fn a_workspace_forgotten_keeps_its_messages_and_lets_go_of_conversations_w
     assert_eq!(texts(&state, &dsp, &kept.id).await, ["Keys are in the van"]);
     // Its workspace gone, it can't be written in.
     let owner = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
-    let refused = reply::send(&state, &owner, support::USE, &kept.id, "Still there?", &[])
-        .await
-        .unwrap_err();
+    let refused = reply::send(
+        &state,
+        &owner,
+        support::USE,
+        &kept.id,
+        "Still there?",
+        (&[], None),
+    )
+    .await
+    .unwrap_err();
     assert_eq!(refused.code, "communications_off");
     assert!(
         support::conversation_with(&state, &dsp, TEAM, "U0NOWRITE")

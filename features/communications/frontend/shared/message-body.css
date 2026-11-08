@@ -32,6 +32,15 @@
   background: var(--muted);
   cursor: zoom-in;
 }
+/* A GIF of KLIPY's, shown from KLIPY, as wide as a photo at most. */
+.gif {
+  display: block;
+  width: var(--photo-width);
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--bubble-radius);
+  background: var(--muted);
+}
 /* Waiting for its picture, it can't open yet, and looks no different for it. */
 .photo:disabled {
   opacity: 1;

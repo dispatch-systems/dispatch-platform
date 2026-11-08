@@ -1,7 +1,7 @@
 //! A conversation of either kind, by its ID, through the backend's `dispatcher`: reading it, its
 //! profile, sending in it, Done and who's writing; and Slack's own, opening a direct message and
 //! whom the DSP can message there.
-use super::{PLACE_MOST, photo_id, photos, slack_id, team};
+use super::{PLACE_MOST, gif, photo_id, photos, slack_id, team};
 use crate::backend::{compose, contacts, dispatcher, live, model::Reference, reply};
 use dispatch_core::{
     Result, State,
@@ -52,16 +52,19 @@ pub(super) fn done(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     )?)
 }
 /// Sends a message in a conversation: its `text`, and the `photos` added for it, by text the
-/// pictures the phone side keeps (`texts/uploads`), in Slack those Communications keeps.
+/// pictures the phone side keeps (`texts/uploads`), in Slack those Communications keeps, or the
+/// `gif` chosen in their place.
 pub(super) async fn send(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
     let reference = Reference::parse(input.param("id"))?;
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
     let limits = compose::of(&reference);
-    v::fields(&input.body, &["text", "photos"])?;
+    v::fields(&input.body, &["text", "photos", "gif"])?;
     let text = optional_text(&input.body, "text", limits.read())?;
     let photos = photos(&input.body, photo_id(&reference))?;
-    let message = dispatcher::send(&state, &c, access, &reference, text, &photos).await?;
+    let gif = gif(&input.body, &c, state.config.fixture)?;
+    let adding = (photos.as_slice(), gif.as_ref());
+    let message = dispatcher::send(&state, &c, access, &reference, text, adding).await?;
     Reply::of_status(&message, 201)
 }
 /// Notes that the member is writing in a conversation, for the next few seconds.

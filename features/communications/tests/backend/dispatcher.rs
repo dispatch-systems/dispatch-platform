@@ -61,7 +61,7 @@ async fn an_answer_that_went_stays_kept_though_its_writers_access_ended_as_it_we
         slots.push(slot);
     }
     let reference = Reference::Text(conversation.clone());
-    let sending = send(&state, &c, support::USE, &reference, "Swap it", &[]);
+    let sending = send(&state, &c, support::USE, &reference, "Swap it", (&[], None));
     let switching = switch(&state, &dsp, "communications", false);
     tokio::pin!(sending, switching);
     std::future::poll_fn(|cx| {

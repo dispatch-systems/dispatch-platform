@@ -54,8 +54,15 @@ async fn waiting_names_the_latest_message_each_waits_on_from_whom_its_with() {
     let conversation = support::conversation_with(&state, &dsp, TEAM, "U0FIXCASEY")
         .await
         .unwrap();
-    reply::send(&state, &c, USE, &conversation.id, "By the door", &[])
-        .await
-        .unwrap();
+    reply::send(
+        &state,
+        &c,
+        USE,
+        &conversation.id,
+        "By the door",
+        (&[], None),
+    )
+    .await
+    .unwrap();
     assert!(latest(&state, &dsp).await.is_empty());
 }

@@ -106,6 +106,14 @@ removed.
 }
 ```
 
+A text may carry, in place of files, a GIF of KLIPY's, which Dispatch keeps only the addresses of:
+`"gif": { "name": "thumbs-up.gif", "versions": [{ "url": "https://static.klipy.com/…", "width": 220,
+"height": 124, "size": 206000 }, …] }`, its sizes, left out for a text without one. The app fetches
+the largest the carrier's picture message has room for, from KLIPY's addresses alone, and sends it
+whole. A text with one goes only to a phone whose `versionCode` is at least `RELAY_SENDS_GIFS`; one
+queued for an older app fails `phones_app_outdated` as it would hand it out. With GIFs sent as links
+(`gifs::SENDING`), none is given: its address follows `body` instead.
+
 With them, `"wanted": ["…"]`, left out while there are none: the IDs of the videos the phone keeps
 ([reporting texts](#post-apicommunicationsphonetexts)) that someone asked for within the last two
 minutes (`WANT_MS`) and whose bytes haven't come, each answered once each time it's asked for, and

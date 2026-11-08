@@ -15,6 +15,7 @@
 //! they leave the DSP's other cached reads, as who is who, as they were.
 mod conversations;
 mod files;
+mod gifs;
 mod groups;
 mod inbox;
 mod phones;
@@ -22,17 +23,22 @@ mod push;
 mod replies;
 mod texts;
 
-use crate::backend::{
-    compose, initials, model::Reference, phone::model as texting, storage::DOMAIN,
+use crate::{
+    api::types::MessageGif,
+    backend::{
+        compose, gifs as chosen, initials, model::Reference, phone::model as texting,
+        storage::DOMAIN,
+    },
 };
 use axum::http::Method;
 use dispatch_core::{
     Error, Result,
+    accounts::Context,
     db::identifier,
     ensure,
     server::http::{
         input::optional_text,
-        route::{Dsp, Route, async_get, async_post, protocol, read, upload, write},
+        route::{Dsp, Public, Route, async_get, async_post, protocol, read, upload, write},
         upload::UPLOAD_LIMIT,
     },
 };
@@ -69,6 +75,22 @@ pub fn routes() -> Vec<Route> {
             "/api/dsp/communications/conversations/{id}/messages",
             USE,
             conversations::send,
+        ),
+        read("/api/dsp/communications/gifs", USE, gifs::search),
+        read(
+            "/api/communications/gifs/fixture/gifs/{list}",
+            Public,
+            gifs::fixture_results,
+        ),
+        async_post(
+            "/api/communications/gifs/fixture/gifs/share/{slug}",
+            Public,
+            gifs::fixture_shared,
+        ),
+        read(
+            "/api/communications/gifs/fixture/media/{name}",
+            Public,
+            gifs::fixture_media,
         ),
         write(
             "/api/dsp/communications/conversations/{id}/done",
@@ -312,6 +334,15 @@ fn photos(body: &Value, checked: fn(&str) -> Result<String>) -> Result<Vec<Strin
             .map(|photo| checked(photo.as_str().unwrap_or_default()))
             .collect(),
     }
+}
+/// The `gif` chosen for a message, as KLIPY gave the page it, if any: only while the DSP has GIFs.
+fn gif(body: &Value, c: &Context, fixture: bool) -> Result<Option<MessageGif>> {
+    let Some(gif) = body.get("gif").filter(|gif| !gif.is_null()) else {
+        return Ok(None);
+    };
+    ensure(c.has(chosen::PART), "not_found", 404)?;
+    let gif = serde_json::from_value(gif.clone()).map_err(|_| Error::new("invalid_input", 400))?;
+    chosen::checked(gif, fixture).map(Some)
 }
 /// One of the photos Communications keeps for a message, by its ID.
 fn file_id(value: &str) -> Result<String> {

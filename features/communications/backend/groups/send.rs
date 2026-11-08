@@ -103,7 +103,7 @@ pub async fn create(
     written: &str,
     photos: &[String],
 ) -> Result<Group> {
-    let written = compose::checked(written, photos, compose::SLACK)?.to_owned();
+    let written = compose::checked(written, photos, false, compose::SLACK)?.to_owned();
     let name = name.trim().to_owned();
     ensure(
         !name.is_empty()
@@ -183,7 +183,7 @@ pub async fn again(
     written: &str,
     photos: &[String],
 ) -> Result<GroupEntry> {
-    let written = compose::checked(written, photos, compose::SLACK)?.to_owned();
+    let written = compose::checked(written, photos, false, compose::SLACK)?.to_owned();
     let dsp = c.dsp.id.clone();
     let (shared, c, group, photos) = (state.clone(), c.clone(), id.to_owned(), photos.to_vec());
     let entry = state

@@ -18,6 +18,7 @@ const text = (id: string, minutes: number, sender: Sender | null = null): Messag
     inThread: false,
     sender,
     files: [],
+    gif: null,
     group: null,
     status: null,
     error: null,

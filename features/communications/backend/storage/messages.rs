@@ -1,7 +1,10 @@
 //! Slack messages and incoming edits, with their attachments and history queries.
 //! Incoming persistence and its conversation/group settlement stay in one transaction.
 use super::{conversations::opened, settlement::settle_with};
-use crate::backend::{changes::changed_conversation, model::Direction};
+use crate::{
+    api::types::MessageGif,
+    backend::{changes::changed_conversation, gifs, model::Direction},
+};
 use dispatch_core::{
     Result,
     db::{Db, FromRow, Row, Store, now},
@@ -29,6 +32,8 @@ pub struct Message {
     /// For one the DSP sent, the group it went to; for one the member wrote, the group it
     /// answers: that of the DSP's latest message to them before it.
     pub group: Option<String>,
+    /// The GIF one the DSP sent carries, if any.
+    pub gif: Option<MessageGif>,
 }
 impl FromRow for Message {
     fn from_row(row: &Row<'_>) -> Result<Self> {
@@ -44,6 +49,7 @@ impl FromRow for Message {
             at: row.get("at")?,
             edited_at: row.get("edited_at")?,
             group: row.get("group_id")?,
+            gif: gifs::of_column(row.get("gif")?)?,
         })
     }
 }
@@ -81,6 +87,8 @@ pub struct Sent<'a> {
     pub by: &'a str,
     pub name: &'a str,
     pub photos: &'a [(String, String)],
+    /// The GIF it carries in place of photos, if any.
+    pub gif: Option<&'a MessageGif>,
 }
 
 /// What keeping a written message came to: its conversation, and the files to download, when
@@ -280,7 +288,7 @@ pub(crate) fn sent_out(
     let id = crypto::id("msg")?;
     db.exec(
         "INSERT INTO communications_messages (id,conversation_id,ts,direction,sent_by,\
-         sender_name,text,at,group_id) VALUES (?,?,?,'out',?,?,?,?,?)",
+         sender_name,text,at,group_id,gif) VALUES (?,?,?,'out',?,?,?,?,?,?)",
         params![
             id,
             conversation,
@@ -289,7 +297,8 @@ pub(crate) fn sent_out(
             sent.name,
             sent.text,
             sent.at,
-            group
+            group,
+            gifs::column(sent.gif)?
         ],
     )?;
     let after = "FROM communications_messages WHERE conversation_id=?1 AND direction='in' \
