@@ -57,6 +57,7 @@ async fn unkept(
         by: c.auth.user.id.clone(),
         name: "Test Owner".into(),
         photos: Vec::new(),
+        gif: None,
         posting_since: now() - ago,
         claimed_until: now() - ago + SENDING_MS,
     };
@@ -115,16 +116,16 @@ async fn an_answer_goes_out_as_written_under_its_writers_name_and_slack_photo_or
     let id = started(&state, &bot, "D0REPLY").await;
     // No member of the workspaces has their email address: their initials.
     let owner = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
-    send(&state, &owner, USE, &id, " Keys <@here> & go ", &[])
+    send(&state, &owner, USE, &id, " Keys <@here> & go ", (&[], None))
         .await
         .unwrap();
     // A member with a photo of their own: that photo. One with Slack's drawn photo: initials.
     let morgan = support::member(&state, &dsp, "Morgan", "Lane", "Morgan.Lane@example.com").await;
-    send(&state, &morgan, USE, &id, "On my way", &[])
+    send(&state, &morgan, USE, &id, "On my way", (&[], None))
         .await
         .unwrap();
     let jordan = support::member(&state, &dsp, "Jordan", "Ellis", "jordan.ellis@example.com").await;
-    send(&state, &jordan, USE, &id, "Thanks", &[])
+    send(&state, &jordan, USE, &id, "Thanks", (&[], None))
         .await
         .unwrap();
     let initials = |letters: &str| Some(initials::address(&state.config.origin, letters));
@@ -193,7 +194,7 @@ async fn an_answer_carries_the_photos_added_for_it_shown_in_slack() {
     assert_eq!(refused.code, "communications_photo_kind");
     // Named twice, it isn't taken as two.
     let twice = [photo.id.clone(), photo.id.clone()];
-    let named = send(&state, &owner, USE, &id, "", &twice)
+    let named = send(&state, &owner, USE, &id, "", (&twice, None))
         .await
         .unwrap_err();
     assert_eq!(named.code, "invalid_input");
@@ -221,7 +222,7 @@ async fn an_answer_carries_the_photos_added_for_it_shown_in_slack() {
         USE,
         &id,
         "",
-        std::slice::from_ref(&photo.id),
+        (std::slice::from_ref(&photo.id), None),
     )
     .await
     .unwrap();
@@ -234,7 +235,7 @@ async fn an_answer_carries_the_photos_added_for_it_shown_in_slack() {
     assert_eq!(posted.blocks[0]["type"], "image");
     assert!(posted.blocks[0]["slack_file"]["id"].as_str().is_some());
     // Sent, it's no longer one to add to another message.
-    let again = send(&state, &owner, USE, &id, "Again", &[photo.id])
+    let again = send(&state, &owner, USE, &id, "Again", (&[photo.id], None))
         .await
         .unwrap_err();
     assert_eq!(again.code, "communications_upload_not_found");
@@ -315,7 +316,7 @@ async fn sent_again_an_answer_slack_took_unkept_is_kept_and_not_posted_twice() {
     let owner = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
     let at = (id.as_str(), "D0AGAIN");
     unkept(&state, &bot, &owner, at, "Keys are in the van", ENDED, true).await;
-    let message = send(&state, &owner, USE, &id, "Keys are in the van", &[])
+    let message = send(&state, &owner, USE, &id, "Keys are in the van", (&[], None))
         .await
         .unwrap();
     let posted = kit::fixture_history(TEAM, "D0AGAIN");
@@ -331,7 +332,7 @@ async fn sent_again_an_answer_slack_took_unkept_is_kept_and_not_posted_twice() {
     // One Slack didn't take is posted, under the same note, so should Slack take this try and
     // nothing keep it, sending it again finds this try's post.
     let failed = unkept(&state, &bot, &owner, at, "On my way", ENDED, false).await;
-    send(&state, &owner, USE, &id, "On my way", &[])
+    send(&state, &owner, USE, &id, "On my way", (&[], None))
         .await
         .unwrap();
     let posted = slack::posted(TEAM, "D0AGAIN");
@@ -364,7 +365,7 @@ async fn an_answer_slack_took_unkept_is_found_however_much_was_written_after_it(
         let args = json!({"channel": "D0BUSY", "text": format!("Reminder {n}")});
         bot.call("chat.postMessage", &args).await.unwrap();
     }
-    send(&state, &owner, USE, &id, "On my way", &[])
+    send(&state, &owner, USE, &id, "On my way", (&[], None))
         .await
         .unwrap();
     assert_eq!(slack::posted(TEAM, "D0BUSY").len(), 251);
@@ -391,7 +392,7 @@ async fn sent_again_while_another_try_of_it_is_under_way_an_answer_isnt_posted_t
         false,
     )
     .await;
-    let refused = send(&state, &owner, USE, &id, "On my way", &[])
+    let refused = send(&state, &owner, USE, &id, "On my way", (&[], None))
         .await
         .unwrap_err();
     assert_eq!(refused.code, "communications_reply_sending");
@@ -441,6 +442,7 @@ async fn an_answer_noted_on_its_way_to_slack_keeps_its_photos_until_its_settled_
         by: owner.auth.user.id.clone(),
         name: "Test Owner".into(),
         photos: vec![(added.id.clone(), "F0VANPHOTO".into())],
+        gif: None,
         posting_since: now() - 25 * 60 * 60_000,
         claimed_until: now() - 25 * 60 * 60_000 + SENDING_MS,
     };
@@ -459,7 +461,7 @@ async fn an_answer_noted_on_its_way_to_slack_keeps_its_photos_until_its_settled_
         USE,
         &id,
         "Van 12",
-        std::slice::from_ref(&added.id),
+        (std::slice::from_ref(&added.id), None),
     )
     .await
     .unwrap_err();
@@ -489,7 +491,16 @@ async fn two_first_tries_of_an_answer_begun_together_share_one_note_and_one_is_r
     let begun = |until: i64| {
         let (at, of, by) = (dsp.clone(), id.clone(), by.clone());
         state.run(move |db| {
-            begin(db, &at, &of, (&by, "Test Owner"), "On my way", &[], until).map(drop)
+            begin(
+                db,
+                &at,
+                &of,
+                (&by, "Test Owner"),
+                ("On my way", None),
+                &[],
+                until,
+            )
+            .map(drop)
         })
     };
     // Neither had found a note; the first notes it as it begins, and the second finds it held.
@@ -598,9 +609,16 @@ async fn someone_at_the_dsp_messages_a_member_first() {
     );
     // Opened, it isn't listed until a message is in it.
     assert_eq!(listed(&state, &dsp).await, 0);
-    send(&state, &owner, USE, &opened.id, "Welcome aboard", &[])
-        .await
-        .unwrap();
+    send(
+        &state,
+        &owner,
+        USE,
+        &opened.id,
+        "Welcome aboard",
+        (&[], None),
+    )
+    .await
+    .unwrap();
     assert_eq!(slack::posted(TEAM, "D0FIXOWNER")[0].text, "Welcome aboard");
     assert_eq!(listed(&state, &dsp).await, 1);
     // Only a member of a workspace, while they're active there.

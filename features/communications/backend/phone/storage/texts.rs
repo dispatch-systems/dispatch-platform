@@ -7,6 +7,7 @@ use super::{
     files::{FileStore, ReportedFile},
     next_change,
 };
+use crate::backend::gifs;
 use crate::backend::phone::{
     LIMITS,
     model::{Direction, EXPIRY_MS, Origin, Outgoing, PHONE_OFFLINE, PHONE_REMOVED, Status, Text},
@@ -237,7 +238,10 @@ impl TextStore for Store {
     fn phones_send(&self, dsp: &str, outgoing: &Outgoing, at: i64) -> Result<Text> {
         let to = normal(&outgoing.to).ok_or_else(|| Error::new("invalid_input", 400))?;
         ensure(
-            (!outgoing.body.trim().is_empty() || !outgoing.files.is_empty())
+            (!outgoing.body.trim().is_empty()
+                || !outgoing.files.is_empty()
+                || outgoing.gif.is_some())
+                && !(outgoing.gif.is_some() && !outgoing.files.is_empty())
                 && outgoing.body.chars().count() <= LIMITS.body
                 && outgoing.files.len() <= LIMITS.files,
             "invalid_input",
@@ -260,7 +264,7 @@ impl TextStore for Store {
             db.exec(
                 "INSERT INTO phones_texts \
                  (id,device_id,direction,origin,number,body,at,sent_by,status,status_at,attempt,\
-                 change) VALUES (?1,?2,'out','dispatch',?3,?4,?5,?6,'waiting',?5,?7,?7)",
+                 change,gif) VALUES (?1,?2,'out','dispatch',?3,?4,?5,?6,'waiting',?5,?7,?7,?8)",
                 params![
                     id,
                     device,
@@ -268,7 +272,8 @@ impl TextStore for Store {
                     outgoing.body,
                     at,
                     outgoing.by,
-                    change
+                    change,
+                    gifs::column(outgoing.gif.as_ref())?
                 ],
             )?;
             for file in &outgoing.files {
@@ -392,32 +397,34 @@ pub(super) fn orphaned(db: &Db, device: &str, at: i64) -> Result<Vec<String>> {
 fn texts(db: &Store, dsp: &str, rows: Vec<Value>) -> Result<Vec<Text>> {
     let ids: Vec<String> = rows.iter().map(|row| s(row, "id").to_owned()).collect();
     let mut files = db.phones_files_of(dsp, &ids)?;
-    Ok(rows
-        .iter()
-        .map(|row| Text {
-            id: s(row, "id").into(),
-            phone: s(row, "device_id").into(),
-            direction: if s(row, "direction") == "in" {
-                Direction::In
-            } else {
-                Direction::Out
-            },
-            origin: if s(row, "origin") == "dispatch" {
-                Origin::Dispatch
-            } else {
-                Origin::Phone
-            },
-            number: s(row, "number").into(),
-            body: s(row, "body").into(),
-            at: n(row, "at"),
-            sent_by: row["sent_by"].as_str().map(str::to_owned),
-            status: parse_status(s(row, "status")),
-            status_at: row["status_at"].as_i64(),
-            error: row["error"].as_str().map(str::to_owned),
-            files: files.remove(s(row, "id")).unwrap_or_default(),
-            change: n(row, "change"),
+    rows.iter()
+        .map(|row| {
+            Ok(Text {
+                id: s(row, "id").into(),
+                phone: s(row, "device_id").into(),
+                direction: if s(row, "direction") == "in" {
+                    Direction::In
+                } else {
+                    Direction::Out
+                },
+                origin: if s(row, "origin") == "dispatch" {
+                    Origin::Dispatch
+                } else {
+                    Origin::Phone
+                },
+                number: s(row, "number").into(),
+                body: s(row, "body").into(),
+                at: n(row, "at"),
+                sent_by: row["sent_by"].as_str().map(str::to_owned),
+                status: parse_status(s(row, "status")),
+                status_at: row["status_at"].as_i64(),
+                error: row["error"].as_str().map(str::to_owned),
+                files: files.remove(s(row, "id")).unwrap_or_default(),
+                gif: gifs::of_column(row["gif"].as_str().map(str::to_owned))?,
+                change: n(row, "change"),
+            })
         })
-        .collect())
+        .collect()
 }
 fn direction(direction: Direction) -> &'static str {
     match direction {

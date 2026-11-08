@@ -12,6 +12,7 @@ pub(crate) mod dispatcher;
 pub(crate) mod display;
 pub(crate) mod elsewhere;
 pub(crate) mod files;
+pub(crate) mod gifs;
 pub(crate) mod groups;
 pub(crate) mod inbox;
 pub(crate) mod initials;

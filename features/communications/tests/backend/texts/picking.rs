@@ -90,7 +90,7 @@ async fn a_driver_picked_for_a_work_phone_nobody_has_keeps_its_texts_of_today_un
     let later = texted(&state, &dsp, "+12065550103", "Found it", now(13, 0)).await;
     assert_eq!(whose(&state, &dsp, &later).await.as_deref(), Some("A1"));
     let c = member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
-    let answer = || send(&state, &c, USE, &avery.id, "Thanks", &[]);
+    let answer = || send(&state, &c, USE, &avery.id, "Thanks", (&[], None));
     answer().await.unwrap();
     assert_eq!(went(&state, &dsp).await, ["+12065550103"]);
 
@@ -155,7 +155,7 @@ async fn a_driver_picked_for_a_work_phone_is_answered_at_it_rather_than_their_ow
         .await
         .unwrap();
     let c = member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
-    send(&state, &c, USE, &avery.id, "Got it", &[])
+    send(&state, &c, USE, &avery.id, "Got it", (&[], None))
         .await
         .unwrap();
     assert_eq!(went(&state, &dsp).await, ["+12065550103"]);
@@ -204,7 +204,7 @@ async fn a_driver_picked_for_more_than_one_work_phone_is_answered_at_the_one_pic
     let blake = picked(&state, &dsp, &work[1], "B1", now(10, 10))
         .await
         .unwrap();
-    let answer = || send(&state, &c, USE, &blake.id, "Thanks", &[]);
+    let answer = || send(&state, &c, USE, &blake.id, "Thanks", (&[], None));
     answer().await.unwrap();
     // Then 0104 is picked for Blake too: Blake is answered there.
     picked(&state, &dsp, &work[2], "B1", now(10, 15))

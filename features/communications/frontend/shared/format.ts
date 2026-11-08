@@ -113,6 +113,7 @@ export function whyNotSent(error: string | null) {
     phones_offline: 'Phone offline',
     expired: 'Phone offline',
     phones_removed: 'Phone removed',
+    phones_app_outdated: 'Update Relay to send GIFs',
   };
   return known[error] ?? (/^[a-z_]+$/.test(error) ? '' : error);
 }

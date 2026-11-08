@@ -8,6 +8,7 @@ import { useSlackReturn } from '../../../slack/frontend/index.js';
 import { ErrorBox, Header, Loading } from '../../../../core/shell/frontend/ui/index.js';
 import { navigate, settingsHash } from '../../../../core/shell/frontend/runtime/navigation.js';
 import { can } from '../../../../core/shell/frontend/runtime/permissions.js';
+import { hasFeature } from '../../../../core/shell/frontend/runtime/features.js';
 import { cacheLimits } from '../../../../core/shell/frontend/runtime/data-cache.js';
 import { prefetchRouteData } from '../../../../core/shell/frontend/runtime/route-prefetch.js';
 import { settingsPage } from '../../../../core/shell/frontend/runtime/slots.js';
@@ -354,6 +355,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
               ) : pane.kind === 'conversation' ? (
                 <ConversationPane
                   key={pane.id}
+                  gifs={hasFeature(view, 'communications.gifs')}
                   id={pane.id}
                   listed={current}
                   conversations={inbox.conversations}

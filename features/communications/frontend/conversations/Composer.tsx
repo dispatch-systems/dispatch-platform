@@ -9,13 +9,15 @@ import {
   type ReactNode,
 } from 'react';
 import { ArrowUp, ImagePlus, LoaderCircle, Phone, X } from 'lucide-react';
-import type { ComposeLimits } from '../../api/index.js';
-import type { Attachments } from '../../api/client.js';
+import type { ComposeLimits, GifSearch, MessageGif } from '../../api/index.js';
+import { getGifSearch, type Attachments } from '../../api/client.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { Shown } from '../display/display.js';
 import type { Drafts } from './drafts.js';
 import { useComposerPhotos } from './useComposerPhotos.js';
 import { AddMenu, type Adding } from './AddMenu.js';
+import { GifPicker } from '../gifs/GifPicker.js';
+import { shareGif, shownAt } from '../gifs/klipy.js';
 import { EmojiPicker, finePointer } from './EmojiPicker.js';
 import { QuickReplies } from '../replies/QuickReplies.js';
 import './composer.css';
@@ -40,6 +42,7 @@ export function Composer({
   instead,
   above,
   replied,
+  gifs = false,
 }: {
   /** What's written in each box, kept by the page. */
   drafts: Drafts;
@@ -56,8 +59,8 @@ export function Composer({
   to?: string;
   /** Whether what's written can go, as once there's someone to send it to. */
   ready?: boolean;
-  /** Sends what's written with the photos added for it, by their IDs. */
-  send: (text: string, photos: string[]) => Promise<void>;
+  /** Sends what's written with the photos added for it, by their IDs, or the GIF chosen. */
+  send: (text: string, photos: string[], gif?: MessageGif) => Promise<void>;
   /** Says the member is writing, for the next few seconds. */
   typing?: () => void;
   /** What sending says beside its arrow, as "Send to 8"; else "Send". */
@@ -70,6 +73,8 @@ export function Composer({
    * one (`check`); told as the member saw what's there now (`seen`), and to show the reply when
    * they'd rather not send (`show`). */
   replied?: { check: () => string | undefined; seen: () => void; show: () => void };
+  /** Whether a GIF of KLIPY's may be chosen for it, as the DSP has GIFs. */
+  gifs?: boolean;
 }) {
   const text = useSyncExternalStore(
     useCallback((watch: () => void) => drafts.watch(draft, watch), [drafts, draft]),
@@ -88,6 +93,9 @@ export function Composer({
   } = useComposerPhotos(limits, attachments);
   // A teammate's reply, as it reads, asked about before sending.
   const [asking, setAsking] = useState<string>();
+  const search = useGifSearch(gifs);
+  const [gif, setGif] = useState<MessageGif>();
+  const [choosing, setChoosing] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
   const field = useRef<HTMLTextAreaElement>(null);
   const said = useRef(0);
@@ -125,33 +133,42 @@ export function Composer({
   // A draft starts as an empty box gains text or a photo, beside what's going: what a teammate's
   // reply counts from, and what was asked about before is no longer the question.
   const starts = () => {
-    const empty = !text.trim() && photosEmpty();
+    const empty = !text.trim() && photosEmpty() && !gif;
     if (!empty) return;
     replied?.seen();
     setAsking(undefined);
   };
   const send = useAction(async () => {
     const sent = capture();
+    const going = gif;
     // What goes leaves the box at once; what's written and photos added while it goes stay.
     drafts.sending(draft, text);
+    setGif(undefined);
     caret.current = undefined;
     try {
       await deliver(
         text.trim(),
         sent.photos.map((photo) => photo.uploaded!.id),
+        going,
       );
     } catch (cause) {
       drafts.failed(draft, text);
+      setGif((now) => now ?? going);
       throw cause;
     } finally {
       finish();
     }
+    if (going && search) shareGif(search, going);
     settle(sent);
     said.current = 0;
   });
   const open = writable && limits !== undefined;
   const ready =
-    open && whom && !send.busy && !uploading && (text.trim().length > 0 || photos.length > 0);
+    open &&
+    whom &&
+    !send.busy &&
+    !uploading &&
+    (text.trim().length > 0 || photos.length > 0 || Boolean(gif));
   // Sends, unless a teammate replied since the member started writing: that's asked first.
   const go = () => {
     const reply = replied?.check();
@@ -175,17 +192,29 @@ export function Composer({
     }
   };
   const sending = send.busy ? <LoaderCircle className="spin" size={18} /> : <ArrowUp size={18} />;
-  const adding: Adding[] =
-    limits && limits.photos > 0
+  // A message carries photos or a GIF, never both.
+  const adding: Adding[] = [
+    ...(limits && limits.photos > 0
       ? [
           {
             label: 'Attach Image',
             icon: <ImagePlus size={16} />,
-            disabled: photos.length >= limits.photos,
+            disabled: photos.length >= limits.photos || Boolean(gif),
             choose: () => picker.current?.click(),
           },
         ]
-      : [];
+      : []),
+    ...(search
+      ? [
+          {
+            label: 'Choose GIF',
+            icon: <span className="gif-mark">GIF</span>,
+            disabled: photos.length > 0,
+            choose: () => setChoosing(true),
+          },
+        ]
+      : []),
+  ];
   if (instead) return <div className="composer">{instead}</div>;
   return (
     <form
@@ -206,6 +235,31 @@ export function Composer({
             Cancel
           </button>
         </div>
+      )}
+      {choosing && search && (
+        <GifPicker
+          search={search}
+          close={() => setChoosing(false)}
+          pick={(picked) => {
+            starts();
+            setGif(picked);
+            setChoosing(false);
+          }}
+        />
+      )}
+      {gif && (
+        <ul className="adding">
+          <li>
+            <img src={shownAt(gif, 120).url} alt={gif.title || 'GIF'} />
+            <button
+              type="button"
+              aria-label={`Remove ${gif.title || 'GIF'}`}
+              onClick={() => setGif(undefined)}
+            >
+              <X size={12} />
+            </button>
+          </li>
+        </ul>
       )}
       {photos.length > 0 && (
         <ul className="adding">
@@ -273,4 +327,22 @@ export function Composer({
       </div>
     </form>
   );
+}
+
+/** Where KLIPY's GIFs are searched, while `wanted` and the server can: none until it answers,
+ * and none when it can't. */
+function useGifSearch(wanted: boolean) {
+  const [search, setSearch] = useState<GifSearch>();
+  useEffect(() => {
+    if (!wanted) return setSearch(undefined);
+    let current = true;
+    getGifSearch().then(
+      (found) => current && setSearch(found),
+      () => current && setSearch(undefined),
+    );
+    return () => {
+      current = false;
+    };
+  }, [wanted]);
+  return search;
 }

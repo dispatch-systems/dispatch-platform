@@ -5,7 +5,7 @@ use super::input::Input;
 use crate::{
     Error, Result, State, ensure,
     foundation::{config::Site, crypto, observability},
-    manifest::registry,
+    manifest::{Loads, registry},
 };
 use axum::{
     body::{Body, Bytes, to_bytes},
@@ -140,12 +140,22 @@ pub async fn pipeline(
         .entry("cross-origin-opener-policy")
         .or_insert("same-origin".parse().unwrap());
     let development = state.config.development;
+    // What features' pages load from outside (`page_sources`), beside the dashboard's own.
+    let outside = |loads| {
+        registry()
+            .page_origins(loads)
+            .iter()
+            .map(|origin| format!(" {origin}"))
+            .collect::<String>()
+    };
     let csp = format!(
         "default-src 'self'; script-src 'self'{}; style-src 'self' 'unsafe-inline'; \
-         img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' blob:{}; \
+         img-src 'self' data: blob:{}; media-src 'self' blob:; connect-src 'self' blob:{}{}; \
          font-src 'self'; object-src 'none'; \
          base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
         if development { " 'unsafe-inline'" } else { "" },
+        outside(Loads::Images),
+        outside(Loads::Calls),
         if development { " ws:" } else { "" }
     );
     headers

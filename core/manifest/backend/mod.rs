@@ -20,6 +20,7 @@ pub mod exposes;
 pub mod integrations;
 pub mod keeping;
 pub mod live_readers;
+pub mod page_sources;
 pub mod people;
 pub mod permissions;
 pub(crate) mod retirement;
@@ -37,6 +38,7 @@ pub use keeping::{
     Keeper, MAX_QUEUE_CAPACITY, MIN_QUEUE_CAPACITY, ScheduleAlias, Schedules, schedules,
 };
 pub use live_readers::{Counts, LiveReader, Reads, Schedule};
+pub use page_sources::{Loads, PageSource, page_source};
 pub use permissions::{DefaultRole, Permission, perm};
 pub use settings::{
     Field, Group, Kept, Kind, Options, Page, Scope, Section, SharedPage, choice, days, many,
@@ -141,6 +143,7 @@ impl Registry {
         caching::check(self);
         audit::check(self);
         deleting::check(self);
+        page_sources::check(self);
         agents::check(self);
         settings::check(self);
     }
@@ -237,6 +240,9 @@ pub struct Feature {
     /// What it lets go of as a DSP is deleted: what the DSP connected through it, its rows
     /// outside the DSP's folder and what it holds of the DSP in memory.
     pub deleting: Deleting,
+    /// The outside addresses its pages show images from or call, which the dashboard's
+    /// Content-Security-Policy allows beside its own.
+    pub page_sources: &'static [PageSource],
 }
 /// A feature that fills no slot yet. A manifest starts here and names what it adds:
 /// `Feature { …, ..feature("timecard") }`.
@@ -274,5 +280,6 @@ pub const fn feature(name: &'static str) -> Feature {
         exposes: &[],
         deleting: Deleting::NONE,
         on: &[],
+        page_sources: &[],
     }
 }

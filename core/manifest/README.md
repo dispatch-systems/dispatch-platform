@@ -62,6 +62,7 @@ Every field of `Feature`, as `feature.rs` fills it.
 | `exposes`                  | `exposes`      | What it offers every other feature, each through a contract; one feature at most offers each.                                                |
 | `on`                       | `events`       | What it does when something happens for a DSP: a collection succeeding, the DSP's people changing, or another feature's event.               |
 | `deleting`                 | `deleting`     | What it lets go of as a DSP is deleted: what the DSP connected through it, its rows outside the DSP's folder, and what it holds in memory.   |
+| `page_sources`             | `page_sources` | The outside addresses its pages show images from or call, which the dashboard's Content-Security-Policy allows beside its own.                |
 
 `collectors.rs` holds what a collector declares instead, `Collector`, and `agents.rs` the one
 piece outside the features that lets outside agents use Dispatch, `Agents`.

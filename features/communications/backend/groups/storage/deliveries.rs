@@ -232,6 +232,7 @@ impl DeliveryStore for Store {
                 by: &message.sent_by,
                 name: &message.sender_name,
                 photos: delivered.photos,
+                gif: None,
             };
             let (id, touched) = sent_out(&db, &conversation, &sent, Some(&message.group))?;
             // Their message shows the group message's photos, as Slack shows them in it.

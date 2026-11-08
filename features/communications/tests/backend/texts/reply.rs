@@ -82,7 +82,7 @@ async fn an_answer_that_failed_leaves_it_waiting_and_retry_sends_it_again() {
         support::USE,
         &conversation,
         "Perfect, thank you!",
-        &[],
+        (&[], None),
     )
     .await
     .unwrap();
@@ -142,9 +142,16 @@ async fn an_answer_its_offline_phone_never_came_for_fails_as_it_expires_and_it_w
     };
 
     // Queued on the phone, which never checks in again, it's an answer until it expires.
-    let answer = send(&state, &c, support::USE, &conversation, "Door 3", &[])
-        .await
-        .unwrap();
+    let answer = send(
+        &state,
+        &c,
+        support::USE,
+        &conversation,
+        "Door 3",
+        (&[], None),
+    )
+    .await
+    .unwrap();
     assert_eq!(state_of().await.unwrap(), ConversationState::Responded);
     // Disabled as the minute's upkeep came to it, nothing of it changes until it's enabled.
     let status = |status: &'static str| {
@@ -180,9 +187,16 @@ async fn retry_refuses_a_drivers_answer_once_the_work_phone_it_went_to_is_not_th
     let asked = texted(&state, &dsp, "+12065550101", "Which van?", now()).await;
     let conversation = filed(&state, &dsp, &asked).await.id;
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
-    let failed = send(&state, &c, support::USE, &conversation, "Van 214", &[])
-        .await
-        .unwrap();
+    let failed = send(
+        &state,
+        &c,
+        support::USE,
+        &conversation,
+        "Van 214",
+        (&[], None),
+    )
+    .await
+    .unwrap();
     reported(&state, &dsp, &failed.id, Status::Failed).await;
     let retried = || retry(&state, &c, support::USE, &conversation, &failed.id);
 
@@ -242,9 +256,16 @@ async fn an_answer_goes_to_the_work_phone_its_driver_has_as_it_is_queued() {
     // filing hears of it: it reaches Avery, never Blake.
     let handed = phones(&[("A1", "2065550202"), ("B2", "2065550101")]);
     read_live(&dsp, Some(&today), handed);
-    send(&state, &c, support::USE, &conversation, "Van 214", &[])
-        .await
-        .unwrap();
+    send(
+        &state,
+        &c,
+        support::USE,
+        &conversation,
+        "Van 214",
+        (&[], None),
+    )
+    .await
+    .unwrap();
     let went: Vec<String> = support::sent(&state, &dsp)
         .await
         .into_iter()
@@ -262,7 +283,15 @@ async fn an_answer_never_goes_once_its_writers_access_ended_as_it_goes() {
     // Communications goes off for the DSP once the answer is asked for, and with it their
     // permission: refused, nothing goes.
     switch(&state, &dsp, "communications", false).await;
-    let refused = send(&state, &c, support::USE, &conversation, "Swap it", &[]).await;
+    let refused = send(
+        &state,
+        &c,
+        support::USE,
+        &conversation,
+        "Swap it",
+        (&[], None),
+    )
+    .await;
     assert_eq!(refused.unwrap_err().code, "permission_denied");
     assert!(support::sent(&state, &dsp).await.is_empty(), "nothing went");
 }
@@ -324,10 +353,17 @@ async fn an_answer_carries_as_much_as_a_text_does_not_what_slacks_does() {
     let answer = |written: String, photos: &[String]| {
         let (state, c, conversation, photos) = (&state, &c, &conversation, photos.to_vec());
         async move {
-            send(state, c, support::USE, conversation, &written, &photos)
-                .await
-                .map(|sent| sent.text)
-                .map_err(|refused| refused.code)
+            send(
+                state,
+                c,
+                support::USE,
+                conversation,
+                &written,
+                (&photos, None),
+            )
+            .await
+            .map(|sent| sent.text)
+            .map_err(|refused| refused.code)
         }
     };
 
@@ -369,7 +405,7 @@ async fn a_drivers_answer_goes_to_the_work_phone_they_had_at_the_stop_for_two_ho
         support::USE,
         &conversation,
         "Spare key at the desk",
-        &[],
+        (&[], None),
     )
     .await
     .unwrap();
@@ -398,7 +434,15 @@ async fn a_drivers_answer_goes_to_the_work_phone_they_had_at_the_stop_for_two_ho
     // Two and a half hours after it, Avery has no work phone to be answered at.
     stopped_at(&state, &dsp, now() - AFTER_STOP_MS - HALF_HOUR_MS).await;
     assert_eq!(phone().await.unwrap(), None);
-    let refused = send(&state, &c, support::USE, &conversation, "Still there?", &[]).await;
+    let refused = send(
+        &state,
+        &c,
+        support::USE,
+        &conversation,
+        "Still there?",
+        (&[], None),
+    )
+    .await;
     assert_eq!(refused.unwrap_err().code, "communications_no_work_phone");
 }
 
@@ -419,7 +463,7 @@ async fn retry_refuses_a_text_moved_with_its_work_phone_to_another_drivers_conve
     let asked = texted(&state, &dsp, "+12065550101", "Which van?", now()).await;
     let avery = filed(&state, &dsp, &asked).await.id;
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
-    let failed = send(&state, &c, support::USE, &avery, "Van 214", &[])
+    let failed = send(&state, &c, support::USE, &avery, "Van 214", (&[], None))
         .await
         .unwrap();
     reported(&state, &dsp, &failed.id, Status::Failed).await;
@@ -493,7 +537,7 @@ async fn an_answer_after_midnight_in_the_two_hours_after_a_late_stop_is_the_driv
         support::USE,
         &conversation,
         "Spare key at the desk",
-        &[],
+        (&[], None),
     )
     .await
     .unwrap();
@@ -528,9 +572,16 @@ async fn retry_refuses_an_answer_filed_as_it_went_in_another_conversation_than_i
     )
     .await;
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
-    let failed = send(&state, &c, support::USE, &own, "Ask at the desk", &[])
-        .await
-        .unwrap();
+    let failed = send(
+        &state,
+        &c,
+        support::USE,
+        &own,
+        "Ask at the desk",
+        (&[], None),
+    )
+    .await
+    .unwrap();
     reported(&state, &dsp, &failed.id, Status::Failed).await;
     let avery = filed(&state, &dsp, &failed.id).await.id;
     assert_ne!(avery, own);

@@ -99,6 +99,7 @@ pub fn messages(
         .map(|message| Message {
             sender: people.sender(&message),
             files: files.remove(&message.id).unwrap_or_default(),
+            gif: message.gif.clone(),
             group: message
                 .group
                 .as_ref()
