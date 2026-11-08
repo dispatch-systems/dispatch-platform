@@ -282,6 +282,25 @@ pub fn schedule(platform: &Db, dsp: &str) -> Result<Schedule> {
     })
 }
 
+/// The DSP's rules as the audit log keeps them, in their order: each as the Backups tab edits it,
+/// without its ID or next run.
+pub fn logged(db: &Store, dsp: &str) -> Result<String> {
+    let tz = timezone(db, dsp)?;
+    let rules = schedule(&db.platform, dsp)?
+        .rules
+        .iter()
+        .map(|rule| {
+            let mut shown = serde_json::to_value(rule.shown(tz, false))?;
+            if let Some(shown) = shown.as_object_mut() {
+                shown.remove("id");
+                shown.remove("nextRun");
+            }
+            Ok(shown)
+        })
+        .collect::<Result<Vec<Value>>>()?;
+    Ok(serde_json::to_string(&rules)?)
+}
+
 /// Keeps the schedule every DSP starts with for one that has none kept: a DSP's first is kept
 /// once there's somewhere to keep its backups.
 pub fn start(db: &Store, dsp: &str, tz: Tz) -> Result<()> {

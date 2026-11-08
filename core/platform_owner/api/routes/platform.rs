@@ -133,10 +133,11 @@ fn create_dsp(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
     Ok(Reply::status(out, 201))
 }
 
-fn retry_dsp(db: &Store, _: &User, input: &Input) -> Result<Reply> {
+fn retry_dsp(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &[])?;
     let id = input.param("id");
     db.provision(id)?;
+    db.audit(Some(&owner.user.id), Some(id), "dsp.setup_retried", "")?;
     Reply::of(&db.find_dsp(id)?)
 }
 

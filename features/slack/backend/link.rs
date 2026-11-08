@@ -41,7 +41,8 @@ pub fn create(
                 .ok_or_else(|| Error::new("slack_workspace_not_found", 404))?;
             workspace.label.unwrap_or(workspace.name)
         }
-        None => String::new(),
+        // A new workspace is logged by the name it's to have, if it was given one.
+        None => label.clone().unwrap_or_default(),
     };
     let link = format!("{}.{}", c.dsp.id, crypto::token()?);
     let hash = crypto::sha(&link);

@@ -66,8 +66,8 @@ pub trait OAuthStore {
         browser: &str,
     ) -> Result<OAuthRedirect>;
 
-    /// The owner refuses: the app is told so.
-    fn deny_oauth(&self, id: &str, browser: &str) -> Result<OAuthRedirect>;
+    /// The owner `owner` refuses: the app is told so.
+    fn deny_oauth(&self, owner: &str, id: &str, browser: &str) -> Result<OAuthRedirect>;
 
     /// The token endpoint: a code or a refresh token exchanged for new tokens. Every client is
     /// public, so the `client_id` it sends must be the one the grant was made to.
@@ -113,8 +113,8 @@ impl OAuthStore for Store {
         requests::approve(self, owner, id, approval, browser)
     }
 
-    fn deny_oauth(&self, id: &str, browser: &str) -> Result<OAuthRedirect> {
-        requests::deny(self, id, browser)
+    fn deny_oauth(&self, owner: &str, id: &str, browser: &str) -> Result<OAuthRedirect> {
+        requests::deny(self, owner, id, browser)
     }
 
     fn oauth_token(&self, form: &Query) -> Answer<Value> {

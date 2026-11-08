@@ -362,7 +362,7 @@ fn approve(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
 fn deny(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
     let browser = this_browser(owner, input)?;
     v::fields(&input.body, &[])?;
-    let redirect = db.deny_oauth(input.param("id"), browser)?;
+    let redirect = db.deny_oauth(owner.actor(), input.param("id"), browser)?;
     Ok(Reply::of(&redirect)?.cookie(forget_browser(owner, input)))
 }
 /// Clears the cookie for the request just answered, and no other.

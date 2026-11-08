@@ -48,6 +48,11 @@ async fn the_owner_can_deny_and_the_app_is_told() {
             url::form_urlencoded::byte_serialize(server.origin.as_bytes()).collect::<String>()
         )
     );
+    // Refused, the app is in the audit log by the name it asked under.
+    assert_eq!(
+        logged(&server, "agent.app_denied").await,
+        [("agent.app_denied".to_owned(), "ChatGPT".to_owned())]
+    );
 }
 
 /// Ends the pairing window, as ten minutes passing would.

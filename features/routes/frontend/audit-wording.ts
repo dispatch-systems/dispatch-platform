@@ -12,6 +12,10 @@ const phrases: AuditPhrases = {
     e.detail === 'forever'
       ? ['set route data to be kept ', strong('indefinitely')]
       : ['set route data to be kept for ', strong(`${e.detail} days`)],
+  'routes.reprocessed': (e, { strong, day }) => [
+    'rebuilt the route data',
+    ...(e.detail ? [' of ', strong(day(e.detail))] : [' of every day']),
+  ],
   'routes.data_expired': (e, { strong, day }) => [
     'deleted route data from before ',
     strong(day(e.detail)),
@@ -21,7 +25,12 @@ const phrases: AuditPhrases = {
 
 export const wording: AuditWording = {
   phrases,
-  spoken: ['routes.collection_requested', 'routes.retention_changed', 'routes.data_expired'],
+  spoken: [
+    'routes.collection_requested',
+    'routes.retention_changed',
+    'routes.reprocessed',
+    'routes.data_expired',
+  ],
   // A schedule of today so far; one of yesterday reads as its collection, Routes.
   value: (field, value) =>
     field === 'collection' && value === 'routes_today' ? 'Routes, today so far' : undefined,

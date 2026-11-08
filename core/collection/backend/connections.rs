@@ -154,7 +154,16 @@ impl Store {
                 std::fs::remove_file(file)?;
             }
         }
-        c.audit(self, "connection.disabled", provider.id())
+        // Whether its saved login went with it is a fact of the event.
+        let deleted = [("login", None, Some("deleted".to_owned()))];
+        self.audit_with(
+            Some(c.actor()),
+            Some(id),
+            "connection.disabled",
+            provider.id(),
+            None,
+            if remove { &deleted } else { &[] },
+        )
     }
     /// The lease of the DSP's account with `provider` a provider browser starts with, as
     /// `credential_lease`, while this backend serves the DSP: checked in the turn that takes it,

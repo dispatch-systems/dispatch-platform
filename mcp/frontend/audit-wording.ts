@@ -9,6 +9,8 @@ const phrases: AuditPhrases = {
   'agent.key_updated': (e, { strong }) => ['changed the agent key ', strong(e.target ?? 'a key')],
   'agent.key_revoked': (e, { strong }) => ['revoked the agent key ', strong(e.target ?? 'a key')],
   'agent.app_connected': (e, { strong }) => ['connected the app ', strong(e.target ?? 'an app')],
+  'agent.app_approved': (e, { strong }) => ['approved connecting ', strong(e.target ?? 'an app')],
+  'agent.app_denied': (e, { strong }) => ['refused to connect ', strong(e.target ?? 'an app')],
   'agent.app_updated': (e, { strong }) => [
     'changed the connected app ',
     strong(e.target ?? 'an app'),

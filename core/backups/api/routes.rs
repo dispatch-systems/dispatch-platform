@@ -54,16 +54,22 @@ fn backups(db: &Store, _: &User, input: &Input) -> Result<Reply> {
     shown(db, input.param("id"))
 }
 
-/// Saves the DSP's backup rules.
+/// Saves the DSP's backup rules, noted in the audit log as they were and became, if they changed.
 fn save(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
     let dsp = input.param("id");
+    let before = schedule::logged(db, dsp)?;
     schedule::save(db, dsp, &input.body)?;
-    db.audit(
-        Some(owner.actor()),
-        Some(dsp),
-        "dsp.backup_schedule_changed",
-        "",
-    )?;
+    let after = schedule::logged(db, dsp)?;
+    if after != before {
+        db.audit_with(
+            Some(owner.actor()),
+            Some(dsp),
+            "dsp.backup_schedule_changed",
+            "",
+            None,
+            &[("backupRules", Some(before), Some(after))],
+        )?;
+    }
     shown(db, dsp)
 }
 

@@ -41,8 +41,8 @@ pub fn routes() -> Vec<Route> {
 }
 
 /// Rebuilds a DSP's route rows from the responses it stored, for every day or one,
-/// after a release that reads fields the earlier one did not.
-fn reprocess(db: &Store, _: &User, input: &Input) -> Result<Reply> {
+/// after a release that reads fields the earlier one did not: noted in the audit log, with the day.
+fn reprocess(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &["day"])?;
     let day = if input.body.get("day").is_some() {
         let day = v::text(&input.body, "day", 10, 10)?;
@@ -51,7 +51,15 @@ fn reprocess(db: &Store, _: &User, input: &Input) -> Result<Reply> {
     } else {
         None
     };
-    Reply::of(&db.reprocess_routes(input.param("id"), day)?)
+    let dsp = input.param("id");
+    let rebuilt = db.reprocess_routes(dsp, day)?;
+    db.audit(
+        Some(&owner.user.id),
+        Some(dsp),
+        "routes.reprocessed",
+        day.unwrap_or(""),
+    )?;
+    Reply::of(&rebuilt)
 }
 
 fn itinerary(db: &Store, c: &Member, input: &Input) -> Result<Reply> {

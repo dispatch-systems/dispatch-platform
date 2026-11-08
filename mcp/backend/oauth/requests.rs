@@ -145,7 +145,14 @@ pub(super) fn approve(
                 at(now() + CODE_LIFETIME)
             ],
         )?;
-        Ok(())
+        db.audit_with(
+            Some(owner),
+            None,
+            "agent.app_approved",
+            "",
+            Some(&approval.name),
+            &[],
+        )
     })?;
     Ok(OAuthRedirect {
         redirect: redirect(
@@ -159,9 +166,19 @@ pub(super) fn approve(
     })
 }
 
-pub(super) fn deny(db: &Store, id: &str, browser: &str) -> Result<OAuthRedirect> {
+pub(super) fn deny(db: &Store, owner: &str, id: &str, browser: &str) -> Result<OAuthRedirect> {
     let request = waiting_request(db, id, browser)?;
-    answer_request(db, id)?;
+    db.platform.transaction(|| {
+        answer_request(db, id)?;
+        db.audit_with(
+            Some(owner),
+            None,
+            "agent.app_denied",
+            "",
+            Some(&request.client_name),
+            &[],
+        )
+    })?;
     Ok(OAuthRedirect {
         redirect: redirect(
             &request.redirect_uri,
