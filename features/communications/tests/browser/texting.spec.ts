@@ -95,7 +95,7 @@ test('with its phone and no Slack, Communications opens on Recents, where its te
   await expect(headings.nth(1)).toHaveText('Today');
   // A picture goes by text too, kept by the phone, and shows as sent.
   const choosing = page.waitForEvent('filechooser');
-  await jamie.getByRole('button', { name: 'Add', exact: true }).click();
+  await jamie.getByRole('button', { name: 'Add to message' }).click();
   await jamie.getByRole('button', { name: 'Attach Image' }).click();
   await (await choosing).setFiles({ name: 'door.png', mimeType: 'image/png', buffer: PIXEL });
   await jamie.getByRole('button', { name: 'Send' }).click();
@@ -435,7 +435,7 @@ test('a teammate typing shows above the box, and their reply since the member st
   // A photo starts a draft too: a reply before its caption is still asked about, and it goes
   // anyway.
   const choosing = page.waitForEvent('filechooser');
-  await conversation.getByRole('button', { name: 'Add', exact: true }).click();
+  await conversation.getByRole('button', { name: 'Add to message' }).click();
   await conversation.getByRole('button', { name: 'Attach Image' }).click();
   await (await choosing).setFiles({ name: 'gate.png', mimeType: 'image/png', buffer: PIXEL });
   const again = await teammate.post(`/api/dsp/communications/conversations/${id}/messages`, {
