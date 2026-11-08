@@ -190,3 +190,7 @@ const FIXTURE_GIFS: &[(&str, &str)] = &[
     ("lets-go", "Let's go"),
     ("high-five", "High five"),
 ];
+
+#[cfg(test)]
+#[path = "../tests/backend/gifs.rs"]
+mod tests;

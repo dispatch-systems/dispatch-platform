@@ -187,6 +187,16 @@
       "requires": [],
       "default": false,
       "mandatory": false
+    },
+    {
+      "id": "communications.gifs",
+      "label": "GIFs",
+      "page": "communications",
+      "tab": false,
+      "permissions": [],
+      "requires": [],
+      "default": true,
+      "mandatory": false
     }
   ],
   "catalog": [
@@ -211,6 +221,7 @@
     "timecard.employees",
     "dvic.day",
     "dvic.week",
+    "communications.gifs",
     "paycom",
     "cortex"
   ]

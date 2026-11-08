@@ -4,10 +4,12 @@
 //! same photo added meanwhile; one Slack took that wasn't kept is kept once and never posted
 //! twice; and someone at the DSP can message a member first.
 use super::*;
+use crate::api::types::{GifVersion, MessageGif};
 use crate::backend::{
+    dispatcher,
     files::{self, FileStore},
     inbox, initials,
-    model::{ConversationState, FileStatus},
+    model::{ConversationState, FileStatus, Reference},
     storage::{conversations::ConversationStore, replies::ReplyStore},
     support::{self, USE},
 };
@@ -107,6 +109,59 @@ async fn listed(state: &Arc<State>, dsp: &str) -> usize {
         .await
         .unwrap();
     listed.conversations.len()
+}
+
+#[tokio::test]
+async fn a_gif_goes_as_an_image_from_klipy_kept_with_its_answer() {
+    let (_root, state, bot) = support::connected(TEAM).await;
+    let dsp = bot.dsp.clone();
+    let id = started(&state, &bot, "D0GIF").await;
+    let owner = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+    let version = |name: &str, size| GifVersion {
+        url: format!("https://static.klipy.com/ii/a/{name}.gif"),
+        width: 220,
+        height: 124,
+        size,
+    };
+    let gif = MessageGif {
+        slug: "thumbs-up".into(),
+        title: "Thumbs up".into(),
+        versions: vec![version("hd", 2_600_000), version("md", 1_400_000)],
+    };
+    let sent = send(&state, &owner, USE, &id, "Nice work", (&[], Some(&gif)))
+        .await
+        .unwrap();
+    assert_eq!(sent.gif.as_ref(), Some(&gif));
+    let posted = slack::posted(TEAM, "D0GIF").pop().unwrap();
+    assert_eq!(posted.text, "Nice work");
+    assert_eq!(
+        posted.blocks,
+        json!([
+            {"type": "section", "text": {"type": "plain_text", "text": "Nice work"}},
+            {"type": "image", "image_url": "https://static.klipy.com/ii/a/md.gif", "alt_text": "Thumbs up"},
+        ])
+    );
+    // Kept with its answer, as the page reads it again.
+    let (shared, at) = (state.clone(), dsp.clone());
+    let read = state
+        .read({
+            let id = id.clone();
+            move |db| dispatcher::opened(db, &shared, &at, &Reference::Slack(id), None)
+        })
+        .await
+        .unwrap();
+    assert_eq!(read.messages.last().unwrap().gif.as_ref(), Some(&gif));
+    // Beside photos, it's refused.
+    let both = send(
+        &state,
+        &owner,
+        USE,
+        &id,
+        "",
+        (&["file_1".into()], Some(&gif)),
+    )
+    .await;
+    assert!(both.is_err());
 }
 
 #[tokio::test]
