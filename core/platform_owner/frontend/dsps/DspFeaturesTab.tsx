@@ -78,8 +78,8 @@ const filters = [
   ['hidden', 'Hidden'],
 ] as const;
 type Filter = (typeof filters)[number][0];
-// What the tab shows of a DSP: what is switched on, who sees what, and AI Support's button.
-type Shown = { enabled: string[]; sights: Record<string, Visibility>; support: boolean };
+// What the tab shows of a DSP's features: what is switched on, and who sees what.
+type Shown = { enabled: string[]; sights: Record<string, Visibility> };
 type SwitchChanges = readonly { feature: string; enabled: boolean }[];
 // What is switched on once `changes` are made.
 function switchedAs(enabled: readonly string[], changes: SwitchChanges) {
@@ -119,24 +119,26 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
   const [asking, setAsking] = useState<{ feature: FeatureEntry; on: boolean }>();
   // As read, with what was changed here over it: each change shows at once and saves behind the
   // ones before it, and once the last is saved the DSP's features are read again and the list's
-  // counts follow.
+  // counts follow. Before the features are read, what the DSP's summary says is on.
+  const before = data ? undefined : dsp.features;
   const read = useMemo<Shown>(
     () => ({
       enabled: data
         ? data.features.filter((state) => state.enabled).map((state) => state.feature)
-        : dsp.features,
+        : (before ?? []),
       sights: Object.fromEntries(
         (data?.features ?? []).map((state) => [state.feature, state.visibility]),
       ),
-      support: !dsp.profile.aiSupportHidden,
     }),
-    [data, dsp.features, dsp.profile.aiSupportHidden],
+    [data, before],
   );
   const { shown, change } = useChanges(read, dsp.id, () => {
     refresh();
     changed();
   });
-  const supportShown = shown.support;
+  // AI Support's button, as the DSP's profile says, with what was switched here over it.
+  const support = useChanges(!dsp.profile.aiSupportHidden, dsp.id, changed);
+  const supportShown = support.shown;
   // What is switched on, parts of a feature that is off included, so they come back as they were.
   const enabled = shown.enabled;
   const switched = (id: string) => enabled.includes(id);
@@ -222,8 +224,8 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
         ),
     );
   const showSupport = (on: boolean) =>
-    change(
-      (value) => ({ ...value, support: on }),
+    support.change(
+      () => on,
       () =>
         saving.run(
           () => showDspAiSupport(dsp.id, on),
