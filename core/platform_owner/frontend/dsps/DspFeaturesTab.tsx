@@ -77,6 +77,11 @@ const filters = [
   ['hidden', 'Hidden'],
 ] as const;
 type Filter = (typeof filters)[number][0];
+// Names the chosen feature in the address, or none.
+function nameInAddress(id: string) {
+  const { feature = '', ...rest } = Object.fromEntries(hashQuery());
+  if (feature !== id) replaceHashQuery(id ? { ...rest, feature: id } : rest);
+}
 
 // Every feature in a list beside the one chosen, searched by its name or its parts' and narrowed
 // to what is on, off, in beta or hidden. The chosen one rides in the address; with none chosen,
@@ -155,11 +160,13 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
     addEventListener('hashchange', followed);
     return () => removeEventListener('hashchange', followed);
   }, []);
-  // The address follows the chosen one, also once choosing another DSP rewrites it.
-  useEffect(() => {
-    const { feature = '', ...rest } = Object.fromEntries(hashQuery());
-    if (feature !== chosen) replaceHashQuery(chosen ? { ...rest, feature: chosen } : rest);
-  }, [chosen, dsp.id]);
+  // Choosing one names it in the address at once, so Back straight after finds it there; and
+  // choosing another DSP, which rewrites the address, names it again.
+  const choose = (id: string) => {
+    setChosen(id);
+    nameInAddress(id);
+  };
+  useEffect(() => nameInAddress(chosen), [chosen, dsp.id]);
   const done = () => {
     refresh();
     changed();
@@ -223,7 +230,7 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
   // A row that opens another feature's panel.
   const link = (id: string, label: string, status: ReactNode) => (
     <li key={id}>
-      <button className="dsp-feature-row" onClick={() => setChosen(id)}>
+      <button className="dsp-feature-row" onClick={() => choose(id)}>
         <strong>{label}</strong>
         {status}
         <ChevronRight size={16} aria-hidden="true" />
@@ -363,7 +370,7 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
                     key={item.id}
                     className={`dsp-feature-item ${isOn(item) ? '' : 'off'}`}
                     aria-current={item === selected ? 'true' : undefined}
-                    onClick={() => setChosen(item.id)}
+                    onClick={() => choose(item.id)}
                   >
                     <i aria-hidden="true" />
                     <span>{item.label}</span>
@@ -382,7 +389,7 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
         </nav>
         {selected && (
           <section className="dsp-feature-panel" aria-label={selected.label}>
-            <button className="text-button dsp-features-back" onClick={() => setChosen('')}>
+            <button className="text-button dsp-features-back" onClick={() => choose('')}>
               <ChevronLeft size={16} />
               All features
             </button>
