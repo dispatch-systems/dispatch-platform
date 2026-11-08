@@ -117,6 +117,42 @@ test('an owner adds Slack workspaces from New, each on a card under its name, us
   await answered;
   await page.unroute(switching);
   await expect(files).toBeChecked({ checked: !was });
+  // Switched back and forth while held, the last asked is what's saved.
+  let saveBoth = () => {};
+  const both = new Promise<void>((resolve) => (saveBoth = resolve));
+  await page.route(switching, async (route) => {
+    await both;
+    await route.continue();
+  });
+  const turn = async (to: boolean) => {
+    await files.click();
+    await page.getByRole('button', { name: to ? 'Turn on' : 'Turn off', exact: true }).click();
+    await expect(files).toBeChecked({ checked: to });
+  };
+  await turn(was);
+  await turn(!was);
+  const second = page.waitForResponse(
+    (response) =>
+      response.url().includes('/integrations/') && response.request().postDataJSON()?.on === !was,
+  );
+  saveBoth();
+  await second;
+  await page.unroute(switching);
+  await page.reload();
+  await page
+    .getByRole('navigation', { name: 'Sections' })
+    .getByRole('button', { name: 'Integrations', exact: true })
+    .click();
+  await expect(files).toBeChecked({ checked: !was });
+  // One refused shows what was saved last.
+  await page.route(switching, (route) =>
+    route.fulfill({ status: 409, json: { error: 'refused', message: 'Not now' } }),
+  );
+  await files.click();
+  await page.getByRole('button', { name: was ? 'Turn on' : 'Turn off', exact: true }).click();
+  await expect(page.getByText('Not now')).toBeVisible();
+  await expect(files).toBeChecked({ checked: !was });
+  await page.unroute(switching);
   await page
     .getByRole('navigation', { name: 'Sections' })
     .getByRole('button', { name: 'Channels', exact: true })

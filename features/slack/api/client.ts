@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { wordedApi } from '../../../core/shell/frontend/runtime/api.js';
 import { useData } from '../../../core/shell/frontend/runtime/data-reads.js';
 import type { Linking } from '../frontend/linked/linking.js';
 import type { SlackAccount } from './generated/SlackAccount.js';
+import type { SlackWorkspace } from './generated/SlackWorkspace.js';
 import type { SlackChannel } from './generated/SlackChannel.js';
 import type { SlackChannels } from './generated/SlackChannels.js';
 import type { SlackFolders } from './generated/SlackFolders.js';
@@ -64,20 +65,35 @@ export const slackAccountUrl = '/api/dsp/slack/account';
 const readAccount = (signal: AbortSignal) => call<SlackAccount>(slackAccountUrl, undefined, signal);
 /** How each reading of the account reads it again, when another changed it. */
 const readers = new Set<() => void>();
-// Integrations switched here and not yet read as switched, by workspace and integration: every
-// reading of the account shows them at once. Each goes once a reading has it as switched, or
-// once its switch fails.
-const switching = new Map<string, Map<string, boolean>>();
+// Integrations switched here, by workspace and integration: the latest asked, how many of its
+// switches are still saving, one after another, and what the server last answered with the
+// count of answers when it did. Every reading of the account shows the latest asked while any
+// saves, then what was answered, until a reading taken after that answer has it.
+type Asked = {
+  on: boolean;
+  saving: number;
+  answered?: { on: boolean; at: number };
+  queue: Promise<void>;
+};
+const asks = new Map<string, Map<string, Asked>>();
 const watchers = new Set<() => void>();
-let switched = 0;
-const switchingChanged = () => {
-  switched += 1;
+let changes = 0;
+let answers = 0;
+const asksChanged = () => {
+  changes += 1;
   for (const watch of watchers) watch();
 };
-const watchSwitching = (watch: () => void) => {
+const watchAsks = (watch: () => void) => {
   watchers.add(watch);
   return () => void watchers.delete(watch);
 };
+/** Whether `id` shows on in `workspace`, as read when `answers` answers had come. */
+function shownOn(workspace: SlackWorkspace, id: string, readAt: number) {
+  const asked = asks.get(workspace.teamId)?.get(id);
+  if (asked?.saving) return asked.on;
+  if (asked?.answered && asked.answered.at > readAt) return asked.answered.on;
+  return workspace.integrations.includes(id);
+}
 export function useSlackAccount() {
   const account = useData<SlackAccount>(
     slackAccountUrl,
@@ -92,32 +108,27 @@ export function useSlackAccount() {
     readers.add(refresh);
     return () => void readers.delete(refresh);
   }, [refresh]);
-  const version = useSyncExternalStore(watchSwitching, () => switched);
-  // A reading that has a switch as it was made retires it.
-  useEffect(() => {
-    let retired = false;
-    for (const workspace of read?.workspaces ?? [])
-      for (const [id, on] of switching.get(workspace.teamId) ?? [])
-        if (workspace.integrations.includes(id) === on) {
-          switching.get(workspace.teamId)!.delete(id);
-          retired = true;
-        }
-    if (retired) switchingChanged();
-  }, [read]);
+  const version = useSyncExternalStore(watchAsks, () => changes);
+  // How many answers had come when this reading was taken: those after it still show over it.
+  const reading = useRef({ read, at: answers });
+  if (reading.current.read !== read) reading.current = { read, at: answers };
+  const readAt = reading.current.at;
   const data = useMemo(
     () =>
       read && {
         ...read,
         workspaces: read.workspaces.map((workspace) => {
-          const asked = switching.get(workspace.teamId);
+          const asked = asks.get(workspace.teamId);
           if (!asked?.size) return workspace;
-          const integrations = workspace.integrations.filter((id) => asked.get(id) !== false);
-          for (const [id, on] of asked) if (on && !integrations.includes(id)) integrations.push(id);
-          return { ...workspace, integrations };
+          const ids = new Set([...workspace.integrations, ...asked.keys()]);
+          return {
+            ...workspace,
+            integrations: [...ids].filter((id) => shownOn(workspace, id, readAt)),
+          };
         }),
       },
-    // A switch made or retired shows in the next reading of it.
-    [read, version],
+    // A switch asked or answered shows in the next rendering of the reading.
+    [read, readAt, version],
   );
   return { ...account, data };
 }
@@ -164,22 +175,33 @@ export const setSlackChannel = (team: string, channel: string, member: boolean) 
   );
 /**
  * Switches the integration `id` on or off in the workspace `team`: every reading of the account
- * shows it switched at once, and reads the account again once it is; one that fails is taken back.
+ * shows it switched at once. Switches of one integration save one after another, so the last
+ * asked is the last saved; once one is, the account is read again.
  */
-export async function switchSlackIntegration(team: string, id: string, on: boolean) {
-  const asked = switching.get(team) ?? new Map<string, boolean>();
-  switching.set(team, asked.set(id, on));
-  switchingChanged();
-  try {
-    await call<SlackAccount>(`${workspaceUrl(team)}/integrations/${encodeURIComponent(id)}`, {
-      on,
-    });
-  } catch (cause) {
-    asked.delete(id);
-    switchingChanged();
-    throw cause;
-  }
-  slackAccountChanged();
+export function switchSlackIntegration(team: string, id: string, on: boolean) {
+  const workspace = asks.get(team) ?? new Map<string, Asked>();
+  asks.set(team, workspace);
+  const asked = workspace.get(id) ?? { on, saving: 0, queue: Promise.resolve() };
+  workspace.set(id, asked);
+  asked.on = on;
+  asked.saving += 1;
+  asksChanged();
+  const saved = asked.queue.then(async () => {
+    try {
+      const account = await call<SlackAccount>(
+        `${workspaceUrl(team)}/integrations/${encodeURIComponent(id)}`,
+        { on },
+      );
+      const after = account.workspaces.find((each) => each.teamId === team);
+      answers += 1;
+      asked.answered = { on: after ? after.integrations.includes(id) : on, at: answers };
+    } finally {
+      asked.saving -= 1;
+      asksChanged();
+    }
+  });
+  asked.queue = saved.catch(() => undefined);
+  return saved.then(slackAccountChanged);
 }
 /**
  * How the integration whose endpoints are under `path` links channels to folders: browsing the
