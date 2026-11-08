@@ -2,4 +2,4 @@
 # Recompute it with SHA-256 after editing tooling/build/rustc-remap.py.
 [build]
 rustc-wrapper = "tooling/build/rustc-remap.py"
-rustflags = ["--cfg=dispatch_path_policy_5b008e4af08a4af7f4b463629d367f38f168d7b628389241f0a1e79b55f27718"]
+rustflags = ["--cfg=dispatch_path_policy_2a5cabbab7107de980df84ef38bac29cba2527d66448e515aba2163de2b784c5"]

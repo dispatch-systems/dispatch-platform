@@ -9,6 +9,9 @@ import sys
 # Cargo's own settings, which rustc never reads but sccache keys a compile by: without them, a
 # test run's target folder of its own and the checkout's shared one compile a crate alike.
 CARGO_ONLY = ("CARGO_TARGET_DIR", "CARGO_INCREMENTAL")
+# A shared compiler-cache daemon outlives the checkout that starts it. Its temporary files
+# must use the system root, not a caller's scratch folder that cleanup will remove.
+TEMP_ROOTS = ("TMPDIR", "TMP", "TEMP")
 SOURCE = "/dispatch-build/source"
 
 
@@ -50,9 +53,10 @@ def command(root, compiler, arguments, env, cwd, cache):
 
 
 def environment(env):
-    """The compile's environment: Cargo's own settings out, and sccache compiling here itself
+    """The compile's environment: caller-local settings out, and sccache compiling here itself
     when its server can't be reached."""
-    kept = {name: value for name, value in env.items() if name not in CARGO_ONLY}
+    kept = {name: value for name, value in env.items()
+            if name not in CARGO_ONLY and name not in TEMP_ROOTS}
     kept.setdefault("SCCACHE_IGNORE_SERVER_IO_ERROR", "1")
     return kept
 
