@@ -31,12 +31,14 @@ const INSERT: &str = "INSERT INTO jobs(id,dsp_id,environment,kind,status,availab
     VALUES (?,?,?,?,'queued',?,?,?,?,?,?,?)";
 // The oldest queued job of the DSP that has waited longest since its last collection,
 // among DSPs no worker is collecting for.
+const CLAIM_PAGE_SIZE: i64 = 200;
 const CLAIMABLE: &str = concat!(
-    "SELECT * FROM jobs j WHERE j.status='queued' AND j.available_at<=? AND NOT EXISTS \
+    "SELECT j.id,j.dsp_id,j.kind FROM jobs j WHERE j.status='queued' AND j.available_at<=? \
+     AND j.kind IN (SELECT value FROM json_each(?)) AND NOT EXISTS \
      (SELECT 1 FROM jobs active WHERE active.dsp_id=j.dsp_id AND active.status IN ",
     job_statuses!(leased),
     ") ORDER BY (SELECT COALESCE(MAX(completed_at),'') FROM jobs previous \
-     WHERE previous.dsp_id=j.dsp_id),j.created_at LIMIT 200"
+     WHERE previous.dsp_id=j.dsp_id),j.created_at,j.id LIMIT ? OFFSET ?"
 );
 const CANCEL: &str = concat!(
     "UPDATE jobs SET status='cancelled',message='Cancelled',completed_at=?,\
@@ -391,11 +393,23 @@ impl Store {
                 return Ok(None);
             }
             // A kind no registered provider runs is not a job this release can claim.
-            let queued: Vec<Claimable> = self.jobs.query_as(CLAIMABLE, [now()])?;
-            let Some(Claimable { id, .. }) = queued.into_iter().find(|job| {
-                Provider::from_job_kind(&job.kind).is_ok_and(|(p, _)| eligible(&job.dsp_id, p))
-            }) else {
-                return Ok(None);
+            let (at, known) = (now(), JobKind::known()?);
+            let mut offset = 0;
+            let id = loop {
+                let queued: Vec<Claimable> = self
+                    .jobs
+                    .query_as(CLAIMABLE, params![at, known, CLAIM_PAGE_SIZE, offset])?;
+                let count = queued.len() as i64;
+                if let Some(Claimable { id, .. }) = queued.into_iter().find(|job| {
+                    Provider::from_job_kind(&job.kind).is_ok_and(|(p, _)| eligible(&job.dsp_id, p))
+                }) {
+                    break id;
+                }
+                if count < CLAIM_PAGE_SIZE {
+                    return Ok(None);
+                }
+                // The transaction keeps the ordering stable while ineligible pages are skipped.
+                offset += count;
             };
             self.jobs
                 .exec(START, params![iso(), owner, now() + 120000, id])?;

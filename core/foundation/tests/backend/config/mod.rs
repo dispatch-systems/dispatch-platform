@@ -251,3 +251,30 @@ fn an_object_store_is_named_whole_or_not_at_all() {
         assert!(super::object_store(r2(values)).is_err());
     }
 }
+
+#[test]
+fn browser_capacity_accepts_the_runtime_range_and_rejects_invalid_configuration() {
+    for capacity in [1, 2, 8, 16] {
+        assert_eq!(
+            super::browser_capacity(&capacity.to_string()).unwrap(),
+            capacity
+        );
+    }
+    for value in [
+        "0",
+        "17",
+        "-1",
+        "",
+        "two",
+        "2.5",
+        " 2",
+        "184467440737095516160",
+    ] {
+        let error = super::browser_capacity(value).unwrap_err();
+        assert_eq!(
+            (error.code.as_str(), error.status),
+            ("invalid_browser_capacity", 400),
+            "{value}"
+        );
+    }
+}
