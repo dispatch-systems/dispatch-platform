@@ -86,7 +86,7 @@ test('with no flags, a feature is a crate with a switch, a view permission and a
   );
   assert.match(
     file(plan, 'features/parking/tests/browser/parking.spec.ts'),
-    /getByRole\('switch', \{ name: 'Parking page', exact: true \}\)\)\.toBeChecked\(\)/,
+    /getByRole\('switch', \{ name: 'Parking', exact: true \}\)\)\.toBeChecked\(\)/,
   );
 
   // The workspace's members cover it already, so Cargo.toml is no change, and the frontend's

@@ -278,6 +278,10 @@ test('a DSP whose AI Support the platform owner hides loses the button until it 
     .click();
   const pane = page.getByRole('region', { name: 'Northline Logistics', exact: true });
   await pane.getByRole('tab', { name: 'Features', exact: true }).click();
+  await pane
+    .getByRole('navigation', { name: 'Features', exact: true })
+    .getByRole('button', { name: /^AI Support/ })
+    .click();
   const shown = pane.getByRole('switch', { name: 'AI Support', exact: true });
   const context = await browser.newContext();
   const member = await context.newPage();

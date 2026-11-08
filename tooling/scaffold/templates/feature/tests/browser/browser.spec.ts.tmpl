@@ -19,10 +19,10 @@ test('{{label}} has its switch on the DSPs page, on for the seeded DSP', async (
   const pane = page.getByRole('region', { name: 'Northline Logistics', exact: true });
   await pane.getByRole('tab', { name: 'Features', exact: true }).click();
   await pane
-    .getByRole('navigation', { name: 'Feature areas' })
+    .getByRole('navigation', { name: 'Features', exact: true })
     .getByRole('button', { name: /^{{labelPattern}}/ })
     .click();
-  await expect(pane.getByRole('switch', { name: '{{label}} page', exact: true })).toBeChecked();
+  await expect(pane.getByRole('switch', { name: '{{label}}', exact: true })).toBeChecked();
 });
 {{/screens}}
 {{#page}}

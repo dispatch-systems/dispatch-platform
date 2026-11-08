@@ -243,7 +243,7 @@ button.dsp-name:hover strong {
   overflow-wrap: anywhere;
 }
 
-/* Features: a row for each, its parts under it once opened; then the connections. */
+/* Beta testers: rows of people. */
 .dsp-features {
   display: grid;
   gap: 24px;
@@ -256,7 +256,7 @@ button.dsp-name:hover strong {
   padding: 0 0 6px;
 }
 .dsp-feature-list,
-.dsp-parts {
+.dsp-feature-rows {
   margin: 0;
   padding: 0;
   list-style: none;
@@ -264,99 +264,8 @@ button.dsp-name:hover strong {
 .dsp-feature-list > li + li {
   border-top: 1px solid var(--border);
 }
-.dsp-feature-list > li > .dsp-feature-row,
 .dsp-feature-list > li.dsp-feature-row {
   border-top: 0;
-}
-.dsp-expand {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  min-height: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--muted-foreground);
-  flex-shrink: 0;
-}
-.dsp-expand svg {
-  transition: transform 120ms ease;
-}
-.dsp-expand[aria-expanded='true'] svg {
-  transform: rotate(90deg);
-}
-.dsp-feature-row > svg {
-  color: var(--muted-foreground);
-  flex-shrink: 0;
-}
-.dsp-feature-row small {
-  margin-left: auto;
-  font-size: 12px;
-  color: var(--muted-foreground);
-  font-variant-numeric: tabular-nums;
-}
-/* Who sees it: the DSP's members, its beta testers alone, or none of them. Either way it runs.
-   A feature every DSP has keeps the space, so the rows' notes line up. */
-.dsp-sight {
-  display: inline-flex;
-  width: 86px;
-  flex-shrink: 0;
-}
-.dsp-sight[role='radiogroup'] {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-.dsp-sight button {
-  display: inline-flex;
-  flex: 1;
-  align-items: center;
-  justify-content: center;
-  height: 26px;
-  min-height: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  color: var(--muted-foreground);
-}
-.dsp-sight button + button {
-  border-left: 1px solid var(--border);
-}
-.dsp-sight button:hover:not(:disabled) {
-  background: var(--accent);
-  color: var(--foreground);
-}
-.dsp-sight button[aria-checked='true'] {
-  background: var(--muted);
-  color: var(--foreground);
-}
-.dsp-sight button[data-sight='beta'][aria-checked='true'] {
-  background: var(--selection);
-  color: var(--primary);
-}
-.dsp-sight button[data-sight='hidden'][aria-checked='true'] {
-  background: var(--warning-surface);
-  color: var(--warning);
-}
-.dsp-feature-row small[data-sight='beta'] {
-  color: var(--primary);
-}
-.dsp-feature-row small[data-sight='hidden'] {
-  color: var(--warning);
-}
-.dsp-parts {
-  margin: 0 0 8px 38px;
-  border-left: 1px solid var(--border);
-}
-.dsp-parts .dsp-feature-row {
-  padding: 8px 0 8px 16px;
-  border-top: 0;
-}
-.dsp-parts .dsp-feature-row strong {
-  font-size: 13px;
 }
 /* The switch leads its row, so the name is always right beside it. */
 .dsp-feature-row {
@@ -365,6 +274,12 @@ button.dsp-name:hover strong {
   gap: 14px;
   padding: 12px 0;
   border-top: 1px solid var(--border);
+}
+.dsp-feature-row small {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
 }
 .dsp-feature-row .status-indicator {
   margin-left: auto;
@@ -376,7 +291,7 @@ button.dsp-name:hover strong {
 .dsp-feature-row.off strong {
   color: var(--muted-foreground);
 }
-:is(.dsp-feature-row, .dsp-backups) input[role='switch'] {
+:is(.dsp-feature-row, .dsp-feature-switch, .dsp-backups) input[role='switch'] {
   appearance: none;
   position: relative;
   width: 28px;
@@ -390,7 +305,7 @@ button.dsp-name:hover strong {
   cursor: pointer;
   flex-shrink: 0;
 }
-:is(.dsp-feature-row, .dsp-backups) input[role='switch']::before {
+:is(.dsp-feature-row, .dsp-feature-switch, .dsp-backups) input[role='switch']::before {
   content: '';
   position: absolute;
   width: 10px;
@@ -400,17 +315,248 @@ button.dsp-name:hover strong {
   border-radius: 50%;
   background: var(--foreground);
 }
-:is(.dsp-feature-row, .dsp-backups) input[role='switch']:checked {
+:is(.dsp-feature-row, .dsp-feature-switch, .dsp-backups) input[role='switch']:checked {
   background: var(--primary);
   border-color: var(--primary);
 }
-:is(.dsp-feature-row, .dsp-backups) input[role='switch']:checked::before {
+:is(.dsp-feature-row, .dsp-feature-switch, .dsp-backups) input[role='switch']:checked::before {
   left: 14px;
   background: var(--primary-foreground);
 }
-:is(.dsp-feature-row, .dsp-backups) input[role='switch']:disabled {
+:is(.dsp-feature-row, .dsp-feature-switch, .dsp-backups) input[role='switch']:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* Features: the list on the left, the chosen one's panel beside it. A narrow pane shows the list,
+   then the chosen one with a way back. */
+.dsp-feature-tab {
+  container: dsp-features / inline-size;
+}
+.dsp-feature-browser {
+  display: grid;
+  max-width: 1200px;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.dsp-feature-list-pane .search {
+  width: 100%;
+}
+.dsp-feature-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 4px;
+}
+.dsp-feature-filters button {
+  min-height: 28px;
+  padding: 0 11px;
+  border-radius: 999px;
+  color: var(--muted-foreground);
+  font-size: 12.5px;
+  font-weight: 400;
+  gap: 6px;
+}
+.dsp-feature-filters button i {
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.65;
+}
+.dsp-feature-filters button[aria-pressed='true'] {
+  background: var(--foreground);
+  border-color: var(--foreground);
+  color: var(--background);
+  font-weight: 500;
+}
+.dsp-feature-items {
+  display: grid;
+}
+.dsp-feature-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  font-weight: 400;
+  text-align: left;
+}
+.dsp-feature-item:hover {
+  background: var(--accent);
+}
+.dsp-feature-item[aria-current='true'] {
+  background: var(--selection);
+  color: var(--primary);
+}
+.dsp-feature-item > i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--success);
+  flex-shrink: 0;
+}
+.dsp-feature-item.off > i {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--muted-foreground);
+}
+.dsp-feature-item.off > span {
+  color: var(--muted-foreground);
+}
+.dsp-feature-item > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dsp-feature-item small {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.dsp-feature-item small .status-indicator > i {
+  display: none;
+}
+:is(.dsp-feature-item small, select)[data-sight='beta'] {
+  color: var(--primary);
+}
+:is(.dsp-feature-item small, select)[data-sight='hidden'] {
+  color: var(--warning);
+}
+.dsp-feature-panel {
+  display: grid;
+  gap: 8px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+.dsp-feature-panel .dsp-group {
+  margin-top: 12px;
+  padding: 0;
+}
+.dsp-features-back {
+  display: none;
+  gap: 4px;
+  justify-self: start;
+}
+.dsp-feature-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.dsp-feature-head h3 {
+  font-size: 18px;
+  font-weight: 600;
+}
+.dsp-feature-switch {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+/* Who sees it: the DSP's members, its beta testers alone, or none of them. Either way it runs. */
+.dsp-sight {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.dsp-sight button {
+  justify-content: flex-start;
+  gap: 10px;
+  min-height: 42px;
+  background: var(--background);
+  font-weight: 400;
+}
+.dsp-sight button::before {
+  content: '';
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px var(--muted-foreground);
+  flex-shrink: 0;
+}
+.dsp-sight button[aria-checked='true'] {
+  border-color: var(--primary);
+}
+.dsp-sight button[aria-checked='true']::before {
+  box-shadow: inset 0 0 0 4px var(--primary);
+}
+.dsp-sight button[data-sight='hidden'][aria-checked='true'] {
+  border-color: var(--warning);
+}
+.dsp-sight button[data-sight='hidden'][aria-checked='true']::before {
+  box-shadow: inset 0 0 0 4px var(--warning);
+}
+.dsp-feature-rows {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--background);
+}
+.dsp-feature-rows .dsp-feature-row {
+  min-height: 50px;
+  padding: 8px 14px;
+}
+.dsp-feature-rows > li:first-child > .dsp-feature-row,
+.dsp-feature-rows > li.dsp-feature-row:first-child {
+  border-top: 0;
+}
+.dsp-feature-rows button.dsp-feature-row {
+  width: 100%;
+  border-width: 1px 0 0;
+  border-radius: 0;
+  background: transparent;
+  font-weight: 400;
+  text-align: left;
+}
+.dsp-feature-rows button.dsp-feature-row:hover {
+  background: var(--accent);
+}
+.dsp-feature-rows button.dsp-feature-row > svg {
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+}
+.dsp-feature-rows select {
+  min-height: 32px;
+  min-width: 150px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.dsp-feature-rows small + select {
+  margin-left: 0;
+}
+.dsp-feature-rows strong + select {
+  margin-left: auto;
+}
+@container dsp-features (width < 640px) {
+  .dsp-feature-browser {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .dsp-feature-browser.chosen .dsp-feature-list-pane,
+  .dsp-feature-browser:not(.chosen) .dsp-feature-panel {
+    display: none;
+  }
+  .dsp-features-back {
+    display: inline-flex;
+  }
+  .dsp-sight {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .dsp-feature-rows .dsp-feature-row {
+    flex-wrap: wrap;
+  }
+  .dsp-feature-rows select {
+    flex-basis: 100%;
+    margin-left: 0;
+  }
 }
 /* Beta testers: what is in beta at the DSP, then who tests it. */
 .dsp-beta-features {
@@ -535,9 +681,6 @@ button.dsp-name:hover strong {
   }
   .dsp-facts {
     grid-template-columns: 1fr 1fr;
-  }
-  .dsp-parts {
-    margin-left: 24px;
   }
   .dsp-counts {
     margin-bottom: 18px;
