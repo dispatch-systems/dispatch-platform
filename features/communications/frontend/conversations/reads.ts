@@ -5,7 +5,7 @@ import { canPrefetch } from '../../../../core/shell/frontend/runtime/prefetch.js
 import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import type { Changed } from '../inbox/useInbox.js';
 import { newer } from '../inbox/inbox.js';
-import { fresh, joined } from './messages.js';
+import { byTs, fresh, joined } from './messages.js';
 
 // The conversations the page has read, kept while it's open, so one opened again shows at once:
 // each as last read, read again only once an update changed it since, and as it opens, the one
@@ -58,10 +58,20 @@ type Entry = {
   reading: boolean;
   /** Each message the page sent, by the read asked last as it showed: one asked before then may
    * not hold it yet. */
-  sent: Map<string, number>;
+  sent: Map<string, { turn: number; message: Message }>;
   requests: Set<AbortController>;
   olderRead?: AbortController;
 };
+
+/** Sends stay separate from the contiguous server window until that window reaches them.
+ * An old retry must never become the backward-paging cursor across an unread gap. */
+function withSends(entry: Entry, window: { messages: Message[]; more: boolean }) {
+  const first = window.more ? window.messages[0] : undefined;
+  const sent = [...entry.sent.values()]
+    .map(({ message }) => message)
+    .filter((message) => !first || byTs(message, first) >= 0);
+  return joined(window.messages, sent);
+}
 
 /** Whether reading before opening may go on: the page in view, on a connection that allows it. */
 const warmable = () => canPrefetch() && !document.hidden;
@@ -156,16 +166,18 @@ export class ConversationReads {
     try {
       const page = await getConversation(id, shown.messages[0], undefined, controller.signal);
       const now = this.entries.get(id) === entry ? entry.held.opened : undefined;
-      if (now && !controller.signal.aborted && entry.turns.shown === since)
+      if (now && !controller.signal.aborted && entry.turns.shown === since) {
+        const opened = {
+          ...now,
+          messages: joined(now.messages, page.messages),
+          more: page.more,
+          workdays: withDays(now.workdays, page.workdays),
+        };
         this.hold(id, {
           ...this.held(id),
-          opened: {
-            ...now,
-            messages: joined(now.messages, page.messages),
-            more: page.more,
-            workdays: withDays(now.workdays, page.workdays),
-          },
+          opened: { ...opened, messages: withSends(entry, opened) },
         });
+      }
     } catch (cause) {
       // Read again only as asked again, never at once.
       if (this.entries.get(id) === entry && !controller.signal.aborted)
@@ -184,13 +196,13 @@ export class ConversationReads {
     const entry = this.entries.get(conversation.id);
     const now = entry?.held.opened;
     if (!entry || !now) return;
-    if (message) entry.sent.set(message.id, entry.turns.asked);
+    if (message) entry.sent.set(message.id, { turn: entry.turns.asked, message });
     this.hold(conversation.id, {
       ...entry.held,
       opened: {
         ...now,
         conversation: newer(now.conversation, conversation),
-        messages: message ? joined(now.messages, [message]) : now.messages,
+        messages: message ? withSends(entry, now) : now.messages,
       },
     });
   }
@@ -247,23 +259,23 @@ export class ConversationReads {
     if (turn >= entry.turns.shown) {
       entry.turns.shown = turn;
       const before = entry.held.opened;
-      const unread = (message: Message) => (entry.sent.get(message.id) ?? 0) >= turn;
+      // A read asked after a send no longer needs protection against an earlier snapshot.
+      for (const [id, sent] of entry.sent) if (sent.turn < turn) entry.sent.delete(id);
+      const unread = (message: Message) => entry.sent.has(message.id);
+      const opened = {
+        ...latest,
+        id,
+        lastRead: latest.messages,
+        readAt: performance.now(),
+        workdays: withDays(before?.workdays ?? [], latest.workdays),
+        ...fresh(before, latest, unread),
+      };
       this.hold(id, {
         ...entry.held,
         error: '',
-        opened: {
-          ...latest,
-          id,
-          lastRead: latest.messages,
-          readAt: performance.now(),
-          workdays: withDays(before?.workdays ?? [], latest.workdays),
-          ...fresh(before, latest, unread),
-        },
+        opened: { ...opened, messages: withSends(entry, opened) },
       });
     }
-    // A later read was asked after these sends, so they no longer need protection against an
-    // answer from before they were sent.
-    for (const [message, sent] of entry.sent) if (sent < turn) entry.sent.delete(message);
     this.trim(id);
     // Changed while it was read, and open: read again.
     if (this.watchers.has(id) && this.stale(id)) void this.read(id);
@@ -276,7 +288,7 @@ export class ConversationReads {
       asked: 0,
       turns: { asked: 0, shown: 0 },
       reading: false,
-      sent: new Map<string, number>(),
+      sent: new Map<string, { turn: number; message: Message }>(),
       requests: new Set<AbortController>(),
     };
     this.entries.delete(id);
@@ -298,17 +310,13 @@ export class ConversationReads {
     this.changedAt.delete(id);
   }
   /** The open conversation keeps its history and scroll position. A closed one keeps a recent
-   * window plus sends that a read in flight may not hold yet; returning can page backward again. */
+   * contiguous window; pending sends remain separate until older pages reach them. */
   private trim(id: string) {
     const entry = this.entries.get(id);
     const opened = entry?.held.opened;
     if (!entry || !opened || this.watchers.has(id) || opened.messages.length <= CLOSED_MESSAGES)
       return;
-    const recent = opened.messages.slice(-CLOSED_MESSAGES);
-    const protectedMessages = opened.messages
-      .slice(0, -CLOSED_MESSAGES)
-      .filter((message) => entry.sent.has(message.id));
-    const messages = joined(protectedMessages, recent);
+    const messages = opened.messages.slice(-CLOSED_MESSAGES);
     // A workday is local to its DSP. UTC and its neighbouring days cover every time zone while
     // retaining only context for the messages still held.
     const days = new Set(

@@ -25,7 +25,7 @@ type Run = {
 
 /** Messages by their place, `ts`, in the order written: Slack's IDs, `<seconds>.<microseconds>`,
  * or a text's time, thirteen digits, and ID. */
-const byTs = (a: Message, b: Message) =>
+export const byTs = (a: Message, b: Message) =>
   a.ts.padStart(24, '0') < b.ts.padStart(24, '0') ? -1 : a.ts === b.ts ? 0 : 1;
 /** `kept` with `read`, each message once, as it is now, in the order written. */
 export function joined(kept: readonly Message[], read: readonly Message[]) {
