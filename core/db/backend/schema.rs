@@ -265,6 +265,13 @@ const JOBS: &[Migration] = &[
         name: "live_days_stopping",
         apply: Code(live_days_stopping),
     },
+    Migration {
+        id: 8,
+        name: "jobs_completed",
+        apply: Sql(include_str!(
+            "../../collection/migrations/jobs/0008_jobs_completed.sql"
+        )),
+    },
 ];
 const DSP: &[Migration] = &[
     Migration {

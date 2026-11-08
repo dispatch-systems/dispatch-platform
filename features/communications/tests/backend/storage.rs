@@ -177,3 +177,201 @@ fn an_edit_keeps_only_the_latest_text() {
     let (changed, _) = store.communications_changed_since(&dsp, before).unwrap();
     assert_eq!(changed.unwrap().len(), 1);
 }
+
+/// A generous instruction budget for a latest-message read, independent of the clock: its work
+/// must follow the conversations requested rather than each one's message history.
+struct ReadBudget<'a> {
+    connection: &'a rusqlite::Connection,
+    remaining: Box<std::cell::Cell<usize>>,
+}
+impl<'a> ReadBudget<'a> {
+    fn new(connection: &'a rusqlite::Connection) -> Self {
+        let budget = Self {
+            connection,
+            remaining: Box::new(std::cell::Cell::new(200)),
+        };
+        unsafe extern "C" fn step(context: *mut std::ffi::c_void) -> std::ffi::c_int {
+            // SAFETY: the boxed counter stays at this address until Drop removes the callback.
+            let remaining = unsafe { &*context.cast::<std::cell::Cell<usize>>() };
+            remaining.set(remaining.get().saturating_sub(1));
+            std::ffi::c_int::from(remaining.get() == 0)
+        }
+        // SAFETY: this test uses the connection only on this thread. The counter is boxed and
+        // Drop removes its callback before releasing it or the connection.
+        unsafe {
+            rusqlite::ffi::sqlite3_progress_handler(
+                connection.handle(),
+                100,
+                Some(step),
+                (&*budget.remaining as *const std::cell::Cell<usize>)
+                    .cast_mut()
+                    .cast(),
+            );
+        }
+        budget
+    }
+}
+impl Drop for ReadBudget<'_> {
+    fn drop(&mut self) {
+        // SAFETY: the borrowed connection outlives this guard and remains on this thread.
+        unsafe {
+            rusqlite::ffi::sqlite3_progress_handler(
+                self.connection.handle(),
+                0,
+                None,
+                std::ptr::null_mut(),
+            );
+        }
+    }
+}
+
+#[test]
+fn latest_messages_stay_bounded_as_history_grows_and_keep_the_latest_incoming() {
+    use crate::backend::{
+        phone::support::paired,
+        texts::{model::Filed, storage::TextStore},
+    };
+    crate::backend::support::install();
+    let (_root, store, dsp) = testing::bootstrapped();
+    let phone = paired(&store, &dsp, "latest-read-key", "+12065550100");
+    let text = store
+        .open_communications_text(&dsp, &Filed::Number("+12065550101".into()))
+        .unwrap()
+        .id;
+    let empty_text = store
+        .open_communications_text(&dsp, &Filed::Number("+12065550102".into()))
+        .unwrap()
+        .id;
+    let slack = store
+        .keep_communications_message(&dsp, &written("0000000000000.000001", 0, "First"))
+        .unwrap()
+        .unwrap()
+        .conversation;
+    let db = store.dsp(&dsp).unwrap();
+    db.exec(
+        "WITH RECURSIVE history(n) AS (VALUES(0) UNION ALL SELECT n+1 FROM history WHERE n<4999) \
+         INSERT INTO phones_texts(id,device_id,client_id,direction,origin,number,body,at,change,conversation_id) \
+         SELECT 'history-'||n,?1,'history-'||n,CASE WHEN n%2=0 THEN 'in' ELSE 'out' END,\
+         'phone','+12065550101','Earlier',n,n,?2 FROM history",
+        rusqlite::params![phone.id, text],
+    ).unwrap();
+    for (id, direction, blocked) in [
+        ("z-in", "in", 0),
+        ("zz-blocked", "in", 1),
+        ("zzz-out", "out", 0),
+    ] {
+        db.exec(
+            "INSERT INTO phones_texts(id,device_id,client_id,direction,origin,number,body,at,change,conversation_id,blocked) \
+             VALUES (?1,?2,?1,?3,'phone','+12065550101','Latest',5000,5000,?4,?5)",
+            rusqlite::params![id, phone.id, direction, text, blocked],
+        ).unwrap();
+    }
+    db.exec(
+        "WITH RECURSIVE history(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM history WHERE n<4999) \
+         INSERT INTO communications_messages(id,conversation_id,ts,direction,text,at) \
+         SELECT 'slack-history-'||n,?1,printf('%013d.000001',n),\
+         CASE WHEN n%2=0 THEN 'in' ELSE 'out' END,'Earlier',n FROM history",
+        [&slack],
+    )
+    .unwrap();
+    for (id, ts, direction) in [
+        ("slack-in", "0000000005000.000001", "in"),
+        ("slack-out", "0000000005000.000002", "out"),
+    ] {
+        db.exec(
+            "INSERT INTO communications_messages(id,conversation_id,ts,direction,text,at) VALUES (?,?,?,?,'Latest',5000)",
+            [id, &slack, ts, direction],
+        ).unwrap();
+    }
+    let texts = vec![text.clone(), text, empty_text, "missing".into()];
+    let slack = vec![slack.clone(), slack, "missing".into()];
+    let budget = ReadBudget::new(&db.0);
+    let latest = store.latest_communications_texts(&dsp, &texts).unwrap();
+    drop(budget);
+    assert_eq!(
+        latest
+            .iter()
+            .map(|text| text.id.as_str())
+            .collect::<Vec<_>>(),
+        ["zzz-out"]
+    );
+    let budget = ReadBudget::new(&db.0);
+    let incoming = store.latest_communications_texts_in(&dsp, &texts).unwrap();
+    drop(budget);
+    assert_eq!(
+        incoming
+            .iter()
+            .map(|text| text.id.as_str())
+            .collect::<Vec<_>>(),
+        ["z-in"]
+    );
+    let budget = ReadBudget::new(&db.0);
+    let latest = store.latest_communications_messages(&dsp, &slack).unwrap();
+    drop(budget);
+    assert_eq!(
+        latest
+            .iter()
+            .map(|message| message.id.as_str())
+            .collect::<Vec<_>>(),
+        ["slack-out"]
+    );
+    let budget = ReadBudget::new(&db.0);
+    let incoming = store.latest_communications_written(&dsp, &slack).unwrap();
+    drop(budget);
+    assert_eq!(
+        incoming
+            .iter()
+            .map(|message| message.id.as_str())
+            .collect::<Vec<_>>(),
+        ["slack-in"]
+    );
+    assert!(
+        store
+            .latest_communications_texts(&dsp, &[])
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        store
+            .latest_communications_written(&dsp, &[])
+            .unwrap()
+            .is_empty()
+    );
+
+    // A long suffix of rejected messages must not make the incoming-only read scan history:
+    // outgoing broadcasts and blocked incoming texts can both follow an unanswered message.
+    db.exec(
+        "WITH RECURSIVE suffix(n) AS (VALUES(5001) UNION ALL SELECT n+1 FROM suffix WHERE n<10000) \
+         INSERT INTO phones_texts(id,device_id,client_id,direction,origin,number,body,at,change,conversation_id,blocked) \
+         SELECT 'suffix-'||n,?1,'suffix-'||n,CASE WHEN n%2=0 THEN 'in' ELSE 'out' END,\
+         'phone','+12065550101','Rejected',n,n,?2,1 FROM suffix",
+        rusqlite::params![phone.id, texts[0]],
+    ).unwrap();
+    db.exec(
+        "WITH RECURSIVE suffix(n) AS (VALUES(5001) UNION ALL SELECT n+1 FROM suffix WHERE n<10000) \
+         INSERT INTO communications_messages(id,conversation_id,ts,direction,text,at) \
+         SELECT 'slack-suffix-'||n,?1,printf('%013d.000001',n),'out','Broadcast',n FROM suffix",
+        [&slack[0]],
+    )
+    .unwrap();
+    let budget = ReadBudget::new(&db.0);
+    let incoming = store.latest_communications_texts_in(&dsp, &texts).unwrap();
+    drop(budget);
+    assert_eq!(
+        incoming
+            .iter()
+            .map(|text| text.id.as_str())
+            .collect::<Vec<_>>(),
+        ["z-in"]
+    );
+    let budget = ReadBudget::new(&db.0);
+    let incoming = store.latest_communications_written(&dsp, &slack).unwrap();
+    drop(budget);
+    assert_eq!(
+        incoming
+            .iter()
+            .map(|message| message.id.as_str())
+            .collect::<Vec<_>>(),
+        ["slack-in"]
+    );
+}

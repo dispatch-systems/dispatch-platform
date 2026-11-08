@@ -47,7 +47,8 @@
       [4, "dvic_kind", "311993998eedd13c"],
       [5, "open_kinds", "13830dde50ae8243"],
       [6, "live_reads", "df1f39254c9fffb2"],
-      [7, "live_days_stopping", "code"]
+      [7, "live_days_stopping", "code"],
+      [8, "jobs_completed", "5d59505e155be78c"]
     ]
   },
   {
@@ -98,6 +99,7 @@
       ["communications", 17, "communications_days", "code"],
       ["communications", 18, "communications_push", "897c8ba4892c8da2"],
       ["communications", 19, "communications_gifs", "code"],
+      ["communications", 20, "communications_incoming_indexes", "335900985ea6cf10"],
       ["slack", 1, "slack", "8ca8fd50f814a724"],
       ["slack", 2, "slack_new_connections", "code"],
       ["slack", 3, "slack_members", "a3cacf7486f2ded9"],
