@@ -1,0 +1,599 @@
+/* A DSP's Backups tab, a card of its own: its head, its rules each a card that opens to how its
+   day is made and its fields, the coming weeks, then its backups. */
+.dsp-backups {
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  overflow: hidden;
+}
+
+/* Its rules, coloured as the calendar draws them. */
+.dsp-backups [data-rule] {
+  --rule: var(--series-1);
+}
+.dsp-backups [data-rule='1'] {
+  --rule: var(--series-2);
+}
+.dsp-backups [data-rule='2'] {
+  --rule: var(--series-3);
+}
+.dsp-backups [data-rule='3'] {
+  --rule: var(--series-4);
+}
+.dsp-backups [data-rule='4'] {
+  --rule: var(--series-5);
+}
+
+.backups-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 20px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+}
+.backups-stat {
+  margin: 0;
+  padding-left: 20px;
+  border-left: 1px solid var(--border);
+}
+.backups-stat:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+.backups-stat dt {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 18px;
+}
+.backups-stat dd {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.backups-stat dd small {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 400;
+}
+.backups-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-left: auto;
+}
+.dsp-backups .run-ok {
+  color: var(--success);
+}
+.dsp-backups .run-failed,
+.backups-error {
+  color: var(--destructive);
+}
+.backups-spin {
+  color: var(--muted-foreground);
+  animation: backups-spin 1s linear infinite;
+}
+@keyframes backups-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.backups-body {
+  padding: 16px 24px 0;
+}
+.backups-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.backups-section-head > div {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.backups-section-head h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+}
+.backups-section-head .text-button {
+  gap: 6px;
+  min-height: 28px;
+  font-size: 13px;
+}
+.backups-zone {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+/* A rule: its words, how long it keeps and how much it holds; opened, its fields. */
+.backups-rule {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+}
+.backups-rule + .backups-rule {
+  margin-top: 8px;
+}
+.backups-rule.is-open {
+  box-shadow:
+    0 1px 2px var(--shadow-color),
+    0 6px 20px -12px var(--shadow-color);
+}
+.backups-rule-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 46px;
+  padding: 0 8px 0 15px;
+}
+.backups-rule-mark {
+  flex-shrink: 0;
+  width: 10px;
+  height: 28px;
+  border-radius: 5px;
+  background: var(--rule);
+}
+.backups-rule-head strong {
+  font-size: 14px;
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+}
+.backups-tag {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.backups-rule-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+.backups-rule-tools button {
+  min-height: 32px;
+  padding: 6px 10px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.backups-rule-tools button:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+.backups-rule-tools button.icon-button {
+  width: 32px;
+  padding: 7px;
+}
+.backups-rule-tools .backups-edit {
+  gap: 6px;
+  border-color: var(--border);
+  background: var(--background);
+  color: var(--foreground);
+}
+.backups-rule-body {
+  min-width: 0;
+  margin: 0;
+  padding: 2px 14px 14px;
+  border: 0;
+}
+
+/* How a rule's day is made: a card each, its day drawn on a line. */
+.backups-patterns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.backups-pattern {
+  --glyph-ink: color-mix(in srgb, var(--muted-foreground) 82%, var(--card));
+  --glyph-track: color-mix(in srgb, var(--muted-foreground) 22%, var(--card));
+  --glyph-band: color-mix(in srgb, var(--muted-foreground) 18%, var(--card));
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 8px 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--card);
+  color: var(--foreground);
+  font-size: 13.5px;
+  font-weight: 500;
+  text-align: left;
+}
+.backups-pattern:hover {
+  border-color: var(--input);
+}
+.backups-pattern > span:not(.backups-check) {
+  padding: 0 6px;
+  white-space: nowrap;
+}
+.backups-pattern[aria-checked='true'] {
+  --glyph-ink: var(--primary);
+  --glyph-track: color-mix(in srgb, var(--primary) 22%, var(--card));
+  --glyph-band: color-mix(in srgb, var(--primary) 18%, var(--card));
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 15%, transparent);
+  color: var(--primary);
+  font-weight: 600;
+}
+.backups-glyph {
+  display: block;
+  width: 100%;
+  height: 36px;
+  padding: 6px 12px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--muted) 62%, var(--card));
+}
+.backups-glyph-track {
+  fill: var(--glyph-track);
+}
+.backups-glyph-band {
+  fill: var(--glyph-band);
+}
+.backups-glyph-ink {
+  fill: var(--glyph-ink);
+}
+.backups-check {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 0 0 3px var(--card);
+  color: var(--primary-foreground);
+}
+
+/* A rule's fields, a label beside each. */
+.backups-fields {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px 12px;
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.backups-label {
+  font-size: 13px;
+  font-weight: 500;
+}
+.backups-top {
+  align-self: start;
+  padding-top: 6px;
+}
+.backups-segments {
+  display: inline-flex;
+  justify-self: start;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  overflow: hidden;
+}
+.backups-segments button {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 500;
+}
+.backups-segments button + button {
+  border-left: 1px solid var(--border);
+}
+.backups-segments button[aria-checked='true'] {
+  background: var(--selection);
+  color: var(--primary);
+  font-weight: 600;
+}
+.backups-dates {
+  display: grid;
+  grid-template-columns: repeat(7, 40px);
+  gap: 6px;
+}
+.backups-dates button {
+  min-height: 34px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.backups-dates button[aria-pressed='true'] {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--card));
+  background: var(--selection);
+  color: var(--primary);
+  font-weight: 600;
+}
+.backups-dates .backups-last {
+  grid-column: span 3;
+}
+.backups-dates[aria-invalid='true'] button {
+  border-color: color-mix(in srgb, var(--destructive) 45%, var(--border));
+}
+.backups-times,
+.backups-sentence {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.backups-sentence {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.backups-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.backups-fields input[type='time'] {
+  width: 132px;
+  min-height: 36px;
+  background: var(--card);
+  font-variant-numeric: tabular-nums;
+}
+.backups-fields input[aria-invalid='true'] {
+  border-color: var(--destructive);
+}
+.backups-fields select {
+  min-height: 36px;
+  background-color: var(--card);
+  color: var(--foreground);
+}
+.backups-keep {
+  display: grid;
+  gap: 8px;
+}
+.backups-keep-option {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.backups-keep input[type='number'] {
+  width: 76px;
+  min-height: 36px;
+  background: var(--card);
+  font-variant-numeric: tabular-nums;
+}
+.backups-keep-text {
+  min-width: 24px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+.backups-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  padding-top: 6px;
+}
+.backups-items label {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+/* The coming weeks: a calendar from today, a dot for each rule that runs a day; and the next
+   backups. */
+.backups-preview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  gap: 28px;
+  margin-top: 16px;
+  padding: 16px 24px 18px;
+  border-top: 1px solid var(--border);
+}
+.backups-preview.is-off {
+  opacity: 0.55;
+}
+.backups-preview h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.backups-calendar {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+  max-width: 560px;
+}
+.backups-calendar b {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+}
+.backups-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 5px 2px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--muted) 55%, var(--card));
+}
+.backups-day small {
+  color: var(--muted-foreground);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.backups-day.is-today {
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+.backups-day.is-today small {
+  color: var(--primary);
+  font-weight: 600;
+}
+.backups-dots {
+  display: flex;
+  gap: 3px;
+}
+.backups-dots i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--rule);
+}
+.backups-runs {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.backups-runs li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.backups-runs li span:last-child {
+  color: var(--muted-foreground);
+}
+.backups-runs li:first-child {
+  font-weight: 600;
+}
+
+.backups-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 24px;
+  border-top: 1px solid var(--border);
+}
+.backups-actions .error {
+  margin-right: auto;
+}
+
+/* Its backups, newest first. */
+.backups-history {
+  padding: 16px 24px 20px;
+  border-top: 1px solid var(--border);
+}
+.backups-history ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.backups-history li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.backups-history li + li {
+  border-top: 1px solid var(--border);
+}
+.backups-when {
+  min-width: 140px;
+}
+.backups-size {
+  min-width: 64px;
+  color: var(--muted-foreground);
+}
+.backups-by {
+  flex: 1;
+  min-width: 0;
+}
+.backups-rule-tag {
+  background: color-mix(in srgb, var(--rule) 14%, var(--card));
+  color: color-mix(in srgb, var(--rule) 80%, var(--foreground));
+}
+.backups-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--control-height);
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+}
+.backups-download:hover {
+  background: var(--accent);
+}
+
+@media (max-width: 760px) {
+  .backups-head,
+  .backups-body,
+  .backups-preview,
+  .backups-history {
+    padding-inline: 16px;
+  }
+  .backups-preview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .backups-patterns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .backups-fields {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  .backups-top {
+    padding-top: 0;
+  }
+  .backups-dates {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+  /* A rule's words take their line; its tags and tools the next. */
+  .backups-rule-head {
+    flex-wrap: wrap;
+    row-gap: 6px;
+    padding-block: 10px;
+  }
+  .backups-rule-head strong {
+    flex: 1 1 calc(100% - 40px);
+  }
+  .backups-history li {
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    padding: 8px 0;
+  }
+  .backups-when {
+    min-width: 0;
+  }
+}

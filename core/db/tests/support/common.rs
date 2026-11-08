@@ -195,6 +195,7 @@ pub fn store() -> (tempfile::TempDir, Store) {
     config.environment = Environment::Preview;
     config.standalone = true;
     config.objects = None;
+    config.backups = None;
     let store = startup::prepare_storage(config).unwrap();
     (root, store)
 }

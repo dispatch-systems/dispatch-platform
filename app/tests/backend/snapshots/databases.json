@@ -28,7 +28,8 @@
       [22, "agent_tool_levels", "code"],
       [23, "ai_support", "6f9081123765772b"],
       [24, "feature_beta", "code"],
-      [25, "dsp_deletions", "3206680874336991"]
+      [25, "dsp_deletions", "3206680874336991"],
+      [26, "dsp_backups", "9f2912085a4f823e"]
     ],
     "owned": [
       ["slack", 1, "slack_teams", "35ab8bb0ffb56fd6"]

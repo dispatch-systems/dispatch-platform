@@ -528,6 +528,7 @@ impl Store {
         )?;
         if before.timezone != timezone {
             self.retime_schedules(id, timezone)?;
+            crate::backups::schedule::retime(&self.platform, id, timezone)?;
         }
         let mut given = serde_json::Map::new();
         if let Some(code) = station_code {

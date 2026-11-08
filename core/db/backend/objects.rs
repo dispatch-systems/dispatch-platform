@@ -177,6 +177,19 @@ impl Objects {
             .filter_map(|key| key.strip_prefix(&prefix).map(String::from))
             .collect())
     }
+    /// Every bytes the DSP keeps, of every owner: each owner's name with their SHA-256.
+    pub async fn kept(&self, dsp: &str) -> Result<Vec<(String, String)>> {
+        let prefix = of_dsp(dsp)?;
+        Ok(self
+            .keys(&prefix)
+            .await?
+            .into_iter()
+            .filter_map(|key| {
+                let (owner, sha256) = key.strip_prefix(&prefix)?.split_once('/')?;
+                Some((owner.to_owned(), sha256.to_owned()))
+            })
+            .collect())
+    }
     /// Lets go of everything the DSP keeps, of every owner, and nothing of another DSP's.
     pub async fn delete_dsp(&self, dsp: &str) -> Result<()> {
         for key in self.keys(&of_dsp(dsp)?).await? {

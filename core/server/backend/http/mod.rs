@@ -33,7 +33,7 @@ use std::{
 /// `app/tests/backend/integration/http_routes.rs` holds the expected list.
 pub fn table() -> Vec<Route> {
     use crate::{
-        accounts, collection, manifest, platform_owner, server, settings, support, tenancy,
+        accounts, backups, collection, manifest, platform_owner, server, settings, support, tenancy,
     };
     // Each core part's, as it lists them, then the agents' piece's and each feature's.
     let core = [
@@ -42,6 +42,7 @@ pub fn table() -> Vec<Route> {
         tenancy::api::routes(),
         manifest::api::routes(),
         platform_owner::api::routes(),
+        backups::api::routes(),
         collection::api::routes(),
         settings::api::routes(),
         support::api::routes(),

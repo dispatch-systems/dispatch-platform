@@ -110,6 +110,10 @@ pub async fn run() -> Result<()> {
                 dispatch_core::collection::readers::start(state.clone(), receiver.clone()),
                 stop.clone(),
             ));
+            let backups = tokio::spawn(dispatch_core::supervise(
+                dispatch_core::backups::keeper(state.clone(), receiver.clone()),
+                stop.clone(),
+            ));
             let mail_state = state.clone();
             let mail = tokio::spawn(dispatch_core::supervise(
                 async move {
@@ -144,9 +148,11 @@ pub async fn run() -> Result<()> {
             let jobs = jobs.await.map_err(|_| Error::new("scheduler_failed", 500));
             let readers = readers.await.map_err(|_| Error::new("readers_failed", 500));
             let mail = mail.await.map_err(|_| Error::new("mailer_failed", 500));
+            let backups = backups.await.map_err(|_| Error::new("backups_failed", 500));
             jobs??;
             readers??;
             mail??;
+            backups??;
             result?;
         }
         "bootstrap" => {

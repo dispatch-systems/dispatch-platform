@@ -41,6 +41,8 @@ pub struct Config {
     /// The bucket the DSPs' pictures are kept in (`db::objects`): none keeps them on this
     /// server's disk alone.
     pub objects: Option<ObjectStore>,
+    /// Where the DSPs' backups are kept, and the key that seals them: none takes none.
+    pub backups: Option<BackupStore>,
 }
 /// A bucket of Cloudflare R2, spoken to as S3 is, and the key that may use it. Its secret is
 /// never shown: it has no `Debug`.
@@ -152,6 +154,10 @@ impl Config {
             smtp_url: mail_variable("SMTP_URL"),
             mail_from: mail_variable("MAIL_FROM"),
             objects: object_store(|suffix| {
+                let name = format!("{mail_prefix}_{suffix}");
+                (name.clone(), mail_variable(suffix))
+            })?,
+            backups: backup_store(|suffix| {
                 let name = format!("{mail_prefix}_{suffix}");
                 (name.clone(), mail_variable(suffix))
             })?,
@@ -481,41 +487,15 @@ text_enum! {
 fn object_store(
     variable: impl Fn(&str) -> (String, Option<String>),
 ) -> Result<Option<ObjectStore>> {
-    let read = [
-        "R2_ACCOUNT_ID",
-        "R2_BUCKET",
-        "R2_ACCESS_KEY_ID",
-        "R2_SECRET_ACCESS_KEY",
-    ]
-    .map(&variable);
     let (_, only) = variable("R2_ONLY");
-    let missing: Vec<&str> = read
-        .iter()
-        .filter(|(_, value)| value.is_none())
-        .map(|(name, _)| name.as_str())
-        .collect();
-    if missing.len() == read.len() && only.is_none() {
+    let Some([account, bucket, access_key_id, secret_access_key]) =
+        bucket_of("R2", only.is_some(), &variable)?
+    else {
         return Ok(None);
-    }
-    if !missing.is_empty() {
-        crate::foundation::observability::event(
-            "error",
-            "object_store_incomplete",
-            serde_json::json!({ "missing": missing }),
-        );
-        return Err(crate::Error::new("object_store_incomplete", 400));
-    }
-    let [account, bucket, access_key_id, secret_access_key] =
-        read.map(|(_, value)| value.unwrap_or_default());
-    let named = |value: &str, more: &[u8]| {
-        !value.is_empty()
-            && value
-                .bytes()
-                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || more.contains(&b))
     };
     let only = only.as_deref().map(str::trim);
     ensure(
-        named(&account, b"") && named(&bucket, b"-") && matches!(only, None | Some("0" | "1")),
+        matches!(only, None | Some("0" | "1")),
         "invalid_object_store",
         400,
     )?;
@@ -526,6 +506,102 @@ fn object_store(
         secret_access_key,
         only: only == Some("1"),
     }))
+}
+
+/// Where the DSPs' backups are kept (`backups`), and the key they're sealed with: a bucket of its
+/// own, with a key of its own, so nothing that reaches the pictures reaches them.
+#[derive(Clone)]
+pub struct BackupStore {
+    pub objects: ObjectStore,
+    /// The 32 bytes every backup is sealed with, which its owner keeps off this server too: a
+    /// backup is read back with it alone.
+    pub key: [u8; 32],
+}
+
+/// The backups' bucket, as `BACKUPS_R2_ACCOUNT_ID`, `BACKUPS_R2_BUCKET`,
+/// `BACKUPS_R2_ACCESS_KEY_ID` and `BACKUPS_R2_SECRET_ACCESS_KEY` name it, and the key they're
+/// sealed with, `BACKUPS_KEY`, 64 hexadecimal digits: none with none of them set, refused as
+/// `object_store_incomplete` with only some, as `invalid_backup_key` with a key of another shape.
+fn backup_store(
+    variable: impl Fn(&str) -> (String, Option<String>),
+) -> Result<Option<BackupStore>> {
+    let (key_name, key) = variable("BACKUPS_KEY");
+    let Some([account, bucket, access_key_id, secret_access_key]) =
+        bucket_of("BACKUPS_R2", key.is_some(), &variable)?
+    else {
+        return Ok(None);
+    };
+    let Some(key) = key else {
+        crate::foundation::observability::event(
+            "error",
+            "object_store_incomplete",
+            serde_json::json!({ "missing": [key_name] }),
+        );
+        return Err(crate::Error::new("object_store_incomplete", 400));
+    };
+    let key = key.trim();
+    let bytes: Option<Vec<u8>> = (key.len() == 64)
+        .then(|| {
+            (0..32)
+                .map(|at| u8::from_str_radix(key.get(at * 2..at * 2 + 2)?, 16).ok())
+                .collect()
+        })
+        .flatten();
+    let key: [u8; 32] = bytes
+        .and_then(|bytes| bytes.try_into().ok())
+        .ok_or_else(|| crate::Error::new("invalid_backup_key", 400))?;
+    Ok(Some(BackupStore {
+        objects: ObjectStore {
+            endpoint: format!("https://{account}.r2.cloudflarestorage.com"),
+            bucket,
+            access_key_id,
+            secret_access_key,
+            only: false,
+        },
+        key,
+    }))
+}
+
+/// The account, bucket, key ID and secret `prefix`'s `_ACCOUNT_ID`, `_BUCKET`, `_ACCESS_KEY_ID`
+/// and `_SECRET_ACCESS_KEY` name: none with none of them set and nothing else of the store's
+/// (`more`), and refused with only some, or an account or bucket named otherwise than R2 names
+/// them.
+fn bucket_of(
+    prefix: &str,
+    more: bool,
+    variable: &impl Fn(&str) -> (String, Option<String>),
+) -> Result<Option<[String; 4]>> {
+    let read = ["ACCOUNT_ID", "BUCKET", "ACCESS_KEY_ID", "SECRET_ACCESS_KEY"]
+        .map(|suffix| variable(&format!("{prefix}_{suffix}")));
+    let missing: Vec<&str> = read
+        .iter()
+        .filter(|(_, value)| value.is_none())
+        .map(|(name, _)| name.as_str())
+        .collect();
+    if missing.len() == read.len() && !more {
+        return Ok(None);
+    }
+    if !missing.is_empty() {
+        crate::foundation::observability::event(
+            "error",
+            "object_store_incomplete",
+            serde_json::json!({ "missing": missing }),
+        );
+        return Err(crate::Error::new("object_store_incomplete", 400));
+    }
+    let values = read.map(|(_, value)| value.unwrap_or_default());
+    let named = |value: &str, more: &[u8]| {
+        !value.is_empty()
+            && value
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || more.contains(&b))
+    };
+    ensure(
+        named(&values[0], b"") && named(&values[1], b"-"),
+        "invalid_object_store",
+        400,
+    )?;
+    Ok(Some(values))
 }
 fn secure_smtp_url(endpoint: &url::Url, development: bool) -> bool {
     endpoint.host_str().is_some()
