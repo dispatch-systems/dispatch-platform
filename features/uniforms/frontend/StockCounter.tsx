@@ -8,8 +8,10 @@ import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import { randomId } from '../../../core/shell/frontend/lib/random-id.js';
 
 // A uniform's count in one fit and size, with − and + for those who may change it. Each press shows
-// at once, and presses save one after another in the order made, so the count never jumps back;
-// one that fails is taken back and the stock read again.
+// at once, and presses save one after another in the order made. While they do, the count is the
+// one they started from and what they add, so a live update of a press already counted isn't
+// counted again; once the last is done it's the live count again. One that fails is taken back
+// with the presses after it, which counted on it, and the stock is read again.
 export function StockCounter({
   variant,
   uniformName,
@@ -26,10 +28,12 @@ export function StockCounter({
   refresh: () => void;
 }) {
   const [pending, setPending] = useState(0);
-  // The presses not yet saved, over the count as last answered.
-  const [ahead, setAhead] = useState(0);
-  const quantity = variant.quantity + ahead;
+  const [pressed, setPressed] = useState<{ from: number; ahead: number }>();
+  const quantity = pressed ? pressed.from + pressed.ahead : variant.quantity;
   const queue = useRef(Promise.resolve());
+  const waiting = useRef(0);
+  // Which run of presses a press belongs to: a failure starts another, dropping those queued.
+  const run = useRef(0);
   const action = useAction(async (delta: 1 | -1) => {
     const requestId = randomId();
     const token = view;
@@ -61,13 +65,24 @@ export function StockCounter({
       throw cause;
     } finally {
       setPending((n) => n - 1);
-      setAhead((n) => n - delta);
     }
   });
   const press = (delta: 1 | -1) => {
-    setAhead((n) => n + delta);
+    waiting.current += 1;
+    const from = variant.quantity;
+    const of = run.current;
+    setPressed((before) => ({
+      from: before?.from ?? from,
+      ahead: (before?.ahead ?? 0) + delta,
+    }));
     queue.current = queue.current.then(async () => {
-      await action.run(delta);
+      const saved = run.current === of && (await action.run(delta));
+      if (!saved && run.current === of) run.current += 1;
+      waiting.current -= 1;
+      const last = !waiting.current;
+      setPressed((before) =>
+        last || !before ? undefined : { ...before, ahead: before.ahead - (saved ? 0 : delta) },
+      );
     });
   };
   const label = `${uniformName}, ${uniformFitLabels[variant.fit]}, ${variant.size}`;

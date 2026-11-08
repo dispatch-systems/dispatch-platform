@@ -122,6 +122,26 @@ test('custom fits, sizes, categories and names update other users without overwr
   await page.unroute(counting);
   await expect(page.locator('.uniform-counter[aria-busy="true"]')).toHaveCount(0);
   await expect(count).toHaveText('1');
+  // One refused takes back the presses after it, which counted on it, never sending them.
+  let refuse = () => {};
+  const refusing = new Promise<void>((resolve) => (refuse = resolve));
+  let sent = 0;
+  await page.route(counting, async (route) => {
+    sent += 1;
+    await refusing;
+    await route.fulfill({ status: 409, json: { error: 'refused', message: 'Not now' } });
+  });
+  await page
+    .getByRole('button', { name: 'Remove one Rain gear, Unisex, XS/S', exact: true })
+    .click();
+  await add.click();
+  await expect(count).toHaveText('1');
+  refuse();
+  await expect(page.getByText('Not now')).toBeVisible();
+  await expect(page.locator('.uniform-counter[aria-busy="true"]')).toHaveCount(0);
+  await expect(count).toHaveText('1');
+  expect(sent).toBe(1);
+  await page.unroute(counting);
   const context = await browser.newContext({ baseURL: dispatch.env.DISPATCH_ORIGIN });
   try {
     const other = await context.newPage();
