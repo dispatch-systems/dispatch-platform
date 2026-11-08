@@ -125,7 +125,9 @@ export function DspTable({
           ))}
         </ul>
       ) : (
-        <DataTable table={table} label="DSPs" />
+        <div className="table-wrap">
+          <DataTable table={table} label="DSPs" />
+        </div>
       )}
     </section>
   );

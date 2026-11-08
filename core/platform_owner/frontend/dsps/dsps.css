@@ -169,12 +169,9 @@ button.dsp-name:hover strong {
   gap: 8px;
   min-width: 0;
 }
-.dsp-switcher {
-  position: relative;
-}
 .dsp-switcher-panel {
   position: absolute;
-  top: calc(100% + 6px);
+  top: calc(100% - 16px);
   left: 0;
   z-index: 30;
   width: min(340px, calc(100vw - 32px));
@@ -187,7 +184,9 @@ button.dsp-name:hover strong {
   background: var(--popover);
   box-shadow: 0 10px 30px #0004;
 }
+/* The switcher's panel hangs from the head's left edge, so a long name can't push it off screen. */
 .dsp-detail-head {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 14px;
