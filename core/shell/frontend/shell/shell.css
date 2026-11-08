@@ -337,6 +337,7 @@
 .dsp-view-panel .view-role-menu summary {
   justify-content: space-between;
   max-width: none;
+  min-height: var(--control-height);
 }
 .dsp-view-panel > div > button {
   flex-shrink: 0;
