@@ -28,7 +28,7 @@ import kotlinx.coroutines.launch
  * with their pictures, read into a queue kept on the phone and reported from it; and sending the
  * DSP's from the phone, telling it how each went.
  */
-class Texts(private val context: Context, dispatch: Dispatch, private val lapses: Lapses) {
+class Texts(private val context: Context, dispatch: Dispatch, gifs: Gifs, private val lapses: Lapses) {
     /** The running screen's switch: whether a text near Android's SMS limit goes as a picture message. */
     val mmsWhenBusy = MmsWhenBusy(context)
 
@@ -49,6 +49,7 @@ class Texts(private val context: Context, dispatch: Dispatch, private val lapses
         own,
         radio,
         PictureMessage(PhonePictures),
+        gifs,
         statuses,
         File(context.cacheDir, SENDING),
         mmsWhenBusy.on::value,

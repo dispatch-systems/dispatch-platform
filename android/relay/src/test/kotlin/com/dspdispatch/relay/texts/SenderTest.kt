@@ -3,8 +3,10 @@ package com.dspdispatch.relay.texts
 import com.dspdispatch.relay.dispatch.Direction
 import com.dspdispatch.relay.dispatch.AppVersion
 import com.dspdispatch.relay.dispatch.Dispatch
+import com.dspdispatch.relay.dispatch.GifVersion
 import com.dspdispatch.relay.dispatch.Outbox
 import com.dspdispatch.relay.dispatch.OutgoingFile
+import com.dspdispatch.relay.dispatch.OutgoingGif
 import com.dspdispatch.relay.dispatch.OutgoingText
 import com.dspdispatch.relay.dispatch.SendStatus
 import com.dspdispatch.relay.pairing.Paired
@@ -49,6 +51,7 @@ class SenderTest {
         own,
         radio,
         PictureMessage(pictures),
+        Gifs(OkHttpClient()) { it.host == server.hostName },
         statuses,
         folder,
         { mmsWhenBusy },
@@ -108,6 +111,35 @@ class SenderTest {
         // Only the message waits for Android: the picture's bytes are gone.
         assertEquals(listOf("text_1-1.pdu"), folder.list()!!.toList())
         sender().heard(Heard("text_1", 1, 0, Event.SENT, null, "mms-7", clock))
+        assertTrue(folder.list()!!.isEmpty())
+    }
+
+    @Test
+    fun sendsAGifFromKlipyWholeAtTheLargestSizeTheCarrierTakes() = runTest {
+        radio.mmsLimits = MmsLimits(300 * 1024, Size(640, 480))
+        val gif = ByteArray(200_000) { 7 }
+        server.enqueue(MockResponse.Builder().code(200).body(Buffer().write(gif)).build())
+        sender().send(paired, KEY, Outbox(listOf(gifText(version("hd", 800, 600, 2_000_000), version("md", 498, 280, 900_000), version("sm", 220, 124, 200_000)))))
+
+        // The largest within the carrier's message and picture size, from KLIPY, not Dispatch.
+        assertEquals("/ii/sm.gif", server.takeRequest().url.encodedPath)
+        val (send, pdu) = radio.pictureMessages.single()
+        assertEquals("text_1", send.id)
+        assertTrue("the GIF, whole", pdu.contains(gif))
+        assertTrue(pdu.contains("image/gif".toByteArray()) && pdu.contains("Nice work".toByteArray()))
+        assertTrue("never a JPEG of it", pictures.asked.isEmpty())
+        assertEquals(listOf("text_1-1.pdu"), folder.list()!!.toList())
+    }
+
+    @Test
+    fun failsAGifTooLargeForTheCarrierOrGoneFromKlipy() = runTest {
+        radio.mmsLimits = MmsLimits(100_000, Size(640, 480))
+        sender().send(paired, KEY, Outbox(listOf(gifText(version("md", 498, 280, 900_000)))))
+        assertEquals(0, server.requestCount)
+        server.enqueue(MockResponse.Builder().code(404).build())
+        sender().send(paired, KEY, Outbox(listOf(gifText(version("xs", 90, 50, 60_000)).copy(id = "text_2"))))
+        assertEquals(setOf(Failure.TOO_LARGE, Failure.FILE_GONE), sends.statuses(10).map { it.error }.toSet())
+        assertTrue(radio.pictureMessages.isEmpty())
         assertTrue(folder.list()!!.isEmpty())
     }
 
@@ -466,6 +498,12 @@ class SenderTest {
 
     private fun text(id: String, attempt: Long, body: String, vararg files: OutgoingFile) =
         OutgoingText(id, "+14255550199", body, attempt, files.toList())
+
+    private fun gifText(vararg versions: GifVersion) =
+        OutgoingText("text_1", "+14255550199", "Nice work", 1, gif = OutgoingGif("wave.gif", versions.toList()))
+
+    private fun version(size: String, width: Int, height: Int, bytes: Long) =
+        GifVersion(server.url("/ii/$size.gif").toString(), width, height, bytes)
 
     /** The app's row of a text it sent, as Android writes it, just after it was handed. */
     private fun sms(id: Long, body: String, creator: String? = APP) =
