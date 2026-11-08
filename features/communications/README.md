@@ -843,8 +843,8 @@ Behind `communications.use`:
   `POST …/quick-replies`, `{replies, revision}`: keeps them, each trimmed, as the revision they
   were read at, refused past 30, one empty or over 500 characters (`invalid_input`), or once
   another save passed it (409 `settings_changed_reload_before_saving`). A save that changed them
-  is in the audit log, under Settings, as `communications.quick_replies_saved`, with each reply it
-  added and removed.
+  is in the audit log, under Settings, as `communications.quick_replies_saved`, with how many
+  replies it added and removed, never what they say.
 - `GET …/waiting`: how many conversations wait, and since when each has, for the sidebar; the
   latest message from whom each is with (`latest`: the conversation, the group it's listed under,
   their name and the message), for alerts; and the DSP's phones an app holds, each online or not,

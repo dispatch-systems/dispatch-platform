@@ -39,8 +39,7 @@ fn kept(db: &Db) -> Result<QuickReplies> {
 
 /// Keeps `replies` as the DSP's, in their order, each trimmed, as the member `by`: refused past
 /// `MOST`, one empty or past `LONGEST`, or once another save passed `revision`. A save that changed
-/// the list is noted in the audit log with it: each reply added and removed, by its first hundred
-/// characters, or past ten of them, how many of each.
+/// the list is noted in the audit log with it, with how many replies it added and removed.
 pub fn save_quick_replies(
     db: &Store,
     dsp: &str,
@@ -74,22 +73,16 @@ pub fn save_quick_replies(
         };
         people.set(KEPT, &serde_json::to_value(&saved)?)?;
         if saved.replies != before.replies {
-            let removed = missing(&before.replies, &saved.replies);
-            let added = missing(&saved.replies, &before.replies);
-            let changes: Vec<AuditChange> = if removed.len() + added.len() <= LISTED {
-                let removed = removed
-                    .iter()
-                    .map(|reply| ("reply", Some(logged(reply)), None));
-                let added = added
-                    .iter()
-                    .map(|reply| ("reply", None, Some(logged(reply))));
-                removed.chain(added).collect()
-            } else {
-                vec![
-                    ("added", None, Some(added.len().to_string())),
-                    ("removed", None, Some(removed.len().to_string())),
-                ]
-            };
+            // How many were added and removed, never what they say: a reply holds whatever
+            // someone at the DSP wrote, which the platform's log has no need to keep.
+            let changes: Vec<AuditChange> = [
+                ("added", missing(&saved.replies, &before.replies)),
+                ("removed", missing(&before.replies, &saved.replies)),
+            ]
+            .into_iter()
+            .filter(|(_, count)| *count > 0)
+            .map(|(field, count)| (field, None, Some(count.to_string())))
+            .collect();
             db.audit_with(
                 Some(by),
                 Some(dsp),
@@ -103,30 +96,15 @@ pub fn save_quick_replies(
     })
 }
 
-/// How many replies added and removed a save's audit event lists at most: past them, it says how
-/// many of each, so no save's event grows past a few kilobytes.
-const LISTED: usize = 10;
-/// How long a reply reads in the audit log at most, in characters: its start, enough to tell it.
-const LOGGED: usize = 100;
-/// A reply as the audit log keeps it: its first `LOGGED` characters but control characters, and
-/// an ellipsis past them.
-fn logged(reply: &str) -> String {
-    let shown: String = reply.chars().filter(|c| !c.is_control()).collect();
-    match shown.char_indices().nth(LOGGED) {
-        Some((end, _)) => format!("{}…", &shown[..end]),
-        None => shown,
-    }
-}
-
-/// Each of `replies` that `others` hasn't, once, in their order.
-fn missing(replies: &[String], others: &[String]) -> Vec<String> {
-    let mut missing: Vec<String> = Vec::new();
+/// How many of `replies` `others` hasn't, each counted once.
+fn missing(replies: &[String], others: &[String]) -> usize {
+    let mut missing: Vec<&String> = Vec::new();
     for reply in replies {
-        if !others.contains(reply) && !missing.contains(reply) {
-            missing.push(reply.clone());
+        if !others.contains(reply) && !missing.contains(&reply) {
+            missing.push(reply);
         }
     }
-    missing
+    missing.len()
 }
 
 #[cfg(test)]

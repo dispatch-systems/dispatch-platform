@@ -1,6 +1,6 @@
 //! The DSP's quick replies: kept in their order, each trimmed; as many and as long as allowed and
 //! no more; a save over another's made since refused, as Settings refuses one; and each save
-//! that changed them in the audit log, with the replies it added and removed.
+//! that changed them in the audit log, with how many it added and removed.
 use super::*;
 use dispatch_core::testing;
 
@@ -46,10 +46,9 @@ fn quick_replies_keep_their_order_within_their_limits_on_the_revision_read() {
     }
     assert_eq!(quick_replies(&db, &dsp).unwrap().replies, most);
 
-    // The same list saved again changes nothing; each save that changed them is logged, with what
-    // it added and removed, each by its first hundred characters, and none refused is.
+    // The same list saved again changes nothing; each save that changed them is logged, with how
+    // many it added and removed, never what they say, and none refused is.
     save_quick_replies(&db, &dsp, &most, 2, "me").unwrap();
-    // Past ten replies added and removed, it says how many of each.
     let twelve: Vec<String> = (1..=12).map(|n| format!("Reply {n}")).collect();
     save_quick_replies(&db, &dsp, &twelve, 3, "me").unwrap();
     let events = testing::audits(&db, None).unwrap();
@@ -61,23 +60,13 @@ fn quick_replies_keep_their_order_within_their_limits_on_the_revision_read() {
         .filter(|event| event["action"] == "communications.quick_replies_saved")
         .map(|event| event["changes"].clone())
         .collect();
-    let change = |from: Option<&str>, to: Option<&str>| serde_json::json!({"field": "reply", "from": from, "to": to});
+    let count = |field: &str, n: &str| serde_json::json!({"field": field, "from": null, "to": n});
     assert_eq!(
         changes,
         [
-            serde_json::json!([
-                change(None, Some("On my way")),
-                change(None, Some("Call dispatch when you can")),
-            ]),
-            serde_json::json!([
-                change(Some("On my way"), None),
-                change(Some("Call dispatch when you can"), None),
-                change(None, Some(&format!("{}…", "a".repeat(100)))),
-            ]),
-            serde_json::json!([
-                {"field": "added", "from": null, "to": "12"},
-                {"field": "removed", "from": null, "to": "1"},
-            ]),
+            serde_json::json!([count("added", "2")]),
+            serde_json::json!([count("added", "1"), count("removed", "2")]),
+            serde_json::json!([count("added", "12"), count("removed", "1")]),
         ]
     );
 }
