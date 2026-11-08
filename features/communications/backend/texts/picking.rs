@@ -6,13 +6,13 @@ use super::{
     filing,
     live_day::LiveDay,
     model::Filed,
-    numbers::ten_digits,
+    numbers::{shown, ten_digits, work_number},
     reading,
     storage::{PickStore, TextStore},
 };
 use crate::{
     api::types::Conversation,
-    backend::{live, model::ConversationKind},
+    backend::{live, logged::together, model::ConversationKind},
 };
 use dispatch_core::{Error, Result, State, db::Store, ensure};
 
@@ -47,11 +47,23 @@ pub fn pick(
         source: live.source,
         id: driver.to_owned(),
     };
-    db.pick_communications_driver(dsp, &phone, &live.day, &picked, by, at)?;
-    filing::refiled(db, dsp)?;
-    let theirs = db.open_communications_text(dsp, &picked)?;
+    let theirs = together(db, dsp, || {
+        db.pick_communications_driver(dsp, &phone, &live.day, &picked, by, at)?;
+        filing::refiled(db, dsp)?;
+        let theirs = db.open_communications_text(dsp, &picked)?;
+        let theirs = reading::one(db, state, dsp, &theirs.id)?;
+        db.audit_with(
+            Some(by),
+            Some(dsp),
+            "communications.driver_picked",
+            &shown(&work_number(&phone)),
+            Some(&theirs.with.name),
+            &[],
+        )?;
+        Ok(theirs)
+    })?;
     live::changed(state, dsp);
-    reading::one(db, state, dsp, &theirs.id)
+    Ok(theirs)
 }
 
 #[cfg(test)]

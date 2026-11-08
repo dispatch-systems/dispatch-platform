@@ -30,6 +30,22 @@ async fn picked(
         .run(move |db| pick(db, &shared, &dsp, &id, &driver, "me", at))
         .await
 }
+/// Each pick the audit log keeps, oldest first: whom, and the work phone.
+async fn logged(state: &Arc<State>, dsp: &str) -> Vec<(String, String)> {
+    let events = state
+        .read(|db| dispatch_core::testing::audits(db, None))
+        .await
+        .unwrap();
+    let text = |event: &serde_json::Value, key: &str| event[key].as_str().unwrap().to_owned();
+    events
+        .as_array()
+        .unwrap()
+        .iter()
+        .rev()
+        .filter(|event| event["action"] == "communications.driver_picked" && event["dspId"] == dsp)
+        .map(|event| (text(event, "target"), text(event, "detail")))
+        .collect()
+}
 /// Where the answers queued so far went, oldest first.
 async fn went(state: &Arc<State>, dsp: &str) -> Vec<String> {
     sent(state, dsp)
@@ -87,6 +103,8 @@ async fn a_driver_picked_for_a_work_phone_nobody_has_keeps_its_texts_of_today_un
         .unwrap();
     assert_eq!(avery.driver_id.as_deref(), Some("A1"));
     assert_eq!(whose(&state, &dsp, &asked).await.as_deref(), Some("A1"));
+    let pick = (avery.with.name.clone(), "(206) 555-0103".to_owned());
+    assert_eq!(logged(&state, &dsp).await, std::slice::from_ref(&pick));
     let later = texted(&state, &dsp, "+12065550103", "Found it", now(13, 0)).await;
     assert_eq!(whose(&state, &dsp, &later).await.as_deref(), Some("A1"));
     let c = member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
@@ -117,6 +135,8 @@ async fn a_driver_picked_for_a_work_phone_nobody_has_keeps_its_texts_of_today_un
         .await
         .unwrap_err();
     assert_eq!(refused.code, "invalid_input");
+    // The picks refused are none of the log's.
+    assert_eq!(logged(&state, &dsp).await, [pick]);
 }
 
 #[tokio::test]

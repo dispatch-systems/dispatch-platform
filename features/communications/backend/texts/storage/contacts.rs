@@ -12,21 +12,28 @@ use std::collections::BTreeSet;
 pub trait ContactStore {
     /// Every contact the DSP saved: each number with its name.
     fn communications_contacts(&self, dsp: &str) -> Result<Vec<(String, String)>>;
-    /// Saves `name` for the number, as the member `by`.
+    /// Saves `name` for the number, as the member `by`: the name saved before, if the name
+    /// changed, which is none within for a number named for the first time.
     fn save_communications_contact(
         &self,
         dsp: &str,
         number: &str,
         name: &str,
         by: &str,
-    ) -> Result<()>;
+    ) -> Result<Option<Option<String>>>;
     /// Notes that the number's conversation changed as who it's with did, as the number being
     /// added to a person or taken off them, for the pages waiting on changes.
     fn communications_number_changed(&self, dsp: &str, number: &str) -> Result<()>;
     /// Every number blocked.
     fn communications_blocked(&self, dsp: &str) -> Result<BTreeSet<String>>;
-    /// Blocks the number, as the member `by`, or unblocks it.
-    fn block_communications_number(&self, dsp: &str, number: &str, by: Option<&str>) -> Result<()>;
+    /// Blocks the number, as the member `by`, or unblocks it: whether it was blocked or unblocked,
+    /// as it wasn't already.
+    fn block_communications_number(
+        &self,
+        dsp: &str,
+        number: &str,
+        by: Option<&str>,
+    ) -> Result<bool>;
 }
 
 impl ContactStore for Store {
@@ -42,16 +49,25 @@ impl ContactStore for Store {
         number: &str,
         name: &str,
         by: &str,
-    ) -> Result<()> {
+    ) -> Result<Option<Option<String>>> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
+            let before: Option<(String,)> = db.one_as(
+                "SELECT name FROM communications_contacts WHERE number=?",
+                [number],
+            )?;
+            let before = before.map(|(name,)| name);
+            if before.as_deref() == Some(name) {
+                return Ok(None);
+            }
             db.exec(
                 "INSERT INTO communications_contacts (number,name,saved_by,saved_at) \
                  VALUES (?,?,?,?) ON CONFLICT(number) DO UPDATE SET name=excluded.name,\
                  saved_by=excluded.saved_by,saved_at=excluded.saved_at",
                 params![number, name, by, now()],
             )?;
-            changed_number(&db, number)
+            changed_number(&db, number)?;
+            Ok(Some(before))
         })
     }
     fn communications_number_changed(&self, dsp: &str, number: &str) -> Result<()> {
@@ -64,10 +80,15 @@ impl ContactStore for Store {
             .query_as("SELECT number FROM communications_blocked", [])?;
         Ok(blocked.into_iter().map(|(number,)| number).collect())
     }
-    fn block_communications_number(&self, dsp: &str, number: &str, by: Option<&str>) -> Result<()> {
+    fn block_communications_number(
+        &self,
+        dsp: &str,
+        number: &str,
+        by: Option<&str>,
+    ) -> Result<bool> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
-            match by {
+            let changed = match by {
                 Some(by) => db.exec(
                     "INSERT OR IGNORE INTO communications_blocked (number,blocked_by,blocked_at) \
                      VALUES (?,?,?)",
@@ -78,7 +99,10 @@ impl ContactStore for Store {
                     [number],
                 )?,
             };
-            changed_number(&db, number)
+            if changed > 0 {
+                changed_number(&db, number)?;
+            }
+            Ok(changed > 0)
         })
     }
 }

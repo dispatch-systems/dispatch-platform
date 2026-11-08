@@ -37,5 +37,6 @@ pub(super) fn save_quick_replies(db: &Store, c: &Member, input: &Input) -> Resul
         c.dsp_id(),
         &replies,
         revision,
+        c.actor(),
     )?)
 }

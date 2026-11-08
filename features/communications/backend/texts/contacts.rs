@@ -10,13 +10,13 @@ use super::{
     filing,
     live_day::LiveDay,
     model::Filed,
-    numbers::Numbers,
+    numbers::{Numbers, shown},
     reading::{like, numbered, one},
     storage::{ContactStore, TextStore},
 };
 use crate::{
     api::types::{Conversation, TextContact, TextContacts, TextPeople},
-    backend::{live, people::People, phone::numbers::normal},
+    backend::{live, logged::together, people::People, phone::numbers::normal},
 };
 use dispatch_core::{
     Error, Result, State,
@@ -124,7 +124,8 @@ pub fn open_driver(db: &Store, state: &State, dsp: &str, driver: &str) -> Result
     one(db, state, dsp, &opened.id)
 }
 
-/// Saves `name` for the number of the conversation `id`, as the member `by`.
+/// Saves `name` for the number of the conversation `id`, as the member `by`, noted in the DSP's
+/// audit log with the name it had before, if it had one.
 pub fn save_contact(
     db: &Store,
     state: &State,
@@ -134,8 +135,23 @@ pub fn save_contact(
     by: &str,
 ) -> Result<Conversation> {
     let number = numbered(db, dsp, id)?;
-    db.save_communications_contact(dsp, &number, name, by)?;
-    live::changed(state, dsp);
+    let saved = together(db, dsp, || {
+        let Some(before) = db.save_communications_contact(dsp, &number, name, by)? else {
+            return Ok(false);
+        };
+        db.audit_with(
+            Some(by),
+            Some(dsp),
+            "communications.contact_saved",
+            "",
+            Some(&shown(&number)),
+            &[("name", before, Some(name.to_owned()))],
+        )?;
+        Ok(true)
+    })?;
+    if saved {
+        live::changed(state, dsp);
+    }
     one(db, state, dsp, id)
 }
 
@@ -174,18 +190,54 @@ pub fn add_to_person(
     one(db, state, dsp, id)
 }
 
-/// Blocks the number of the conversation `id`, as the member `by`, or unblocks it with none.
+/// Blocks the number of the conversation `id`, as the member `actor`, or unblocks it, with
+/// `blocked` false, noted in the DSP's audit log by whom it's with.
 pub fn block(
     db: &Store,
     state: &State,
     dsp: &str,
     id: &str,
-    by: Option<&str>,
+    actor: &str,
+    blocked: bool,
 ) -> Result<Conversation> {
     let number = numbered(db, dsp, id)?;
-    db.block_communications_number(dsp, &number, by)?;
-    live::changed(state, dsp);
+    let by = blocked.then_some(actor);
+    let changed = together(db, dsp, || {
+        let changed = db.block_communications_number(dsp, &number, by)?;
+        if changed {
+            let action = if blocked {
+                "communications.number_blocked"
+            } else {
+                "communications.number_unblocked"
+            };
+            // By the number, as its name's saves are, so the log gathers each of its own.
+            let named = logged(&one(db, state, dsp, id)?.with.name, &number);
+            db.audit_with(
+                Some(actor),
+                Some(dsp),
+                action,
+                &named,
+                Some(&shown(&number)),
+                &[],
+            )?;
+        }
+        Ok(changed)
+    })?;
+    if changed {
+        live::changed(state, dsp);
+    }
     one(db, state, dsp, id)
+}
+
+/// How a number reads in the audit log: by the name it's shown by, with the number, or the number
+/// alone.
+fn logged(name: &str, number: &str) -> String {
+    let shown = shown(number);
+    if name == shown || name == number {
+        shown
+    } else {
+        format!("{name}, {shown}")
+    }
 }
 
 #[cfg(test)]

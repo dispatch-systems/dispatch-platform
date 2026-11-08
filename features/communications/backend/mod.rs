@@ -17,6 +17,7 @@ pub(crate) mod groups;
 pub(crate) mod inbox;
 pub(crate) mod initials;
 pub(crate) mod live;
+pub(crate) mod logged;
 pub(crate) mod model;
 pub(crate) mod people;
 pub(crate) mod phone;
