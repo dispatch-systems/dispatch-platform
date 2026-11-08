@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
 import { wordedApi } from '../../../core/shell/frontend/runtime/api.js';
 import { useData } from '../../../core/shell/frontend/runtime/data-reads.js';
 import type { Linking } from '../frontend/linked/linking.js';
@@ -61,8 +61,6 @@ export const call = wordedApi(wording);
 
 /** The DSP's workspaces and install link, as those who manage its connections see them. */
 export const slackAccountUrl = '/api/dsp/slack/account';
-// A reader stays the same function from one render to the next: a new one reads again.
-const readAccount = (signal: AbortSignal) => call<SlackAccount>(slackAccountUrl, undefined, signal);
 /** How each reading of the account reads it again, when another changed it. */
 const readers = new Set<() => void>();
 // Integrations switched here, by workspace and integration: the latest asked, how many of its
@@ -79,6 +77,16 @@ const asks = new Map<string, Map<string, Asked>>();
 const watchers = new Set<() => void>();
 let changes = 0;
 let answers = 0;
+// How many answers to switches had come when each reading of the account was asked for: those
+// after it may not be in it.
+const askedAt = new WeakMap<SlackAccount, number>();
+// A reader stays the same function from one render to the next: a new one reads again.
+const readAccount = async (signal: AbortSignal) => {
+  const at = answers;
+  const account = await call<SlackAccount>(slackAccountUrl, undefined, signal);
+  askedAt.set(account, at);
+  return account;
+};
 const asksChanged = () => {
   changes += 1;
   for (const watch of watchers) watch();
@@ -109,10 +117,8 @@ export function useSlackAccount() {
     return () => void readers.delete(refresh);
   }, [refresh]);
   const version = useSyncExternalStore(watchAsks, () => changes);
-  // How many answers had come when this reading was taken: those after it still show over it.
-  const reading = useRef({ read, at: answers });
-  if (reading.current.read !== read) reading.current = { read, at: answers };
-  const readAt = reading.current.at;
+  // How many answers had come when this reading was asked for: those after it still show over it.
+  const readAt = (read && askedAt.get(read)) ?? 0;
   const data = useMemo(
     () =>
       read && {
