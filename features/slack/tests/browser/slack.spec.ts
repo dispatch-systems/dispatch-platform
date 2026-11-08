@@ -75,12 +75,20 @@ test('an owner adds Slack workspaces from New, each on a card under its name, us
   await left;
   await page.unroute(channels);
   await expect(notJoined).toContainText('photos');
-  // Two Slack refuses leave it as Slack last had it.
-  await page.route(channels, (route) =>
-    route.fulfill({ status: 502, json: { error: 'slack_unavailable', message: 'Slack is down' } }),
-  );
+  // Both refused, it shows as Slack last had it, not as the first asked.
+  let refuse = () => {};
+  const refusing = new Promise<void>((resolve) => (refuse = resolve));
+  await page.route(channels, async (route) => {
+    await refusing;
+    await route.fulfill({
+      status: 502,
+      json: { error: 'refused', message: 'Slack is down' },
+    });
+  });
   await page.getByRole('button', { name: 'Join photos' }).click();
   await page.getByRole('button', { name: 'Leave photos' }).click();
+  await expect(notJoined).toContainText('photos');
+  refuse();
   await expect(page.getByText('Slack is down')).toBeVisible();
   await expect(notJoined).toContainText('photos');
   await page.unroute(channels);
