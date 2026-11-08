@@ -150,23 +150,25 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
     .filter(([, members]) => members.length);
   const explicit = items.find((item) => item.id === chosen);
   const selected = explicit ?? listed[0]?.[1][0];
-  // An address followed, by Back or a link, opens the feature it names; one naming none, as
-  // choosing another DSP does, keeps the one chosen.
+  // The address names the chosen one, written only as the address or the choice changes, so a
+  // Back straight after never finds it rewritten. An address followed, by Back or a link, opens
+  // the feature it names; one naming none, as opening another DSP does, keeps the one chosen.
+  const chosenNow = useRef(chosen);
+  chosenNow.current = chosen;
   useEffect(() => {
     const followed = () => {
+      if (parseHash(location.hash).page !== 'dsps') return;
       const feature = hashQuery().get('feature');
-      if (feature && parseHash(location.hash).page === 'dsps') setChosen(feature);
+      if (feature) setChosen(feature);
+      else if (hashQuery().has('dsp')) nameInAddress(chosenNow.current);
     };
     addEventListener('hashchange', followed);
     return () => removeEventListener('hashchange', followed);
   }, []);
-  // Choosing one names it in the address at once, so Back straight after finds it there; and
-  // choosing another DSP, which rewrites the address, names it again.
   const choose = (id: string) => {
     setChosen(id);
     nameInAddress(id);
   };
-  useEffect(() => nameInAddress(chosen), [chosen, dsp.id]);
   const done = () => {
     refresh();
     changed();
