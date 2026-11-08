@@ -337,4 +337,41 @@ fn latest_messages_stay_bounded_as_history_grows_and_keep_the_latest_incoming() 
             .unwrap()
             .is_empty()
     );
+
+    // A long suffix of rejected messages must not make the incoming-only read scan history:
+    // outgoing broadcasts and blocked incoming texts can both follow an unanswered message.
+    db.exec(
+        "WITH RECURSIVE suffix(n) AS (VALUES(5001) UNION ALL SELECT n+1 FROM suffix WHERE n<10000) \
+         INSERT INTO phones_texts(id,device_id,client_id,direction,origin,number,body,at,change,conversation_id,blocked) \
+         SELECT 'suffix-'||n,?1,'suffix-'||n,CASE WHEN n%2=0 THEN 'in' ELSE 'out' END,\
+         'phone','+12065550101','Rejected',n,n,?2,1 FROM suffix",
+        rusqlite::params![phone.id, texts[0]],
+    ).unwrap();
+    db.exec(
+        "WITH RECURSIVE suffix(n) AS (VALUES(5001) UNION ALL SELECT n+1 FROM suffix WHERE n<10000) \
+         INSERT INTO communications_messages(id,conversation_id,ts,direction,text,at) \
+         SELECT 'slack-suffix-'||n,?1,printf('%013d.000001',n),'out','Broadcast',n FROM suffix",
+        [&slack[0]],
+    )
+    .unwrap();
+    let budget = ReadBudget::new(&db.0);
+    let incoming = store.latest_communications_texts_in(&dsp, &texts).unwrap();
+    drop(budget);
+    assert_eq!(
+        incoming
+            .iter()
+            .map(|text| text.id.as_str())
+            .collect::<Vec<_>>(),
+        ["z-in"]
+    );
+    let budget = ReadBudget::new(&db.0);
+    let incoming = store.latest_communications_written(&dsp, &slack).unwrap();
+    drop(budget);
+    assert_eq!(
+        incoming
+            .iter()
+            .map(|message| message.id.as_str())
+            .collect::<Vec<_>>(),
+        ["slack-in"]
+    );
 }
