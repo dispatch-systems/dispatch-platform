@@ -64,7 +64,9 @@ pub(super) fn uniform(db: &Db, id: &str) -> Result<Uniform> {
         .one_as::<Uniform>("SELECT * FROM uniforms WHERE id=? AND archived=0", [id])?
         .ok_or_else(|| Error::new("uniform_not_found", 404))?;
     item.variants = db.query_as(
-        "SELECT * FROM uniform_variants WHERE uniform_id=? AND archived=0 ORDER BY position,id",
+        "SELECT v.*,e.request_id FROM uniform_variants v \
+         LEFT JOIN uniform_events e ON e.revision=v.revision AND e.variant_id=v.id \
+         WHERE v.uniform_id=? AND v.archived=0 ORDER BY v.position,v.id",
         [id],
     )?;
     Ok(item)
@@ -81,7 +83,9 @@ fn inventory(db: &Db) -> Result<UniformInventory> {
         .collect();
     // One read for all variants, regardless of how many uniforms the DSP created.
     for row in db.query_as::<StoredVariant>(
-        "SELECT * FROM uniform_variants WHERE archived=0 ORDER BY position,id",
+        "SELECT v.*,e.request_id FROM uniform_variants v \
+         LEFT JOIN uniform_events e ON e.revision=v.revision AND e.variant_id=v.id \
+         WHERE v.archived=0 ORDER BY v.position,v.id",
         [],
     )? {
         if let Some(index) = indices.get(&row.uniform_id) {

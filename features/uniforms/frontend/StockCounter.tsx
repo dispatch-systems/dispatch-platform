@@ -35,9 +35,13 @@ export function StockCounter({
     const at = madeAt.get(press.requestId);
     return at !== undefined && at <= variant.revision;
   };
-  const quantity = presses.reduce(
-    (sum, press) => (counted(press) ? sum : sum + press.delta),
-    variant.quantity,
+  // Within what a count can be, though others' changes come while presses wait.
+  const quantity = Math.min(
+    1_000_000,
+    Math.max(
+      0,
+      presses.reduce((sum, press) => (counted(press) ? sum : sum + press.delta), variant.quantity),
+    ),
   );
   const queue = useRef(Promise.resolve());
   // Which run of presses a press belongs to: a failure starts another, dropping those queued.
@@ -91,7 +95,7 @@ export function StockCounter({
         <button
           type="button"
           aria-label={`Remove one ${label}`}
-          disabled={!live || quantity === 0}
+          disabled={!live || quantity <= 0}
           onClick={() => press(-1)}
         >
           <Minus size={14} />

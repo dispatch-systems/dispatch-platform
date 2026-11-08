@@ -228,4 +228,95 @@ test('disconnected and returning tabs retain known counts and block edits until 
   await page.unroute(counting);
   await expect(page.locator('.uniform-counter[aria-busy="true"]')).toHaveCount(0);
   await expect(counter).toHaveText('4');
+  // A press the server has saved, read back fresh before its answer and its live change come,
+  // counts once.
+  const away = () =>
+    page.evaluate(() => {
+      Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+  const back = () =>
+    page.evaluate(() => {
+      Reflect.deleteProperty(document, 'hidden');
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+  const status = page.locator('.uniform-live');
+  const following = (url: URL) =>
+    url.pathname === '/api/dsp/uniforms/updates' && url.searchParams.has('after');
+  let resume = () => {};
+  const stalled = new Promise<void>((resolve) => (resume = resolve));
+  await page.route(following, async (route) => {
+    await stalled;
+    await route.continue().catch(() => undefined);
+  });
+  await away();
+  await expect(status).toHaveText('Paused');
+  await back();
+  await expect(status).toHaveText('Live');
+  let deliver = () => {};
+  const delivering = new Promise<void>((resolve) => (deliver = resolve));
+  let reached = () => {};
+  const atServer = new Promise<void>((resolve) => (reached = resolve));
+  await page.route(counting, async (route) => {
+    const response = await route.fetch();
+    reached();
+    await delivering;
+    await route.fulfill({ response });
+  });
+  const add = page.getByRole('button', {
+    name: 'Add one Short Sleeve Polo, Men’s, XS',
+    exact: true,
+  });
+  await add.click();
+  await expect(counter).toHaveText('5');
+  await atServer;
+  await away();
+  await expect(status).toHaveText('Paused');
+  await back();
+  await expect(status).toHaveText('Live');
+  await expect(counter).toHaveText('5');
+  deliver();
+  resume();
+  await page.unroute(counting);
+  await page.unroute(following);
+  await expect(page.locator('.uniform-counter[aria-busy="true"]')).toHaveCount(0);
+  await expect(counter).toHaveText('5');
+  // Someone else taking the last one while a − waits leaves the count at 0, with − off.
+  for (let i = 0; i < 4; i++)
+    await owner.post(`/api/dsp/uniforms/stock/${variant.id}`, {
+      delta: -1,
+      requestId: crypto.randomUUID(),
+    });
+  await expect(counter).toHaveText('1');
+  let refuse = () => {};
+  const refusing = new Promise<void>((resolve) => (refuse = resolve));
+  await page.route(counting, async (route) => {
+    await refusing;
+    await route.continue();
+  });
+  const remove = page.getByRole('button', {
+    name: 'Remove one Short Sleeve Polo, Men’s, XS',
+    exact: true,
+  });
+  await remove.click();
+  await expect(counter).toHaveText('0');
+  await owner.post(`/api/dsp/uniforms/stock/${variant.id}`, {
+    delta: -1,
+    requestId: crypto.randomUUID(),
+  });
+  // Changes come in order, so once a later one shows, that one has come too.
+  const later = uniform.variants.find((v) => v.fit === 'men' && v.size === 'S')!;
+  await owner.post(`/api/dsp/uniforms/stock/${later.id}`, {
+    delta: 1,
+    requestId: crypto.randomUUID(),
+  });
+  await expect(page.getByLabel('Short Sleeve Polo, Men’s, S in stock', { exact: true })).toHaveText(
+    '1',
+  );
+  await expect(counter).toHaveText('0');
+  await expect(remove).toBeDisabled();
+  refuse();
+  await page.unroute(counting);
+  await expect(page.locator('.uniform-counter[aria-busy="true"]')).toHaveCount(0);
+  await expect(counter).toHaveText('0');
 });

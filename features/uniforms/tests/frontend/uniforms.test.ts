@@ -17,8 +17,8 @@ const inventory = (): UniformInventory => ({
       category: 'Tops',
       revision: 1,
       variants: [
-        { id: 'men-m', fit: 'men', size: 'M', quantity: 0, revision: 1 },
-        { id: 'women-s', fit: 'women', size: 'S', quantity: 0, revision: 1 },
+        { id: 'men-m', fit: 'men', size: 'M', quantity: 0, revision: 1, requestId: null },
+        { id: 'women-s', fit: 'women', size: 'S', quantity: 0, revision: 1, requestId: null },
       ],
     },
   ],
@@ -68,10 +68,19 @@ test('catalog snapshots keep newer acknowledgements and archived variants cannot
   );
 });
 
-test('a count change that comes back, live or as its answer, says which request made it', () => {
+test('a count change that comes back, live, as its answer or in a fresh read, says which request made it', () => {
   applyUniformAdjustments(inventory(), [
     { variantId: 'men-m', quantity: 1, revision: 2, requestId: 'press-0000000001' },
     { variantId: 'women-s', quantity: 1, revision: 3, requestId: null },
   ]);
   assert.equal(madeAt.get('press-0000000001'), 2);
+  const read = inventory();
+  read.uniforms[0]!.variants[0] = {
+    ...read.uniforms[0]!.variants[0]!,
+    quantity: 2,
+    revision: 5,
+    requestId: 'press-0000000002',
+  };
+  applyUniformSnapshot(undefined, { ...read, revision: 5 });
+  assert.equal(madeAt.get('press-0000000002'), 5);
 });

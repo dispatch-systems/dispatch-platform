@@ -33,6 +33,9 @@ pub struct UniformVariant {
     pub quantity: u32,
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub revision: i64,
+    /// The request whose count change it was last, so the page that asked knows its own in what
+    /// it reads: none when that wasn't a count's.
+    pub request_id: Option<String>,
 }
 impl FromRow for UniformVariant {
     fn from_row(row: &Row<'_>) -> Result<Self> {
@@ -42,6 +45,7 @@ impl FromRow for UniformVariant {
             size: row.get("size")?,
             quantity: row.get("quantity")?,
             revision: row.get("revision")?,
+            request_id: row.get("request_id")?,
         })
     }
 }

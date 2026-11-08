@@ -14,6 +14,7 @@ const variant = z.object({
   size: z.string(),
   quantity: count,
   revision: count,
+  requestId: z.nullable(z.string()),
 });
 export const uniformInventorySchema = z.object({
   revision: count,
