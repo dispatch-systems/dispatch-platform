@@ -4,7 +4,7 @@ use crate::backend::{
     ADAPTER_VERSION, BACKFILL_DAYS, MAX_DAYS_PER_REQUEST, MAX_JOBS_PER_RUN, changed,
     publishing::{Writes, publish_day, write_itinerary, write_raw, write_routes, write_shared},
     scope::{day_allowed, default_day, retention_start, routes_request, routes_today},
-    shaping::{PreparedItinerary, Shaper, gzip},
+    shaping::{PreparedItinerary, PreparedResponse, Shaper, prepare_lists},
     staging::Staged,
     work_phones,
 };
@@ -125,6 +125,19 @@ pub(super) fn stage_routes_start(
     lists: &Capture,
     itineraries: usize,
 ) -> Result<Staged> {
+    let responses = prepare_lists(lists)?;
+    stage_prepared_routes_start(store, id, job, lists, itineraries, &responses)
+}
+
+/// Starts a runtime publication from responses prepared before entering the platform write.
+pub(in crate::backend) fn stage_prepared_routes_start(
+    store: &Store,
+    id: &str,
+    job: &str,
+    lists: &Capture,
+    itineraries: usize,
+    responses: &[PreparedResponse],
+) -> Result<Staged> {
     let capture = lists;
     let db = store.routes_db(id)?;
     let publication = dispatch_core::foundation::crypto::id("routes")?;
@@ -133,8 +146,6 @@ pub(super) fn stage_routes_start(
         .cloned()
         .unwrap_or_default();
     let day = capture.scope.date.as_str();
-    let summaries = serde_json::to_vec(&capture.summaries)?;
-    let route_summaries = serde_json::to_vec(&capture.route_summaries)?;
     db.transaction(|| {
         // A previous attempt's day is handed to `sweep_routes`, which deletes it in
         // small steps; its job id is freed for this attempt.
@@ -164,11 +175,8 @@ pub(super) fn stage_routes_start(
             ADAPTER_VERSION
         ])?;
         write_routes(&db, Writes::Staged, &publication, day, &routes)?;
-        for (name, list) in [
-            ("summaries", &summaries),
-            ("route_summaries", &route_summaries),
-        ] {
-            write_raw(&db, Writes::Staged, &publication, name, list.len(), &gzip(list)?)?;
+        for response in responses {
+            write_raw(&db, Writes::Staged, &publication, response.name, response.bytes, &response.body)?;
         }
         Ok(())
     })?;

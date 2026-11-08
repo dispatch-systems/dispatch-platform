@@ -154,3 +154,8 @@ it is live route data, in a database of its own, `routelive`.
   names no one driver; a day not collected, or not live, and one whose phones aren't extracted yet,
   are told apart from a day without phones. And whether a number, by its last ten digits, is an
   itinerary's work phone on any day kept, live or historical (`ever_work_phone`).
+
+
+Historical staging prepares both summary responses before its database turn. Shared driver
+and address merges leave identical rows unwritten while preserving seen-day bounds. Itinerary
+reads group active tasks by stop once and keep the stored task order and inactive-task history.

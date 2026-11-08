@@ -277,16 +277,24 @@ fn statement(write: Writes, insert: &str, table: &str, key: &[&str], columns: &[
 /// staging: inserted when its `key` is new, and otherwise its `columns` written and the days it
 /// was seen widened, only where that changes something.
 fn shared(table: &str, key: &str, columns: &[&str]) -> String {
+    let all: Vec<&str> = std::iter::once(key)
+        .chain(columns.iter().copied())
+        .chain(["first_seen_day", "last_seen_day"])
+        .collect();
+    let values = vec!["?"; all.len()].join(",");
+    format!(
+        "INSERT INTO {table}({}) VALUES ({values}) {}",
+        all.join(","),
+        shared_update(table, key, columns),
+    )
+}
+/// The same no-op suppression for in-place rows and staged publication merges.
+fn shared_update(table: &str, key: &str, columns: &[&str]) -> String {
     let seen = ["first_seen_day", "last_seen_day"];
     let widened = [
         format!("min({table}.first_seen_day,excluded.first_seen_day)"),
         format!("max({table}.last_seen_day,excluded.last_seen_day)"),
     ];
-    let all: Vec<&str> = std::iter::once(key)
-        .chain(columns.iter().copied())
-        .chain(seen)
-        .collect();
-    let values = vec!["?"; all.len()].join(",");
     let set = columns
         .iter()
         .map(|c| format!("{c}=excluded.{c}"))
@@ -297,9 +305,7 @@ fn shared(table: &str, key: &str, columns: &[&str]) -> String {
         .map(|c| format!("excluded.{c}"))
         .chain(widened.iter().cloned());
     format!(
-        "INSERT INTO {table}({}) VALUES ({values}) ON CONFLICT({key}) DO UPDATE SET {} \
-         WHERE ({}) IS NOT ({})",
-        all.join(","),
+        "ON CONFLICT({key}) DO UPDATE SET {} WHERE ({}) IS NOT ({})",
         list(set),
         list(now),
         list(then),
@@ -734,30 +740,21 @@ pub(super) fn prune_itineraries(db: &Db, publication: &str, listed: &[String]) -
 /// them, as its day's read, `day`, now is, widening the days each was seen; then drops it from
 /// staging. Inside the caller's transaction.
 pub(super) fn share(db: &Db, publication: &str, day: &str) -> Result<()> {
-    db.exec(
-        "INSERT INTO addresses(address_id,address1,address2,address3,city,state,postal_code,\
-         latitude,longitude,first_seen_day,last_seen_day) \
-         SELECT address_id,address1,address2,address3,city,state,postal_code,latitude,longitude,?2,?2 \
-         FROM staged_addresses WHERE publication_id=?1 \
-         ON CONFLICT(address_id) DO UPDATE SET address1=excluded.address1,address2=excluded.address2,\
-         address3=excluded.address3,city=excluded.city,state=excluded.state,postal_code=excluded.postal_code,\
-         latitude=excluded.latitude,longitude=excluded.longitude,\
-         first_seen_day=min(first_seen_day,excluded.first_seen_day),\
-         last_seen_day=max(last_seen_day,excluded.last_seen_day)",
-        params![publication, day],
-    )?;
-    db.exec(
-        "INSERT INTO drivers(transporter_id,first_name,last_name,initials,work_phone,person_type,company_id,\
-         first_seen_day,last_seen_day) \
-         SELECT transporter_id,first_name,last_name,initials,work_phone,person_type,company_id,?2,?2 \
-         FROM staged_drivers WHERE publication_id=?1 \
-         ON CONFLICT(transporter_id) DO UPDATE SET \
-         first_name=excluded.first_name,last_name=excluded.last_name,initials=excluded.initials,\
-         work_phone=excluded.work_phone,person_type=excluded.person_type,company_id=excluded.company_id,\
-         first_seen_day=min(first_seen_day,excluded.first_seen_day),\
-         last_seen_day=max(last_seen_day,excluded.last_seen_day)",
-        params![publication, day],
-    )?;
+    for (table, key, columns) in [
+        ("addresses", "address_id", ADDRESS_COLUMNS),
+        ("drivers", "transporter_id", DRIVER_COLUMNS),
+    ] {
+        let all = std::iter::once(key).chain(columns.iter().copied());
+        let names = all.clone().chain(["first_seen_day", "last_seen_day"]);
+        let selected = all.chain(["?2", "?2"]);
+        let sql = format!(
+            "INSERT INTO {table}({}) SELECT {} FROM staged_{table} WHERE publication_id=?1 {}",
+            names.collect::<Vec<_>>().join(","),
+            selected.collect::<Vec<_>>().join(","),
+            shared_update(table, key, columns),
+        );
+        db.exec(&sql, params![publication, day])?;
+    }
     for table in ["staged_addresses", "staged_drivers"] {
         db.exec(
             &format!("DELETE FROM {table} WHERE publication_id=?"),
@@ -780,3 +777,7 @@ fn sql_value(value: &Value) -> rusqlite::types::Value {
         other => Sql::Text(other.to_string()),
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/publishing.rs"]
+mod tests;

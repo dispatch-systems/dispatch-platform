@@ -3,6 +3,8 @@ mod commands;
 mod reads;
 mod reprocess;
 
+pub(super) use commands::stage_prepared_routes_start;
+
 use super::{
     maintenance,
     shaping::{PreparedItinerary, gunzip},
