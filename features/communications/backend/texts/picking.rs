@@ -6,7 +6,7 @@ use super::{
     filing,
     live_day::LiveDay,
     model::Filed,
-    numbers::{shown, ten_digits},
+    numbers::{shown, ten_digits, work_number},
     reading,
     storage::{PickStore, TextStore},
 };
@@ -56,7 +56,7 @@ pub fn pick(
         Some(by),
         Some(dsp),
         "communications.driver_picked",
-        &shown(&phone),
+        &shown(&work_number(&phone)),
         Some(&theirs.with.name),
         &[],
     )?;
