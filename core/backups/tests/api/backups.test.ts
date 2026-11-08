@@ -60,6 +60,28 @@ test('only the platform owner schedules a DSP’s backups, and none is taken wit
   );
   const stale = await owner.post(`${backups}/schedule`, { revision: first.revision, rules: [] });
   assert.deepEqual([stale.status, stale.value.error], [409, 'backup_schedule_changed']);
+  // The audit log keeps the rules as they were and became; saved again unchanged, nothing.
+  const again = await owner.post(`${backups}/schedule`, {
+    revision: saved.value.revision,
+    rules: saved.value.rules,
+  });
+  assert.equal(again.status, 200, again.body);
+  type Logged = { action: string; changes: { field: string; from: string; to: string }[] };
+  const logged: Logged[] = (await owner.read('/api/platform/audit')).events.filter(
+    (event: Logged) => event.action === 'dsp.backup_schedule_changed',
+  );
+  assert.equal(logged.length, 1);
+  const [{ field, from, to }] = logged[0]!.changes;
+  const rules = (value: string) =>
+    (JSON.parse(value) as { on: string; dates: number[]; keep: string }[]).map((each) => [
+      each.on,
+      each.dates,
+      each.keep,
+    ]);
+  assert.deepEqual(
+    [field, rules(from), rules(to)],
+    ['backupRules', [['week', [], 'for']], [['month', [1, 15], 'last']]],
+  );
   const refused = await owner.post(`${backups}/now`);
   assert.deepEqual([refused.status, refused.value.error], [409, 'backups_not_configured']);
 });

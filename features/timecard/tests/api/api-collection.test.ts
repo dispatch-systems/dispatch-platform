@@ -64,6 +64,14 @@ test('Rust owns verification, encrypted credentials, collection, idempotency and
     200,
   );
   assert.equal(fs.existsSync(vault), false);
+  // The audit log says its saved login went with it.
+  const [disabled] = (await owner.read('/api/platform/audit')).events.filter(
+    (event: { action: string }) => event.action === 'connection.disabled',
+  );
+  assert.deepEqual(
+    [disabled.detail, disabled.changes],
+    ['paycom', [{ field: 'login', from: null, to: 'deleted' }]],
+  );
   const paused = await paycom();
   assert.equal(paused.enabled, false);
   assert.deepEqual(

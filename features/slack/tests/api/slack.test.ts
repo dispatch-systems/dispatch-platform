@@ -231,6 +231,13 @@ test('the install link adds one workspace, once, for whoever opens it', async (t
   assert.equal(made.status, 200, made.body);
   const link = made.value.url as string;
   assert.equal((await owner.read('/api/dsp/slack/account')).link.label, 'Front Office');
+  const linked = (await owner.read('/api/platform/audit')).events.filter(
+    (event: { action: string }) => event.action === 'slack.link_created',
+  );
+  assert.deepEqual(
+    linked.map((event: { detail: string }) => event.detail),
+    ['Front Office', ''],
+  );
   assert.equal((await goes(first.url)).status, 404);
 
   // Opened without signing in: on to Slack, and back to Dispatch in Slack.
