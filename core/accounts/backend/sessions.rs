@@ -19,39 +19,34 @@ impl Store {
             self.config.security.password_window_seconds * 1000,
         )
     }
-    /// Notes in the audit log that `email`'s account at `site` was locked out by its own limit
-    /// on passwords tried, once a window: the first refusal of the window marks its count past
-    /// the limit, which the window's reset clears. Nothing for an address no account here has,
-    /// or for a refusal by the limit of the address the passwords came from.
-    fn note_lockout(&self, email: &str, site: &Site) -> Result<()> {
-        let Some(scope) = self.site_directory(site)? else {
-            return Ok(());
-        };
-        let directory = self.directory(scope.as_deref())?;
+    /// Notes in the audit log that `email`'s account in `scope`'s directory, or the platform's,
+    /// was locked out by its own limit on passwords tried, in the turn that refused it, once a
+    /// window: the first refusal of the window marks its count past the limit, which the
+    /// window's reset clears. Nothing for an address no account here has, or for a refusal by
+    /// the limit of the address the passwords came from.
+    fn note_lockout(&self, email: &str, scope: Option<&str>) -> Result<()> {
+        let directory = self.directory(scope)?;
         let Some(row) = UserRow::find(&directory, "email", email)? else {
             return Ok(());
         };
-        if !row.active() || !admitted(&directory, &row.user, scope.as_deref())? {
+        if !row.active() || !admitted(&directory, &row.user, scope)? {
             return Ok(());
         }
         drop(directory);
         // The mark and the event commit together: a note that fails leaves the next refusal
         // of the window to note it.
         self.platform.transaction(|| {
-            // The refused window's row, even should it have expired since the refusal: an
-            // expired row stays until the next attempt replaces it, and a new window's count
-            // starts again from one.
             let first = self.platform.exec(
                 "UPDATE throttle SET count=count+1 WHERE key=? AND count=?",
                 params![
-                    crypto::sha(attempts_key(scope.as_deref(), email)),
+                    crypto::sha(attempts_key(scope, email)),
                     self.config.security.password_account_attempts
                 ],
             )? == 1;
             if !first {
                 return Ok(());
             }
-            self.audit_account(&row.user, scope.as_deref(), "account.locked_out", "")
+            self.audit_account(&row.user, scope, "account.locked_out", "")
         })
     }
     /// Notes in the audit log a wrong password tried for `user`, of `dsp`'s directory or the
@@ -409,7 +404,6 @@ impl crate::State {
             .try_acquire_owned()
             .map_err(|_| Error::new("login_busy", 429))?;
         let at = site.clone();
-        let tried = email.clone();
         // An account another directory keeps, or one this one no longer admits, is as unknown
         // here as a missing one, and takes as long to refuse.
         let read = self
@@ -419,7 +413,14 @@ impl crate::State {
                     db.password_attempt(None, &email, &ip)?;
                     return Ok((None, None));
                 };
-                db.password_attempt(scope.as_deref(), &email, &ip)?;
+                // Refused by the account's own limit, the lockout is noted in this same turn, so
+                // its window can't end, nor be cleared, before it is.
+                if let Err(error) = db.password_attempt(scope.as_deref(), &email, &ip) {
+                    if error.is(Code::RateLimited) {
+                        noted(db.note_lockout(&email, scope.as_deref()));
+                    }
+                    return Err(error);
+                }
                 let directory = db.directory(scope.as_deref())?;
                 let row = UserRow::find(&directory, "email", &email)?;
                 let row = match row {
@@ -429,14 +430,7 @@ impl crate::State {
                 Ok((Some(scope), row))
             })
             .await;
-        let (scope, row) = match read {
-            Err(error) if error.is(Code::RateLimited) => {
-                let site = site.clone();
-                self.noted(move |db| db.note_lockout(&tried, &site)).await;
-                return Err(error);
-            }
-            read => read?,
-        };
+        let (scope, row) = read?;
         let value = row.clone();
         let valid = tokio::task::spawn_blocking(move || {
             let _permit = permit;
@@ -457,8 +451,10 @@ impl crate::State {
             && row.active()
         {
             let (user, scope) = (row.user.clone(), scope.clone());
-            self.noted(move |db| db.note_wrong_password(&user, scope.as_deref()))
-                .await;
+            noted(
+                self.run(move |db| db.note_wrong_password(&user, scope.as_deref()))
+                    .await,
+            );
         }
         let (Some(scope), Some(row)) = (scope, row.filter(|r| valid && r.active())) else {
             return Err(Error::new("invalid_login", 401));
@@ -503,19 +499,17 @@ impl crate::State {
         })
         .await
     }
-    /// Writes what `note` notes in the audit log of a sign-in refused: one that fails is
-    /// reported, and the refusal answers as it would have.
-    async fn noted(
-        self: &std::sync::Arc<Self>,
-        note: impl FnOnce(&Store) -> Result<()> + Send + 'static,
-    ) {
-        if let Err(error) = self.run(note).await {
-            crate::foundation::observability::event(
-                "error",
-                "account.sign_in_note_failed",
-                serde_json::json!({"error": error.code}),
-            );
-        }
+}
+
+/// Reports a refused sign-in's audit note that couldn't be written: the refusal answers as it
+/// would have.
+fn noted(note: Result<()>) {
+    if let Err(error) = note {
+        crate::foundation::observability::event(
+            "error",
+            "account.sign_in_note_failed",
+            serde_json::json!({"error": error.code}),
+        );
     }
 }
 
