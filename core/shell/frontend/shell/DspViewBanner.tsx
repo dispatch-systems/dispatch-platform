@@ -103,10 +103,8 @@ export function DspViewPanel({ view, viewAs, exitView }: ViewProps) {
         <Eye aria-hidden="true" />
         Viewing {view.dsp.name}
       </strong>
-      <div>
-        <ViewRoleMenu view={view} viewAs={viewAs} />
-        <button onClick={exitView}>Exit view</button>
-      </div>
+      <ViewRoleMenu view={view} viewAs={viewAs} />
+      <button onClick={exitView}>Exit view</button>
     </div>
   );
 }
