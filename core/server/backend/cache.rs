@@ -214,6 +214,9 @@ impl ReadCache {
         revision: u64,
         load: impl FnOnce() -> Result<T>,
     ) -> Result<Arc<T>> {
+        if let Some(value) = self.cached(&scope, &key, revision) {
+            return Ok(value);
+        }
         // One immutable derived result is calculated once on a concurrent miss. Hold no cache
         // mutex while it is made, so another DSP or another read still proceeds independently.
         let making = {
@@ -306,6 +309,30 @@ impl ReadCache {
             |bytes| Ok(bytes.len()),
         )
     }
+    /// A hit needs no per-key turn or allocation. Hold the cache mutex only for its lookup.
+    fn cached<T: Clone + Send + 'static>(
+        &self,
+        scope: &Scope,
+        key: &str,
+        revision: u64,
+    ) -> Option<T> {
+        if let Ok(mut entries) = self.entries.lock() {
+            let now = Instant::now();
+            entries.retain(|entry| entry.revision == revision && entry.until > now);
+            if let Some(index) = entries
+                .iter()
+                .position(|entry| entry.key == key && &entry.scope == scope)
+            {
+                let entry = entries.remove(index).unwrap();
+                let result = entry.value.downcast_ref::<T>().cloned();
+                entries.push_back(entry);
+                if let Some(result) = result {
+                    return Some(result);
+                }
+            }
+        }
+        None
+    }
     fn read_sized<T: Clone + Send + 'static>(
         &self,
         scope: Scope,
@@ -314,21 +341,8 @@ impl ReadCache {
         load: impl FnOnce() -> Result<T>,
         size: impl FnOnce(&T) -> Result<usize>,
     ) -> Result<T> {
-        // Do not serialize unrelated readers behind an expensive calculation.
-        if let Ok(mut entries) = self.entries.lock() {
-            let now = Instant::now();
-            entries.retain(|entry| entry.revision == revision && entry.until > now);
-            if let Some(index) = entries
-                .iter()
-                .position(|entry| entry.key == key && entry.scope == scope)
-            {
-                let entry = entries.remove(index).unwrap();
-                let result = entry.value.downcast_ref::<T>().cloned();
-                entries.push_back(entry);
-                if let Some(result) = result {
-                    return Ok(result);
-                }
-            }
+        if let Some(value) = self.cached(&scope, &key, revision) {
+            return Ok(value);
         }
         let value = load()?;
         let bytes = size(&value)?;
