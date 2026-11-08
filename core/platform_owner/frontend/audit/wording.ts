@@ -57,7 +57,7 @@ const phrases: AuditPhrases = {
     const date = fact(e, 'date');
     return [
       'cancelled ',
-      name ? strong(`${name} collection`) : 'a collection',
+      ...(name ? ['the ', strong(`${name} collection`)] : ['a collection']),
       ...(date ? [' for ', strong(day(date))] : []),
     ];
   },
