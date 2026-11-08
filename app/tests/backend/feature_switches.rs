@@ -361,7 +361,11 @@ fn a_changed_default_leaves_every_dsp_as_it_read_it() {
     let (_root, db, owner, dsp) = new_dsp();
     let raw = |db: &Store| {
         let report = db.feature_report(&dsp).unwrap().features;
-        report.iter().find(|s| s.feature == "dvic.week").unwrap().enabled
+        report
+            .iter()
+            .find(|s| s.feature == "dvic.week")
+            .unwrap()
+            .enabled
     };
     // A DSP made before the part has no switch of its own for it, and reads its default.
     let unswitched = |db: &Store| {

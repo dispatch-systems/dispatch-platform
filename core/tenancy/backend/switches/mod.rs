@@ -66,7 +66,10 @@ impl Store {
                 .iter()
                 .filter_map(|(f, _, default)| {
                     let feature = find(f)?;
-                    Some((feature.id, default.unwrap_or_else(|| earlier_default(feature))))
+                    Some((
+                        feature.id,
+                        default.unwrap_or_else(|| earlier_default(feature)),
+                    ))
                 })
                 .collect();
             // A platform starting for the first time has nothing to keep.
