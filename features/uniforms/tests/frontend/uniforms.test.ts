@@ -4,6 +4,7 @@ import {
   applyUniformAdjustments,
   applyUniformSnapshot,
   applyUniformUpdates,
+  madeAt,
 } from '../../frontend/uniforms.js';
 import type { UniformInventory } from '../../api/index.js';
 
@@ -16,8 +17,8 @@ const inventory = (): UniformInventory => ({
       category: 'Tops',
       revision: 1,
       variants: [
-        { id: 'men-m', fit: 'men', size: 'M', quantity: 0, revision: 1 },
-        { id: 'women-s', fit: 'women', size: 'S', quantity: 0, revision: 1 },
+        { id: 'men-m', fit: 'men', size: 'M', quantity: 0, revision: 1, requestId: null },
+        { id: 'women-s', fit: 'women', size: 'S', quantity: 0, revision: 1, requestId: null },
       ],
     },
   ],
@@ -25,19 +26,21 @@ const inventory = (): UniformInventory => ({
 
 test('late acknowledgements never replace a newer stock count or skip another user’s change', () => {
   let data = applyUniformAdjustments(inventory(), [
-    { variantId: 'men-m', quantity: 2, revision: 4 },
+    { variantId: 'men-m', quantity: 2, revision: 4, requestId: null },
   ]);
   assert.equal(data.revision, 1); // the stream still needs to deliver revisions 2 and 3.
   data = applyUniformUpdates(data, {
     revision: 4,
     inventory: null,
     adjustments: [
-      { variantId: 'men-m', quantity: 1, revision: 2 },
-      { variantId: 'women-s', quantity: 1, revision: 3 },
-      { variantId: 'men-m', quantity: 2, revision: 4 },
+      { variantId: 'men-m', quantity: 1, revision: 2, requestId: null },
+      { variantId: 'women-s', quantity: 1, revision: 3, requestId: null },
+      { variantId: 'men-m', quantity: 2, revision: 4, requestId: null },
     ],
   })!;
-  data = applyUniformAdjustments(data, [{ variantId: 'men-m', quantity: 1, revision: 2 }]);
+  data = applyUniformAdjustments(data, [
+    { variantId: 'men-m', quantity: 1, revision: 2, requestId: null },
+  ]);
   assert.equal(data.revision, 4);
   assert.deepEqual(
     data.uniforms[0]!.variants.map((v) => v.quantity),
@@ -47,7 +50,7 @@ test('late acknowledgements never replace a newer stock count or skip another us
 
 test('catalog snapshots keep newer acknowledgements and archived variants cannot reappear', () => {
   const current = applyUniformAdjustments(inventory(), [
-    { variantId: 'men-m', quantity: 2, revision: 4 },
+    { variantId: 'men-m', quantity: 2, revision: 4, requestId: null },
   ]);
   const snapshot = inventory();
   snapshot.revision = 3;
@@ -58,7 +61,26 @@ test('catalog snapshots keep newer acknowledgements and archived variants cannot
   assert.equal(applyUniformSnapshot(merged, inventory()), merged);
   const archived = applyUniformSnapshot(merged, { revision: 5, uniforms: [] });
   assert.deepEqual(
-    applyUniformAdjustments(archived, [{ variantId: 'men-m', quantity: 1, revision: 2 }]).uniforms,
+    applyUniformAdjustments(archived, [
+      { variantId: 'men-m', quantity: 1, revision: 2, requestId: null },
+    ]).uniforms,
     [],
   );
+});
+
+test('a count change that comes back, live, as its answer or in a fresh read, says which request made it', () => {
+  applyUniformAdjustments(inventory(), [
+    { variantId: 'men-m', quantity: 1, revision: 2, requestId: 'press-0000000001' },
+    { variantId: 'women-s', quantity: 1, revision: 3, requestId: null },
+  ]);
+  assert.equal(madeAt.get('press-0000000001'), 2);
+  const read = inventory();
+  read.uniforms[0]!.variants[0] = {
+    ...read.uniforms[0]!.variants[0]!,
+    quantity: 2,
+    revision: 5,
+    requestId: 'press-0000000002',
+  };
+  applyUniformSnapshot(undefined, { ...read, revision: 5 });
+  assert.equal(madeAt.get('press-0000000002'), 5);
 });

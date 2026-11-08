@@ -83,8 +83,50 @@ test('Driver Match asks who might be listed twice and makes them one person', as
   await expect(page.getByText(/is now its own person/)).toBeVisible();
   await expect(sheet.locator('.driver-id')).toHaveCount(1);
   // A title says what the sources can't, and puts them under Management.
-  await sheet.getByRole('combobox', { name: 'Role' }).selectOption('Dispatch');
+  // Chosen, it stays as chosen and can be chosen again while it saves.
+  const giving = '**/role';
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route(giving, async (route) => {
+    await held;
+    await route.continue();
+  });
+  const role = sheet.getByRole('combobox', { name: 'Role' });
+  await role.selectOption('Dispatch');
+  await expect(role.locator('option:checked')).toHaveText('Dispatch');
+  await expect(role).toBeEnabled();
+  release();
+  await page.unroute(giving);
   await expect(page.getByText('Benjamin Collins is now Dispatch', { exact: true })).toBeVisible();
+  // Chosen again while the first saves, it shows the last chosen, also once the first is saved
+  // and read back while the second still saves, and the last chosen is the one saved.
+  let first = () => {};
+  let second = () => {};
+  const firstHeld = new Promise<void>((resolve) => (first = resolve));
+  const secondHeld = new Promise<void>((resolve) => (second = resolve));
+  let gives = 0;
+  await page.route(giving, async (route) => {
+    gives += 1;
+    if (gives === 1) await firstHeld;
+    if (gives === 2) await secondHeld;
+    await route.continue();
+  });
+  await role.selectOption('Driver');
+  await role.selectOption('Helper');
+  await expect(role.locator('option:checked')).toHaveText('Helper');
+  const readBack = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'GET' && /\/driver-match\/people\//.test(response.url()),
+  );
+  first();
+  await readBack;
+  await expect(role.locator('option:checked')).toHaveText('Helper');
+  await role.selectOption('Dispatch');
+  await expect(role.locator('option:checked')).toHaveText('Dispatch');
+  second();
+  await expect(page.getByText('Benjamin Collins is now Dispatch', { exact: true })).toBeVisible();
+  await page.unroute(giving);
+  await expect(role.locator('option:checked')).toHaveText('Dispatch');
   await sheet.getByRole('button', { name: 'Close dialog' }).click();
   await expect(row('Ben Collins')).toHaveCount(1);
   await show.getByRole('button', { name: /^Management/ }).click();

@@ -2,6 +2,7 @@ import { GitMerge } from 'lucide-react';
 import { useState } from 'react';
 import type { GivenRole, Person, PersonDetails, PersonId } from '../../api/index.js';
 import { giveRole, removePhone, splitOff, usePersonDetails } from '../../api/client.js';
+import { useChanges } from '../../../../core/shell/frontend/runtime/changes.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { phoneText, time } from '../../../../core/shell/frontend/lib/format.js';
 import {
@@ -61,9 +62,7 @@ export function PersonSheet({
         {(data) => (
           <>
             {/* The former keep the role someone gave them, unseen, for when they come back. */}
-            {data.person.role !== 'former' && (
-              <RolePicker key={data.person.given ?? ''} person={data.person} />
-            )}
+            {data.person.role !== 'former' && <RolePicker person={data.person} />}
             <SheetIds person={data.person} today={today} onSplit={setSplitting} />
             {data.addedPhones.length > 0 && (
               <AddedPhones code={data.person.code} phones={data.addedPhones} />
@@ -106,23 +105,33 @@ export function PersonSheet({
   );
 }
 
-/** The phone numbers someone added to theirs, beside their sources', each taken off by Remove. */
+/**
+ * The phone numbers someone added to theirs, beside their sources', each taken off by Remove: gone
+ * at once, and back if that fails.
+ */
 function AddedPhones({ code, phones }: { code: string; phones: string[] }) {
   const remove = useAction((phone: string) => removePhone(code, phone), {
     inline: true,
     success: (phone) => `${phoneText(phone)} is removed`,
   });
+  // Numbers removed here, gone at once and until the person is read again after; one that fails
+  // comes back.
+  const { shown, change } = useChanges(phones, code);
+  const take = (phone: string) =>
+    change(
+      (listed) => listed.filter((each) => each !== phone),
+      () => remove.run(phone),
+    );
+  if (!shown.length && !remove.error) return null;
   return (
     <section className="driver-sheet-section" aria-labelledby="driver-phones">
       <h3 id="driver-phones">Added numbers</h3>
       <ErrorBox message={remove.error} />
-      {phones.map((phone) => (
+      {shown.map((phone) => (
         <div className="driver-id" key={phone}>
           <strong>{phoneText(phone)}</strong>
           <div className="driver-id-actions">
-            <button disabled={remove.busy} onClick={() => void remove.run(phone)}>
-              Remove
-            </button>
+            <button onClick={() => take(phone)}>Remove</button>
           </div>
         </div>
       ))}
@@ -152,16 +161,17 @@ function SheetTitle({ person }: { person: Person }) {
 }
 
 /**
- * The role someone gave them, else Automatic, from their sources: saved as it's chosen; one
- * that fails goes back to what it was.
+ * The role someone gave them, else Automatic, from their sources: shown as it's chosen and saved
+ * behind it, one choice after another in the order made. One that fails is dropped, showing the
+ * latest still saving, else the role saved.
  */
 function RolePicker({ person }: { person: Person }) {
-  const [chosen, setChosen] = useState(person.given ?? '');
   const save = useAction((role: GivenRole | null) => giveRole(person.code, role), {
     inline: true,
     success: (role) =>
       role ? `${person.name} is now ${givenLabel(role)}` : `${person.name}'s role is automatic`,
   });
+  const { shown: chosen, change } = useChanges<GivenRole | ''>(person.given ?? '', person.code);
   return (
     <section className="driver-sheet-section" aria-labelledby="driver-role">
       <h3 id="driver-role">Role</h3>
@@ -169,11 +179,12 @@ function RolePicker({ person }: { person: Person }) {
       <select
         aria-labelledby="driver-role"
         value={chosen}
-        disabled={save.busy}
-        onChange={async (event) => {
+        onChange={(event) => {
           const role = event.target.value as GivenRole | '';
-          setChosen(role);
-          if (!(await save.run(role || null))) setChosen(person.given ?? '');
+          change(
+            () => role,
+            () => save.run(role || null),
+          );
         }}
       >
         <option value="">Automatic</option>

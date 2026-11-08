@@ -24,7 +24,7 @@ pub(super) fn adjust_uniform(
         )? {
             ensure(actor == c.auth.user.id.as_str(), "uniform_request_conflict", 409)?;
             return db.one_as(
-                "SELECT revision,variant_id,quantity FROM uniform_events WHERE request_id=? AND variant_id=? AND delta=?",
+                "SELECT revision,variant_id,quantity,request_id FROM uniform_events WHERE request_id=? AND variant_id=? AND delta=?",
                 params![request_id,variant,delta],
             )?.ok_or_else(|| Error::new("uniform_request_conflict", 409));
         }
@@ -46,7 +46,7 @@ pub(super) fn adjust_uniform(
              SELECT ?1,'adjusted',?2,?3,id,fit,size,?4,quantity,?5,?6,?7,?8 FROM uniform_variants WHERE id=?9",
             params![revision,item.0,item.1,delta,c.auth.user.id,actor_name(c),request_id,iso(),variant],
         )?;
-        db.one_as("SELECT revision,variant_id,quantity FROM uniform_events WHERE revision=?", [revision])?
+        db.one_as("SELECT revision,variant_id,quantity,request_id FROM uniform_events WHERE revision=?", [revision])?
             .ok_or_else(|| Error::new("invalid_stored_record", 500))
     })
 }

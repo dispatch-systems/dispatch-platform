@@ -33,6 +33,9 @@ pub struct UniformVariant {
     pub quantity: u32,
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub revision: i64,
+    /// The request whose count change it was last, so the page that asked knows its own in what
+    /// it reads: none when that wasn't a count's.
+    pub request_id: Option<String>,
 }
 impl FromRow for UniformVariant {
     fn from_row(row: &Row<'_>) -> Result<Self> {
@@ -42,6 +45,7 @@ impl FromRow for UniformVariant {
             size: row.get("size")?,
             quantity: row.get("quantity")?,
             revision: row.get("revision")?,
+            request_id: row.get("request_id")?,
         })
     }
 }
@@ -87,6 +91,9 @@ pub struct UniformAdjustment {
     pub revision: i64,
     pub variant_id: String,
     pub quantity: u32,
+    /// The request that made it, so the page that asked knows its own once it comes back: none
+    /// for a change that wasn't a count's.
+    pub request_id: Option<String>,
 }
 impl FromRow for UniformAdjustment {
     fn from_row(row: &Row<'_>) -> Result<Self> {
@@ -94,6 +101,7 @@ impl FromRow for UniformAdjustment {
             revision: row.get("revision")?,
             variant_id: row.get("variant_id")?,
             quantity: row.get("quantity")?,
+            request_id: row.get("request_id")?,
         })
     }
 }
