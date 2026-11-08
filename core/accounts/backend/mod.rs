@@ -10,7 +10,7 @@ mod sessions;
 pub mod settings;
 
 use crate::{
-    Error, Result,
+    Code, Error, Result,
     accounts::api::types::{Dsp, PublicUser, UserStatus},
     db::{Db, FromRow, Row, Store, flag, iso, now, s},
     ensure,
@@ -33,6 +33,17 @@ impl SessionLifetime {
             Self::Remembered => 7 * 24 * 60 * 60,
         }
     }
+}
+
+/// Waits, from `started`, until a refusal of an account answers no sooner than one of an address
+/// with none would: 300 ms and up to 50 more at random.
+pub(crate) async fn refused_after(started: std::time::Instant) -> Result<()> {
+    let jitter = u16::from_le_bytes(crypto::random::<2>()?) % 50;
+    let floor = std::time::Duration::from_millis(300 + u64::from(jitter));
+    if let Some(remaining) = floor.checked_sub(started.elapsed()) {
+        tokio::time::sleep(remaining).await;
+    }
+    Ok(())
 }
 
 const INVITATION_TTL: i64 = 7 * 86400000;

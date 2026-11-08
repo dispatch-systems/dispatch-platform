@@ -97,16 +97,12 @@ test("wrong passwords, a lockout and a reset link asked for are in an account's 
         .all()
         .map((row) => (row as { action: string }).action),
     );
-  // A refused sign-in is logged after its answer, so the log is waited on, in any order.
-  await until(async () => logged().length >= 12);
-  assert.deepEqual(
-    [...logged()].sort(),
-    [
-      ...Array(10).fill('account.sign_in_failed'),
-      'account.locked_out',
-      'account.password_reset_requested',
-    ].sort(),
-  );
+  // Each is in the log by the time its answer comes, the lockout once for its window.
+  assert.deepEqual(logged(), [
+    ...Array(10).fill('account.sign_in_failed'),
+    'account.locked_out',
+    'account.password_reset_requested',
+  ]);
 });
 
 test('each address signs in only its own people, and a session works only where it was made', async (t) => {

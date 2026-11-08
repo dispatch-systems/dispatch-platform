@@ -104,24 +104,6 @@ impl Store {
         )?;
         Ok(())
     }
-    /// `audit_account`, once within `window` milliseconds for the account and `action`.
-    pub fn audit_account_once(
-        &self,
-        user: &crate::accounts::api::types::PublicUser,
-        dsp: Option<&str>,
-        action: &str,
-        window: i64,
-    ) -> Result<()> {
-        let recent = self.platform.one(
-            "SELECT 1 FROM audit WHERE COALESCE(actor_id,member_id)=? AND action=? AND at>=? \
-             LIMIT 1",
-            rusqlite::params![user.id, action, at(now() - window)],
-        )?;
-        if recent.is_some() {
-            return Ok(());
-        }
-        self.audit_account(user, dsp, action, "")
-    }
     /// Records what someone did to their own account, outside any DSP's log: a platform
     /// owner's under their account, one of a DSP's people's under their id and name.
     pub fn audit_account(

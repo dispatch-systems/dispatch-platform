@@ -19,23 +19,23 @@ impl Store {
             self.config.security.password_window_seconds * 1000,
         )
     }
-    /// Whether the passwords tried for `email` in `dsp`'s directory, or the platform's, reached
-    /// the account's own limit, as against the address's they came from.
-    fn account_limited(&self, dsp: Option<&str>, email: &str) -> Result<bool> {
-        let tried = self.platform.count(
-            "SELECT coalesce(max(count),0) FROM throttle WHERE key=? AND reset_at>=?",
-            params![crypto::sha(attempts_key(dsp, email)), now()],
-        )?;
-        Ok(tried >= self.config.security.password_account_attempts)
-    }
     /// Notes in the audit log that `email`'s account at `site` was locked out by its own limit
-    /// on passwords tried, once a window: nothing for an address no account here has, or one
-    /// refused by the limit of the address the passwords came from.
+    /// on passwords tried, once a window: the first refusal of the window marks its count past
+    /// the limit, which the window's reset clears. Nothing for an address no account here has,
+    /// or for a refusal by the limit of the address the passwords came from.
     fn note_lockout(&self, email: &str, site: &Site) -> Result<()> {
         let Some(scope) = self.site_directory(site)? else {
             return Ok(());
         };
-        if !self.account_limited(scope.as_deref(), email)? {
+        let first = self.platform.exec(
+            "UPDATE throttle SET count=count+1 WHERE key=? AND count=? AND reset_at>=?",
+            params![
+                crypto::sha(attempts_key(scope.as_deref(), email)),
+                self.config.security.password_account_attempts,
+                now()
+            ],
+        )? == 1;
+        if !first {
             return Ok(());
         }
         let directory = self.directory(scope.as_deref())?;
@@ -46,12 +46,20 @@ impl Store {
             return Ok(());
         }
         drop(directory);
-        self.audit_account_once(
-            &row.user,
-            scope.as_deref(),
-            "account.locked_out",
-            self.config.security.password_window_seconds * 1000,
-        )
+        self.audit_account(&row.user, scope.as_deref(), "account.locked_out", "")
+    }
+    /// Notes in the audit log a wrong password tried for `user`, of `dsp`'s directory or the
+    /// platform's: nothing once their DSP is gone, as one deleted while the password was checked.
+    fn note_wrong_password(&self, user: &PublicUser, dsp: Option<&str>) -> Result<()> {
+        if let Some(dsp) = dsp
+            && self
+                .platform
+                .one("SELECT 1 FROM dsps WHERE id=?", [dsp])?
+                .is_none()
+        {
+            return Ok(());
+        }
+        self.audit_account(user, dsp, "account.sign_in_failed", "")
     }
     pub fn throttle(&self, key: &str, max: i64, window: i64) -> Result<()> {
         self.platform
@@ -360,7 +368,27 @@ fn quota_ip(value: &str) -> String {
     }
 }
 impl crate::State {
+    /// Signs in with `email` and `password` at `site`: the session's token. A refusal answers no
+    /// sooner than a refusal of an address with no account does, its audit event written by then.
     pub async fn login(
+        self: &std::sync::Arc<Self>,
+        email: String,
+        password: String,
+        ip: String,
+        user_agent: String,
+        lifetime: SessionLifetime,
+        site: Site,
+    ) -> Result<String> {
+        let started = std::time::Instant::now();
+        let signed = self
+            .sign_in(email, password, ip, user_agent, lifetime, site)
+            .await;
+        if signed.is_err() {
+            super::refused_after(started).await?;
+        }
+        signed
+    }
+    async fn sign_in(
         self: &std::sync::Arc<Self>,
         email: String,
         password: String,
@@ -396,9 +424,9 @@ impl crate::State {
             })
             .await;
         let (scope, row) = match read {
-            Err(error) if error.code == "rate_limited" => {
+            Err(error) if error.is(Code::RateLimited) => {
                 let site = site.clone();
-                self.noted(move |db| db.note_lockout(&tried, &site));
+                self.noted(move |db| db.note_lockout(&tried, &site)).await;
                 return Err(error);
             }
             read => read?,
@@ -423,9 +451,8 @@ impl crate::State {
             && row.active()
         {
             let (user, scope) = (row.user.clone(), scope.clone());
-            self.noted(move |db| {
-                db.audit_account(&user, scope.as_deref(), "account.sign_in_failed", "")
-            });
+            self.noted(move |db| db.note_wrong_password(&user, scope.as_deref()))
+                .await;
         }
         let (Some(scope), Some(row)) = (scope, row.filter(|r| valid && r.active())) else {
             return Err(Error::new("invalid_login", 401));
@@ -470,22 +497,19 @@ impl crate::State {
         })
         .await
     }
-    /// Notes what `note` writes in the audit log of a sign-in refused, without holding up the
-    /// answer: a refusal for an account takes as long as one for an address with none.
-    fn noted(
+    /// Writes what `note` notes in the audit log of a sign-in refused: one that fails is
+    /// reported, and the refusal answers as it would have.
+    async fn noted(
         self: &std::sync::Arc<Self>,
         note: impl FnOnce(&Store) -> Result<()> + Send + 'static,
     ) {
-        let state = self.clone();
-        tokio::spawn(async move {
-            if let Err(error) = state.run(note).await {
-                crate::foundation::observability::event(
-                    "error",
-                    "account.sign_in_note_failed",
-                    serde_json::json!({"error": error.code}),
-                );
-            }
-        });
+        if let Err(error) = self.run(note).await {
+            crate::foundation::observability::event(
+                "error",
+                "account.sign_in_note_failed",
+                serde_json::json!({"error": error.code}),
+            );
+        }
     }
 }
 

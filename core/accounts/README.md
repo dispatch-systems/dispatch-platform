@@ -37,9 +37,11 @@ to open, one of a DSP's people at its address alone, where that DSP is the only 
 at the invite page. Anywhere else a right password reads as a wrong one, and a session reads as
 signed out. Failed passwords count against the account in its own directory. The audit log keeps
 each wrong password for an account, the lockout its own limit makes once a window, each second
-factor refused, and each reset link asked for; nothing for an address with no account. A wrong
-password's and a lockout's are written after the answer, so a refusal for an account takes as
-long as one for an address with none. A password reset's
+factor refused, and each reset link asked for; nothing for an address with no account. Each is
+written before its answer, and every refused sign-in answers no sooner than 300 ms and a moment
+at random, as a forgotten password's does, so a refusal for an account takes as long as one for
+an address with none. A lockout is noted by the first refusal of its window, which marks the
+window's count past the limit. A password reset's
 link goes back to the address it was asked at, and a passkey belongs to the address it was made
 at. An invitation's link opens at its DSP's address, the one its email names, and at the invite
 page, which it names while the DSP has no short code, and nowhere else. There a DSP's first

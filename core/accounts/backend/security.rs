@@ -400,8 +400,8 @@ impl Store {
 
     /// Gives back `error`, noting in the audit log the second factor `kind` the session's account
     /// gave refused as wrong, when `error` is that refusal (`wrong`).
-    pub fn second_factor_refused(&self, a: &Auth, kind: &str, wrong: &str, error: Error) -> Error {
-        if error.code != wrong {
+    pub fn second_factor_refused(&self, a: &Auth, kind: &str, wrong: Code, error: Error) -> Error {
+        if !error.is(wrong) {
             return error;
         }
         let noted = self.audit_account(

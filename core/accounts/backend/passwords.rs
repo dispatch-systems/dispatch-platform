@@ -45,7 +45,8 @@ impl Store {
         };
         if let Some(UserRow { user, version, .. }) = found {
             let raw = crypto::token()?;
-            self.across(&people, || {
+            // Asked for, the link is noted whether or not it could be queued.
+            let made = self.across(&people, || {
                 self.platform.exec(
                     "DELETE FROM outbox WHERE user_id=? AND kind='reset' AND status IN ('pending','failed')",
                     [&user.id],
@@ -69,9 +70,10 @@ impl Store {
                     &user.email,
                     &mail,
                     MailContext::Reset { user: &user.id },
-                )?;
-                self.audit_account(&user, dsp, "account.password_reset_requested", "")
-            })?;
+                )
+            });
+            self.audit_account(&user, dsp, "account.password_reset_requested", "")?;
+            made?;
         }
         Ok(())
     }
