@@ -156,6 +156,32 @@ test('an owner adds Slack workspaces from New, each on a card under its name, us
   await expect(page.getByText('Not now')).toBeVisible();
   await expect(files).toBeChecked({ checked: !was });
   await page.unroute(switching);
+  // A reading asked for before a switch's answer, though it lands after, doesn't undo it.
+  const canvases = page.getByRole('switch', { name: 'Sync Canvases', exact: true });
+  const before = await canvases.isChecked();
+  const reading = '**/api/dsp/slack/account';
+  const heldReads: (() => void)[] = [];
+  // Each is answered by the server as it's asked, and handed over only when let go.
+  await page.route(reading, async (route) => {
+    const response = await route.fetch();
+    await new Promise<void>((resolve) => heldReads.push(resolve));
+    await route.fulfill({ response });
+  });
+  const firstSaved = page.waitForResponse((response) => response.url().includes('/integrations/'));
+  await files.click();
+  await page.getByRole('button', { name: was ? 'Turn on' : 'Turn off', exact: true }).click();
+  await firstSaved;
+  await expect.poll(() => heldReads.length).toBeGreaterThan(0);
+  const asked = heldReads.length;
+  const secondSaved = page.waitForResponse((response) => response.url().includes('/integrations/'));
+  await canvases.click();
+  await page.getByRole('button', { name: before ? 'Turn off' : 'Turn on', exact: true }).click();
+  await secondSaved;
+  for (const read of heldReads.slice(0, asked)) read();
+  await expect(canvases).toBeChecked({ checked: !before });
+  await page.unroute(reading);
+  for (const read of heldReads.slice(asked)) read();
+  await expect(canvases).toBeChecked({ checked: !before });
   await page
     .getByRole('navigation', { name: 'Sections' })
     .getByRole('button', { name: 'Channels', exact: true })
