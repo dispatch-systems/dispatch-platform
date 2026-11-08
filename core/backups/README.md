@@ -64,6 +64,13 @@ of. A backup notes each file before it sends it, so one that fails, or that the 
 cuts short, holds what it sent until it expires, 30 days on, and its rule runs again within the
 hour. A backup waiting its turn leaves out what its rule did when it was asked for. Deleting a DSP forgets its schedule but keeps its backups until each expires.
 
+## Limits
+
+The files beside a DSP's databases and its pictures are taken both before and after the
+databases are copied. A file created after the first look, named in the database copy and then
+replaced and deleted before the second, all while one backup is copied, isn't held by it: the
+next backup holds the state as it settles.
+
 ## Not yet
 
 Restoring a backup. Each backup's description is what a restore reads; the platform database
