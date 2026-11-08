@@ -6,7 +6,7 @@ use crate::{
     foundation::{config::Site, crypto, validate as v},
     server::http::{
         input::{Input, Reply},
-        route::{Access, Ctx, Grant, Route, read, upload, write},
+        route::{Access, Ctx, Grant, Route, async_post, read, upload, write},
         upload::Upload,
     },
     support::{
@@ -57,7 +57,7 @@ impl Grant for Worker {
 }
 pub(super) fn routes() -> Vec<Route> {
     vec![
-        write("/api/v1/support/worker/claim", Worker(false), claim).bookkeeping(),
+        async_post("/api/v1/support/worker/claim", Worker(false), claim),
         read(
             "/api/v1/support/worker/jobs/{id}/status",
             Worker(false),
@@ -122,9 +122,24 @@ pub(super) fn routes() -> Vec<Route> {
 fn lease(input: &Input) -> Result<&str> {
     v::text(&input.body, "lease", 43, 43)
 }
-fn claim(db: &Store, _: &Ctx<'_, ()>, input: &Input) -> Result<Reply> {
-    v::fields(&input.body, &[])?;
-    Reply::of(&jobs::claim(db)?)
+async fn claim(state: Arc<State>, input: Input, access: Worker) -> Result<Reply> {
+    let checking = input.clone();
+    let pending = state
+        .read(move |db| {
+            access.authorize(db, &checking)?;
+            v::fields(&checking.body, &[])?;
+            jobs::pending(db)
+        })
+        .await?;
+    if !pending {
+        return Ok(Reply::json(serde_json::Value::Null));
+    }
+    state
+        .run_bookkeeping(move |db| {
+            access.authorize(db, &input)?;
+            Reply::of(&jobs::claim(db)?)
+        })
+        .await
 }
 fn status(db: &Store, _: &Ctx<'_, ()>, input: &Input) -> Result<Reply> {
     Ok(Reply::json(jobs::status(

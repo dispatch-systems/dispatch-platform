@@ -460,8 +460,19 @@ fn approval_is_version_bound_and_a_revised_proposal_revokes_running_implementati
 fn restart_preserves_the_job_checkpoint_and_invalidates_the_expired_worker_lease() {
     testing::install(&[], &[]);
     let (_root, db, _) = testing::bootstrapped();
+    assert!(!jobs::pending(&db).unwrap());
     report(&db, &owner(&db));
+    // Checking for work never claims it, increments attempts or changes a checkpoint.
+    let before = db.platform.one("SELECT * FROM support_jobs", []).unwrap();
+    for _ in 0..2 {
+        assert!(jobs::pending(&db).unwrap());
+    }
+    assert_eq!(
+        db.platform.one("SELECT * FROM support_jobs", []).unwrap(),
+        before
+    );
     let first = jobs::claim(&db).unwrap().unwrap();
+    assert!(!jobs::pending(&db).unwrap());
     jobs::heartbeat(
         &db,
         &first.id,
@@ -475,11 +486,33 @@ fn restart_preserves_the_job_checkpoint_and_invalidates_the_expired_worker_lease
             rusqlite::params![now() - 1, first.id],
         )
         .unwrap();
+    assert!(jobs::pending(&db).unwrap());
     let second = jobs::claim(&db).unwrap().unwrap();
     assert_eq!(second.id, first.id);
     assert_eq!(second.checkpoint["phase"], "browser");
     assert_ne!(second.lease, first.lease);
     assert!(jobs::heartbeat(&db, &first.id, &first.lease, &json!({})).is_err());
+    assert!(!jobs::pending(&db).unwrap());
+    assert!(jobs::claim(&db).unwrap().is_none());
+    jobs::wait(
+        &db,
+        &second.id,
+        &second.lease,
+        "Retry later",
+        &json!({}),
+        Some(60_000),
+    )
+    .unwrap();
+    assert!(!jobs::pending(&db).unwrap());
+    db.platform
+        .exec(
+            "UPDATE support_jobs SET available_at=? WHERE id=?",
+            rusqlite::params![now() - 1, second.id],
+        )
+        .unwrap();
+    assert!(jobs::pending(&db).unwrap());
+    jobs::cancel(&db, &second.detail.ticket.id).unwrap();
+    assert!(!jobs::pending(&db).unwrap());
     assert!(jobs::claim(&db).unwrap().is_none());
 }
 
@@ -503,9 +536,11 @@ fn a_disabled_dsps_job_loses_its_worker_and_resumes_from_its_checkpoint_once_ena
             rusqlite::params![now() - 1, job.id],
         )
         .unwrap();
+    assert!(!jobs::pending(&db).unwrap());
     assert!(jobs::claim(&db).unwrap().is_none());
     // Enabled again, it's claimed where it was.
     testing::set_dsp_status(&db, &dsp, "active").unwrap();
+    assert!(jobs::pending(&db).unwrap());
     let resumed = jobs::claim(&db).unwrap().unwrap();
     assert_eq!(resumed.id, job.id);
     assert_eq!(resumed.checkpoint["phase"], "browser");
@@ -595,8 +630,10 @@ fn waiting_can_resume_without_an_attempt_limit_and_a_denial_cancels_work() {
         None,
     )
     .unwrap();
+    assert!(!jobs::pending(&db).unwrap());
     assert!(jobs::claim(&db).unwrap().is_none());
     approvals::resume(&db, &auth, &job.detail.ticket.id).unwrap();
+    assert!(jobs::pending(&db).unwrap());
     let resumed = jobs::claim(&db).unwrap().unwrap();
     assert_eq!(resumed.checkpoint["phase"], "provider");
     proposals::publish(&db, &resumed.id, &resumed.lease, proposal()).unwrap();
@@ -610,6 +647,7 @@ fn waiting_can_resume_without_an_attempt_limit_and_a_denial_cancels_work() {
     )
     .unwrap();
     assert!(jobs::heartbeat(&db, &resumed.id, &resumed.lease, &json!({})).is_err());
+    assert!(!jobs::pending(&db).unwrap());
     assert!(jobs::claim(&db).unwrap().is_none());
     // Each decision and the resume are in the audit log; a resume refused, with nothing
     // waiting, is not.
