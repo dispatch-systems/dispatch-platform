@@ -37,7 +37,7 @@ fn before_filing(db: &Store, dsp: &str) {
         .execute_batch("DROP TABLE phones_files; DROP TABLE phones_texts;")
         .unwrap();
     drop(database);
-    migrate(db, dsp, &[4, 6, 7, 16]);
+    migrate(db, dsp, &[4, 6, 7, 16, 19]);
 }
 /// The text a phone reported from `number` at `at`, saying `body`, with `pictures` pictures whose
 /// bytes haven't come: its ID, and its pictures'.
@@ -144,7 +144,7 @@ async fn a_done_from_before_migration_6_still_covers_its_texts_once_theyre_filed
                 params![done_at, conversation],
             )?;
             drop(database);
-            migrate(db, &at_dsp, &[6, 9, 10, 17]);
+            migrate(db, &at_dsp, &[6, 9, 10, 17, 19]);
             Ok(texts)
         })
         .await
@@ -194,6 +194,7 @@ async fn texts_filed_before_migration_9_read_as_they_did_their_done_block_and_se
                 to: "+14255550134".into(),
                 body: "Van 214 instead".into(),
                 files: Vec::new(),
+                gif: None,
                 by: owner,
             };
             let answer = db.phones_send(&at_dsp, &outgoing, now() - 8 * minute)?.id;
@@ -244,7 +245,7 @@ async fn texts_filed_before_migration_9_read_as_they_did_their_done_block_and_se
             )?;
             read_to_now(&database);
             drop(database);
-            migrate(db, &at_dsp, &[9, 10, 17]);
+            migrate(db, &at_dsp, &[9, 10, 17, 19]);
             Ok((asked.id, answer, done.id, spam))
         })
         .await
@@ -334,6 +335,7 @@ async fn texts_the_copy_never_read_before_migration_9_are_filed_by_the_next_upke
                 to: "+14255550188".into(),
                 body: "4410".into(),
                 files: Vec::new(),
+                gif: None,
                 by: owner,
             };
             let answer = db.phones_send(&at_dsp, &outgoing, now() - 7 * minute)?.id;
@@ -364,7 +366,7 @@ async fn texts_the_copy_never_read_before_migration_9_are_filed_by_the_next_upke
             };
             db.phones_status(&at_dsp, &phone, &report)?;
             let unread = reported(db, &at_dsp, "+14255550177", "Is this dispatch?", now(), 0);
-            migrate(db, &at_dsp, &[9, 10, 17]);
+            migrate(db, &at_dsp, &[9, 10, 17, 19]);
             Ok((
                 pictured.id,
                 pictured.files[0].clone(),

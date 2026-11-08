@@ -29,7 +29,8 @@
       [23, "ai_support", "6f9081123765772b"],
       [24, "feature_beta", "code"],
       [25, "dsp_deletions", "3206680874336991"],
-      [26, "dsp_backups", "9f2912085a4f823e"]
+      [26, "dsp_backups", "9f2912085a4f823e"],
+      [27, "feature_defaults", "code"]
     ],
     "owned": [
       ["slack", 1, "slack_teams", "35ab8bb0ffb56fd6"]
@@ -96,6 +97,7 @@
       ["communications", 16, "phones_files_on_phone", "code"],
       ["communications", 17, "communications_days", "code"],
       ["communications", 18, "communications_push", "897c8ba4892c8da2"],
+      ["communications", 19, "communications_gifs", "code"],
       ["slack", 1, "slack", "8ca8fd50f814a724"],
       ["slack", 2, "slack_new_connections", "code"],
       ["slack", 3, "slack_members", "a3cacf7486f2ded9"],

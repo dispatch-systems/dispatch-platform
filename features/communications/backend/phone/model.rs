@@ -4,6 +4,7 @@
 //!
 //! Its IDs, of a phone, a text or a file, are opaque: at most `ID_MOST` ASCII letters, digits, `_`
 //! or `-` (`identifier`), meaning nothing but to the phone side, which gave them.
+use crate::api::types::MessageGif;
 use serde::{Deserialize, Serialize};
 
 /// The most characters an ID the phone side gives may have.
@@ -120,6 +121,9 @@ pub struct Text {
     /// it went, or `PHONE_OFFLINE` for one still waiting at its expiry on its phone, offline.
     pub error: Option<String>,
     pub files: Vec<File>,
+    /// The GIF one Dispatch sent carries in place of pictures, if any: the phone fetches it from
+    /// KLIPY as it sends the text.
+    pub gif: Option<MessageGif>,
     /// Its latest change, after every one before it: a text changes as it comes, as Dispatch
     /// queues it or tries it again, as how it went changes, and as its files' bytes arrive.
     pub change: i64,
@@ -182,6 +186,8 @@ pub struct Outgoing {
     pub body: String,
     /// Pictures `by` added for it, at most `LIMITS.files`.
     pub files: Vec<String>,
+    /// A GIF in place of pictures, if any.
+    pub gif: Option<MessageGif>,
     /// Who at the DSP sends it.
     pub by: String,
 }

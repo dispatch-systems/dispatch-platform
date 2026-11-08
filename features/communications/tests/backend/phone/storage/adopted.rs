@@ -56,7 +56,7 @@ fn a_database_phones_migrated_upgrades_with_its_phone_its_waiting_text_and_its_p
 
     // The server starts on a build where Communications owns them: its migrations 7 and 8 run
     // over it.
-    migrate(&db, &dsp, &[7, 8]);
+    migrate(&db, &dsp, &[7, 8, 19]);
 
     // The phone's key still works, its text still waits for it with its picture, and the
     // picture's bytes are still there to fetch.

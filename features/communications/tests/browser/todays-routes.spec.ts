@@ -191,7 +191,8 @@ test('a driver’s work conversation keeps what’s being written while they hol
   await box.fill(draft);
   const height = await box.evaluate((field) => field.getBoundingClientRect().height);
   const choosing = page.waitForEvent('filechooser');
-  await conversation.getByRole('button', { name: 'Add photo' }).click();
+  await conversation.getByRole('button', { name: 'Attach', exact: true }).click();
+  await conversation.getByRole('button', { name: 'Attach Image' }).click();
   await (await choosing).setFiles({ name: 'gate.png', mimeType: 'image/png', buffer: PIXEL });
   const picture = conversation.getByRole('img', { name: 'gate.png' });
   await expect(picture).toBeVisible();

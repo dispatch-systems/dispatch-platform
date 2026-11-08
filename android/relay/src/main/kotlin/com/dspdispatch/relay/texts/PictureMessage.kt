@@ -2,8 +2,11 @@ package com.dspdispatch.relay.texts
 
 import java.io.File
 
-/** A file of a text to send, its bytes fetched into [file]. */
-class Attachment(val name: String, val mime: String, val file: File)
+/**
+ * A file of a text to send, its bytes fetched into [file]: sent [whole], never scaled, as a GIF,
+ * which a JPEG of it would stop.
+ */
+class Attachment(val name: String, val mime: String, val file: File, val whole: Boolean = false)
 
 /**
  * A text with pictures or files as the picture message carriers take: its files, its words, and a
@@ -12,7 +15,8 @@ class Attachment(val name: String, val mime: String, val file: File)
 class PictureMessage(private val pictures: Pictures) {
     /**
      * The M-Send.req of [body] and [attachments] to [to], within the carrier's [limits], or null
-     * when they can't fit: too large a file that isn't a picture, or a picture that won't shrink.
+     * when they can't fit: too large a file that isn't a picture, a picture that won't shrink, or
+     * one sent whole that would need to.
      * A picture Android can't read the size of goes as it is, if its bytes fit.
      */
     fun compose(to: String, body: String, attachments: List<Attachment>, limits: MmsLimits, transaction: String, date: Long): ByteArray? {
@@ -28,11 +32,19 @@ class PictureMessage(private val pictures: Pictures) {
         val fitted = files.toMutableList()
         for ((picture, share) in pictures.zip(allot(room, needs))) {
             if (picture !in oversized && files[picture].size <= share) continue
+            if (attachments[picture].whole) return null
             val bytes = this.pictures.shrink(attachments[picture].file, share.toInt(), limits.picture) ?: return null
             fitted[picture] = Item("${files[picture].name.substringBeforeLast('.')}.jpg", JPEG, bytes.size.toLong()) { bytes }
         }
         return encode(to, body, fitted, transaction, date).takeIf { it.size <= limits.most }
     }
+
+    /**
+     * How many bytes a picture named [name] of type [mime] may be, the one file of a message of
+     * [body] to [to] within the carrier's [limits].
+     */
+    fun room(to: String, body: String, name: String, mime: String, limits: MmsLimits, transaction: String, date: Long): Long =
+        limits.most - encode(to, body, listOf(Item(name, mime, 0) { ByteArray(0) }), transaction, date).size - MARGIN.toLong()
 
     /** A file as it goes into the message: [read] gives its bytes. */
     private data class Item(val name: String, val mime: String, val size: Long, val read: () -> ByteArray) {

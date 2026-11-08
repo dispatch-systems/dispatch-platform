@@ -7,18 +7,21 @@ import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js'
 import { usePicture } from '../../../../core/shell/frontend/runtime/usePicture.js';
 import { fileStatus, isPhoto, isVideo, size } from './format.js';
 import { useViewPhoto } from './PhotoViewer.js';
+import { shownAt } from '../gifs/klipy.js';
 import './message-body.css';
 
+/** How wide a GIF shows, in pixels, at most. */
+const GIF_WIDTH = 240;
 /** The most bytes of a video the page plays; a larger one is downloaded. */
 const PLAYS_MOST = 25 * 1024 ** 2;
 
-/** One message: its text, marked if edited in Slack, then its photos, videos and files, read from
- * where the way it went keeps them (`attachments`). */
+/** One message: its GIF, shown from KLIPY, its text, marked if edited in Slack, then its photos,
+ * videos and files, read from where the way it went keeps them (`attachments`). */
 export function MessageBody({
   message,
   attachments,
 }: {
-  message: Pick<Message, 'text' | 'editedAt' | 'files'> & Partial<Pick<Message, 'status'>>;
+  message: Pick<Message, 'text' | 'editedAt' | 'files'> & Partial<Pick<Message, 'status' | 'gif'>>;
   /** Where a photo, video or file of it is read from, by the way it went. */
   attachments: Pick<Attachments, 'address' | 'preview' | 'fetch'>;
 }) {
@@ -30,8 +33,17 @@ export function MessageBody({
       (file.status === 'kept' || (file.status === 'on_phone' && attachments.fetch)),
   );
   const files = message.files.filter((file) => !photos.includes(file) && !videos.includes(file));
+  const gif = message.gif && shownAt(message.gif, GIF_WIDTH);
   return (
     <>
+      {message.gif && gif && (
+        <img
+          className="gif"
+          src={gif.url}
+          alt={message.gif.title || 'GIF'}
+          style={{ aspectRatio: `${gif.width} / ${gif.height}` }}
+        />
+      )}
       {message.text && (
         <div className={message.status === 'failed' ? 'bubble failed' : 'bubble'}>
           {message.text}

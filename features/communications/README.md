@@ -123,7 +123,8 @@ and every other number's in Recents.
   once a read of them failed, as Try again is pressed. A read that failed says why, with Try
   again. Right above its box, however its messages are scrolled, who else at the DSP is writing
   in it, "Keisha is typing…", said to a screen reader as it changes. Writing in it: text, with
-  photos added (Add photo), as much as one message carries as the conversation's read says
+  photos added (**Attach Image**, under the plus at the box's start), or a GIF in their place
+  (**Choose GIF**, there too, [GIFs](#gifs)), as much as one message carries as the conversation's read says
   (`limits`), which what's refused says too, and nothing until it's read; **Quick replies**,
   beside the smiley while the DSP has some, on a phone under the field with attaching and Send,
   opens them, and the one chosen goes in where the writer was, as an emoji does, never sent by
@@ -605,6 +606,27 @@ in their own direct message with the app, and their answers come back together.
 - **Kept until the DSP is deleted:** disconnecting a workspace, or Slack removing the app from
   it, keeps its conversations, each message with who sent it and its photos and files; its
   integration's `forget` lets go only of the conversations holding no message.
+
+## GIFs
+
+A part of Communications switched on its own, `communications.gifs` (GIFs), off until the
+platform owner switches it on for a DSP; then, while the server has its KLIPY API key
+(`KLIPY_API_KEY`), **Choose GIF** under the plus opens KLIPY's GIFs where the emoji picker opens:
+trending ones until something is typed in **Search KLIPY**, then those KLIPY finds for it, in
+KLIPY's order, with KLIPY's content filter at `medium`. The one chosen stands in the box as a photo
+does, in place of photos, with what's written; once it's sent, KLIPY is told it was shared.
+
+KLIPY's terms, as KLIPY approved them for Dispatch: the browser searches KLIPY and shows each GIF
+from KLIPY's addresses itself (`page_sources` lets them through the page's Content-Security-Policy),
+and Dispatch keeps only a message's GIF's addresses (`gif`, a column of the message, the note of a
+reply as it goes to Slack, and the text), never the GIF. How it goes to the person messaged is one
+line, `gifs::SENDING`: `File`, as it ships, the GIF itself, which a phone fetches from KLIPY as it
+sends the text, at the largest size its carrier takes ([the app](api/phone/README.md)), and Slack
+shows as an image from KLIPY's address; or `Link`, KLIPY's address of it after what was written.
+Either way the page shows the GIF. A text with one, sent as a file, fails `phones_app_outdated`,
+"Update Relay to send GIFs", on a phone whose app is older than the first that sends them
+(`RELAY_SENDS_GIFS`). In fixture mode the server stands in for KLIPY, so the dev server and tests
+never call it. GIFs go in a conversation, not yet to a group.
 
 ## Messages out
 

@@ -45,7 +45,8 @@ data class AppDetails(val version: String, val versionCode: Int, val size: Long,
 
 /**
  * A text to send from the phone; each [attempt] is sent once, and a later one is new. Never started
- * once [expires] has passed, where Dispatch gives it.
+ * once [expires] has passed, where Dispatch gives it. Its pictures are Dispatch's [files], or a
+ * [gif] of KLIPY's.
  */
 @Serializable
 data class OutgoingText(
@@ -55,10 +56,19 @@ data class OutgoingText(
     val attempt: Long,
     val files: List<OutgoingFile> = emptyList(),
     val expires: Long? = null,
+    val gif: OutgoingGif? = null,
 )
 
 @Serializable
 data class OutgoingFile(val id: String, val name: String, val mime: String, val size: Long)
+
+/** A GIF of KLIPY's, named [name] in the message: the same GIF in each of its [versions]' sizes. */
+@Serializable
+data class OutgoingGif(val name: String, val versions: List<GifVersion>)
+
+/** One size of a GIF, at KLIPY's [url]: [width] by [height] pixels, [size] bytes. */
+@Serializable
+data class GifVersion(val url: String, val width: Int, val height: Int, val size: Long)
 
 /** Which way a text went: to the phone, or from it. */
 @Serializable

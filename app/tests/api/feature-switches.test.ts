@@ -266,14 +266,17 @@ test('a tab switched off has no routes, and a page goes and comes back with its 
       ['timecard.employees', false],
     ],
   );
-  // Switched back on without a tab, the page brings every tab.
+  // Switched back on without a tab, the page brings its first alone: the others come back only
+  // once each is switched on.
   result = await platform.post(url, { feature: 'timecard', enabled: true });
   assert.deepEqual(result.value.changed, [
     { feature: 'timecard', enabled: true },
     { feature: 'timecard.daily', enabled: true },
-    { feature: 'timecard.meal_breaks', enabled: true },
-    { feature: 'timecard.employees', enabled: true },
   ]);
+  await member.select(north.id);
+  assert.equal((await member.get('/api/dsp/employees')).status, 404);
+  result = await platform.post(url, { feature: 'timecard.employees', enabled: true });
+  assert.deepEqual(result.value.changed, [{ feature: 'timecard.employees', enabled: true }]);
   await member.select(north.id);
   assert.equal((await member.get('/api/dsp/employees')).status, 200);
   // A tab's page is named with it, and names the cause of the page's switch.

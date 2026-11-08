@@ -20,6 +20,7 @@ use super::{
     compose::{SLACK, checked, photo_kind},
     conversations, files,
     files::{File, FileStore},
+    gifs::{self, Sending},
     live,
     people::People,
     sender::{self, Identity},
@@ -32,7 +33,7 @@ use super::{
     text,
 };
 use crate::{
-    api::types::{CommunicationsUpload, Conversation, Message},
+    api::types::{CommunicationsUpload, Conversation, Message, MessageGif},
     integrations::messages::{ID, incoming},
 };
 use dispatch_core::{
@@ -118,22 +119,23 @@ pub(crate) async fn opened(bot: &Bot, user: &str) -> Result<String> {
         .ok_or_else(|| Error::new("slack_refused", 502))
 }
 
-/// Sends what the member `c` wrote in the conversation `id`, with the photos `photos` they
-/// added: the message, as the page reads it.
+/// Sends what the member `c` wrote in the conversation `id`, with the photos they added, or a GIF
+/// in their place (`adding`): the message, as the page reads it.
 pub async fn send(
     state: &Arc<State>,
     c: &Context,
     access: Dsp,
     id: &str,
     written: &str,
-    photos: &[String],
+    (photos, gif): (&[String], Option<&MessageGif>),
 ) -> Result<Message> {
-    let written = checked(written, photos, SLACK)?;
-    let (dsp, at, by, chosen) = (
+    let written = checked(written, photos, gif.is_some(), SLACK)?;
+    let (dsp, at, by, chosen, gif) = (
         c.dsp.id.clone(),
         id.to_owned(),
         c.auth.user.id.clone(),
         photos.to_vec(),
+        gif.cloned(),
     );
     // Its photos, and its note, are claimed for it, so another message can't take them as it
     // goes.
@@ -141,7 +143,7 @@ pub async fn send(
     let (asked, name) = (written.to_owned(), sender::name(&c.auth.user));
     let (conversation, uploads, noted, earlier) = state
         .run_scoped(c.dsp.id.clone(), DOMAIN, move |db| {
-            begin(db, &dsp, &at, (&by, &name), &asked, &chosen, until)
+            begin(db, &dsp, &at, (&by, &name), (&asked, gif), &chosen, until)
         })
         .await?;
     let sent = deliver(
@@ -167,8 +169,8 @@ pub async fn send(
     }
     sent
 }
-/// Begins a try of what the member `by` wrote, under the name `name`, in the conversation `id`,
-/// with the photos `chosen`, holding them and its note until `until`: the conversation, the
+/// Begins a try of what the member `by` wrote, with the GIF they chose, if any, under the name
+/// `name`, in the conversation `id`, with the photos `chosen`, holding them and its note until `until`: the conversation, the
 /// photos, the note, and whether it was noted before. The same message sent there before, should
 /// Slack have it unkept, is that note, claimed, and refused while another try of it is under way;
 /// else it's noted now, in the same write, so a try of it begun meanwhile is refused too.
@@ -177,7 +179,7 @@ fn begin(
     dsp: &str,
     id: &str,
     (by, name): (&str, &str),
-    text: &str,
+    (text, gif): (&str, Option<MessageGif>),
     chosen: &[String],
     until: i64,
 ) -> Result<(StoredConversation, Vec<File>, Noted, bool)> {
@@ -195,6 +197,7 @@ fn begin(
         .find(|noted| {
             noted.by == by
                 && noted.text == text
+                && noted.gif == gif
                 && noted.photos.iter().map(|(photo, _)| photo).eq(chosen)
         });
     let of = earlier.as_ref().map(|noted| noted.id.as_str());
@@ -210,6 +213,7 @@ fn begin(
                 .iter()
                 .map(|photo| (photo.clone(), String::new()))
                 .collect(),
+            gif,
             posting_since: now(),
             claimed_until: until,
         };
@@ -263,6 +267,9 @@ async fn deliver(
         ..noted
     };
     let mut args = message(channel, written, &shown, &identity);
+    if let Some(gif) = &noted.gif {
+        with_gif(&mut args, written, gif);
+    }
     args["metadata"] = tag(EVENT, &noted.id);
     // Checked again, and noted as it goes, before it goes to Slack: once Slack has it, it's kept.
     let (asked, note) = (c.clone(), noted.clone());
@@ -292,6 +299,7 @@ async fn keep(state: &Arc<State>, dsp: &str, noted: &Noted, ts: &str) -> Result<
             by: &noted.by,
             name: &noted.name,
             photos: &noted.photos,
+            gif: noted.gif.as_ref(),
         };
         let kept = db.keep_communications_reply(&of, &noted.conversation, &sent, &noted.id)?;
         let people = People::read(db, &shared, &of)?;
@@ -450,6 +458,34 @@ pub(crate) fn message(
         args["blocks"] = blocks(written, shown);
     }
     args
+}
+/// `args`, a message's, with `gif` in it, after what was `written`: shown as an image from
+/// KLIPY's address, which Slack fetches, or, sending links, that address after it.
+fn with_gif(args: &mut Value, written: &str, gif: &MessageGif) {
+    match gifs::SENDING {
+        Sending::File => {
+            let shown = gifs::shared(gif);
+            let alt = if gif.title.is_empty() {
+                "GIF"
+            } else {
+                &gif.title
+            };
+            let mut blocks = Vec::new();
+            if !written.is_empty() {
+                blocks.push(
+                    json!({"type": "section", "text": {"type": "plain_text", "text": written}}),
+                );
+            }
+            blocks.push(json!({"type": "image", "image_url": shown.url, "alt_text": alt}));
+            args["text"] = json!(if written.is_empty() {
+                text::escaped(alt)
+            } else {
+                text::escaped(written)
+            });
+            args["blocks"] = Value::Array(blocks);
+        }
+        Sending::Link => args["text"] = json!(text::escaped(&gifs::linked(written, gif))),
+    }
 }
 /// A message's blocks, for one with photos: what was written, as written, then each photo, by
 /// Slack's ID of it.

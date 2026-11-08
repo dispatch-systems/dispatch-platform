@@ -277,7 +277,7 @@ async fn answers_are_the_groups_until_the_dsp_writes_to_them_alone() {
     assert_eq!(jordan.group.as_deref(), Some(group.id.as_str()));
 
     // Answered alone, Jordan's is their own again, and the group waits on no one.
-    reply::send(&state, &c, USE, &jordan.id, "Thanks", &[])
+    reply::send(&state, &c, USE, &jordan.id, "Thanks", (&[], None))
         .await
         .unwrap();
     let jordan = with(&state, &dsp, DRIVERS_TEAM, "U0FIXJORDAN").await;
@@ -296,7 +296,7 @@ async fn answers_are_the_groups_until_the_dsp_writes_to_them_alone() {
 
     // A later group message moves them under it; Done on the group marks each waiting under it
     // done.
-    reply::send(&state, &c, USE, &jordan.id, "Sure", &[])
+    reply::send(&state, &c, USE, &jordan.id, "Sure", (&[], None))
         .await
         .unwrap();
     let later = sent(

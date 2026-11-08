@@ -1,19 +1,17 @@
-/* The DSPs page: counts, the list on the left of a divider, the chosen DSP on the right. */
+/* The DSPs page: counts, each showing only its DSPs, over a table of them; or the chosen DSP. */
 .dsp-counts {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   margin: -8px 0 26px;
 }
-.dsp-count {
-  display: inline-flex;
-  align-items: center;
+button.dsp-count {
   gap: 8px;
-  height: 30px;
+  min-height: 30px;
   padding: 0 12px 0 10px;
-  border: 1px solid var(--border);
   border-radius: 999px;
   font-size: 12.5px;
+  font-weight: 400;
 }
 .dsp-count strong {
   font-weight: 600;
@@ -31,7 +29,7 @@
 .dsp-count.invited > i {
   background: var(--warning);
 }
-.dsp-count.total {
+button.dsp-count[aria-pressed='true'] {
   background: var(--muted);
   border-color: transparent;
 }
@@ -45,16 +43,6 @@
   background: var(--muted-foreground);
 }
 
-.dsps-master {
-  display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
-  gap: 32px;
-  align-items: start;
-}
-.dsps-list {
-  border-right: 1px solid var(--border);
-  padding-right: 24px;
-}
 .dsps-list-tools {
   display: flex;
   gap: 8px;
@@ -111,11 +99,94 @@
 }
 
 .dsp-back {
-  display: none;
+  display: inline-flex;
   gap: 4px;
   margin-bottom: 8px;
 }
+/* Every DSP, a row each across the page; a DSP's name opens it. */
+.dsps-table .dsps-list-tools {
+  margin-bottom: 12px;
+}
+.dsps-table .dsps-list-tools .search {
+  width: min(100%, 360px);
+}
+button.dsp-name {
+  justify-content: flex-start;
+  gap: 12px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-weight: 400;
+  text-align: left;
+}
+button.dsp-name .dsp-avatar {
+  width: 32px;
+  height: 32px;
+  flex-basis: 32px;
+  font-size: 11px;
+}
+button.dsp-name .dsp-name-copy {
+  display: grid;
+  gap: 2px;
+}
+button.dsp-name small {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.dsp-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dsp-rows li + li {
+  border-top: 1px solid var(--border);
+}
+.dsp-rows button.dsp-name {
+  width: 100%;
+  min-height: 60px;
+}
+.dsp-rows button.dsp-name .dsp-name-copy {
+  flex: 1;
+  min-width: 0;
+}
+.dsp-rows button.dsp-name :is(strong, small) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dsp-rows .status-indicator {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+button.dsp-name:hover strong {
+  color: var(--primary);
+}
+/* Beside the open DSP's name: the others, to open one in its place. */
+.dsp-detail-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.dsp-switcher-panel {
+  position: absolute;
+  top: calc(100% - 16px);
+  left: 0;
+  z-index: 30;
+  width: min(340px, calc(100vw - 32px));
+  max-height: min(480px, 70vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--popover);
+  box-shadow: 0 10px 30px #0004;
+}
+/* The switcher's panel hangs from the head's left edge, so a long name can't push it off screen. */
 .dsp-detail-head {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 14px;
@@ -131,7 +202,7 @@
   flex: 1;
   min-width: 0;
 }
-.dsp-detail-copy h2 {
+.dsp-detail-title > h2 {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -588,20 +659,10 @@
 }
 
 @media (max-width: 760px) {
-  .dsps-master {
-    grid-template-columns: 1fr;
-  }
-  /* A phone shows the list, then the chosen DSP with a way back. */
-  .dsps-master.chosen .dsps-list,
-  .dsps-master:not(.chosen) .dsps-detail {
-    display: none;
-  }
-  .dsps-list {
-    border-right: 0;
-    padding-right: 0;
-  }
-  .dsp-back {
-    display: inline-flex;
+  .dsp-switcher-panel {
+    position: fixed;
+    top: 72px;
+    left: 16px;
   }
   .dsp-detail-head {
     flex-wrap: wrap;
@@ -610,7 +671,7 @@
   .dsp-detail-copy {
     flex: 1 1 60%;
   }
-  .dsp-detail-copy h2 {
+  .dsp-detail-title > h2 {
     font-size: 18px;
   }
   .dsp-detail-actions {

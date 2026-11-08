@@ -64,8 +64,8 @@ pub(crate) const UNDECLARED: Switch = Switch {
 /// A part of a feature's page, switched on its own inside the page: one of its tabs, or any
 /// other part, such as uploading files. It exists while it and its page are on, and its
 /// permissions with it. A part is optional unless `.mandatory()`, which only a mandatory
-/// feature's parts may be. An optional part of an optional feature starts on, so switching
-/// the feature on shows all of it; one of a mandatory feature starts off, as a new feature does.
+/// feature's parts may be. An optional part starts off, as a new feature does: switching its
+/// feature on brings only the first of its tabs, which the page needs to show.
 pub struct Sub {
     /// Its catalog id. Permanent: each DSP's switch is stored under it.
     pub id: &'static str,

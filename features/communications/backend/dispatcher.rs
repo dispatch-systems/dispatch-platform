@@ -10,7 +10,7 @@ use super::{
     storage::conversations::ConversationStore,
     texts::{self, storage::TextStore},
 };
-use crate::api::types::{Conversation, ConversationMessages, Profile, SentMessage};
+use crate::api::types::{Conversation, ConversationMessages, MessageGif, Profile, SentMessage};
 use dispatch_core::{
     Result, State, accounts::Context, db::Store, ensure, server::http::route::Dsp,
 };
@@ -92,8 +92,8 @@ pub fn found(db: &Store, dsp: &str, reference: &Reference) -> Result<()> {
     ensure(found, "communications_conversation_not_found", 404)
 }
 
-/// Sends what the member `c` wrote in the conversation `reference`, with the photos `photos` they
-/// added for it: the message, as the page reads it, and the conversation it's in now, which by text
+/// Sends what the member `c` wrote in the conversation `reference`, with the photos they added for
+/// it, or a GIF in their place (`adding`): the message, as the page reads it, and the conversation it's in now, which by text
 /// is another once the number it went to changed hands as it went. Their access is checked again
 /// before the conversation is read: what went stays kept, whether or not they may still read it.
 pub async fn send(
@@ -102,11 +102,11 @@ pub async fn send(
     access: Dsp,
     reference: &Reference,
     written: &str,
-    photos: &[String],
+    adding: (&[String], Option<&MessageGif>),
 ) -> Result<SentMessage> {
     let message = match reference {
-        Reference::Slack(id) => reply::send(state, c, access, id, written, photos).await?,
-        Reference::Text(id) => texts::reply::send(state, c, access, id, written, photos).await?,
+        Reference::Slack(id) => reply::send(state, c, access, id, written, adding).await?,
+        Reference::Text(id) => texts::reply::send(state, c, access, id, written, adding).await?,
     };
     let (shared, asked, sent_in, sent) = (
         state.clone(),

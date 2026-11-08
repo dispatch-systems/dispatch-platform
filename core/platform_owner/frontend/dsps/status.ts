@@ -14,3 +14,10 @@ export const dspState = (dsp: DspSummary): DspState =>
     : dsp.ownerStatus === 'active'
       ? 'online'
       : 'invited';
+/** Who owns the DSP, or where its owner's invitation stands. */
+export const ownerText = (dsp: DspSummary) =>
+  dsp.ownerStatus === 'active'
+    ? (dsp.ownerEmail ?? 'Not assigned')
+    : dsp.ownerStatus === 'invited'
+      ? `Invitation sent to ${dsp.ownerEmail}`
+      : 'Invitation expired';

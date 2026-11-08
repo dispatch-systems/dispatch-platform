@@ -23,7 +23,8 @@ export const subfeatures = [
   "timecard.meal_breaks",
   "timecard.employees",
   "dvic.day",
-  "dvic.week"
+  "dvic.week",
+  "communications.gifs"
 ] as const;
 export const connections = [
   "paycom",
@@ -51,6 +52,7 @@ export const features = [
   "timecard.employees",
   "dvic.day",
   "dvic.week",
+  "communications.gifs",
   "paycom",
   "cortex"
 ] as const;
@@ -275,6 +277,15 @@ export const featureCatalog = [
     "kind": "sub",
     "page": "dvic",
     "tab": true
+  },
+  {
+    "id": "communications.gifs",
+    "label": "GIFs",
+    "permissions": [],
+    "requires": [],
+    "kind": "sub",
+    "page": "communications",
+    "tab": false
   },
   {
     "id": "paycom",

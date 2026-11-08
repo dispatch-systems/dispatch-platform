@@ -276,9 +276,16 @@ async fn a_phone_handed_to_another_driver_takes_the_days_conversation_with_it_bo
     .await;
     let conversation = filed(&state, &dsp, &asked).await.id;
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
-    let answer = reply::send(&state, &c, support::USE, &conversation, "Van 214", &[])
-        .await
-        .unwrap();
+    let answer = reply::send(
+        &state,
+        &c,
+        support::USE,
+        &conversation,
+        "Van 214",
+        (&[], None),
+    )
+    .await
+    .unwrap();
     assert_eq!(
         filed(&state, &dsp, &answer.id).await.driver,
         driver("avery")
@@ -309,7 +316,7 @@ async fn todays_texts_both_ways_go_to_the_driver_whose_work_phone_it_is_once_liv
     let number = filed(&state, &dsp, &asked).await;
     assert_eq!(number.kind, ConversationKind::Number);
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
-    let answer = reply::send(&state, &c, support::USE, &number.id, "Van 214", &[])
+    let answer = reply::send(&state, &c, support::USE, &number.id, "Van 214", (&[], None))
         .await
         .unwrap();
 
@@ -335,9 +342,16 @@ async fn a_drivers_texts_stay_theirs_as_how_one_went_changes_while_routes_is_off
     let asked = texted(&state, &dsp, "+12065550101", "Which van?", now()).await;
     let conversation = filed(&state, &dsp, &asked).await.id;
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
-    let answer = reply::send(&state, &c, support::USE, &conversation, "Van 214", &[])
-        .await
-        .unwrap();
+    let answer = reply::send(
+        &state,
+        &c,
+        support::USE,
+        &conversation,
+        "Van 214",
+        (&[], None),
+    )
+    .await
+    .unwrap();
     support::reported(&state, &dsp, &answer.id, Status::Failed).await;
 
     // Routes goes off, and the phone then says the answer went after all: still Avery's.
@@ -446,6 +460,7 @@ async fn a_text_dispatch_sent_filed_by_the_upkeep_is_under_whoever_at_the_dsp_se
         to: "+12535550177".into(),
         body: "Your shift moved to 9".into(),
         files: Vec::new(),
+        gif: None,
         by: owner,
     };
     let at_dsp = dsp.clone();

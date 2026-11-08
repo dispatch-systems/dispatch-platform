@@ -80,10 +80,8 @@ fn page(feature: &manifest::Feature) -> Feature {
 /// exists while its page and its own switch are on, with the permissions it owns, and its
 /// routes ask `Context::has` or one of its permissions; it may need a connection of its own
 /// beyond its page's. Switching one never touches automation, which follows the page. An
-/// optional page's part defaults on, so switching the page on shows every part until one is
-/// switched off; a DSP still starts with none, as its pages are off. A mandatory page's
-/// optional part defaults off, as a new feature does: its page is never switched on to show
-/// it.
+/// optional part defaults off, as a new feature does: switching its page on brings only the
+/// first of its tabs, which the page needs to show.
 fn page_subs(feature: &manifest::Feature) -> impl Iterator<Item = Feature> {
     let switch = feature.switch;
     feature.subfeatures.iter().map(move |sub| {
@@ -96,7 +94,7 @@ fn page_subs(feature: &manifest::Feature) -> impl Iterator<Item = Feature> {
             permissions: Box::leak(permissions.into_boxed_slice()),
             provides: &[],
             requires: sub.requires,
-            default: sub.mandatory || !switch.mandatory,
+            default: sub.mandatory,
             tab: sub.tab,
             mandatory: sub.mandatory,
             connects: false,

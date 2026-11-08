@@ -18,7 +18,9 @@ import type {
   GroupMember,
   GroupMessages,
   GroupPeople,
+  GifSearch,
   Message,
+  MessageGif,
   PhonePairing,
   PhonePairingStatus,
   PhoneRow,
@@ -161,9 +163,15 @@ export const getContacts = (typed = '', team?: string) =>
 /** Opens a direct message with a member, to message them first. */
 export const openConversation = (teamId: string, userId: string) =>
   api<Conversation>(`${communicationsUrl}/conversations`, { teamId, userId });
-/** Sends a message, with the photos added for it: it, and the conversation it's in now. */
-export const sendMessage = (id: string, text: string, photos: string[] = []) =>
-  api<SentMessage>(`${communicationsUrl}/conversations/${id}/messages`, { text, photos });
+/** Sends a message, with the photos added for it, or a GIF chosen in their place: it, and the
+ * conversation it's in now. */
+export const sendMessage = (id: string, text: string, photos: string[] = [], gif?: MessageGif) =>
+  api<SentMessage>(
+    `${communicationsUrl}/conversations/${id}/messages`,
+    gif ? { text, photos, gif } : { text, photos },
+  );
+/** Where the page searches KLIPY's GIFs, while the DSP has them and the server can. */
+export const getGifSearch = () => api<GifSearch>(`${communicationsUrl}/gifs`);
 /** Marks a conversation answered without a reply, as far as `seen`, the latest message shown. */
 export const markDone = (id: string, seen?: Message | null) =>
   api<Conversation>(`${communicationsUrl}/conversations/${id}/done`, seen ? { seen: seen.ts } : {});

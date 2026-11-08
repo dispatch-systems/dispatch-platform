@@ -445,12 +445,24 @@ async fn the_request_pipeline_checks_host_origin_content_type_and_size() {
             "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=(), publickey-credentials-create=(self), publickey-credentials-get=(self)"
         );
         assert_eq!(answer.header("cache-control"), "no-store");
+        // With what features' pages load from outside, as their `page_sources` declare it.
+        let outside = |loads| {
+            dispatch_core::manifest::registry()
+                .page_origins(loads)
+                .iter()
+                .map(|origin| format!(" {origin}"))
+                .collect::<String>()
+        };
         assert_eq!(
             answer.header("content-security-policy"),
-            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' \
-             'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' \
-             blob: ws:; font-src 'self'; \
-             object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+            format!(
+                "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' \
+                 'unsafe-inline'; img-src 'self' data: blob:{}; media-src 'self' blob:; \
+                 connect-src 'self' blob:{} ws:; font-src 'self'; \
+                 object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+                outside(dispatch_core::manifest::Loads::Images),
+                outside(dispatch_core::manifest::Loads::Calls),
+            )
         );
     }
     let update = server.send(Call::get("/api/browser-update")).await;

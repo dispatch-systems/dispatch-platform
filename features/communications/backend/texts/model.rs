@@ -1,7 +1,9 @@
 //! What texting keeps, as its storage reads and writes it: each conversation by text, each text
 //! filed in one with its pictures and how one Dispatch sent went, where a text is filed
 //! (`Filed`), and the latest day live route data held (`LiveKept`).
+use crate::api::types::MessageGif;
 use crate::backend::{
+    gifs,
     model::{ConversationKind, ConversationState, Direction},
     phone::model::File,
 };
@@ -76,6 +78,8 @@ pub struct Text {
     pub error: Option<String>,
     /// Its pictures and files, as the phone side keeps them.
     pub files: Vec<File>,
+    /// The GIF one Dispatch sent carries in place of pictures, if any.
+    pub gif: Option<MessageGif>,
     /// The conversation one Dispatch sent was written in, as it was queued: none for one queued
     /// before Communications kept it (migration 17).
     pub queued_in: Option<String>,
@@ -104,6 +108,7 @@ impl FromRow for Text {
             status: row.get("status")?,
             error: row.get("error")?,
             files: Vec::new(),
+            gif: gifs::of_column(row.get("gif")?)?,
             queued_in: row.get("queued_in")?,
         })
     }

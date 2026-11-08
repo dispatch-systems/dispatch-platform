@@ -63,6 +63,7 @@ export function ConversationPane({
   todays,
   open,
   next,
+  gifs,
 }: {
   id: string;
   /** The conversation as the list has it, which the page's own writes and each update keep. */
@@ -102,6 +103,8 @@ export function ConversationPane({
   open: (target: Target) => void;
   /** Next waiting: opens the one waiting longest of the section shown, while another waits. */
   next?: () => void;
+  /** Whether a GIF of KLIPY's may be chosen for a message, as the DSP has GIFs. */
+  gifs: boolean;
 }) {
   const {
     opened,
@@ -256,7 +259,8 @@ export function ConversationPane({
           limits={opened?.limits}
           attachments={KINDS[shown.conversation.kind].attachments}
           to={about && number ? lastFour(number) : undefined}
-          send={async (text, photos) => sent(await sendMessage(id, text, photos))}
+          send={async (text, photos, gif) => sent(await sendMessage(id, text, photos, gif))}
+          gifs={gifs}
           typing={() => void sayTyping(id).catch(() => undefined)}
           above={<TypingLine writing={writing} />}
           replied={{
