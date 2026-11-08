@@ -4,12 +4,16 @@ use super::{
     health,
     pairing::VERSION_MOST,
 };
+use crate::api::types::GifVersion;
 use crate::backend::{
+    gifs::{self, Sending},
     phone::{
         app::{self, App},
         live,
         model::{EXPIRY_MS, ID_MOST, Status, Text, WANT_MS},
-        storage::{AppVersion, DeviceStore, FileStore, MOST_TEXTS, StatusReport, TextStore},
+        storage::{
+            AppVersion, Device, DeviceStore, FileStore, MOST_TEXTS, StatusReport, TextStore,
+        },
     },
     storage::DOMAIN,
     texts::filing,
@@ -70,6 +74,14 @@ struct Outgoing {
     files: Vec<OutgoingFile>,
     attempt: i64,
     expires: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    gif: Option<OutgoingGif>,
+}
+/// A GIF of KLIPY's, which the phone fetches from KLIPY at the largest of its sizes it can send.
+#[derive(Serialize)]
+struct OutgoingGif {
+    name: String,
+    versions: Vec<GifVersion>,
 }
 #[derive(Serialize)]
 struct OutgoingFile {
@@ -80,13 +92,25 @@ struct OutgoingFile {
 }
 impl Outgoing {
     fn of((text, attempt): (Text, i64)) -> Self {
+        // Its GIF, as a file the phone fetches, or as its link after what was written.
+        let (body, gif) = match (text.gif, gifs::SENDING) {
+            (Some(gif), Sending::Link) => (gifs::linked(&text.body, &gif), None),
+            (gif, _) => (
+                text.body,
+                gif.map(|gif| OutgoingGif {
+                    name: format!("{}.gif", gif.slug),
+                    versions: gif.versions,
+                }),
+            ),
+        };
         Self {
             attempt,
             // Waiting, its status last moved as it was queued, or tried again.
             expires: text.status_at.unwrap_or(text.at) + EXPIRY_MS,
             id: text.id,
             number: text.number,
-            body: text.body,
+            body,
+            gif,
             files: text
                 .files
                 .into_iter()
@@ -137,14 +161,21 @@ pub(super) async fn outbox(state: Arc<State>, input: Input, access: Phone) -> Re
     let until = tokio::time::Instant::now() + WAIT;
     loop {
         let asked = input.clone();
-        let (texts, wanted, app) = state
+        let (texts, outdated, wanted, app) = state
             .read(move |db| {
                 let caller = access.authorize(db, &asked)?;
-                let texts = db.phones_outbox(&caller.dsp, &caller.device.id)?;
+                let (texts, outdated): (Vec<_>, Vec<_>) = db
+                    .phones_outbox(&caller.dsp, &caller.device.id)?
+                    .into_iter()
+                    .partition(|(text, _)| sendable(text, &caller.device));
                 let wanted = db.phones_wanted(&caller.dsp, &caller.device.id, now() - WANT_MS)?;
-                Ok((texts, wanted, app::latest(&db.config)))
+                Ok((texts, outdated, wanted, app::latest(&db.config)))
             })
             .await?;
+        if !outdated.is_empty() {
+            fail_outdated(&state, &input, access, &caller.dsp, outdated).await?;
+            continue;
+        }
         if !wanted.is_empty() {
             let (asked, handed) = (input.clone(), wanted.clone());
             // Bookkeeping: no cached read depends on when a video was handed out.
@@ -176,6 +207,45 @@ fn running(query: &Value) -> Result<Option<AppVersion>> {
         version: v::name(query, "version", VERSION_MOST)?,
         version_code: query_number(query, "versionCode", 0, 1, VERSION_CODE_MOST)? as i64,
     }))
+}
+
+/// Whether `text` can go from `device`: one with a GIF only from an app that sends one, unless
+/// GIFs go as links.
+fn sendable(text: &Text, device: &Device) -> bool {
+    text.gif.is_none()
+        || gifs::SENDING == Sending::Link
+        || device
+            .app_version_code
+            .is_some_and(|code| code >= gifs::RELAY_SENDS_GIFS)
+}
+
+/// Fails each of `texts`, with a GIF its phone's app can't send, as the phone would report it.
+async fn fail_outdated(
+    state: &Arc<State>,
+    input: &Input,
+    access: Phone,
+    dsp: &str,
+    texts: Vec<(Text, i64)>,
+) -> Result<()> {
+    let asked = input.clone();
+    filing::changing(state, dsp, move |db| {
+        let caller = access.authorize(db, &asked)?;
+        let mut moved = Vec::new();
+        for (text, attempt) in texts {
+            let report = StatusReport {
+                id: text.id,
+                attempt,
+                status: Status::Failed,
+                at: now(),
+                error: Some(gifs::OUTDATED.to_owned()),
+            };
+            if db.phones_status(&caller.dsp, &caller.device.id, &report)? {
+                moved.push(report.id);
+            }
+        }
+        Ok(((), moved))
+    })
+    .await
 }
 
 /// Notes how the texts Dispatch had for the phone went, and files those that moved.

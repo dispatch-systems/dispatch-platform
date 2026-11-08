@@ -5,7 +5,7 @@ use super::{
     ConversationKind, ConversationState, Direction, FileStatus, Group, Pace, TextStatus, Workday,
 };
 use dispatch_core::manifest::people::{PersonRole, PersonTitle};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// A conversation: a direct message with a member of one of the DSP's Slack workspaces, or texts
 /// with a number, or with whichever of the DSP's work phones a driver had.
@@ -101,6 +101,8 @@ pub struct Message {
     /// Who at the DSP sent it; none for the member's own.
     pub sender: Option<Sender>,
     pub files: Vec<MessageFile>,
+    /// A GIF of KLIPY's it carries in place of photos, shown from KLIPY.
+    pub gif: Option<MessageGif>,
     /// The group it went to, for one the DSP sent a group.
     pub group: Option<MessageGroup>,
     /// How a text Dispatch sent went.
@@ -185,6 +187,54 @@ pub struct MessageFile {
     pub version: Option<String>,
     /// Whether the picture of its first frame is kept, for a text's video kept on its phone.
     pub preview: bool,
+}
+
+/// A GIF of KLIPY's: its `slug`, its `title`, and the sizes it comes in, each a GIF at KLIPY's
+/// address. Dispatch keeps only these, never the GIF: the page shows it from KLIPY, and a phone
+/// fetches it from there as it sends the text.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageGif {
+    pub slug: String,
+    pub title: String,
+    pub versions: Vec<GifVersion>,
+}
+
+/// One size of a GIF: at `url`, `width` by `height` pixels, `size` bytes.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct GifVersion {
+    pub url: String,
+    pub width: u32,
+    pub height: u32,
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub size: u64,
+}
+
+/// `GET /api/dsp/communications/gifs`: where the page searches KLIPY's GIFs, straight from the
+/// browser, as KLIPY's terms have it: KLIPY's API with the server's key, or in fixture mode the
+/// server's stand-in; its content filter; and the member's anonymous ID there.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct GifSearch {
+    pub address: String,
+    pub filter: String,
+    pub customer: String,
 }
 
 /// `GET /api/dsp/communications/conversations`: the fifty conversations found by name closest

@@ -55,6 +55,7 @@ pub fn outgoing(to: &str, files: Vec<String>, by: &str) -> Outgoing {
         to: to.into(),
         body: "On my way".into(),
         files,
+        gif: None,
         by: by.into(),
     }
 }

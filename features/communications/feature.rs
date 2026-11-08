@@ -15,12 +15,13 @@ pub use api::types::{
     Communications, CommunicationsUpdates, CommunicationsUpload, CommunicationsWaiting,
     CommunicationsWorkspace, ComposeLimits, Contact, Contacts, Conversation, ConversationKind,
     ConversationMessages, ConversationState, Conversations, Correspondent, Direction,
-    DispatchPhone, Elsewhere, FileStatus, Group, GroupChoice, GroupChoiceKind, GroupChoices,
-    GroupEntry, GroupMember, GroupMessages, GroupPeople, GroupPerson, GroupPersonState,
-    GroupProgress, Message, MessageFile, MessageGroup, NotSent, Pace, PairingStatus, PhoneApp,
-    PhoneHealth, PhonePairing, PhonePairingStatus, PhoneRow, Phones, Profile, PushKey,
-    QuickReplies, Reachable, RouteDriver, Sender, SentMessage, TextContact, TextContacts,
-    TextPeople, TextStatus, Today, TodaysRoutes, Typing, WaitingMessage, Workday, Writing,
+    DispatchPhone, Elsewhere, FileStatus, GifSearch, GifVersion, Group, GroupChoice,
+    GroupChoiceKind, GroupChoices, GroupEntry, GroupMember, GroupMessages, GroupPeople,
+    GroupPerson, GroupPersonState, GroupProgress, Message, MessageFile, MessageGif, MessageGroup,
+    NotSent, Pace, PairingStatus, PhoneApp, PhoneHealth, PhonePairing, PhonePairingStatus,
+    PhoneRow, Phones, Profile, PushKey, QuickReplies, Reachable, RouteDriver, Sender, SentMessage,
+    TextContact, TextContacts, TextPeople, TextStatus, Today, TodaysRoutes, Typing, WaitingMessage,
+    Workday, Writing,
 };
 
 use dispatch_core::db::{
@@ -28,7 +29,7 @@ use dispatch_core::db::{
     migrations::Apply::{Code, Sql},
 };
 use dispatch_core::{
-    manifest::{Audit, Deleting, Feature, feature, optional, perm},
+    manifest::{Audit, Deleting, Feature, Loads, feature, optional, page_source, perm, sub},
     tenancy::api::audit::AuditArea::Connections,
 };
 use dispatch_routes_contract::RouteDataChanged;
@@ -36,6 +37,8 @@ use dispatch_routes_contract::RouteDataChanged;
 pub const FEATURE: Feature = Feature {
     place: 95,
     switch: optional("communications", "Communications", &[]),
+    // Choosing a GIF of KLIPY's for a message, switched on its own.
+    subfeatures: &[sub(backend::gifs::PART, "GIFs")],
     // It works through Slack: what's written to the app in the DSP's workspaces; and through its
     // own dispatch phones, which relay the texts its number receives and sends.
     depends_on: &["slack"],
@@ -197,13 +200,47 @@ pub const FEATURE: Feature = Feature {
                 name: "communications_push",
                 apply: Sql(include_str!("migrations/dsp/0018_communications_push.sql")),
             },
+            // The GIF of KLIPY's a message carries, by its KLIPY addresses.
+            Migration {
+                id: 19,
+                name: "communications_gifs",
+                apply: Code(backend::gifs::add_gifs),
+            },
         ],
     }],
     // Its dispatch phones are the DSP's own, managed on DSP Connections.
     dsp_connection: true,
-    // The key pair its pushes to members' browsers are signed with (VAPID); and how many
-    // megabytes of pictures and files the server keeps cached copies of.
-    env: &[&[backend::push::webpush::KEY], &["PICTURE_CACHE_MB"]],
+    // The key pair its pushes to members' browsers are signed with (VAPID); how many megabytes
+    // of pictures and files the server keeps cached copies of; and its KLIPY API key, for GIFs.
+    env: &[
+        &[backend::push::webpush::KEY],
+        &["PICTURE_CACHE_MB"],
+        &[backend::gifs::KEY],
+    ],
+    // KLIPY, which the page searches for GIFs and shows them from, straight from the browser, as
+    // its terms have it.
+    page_sources: &[
+        page_source(
+            "communications.klipy_api",
+            Loads::Calls,
+            "https://api.klipy.com",
+        ),
+        page_source(
+            "communications.klipy_media",
+            Loads::Images,
+            "https://static.klipy.com",
+        ),
+        page_source(
+            "communications.klipy_media_1",
+            Loads::Images,
+            "https://static1.klipy.com",
+        ),
+        page_source(
+            "communications.klipy_media_2",
+            Loads::Images,
+            "https://static2.klipy.com",
+        ),
+    ],
     // Catching up on what Dispatch didn't hear of, hourly and as the server starts; downloading
     // what members attach, keeping answers that went to Slack unkept, sending what's due to go to
     // groups' people, filing texts waiting to be filed, filing the days noted and today's again
@@ -266,6 +303,9 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         Direction,
         Sender,
         MessageFile,
+        MessageGif,
+        GifVersion,
+        GifSearch,
         FileStatus,
         Conversations,
         ConversationMessages,

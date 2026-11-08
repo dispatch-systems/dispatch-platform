@@ -37,6 +37,7 @@ fn sent(ts: &str, at: i64) -> Sent<'_> {
         by: "user_1",
         name: "Morgan Lane",
         photos: &[],
+        gif: None,
     }
 }
 

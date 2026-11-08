@@ -113,6 +113,7 @@ export function whyNotSent(error: string | null) {
     phones_offline: 'Phone offline',
     expired: 'Phone offline',
     phones_removed: 'Phone removed',
+    phones_app_outdated: 'Update Relay to send GIFs',
   };
   return known[error] ?? (/^[a-z_]+$/.test(error) ? '' : error);
 }
@@ -141,8 +142,9 @@ export const isPhoto = (mime: string) => /^image\/(png|jpeg|gif|webp|avif)$/.tes
 export const isVideo = (mime: string) => mime.startsWith('video/');
 
 /** A message as a row of the list shows it: its text, else what it holds. */
-export function preview(message: Pick<Message, 'text' | 'files'>) {
+export function preview(message: Pick<Message, 'text' | 'files'> & Partial<Pick<Message, 'gif'>>) {
   if (message.text.trim()) return message.text;
+  if (message.gif) return 'GIF';
   const [first] = message.files;
   if (!first) return '';
   if (message.files.every((file) => isPhoto(file.mime)))

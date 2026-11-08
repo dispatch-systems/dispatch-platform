@@ -507,3 +507,73 @@ test('A video stays on its phone, its first frame shown, until someone plays it'
   const refused = await owner.post(`${route}/texts/files/${lost}/fetch`);
   assert.deepEqual([refused.status, refused.value.error], [410, 'phones_file_gone']);
 });
+
+test("A GIF goes to a phone as KLIPY's sizes of it, never to an app too old to send one", async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const owner = await f.client();
+  const north = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
+  await owner.select(north.id);
+  const at = f.at(demo.memberDsp);
+  const route = '/api/dsp/communications';
+  const pairing = await owner.post(`${route}/phones/pairing`);
+  const paired = await f.request(
+    '/api/communications/phone/pair',
+    { code: pairing.value.code, number: '', model: 'Pixel 8a', version: '1.3.0' },
+    at,
+  );
+  const key = { ...at, authorization: `Bearer ${paired.value.key}` };
+  const text = { clientId: 'sms-1', direction: 'in', number: '4255550142', body: 'Hi', at: 1 };
+  await f.request('/api/communications/phone/texts', { texts: [text] }, key);
+  let conversation = '';
+  await until(async () => {
+    const listed: { id: string; number?: string }[] = (await owner.read(route)).conversations;
+    conversation = listed.find((each) => each.number === '+14255550142')?.id ?? '';
+    return conversation !== '';
+  });
+  const messages = `${route}/conversations/${conversation}/messages`;
+
+  // The page searches KLIPY where the server says: in fixture mode, the server's stand-in.
+  const search = await owner.read(`${route}/gifs`);
+  assert.equal(search.filter, 'medium');
+  const found = await owner.read(`${search.address}/gifs/search?q=thumbs`);
+  const first = found.data.data[0];
+  assert.equal(first.title, 'Thumbs up');
+  const gif = {
+    slug: first.slug,
+    title: first.title,
+    versions: ['hd', 'md', 'sm', 'xs'].map((size) => first.file[size].gif),
+  };
+
+  // One not of KLIPY's addresses, or beside photos, is refused.
+  const elsewhere = {
+    ...gif,
+    versions: [{ ...gif.versions[0], url: 'https://example.com/a.gif' }],
+  };
+  const refused = await owner.post(messages, { text: '', gif: elsewhere });
+  assert.deepEqual([refused.status, refused.value.error], [400, 'invalid_input']);
+
+  // An app that never said it sends GIFs: the text fails, never handed out with its words alone.
+  const waiting = f.request('/api/communications/phone/outbox', undefined, key);
+  const sent = await owner.post(messages, { text: 'Nice work', gif });
+  assert.equal(sent.status, 201, sent.body);
+  assert.deepEqual(sent.value.message.gif, gif);
+  await until(async () => {
+    const read = await owner.read(`${route}/conversations/${conversation}`);
+    const kept = read.messages.find((each: { id: string }) => each.id === sent.value.message.id);
+    return kept.status === 'failed' && kept.error === 'phones_app_outdated';
+  });
+  await owner.post(messages, { text: 'Hello' });
+  assert.deepEqual(
+    (await waiting).value.texts.map((each: { body: string }) => each.body),
+    ['Hello'],
+  );
+
+  // An app that sends them is given its sizes, to fetch from KLIPY, beside what was written.
+  const newer = `/api/communications/phone/outbox?version=2.0.0&versionCode=${2_000_000_000}`;
+  await owner.post(messages, { text: 'Nice work', gif });
+  const outbox = await f.request(newer, undefined, key);
+  const given = outbox.value.texts.find((each: { gif?: unknown }) => each.gif);
+  assert.equal(given.body, 'Nice work');
+  assert.deepEqual(given.gif, { name: 'thumbs-up.gif', versions: gif.versions });
+});

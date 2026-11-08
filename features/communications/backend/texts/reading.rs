@@ -148,6 +148,7 @@ pub fn messages(people: &People, numbers: &Numbers, kept: Vec<Text>) -> Vec<Mess
             in_thread: false,
             group: None,
             moved,
+            gif: text.gif,
             error: text
                 .error
                 .filter(|_| text.status == Some(TextStatus::Failed)),

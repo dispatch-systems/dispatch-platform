@@ -14,7 +14,7 @@
 //! stop or change of their access comes between.
 use super::{filing, live_day, numbers::work_number, reading::message, storage::TextStore};
 use crate::{
-    api::types::{CommunicationsUpload, Message},
+    api::types::{CommunicationsUpload, Message, MessageGif},
     backend::{
         compose::{self, checked, photo_kind},
         live,
@@ -36,18 +36,19 @@ use dispatch_core::{
 };
 use std::sync::Arc;
 
-/// Sends what the member `c` wrote in the conversation by text `id`, with the pictures `photos`
-/// they added for it, to where a text written there goes as it's queued: the text, as kept.
+/// Sends what the member `c` wrote in the conversation by text `id`, with the pictures they added
+/// for it, or a GIF in their place (`adding`), to where a text written there goes as it's queued:
+/// the text, as kept.
 pub async fn send(
     state: &Arc<State>,
     c: &Context,
     access: Dsp,
     id: &str,
     written: &str,
-    photos: &[String],
+    (photos, gif): (&[String], Option<&MessageGif>),
 ) -> Result<Message> {
-    let body = checked(written, photos, compose::TEXT)?.to_owned();
-    let (asked, at, files) = (c.clone(), id.to_owned(), photos.to_vec());
+    let body = checked(written, photos, gif.is_some(), compose::TEXT)?.to_owned();
+    let (asked, at, files, gif) = (c.clone(), id.to_owned(), photos.to_vec(), gif.cloned());
     let sent = filing::changing(state, &c.dsp.id, move |db| {
         let c = access.revalidate(db, &asked)?;
         let outgoing = Outgoing {
@@ -55,6 +56,7 @@ pub async fn send(
             to: recipient(db, &c.dsp.id, &at)?,
             body,
             files,
+            gif,
             by: c.auth.user.id.clone(),
         };
         let sent = outbox::send(db, &c.dsp.id, &outgoing, now())?.id;

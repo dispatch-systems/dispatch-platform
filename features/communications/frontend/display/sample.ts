@@ -55,6 +55,7 @@ export function sample(now: number) {
     inThread: false,
     sender: sender ?? null,
     files: [],
+    gif: null,
     group: null,
     status: null,
     error: null,

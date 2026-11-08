@@ -62,16 +62,22 @@ pub fn of(reference: &Reference) -> Limits {
     }
 }
 
-/// What someone at the DSP wrote, trimmed, with the photos they added: refused when it's
-/// nothing, past `limits`, or with a photo twice.
-pub fn checked<'a>(written: &'a str, photos: &[String], limits: Limits) -> Result<&'a str> {
+/// What someone at the DSP wrote, trimmed, with the photos they added, or a `gif` in their place:
+/// refused when it's nothing, past `limits`, with a photo twice, or with photos and a GIF.
+pub fn checked<'a>(
+    written: &'a str,
+    photos: &[String],
+    gif: bool,
+    limits: Limits,
+) -> Result<&'a str> {
     let written = written.trim();
     let distinct = photos
         .iter()
         .enumerate()
         .all(|(n, photo)| !photos[..n].contains(photo));
     ensure(
-        (!written.is_empty() || !photos.is_empty())
+        (!written.is_empty() || !photos.is_empty() || gif)
+            && !(gif && !photos.is_empty())
             && written.chars().count() <= limits.text
             && photos.len() <= limits.photos
             && distinct,

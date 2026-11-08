@@ -4,6 +4,7 @@ use super::{
     messages::{Message, Sent, sent_out},
     settlement::settle_with,
 };
+use crate::{api::types::MessageGif, backend::gifs};
 use dispatch_core::{
     Error, Result,
     db::{FromRow, Row, Store},
@@ -22,6 +23,8 @@ pub struct Noted {
     pub by: String,
     pub name: String,
     pub photos: Vec<(String, String)>,
+    /// The GIF it carries in place of photos, if any.
+    pub gif: Option<MessageGif>,
     pub posting_since: i64,
     pub claimed_until: i64,
 }
@@ -34,6 +37,7 @@ impl FromRow for Noted {
             by: row.get("sent_by")?,
             name: row.get("sender_name")?,
             photos: serde_json::from_str(&row.get::<String>("photos")?)?,
+            gif: gifs::of_column(row.get("gif")?)?,
             posting_since: row.get("posting_since")?,
             claimed_until: row.get("claimed_until")?,
         })
@@ -82,7 +86,7 @@ impl ReplyStore for Store {
     fn note_communications_reply(&self, dsp: &str, noted: &Noted) -> Result<()> {
         let noted = self.dsp(dsp)?.exec(
             "INSERT INTO communications_replies (id,conversation_id,text,sent_by,sender_name,\
-             photos,posting_since,claimed_until) VALUES (?,?,?,?,?,?,?,?) \
+             photos,gif,posting_since,claimed_until) VALUES (?,?,?,?,?,?,?,?,?) \
              ON CONFLICT(id) DO UPDATE SET sender_name=excluded.sender_name,\
              photos=excluded.photos WHERE claimed_until=excluded.claimed_until",
             params![
@@ -92,6 +96,7 @@ impl ReplyStore for Store {
                 noted.by,
                 noted.name,
                 serde_json::to_string(&noted.photos)?,
+                gifs::column(noted.gif.as_ref())?,
                 noted.posting_since,
                 noted.claimed_until
             ],

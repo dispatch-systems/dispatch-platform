@@ -109,9 +109,16 @@ async fn each_message_new_in_what_waits_goes_to_each_browser_of_each_member_told
             .unwrap()
             .is_empty()
     );
-    reply::send(&state, &c, USE, &conversation.id, "By the door", &[])
-        .await
-        .unwrap();
+    reply::send(
+        &state,
+        &c,
+        USE,
+        &conversation.id,
+        "By the door",
+        (&[], None),
+    )
+    .await
+    .unwrap();
     assert!(
         look(&state, &dsp, &mut seen, &mut revision)
             .await
