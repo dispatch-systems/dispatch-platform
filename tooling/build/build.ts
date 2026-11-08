@@ -11,7 +11,10 @@ const root = process.cwd(),
   // For browser tests on this machine only: the debug backend, built through the cache in seconds
   // where a release build takes minutes. The checks on GitHub test the release build.
   debug = process.argv.includes('--debug');
-if (fs.existsSync(path.join(root, '.runtime')))
+// An installed runtime holds the host's management tools, in `.runtime/management` on Dev and
+// `management` on Production; a checkout's dev server records itself in `.runtime` without
+// making it one.
+if (['.runtime/management', 'management'].some((tools) => fs.existsSync(path.join(root, tools))))
   throw new Error(
     'Build in an isolated checkout; the installed runtime is managed by the updater.',
   );
