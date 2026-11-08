@@ -35,7 +35,11 @@ A session belongs to the address it was made at, as its cookie does, and is kept
 address's directory: a platform owner signs in at the admin's alone, where every DSP is theirs
 to open, one of a DSP's people at its address alone, where that DSP is the only one, and nobody
 at the invite page. Anywhere else a right password reads as a wrong one, and a session reads as
-signed out. Failed passwords count against the account in its own directory. A password reset's
+signed out. Failed passwords count against the account in its own directory. The audit log keeps
+each wrong password for an account, the lockout its own limit makes once a window, each second
+factor refused, and each reset link asked for; nothing for an address with no account. A wrong
+password's and a lockout's are written after the answer, so a refusal for an account takes as
+long as one for an address with none. A password reset's
 link goes back to the address it was asked at, and a passkey belongs to the address it was made
 at. An invitation's link opens at its DSP's address, the one its email names, and at the invite
 page, which it names while the DSP has no short code, and nowhere else. There a DSP's first
