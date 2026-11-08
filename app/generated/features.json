@@ -1126,7 +1126,9 @@
         "timecard.view",
         "collections.run"
       ],
-      "maintenance": [],
+      "maintenance": [
+        3600
+      ],
       "on": [],
       "people": [
         "timecards",
@@ -1188,6 +1190,10 @@
       "paycom": [
         "employee_timecard_syncs",
         "employees",
+        "paycom_people",
+        "paycom_people_collected_days",
+        "paycom_people_state",
+        "paycom_people_workdays",
         "publications",
         "settings",
         "timecard_sources",

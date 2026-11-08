@@ -4,6 +4,7 @@ pub(crate) mod daily;
 pub(crate) mod employees;
 pub(crate) mod keeper;
 pub(crate) mod people;
+pub(crate) mod people_summary;
 pub(crate) mod publication;
 pub(crate) mod queue;
 mod range;
