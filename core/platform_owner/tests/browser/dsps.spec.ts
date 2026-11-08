@@ -58,3 +58,38 @@ test('the table shows a count’s DSPs, opens one across the page, another from 
   await expect(table.getByRole('button', { name: /Summit Delivery/ })).toBeVisible();
   await expect(northline).toHaveCount(0);
 });
+
+test('a backup schedule switch turns at once and leaves the tab as it was while it saves', async ({
+  page,
+}) => {
+  await login(page);
+  await page
+    .getByRole('region', { name: 'DSPs', exact: true })
+    .getByRole('button', { name: /Northline Logistics/ })
+    .click();
+  const pane = page.getByRole('region', { name: 'Northline Logistics', exact: true });
+  const tab = pane.getByRole('tab', { name: 'Backups', exact: true });
+  await tab.click();
+  const backups = pane.getByRole('region', { name: 'Backups', exact: true });
+  const on = backups.getByRole('switch', { name: 'On schedule' });
+  const was = await on.isChecked();
+  const turning = '**/backups/switch';
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route(turning, async (route) => {
+    await held;
+    await route.continue();
+  });
+  await on.click();
+  await expect(on).toBeChecked({ checked: !was });
+  await expect(on).toBeEnabled();
+  await expect(backups.getByRole('button', { name: 'Add rule' })).toBeEnabled();
+  const answered = page.waitForResponse((response) => response.url().endsWith('/backups/switch'));
+  release();
+  await answered;
+  await page.unroute(turning);
+  await expect(on).toBeChecked({ checked: !was });
+  await page.reload();
+  await tab.click();
+  await expect(on).toBeChecked({ checked: !was });
+});
