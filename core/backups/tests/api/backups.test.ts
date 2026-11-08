@@ -63,7 +63,7 @@ test('only the platform owner schedules a DSP’s backups, and none is taken wit
   // The audit log keeps the rules as they were and became; saved again unchanged, nothing.
   const again = await owner.post(`${backups}/schedule`, {
     revision: saved.value.revision,
-    rules: saved.value.rules,
+    rules: saved.value.rules.map(({ nextRun: _, ...unchanged }: { nextRun: unknown }) => unchanged),
   });
   assert.equal(again.status, 200, again.body);
   type Logged = { action: string; changes: { field: string; from: string; to: string }[] };
