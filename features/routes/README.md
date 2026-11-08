@@ -155,7 +155,6 @@ it is live route data, in a database of its own, `routelive`.
   are told apart from a day without phones. And whether a number, by its last ten digits, is an
   itinerary's work phone on any day kept, live or historical (`ever_work_phone`).
 
-
 Historical staging prepares both summary responses before its database turn. Inactive writes
 serialize per DSP before entering the database pool and retain a shared transition lock, so
 foreground WAL reads can proceed. Every turn rechecks tenant lifetime and the caller's job,
