@@ -73,6 +73,10 @@ export function GifPicker({
           placeholder="Search KLIPY"
           value={typed}
           onChange={(event) => setTyped(event.target.value)}
+          onKeyDown={(event) => {
+            // Within what's written's form, Enter searches rather than sending.
+            if (event.key === 'Enter') event.preventDefault();
+          }}
         />
       </label>
       <div className="gif-grid">

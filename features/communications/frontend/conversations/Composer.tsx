@@ -141,9 +141,11 @@ export function Composer({
   const send = useAction(async () => {
     const sent = capture();
     const going = gif;
-    // What goes leaves the box at once; what's written and photos added while it goes stay.
+    // What goes leaves the box at once; what's written while it goes stays. Nothing is added
+    // meanwhile, so a GIF that didn't go comes back alone.
     drafts.sending(draft, text);
     setGif(undefined);
+    setChoosing(false);
     caret.current = undefined;
     try {
       await deliver(
@@ -153,7 +155,7 @@ export function Composer({
       );
     } catch (cause) {
       drafts.failed(draft, text);
-      setGif((now) => now ?? going);
+      setGif(going);
       throw cause;
     } finally {
       finish();
@@ -279,7 +281,8 @@ export function Composer({
         </ul>
       )}
       <div className={label && text ? 'box writing' : 'box'}>
-        <AddMenu disabled={!open} choices={adding} />
+        {/* Nothing is added while a message goes, so one that fails comes back as it was. */}
+        <AddMenu disabled={!open || send.busy} choices={adding} />
         {limits && limits.photos > 0 && (
           <input
             ref={picker}
