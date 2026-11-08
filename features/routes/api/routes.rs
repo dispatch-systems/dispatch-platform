@@ -53,6 +53,8 @@ fn reprocess(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
         None
     };
     let dsp = input.param("id");
+    // A DSP there is none of has nothing to rebuild, nor to log.
+    db.find_dsp(dsp)?;
     // Each day is rebuilt in its own transaction, so one that fails leaves those before it
     // rebuilt: the rebuild is logged either way, with the error that stopped it.
     let rebuilt = db.reprocess_routes(dsp, day);
