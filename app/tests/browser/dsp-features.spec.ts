@@ -303,7 +303,7 @@ test('the platform puts a feature in beta at a DSP, and only the testers it adds
   await context.close();
 });
 
-test('a part reaches no more people than its feature, and the list finds a feature by its parts', async ({
+test('a part reaches no more people than its feature, the list finds a feature by its parts, and the address keeps the one chosen', async ({
   page,
 }) => {
   await login(page);
@@ -322,6 +322,24 @@ test('a part reaches no more people than its feature, and the list finds a featu
   await search.fill('');
 
   await item(pane, 'Timecard').click();
+  const timecard = pane.getByRole('region', { name: 'Timecard', exact: true });
+  // The address names it: a reload opens it again, on the Features tab.
+  await page.reload();
+  await expect(timecard).toBeVisible();
+  // Another DSP opened keeps the feature chosen, and Back returns to this one's own.
+  await pane.getByRole('button', { name: 'Switch DSP', exact: true }).click();
+  await page
+    .getByRole('dialog', { name: 'Switch DSP' })
+    .getByRole('button', { name: /Summit Delivery/ })
+    .click();
+  const summit = page.getByRole('region', { name: 'Summit Delivery', exact: true });
+  await expect(summit.getByRole('region', { name: 'Timecard', exact: true })).toBeVisible();
+  await item(summit, 'Uniform Inventory').click();
+  await expect(
+    summit.getByRole('region', { name: 'Uniform Inventory', exact: true }),
+  ).toBeVisible();
+  await page.goBack();
+  await expect(timecard).toBeVisible();
   const sight = pane.getByRole('radiogroup', { name: 'Who sees Timecard' });
   const meals = pane.getByRole('combobox', { name: 'Who sees Meal Breaks tab' });
   await expect(meals).toHaveValue('shown');

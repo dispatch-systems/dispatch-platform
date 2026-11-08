@@ -1,7 +1,13 @@
+import { useEffect } from 'react';
 import { ChevronLeft, Ellipsis, Eye } from 'lucide-react';
 import type { DspSummary } from '../../../accounts/api/index.js';
 import { useUpdateState } from '../../../shell/frontend/runtime/navigation-state.js';
 import { connectionFeatures } from '../../../shell/frontend/runtime/features.js';
+import {
+  hashQuery,
+  parseHash,
+  replaceHashQuery,
+} from '../../../shell/frontend/runtime/navigation.js';
 import { dspAddress } from '../../../shell/frontend/runtime/site.js';
 import { Badge, DspAvatar, Popover, Tabs } from '../../../shell/frontend/ui/index.js';
 import { deviceTimezone, time } from '../../../shell/frontend/lib/format.js';
@@ -29,7 +35,24 @@ export function DspDetail({
   /** Opens another DSP in its place. */
   switcher: React.ReactNode;
 }) {
-  const [tab, setTab] = useUpdateState('dsp-tab', 'details');
+  // A feature named in the address opens the Features tab: a link to it, a reload or Back.
+  const [tab, setTab] = useUpdateState('dsp-tab', () =>
+    hashQuery().has('feature') ? 'features' : 'details',
+  );
+  useEffect(() => {
+    const followed = () => {
+      if (hashQuery().has('feature') && parseHash(location.hash).page === 'dsps')
+        setTab('features');
+    };
+    addEventListener('hashchange', followed);
+    return () => removeEventListener('hashchange', followed);
+  }, [setTab]);
+  // Leaving the Features tab leaves its feature out of the address.
+  const openTab = (to: string) => {
+    setTab(to);
+    const { feature, ...rest } = Object.fromEntries(hashQuery());
+    if (feature && to !== 'features') replaceHashQuery(rest);
+  };
   const state = dspState(dsp);
   const viewable = dsp.status === 'active';
   const actions: [DspAction, string, boolean][] = [
@@ -117,7 +140,7 @@ export function DspDetail({
       </div>
       <Tabs
         value={tab}
-        onChange={setTab}
+        onChange={openTab}
         items={[
           ['details', 'Details'],
           ['features', 'Features'],

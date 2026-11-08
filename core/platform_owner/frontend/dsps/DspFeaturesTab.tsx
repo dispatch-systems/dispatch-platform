@@ -17,7 +17,11 @@ import {
   type PageEntry,
 } from '../../../shell/frontend/runtime/features.js';
 import { useUpdateState } from '../../../shell/frontend/runtime/navigation-state.js';
-import { hashQuery, replaceHashQuery } from '../../../shell/frontend/runtime/navigation.js';
+import {
+  hashQuery,
+  parseHash,
+  replaceHashQuery,
+} from '../../../shell/frontend/runtime/navigation.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import { Badge, Empty, ErrorBox, SearchInput } from '../../../shell/frontend/ui/index.js';
 import { FeatureSwitchDialog } from './FeatureSwitchDialog.js';
@@ -109,8 +113,14 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
         ? data.features.filter((state) => state.enabled).map((state) => state.feature)
         : dsp.features;
   const switched = (id: string) => enabled.includes(id);
-  const visibility = (feature: FeatureEntry): Visibility =>
-    data?.features.find((state) => state.feature === feature.id)?.visibility ?? 'shown';
+  const stored = (id: string): Visibility =>
+    data?.features.find((state) => state.feature === id)?.visibility ?? 'shown';
+  const visibility = (feature: FeatureEntry) => stored(feature.id);
+  // Who sees it: a part no more people than its feature, whatever its own choice.
+  const reaches = (feature: FeatureEntry) =>
+    feature.kind === 'sub'
+      ? sights[Math.max(reach(stored(feature.page)), reach(stored(feature.id)))]![0]
+      : stored(feature.id);
   // What the DSP has: a part only while its feature is on too.
   const has = (feature: FeatureEntry) =>
     switched(feature.id) && (feature.kind !== 'sub' || switched(feature.page));
@@ -123,7 +133,7 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
     return (
       item.kind === 'page' &&
       has(item) &&
-      [item, ...subsOf(item.id).filter(has)].some((f) => visibility(f) === to)
+      [item, ...subsOf(item.id).filter(has)].some((f) => reaches(f) === to)
     );
   };
   const named = (item: Item) => {
@@ -135,6 +145,16 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
     .filter(([, members]) => members.length);
   const explicit = items.find((item) => item.id === chosen);
   const selected = explicit ?? listed[0]?.[1][0];
+  // An address followed, by Back or a link, opens the feature it names; one naming none, as
+  // choosing another DSP does, keeps the one chosen.
+  useEffect(() => {
+    const followed = () => {
+      const feature = hashQuery().get('feature');
+      if (feature && parseHash(location.hash).page === 'dsps') setChosen(feature);
+    };
+    addEventListener('hashchange', followed);
+    return () => removeEventListener('hashchange', followed);
+  }, []);
   // The address follows the chosen one, also once choosing another DSP rewrites it.
   useEffect(() => {
     const { feature = '', ...rest } = Object.fromEntries(hashQuery());
@@ -217,7 +237,7 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
     return (
       <ul className="dsp-feature-rows" aria-label={`${page.label}'s parts`}>
         {subsOf(page.id).map((part) => {
-          const sight = sights[Math.max(widest, reach(visibility(part)))]![0];
+          const sight = reaches(part);
           const needs = suppliers(part).map((f) => f.label);
           return (
             <li key={part.id} className={`dsp-feature-row ${has(part) ? '' : 'off'}`}>
