@@ -206,6 +206,13 @@ fn rows(db: &Db, table: &str) -> Vec<Map<String, Value>> {
 /// How live route data reads otherwise than historical route data, table by table, once the day
 /// saved from it is the day's read there: none. Historical route data names the drivers whose
 /// itineraries it holds; live route data also those only assigned to a route yet.
+fn held(db: &Db) -> Vec<Vec<Map<String, Value>>> {
+    shared_tables()
+        .into_iter()
+        .map(|table| rows(db, table))
+        .collect()
+}
+
 fn differences(db: &Store, dsp: &str) -> Vec<String> {
     while db.sweep_routes(dsp).unwrap() {}
     let (live, historical) = (db.routes_live_db(dsp).unwrap(), db.routes_db(dsp).unwrap());
@@ -345,12 +352,6 @@ async fn a_read_that_isnt_whole_or_isnt_of_today_changes_nothing() {
     assert_eq!(refused.code, "routes_capture_invalid");
     keep_live(&state, &dsp, day.read(1)).await.unwrap();
     let live = db.routes_live_db(&dsp).unwrap();
-    let held = |live: &Db| {
-        shared_tables()
-            .into_iter()
-            .map(|table| rows(live, table))
-            .collect::<Vec<_>>()
-    };
     let before = held(&live);
 
     let mut missing = day.read(2);
@@ -456,6 +457,108 @@ async fn the_live_day_is_saved_once_under_its_reads_key_and_live_route_data_kept
         .one("SELECT mode FROM route_publications WHERE active=1", [])
         .unwrap();
     assert_eq!(saved, Some(json!({"mode":"final"})));
+}
+
+#[tokio::test]
+async fn suspension_before_final_publication_keeps_the_live_capture_for_resumption() {
+    let (_root, db, dsp, state) = ready();
+    let date = today(&db, &dsp).to_string();
+    let day = Day::new(&date);
+    let capture = day.read(1);
+    let itineraries = capture.itineraries.len();
+    keep_live(&state, &dsp, capture).await.unwrap();
+    let before = held(&db.routes_live_db(&dsp).unwrap());
+    let heard = changed(&dsp);
+    let (began, staged) = tokio::sync::oneshot::channel();
+    let (release, wait) = std::sync::mpsc::channel();
+    let at = dsp.clone();
+    state.run_bookkeeping(move |db| {
+        let routes = db.routes_db(&at)?;
+        let mut began = Some(began);
+        routes.0.create_scalar_function(
+            "last_itinerary_staged", 0, rusqlite::functions::FunctionFlags::SQLITE_UTF8,
+            move |_| {
+                if let Some(began) = began.take() {
+                    let _ = began.send(());
+                    let _ = wait.recv();
+                }
+                Ok(0_i64)
+            },
+        )?;
+        // Gate the final inactive itinerary after all of its data was written. No product
+        // hook is needed, and no later staging guard can supply the publication refusal.
+        routes.0.execute_batch(&format!(
+            "CREATE TEMP TRIGGER last_itinerary_staged \
+             AFTER UPDATE OF stop_count,task_count ON route_publications \
+             WHEN NEW.active=0 AND (SELECT count(*) FROM itineraries WHERE publication_id=NEW.id)={itineraries} \
+             BEGIN SELECT last_itinerary_staged(); END"
+        ))?;
+        Ok(())
+    }).await.unwrap();
+    let mut saving = tokio::spawn({
+        let (state, dsp) = (state.clone(), dsp.clone());
+        async move { save_and_clear_live(&state, &dsp).await }
+    });
+    tokio::select! {
+        staged = staged => staged.unwrap(),
+        saved = &mut saving => panic!("save ended before the last itinerary gate: {saved:?}"),
+    }
+    // The fixture changes platform status after the last staging turn checked it. In the
+    // server this transition can occur as soon as that turn releases its shared lock.
+    let suspended = common::set_dsp_status(&db, &dsp, "suspended");
+    release.send(()).unwrap();
+    let saved = saving.await.unwrap();
+    suspended.unwrap();
+    assert_eq!(saved.unwrap_err().code, "dsp_unavailable");
+    let historical = db.routes_db(&dsp).unwrap();
+    assert_eq!(
+        historical
+            .count("SELECT count(*) FROM route_publications WHERE active=1", [])
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        historical
+            .count("SELECT count(*) FROM itineraries", [])
+            .unwrap(),
+        itineraries as i64
+    );
+    assert_eq!(
+        historical
+            .count("SELECT count(*) FROM drivers", [])
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        historical
+            .count("SELECT count(*) FROM addresses", [])
+            .unwrap(),
+        0
+    );
+    assert_eq!(held(&db.routes_live_db(&dsp).unwrap()), before);
+    assert_eq!(changed(&dsp), heard);
+    drop(historical);
+    let at = dsp.clone();
+    state
+        .run_bookkeeping(move |db| {
+            db.routes_db(&at)?
+                .0
+                .execute_batch("DROP TRIGGER last_itinerary_staged")?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    common::set_dsp_status(&db, &dsp, "active").unwrap();
+    assert_eq!(save_and_clear_live(&state, &dsp).await.unwrap(), Some(true));
+    assert!(
+        held(&db.routes_live_db(&dsp).unwrap())
+            .iter()
+            .all(Vec::is_empty)
+    );
+    assert_eq!(
+        saved_phones(&db, &dsp, &date),
+        DayPhones::Read(vec![latest("driver-1", P1), latest("driver-2", P2)])
+    );
 }
 
 #[tokio::test]
