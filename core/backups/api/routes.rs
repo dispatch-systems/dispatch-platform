@@ -112,11 +112,12 @@ async fn now(state: Arc<State>, input: Input, access: PlatformOwner) -> Result<R
 /// How long a download, once allowed, may take to begin.
 const TICKET: i64 = 2 * 60 * 1000;
 
-/// What a download of the backup `backup` of `dsp` by `user` until `until` is signed as.
-fn ticket(key: &[u8], user: &str, dsp: &str, backup: &str, until: i64) -> String {
+/// What a download of the backup `backup` of `dsp` through the session `session` until `until` is
+/// signed as: that session's alone, as it was that session that confirmed it's its owner.
+fn ticket(key: &[u8], session: &str, dsp: &str, backup: &str, until: i64) -> String {
     crypto::sign(
         key,
-        &format!("backup-download\n{user}\n{dsp}\n{backup}\n{until}"),
+        &format!("backup-download\n{session}\n{dsp}\n{backup}\n{until}"),
     )
 }
 
@@ -131,12 +132,12 @@ fn ready(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
     history::files(&db.platform, dsp, backup)?;
     let until = db::now() + TICKET;
     Reply::of(&json!({
-        "ticket": ticket(&db.key, &owner.user.id, dsp, backup, until),
+        "ticket": ticket(&db.key, &owner.hash, dsp, backup, until),
         "until": until,
     }))
 }
 
-/// One of the DSP's backups, as a zip of its files, for the owner a ticket allowed it to: asked
+/// One of the DSP's backups, as a zip of its files, for the session a ticket allowed it to: asked
 /// for again once it's put together, before any of it is sent.
 async fn saved(state: Arc<State>, input: Input, access: PlatformOwner) -> Result<Reply> {
     let vault = state
@@ -159,7 +160,7 @@ async fn saved(state: Arc<State>, input: Input, access: PlatformOwner) -> Result
                 let owner = access.authorize(db, &input)?;
                 ensure(
                     until > db::now()
-                        && crypto::equal(&shown, &ticket(&key, &owner.user.id, &dsp, &id, until)),
+                        && crypto::equal(&shown, &ticket(&key, &owner.hash, &dsp, &id, until)),
                     "reauthentication_required",
                     403,
                 )?;

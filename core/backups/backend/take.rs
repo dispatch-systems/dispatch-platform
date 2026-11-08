@@ -134,12 +134,11 @@ async fn copied(folder: &Path, held: &[String], here: &Path) -> Result<Vec<Copie
     let (folder, held, here) = (folder.to_owned(), held.to_vec(), here.to_owned());
     tokio::task::spawn_blocking(move || -> Result<Vec<Copied>> {
         let mut copied: Vec<Copied> = Vec::new();
+        let mut made = 0;
         let mut copy_each = |found: Vec<contents::Found>| -> Result<()> {
             for file in found {
-                if copied.iter().any(|done| done.path == file.path) {
-                    continue;
-                }
-                let plain = here.join(format!("{}", copied.len()));
+                let plain = here.join(format!("{made}"));
+                made += 1;
                 let from = folder.join(&file.path);
                 if file.database {
                     copy(&from, &plain, true)?;
@@ -151,6 +150,11 @@ async fn copied(folder: &Path, held: &[String], here: &Path) -> Result<Vec<Copie
                         Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
                         Err(error) => return Err(error.into()),
                     }
+                }
+                // Found again after the databases are copied: as it is now, beside them, rather
+                // than as it was before.
+                if let Some(at) = copied.iter().position(|done| done.path == file.path) {
+                    fs::remove_file(&copied.remove(at).plain)?;
                 }
                 copied.push(Copied {
                     path: file.path,
