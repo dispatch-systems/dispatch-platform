@@ -30,8 +30,26 @@ fn measured(bytes: &[u8]) -> (u32, u32) {
 
 #[test]
 fn a_large_picture_previews_at_its_shape_no_larger_than_a_thread_needs() {
-    let (_folder, path) = kept(&picture(1_600, 800, ImageFormat::Png));
-    assert_eq!(measured(&made(&path).unwrap()), (640, 320));
+    for format in [ImageFormat::Png, ImageFormat::Jpeg] {
+        let (_folder, path) = kept(&picture(3_200, 1_600, format));
+        assert_eq!(measured(&made(&path).unwrap()), (640, 320));
+    }
+    // A grey camera image stays grey through the scaled JPEG path.
+    let mut grey = std::io::Cursor::new(Vec::new());
+    DynamicImage::ImageLuma8(image::GrayImage::from_pixel(
+        3_200,
+        1_600,
+        image::Luma([90]),
+    ))
+    .write_to(&mut grey, ImageFormat::Jpeg)
+    .unwrap();
+    let (_folder, path) = kept(&grey.into_inner());
+    let preview = image::load_from_memory(&made(&path).unwrap())
+        .unwrap()
+        .to_rgb8();
+    assert_eq!(preview.dimensions(), (640, 320));
+    let [red, green, blue] = preview.get_pixel(0, 0).0;
+    assert_eq!((red, green), (green, blue));
 }
 
 #[test]

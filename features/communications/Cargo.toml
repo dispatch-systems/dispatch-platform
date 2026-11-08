@@ -35,6 +35,8 @@ hkdf = { workspace = true }
 p256 = { workspace = true }
 # A small preview of each picture, which a thread shows until it's opened.
 image = { workspace = true }
+# Decode baseline camera JPEGs at their preview size.
+jpeg-decoder = { workspace = true }
 qrcode = { workspace = true }
 # Pushes to the browsers members are told in.
 reqwest = { workspace = true }
