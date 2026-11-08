@@ -7,7 +7,7 @@ import type {
   SentMessage,
   Writing,
 } from '../../api/index.js';
-import { getConversation, markDone, retryText, sayTyping, sendMessage } from '../../api/client.js';
+import { markDone, retryText, sayTyping, sendMessage } from '../../api/client.js';
 import { ErrorBox } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { lastFour } from '../shared/format.js';
@@ -57,6 +57,7 @@ export function ConversationPane({
   timeZone,
   now,
   show,
+  readAfresh,
   back,
   closed,
   openGroup,
@@ -91,6 +92,8 @@ export function ConversationPane({
   now: number;
   /** Shows the conversation in the list as the page's own writes left it. */
   show: (conversation: Conversation) => void;
+  /** Has the page read the list afresh, as after a write that failed. */
+  readAfresh: () => void;
   back: () => void;
   /** Leaves a conversation that's no longer there. */
   closed: () => void;
@@ -152,13 +155,14 @@ export function ConversationPane({
     drivers: todays?.value.drivers ?? [],
     timeZone,
     show,
+    readAfresh,
     follow,
   };
   const number = (shown && party?.number(shown)) ?? '';
   // One that can't reach them now, as a driver holding no work phone, once it's read.
   const unreachable = shown && opened !== undefined && party?.reachable?.(shown) === false;
-  // Done shows it done at once, and as the server had it once that's saved. One that fails reads
-  // the conversation again and shows it as the server has it, whatever came since.
+  // Done shows it done in the list at once, and as the server had it once that's saved. One that
+  // fails has the page read the list afresh, as the server has it, in turn with every update.
   const marking = useAction(async (seen: Message | null | undefined) => {
     const after = await markDone(id, seen);
     read.show(after);
@@ -166,15 +170,9 @@ export function ConversationPane({
   });
   const done = () => {
     if (!conversation) return;
-    const marked = { ...conversation, state: 'done' as const, waitingSince: null };
-    read.show(marked);
-    show(marked);
-    void marking.run(opened?.messages.at(-1) ?? conversation.last).then(async (saved) => {
-      if (saved) return;
-      const now = await getConversation(id).catch(() => undefined);
-      if (!now) return;
-      read.show(now.conversation);
-      show(now.conversation);
+    show({ ...conversation, state: 'done', waitingSince: null });
+    void marking.run(opened?.messages.at(-1) ?? conversation.last).then((saved) => {
+      if (!saved) readAfresh();
     });
   };
   const sent = ({ conversation: theirs, message }: SentMessage) => {

@@ -341,6 +341,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
                   timeZone={timeZone}
                   now={now}
                   show={showGroup}
+                  readAfresh={refresh}
                   back={closed}
                   closed={closed}
                   next={next}
@@ -371,6 +372,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
                   timeZone={timeZone}
                   now={now}
                   show={show}
+                  readAfresh={refresh}
                   back={closed}
                   closed={closed}
                   openGroup={openGroup}

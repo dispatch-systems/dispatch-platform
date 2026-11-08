@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Copy, Ellipsis, Phone, PhoneOff, UserMinus } from 'lucide-react';
 import type { Conversation, RouteDriver } from '../../api/index.js';
-import { blockNumber, getConversation, removeFromPerson } from '../../api/client.js';
+import { blockNumber, removeFromPerson } from '../../api/client.js';
 import { phoneText } from '../../../../core/shell/frontend/lib/format.js';
 import { toClipboard } from '../../../../core/shell/frontend/runtime/clipboard.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
@@ -18,12 +18,15 @@ export function NumberActions({
   conversation,
   drivers,
   show,
+  readAfresh,
 }: {
   conversation: Conversation;
   /** Today's drivers, listed first to add the number to. */
   drivers: readonly RouteDriver[];
   /** Shows the conversation as the page's own writes left it. */
   show: (conversation: Conversation) => void;
+  /** Has the page read the list afresh, as after a write that failed. */
+  readAfresh: () => void;
 }) {
   const copy = useAction(() => toClipboard(conversation.number ?? ''), {
     success: 'Number copied',
@@ -33,15 +36,13 @@ export function NumberActions({
     show(await blockNumber(conversation.id, blocked));
     setBlocking(false);
   });
-  // Unblock shows at once; one that fails reads the conversation again and shows it as the server
-  // has it, whatever came since.
+  // Unblock shows at once; one that fails has the page read the list afresh, as the server has it,
+  // in turn with every update.
   const unblocking = useAction(async () => show(await blockNumber(conversation.id, false)));
   const unblock = () => {
     show({ ...conversation, blocked: false });
-    void unblocking.run().then(async (saved) => {
-      if (saved) return;
-      const now = await getConversation(conversation.id).catch(() => undefined);
-      if (now) show(now.conversation);
+    void unblocking.run().then((saved) => {
+      if (!saved) readAfresh();
     });
   };
   const remove = useAction(async (code: string) =>

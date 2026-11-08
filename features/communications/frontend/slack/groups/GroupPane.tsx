@@ -5,7 +5,7 @@ import type {
   GroupEntry,
   GroupPerson,
 } from '../../../api/index.js';
-import { getGroup, markGroupDone, messageGroup, slackAttachments } from '../../../api/client.js';
+import { markGroupDone, messageGroup, slackAttachments } from '../../../api/client.js';
 import { ErrorBox } from '../../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../../core/shell/frontend/runtime/useAction.js';
 import { peopleText } from './groups.js';
@@ -36,6 +36,7 @@ export function GroupPane({
   timeZone,
   now,
   show,
+  readAfresh,
   back,
   closed,
   reply,
@@ -57,6 +58,8 @@ export function GroupPane({
   now: number;
   /** Shows the group in the list as the page's own writes left it. */
   show: (group: Group) => void;
+  /** Has the page read the list afresh, as after a write that failed. */
+  readAfresh: () => void;
   back: () => void;
   /** Leaves a group that's no longer there. */
   closed: () => void;
@@ -79,8 +82,8 @@ export function GroupPane({
   const writable = workspaces.some(
     (workspace) => workspace.on && group?.teamIds.includes(workspace.teamId),
   );
-  // Done shows it done at once, and as the server had it once that's saved. One that fails reads
-  // the group again and shows it as the server has it, whatever came since.
+  // Done shows it done in the list at once, and as the server had it once that's saved. One that
+  // fails has the page read the list afresh, as the server has it, in turn with every update.
   const marking = useAction(async (seen: GroupEntry | null | undefined) => {
     const after = await markGroupDone(id, seen);
     read.show(after);
@@ -88,15 +91,9 @@ export function GroupPane({
   });
   const done = () => {
     if (!group) return;
-    const marked = { ...group, state: 'done' as const, waitingSince: null };
-    read.show(marked);
-    show(marked);
-    void marking.run(opened?.entries.at(-1) ?? group.last).then(async (saved) => {
-      if (saved) return;
-      const now = await getGroup(id).catch(() => undefined);
-      if (!now) return;
-      read.show(now.group);
-      show(now.group);
+    show({ ...group, state: 'done', waitingSince: null });
+    void marking.run(opened?.entries.at(-1) ?? group.last).then((saved) => {
+      if (!saved) readAfresh();
     });
   };
   const people = usePanel();
