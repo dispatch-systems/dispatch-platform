@@ -98,19 +98,29 @@ test('Driver Match asks who might be listed twice and makes them one person', as
   release();
   await page.unroute(giving);
   await expect(page.getByText('Benjamin Collins is now Dispatch', { exact: true })).toBeVisible();
-  // Chosen again while one saves, after one that saved was read back, it shows the last chosen,
-  // and the last chosen is the one saved.
+  // Chosen again while the first saves, it shows the last chosen, also once the first is saved
+  // and read back while the second still saves, and the last chosen is the one saved.
+  let first = () => {};
   let second = () => {};
-  const holding = new Promise<void>((resolve) => (second = resolve));
+  const firstHeld = new Promise<void>((resolve) => (first = resolve));
+  const secondHeld = new Promise<void>((resolve) => (second = resolve));
   let gives = 0;
   await page.route(giving, async (route) => {
     gives += 1;
-    if (gives === 2) await holding;
+    if (gives === 1) await firstHeld;
+    if (gives === 2) await secondHeld;
     await route.continue();
   });
   await role.selectOption('Driver');
-  await expect(page.getByText('Benjamin Collins is now Driver', { exact: true })).toBeVisible();
   await role.selectOption('Helper');
+  await expect(role.locator('option:checked')).toHaveText('Helper');
+  const readBack = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'GET' && /\/driver-match\/people\//.test(response.url()),
+  );
+  first();
+  await readBack;
+  await expect(role.locator('option:checked')).toHaveText('Helper');
   await role.selectOption('Dispatch');
   await expect(role.locator('option:checked')).toHaveText('Dispatch');
   second();
