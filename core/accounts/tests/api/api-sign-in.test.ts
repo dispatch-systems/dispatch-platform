@@ -72,6 +72,39 @@ test('password recovery gives existing and absent accounts the same delayed publ
   }
 });
 
+test("wrong passwords, a lockout and a reset link asked for are in an account's audit log, and none of an address without one", async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const login = async (email: string, tried: string) =>
+    (await f.request('/api/auth/login', { email, password: tried })).status;
+  assert.equal(await login('absent@dispatch.test', 'wrong'), 401);
+  assert.equal(
+    (await f.request('/api/auth/forgot-password', { email: 'absent@dispatch.test' })).status,
+    202,
+  );
+  // Ten wrong passwords lock the account out, its right one too, logged once.
+  for (let tried = 0; tried < 10; tried += 1) assert.equal(await login(demo.email, 'wrong'), 401);
+  for (let tried = 0; tried < 2; tried += 1) assert.equal(await login(demo.email, password), 429);
+  assert.equal((await f.request('/api/auth/forgot-password', { email: demo.email })).status, 202);
+  const logged = () =>
+    f.database('data/platform/accounts.sqlite', (db) =>
+      db
+        .prepare(
+          `SELECT action FROM audit WHERE action IN
+            ('account.sign_in_failed','account.locked_out','account.password_reset_requested')
+           ORDER BY id`,
+        )
+        .all()
+        .map((row) => (row as { action: string }).action),
+    );
+  // Each is in the log by the time its answer comes, the lockout once for its window.
+  assert.deepEqual(logged(), [
+    ...Array(10).fill('account.sign_in_failed'),
+    'account.locked_out',
+    'account.password_reset_requested',
+  ]);
+});
+
 test('each address signs in only its own people, and a session works only where it was made', async (t) => {
   const f = await fixture();
   t.after(f.close);

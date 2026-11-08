@@ -192,6 +192,9 @@ const phrases: AuditPhrases = {
   'dsp.deleted': (e) => ['deleted ', strong(e.detail || 'a DSP')],
   'audit.exported': () => ['exported the audit log'],
   'account.signed_in': () => ['signed in'],
+  'account.sign_in_failed': () => ['entered a wrong password'],
+  'account.locked_out': () => ['was locked out after too many sign-in attempts'],
+  'account.password_reset_requested': () => ['asked for a password reset link'],
   'account.password_changed': () => ['changed their password'],
   'account.password_reset': () => ['reset their password'],
   'account.passkey_added': () => ['added a passkey'],
@@ -202,6 +205,13 @@ const phrases: AuditPhrases = {
     e.detail === 'authenticator'
       ? 'verified their identity with an authenticator app'
       : 'verified their identity with a passkey',
+  ],
+  'account.second_factor_failed': (e) => [
+    e.detail === 'authenticator'
+      ? 'entered a wrong authenticator code'
+      : e.detail === 'passkey'
+        ? 'was refused with a passkey'
+        : 'entered a wrong recovery code',
   ],
   'account.recovery_codes_created': () => ['created new recovery codes'],
   'account.recovery_code_used': () => ['used a recovery code'],

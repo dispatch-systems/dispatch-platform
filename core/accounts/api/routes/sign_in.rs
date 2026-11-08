@@ -75,7 +75,6 @@ async fn change_password(state: Arc<State>, input: Input, access: Session) -> Re
 
 async fn forgot_password(state: Arc<State>, input: Input, _: Public) -> Result<Reply> {
     let started = std::time::Instant::now();
-    let jitter = u16::from_le_bytes(crate::foundation::crypto::random::<2>()?) % 50;
     let result = async {
         let b = &input.body;
         v::fields(b, &["email"])?;
@@ -100,10 +99,7 @@ async fn forgot_password(state: Arc<State>, input: Input, _: Public) -> Result<R
         Ok(Reply::status(serde_json::json!({"ok":true}), 202))
     }
     .await;
-    let floor = std::time::Duration::from_millis(300 + u64::from(jitter));
-    if let Some(remaining) = floor.checked_sub(started.elapsed()) {
-        tokio::time::sleep(remaining).await;
-    }
+    crate::accounts::refused_after(started).await?;
     result
 }
 

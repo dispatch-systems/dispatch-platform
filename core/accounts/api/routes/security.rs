@@ -1,5 +1,5 @@
 use crate::{
-    Result,
+    Code, Result,
     db::Store,
     ensure,
     foundation::validate as v,
@@ -129,7 +129,8 @@ fn passkey_verify_start(db: &Store, user: &User, input: &Input) -> Result<Reply>
 
 fn passkey_verify_finish(db: &Store, user: &User, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &["credential"])?;
-    db.passkey_verify_finish(user, input.body["credential"].clone())?;
+    db.passkey_verify_finish(user, input.body["credential"].clone())
+        .map_err(|error| db.second_factor_refused(user, "passkey", Code::PasskeyFailed, error))?;
     Ok(Reply::ok())
 }
 
@@ -154,7 +155,10 @@ fn authenticator_register_finish(db: &Store, user: &User, input: &Input) -> Resu
 
 fn authenticator_verify(db: &Store, user: &User, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &["code"])?;
-    db.authenticator_verify(user, v::text(&input.body, "code", 6, 6)?)?;
+    let code = v::text(&input.body, "code", 6, 6)?;
+    db.authenticator_verify(user, code).map_err(|error| {
+        db.second_factor_refused(user, "authenticator", Code::InvalidAuthenticatorCode, error)
+    })?;
     Ok(Reply::ok())
 }
 
@@ -166,7 +170,10 @@ fn remove_authenticator(db: &Store, user: &User, input: &Input) -> Result<Reply>
 
 fn recover(db: &Store, user: &User, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &["code"])?;
-    db.use_recovery_code(user, v::text(&input.body, "code", 1, 64)?)?;
+    let code = v::text(&input.body, "code", 1, 64)?;
+    db.use_recovery_code(user, code).map_err(|error| {
+        db.second_factor_refused(user, "recovery code", Code::InvalidRecoveryCode, error)
+    })?;
     Ok(Reply::ok())
 }
 

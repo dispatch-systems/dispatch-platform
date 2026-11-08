@@ -51,6 +51,10 @@ codes! {
     DspNotFound => "dsp_not_found",
     DspAlreadyInitialized => "dsp_already_initialized",
     AccountLocked => "account_locked",
+    RateLimited => "rate_limited",
+    InvalidAuthenticatorCode => "invalid_authenticator_code",
+    PasskeyFailed => "passkey_failed",
+    InvalidRecoveryCode => "invalid_recovery_code",
 }
 impl Code {
     /// A collector raises its own codes as these.
