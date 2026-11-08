@@ -201,10 +201,11 @@ async fn prepare<T: Send + 'static>(
     turn: OwnedSemaphorePermit,
     read: impl FnOnce() -> T + Send + 'static,
 ) -> Result<(T, OwnedSemaphorePermit)> {
-    let headers = tokio::task::spawn_blocking(read)
+    // The worker owns the turn from admission until its work finishes, even if the
+    // requesting future is cancelled while waiting for it.
+    tokio::task::spawn_blocking(move || (read(), turn))
         .await
-        .map_err(|_| Error::new("preview_unavailable", 503))?;
-    Ok((headers, turn))
+        .map_err(|_| Error::new("preview_unavailable", 503))
 }
 
 /// The decoded pixel storage a picture needs, rounded up to MiB; none for a picture that
