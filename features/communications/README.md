@@ -497,7 +497,7 @@ queues a text for a phone.
   phone offline then, not checked in for two minutes, fails, by every minute's upkeep, with
   `phones_offline` as its error, filed as it fails, so its conversation waits again and Retry
   sends it anew. Should the phone say that attempt was sent after all, it counts.
-- **Log:** in the DSP's audit log, under Settings: a name saved for a number, or changed,
+- **Log:** in the audit log, under Settings, with the DSP: a name saved for a number, or changed,
   `communications.contact_saved`, by the number, with the name before and after; a number
   blocked or unblocked, `communications.number_blocked` and `communications.number_unblocked`,
   by who it's with and the number. Saving the name it has, or blocking a number blocked
