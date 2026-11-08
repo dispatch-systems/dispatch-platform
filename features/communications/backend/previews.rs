@@ -24,7 +24,7 @@ use std::{
 };
 use tokio::{
     io::AsyncWriteExt,
-    sync::{OwnedMutexGuard, Semaphore},
+    sync::{OwnedMutexGuard, OwnedSemaphorePermit, Semaphore},
 };
 
 /// What a preview is.
@@ -91,12 +91,7 @@ pub async fn preview(
         .map_err(|_| Error::new("preview_unavailable", 503))?;
     // Header reads do no pixel decoding. Keep the making slot while waiting for this picture's
     // share of the aggregate pixel budget, so waiting requests retain no decoded image.
-    let (bytes, memory) = tokio::task::spawn_blocking(move || {
-        let memory = pixel_memory(&bytes);
-        (bytes, memory)
-    })
-    .await
-    .map_err(|_| Error::new("preview_unavailable", 503))?;
+    let (bytes, memory, turn) = prepare(bytes, turn).await?;
     let Some(memory) = memory else {
         return Ok(None);
     };
@@ -195,6 +190,20 @@ impl Drop for Underway {
             }
         }
     }
+}
+
+/// Reads the headers under the picture's making turn, before pixel admission.
+async fn prepare(
+    bytes: PathBuf,
+    turn: OwnedSemaphorePermit,
+) -> Result<(PathBuf, Option<u32>, OwnedSemaphorePermit)> {
+    let (bytes, memory) = tokio::task::spawn_blocking(move || {
+        let memory = pixel_memory(&bytes);
+        (bytes, memory)
+    })
+    .await
+    .map_err(|_| Error::new("preview_unavailable", 503))?;
+    Ok((bytes, memory, turn))
 }
 
 /// The decoded pixel storage a picture needs, rounded up to MiB; none for a picture that
