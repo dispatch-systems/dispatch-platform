@@ -36,7 +36,10 @@ test('owner dashboard, search, workforce, timecards, connection verification and
   await page.getByLabel('Search DSPs').fill('');
   await list.getByRole('button', { name: /Northline Logistics/ }).click();
   const pane = page.getByRole('region', { name: 'Northline Logistics', exact: true });
-  await expect(pane.getByRole('tab', { name: 'Details', exact: true })).toBeVisible();
+  await expect(pane.getByRole('tab', { name: 'Features', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
   await pane.getByRole('button', { name: 'View', exact: true }).click();
   await expect(
     page.getByRole('heading', { name: 'Currently under development', exact: true }),

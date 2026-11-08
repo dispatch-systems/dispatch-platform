@@ -1,8 +1,7 @@
 import { useEffect } from 'react';
-import { ChevronLeft, Ellipsis, Eye } from 'lucide-react';
+import { ChevronLeft, Ellipsis, ExternalLink, Eye } from 'lucide-react';
 import type { DspSummary } from '../../../accounts/api/index.js';
 import { useUpdateState } from '../../../shell/frontend/runtime/navigation-state.js';
-import { connectionFeatures } from '../../../shell/frontend/runtime/features.js';
 import {
   hashQuery,
   parseHash,
@@ -10,16 +9,15 @@ import {
 } from '../../../shell/frontend/runtime/navigation.js';
 import { dspAddress } from '../../../shell/frontend/runtime/site.js';
 import { Badge, DspAvatar, Popover, Tabs } from '../../../shell/frontend/ui/index.js';
-import { deviceTimezone, time } from '../../../shell/frontend/lib/format.js';
 import { DspBackupsTab } from './DspBackupsTab.js';
 import { DspBetaTab } from './DspBetaTab.js';
 import { DspFeaturesTab } from './DspFeaturesTab.js';
-import { dspState, ownerText, stateLabels } from './status.js';
+import { dspState, stateLabels } from './status.js';
 
 export type DspAction = 'view' | 'code' | 'enable' | 'retry' | 'disable' | 'delete';
 
-// The chosen DSP across the page, a way back to them all and to another beside its name: its facts,
-// its features, its beta testers, its backups and what the platform may do to it.
+// The chosen DSP across the page, a way back to them all and to another beside its name: who owns it
+// and its address, its features, its beta testers, its backups and what the platform may do to it.
 export function DspDetail({
   dsp,
   back,
@@ -35,11 +33,11 @@ export function DspDetail({
   /** Opens another DSP in its place. */
   switcher: React.ReactNode;
 }) {
-  // A feature named in the address opens the Features tab: a link to it, a reload or Back, over
-  // the tab last open.
-  const [tab, setTab] = useUpdateState('dsp-tab', () =>
-    hashQuery().has('feature') ? 'features' : 'details',
-  );
+  // A DSP opens on its features; a feature named in the address opens them too, over the tab last
+  // open.
+  const [saved, setTab] = useUpdateState('dsp-tab', 'features');
+  // A tab saved before the Details tab went opens Features.
+  const tab = saved === 'beta' || saved === 'backups' ? saved : 'features';
   useEffect(() => {
     const followed = () => {
       if (hashQuery().has('feature') && parseHash(location.hash).page === 'dsps')
@@ -71,32 +69,6 @@ export function DspDetail({
   ];
   // The View button stands on its own; the menu holds everything else.
   const menu = actions.filter(([action, , shown]) => shown && action !== 'view');
-  const zone = deviceTimezone();
-  const connections = connectionFeatures(dsp.features);
-  const facts: [string, React.ReactNode][] = [
-    ['Owner', ownerText(dsp)],
-    [
-      'Address',
-      dsp.code ? (
-        <a href={dspAddress(dsp.code)} target="_blank" rel="noopener noreferrer">
-          {new URL(dspAddress(dsp.code)).host}
-        </a>
-      ) : (
-        'None until it has a short code'
-      ),
-    ],
-    ['Members', String(dsp.members)],
-    ['Created', time(dsp.createdAt, zone)],
-    ['Station', dsp.profile.stationCode || '—'],
-    ['Timezone', dsp.timezone],
-    ['Setup', dsp.profile.setupRequired ? 'Incomplete' : 'Complete'],
-    ...connections.map((feature): [string, React.ReactNode] => [
-      feature.label,
-      <Badge key={feature.id} value={dsp.connections[feature.id] ?? 'not_connected'} />,
-    ]),
-    ['Last collection', time(dsp.lastCollection, zone)],
-    ['Next collection', time(dsp.nextCollection, zone, 'Nothing scheduled')],
-  ];
   return (
     <section className="dsps-detail" aria-label={dsp.name}>
       <button className="text-button dsp-back" onClick={back}>
@@ -113,7 +85,16 @@ export function DspDetail({
             </h2>
             {switcher}
           </div>
-          <small>{[dsp.profile.abbreviation, dsp.ownerEmail].filter(Boolean).join(' · ')}</small>
+          <small className="dsp-detail-meta">
+            {dsp.profile.abbreviation && <span>{dsp.profile.abbreviation}</span>}
+            {dsp.ownerEmail && <span className="dsp-detail-owner">{dsp.ownerEmail}</span>}
+            {dsp.code && (
+              <a href={dspAddress(dsp.code)} target="_blank" rel="noopener noreferrer">
+                {new URL(dspAddress(dsp.code)).host}
+                <ExternalLink size={12} />
+              </a>
+            )}
+          </small>
         </div>
         <div className="dsp-detail-actions">
           <button className="primary" disabled={!viewable} onClick={() => act('view')}>
@@ -144,28 +125,18 @@ export function DspDetail({
         value={tab}
         onChange={openTab}
         items={[
-          ['details', 'Details'],
           ['features', 'Features'],
           ['beta', 'Beta testers'],
           ['backups', 'Backups'],
         ]}
         label="DSP"
       />
-      {tab === 'features' ? (
-        <DspFeaturesTab dsp={dsp} changed={changed} />
-      ) : tab === 'beta' ? (
+      {tab === 'beta' ? (
         <DspBetaTab dsp={dsp} />
       ) : tab === 'backups' ? (
         <DspBackupsTab dsp={dsp} />
       ) : (
-        <dl className="dsp-facts">
-          {facts.map(([label, value]) => (
-            <div key={label}>
-              <dt>{label}</dt>
-              <dd>{value}</dd>
-            </div>
-          ))}
-        </dl>
+        <DspFeaturesTab dsp={dsp} changed={changed} />
       )}
     </section>
   );
