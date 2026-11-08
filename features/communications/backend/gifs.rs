@@ -31,9 +31,9 @@ pub enum Sending {
 }
 
 /// The first `versionCode` of DSP Dispatch: Relay that sends a GIF, fetching it from KLIPY: `main`'s
-/// commit count at the change that taught it to. A text with a GIF, sent as a file, fails on a
+/// commit count at the change that taught it to (#852). A text with a GIF, sent as a file, fails on a
 /// phone running an older one, which would send its words alone (`OUTDATED`).
-pub const RELAY_SENDS_GIFS: i64 = 1;
+pub const RELAY_SENDS_GIFS: i64 = 1546;
 
 /// Why a text with a GIF failed on a phone whose app is older than `RELAY_SENDS_GIFS`.
 pub const OUTDATED: &str = "phones_app_outdated";
