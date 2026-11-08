@@ -264,7 +264,7 @@ impl TextStore for Store {
             db.exec(
                 "INSERT INTO phones_texts \
                  (id,device_id,direction,origin,number,body,at,sent_by,status,status_at,attempt,\
-                 change,gif) VALUES (?1,?2,'out','dispatch',?3,?4,?5,?6,'waiting',?5,?7,?7,?8)",
+                 change) VALUES (?1,?2,'out','dispatch',?3,?4,?5,?6,'waiting',?5,?7,?7)",
                 params![
                     id,
                     device,
@@ -272,10 +272,16 @@ impl TextStore for Store {
                     outgoing.body,
                     at,
                     outgoing.by,
-                    change,
-                    gifs::column(outgoing.gif.as_ref())?
+                    change
                 ],
             )?;
+            // Its GIF, kept apart as its column came later than the text's own (migration 19).
+            if let Some(gif) = &outgoing.gif {
+                db.exec(
+                    "UPDATE phones_texts SET gif=? WHERE id=?",
+                    params![gifs::column(Some(gif))?, id],
+                )?;
+            }
             for file in &outgoing.files {
                 let attached = db.exec(
                     "UPDATE phones_files SET text_id=? WHERE id=? AND text_id IS NULL AND added_by=?",

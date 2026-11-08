@@ -1,6 +1,8 @@
 # Every route communications registers: its method and path, who may call it, the
 # database access its work runs under, and whether it wakes the scheduler.
 # Each changes with this file, so a reviewer sees who can reach what.
+GET /api/communications/gifs/fixture/gifs/{list} Public Read
+GET /api/communications/gifs/fixture/media/{name} Public Read
 GET /api/communications/phone/app Public Async
 GET /api/communications/phone/app/download Public Async
 GET /api/communications/phone/files/{id} Public Async
@@ -12,6 +14,7 @@ GET /api/dsp/communications/conversations/{id} Dsp("communications.use") Read
 GET /api/dsp/communications/conversations/{id}/profile Dsp("communications.use") Read
 GET /api/dsp/communications/files/{id} Dsp("communications.use") Async
 GET /api/dsp/communications/files/{id}/preview Dsp("communications.use") Async
+GET /api/dsp/communications/gifs Dsp("communications.use") Read
 GET /api/dsp/communications/groups/choices Dsp("communications.use") Read
 GET /api/dsp/communications/groups/{id} Dsp("communications.use") Read
 GET /api/dsp/communications/groups/{id}/people Dsp("communications.use") Read
@@ -28,6 +31,7 @@ GET /api/dsp/communications/updates Dsp("communications.use") Async
 GET /api/dsp/communications/waiting Dsp("communications.use") Read
 GET /api/dsp/communications/workspaces/{team}/logo Dsp("communications.use") Read
 GET /communications/initials/1/{name} Public Async
+POST /api/communications/gifs/fixture/gifs/share/{slug} Public Async
 POST /api/communications/phone/files/{id} Public Upload
 POST /api/communications/phone/files/{id}/gone Public Async
 POST /api/communications/phone/files/{id}/preview Public Upload
