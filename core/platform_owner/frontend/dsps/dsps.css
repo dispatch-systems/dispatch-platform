@@ -335,6 +335,7 @@ button.dsp-name:hover strong {
 }
 .dsp-feature-browser {
   display: grid;
+  max-width: 1200px;
   grid-template-columns: 260px minmax(0, 1fr);
   gap: 20px;
   align-items: start;
