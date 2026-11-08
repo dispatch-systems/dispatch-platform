@@ -38,12 +38,14 @@ impl Store {
         // The mark and the event commit together: a note that fails leaves the next refusal
         // of the window to note it.
         self.platform.transaction(|| {
+            // The refused window's row, even should it have expired since the refusal: an
+            // expired row stays until the next attempt replaces it, and a new window's count
+            // starts again from one.
             let first = self.platform.exec(
-                "UPDATE throttle SET count=count+1 WHERE key=? AND count=? AND reset_at>=?",
+                "UPDATE throttle SET count=count+1 WHERE key=? AND count=?",
                 params![
                     crypto::sha(attempts_key(scope.as_deref(), email)),
-                    self.config.security.password_account_attempts,
-                    now()
+                    self.config.security.password_account_attempts
                 ],
             )? == 1;
             if !first {
