@@ -66,7 +66,7 @@ struct Entry {
 }
 /// A cached read: what it reads, named by the id its dependencies are declared under
 /// (`Cached`), and for which DSP. The DSP listings are every DSP's at once.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Scope {
     read: &'static str,
     dsp: Option<String>,
@@ -192,9 +192,41 @@ const KEPT: usize = 64 * 1024 * 1024;
 const LARGEST: usize = 16 * 1024 * 1024;
 /// The most results the read cache keeps.
 const ENTRIES: usize = 256;
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct SharedRead {
+    scope: Scope,
+    key: String,
+    revision: u64,
+}
+#[derive(Default)]
+struct SharedValue(Mutex<Option<Box<dyn Any + Send>>>);
+impl SharedValue {
+    fn read<T: Send + Sync + 'static>(
+        &self,
+        load: impl FnOnce() -> Result<Arc<T>>,
+    ) -> Result<Arc<T>> {
+        let mut shared = self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(value) = shared
+            .as_ref()
+            .and_then(|value| value.downcast_ref::<Arc<T>>())
+        {
+            return Ok(value.clone());
+        }
+        let value = load()?;
+        // Joined readers retain this result even if the bounded cache rejects or evicts it.
+        // Only their strong handles keep it alive; errors and panics leave nothing to share.
+        *shared = Some(Box::new(value.clone()));
+        Ok(value)
+    }
+}
 #[derive(Default)]
 pub struct ReadCache {
     entries: Mutex<VecDeque<Entry>>,
+    /// Only live shared calculations retain a turn; a later miss can retry an error or panic.
+    making: Mutex<HashMap<SharedRead, Weak<SharedValue>>>,
 }
 impl ReadCache {
     /// Keep one immutable derived result when pages need different slices of it.
@@ -206,13 +238,39 @@ impl ReadCache {
         revision: u64,
         load: impl FnOnce() -> Result<T>,
     ) -> Result<Arc<T>> {
-        self.read_sized(
-            scope,
-            key,
+        if let Some(value) = self.cached(&scope, &key, revision) {
+            return Ok(value);
+        }
+        let making = self.begin_shared(SharedRead {
+            scope: scope.clone(),
+            key: key.clone(),
             revision,
-            || Ok(Arc::new(load()?)),
-            |value| Ok(serde_json::to_vec(value.as_ref())?.len().saturating_mul(2)),
-        )
+        });
+        making.read(|| {
+            self.read_sized(
+                scope,
+                key,
+                revision,
+                || Ok(Arc::new(load()?)),
+                |value| Ok(serde_json::to_vec(value.as_ref())?.len().saturating_mul(2)),
+            )
+        })
+    }
+    /// Join before waiting: every joined reader holds the same in-flight value alive.
+    fn begin_shared(&self, named: SharedRead) -> Arc<SharedValue> {
+        let mut keys = self
+            .making
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        keys.retain(|_, value| value.strong_count() > 0);
+        match keys.get(&named).and_then(Weak::upgrade) {
+            Some(value) => value,
+            None => {
+                let value = Arc::new(SharedValue::default());
+                keys.insert(named, Arc::downgrade(&value));
+                value
+            }
+        }
     }
     /// Call under the transition write lock, before the first mutation. Evict on
     /// errors too: a later database may fail after an earlier one committed.
@@ -271,6 +329,30 @@ impl ReadCache {
             |bytes| Ok(bytes.len()),
         )
     }
+    /// A hit needs no per-key turn or allocation. Hold the cache mutex only for its lookup.
+    fn cached<T: Clone + Send + 'static>(
+        &self,
+        scope: &Scope,
+        key: &str,
+        revision: u64,
+    ) -> Option<T> {
+        if let Ok(mut entries) = self.entries.lock() {
+            let now = Instant::now();
+            entries.retain(|entry| entry.revision == revision && entry.until > now);
+            if let Some(index) = entries
+                .iter()
+                .position(|entry| entry.key == key && &entry.scope == scope)
+            {
+                let entry = entries.remove(index).unwrap();
+                let result = entry.value.downcast_ref::<T>().cloned();
+                entries.push_back(entry);
+                if let Some(result) = result {
+                    return Some(result);
+                }
+            }
+        }
+        None
+    }
     fn read_sized<T: Clone + Send + 'static>(
         &self,
         scope: Scope,
@@ -279,21 +361,8 @@ impl ReadCache {
         load: impl FnOnce() -> Result<T>,
         size: impl FnOnce(&T) -> Result<usize>,
     ) -> Result<T> {
-        // Do not serialize unrelated readers behind an expensive calculation.
-        if let Ok(mut entries) = self.entries.lock() {
-            let now = Instant::now();
-            entries.retain(|entry| entry.revision == revision && entry.until > now);
-            if let Some(index) = entries
-                .iter()
-                .position(|entry| entry.key == key && entry.scope == scope)
-            {
-                let entry = entries.remove(index).unwrap();
-                let result = entry.value.downcast_ref::<T>().cloned();
-                entries.push_back(entry);
-                if let Some(result) = result {
-                    return Ok(result);
-                }
-            }
+        if let Some(value) = self.cached(&scope, &key, revision) {
+            return Ok(value);
         }
         let value = load()?;
         let bytes = size(&value)?;
