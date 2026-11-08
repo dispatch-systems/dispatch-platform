@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { RefreshCw } from 'lucide-react';
 import type { DspSummary } from '../../../accounts/api/index.js';
 import { featureCatalog } from '../../../shell/frontend/runtime/features.js';
-import { deviceTimezone, time } from '../../../shell/frontend/lib/format.js';
+import { calendarDay, deviceTimezone, time } from '../../../shell/frontend/lib/format.js';
 import {
   Badge,
   DataTable,
@@ -28,9 +28,13 @@ const useNarrow = () => useSyncExternalStore(watchNarrow, () => matchMedia(narro
 const status = (dsp: DspSummary) => (
   <Badge value={dspState(dsp)}>{stateLabels[dspState(dsp)]}</Badge>
 );
+// An online DSP whose owner hasn't finished setting it up.
+const setupIncomplete = (dsp: DspSummary) =>
+  dspState(dsp) === 'online' &&
+  dsp.profile.setupRequired && <small className="dsp-setup">Setup incomplete</small>;
 
 // Every DSP, a row each, across the page: its name opens it. On a phone, a row is its name, owner
-// and state, and opens it.
+// and state, and whether its setup is unfinished, and opens it.
 export function DspTable({
   dsps,
   query,
@@ -68,9 +72,21 @@ export function DspTable({
       header: 'Status',
       sortable: true,
       value: (dsp) => dspStates.indexOf(dspState(dsp)),
-      cell: status,
+      cell: (dsp) => (
+        <span className="dsp-cell-lines">
+          {status(dsp)}
+          {setupIncomplete(dsp)}
+        </span>
+      ),
     },
     { id: 'owner', header: 'Owner', value: ownerText, cell: ownerText },
+    {
+      id: 'station',
+      header: 'Station',
+      sortable: true,
+      value: (dsp) => dsp.profile.stationCode,
+      cell: (dsp) => dsp.profile.stationCode || '—',
+    },
     {
       id: 'members',
       header: 'Members',
@@ -86,11 +102,23 @@ export function DspTable({
       cell: (dsp) => `${featuresOn(dsp)} of ${optional.length}`,
     },
     {
+      id: 'created',
+      header: 'Created',
+      sortable: true,
+      value: (dsp) => dsp.createdAt,
+      cell: (dsp) => calendarDay(dsp.createdAt),
+    },
+    {
       id: 'collection',
       header: 'Last collection',
       sortable: true,
       value: (dsp) => dsp.lastCollection ?? '',
-      cell: (dsp) => time(dsp.lastCollection, zone),
+      cell: (dsp) => (
+        <span className="dsp-cell-lines">
+          {time(dsp.lastCollection, zone)}
+          {dsp.nextCollection && <small>Next: {time(dsp.nextCollection, zone)}</small>}
+        </span>
+      ),
     },
   ];
   const table = useDataTable({ columns, rows: dsps, rowId: (dsp) => dsp.id });
@@ -118,6 +146,7 @@ export function DspTable({
                 <span className="dsp-name-copy">
                   <strong>{dsp.name}</strong>
                   <small>{ownerText(dsp)}</small>
+                  {setupIncomplete(dsp)}
                 </span>
                 {status(dsp)}
               </button>

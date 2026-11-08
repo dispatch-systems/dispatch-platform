@@ -42,7 +42,11 @@ test('the table shows a count’s DSPs, opens one across the page, another from 
   await counts.getByRole('button', { name: /DSPs/ }).click();
   await table.getByRole('button', { name: /Northline Logistics/ }).click();
   const northline = page.getByRole('region', { name: 'Northline Logistics', exact: true });
-  await expect(northline.getByRole('tab', { name: 'Details', exact: true })).toBeVisible();
+  // A DSP opens on its features.
+  await expect(northline.getByRole('tab', { name: 'Features', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
   await expect(table).toHaveCount(0);
 
   await northline.getByRole('button', { name: 'Switch DSP', exact: true }).click();
