@@ -52,3 +52,79 @@ fn only_a_kind_a_registered_collector_collects_is_queued() {
         );
     }
 }
+
+#[test]
+fn queued_jobs_beyond_unknown_and_ineligible_pages_remain_claimable() {
+    crate::install();
+    let (_root, mut store) = dispatch_core::testing::store();
+    store.config.browser_capacity = 2;
+    let kind = Provider::all()
+        .flat_map(Provider::job_kinds)
+        .next()
+        .unwrap();
+    for (tenant, unknown) in [("unknown", true), ("waiting", false)] {
+        for i in 0..250 {
+            let id = store
+                .insert_job(tenant, None, &format!("queued-{i}"), kind, 1, &json!({}))
+                .unwrap();
+            store.jobs.exec(
+                "UPDATE jobs SET kind=CASE WHEN ? THEN 'future.collect' ELSE kind END,created_at='2026-01-01T00:00:00.000Z' WHERE id=?",
+                rusqlite::params![unknown, id],
+            ).unwrap();
+        }
+    }
+    let first = store
+        .insert_job("ready-a", None, "first", kind, 1, &json!({}))
+        .unwrap();
+    let same_dsp = store
+        .insert_job("ready-a", None, "next", kind, 1, &json!({}))
+        .unwrap();
+    let second = store
+        .insert_job("ready-b", None, "second", kind, 1, &json!({}))
+        .unwrap();
+    let third = store
+        .insert_job("ready-c", None, "third", kind, 1, &json!({}))
+        .unwrap();
+    for (id, date) in [
+        (&first, "2026-01-02"),
+        (&same_dsp, "2026-01-03"),
+        (&second, "2026-01-04"),
+        (&third, "2026-01-05"),
+    ] {
+        store
+            .jobs
+            .exec("UPDATE jobs SET created_at=? WHERE id=?", [date, id])
+            .unwrap();
+    }
+    let eligible = |tenant: &str, _: Provider| tenant.starts_with("ready-");
+    let claimed = store
+        .claim_job("worker-a", eligible)
+        .unwrap()
+        .expect("runnable jobs beyond the first page");
+    assert_eq!(claimed.id, first);
+    assert!(claimed.held_by("worker-a"));
+    let claimed = store.claim_job("worker-b", eligible).unwrap().unwrap();
+    assert_eq!(claimed.id, second, "one worker at a time per DSP");
+    assert!(
+        store.claim_job("worker-c", eligible).unwrap().is_none(),
+        "browser capacity still applies"
+    );
+    assert_eq!(
+        store.job_row(&same_dsp, None).unwrap().status.as_str(),
+        "queued"
+    );
+    assert_eq!(
+        store.job_row(&third, None).unwrap().status.as_str(),
+        "queued"
+    );
+    assert_eq!(
+        store
+            .jobs
+            .count(
+                "SELECT count(*) FROM jobs WHERE kind='future.collect' AND status='queued'",
+                []
+            )
+            .unwrap(),
+        250
+    );
+}

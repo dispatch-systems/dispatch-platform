@@ -13,3 +13,8 @@ on the same days whatever the date.
 Its `api/` holds the TypeScript every owner's `api/` builds on: `narrow.ts` gives a generated
 type's fields the narrower types the backend really sends, and `runtime.ts` holds the
 validators' primitives and how the frontend checks a reply.
+
+The operator may set `DISPATCH_BROWSER_CAPACITY` to an integer from 1 through 16. It defaults
+to 2, controlling both leased collection jobs and native browser slots. The existing memory
+admission check still limits launches. Choose a higher value only from representative workload
+measurements; setting capacity does not change saved schedules or guarantee available memory.

@@ -29,6 +29,7 @@ pub struct Config {
     /// Whether a test may move the live readers' clock on, rather than wait for each read's
     /// slot (`collection::readers::move_clock`): only with fixture providers, while developing.
     pub movable_clock: bool,
+    /// The most browser-backed collections leased at once; memory admission can allow fewer.
     pub browser_capacity: usize,
     pub dashboard: PathBuf,
     pub browseros: PathBuf,
@@ -61,6 +62,17 @@ pub struct ObjectStore {
 }
 fn variable(name: &str, fallback: &str) -> String {
     env::var(name).unwrap_or_else(|_| fallback.into())
+}
+fn browser_capacity(value: &str) -> Result<usize> {
+    let capacity = value
+        .parse()
+        .map_err(|_| crate::Error::new("invalid_browser_capacity", 400))?;
+    ensure(
+        (1..=16).contains(&capacity),
+        "invalid_browser_capacity",
+        400,
+    )?;
+    Ok(capacity)
 }
 impl Config {
     pub fn load() -> Result<Self> {
@@ -140,7 +152,7 @@ impl Config {
             fixture_url: env::var("DISPATCH_FIXTURE_PROVIDER_URL").ok(),
             unlimited_sign_in: variable("DISPATCH_FIXTURE_UNLIMITED_SIGN_IN", "0") == "1",
             movable_clock: variable("DISPATCH_FIXTURE_MOVABLE_CLOCK", "0") == "1",
-            browser_capacity: 2,
+            browser_capacity: browser_capacity(&variable("DISPATCH_BROWSER_CAPACITY", "2"))?,
             dashboard: bundle.join("dashboard"),
             browseros: PathBuf::from(variable(
                 "DISPATCH_BROWSEROS_EXECUTABLE",
