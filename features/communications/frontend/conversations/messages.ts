@@ -15,7 +15,13 @@ export const paused = (before: number | undefined, at: number) =>
   before === undefined || at - before >= PAUSE_MS;
 
 /** Messages one after another from the same writer, within a few minutes, shown together. */
-type Run = { key: string; writer: string; messages: Message[] };
+type Run = {
+  key: string;
+  writer: string;
+  messages: Message[];
+  /** The previous outgoing sender that day, across incoming runs. */
+  sentBefore: Message['sender'] | undefined;
+};
 
 /** Messages by their place, `ts`, in the order written: Slack's IDs, `<seconds>.<microseconds>`,
  * or a text's time, thirteen digits, and ID. */
@@ -70,7 +76,13 @@ export function runs(messages: readonly Message[], timeZone: string) {
     const run = current.runs.at(-1);
     if (run?.writer === by && message.at - run.messages.at(-1)!.at < PAUSE_MS)
       run.messages.push(message);
-    else current.runs.push({ key: message.id, writer: by, messages: [message] });
+    else
+      current.runs.push({
+        key: message.id,
+        writer: by,
+        messages: [message],
+        sentBefore: run?.messages[0]?.sender ?? run?.sentBefore,
+      });
   }
   return days;
 }

@@ -33,6 +33,8 @@ export type Held = {
 
 /** How many conversations it keeps: a dispatcher's morning's worth, each at most a page or a few. */
 const KEPT = 40;
+/** History retained while a conversation is closed; older pages remain available from the server. */
+const CLOSED_MESSAGES = 150;
 /** How many reads before opening run at once, and how many wait, the latest asked kept, as core's
  * preloads do. */
 const WARMING = 2;
@@ -57,6 +59,8 @@ type Entry = {
   /** Each message the page sent, by the read asked last as it showed: one asked before then may
    * not hold it yet. */
   sent: Map<string, number>;
+  requests: Set<AbortController>;
+  olderRead?: AbortController;
 };
 
 /** Whether reading before opening may go on: the page in view, on a connection that allows it. */
@@ -91,7 +95,12 @@ export class ConversationReads {
     this.watchers.set(id, watching);
     return () => {
       watching.delete(watch);
-      if (!watching.size) this.watchers.delete(id);
+      if (!watching.size) {
+        this.watchers.delete(id);
+        const entry = this.entries.get(id);
+        entry?.olderRead?.abort();
+        this.trim(id);
+      }
     };
   }
   /** The latest update, `changed`: what it names, and each conversation whose read shows one it
@@ -141,10 +150,13 @@ export class ConversationReads {
     // A read of the latest shown before the page comes may have filed some of its messages in
     // another conversation: the page is then from before, and is read again while it's in view.
     const since = entry.turns.shown;
+    const controller = new AbortController();
+    entry.requests.add(controller);
+    entry.olderRead = controller;
     try {
-      const page = await getConversation(id, shown.messages[0]);
+      const page = await getConversation(id, shown.messages[0], undefined, controller.signal);
       const now = this.entries.get(id) === entry ? entry.held.opened : undefined;
-      if (now && entry.turns.shown === since)
+      if (now && !controller.signal.aborted && entry.turns.shown === since)
         this.hold(id, {
           ...this.held(id),
           opened: {
@@ -156,10 +168,15 @@ export class ConversationReads {
         });
     } catch (cause) {
       // Read again only as asked again, never at once.
-      if (this.entries.get(id) === entry)
+      if (this.entries.get(id) === entry && !controller.signal.aborted)
         this.hold(id, { ...entry.held, error: messageOf(cause), olderFailed: true });
     } finally {
-      if (this.entries.get(id) === entry) this.hold(id, { ...this.held(id), older: false });
+      entry.requests.delete(controller);
+      if (entry.olderRead === controller) entry.olderRead = undefined;
+      if (this.entries.get(id) === entry) {
+        this.hold(id, { ...this.held(id), older: false });
+        this.trim(id);
+      }
     }
   }
   /** Shows the conversation as one of the page's own writes left it, and a message it sent. */
@@ -209,10 +226,12 @@ export class ConversationReads {
     entry.reading = true;
     entry.asked = this.at;
     let latest: ConversationMessages;
+    const controller = new AbortController();
+    entry.requests.add(controller);
     try {
-      latest = await getConversation(id, undefined, priority);
+      latest = await getConversation(id, undefined, priority, controller.signal);
     } catch (cause) {
-      if (this.entries.get(id) !== entry) return;
+      if (this.entries.get(id) !== entry || controller.signal.aborted) return;
       entry.reading = false;
       // Not read as it is: read again as it opens or the next update comes, never at once.
       entry.asked = -1;
@@ -220,8 +239,10 @@ export class ConversationReads {
         this.hold(id, { ...nothing, gone: true });
       else this.hold(id, { ...entry.held, error: messageOf(cause) });
       return;
+    } finally {
+      entry.requests.delete(controller);
     }
-    if (this.entries.get(id) !== entry) return;
+    if (this.entries.get(id) !== entry || controller.signal.aborted) return;
     entry.reading = false;
     if (turn >= entry.turns.shown) {
       entry.turns.shown = turn;
@@ -240,6 +261,10 @@ export class ConversationReads {
         },
       });
     }
+    // A later read was asked after these sends, so they no longer need protection against an
+    // answer from before they were sent.
+    for (const [message, sent] of entry.sent) if (sent < turn) entry.sent.delete(message);
+    this.trim(id);
     // Changed while it was read, and open: read again.
     if (this.watchers.has(id) && this.stale(id)) void this.read(id);
   }
@@ -252,6 +277,7 @@ export class ConversationReads {
       turns: { asked: 0, shown: 0 },
       reading: false,
       sent: new Map(),
+      requests: new Set<AbortController>(),
     };
     this.entries.delete(id);
     this.entries.set(id, entry);
@@ -261,9 +287,46 @@ export class ConversationReads {
     }
     return entry;
   }
+  /** Releases reads and queued warming when this DSP or page is left. Late answers are ignored. */
+  dispose() {
+    this.warming.clear();
+    for (const id of this.entries.keys()) this.forget(id);
+  }
   private forget(id: string) {
+    for (const request of this.entries.get(id)?.requests ?? []) request.abort();
     this.entries.delete(id);
     this.changedAt.delete(id);
+  }
+  /** The open conversation keeps its history and scroll position. A closed one keeps a recent
+   * window plus sends that a read in flight may not hold yet; returning can page backward again. */
+  private trim(id: string) {
+    const entry = this.entries.get(id);
+    const opened = entry?.held.opened;
+    if (!entry || !opened || this.watchers.has(id) || opened.messages.length <= CLOSED_MESSAGES)
+      return;
+    const recent = opened.messages.slice(-CLOSED_MESSAGES);
+    const protectedMessages = opened.messages
+      .slice(0, -CLOSED_MESSAGES)
+      .filter((message) => entry.sent.has(message.id));
+    const messages = joined(protectedMessages, recent);
+    // A workday is local to its DSP. UTC and its neighbouring days cover every time zone while
+    // retaining only context for the messages still held.
+    const days = new Set(
+      messages.flatMap((message) =>
+        [-1, 0, 1].map((offset) =>
+          new Date(message.at + offset * 86_400_000).toISOString().slice(0, 10),
+        ),
+      ),
+    );
+    this.hold(id, {
+      ...entry.held,
+      opened: {
+        ...opened,
+        messages,
+        more: opened.more || messages.length < opened.messages.length,
+        workdays: opened.workdays.filter((day) => days.has(day.day)),
+      },
+    });
   }
   private hold(id: string, held: Held) {
     const entry = this.entries.get(id);

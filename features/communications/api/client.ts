@@ -144,11 +144,16 @@ export const olderConversations = (last: Pick<Conversation, 'id' | 'lastAt'>, li
   );
 /** A conversation and its latest messages, or those before `first`: at low `priority` when it's
  * read before it's opened. */
-export const getConversation = (id: string, first?: Message, priority?: 'low') =>
+export const getConversation = (
+  id: string,
+  first?: Message,
+  priority?: 'low',
+  signal?: AbortSignal,
+) =>
   api<ConversationMessages>(
     `${communicationsUrl}/conversations/${id}${first ? `?before=${first.ts}` : ''}`,
     undefined,
-    undefined,
+    signal,
     priority,
   );
 /** What the profile beside a conversation shows of the member it's with, read as it opens. */

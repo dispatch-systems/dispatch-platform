@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { Conversation, ConversationMessages } from '../../api/index.js';
+import type { Conversation, ConversationMessages, Message } from '../../api/index.js';
 import { ConversationReads } from '../../frontend/conversations/reads.js';
 
 /** A conversation by text, `id`, as its read answers it: `tc_c`'s with whom it's with's work
@@ -194,4 +194,86 @@ test('older messages read in are held, but not as the latest read brought them',
     opened.lastRead.map((each) => each.id),
     ['m2'],
   );
+});
+
+test('closing deep history bounds the cache and opening it can read every older message again', async () => {
+  const at = Date.UTC(2025, 0, 1, 12);
+  const messages: Message[] = Array.from({ length: 400 }, (_, index) => ({
+    id: `m${index}`,
+    ts: `${at + index * 86_400_000}:m${index}`,
+    direction: 'in',
+    text: `message ${index}`,
+    at: at + index * 86_400_000,
+    editedAt: null,
+    inThread: false,
+    sender: null,
+    files: [],
+    gif: null,
+    group: null,
+    status: null,
+    error: null,
+    number: '+14255550199',
+    moved: false,
+  }));
+  const page = (before: number): ConversationMessages => ({
+    ...read('tc_a'),
+    messages: messages.slice(Math.max(0, before - 100), before),
+    more: before > 100,
+    workdays: messages.slice(Math.max(0, before - 100), before).map((message) => ({
+      day: new Date(message.at).toISOString().slice(0, 10),
+      route: null,
+      van: null,
+    })),
+  });
+  globalThis.fetch = ((address: string) => {
+    const url = new URL(address, 'https://dispatch.test');
+    const cursor = url.searchParams.get('before');
+    const before = cursor
+      ? messages.findIndex((message) => message.ts === cursor)
+      : messages.length;
+    assert.ok(before >= 0);
+    return Promise.resolve(new Response(JSON.stringify(page(before))));
+  }) as typeof fetch;
+  const reads = new ConversationReads();
+  const close = reads.watch('tc_a', () => undefined);
+  reads.open('tc_a');
+  await new Promise((settled) => setImmediate(settled));
+  for (let page = 0; page < 3; page++) await reads.readOlder('tc_a');
+  assert.equal(reads.held('tc_a').opened?.messages.length, 400);
+  assert.equal(reads.held('tc_a').opened?.more, false);
+  close();
+  const closed = reads.held('tc_a').opened!;
+  assert.equal(closed.messages.length, 150);
+  assert.equal(closed.messages[0]?.id, 'm250');
+  assert.equal(closed.more, true);
+  assert.equal(closed.workdays.length, 151);
+  const closeAgain = reads.watch('tc_a', () => undefined);
+  reads.open('tc_a');
+  for (let page = 0; page < 3; page++) await reads.readOlder('tc_a');
+  assert.deepEqual(
+    reads.held('tc_a').opened?.messages.map((message) => message.id),
+    messages.map((message) => message.id),
+  );
+  assert.equal(reads.held('tc_a').opened?.more, false);
+  closeAgain();
+  reads.dispose();
+});
+
+test('leaving the page aborts its reads and ignores a transport that still answers afterward', async () => {
+  const waiting: { signal: AbortSignal; answer: () => void }[] = [];
+  globalThis.fetch = ((_address: string, options?: RequestInit) =>
+    new Promise<Response>((answer) => {
+      waiting.push({
+        signal: options!.signal!,
+        answer: () => answer(new Response(JSON.stringify(read('tc_a')))),
+      });
+    })) as typeof fetch;
+  const reads = new ConversationReads();
+  reads.open('tc_a');
+  assert.equal(waiting.length, 1);
+  reads.dispose();
+  assert.equal(waiting[0]!.signal.aborted, true);
+  waiting[0]!.answer();
+  await new Promise((settled) => setImmediate(settled));
+  assert.equal(reads.held('tc_a').opened, undefined);
 });
