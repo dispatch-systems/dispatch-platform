@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Plus } from 'lucide-react';
 import { Popover } from '../../../../core/shell/frontend/ui/index.js';
 import './add-menu.css';
@@ -11,6 +11,10 @@ export type Adding = { label: string; icon: ReactNode; choose: () => void; disab
 
 export function AddMenu({ disabled, choices }: { disabled: boolean; choices: Adding[] }) {
   const [open, setOpen] = useState(false);
+  // What can't be written in any more takes nothing: an open menu closes.
+  useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
   if (!choices.length) return null;
   return (
     <Popover
@@ -29,7 +33,7 @@ export function AddMenu({ disabled, choices }: { disabled: boolean; choices: Add
           <li key={choice.label}>
             <button
               type="button"
-              disabled={choice.disabled}
+              disabled={disabled || choice.disabled}
               onClick={() => {
                 setOpen(false);
                 choice.choose();
