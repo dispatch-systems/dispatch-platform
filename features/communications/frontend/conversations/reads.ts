@@ -276,7 +276,7 @@ export class ConversationReads {
       asked: 0,
       turns: { asked: 0, shown: 0 },
       reading: false,
-      sent: new Map(),
+      sent: new Map<string, number>(),
       requests: new Set<AbortController>(),
     };
     this.entries.delete(id);
