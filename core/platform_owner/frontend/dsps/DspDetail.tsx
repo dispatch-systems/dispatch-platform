@@ -8,23 +8,26 @@ import { deviceTimezone, time } from '../../../shell/frontend/lib/format.js';
 import { DspBackupsTab } from './DspBackupsTab.js';
 import { DspBetaTab } from './DspBetaTab.js';
 import { DspFeaturesTab } from './DspFeaturesTab.js';
-import { dspState, stateLabels } from './status.js';
+import { dspState, ownerText, stateLabels } from './status.js';
 
 export type DspAction = 'view' | 'code' | 'enable' | 'retry' | 'disable' | 'delete';
 
-// The chosen DSP: its facts, its features, its beta testers, its backups and what the platform may
-// do to it.
+// The chosen DSP across the page, a way back to them all and to another beside its name: its facts,
+// its features, its beta testers, its backups and what the platform may do to it.
 export function DspDetail({
   dsp,
   back,
   act,
   changed,
+  switcher,
 }: {
   dsp: DspSummary;
   back: () => void;
   act: (action: DspAction) => void;
   /** A feature was switched; the list's counts follow. */
   changed: () => void;
+  /** Opens another DSP in its place. */
+  switcher: React.ReactNode;
 }) {
   const [tab, setTab] = useUpdateState('dsp-tab', 'details');
   const state = dspState(dsp);
@@ -46,14 +49,7 @@ export function DspDetail({
   const zone = deviceTimezone();
   const connections = connectionFeatures(dsp.features);
   const facts: [string, React.ReactNode][] = [
-    [
-      'Owner',
-      dsp.ownerStatus === 'active'
-        ? (dsp.ownerEmail ?? 'Not assigned')
-        : dsp.ownerStatus === 'invited'
-          ? `Invitation sent to ${dsp.ownerEmail}`
-          : 'Invitation expired',
-    ],
+    ['Owner', ownerText(dsp)],
     [
       'Address',
       dsp.code ? (
@@ -85,10 +81,13 @@ export function DspDetail({
       <div className="dsp-detail-head">
         <DspAvatar name={dsp.name} />
         <div className="dsp-detail-copy">
-          <h2>
-            {dsp.name}
-            <Badge value={state}>{stateLabels[state]}</Badge>
-          </h2>
+          <div className="dsp-detail-title">
+            <h2>
+              {dsp.name}
+              <Badge value={state}>{stateLabels[state]}</Badge>
+            </h2>
+            {switcher}
+          </div>
           <small>{[dsp.profile.abbreviation, dsp.ownerEmail].filter(Boolean).join(' · ')}</small>
         </div>
         <div className="dsp-detail-actions">
