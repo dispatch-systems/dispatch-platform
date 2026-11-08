@@ -29,11 +29,17 @@ test('long after signing in, disabling a DSP asks the owner to confirm it’s th
   await expect(detail.getByRole('heading', { name: /Disabled/ })).toBeVisible();
 });
 
-test('a DSP opens across the page from the table, another from beside its name, and Back returns to them all', async ({
+test('the table shows a count’s DSPs, opens one across the page, another from beside its name, and Back returns to them all', async ({
   page,
 }) => {
   await login(page);
   const table = page.getByRole('region', { name: 'DSPs', exact: true });
+  // A count shows only its DSPs.
+  const counts = page.getByRole('group', { name: 'DSP summary' });
+  await counts.getByRole('button', { name: /Online/ }).click();
+  await expect(table.getByRole('button', { name: /Dev DSP/ })).toBeVisible();
+  await expect(table.getByRole('button', { name: /Northline Logistics/ })).toHaveCount(0);
+  await counts.getByRole('button', { name: /DSPs/ }).click();
   await table.getByRole('button', { name: /Northline Logistics/ }).click();
   const northline = page.getByRole('region', { name: 'Northline Logistics', exact: true });
   await expect(northline.getByRole('tab', { name: 'Details', exact: true })).toBeVisible();

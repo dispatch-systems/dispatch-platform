@@ -23,7 +23,7 @@ import { DspDetail, type DspAction } from './DspDetail.js';
 import { DspSwitcher } from './DspSwitcher.js';
 import { DspTable } from './DspTable.js';
 import { open } from './open.js';
-import { dspState, dspStates, stateLabels } from './status.js';
+import { dspState, dspStates, stateLabels, type DspState } from './status.js';
 import { field } from '../../../shell/frontend/lib/form.js';
 
 const none: DspSummary[] = [];
@@ -36,6 +36,8 @@ const requests: Record<Exclude<DspAction, 'view' | 'code' | 'delete'>, [string, 
 export function DspsPage() {
   const { data, error, refresh } = usePlatformDsps(10000);
   const [query, setQuery] = useUpdateState('dsp-query', ''),
+    // Which DSPs the table shows: all of them, or those in one state.
+    [showing, setShowing] = useUpdateState<DspState | 'all'>('dsp-state', 'all'),
     [creating, setCreating] = useState(false),
     [confirming, setConfirming] = useState<DspSummary>(),
     [deleting, setDeleting] = useState<DspSummary>(),
@@ -111,16 +113,25 @@ export function DspsPage() {
       </Header>
       <ErrorBox message={error} />
       {!shown && (
-        <div className="dsp-counts" aria-label="DSP summary">
-          <span className="dsp-count total">
+        <div className="dsp-counts" role="group" aria-label="DSP summary">
+          <button
+            className="dsp-count"
+            aria-pressed={showing === 'all'}
+            onClick={() => setShowing('all')}
+          >
             <strong>{dsps.length}</strong> DSPs
-          </span>
+          </button>
           {dspStates.map((state) => (
-            <span className={`dsp-count ${state}`} key={state}>
+            <button
+              className={`dsp-count ${state}`}
+              key={state}
+              aria-pressed={showing === state}
+              onClick={() => setShowing(state)}
+            >
               <i />
               <strong>{dsps.filter((dsp) => dspState(dsp) === state).length}</strong>{' '}
               {stateLabels[state]}
-            </span>
+            </button>
           ))}
         </div>
       )}
@@ -145,7 +156,7 @@ export function DspsPage() {
             />
           ) : (
             <DspTable
-              dsps={visible}
+              dsps={visible.filter((dsp) => showing === 'all' || dspState(dsp) === showing)}
               query={query}
               setQuery={setQuery}
               onSelect={select}

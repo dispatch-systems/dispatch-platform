@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from 'react';
 import { RefreshCw } from 'lucide-react';
 import type { DspSummary } from '../../../accounts/api/index.js';
 import { featureCatalog } from '../../../shell/frontend/runtime/features.js';
@@ -16,8 +17,20 @@ import { dspState, dspStates, ownerText, stateLabels } from './status.js';
 // What a DSP may have switched on or off: what every DSP has isn't counted.
 const optional = featureCatalog.filter((f) => f.kind === 'page' && !f.mandatory);
 const featuresOn = (dsp: DspSummary) => optional.filter((f) => dsp.features.includes(f.id)).length;
+// A phone's width, where a row is each DSP's name, owner and state alone.
+const narrow = '(max-width: 760px)';
+const watchNarrow = (changed: () => void) => {
+  const query = matchMedia(narrow);
+  query.addEventListener('change', changed);
+  return () => query.removeEventListener('change', changed);
+};
+const useNarrow = () => useSyncExternalStore(watchNarrow, () => matchMedia(narrow).matches);
+const status = (dsp: DspSummary) => (
+  <Badge value={dspState(dsp)}>{stateLabels[dspState(dsp)]}</Badge>
+);
 
-// Every DSP, a row each, across the page: its name opens it.
+// Every DSP, a row each, across the page: its name opens it. On a phone, a row is its name, owner
+// and state, and opens it.
 export function DspTable({
   dsps,
   query,
@@ -32,6 +45,7 @@ export function DspTable({
   refresh: () => void;
 }) {
   const zone = deviceTimezone();
+  const phone = useNarrow();
   const columns: TableColumn<DspSummary>[] = [
     {
       id: 'dsp',
@@ -42,7 +56,7 @@ export function DspTable({
       cell: (dsp) => (
         <button className="dsp-name" onClick={() => onSelect(dsp)}>
           <DspAvatar name={dsp.name} />
-          <span>
+          <span className="dsp-name-copy">
             <strong>{dsp.name}</strong>
             {dsp.profile.abbreviation && <small>{dsp.profile.abbreviation}</small>}
           </span>
@@ -54,7 +68,7 @@ export function DspTable({
       header: 'Status',
       sortable: true,
       value: (dsp) => dspStates.indexOf(dspState(dsp)),
-      cell: (dsp) => <Badge value={dspState(dsp)}>{stateLabels[dspState(dsp)]}</Badge>,
+      cell: status,
     },
     { id: 'owner', header: 'Owner', value: ownerText, cell: ownerText },
     {
@@ -93,10 +107,25 @@ export function DspTable({
           <RefreshCw size={16} />
         </button>
       </div>
-      {dsps.length ? (
-        <DataTable table={table} label="DSPs" />
-      ) : (
+      {!dsps.length ? (
         <Empty title="No DSPs found">Try another search or create your first DSP.</Empty>
+      ) : phone ? (
+        <ul className="dsp-rows">
+          {dsps.map((dsp) => (
+            <li key={dsp.id}>
+              <button className="dsp-name" onClick={() => onSelect(dsp)}>
+                <DspAvatar name={dsp.name} />
+                <span className="dsp-name-copy">
+                  <strong>{dsp.name}</strong>
+                  <small>{ownerText(dsp)}</small>
+                </span>
+                {status(dsp)}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <DataTable table={table} label="DSPs" />
       )}
     </section>
   );
