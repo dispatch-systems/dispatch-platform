@@ -334,15 +334,29 @@ impl Tree {
     /// Puts in a file Dispatch made or changed, as Google answered: one Google moved out of
     /// the main folder goes.
     pub fn put(&mut self, item: Item) {
-        let row = Row::from(item);
-        match self.places.get(&row.id) {
-            Some(place) => self.rows[*place as usize] = row,
-            None => {
-                self.linked.remove(&row.id);
-                self.rows.push(row);
+        self.put_many([item]);
+    }
+    /// Puts in a batch of confirmed changes, rebuilding the tree once. The last observation
+    /// of an ID wins, including IDs first seen in this batch.
+    pub fn put_many(&mut self, items: impl IntoIterator<Item = Item>) {
+        let mut places = mem::take(&mut self.places);
+        let mut changed = false;
+        for item in items {
+            changed = true;
+            let row = Row::from(item);
+            match places.get(&row.id) {
+                Some(place) => self.rows[*place as usize] = row,
+                None => {
+                    self.linked.remove(&row.id);
+                    places.insert(Arc::clone(&row.id), self.rows.len() as u32);
+                    self.rows.push(row);
+                }
             }
         }
-        self.regrow();
+        self.places = places;
+        if changed {
+            self.regrow();
+        }
     }
     /// Takes out the file `id`, and anything inside it.
     pub fn remove(&mut self, id: &str) {

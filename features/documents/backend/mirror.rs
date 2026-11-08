@@ -133,6 +133,12 @@ impl Mirror {
     pub fn put(&self, root: &str, item: Item) {
         self.change(root, |copy| Arc::make_mut(&mut copy.tree).put(item));
     }
+    /// Puts in a batch Google confirmed, rebuilding its tree once.
+    pub fn put_many(&self, root: &str, items: Vec<Item>) {
+        if !items.is_empty() {
+            self.change(root, |copy| Arc::make_mut(&mut copy.tree).put_many(items));
+        }
+    }
     /// Takes out a file Dispatch trashed, or Google said is gone.
     pub fn remove(&self, root: &str, id: &str) {
         self.change(root, |copy| Arc::make_mut(&mut copy.tree).remove(id));

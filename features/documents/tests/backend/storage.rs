@@ -71,3 +71,25 @@ fn keeps_the_refresh_token_encrypted_until_the_connection_goes() {
     assert_eq!(store.documents_refresh_token(&dsp).unwrap(), None);
     assert!(!file.exists());
 }
+
+#[test]
+fn provenance_is_read_only_for_requested_files_once_and_with_both_authors() {
+    testing::install(&[], &[&crate::FEATURE]);
+    let (_root, store, dsp) = testing::bootstrapped();
+    store
+        .record_documents_change(&dsp, "one", "user_a")
+        .unwrap();
+    store
+        .record_documents_change_by(&dsp, "one", &Author::Named("Outside".into()))
+        .unwrap();
+    store
+        .record_documents_change(&dsp, "elsewhere", "user_b")
+        .unwrap();
+    let records = store
+        .documents_records(&dsp, &["one".into(), "missing".into(), "one".into()])
+        .unwrap();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records["one"].added_by, Author::Member("user_a".into()));
+    assert_eq!(records["one"].changed_by, Author::Named("Outside".into()));
+    assert!(store.documents_records(&dsp, &[]).unwrap().is_empty());
+}

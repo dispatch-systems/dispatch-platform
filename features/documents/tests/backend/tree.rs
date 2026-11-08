@@ -143,3 +143,54 @@ fn a_shortcut_shows_the_file_it_stands_for_until_the_account_no_longer_reaches_i
     tree.follow(vec![Changed::Gone("sheet".into())]);
     assert!(tree.get("to-sheet").unwrap().unavailable());
 }
+
+#[test]
+fn a_batch_keeps_the_last_observation_and_resolves_new_parents_and_shortcut_targets() {
+    let mut tree = Tree::new(
+        "main",
+        vec![
+            item("folder", "Before", Some("main"), true, "2026-10-01"),
+            item("old", "Moved", Some("main"), false, "2026-10-01"),
+        ],
+    );
+    let shortcut = Item {
+        mime_type: drive::SHORTCUT.into(),
+        shortcut_details: Some(drive::Shortcut {
+            target_id: "target".into(),
+            target_mime_type: drive::SHEET.into(),
+        }),
+        ..item(
+            "shortcut",
+            "Before target",
+            Some("new"),
+            false,
+            "2026-10-02",
+        )
+    };
+    tree.put_many(vec![
+        item("child", "Old name", Some("new"), false, "2026-10-02"),
+        shortcut,
+        item("new", "New folder", Some("main"), true, "2026-10-02"),
+        item("target", "Route tracker", None, false, "2026-10-03"),
+        item("child", "Final name", Some("new"), false, "2026-10-03"),
+        item("folder", "After", Some("main"), true, "2026-10-03"),
+        item("old", "Moved", Some("new"), false, "2026-10-03"),
+    ]);
+    assert_eq!(&*tree.get("child").unwrap().name, "Final name");
+    assert_eq!(&*tree.get("folder").unwrap().name, "After");
+    assert_eq!(tree.count("new"), 3);
+    assert_eq!(
+        &*tree.get("shortcut").unwrap().shown().name,
+        "Route tracker"
+    );
+    assert!(tree.get("target").is_none());
+    assert_eq!(
+        tree.path("old")
+            .iter()
+            .map(|row| &*row.id)
+            .collect::<Vec<_>>(),
+        ["new", "old"]
+    );
+    tree.put_many([]);
+    assert_eq!(tree.count("new"), 3);
+}
