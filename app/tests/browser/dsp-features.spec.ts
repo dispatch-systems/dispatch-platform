@@ -340,6 +340,12 @@ test('a part reaches no more people than its feature, the list finds a feature b
   ).toBeVisible();
   await page.goBack();
   await expect(timecard).toBeVisible();
+  // From the DSPs table too, over the tab last open.
+  const address = page.url();
+  await pane.getByRole('tab', { name: 'Details', exact: true }).click();
+  await pane.getByRole('button', { name: 'All DSPs', exact: true }).click();
+  await page.goto(address);
+  await expect(timecard).toBeVisible();
   const sight = pane.getByRole('radiogroup', { name: 'Who sees Timecard' });
   const meals = pane.getByRole('combobox', { name: 'Who sees Meal Breaks tab' });
   await expect(meals).toHaveValue('shown');

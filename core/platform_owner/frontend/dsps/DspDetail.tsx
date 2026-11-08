@@ -35,7 +35,8 @@ export function DspDetail({
   /** Opens another DSP in its place. */
   switcher: React.ReactNode;
 }) {
-  // A feature named in the address opens the Features tab: a link to it, a reload or Back.
+  // A feature named in the address opens the Features tab: a link to it, a reload or Back, over
+  // the tab last open.
   const [tab, setTab] = useUpdateState('dsp-tab', () =>
     hashQuery().has('feature') ? 'features' : 'details',
   );
@@ -44,6 +45,7 @@ export function DspDetail({
       if (hashQuery().has('feature') && parseHash(location.hash).page === 'dsps')
         setTab('features');
     };
+    followed();
     addEventListener('hashchange', followed);
     return () => removeEventListener('hashchange', followed);
   }, [setTab]);
