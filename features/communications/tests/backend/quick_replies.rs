@@ -49,17 +49,14 @@ fn quick_replies_keep_their_order_within_their_limits_on_the_revision_read() {
     // The same list saved again changes nothing; each save that changed them is logged, with what
     // it added and removed, and none refused is.
     save_quick_replies(&db, &dsp, &most, 2, "me").unwrap();
-    let logged: Vec<(String,)> = db
-        .platform
-        .query_as(
-            "SELECT data FROM audit WHERE dsp_id=? AND action='communications.quick_replies_saved' \
-             ORDER BY id",
-            [&dsp],
-        )
-        .unwrap();
-    let changes: Vec<serde_json::Value> = logged
+    let events = testing::audits(&db, None).unwrap();
+    let changes: Vec<serde_json::Value> = events
+        .as_array()
+        .unwrap()
         .iter()
-        .map(|(data,)| serde_json::from_str::<serde_json::Value>(data).unwrap()["changes"].clone())
+        .rev()
+        .filter(|event| event["action"] == "communications.quick_replies_saved")
+        .map(|event| event["changes"].clone())
         .collect();
     let change = |from: Option<&str>, to: Option<&str>| serde_json::json!({"field": "reply", "from": from, "to": to});
     assert_eq!(
