@@ -154,21 +154,22 @@ pub fn fixture_results(q: Option<&str>) -> Value {
     let wanted = q.map(str::to_lowercase).unwrap_or_default();
     let gifs: Vec<Value> = FIXTURE_GIFS
         .iter()
-        .filter(|(_, title)| title.to_lowercase().contains(wanted.trim()))
-        .map(|(slug, title)| {
-            let size = |name: &str, width: u32, height: u32, bytes: u64| {
+        .filter(|(_, title, _)| title.to_lowercase().contains(wanted.trim()))
+        .map(|(slug, title, tall)| {
+            // Each size of it the same shape, as wide as KLIPY's are.
+            let size = |name: &str, width: u32, bytes: u64| {
                 json!({ "gif": {
                     "url": format!("{FIXTURE}/media/{slug}-{name}.gif"),
-                    "width": width, "height": height, "size": bytes,
+                    "width": width, "height": width * tall / 100, "size": bytes,
                 } })
             };
             json!({
                 "id": slug, "slug": slug, "title": title, "type": "gif",
                 "file": {
-                    "hd": size("hd", 498, 280, 2_600_000),
-                    "md": size("md", 498, 280, 1_400_000),
-                    "sm": size("sm", 220, 124, 206_000),
-                    "xs": size("xs", 90, 50, 64_000),
+                    "hd": size("hd", 498, 2_600_000),
+                    "md": size("md", 498, 1_400_000),
+                    "sm": size("sm", 220, 206_000),
+                    "xs": size("xs", 90, 64_000),
                 },
             })
         })
@@ -182,13 +183,33 @@ pub fn fixture_results(q: Option<&str>) -> Value {
 pub const FIXTURE_GIF: &[u8] = b"GIF89a\x01\x00\x01\x00\x80\x00\x00\xf6\xc9\x45\x00\x00\x00\
 \x21\xf9\x04\x00\x00\x00\x00\x00\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02\x44\x01\x00\x3b";
 
-const FIXTURE_GIFS: &[(&str, &str)] = &[
-    ("thumbs-up", "Thumbs up"),
-    ("thank-you", "Thank you"),
-    ("nice-work", "Nice work"),
-    ("on-my-way", "On my way"),
-    ("lets-go", "Let's go"),
-    ("high-five", "High five"),
+/// The stand-in's GIFs, as many as a page of KLIPY's: each by its slug, its title, and how tall it
+/// is for its width, in hundredths, as KLIPY's come in many shapes.
+const FIXTURE_GIFS: &[(&str, &str, u32)] = &[
+    ("thumbs-up", "Thumbs up", 56),
+    ("thank-you", "Thank you", 100),
+    ("nice-work", "Nice work", 75),
+    ("on-my-way", "On my way", 133),
+    ("lets-go", "Let's go", 56),
+    ("high-five", "High five", 90),
+    ("well-done", "Well done", 60),
+    ("good-morning", "Good morning", 100),
+    ("great-job", "Great job", 75),
+    ("see-you", "See you", 56),
+    ("you-got-this", "You got this", 120),
+    ("drive-safe", "Drive safe", 66),
+    ("awesome", "Awesome", 56),
+    ("on-it", "On it", 100),
+    ("keep-going", "Keep going", 75),
+    ("almost-there", "Almost there", 56),
+    ("all-done", "All done", 133),
+    ("happy-friday", "Happy Friday", 70),
+    ("cheers", "Cheers", 56),
+    ("no-worries", "No worries", 100),
+    ("okay", "Okay", 80),
+    ("yes", "Yes", 56),
+    ("amazing", "Amazing", 110),
+    ("lets-roll", "Let's roll", 56),
 ];
 
 #[cfg(test)]

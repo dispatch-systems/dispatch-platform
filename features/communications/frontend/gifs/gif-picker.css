@@ -49,15 +49,19 @@
   overflow-y: auto;
   overscroll-behavior: contain;
 }
+/* Each column as tall as its GIFs, which the grid scrolls through. */
 .gif-column {
   display: flex;
   flex: 1;
+  align-self: flex-start;
   flex-direction: column;
   gap: 6px;
   min-width: 0;
 }
+/* Each GIF at its own shape, never squeezed to fit. */
 .gif-column button {
   display: block;
+  flex-shrink: 0;
   width: 100%;
   min-height: 0;
   padding: 0;
