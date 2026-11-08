@@ -3,7 +3,7 @@
 //! on Settings' Communications page, whose section Communications' own component draws, as a list
 //! of texts is none of Settings' kinds of value. A save goes on the revision the list was read
 //! at, so one made over another session's since is refused, as Settings refuses one.
-use crate::api::types::QuickReplies;
+use crate::{api::types::QuickReplies, backend::logged::together};
 use dispatch_core::{
     Result,
     db::{AuditChange, Db, Store},
@@ -39,7 +39,8 @@ fn kept(db: &Db) -> Result<QuickReplies> {
 
 /// Keeps `replies` as the DSP's, in their order, each trimmed, as the member `by`: refused past
 /// `MOST`, one empty or past `LONGEST`, or once another save passed `revision`. A save that changed
-/// the list is noted in the audit log, with each reply added and removed.
+/// the list is noted in the audit log with it, with each reply added and removed, each by its
+/// first hundred characters.
 pub fn save_quick_replies(
     db: &Store,
     dsp: &str,
@@ -59,8 +60,8 @@ pub fn save_quick_replies(
         "invalid_input",
         400,
     )?;
-    let people = db.dsp(dsp)?;
-    let (saved, before) = people.transaction(|| {
+    together(db, dsp, || {
+        let people = db.dsp(dsp)?;
         let before = kept(&people)?;
         ensure(
             before.revision == revision,
@@ -72,27 +73,35 @@ pub fn save_quick_replies(
             revision: revision + 1,
         };
         people.set(KEPT, &serde_json::to_value(&saved)?)?;
-        Ok((saved, before.replies))
-    })?;
-    drop(people);
-    if saved.replies != before {
-        let removed = missing(&before, &saved.replies)
-            .into_iter()
-            .map(|reply| ("reply", Some(reply), None));
-        let added = missing(&saved.replies, &before)
-            .into_iter()
-            .map(|reply| ("reply", None, Some(reply)));
-        let changes: Vec<AuditChange> = removed.chain(added).collect();
-        db.audit_with(
-            Some(by),
-            Some(dsp),
-            "communications.quick_replies_saved",
-            "",
-            None,
-            &changes,
-        )?;
+        if saved.replies != before.replies {
+            let removed = missing(&before.replies, &saved.replies)
+                .into_iter()
+                .map(|reply| ("reply", Some(logged(&reply)), None));
+            let added = missing(&saved.replies, &before.replies)
+                .into_iter()
+                .map(|reply| ("reply", None, Some(logged(&reply))));
+            let changes: Vec<AuditChange> = removed.chain(added).collect();
+            db.audit_with(
+                Some(by),
+                Some(dsp),
+                "communications.quick_replies_saved",
+                "",
+                None,
+                &changes,
+            )?;
+        }
+        Ok(saved)
+    })
+}
+
+/// How long a reply reads in the audit log at most, in characters: its start, enough to tell it.
+const LOGGED: usize = 100;
+/// A reply as the audit log keeps it: its first `LOGGED` characters, and an ellipsis past them.
+fn logged(reply: &str) -> String {
+    match reply.char_indices().nth(LOGGED) {
+        Some((end, _)) => format!("{}…", &reply[..end]),
+        None => reply.to_owned(),
     }
-    Ok(saved)
 }
 
 /// Each of `replies` that `others` hasn't, once, in their order.

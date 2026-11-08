@@ -16,7 +16,7 @@ use super::{
 };
 use crate::{
     api::types::{Conversation, TextContact, TextContacts, TextPeople},
-    backend::{live, people::People, phone::numbers::normal},
+    backend::{live, logged::together, people::People, phone::numbers::normal},
 };
 use dispatch_core::{
     Error, Result, State,
@@ -135,16 +135,21 @@ pub fn save_contact(
     by: &str,
 ) -> Result<Conversation> {
     let number = numbered(db, dsp, id)?;
-    if let Some(before) = db.save_communications_contact(dsp, &number, name, by)? {
-        let shown = shown(&number);
+    let saved = together(db, dsp, || {
+        let Some(before) = db.save_communications_contact(dsp, &number, name, by)? else {
+            return Ok(false);
+        };
         db.audit_with(
             Some(by),
             Some(dsp),
             "communications.contact_saved",
             "",
-            Some(&shown),
+            Some(&shown(&number)),
             &[("name", before, Some(name.to_owned()))],
         )?;
+        Ok(true)
+    })?;
+    if saved {
         live::changed(state, dsp);
     }
     one(db, state, dsp, id)
@@ -197,19 +202,31 @@ pub fn block(
 ) -> Result<Conversation> {
     let number = numbered(db, dsp, id)?;
     let by = blocked.then_some(actor);
-    let changed = db.block_communications_number(dsp, &number, by)?;
-    let conversation = one(db, state, dsp, id)?;
+    let changed = together(db, dsp, || {
+        let changed = db.block_communications_number(dsp, &number, by)?;
+        if changed {
+            let action = if blocked {
+                "communications.number_blocked"
+            } else {
+                "communications.number_unblocked"
+            };
+            // By the number, as its name's saves are, so the log gathers each of its own.
+            let named = logged(&one(db, state, dsp, id)?.with.name, &number);
+            db.audit_with(
+                Some(actor),
+                Some(dsp),
+                action,
+                &named,
+                Some(&shown(&number)),
+                &[],
+            )?;
+        }
+        Ok(changed)
+    })?;
     if changed {
-        let action = if blocked {
-            "communications.number_blocked"
-        } else {
-            "communications.number_unblocked"
-        };
-        let logged = logged(&conversation.with.name, &number);
-        db.audit_with(Some(actor), Some(dsp), action, &logged, Some(&logged), &[])?;
         live::changed(state, dsp);
     }
-    Ok(conversation)
+    one(db, state, dsp, id)
 }
 
 /// How a number reads in the audit log: by the name it's shown by, with the number, or the number

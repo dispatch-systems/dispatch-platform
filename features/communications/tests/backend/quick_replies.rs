@@ -47,7 +47,7 @@ fn quick_replies_keep_their_order_within_their_limits_on_the_revision_read() {
     assert_eq!(quick_replies(&db, &dsp).unwrap().replies, most);
 
     // The same list saved again changes nothing; each save that changed them is logged, with what
-    // it added and removed, and none refused is.
+    // it added and removed, each by its first hundred characters, and none refused is.
     save_quick_replies(&db, &dsp, &most, 2, "me").unwrap();
     let events = testing::audits(&db, None).unwrap();
     let changes: Vec<serde_json::Value> = events
@@ -69,7 +69,7 @@ fn quick_replies_keep_their_order_within_their_limits_on_the_revision_read() {
             serde_json::json!([
                 change(Some("On my way"), None),
                 change(Some("Call dispatch when you can"), None),
-                change(None, Some(&longest)),
+                change(None, Some(&format!("{}…", "a".repeat(100)))),
             ]),
         ]
     );
