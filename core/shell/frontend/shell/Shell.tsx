@@ -30,9 +30,12 @@ import {
 } from '../runtime/slots.js';
 import { SidebarPanels } from './SidebarPanels.js';
 import { Watchers } from './Watchers.js';
-// Only a platform owner viewing a DSP sees it, so it loads then.
+// Only a platform owner viewing a DSP sees them, so they load then.
 const DspViewBanner = lazy(() =>
   import('./DspViewBanner.js').then((module) => ({ default: module.DspViewBanner })),
+);
+const DspViewPanel = lazy(() =>
+  import('./DspViewBanner.js').then((module) => ({ default: module.DspViewPanel })),
 );
 
 type Badge = NonNullable<Route['badge']>;
@@ -187,6 +190,8 @@ export function Shell({
   const name = `${session.user.firstName} ${session.user.lastName}`;
   const source = sourceLink(session.source);
   const filled = useFillRequested() || fills;
+  // The DSP a platform owner is viewing, with the banner over it and its controls in the drawer.
+  const viewing = session.user.platformOwner ? view : undefined;
   useEffect(() => {
     document.title = `${label} · Dispatch`;
   }, [label]);
@@ -298,6 +303,22 @@ export function Shell({
         <div className="sidebar-brand">
           <Brand />
         </div>
+        {viewing && (
+          <Suspense fallback={null}>
+            {/* The drawer closes first, so a page asking about unsaved changes can be answered. */}
+            <DspViewPanel
+              view={viewing}
+              viewAs={(roleId) => {
+                close();
+                viewAs(roleId);
+              }}
+              exitView={() => {
+                close();
+                exitView();
+              }}
+            />
+          </Suspense>
+        )}
         <SidebarPanels
           shown={list.shown}
           draw={(panel) => {
@@ -398,10 +419,10 @@ export function Shell({
         </div>
       </aside>
       <div className={filled ? 'main-area fills' : 'main-area'} inert={mobile}>
-        {view && session.user.platformOwner && (
+        {viewing && (
           <Suspense fallback={null}>
             <DspViewBanner
-              view={view}
+              view={viewing}
               viewAs={viewAs}
               exitView={exitView}
               readOnly={session.readOnly}
@@ -417,6 +438,7 @@ export function Shell({
             onClick={() => setMobile(true)}
           >
             <Menu size={20} />
+            {viewing && <span className="view-dot" aria-hidden="true" />}
           </button>
           {pending && (
             <span className="navigation-progress" role="status">
