@@ -199,17 +199,27 @@ struct SharedRead {
     revision: u64,
 }
 #[derive(Default)]
-struct SharedValue(Mutex<()>);
+struct SharedValue(Mutex<Option<Box<dyn Any + Send>>>);
 impl SharedValue {
     fn read<T: Send + Sync + 'static>(
         &self,
         load: impl FnOnce() -> Result<Arc<T>>,
     ) -> Result<Arc<T>> {
-        let _turn = self
+        let mut shared = self
             .0
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        load()
+        if let Some(value) = shared
+            .as_ref()
+            .and_then(|value| value.downcast_ref::<Arc<T>>())
+        {
+            return Ok(value.clone());
+        }
+        let value = load()?;
+        // Joined readers retain this result even if the bounded cache rejects or evicts it.
+        // Only their strong handles keep it alive; errors and panics leave nothing to share.
+        *shared = Some(Box::new(value.clone()));
+        Ok(value)
     }
 }
 #[derive(Default)]
