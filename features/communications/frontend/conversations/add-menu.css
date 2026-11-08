@@ -23,6 +23,7 @@
 .add-menu-panel button {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 10px;
   width: 100%;
   min-height: calc(36px * var(--scale));
