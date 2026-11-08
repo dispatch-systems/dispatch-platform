@@ -437,8 +437,22 @@ test('Timecard opens while its view loads, and its collections are scheduled on 
   await save(timecards);
   await expect(listed).toContainText('Every day at 9:00 PM');
   const on = timecards.getByRole('switch', { name: 'On schedule' });
-  // It moves once the server has turned the schedule off.
+  // It turns at once, and the schedule stays as it was while it saves.
+  const turning = '**/enabled';
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route(turning, async (route) => {
+    await held;
+    await route.continue();
+  });
   await on.click();
+  await expect(on).not.toBeChecked();
+  await expect(on).toBeEnabled();
+  await expect(timecards.getByRole('button', { name: 'Add rule' })).toBeEnabled();
+  const answered = page.waitForResponse((response) => response.url().endsWith('/enabled'));
+  release();
+  await answered;
+  await page.unroute(turning);
   await expect(on).not.toBeChecked();
   await page.reload();
   await expect(on).not.toBeChecked();

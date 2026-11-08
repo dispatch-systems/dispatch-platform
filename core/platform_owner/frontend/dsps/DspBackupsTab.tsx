@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CircleCheck, CircleX, Download, Globe, LoaderCircle, Plus } from 'lucide-react';
 import type { DspSummary } from '../../../accounts/api/index.js';
 import type {
@@ -117,11 +117,34 @@ function Backups({
     },
     { success: 'Schedule saved', inline: true },
   );
-  // Neither changes the rules: edits carry on against the schedule they were read from.
-  const switching = useAction(
-    async (enabled: boolean) => {
-      await switchBackups(dsp.id, enabled);
+  // Neither changes the rules: edits carry on against the schedule they were read from. The
+  // switch shows as turned at once and saves behind it, nothing else held back; turns made while
+  // it saves are sent after it, the last one winning, and it shows as turned until the schedule
+  // is read again once they are done.
+  const [turned, setTurned] = useState<{ on: boolean; read?: DspBackups }>();
+  const wanted = useRef<boolean>(undefined);
+  const current = useRef(backups);
+  current.current = backups;
+  const on = turned && (!turned.read || turned.read === backups) ? turned.on : backups.enabled;
+  function turn(enabled: boolean) {
+    setTurned({ on: enabled });
+    const under = wanted.current !== undefined;
+    wanted.current = enabled;
+    if (under) return;
+    void switching.run().then((done) => {
+      wanted.current = undefined;
+      if (!done) setTurned(undefined);
       refresh();
+    });
+  }
+  const switching = useAction(
+    async () => {
+      let sent: boolean | undefined;
+      while (wanted.current !== sent) {
+        sent = wanted.current!;
+        await switchBackups(dsp.id, sent);
+      }
+      setTurned({ on: sent!, read: current.current });
     },
     { inline: true },
   );
@@ -134,7 +157,7 @@ function Backups({
   );
   // A download asks the owner to confirm it's them first, as it holds the DSP's saved logins.
   const downloading = useAction((id: string) => downloadBackup(dsp.id, id), { inline: true });
-  const working = saving.busy || switching.busy || backingUp.busy;
+  const working = saving.busy;
   const error = saving.error || switching.error || backingUp.error || downloading.error;
   const discard = () => {
     setDrafts(base.drafts);
@@ -227,13 +250,12 @@ function Backups({
             type="checkbox"
             role="switch"
             aria-label="On schedule"
-            checked={backups.enabled}
-            disabled={working}
-            onChange={(e) => void switching.run(e.target.checked)}
+            checked={on}
+            onChange={(e) => turn(e.target.checked)}
           />
           <button
             type="button"
-            disabled={working || !backups.configured || backups.backups.some(taking)}
+            disabled={backingUp.busy || !backups.configured || backups.backups.some(taking)}
             onClick={() => void backingUp.run()}
           >
             Back up now
@@ -273,12 +295,7 @@ function Backups({
         )}
       </div>
       {drafts.length > 0 && (
-        <BackupCalendar
-          days={runs?.calendar}
-          upcoming={runs?.upcoming}
-          timezone={zone}
-          off={!backups.enabled}
-        />
+        <BackupCalendar days={runs?.calendar} upcoming={runs?.upcoming} timezone={zone} off={!on} />
       )}
       {(dirty || error || readError) && (
         <footer className="backups-actions">

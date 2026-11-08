@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import type { DspSummary } from '../../../accounts/api/index.js';
-import type { BetaMember } from '../../api/index.js';
+import type { BetaMember, DspBetaTesters } from '../../api/index.js';
 import {
   addBetaTesters,
   removeBetaTester,
@@ -28,14 +28,32 @@ export function DspBetaTab({ dsp }: { dsp: DspSummary }) {
   );
   const off = (id: string) =>
     !features.data?.features.some((state) => state.feature === id && state.enabled);
-  const testers = data?.members.filter((member) => member.testerSince) ?? [];
-  const removing = useAction(
-    async (member: BetaMember) => {
-      await removeBetaTester(dsp.id, member.id);
-      refresh();
-    },
-    { success: (member) => `${member.name} removed from beta testers` },
-  );
+  // A tester removed here leaves the list at once and stays gone until the testers are read again
+  // once the last removal is done; one whose removal fails comes back.
+  const [removed, setRemoved] = useState<{ ids: string[]; read?: DspBetaTesters }>({ ids: [] });
+  const latest = useRef(data);
+  latest.current = data;
+  const removals = useRef(0);
+  const removing = useAction((member: BetaMember) => removeBetaTester(dsp.id, member.id), {
+    success: (member) => `${member.name} removed from beta testers`,
+  });
+  const gone = (id: string) => removed.ids.includes(id) && (!removed.read || removed.read === data);
+  const testers = data?.members.filter((member) => member.testerSince && !gone(member.id)) ?? [];
+  const remove = (member: BetaMember) => {
+    removals.current += 1;
+    setRemoved((before) => ({
+      ids: [...(before.read && before.read !== latest.current ? [] : before.ids), member.id],
+    }));
+    void removing.run(member).then((done) => {
+      removals.current -= 1;
+      const last = !removals.current;
+      setRemoved((before) => ({
+        ids: done ? before.ids : before.ids.filter((id) => id !== member.id),
+        read: last ? latest.current : undefined,
+      }));
+      if (last) refresh();
+    });
+  };
   return (
     <div className="dsp-features">
       <ErrorBox message={error || features.error} />
@@ -85,8 +103,7 @@ export function DspBetaTab({ dsp }: { dsp: DspSummary }) {
                   className="icon-button"
                   aria-label={`Remove ${member.name}`}
                   title="Remove"
-                  disabled={removing.busy}
-                  onClick={() => void removing.run(member)}
+                  onClick={() => remove(member)}
                 >
                   <X size={16} aria-hidden="true" />
                 </button>
