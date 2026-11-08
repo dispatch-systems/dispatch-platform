@@ -1,18 +1,19 @@
-//! How a backup's files are kept where they're sent: each compressed, then sealed with the
-//! backups' key in pieces of `PIECE` bytes, each piece its own AES-256-GCM message. Its nonce is
-//! the file's own random start, the piece's place and whether it's the last, so no piece can be
-//! moved, dropped or added unseen, and a file can't be cut short at a piece's end. What it's
-//! sealed for (`binding`, its DSP) is in every piece's associated data, so one DSP's file can't
-//! pass for another's.
+//! How a backup's files are kept where they're sent: each compressed, then sealed in pieces of
+//! `PIECE` bytes, each piece its own AES-256-GCM message, under a key of the file's own, which
+//! HKDF draws from the backups' key and the file's 32 random bytes. Each piece's nonce is its
+//! place and whether it's the last, unique under that key, so no piece can be moved, dropped or
+//! added unseen, and a file can't be cut short at a piece's end. What it's sealed for (`binding`,
+//! its DSP) is in every piece's associated data, so one DSP's file can't pass for another's.
 //!
-//! A sealed file is `MAGIC`, the 7 bytes that start each nonce, then each piece's ciphertext and
-//! tag: `PIECE + 16` bytes, the last fewer.
+//! A sealed file is `MAGIC`, its 32 random bytes, then each piece's ciphertext and tag:
+//! `PIECE + 16` bytes, the last fewer.
 use crate::{Error, Result, foundation::crypto};
 use aes_gcm::{
     Aes256Gcm, KeyInit, Nonce,
     aead::{Aead, Payload},
 };
 use flate2::{Compression, read::GzDecoder, write::GzEncoder};
+use hkdf::Hkdf;
 use sha2::{Digest, Sha256};
 use std::{
     fs::File,
@@ -20,19 +21,23 @@ use std::{
     path::Path,
 };
 
-const MAGIC: &[u8; 8] = b"DSPBAK1\n";
+const MAGIC: &[u8; 8] = b"DSPBAK2\n";
 /// How many bytes of the compressed file each piece seals.
 const PIECE: usize = 1 << 20;
 const TAG: usize = 16;
-const START: usize = 7;
+const SALT: usize = 32;
 
-fn cipher(key: &[u8; 32]) -> Aes256Gcm {
-    Aes256Gcm::new_from_slice(key).expect("a 32-byte key")
+/// The file's own key, from the backups' key and its random bytes.
+fn cipher(key: &[u8; 32], salt: &[u8; SALT]) -> Aes256Gcm {
+    let mut own = [0; 32];
+    Hkdf::<Sha256>::new(Some(salt), key)
+        .expand(b"dispatch backup file", &mut own)
+        .expect("32 bytes is a valid length");
+    Aes256Gcm::new_from_slice(&own).expect("a 32-byte key")
 }
-fn nonce(start: &[u8; START], place: u32, last: bool) -> [u8; 12] {
+fn nonce(place: u32, last: bool) -> [u8; 12] {
     let mut nonce = [0; 12];
-    nonce[..START].copy_from_slice(start);
-    nonce[START..11].copy_from_slice(&place.to_be_bytes());
+    nonce[7..11].copy_from_slice(&place.to_be_bytes());
     nonce[11] = u8::from(last);
     nonce
 }
@@ -41,27 +46,25 @@ fn nonce(start: &[u8; START], place: u32, last: bool) -> [u8; 12] {
 struct Sealer<W: Write> {
     out: W,
     cipher: Aes256Gcm,
-    start: [u8; START],
     binding: Vec<u8>,
     piece: Vec<u8>,
     place: u32,
 }
 impl<W: Write> Sealer<W> {
     fn new(mut out: W, key: &[u8; 32], binding: &str) -> Result<Self> {
-        let start = crypto::random::<START>()?;
+        let salt = crypto::random::<SALT>()?;
         out.write_all(MAGIC)?;
-        out.write_all(&start)?;
+        out.write_all(&salt)?;
         Ok(Self {
             out,
-            cipher: cipher(key),
-            start,
+            cipher: cipher(key, &salt),
             binding: binding.as_bytes().to_vec(),
             piece: Vec::with_capacity(PIECE),
             place: 0,
         })
     }
     fn seal(&mut self, last: bool) -> io::Result<()> {
-        let nonce = nonce(&self.start, self.place, last);
+        let nonce = nonce(self.place, last);
         let sealed = self
             .cipher
             .encrypt(
@@ -131,7 +134,6 @@ pub fn seal(key: &[u8; 32], binding: &str, from: &Path, to: &Path) -> Result<(St
 struct Opener<R: Read> {
     input: R,
     cipher: Aes256Gcm,
-    start: [u8; START],
     binding: Vec<u8>,
     /// The piece read ahead, sealed, to know whether the one before it was the last.
     ahead: Vec<u8>,
@@ -142,15 +144,14 @@ struct Opener<R: Read> {
 }
 impl<R: Read> Opener<R> {
     fn new(mut input: R, key: &[u8; 32], binding: &str) -> Result<Self> {
-        let mut head = [0; 8 + START];
+        let mut head = [0; 8 + SALT];
         input
             .read_exact(&mut head)
             .map_err(|_| Error::new("invalid_backup", 400))?;
         crate::ensure(&head[..8] == MAGIC, "invalid_backup", 400)?;
         let mut opener = Self {
             input,
-            cipher: cipher(key),
-            start: head[8..].try_into().expect("seven bytes"),
+            cipher: cipher(key, head[8..].try_into().expect("32 bytes")),
             binding: binding.as_bytes().to_vec(),
             ahead: Vec::new(),
             opened: Vec::new(),
@@ -174,7 +175,7 @@ impl<R: Read> Opener<R> {
             self.ahead = self.sealed_piece()?;
             self.ahead.is_empty()
         };
-        let nonce = nonce(&self.start, self.place, last);
+        let nonce = nonce(self.place, last);
         self.opened = self
             .cipher
             .decrypt(

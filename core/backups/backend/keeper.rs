@@ -66,7 +66,7 @@ pub async fn pass(state: &Arc<State>, vault: &Vault) -> Result<()> {
             Ok(())
         })
         .await?;
-    while let Some((id, dsp, _, skipped)) = state
+    while let Some(history::Waiting { id, dsp, skipped }) = state
         .run_bookkeeping(|db| history::next(&db.platform))
         .await?
     {

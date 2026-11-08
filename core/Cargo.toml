@@ -28,6 +28,7 @@ flate2 = { workspace = true }
 fs2 = { workspace = true }
 futures-util = { workspace = true }
 getrandom = { workspace = true }
+hkdf = { workspace = true }
 hmac = { workspace = true }
 icu_collator = { workspace = true }
 lettre = { workspace = true }

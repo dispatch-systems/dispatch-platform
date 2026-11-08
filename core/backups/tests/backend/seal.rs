@@ -34,7 +34,7 @@ fn a_sealed_file_opens_only_whole_and_for_its_own() {
     assert_eq!(opened, bytes);
 
     let whole = std::fs::read(&sealed).unwrap();
-    let head = MAGIC.len() + START;
+    let head = MAGIC.len() + SALT;
     let piece = PIECE + TAG;
     let mut flipped = whole.clone();
     flipped[head + piece + 5] ^= 1;

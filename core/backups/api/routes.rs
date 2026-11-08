@@ -30,6 +30,11 @@ pub fn routes() -> Vec<Route> {
             preview,
         ),
         async_post("/api/platform/dsps/{id}/backups/now", PlatformOwner, now),
+        write(
+            "/api/platform/dsps/{id}/backups/{backup}/download",
+            PlatformOwner,
+            ready,
+        ),
         async_get(
             "/api/platform/dsps/{id}/backups/{backup}/download",
             PlatformOwner,
@@ -102,8 +107,18 @@ async fn now(state: Arc<State>, input: Input, access: PlatformOwner) -> Result<R
     Ok(reply)
 }
 
-/// One of the DSP's backups, as a zip of its files: the owner is asked for again once it's put
-/// together, before any of it is sent.
+/// Whether one of the DSP's backups may be downloaded now: it's taken, and the owner confirmed it's
+/// them recently, as a download holds the DSP's saved logins. Asked first, so the dashboard asks
+/// the owner to confirm before the download begins.
+fn ready(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
+    v::fields(&input.body, &[])?;
+    db.ensure_recent(owner)?;
+    history::files(&db.platform, input.param("id"), input.param("backup"))?;
+    Ok(Reply::ok())
+}
+
+/// One of the DSP's backups, as a zip of its files, for an owner who confirmed it's them
+/// recently: asked for again once it's put together, before any of it is sent.
 async fn saved(state: Arc<State>, input: Input, access: PlatformOwner) -> Result<Reply> {
     let vault = state
         .backups
@@ -117,7 +132,8 @@ async fn saved(state: Arc<State>, input: Input, access: PlatformOwner) -> Result
         let (dsp, id, input) = (dsp.clone(), id.clone(), input.clone());
         state
             .run(move |db| {
-                access.authorize(db, &input)?;
+                let owner = access.authorize(db, &input)?;
+                db.ensure_recent(&owner)?;
                 history::files(&db.platform, &dsp, &id).map(drop)
             })
             .await?;
@@ -126,6 +142,7 @@ async fn saved(state: Arc<State>, input: Input, access: PlatformOwner) -> Result
     state
         .run(move |db| {
             let owner = access.authorize(db, &input)?;
+            db.ensure_recent(&owner)?;
             db.audit(
                 Some(&owner.user.id),
                 Some(&dsp),

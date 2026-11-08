@@ -18,6 +18,13 @@ export const previewBackups = (dspId: string, rules: BackupRuleInput[], signal: 
   api<BackupRuns>(`${backups(dspId)}/preview`, { rules }, signal);
 /** Takes a backup of the DSP now. */
 export const backUpNow = (dspId: string) => api<DspBackups>(`${backups(dspId)}/now`, {});
-/** Where one of the DSP's backups is saved from, as a zip. */
-export const backupDownload = (dspId: string, backupId: string) =>
-  `${backups(dspId)}/${backupId}/download`;
+/** Saves one of the DSP's backups as a zip, once the owner has confirmed it's them recently: the
+ * dashboard asks them to first, as a download holds the DSP's saved logins. */
+export async function downloadBackup(dspId: string, backupId: string) {
+  const url = `${backups(dspId)}/${backupId}/download`;
+  await api(url, {});
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = '';
+  link.click();
+}

@@ -133,15 +133,29 @@ pub fn ask_by_hand(platform: &Db, dsp: &str, by: &str) -> Result<()> {
     Ok(())
 }
 
-/// The backup that has waited longest: its ID, DSP, rule and what it leaves out.
-pub fn next(platform: &Db) -> Result<Option<(String, String, Option<String>, Vec<String>)>> {
-    let row: Option<(String, String, Option<String>, String)> = platform.one_as(
-        "SELECT id,dsp_id,rule_id,skipped FROM backups WHERE status='queued' \
+/// A backup waiting its turn: its ID, its DSP and what it leaves out.
+pub struct Waiting {
+    pub id: String,
+    pub dsp: String,
+    pub skipped: Vec<String>,
+}
+impl FromRow for Waiting {
+    fn from_row(row: &Row<'_>) -> Result<Self> {
+        Ok(Self {
+            id: row.get("id")?,
+            dsp: row.get("dsp_id")?,
+            skipped: serde_json::from_str(&row.get::<String>("skipped")?)?,
+        })
+    }
+}
+
+/// The backup that has waited longest.
+pub fn next(platform: &Db) -> Result<Option<Waiting>> {
+    platform.one_as(
+        "SELECT id,dsp_id,skipped FROM backups WHERE status='queued' \
          ORDER BY created_at,id LIMIT 1",
         [],
-    )?;
-    row.map(|(id, dsp, rule, skipped)| Ok((id, dsp, rule, serde_json::from_str(&skipped)?)))
-        .transpose()
+    )
 }
 
 /// Notes that the backup `id` is sending `object`: what it sent is let go of once it expires,

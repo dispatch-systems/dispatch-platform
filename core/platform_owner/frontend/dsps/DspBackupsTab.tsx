@@ -10,7 +10,7 @@ import type {
 } from '../../../backups/api/index.js';
 import {
   backUpNow,
-  backupDownload,
+  downloadBackup,
   previewBackups,
   saveBackupRules,
   switchBackups,
@@ -132,8 +132,10 @@ function Backups({
     },
     { inline: true },
   );
+  // A download asks the owner to confirm it's them first, as it holds the DSP's saved logins.
+  const downloading = useAction((id: string) => downloadBackup(dsp.id, id), { inline: true });
   const working = saving.busy || switching.busy || backingUp.busy;
-  const error = saving.error || switching.error || backingUp.error;
+  const error = saving.error || switching.error || backingUp.error || downloading.error;
   const discard = () => {
     setDrafts(base.drafts);
     setOpen(null);
@@ -343,14 +345,15 @@ function Backups({
                     )}
                   </span>
                   {backup.status === 'succeeded' && (
-                    <a
+                    <button
+                      type="button"
                       className="backups-download"
-                      href={backupDownload(dsp.id, backup.id)}
-                      download
+                      disabled={downloading.busy}
+                      onClick={() => void downloading.run(backup.id)}
                     >
                       <Download size={14} aria-hidden="true" />
                       Download
-                    </a>
+                    </button>
                   )}
                 </li>
               );
