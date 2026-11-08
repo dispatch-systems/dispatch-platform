@@ -49,6 +49,9 @@ fn quick_replies_keep_their_order_within_their_limits_on_the_revision_read() {
     // The same list saved again changes nothing; each save that changed them is logged, with what
     // it added and removed, each by its first hundred characters, and none refused is.
     save_quick_replies(&db, &dsp, &most, 2, "me").unwrap();
+    // Past ten replies added and removed, it says how many of each.
+    let twelve: Vec<String> = (1..=12).map(|n| format!("Reply {n}")).collect();
+    save_quick_replies(&db, &dsp, &twelve, 3, "me").unwrap();
     let events = testing::audits(&db, None).unwrap();
     let changes: Vec<serde_json::Value> = events
         .as_array()
@@ -70,6 +73,10 @@ fn quick_replies_keep_their_order_within_their_limits_on_the_revision_read() {
                 change(Some("On my way"), None),
                 change(Some("Call dispatch when you can"), None),
                 change(None, Some(&format!("{}…", "a".repeat(100)))),
+            ]),
+            serde_json::json!([
+                {"field": "added", "from": null, "to": "12"},
+                {"field": "removed", "from": null, "to": "1"},
             ]),
         ]
     );
