@@ -1,7 +1,7 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { Copy, Ellipsis, Phone, PhoneOff, UserMinus } from 'lucide-react';
 import type { Conversation, RouteDriver } from '../../api/index.js';
-import { blockNumber, removeFromPerson } from '../../api/client.js';
+import { blockNumber, getConversation, removeFromPerson } from '../../api/client.js';
 import { phoneText } from '../../../../core/shell/frontend/lib/format.js';
 import { toClipboard } from '../../../../core/shell/frontend/runtime/clipboard.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
@@ -33,14 +33,15 @@ export function NumberActions({
     show(await blockNumber(conversation.id, blocked));
     setBlocking(false);
   });
-  // Unblock shows at once; one that fails blocks it again, only while it still shows unblocked.
-  const now = useRef(conversation);
-  now.current = conversation;
+  // Unblock shows at once; one that fails reads the conversation again and shows it as the server
+  // has it, whatever came since.
   const unblocking = useAction(async () => show(await blockNumber(conversation.id, false)));
   const unblock = () => {
     show({ ...conversation, blocked: false });
-    void unblocking.run().then((saved) => {
-      if (!saved && !now.current.blocked) show({ ...now.current, blocked: true });
+    void unblocking.run().then(async (saved) => {
+      if (saved) return;
+      const now = await getConversation(conversation.id).catch(() => undefined);
+      if (now) show(now.conversation);
     });
   };
   const remove = useAction(async (code: string) =>

@@ -1,11 +1,11 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import type {
   CommunicationsWorkspace,
   Group,
   GroupEntry,
   GroupPerson,
 } from '../../../api/index.js';
-import { markGroupDone, messageGroup, slackAttachments } from '../../../api/client.js';
+import { getGroup, markGroupDone, messageGroup, slackAttachments } from '../../../api/client.js';
 import { ErrorBox } from '../../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../../core/shell/frontend/runtime/useAction.js';
 import { peopleText } from './groups.js';
@@ -79,10 +79,8 @@ export function GroupPane({
   const writable = workspaces.some(
     (workspace) => workspace.on && group?.teamIds.includes(workspace.teamId),
   );
-  // Done shows it done at once, and as the server had it once that's saved. One that fails takes
-  // back only its own mark, and only while it still shows, keeping what newer updates brought.
-  const latestShown = useRef(group);
-  latestShown.current = group;
+  // Done shows it done at once, and as the server had it once that's saved. One that fails reads
+  // the group again and shows it as the server has it, whatever came since.
   const marking = useAction(async (seen: GroupEntry | null | undefined) => {
     const after = await markGroupDone(id, seen);
     read.show(after);
@@ -90,15 +88,15 @@ export function GroupPane({
   });
   const done = () => {
     if (!group) return;
-    const was = { state: group.state, waitingSince: group.waitingSince };
     const marked = { ...group, state: 'done' as const, waitingSince: null };
     read.show(marked);
     show(marked);
-    void marking.run(opened?.entries.at(-1) ?? group.last).then((saved) => {
-      const latest = latestShown.current;
-      if (saved || latest?.state !== 'done' || latest.waitingSince !== null) return;
-      read.show({ ...latest, ...was });
-      show({ ...latest, ...was });
+    void marking.run(opened?.entries.at(-1) ?? group.last).then(async (saved) => {
+      if (saved) return;
+      const now = await getGroup(id).catch(() => undefined);
+      if (!now) return;
+      read.show(now.group);
+      show(now.group);
     });
   };
   const people = usePanel();

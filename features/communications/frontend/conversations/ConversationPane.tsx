@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type {
   CommunicationsWorkspace,
   Conversation,
@@ -7,7 +7,7 @@ import type {
   SentMessage,
   Writing,
 } from '../../api/index.js';
-import { markDone, retryText, sayTyping, sendMessage } from '../../api/client.js';
+import { getConversation, markDone, retryText, sayTyping, sendMessage } from '../../api/client.js';
 import { ErrorBox } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { lastFour } from '../shared/format.js';
@@ -157,10 +157,8 @@ export function ConversationPane({
   const number = (shown && party?.number(shown)) ?? '';
   // One that can't reach them now, as a driver holding no work phone, once it's read.
   const unreachable = shown && opened !== undefined && party?.reachable?.(shown) === false;
-  // Done shows it done at once, and as the server had it once that's saved. One that fails takes
-  // back only its own mark, and only while it still shows, keeping what newer updates brought.
-  const latestShown = useRef(conversation);
-  latestShown.current = conversation;
+  // Done shows it done at once, and as the server had it once that's saved. One that fails reads
+  // the conversation again and shows it as the server has it, whatever came since.
   const marking = useAction(async (seen: Message | null | undefined) => {
     const after = await markDone(id, seen);
     read.show(after);
@@ -168,15 +166,15 @@ export function ConversationPane({
   });
   const done = () => {
     if (!conversation) return;
-    const was = { state: conversation.state, waitingSince: conversation.waitingSince };
     const marked = { ...conversation, state: 'done' as const, waitingSince: null };
     read.show(marked);
     show(marked);
-    void marking.run(opened?.messages.at(-1) ?? conversation.last).then((saved) => {
-      const latest = latestShown.current;
-      if (saved || latest?.state !== 'done' || latest.waitingSince !== null) return;
-      read.show({ ...latest, ...was });
-      show({ ...latest, ...was });
+    void marking.run(opened?.messages.at(-1) ?? conversation.last).then(async (saved) => {
+      if (saved) return;
+      const now = await getConversation(id).catch(() => undefined);
+      if (!now) return;
+      read.show(now.conversation);
+      show(now.conversation);
     });
   };
   const sent = ({ conversation: theirs, message }: SentMessage) => {

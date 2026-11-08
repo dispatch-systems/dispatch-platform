@@ -214,6 +214,22 @@ test('an owner connects Slack from Communications, answers a member as they writ
   await answered;
   await page.unroute(marking);
   await expect(list.getByRole('heading', { name: /^Waiting/ })).toHaveCount(0);
+  // Written to again and Done refused, it shows as the server has it, waiting.
+  expect((await write('And again')).status).toBe(200);
+  await expect(list.getByRole('heading', { name: /^Waiting/ })).toBeVisible();
+  await page.route(marking, (route) =>
+    route.fulfill({ status: 409, json: { error: 'refused', message: 'Not now' } }),
+  );
+  await page
+    .getByRole('region', { name: 'Jordan Ellis' })
+    .locator('.thread-head')
+    .getByRole('button', { name: 'Done' })
+    .click();
+  await expect(page.getByText('Not now')).toBeVisible();
+  await expect(list.getByRole('heading', { name: /^Waiting/ })).toBeVisible();
+  await page.unroute(marking);
+  await jordan.getByRole('button', { name: 'Done: Jordan Ellis' }).click();
+  await expect(list.getByRole('heading', { name: /^Waiting/ })).toHaveCount(0);
 
   // New message finds someone by a misspelt name, and their conversation stays at the top of
   // the list until it holds a message.
