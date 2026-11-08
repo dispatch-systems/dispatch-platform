@@ -159,6 +159,29 @@ impl Store {
         }
         self.audit(Some(actor), Some(dsp), action, detail)
     }
+    /// `audit_with`, once a half hour for the actor, DSP, action and the record it's about, which
+    /// it keeps as a fact of the event (`field`, the record's `id`).
+    pub fn audit_once(
+        &self,
+        actor: Option<&str>,
+        dsp: Option<&str>,
+        action: &str,
+        detail: &str,
+        target: Option<&str>,
+        (field, id): (&'static str, &str),
+    ) -> Result<()> {
+        let recent = self.platform.one(
+            "SELECT 1 FROM audit a WHERE COALESCE(a.actor_id,a.member_id) IS ? AND a.dsp_id IS ? \
+             AND a.action=? AND a.at>=? AND EXISTS (SELECT 1 FROM json_each(a.data,'$.changes') \
+             WHERE json_extract(value,'$.field')=? AND json_extract(value,'$.to')=?) LIMIT 1",
+            rusqlite::params![actor, dsp, action, at(now() - VISIT_WINDOW), field, id],
+        )?;
+        if recent.is_some() {
+            return Ok(());
+        }
+        let fact = [(field, None, Some(id.to_owned()))];
+        self.audit_with(actor, dsp, action, detail, target, &fact)
+    }
     // Taking a copy of everyone's activity is itself recorded, after the copy is
     // read so an export never lists itself.
     pub fn audit_export(&self, actor: &str, query: AuditQuery) -> Result<AuditPage> {
@@ -356,7 +379,10 @@ const AREAS: &[(&str, &str)] = &[
         "a.action IN ('dsp.view_opened','dsp.owner_view_opened')",
         "CASE WHEN ?1 IS NULL THEN 'access' ELSE 'team' END",
     ),
-    ("a.action LIKE 'account.%'", "'access'"),
+    (
+        "a.action LIKE 'account.%' OR a.action='support.browser_opened'",
+        "'access'",
+    ),
     (
         "a.action IN ('dsp.created','dsp.setup_retried','dsp.removed','dsp.restored',\
          'dsp.suspended','dsp.resumed','dsp.deleted','dsp.feature_enabled','dsp.feature_disabled',\

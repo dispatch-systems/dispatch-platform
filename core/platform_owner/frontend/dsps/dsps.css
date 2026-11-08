@@ -159,6 +159,17 @@ button.dsp-name small {
   flex-shrink: 0;
   white-space: nowrap;
 }
+.dsp-cell-lines {
+  display: grid;
+  gap: 2px;
+}
+.dsp-cell-lines small {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+:is(.dsp-cell-lines, .dsp-rows) small.dsp-setup {
+  color: var(--warning);
+}
 button.dsp-name:hover strong {
   color: var(--primary);
 }
@@ -227,20 +238,21 @@ button.dsp-name:hover strong {
 .dsps-detail .restored-tabs {
   margin-bottom: 20px;
 }
-.dsp-facts {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 18px 24px;
-  padding: 4px 0;
+/* Under the open DSP's name: its abbreviation, owner and address, a dot between each. */
+.dsp-detail-copy .dsp-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
 }
-.dsp-facts dt {
-  font-size: 12px;
+.dsp-detail-meta > * + *::before {
+  content: '·';
+  margin: 0 6px;
   color: var(--muted-foreground);
 }
-.dsp-facts dd {
-  margin-top: 3px;
-  font-size: 14px;
-  overflow-wrap: anywhere;
+.dsp-detail-meta a {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }
 
 /* Beta testers: rows of people. */
@@ -679,8 +691,11 @@ button.dsp-name:hover strong {
     flex-basis: 100%;
     justify-content: flex-end;
   }
-  .dsp-facts {
-    grid-template-columns: 1fr 1fr;
+  .dsp-detail-owner {
+    display: none;
+  }
+  .dsp-detail-owner:first-child + *::before {
+    content: none;
   }
   .dsp-counts {
     margin-bottom: 18px;

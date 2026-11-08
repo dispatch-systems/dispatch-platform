@@ -43,8 +43,8 @@ export function PaneHead({
   /** What opens their profile; none where there's no profile to open. */
   opens?: Partial<OpensProfile>;
   back: () => void;
-  /** Done, while it waits. */
-  done: { busy: boolean; run: () => void };
+  /** Done, while it waits: it shows as done at once. */
+  done: () => void;
   /** Opens the one waiting longest of the section shown, while another waits. */
   next?: () => void;
   /** What else can be done with it, before Done. */
@@ -87,8 +87,7 @@ export function PaneHead({
           {actions}
           {waits ? (
             <button
-              disabled={done.busy}
-              onClick={done.run}
+              onClick={done}
               aria-label="Done"
               aria-keyshortcuts={KEYS.done}
               title={`Done (${KEYS.done})`}

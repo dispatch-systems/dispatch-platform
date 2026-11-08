@@ -193,6 +193,60 @@ test('an owner connects Slack from Communications, answers a member as they writ
   await expect(list.getByRole('heading', { name: /^Waiting/ })).toBeVisible();
   await jordan.getByRole('button', { name: 'Done: Jordan Ellis' }).click();
   await expect(list.getByRole('heading', { name: /^Waiting/ })).toHaveCount(0);
+  // Written to once more, Done in its header marks it done at once, before the server has.
+  expect((await write('Once more')).status).toBe(200);
+  await expect(list.getByRole('heading', { name: /^Waiting/ })).toBeVisible();
+  const marking = '**/conversations/*/done';
+  let marked = () => {};
+  const holding = new Promise<void>((resolve) => (marked = resolve));
+  await page.route(marking, async (route) => {
+    await holding;
+    await route.continue();
+  });
+  await page
+    .getByRole('region', { name: 'Jordan Ellis' })
+    .locator('.thread-head')
+    .getByRole('button', { name: 'Done' })
+    .click();
+  await expect(list.getByRole('heading', { name: /^Waiting/ })).toHaveCount(0);
+  const answered = page.waitForResponse((response) => response.url().endsWith('/done'));
+  marked();
+  await answered;
+  await page.unroute(marking);
+  await expect(list.getByRole('heading', { name: /^Waiting/ })).toHaveCount(0);
+  // Written to again and Done refused, it shows as the server has it, waiting, though the first
+  // reading of it again fails too.
+  expect((await write('And again')).status).toBe(200);
+  await expect(list.getByRole('heading', { name: /^Waiting/ })).toBeVisible();
+  await page.route(marking, (route) =>
+    route.fulfill({ status: 409, json: { error: 'refused', message: 'Not now' } }),
+  );
+  // The first reading of the list, and of the conversation, fails.
+  const reading = (url: URL) =>
+    url.pathname === '/api/dsp/communications' ||
+    /^\/api\/dsp\/communications\/conversations\/[^/]+$/.test(url.pathname);
+  const failed = new Set<string>();
+  await page.route(reading, (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (
+      route.request().method() !== 'GET' ||
+      failed.has(path === '/api/dsp/communications' ? 'list' : 'one')
+    )
+      return route.continue();
+    failed.add(path === '/api/dsp/communications' ? 'list' : 'one');
+    return route.fulfill({ status: 503, json: { error: 'unavailable', message: 'Busy' } });
+  });
+  await page
+    .getByRole('region', { name: 'Jordan Ellis' })
+    .locator('.thread-head')
+    .getByRole('button', { name: 'Done' })
+    .click();
+  await expect(page.getByText('Not now')).toBeVisible();
+  await expect(list.getByRole('heading', { name: /^Waiting/ })).toBeVisible();
+  await page.unroute(marking);
+  await page.unroute(reading);
+  await jordan.getByRole('button', { name: 'Done: Jordan Ellis' }).click();
+  await expect(list.getByRole('heading', { name: /^Waiting/ })).toHaveCount(0);
 
   // New message finds someone by a misspelt name, and their conversation stays at the top of
   // the list until it holds a message.
@@ -418,8 +472,21 @@ test('an owner messages a group from New message, its answers come back together
   await group.getByRole('button', { name: 'Reply to Cameron Hayes' }).click();
   const cameron = page.getByRole('region', { name: 'Cameron Hayes' });
   await cameron.getByRole('button', { name: 'Cameron and Casey' }).click();
-  // Done marks everything waiting under it done.
+  // Done marks everything waiting under it done, at once, before the server has.
+  const marking = '**/groups/*/done';
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route(marking, async (route) => {
+    await held;
+    await route.continue();
+  });
   await group.getByRole('button', { name: 'Done' }).click();
+  await expect(list.getByRole('heading', { name: /^Waiting/ })).toHaveCount(0);
+  await expect(group.getByRole('button', { name: 'Done' })).toHaveCount(0);
+  const answered = page.waitForResponse((response) => response.url().endsWith('/done'));
+  release();
+  await answered;
+  await page.unroute(marking);
   await expect(list.getByRole('heading', { name: /^Waiting/ })).toHaveCount(0);
 });
 

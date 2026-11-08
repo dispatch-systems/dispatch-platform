@@ -1,33 +1,28 @@
-import type { DspSummary } from '../../../accounts/api/index.js';
-import { setDspFeature } from '../../api/client.js';
-import type { DspFeatures } from '../../api/index.js';
 import {
   featureCatalog,
   featureLabel,
   subsOf,
   type FeatureEntry,
 } from '../../../shell/frontend/runtime/features.js';
-import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import { Modal } from '../../../shell/frontend/ui/index.js';
 import { capabilityLabel, previewSwitch, sideEffects, switchLabel } from './switches.js';
 
 // Asked only when a switch takes other features with it: names them, one line each with
-// why, then acts. A switch that changes nothing else never comes here.
+// why, then hands back what the switch changes, to be made. A switch that changes nothing else
+// never comes here.
 export function FeatureSwitchDialog({
-  dsp,
   feature,
   on,
   enabled,
   onClose,
-  onDone,
+  onConfirm,
 }: {
-  dsp: DspSummary;
   feature: FeatureEntry;
   on: boolean;
   enabled: readonly string[];
   onClose: () => void;
-  /** Called with the switch's answer: every feature now on. */
-  onDone: (answer: DspFeatures) => void;
+  /** Called once it's asked for, with every switch it changes. */
+  onConfirm: (changes: { feature: string; enabled: boolean }[]) => void;
 }) {
   const preview = previewSwitch(enabled, feature.id, on);
   const entry = (id: string) => featureCatalog.find((f) => f.id === id)!;
@@ -64,12 +59,6 @@ export function FeatureSwitchDialog({
     if (on) return `one ${capabilityLabel(shared(feature, other)).replace(/^an? /, '')} at a time`;
     return `needs ${capabilityLabel(shared(other, feature))}`;
   };
-  const save = useAction(
-    async () => {
-      onDone(await setDspFeature(dsp.id, feature.id, on));
-    },
-    { success: `${switchLabel(feature)} switched ${on ? 'on' : 'off'}` },
-  );
   return (
     <Modal title={`Switch ${on ? 'on' : 'off'} ${switchLabel(feature)}?`} onClose={onClose}>
       {preview ? (
@@ -87,11 +76,7 @@ export function FeatureSwitchDialog({
             <button type="button" onClick={onClose}>
               Cancel
             </button>
-            <button
-              className={on ? 'primary' : 'danger'}
-              disabled={save.busy}
-              onClick={() => void save.run()}
-            >
+            <button className={on ? 'primary' : 'danger'} onClick={() => onConfirm(preview)}>
               Switch {on ? 'on' : 'off'}
             </button>
           </div>

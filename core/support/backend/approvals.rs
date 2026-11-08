@@ -32,6 +32,12 @@ pub fn decide(
             "INSERT INTO support_approvals(ticket_id,version,owner_id,decision,note,created_at) VALUES(?,?,?,?,?,?)",
             params![ticket, version, auth.user.id, decision, note, now()],
         )?;
+        let action = if decision == "approve" {
+            "support.change_approved"
+        } else {
+            "support.change_declined"
+        };
+        tickets::audited(db, &auth.user.id, &row, action)?;
         if decision == "approve" {
             db.platform.exec("UPDATE support_tickets SET approved_version=? WHERE id=?", params![version, ticket])?;
             tickets::progress(db, ticket, "implementing", "Approved · implementation queued")?;
@@ -56,6 +62,7 @@ pub fn resume(db: &Store, auth: &Auth, ticket: &str) -> Result<SupportDetail> {
         )?;
         ensure(changed > 0, "support_not_waiting", 409)?;
         let row = tickets::record(db, ticket)?;
+        tickets::audited(db, &auth.user.id, &row, "support.resumed")?;
         let approved = row["approved_version"].as_u64().is_some();
         tickets::progress(db, ticket, if approved { "implementing" } else { "investigating" }, "Work resuming")?;
         tickets::detail(db, auth, ticket)
