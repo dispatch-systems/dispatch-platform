@@ -66,7 +66,7 @@ struct Entry {
 }
 /// A cached read: what it reads, named by the id its dependencies are declared under
 /// (`Cached`), and for which DSP. The DSP listings are every DSP's at once.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Scope {
     read: &'static str,
     dsp: Option<String>,
@@ -192,9 +192,17 @@ const KEPT: usize = 64 * 1024 * 1024;
 const LARGEST: usize = 16 * 1024 * 1024;
 /// The most results the read cache keeps.
 const ENTRIES: usize = 256;
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct SharedRead {
+    scope: Scope,
+    key: String,
+    revision: u64,
+}
 #[derive(Default)]
 pub struct ReadCache {
     entries: Mutex<VecDeque<Entry>>,
+    /// Only live shared calculations retain a turn; a later miss can retry an error or panic.
+    making: Mutex<HashMap<SharedRead, Weak<Mutex<()>>>>,
 }
 impl ReadCache {
     /// Keep one immutable derived result when pages need different slices of it.
@@ -206,6 +214,33 @@ impl ReadCache {
         revision: u64,
         load: impl FnOnce() -> Result<T>,
     ) -> Result<Arc<T>> {
+        // One immutable derived result is calculated once on a concurrent miss. Hold no cache
+        // mutex while it is made, so another DSP or another read still proceeds independently.
+        let making = {
+            let mut keys = self
+                .making
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            keys.retain(|_, lock| lock.strong_count() > 0);
+            let named = SharedRead {
+                scope: scope.clone(),
+                key: key.clone(),
+                revision,
+            };
+            match keys.get(&named).and_then(Weak::upgrade) {
+                Some(lock) => lock,
+                None => {
+                    let lock = Arc::new(Mutex::new(()));
+                    keys.insert(named, Arc::downgrade(&lock));
+                    lock
+                }
+            }
+        };
+        let _turn = making
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // Authorization stays with each caller, and the cache is checked only once its turn
+        // comes. Neither errors nor panics become cached results.
         self.read_sized(
             scope,
             key,

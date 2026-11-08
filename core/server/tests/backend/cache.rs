@@ -102,3 +102,91 @@ fn simultaneous_misses_compute_without_serializing_and_store_one_entry() {
     }
     assert_eq!(cache.entries.lock().unwrap().len(), 1);
 }
+
+#[test]
+fn shared_misses_reuse_one_calculation_while_another_tenant_can_finish() {
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        mpsc,
+    };
+    let cache = Arc::new(ReadCache::default());
+    let loads = Arc::new(AtomicUsize::new(0));
+    let (started, loading) = mpsc::channel();
+    let (release, released) = mpsc::channel();
+    std::thread::scope(|threads| {
+        let (first_cache, first_loads) = (cache.clone(), loads.clone());
+        let first = threads.spawn(move || {
+            first_cache
+                .shared(meals("a"), "people".into(), 1, || {
+                    first_loads.fetch_add(1, Ordering::SeqCst);
+                    started.send(()).unwrap();
+                    released.recv().unwrap();
+                    Ok(7)
+                })
+                .unwrap()
+        });
+        loading.recv().unwrap();
+        let (ready, readers) = mpsc::channel();
+        let duplicates: Vec<_> = (0..8)
+            .map(|_| {
+                let (cache, loads, ready) = (cache.clone(), loads.clone(), ready.clone());
+                threads.spawn(move || {
+                    ready.send(()).unwrap();
+                    cache
+                        .shared(meals("a"), "people".into(), 1, || {
+                            loads.fetch_add(1, Ordering::SeqCst);
+                            Ok(7)
+                        })
+                        .unwrap()
+                })
+            })
+            .collect();
+        for _ in 0..8 {
+            readers.recv().unwrap();
+        }
+        // The first calculation is still held. Another DSP finishes before it is released.
+        assert_eq!(
+            *cache
+                .shared(meals("b"), "people".into(), 1, || Ok(9))
+                .unwrap(),
+            9
+        );
+        release.send(()).unwrap();
+        let first = first.join().unwrap();
+        for reader in duplicates {
+            let value = reader.join().unwrap();
+            assert!(Arc::ptr_eq(&first, &value));
+        }
+    });
+    assert_eq!(loads.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn a_failed_or_panicking_shared_calculation_leaves_the_next_read_free_to_retry() {
+    let cache = ReadCache::default();
+    assert!(
+        cache
+            .shared::<i32>(meals("a"), "people".into(), 1, || Err(Error::new(
+                "failed", 500
+            )))
+            .is_err()
+    );
+    let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        cache.shared::<i32>(meals("a"), "people".into(), 1, || {
+            panic!("calculation failed")
+        })
+    }));
+    assert!(panic.is_err());
+    assert_eq!(
+        *cache
+            .shared(meals("a"), "people".into(), 1, || Ok(7))
+            .unwrap(),
+        7
+    );
+    assert_eq!(
+        *cache
+            .shared(meals("a"), "people".into(), 2, || Ok(11))
+            .unwrap(),
+        11
+    );
+}
