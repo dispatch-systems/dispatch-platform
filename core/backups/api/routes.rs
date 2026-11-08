@@ -2,13 +2,15 @@ use super::types::BackupRuns;
 use crate::{
     Error, Result, State,
     backups::{download, history, schedule},
-    db::Store,
-    foundation::validate as v,
+    db::{self, Store},
+    ensure,
+    foundation::{crypto, validate as v},
     server::http::{
         input::{Input, Reply},
         route::{Grant, PlatformOwner, Route, User, async_get, async_post, read, write},
     },
 };
+use serde_json::json;
 use std::sync::Arc;
 
 pub fn routes() -> Vec<Route> {
@@ -107,18 +109,35 @@ async fn now(state: Arc<State>, input: Input, access: PlatformOwner) -> Result<R
     Ok(reply)
 }
 
-/// Whether one of the DSP's backups may be downloaded now: it's taken, and the owner confirmed it's
-/// them recently, as a download holds the DSP's saved logins. Asked first, so the dashboard asks
-/// the owner to confirm before the download begins.
+/// How long a download, once allowed, may take to begin.
+const TICKET: i64 = 2 * 60 * 1000;
+
+/// What a download of the backup `backup` of `dsp` by `user` until `until` is signed as.
+fn ticket(key: &[u8], user: &str, dsp: &str, backup: &str, until: i64) -> String {
+    crypto::sign(
+        key,
+        &format!("backup-download\n{user}\n{dsp}\n{backup}\n{until}"),
+    )
+}
+
+/// Allows one of the DSP's backups to be downloaded, for the next two minutes, by an owner who
+/// confirmed it's them recently, as a download holds the DSP's saved logins: a ticket the download
+/// shows. Asked first, so the dashboard asks the owner to confirm before the download begins, and
+/// a slow download isn't refused for that confirmation growing old as it's put together.
 fn ready(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &[])?;
     db.ensure_recent(owner)?;
-    history::files(&db.platform, input.param("id"), input.param("backup"))?;
-    Ok(Reply::ok())
+    let (dsp, backup) = (input.param("id"), input.param("backup"));
+    history::files(&db.platform, dsp, backup)?;
+    let until = db::now() + TICKET;
+    Reply::of(&json!({
+        "ticket": ticket(&db.key, &owner.user.id, dsp, backup, until),
+        "until": until,
+    }))
 }
 
-/// One of the DSP's backups, as a zip of its files, for an owner who confirmed it's them
-/// recently: asked for again once it's put together, before any of it is sent.
+/// One of the DSP's backups, as a zip of its files, for the owner a ticket allowed it to: asked
+/// for again once it's put together, before any of it is sent.
 async fn saved(state: Arc<State>, input: Input, access: PlatformOwner) -> Result<Reply> {
     let vault = state
         .backups
@@ -128,12 +147,22 @@ async fn saved(state: Arc<State>, input: Input, access: PlatformOwner) -> Result
         input.param("id").to_owned(),
         input.param("backup").to_owned(),
     );
+    let shown = input.query["ticket"].as_str().unwrap_or("").to_owned();
+    let until = input.query["until"]
+        .as_str()
+        .and_then(|until| until.parse::<i64>().ok())
+        .unwrap_or(0);
     {
-        let (dsp, id, input) = (dsp.clone(), id.clone(), input.clone());
+        let (dsp, id, input, key) = (dsp.clone(), id.clone(), input.clone(), state.key.clone());
         state
             .run(move |db| {
                 let owner = access.authorize(db, &input)?;
-                db.ensure_recent(&owner)?;
+                ensure(
+                    until > db::now()
+                        && crypto::equal(&shown, &ticket(&key, &owner.user.id, &dsp, &id, until)),
+                    "reauthentication_required",
+                    403,
+                )?;
                 history::files(&db.platform, &dsp, &id).map(drop)
             })
             .await?;
@@ -142,7 +171,6 @@ async fn saved(state: Arc<State>, input: Input, access: PlatformOwner) -> Result
     state
         .run(move |db| {
             let owner = access.authorize(db, &input)?;
-            db.ensure_recent(&owner)?;
             db.audit(
                 Some(&owner.user.id),
                 Some(&dsp),

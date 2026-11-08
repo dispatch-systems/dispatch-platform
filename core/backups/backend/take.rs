@@ -7,7 +7,10 @@
 use super::{FILES, MANIFESTS, Vault, contents, seal};
 use crate::{
     Error, Result, State,
-    db::{self, at, now, objects::Fetched},
+    db::{
+        self, at, now,
+        objects::{Fetched, Objects},
+    },
     ensure,
 };
 use base64::{Engine, engine::general_purpose::STANDARD as B64};
@@ -124,16 +127,31 @@ struct Copied {
     plain: PathBuf,
 }
 
-/// Copies the DSP's files aside: its databases first, each as it is at one moment, then the files
-/// beside them, found once those are copied, so a file a database names is there too.
+/// Copies the DSP's files aside: its databases, each as it is at one moment, with the files beside
+/// them found both before and after those are copied, so a file a database names is there whether
+/// it was added or let go of as they were.
 async fn copied(folder: &Path, held: &[String], here: &Path) -> Result<Vec<Copied>> {
     let (folder, held, here) = (folder.to_owned(), held.to_vec(), here.to_owned());
     tokio::task::spawn_blocking(move || -> Result<Vec<Copied>> {
-        let mut copied = Vec::new();
+        let mut copied: Vec<Copied> = Vec::new();
         let mut copy_each = |found: Vec<contents::Found>| -> Result<()> {
             for file in found {
+                if copied.iter().any(|done| done.path == file.path) {
+                    continue;
+                }
                 let plain = here.join(format!("{}", copied.len()));
-                copy(&folder.join(&file.path), &plain, file.database)?;
+                let from = folder.join(&file.path);
+                if file.database {
+                    copy(&from, &plain, true)?;
+                } else {
+                    match fs::copy(&from, &plain) {
+                        Ok(_) => {}
+                        // Let go of since it was found: found before or after the databases as
+                        // it was, or none of theirs.
+                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                        Err(error) => return Err(error.into()),
+                    }
+                }
                 copied.push(Copied {
                     path: file.path,
                     item: file.item,
@@ -142,6 +160,13 @@ async fn copied(folder: &Path, held: &[String], here: &Path) -> Result<Vec<Copie
             }
             Ok(())
         };
+        let beside = |folder: &Path| -> Result<Vec<contents::Found>> {
+            Ok(contents::files(folder, &held)?
+                .into_iter()
+                .filter(|file| !file.database)
+                .collect())
+        };
+        copy_each(beside(&folder)?)?;
         let databases: Vec<_> = contents::files(&folder, &held)?
             .into_iter()
             .filter(|file| file.database)
@@ -155,45 +180,36 @@ async fn copied(folder: &Path, held: &[String], here: &Path) -> Result<Vec<Copie
             500,
         )?;
         copy_each(databases)?;
-        copy_each(
-            contents::files(&folder, &held)?
-                .into_iter()
-                .filter(|file| !file.database)
-                .collect(),
-        )?;
+        copy_each(beside(&folder)?)?;
         Ok(copied)
     })
     .await
     .map_err(|_| Error::new("backup_failed", 500))?
 }
 
-async fn send(
-    state: &Arc<State>,
-    vault: &Vault,
-    asked: &Asked,
-    holds: &Holds<'_>,
-    here: &Path,
-) -> Result<Vec<Value>> {
-    let Holds {
-        folder,
-        items: held,
-        sizes,
-    } = *holds;
-    let mut kept: HashSet<String> = vault
-        .objects
-        .listed(&asked.dsp, FILES)
-        .await?
-        .into_iter()
-        .collect();
-    let mut files = Vec::new();
-    for file in copied(folder, held, here).await? {
+/// A backup on its way: where it's going, what it has sent, and what its files describe.
+struct Sending<'a> {
+    state: &'a Arc<State>,
+    vault: &'a Vault,
+    asked: &'a Asked,
+    here: &'a Path,
+    sizes: &'a HashMap<String, i64>,
+    /// The files the bucket keeps already, by what they're kept as.
+    kept: HashSet<String>,
+    files: Vec<Value>,
+    /// The pictures it holds already, by their owners and SHA-256s.
+    pictures: HashSet<(String, String)>,
+}
+impl Sending<'_> {
+    /// Seals the file copied aside and sends it, unless the bucket keeps one holding the same.
+    async fn file(&mut self, file: Copied) -> Result<()> {
         let sealed = file.plain.with_extension("sealed");
         let (sha256, size) = {
             let (plain, sealed, key, dsp) = (
                 file.plain.clone(),
                 sealed.clone(),
-                vault.key,
-                asked.dsp.clone(),
+                self.vault.key,
+                self.asked.dsp.clone(),
             );
             tokio::task::spawn_blocking(move || -> Result<(String, u64)> {
                 let sealed = seal::seal(&key, &dsp, &plain, &sealed);
@@ -203,42 +219,57 @@ async fn send(
             .await
             .map_err(|_| Error::new("backup_failed", 500))??
         };
-        let object = vault.file(&asked.generation, &sha256);
-        if !kept.contains(&object) {
-            uploading(state, &asked.id, &object).await?;
-            sent(vault, &asked.dsp, &object, &sealed, &sha256, here).await?;
-            kept.insert(object.clone());
+        let object = self.vault.file(&self.asked.generation, &sha256);
+        if !self.kept.contains(&object) {
+            uploading(self.state, &self.asked.id, &object).await?;
+            sent(
+                self.vault,
+                &self.asked.dsp,
+                &object,
+                &sealed,
+                &sha256,
+                self.here,
+            )
+            .await?;
+            self.kept.insert(object.clone());
         }
         fs::remove_file(&sealed)?;
-        files.push(json!({
+        self.files.push(json!({
             "path": file.path.to_string_lossy(),
             "item": file.item,
             "sha256": sha256,
             "size": size,
             "object": object,
         }));
+        Ok(())
     }
-    if held.iter().any(|item| item == contents::PICTURES)
-        && let Some(pictures) = &state.objects
-    {
-        for (owner, sha256) in pictures.kept(&asked.dsp).await? {
-            let object = vault.file(&asked.generation, &sha256);
-            let path = format!("objects/{owner}/{sha256}");
-            let size = if kept.contains(&object) {
-                sizes.get(&object).copied().unwrap_or(0) as u64
+
+    /// The pictures the DSP keeps in the object store, each it doesn't hold yet sent: those let go
+    /// of since they were listed are left out `before` its databases are copied, which then name
+    /// none of them, and fail it after, when they may.
+    async fn pictures(&mut self, pictures: &Objects, before: bool) -> Result<()> {
+        let dsp = self.asked.dsp.clone();
+        for (owner, sha256) in pictures.kept(&dsp).await? {
+            if !self.pictures.insert((owner.clone(), sha256.clone())) {
+                continue;
+            }
+            let object = self.vault.file(&self.asked.generation, &sha256);
+            let size = if self.kept.contains(&object) {
+                self.sizes.get(&object).copied().unwrap_or(0) as u64
             } else {
-                let plain = here.join("picture");
-                let sealed = here.join("picture.sealed");
-                // Listed, then gone: let go of while it was taken, so the backup isn't whole.
-                let fetched = pictures
-                    .get(&asked.dsp, &owner, &sha256)
-                    .await?
-                    .ok_or_else(|| Error::new("backup_incomplete", 502))?;
+                let plain = self.here.join("picture");
+                let sealed = self.here.join("picture.sealed");
+                let Some(fetched) = pictures.get(&dsp, &owner, &sha256).await? else {
+                    if before {
+                        continue;
+                    }
+                    return Err(Error::new("backup_incomplete", 502));
+                };
                 written(fetched, &plain).await?;
-                let (key, dsp, from, to) =
-                    (vault.key, asked.dsp.clone(), plain.clone(), sealed.clone());
+                let (key, binding, from, to) =
+                    (self.vault.key, dsp.clone(), plain.clone(), sealed.clone());
                 let (read, size) =
-                    tokio::task::spawn_blocking(move || seal::seal(&key, &dsp, &from, &to))
+                    tokio::task::spawn_blocking(move || seal::seal(&key, &binding, &from, &to))
                         .await
                         .map_err(|_| Error::new("backup_failed", 500))??;
                 fs::remove_file(&plain)?;
@@ -248,23 +279,63 @@ async fn send(
                     fs::remove_file(&sealed)?;
                     return Err(Error::new("object_store_mismatch", 502));
                 }
-                uploading(state, &asked.id, &object).await?;
-                sent(vault, &asked.dsp, &object, &sealed, &sha256, here).await?;
+                uploading(self.state, &self.asked.id, &object).await?;
+                sent(self.vault, &dsp, &object, &sealed, &sha256, self.here).await?;
                 fs::remove_file(&sealed)?;
-                kept.insert(object.clone());
+                self.kept.insert(object.clone());
                 size
             };
-
-            files.push(json!({
-                "path": path,
+            self.files.push(json!({
+                "path": format!("objects/{owner}/{sha256}"),
                 "item": contents::PICTURES,
                 "sha256": sha256,
                 "size": size,
                 "object": object,
             }));
         }
+        Ok(())
     }
-    Ok(files)
+}
+
+async fn send(
+    state: &Arc<State>,
+    vault: &Vault,
+    asked: &Asked,
+    holds: &Holds<'_>,
+    here: &Path,
+) -> Result<Vec<Value>> {
+    let kept = vault
+        .objects
+        .listed(&asked.dsp, FILES)
+        .await?
+        .into_iter()
+        .collect();
+    let mut sending = Sending {
+        state,
+        vault,
+        asked,
+        here,
+        sizes: holds.sizes,
+        kept,
+        files: Vec::new(),
+        pictures: HashSet::new(),
+    };
+    // The pictures it keeps elsewhere, both before and after its databases are copied, as the
+    // files beside them are.
+    let pictures = state
+        .objects
+        .as_ref()
+        .filter(|_| holds.items.iter().any(|item| item == contents::PICTURES));
+    if let Some(pictures) = pictures {
+        sending.pictures(pictures, true).await?;
+    }
+    for file in copied(holds.folder, holds.items, here).await? {
+        sending.file(file).await?;
+    }
+    if let Some(pictures) = pictures {
+        sending.pictures(pictures, false).await?;
+    }
+    Ok(sending.files)
 }
 
 /// Copies the file `from` to `to`: a database as SQLite copies one while it's written to, all of

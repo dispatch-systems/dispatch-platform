@@ -22,9 +22,9 @@ export const backUpNow = (dspId: string) => api<DspBackups>(`${backups(dspId)}/n
  * dashboard asks them to first, as a download holds the DSP's saved logins. */
 export async function downloadBackup(dspId: string, backupId: string) {
   const url = `${backups(dspId)}/${backupId}/download`;
-  await api(url, {});
+  const allowed = await api<{ ticket: string; until: number }>(url, {});
   const link = document.createElement('a');
-  link.href = url;
+  link.href = `${url}?${new URLSearchParams({ ticket: allowed.ticket, until: String(allowed.until) })}`;
   link.download = '';
   link.click();
 }
