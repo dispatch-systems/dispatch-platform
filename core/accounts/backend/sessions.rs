@@ -14,12 +14,42 @@ impl Store {
             self.config.security.password_window_seconds * 1000,
         )?;
         self.throttle(
-            &format!(
-                "login:email:{}{}",
-                dsp.map_or(String::new(), |dsp| format!("{dsp}:")),
-                email.to_lowercase()
-            ),
+            &attempts_key(dsp, email),
             self.config.security.password_account_attempts,
+            self.config.security.password_window_seconds * 1000,
+        )
+    }
+    /// Whether the passwords tried for `email` in `dsp`'s directory, or the platform's, reached
+    /// the account's own limit, as against the address's they came from.
+    fn account_limited(&self, dsp: Option<&str>, email: &str) -> Result<bool> {
+        let tried = self.platform.count(
+            "SELECT coalesce(max(count),0) FROM throttle WHERE key=? AND reset_at>=?",
+            params![crypto::sha(&attempts_key(dsp, email)), now()],
+        )?;
+        Ok(tried >= self.config.security.password_account_attempts)
+    }
+    /// Notes in the audit log that `email`'s account at `site` was locked out by its own limit
+    /// on passwords tried, once a window: nothing for an address no account here has, or one
+    /// refused by the limit of the address the passwords came from.
+    fn note_lockout(&self, email: &str, site: &Site) -> Result<()> {
+        let Some(scope) = self.site_directory(site)? else {
+            return Ok(());
+        };
+        if !self.account_limited(scope.as_deref(), email)? {
+            return Ok(());
+        }
+        let directory = self.directory(scope.as_deref())?;
+        let Some(row) = UserRow::find(&directory, "email", email)? else {
+            return Ok(());
+        };
+        if !row.active() || !admitted(&directory, &row.user, scope.as_deref())? {
+            return Ok(());
+        }
+        drop(directory);
+        self.audit_account_once(
+            &row.user,
+            scope.as_deref(),
+            "account.locked_out",
             self.config.security.password_window_seconds * 1000,
         )
     }
@@ -268,7 +298,7 @@ impl Store {
         let Some(row) = UserRow::find(&directory, "id", user)?.filter(UserRow::active) else {
             return Ok(false);
         };
-        if !admitted(&directory, &row.user, scope.as_deref())? {
+        if !row.active() || !admitted(&directory, &row.user, scope.as_deref())? {
             return Ok(false);
         }
         let a = Auth {
@@ -305,6 +335,15 @@ impl Store {
     }
 }
 
+/// Where the passwords tried for `email` in `dsp`'s directory, or the platform's, are counted.
+fn attempts_key(dsp: Option<&str>, email: &str) -> String {
+    format!(
+        "login:email:{}{}",
+        dsp.map_or(String::new(), |dsp| format!("{dsp}:")),
+        email.to_lowercase()
+    )
+}
+
 fn quota_ip(value: &str) -> String {
     match value.parse::<std::net::IpAddr>() {
         Ok(std::net::IpAddr::V6(ip)) => {
@@ -336,9 +375,10 @@ impl crate::State {
             .try_acquire_owned()
             .map_err(|_| Error::new("login_busy", 429))?;
         let at = site.clone();
+        let tried = email.clone();
         // An account another directory keeps, or one this one no longer admits, is as unknown
         // here as a missing one, and takes as long to refuse.
-        let (scope, row) = self
+        let read = self
             .run(move |db| {
                 db.ensure_site_enabled(&at)?;
                 let Some(scope) = db.site_directory(&at)? else {
@@ -354,7 +394,15 @@ impl crate::State {
                 };
                 Ok((Some(scope), row))
             })
-            .await?;
+            .await;
+        let (scope, row) = match read {
+            Err(error) if error.code == "rate_limited" => {
+                let site = site.clone();
+                self.noted(move |db| db.note_lockout(&tried, &site));
+                return Err(error);
+            }
+            read => read?,
+        };
         let value = row.clone();
         let valid = tokio::task::spawn_blocking(move || {
             let _permit = permit;
@@ -371,6 +419,14 @@ impl crate::State {
         })
         .await
         .map_err(|_| Error::new("login_failed", 500))?;
+        if let (Some(scope), Some(row), false) = (&scope, &row, valid)
+            && row.active()
+        {
+            let (user, scope) = (row.user.clone(), scope.clone());
+            self.noted(move |db| {
+                db.audit_account(&user, scope.as_deref(), "account.sign_in_failed", "")
+            });
+        }
         let (Some(scope), Some(row)) = (scope, row.filter(|r| valid && r.active())) else {
             return Err(Error::new("invalid_login", 401));
         };
@@ -413,6 +469,23 @@ impl crate::State {
             Ok(raw)
         })
         .await
+    }
+    /// Notes what `note` writes in the audit log of a sign-in refused, without holding up the
+    /// answer: a refusal for an account takes as long as one for an address with none.
+    fn noted(
+        self: &std::sync::Arc<Self>,
+        note: impl FnOnce(&Store) -> Result<()> + Send + 'static,
+    ) {
+        let state = self.clone();
+        tokio::spawn(async move {
+            if let Err(error) = state.run(note).await {
+                crate::foundation::observability::event(
+                    "error",
+                    "account.sign_in_note_failed",
+                    serde_json::json!({"error": error.code}),
+                );
+            }
+        });
     }
 }
 

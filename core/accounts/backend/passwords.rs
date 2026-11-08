@@ -71,6 +71,7 @@ impl Store {
                     MailContext::Reset { user: &user.id },
                 )
             })?;
+            self.audit_account(&user, dsp, "account.password_reset_requested", "")?;
         }
         Ok(())
     }

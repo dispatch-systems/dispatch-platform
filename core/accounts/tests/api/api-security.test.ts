@@ -136,6 +136,16 @@ test('authenticator MFA gates new sessions, resists replay, and recovery can dis
     ),
     0,
   );
+  // The code used again and the recovery code used again are each in the audit log, as refused.
+  assert.deepEqual(
+    f.database('data/platform/accounts.sqlite', (db) =>
+      db
+        .prepare("SELECT detail FROM audit WHERE action='account.second_factor_failed' ORDER BY id")
+        .all()
+        .map((row) => (row as { detail: string }).detail),
+    ),
+    ['authenticator', 'recovery code'],
+  );
 });
 
 function authenticatorCode(secret: string, counter = Math.floor(Date.now() / 30_000)) {

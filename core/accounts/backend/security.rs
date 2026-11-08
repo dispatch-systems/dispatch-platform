@@ -398,6 +398,21 @@ impl Store {
         })
     }
 
+    /// Gives back `error`, noting in the audit log the second factor `kind` the session's account
+    /// gave refused as wrong, when `error` is that refusal (`wrong`).
+    pub fn second_factor_refused(&self, a: &Auth, kind: &str, wrong: &str, error: Error) -> Error {
+        if error.code != wrong {
+            return error;
+        }
+        let noted = self.audit_account(
+            &a.user,
+            a.scope.as_deref(),
+            "account.second_factor_failed",
+            kind,
+        );
+        noted.err().unwrap_or(error)
+    }
+
     pub fn authenticator_verify(&self, a: &Auth, code: &str) -> Result<()> {
         self.throttle(&format!("totp:{}", a.user.id), 5, 5 * 60000)?;
         let row: Option<(String, i64)> = self.people(a)?.one_as(
