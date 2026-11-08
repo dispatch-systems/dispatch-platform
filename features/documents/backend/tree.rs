@@ -331,12 +331,8 @@ impl Tree {
         found
     }
 
-    /// Puts in a file Dispatch made or changed, as Google answered: one Google moved out of
-    /// the main folder goes.
-    pub fn put(&mut self, item: Item) {
-        self.put_many([item]);
-    }
-    /// Puts in a batch of confirmed changes, rebuilding the tree once. The last observation
+    /// Puts in confirmed changes, rebuilding the tree once: a file Google moved out of the
+    /// main folder goes. The last observation
     /// of an ID wins, including IDs first seen in this batch.
     pub fn put_many(&mut self, items: impl IntoIterator<Item = Item>) {
         let mut places = mem::take(&mut self.places);

@@ -231,20 +231,6 @@ pub(crate) async fn rewrite(
     Ok(written)
 }
 
-/// Confirmed picker changes, flushed together even if a later Google request fails or the
-/// caller leaves. Retain this mirror, so disconnecting cannot repopulate a replacement copy.
-struct AddedItems {
-    mirror: Arc<mirror::Mirror>,
-    root: String,
-    items: Vec<Item>,
-}
-impl Drop for AddedItems {
-    fn drop(&mut self) {
-        self.mirror
-            .put_many(&self.root, std::mem::take(&mut self.items));
-    }
-}
-
 /// Adds the files and folders `ids`, picked with Google's picker, to the folder `parent`, or the
 /// main one. One already inside Documents only becomes reachable; one elsewhere in the account's
 /// Drive moves in. A folder brings itself only: what it holds is picked on its own.
@@ -262,11 +248,8 @@ pub async fn add(
     let drive = access::open(state, &dsp, false).await?;
     drive.google.grant(&drive.access, &ids)?;
     let mut added = Vec::new();
-    let mut confirmed = AddedItems {
-        mirror: mirror::of(&dsp),
-        root: drive.connection.folder_id.clone(),
-        items: Vec::new(),
-    };
+    // Keep this connection's mirror: a disconnect must not repopulate its replacement.
+    let mirror = mirror::of(&dsp);
     // Whether it made a shortcut to a file someone else owns, to share with the team, and
     // those the account may not share on.
     let mut shortcuts = false;
@@ -285,7 +268,7 @@ pub async fn add(
         }
         let inside = item.parents.iter().any(|folder| tree.is_folder(folder));
         if inside {
-            confirmed.items.push(item.clone());
+            mirror.put(&drive.connection.folder_id, item.clone());
             added.push(item);
             continue;
         }
@@ -311,13 +294,12 @@ pub async fn add(
             moved => (moved?, None),
         };
         // The shortcut first, then the file it stands for, which stays beside it.
-        confirmed.items.push(item.clone());
-        if let Some(file) = file {
-            confirmed.items.push(file);
+        match file {
+            Some(file) => mirror.put_many(&drive.connection.folder_id, [item.clone(), file]),
+            None => mirror.put(&drive.connection.folder_id, item.clone()),
         }
         added.push(item);
     }
-    drop(confirmed);
     let named: Vec<(String, String)> = added
         .iter()
         .map(|item| (item.id.clone(), item.name.clone()))
