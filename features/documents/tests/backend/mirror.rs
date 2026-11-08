@@ -105,3 +105,82 @@ fn the_copy_follows_drive_and_keeps_what_dispatch_changed() {
     );
     assert!(mirror.tree("fresh").is_none());
 }
+
+#[test]
+fn confirmations_are_ordered_before_later_renames_removals_and_advanced_feed_cursors() {
+    for removal in [false, true] {
+        let mirror = Mirror::default();
+        mirror.replace(
+            "main",
+            vec![item("a", "Before", Some("main"), false, "2026-10-01")],
+            "before".into(),
+        );
+        // A's picker response confirms first. B's request is still pending while another
+        // request or the feed changes A. The later B confirmation must not replay A.
+        mirror.put(
+            "main",
+            item("a", "Picked", Some("main"), false, "2026-10-02"),
+        );
+        let changed = if removal {
+            Changed::Gone("a".into())
+        } else {
+            kept(item("a", "Renamed", Some("main"), false, "2026-10-03"))
+        };
+        mirror.follow("main", changes(vec![changed], "advanced"));
+        mirror.put(
+            "main",
+            item("b", "Second", Some("main"), false, "2026-10-04"),
+        );
+        let tree = mirror.tree("main").unwrap();
+        if removal {
+            assert!(tree.get("a").is_none());
+        } else {
+            assert_eq!(&*tree.get("a").unwrap().name, "Renamed");
+        }
+        assert!(tree.get("b").is_some());
+        assert_eq!(mirror.changes("main").as_deref(), Some("advanced"));
+    }
+    // A direct trash has the same ordering, including while successful picker results wait.
+    let mirror = Mirror::default();
+    mirror.replace("main", Vec::new(), "before".into());
+    mirror.put(
+        "main",
+        item("a", "Picked", Some("main"), false, "2026-10-02"),
+    );
+    mirror.remove("main", "a");
+    mirror.put(
+        "main",
+        item("b", "Second", Some("main"), false, "2026-10-04"),
+    );
+    assert!(mirror.tree("main").unwrap().get("a").is_none());
+
+    // The file a shortcut stands for can disappear before a later selected file answers.
+    let mirror = Mirror::default();
+    mirror.replace("main", Vec::new(), "before".into());
+    let shortcut = Item {
+        mime_type: crate::backend::drive::SHORTCUT.into(),
+        shortcut_details: Some(crate::backend::drive::Shortcut {
+            target_id: "target".into(),
+            target_mime_type: crate::backend::drive::SHEET.into(),
+        }),
+        ..item("shortcut", "Shortcut", Some("main"), false, "2026-10-02")
+    };
+    mirror.put_many(
+        "main",
+        [
+            shortcut,
+            item("target", "Target", None, false, "2026-10-02"),
+        ],
+    );
+    mirror.follow(
+        "main",
+        changes(vec![Changed::Gone("target".into())], "advanced"),
+    );
+    mirror.put(
+        "main",
+        item("b", "Second", Some("main"), false, "2026-10-04"),
+    );
+    let tree = mirror.tree("main").unwrap();
+    assert!(tree.get("shortcut").unwrap().unavailable());
+    assert!(tree.get("b").is_some());
+}

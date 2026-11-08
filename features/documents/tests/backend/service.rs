@@ -69,10 +69,11 @@ async fn files_are_kept_inside_the_dsps_folder_once_connected_and_named_for_who_
     let parent = tree.get(&saved.id).and_then(|row| row.parent.as_deref());
     assert_eq!(parent, Some(folder.id.as_str()));
     let at = dsp.clone();
+    let id = saved.id.clone();
     let (records, logged) = state
         .read(move |db| {
             let logged = testing::audits(db, Some(&at))?;
-            Ok((db.documents_records(&at)?, logged))
+            Ok((db.documents_records(&at, &[id])?, logged))
         })
         .await
         .unwrap();
@@ -156,8 +157,14 @@ async fn a_page_is_written_as_a_doc_in_the_dsps_folder_and_over_it_where_it_is()
     assert_eq!(rewritten.id, written.id);
     assert_eq!(rewritten.name, "Write-ups, October");
     let at = dsp.clone();
+    let id = written.id.clone();
     let (records, logged) = state
-        .read(move |db| Ok((db.documents_records(&at)?, testing::audits(db, Some(&at))?)))
+        .read(move |db| {
+            Ok((
+                db.documents_records(&at, &[id])?,
+                testing::audits(db, Some(&at))?,
+            ))
+        })
         .await
         .unwrap();
     assert_eq!(records[&written.id].added_by, dre);

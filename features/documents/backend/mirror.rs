@@ -25,6 +25,9 @@ pub const STALE: Duration = Duration::from_secs(60);
 const IDLE: Duration = Duration::from_secs(30 * 60);
 /// How long Google's failing to answer stands for those waiting their turn to ask.
 const FAILED: Duration = Duration::from_secs(5);
+/// Confirmed puts are indexed together when read, or once this many wait. This bounds writes
+/// made by background callers while nobody asks for the tree.
+const PENDING: usize = 100;
 
 /// What the account's Drive held when Dispatch last asked.
 struct Copy {
@@ -33,6 +36,15 @@ struct Copy {
     changes: String,
     /// When Google last said what changed.
     synced: Instant,
+    /// Confirmed changes in their original order, before any later change-feed/removal turn.
+    pending: Vec<Item>,
+}
+impl Copy {
+    fn flush(&mut self) {
+        if !self.pending.is_empty() {
+            Arc::make_mut(&mut self.tree).put_many(std::mem::take(&mut self.pending));
+        }
+    }
 }
 
 /// One DSP's copy, when it was last looked at, and the turn to bring it up to date: Google is
@@ -89,7 +101,10 @@ impl Mirror {
         self.copy()
             .as_mut()
             .filter(|copy| copy.tree.root() == root)
-            .map(change)
+            .map(|copy| {
+                copy.flush();
+                change(copy)
+            })
     }
     /// How long ago Google last said what changed in the copy of `root`: none without one.
     pub fn age(&self, root: &str) -> Option<Duration> {
@@ -100,8 +115,9 @@ impl Mirror {
     /// The tree under `root`, as the copy holds it, for someone looking at it.
     pub fn tree(&self, root: &str) -> Option<Arc<Tree>> {
         *self.viewed() = Instant::now();
-        let copy = self.copy();
-        let copy = copy.as_ref().filter(|copy| copy.tree.root() == root)?;
+        let mut copy = self.copy();
+        let copy = copy.as_mut().filter(|copy| copy.tree.root() == root)?;
+        copy.flush();
         Some(Arc::clone(&copy.tree))
     }
     /// Where the change feed goes on from, for a copy of `root`.
@@ -117,6 +133,7 @@ impl Mirror {
             tree: Arc::new(Tree::new(root, all)),
             changes,
             synced: Instant::now(),
+            pending: Vec::new(),
         });
     }
     /// Brings the copy of `root` up to date with what changed. Answers whether the Drive
@@ -131,7 +148,18 @@ impl Mirror {
     }
     /// Puts in a file Dispatch made or changed, as Google answered.
     pub fn put(&self, root: &str, item: Item) {
-        self.change(root, |copy| Arc::make_mut(&mut copy.tree).put(item));
+        self.put_many(root, [item]);
+    }
+    /// Records confirmations immediately, before another async request can change or remove
+    /// them. Indexing waits until a reader or a later kind of change needs the tree.
+    pub fn put_many(&self, root: &str, items: impl IntoIterator<Item = Item>) {
+        let mut copy = self.copy();
+        if let Some(copy) = copy.as_mut().filter(|copy| copy.tree.root() == root) {
+            copy.pending.extend(items);
+            if copy.pending.len() >= PENDING {
+                copy.flush();
+            }
+        }
     }
     /// Takes out a file Dispatch trashed, or Google said is gone.
     pub fn remove(&self, root: &str, id: &str) {

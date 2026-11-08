@@ -166,8 +166,8 @@ pub trait DocumentsStore {
     fn break_documents_connection(&self, dsp: &str) -> Result<bool>;
     /// Forgets the connection and its token. The folder stays in Google Drive.
     fn remove_documents_connection(&self, dsp: &str) -> Result<()>;
-    /// What Dispatch recorded of each file it made or changed, by file.
-    fn documents_records(&self, dsp: &str) -> Result<BTreeMap<String, Record>>;
+    /// What Dispatch recorded of the requested files it made or changed, by file.
+    fn documents_records(&self, dsp: &str, ids: &[String]) -> Result<BTreeMap<String, Record>>;
     /// Records that the member `user` added the file, or changed it if it was added before.
     fn record_documents_change(&self, dsp: &str, file: &str, user: &str) -> Result<()> {
         self.record_documents_change_by(dsp, file, &Author::Member(user.to_owned()))
@@ -324,10 +324,14 @@ impl DocumentsStore for Store {
         db.exec("DELETE FROM documents_people", [])?;
         Ok(())
     }
-    fn documents_records(&self, dsp: &str) -> Result<BTreeMap<String, Record>> {
+    fn documents_records(&self, dsp: &str, ids: &[String]) -> Result<BTreeMap<String, Record>> {
+        if ids.is_empty() {
+            return Ok(BTreeMap::new());
+        }
         let rows: Vec<Recorded> = self.dsp(dsp)?.query_as(
-            "SELECT file_id,added_by,added_name,changed_by,changed_name FROM documents_files",
-            [],
+            "SELECT file_id,added_by,added_name,changed_by,changed_name FROM documents_files \
+             WHERE file_id IN (SELECT value FROM json_each(?))",
+            [serde_json::to_string(ids)?],
         )?;
         Ok(rows
             .into_iter()

@@ -16,8 +16,7 @@ pub(super) fn known(
     dsp: &str,
     ids: &[String],
 ) -> Result<(BTreeMap<String, Record>, BTreeMap<String, String>)> {
-    let mut records = db.documents_records(dsp)?;
-    records.retain(|id, _| ids.contains(id));
+    let records = db.documents_records(dsp, ids)?;
     let people: BTreeSet<&str> = records
         .values()
         .flat_map(|record| [&record.added_by, &record.changed_by])
