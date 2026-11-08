@@ -28,3 +28,27 @@ test('long after signing in, disabling a DSP asks the owner to confirm it’s th
   await expect(disable).toHaveCount(0);
   await expect(detail.getByRole('heading', { name: /Disabled/ })).toBeVisible();
 });
+
+test('a DSP opens across the page from the table, another from beside its name, and Back returns to them all', async ({
+  page,
+}) => {
+  await login(page);
+  const table = page.getByRole('region', { name: 'DSPs', exact: true });
+  await table.getByRole('button', { name: /Northline Logistics/ }).click();
+  const northline = page.getByRole('region', { name: 'Northline Logistics', exact: true });
+  await expect(northline.getByRole('tab', { name: 'Details', exact: true })).toBeVisible();
+  await expect(table).toHaveCount(0);
+
+  await northline.getByRole('button', { name: 'Switch DSP', exact: true }).click();
+  const switcher = page.getByRole('dialog', { name: 'Switch DSP' });
+  await switcher.getByLabel('Search DSPs').fill('Summit');
+  await switcher.getByRole('button', { name: /Summit Delivery/ }).click();
+  await expect(page.getByRole('region', { name: 'Summit Delivery', exact: true })).toBeVisible();
+  await expect(switcher).toHaveCount(0);
+
+  await page.goBack();
+  await expect(northline).toBeVisible();
+  await page.goBack();
+  await expect(table.getByRole('button', { name: /Summit Delivery/ })).toBeVisible();
+  await expect(northline).toHaveCount(0);
+});

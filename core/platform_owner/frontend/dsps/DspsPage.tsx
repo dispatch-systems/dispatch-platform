@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import type { DspSummary } from '../../../accounts/api/index.js';
 import { useUpdateState } from '../../../shell/frontend/runtime/navigation-state.js';
@@ -8,20 +8,20 @@ import { usePlatformDsps } from '../../api/client.js';
 import {
   hashQuery,
   navigate,
+  parseHash,
   platformHash,
-  replaceHashQuery,
 } from '../../../shell/frontend/runtime/navigation.js';
 import {
   ConfirmDialog,
   DataState,
-  Empty,
   ErrorBox,
   Header,
   Modal,
   TypedConfirmDialog,
 } from '../../../shell/frontend/ui/index.js';
 import { DspDetail, type DspAction } from './DspDetail.js';
-import { DspListPane } from './DspListPane.js';
+import { DspSwitcher } from './DspSwitcher.js';
+import { DspTable } from './DspTable.js';
 import { open } from './open.js';
 import { dspState, dspStates, stateLabels } from './status.js';
 import { field } from '../../../shell/frontend/lib/form.js';
@@ -40,18 +40,24 @@ export function DspsPage() {
     [confirming, setConfirming] = useState<DspSummary>(),
     [deleting, setDeleting] = useState<DspSummary>(),
     [coding, setCoding] = useState<DspSummary>(),
-    // The chosen DSP rides in the address, so a reload and a phone's back link keep it.
+    // The chosen DSP rides in the address, so a reload, a link and Back keep it.
     [chosen, setChosen] = useState(() => hashQuery().get('dsp') ?? '');
+  useEffect(() => {
+    const followed = () => {
+      if (parseHash(location.hash).page === 'dsps') setChosen(hashQuery().get('dsp') ?? '');
+    };
+    addEventListener('hashchange', followed);
+    return () => removeEventListener('hashchange', followed);
+  }, []);
   const dsps = data ?? none;
   const visible = dsps.filter((dsp) =>
     `${dsp.name} ${dsp.ownerEmail ?? ''}`.toLowerCase().includes(query.toLowerCase()),
   );
-  const explicit = dsps.find((dsp) => dsp.id === chosen);
-  const shown = explicit ?? visible[0];
+  const shown = dsps.find((dsp) => dsp.id === chosen);
+  // Opening a DSP, or going back to them all, is a step of the browser's history.
   const select = (dsp?: DspSummary) => {
     setChosen(dsp?.id ?? '');
-    if (dsp) replaceHashQuery({ dsp: dsp.id });
-    else navigate(platformHash('dsps'));
+    navigate(platformHash('dsps', dsp && { dsp: dsp.id }));
   };
   const create = useAction(
     async (ownerEmail: FormDataEntryValue | null) => {
@@ -104,41 +110,49 @@ export function DspsPage() {
         </button>
       </Header>
       <ErrorBox message={error} />
-      <div className="dsp-counts" aria-label="DSP summary">
-        <span className="dsp-count total">
-          <strong>{dsps.length}</strong> DSPs
-        </span>
-        {dspStates.map((state) => (
-          <span className={`dsp-count ${state}`} key={state}>
-            <i />
-            <strong>{dsps.filter((dsp) => dspState(dsp) === state).length}</strong>{' '}
-            {stateLabels[state]}
+      {!shown && (
+        <div className="dsp-counts" aria-label="DSP summary">
+          <span className="dsp-count total">
+            <strong>{dsps.length}</strong> DSPs
           </span>
-        ))}
-      </div>
+          {dspStates.map((state) => (
+            <span className={`dsp-count ${state}`} key={state}>
+              <i />
+              <strong>{dsps.filter((dsp) => dspState(dsp) === state).length}</strong>{' '}
+              {stateLabels[state]}
+            </span>
+          ))}
+        </div>
+      )}
       <DataState data={data} failed={Boolean(error)} retry={refresh}>
-        {() => (
-          <div className={`dsps-master ${explicit ? 'chosen' : ''}`}>
-            <DspListPane
+        {() =>
+          shown ? (
+            <DspDetail
+              dsp={shown}
+              back={() => select()}
+              act={(action) => act(shown, action)}
+              changed={refresh}
+              switcher={
+                <DspSwitcher
+                  dsps={visible}
+                  query={query}
+                  setQuery={setQuery}
+                  selected={shown.id}
+                  onSelect={select}
+                  refresh={refresh}
+                />
+              }
+            />
+          ) : (
+            <DspTable
               dsps={visible}
               query={query}
               setQuery={setQuery}
-              selected={shown?.id}
               onSelect={select}
               refresh={refresh}
             />
-            {shown ? (
-              <DspDetail
-                dsp={shown}
-                back={() => select()}
-                act={(action) => act(shown, action)}
-                changed={refresh}
-              />
-            ) : (
-              <Empty title="No DSPs found">Try another search or create your first DSP.</Empty>
-            )}
-          </div>
-        )}
+          )
+        }
       </DataState>
       {creating && (
         <Modal title="Create new DSP" variant="sheet" onClose={() => setCreating(false)}>

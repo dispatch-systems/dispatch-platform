@@ -31,7 +31,8 @@ test('owner dashboard, search, workforce, timecards, connection verification and
   const list = page.getByRole('region', { name: 'DSPs', exact: true });
   await expect(list.getByRole('button', { name: /Northline Logistics/ })).toBeVisible();
   await page.getByLabel('Search DSPs').fill('Summit');
-  await expect(list.locator('.dsp-row')).toHaveCount(1);
+  await expect(list.getByRole('button', { name: /Summit Delivery/ })).toBeVisible();
+  await expect(list.getByRole('button', { name: /Northline Logistics/ })).toHaveCount(0);
   await page.getByLabel('Search DSPs').fill('');
   await list.getByRole('button', { name: /Northline Logistics/ }).click();
   const pane = page.getByRole('region', { name: 'Northline Logistics', exact: true });
