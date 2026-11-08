@@ -38,7 +38,7 @@ use dispatch_core::{
     ensure,
     server::http::{
         input::optional_text,
-        route::{Dsp, Route, async_get, async_post, protocol, read, upload, write},
+        route::{Dsp, Public, Route, async_get, async_post, protocol, read, upload, write},
         upload::UPLOAD_LIMIT,
     },
 };
@@ -78,18 +78,18 @@ pub fn routes() -> Vec<Route> {
         ),
         read("/api/dsp/communications/gifs", USE, gifs::search),
         read(
-            "/api/dsp/communications/gifs/fixture/gifs/{list}",
-            USE,
+            "/api/communications/gifs/fixture/gifs/{list}",
+            Public,
             gifs::fixture_results,
         ),
         async_post(
-            "/api/dsp/communications/gifs/fixture/gifs/share/{slug}",
-            USE,
+            "/api/communications/gifs/fixture/gifs/share/{slug}",
+            Public,
             gifs::fixture_shared,
         ),
         read(
-            "/api/dsp/communications/gifs/fixture/media/{name}",
-            USE,
+            "/api/communications/gifs/fixture/media/{name}",
+            Public,
             gifs::fixture_media,
         ),
         write(

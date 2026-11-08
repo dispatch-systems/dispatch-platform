@@ -31,7 +31,7 @@ fn a_gif_is_taken_only_from_klipys_addresses() {
         "http://static.klipy.com/ii/a.gif",
         "https://static.klipy.com.example.com/a.gif",
         "https://static.klipy.com",
-        "/api/dsp/communications/gifs/fixture/media/a.gif",
+        "/api/communications/gifs/fixture/media/a.gif",
     ] {
         assert!(
             checked(gif(vec![version(url, 1_000)]), false).is_err(),
@@ -40,7 +40,7 @@ fn a_gif_is_taken_only_from_klipys_addresses() {
     }
     // Fixture mode's stand-in's alone, there.
     let fixture = gif(vec![version(
-        "/api/dsp/communications/gifs/fixture/media/thumbs-up-sm.gif",
+        "/api/communications/gifs/fixture/media/thumbs-up-sm.gif",
         206_000,
     )]);
     assert!(checked(fixture.clone(), true).is_ok());

@@ -1,5 +1,6 @@
-//! GIFs of KLIPY's, while the DSP has them (`gifs::PART`): where the page searches them, and in
-//! fixture mode the server's stand-in for KLIPY, so the dev server and tests never call it.
+//! GIFs of KLIPY's, while the DSP has them (`gifs::PART`): where the page searches them; and in
+//! fixture mode the server's stand-in for KLIPY, which, as KLIPY, knows no DSP or session, so the
+//! dev server and tests never call it.
 use crate::backend::gifs;
 use dispatch_core::{
     Error, Result, State,
@@ -8,7 +9,7 @@ use dispatch_core::{
     foundation::validate as v,
     server::http::{
         input::{Input, Reply, optional_text},
-        route::{Dsp, Grant, Member},
+        route::{Anyone, Member, Public},
     },
 };
 use std::sync::Arc;
@@ -22,8 +23,8 @@ pub(super) fn search(_: &Store, c: &Member, input: &Input) -> Result<Reply> {
 
 /// Fixture mode's stand-in for KLIPY's trending GIFs, `.../gifs/trending`, or its search for `q`,
 /// `.../gifs/search`, as KLIPY answers either.
-pub(super) fn fixture_results(_: &Store, c: &Member, input: &Input) -> Result<Reply> {
-    fixture(c)?;
+pub(super) fn fixture_results(_: &Store, c: &Anyone, input: &Input) -> Result<Reply> {
+    fixture(c.state)?;
     let q = optional_text(&input.query, "q", 200)?;
     let found = match input.param("list") {
         "trending" => gifs::fixture_results(None),
@@ -34,24 +35,18 @@ pub(super) fn fixture_results(_: &Store, c: &Member, input: &Input) -> Result<Re
 }
 
 /// Fixture mode's stand-in for KLIPY hearing a GIF was shared.
-pub(super) async fn fixture_shared(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
-    let c = state.read(move |db| access.authorize(db, &input)).await?;
-    ensure(c.has(gifs::PART) && state.config.fixture, "not_found", 404)?;
+pub(super) async fn fixture_shared(state: Arc<State>, _: Input, _: Public) -> Result<Reply> {
+    fixture(&state)?;
     Ok(Reply::json(serde_json::json!({ "result": true })))
 }
 
 /// Fixture mode's stand-in for a GIF at KLIPY's address.
-pub(super) fn fixture_media(_: &Store, c: &Member, _: &Input) -> Result<Reply> {
-    fixture(c)?;
+pub(super) fn fixture_media(_: &Store, c: &Anyone, _: &Input) -> Result<Reply> {
+    fixture(c.state)?;
     Ok(Reply::picture("image/gif", gifs::FIXTURE_GIF.into()))
 }
 
-/// Refused but in fixture mode, while the DSP has GIFs.
-fn fixture(c: &Member) -> Result<()> {
-    ensure(c.has(gifs::PART), "not_found", 404)?;
-    if c.state.config.fixture {
-        Ok(())
-    } else {
-        Err(Error::new("not_found", 404))
-    }
+/// Refused but in fixture mode.
+fn fixture(state: &State) -> Result<()> {
+    ensure(state.config.fixture, "not_found", 404)
 }
