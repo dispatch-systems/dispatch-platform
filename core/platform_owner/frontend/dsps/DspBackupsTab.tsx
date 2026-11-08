@@ -20,7 +20,6 @@ import { BackupCalendar } from './BackupCalendar.js';
 import { BackupRuleEditor } from './BackupRuleEditor.js';
 import { finished, newRule, ruleText, until, when, type Draft } from './backupRules.js';
 import { ApiError, errorLabel } from '../../../shell/frontend/runtime/api.js';
-import { messageOf } from '../../../shell/frontend/lib/errors.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import { randomId } from '../../../shell/frontend/lib/random-id.js';
 import { timezoneName } from '../../../shell/frontend/lib/format.js';
@@ -123,34 +122,32 @@ function Backups({
   // it saves are sent after it, the last one winning, and it shows as turned until the schedule
   // is read again once they are done.
   const [turned, setTurned] = useState<{ on: boolean; read?: DspBackups }>();
-  const [switchError, setSwitchError] = useState('');
   const wanted = useRef<boolean>(undefined);
   const current = useRef(backups);
   current.current = backups;
   const on = turned && (!turned.read || turned.read === backups) ? turned.on : backups.enabled;
   function turn(enabled: boolean) {
     setTurned({ on: enabled });
-    setSwitchError('');
     const under = wanted.current !== undefined;
     wanted.current = enabled;
     if (under) return;
-    void (async () => {
-      try {
-        let sent: boolean | undefined;
-        while (wanted.current !== sent) {
-          sent = wanted.current!;
-          await switchBackups(dsp.id, sent);
-        }
-        setTurned({ on: sent!, read: current.current });
-      } catch (cause) {
-        setTurned(undefined);
-        setSwitchError(messageOf(cause));
-      } finally {
-        wanted.current = undefined;
-        refresh();
-      }
-    })();
+    void switching.run().then((done) => {
+      wanted.current = undefined;
+      if (!done) setTurned(undefined);
+      refresh();
+    });
   }
+  const switching = useAction(
+    async () => {
+      let sent: boolean | undefined;
+      while (wanted.current !== sent) {
+        sent = wanted.current!;
+        await switchBackups(dsp.id, sent);
+      }
+      setTurned({ on: sent!, read: current.current });
+    },
+    { inline: true },
+  );
   const backingUp = useAction(
     async () => {
       await backUpNow(dsp.id);
@@ -161,7 +158,7 @@ function Backups({
   // A download asks the owner to confirm it's them first, as it holds the DSP's saved logins.
   const downloading = useAction((id: string) => downloadBackup(dsp.id, id), { inline: true });
   const working = saving.busy;
-  const error = saving.error || switchError || backingUp.error || downloading.error;
+  const error = saving.error || switching.error || backingUp.error || downloading.error;
   const discard = () => {
     setDrafts(base.drafts);
     setOpen(null);

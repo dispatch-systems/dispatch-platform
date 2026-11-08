@@ -10,7 +10,6 @@ import {
 } from '../../api/client.js';
 import { featureCatalog } from '../../../shell/frontend/runtime/features.js';
 import { switchIcon } from '../../../shell/frontend/runtime/slots.js';
-import { useFeedback } from '../../../shell/frontend/runtime/feedback.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import { calendarDay } from '../../../shell/frontend/lib/format.js';
 import { Empty, ErrorBox, Modal, SearchInput } from '../../../shell/frontend/ui/index.js';
@@ -31,24 +30,23 @@ export function DspBetaTab({ dsp }: { dsp: DspSummary }) {
     !features.data?.features.some((state) => state.feature === id && state.enabled);
   // A tester removed here leaves the list at once and stays gone until the testers are read again
   // once the last removal is done; one whose removal fails comes back.
-  const { perform } = useFeedback();
   const [removed, setRemoved] = useState<{ ids: string[]; read?: DspBetaTesters }>({ ids: [] });
   const latest = useRef(data);
   latest.current = data;
-  const removing = useRef(0);
+  const removals = useRef(0);
+  const removing = useAction((member: BetaMember) => removeBetaTester(dsp.id, member.id), {
+    success: (member) => `${member.name} removed from beta testers`,
+  });
   const gone = (id: string) => removed.ids.includes(id) && (!removed.read || removed.read === data);
   const testers = data?.members.filter((member) => member.testerSince && !gone(member.id)) ?? [];
   const remove = (member: BetaMember) => {
-    removing.current += 1;
+    removals.current += 1;
     setRemoved((before) => ({
       ids: [...(before.read && before.read !== latest.current ? [] : before.ids), member.id],
     }));
-    void perform(
-      () => removeBetaTester(dsp.id, member.id),
-      `${member.name} removed from beta testers`,
-    ).then((done) => {
-      removing.current -= 1;
-      const last = !removing.current;
+    void removing.run(member).then((done) => {
+      removals.current -= 1;
+      const last = !removals.current;
       setRemoved((before) => ({
         ids: done ? before.ids : before.ids.filter((id) => id !== member.id),
         read: last ? latest.current : undefined,
