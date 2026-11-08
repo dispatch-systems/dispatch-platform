@@ -305,7 +305,18 @@ export function Shell({
         </div>
         {viewing && (
           <Suspense fallback={null}>
-            <DspViewPanel view={viewing} viewAs={viewAs} exitView={exitView} />
+            {/* The drawer closes first, so a page asking about unsaved changes can be answered. */}
+            <DspViewPanel
+              view={viewing}
+              viewAs={(roleId) => {
+                close();
+                viewAs(roleId);
+              }}
+              exitView={() => {
+                close();
+                exitView();
+              }}
+            />
           </Suspense>
         )}
         <SidebarPanels

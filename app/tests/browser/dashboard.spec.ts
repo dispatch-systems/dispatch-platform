@@ -275,14 +275,28 @@ test('on a phone, a platform owner changes and leaves a DSP view from the drawer
   await page.setViewportSize({ width: 390, height: 844 });
   await login(page);
   await openDsp(page, 'Northline Logistics');
-  await page.getByRole('button', { name: 'Open navigation' }).click();
+  const openNavigation = page.getByRole('button', { name: 'Open navigation' });
+  await openNavigation.click();
   // The drawer holds the view's controls in the banner's place: only one of them shows.
   const controls = page.getByRole('region', { name: 'DSP viewing mode' });
   await expect(controls).toContainText('Viewing Northline Logistics');
   await expect(controls).toHaveCount(1);
+  await page
+    .getByRole('navigation', { name: 'Primary navigation' })
+    .getByRole('button', { name: 'Settings', exact: true })
+    .click();
+  await page.getByRole('link', { name: 'DSP profile', exact: true }).click();
+  await page.getByLabel('Name', { exact: true }).fill('Northline Logistics edited');
+  // With an edit unsaved, the drawer closes first, so its question can be answered.
+  await openNavigation.click();
   const menu = controls.getByLabel('View as role');
   await menu.click();
   await controls.getByRole('button', { name: 'Member', exact: true }).click();
+  await page
+    .getByRole('dialog', { name: 'Save changes?' })
+    .getByRole('button', { name: 'Discard changes', exact: true })
+    .click();
+  await openNavigation.click();
   await expect(menu).toHaveText('Member');
   await controls.getByRole('button', { name: 'Exit view', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'DSPs', exact: true })).toBeVisible();

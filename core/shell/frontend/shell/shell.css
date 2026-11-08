@@ -328,6 +328,11 @@
 .dsp-view-panel .view-role-menu {
   margin-left: 0;
 }
+/* Its list keeps to the menu's width; one running past the screen's foot scrolls the drawer. */
+.dsp-view-panel .view-role-menu .account-popover {
+  width: 100%;
+  max-width: none;
+}
 .dsp-view-panel .view-role-menu summary {
   justify-content: space-between;
   max-width: none;
@@ -442,6 +447,7 @@
   .desktop-sidebar.navigation-open {
     display: flex;
     width: 280px;
+    overflow-y: auto;
     z-index: 80;
     box-shadow: 8px 0 30px var(--shadow-color);
   }
