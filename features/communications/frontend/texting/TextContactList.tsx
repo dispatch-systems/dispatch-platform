@@ -2,7 +2,6 @@ import { useCallback, useRef, useState } from 'react';
 import type { Conversation, TextContact } from '../../api/index.js';
 import { blockNumber, getTextContacts } from '../../api/client.js';
 import { Loading } from '../../../../core/shell/frontend/ui/index.js';
-import { useFeedback } from '../../../../core/shell/frontend/runtime/feedback.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { phoneText } from '../../../../core/shell/frontend/lib/format.js';
 import { existingOr, type Target } from '../conversations/target.js';
@@ -44,35 +43,37 @@ export function TextContactList({
   const read = useCallback(() => getTextContacts(typed), [typed]);
   const { found, failed } = useFound(read, typed ? 'found' : 'all', revision, typed ? 200 : 0);
   const chosen = useAction(reach);
-  // Numbers unblocked here, gone from Blocked until the contacts are read again once the last
-  // unblocking is done.
-  const { perform } = useFeedback();
-  const [unblocked, setUnblocked] = useState<{ numbers: string[]; read?: unknown }>({
-    numbers: [],
-  });
+  // Numbers unblocked here, gone from Blocked while their unblocking saves, then until the
+  // contacts are read again once the last of them is done: what was read then, maybe nothing.
+  const [unblocked, setUnblocked] = useState<{
+    numbers: string[];
+    settled?: { read: unknown };
+  }>({ numbers: [] });
   const latest = useRef<unknown>(found);
   latest.current = found;
-  const unblocking = useRef(0);
+  const pending = useRef(0);
   const gone = (number: string) =>
-    unblocked.numbers.includes(number) && (!unblocked.read || unblocked.read === found);
+    unblocked.numbers.includes(number) && (!unblocked.settled || unblocked.settled.read === found);
+  const unblocking = useAction(async (contact: TextContact) =>
+    show(await blockNumber(contact.conversationId!, false)),
+  );
   const unblock = (contact: TextContact) => {
-    unblocking.current += 1;
+    pending.current += 1;
     setUnblocked((before) => ({
       numbers: [
-        ...(before.read && before.read !== latest.current ? [] : before.numbers),
+        ...(before.settled && before.settled.read !== latest.current ? [] : before.numbers),
         contact.number,
       ],
     }));
-    void perform(async () => show(await blockNumber(contact.conversationId!, false))).then(
-      (done) => {
-        unblocking.current -= 1;
-        const last = !unblocking.current;
-        setUnblocked((before) => ({
-          numbers: done ? before.numbers : before.numbers.filter((n) => n !== contact.number),
-          read: last ? latest.current : undefined,
-        }));
-      },
-    );
+    void unblocking.run(contact).then((done) => {
+      pending.current -= 1;
+      const read = latest.current;
+      const last = !pending.current;
+      setUnblocked((before) => ({
+        numbers: done ? before.numbers : before.numbers.filter((n) => n !== contact.number),
+        settled: last ? { read } : undefined,
+      }));
+    });
   };
   if (failed || (typed && found?.contacts.length === 0))
     return <ListEmpty>{failed || 'No matches'}</ListEmpty>;

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type {
   CommunicationsWorkspace,
   Group,
@@ -7,7 +7,7 @@ import type {
 } from '../../../api/index.js';
 import { markGroupDone, messageGroup, slackAttachments } from '../../../api/client.js';
 import { ErrorBox } from '../../../../../core/shell/frontend/ui/index.js';
-import { useFeedback } from '../../../../../core/shell/frontend/runtime/feedback.js';
+import { useAction } from '../../../../../core/shell/frontend/runtime/useAction.js';
 import { peopleText } from './groups.js';
 import { Composer } from '../../conversations/Composer.js';
 import type { Drafts } from '../../conversations/drafts.js';
@@ -79,24 +79,26 @@ export function GroupPane({
   const writable = workspaces.some(
     (workspace) => workspace.on && group?.teamIds.includes(workspace.teamId),
   );
-  // Done shows it done at once, and as the server had it once that's saved; one that fails puts
-  // it back as it was.
-  const { perform } = useFeedback();
+  // Done shows it done at once, and as the server had it once that's saved. One that fails takes
+  // back only its own mark, and only while it still shows, keeping what newer updates brought.
+  const latestShown = useRef(group);
+  latestShown.current = group;
+  const marking = useAction(async (seen: GroupEntry | null | undefined) => {
+    const after = await markGroupDone(id, seen);
+    read.show(after);
+    show(after);
+  });
   const done = () => {
     if (!group) return;
-    const seen = opened?.entries.at(-1) ?? group.last;
-    const was = group;
+    const was = { state: group.state, waitingSince: group.waitingSince };
     const marked = { ...group, state: 'done' as const, waitingSince: null };
     read.show(marked);
     show(marked);
-    void perform(async () => {
-      const after = await markGroupDone(id, seen);
-      read.show(after);
-      show(after);
-    }).then((saved) => {
-      if (saved) return;
-      read.show(was);
-      show(was);
+    void marking.run(opened?.entries.at(-1) ?? group.last).then((saved) => {
+      const latest = latestShown.current;
+      if (saved || latest?.state !== 'done' || latest.waitingSince !== null) return;
+      read.show({ ...latest, ...was });
+      show({ ...latest, ...was });
     });
   };
   const people = usePanel();

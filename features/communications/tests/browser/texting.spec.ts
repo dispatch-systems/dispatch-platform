@@ -119,6 +119,28 @@ test('with its phone and no Slack, Communications opens on Recents, where its te
     .getByRole('button', { name: 'Block' })
     .click();
   await expect(list.getByRole('listitem').filter({ hasText: 'Jamie Ortiz' })).toHaveCount(0);
+  // Its menu unblocks it at once, before the server has; blocked again, it waits in Contacts.
+  const unblockingHere = '**/conversations/*/unblock';
+  let answer = () => {};
+  const answering = new Promise<void>((resolve) => (answer = resolve));
+  await page.route(unblockingHere, async (route) => {
+    await answering;
+    await route.continue();
+  });
+  await jamie.getByLabel('More').click();
+  await jamie.getByRole('button', { name: 'Unblock', exact: true }).click();
+  await jamie.getByLabel('More').click();
+  await expect(jamie.getByRole('button', { name: 'Block', exact: true })).toBeVisible();
+  const unblocked = page.waitForResponse((response) => response.url().endsWith('/unblock'));
+  answer();
+  await unblocked;
+  await page.unroute(unblockingHere);
+  await jamie.getByRole('button', { name: 'Block', exact: true }).click();
+  await page
+    .getByRole('dialog', { name: 'Block (425) 555-0199?' })
+    .getByRole('button', { name: 'Block' })
+    .click();
+  await expect(list.getByRole('listitem').filter({ hasText: 'Jamie Ortiz' })).toHaveCount(0);
   await page.getByRole('tab', { name: 'Contacts' }).click();
   const contacts = page.getByRole('region', { name: 'Contacts' });
   // Unblocked, it leaves Blocked at once, before the server has.

@@ -193,6 +193,27 @@ test('an owner connects Slack from Communications, answers a member as they writ
   await expect(list.getByRole('heading', { name: /^Waiting/ })).toBeVisible();
   await jordan.getByRole('button', { name: 'Done: Jordan Ellis' }).click();
   await expect(list.getByRole('heading', { name: /^Waiting/ })).toHaveCount(0);
+  // Written to once more, Done in its header marks it done at once, before the server has.
+  expect((await write('Once more')).status).toBe(200);
+  await expect(list.getByRole('heading', { name: /^Waiting/ })).toBeVisible();
+  const marking = '**/conversations/*/done';
+  let marked = () => {};
+  const holding = new Promise<void>((resolve) => (marked = resolve));
+  await page.route(marking, async (route) => {
+    await holding;
+    await route.continue();
+  });
+  await page
+    .getByRole('region', { name: 'Jordan Ellis' })
+    .locator('.thread-head')
+    .getByRole('button', { name: 'Done' })
+    .click();
+  await expect(list.getByRole('heading', { name: /^Waiting/ })).toHaveCount(0);
+  const answered = page.waitForResponse((response) => response.url().endsWith('/done'));
+  marked();
+  await answered;
+  await page.unroute(marking);
+  await expect(list.getByRole('heading', { name: /^Waiting/ })).toHaveCount(0);
 
   // New message finds someone by a misspelt name, and their conversation stays at the top of
   // the list until it holds a message.
