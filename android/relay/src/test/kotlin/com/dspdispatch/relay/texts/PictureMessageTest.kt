@@ -53,6 +53,27 @@ class PictureMessageTest {
     }
 
     @Test
+    fun sendsAGifWholeOrNotAtAll() {
+        val gif = Attachment("wave.gif", "image/gif", File(folder, "wave.gif").apply { writeBytes(ByteArray(4_000)) }, whole = true)
+        val pdu = compose(30_000, gif)!!
+        assertTrue("image/gif" in String(pdu, Charsets.ISO_8859_1))
+        // Too large, or too wide, it's never made a JPEG of its first frame.
+        assertNull(compose(3_000, gif))
+        pictures = FakePictures(mapOf("wave.gif" to Size(1_000, 800)))
+        assertNull(compose(30_000, gif, within = Size(640, 480)))
+        assertTrue(asked.isEmpty())
+    }
+
+    @Test
+    fun hasRoomForAPictureOfWhatsLeftOnceTheWordsAreIn() {
+        val message = PictureMessage(pictures)
+        val room = message.room("+14255550199", "Door code 4412", "wave.gif", "image/gif", MmsLimits(30_000, Size(640, 480)), "T1", 1)
+        assertTrue(room in 28_000L..29_500L)
+        val gif = Attachment("wave.gif", "image/gif", File(folder, "wave.gif").apply { writeBytes(ByteArray(room.toInt())) }, whole = true)
+        assertTrue(compose(30_000, gif) != null)
+    }
+
+    @Test
     fun scalesAPictureDownToTheCarriersWidthAndHeightThoughItsBytesFit() {
         // Android can't read the third's size.
         pictures = FakePictures(mapOf("wide.jpg" to Size(3_000, 2_000), "tall.jpg" to Size(480, 640)))

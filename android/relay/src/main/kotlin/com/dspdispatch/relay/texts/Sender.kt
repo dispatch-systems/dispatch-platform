@@ -5,6 +5,7 @@ import com.dspdispatch.relay.connection.backoff
 import com.dspdispatch.relay.dispatch.Dispatch
 import com.dspdispatch.relay.dispatch.OutgoingText
 import com.dspdispatch.relay.dispatch.Outbox
+import com.dspdispatch.relay.dispatch.OutgoingGif
 import com.dspdispatch.relay.dispatch.Refusal
 import com.dspdispatch.relay.pairing.Paired
 import java.io.File
@@ -21,7 +22,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Sends the texts Dispatch has for the phone from its own number, each attempt once: kept as
- * started before anything of it goes, a picture message's files fetched first into [folder]. While
+ * started before anything of it goes, a picture message's files fetched first into [folder], from
+ * Dispatch, or a GIF from KLIPY ([gifs]) at the largest size the carrier takes. While
  * [mmsWhenBusy], a text that would cross Android's SMS limit goes as a picture message instead, or
  * fails where the carrier takes none. One past its time to start ([OutgoingText.expires]) fails,
  * never handed to Android, as does one failing in a way nothing expected, told to [unexpected].
@@ -32,6 +34,7 @@ class Sender(
     private val own: OwnRows,
     private val radio: Radio,
     private val message: PictureMessage,
+    private val gifs: Gifs,
     private val statuses: Statuses,
     private val folder: File,
     private val mmsWhenBusy: () -> Boolean,
@@ -179,7 +182,7 @@ class Sender(
         if (expired(text, send)) return
         if (!radio.allowed()) return sends.failed(send, Failure.NOT_ALLOWED, now())
         val line = telephony { radio.line(paired.number, paired.subscription) }.getOrElse { return notSent(send) }
-        if (text.files.isEmpty()) {
+        if (text.files.isEmpty() && text.gif == null) {
             val parts = telephony { line.divide(send.body) }.getOrElse { return notSent(send) }
             // Near Android's SMS limit it goes as a picture message, or fails where it can't: as SMS,
             // Android would hold it behind the phone's prompt.
@@ -258,11 +261,12 @@ class Sender(
 
     /**
      * The file of [text]'s picture message, its files fetched from Dispatch first and its pictures
-     * scaled to the carrier's [limits]; null when it failed.
+     * scaled to the carrier's [limits], or its GIF fetched from KLIPY; null when it failed.
      */
     private suspend fun compose(paired: Paired, key: String, limits: MmsLimits, text: OutgoingText, send: Send): File? {
         folder.mkdirs()
         val fetched = text.files.indices.map { File(folder, "${send.id}-${send.attempt}-$it") }
+        val gif = File(folder, "${send.id}-${send.attempt}-gif")
         try {
             for ((file, into) in text.files.zip(fetched)) {
                 try {
@@ -272,10 +276,12 @@ class Sender(
                     return null.also { sends.failed(send, Failure.FILE_GONE, now()) }
                 }
             }
-            val attachments = text.files.zip(fetched) { file, into -> Attachment(file.name, file.mime, into) }
             val at = now()
+            val transaction = "T${at.toString(HEX)}"
+            val attachments = text.files.zip(fetched) { file, into -> Attachment(file.name, file.mime, into) } +
+                listOfNotNull(text.gif?.let { fetch(it, send, limits, gif, transaction, at) ?: return null })
             val bytes = try {
-                message.compose(send.number, send.body, attachments, limits, "T${at.toString(HEX)}", at / MS_PER_SECOND)
+                message.compose(send.number, send.body, attachments, limits, transaction, at / MS_PER_SECOND)
             } catch (_: OutOfMemoryError) {
                 // A picture too large for what memory the phone has to scale it.
                 null
@@ -283,7 +289,25 @@ class Sender(
             return File(folder, pduName(send.id, send.attempt)).apply { writeBytes(bytes) }
         } finally {
             fetched.forEach(File::delete)
+            gif.delete()
         }
+    }
+
+    /**
+     * [gif] fetched into [into] at the largest of its sizes [send]'s picture message has room for
+     * within the carrier's [limits], to go whole; null, [send] failed, when none fits or KLIPY no
+     * longer has it.
+     */
+    private suspend fun fetch(gif: OutgoingGif, send: Send, limits: MmsLimits, into: File, transaction: String, at: Long): Attachment? {
+        val room = message.room(send.number, send.body, gif.name, GIF, limits, transaction, at / MS_PER_SECOND)
+        val version = pick(gif.versions, room, limits.picture) ?: return null.also { sends.failed(send, Failure.TOO_LARGE, now()) }
+        val fits = try {
+            gifs.download(version.url, into, room)
+        } catch (_: Gone) {
+            return null.also { sends.failed(send, Failure.FILE_GONE, now()) }
+        }
+        if (!fits) return null.also { sends.failed(send, Failure.TOO_LARGE, now()) }
+        return Attachment(gif.name, GIF, into, whole = true)
     }
 
     /** When to fetch an attempt's files again, after [failures] tries in a row failed. */
@@ -312,6 +336,7 @@ class Sender(
 
         const val MS_PER_SECOND = 1_000L
         const val HEX = 16
+        const val GIF = "image/gif"
 
         fun pduName(id: String, attempt: Long) = "$id-$attempt.pdu"
     }

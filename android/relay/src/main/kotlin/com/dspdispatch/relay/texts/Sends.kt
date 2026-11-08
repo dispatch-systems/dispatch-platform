@@ -63,7 +63,7 @@ data class Send(
 
     companion object {
         /** The attempt at [text], started [at]. */
-        fun of(text: OutgoingText, at: Long) = Send(text.id, text.attempt, text.number, text.body, at, mms = text.files.isNotEmpty())
+        fun of(text: OutgoingText, at: Long) = Send(text.id, text.attempt, text.number, text.body, at, mms = text.files.isNotEmpty() || text.gif != null)
     }
 }
 

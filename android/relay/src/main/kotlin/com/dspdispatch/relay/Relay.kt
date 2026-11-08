@@ -13,6 +13,7 @@ import com.dspdispatch.relay.pairing.Paired
 import com.dspdispatch.relay.pairing.PairingLink
 import com.dspdispatch.relay.pairing.Pairings
 import com.dspdispatch.relay.setup.Setup
+import com.dspdispatch.relay.texts.Gifs
 import com.dspdispatch.relay.texts.Texts
 import com.dspdispatch.relay.update.PackageCheck
 import com.dspdispatch.relay.update.PhoneSessions
@@ -57,7 +58,7 @@ class Relay(private val context: Context) {
 
     /** Where the relay tells of errors it didn't expect, and what last went wrong, for its health. */
     val lapses = Lapses(context)
-    val texts = Texts(context, dispatch, lapses)
+    val texts = Texts(context, dispatch, Gifs(http()), lapses)
     val checkup = Checkup(context, setup, texts, lapses)
     val installer = SessionInstaller(PhoneSessions(context))
     val updates = Updates(
