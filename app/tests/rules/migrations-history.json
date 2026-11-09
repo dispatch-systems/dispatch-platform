@@ -143,6 +143,31 @@
       "id": 22,
       "name": "agent_tool_levels",
       "sha256": "d67131a0667dcedc41862adfad66e6acdbf3ec81e496844fb8de8eab4ada54e1"
+    },
+    {
+      "id": 23,
+      "name": "ai_support",
+      "sha256": "6f9081123765772b9459ce1032b149d5c417926c9d5235063179664a098eb430"
+    },
+    {
+      "id": 24,
+      "name": "feature_beta",
+      "sha256": "f2044f791dfa4c41aadc6bb3e683d0becb770d8f73041602b825ee8d442c46bc"
+    },
+    {
+      "id": 25,
+      "name": "dsp_deletions",
+      "sha256": "3206680874336991ead22d0324f4248073a1d0fd26ef638d5938ec881ba7945a"
+    },
+    {
+      "id": 26,
+      "name": "dsp_backups",
+      "sha256": "9f2912085a4f823ed95b36e43f734d99210cf8b7407ea0302df87376850ac001"
+    },
+    {
+      "id": 27,
+      "name": "feature_defaults",
+      "sha256": "775253484a47ed79bfc4c199492c0b256bf01b77eb746be8fe5392c732fbd715"
     }
   ],
   "jobs": [
@@ -170,6 +195,21 @@
       "id": 5,
       "name": "open_kinds",
       "sha256": "13830dde50ae82439a0ab17ebcbfa2fb2a113945d2543437186acaa04950e05c"
+    },
+    {
+      "id": 6,
+      "name": "live_reads",
+      "sha256": "df1f39254c9fffb2f05d4441f578e18ee81bead0ee11923871574071c7762d17"
+    },
+    {
+      "id": 7,
+      "name": "live_days_stopping",
+      "sha256": "ed64d7962809b8eeb71d5f9bdcd9d1cbc4b6c64449fb03cb4df280eb659f56f6"
+    },
+    {
+      "id": 8,
+      "name": "jobs_completed",
+      "sha256": "5d59505e155be78cf4c55716f219bc11ce8e89d40b55549ec8bf18661ca7d283"
     }
   ],
   "dsp": [
@@ -232,6 +272,16 @@
       "id": 12,
       "name": "accounts",
       "sha256": "3b90671344bd46dd528e15852f8cf9109a6a9fc78f66468e99be54a9811ce436"
+    },
+    {
+      "id": 13,
+      "name": "schedule_rules",
+      "sha256": "75f9e9840423f30657ed243138a09096ddf7e64612699ff22ded62d2de4c2268"
+    },
+    {
+      "id": 14,
+      "name": "beta_testers",
+      "sha256": "784fce94ff6185811acb9a5cd858f70b3e478fd95f924d13fa0936fb6b673c63"
     }
   ],
   "dvic": [
@@ -266,6 +316,51 @@
       "id": 3,
       "name": "task_keys",
       "sha256": "0e69273e130b765a77a3a95f4112f03afd6fa76645a87197502b3960298cf320"
+    },
+    {
+      "id": 4,
+      "name": "driver_day_index",
+      "sha256": "cbeed9e551fb3d022c61b8afbf5c46ce915bad3c089029c7b328ec160d6337c7"
+    },
+    {
+      "id": 5,
+      "name": "package_flags_index",
+      "sha256": "79f9584ee1e267620fae766c78c8680ef8cd0c7009d587e4fa264b83eefd1e7a"
+    },
+    {
+      "id": 6,
+      "name": "work_phones",
+      "sha256": "12c86b4f236e45e169f076f58964e30b751247479284557b554ebbf9c651cbe8"
+    },
+    {
+      "id": 7,
+      "name": "staged_shared_rows",
+      "sha256": "aed480da151df28c8f40fc9f81daaefec3c8f52c5953d32a1fff7e2e449976cb"
+    },
+    {
+      "id": 8,
+      "name": "drop_tasks_driver_day",
+      "sha256": "fc6e66099be72ce175fe0d186ee6c13431f87a9a48fc9014ab23690c5793bcdd"
+    },
+    {
+      "id": 9,
+      "name": "work_phones_phone",
+      "sha256": "bd38247ffc31e0e2cdd7bf263b94c5ecc2b591d0f80d90c109ade2d86751c66a"
+    },
+    {
+      "id": 10,
+      "name": "itinerary_work_phone",
+      "sha256": "1b3861d0e49b2d555a7cd1fae535f19131bd471b9f00ce2f662ce6e03158d613"
+    },
+    {
+      "id": 11,
+      "name": "drop_work_phones",
+      "sha256": "cd651d6b1c0ee07364403433f1eeb0d0ed573479507c72fe366f16bec2303786"
+    },
+    {
+      "id": 12,
+      "name": "days_untold",
+      "sha256": "a6a4e6203e9c787925245d62df61f84eb7d227211cb6c96425b70ae3bb0db496"
     }
   ],
   "scorecard": [
@@ -319,6 +414,11 @@
       "id": 2,
       "name": "drop_settings",
       "sha256": "c8a26bc3352c0fed1ef69a0a6d308fc2fa619045c744d424c0ec5f9868a0a867"
+    },
+    {
+      "id": 3,
+      "name": "photo_etags",
+      "sha256": "69a2da83b0f0124e8f1ad8436d8c9d90d026fb77bb8a25e42b3c6526bde43d59"
     }
   ],
   "vans": [
@@ -331,6 +431,252 @@
       "id": 2,
       "name": "drop_settings",
       "sha256": "10dd5a5c583894dcc8e7fc1eb15acd457c73cf9314d40cdfb9e358b22cb0b932"
+    }
+  ],
+  "routelive": [
+    {
+      "id": 1,
+      "name": "baseline",
+      "sha256": "22c1a8563eb030a92fbb0bbe9319f89e8ad618533a5af56e012a69608d8618d8"
+    },
+    {
+      "id": 2,
+      "name": "itinerary_work_phone",
+      "sha256": "5c088c9a343c31dc3fdfa4f9b8a54d7949f1fddc9f645ad846e613c7693639a6"
+    },
+    {
+      "id": 3,
+      "name": "drop_work_phones",
+      "sha256": "168806212d75a8dc0a7bd8421726b14c21bd5ac966ee2a3c69c60e6e3b04a49f"
+    }
+  ],
+  "dsp@features/communications": [
+    {
+      "id": 1,
+      "name": "communications",
+      "sha256": "03c747841d5a3ef68777b74d78c680c88285986f9ab7ea9ac20bfb083910083f"
+    },
+    {
+      "id": 2,
+      "name": "communications_groups",
+      "sha256": "6924efa62282f4c38b80129bf2d4d7c84abe46fd0367e493e1f3419490eb3ce1"
+    },
+    {
+      "id": 3,
+      "name": "communications_grouped",
+      "sha256": "12e6152355ceeb4ad791805c50d0738f0e525d3672e608dc6a9cd287e0f7d61b"
+    },
+    {
+      "id": 4,
+      "name": "communications_texts",
+      "sha256": "503f834ef4617484d02821046df6e2753d1ac509446839e03976e6e41400d189"
+    },
+    {
+      "id": 5,
+      "name": "communications_picked",
+      "sha256": "148dbda50b8c03f0c54bdfd3e476f615d9fb25e9c1fc325f2d62cacdf0b68c52"
+    },
+    {
+      "id": 6,
+      "name": "communications_texts_done",
+      "sha256": "a91796744861dfe5724304216cfaf941df47b565a940763c2f1936e73ab91f1a"
+    },
+    {
+      "id": 7,
+      "name": "phones",
+      "sha256": "c05bd804e8f9d0bffb7163fd49c1c2541a019a165548feaebc9e652bff6a14be"
+    },
+    {
+      "id": 8,
+      "name": "phones_pairing_ids",
+      "sha256": "a3bc6f63a5cf825d7547ab7b939432d812315585b33076614ec91bc241f49483"
+    },
+    {
+      "id": 9,
+      "name": "phones_texts_filed",
+      "sha256": "af11f9dc3039da4b353e8c37ca5f712c864a1014f1ca7f5863e4bf3b8a4e039a"
+    },
+    {
+      "id": 10,
+      "name": "communications_texts_dropped",
+      "sha256": "0c7780a2bea8fa1ef4a2dc2158afca640ba496baad01a9e5e4c17e5f1765d767"
+    },
+    {
+      "id": 11,
+      "name": "phones_app_version_codes",
+      "sha256": "10a27d54a15827dbcdedfe546328685237d2ed7d4029a509ac7b595041d3de16"
+    },
+    {
+      "id": 12,
+      "name": "phones_attempts",
+      "sha256": "67e08d0dce14c0ad78d373651c799c095a567a3f7495fd7a3569f85d7bf70cdc"
+    },
+    {
+      "id": 13,
+      "name": "communications_done_places",
+      "sha256": "fb80a1c2a00d9842b5cb046ec8f81148311e3438a59f5abfbf3b964cf0158e17"
+    },
+    {
+      "id": 14,
+      "name": "phones_health",
+      "sha256": "37c8e7560efd219399d63d97ce996c7361b351f41637acdad14675a2f252458a"
+    },
+    {
+      "id": 15,
+      "name": "communications_replies",
+      "sha256": "3002223a7e9fe025588f9e34befcf88a93c6f80aac848428915b2bee657845d6"
+    },
+    {
+      "id": 16,
+      "name": "phones_files_on_phone",
+      "sha256": "794451600248c722dbc9b1bdd9657b645e19ab13e926c0321afa996c26256be8"
+    },
+    {
+      "id": 17,
+      "name": "communications_days",
+      "sha256": "a9d1ce08f963eea227f7cc3178ae07777541413dc679b496ed500ba640b424bc"
+    },
+    {
+      "id": 18,
+      "name": "communications_push",
+      "sha256": "897c8ba4892c8da2a6fa7000ef23b0ecf65a17f212f189b3b4b85e5936739ad5"
+    },
+    {
+      "id": 19,
+      "name": "communications_gifs",
+      "sha256": "2fb5e54acb12e50a569161415e569543cb90b7d7ebe5f201bd3c7c6a4a7101f9"
+    },
+    {
+      "id": 20,
+      "name": "communications_incoming_indexes",
+      "sha256": "335900985ea6cf10b685a0b4195db866fcb50d43f759def7989103381e930ad8"
+    }
+  ],
+  "dsp@features/documents": [
+    {
+      "id": 1,
+      "name": "documents_shared_files",
+      "sha256": "2f535ad4e09b9f2d8a829e007ad6a9daab6fa006c33e2a97224ed26388fa2ed6"
+    },
+    {
+      "id": 2,
+      "name": "documents_full_access",
+      "sha256": "094868f19b27087c8d4fb3fbf84b27e61dffe321ddf460f89217d7f1ae9fa3b4"
+    },
+    {
+      "id": 3,
+      "name": "documents_outside_names",
+      "sha256": "eac7af3a9084d716ad401648f06e0d329ab337bd96fe2db2b7ccbdce4538adf6"
+    }
+  ],
+  "dsp@features/driver_match": [
+    {
+      "id": 1,
+      "name": "open_sources",
+      "sha256": "02b0e6057d57f3fb4c648e9d818f7722d4decaa3c2f3b1c5ec07058259d85fc4"
+    },
+    {
+      "id": 2,
+      "name": "meal_break_links",
+      "sha256": "8a9f0be8cc6c33c16828304eea442de5cbcff25da52b7153ba79d031f1bbc88e"
+    },
+    {
+      "id": 3,
+      "name": "person_titles",
+      "sha256": "dc7311596fa81c2b6d74d0ac5fee2341f382a1462d4dfedd50d94184381f4ad0"
+    },
+    {
+      "id": 4,
+      "name": "person_roles",
+      "sha256": "e29261537d167e6341bc92c7b74724bbae7a71a145d81767b4d80912ebd8d157"
+    },
+    {
+      "id": 5,
+      "name": "person_phones",
+      "sha256": "2029ea4f1f01339f9bad196662817dcee2856d081666af102161c2664aae2082"
+    }
+  ],
+  "platform@features/slack": [
+    {
+      "id": 1,
+      "name": "slack_teams",
+      "sha256": "35ab8bb0ffb56fd63d9fba8c8031935364dc7ac6cb7dd47ac95e183476d00fbd"
+    }
+  ],
+  "dsp@features/slack": [
+    {
+      "id": 1,
+      "name": "slack",
+      "sha256": "8ca8fd50f814a724b724aa0718db68c61abe5f53f5ec9d328f181f081d79dee4"
+    },
+    {
+      "id": 2,
+      "name": "slack_new_connections",
+      "sha256": "86455aa2a97871f51f9604c5e7fec6ed6375d78687d579701f02b76fa7355044"
+    },
+    {
+      "id": 3,
+      "name": "slack_members",
+      "sha256": "a3cacf7486f2ded9ce1f4b3f947a601efd5941f9db585eac9d078ce37d5963c1"
+    },
+    {
+      "id": 4,
+      "name": "slack_integrations",
+      "sha256": "2ba12c6e03d85946ecae2fd663dc8b3a93349287b24dc6618a3cf4294c748177"
+    },
+    {
+      "id": 5,
+      "name": "slack_imports",
+      "sha256": "3f8237e6e4e91cc6665a6b27dadb79808027e0cd2e0444edf2e55f341d55f63f"
+    },
+    {
+      "id": 6,
+      "name": "slack_canvases",
+      "sha256": "3a03db3814f239c5a845f1d1d05bbba2b1ef58eeb599eeb3a15d49dbf9b7cef9"
+    },
+    {
+      "id": 7,
+      "name": "slack_integrations_off",
+      "sha256": "a8879c571eca2182ab4ac7cf02f74dec4731faefbbe109f6285bc700c6427d7f"
+    },
+    {
+      "id": 8,
+      "name": "slack_workspaces_added",
+      "sha256": "6d620fe67561c82b5de09d3819e73d3970bdfa6bfe6d91b6ea5647c81356bb24"
+    },
+    {
+      "id": 9,
+      "name": "slack_install_links_by_workspace",
+      "sha256": "c02a5b6288a083bc94c9fb24987631a1c412828e282392c7887d9cd96d026ce6"
+    },
+    {
+      "id": 10,
+      "name": "slack_install_pages",
+      "sha256": "7a197b92f2db9d37759bbe2391fe495f3140acbadb93827479937c337d6867ec"
+    },
+    {
+      "id": 11,
+      "name": "slack_logos",
+      "sha256": "b75a1f564d324b29c905f273e9de5ba541ad07e290adfb15f1c3a128de1a9baf"
+    }
+  ],
+  "cortex@features/timecard": [
+    {
+      "id": 1,
+      "name": "meal_publication_jobs",
+      "sha256": "b0c36d27cd9fe8428ca10457bad70c99a5e7b826d9bdee3a347f901d30bd0ef3"
+    }
+  ],
+  "paycom@features/timecard": [
+    {
+      "id": 1,
+      "name": "people_summaries",
+      "sha256": "8ff1414bc1dc37b579f95eea182ed0aede03c37c04a9d50edae6abc77dc11d81"
+    },
+    {
+      "id": 2,
+      "name": "payload_compatibility",
+      "sha256": "b7192b5e0baacb55abbe401db34f08e1c155d48d6d22852f0a6b57545ffdfc72"
     }
   ]
 }
