@@ -939,14 +939,20 @@ test('query reads validate bounds, preserve complete manifests and isolate conti
   );
   assert.deepEqual(isolated, { kind: 'reset', reason: 'changed' });
   const member = await f.client(demo.member);
-  await member.select(north.id);
   await owner.select(north.id);
+  await useDocuments(owner, north.id, true);
+  await member.select(north.id);
+  const allowed = await member.get(path);
+  assert.equal(allowed.status, 200, allowed.body);
   await useDocuments(owner, north.id, false);
+  await member.select(north.id);
   for (const url of [
     path,
     `${path}/describe?${new URLSearchParams({ snapshot: first.snapshot, ids: doc.id })}`,
   ]) {
-    assert.equal((await member.get(url)).status, 403);
+    const denied = await member.get(url);
+    assert.equal(denied.status, 403, denied.body);
+    assert.equal(denied.value.error, 'permission_denied', denied.body);
   }
   await owner.select(north.id);
   const renamed = await owner.post(`/api/dsp/documents/items/${doc.id}/rename`, {
