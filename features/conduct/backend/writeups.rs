@@ -128,6 +128,8 @@ pub(crate) fn change(
                 id
             ],
         )?;
+        // A photo was of the paper as it read before.
+        db.exec("DELETE FROM conduct_copies WHERE writeup_id=?", [id])?;
         Ok(())
     })
 }
@@ -163,19 +165,12 @@ pub(crate) fn sign(
 /// activity log.
 pub(crate) fn delete(store: &Store, c: &Context, id: &str, revision: i64) -> Result<()> {
     let db = store.dsp(&c.dsp.id)?;
-    db.transaction(|| {
+    super::logged(store, &db, || {
         let writeup = unsigned(&db, id, Some(revision))?;
-        let category = categories::one(&db, &writeup.row.category_id)?;
         db.exec("DELETE FROM conduct_copies WHERE writeup_id=?", [id])?;
         db.exec("DELETE FROM conduct_writeups WHERE id=?", [id])?;
-        c.audit(
-            store,
-            "conduct.writeup_deleted",
-            &format!(
-                "{} · {} · {}",
-                writeup.row.person_name, category.name, writeup.row.written_on
-            ),
-        )
+        // By its id alone: the activity log keeps no one's disciplinary record.
+        c.audit(store, "conduct.writeup_deleted", &writeup.row.id)
     })
 }
 

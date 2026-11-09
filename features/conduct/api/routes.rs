@@ -8,7 +8,7 @@ use dispatch_core::{
     db::Store,
     foundation::validate as v,
     server::http::{
-        input::{Input, Reply},
+        input::{Input, Reply, query_number},
         route::{Dsp, Grant, Member, Route, read, upload, write},
         upload::Upload,
     },
@@ -55,13 +55,18 @@ fn overview_read(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
 /// The writeup `id` as it is now, with the page's data.
 fn saved(db: &Store, c: &Member, id: &str) -> Result<ConductSaved> {
     Ok(ConductSaved {
-        writeup: writeups::read(db, &c.dsp.id, id)?,
+        writeup: overview::writeup(db, c.state, &c.dsp.id, id)?,
         overview: overview::read(db, c.state, c)?,
     })
 }
 
 fn writeup_read(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
-    Reply::of(&writeups::read(db, &c.dsp.id, input.param("id"))?)
+    Reply::of(&overview::writeup(
+        db,
+        c.state,
+        &c.dsp.id,
+        input.param("id"),
+    )?)
 }
 fn writeup_add(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     let writing = WriteupInput::parse(&input.body, false)?;
@@ -94,6 +99,9 @@ fn writeup_delete(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 
 /// Keeps a photo of a writeup's signed paper, its bytes read whole before the write.
 async fn copy_keep(state: Arc<State>, input: Input, access: Dsp, upload: Upload) -> Result<Reply> {
+    v::fields(&input.query, &["revision"])?;
+    let revision = i64::try_from(query_number(&input.query, "revision", 0, 1, usize::MAX)?)
+        .map_err(|_| dispatch_core::Error::new("invalid_input", 400))?;
     let asked = input.clone();
     let dsp = state
         .read(move |db| Ok(access.authorize(db, &asked)?.dsp.id))
@@ -110,9 +118,9 @@ async fn copy_keep(state: Arc<State>, input: Input, access: Dsp, upload: Upload)
             // Checked again: the member may have lost access while the photo came in.
             let c = access.authorize(db, &input)?;
             let id = input.param("id");
-            copies::keep(db, &c, id, &bytes)?;
+            copies::keep(db, &c, id, revision, &bytes)?;
             Reply::of(&ConductSaved {
-                writeup: writeups::read(db, &c.dsp.id, id)?,
+                writeup: overview::writeup(db, &ran, &c.dsp.id, id)?,
                 overview: overview::read(db, &ran, &c)?,
             })
         })

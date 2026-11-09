@@ -28,7 +28,7 @@ pub(crate) fn one(db: &Db, id: &str) -> Result<ConductCategory> {
 
 pub(crate) fn add(store: &Store, c: &Context, input: &CategoryInput) -> Result<()> {
     let db = store.dsp(&c.dsp.id)?;
-    db.transaction(|| {
+    super::logged(store, &db, || {
         ensure(
             db.count(
                 "SELECT count(*) FROM conduct_categories WHERE retired=0",
@@ -62,7 +62,7 @@ pub(crate) fn add(store: &Store, c: &Context, input: &CategoryInput) -> Result<(
 
 pub(crate) fn change(store: &Store, c: &Context, id: &str, input: &CategoryInput) -> Result<()> {
     let db = store.dsp(&c.dsp.id)?;
-    db.transaction(|| {
+    super::logged(store, &db, || {
         let before = one(&db, id)?;
         ensure(!before.retired, "conduct_category_not_found", 404)?;
         ensure(
@@ -94,7 +94,7 @@ pub(crate) fn change(store: &Store, c: &Context, id: &str, input: &CategoryInput
 /// Retires the category `id`, or with `restore` puts it back in use.
 pub(crate) fn retire(store: &Store, c: &Context, id: &str, restore: bool) -> Result<()> {
     let db = store.dsp(&c.dsp.id)?;
-    db.transaction(|| {
+    super::logged(store, &db, || {
         let category = one(&db, id)?;
         ensure(category.retired == restore, "conduct_category_changed", 409)?;
         if restore {

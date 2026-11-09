@@ -49,7 +49,9 @@ export const signWriteup = (id: string, signedOn: string, revision: number) =>
   api<ConductSaved>(`${writeupUrl(id)}/sign`, { signedOn, revision });
 export const deleteWriteup = (id: string, revision: number) =>
   api<ConductOverview>(`${writeupUrl(id)}/delete`, { revision });
-export const keepCopy = (id: string, photo: Blob) => upload<ConductSaved>(copyUrl(id), photo);
+/** Keeps `photo` as the signed paper of the writeup `id` as it reads at `revision`. */
+export const keepCopy = (id: string, revision: number, photo: Blob) =>
+  upload<ConductSaved>(`${copyUrl(id)}?revision=${revision}`, photo);
 
 const categoryUrl = (id: string) => `${conductUrl}/categories/${encodeURIComponent(id)}`;
 export const addCategory = (input: CategoryInput) =>

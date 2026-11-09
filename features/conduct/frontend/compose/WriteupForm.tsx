@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ChevronLeft, Printer } from 'lucide-react';
 import { DateField, ErrorBox } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
+import { useUnsavedEdits } from '../../../../core/shell/frontend/runtime/useUnsavedEdits.js';
 import type { ConductOverview, ConductSaved, ConductWriteup } from '../../api/index.js';
 import { addWriteup, changeWriteup } from '../../api/client.js';
 import { Notice } from '../notice/Notice.js';
@@ -33,13 +34,17 @@ export function WriteupForm({
   /** Called with what a save answered, once its notice has printed when it was to print. */
   saved: (saved: ConductSaved) => void;
 }) {
-  const [state, setState] = useState(() =>
+  const [start] = useState(() =>
     refill(
       initial,
       filledOf(initial),
       editing ? undefined : filled(overview, initial.person, initial.category),
     ),
   );
+  const [state, setState] = useState(start);
+  // The revision the draft was read at: a later read of the writeup doesn't move it, so a save
+  // over someone else's change is refused rather than overwriting it.
+  const [revision] = useState(editing?.revision);
   const { draft } = state;
   const [problem, setProblem] = useState('');
   const { print, sheet } = usePrintNotice();
@@ -58,13 +63,23 @@ export function WriteupForm({
       const why = missing(draft);
       if (why) return setProblem(why);
       const result = editing
-        ? await changeWriteup(editing.id, inputOf(draft, editing.revision))
+        ? await changeWriteup(editing.id, inputOf(draft, revision))
         : await addWriteup(inputOf(draft));
       if (andPrint) print(result.writeup, () => saved(result));
       else saved(result);
     },
     { inline: true },
   );
+  const { leave, asking } = useUnsavedEdits({
+    what: 'This writeup',
+    dirty: JSON.stringify(draft) !== JSON.stringify(start.draft),
+    saveable: !missing(draft) && !save.busy,
+    // Saving opens the writeup saved, so leaving goes no further.
+    save: async () => {
+      await save.run(false);
+      return false;
+    },
+  });
 
   const { stood, earlier } = record(overview, draft.person, draft.category, editing?.id);
   const category = overview.categories.find((c) => c.id === draft.category);
@@ -84,14 +99,14 @@ export function WriteupForm({
   };
   return (
     <>
-      <button type="button" className="conduct-back" onClick={cancel}>
+      <button type="button" className="conduct-back" onClick={() => leave(cancel)}>
         <ChevronLeft size={15} />
         Conduct
       </button>
       <div className="page-heading">
         <h1>{editing ? 'Edit writeup' : 'New writeup'}</h1>
         <div className="heading-actions">
-          <button type="button" onClick={cancel}>
+          <button type="button" onClick={() => leave(cancel)}>
             Cancel
           </button>
           <button type="button" disabled={save.busy} onClick={() => void save.run(false)}>
@@ -197,6 +212,7 @@ export function WriteupForm({
         </div>
       </div>
       {sheet}
+      {asking}
     </>
   );
 }

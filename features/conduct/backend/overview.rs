@@ -1,7 +1,7 @@
 //! What the page reads in one answer: the categories, the people writeups are for, every
 //! writeup and where each person stands, each writeup's person as the directory knows them now.
 use super::{categories, standing, writeups};
-use crate::api::types::{ConductOverview, ConductPerson};
+use crate::api::types::{ConductOverview, ConductPerson, ConductWriteup};
 use chrono::NaiveDate;
 use dispatch_core::{
     Error, Result, State,
@@ -81,6 +81,15 @@ pub(crate) fn read(store: &Store, state: &State, c: &Context) -> Result<ConductO
         people,
         writeups,
     })
+}
+
+/// The writeup `id` whole, its person by the code the directory knows them by now, as the
+/// overview names them.
+pub(crate) fn writeup(store: &Store, state: &State, dsp: &str, id: &str) -> Result<ConductWriteup> {
+    let mut writeup = writeups::read(store, dsp, id)?;
+    let everyone = people::everyone(store, state, dsp)?;
+    writeup.row.person = now(&everyone, &writeup.row.person, &writeup.row.person_name).code;
+    Ok(writeup)
 }
 
 /// The person a writeup's `code` names now: whoever kept their IDs once merged, or, once the

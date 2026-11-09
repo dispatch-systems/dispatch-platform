@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ErrorBox, Modal } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
+import { useUnsavedEdits } from '../../../../core/shell/frontend/runtime/useUnsavedEdits.js';
 import type { CategoryInput, ConductCategory, ConductOverview } from '../../api/index.js';
 import { addCategory, changeCategory, retireCategory } from '../../api/client.js';
 import { tierShort, tiers } from '../tiers.js';
@@ -28,7 +29,7 @@ export function CategoryDialog({
   close: () => void;
   saved: (overview: ConductOverview) => void;
 }) {
-  const [input, setInput] = useState<CategoryInput>(() =>
+  const [start] = useState<CategoryInput>(() =>
     category
       ? {
           name: category.name,
@@ -41,6 +42,7 @@ export function CategoryDialog({
         }
       : fresh(),
   );
+  const [input, setInput] = useState(start);
   const set = (next: Partial<CategoryInput>) => setInput((now) => ({ ...now, ...next }));
   const save = useAction(
     async () => {
@@ -60,8 +62,14 @@ export function CategoryDialog({
   const ready =
     [input.name, input.statement, input.prior, input.plan].every((text) => text.trim()) &&
     stepDownReady(input.stepDown);
+  const { leave, asking } = useUnsavedEdits({
+    what: 'This category',
+    dirty: JSON.stringify(input) !== JSON.stringify(start),
+    saveable: ready && !save.busy,
+    save: () => save.run(),
+  });
   return (
-    <Modal title={category ? 'Edit category' : 'Add category'} onClose={close}>
+    <Modal title={category ? 'Edit category' : 'Add category'} onClose={() => leave(close)}>
       <form
         className="conduct-dialog"
         onSubmit={(event) => {
@@ -127,7 +135,7 @@ export function CategoryDialog({
               Retire
             </button>
           )}
-          <button type="button" onClick={close}>
+          <button type="button" onClick={() => leave(close)}>
             Cancel
           </button>
           <button type="submit" className="primary" disabled={!ready || save.busy}>
@@ -135,6 +143,7 @@ export function CategoryDialog({
           </button>
         </div>
       </form>
+      {asking}
     </Modal>
   );
 }

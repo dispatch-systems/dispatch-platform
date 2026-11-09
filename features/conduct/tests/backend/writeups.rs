@@ -73,6 +73,7 @@ fn a_writeup_changes_until_it_is_signed_and_never_after() {
     let written = read(&store, &c.dsp.id, &id).unwrap();
     assert_eq!(written.row.supervisor_name, "Casey Supervisor");
     assert_eq!(written.row.revision, 1);
+    copies::keep(&store, &c, &id, 1, &[0xff, 0xd8, 0xff, 0xdb]).unwrap();
 
     change(
         &store,
@@ -96,6 +97,17 @@ fn a_writeup_changes_until_it_is_signed_and_never_after() {
         TODAY,
     );
     assert_eq!(stale.unwrap_err().code, "conduct_writeup_changed");
+    // A photo was of the paper as it read: a change drops it, and one of the old is refused.
+    assert_eq!(
+        copies::read(&store, &c.dsp.id, &id).unwrap_err().code,
+        "conduct_copy_not_found"
+    );
+    assert_eq!(
+        copies::keep(&store, &c, &id, 1, &[0xff, 0xd8, 0xff, 0xdb])
+            .unwrap_err()
+            .code,
+        "conduct_writeup_changed"
+    );
 
     // Signed no earlier than it was written, and no later than today.
     for day in ["2026-11-01", "2026-11-09"] {
@@ -104,7 +116,7 @@ fn a_writeup_changes_until_it_is_signed_and_never_after() {
             "conduct_signed_date"
         );
     }
-    copies::keep(&store, &c, &id, &[0xff, 0xd8, 0xff, 0xe0]).unwrap();
+    copies::keep(&store, &c, &id, 2, &[0xff, 0xd8, 0xff, 0xe0]).unwrap();
     sign(&store, &c, &id, 2, "2026-11-03", TODAY).unwrap();
     let signed = read(&store, &c.dsp.id, &id).unwrap();
     assert_eq!(signed.row.signed_on.as_deref(), Some("2026-11-03"));
@@ -121,7 +133,7 @@ fn a_writeup_changes_until_it_is_signed_and_never_after() {
     );
     assert_eq!(locked.unwrap_err().code, "conduct_writeup_signed");
     assert_eq!(
-        copies::keep(&store, &c, &id, &[0xff, 0xd8, 0xff, 0xe1])
+        copies::keep(&store, &c, &id, 3, &[0xff, 0xd8, 0xff, 0xe1])
             .unwrap_err()
             .code,
         "conduct_writeup_signed"

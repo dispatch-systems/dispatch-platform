@@ -12,18 +12,21 @@ use rusqlite::params;
 /// The most bytes one photo may be.
 pub(crate) const LIMIT: u64 = 8 * 1024 * 1024;
 
-/// Keeps `bytes` as the photo of the writeup `id`'s signed paper: in place of one kept before
-/// only while the writeup is unsigned, so a signed writeup's photo, once kept, stays.
-pub(crate) fn keep(store: &Store, c: &Context, id: &str, bytes: &[u8]) -> Result<()> {
+/// Keeps `bytes` as the photo of the writeup `id`'s signed paper, in place of one kept before,
+/// while the writeup is unsigned and still as read at `revision`: the paper photographed is the
+/// notice as it reads, which signing it next at the same revision holds. A signed writeup's
+/// photo stays, and a change to the writeup drops it.
+pub(crate) fn keep(
+    store: &Store,
+    c: &Context,
+    id: &str,
+    revision: i64,
+    bytes: &[u8],
+) -> Result<()> {
     let media_type = picture_type(bytes)?;
     let db = store.dsp(&c.dsp.id)?;
     db.transaction(|| {
-        let writeup = writeups::one(&db, id)?;
-        ensure(
-            writeup.row.signed_on.is_none() || !writeup.row.has_copy,
-            "conduct_writeup_signed",
-            409,
-        )?;
+        writeups::unsigned(&db, id, Some(revision))?;
         db.exec(
             "INSERT INTO conduct_copies (writeup_id,media_type,bytes,added_by_name,added_at) \
              VALUES (?,?,?,?,?) ON CONFLICT(writeup_id) DO UPDATE SET media_type=excluded.media_type,\

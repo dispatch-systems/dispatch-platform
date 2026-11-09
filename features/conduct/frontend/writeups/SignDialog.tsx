@@ -24,8 +24,8 @@ export function SignDialog({
   const [photo, setPhoto] = useState<File>();
   const sign = useAction(
     async () => {
-      // The photo first: a writeup once signed keeps the photo it has.
-      if (photo) await keepCopy(writeup.id, await shrunk(photo));
+      // The photo first, of the notice as read: a signed writeup keeps the photo it has.
+      if (photo) await keepCopy(writeup.id, writeup.revision, await shrunk(photo));
       signed(await signWriteup(writeup.id, day, writeup.revision));
     },
     { inline: true, success: 'Marked signed' },
