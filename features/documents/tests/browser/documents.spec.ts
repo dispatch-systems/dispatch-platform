@@ -77,29 +77,34 @@ test('large folders keep one page mounted in both layouts, search every item and
       shortcut: false,
       unavailable: false,
     }));
-    await page.route('**/api/dsp/documents/folder*', async (route) => {
-      const url = new URL(route.request().url());
-      const conditional = url.pathname.endsWith('/read');
-      const since = url.searchParams.get('since');
-      if (conditional) url.pathname = url.pathname.slice(0, -'/read'.length);
-      url.searchParams.delete('since');
-      const response = await route.fetch({ url: url.toString() });
-      const folder = await response.json();
-      const query = url.searchParams.get('q')?.toLowerCase() ?? '';
-      const full = {
-        ...folder,
-        items: items.filter((item) => item.name.toLowerCase().includes(query)),
-      };
-      // This existing synthetic large-folder fixture still supplies full results, now in
-      // the conditional envelope. Product revision/projection behavior is covered separately.
-      const revision = createHash('sha256')
-        .update(JSON.stringify([url.search, full]))
-        .digest('hex');
-      await route.fulfill({
-        response,
-        json: conditional ? { revision, folder: since === revision ? null : full } : full,
-      });
-    });
+    await page.route(
+      (url) =>
+        url.pathname === '/api/dsp/documents/folder' ||
+        url.pathname === '/api/dsp/documents/folder/read',
+      async (route) => {
+        const url = new URL(route.request().url());
+        const conditional = url.pathname.endsWith('/read');
+        const since = url.searchParams.get('since');
+        if (conditional) url.pathname = url.pathname.slice(0, -'/read'.length);
+        url.searchParams.delete('since');
+        const response = await route.fetch({ url: url.toString() });
+        const folder = await response.json();
+        const query = url.searchParams.get('q')?.toLowerCase() ?? '';
+        const full = {
+          ...folder,
+          items: items.filter((item) => item.name.toLowerCase().includes(query)),
+        };
+        // This existing synthetic large-folder fixture still supplies full results, now in
+        // the conditional envelope. Product revision/projection behavior is covered separately.
+        const revision = createHash('sha256')
+          .update(JSON.stringify([url.search, full]))
+          .digest('hex');
+        await route.fulfill({
+          response,
+          json: conditional ? { revision, folder: since === revision ? null : full } : full,
+        });
+      },
+    );
     await page.reload();
     const cards = page.locator('.documents-file-card');
     await expect(cards).toHaveCount(100);
