@@ -272,7 +272,7 @@ pub(super) async fn make(
     mime: &str,
     name: &str,
 ) -> Result<(Connection, Item)> {
-    let (connection, made) = on_drive!(state, owner, |google, token| google.create(
+    let (_, made) = on_drive!(state, owner, |google, token| google.create(
         token,
         name,
         mime,
@@ -319,7 +319,7 @@ pub(super) async fn write(
     name: &str,
     html: &str,
 ) -> Result<Item> {
-    let (connection, made) = on_drive!(state, owner, |google, token| google
+    let (_, made) = on_drive!(state, owner, |google, token| google
         .write(token, name, parent, html))?;
     confirmed(state, owner, made.clone()).await?;
     Ok(made)
@@ -332,7 +332,7 @@ pub(super) async fn rewrite(
     name: &str,
     html: &str,
 ) -> Result<Item> {
-    let (connection, written) = on_drive!(state, owner, |google, token| google
+    let (_, written) = on_drive!(state, owner, |google, token| google
         .rewrite(token, id, name, html))?;
     confirmed(state, owner, written.clone()).await?;
     Ok(written)
@@ -673,11 +673,8 @@ pub async fn trash(
     id: String,
     expected: Option<String>,
 ) -> Result<()> {
-    let dsp = c.dsp.id.clone();
     let owner = grant::capture_member(state, c.clone(), access, expected).await?;
-    let connection = owner.connection.clone();
     let tree = access::tree_for(state, &owner).await?;
-    let root = connection.folder_id;
     let row = tree.get(&id).ok_or_else(not_found)?;
     let name = row.name.to_string();
     // A shortcut's file stops being shared with the team as the shortcut goes.

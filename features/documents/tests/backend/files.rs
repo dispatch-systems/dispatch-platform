@@ -110,7 +110,6 @@ async fn a_lifecycle_change_during_renewal_cannot_admit_the_old_grant() {
 #[test]
 fn a_deleted_dsps_token_and_pictures_are_forgotten_and_none_kept_after_and_no_other_dsps() {
     let (_root, state, _) = platform();
-    let other_environment = tempfile::tempdir().unwrap();
     let deleted = crate::backend::grant::Key {
         namespace: state.config.environment_root(),
         dsp: "dsp_deleted".into(),
@@ -121,7 +120,7 @@ fn a_deleted_dsps_token_and_pictures_are_forgotten_and_none_kept_after_and_no_ot
         ..deleted.clone()
     };
     let same_dsp_elsewhere = crate::backend::grant::Key {
-        namespace: other_environment.path().to_owned(),
+        namespace: deleted.namespace.join("independent-environment"),
         ..deleted.clone()
     };
     // Each DSP's access token and shown-file provenance, including the same DSP ID in
