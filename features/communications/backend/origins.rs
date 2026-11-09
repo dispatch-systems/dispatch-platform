@@ -539,8 +539,13 @@ fn project(
 }
 /// Sparse boundary seeks. Joins happen AFTER the one-row seek, so no SQL filter can turn a
 /// missing source/group into a backward history walk.
+enum BoundaryKind {
+    Run,
+    Day,
+    Sender,
+}
 struct BoundarySeek<'a> {
-    subset: &'a str,
+    kind: BoundaryKind,
     before: bool,
     lower: Option<&'a Topology>,
 }
@@ -553,10 +558,23 @@ fn seek(
     query: BoundarySeek<'_>,
 ) -> Result<Option<Topology>> {
     let BoundarySeek {
-        subset,
+        kind,
         before,
         lower,
     } = query;
+    // Sparse flags must seek their partial index. SQLite may prefer the wider primary
+    // key for Slack's message_id projection and then filter an entire history prefix.
+    let (subset, index) = match kind {
+        BoundaryKind::Run => ("", String::new()),
+        BoundaryKind::Day => (
+            " AND m.day_start=1",
+            format!(" INDEXED BY {}_days", transport.boundaries()),
+        ),
+        BoundaryKind::Sender => (
+            " AND m.sender_present=1",
+            format!(" INDEXED BY {}_senders", transport.boundaries()),
+        ),
+    };
     let bound = transport.bound("m", if before { "<" } else { "<=" }, 3, 4, 5);
     let lower_sql = if lower.is_some() {
         format!(" AND {}", transport.bound("m", ">=", 6, 7, 8))
@@ -569,7 +587,7 @@ fn seek(
     };
     let sql = format!(
         "SELECT {columns},m.conversation_id,'in' AS direction,NULL AS sent_by, \
-        NULL AS phone_id,NULL AS group_id,NULL AS number FROM {} m WHERE m.conversation_id=?1 \
+        NULL AS phone_id,NULL AS group_id,NULL AS number FROM {} m{index} WHERE m.conversation_id=?1 \
         AND m.generation=?2 AND {bound}{subset}{lower_sql} AND ?3 IS NOT NULL AND ?5 IS NOT NULL {} \
         ORDER BY {} LIMIT 1",
         transport.boundaries(),
@@ -643,7 +661,7 @@ fn selection(
         generation,
         &key,
         BoundarySeek {
-            subset: "",
+            kind: BoundaryKind::Run,
             before: false,
             lower: None,
         },
@@ -656,7 +674,7 @@ fn selection(
         generation,
         &key,
         BoundarySeek {
-            subset: " AND m.day_start=1",
+            kind: BoundaryKind::Day,
             before: false,
             lower: None,
         },
@@ -669,7 +687,7 @@ fn selection(
         generation,
         &run,
         BoundarySeek {
-            subset: " AND m.sender_present=1",
+            kind: BoundaryKind::Sender,
             before: true,
             lower: Some(&day),
         },
