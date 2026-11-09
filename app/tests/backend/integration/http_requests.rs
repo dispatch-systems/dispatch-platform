@@ -7,11 +7,12 @@ use crate::support::{Call, SCRIPT, Server, Who};
 use dispatch_core::{
     db::{self, s},
     foundation::crypto,
+    manifest::people,
     server::live::Topic,
 };
 use dispatch_paycom as paycom;
 use serde_json::{Value, json};
-use std::sync::atomic::Ordering;
+use std::sync::{Arc, atomic::Ordering};
 
 #[tokio::test]
 async fn ordinary_members_cannot_distinguish_absent_and_foreign_dsps() {
@@ -662,10 +663,81 @@ async fn only_dsp_and_schedule_writes_that_succeed_wake_the_scheduler() {
 #[tokio::test]
 async fn a_write_on_a_dsps_route_evicts_only_that_dsps_cached_reads() {
     use dispatch_core::server::cache::Scope;
+
+    async fn directory(server: &Server, dsp: &str) -> Arc<people::Everyone> {
+        let dsp = dsp.to_owned();
+        let state = server.state.clone();
+        server
+            .state
+            .read(move |db| people::everyone(db, &state, &dsp))
+            .await
+            .unwrap()
+    }
+
     let server = Server::start().await;
     let owner = server.member("owner@dispatch.test").await;
     let north = server.dsp("Northline Logistics").await;
     let summit = server.dsp("Summit Delivery").await;
+    #[cfg(all(feature = "documents", feature = "driver_match", feature = "timecard"))]
+    let (north_people, summit_people) = {
+        use dispatch_timecard::TimecardStore;
+        // Summit has no demo collections. Publish real source rows and assign their codes
+        // before retaining either directory, and finish every session/view write first.
+        let member = server.member("member@dispatch.test").await;
+        let (first, second) = (north.clone(), summit.clone());
+        server
+            .state
+            .run(move |db| {
+                db.publish_timecards(&second, &paycom::fixtures::fixture("America/Denver")?)?;
+                crate::pass(db, &first)?;
+                crate::pass(db, &second)?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+        let north_people = directory(&server, &north).await;
+        let summit_people = directory(&server, &summit).await;
+        for (dsp, held) in [(&north, &north_people), (&summit, &summit_people)] {
+            assert_eq!(
+                held.holding(paycom::SOURCE, "E001").unwrap().name,
+                "Avery Morgan"
+            );
+            assert!(Arc::ptr_eq(held, &directory(&server, dsp).await));
+        }
+        let contents = serde_json::to_value(&*summit_people).unwrap();
+        // No connection and no member share: these reads neither contact Google nor nudge
+        // sharing. The ordinary member has a valid view without either route's permission.
+        for (path, who, status, expected) in [
+            (
+                "/api/dsp/documents",
+                &owner,
+                200,
+                json!({"connection":null,"available":true,"me":null,"picker":null}),
+            ),
+            (
+                "/api/dsp/documents/account",
+                &owner,
+                200,
+                json!({"connection":null,"available":true,"storage":null}),
+            ),
+            (
+                "/api/dsp/documents",
+                &member,
+                403,
+                json!({"error":"permission_denied","message":"permission denied"}),
+            ),
+        ] {
+            let answer = server.send(Call::get(path).who(who)).await;
+            assert_eq!((answer.status, &answer.body), (status, &expected), "{path}");
+            let after = directory(&server, &summit).await;
+            assert!(
+                Arc::ptr_eq(&summit_people, &after),
+                "{path} replaced another DSP's directory"
+            );
+            assert_eq!(serde_json::to_value(&*after).unwrap(), contents);
+        }
+        (north_people, summit_people)
+    };
     // A cached read of each DSP's: how many times any was read afresh, once this one is read.
     let loads = std::sync::atomic::AtomicUsize::new(0);
     let read = |dsp: &str| {
@@ -694,12 +766,63 @@ async fn a_write_on_a_dsps_route_evicts_only_that_dsps_cached_reads() {
         .await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     assert_eq!((read(&north), read(&summit)), (3, 3));
+    #[cfg(all(feature = "documents", feature = "driver_match", feature = "timecard"))]
+    let north_after_profile = {
+        let after = directory(&server, &north).await;
+        assert!(!Arc::ptr_eq(&north_people, &after));
+        assert!(Arc::ptr_eq(
+            &summit_people,
+            &directory(&server, &summit).await
+        ));
+        // The saved profile expired the previously valid owner view. Its refusal is a read.
+        server
+            .expect(
+                Call::get("/api/dsp/documents").who(&owner),
+                409,
+                "dsp_view_expired",
+            )
+            .await;
+        assert!(Arc::ptr_eq(&after, &directory(&server, &north).await));
+        assert!(Arc::ptr_eq(
+            &summit_people,
+            &directory(&server, &summit).await
+        ));
+        after
+    };
     // The platform owner's write names no DSP, so every DSP's reads are.
     let created = server
         .send(Call::post("/api/platform/dsps", json!({"name":"Fourth DSP"})).who(&owner))
         .await;
     assert_eq!(created.status, 201, "{}", created.body);
     assert_eq!((read(&north), read(&summit)), (4, 5));
+    #[cfg(all(feature = "documents", feature = "driver_match", feature = "timecard"))]
+    {
+        assert!(!Arc::ptr_eq(
+            &north_after_profile,
+            &directory(&server, &north).await
+        ));
+        let after_create = directory(&server, &summit).await;
+        assert!(!Arc::ptr_eq(&summit_people, &after_create));
+        // Use the actual platform mutation. Its global invalidation finishes before warming
+        // Summit again; the following refused GET must cause no further replacement.
+        let path = format!("/api/platform/dsps/{north}/disable");
+        let disabled = server.send(Call::post(&path, json!({})).who(&owner)).await;
+        assert_eq!(disabled.status, 200, "{}", disabled.body);
+        assert_eq!(disabled.body["status"], "suspended");
+        let before_refusal = directory(&server, &summit).await;
+        assert!(!Arc::ptr_eq(&after_create, &before_refusal));
+        server
+            .expect(
+                Call::get("/api/dsp/documents").who(&owner),
+                409,
+                "dsp_unavailable",
+            )
+            .await;
+        assert!(Arc::ptr_eq(
+            &before_refusal,
+            &directory(&server, &summit).await
+        ));
+    }
 }
 
 #[tokio::test]

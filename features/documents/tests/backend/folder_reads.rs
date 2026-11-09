@@ -55,7 +55,8 @@ fn every_visible_response_field_and_its_scope_participate_in_the_revision() {
         folder_revision("dsp_one", "root", Some(" plan "), &original).unwrap(),
         revision
     );
-    let changes: &[(&str, fn(&mut DocumentsFolder))] = &[
+    type FolderChange = (&'static str, fn(&mut DocumentsFolder));
+    let changes: &[FolderChange] = &[
         ("folder id", |f| f.id = None),
         ("folder name", |f| f.name.push('!')),
         ("folder url", |f| f.url.push('!')),

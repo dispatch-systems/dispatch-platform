@@ -1,9 +1,9 @@
 import { api } from './api.js';
 import { cacheLimits, dataCache } from './data-cache.js';
+import type { PrefetchRead, PrefetchReader } from './prefetch-types.js';
+export type { PrefetchRead, PrefetchReader } from './prefetch-types.js';
 
 // Selected records load immediately; this small queue only warms likely next selections.
-export type PrefetchReader = (signal: AbortSignal, priority: 'high' | 'low') => Promise<unknown>;
-export type PrefetchRead = string | { url: string; read: PrefetchReader };
 type Warmup = {
   generation: number;
   owners: Set<string>;
