@@ -75,9 +75,11 @@ class CompilerPathTests(unittest.TestCase):
             self.assertEqual(plain[:2], ["rustc", "src/lib.rs"])
             self.assertEqual(run(registry, cache="/bin/sccache")[:3], ["/bin/sccache", "rustc", "src/lib.rs"])
 
-    def test_cargo_settings_rustc_never_reads_leave_the_compile_alone(self):
+    def test_compiler_environment_does_not_keep_caller_local_settings(self):
         kept = remap.environment({"CARGO_TARGET_DIR": "/run/1", "CARGO_INCREMENTAL": "0",
-                                  "CARGO_PKG_NAME": "serde", "PATH": "/bin"})
+                                  "CARGO_PKG_NAME": "serde", "PATH": "/bin",
+                                  "TMPDIR": "/checkout/scratch", "TMP": "/checkout/scratch",
+                                  "TEMP": "/checkout/scratch"})
         self.assertEqual(kept, {"CARGO_PKG_NAME": "serde", "PATH": "/bin",
                                 "SCCACHE_IGNORE_SERVER_IO_ERROR": "1"})
 
