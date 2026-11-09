@@ -30,9 +30,13 @@ use dispatch_core::{
 use serde::Serialize;
 use serde_json::Value;
 use std::{sync::Arc, time::Duration};
+use tokio::sync::Semaphore;
 
 /// How long a phone waiting on its outbox waits before it's answered with nothing.
 const WAIT: Duration = Duration::from_secs(20);
+// Ordinary page and video waits can depend on phones receiving work. Keep their admission
+// separate so those waits cannot consume the phones' own bounded capacity.
+static WAITING: Semaphore = Semaphore::const_new(128);
 /// The most characters a phone may say of why a text failed.
 pub(super) const ERROR_MOST: usize = 500;
 /// The highest `versionCode` Android takes.
@@ -149,11 +153,8 @@ pub(super) async fn outbox(state: Arc<State>, input: Input, access: Phone) -> Re
             })
             .await?;
     }
-    let _slot = state
-        .topics
-        .slots
-        .clone()
-        .try_acquire_owned()
+    let _slot = WAITING
+        .try_acquire()
         .map_err(|_| Error::new("platform_busy", 503))?;
     // Subscribed before reading, so a text queued, or a video asked for, between the read and the
     // wait still wakes it.
