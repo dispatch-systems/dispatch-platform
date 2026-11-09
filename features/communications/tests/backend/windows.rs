@@ -1390,7 +1390,8 @@ async fn known_inserts_placement_moves_and_retry_preserve_readiness_but_unknown_
     let id = &report[0].id;
     db.place_communications_text(&dsp, id, &Filed::Number("+12065550101".into()), None)
         .unwrap();
-    db.settle_communications_texts(&dsp, &[id.clone()]).unwrap();
+    db.settle_communications_texts(&dsp, std::slice::from_ref(id))
+        .unwrap();
     let destination = db
         .open_communications_text(&dsp, &Filed::Number("+12065550102".into()))
         .unwrap()
