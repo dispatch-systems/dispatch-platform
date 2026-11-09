@@ -224,7 +224,8 @@ fn pass(state: Arc<State>, due: bool) -> Upkeep {
                         if !db.feature_enabled(&asked, crate::FEATURE.switch.id)? {
                             return Ok(Vec::new());
                         }
-                        candidates(&db.dsp(&asked)?, transport)
+                        let connection = db.dsp(&asked)?;
+                        candidates(&connection, transport)
                     })
                     .await;
                 let work = match work {
@@ -243,7 +244,8 @@ fn pass(state: Arc<State>, due: bool) -> Upkeep {
                                 return Ok(false);
                             }
                             let zone = texts::zone(db, &asked)?;
-                            chunk(&db.dsp(&asked)?, transport, &conversation, zone)
+                            let connection = db.dsp(&asked)?;
+                            chunk(&connection, transport, &conversation, zone)
                         })
                         .await;
                     if let Err(error) = result {
