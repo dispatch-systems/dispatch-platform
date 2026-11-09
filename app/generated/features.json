@@ -210,7 +210,6 @@
       "exposes": [],
       "env": [],
       "settings": [
-        "conduct.general",
         "conduct.categories"
       ]
     },
@@ -220,6 +219,7 @@
       "dsp": [
         "conduct_categories",
         "conduct_copies",
+        "conduct_step_downs",
         "conduct_writeups"
       ]
     },

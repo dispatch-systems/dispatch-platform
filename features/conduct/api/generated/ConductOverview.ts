@@ -2,6 +2,7 @@
 import type { ConductCategory } from "./ConductCategory";
 import type { ConductPerson } from "./ConductPerson";
 import type { ConductStanding } from "./ConductStanding";
+import type { ConductTier } from "./ConductTier";
 import type { ConductWriteupRow } from "./ConductWriteupRow";
 
 /**
@@ -12,10 +13,6 @@ export type ConductOverview = {
  * Today where the DSP is, YYYY-MM-DD.
  */
 today: string,
-/**
- * The first day a writeup dated on or after still counts toward the next tier.
- */
-countsFrom: string,
 /**
  * Every category, retired ones too, in the DSP's order.
  */
@@ -29,6 +26,11 @@ people: Array<ConductPerson>,
  */
 writeups: Array<ConductWriteupRow>,
 /**
- * Each person's highest tier in each category they hold one in.
+ * Where each person stands in each category their record isn't clean in.
  */
-standings: Array<ConductStanding>, };
+standings: Array<ConductStanding>,
+/**
+ * Where each writeup's person stood in its category just before it, by writeup id: none
+ * for a writeup written while their record there was clean.
+ */
+stoodBefore: { [key in string]: ConductTier }, };

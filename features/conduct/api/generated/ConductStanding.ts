@@ -2,11 +2,19 @@
 import type { ConductTier } from "./ConductTier";
 
 /**
- * The highest tier someone holds in a category: their highest writeup in it among those that
- * still count toward the next tier.
+ * The tier someone stands at in a category today, once its step downs are taken: their record
+ * there isn't clean.
  */
 export type ConductStanding = { person: string, categoryId: string, tier: ConductTier,
 /**
- * The writeup that holds it: the latest at that tier.
+ * Their latest writeup in the category.
  */
-writeupId: string, writtenOn: string, };
+latestId: string, latestOn: string,
+/**
+ * The day they next step down, YYYY-MM-DD: none when the tier never does.
+ */
+stepsDownOn: string | null,
+/**
+ * The tier they step down to then; none clears their record in the category.
+ */
+stepsDownTo: ConductTier | null, };

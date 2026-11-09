@@ -1,6 +1,6 @@
 //! What the page reads in one answer: the categories, the people writeups are for, every
 //! writeup and where each person stands, each writeup's person as the directory knows them now.
-use super::{categories, settings, standing, writeups};
+use super::{categories, standing, writeups};
 use crate::api::types::{ConductOverview, ConductPerson};
 use chrono::NaiveDate;
 use dispatch_core::{
@@ -46,8 +46,6 @@ pub(crate) fn subject(
 
 pub(crate) fn read(store: &Store, state: &State, c: &Context) -> Result<ConductOverview> {
     let today = day(c)?;
-    let months = settings::general(store, &c.dsp.id)?.months;
-    let counts_from = standing::counts_from(today, u32::try_from(months).unwrap_or(12)).to_string();
     let everyone = people::everyone(store, state, &c.dsp.id)?;
     let db = store.dsp(&c.dsp.id)?;
     let (categories, mut writeups) =
@@ -74,10 +72,11 @@ pub(crate) fn read(store: &Store, state: &State, c: &Context) -> Result<ConductO
         dispatch_core::foundation::names::compare(&a.name, &b.name)
             .then_with(|| a.code.cmp(&b.code))
     });
+    let worked = standing::work_out(&categories, &writeups, today);
     Ok(ConductOverview {
-        standings: standing::standings(&writeups, &counts_from),
         today: today.to_string(),
-        counts_from,
+        standings: worked.standings,
+        stood_before: worked.stood_before,
         categories,
         people,
         writeups,

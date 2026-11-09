@@ -5,11 +5,14 @@ export type { ConductOverview } from './generated/ConductOverview';
 export type { ConductPerson } from './generated/ConductPerson';
 export type { ConductSaved } from './generated/ConductSaved';
 export type { ConductStanding } from './generated/ConductStanding';
+export type { ConductStepDown } from './generated/ConductStepDown';
 export type { ConductTier } from './generated/ConductTier';
+export type { ConductUnit } from './generated/ConductUnit';
 export type { ConductWriteup } from './generated/ConductWriteup';
 export type { ConductWriteupRow } from './generated/ConductWriteupRow';
 
 import type { ConductFinalKind } from './generated/ConductFinalKind';
+import type { ConductStepDown } from './generated/ConductStepDown';
 import type { ConductTier } from './generated/ConductTier';
 
 /** A writeup as the page sends it: `revision` for an edit. */
@@ -30,6 +33,7 @@ export interface WriteupInput {
 export interface CategoryInput {
   name: string;
   startTier: ConductTier;
+  stepDowns: ConductStepDown[];
   statement: string;
   prior: string;
   plan: string;

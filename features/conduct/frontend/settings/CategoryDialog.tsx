@@ -4,16 +4,21 @@ import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js'
 import type { CategoryInput, ConductCategory, ConductOverview } from '../../api/index.js';
 import { addCategory, changeCategory, retireCategory } from '../../api/client.js';
 import { tierShort, tiers } from '../tiers.js';
+import { StepDowns, stepDownsReady, usualStepDowns } from './StepDowns.js';
 
-const fresh: CategoryInput = {
+const fresh = (): CategoryInput => ({
   name: '',
   startTier: 'verbal',
+  stepDowns: usualStepDowns(),
   statement: '',
   prior: '',
   plan: '',
-};
+});
 
-/** A category's name, starting tier and wording, new or as it is; one in use can be retired. */
+/**
+ * A category's name, starting tier, step downs and wording, new or as it is; one in use can be
+ * retired.
+ */
 export function CategoryDialog({
   category,
   close,
@@ -28,12 +33,13 @@ export function CategoryDialog({
       ? {
           name: category.name,
           startTier: category.startTier,
+          stepDowns: category.stepDowns,
           statement: category.statement,
           prior: category.prior,
           plan: category.plan,
           revision: category.revision,
         }
-      : fresh,
+      : fresh(),
   );
   const set = (next: Partial<CategoryInput>) => setInput((now) => ({ ...now, ...next }));
   const save = useAction(
@@ -51,7 +57,9 @@ export function CategoryDialog({
     },
     { inline: true, success: 'Category retired' },
   );
-  const ready = [input.name, input.statement, input.prior, input.plan].every((text) => text.trim());
+  const ready =
+    [input.name, input.statement, input.prior, input.plan].every((text) => text.trim()) &&
+    stepDownsReady(input.stepDowns);
   return (
     <Modal title={category ? 'Edit category' : 'Add category'} onClose={close}>
       <form
@@ -90,6 +98,7 @@ export function CategoryDialog({
             </div>
           </div>
         </div>
+        <StepDowns steps={input.stepDowns} change={(stepDowns) => set({ stepDowns })} />
         <label className="conduct-field">
           <span className="conduct-label">1. Statement of the problem</span>
           <textarea

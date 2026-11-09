@@ -4,7 +4,7 @@ import type {
   ConductWriteup,
   WriteupInput,
 } from '../../api/index.js';
-import { blank, counted, highestTier, priorLine, suggestedTier } from '../tiers.js';
+import { blank, priorLine, record, suggestedTier } from '../tiers.js';
 import type { FinalChoice } from './TierPicker.js';
 
 // A writeup as it's being written, and how choosing who it's for and its category fills it.
@@ -49,9 +49,9 @@ export const draftOf = (writeup: ConductWriteup): Draft => ({
 });
 
 /**
- * What a writeup for `person` in `category` starts as: the tier above the highest of their
- * earlier writeups in it that still count, as the server's standings hold, and the category's
- * wording, its prior discussion naming those writeups. `editing` is left out of them.
+ * What a writeup for `person` in `category` starts as: the tier above where they stand in it,
+ * and the category's wording, its prior discussion naming their writeups in it since their
+ * record there was last clean. For `editing`, where they stood just before it.
  */
 export function filled(
   overview: ConductOverview,
@@ -61,10 +61,10 @@ export function filled(
 ): Filled | undefined {
   const kind = overview.categories.find((c) => c.id === category);
   if (!person || !kind) return undefined;
-  const earlier = counted(overview, person, category, editing);
+  const { stood, earlier } = record(overview, person, category, editing);
   const line = priorLine(kind.name, earlier);
   return {
-    tier: suggestedTier(highestTier(earlier), kind.startTier),
+    tier: suggestedTier(stood, kind.startTier),
     statement: kind.statement,
     prior: line ? `${kind.prior}\n${line}` : kind.prior,
     plan: kind.plan,

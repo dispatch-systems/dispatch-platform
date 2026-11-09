@@ -11,7 +11,7 @@ const finals: readonly (readonly [FinalChoice, string])[] = [
 ];
 
 /**
- * The tier, the suggested one marked, with the earlier writeups that still count beneath; for
+ * The tier, the suggested one marked, with the writeups since the record was last clean beneath; for
  * a final one, what it comes with, and how long a suspension is.
  */
 export function TierPicker({

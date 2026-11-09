@@ -10,9 +10,10 @@ import {
   categoryName,
   personOf,
 } from '../parts.js';
-import { finalNote, printedDay, tiers } from '../tiers.js';
+import { finalNote, printedDay, stepDown, tiers } from '../tiers.js';
 
-/** One driver: where they stand in each category, on its ladder, and every writeup they've had. */
+/** One driver: where they stand in each category, on its ladder, when they next step down, and
+ * every writeup they've had. */
 export function DriverView({
   overview,
   code,
@@ -49,11 +50,12 @@ export function DriverView({
       {standings.length > 0 && (
         <div className="conduct-ladders">
           {standings.map((standing) => {
-            const writeup = writeups.find((w) => w.id === standing.writeupId);
+            const latest = writeups.find((w) => w.id === standing.latestId);
             const note =
-              writeup && writeup.tier === 'final'
-                ? finalNote(writeup.finalKind, writeup.suspension)
+              latest?.tier === 'final' && standing.tier === 'final'
+                ? finalNote(latest.finalKind, latest.suspension)
                 : '';
+            const next = stepDown(standing);
             const reached = tiers.indexOf(standing.tier);
             return (
               <section key={standing.categoryId} className="conduct-ladder-card">
@@ -75,8 +77,14 @@ export function DriverView({
                   <span>Final</span>
                 </div>
                 <p className="conduct-ladder-when">
-                  {printedDay(standing.writtenOn)}
+                  Last writeup {printedDay(standing.latestOn)}
                   {note && ` · ${note}`}
+                  {next && (
+                    <>
+                      <br />
+                      {next}
+                    </>
+                  )}
                 </p>
               </section>
             );

@@ -16,6 +16,21 @@ CREATE TABLE IF NOT EXISTS conduct_categories (
 CREATE UNIQUE INDEX IF NOT EXISTS conduct_categories_name
     ON conduct_categories (name COLLATE NOCASE) WHERE retired = 0;
 
+-- How long someone stays at each tier of a category before stepping down to a lower one, or to
+-- a clean record (`to_tier` none). A tier without one never steps down.
+CREATE TABLE IF NOT EXISTS conduct_step_downs (
+    category_id TEXT NOT NULL REFERENCES conduct_categories(id),
+    tier TEXT NOT NULL CHECK (tier IN ('verbal', 'written', 'final')),
+    after INTEGER NOT NULL CHECK (after > 0),
+    unit TEXT NOT NULL CHECK (unit IN ('days', 'weeks', 'months')),
+    to_tier TEXT CHECK (
+        to_tier IS NULL
+        OR (tier = 'final' AND to_tier IN ('verbal', 'written'))
+        OR (tier = 'written' AND to_tier = 'verbal')
+    ),
+    PRIMARY KEY (category_id, tier)
+);
+
 -- Each writeup, as it prints: who it's for by their directory code and their name as written,
 -- and who wrote it. Once signed it never changes.
 CREATE TABLE IF NOT EXISTS conduct_writeups (
@@ -55,7 +70,7 @@ CREATE TABLE IF NOT EXISTS conduct_copies (
 
 -- The categories every DSP starts with, and their wording, which each DSP edits as its own.
 INSERT OR IGNORE INTO conduct_categories (id, name, start_tier, statement, prior, plan, position) VALUES
-('safety', 'Safety', 'written',
+('safety', 'Safety', 'verbal',
  'DA is in violation of safe driving practices by receiving a total of [number] Netradyne events, [events] on [date].',
  'DA is aware that safety and safe driving is always the most important as this has been discussed daily in stand up meetings and Amazon training. DA is aware they must drive extra cautious in the company vehicle following all road signs and laws, being aware of surroundings.',
  'DA understands safety is the number one priority while operating the company vehicle. DA understands they need to follow all road signs, laws and safe driving practices.',
@@ -90,7 +105,7 @@ INSERT OR IGNORE INTO conduct_categories (id, name, start_tier, statement, prior
  'DA is aware that inspections must be 100% in compliance along with proper fuel levels for the day, which is stated during daily SUMs, where we discuss gassing your vehicle in the morning, especially if you are around half a tank.',
  'DA understands to complete a full pre-trip and post-trip inspection and ensure they are fueled up for the day. DA will report any issues right away if there is a barrier to meet the requirements.',
  7),
-('damage', 'Vehicle Damage', 'final',
+('damage', 'Vehicle Damage', 'verbal',
  'DA is in violation of Company policy and safe driving practices by damaging [van] on route on [date]. Damage is confirmed by AVI photos. Damage is to [damage].',
  'DA attends daily SUM where safety is discussed about driving safe. DA attended Amazon training where GOAL “Get Out And Look” is discussed to always exit the vehicle to check van clearance if driver cannot visibly see.',
  'DA understands to GOAL “Get Out And Look” if they are unsure of the van clearance to clear. DA will be more aware of surroundings and report damage to dispatch as it occurs on route.',
@@ -115,3 +130,13 @@ INSERT OR IGNORE INTO conduct_categories (id, name, start_tier, statement, prior
  'DA attends morning start up meetings where reporting route barriers is discussed. Job description states that the employee complete the assigned route on their own.',
  'DA will maintain an adequate pace based on route volume and area in order to avoid OODT. DA will communicate with Dispatch any barriers that may impact the route being complete.',
  12);
+
+-- Each starts by stepping down one tier at a time, six months at each.
+INSERT OR IGNORE INTO conduct_step_downs (category_id, tier, after, unit, to_tier)
+SELECT category.id, step.tier, 6, 'months', step.to_tier
+FROM conduct_categories AS category
+CROSS JOIN (
+    SELECT 'final' AS tier, 'written' AS to_tier
+    UNION ALL SELECT 'written', 'verbal'
+    UNION ALL SELECT 'verbal', NULL
+) AS step;

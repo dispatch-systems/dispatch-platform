@@ -9,6 +9,7 @@ use dispatch_core::{
 };
 use serde::Serialize;
 use serde_json::Value;
+use std::collections::BTreeMap;
 
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -19,6 +20,14 @@ text_enum! {
 impl ConductTier {
     /// Every tier, lowest first.
     pub const ALL: [Self; 3] = [Self::Verbal, Self::Written, Self::Final];
+
+    /// Its place among them: a higher tier ranks higher.
+    pub fn rank(self) -> usize {
+        Self::ALL
+            .iter()
+            .position(|t| *t == self)
+            .unwrap_or_default()
+    }
 }
 
 text_enum! {
@@ -28,7 +37,40 @@ text_enum! {
     pub enum ConductFinalKind { Suspension => "suspension", Investigation => "investigation", }
 }
 
-/// A kind of writeup: the tier it starts at and the wording that fills a new one.
+text_enum! {
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "features/conduct/api/generated/"))]
+    /// What a step down's wait is counted in.
+    pub enum ConductUnit { Days => "days", Weeks => "weeks", Months => "months", }
+}
+
+/// How long someone stays at a tier of a category before stepping down: the wait runs from
+/// their latest writeup in it, or from the day they last stepped down.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/conduct/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct ConductStepDown {
+    pub tier: ConductTier,
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub after: i64,
+    pub unit: ConductUnit,
+    /// The lower tier it steps down to; none clears the record in the category.
+    pub to: Option<ConductTier>,
+}
+impl FromRow for ConductStepDown {
+    fn from_row(row: &Row<'_>) -> Result<Self> {
+        Ok(Self {
+            tier: row.get("tier")?,
+            after: row.get("after")?,
+            unit: row.get("unit")?,
+            to: row.get("to_tier")?,
+        })
+    }
+}
+
+/// A kind of writeup: the tier it starts at, how its tiers step down, and the wording that
+/// fills a new one.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "features/conduct/api/generated/"))]
@@ -37,6 +79,8 @@ pub struct ConductCategory {
     pub id: String,
     pub name: String,
     pub start_tier: ConductTier,
+    /// Each tier's step down, highest tier first: a tier without one never steps down.
+    pub step_downs: Vec<ConductStepDown>,
     /// The wording of each section a new writeup starts with: `[…]` marks a blank to fill.
     pub statement: String,
     pub prior: String,
@@ -52,6 +96,8 @@ impl FromRow for ConductCategory {
             id: row.get("id")?,
             name: row.get("name")?,
             start_tier: row.get("start_tier")?,
+            // Kept in their own table: `categories::all` reads them in.
+            step_downs: Vec::new(),
             statement: row.get("statement")?,
             prior: row.get("prior")?,
             plan: row.get("plan")?,
@@ -123,8 +169,8 @@ impl FromRow for ConductWriteupRow {
     }
 }
 
-/// The highest tier someone holds in a category: their highest writeup in it among those that
-/// still count toward the next tier.
+/// The tier someone stands at in a category today, once its step downs are taken: their record
+/// there isn't clean.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "features/conduct/api/generated/"))]
@@ -133,9 +179,13 @@ pub struct ConductStanding {
     pub person: String,
     pub category_id: String,
     pub tier: ConductTier,
-    /// The writeup that holds it: the latest at that tier.
-    pub writeup_id: String,
-    pub written_on: String,
+    /// Their latest writeup in the category.
+    pub latest_id: String,
+    pub latest_on: String,
+    /// The day they next step down, YYYY-MM-DD: none when the tier never does.
+    pub steps_down_on: Option<String>,
+    /// The tier they step down to then; none clears their record in the category.
+    pub steps_down_to: Option<ConductTier>,
 }
 
 /// `GET /api/dsp/conduct`: everything the page draws.
@@ -146,16 +196,17 @@ pub struct ConductStanding {
 pub struct ConductOverview {
     /// Today where the DSP is, YYYY-MM-DD.
     pub today: String,
-    /// The first day a writeup dated on or after still counts toward the next tier.
-    pub counts_from: String,
     /// Every category, retired ones too, in the DSP's order.
     pub categories: Vec<ConductCategory>,
     /// Everyone a writeup may be for or is, by name.
     pub people: Vec<ConductPerson>,
     /// Every writeup, the newest first.
     pub writeups: Vec<ConductWriteupRow>,
-    /// Each person's highest tier in each category they hold one in.
+    /// Where each person stands in each category their record isn't clean in.
     pub standings: Vec<ConductStanding>,
+    /// Where each writeup's person stood in its category just before it, by writeup id: none
+    /// for a writeup written while their record there was clean.
+    pub stood_before: BTreeMap<String, ConductTier>,
 }
 
 /// A writeup whole, as it prints.
@@ -278,11 +329,15 @@ impl WriteupInput {
     }
 }
 
+/// The longest wait a step down takes, in any unit.
+const LONGEST_WAIT: i64 = 999;
+
 /// A category as someone sets it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CategoryInput {
     pub name: String,
     pub start_tier: ConductTier,
+    pub step_downs: Vec<ConductStepDown>,
     pub statement: String,
     pub prior: String,
     pub plan: String,
@@ -291,7 +346,14 @@ pub struct CategoryInput {
 }
 impl CategoryInput {
     pub fn parse(body: &Value, edit: bool) -> Result<Self> {
-        let mut fields = vec!["name", "startTier", "statement", "prior", "plan"];
+        let mut fields = vec![
+            "name",
+            "startTier",
+            "stepDowns",
+            "statement",
+            "prior",
+            "plan",
+        ];
         if edit {
             fields.push("revision");
         }
@@ -301,6 +363,7 @@ impl CategoryInput {
         Ok(Self {
             name,
             start_tier: tier(body, "startTier")?,
+            step_downs: step_downs(body)?,
             statement: section(body, "statement")?,
             prior: section(body, "prior")?,
             plan: section(body, "plan")?,
@@ -311,6 +374,39 @@ impl CategoryInput {
             },
         })
     }
+}
+
+/// A category's step downs: each tier's at most once, each to a lower tier or a clean record,
+/// highest tier first.
+fn step_downs(body: &Value) -> Result<Vec<ConductStepDown>> {
+    let list = body
+        .get("stepDowns")
+        .and_then(Value::as_array)
+        .ok_or_else(|| dispatch_core::Error::new("invalid_input", 400))?;
+    let mut taken = Vec::new();
+    for step in list {
+        v::fields(step, &["tier", "after", "unit", "to"])?;
+        let tier = tier(step, "tier")?;
+        let to = match step.get("to") {
+            None | Some(Value::Null) => None,
+            Some(_) => Some(self::tier(step, "to")?),
+        };
+        ensure(
+            to.is_none_or(|to| to.rank() < tier.rank())
+                && taken.iter().all(|t: &ConductStepDown| t.tier != tier),
+            "invalid_input",
+            400,
+        )?;
+        taken.push(ConductStepDown {
+            tier,
+            after: v::integer(step, "after", 1, LONGEST_WAIT)?,
+            unit: ConductUnit::parse(v::choice(step, "unit", &["days", "weeks", "months"])?)
+                .ok_or_else(|| dispatch_core::Error::new("invalid_input", 400))?,
+            to,
+        });
+    }
+    taken.sort_by_key(|step| std::cmp::Reverse(step.tier.rank()));
+    Ok(taken)
 }
 
 fn tier(body: &Value, key: &str) -> Result<ConductTier> {

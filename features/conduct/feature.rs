@@ -1,12 +1,13 @@
 //! Conduct: a DSP's writeups of its drivers, each a Corrective Action Notice in a category that
-//! climbs its tiers, Verbal to Written to Final, tracked per driver. Its README says more.
+//! climbs its tiers, Verbal to Written to Final, and steps back down in time, tracked per
+//! driver. Its README says more.
 mod api;
 mod backend;
 
 /// What its API answers with, which the app writes to TypeScript.
 pub use api::types::{
     ConductCategory, ConductFinalKind, ConductOverview, ConductPerson, ConductSaved,
-    ConductStanding, ConductTier, ConductWriteup, ConductWriteupRow,
+    ConductStanding, ConductStepDown, ConductTier, ConductUnit, ConductWriteup, ConductWriteupRow,
 };
 
 use dispatch_core::{
@@ -22,12 +23,16 @@ pub const FEATURE: Feature = Feature {
         perm("conduct.manage", "Manage Conduct", 161).implies(&["conduct.use"]),
     ],
     routes: api::routes::routes,
-    // How long a writeup counts toward the next tier, and the categories, on its own page of
-    // Settings.
-    settings: &[backend::settings::GENERAL, backend::settings::CATEGORIES],
+    // The categories, with their tiers' step downs, on its own page of Settings.
+    settings: &[backend::settings::CATEGORIES],
     tables: &[(
         "dsp",
-        &["conduct_categories", "conduct_writeups", "conduct_copies"],
+        &[
+            "conduct_categories",
+            "conduct_step_downs",
+            "conduct_writeups",
+            "conduct_copies",
+        ],
     )],
     own_migrations: &[OwnMigrations {
         kind: Kind::DSP,
@@ -50,6 +55,8 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         cfg,
         ConductTier,
         ConductFinalKind,
+        ConductUnit,
+        ConductStepDown,
         ConductCategory,
         ConductPerson,
         ConductWriteupRow,

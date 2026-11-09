@@ -6,7 +6,7 @@ import type { ConductOverview, ConductSaved, ConductWriteup } from '../../api/in
 import { addWriteup, changeWriteup } from '../../api/client.js';
 import { Notice } from '../notice/Notice.js';
 import { usePrintNotice } from '../notice/usePrintNotice.js';
-import { counted, highestTier } from '../tiers.js';
+import { record } from '../tiers.js';
 import { TierPicker } from './TierPicker.js';
 import { type Draft, filled, filledOf, inputOf, missing, refill } from './draft.js';
 
@@ -66,12 +66,8 @@ export function WriteupForm({
     { inline: true },
   );
 
-  const earlier =
-    draft.person && draft.category
-      ? counted(overview, draft.person, draft.category, editing?.id)
-      : [];
+  const { stood, earlier } = record(overview, draft.person, draft.category, editing?.id);
   const category = overview.categories.find((c) => c.id === draft.category);
-  const highest = highestTier(earlier);
   const people = overview.people.filter((p) => !p.left || p.code === draft.person);
   const categories = overview.categories.filter((c) => !c.retired || c.id === draft.category);
   const person = overview.people.find((p) => p.code === draft.person);
@@ -166,7 +162,7 @@ export function WriteupForm({
                 : undefined
             }
             earlier={earlier}
-            atFinal={highest === 'final'}
+            atFinal={stood === 'final'}
             final={draft.final}
             suspension={draft.suspension}
             change={(next) => edit(next)}
