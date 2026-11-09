@@ -532,7 +532,7 @@ async fn fallback_refusal_and_errors_keep_existing_coherence() {
         .unwrap_err();
     assert_eq!(error.code, "connection_changed");
     assert_eq!(
-        name(&everyone(state, &a).await, "driver-1"),
+        name(everyone(state, &a).await.as_ref(), "driver-1"),
         "Committed Driver"
     );
 }
