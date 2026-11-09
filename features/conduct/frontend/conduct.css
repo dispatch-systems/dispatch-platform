@@ -495,7 +495,7 @@
   font-family: 'Conduct Sans', sans-serif;
 }
 .conduct-notice-filled {
-  font-size: 12pt;
+  font-size: calc(12pt * var(--fit, 1));
   line-height: 12pt;
 }
 .conduct-notice-rule {
@@ -549,14 +549,19 @@
 }
 .conduct-notice-signature {
   font-family: 'Conduct Script', cursive;
-  font-size: 22.4pt;
+  font-size: calc(22.4pt * var(--fit, 1));
   line-height: 22.4pt;
 }
 
 /* Printing: the notice alone, filling a letter page with no margin of the browser's own, so it
-   prints no address, title or page number of its own either. */
+   prints no address, title or page number of its own either. Until then it's laid out out of
+   sight, so its lettering fits as it will print. */
 .conduct-print {
-  display: none;
+  position: fixed;
+  top: 0;
+  left: -200vw;
+  visibility: hidden;
+  pointer-events: none;
 }
 @media print {
   @page {
@@ -573,7 +578,8 @@
     display: none !important;
   }
   .conduct-print {
-    display: block;
+    position: static;
+    visibility: visible;
   }
   .conduct-print .conduct-notice {
     /* A hair under the page, so rounding never spills it onto a second. */

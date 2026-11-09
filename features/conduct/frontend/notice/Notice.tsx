@@ -56,8 +56,68 @@ const tierRows = [107.7, 120.5, 133.2];
 /** Each answered section: its number's top, and where its four ruled lines are below it. */
 const sections = [206.1, 306.5, 406.8] as const;
 const lines = [30.4, 49.2, 68.0, 86.8];
-/** The smallest an answer's lettering shrinks to, as a share of its size, to fit its lines. */
-const smallest = 0.5;
+/** The smallest lettering shrinks to, as a share of its size: small enough that a section of
+ * the most a writeup holds still fits its four lines. */
+const smallest = 0.2;
+
+/**
+ * Shrinks `element`'s lettering (`--fit`, a share of its size) to the largest that fits its box,
+ * across (`width`) or down, and marks it `data-overflow` if even the smallest doesn't.
+ */
+function fit(element: HTMLElement, across: boolean) {
+  const fits = () =>
+    across
+      ? element.scrollWidth <= element.clientWidth + 1
+      : element.scrollHeight <= element.clientHeight + 1;
+  const scale = (share: number) => element.style.setProperty('--fit', String(share));
+  scale(1);
+  if (!fits()) {
+    let [low, high] = [smallest, 1];
+    for (let step = 0; step < 10; step++) {
+      const middle = (low + high) / 2;
+      scale(middle);
+      if (fits()) low = middle;
+      else high = middle;
+    }
+    scale(low);
+  }
+  element.toggleAttribute('data-overflow', !fits());
+}
+
+/** A ref whose element `fit` keeps fitted as `deps` change, and again once lettering loads. */
+function useFit<T extends HTMLElement>(across: boolean, deps: readonly unknown[]) {
+  const ref = useRef<T>(null);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    fit(element, across);
+    void document.fonts.ready.then(() => fit(element, across));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `deps` are what the element shows.
+  }, deps);
+  return ref;
+}
+
+/** A name or date written on its line, shrinking to fit the line's width when it's longer. */
+function Filled({
+  top,
+  left,
+  width,
+  className = 'conduct-notice-filled',
+  children,
+}: {
+  top: number;
+  left: number;
+  width: number;
+  className?: string;
+  children: string;
+}) {
+  const ref = useFit<HTMLSpanElement>(true, [children]);
+  return (
+    <span ref={ref} className={`conduct-notice-text ${className}`} style={at(top, left, width)}>
+      {children}
+    </span>
+  );
+}
 
 /** "Casey Supervisor" as the form's top line names a supervisor: "Casey S.". */
 export const shortName = (name: string) => {
@@ -75,26 +135,10 @@ export const formDay = (day: string) => {
 /**
  * A section's words on its four lines, shrinking to fit them when they run longer, so the
  * notice never runs onto a second page. Each blank still to fill is marked while it's being
- * written. Too long even at its smallest, it says so (`data-overflow`), for the form to refuse.
+ * written.
  */
 function Answer({ top, text, marked }: { top: number; text: string; marked: boolean }) {
-  const box = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const element = box.current;
-    if (!element) return;
-    const fit = () => {
-      let scale = 1;
-      element.style.setProperty('--fit', '1');
-      while (element.scrollHeight > element.clientHeight + 1 && scale > smallest) {
-        scale = Math.round((scale - 0.05) * 100) / 100;
-        element.style.setProperty('--fit', String(scale));
-      }
-      element.toggleAttribute('data-overflow', element.scrollHeight > element.clientHeight + 1);
-    };
-    fit();
-    // The lettering may still be loading: fit again once it has.
-    void document.fonts.ready.then(fit);
-  }, [text, marked]);
+  const box = useFit<HTMLDivElement>(false, [text, marked]);
   const parts = text.split(blank);
   const blanks = marked ? (text.match(blank) ?? []) : [];
   return (
@@ -130,23 +174,23 @@ export function Notice({ content, marked = false }: { content: NoticeContent; ma
         Employee:
       </Text>
       <Rule top={81.8} left={120} right={259.9} />
-      <Text top={70.1} left={125.9} className="conduct-notice-filled">
+      <Filled top={70.1} left={125.9} width={133}>
         {content.personName}
-      </Text>
+      </Filled>
       <Text top={70.3} left={288.2} className="conduct-notice-bold">
         Supervisor:
       </Text>
       <Rule top={81.8} left={340.6} right={425.9} />
-      <Text top={70.1} left={345.6} className="conduct-notice-filled">
+      <Filled top={70.1} left={345.6} width={79}>
         {shortName(content.supervisorName)}
-      </Text>
+      </Filled>
       <Text top={70.3} left={432.5} className="conduct-notice-bold">
         Date:
       </Text>
       <Rule top={81.8} left={455} right={517.3} />
-      <Text top={70.1} left={458.5} className="conduct-notice-filled">
+      <Filled top={70.1} left={458.5} width={58}>
         {day}
-      </Text>
+      </Filled>
 
       <Text top={95} left={72.5} className="conduct-notice-bold">
         {wording.typeHeading}
@@ -206,12 +250,12 @@ export function Notice({ content, marked = false }: { content: NoticeContent; ma
         </Text>
       ))}
 
-      <Text top={560.9} left={80.5} className="conduct-notice-signature">
+      <Filled top={560.9} left={80.5} width={365} className="conduct-notice-signature">
         {content.supervisorName}
-      </Text>
-      <Text top={568.7} left={458} className="conduct-notice-filled">
+      </Filled>
+      <Filled top={568.7} left={458} width={59}>
         {day}
-      </Text>
+      </Filled>
       <Rule top={580.4} left={72.2} right={518.3} />
       <Text top={581.5} left={72.5}>
         {wording.supervisorSignature}

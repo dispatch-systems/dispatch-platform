@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { ChevronLeft, Printer } from 'lucide-react';
 import { DateField, ErrorBox } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
@@ -47,8 +47,6 @@ export function WriteupForm({
   const [revision] = useState(editing?.revision);
   const { draft } = state;
   const [problem, setProblem] = useState('');
-  // The notice beside the form, which says when a section is too long to fit its page.
-  const preview = useRef<HTMLDivElement>(null);
   const { print, sheet } = usePrintNotice();
   const edit = (next: Partial<Draft>) => {
     setProblem('');
@@ -64,8 +62,6 @@ export function WriteupForm({
     async (andPrint: boolean) => {
       const why = missing(draft);
       if (why) return setProblem(why);
-      if (preview.current?.querySelector('[data-overflow]'))
-        return setProblem('Shorten the sections outlined in red to fit on the page.');
       const result = editing
         ? await changeWriteup(editing.id, inputOf(draft, revision))
         : await addWriteup(inputOf(draft));
@@ -211,7 +207,7 @@ export function WriteupForm({
             />
           </label>
         </div>
-        <div className="conduct-preview" ref={preview}>
+        <div className="conduct-preview">
           <Notice content={content} marked />
         </div>
       </div>

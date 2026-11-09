@@ -60,6 +60,19 @@ test('a long writeup still prints on one letter page, its sections shrunk to fit
   await page.getByRole('button', { name: 'Print' }).click();
   const sheet = page.locator('.conduct-print .conduct-notice');
   await expect(sheet).toBeAttached();
+  await page.emulateMedia({ media: 'print' });
+  // Each section shrank to its lines, none of it cut off.
+  const answers = await sheet.locator('.conduct-notice-answer').evaluateAll((boxes) =>
+    boxes.map((box) => ({
+      fit: Number(getComputedStyle(box).getPropertyValue('--fit')),
+      whole: box.scrollHeight <= box.clientHeight + 1,
+    })),
+  );
+  expect(answers).toHaveLength(3);
+  for (const answer of answers) {
+    expect(answer.whole).toBe(true);
+    expect(answer.fit).toBeLessThan(1);
+  }
   await expect(sheet.locator('[data-overflow]')).toHaveCount(0);
   const pdf = (await page.pdf({ preferCSSPageSize: true })).toString('latin1');
   expect(pdf.match(/\/Type\s*\/Page[^s]/g)).toHaveLength(1);
