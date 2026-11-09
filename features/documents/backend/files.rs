@@ -679,7 +679,7 @@ async fn query_read(
             ensure(current == connection, "documents_not_connected", 409)?;
             let reset = |reason| match descriptions.as_ref() {
                 Some(_) => QueryAnswer::Descriptions(DocumentsDescriptionRead::Reset { reason }),
-                None => QueryAnswer::Page(DocumentsQueryRead::Reset { reason }),
+                None => QueryAnswer::Page(Box::new(DocumentsQueryRead::Reset { reason })),
             };
             let Some((tree, semantic)) = owner.snapshot(&connection.folder_id) else {
                 return Ok(reset(DocumentsResetReason::Changed));
@@ -777,7 +777,7 @@ async fn query_read(
                 let content_revision = query::digest(&("documents-query-page-v1", &reading))?;
                 let same_manifest =
                     manifest_since.as_deref() == Some(index.manifest_revision.as_str());
-                QueryAnswer::Page(
+                QueryAnswer::Page(Box::new(
                     if same_manifest && since.as_deref() == Some(content_revision.as_str()) {
                         DocumentsQueryRead::Unchanged {
                             snapshot: reading.snapshot,
@@ -791,7 +791,7 @@ async fn query_read(
                             content_revision,
                         }
                     },
-                )
+                ))
             };
             // Synchronous publications may run while this worker projects. No awaits follow this
             // check, and no mixed old manifest/current tree answer is allowed out.
@@ -804,7 +804,7 @@ async fn query_read(
 }
 
 enum QueryAnswer {
-    Page(crate::api::types::DocumentsQueryRead),
+    Page(Box<crate::api::types::DocumentsQueryRead>),
     Descriptions(crate::api::types::DocumentsDescriptionRead),
 }
 pub async fn query(
@@ -814,7 +814,7 @@ pub async fn query(
     request: QueryRequest,
 ) -> Result<crate::api::types::DocumentsQueryRead> {
     match query_read(state, c, access, request, None).await? {
-        QueryAnswer::Page(answer) => Ok(answer),
+        QueryAnswer::Page(answer) => Ok(*answer),
         QueryAnswer::Descriptions(_) => unreachable!("page request"),
     }
 }

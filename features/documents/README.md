@@ -217,7 +217,6 @@ and weeks, so it's best submitted well before the limit.
   or a search, leaves what was shown until it comes. Making, renaming, moving and trashing show
   at once, and go back with the reason if Google refuses; an upload shows its file as it lands.
 
-
 - **Additive query reads:** `GET /api/dsp/documents/query` accepts `id`, `q`,
   `filter` (`all`, `folders`, `docs`, `sheets`, `slides`, `uploads`), zero-based `page`
   and `size` (1–100, default 100), plus `snapshot`, `manifestSince` and `since`.
