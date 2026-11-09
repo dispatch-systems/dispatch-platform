@@ -186,10 +186,14 @@ async fn polling_saturation_leaves_foreground_admission_and_execution() {
     for _ in 0..64 {
         release.send(()).unwrap();
     }
+    let mut finished = Vec::new();
     for call in pending {
-        call.await.unwrap();
+        finished.push(call.await);
     }
     assert_eq!(foreground.unwrap().unwrap()["ready"], 1);
+    for result in finished {
+        result.unwrap();
+    }
     assert_eq!(admitted, 56);
     assert_eq!((queued_capacity, worker_capacity), (8, 1));
     assert_eq!(after_cancel, queued_capacity + 1);
