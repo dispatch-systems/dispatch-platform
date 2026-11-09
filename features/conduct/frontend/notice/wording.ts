@@ -3,8 +3,12 @@
 
 export const title = 'Corrective Action Notice';
 export const typeHeading = 'Type of Corrective Action*';
-export const disclaimer =
-  'Notwithstanding the types of corrective action listed above or any stated progressive discipline policy, the company reserves the right to take any disciplinary action (up to and including employment termination) at any time as determined by the company to be appropriate to address unsatisfactory performing, misconduct, or other violation of company policy or job expectations.';
+/** The fine print under the tiers, line by line as the form breaks it. */
+export const disclaimer = [
+  'Notwithstanding the types of corrective action listed above or any stated progressive discipline policy, the company reserves',
+  'the right to take any disciplinary action (up to and including employment termination) at any time as determined by the company',
+  'to be appropriate to address unsatisfactory performing, misconduct, or other violation of company policy or job expectations.',
+] as const;
 export const sections = {
   statement:
     'Statement of the problem (violation of rules, standards, practices, or unsatisfactory performance):',
@@ -12,8 +16,12 @@ export const sections = {
   plan: 'Summary of corrective action discussed (include dates for improvement and plans for follow-up):',
   consequences: 'Consequences of failure to improve performance or corrective behavior:',
 } as const;
-export const consequences =
-  'Failure to comply with this corrective action, or otherwise meet job expectations (including compliance with company policy) may result in further disciplinary action up to and including termination of employment.';
+/** Section 4's words, line by line as the form breaks them. */
+export const consequences = [
+  'Failure to comply with this corrective action, or otherwise meet job expectations (including compliance with',
+  'company policy) may result in further disciplinary action up to and including termination of employment.',
+] as const;
 export const supervisorSignature = 'Supervisor Signature';
 export const employeeComments = 'Employee comments:';
+export const employeeSignature = 'Employee Signature';
 export const acknowledgement = 'I have received, read, and understand the above statement:';

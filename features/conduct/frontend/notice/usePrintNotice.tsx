@@ -16,7 +16,8 @@ export function usePrintNotice() {
       printing.after?.();
     };
     window.addEventListener('afterprint', done, { once: true });
-    window.print();
+    // Once its lettering has loaded, so the page prints in it.
+    void document.fonts.ready.then(() => window.print());
     return () => window.removeEventListener('afterprint', done);
   }, [printing]);
   return {
