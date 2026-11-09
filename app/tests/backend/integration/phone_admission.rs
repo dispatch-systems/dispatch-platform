@@ -8,6 +8,7 @@ async fn ordinary_wait_saturation_does_not_block_an_authorized_phones_outbox() {
     let server = Server::start().await;
     let owner = server.member(OWNER).await;
     let host = server.host("nll");
+    let origin = format!("http://{host}");
     let pairing = server
         .send(Call::post("/api/dsp/communications/phones/pairing", json!({})).who(&owner))
         .await;
@@ -15,7 +16,7 @@ async fn ordinary_wait_saturation_does_not_block_an_authorized_phones_outbox() {
     let paired = server.send(
         Call::post("/api/communications/phone/pair", json!({
             "code": pairing.body["code"], "number":"2065550177", "model":"Fixture phone", "version":"1.0.0"
-        })).without_origin().header("host", &host)
+        })).without_origin().header("host", &host).header("origin", &origin)
     ).await;
     assert_eq!(paired.status, 200, "{}", paired.body);
     let key = format!("Bearer {}", paired.body["key"].as_str().unwrap());
@@ -30,6 +31,7 @@ async fn ordinary_wait_saturation_does_not_block_an_authorized_phones_outbox() {
             )
             .without_origin()
             .header("host", &host)
+            .header("origin", &origin)
             .header("authorization", &key),
         )
         .await;
@@ -71,6 +73,7 @@ async fn ordinary_wait_saturation_does_not_block_an_authorized_phones_outbox() {
             Call::get(outbox)
                 .without_origin()
                 .header("host", &host)
+                .header("origin", &origin)
                 .header("authorization", &format!("Bearer {}", "0".repeat(64))),
         )
         .await;
@@ -80,6 +83,7 @@ async fn ordinary_wait_saturation_does_not_block_an_authorized_phones_outbox() {
             Call::get(outbox)
                 .without_origin()
                 .header("host", &host)
+                .header("origin", &origin)
                 .header("authorization", &key),
         )
         .await;
