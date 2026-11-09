@@ -3,7 +3,12 @@ import test from 'node:test';
 import type { ConversationWindow } from '../../api/index.js';
 import { ApiError } from '../../../../core/shell/frontend/runtime/api.js';
 import { dataCache } from '../../../../core/shell/frontend/runtime/data-cache.js';
-import { getConversationWindow, quickRepliesUrl, saveQuickReplies, textAttachments } from '../../api/client.js';
+import {
+  getConversationWindow,
+  quickRepliesUrl,
+  saveQuickReplies,
+  textAttachments,
+} from '../../api/client.js';
 
 /** A browser's request, as `upload` sends one, which the server refuses as `answer` says. */
 function refusing(answer: { status: number; body: unknown; requestId: string }) {
@@ -52,22 +57,46 @@ test('quick replies saved show as saved at once, on the revision the save answer
   assert.deepEqual(dataCache.peek(quickRepliesUrl).data, saved);
 });
 
-
 test('window reads preserve opaque positions, zero leading, priority and cancellation without caching', async (t) => {
   const controller = new AbortController();
   const answer: ConversationWindow = {
     conversation: {
-      id: 'tc_id', kind: 'number', teamId: null, number: '+12065550101', driverId: null,
-      contact: false, added: false, blocked: false,
+      id: 'tc_id',
+      kind: 'number',
+      teamId: null,
+      number: '+12065550101',
+      driverId: null,
+      contact: false,
+      added: false,
+      blocked: false,
       with: { userId: null, name: 'Test', code: null, role: null, title: null, photo: null },
-      state: 'responded', waitingSince: null, lastAt: null, last: null, matched: [], groupId: null,
+      state: 'responded',
+      waitingSince: null,
+      lastAt: null,
+      last: null,
+      matched: [],
+      groupId: null,
     },
-    messages: [], latest: [],
+    messages: [],
+    latest: [],
     context: { previous: null, next: null, sentBefore: null },
-    latestContext: { previous: null, next: null, sentBefore: null }, latestWorkdays: [],
-    range: { revision: '42', first: null, last: null, hasBefore: false, hasAfter: false,
-      before: null, after: null, refresh: 'opaque.refresh', rebased: true },
-    today: null, working: false, elsewhere: [], workdays: [],
+    latestContext: { previous: null, next: null, sentBefore: null },
+    latestWorkdays: [],
+    range: {
+      revision: '42',
+      first: null,
+      last: null,
+      hasBefore: false,
+      hasAfter: false,
+      before: null,
+      after: null,
+      refresh: 'opaque.refresh',
+      rebased: true,
+    },
+    today: null,
+    working: false,
+    elsewhere: [],
+    workdays: [],
     limits: { text: 10000, photos: 10, largest: 20 * 1024 * 1024, kinds: [] },
   };
   const asked: { url: string; init?: RequestInit }[] = [];
@@ -76,7 +105,10 @@ test('window reads preserve opaque positions, zero leading, priority and cancell
     return new Response(JSON.stringify(answer));
   });
   const anchor = '1700000000000:text-000100';
-  assert.deepEqual(await getConversationWindow('tc_id', { anchor, leading: 0 }, 'low', controller.signal), answer);
+  assert.deepEqual(
+    await getConversationWindow('tc_id', { anchor, leading: 0 }, 'low', controller.signal),
+    answer,
+  );
   const first = asked[0]!;
   const parsed = new URL(first.url, 'https://dispatch.test');
   assert.equal(parsed.pathname, '/api/dsp/communications/conversations/tc_id/window');

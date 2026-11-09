@@ -202,15 +202,27 @@ test('Communications answers only those whose role gives them it, and the profil
     db.exec('BEGIN');
     try {
       for (let n = 0; n < 201; n++)
-        insert.run(`api-window-${n}`, conversation.id, `1800000000.${String(n).padStart(6, '0')}`, `Window ${n}`);
-      db.prepare('INSERT INTO communications_changes(conversation_id) VALUES (?)').run(conversation.id);
+        insert.run(
+          `api-window-${n}`,
+          conversation.id,
+          `1800000000.${String(n).padStart(6, '0')}`,
+          `Window ${n}`,
+        );
+      db.prepare('INSERT INTO communications_changes(conversation_id) VALUES (?)').run(
+        conversation.id,
+      );
       db.exec('COMMIT');
-    } catch (error) { db.exec('ROLLBACK'); throw error; }
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
   });
   const url = `${route}/conversations/${conversation.id}/window`;
   const window = await member.read(url);
-  assert.deepEqual([window.messages.length, window.latest.length, window.range.hasBefore, window.range.hasAfter],
-    [150, 50, true, false]);
+  assert.deepEqual(
+    [window.messages.length, window.latest.length, window.range.hasBefore, window.range.hasAfter],
+    [150, 50, true, false],
+  );
   assert.equal(window.context.previous.ts, '1800000000.000050');
   assert.equal(window.context.next, null);
   assert.equal(window.latestContext.previous.ts, '1800000000.000150');
@@ -224,18 +236,28 @@ test('Communications answers only those whose role gives them it, and the profil
   // An unauthenticated request cannot use the new route.
   assert.equal((await f.request(url)).status, 401);
   for (const query of [
-    '?leading=1', '?anchor=', '?anchor=1800000000.000100',
+    '?leading=1',
+    '?anchor=',
+    '?anchor=1800000000.000100',
     '?anchor=1800000000.000100&leading=-1',
     '?anchor=1800000000.000100&leading=150',
     '?anchor=1800000000.000100&leading=999999999999999999999999',
     '?anchor=1800000000.000100&leading=1.5',
-    '?anchor=1800000000000:text-id&leading=1', '?anchor=bad&leading=1',
-    '?cursor=', '?before=1800000000.000100', '?limit=10000',
-    `${cursorQuery}&anchor=1800000000.000100&leading=1`, `${cursorQuery}&revision=0`,
+    '?anchor=1800000000000:text-id&leading=1',
+    '?anchor=bad&leading=1',
+    '?cursor=',
+    '?before=1800000000.000100',
+    '?limit=10000',
+    `${cursorQuery}&anchor=1800000000.000100&leading=1`,
+    `${cursorQuery}&revision=0`,
     `${cursorQuery}x`,
-  ]) assert.equal((await member.get(`${url}${query}`)).status, 400, query);
+  ])
+    assert.equal((await member.get(`${url}${query}`)).status, 400, query);
   const around = await member.read(`${url}?anchor=1800000000.000100&leading=0`);
-  assert.equal(around.messages.some((m: { ts: string }) => m.ts === '1800000000.000100'), true);
+  assert.equal(
+    around.messages.some((m: { ts: string }) => m.ts === '1800000000.000100'),
+    true,
+  );
 
   // A session/DSP view and conversation lookup are checked on every request, including reuse
   // of a previously valid token. A valid token never supplies access by itself.
@@ -243,20 +265,44 @@ test('Communications answers only those whose role gives them it, and the profil
   await owner.select(summit.id);
   assert.equal((await owner.get(`${url}${cursorQuery}`)).status, 404);
   // Even when the same reference exists in both isolated fixture DBs, its cursor cannot cross.
-  f.people(summit.id, (db) => db.prepare(`INSERT INTO communications_conversations
-    (id,team_id,user_id,channel_id,name) VALUES (?,'T0FIXTURE1','U0OTHER','D0OTHER','Other DSP')`)
-    .run(conversation.id));
+  f.people(summit.id, (db) => {
+    db.prepare(
+      `INSERT INTO communications_conversations
+      (id,team_id,user_id,channel_id,name) VALUES (?,'T0FIXTURE1','U0OTHER','D0OTHER','Other DSP')`,
+    ).run(conversation.id);
+    // Equal revisions keep the ahead-of-database guard from hiding a broken DSP binding.
+    db.exec('DELETE FROM communications_changes');
+    db.prepare('INSERT INTO communications_changes(id,conversation_id) VALUES (?,?)').run(
+      window.range.revision,
+      conversation.id,
+    );
+  });
+  assert.equal((await owner.read(url)).range.revision, window.range.revision);
   assert.equal((await owner.get(`${url}${cursorQuery}`)).status, 400);
   await owner.select(north.id);
   const another = `cv_${'f'.repeat(32)}`;
-  f.people(north.id, (db) => db.prepare(`INSERT INTO communications_conversations
-    (id,team_id,user_id,channel_id,name) VALUES (?,'T0FIXTURE1','U0OTHER','D0OTHER','Other channel')`)
-    .run(another));
-  assert.equal((await member.get(`${route}/conversations/${another}/window${cursorQuery}`)).status, 400);
+  f.people(north.id, (db) =>
+    db
+      .prepare(
+        `INSERT INTO communications_conversations
+    (id,team_id,user_id,channel_id,name) VALUES (?,'T0FIXTURE1','U0OTHER','D0OTHER','Other channel')`,
+      )
+      .run(another),
+  );
+  assert.equal(
+    (await member.get(`${route}/conversations/${another}/window${cursorQuery}`)).status,
+    400,
+  );
   // Revoke the exact role which just read this conversation; refusal is not an invalid ID.
-  const without = await owner.post('/api/dsp/roles', { name: 'No Communications', permissions: [] });
+  const without = await owner.post('/api/dsp/roles', {
+    name: 'No Communications',
+    permissions: [],
+  });
   assert.equal(without.status, 201, without.body);
-  assert.equal((await owner.post(`/api/dsp/members/${memberId}`, { role: without.value.id })).status, 200);
+  assert.equal(
+    (await owner.post(`/api/dsp/members/${memberId}`, { role: without.value.id })).status,
+    200,
+  );
   const expired = await member.get(`${url}${cursorQuery}`);
   assert.deepEqual([expired.status, expired.value.error], [409, 'dsp_view_expired']);
   await member.select(north.id);
@@ -267,7 +313,6 @@ test('Communications answers only those whose role gives them it, and the profil
   assert.equal((await member.get(`${url}${cursorQuery}`)).status, 200);
   assert.equal((await member.post('/api/auth/logout')).status, 200);
   assert.equal((await member.get(`${url}${cursorQuery}`)).status, 401);
-
 });
 
 test('a DSP’s texts are its own: listed by number, answered through its phone as written with pictures, and with Today’s Routes only for those whose role gives them Communications', async (t) => {
