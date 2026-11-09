@@ -1811,7 +1811,6 @@ async fn origin_restarts_drain_obsolete_generations_without_deleting_source_hist
     let (_root, db, state, dsp, slack, text) = fixture(701);
     let connection = db.dsp(&dsp).unwrap();
     let zone = texts::zone(&db, &dsp).unwrap();
-    let cached = support::cached(&state, &dsp);
     for reference in [&slack, &text] {
         let transport = Transport::of(reference);
         let (source, boundaries, conversations, place, body) = match reference {
@@ -1921,19 +1920,20 @@ async fn origin_restarts_drain_obsolete_generations_without_deleting_source_hist
                 [reference.id()],
             )
             .unwrap();
+        let cached = support::cached(&state, &dsp);
         for _ in 0..8 {
             let before = count();
             (backfill::MAINTENANCE.run)(state.clone(), true).await;
             assert!((0..=256).contains(&(before - count())));
         }
+        assert!(
+            cached(),
+            "origin maintenance must not invalidate unchanged cached DSP reads"
+        );
         assert_eq!(count(), 0);
         assert_eq!(connection.count("SELECT count(*) FROM communications_origin_state WHERE transport=? AND conversation_id=?",
             params![transport.name(),reference.id()]).unwrap(),0);
         assert_eq!(connection.count("SELECT count(*) FROM communications_origin_builds WHERE transport=? AND conversation_id=?",
             params![transport.name(),reference.id()]).unwrap(),0);
     }
-    assert!(
-        cached(),
-        "origin maintenance must not invalidate unchanged cached DSP reads"
-    );
 }
