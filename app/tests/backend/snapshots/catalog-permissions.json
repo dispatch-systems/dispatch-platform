@@ -30,7 +30,9 @@
     ["slack.manage", "Manage Slack"],
     ["vans.collect", "Collect Vans"],
     ["live_route_data.manage", "Manage Live Route Data"],
-    ["phones.manage", "Manage Phones"]
+    ["phones.manage", "Manage Phones"],
+    ["conduct.use", "Use Conduct"],
+    ["conduct.manage", "Manage Conduct"]
   ],
   "implied": [
     ["timecard.manage", "timecard.view"],
@@ -43,7 +45,8 @@
     ["weekly_scorecard.collect", "weekly_scorecard.view"],
     ["weekly_scorecard.manage", "weekly_scorecard.view"],
     ["daily_performance.collect", "daily_performance.view"],
-    ["daily_performance.manage", "daily_performance.view"]
+    ["daily_performance.manage", "daily_performance.view"],
+    ["conduct.manage", "conduct.use"]
   ],
   "groups": [
     ["Team", ["members.invite", "members.manage", "roles.manage"]],

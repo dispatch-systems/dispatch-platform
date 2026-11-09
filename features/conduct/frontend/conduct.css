@@ -1,0 +1,566 @@
+/* Conduct: its lists, a driver's ladders, the writeup form, and the notice as it prints. */
+
+/* Lists */
+.conduct-toolbar {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+.conduct-toolbar select {
+  width: auto;
+  min-width: 150px;
+}
+.conduct-row {
+  cursor: pointer;
+}
+.conduct-row-link {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+.conduct-row-link:hover {
+  background: none;
+}
+.conduct-nowrap {
+  white-space: nowrap;
+}
+.conduct-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.conduct-note {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.conduct-small {
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 12.5px;
+}
+
+/* A tier, colored by how far up it is */
+.conduct-tier,
+.conduct-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.conduct-tier-verbal {
+  background: var(--slate-surface);
+  color: var(--slate);
+}
+.conduct-tier-written {
+  background: var(--warning-surface);
+  border-color: var(--warning-border);
+  color: var(--warning);
+}
+.conduct-tier-final {
+  background: color-mix(in srgb, var(--destructive) 10%, var(--card));
+  border-color: color-mix(in srgb, var(--destructive) 25%, var(--card));
+  color: var(--destructive);
+}
+.conduct-tier-category {
+  font-weight: 400;
+}
+.conduct-state-waiting {
+  background: var(--selection);
+  color: var(--primary);
+}
+.conduct-state-signed {
+  background: color-mix(in srgb, var(--success) 12%, var(--card));
+  color: var(--success);
+}
+
+/* Someone */
+.conduct-person {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.conduct-avatar {
+  width: 30px;
+  height: 30px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.conduct-avatar-large {
+  width: 52px;
+  height: 52px;
+  font-size: 18px;
+}
+.conduct-driver-name .conduct-person {
+  gap: 14px;
+  font-weight: inherit;
+}
+
+/* Going back, and headings within a page */
+.conduct-back {
+  min-height: 0;
+  margin-bottom: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 450;
+}
+.conduct-back:hover {
+  background: none;
+  color: var(--foreground);
+}
+.conduct-section-title {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.conduct-subtitle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* A driver's ladders */
+.conduct-ladders {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 14px;
+  margin-bottom: 30px;
+}
+.conduct-ladder-card {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+}
+.conduct-ladder-card h3 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.conduct-ladder {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+.conduct-ladder span {
+  height: 7px;
+  border-radius: 4px;
+  background: var(--muted);
+}
+.conduct-ladder-verbal .reached {
+  background: var(--slate);
+}
+.conduct-ladder-written .reached {
+  background: var(--warning);
+}
+.conduct-ladder-final .reached {
+  background: var(--destructive);
+}
+.conduct-ladder-labels {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--muted-foreground);
+}
+.conduct-ladder-labels span:nth-child(2) {
+  text-align: center;
+}
+.conduct-ladder-labels span:last-child {
+  text-align: right;
+}
+.conduct-ladder-when {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  color: var(--muted-foreground);
+}
+
+/* Forms */
+.conduct-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.conduct-label {
+  font-size: 13px;
+  font-weight: 500;
+}
+.conduct-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.conduct-tiers {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--input);
+  border-radius: var(--radius);
+}
+.conduct-tiers button {
+  flex-direction: column;
+  gap: 1px;
+  min-height: 46px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  border-radius: 0;
+}
+.conduct-tiers button:last-child {
+  border-right: 0;
+}
+.conduct-tiers button.selected {
+  background: var(--selection);
+  box-shadow: inset 0 0 0 2px var(--primary);
+  color: var(--primary);
+  font-weight: 600;
+}
+.conduct-tiers small {
+  font-size: 10.5px;
+  font-weight: 550;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--primary);
+}
+.conduct-history {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  font-size: 12.5px;
+}
+.conduct-history > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.conduct-finals {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.conduct-finals label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  font-size: 13.5px;
+}
+.conduct-finals input[type='radio'] {
+  accent-color: var(--primary);
+}
+.conduct-finals .conduct-suspension {
+  width: 130px;
+  min-height: 32px;
+  padding: 4px 9px;
+}
+.conduct-compose {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  align-items: start;
+  gap: 28px;
+  margin-top: 4px;
+}
+.conduct-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.conduct-fields textarea {
+  resize: vertical;
+}
+.conduct-preview,
+.conduct-paper {
+  overflow: hidden;
+  padding: 18px;
+  border-radius: 10px;
+  background: var(--muted);
+}
+.conduct-preview {
+  position: sticky;
+  top: 12px;
+}
+.conduct-preview .conduct-notice {
+  zoom: 0.66;
+}
+.conduct-paper .conduct-notice {
+  zoom: 0.9;
+}
+@media (max-width: 1300px) {
+  .conduct-compose {
+    grid-template-columns: 1fr;
+  }
+  .conduct-preview {
+    position: static;
+  }
+  .conduct-preview .conduct-notice {
+    zoom: 0.8;
+  }
+}
+@media (max-width: 860px) {
+  .conduct-preview .conduct-notice,
+  .conduct-paper .conduct-notice {
+    zoom: 0.45;
+  }
+}
+@media (max-width: 600px) {
+  .conduct-pair {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Dialogs */
+.conduct-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.conduct-sign-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 13px;
+}
+.conduct-photo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.conduct-photo input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+.conduct-photo-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 22px;
+  border: 1.5px dashed var(--input);
+  border-radius: var(--radius);
+  color: var(--muted-foreground);
+  font-size: 13px;
+  cursor: pointer;
+}
+.conduct-photo:focus-within .conduct-photo-pick {
+  outline: 2px solid var(--ring);
+}
+.conduct-retire {
+  margin-right: auto;
+}
+
+/* The signed copy */
+.conduct-copy-section {
+  margin-top: 26px;
+}
+.conduct-copy img {
+  display: block;
+  max-width: min(100%, 760px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+/* Settings */
+.conduct-categories-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.conduct-categories-head h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+.conduct-retired td:first-child {
+  color: var(--muted-foreground);
+}
+
+/* The notice: a sheet of paper, white in either theme, as it prints */
+.conduct-notice {
+  width: 760px;
+  margin: 0 auto;
+  padding: 54px 64px 46px;
+  background: #fff;
+  color: #111;
+  box-shadow: 0 1px 3px #0002;
+  font:
+    14.5px/1.4 Arial,
+    Helvetica,
+    sans-serif;
+}
+.conduct-notice h2 {
+  margin: 0 0 26px;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: center;
+}
+.conduct-notice-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 20px;
+  font-weight: 700;
+}
+.conduct-notice-top u {
+  display: inline-block;
+  min-width: 80px;
+  padding: 0 8px 1px;
+  border-bottom: 1px solid #111;
+  font-weight: 400;
+  text-decoration: none;
+}
+.conduct-notice-tiers {
+  margin-bottom: 18px;
+  line-height: 1.55;
+}
+.conduct-notice-tiers small {
+  margin-left: 10px;
+  font-size: 12px;
+}
+.conduct-notice-box {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  margin-right: 7px;
+  border: 1px solid #111;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 11px;
+  text-align: center;
+  vertical-align: -1px;
+}
+.conduct-notice-disclaimer {
+  margin: 0 0 20px;
+  font-size: 12.5px;
+  font-style: italic;
+}
+.conduct-notice ol {
+  margin: 0;
+  list-style: decimal;
+  padding-left: 22px;
+}
+.conduct-notice li {
+  margin-bottom: 16px;
+  font-weight: 700;
+}
+.conduct-notice-answer {
+  min-height: 100px;
+  margin-top: 6px;
+  background-image: linear-gradient(#111 1px, transparent 1px);
+  background-position: 0 22px;
+  background-size: 100% 25px;
+  font-weight: 400;
+  line-height: 25px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.conduct-notice-answer mark {
+  border-radius: 3px;
+  padding: 0 2px;
+  background: #fff1c7;
+  color: inherit;
+}
+.conduct-notice-consequences {
+  margin: 10px 0 0;
+  font-size: 13.5px;
+  font-style: italic;
+  font-weight: 400;
+}
+.conduct-notice-signed {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  height: 40px;
+  margin-top: 14px;
+  padding: 0 8px;
+  border-bottom: 1px solid #111;
+}
+.conduct-notice-signature {
+  font-family: 'Snell Roundhand', 'Segoe Script', 'Brush Script MT', cursive;
+  font-size: 26px;
+  line-height: 1;
+}
+.conduct-notice-labels {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 70px 0 0;
+  font-size: 13px;
+}
+.conduct-notice-comments {
+  margin-top: 22px;
+}
+.conduct-notice-comments div {
+  height: 25px;
+  border-bottom: 1px solid #111;
+}
+.conduct-notice-acknowledge {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  margin-top: 30px;
+  font-size: 13.5px;
+}
+.conduct-notice-acknowledge span:last-child {
+  flex: 1;
+  height: 20px;
+  border-bottom: 2px solid #111;
+}
+.conduct-notice-acknowledge-labels {
+  display: flex;
+  justify-content: flex-end;
+  gap: 140px;
+  margin-top: 4px;
+  padding-right: 30px;
+  font-size: 10.5px;
+}
+
+/* Printing: the notice alone, on a letter-sized page */
+.conduct-print {
+  display: none;
+}
+@media print {
+  @page {
+    size: letter;
+    margin: 0.4in;
+  }
+  body > :not(.conduct-print) {
+    display: none !important;
+  }
+  .conduct-print {
+    display: block;
+  }
+  .conduct-print .conduct-notice {
+    width: auto;
+    padding: 0;
+    box-shadow: none;
+  }
+}

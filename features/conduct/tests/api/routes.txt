@@ -1,0 +1,15 @@
+# Every route conduct registers: its method and path, who may call it, the
+# database access its work runs under, and whether it wakes the scheduler.
+# Each changes with this file, so a reviewer sees who can reach what.
+GET /api/dsp/conduct Dsp("conduct.use") Read
+GET /api/dsp/conduct/writeups/{id} Dsp("conduct.use") Read
+GET /api/dsp/conduct/writeups/{id}/copy Dsp("conduct.use") Read
+POST /api/dsp/conduct/categories Dsp("conduct.manage") Write
+POST /api/dsp/conduct/categories/{id} Dsp("conduct.manage") Write
+POST /api/dsp/conduct/categories/{id}/restore Dsp("conduct.manage") Write
+POST /api/dsp/conduct/categories/{id}/retire Dsp("conduct.manage") Write
+POST /api/dsp/conduct/writeups Dsp("conduct.use") Write
+POST /api/dsp/conduct/writeups/{id} Dsp("conduct.use") Write
+POST /api/dsp/conduct/writeups/{id}/copy Dsp("conduct.use") Upload
+POST /api/dsp/conduct/writeups/{id}/delete Dsp("conduct.use") Write
+POST /api/dsp/conduct/writeups/{id}/sign Dsp("conduct.use") Write

@@ -166,6 +166,65 @@
       "communications.gifs"
     ]
   },
+  "conduct": {
+    "collectors": [],
+    "depends_on": [],
+    "frontend": true,
+    "keeps": [],
+    "migrations": {},
+    "permissions": [
+      "conduct.use",
+      "conduct.manage"
+    ],
+    "slots": {
+      "audit": {
+        "areas": [],
+        "names": false,
+        "subjects": []
+      },
+      "cached": [],
+      "commands": null,
+      "demo": false,
+      "domains": [
+        "conduct"
+      ],
+      "integrations": [],
+      "live": [],
+      "maintenance": [],
+      "on": [],
+      "people": [],
+      "routes": [
+        "GET /api/dsp/conduct",
+        "POST /api/dsp/conduct/writeups",
+        "GET /api/dsp/conduct/writeups/{id}",
+        "POST /api/dsp/conduct/writeups/{id}",
+        "POST /api/dsp/conduct/writeups/{id}/sign",
+        "POST /api/dsp/conduct/writeups/{id}/delete",
+        "POST /api/dsp/conduct/writeups/{id}/copy",
+        "GET /api/dsp/conduct/writeups/{id}/copy",
+        "POST /api/dsp/conduct/categories",
+        "POST /api/dsp/conduct/categories/{id}",
+        "POST /api/dsp/conduct/categories/{id}/retire",
+        "POST /api/dsp/conduct/categories/{id}/restore"
+      ],
+      "exposes": [],
+      "env": [],
+      "settings": [
+        "conduct.general",
+        "conduct.categories"
+      ]
+    },
+    "switch": "conduct",
+    "mandatory": false,
+    "tables": {
+      "dsp": [
+        "conduct_categories",
+        "conduct_copies",
+        "conduct_writeups"
+      ]
+    },
+    "subfeatures": []
+  },
   "daily_performance": {
     "collectors": [
       "cortex"

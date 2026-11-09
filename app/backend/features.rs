@@ -6,6 +6,8 @@ use dispatch_core::manifest::Feature;
 pub const FEATURES: &[&Feature] = &[
     #[cfg(feature = "communications")]
     &dispatch_communications::FEATURE,
+    #[cfg(feature = "conduct")]
+    &dispatch_conduct::FEATURE,
     #[cfg(feature = "daily_performance")]
     &dispatch_daily_performance::FEATURE,
     #[cfg(feature = "documents")]
@@ -47,6 +49,8 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
     let mut all = dispatch_core::Typescript::new();
     #[cfg(feature = "communications")]
     all.extend(dispatch_communications::typescript(cfg));
+    #[cfg(feature = "conduct")]
+    all.extend(dispatch_conduct::typescript(cfg));
     #[cfg(feature = "daily_performance")]
     all.extend(dispatch_daily_performance::typescript(cfg));
     #[cfg(feature = "documents")]

@@ -19,6 +19,9 @@ CREATE TABLE communications_push ( endpoint TEXT PRIMARY KEY, user_id TEXT NOT N
 CREATE TABLE communications_refiling (day TEXT PRIMARY KEY, noted_at INTEGER NOT NULL);
 CREATE TABLE communications_replies ( id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, text TEXT NOT NULL, sent_by TEXT NOT NULL, sender_name TEXT NOT NULL, photos TEXT NOT NULL, posting_since INTEGER NOT NULL, claimed_until INTEGER NOT NULL , gif TEXT);
 CREATE TABLE communications_text_conversations ( id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('work', 'number')), source TEXT, driver_id TEXT, number TEXT, state TEXT NOT NULL DEFAULT 'responded' CHECK (state IN ('waiting', 'responded', 'done')), waiting_since INTEGER, last_at INTEGER, done_at INTEGER, done_by TEXT );
+CREATE TABLE conduct_categories ( id TEXT PRIMARY KEY, name TEXT NOT NULL, start_tier TEXT NOT NULL CHECK (start_tier IN ('verbal', 'written', 'final')), statement TEXT NOT NULL, prior TEXT NOT NULL, plan TEXT NOT NULL, position INTEGER NOT NULL, revision INTEGER NOT NULL DEFAULT 1, retired INTEGER NOT NULL DEFAULT 0 CHECK (retired IN (0, 1)) );
+CREATE TABLE conduct_copies ( writeup_id TEXT PRIMARY KEY REFERENCES conduct_writeups(id), media_type TEXT NOT NULL, bytes BLOB NOT NULL, added_by_name TEXT NOT NULL, added_at TEXT NOT NULL );
+CREATE TABLE conduct_writeups ( id TEXT PRIMARY KEY, person TEXT NOT NULL, person_name TEXT NOT NULL, category_id TEXT NOT NULL REFERENCES conduct_categories(id), tier TEXT NOT NULL CHECK (tier IN ('verbal', 'written', 'final')), final_kind TEXT CHECK (final_kind IN ('suspension', 'investigation')), suspension TEXT, written_on TEXT NOT NULL, supervisor_id TEXT NOT NULL, supervisor_name TEXT NOT NULL, statement TEXT NOT NULL, prior TEXT NOT NULL, plan TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, signed_on TEXT, signed_by_name TEXT, signed_at TEXT, CHECK (tier = 'final' OR final_kind IS NULL), CHECK ((final_kind = 'suspension') = (suspension IS NOT NULL)) );
 CREATE TABLE documents_connect_requests ( state_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, verifier TEXT NOT NULL, expires_at INTEGER NOT NULL );
 CREATE TABLE documents_connection ( id INTEGER PRIMARY KEY CHECK (id = 1), status TEXT NOT NULL CHECK (status IN ('connected', 'broken')), account_email TEXT NOT NULL, account_kind TEXT NOT NULL CHECK (account_kind IN ('workspace', 'personal')), folder_id TEXT NOT NULL, folder_name TEXT NOT NULL, connected_by TEXT NOT NULL, connected_at TEXT NOT NULL, broken_at TEXT , full_access INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE documents_files ( file_id TEXT PRIMARY KEY, added_by TEXT NOT NULL, added_at TEXT NOT NULL, changed_by TEXT NOT NULL, changed_at TEXT NOT NULL , added_name TEXT, changed_name TEXT);
@@ -86,6 +89,9 @@ CREATE INDEX communications_replies_conversations ON communications_replies (con
 CREATE UNIQUE INDEX communications_text_conversations_drivers ON communications_text_conversations (source, driver_id) WHERE driver_id IS NOT NULL;
 CREATE INDEX communications_text_conversations_latest ON communications_text_conversations (kind, last_at, id);
 CREATE UNIQUE INDEX communications_text_conversations_numbers ON communications_text_conversations (kind, number) WHERE driver_id IS NULL;
+CREATE UNIQUE INDEX conduct_categories_name ON conduct_categories (name COLLATE NOCASE) WHERE retired = 0;
+CREATE INDEX conduct_writeups_person ON conduct_writeups (person, category_id);
+CREATE INDEX conduct_writeups_written ON conduct_writeups (written_on DESC, created_at DESC);
 CREATE INDEX invitations_dsp_owner ON invitations(dsp_id,role,expires_at DESC) WHERE used_at IS NULL;
 CREATE INDEX invitations_expiry ON invitations(expires_at);
 CREATE INDEX invitations_role ON invitations(role_id) WHERE used_at IS NULL;

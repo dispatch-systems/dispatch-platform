@@ -135,6 +135,14 @@
       "requires": ["routes"],
       "default": false,
       "mandatory": false
+    },
+    {
+      "id": "conduct",
+      "label": "Conduct",
+      "permissions": ["conduct.use", "conduct.manage"],
+      "requires": [],
+      "default": false,
+      "mandatory": false
     }
   ],
   "subfeatures": [
@@ -216,6 +224,7 @@
     "slack",
     "vans",
     "live_route_data",
+    "conduct",
     "timecard.daily",
     "timecard.meal_breaks",
     "timecard.employees",
