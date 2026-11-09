@@ -80,6 +80,7 @@ CREATE INDEX communications_groups_latest ON communications_groups (last_at, id)
 CREATE INDEX communications_messages_groups ON communications_messages (group_id, at);
 CREATE INDEX communications_messages_incoming ON communications_messages(conversation_id,ts) WHERE direction='in';
 CREATE INDEX communications_messages_latest ON communications_messages (conversation_id, at);
+CREATE INDEX communications_messages_outgoing ON communications_messages (conversation_id, ts) WHERE direction='out';
 CREATE INDEX communications_push_users ON communications_push (user_id);
 CREATE INDEX communications_replies_claimed ON communications_replies (claimed_until);
 CREATE INDEX communications_replies_conversations ON communications_replies (conversation_id);
@@ -99,6 +100,7 @@ CREATE INDEX phones_texts_change ON phones_texts (change);
 CREATE INDEX phones_texts_filed ON phones_texts (conversation_id, at, id);
 CREATE INDEX phones_texts_incoming ON phones_texts(conversation_id,at,id) WHERE direction='in' AND blocked=0;
 CREATE INDEX phones_texts_number ON phones_texts (number, at);
+CREATE INDEX phones_texts_outgoing ON phones_texts (conversation_id, at, id) WHERE direction='out';
 CREATE INDEX phones_texts_waiting ON phones_texts (device_id, status);
 CREATE INDEX phones_texts_written ON phones_texts (at);
 CREATE INDEX recovery_codes_user ON recovery_codes(user_id);

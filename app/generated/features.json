@@ -60,6 +60,7 @@
         "GET /api/dsp/communications/conversations",
         "POST /api/dsp/communications/conversations",
         "GET /api/dsp/communications/conversations/{id}",
+        "GET /api/dsp/communications/conversations/{id}/window",
         "GET /api/dsp/communications/conversations/{id}/profile",
         "POST /api/dsp/communications/conversations/{id}/messages",
         "GET /api/dsp/communications/gifs",
