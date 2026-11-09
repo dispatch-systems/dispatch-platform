@@ -308,7 +308,9 @@ test('Communications answers only those whose role gives them it, and the profil
   await member.select(north.id);
   assert.equal((await member.get(`${url}${cursorQuery}`)).status, 403);
   // Restore the role, prove the old token works for an authorized session, then revoke that session.
-  await owner.post(`/api/dsp/members/${memberId}`, { role: role.value.id });
+  await owner.select(north.id);
+  const restoredRole = await owner.post(`/api/dsp/members/${memberId}`, { role: role.value.id });
+  assert.equal(restoredRole.status, 200, restoredRole.body);
   await member.select(north.id);
   assert.equal((await member.get(`${url}${cursorQuery}`)).status, 200);
   assert.equal((await member.post('/api/auth/logout')).status, 200);
