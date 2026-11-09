@@ -272,7 +272,7 @@ test('Communications answers only those whose role gives them it, and the profil
     ).run(conversation.id);
     // Equal revisions keep the ahead-of-database guard from hiding a broken DSP binding.
     db.exec('DELETE FROM communications_changes');
-    db.prepare('INSERT INTO communications_changes(id,conversation_id) VALUES (?,?)').run(
+    db.prepare('INSERT INTO communications_changes(revision,conversation_id) VALUES (?,?)').run(
       window.range.revision,
       conversation.id,
     );
