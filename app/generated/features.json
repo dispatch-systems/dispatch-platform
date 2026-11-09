@@ -60,6 +60,7 @@
         "GET /api/dsp/communications/conversations",
         "POST /api/dsp/communications/conversations",
         "GET /api/dsp/communications/conversations/{id}",
+        "GET /api/dsp/communications/conversations/{id}/window",
         "GET /api/dsp/communications/conversations/{id}/profile",
         "POST /api/dsp/communications/conversations/{id}/messages",
         "GET /api/dsp/communications/gifs",
@@ -165,6 +166,64 @@
     "subfeatures": [
       "communications.gifs"
     ]
+  },
+  "conduct": {
+    "collectors": [],
+    "depends_on": [],
+    "frontend": true,
+    "keeps": [],
+    "migrations": {},
+    "permissions": [
+      "conduct.use",
+      "conduct.manage"
+    ],
+    "slots": {
+      "audit": {
+        "areas": [],
+        "names": false,
+        "subjects": []
+      },
+      "cached": [],
+      "commands": null,
+      "demo": false,
+      "domains": [
+        "conduct"
+      ],
+      "integrations": [],
+      "live": [],
+      "maintenance": [],
+      "on": [],
+      "people": [],
+      "routes": [
+        "GET /api/dsp/conduct",
+        "POST /api/dsp/conduct/writeups",
+        "GET /api/dsp/conduct/writeups/{id}",
+        "POST /api/dsp/conduct/writeups/{id}",
+        "POST /api/dsp/conduct/writeups/{id}/sign",
+        "POST /api/dsp/conduct/writeups/{id}/delete",
+        "POST /api/dsp/conduct/writeups/{id}/copy",
+        "GET /api/dsp/conduct/writeups/{id}/copy",
+        "POST /api/dsp/conduct/categories",
+        "POST /api/dsp/conduct/categories/{id}",
+        "POST /api/dsp/conduct/categories/{id}/retire",
+        "POST /api/dsp/conduct/categories/{id}/restore"
+      ],
+      "exposes": [],
+      "env": [],
+      "settings": [
+        "conduct.categories"
+      ]
+    },
+    "switch": "conduct",
+    "mandatory": false,
+    "tables": {
+      "dsp": [
+        "conduct_categories",
+        "conduct_copies",
+        "conduct_writeups"
+      ]
+    },
+    "subfeatures": []
   },
   "daily_performance": {
     "collectors": [
@@ -281,7 +340,9 @@
         "names": false,
         "subjects": []
       },
-      "cached": [],
+      "cached": [
+        "documents-query"
+      ],
       "commands": null,
       "demo": false,
       "domains": [],
@@ -301,6 +362,8 @@
         "POST /api/dsp/documents/disconnect",
         "GET /api/dsp/documents/folder",
         "GET /api/dsp/documents/folder/read",
+        "GET /api/dsp/documents/query",
+        "GET /api/dsp/documents/query/describe",
         "POST /api/dsp/documents/new",
         "POST /api/dsp/documents/upload",
         "GET /api/dsp/documents/items/{id}/download",

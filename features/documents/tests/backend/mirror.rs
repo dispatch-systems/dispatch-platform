@@ -184,3 +184,215 @@ fn confirmations_are_ordered_before_later_renames_removals_and_advanced_feed_cur
     assert!(tree.get("shortcut").unwrap().unavailable());
     assert!(tree.get("b").is_some());
 }
+
+#[test]
+fn semantic_publication_ignores_seen_and_layout_but_tracks_paths_counts_and_targets() {
+    let mirror = Mirror::default();
+    let folder = item("folder", "Folder", Some("main"), true, "text-date");
+    let file = item("file", "File.pdf", Some("folder"), false, "text-date");
+    mirror.replace("main", vec![folder.clone(), file.clone()], "a".into());
+    let (first, semantic) = mirror.snapshot("main").unwrap();
+    let mut observed = file.clone();
+    observed.seen = first.get("file").unwrap().seen + Duration::from_secs(1);
+    mirror.replace("main", vec![observed.clone(), folder.clone()], "b".into());
+    let (same, current) = mirror.snapshot("main").unwrap();
+    assert_eq!(
+        current, semantic,
+        "seen and packed positions are not content"
+    );
+    assert_eq!(same.get("file").unwrap().seen, observed.seen);
+    mirror.put("main", observed.clone());
+    assert!(
+        mirror.matches("main", semantic),
+        "confirmation reobservation is not content"
+    );
+    observed.seen += Duration::from_secs(1);
+    assert!(!mirror.follow("main", changes(vec![kept(observed.clone())], "c")));
+    let (seen, current) = mirror.snapshot("main").unwrap();
+    assert_eq!(current, semantic, "feed reobservation is not content");
+    assert_eq!(seen.get("file").unwrap().seen, observed.seen);
+    let mut stale = observed.clone();
+    stale.modified_time = "a-before".into();
+    stale.name = "Rejected older feed".into();
+    assert!(!mirror.follow("main", changes(vec![kept(stale)], "d")));
+    assert!(
+        mirror.matches("main", semantic),
+        "rejected older metadata is not published"
+    );
+    mirror.follow("main", changes(Vec::new(), "e"));
+    mirror.remove("main", "absent");
+    assert!(!mirror.follow(
+        "main",
+        changes(
+            vec![
+                kept(item("outside", "Outside", Some("other-dsp"), false, "date")),
+                Changed::Gone("absent".into()),
+            ],
+            "f"
+        )
+    ));
+    assert!(
+        mirror.matches("main", semantic),
+        "discarded outside records are not content"
+    );
+
+    // The last confirmation wins without treating an intermediate rename as the final tree.
+    let mut intermediate = observed.clone();
+    intermediate.name = "Intermediate".into();
+    mirror.put_many("main", [intermediate, observed.clone()]);
+    assert!(
+        mirror.matches("main", semantic),
+        "restored batch has the same final semantics"
+    );
+    mirror.put(
+        "main",
+        item("second", "Second", Some("folder"), false, "text-date"),
+    );
+    let (_, counted) = mirror.snapshot("main").unwrap();
+    assert_ne!(counted, semantic);
+    let mut renamed = folder;
+    renamed.name = "New path".into();
+    mirror.put("main", renamed);
+    let (path, renamed_at) = mirror.snapshot("main").unwrap();
+    assert_ne!(renamed_at, counted);
+    assert_eq!(&*path.path("file")[0].name, "New path");
+    let mut moved = observed.clone();
+    moved.parents = vec!["main".into()];
+    mirror.put("main", moved.clone());
+    let (parents, moved_at) = mirror.snapshot("main").unwrap();
+    assert_ne!(moved_at, renamed_at);
+    assert_eq!(parents.count("folder"), 1);
+    assert_eq!(parents.path("file").len(), 1);
+    mirror.remove("main", "folder");
+    let (removed, removed_at) = mirror.snapshot("main").unwrap();
+    assert_ne!(removed_at, moved_at);
+    assert!(
+        removed.get("second").is_none(),
+        "subtree removal changes membership"
+    );
+    assert_eq!(
+        first.count("folder"),
+        1,
+        "captured readers remain immutable"
+    );
+    drop((first, same, seen, path, parents, removed));
+
+    // A weak or strong artificial reader would force make_mut to replace this allocation.
+    // Retain only its address; never dereference it after dropping the real reader.
+    let (unique, before) = mirror.snapshot("main").unwrap();
+    let address = Arc::as_ptr(&unique);
+    drop(unique);
+    moved.name = "Actually changed.pdf".into();
+    mirror.put("main", moved.clone());
+    let (unique, after) = mirror.snapshot("main").unwrap();
+    assert_eq!(
+        Arc::as_ptr(&unique),
+        address,
+        "a unique owner must mutate without cloning Tree"
+    );
+    assert_ne!(after, before);
+    drop(unique);
+    moved.seen += Duration::from_secs(1);
+    mirror.follow("main", changes(vec![kept(moved)], "g"));
+    let (unique, observed_at) = mirror.snapshot("main").unwrap();
+    assert_eq!(Arc::as_ptr(&unique), address);
+    assert_eq!(observed_at, after);
+    drop(unique);
+
+    let mut shortcut = Item {
+        mime_type: super::super::drive::SHORTCUT.into(),
+        shortcut_details: Some(super::super::drive::Shortcut {
+            target_id: "target".into(),
+            target_mime_type: "application/pdf".into(),
+        }),
+        ..item("shortcut", "Alias", Some("main"), false, "date")
+    };
+    let mut target = item("target", "Target.pdf", None, false, "date");
+    mirror.put_many("main", [shortcut.clone(), target.clone()]);
+    let (_, reachable) = mirror.snapshot("main").unwrap();
+    shortcut.seen += Duration::from_secs(1);
+    target.seen += Duration::from_secs(1);
+    mirror.put_many("main", [shortcut.clone(), target.clone(), target.clone()]);
+    assert!(
+        mirror.matches("main", reachable),
+        "raw shortcut has no resolved stands_for"
+    );
+    assert!(!mirror.follow(
+        "main",
+        changes(vec![kept(target.clone()), kept(target.clone())], "h")
+    ));
+    let (current, observed_at) = mirror.snapshot("main").unwrap();
+    assert_eq!(
+        observed_at, reachable,
+        "duplicate external observations compare canonical records"
+    );
+    assert_eq!(current.get("shortcut").unwrap().shown().seen, target.seen);
+    drop(current);
+    target.thumbnail_link = Some("fixture:new-target".into());
+    target.thumbnail_version = Some("2".into());
+    mirror.put("main", target.clone());
+    let (_, pictured) = mirror.snapshot("main").unwrap();
+    assert_ne!(
+        pictured, reachable,
+        "off-row target thumbnail metadata changes semantics"
+    );
+    target.name = "Renamed target.pdf".into();
+    target.size = Some("42".into());
+    mirror.follow("main", changes(vec![kept(target.clone())], "i"));
+    let (current, named) = mirror.snapshot("main").unwrap();
+    assert_ne!(named, pictured);
+    assert_eq!(
+        &*current.get("shortcut").unwrap().shown().name,
+        "Renamed target.pdf"
+    );
+    drop(current);
+    mirror.follow("main", changes(vec![Changed::Gone("target".into())], "j"));
+    let (current, missing) = mirror.snapshot("main").unwrap();
+    assert_ne!(
+        missing, named,
+        "target availability changes query continuity"
+    );
+    assert!(current.get("shortcut").unwrap().unavailable());
+    drop(current);
+    mirror.put("main", target);
+    assert!(
+        !mirror.matches("main", missing),
+        "a newly reachable target also changes continuity"
+    );
+
+    // Keep the existing feed's duplicate-ID behavior: losing one duplicate changes counts
+    // even when the final canonical record for that ID is unchanged.
+    let duplicates = Mirror::default();
+    duplicates.replace("main", Vec::new(), "start".into());
+    let repeated = item("repeat", "Repeated", Some("main"), false, "same");
+    duplicates.follow(
+        "main",
+        changes(vec![kept(repeated.clone()), kept(repeated)], "duplicates"),
+    );
+    let (both, before) = duplicates.snapshot("main").unwrap();
+    assert_eq!(both.count("main"), 2);
+    duplicates.remove("main", "repeat");
+    let (one, after) = duplicates.snapshot("main").unwrap();
+    assert_eq!(one.count("main"), 1);
+    assert_ne!(
+        after, before,
+        "a changed count must invalidate even with identical ID metadata"
+    );
+
+    let repeated = item("repeat", "Repeated", Some("main"), false, "same");
+    duplicates.replace(
+        "main",
+        vec![repeated.clone(), repeated.clone()],
+        "two".into(),
+    );
+    let (_, before) = duplicates.snapshot("main").unwrap();
+    duplicates.replace(
+        "main",
+        vec![repeated, item("new", "New", Some("main"), false, "same")],
+        "distinct".into(),
+    );
+    assert!(
+        !duplicates.matches("main", before),
+        "a canonical ID match must not hide replacing one duplicate with another ID"
+    );
+}

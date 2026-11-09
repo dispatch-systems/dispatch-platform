@@ -33,6 +33,7 @@ pub(crate) mod storage;
 pub(crate) mod text;
 pub(crate) mod texts;
 pub(crate) mod today;
+pub(crate) mod windows;
 
 #[cfg(test)]
 #[path = "../tests/backend/support/mod.rs"]

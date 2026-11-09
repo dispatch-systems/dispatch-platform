@@ -100,6 +100,7 @@
       ["communications", 18, "communications_push", "897c8ba4892c8da2"],
       ["communications", 19, "communications_gifs", "code"],
       ["communications", 20, "communications_incoming_indexes", "335900985ea6cf10"],
+      ["communications", 21, "communications_outgoing_indexes", "d784644800b9f04c"],
       ["slack", 1, "slack", "8ca8fd50f814a724"],
       ["slack", 2, "slack_new_connections", "code"],
       ["slack", 3, "slack_members", "a3cacf7486f2ded9"],
@@ -110,7 +111,8 @@
       ["slack", 8, "slack_workspaces_added", "code"],
       ["slack", 9, "slack_install_links_by_workspace", "c02a5b6288a083bc"],
       ["slack", 10, "slack_install_pages", "code"],
-      ["slack", 11, "slack_logos", "b75a1f564d324b29"]
+      ["slack", 11, "slack_logos", "b75a1f564d324b29"],
+      ["conduct", 1, "conduct", "310bff4c6d9f57d4"]
     ]
   },
   {

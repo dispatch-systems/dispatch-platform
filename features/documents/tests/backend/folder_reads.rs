@@ -339,79 +339,142 @@ async fn unchanged_still_projects_current_member_names_counts_shortcut_targets_a
 #[tokio::test]
 async fn full_and_unchanged_refuse_permission_loss_disconnect_or_broken_connection_during_await() {
     use std::sync::atomic::{AtomicBool, Ordering};
-    for loss in ["permission", "disconnect", "broken"] {
-        for conditional in [false, true] {
-            let (_root, state, dsp) = platform();
-            connect(&state, &dsp).await;
-            let owner = context(&state, &dsp).await;
-            let (at, actor) = (dsp.clone(), owner.clone());
-            let c = state
-                .run(move |db| {
-                    let role = db.create_role(&actor, "Reader", &["documents.use".into()])?;
-                    let mut auth = actor.auth.clone();
-                    auth.preview = Some(role.id);
-                    db.context(&auth, &at, "documents.use")
-                })
+    for reader in ["folder", "query", "describe"] {
+        for loss in ["permission", "disconnect", "broken"] {
+            for conditional in [false, true] {
+                let (_root, state, dsp) = platform();
+                connect(&state, &dsp).await;
+                let owner = context(&state, &dsp).await;
+                let (at, actor) = (dsp.clone(), owner.clone());
+                let c = state
+                    .run(move |db| {
+                        let role = db.create_role(&actor, "Reader", &["documents.use".into()])?;
+                        let mut auth = actor.auth.clone();
+                        auth.preview = Some(role.id);
+                        db.context(&auth, &at, "documents.use")
+                    })
+                    .await
+                    .unwrap();
+                let first = folder_read(&state, c.clone(), Dsp("documents.use"), None, None, None)
+                    .await
+                    .unwrap();
+                let scope = crate::api::types::DocumentsQueryScope {
+                    id: None,
+                    q: None,
+                    filter: crate::api::types::DocumentsFilter::All,
+                };
+                let baseline = query(
+                    &state,
+                    c.clone(),
+                    Dsp("documents.use"),
+                    QueryRequest {
+                        scope: scope.clone(),
+                        page: 0,
+                        size: 100,
+                        snapshot: None,
+                        manifest_since: None,
+                        since: None,
+                    },
+                )
                 .await
                 .unwrap();
-            let first = folder_read(&state, c.clone(), Dsp("documents.use"), None, None, None)
-                .await
-                .unwrap();
-            let at = dsp.clone();
-            let refresh = state
-                .read(move |db| Ok(db.documents_refresh_token(&at)?.unwrap()))
-                .await
-                .unwrap();
-            // Force an awaited cold refresh through the existing fixture-provider boundary.
-            mirror::forget(&dsp);
-            cache::forget(&dsp);
-            let entered = Arc::new(AtomicBool::new(false));
-            let observed = Arc::clone(&entered);
-            let (config, key, at, role) = (
-                state.config.clone(),
-                state.key.clone(),
-                dsp.clone(),
-                c.role.clone(),
-            );
-            google::fixture_on_renewal(&refresh, move || {
-                let db = Store::open(config, key).unwrap();
-                match loss {
-                    "permission" => {
-                        db.update_role(&owner, &role, "Reader", &[]).unwrap();
+                let (snapshot, manifest_revision, content_revision) = match baseline {
+                    crate::api::types::DocumentsQueryRead::Full {
+                        reading,
+                        content_revision,
+                        ..
+                    } => (
+                        reading.snapshot,
+                        reading.manifest_revision,
+                        content_revision,
+                    ),
+                    other => panic!("expected opening, got {other:?}"),
+                };
+                let at = dsp.clone();
+                let refresh = state
+                    .read(move |db| Ok(db.documents_refresh_token(&at)?.unwrap()))
+                    .await
+                    .unwrap();
+                // Force an awaited cold refresh through the existing fixture-provider boundary.
+                mirror::forget(&dsp);
+                cache::forget(&dsp);
+                let entered = Arc::new(AtomicBool::new(false));
+                let observed = Arc::clone(&entered);
+                let (config, key, at, role) = (
+                    state.config.clone(),
+                    state.key.clone(),
+                    dsp.clone(),
+                    c.role.clone(),
+                );
+                google::fixture_on_renewal(&refresh, move || {
+                    let db = Store::open(config, key).unwrap();
+                    match loss {
+                        "permission" => {
+                            db.update_role(&owner, &role, "Reader", &[]).unwrap();
+                        }
+                        "disconnect" => {
+                            db.remove_documents_connection(&at).unwrap();
+                        }
+                        "broken" => {
+                            db.break_documents_connection(&at).unwrap();
+                        }
+                        _ => unreachable!(),
                     }
-                    "disconnect" => {
-                        db.remove_documents_connection(&at).unwrap();
-                    }
-                    "broken" => {
-                        db.break_documents_connection(&at).unwrap();
-                    }
+                    observed.store(true, Ordering::SeqCst);
+                });
+                let refused = match reader {
+                    "folder" => folder_read(
+                        &state,
+                        c,
+                        Dsp("documents.use"),
+                        None,
+                        None,
+                        conditional.then_some(first.revision),
+                    )
+                    .await
+                    .map(|_| ()),
+                    "query" => query(
+                        &state,
+                        c,
+                        Dsp("documents.use"),
+                        QueryRequest {
+                            scope,
+                            page: 0,
+                            size: 100,
+                            snapshot: conditional.then_some(snapshot),
+                            manifest_since: Some(manifest_revision),
+                            since: conditional.then_some(content_revision),
+                        },
+                    )
+                    .await
+                    .map(|_| ()),
+                    "describe" => describe(
+                        &state,
+                        c,
+                        Dsp("documents.use"),
+                        scope,
+                        snapshot,
+                        vec!["valid-but-absent".into()],
+                    )
+                    .await
+                    .map(|_| ()),
                     _ => unreachable!(),
                 }
-                observed.store(true, Ordering::SeqCst);
-            });
-            let refused = folder_read(
-                &state,
-                c,
-                Dsp("documents.use"),
-                None,
-                None,
-                conditional.then_some(first.revision),
-            )
-            .await
-            .unwrap_err();
-            assert!(
-                entered.load(Ordering::SeqCst),
-                "fixture did not reach the awaited boundary"
-            );
-            assert_eq!(
-                refused.code,
-                match loss {
-                    "permission" => "permission_denied",
-                    "disconnect" => "documents_not_connected",
-                    "broken" => "google_connection_broken",
-                    _ => unreachable!(),
-                }
-            );
+                .unwrap_err();
+                assert!(
+                    entered.load(Ordering::SeqCst),
+                    "fixture did not reach the awaited boundary"
+                );
+                assert_eq!(
+                    refused.code,
+                    match loss {
+                        "permission" => "permission_denied",
+                        "disconnect" => "documents_not_connected",
+                        "broken" => "google_connection_broken",
+                        _ => unreachable!(),
+                    }
+                );
+            }
         }
     }
 }

@@ -16,6 +16,7 @@ import platform
 import sys
 import tarfile
 import tempfile
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -56,8 +57,16 @@ def archive(pin: dict, key: str, folder: Path) -> bytes:
     path = folder / name
     if not path.exists():
         url = f"https://github.com/nextest-rs/nextest/releases/download/{NAME}-{pin['version']}/{name}"
-        with urllib.request.urlopen(url, timeout=60) as response:
-            data = response.read(LIMIT + 1)
+        for attempt in range(3):
+            try:
+                with urllib.request.urlopen(url, timeout=60) as response:
+                    data = response.read(LIMIT + 1)
+                break
+            except urllib.error.HTTPError as error:
+                retry = error.code in (502, 504) and attempt < 2
+                error.close()
+                if not retry:
+                    raise
         if len(data) > LIMIT or digest(data) != expected:
             raise SystemExit("cargo-nextest archive checksum mismatch")
         folder.mkdir(parents=True, exist_ok=True)

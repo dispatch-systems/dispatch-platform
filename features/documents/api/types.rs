@@ -279,3 +279,123 @@ pub struct MySharing {
     /// Whether that is a Google account they linked, rather than their Dispatch email.
     pub linked: bool,
 }
+
+text_enum! {
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "features/documents/api/generated/"))]
+    pub enum DocumentsFilter {
+        All => "all", Folders => "folders", Docs => "docs", Sheets => "sheets",
+        Slides => "slides", Uploads => "uploads",
+    }
+}
+text_enum! {
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "features/documents/api/generated/"))]
+    pub enum DocumentsResetReason { Missing => "missing", Changed => "changed", }
+}
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/documents/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentsManifestEntry {
+    pub id: String,
+    pub kind: ItemKind,
+    pub name: String,
+    pub modified_at: String,
+}
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/documents/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentsManifest {
+    /// Complete unfiltered universe, in server order, including stable equal-key ties.
+    pub entries: Vec<DocumentsManifestEntry>,
+}
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/documents/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentsCounts {
+    pub all: u32,
+    pub folders: u32,
+    pub docs: u32,
+    pub sheets: u32,
+    pub slides: u32,
+    pub uploads: u32,
+}
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/documents/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentsQueryScope {
+    pub id: Option<String>,
+    pub q: Option<String>,
+    pub filter: DocumentsFilter,
+}
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/documents/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentsQueryFolder {
+    pub id: Option<String>,
+    pub name: String,
+    pub url: String,
+    pub path: Vec<FolderStep>,
+    /// Immediate child count, across all kinds, even for recursive search.
+    pub items: u32,
+}
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/documents/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentsQueryPage {
+    pub snapshot: String,
+    pub manifest_revision: String,
+    pub page: u32,
+    pub page_size: u32,
+    pub total: u32,
+    pub unfiltered_total: u32,
+    pub counts: DocumentsCounts,
+    pub folder: DocumentsQueryFolder,
+    pub items: Vec<DocumentsItem>,
+}
+
+/// Exact page readings; null manifest reuses only the supplied matching manifest revision.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/documents/api/generated/"))]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum DocumentsQueryRead {
+    Full {
+        #[serde(flatten)]
+        #[cfg_attr(feature = "ts", ts(flatten))]
+        reading: DocumentsQueryPage,
+        manifest: Option<DocumentsManifest>,
+        content_revision: String,
+    },
+    Unchanged {
+        snapshot: String,
+        manifest_revision: String,
+        content_revision: String,
+    },
+    Reset {
+        reason: DocumentsResetReason,
+    },
+}
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/documents/api/generated/"))]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum DocumentsDescriptionRead {
+    Full {
+        snapshot: String,
+        items: Vec<DocumentsItem>,
+    },
+    Reset {
+        reason: DocumentsResetReason,
+    },
+}

@@ -12,6 +12,7 @@ GET /api/dsp/communications/contacts Dsp("communications.use") Read
 GET /api/dsp/communications/conversations Dsp("communications.use") Read
 GET /api/dsp/communications/conversations/{id} Dsp("communications.use") Read
 GET /api/dsp/communications/conversations/{id}/profile Dsp("communications.use") Read
+GET /api/dsp/communications/conversations/{id}/window Dsp("communications.use") Read
 GET /api/dsp/communications/files/{id} Dsp("communications.use") Async
 GET /api/dsp/communications/files/{id}/preview Dsp("communications.use") Async
 GET /api/dsp/communications/gifs Dsp("communications.use") Read

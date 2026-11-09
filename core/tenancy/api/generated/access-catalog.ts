@@ -16,7 +16,8 @@ export const pages = [
   "settings",
   "slack",
   "vans",
-  "live_route_data"
+  "live_route_data",
+  "conduct"
 ] as const;
 export const subfeatures = [
   "timecard.daily",
@@ -47,6 +48,7 @@ export const features = [
   "slack",
   "vans",
   "live_route_data",
+  "conduct",
   "timecard.daily",
   "timecard.meal_breaks",
   "timecard.employees",
@@ -232,6 +234,16 @@ export const featureCatalog = [
     "kind": "page"
   },
   {
+    "id": "conduct",
+    "label": "Conduct",
+    "permissions": [
+      "conduct.use",
+      "conduct.manage"
+    ],
+    "requires": [],
+    "kind": "page"
+  },
+  {
     "id": "timecard.daily",
     "label": "Timecard",
     "permissions": [],
@@ -345,11 +357,15 @@ export const permissions = [
   "slack.manage",
   "vans.collect",
   "live_route_data.manage",
-  "phones.manage"
+  "phones.manage",
+  "conduct.use",
+  "conduct.manage"
 ] as const;
 export const permissionLabels = {
   "collections.run": "Run Collections",
   "communications.use": "Use Communications",
+  "conduct.manage": "Manage Conduct",
+  "conduct.use": "Use Conduct",
   "connections.manage": "Manage DSP Connections",
   "daily_performance.collect": "Collect Daily Performance",
   "daily_performance.manage": "Manage Daily Performance",
@@ -473,6 +489,13 @@ export const permissionGroups = [
     ]
   ],
   [
+    "Conduct",
+    [
+      "conduct.use",
+      "conduct.manage"
+    ]
+  ],
+  [
     "Team",
     [
       "members.invite",
@@ -489,6 +512,9 @@ export const permissionGroups = [
   ]
 ] as const;
 export const impliedPermissions = {
+  "conduct.manage": [
+    "conduct.use"
+  ],
   "daily_performance.collect": [
     "daily_performance.view"
   ],

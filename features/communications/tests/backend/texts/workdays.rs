@@ -54,10 +54,12 @@ async fn each_workday_shows_its_route_and_van_however_far_apart_and_however_many
     let id = filed(&state, &dsp, &text).await.id;
 
     let (shared, at_dsp) = (state.clone(), dsp.clone());
+    let read_id = id.clone();
     let opened = state
-        .read(move |db| reading::opened(db, &shared, &at_dsp, &id, None))
+        .read(move |db| reading::opened(db, &shared, &at_dsp, &read_id, None))
         .await
         .unwrap();
+    let anchor = opened.messages.first().unwrap().ts.clone();
     let workdays: Vec<_> = opened
         .workdays
         .into_iter()
@@ -73,4 +75,48 @@ async fn each_workday_shows_its_route_and_van_however_far_apart_and_however_many
             shown(ago(1), "399")
         ]
     );
+    // A historical selection and its separate latest seed need their own exact local days.
+    // Keep the original sparse-day/route/van assertions above, then enlarge this same fixture.
+    let yesterday = at(zone, texted_on[2], 10, 0);
+    let tail = at(zone, day, 10, 0);
+    let (shared, at_dsp, conversation, template) =
+        (state.clone(), dsp.clone(), id.clone(), text.clone());
+    let page = state.run(move |db| {
+        let connection = db.dsp(&at_dsp)?;
+        connection.transaction(|| {
+            for n in 0..220 {
+                connection.exec("INSERT INTO phones_texts(id,device_id,client_id,direction,origin,number, \
+                    body,at,change,conversation_id) SELECT ?1,device_id,?1,'in','phone',number, 'Window \
+                    history',?2,?3,conversation_id FROM phones_texts WHERE id=?4",
+                    rusqlite::params![format!("workday-window-{n:06}"), if n<160 { yesterday } else { tail }, n, template])?;
+            }
+            crate::backend::changes::changed_conversation(&connection, &conversation)
+        })?;
+        crate::backend::windows::read(db, &shared, &at_dsp,
+            &crate::backend::model::Reference::Text(conversation),
+            crate::backend::windows::Request::Anchor { place: anchor, leading: 0 })
+    }).await.unwrap();
+    assert_eq!((page.messages.len(), page.latest.len()), (150, 50));
+    assert!(page.range.has_after);
+    assert_eq!(
+        page.workdays
+            .iter()
+            .map(|day| day.day.as_str())
+            .collect::<Vec<_>>(),
+        texted_on
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        page.latest_workdays
+            .iter()
+            .map(|day| (day.day.clone(), day.route.clone(), day.van.clone()))
+            .collect::<Vec<_>>(),
+        [(day.to_string(), None, None)]
+    );
+    assert!(page.context.previous.is_none());
+    assert!(page.context.next.is_some());
+    assert!(page.latest_context.previous.is_some());
+    assert!(page.latest_context.next.is_none());
 }
