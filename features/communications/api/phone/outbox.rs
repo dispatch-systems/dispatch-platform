@@ -153,9 +153,7 @@ pub(super) async fn outbox(state: Arc<State>, input: Input, access: Phone) -> Re
             })
             .await?;
     }
-    let _slot = WAITING
-        .try_acquire()
-        .map_err(|_| Error::new("platform_busy", 503))?;
+    let slot = WAITING.try_acquire().ok();
     // Subscribed before reading, so a text queued, or a video asked for, between the read and the
     // wait still wakes it.
     let mut listener = state.topics.subscribe(live::TOPIC, &caller.dsp);
@@ -186,6 +184,10 @@ pub(super) async fn outbox(state: Arc<State>, input: Input, access: Phone) -> Re
                     db.phones_handed(&caller.dsp, &handed, now())
                 })
                 .await?;
+        }
+        // Without admission, answer ready work but never an empty heartbeat or an idle wait.
+        if texts.is_empty() && wanted.is_empty() && slot.is_none() {
+            return Err(Error::new("platform_busy", 503));
         }
         if !texts.is_empty() || !wanted.is_empty() || tokio::time::Instant::now() >= until {
             return Reply::of(&Outbox {
@@ -293,3 +295,7 @@ fn reported(status: &Value) -> Result<StatusReport> {
         error,
     })
 }
+
+#[cfg(test)]
+#[path = "../../tests/backend/phone/admission.rs"]
+mod tests;
