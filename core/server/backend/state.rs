@@ -241,6 +241,31 @@ impl State {
     ) -> impl Future<Output = Result<T>> + Send {
         self.database(Access::Write, CacheChange::Tenant(dsp.into(), domain), f)
     }
+    /// Prepares a reviewed scoped write read-only, declares its impact, then writes in the
+    /// same exclusive transition. `Unchanged` preserves only this DSP's PEOPLE scope; every
+    /// other dependent read is invalidated as by `run_scoped`, before the writer, even on error.
+    ///
+    /// Like `run_bookkeeping`, this trusts its caller: Store has interior mutation. Preparation
+    /// must perform only guards, reads and in-memory work, never writes, cache fills, events or
+    /// outside work. It must prove all PEOPLE inputs unchanged by the actual prepared writer,
+    /// or return `MayChange`. Extra proof failures must fall back, not introduce write refusals.
+    /// Existing validation errors still propagate. Both callbacks must use the bound DSP.
+    #[track_caller]
+    pub fn run_scoped_prepared<P: Send + 'static, T: Send + 'static>(
+        self: &Arc<Self>,
+        dsp: impl Into<String>,
+        domain: cache::DataDomain,
+        prepare: impl FnOnce(&db::Store, &str) -> Result<(P, cache::PeopleImpact)> + Send + 'static,
+        write: impl FnOnce(&db::Store, &str, P) -> Result<T> + Send + 'static,
+    ) -> impl Future<Output = Result<T>> + Send {
+        let dsp = dsp.into();
+        let state = self.clone();
+        self.database(Access::Write, CacheChange::Bookkeeping, move |db| {
+            let (prepared, people) = prepare(db, &dsp)?;
+            state.read_cache.invalidate_prepared(&dsp, domain, people);
+            write(db, &dsp, prepared)
+        })
+    }
     /// A write in the DSP's data by work acting for it, as upkeep, as `run_scoped`: made only
     /// while this backend serves the DSP, checked in the same turn, so work begun before the DSP
     /// was disabled changes nothing of it after (`dsp_unavailable`).

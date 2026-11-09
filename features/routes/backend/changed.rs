@@ -6,7 +6,7 @@
 //! meanwhile is told again: a restart before then tells of it still, and one cut short while
 //! telling tells of it again. A live read, a save and the extraction of a day's work phones tell of
 //! it themselves, as they keep it.
-use super::{COLLECTION, DOMAIN, RoutesStore};
+use super::{COLLECTION, RoutesStore};
 use dispatch_core::{
     Error, Result, State,
     db::Db,
@@ -72,9 +72,8 @@ pub(super) async fn tell(state: &Arc<State>, dsp: &str) {
         events::publish(state, dsp, RouteDataChanged { day: day.clone() }).await;
         let (d, told) = (dsp.to_owned(), day.clone());
         let let_go = state
-            .run_scoped(dsp, DOMAIN, move |db| {
-                self::told(&*db.routes_db(&d)?, &told, last)
-            })
+            // Only acknowledge the notes already delivered, never the route mutation.
+            .run_bookkeeping(move |db| self::told(&*db.routes_db(&d)?, &told, last))
             .await;
         if let Err(error) = let_go {
             failed(dsp, Some(&day), &error);

@@ -132,6 +132,16 @@ pub const DOMAINS: &[DataDomain] = &[
     DataDomain::DRIVERS,
 ];
 
+/// A reviewed preparation's proof about every input to every PEOPLE read, including
+/// identity, activity, workdays, matching decisions, settings and source availability.
+/// Uncertainty must remain `MayChange`; unchanged counts or directory JSON are insufficient.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PeopleImpact {
+    #[default]
+    MayChange,
+    Unchanged,
+}
+
 /// Which writes evict a cached read, as an owner that knows of the dependency declares it.
 /// A read is evicted by a write any of its declarations names.
 pub struct Cached {
@@ -279,11 +289,20 @@ impl ReadCache {
     /// Call under the transition write lock, before the first mutation. Evict on
     /// errors too: a later database may fail after an earlier one committed.
     pub fn invalidate_tenant(&self, dsp: &str, domain: DataDomain) {
+        self.invalidate_prepared(dsp, domain, PeopleImpact::MayChange);
+    }
+    /// Only State's prepared write may preserve the proved tenant's PEOPLE scope. Global
+    /// scopes and all other reads retain the same dependency predicate.
+    pub(crate) fn invalidate_prepared(&self, dsp: &str, domain: DataDomain, people: PeopleImpact) {
         if let Ok(mut entries) = self.entries.lock() {
             entries.retain(|entry| {
                 let scope = &entry.scope;
-                !(scope.dsp.as_deref().is_none_or(|tenant| tenant == dsp)
-                    && evicts(scope.read, domain))
+                let unchanged = people == PeopleImpact::Unchanged
+                    && scope.read == PEOPLE
+                    && scope.dsp.as_deref() == Some(dsp);
+                unchanged
+                    || !(scope.dsp.as_deref().is_none_or(|tenant| tenant == dsp)
+                        && evicts(scope.read, domain))
             });
         }
     }

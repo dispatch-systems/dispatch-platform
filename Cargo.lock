@@ -954,6 +954,7 @@ dependencies = [
  "dispatch-mcp",
  "dispatch-paycom",
  "dispatch-routes",
+ "dispatch-routes-contract",
  "dispatch-settings",
  "dispatch-slack",
  "dispatch-team",

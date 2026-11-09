@@ -5,12 +5,12 @@
 use super::{
     ADAPTER_VERSION, COLLECTION, DOMAIN, RoutesStore,
     publishing::{
-        Writes, prune_itineraries, prune_itinerary, prune_routes, write_assigned, write_itinerary,
-        write_raw, write_routes, write_shared,
+        DriverWrite, Writes, assigned_drivers, prune_itineraries, prune_itinerary, prune_routes,
+        widened_seen, write_assigned, write_itinerary, write_raw, write_routes, write_shared,
     },
     saving,
     scope::{day_allowed, day_request, routes_day, routes_today},
-    shaping::{PreparedItinerary, Shaper, gzip},
+    shaping::{PreparedItinerary, Shaper, gzip, identifier},
     staging::blocking,
     storage::stored_capture,
     work_phones::{PHONES_SINCE, Stored},
@@ -24,6 +24,7 @@ use dispatch_core::{
         Counts,
         events::{self, PeopleChanged},
     },
+    server::cache::PeopleImpact,
 };
 use dispatch_cortex::{
     self as cortex,
@@ -31,7 +32,10 @@ use dispatch_cortex::{
 };
 use dispatch_routes_contract::RouteDataChanged;
 use rusqlite::params;
-use std::sync::Arc;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 /// What keeping a live read counted, for its record: the itineraries it listed, and the rows it
 /// wrote or deleted.
@@ -159,17 +163,28 @@ pub async fn keep_live(
             })
             .await?;
         // Checked and shaped on a blocking thread, without the platform lock.
-        let mut shaped = tokio::task::spawn_blocking(move || Shaped::new(capture, &request))
+        let shaped = tokio::task::spawn_blocking(move || Shaped::new(capture, &request))
             .await
             .map_err(blocking("routes.keep_failed"))??;
-        let d = dsp.to_owned();
         let kept = state
-            .run_scoped(dsp, DOMAIN, move |db| {
-                on(db)?;
-                let current = db.connection_revision(&d, cortex::PROVIDER)? == Some(revision);
-                ensure(current, "connection_changed", 409)?;
-                keep(db, &d, &mut shaped)
-            })
+            .run_scoped_prepared(
+                dsp,
+                DOMAIN,
+                move |db, dsp| {
+                    on(db)?;
+                    let current = db.connection_revision(dsp, cortex::PROVIDER)? == Some(revision);
+                    ensure(current, "connection_changed", 409)?;
+                    day_allowed(
+                        Mode::Snapshot,
+                        &shaped.lists.scope.date,
+                        routes_today(db, dsp)?,
+                    )?;
+                    // Additional proof failures never turn an otherwise valid poll into an error.
+                    let impact = people_impact(db, dsp, &shaped).unwrap_or(PeopleImpact::MayChange);
+                    Ok((shaped, impact))
+                },
+                |db, dsp, mut shaped| keep(db, dsp, &mut shaped),
+            )
             .await?;
         if kept.named {
             events::publish(state, dsp, PeopleChanged).await;
@@ -181,6 +196,150 @@ pub async fn keep_live(
     })
     .await
 }
+/// Typed held row, including exactly the seen expressions used by the production upsert.
+struct HeldDriver {
+    id: String,
+    first: Option<String>,
+    last: Option<String>,
+    first_seen: String,
+    last_seen: String,
+    same_seen: bool,
+}
+impl dispatch_core::db::FromRow for HeldDriver {
+    fn from_row(row: &dispatch_core::db::Row<'_>) -> Result<Self> {
+        Ok(Self {
+            id: row.get("transporter_id")?,
+            first: row.get("first_name")?,
+            last: row.get("last_name")?,
+            first_seen: row.get("first_seen_day")?,
+            last_seen: row.get("last_seen_day")?,
+            same_seen: row.get("same_seen")?,
+        })
+    }
+}
+
+/// A sufficient no-change proof for the full live people contribution, before any writes.
+/// Every unrecognized/reset/older branch remains conservative. The writer uses the same
+/// driver extraction; its only later preparation carries work phones, outside this projection.
+fn people_impact(store: &Store, dsp: &str, read: &Shaped) -> Result<PeopleImpact> {
+    let uncertain = PeopleImpact::MayChange;
+    let db = store.routes_live_db(dsp)?;
+    let scope = &read.lists.scope;
+    let day = scope.date.as_str();
+    let held = db.all(
+        "SELECT id,day,station,service_area_id,provider,timezone,mode,active,collected_at,adapter_version \
+         FROM route_publications LIMIT 2",
+        [],
+    )?;
+    let [held] = held.as_slice() else {
+        return Ok(uncertain);
+    };
+    if held["active"].as_i64() != Some(1)
+        || held["adapter_version"].as_i64() != Some(ADAPTER_VERSION)
+        || !identifier(s(held, "id"), 512)
+        || held["mode"].as_str() != Some(Mode::Snapshot.as_str())
+        || held["timezone"].as_str() != Some(scope.timezone.as_str())
+        || held["collected_at"]
+            .as_str()
+            .is_none_or(|stamp| chrono::DateTime::parse_from_rfc3339(stamp).is_err())
+        || (
+            s(held, "day"),
+            s(held, "station"),
+            s(held, "service_area_id"),
+            s(held, "provider"),
+        ) != (
+            day,
+            scope.station.as_str(),
+            scope.service_area_id.as_str(),
+            scope.provider.as_str(),
+        )
+        || held["collected_at"]
+            .as_str()
+            .is_none_or(|at_held| at_held >= at(read.lists.finished_at).as_str())
+    {
+        return Ok(uncertain);
+    }
+    // A valid current scope has text dates and nullable text names. Typed reads reject
+    // unknown storage rather than letting JSON's string convenience erase NULL/type differences.
+    let [first_seen, last_seen] = widened_seen("drivers", "?1", "?1");
+    let drivers = db.query_as::<HeldDriver>(
+        &format!(
+            "SELECT transporter_id,first_name,last_name,first_seen_day,last_seen_day, \
+            (first_seen_day,last_seen_day) IS ({first_seen},{last_seen}) same_seen FROM drivers"
+        ),
+        [day],
+    )?;
+    let drivers: BTreeMap<_, _> = drivers
+        .into_iter()
+        .map(|driver| (driver.id.clone(), driver))
+        .collect();
+    let planned = assigned_drivers(
+        &scope.provider,
+        &read.lists.route_summaries,
+        &read.itineraries,
+    )
+    .into_iter()
+    .chain(read.itineraries.iter().filter_map(DriverWrite::itinerary));
+    for driver in planned {
+        let Some(held) = drivers.get(&driver.id) else {
+            return Ok(uncertain);
+        };
+        // shared_update overwrites nullable names and widens seen with SQLite min/max.
+        // Check every write against the held row, so a temporary rename restored by a
+        // duplicate is conservative too. Unknown date spellings never certify no change.
+        let canonical = |date: &str| {
+            chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d")
+                .is_ok_and(|parsed| parsed.to_string() == date)
+        };
+        if !identifier(&driver.id, 512)
+            || driver.first != held.first
+            || driver.last != held.last
+            || !canonical(&held.first_seen)
+            || !canonical(&held.last_seen)
+            || !held.same_seen
+        {
+            return Ok(uncertain);
+        }
+    }
+    let mut ids = BTreeSet::new();
+    let mut proposed = BTreeSet::new();
+    for itinerary in &read.itineraries {
+        // write_itinerary binds these actual dynamic columns. Do not infer membership
+        // from the separate task/shared-driver ID if their representations ever diverge.
+        let mut bound = itinerary
+            .columns
+            .iter()
+            .filter(|(column, _)| column == "transporter_id");
+        let id = bound.next().and_then(|(_, value)| value.as_str());
+        if !ids.insert(itinerary.id.as_str())
+            || !identifier(&itinerary.id, 512)
+            || id != Some(itinerary.transporter_id.as_str())
+            || bound.next().is_some()
+            || id.is_none_or(|id| !identifier(id, 512))
+            || itinerary
+                .columns
+                .iter()
+                .any(|(c, _)| ["day", "publication_id", "itinerary_id"].contains(&c.as_str()))
+        {
+            return Ok(uncertain);
+        }
+        proposed.insert((itinerary.transporter_id.clone(), day.to_owned()));
+    }
+    let active: BTreeSet<_> = db
+        .query_as::<(String, String)>(
+            "SELECT DISTINCT i.transporter_id,i.day FROM itineraries i \
+         JOIN route_publications p ON p.id=i.publication_id AND p.active=1",
+            [],
+        )?
+        .into_iter()
+        .collect();
+    Ok(if active == proposed {
+        PeopleImpact::Unchanged
+    } else {
+        uncertain
+    })
+}
+
 /// Keeps a shaped read in the DSP's live route data in place, in one transaction, answering what
 /// it did: each of its itineraries that shows no work phone keeps the one the day's last read
 /// stored for it (`Stored`). Refuses a read of a day that isn't today as it's written, however long
