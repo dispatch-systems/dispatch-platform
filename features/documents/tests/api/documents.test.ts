@@ -55,6 +55,12 @@ test('an owner connects Google, reconnects only the same account, and disconnect
   const finished = await owner.post('/api/dsp/documents/connect/finish', { state, code });
   assert.equal(finished.status, 200, finished.body);
   const account = finished.value.account;
+  const generation = account.connection.grantGeneration;
+  assert.match(generation, /^[a-f0-9]{64}$/);
+  const prepared = await owner.post('/api/dsp/documents/new', {
+    kind: 'doc', name: 'Prepared under the first grant', grantGeneration: generation,
+  });
+  assert.equal(prepared.status, 200, prepared.body);
   assert.equal(account.connection.status, 'connected');
   assert.equal(account.connection.accountEmail, 'documents@example.com');
   assert.equal(account.connection.accountKind, 'personal');
@@ -73,12 +79,34 @@ test('an owner connects Google, reconnects only the same account, and disconnect
     (await owner.read('/api/dsp/documents')).connection.accountEmail,
     'documents@example.com',
   );
+  assert.equal((await owner.read('/api/dsp/documents')).connection.grantGeneration, generation);
   // Reconnecting the same account keeps its folder: nothing new to start with.
   const same = signIn((await owner.post('/api/dsp/documents/connect')).value.url);
   assert.equal(
     (await owner.post('/api/dsp/documents/connect/finish', same)).value.madeFolder,
     false,
   );
+
+  const current = (await owner.read('/api/dsp/documents')).connection;
+  assert.notEqual(current.grantGeneration, generation);
+  assert.equal(current.folderUrl, account.connection.folderUrl);
+  assert.equal(current.accountEmail, account.connection.accountEmail);
+  const path = `/api/dsp/documents/items/${prepared.value.id}/rename`;
+  for (const invalid of [null, '', 'a'.repeat(63), 'A'.repeat(64), 1]) {
+    const refused = await owner.post(path, { name: 'Malformed', grantGeneration: invalid });
+    assert.equal(refused.status, 400, refused.body);
+  }
+  const obsolete = await owner.post(path, { name: 'Obsolete', grantGeneration: generation });
+  assert.equal(obsolete.status, 409, obsolete.body);
+  assert.equal(obsolete.value.error, 'documents_not_connected');
+  const reading = await owner.read('/api/dsp/documents/folder');
+  assert.equal(reading.grantGeneration, current.grantGeneration);
+  assert.equal(reading.items.find((item: { id: string }) => item.id === prepared.value.id)?.name,
+    'Prepared under the first grant');
+  const admitted = await owner.post(path, { name: 'Current', grantGeneration: current.grantGeneration });
+  assert.equal(admitted.status, 200, admitted.body);
+  // The original empty trash body remains a working legacy request.
+  assert.equal((await owner.post(`/api/dsp/documents/items/${prepared.value.id}/trash`)).status, 200);
 
   const disconnected = await owner.post('/api/dsp/documents/disconnect');
   assert.equal(disconnected.status, 200, disconnected.body);

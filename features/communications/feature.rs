@@ -292,7 +292,7 @@ pub const FEATURE: Feature = Feature {
     integrations: &[integrations::messages::INTEGRATION],
     // What it holds in memory of a deleted DSP's group messages goes.
     deleting: Deleting {
-        forgotten: Some(backend::groups::send::forgotten),
+        forgotten: Some(|_, dsp| backend::groups::send::forgotten(dsp)),
         ..Deleting::NONE
     },
     ..feature("communications")

@@ -65,6 +65,8 @@ pub struct DocumentsAccount {
 #[cfg_attr(feature = "ts", ts(export_to = "features/documents/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct PickerSetup {
+    /// Opaque replacement identity; never authority or OAuth material.
+    pub grant_generation: String,
     /// The Google account that holds the DSP's Documents, which a file picked elsewhere is
     /// shared with to come in.
     pub account: String,
@@ -106,6 +108,8 @@ pub struct DriveFile {
 #[cfg_attr(feature = "ts", ts(export_to = "features/documents/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentsConnection {
+    /// Opaque replacement identity; never authority or OAuth material.
+    pub grant_generation: String,
     pub status: ConnectionStatus,
     pub account_email: String,
     pub account_kind: AccountKind,
@@ -232,6 +236,8 @@ pub struct FolderStep {
 #[cfg_attr(feature = "ts", ts(export_to = "features/documents/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentsFolder {
+    /// Opaque replacement identity; never authority or OAuth material.
+    pub grant_generation: String,
     /// The folder; none for the main folder.
     pub id: Option<String>,
     pub name: String,
@@ -250,6 +256,8 @@ pub struct DocumentsFolder {
 #[cfg_attr(feature = "ts", ts(export_to = "features/documents/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentsFolderRead {
+    /// Opaque replacement identity; never authority or OAuth material.
+    pub grant_generation: String,
     /// An opaque SHA-256 revision of the scoped, projected response.
     pub revision: String,
     pub folder: Option<DocumentsFolder>,
@@ -349,6 +357,8 @@ pub struct DocumentsQueryFolder {
 #[cfg_attr(feature = "ts", ts(export_to = "features/documents/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentsQueryPage {
+    /// Opaque replacement identity; never authority or OAuth material.
+    pub grant_generation: String,
     pub snapshot: String,
     pub manifest_revision: String,
     pub page: u32,

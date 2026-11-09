@@ -5,6 +5,7 @@
 use super::{
     access, cache,
     google::{self, Google},
+    grant::{self, Grant},
     mirror, picker,
     storage::{Connection, DocumentsStore},
     team,
@@ -53,6 +54,7 @@ fn described(
 ) -> Result<Option<DocumentsConnection>> {
     Ok(match found {
         Some(found) => Some(DocumentsConnection {
+            grant_generation: found.generation.clone(),
             status: if found.broken {
                 ConnectionStatus::Broken
             } else {
@@ -79,10 +81,16 @@ pub async fn account(state: &Arc<State>, dsp: &str) -> Result<DocumentsAccount> 
     let at = dsp.to_owned();
     let found = state.read(move |db| db.documents_connection(&at)).await?;
     let storage = match &found {
-        Some(found) if !found.broken => match access::open(state, dsp, false).await {
-            Ok(drive) => drive.google.storage(&drive.access).await.ok(),
-            Err(_) => None,
-        },
+        Some(found) if !found.broken => {
+            let owner = grant::capture(state, dsp, Some(found.generation.clone())).await?;
+            match access::open_for(state, &owner, false).await {
+                Ok(drive) => {
+                    drive.admit(state).await?;
+                    drive.google.storage(&drive.access).await.ok()
+                }
+                Err(_) => None,
+            }
+        }
         _ => None,
     }
     .map(|storage| DriveStorage {
@@ -90,7 +98,17 @@ pub async fn account(state: &Arc<State>, dsp: &str) -> Result<DocumentsAccount> 
         limit: storage.limit,
     });
     let at = dsp.to_owned();
-    let connection = state.read(move |db| described(db, &at, found)).await?;
+    let connection = state
+        .read(move |db| {
+            db.ensure_dsp_active(&at)?;
+            ensure(
+                db.documents_connection(&at)? == found,
+                "documents_not_connected",
+                409,
+            )?;
+            described(db, &at, found)
+        })
+        .await?;
     Ok(DocumentsAccount {
         connection,
         available: Google::available(&state.config),
@@ -136,14 +154,18 @@ pub async fn finish(
 ) -> Result<GoogleConnected> {
     ensure(!team::is_link(&sign_in), "documents_connect_expired", 409)?;
     let (dsp, actor) = (c.dsp.id.clone(), c.actor().to_owned());
-    let (verifier, existing) = state
-        .run(move |db| {
-            let verifier = db.finish_documents_sign_in(&dsp, &actor, &sign_in)?;
-            Ok((verifier, db.documents_connection(&dsp)?))
-        })
+    let verifier = state
+        .run(move |db| db.finish_documents_sign_in(&dsp, &actor, &sign_in))
         .await?;
     let google = Google::of(&state.config)?;
     let granting = GRANTS.lock().await;
+    let current = c.clone();
+    let existing = state
+        .read(move |db| {
+            let c = access.revalidate(db, &current)?;
+            db.documents_connection(&c.dsp.id)
+        })
+        .await?;
     let granted = google
         .exchange(&state.config.origin, &code, &verifier)
         .await?;
@@ -176,6 +198,7 @@ pub async fn finish(
         }
     };
     let connection = Connection {
+        generation: String::new(), // Assigned by the storage replacement operation.
         broken: false,
         full: true,
         account: granted.account,
@@ -185,27 +208,33 @@ pub async fn finish(
         connected_at: iso(),
     };
     let refresh = granted.refresh;
-    cache::forget(&c.dsp.id);
-    mirror::forget(&c.dsp.id);
     let shared = c.dsp.id.clone();
-    state
+    let owner = state
         .run(move |db| {
             let c = access.revalidate(db, &c)?;
+            ensure(
+                db.documents_connection(&c.dsp.id)? == existing,
+                "documents_not_connected",
+                409,
+            )?;
+            // Invalidation and replacement are one exclusive State transition.
+            cache::forget(&db.config.environment_root(), &c.dsp.id);
+            mirror::forget(&db.config.environment_root(), &c.dsp.id);
             db.save_documents_connection(&c.dsp.id, &connection, &refresh)?;
             let action = if existing.is_some() {
                 "documents.reconnected"
             } else {
                 "documents.connected"
             };
-            c.audit(db, action, &connection.account.email)
+            c.audit(db, action, &connection.account.email)?;
+            Grant::capture(db, &c.dsp.id, None)
         })
         .await?;
     drop(granting);
     // The team gets the folder shared with them while the owner looks around.
     let sharing = Arc::clone(state);
-    let at = shared.clone();
     tokio::spawn(async move {
-        if let Err(error) = team::sync(&sharing, &at).await {
+        if let Err(error) = team::sync_for(&sharing, &owner).await {
             observability::event(
                 "warn",
                 "documents_share_failed",
@@ -222,20 +251,32 @@ pub async fn finish(
 /// Lets the account go: Google takes back Dispatch's access and Dispatch forgets the token.
 /// The folder and everything in it stay in the account's Drive.
 pub async fn disconnect(state: &Arc<State>, c: Context, access: Dsp) -> Result<DocumentsAccount> {
+    let _granting = GRANTS.lock().await;
     let id = c.dsp.id.clone();
-    let dsp = id.clone();
-    let token = state
-        .read(move |db| db.documents_refresh_token(&dsp))
+    let asked = c.clone();
+    let (found, token) = state
+        .read(move |db| {
+            let c = access.revalidate(db, &asked)?;
+            Ok((
+                db.documents_connection(&c.dsp.id)?,
+                db.documents_refresh_token(&c.dsp.id)?,
+            ))
+        })
         .await?;
     if let (Some(token), Ok(google)) = (token, Google::of(&state.config)) {
         google.revoke(&token).await;
     }
-    cache::forget(&c.dsp.id);
-    mirror::forget(&c.dsp.id);
     state
         .run(move |db| {
             let c = access.revalidate(db, &c)?;
-            if let Some(found) = db.documents_connection(&c.dsp.id)? {
+            ensure(
+                db.documents_connection(&c.dsp.id)? == found,
+                "documents_not_connected",
+                409,
+            )?;
+            cache::forget(&db.config.environment_root(), &c.dsp.id);
+            mirror::forget(&db.config.environment_root(), &c.dsp.id);
+            if let Some(found) = found {
                 db.remove_documents_connection(&c.dsp.id)?;
                 c.audit(db, "documents.disconnected", &found.account.email)?;
             }
@@ -281,15 +322,18 @@ fn own_grant(db: &Store, dsp: &str) -> Result<Option<String>> {
     db.documents_refresh_token(dsp)
 }
 /// Forgets what's held in memory of a deleted DSP's files.
-pub fn forgotten(dsp: &str) {
-    cache::forget_deleted(dsp);
-    mirror::forget(dsp);
+pub fn forgotten(state: &State, dsp: &str) {
+    let namespace = state.config.environment_root();
+    cache::forget_deleted(&namespace, dsp);
+    mirror::forget(&namespace, dsp);
 }
 
 /// Marks the DSP's connection broken, as Google refused its token: once, in the activity log
 /// too, whoever noticed.
 pub(crate) fn broken(db: &Store, dsp: &str) -> Result<()> {
     if db.break_documents_connection(dsp)? {
+        cache::forget(&db.config.environment_root(), dsp);
+        mirror::forget(&db.config.environment_root(), dsp);
         db.audit(None, Some(dsp), "documents.connection_broken", "")?;
     }
     Ok(())

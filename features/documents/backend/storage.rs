@@ -35,9 +35,34 @@ pub(crate) fn add_outside_names(db: &Db) -> Result<()> {
     add_column(db, "documents_files", "changed_name", "TEXT")
 }
 
+/// Documents' migration 4. The insert trigger also covers a previous binary's explicit
+/// INSERT OR REPLACE column list; every replacement gets a fresh opaque identity.
+pub(crate) fn add_grant_generation(db: &Db) -> Result<()> {
+    add_column(
+        db,
+        "documents_connection",
+        "grant_generation",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
+    db.exec(
+        "UPDATE documents_connection SET grant_generation=lower(hex(randomblob(32))) \
+             WHERE grant_generation=''",
+        [],
+    )?;
+    db.exec(
+        "CREATE TRIGGER IF NOT EXISTS documents_connection_generation_insert \
+             AFTER INSERT ON documents_connection WHEN NEW.grant_generation='' BEGIN \
+             UPDATE documents_connection SET grant_generation=lower(hex(randomblob(32))) \
+             WHERE id=NEW.id; END",
+        [],
+    )?;
+    Ok(())
+}
+
 /// The DSP's Google connection, as stored.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Connection {
+    pub generation: String,
     pub broken: bool,
     /// Whether it reaches everything in the account's Drive, rather than only the files
     /// Dispatch made or was given, as one connected before Dispatch asked for that does.
@@ -51,6 +76,7 @@ pub struct Connection {
 impl FromRow for Connection {
     fn from_row(row: &Row<'_>) -> Result<Self> {
         Ok(Self {
+            generation: row.get("grant_generation")?,
             broken: row.get::<String>("status")? == "broken",
             full: row.get::<i64>("full_access")? == 1,
             account: Account {
@@ -160,7 +186,7 @@ pub trait DocumentsStore {
         dsp: &str,
         connection: &Connection,
         refresh: &str,
-    ) -> Result<()>;
+    ) -> Result<Connection>;
     fn documents_refresh_token(&self, dsp: &str) -> Result<Option<String>>;
     /// Marks the connection broken, once: whether it was working until now.
     fn break_documents_connection(&self, dsp: &str) -> Result<bool>;
@@ -265,33 +291,36 @@ impl DocumentsStore for Store {
         dsp: &str,
         connection: &Connection,
         refresh: &str,
-    ) -> Result<()> {
+    ) -> Result<Connection> {
+        let mut next = connection.clone();
+        next.generation = crypto::hex(&crypto::random::<32>()?);
+        next.broken = false;
+        let db = self.dsp(dsp)?;
+        dispatch_core::ensure(db.0.is_autocommit(), "operation_failed", 500)?;
+        // The database and encrypted file cannot commit together. Revoke the previous local
+        // identity durably BEFORE changing its secret. Failure/crash leaves this row broken,
+        // never a connected old generation reading the replacement's refresh token.
+        db.exec(
+            "INSERT OR REPLACE INTO documents_connection (id,status,account_email,account_kind,\
+             folder_id,folder_name,connected_by,connected_at,broken_at,full_access,grant_generation) \
+             VALUES (1,'broken',?,?,?,?,?,?,?, ?,?)",
+            params![next.account.email,
+                if next.account.workspace { "workspace" } else { "personal" },
+                next.folder_id, next.folder_name, next.connected_by, next.connected_at,
+                iso(), next.full, next.generation],
+        )?;
         let area = self.area(dsp, "secrets")?;
         let key = db::key_file(&area.join("vault.key"))?;
         db::write_private(
             &area.join(SECRET),
             crypto::encrypt(&key, &binding(dsp), &json!({"refreshToken": refresh}))?.as_bytes(),
         )?;
-        let db = self.dsp(dsp)?;
         db.exec(
-            "INSERT OR REPLACE INTO documents_connection (id,status,account_email,account_kind,\
-             folder_id,folder_name,connected_by,connected_at,broken_at,full_access) \
-             VALUES (1,'connected',?,?,?,?,?,?,NULL,?)",
-            params![
-                connection.account.email,
-                if connection.account.workspace {
-                    "workspace"
-                } else {
-                    "personal"
-                },
-                connection.folder_id,
-                connection.folder_name,
-                connection.connected_by,
-                connection.connected_at,
-                connection.full,
-            ],
+            "UPDATE documents_connection SET status='connected',broken_at=NULL \
+             WHERE id=1 AND grant_generation=?",
+            [&next.generation],
         )?;
-        Ok(())
+        Ok(next)
     }
     fn documents_refresh_token(&self, dsp: &str) -> Result<Option<String>> {
         let area = self.area(dsp, "secrets")?;
@@ -314,6 +343,8 @@ impl DocumentsStore for Store {
         Ok(changed > 0)
     }
     fn remove_documents_connection(&self, dsp: &str) -> Result<()> {
+        dispatch_core::ensure(self.dsp(dsp)?.0.is_autocommit(), "operation_failed", 500)?;
+        self.break_documents_connection(dsp)?;
         let path = self.area(dsp, "secrets")?.join(SECRET);
         if path.exists() {
             std::fs::remove_file(path)?;

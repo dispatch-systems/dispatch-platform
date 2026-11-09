@@ -4,6 +4,7 @@ use dispatch_core::testing;
 
 fn connection(email: &str) -> Connection {
     Connection {
+        generation: String::new(),
         broken: false,
         full: true,
         account: Account {
@@ -48,7 +49,7 @@ fn keeps_the_refresh_token_encrypted_until_the_connection_goes() {
     testing::install(&[], &[&crate::FEATURE]);
     let (_root, store, dsp) = testing::bootstrapped();
     let kept = connection("documents@example.test");
-    store
+    let kept = store
         .save_documents_connection(&dsp, &kept, "refresh-secret")
         .unwrap();
     let file = store.area(&dsp, "secrets").unwrap().join(SECRET);
@@ -61,11 +62,33 @@ fn keeps_the_refresh_token_encrypted_until_the_connection_goes() {
         store.documents_refresh_token(&dsp).unwrap().as_deref(),
         Some("refresh-secret")
     );
-    assert_eq!(store.documents_connection(&dsp).unwrap(), Some(kept));
+    assert_eq!(
+        store.documents_connection(&dsp).unwrap().as_ref(),
+        Some(&kept)
+    );
+    // Ordinary reads and a restart-shaped reopen keep identity. Re-saving IDENTICAL visible
+    // fields is a replacement; the storage boundary owns the new identity.
+    assert_eq!(kept.generation.len(), 64);
+    assert_eq!(
+        Store::open(store.config.clone(), store.key.clone())
+            .unwrap()
+            .documents_connection(&dsp)
+            .unwrap()
+            .unwrap()
+            .generation,
+        kept.generation
+    );
+    let replacement = store
+        .save_documents_connection(&dsp, &kept, "refresh-secret")
+        .unwrap();
+    assert_ne!(replacement.generation, kept.generation);
+    assert_eq!(replacement.folder_id, kept.folder_id);
     // Broken once, so the audit log says so once.
     assert!(store.break_documents_connection(&dsp).unwrap());
     assert!(!store.break_documents_connection(&dsp).unwrap());
-    assert!(store.documents_connection(&dsp).unwrap().unwrap().broken);
+    let broken = store.documents_connection(&dsp).unwrap().unwrap();
+    assert!(broken.broken);
+    assert_eq!(broken.generation, replacement.generation);
     store.remove_documents_connection(&dsp).unwrap();
     assert_eq!(store.documents_connection(&dsp).unwrap(), None);
     assert_eq!(store.documents_refresh_token(&dsp).unwrap(), None);

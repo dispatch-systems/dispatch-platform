@@ -9,6 +9,7 @@ use super::{
     access::{self, on_drive},
     drive::{Refused, Share},
     google::{self, Google},
+    grant::{self, Grant},
     storage::{DocumentsStore, Person, SharedFile, Sharing},
 };
 use crate::api::types::{GoogleSignIn, MySharing, SharingState};
@@ -23,7 +24,7 @@ use dispatch_core::{
 use serde_json::json;
 use std::{
     collections::{BTreeMap, BTreeSet},
-    sync::{Arc, LazyLock, Mutex},
+    sync::Arc,
 };
 
 /// The kind of email Dispatch sends a member who needs a Google account.
@@ -78,34 +79,28 @@ fn moving(person: &Person) -> bool {
     person.sharing == Sharing::Shared && person.shared.is_none()
 }
 
-/// A turn at sharing each DSP's folder, so two syncs never share or email at once.
-static TURNS: LazyLock<Mutex<BTreeMap<String, Arc<tokio::sync::Mutex<()>>>>> =
-    LazyLock::new(Default::default);
-fn turn(dsp: &str) -> Arc<tokio::sync::Mutex<()>> {
-    TURNS
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .entry(dsp.to_owned())
-        .or_default()
-        .clone()
-}
-
-/// Shares the main folder with everyone on the team who uses Documents, and takes it back
-/// from those who left. Answers who the folder is shared with afterwards.
+/// Captures the current grant once; queued callbacks use sync_for with their existing owner.
 pub async fn sync(state: &Arc<State>, dsp: &str) -> Result<Vec<Share>> {
-    let turn = turn(dsp);
-    let _held = turn.lock().await;
+    let owner = grant::capture(state, dsp, None).await?;
+    sync_for(state, &owner).await
+}
+pub(super) async fn sync_for(state: &Arc<State>, owner: &Grant) -> Result<Vec<Share>> {
+    let _held = owner.mirror.sharing.lock().await;
+    sync_held(state, owner).await
+}
+async fn sync_held(state: &Arc<State>, owner: &Grant) -> Result<Vec<Share>> {
+    let dsp = owner.key.dsp.as_str();
     let (drive, mut shares) = on_drive!(
         state,
-        dsp,
+        owner,
         drive,
         drive
             .google
             .shares(&drive.access, &drive.connection.folder_id)
     )?;
     let at = dsp.to_owned();
-    let (wanted, people, name) = state
-        .read(move |db| {
+    let (wanted, people, name) = owner
+        .read(state, move |db, _| {
             Ok((
                 members(db, &at)?,
                 db.documents_people(&at)?,
@@ -149,7 +144,7 @@ pub async fn sync(state: &Arc<State>, dsp: &str) -> Result<Vec<Share>> {
         } else {
             // A share at an address they moved on from goes.
             if let Some((_, old)) = person.shared.clone() {
-                if let Err(error) = access::active(state, dsp).await {
+                if let Err(error) = drive.admit(state).await {
                     stopped = Some(error);
                     break;
                 }
@@ -157,7 +152,7 @@ pub async fn sync(state: &Arc<State>, dsp: &str) -> Result<Vec<Share>> {
                 shares.retain(|share| share.id != old);
                 person.shared = None;
             }
-            if let Err(error) = access::active(state, dsp).await {
+            if let Err(error) = drive.admit(state).await {
                 // Only the share at their old address was taken back, if any.
                 if before.is_some_and(|before| before != &person) {
                     changed.push(person);
@@ -203,7 +198,7 @@ pub async fn sync(state: &Arc<State>, dsp: &str) -> Result<Vec<Share>> {
             break;
         }
         if let Some((_, id)) = &person.shared {
-            if let Err(error) = access::active(state, dsp).await {
+            if let Err(error) = drive.admit(state).await {
                 stopped = Some(error);
                 break;
             }
@@ -217,8 +212,8 @@ pub async fn sync(state: &Arc<State>, dsp: &str) -> Result<Vec<Share>> {
     let dev = state.config.environment.is_preview();
     // What Google made is kept, the DSP disabled meanwhile or not: the next sync once it's
     // enabled goes on from there.
-    state
-        .run(move |db| {
+    owner
+        .run_finished(state, move |db, _| {
             for person in &changed {
                 db.save_documents_person(&at, person)?;
             }
@@ -235,6 +230,7 @@ pub async fn sync(state: &Arc<State>, dsp: &str) -> Result<Vec<Share>> {
         return Err(error);
     }
     share_files(state, dsp, &drive, &addresses).await?;
+    access::current(state, owner).await?;
     Ok(shares)
 }
 
@@ -248,7 +244,8 @@ async fn share_files(
     drive: &access::Drive,
     addresses: &[String],
 ) -> Result<()> {
-    let (_, tree) = access::tree(state, dsp).await?;
+    let owner = &drive.owner;
+    let tree = access::tree_for(state, owner).await?;
     let targets = tree.targets();
     let account = drive.connection.account.email.to_lowercase();
     let wanted: BTreeSet<String> = addresses
@@ -257,7 +254,9 @@ async fn share_files(
         .filter(|email| *email != account)
         .collect();
     let at = dsp.to_owned();
-    let made = state.read(move |db| db.documents_shared_files(&at)).await?;
+    let made = owner
+        .read(state, move |db, _| db.documents_shared_files(&at))
+        .await?;
     for file in &targets {
         let missing: Vec<&String> = wanted
             .iter()
@@ -270,7 +269,7 @@ async fn share_files(
         if missing.is_empty() {
             continue;
         }
-        access::active(state, dsp).await?;
+        drive.admit(state).await?;
         // Its owner may not let the account see who has it, or share it on.
         let Ok(shares) = drive.google.shares(&drive.access, file).await else {
             continue;
@@ -285,7 +284,7 @@ async fn share_files(
             if has {
                 continue;
             }
-            access::active(state, dsp).await?;
+            drive.admit(state).await?;
             let share = match drive.google.share(&drive.access, file, email).await {
                 Ok(Ok(share)) => share,
                 Err(error) if error.code == "google_connection_broken" => return Err(error),
@@ -299,10 +298,15 @@ async fn share_files(
                 share,
             };
             let (at, kept) = (dsp.to_owned(), shared.clone());
-            if let Err(error) = state
-                .run(move |db| db.save_documents_shared_file(&at, &kept))
+            if let Err(error) = owner
+                .run_finished(state, move |db, _| {
+                    db.save_documents_shared_file(&at, &kept)
+                })
                 .await
             {
+                // Existing compensation is attempted only while the original grant remains
+                // current. Never use a replacement grant to undo an old external effect.
+                drive.admit(state).await?;
                 drive
                     .google
                     .unshare(&drive.access, &shared.file, &shared.share)
@@ -315,7 +319,7 @@ async fn share_files(
         if targets.contains(&shared.file) && wanted.contains(&shared.email) {
             continue;
         }
-        access::active(state, dsp).await?;
+        drive.admit(state).await?;
         match drive
             .google
             .unshare(&drive.access, &shared.file, &shared.share)
@@ -329,8 +333,10 @@ async fn share_files(
             Err(_) => continue,
         }
         let at = dsp.to_owned();
-        state
-            .run(move |db| db.remove_documents_shared_file(&at, &shared))
+        owner
+            .run_finished(state, move |db, _| {
+                db.remove_documents_shared_file(&at, &shared)
+            })
             .await?;
     }
     Ok(())
@@ -414,18 +420,29 @@ pub fn mine(db: &Store, c: &Context) -> Result<Option<MySharing>> {
 
 /// Shares the folder now, rather than within the minute, for a member Documents hasn't asked
 /// Google about yet: unless it's already sharing for the DSP.
-pub fn nudge(state: &Arc<State>, dsp: &str) {
-    if turn(dsp).try_lock().is_err() {
-        return;
-    }
-    share_soon(state, dsp);
-}
-/// Shares the folder, and the files Documents holds shortcuts to, at the DSP's next turn:
-/// once a shortcut comes or goes.
-pub fn share_soon(state: &Arc<State>, dsp: &str) {
+pub fn nudge(state: &Arc<State>, dsp: &str, generation: String) {
     let (state, dsp) = (Arc::clone(state), dsp.to_owned());
     tokio::spawn(async move {
-        if let Err(error) = sync(&state, &dsp).await {
+        let Ok(owner) = grant::capture(&state, &dsp, Some(generation)).await else {
+            return;
+        };
+        let Ok(_held) = Arc::clone(&owner.mirror.sharing).try_lock_owned() else {
+            return;
+        };
+        if let Err(error) = sync_held(&state, &owner).await {
+            observability::event(
+                "warn",
+                "documents_share_failed",
+                json!({"error": error.code}),
+            );
+        }
+    });
+}
+/// Every callback retains the grant that requested sharing, including while queued.
+pub(super) fn share_soon(state: &Arc<State>, owner: &Grant) {
+    let (state, owner) = (Arc::clone(state), owner.clone());
+    tokio::spawn(async move {
+        if let Err(error) = sync_for(&state, &owner).await {
             observability::event(
                 "warn",
                 "documents_share_failed",
@@ -478,20 +495,21 @@ pub async fn finish_link(
     let verifier = state
         .run(move |db| db.finish_documents_sign_in(&dsp, &actor, &sign_in))
         .await?;
+    let owner = grant::capture_member(state, c.clone(), access, None).await?;
     let google = Google::of(&state.config)?;
     let email = google
         .linked_email(&state.config.origin, &code, &verifier)
         .await?;
-    let c = state
-        .run(move |db| {
+    let c = owner
+        .run(state, move |db, _| {
             let c = access.revalidate(db, &c)?;
             db.link_documents_google(&c.dsp.id, c.actor(), &email)?;
             c.audit(db, "documents.linked", &email)?;
             Ok(c)
         })
         .await?;
-    sync(state, &c.dsp.id).await?;
-    state.read(move |db| mine(db, &c)).await
+    sync_for(state, &owner).await?;
+    owner.read(state, move |db, _| mine(db, &c)).await
 }
 
 #[cfg(test)]

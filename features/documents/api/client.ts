@@ -154,7 +154,7 @@ export const readFolder =
         502,
       );
     // A new reading must reach usePending even when all content is unchanged.
-    return { ...folder, revision: answer.revision, asked };
+    return { ...folder, grantGeneration: answer.grantGeneration, revision: answer.revision, asked };
   };
 /** A folder, kept once read: it shows at once when it opens again, and is asked for anew. */
 export function useDocumentsFolder(folder?: string, query?: string) {
@@ -171,9 +171,22 @@ export function prefetchFolder(folder?: string) {
 /** Has every folder read since anything changed read again, as a finished upload does. */
 export const foldersChanged = () =>
   dataCache.invalidate((url) => url.startsWith('/api/dsp/documents/folder'));
+/** Captured by the action's preparer. Never read a mutable latest-generation global here. */
+const precondition = (grantGeneration?: string) =>
+  grantGeneration === undefined ? {} : { grantGeneration };
 /** Makes a folder, Doc, Sheet or Slides in `folder`, or at the top. */
-export const createItem = (folder: string | undefined, kind: NewKind, name: string) =>
-  call<DocumentsItem>('/api/dsp/documents/new', { folder: folder ?? null, kind, name });
+export const createItem = (
+  folder: string | undefined,
+  kind: NewKind,
+  name: string,
+  grantGeneration?: string,
+) =>
+  call<DocumentsItem>('/api/dsp/documents/new', {
+    folder: folder ?? null,
+    kind,
+    name,
+    ...precondition(grantGeneration),
+  });
 /** The most one upload takes: 100 MB. */
 export const UPLOAD_LIMIT = 100 * 1024 * 1024;
 /** Uploads `file` named `name` into `folder`, or the top, telling `progress` how much went. */
@@ -183,8 +196,10 @@ export const uploadFile = (
   folder: string | undefined,
   progress?: (sent: number) => void,
   signal?: AbortSignal,
+  grantGeneration?: string,
 ) => {
   const params = new URLSearchParams({ name });
+  if (grantGeneration !== undefined) params.set('grantGeneration', grantGeneration);
   if (folder) params.set('folder', folder);
   if (file.type) params.set('type', file.type);
   return moving(
@@ -192,8 +207,12 @@ export const uploadFile = (
   );
 };
 /** Adds files picked with Google's picker to `folder`, or the top. */
-export const addFiles = (files: string[], folder: string | undefined) =>
-  call<AddedFiles>('/api/dsp/documents/add', { files, folder: folder ?? null });
+export const addFiles = (files: string[], folder: string | undefined, grantGeneration?: string) =>
+  call<AddedFiles>('/api/dsp/documents/add', {
+    files,
+    folder: folder ?? null,
+    ...precondition(grantGeneration),
+  });
 /**
  * Google's picture of a file, at the address its item names, as large as the screen shows it
  * sharply: 600 pixels on a high-density screen, 300 on an ordinary one, which holds a quarter
@@ -204,16 +223,23 @@ export const thumbnail = (url: string, signal: AbortSignal) =>
 /** Saves the file `id`: Google's own Docs, Sheets and Slides as Word, Excel and PowerPoint. */
 export const downloadItem = (id: string) =>
   moving(download(`/api/dsp/documents/items/${encodeURIComponent(id)}/download`));
-export const renameItem = (id: string, name: string) =>
-  call<DocumentsItem>(`/api/dsp/documents/items/${encodeURIComponent(id)}/rename`, { name });
+export const renameItem = (id: string, name: string, grantGeneration?: string) =>
+  call<DocumentsItem>(`/api/dsp/documents/items/${encodeURIComponent(id)}/rename`, {
+    name,
+    ...precondition(grantGeneration),
+  });
 /** Moves a file or folder, with whatever it holds, into `folder`, or the top. */
-export const moveItem = (id: string, folder: string | undefined) =>
+export const moveItem = (id: string, folder: string | undefined, grantGeneration?: string) =>
   call<MovedItem>(`/api/dsp/documents/items/${encodeURIComponent(id)}/move`, {
     folder: folder ?? null,
+    ...precondition(grantGeneration),
   });
 /** Moves a file or folder, with whatever it holds, to the Google account's trash. */
-export const trashItem = (id: string) =>
-  call<unknown>(`/api/dsp/documents/items/${encodeURIComponent(id)}/trash`, {});
+export const trashItem = (id: string, grantGeneration?: string) =>
+  call<unknown>(
+    `/api/dsp/documents/items/${encodeURIComponent(id)}/trash`,
+    precondition(grantGeneration),
+  );
 
 /**
  * Starts the sign-in that links the member's own Google account: where the browser goes. Google

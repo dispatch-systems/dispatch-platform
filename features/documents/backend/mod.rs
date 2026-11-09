@@ -7,6 +7,7 @@ mod description;
 pub(crate) mod drive;
 pub(crate) mod files;
 pub(crate) mod google;
+mod grant;
 pub(crate) mod maintenance;
 pub(crate) mod mirror;
 pub(crate) mod picker;

@@ -6,6 +6,7 @@
 //! whole once more.
 use super::{
     drive::{Changes, Item},
+    grant::Key,
     tree::Tree,
 };
 use dispatch_core::Error;
@@ -70,32 +71,35 @@ pub struct Mirror {
     viewed: Mutex<Instant>,
     turn: Arc<tokio::sync::Mutex<()>>,
     failed: Mutex<Option<(Instant, String, u16)>>,
+    pub(super) renewal: Arc<tokio::sync::Mutex<()>>,
+    pub(super) sharing: Arc<tokio::sync::Mutex<()>>,
 }
 static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-static MIRRORS: LazyLock<Mutex<HashMap<String, Arc<Mirror>>>> = LazyLock::new(Default::default);
+static MIRRORS: LazyLock<Mutex<HashMap<Key, Arc<Mirror>>>> = LazyLock::new(Default::default);
 
-fn mirrors() -> MutexGuard<'static, HashMap<String, Arc<Mirror>>> {
+fn mirrors() -> MutexGuard<'static, HashMap<Key, Arc<Mirror>>> {
     MIRRORS
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 /// The DSP's mirror.
-pub fn of(dsp: &str) -> Arc<Mirror> {
-    Arc::clone(mirrors().entry(dsp.to_owned()).or_default())
+pub(super) fn of(key: &Key) -> Arc<Mirror> {
+    Arc::clone(mirrors().entry(key.clone()).or_default())
 }
 /// Does not create a replacement while checking a captured owner.
-pub(super) fn current(dsp: &str, owner: &Arc<Mirror>) -> bool {
+pub(super) fn current(key: &Key, owner: &Arc<Mirror>) -> bool {
     mirrors()
-        .get(dsp)
+        .get(key)
         .is_some_and(|mirror| Arc::ptr_eq(mirror, owner))
 }
 /// Forgets the DSP's copy, as a disconnect or a new connection does.
-pub fn forget(dsp: &str) {
-    mirrors().remove(dsp);
+pub(super) fn forget(namespace: &std::path::Path, dsp: &str) {
+    mirrors().retain(|key, _| key.namespace != namespace || key.dsp != dsp);
 }
 /// Forgets the copies nobody has looked at for half an hour.
 pub fn sweep() {
-    mirrors().retain(|_, mirror| mirror.viewed().elapsed() < IDLE);
+    // Readers/refreshers retain the same turn owner, including while a provider is slow.
+    mirrors().retain(|_, mirror| Arc::strong_count(mirror) > 1 || mirror.viewed().elapsed() < IDLE);
 }
 
 impl Default for Mirror {
@@ -106,6 +110,8 @@ impl Default for Mirror {
             viewed: Mutex::new(Instant::now()),
             turn: Arc::default(),
             failed: Mutex::new(None),
+            renewal: Arc::default(),
+            sharing: Arc::default(),
         }
     }
 }

@@ -184,15 +184,15 @@ pub(super) fn index(
 /// The caller has revalidated current authorization and connection after every await.
 pub(super) fn describe(
     db: &Store,
-    dsp: &str,
+    owner: &super::grant::Key,
     account: &str,
     tree: &Tree,
     ids: &[String],
     located: bool,
 ) -> Result<Vec<DocumentsItem>> {
-    let (records, names) = known(db, dsp, ids)?;
+    let (records, names) = known(db, &owner.dsp, ids)?;
     let described = Described {
-        dsp,
+        owner,
         tree,
         records: &records,
         names: &names,

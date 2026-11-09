@@ -37,6 +37,7 @@ pub fn setup(google: &Google, connection: &Connection, me: String) -> Result<Opt
         Google::Fixture => {
             let made = drive::fixture_hidden(&format!("fixture:{account}"))?;
             Some(PickerSetup {
+                grant_generation: connection.generation.clone(),
                 elsewhere: made
                     .into_iter()
                     .map(|item| DriveFile {
@@ -52,6 +53,7 @@ pub fn setup(google: &Google, connection: &Connection, me: String) -> Result<Opt
             })
         }
         Google::Live(_) => google.picker_keys().map(|keys| PickerSetup {
+            grant_generation: connection.generation.clone(),
             account,
             me,
             folder,
