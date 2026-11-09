@@ -94,6 +94,15 @@ through Driver Match.
   publications to their actual collection job. Each day validates and publishes all scopes
   in one transaction. Existing meal fields and privacy cleanup remain unchanged. The additive
   table can remain during a code rollback; do not remove it or rewrite shipped migrations.
+  Paycom own migration 2 adds an immutable DSP-local JSON pool and sidecar references for
+  timecard punches and employee captures. Full inline JSON remains written; legacy writes
+  invalidate only their affected references. Reads join supported bodies or fall back to
+  complete inline JSON, including historical publications. A capture's raw collectedAt
+  envelope stays separate from its ordering timestamp. The private v1 formats sort object
+  keys, preserve array order and null/absent keys, and use SHA-256 over format, NUL and body.
+  This additive phase increases hashing, writes and disk use, including unreferenced replaced
+  sync bodies. It does no backfill, marker emission or garbage collection. Reclamation
+  requires a separately shipped compatibility release as the supported rollback target.
 - **Exposed:** `timecards`, through its contract in `contract/` (`dispatch-timecard-contract`),
   for any feature or agent tool, while it's on for the DSP: the days its collections of
   everyone reached, and a driver's timecards by their Paycom codes, matched exactly, over up

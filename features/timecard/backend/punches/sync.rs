@@ -52,20 +52,34 @@ pub(crate) fn publish_employee_timecard(
     )?;
     // Kept outside full publications: a single-employee sync never becomes the roster.
     // Older releases safely ignore this additive table on rollback.
-    store.collector(id, paycom::PROVIDER)?.exec(
-        "INSERT INTO employee_timecard_syncs VALUES (?,?,?,?,?) \
-         ON CONFLICT(employee_code,period_from,period_to) DO UPDATE SET \
-         collected_at=excluded.collected_at,data=excluded.data \
-         WHERE excluded.collected_at>=employee_timecard_syncs.collected_at",
-        params![
-            scope.employee_code,
-            scope.from,
-            scope.to,
-            s(data, "collectedAt"),
-            data.to_string()
-        ],
-    )?;
-    Ok(())
+    let db = store.collector(id, paycom::PROVIDER)?;
+    db.transaction(|| {
+        let changed = db.exec(
+            "INSERT INTO employee_timecard_syncs VALUES (?,?,?,?,?) \
+             ON CONFLICT(employee_code,period_from,period_to) DO UPDATE SET \
+             collected_at=excluded.collected_at,data=excluded.data \
+             WHERE excluded.collected_at>=employee_timecard_syncs.collected_at",
+            params![
+                scope.employee_code,
+                scope.from,
+                scope.to,
+                s(data, "collectedAt"),
+                data.to_string()
+            ],
+        )?;
+        if changed != 0 {
+            let payload = super::payloads::Payload::capture(data)?;
+            payload.intern(&db)?;
+            payload.attach_sync(
+                &db,
+                &scope.employee_code,
+                &scope.from,
+                &scope.to,
+                s(data, "collectedAt"),
+            )?;
+        }
+        Ok(())
+    })
 }
 
 #[cfg(test)]

@@ -1,6 +1,7 @@
 use dispatch_core::{
     Result,
     db::{Store, flag, s},
+    ensure,
     foundation::crypto,
 };
 use dispatch_paycom::{
@@ -9,6 +10,7 @@ use dispatch_paycom::{
 };
 use rusqlite::params;
 use serde_json::{Value, json};
+use std::collections::{BTreeMap, BTreeSet};
 pub(crate) fn publish_timecards(store: &Store, id: &str, value: &Value) -> Result<Value> {
     validate_workforce(value)?;
     let db = store.collector(id, paycom::PROVIDER)?;
@@ -46,6 +48,18 @@ pub(crate) fn publish_timecards(store: &Store, id: &str, value: &Value) -> Resul
                 return Ok(());
             }
         }
+        let mut payloads = BTreeMap::new();
+        let mut punch_keys = Vec::new();
+        for card in value["timecards"].as_array().unwrap() {
+            let payload = super::payloads::Payload::punches(&card["punches"])?;
+            let key = payload.digest().to_owned();
+            if let Some(existing) = payloads.get(&key) {
+                ensure(existing == &payload, "paycom_payload_collision", 503)?;
+            } else {
+                payloads.insert(key.clone(), payload);
+            }
+            punch_keys.push(key);
+        }
         let publication = crypto::id("pub")?;
         db.exec(
             "INSERT INTO publications(id,collected_at,period_from,period_to) VALUES (?,?,?,?)",
@@ -70,7 +84,14 @@ pub(crate) fn publish_timecards(store: &Store, id: &str, value: &Value) -> Resul
                 ],
             )?;
         }
-        for t in value["timecards"].as_array().unwrap() {
+        let mut interned = BTreeSet::new();
+        for (t, key) in value["timecards"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .zip(&punch_keys)
+        {
+            let payload = &payloads[key];
             db.exec(
                 "INSERT INTO timecards VALUES (?,?,?,?,?,?)",
                 params![
@@ -82,6 +103,10 @@ pub(crate) fn publish_timecards(store: &Store, id: &str, value: &Value) -> Resul
                     t["punches"].to_string()
                 ],
             )?;
+            if interned.insert(payload.digest()) {
+                payload.intern(&db)?;
+            }
+            payload.attach_card(&db, &publication, s(t, "employeeCode"), s(t, "date"))?;
         }
         for source in &sources {
             db.exec(

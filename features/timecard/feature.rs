@@ -92,6 +92,9 @@ pub const FEATURE: Feature = Feature {
                 "timecards",
                 "timecard_sources",
                 "employee_timecard_syncs",
+                "paycom_payloads",
+                "paycom_timecard_payload_refs",
+                "paycom_employee_sync_payload_refs",
                 "paycom_people",
                 "paycom_people_workdays",
                 "paycom_people_collected_days",
@@ -165,11 +168,20 @@ pub const FEATURE: Feature = Feature {
         },
         OwnMigrations {
             kind: paycom::DATABASE,
-            list: &[Migration {
-                id: 1,
-                name: "people_summaries",
-                apply: Code(punches::people_summary::install),
-            }],
+            list: &[
+                Migration {
+                    id: 1,
+                    name: "people_summaries",
+                    apply: Code(punches::people_summary::install),
+                },
+                Migration {
+                    id: 2,
+                    name: "payload_compatibility",
+                    apply: Sql(include_str!(
+                        "migrations/paycom/0002_payload_compatibility.sql"
+                    )),
+                },
+            ],
         },
     ],
     maintenance: &[punches::people_summary::MAINTENANCE],

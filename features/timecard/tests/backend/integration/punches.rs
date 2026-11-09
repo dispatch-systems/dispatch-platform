@@ -189,6 +189,48 @@ fn publication_is_atomic_and_keeps_the_last_successful_dataset() {
     let current = storage
         .setting("paycom.publicationFingerprint", Value::Null)
         .unwrap();
+    // A failure after legacy rows and a payload/ref were written rolls everything back.
+    let snapshot = || {
+        [
+            "publications",
+            "employees",
+            "timecards",
+            "timecard_sources",
+            "paycom_payloads",
+            "paycom_timecard_payload_refs",
+            "paycom_people",
+            "paycom_people_workdays",
+            "paycom_people_collected_days",
+            "paycom_people_state",
+            "settings",
+        ]
+        .into_iter()
+        .map(|table| {
+            storage
+                .all(&format!("SELECT * FROM {table} ORDER BY 1"), [])
+                .unwrap()
+        })
+        .collect::<Vec<_>>()
+    };
+    let original = snapshot();
+    storage
+        .0
+        .execute_batch(
+            "CREATE TRIGGER reject_payload_ref BEFORE INSERT ON paycom_timecard_payload_refs
+         WHEN EXISTS(SELECT 1 FROM paycom_timecard_payload_refs
+                     WHERE publication_id=NEW.publication_id)
+         BEGIN SELECT RAISE(ABORT,'fixture_ref_failure'); END;",
+        )
+        .unwrap();
+    let mut rejected = data.clone();
+    rejected["timecards"][0]["punches"][0]["in"] = json!("07:53");
+    assert!(db.publish_timecards(id, &rejected).is_err());
+    assert_eq!(snapshot(), original);
+    assert_eq!(db.employee_timecard(id, "E001", None).unwrap(), before);
+    storage
+        .0
+        .execute_batch("DROP TRIGGER reject_payload_ref;")
+        .unwrap();
     let mut historical =
         fixtures::fixture_date("UTC", Some("2020-09-05".parse().unwrap())).unwrap();
     historical["collectedAt"] = json!("2099-01-01T00:00:00.000Z");
@@ -297,10 +339,30 @@ fn timecard_links_publish_with_unchanged_hours_and_are_returned() {
     };
     assert_eq!(count("publications"), 2);
     assert_eq!(count("timecard_sources"), 12);
+    assert_eq!(count("paycom_payloads"), 2);
     // An identical repeat only refreshes the collection time.
     linked["collectedAt"] = json!("2099-01-02T00:00:00.000Z");
     db.publish_timecards(id, &linked).unwrap();
     assert_eq!(count("publications"), 2);
+    paycom
+        .exec(
+            "DELETE FROM paycom_timecard_payload_refs WHERE employee_code='E003'
+         AND publication_id=(SELECT id FROM publications WHERE active=1)",
+            [],
+        )
+        .unwrap();
+    db.publish_timecards(id, &linked).unwrap();
+    assert_eq!(
+        paycom
+            .count(
+                "SELECT count(*) FROM paycom_timecard_payload_refs WHERE employee_code='E003'
+         AND publication_id=(SELECT id FROM publications WHERE active=1)",
+                [],
+            )
+            .unwrap(),
+        0,
+        "fingerprint reuse must not reconcile incoming bytes into stored history"
+    );
     for card in db.employee_timecard(id, "E003", None).unwrap().timecards {
         assert_eq!(card.card.source_url, Some(link("E003")));
     }
@@ -310,6 +372,18 @@ fn timecard_links_publish_with_unchanged_hours_and_are_returned() {
     for row in rows {
         assert_eq!(row["sourceUrl"], json!(link(s(&row, "employeeCode"))));
     }
+    linked["employees"][0]["name"] = json!("Retained Actor");
+    linked["collectedAt"] = json!("2099-01-03T00:00:00.000Z");
+    db.publish_timecards(id, &linked).unwrap();
+    assert_eq!(count("publications"), 3);
+    assert_eq!(count("paycom_payloads"), 2);
+    assert_eq!(
+        db.employee_timecard(id, "E001", None)
+            .unwrap()
+            .employee
+            .name,
+        "Retained Actor"
+    );
 }
 
 #[test]
@@ -317,7 +391,7 @@ fn unchanged_publications_reuse_storage_but_changed_data_and_history_survive() {
     install();
     let (_root, db, id) = bootstrapped();
     let id = id.as_str();
-    let mut data = fixtures::fixture("UTC").unwrap();
+    let mut data = fixtures::fixture_date("UTC", Some("2026-09-19".parse().unwrap())).unwrap();
     db.publish_timecards(id, &data).unwrap();
     let provider = db.collector(id, paycom::PROVIDER).unwrap();
     let first = provider
@@ -369,6 +443,273 @@ fn unchanged_publications_reuse_storage_but_changed_data_and_history_survive() {
             .unwrap()
             .len(),
         3
+    );
+    // Changes in scalar hours still share the original two distinct punch arrays.
+    assert_eq!(
+        provider
+            .count("SELECT count(*) FROM paycom_payloads", [])
+            .unwrap(),
+        2
+    );
+    assert_eq!(
+        provider
+            .count("SELECT count(*) FROM paycom_timecard_payload_refs", [])
+            .unwrap(),
+        provider
+            .count("SELECT count(*) FROM timecards", [])
+            .unwrap(),
+    );
+    let date = "2026-09-13";
+    let card = data["timecards"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|card| card["employeeCode"] == "E002" && card["date"] == date)
+        .unwrap();
+    card["punches"][0]["in"] = json!("07:59");
+    let inline = card["punches"].to_string();
+    let employee = data["employees"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|employee| employee["code"] == "E002")
+        .unwrap();
+    employee["name"] = json!("Changed Name");
+    data["sources"] = json!([{"employeeCode":"E002","periodKey":"P1",
+        "url":"https://paycom.example/timecard/P1"}]);
+    data["collectedAt"] = json!("2099-01-04T00:00:00.000Z");
+    db.publish_timecards(id, &data).unwrap();
+    assert_eq!(
+        provider
+            .count("SELECT count(*) FROM paycom_payloads", [])
+            .unwrap(),
+        3
+    );
+    assert_eq!(
+        provider
+            .count("SELECT count(*) FROM publications", [])
+            .unwrap(),
+        4
+    );
+    let active: (String,) = provider
+        .one_as("SELECT id FROM publications WHERE active=1", [])
+        .unwrap()
+        .unwrap();
+    assert_eq!(provider.one(
+        "SELECT punches FROM timecards WHERE publication_id=? AND employee_code='E002' AND date=?",
+        [&active.0, date],
+    ).unwrap().unwrap()["punches"], inline);
+    // Fixture for the future stored format; product writers never emit this marker.
+    provider
+        .transaction(|| {
+            let refs = provider.all("SELECT * FROM paycom_timecard_payload_refs", [])?;
+            provider.exec(
+                r#"UPDATE timecards SET punches='{"$dispatchPayload":"paycom.punches.v1"}'"#,
+                [],
+            )?;
+            for row in refs {
+                provider.exec(
+                    "INSERT INTO paycom_timecard_payload_refs
+                 (publication_id,employee_code,date,format,digest) VALUES (?,?,?,?,?)",
+                    rusqlite::params![
+                        s(&row, "publication_id"),
+                        s(&row, "employee_code"),
+                        s(&row, "date"),
+                        s(&row, "format"),
+                        s(&row, "digest")
+                    ],
+                )?;
+            }
+            Ok(())
+        })
+        .unwrap();
+    let detail = db.employee_timecard(id, "E002", None).unwrap();
+    assert_eq!(detail.employee.name, "Changed Name");
+    let card = &detail
+        .timecards
+        .iter()
+        .find(|c| c.card.date == date)
+        .unwrap()
+        .card;
+    assert_eq!(card.punches[0].clock_in.as_deref(), Some("07:59"));
+    assert_eq!((card.hours, card.status.as_str()), (8.0, "Complete"));
+    assert_eq!(
+        card.source_url.as_deref(),
+        Some("https://paycom.example/timecard/P1")
+    );
+    let (_, _, rows) = db.daily_timecards_source(id, date).unwrap();
+    let row = rows.iter().find(|r| r["employeeCode"] == "E002").unwrap();
+    assert_eq!(row["punches"][0]["in"], "07:59");
+    assert_eq!(row["name"], "Changed Name");
+    let selected = ["E002".to_owned()];
+    let range = db
+        .daily_timecards_range(id, date, "2026-09-14", "name", false, Some(&selected))
+        .unwrap();
+    assert_eq!(
+        range[date].rows[0].card.punches[0].clock_in.as_deref(),
+        Some("07:59")
+    );
+    let keeper = dispatch_timecard::FEATURE
+        .keeps
+        .iter()
+        .find(|k| k.keeps() == "paycom.collect")
+        .unwrap();
+    let probe = keeper.published(&provider).unwrap();
+    assert_eq!(
+        probe
+            .iter()
+            .find(|c| c["employeeCode"] == "E002" && c["date"] == date)
+            .unwrap()["punches"][0]["in"],
+        "07:59"
+    );
+    // A shared body is protected while any row (including inactive history) needs it.
+    assert!(
+        provider
+            .exec(
+                "DELETE FROM paycom_payloads WHERE digest IN
+         (SELECT digest FROM paycom_timecard_payload_refs)",
+                [],
+            )
+            .is_err()
+    );
+    // Old code can update hours/status without invalidating a punch-only reference.
+    provider
+        .exec(
+            "UPDATE timecards SET hours=7.5,status='Missing punch'
+         WHERE publication_id=? AND employee_code='E002' AND date=?",
+            [&active.0, date],
+        )
+        .unwrap();
+    let changed = db.employee_timecard(id, "E002", None).unwrap();
+    let changed = &changed
+        .timecards
+        .iter()
+        .find(|c| c.card.date == date)
+        .unwrap()
+        .card;
+    assert_eq!(
+        (changed.hours, changed.status.as_str()),
+        (7.5, "Missing punch")
+    );
+    assert_eq!(changed.punches[0].clock_in.as_deref(), Some("07:59"));
+    // A rollback writer's changed inline bytes immediately supersede the old sidecar.
+    provider.exec(
+        "UPDATE timecards SET punches=? WHERE publication_id=? AND employee_code='E002' AND date=?",
+        rusqlite::params![r#"[{"in":"07:57","out":"16:30","hours":8}]"#,active.0,date],
+    ).unwrap();
+    assert_eq!(
+        provider
+            .count(
+                "SELECT count(*) FROM paycom_timecard_payload_refs
+         WHERE publication_id=? AND employee_code='E002' AND date=?",
+                [&active.0, date],
+            )
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        db.employee_timecard(id, "E002", None)
+            .unwrap()
+            .timecards
+            .iter()
+            .find(|c| c.card.date == date)
+            .unwrap()
+            .card
+            .punches[0]
+            .clock_in
+            .as_deref(),
+        Some("07:57")
+    );
+    provider
+        .exec(
+            "INSERT OR REPLACE INTO timecards VALUES (?,'E004',?,0,'No punches','[]')",
+            [&active.0, date],
+        )
+        .unwrap();
+    assert_eq!(
+        provider
+            .count(
+                "SELECT count(*) FROM paycom_timecard_payload_refs
+         WHERE publication_id=? AND employee_code='E004' AND date=?",
+                [&active.0, date],
+            )
+            .unwrap(),
+        0
+    );
+    assert!(
+        db.employee_timecard(id, "E004", None)
+            .unwrap()
+            .timecards
+            .iter()
+            .find(|c| c.card.date == date)
+            .unwrap()
+            .card
+            .punches
+            .is_empty()
+    );
+    // An ordinary legacy insert is still readable after deleting its original row.
+    provider
+        .exec(
+            "DELETE FROM timecards WHERE publication_id=? AND employee_code='E002' AND date=?",
+            [&active.0, date],
+        )
+        .unwrap();
+    provider
+        .exec(
+            "INSERT INTO timecards VALUES (?,'E002',?,0,'No punches','[]')",
+            [&active.0, date],
+        )
+        .unwrap();
+    assert!(
+        db.daily_timecards_source(id, date)
+            .unwrap()
+            .2
+            .iter()
+            .find(|c| c["employeeCode"] == "E002")
+            .unwrap()["punches"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    // Deleting one publication cascades its refs, never bodies used by other history.
+    provider
+        .exec("DELETE FROM publications WHERE id=?", [s(&first, "id")])
+        .unwrap();
+    assert_eq!(
+        provider
+            .count(
+                "SELECT count(*) FROM paycom_timecard_payload_refs WHERE publication_id=?",
+                [s(&first, "id")]
+            )
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        provider
+            .count("SELECT count(*) FROM paycom_payloads", [])
+            .unwrap(),
+        3
+    );
+    assert!(keeper.published(&provider).is_ok());
+    // A marker whose ref disappeared is an error on every independent publication reader.
+    provider
+        .exec(
+            "DELETE FROM paycom_timecard_payload_refs
+         WHERE publication_id=? AND employee_code='E003' AND date=?",
+            [&active.0, date],
+        )
+        .unwrap();
+    assert_eq!(
+        db.employee_timecard(id, "E003", None).unwrap_err().code,
+        "paycom_payload_unavailable"
+    );
+    assert_eq!(
+        db.daily_timecards_source(id, date).unwrap_err().code,
+        "paycom_payload_unavailable"
+    );
+    assert_eq!(
+        keeper.published(&provider).unwrap_err().code,
+        "paycom_payload_unavailable"
     );
 }
 

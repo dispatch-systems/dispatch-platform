@@ -3,6 +3,7 @@ pub(crate) mod assessment;
 pub(crate) mod daily;
 pub(crate) mod employees;
 pub(crate) mod keeper;
+mod payloads;
 pub(crate) mod people;
 pub(crate) mod people_summary;
 pub(crate) mod publication;
