@@ -426,10 +426,7 @@ impl Http {
         }
         let mut bytes = Vec::new();
         while let Some(chunk) = response.chunk().await.map_err(|_| Refusal::Unavailable)? {
-            bytes.extend_from_slice(&chunk);
-            if bytes.len() > limit {
-                return Err(Refusal::Unreadable("http_too_large"));
-            }
+            append_within(&mut bytes, &chunk, limit)?;
         }
         Ok(bytes)
     }
@@ -606,6 +603,23 @@ impl Http {
     }
 }
 
+/// Refuse an oversized chunk before copying it into the retained body.
+fn append_within(
+    bytes: &mut Vec<u8>,
+    chunk: &[u8],
+    limit: usize,
+) -> std::result::Result<(), Refusal> {
+    if bytes
+        .len()
+        .checked_add(chunk.len())
+        .is_none_or(|n| n > limit)
+    {
+        return Err(Refusal::Unreadable("http_too_large"));
+    }
+    bytes.extend_from_slice(chunk);
+    Ok(())
+}
+
 /// Text as `TextDecoder('utf-8', {fatal: true})` reads it: strict, a leading BOM dropped.
 fn utf8(bytes: Vec<u8>) -> std::result::Result<String, Refusal> {
     let text = String::from_utf8(bytes).map_err(|_| Refusal::Unreadable("http_encoding"))?;
@@ -633,3 +647,7 @@ fn verification_proxy(client: reqwest::ClientBuilder) -> Result<reqwest::ClientB
         Ok(client.no_proxy())
     }
 }
+
+#[cfg(test)]
+#[path = "../../tests/backend/browser/http.rs"]
+mod tests;
