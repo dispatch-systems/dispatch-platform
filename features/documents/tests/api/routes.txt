@@ -6,6 +6,7 @@ GET /api/documents/google/return Public Async
 GET /api/dsp/documents Dsp("documents.use") Async
 GET /api/dsp/documents/account Dsp("connections.manage") Async
 GET /api/dsp/documents/folder Dsp("documents.use") Async
+GET /api/dsp/documents/folder/read Dsp("documents.use") Async
 GET /api/dsp/documents/items/{id}/download Dsp("documents.use") Async
 GET /api/dsp/documents/items/{id}/thumbnail Dsp("documents.use") Async
 POST /api/dsp/documents/add Dsp("documents.use") Async
