@@ -49,6 +49,13 @@ it is live route data, in a database of its own, `routelive`.
   was. `save_and_clear_live` saves the day so, then empties live route data, as a stopped day does:
   once it's saved, or once it holds no day, as after an earlier call emptied it but couldn't give
   its space back. All four refuse while Routes is off.
+- **People cache:** a forward live poll in the same current publication preserves the DSP's
+  people cache only when read-only preparation under State's exclusive transition proves every
+  driver name/seen upsert and distinct active driver/day unchanged. Settings and other reads
+  still invalidate on the Routes domain. Resets, older captures, unknown storage and proof read
+  failures keep conservative invalidation. Events keep their existing new-driver/day-data rules.
+  Acknowledging delivered changed-day notes is bookkeeping; creating them and publishing routes
+  remain domain writes. No other Routes writer receives this exception.
 - **Each itinerary's work phone:** every itinerary keeps the company phone its driver's records show
   with it, by its last ten digits, in both route databases (`backend/work_phones.rs`): the day's
   list's record of them, else the itinerary's own response's, so a list record without a phone gives

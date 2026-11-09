@@ -93,6 +93,7 @@ serde_json = { workspace = true, features = ["preserve_order"] }
 tokio = { workspace = true }
 
 [dev-dependencies]
+dispatch-routes-contract = { path = "../../features/routes/contract" }
 # Core's test support, and the TypeScript of every crate's API types for the export test.
 dispatch-core = { path = "../../core", features = ["testing", "ts"] }
 dispatch-mcp = { path = "../../mcp", default-features = false, features = ["testing", "ts"] }
@@ -133,4 +134,9 @@ path = "../../app/tests/backend/integration/browseros_host.rs"
 [[test]]
 name = "browseros_worker"
 path = "../../app/tests/backend/integration/browseros_worker.rs"
+
+[[test]]
+name = "directory_cache"
+path = "../../app/tests/backend/integration/directory_cache.rs"
+required-features = ["default"]
 

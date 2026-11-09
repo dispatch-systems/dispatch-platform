@@ -123,6 +123,11 @@ impl Server {
     /// server opens them, and what `prepare` answered.
     pub async fn start_with<T>(prepare: impl FnOnce(&Store) -> T) -> (Self, T) {
         dispatch_backend::install();
+        Self::start_installed(prepare).await
+    }
+    /// The same fixture router with the caller's registry already installed. A separate
+    /// integration target can include an event observer beside the real product owners.
+    pub async fn start_installed<T>(prepare: impl FnOnce(&Store) -> T) -> (Self, T) {
         let root = tempfile::tempdir().unwrap();
         std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
         let dashboard = root.path().join("dashboard");

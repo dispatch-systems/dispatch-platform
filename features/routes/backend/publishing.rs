@@ -291,10 +291,7 @@ fn shared(table: &str, key: &str, columns: &[&str]) -> String {
 /// The same no-op suppression for in-place rows and staged publication merges.
 fn shared_update(table: &str, key: &str, columns: &[&str]) -> String {
     let seen = ["first_seen_day", "last_seen_day"];
-    let widened = [
-        format!("min({table}.first_seen_day,excluded.first_seen_day)"),
-        format!("max({table}.last_seen_day,excluded.last_seen_day)"),
-    ];
+    let widened = widened_seen(table, "excluded.first_seen_day", "excluded.last_seen_day");
     let set = columns
         .iter()
         .map(|c| format!("{c}=excluded.{c}"))
@@ -311,6 +308,15 @@ fn shared_update(table: &str, key: &str, columns: &[&str]) -> String {
         list(then),
     )
 }
+/// Prospective seen values, shared by the upsert and the read-only live proof. Keep the
+/// SQLite NULL/type/collation behavior in one place instead of approximating min/max in Rust.
+pub(super) fn widened_seen(table: &str, first: &str, last: &str) -> [String; 2] {
+    [
+        format!("min({table}.first_seen_day,{first})"),
+        format!("max({table}.last_seen_day,{last})"),
+    ]
+}
+
 /// A driver's kinds of person, as their row keeps them.
 fn person_type(person: &Value) -> String {
     person["personType"]
@@ -411,6 +417,71 @@ pub(super) fn write_assigned(
     route_summaries: &Value,
     itineraries: &[PreparedItinerary],
 ) -> Result<usize> {
+    let mut upsert =
+        db.0.prepare_cached(&shared("drivers", "transporter_id", ASSIGNED_COLUMNS))?;
+    let mut written = 0;
+    for driver in assigned_drivers(provider, route_summaries, itineraries) {
+        written += upsert.execute(shared_row(Writes::InPlace, "", day, driver.sent()))?;
+    }
+    Ok(written)
+}
+
+/// The exact upsert values used by both the writer and the live no-change proof. Assignment
+/// rows omit phone/company; itinerary rows include them. Nullable names always overwrite.
+pub(super) struct DriverWrite {
+    pub id: String,
+    pub first: Option<String>,
+    pub last: Option<String>,
+    rest: Vec<SqlValue>,
+}
+impl DriverWrite {
+    fn new(id: String, person: &Value, rest: Vec<SqlValue>) -> Self {
+        Self {
+            id,
+            first: text(&person["firstName"]),
+            last: text(&person["lastName"]),
+            rest,
+        }
+    }
+    fn sent(self) -> Vec<SqlValue> {
+        let mut sent = vec![self.id.into(), self.first.into(), self.last.into()];
+        sent.extend(self.rest);
+        sent
+    }
+    pub(super) fn itinerary(itinerary: &PreparedItinerary) -> Option<Self> {
+        let person = &itinerary.person;
+        if person.is_null() {
+            return None;
+        }
+        let company = itinerary
+            .columns
+            .iter()
+            .find(|(c, _)| c == "company_id")
+            .and_then(|(_, v)| v.as_str().map(str::to_owned));
+        Some(Self::new(
+            itinerary.transporter_id.clone(),
+            person,
+            vec![
+                text(&person["initials"]).into(),
+                text(&person["workPhoneNumber"]).into(),
+                person_type(person).into(),
+                company.into(),
+            ],
+        ))
+    }
+}
+
+/// In the same order as the route-list writer, including duplicate transporter records.
+/// The set avoids scanning every itinerary for every assigned driver.
+pub(super) fn assigned_drivers(
+    provider: &str,
+    route_summaries: &Value,
+    itineraries: &[PreparedItinerary],
+) -> Vec<DriverWrite> {
+    let present: std::collections::BTreeSet<&str> = itineraries
+        .iter()
+        .map(|i| i.transporter_id.as_str())
+        .collect();
     let routes = route_summaries["rmsRouteSummaries"].as_array();
     let assigned: std::collections::BTreeSet<String> = routes
         .into_iter()
@@ -418,11 +489,9 @@ pub(super) fn write_assigned(
         .filter(|route| text(&route["companyId"]).as_deref() == Some(provider))
         .flat_map(|route| route["transporters"].as_array().into_iter().flatten())
         .filter_map(|transporter| text(&transporter["transporterId"]))
-        .filter(|id| !itineraries.iter().any(|i| i.transporter_id == *id))
+        .filter(|id| !present.contains(id.as_str()))
         .collect();
-    let mut upsert =
-        db.0.prepare_cached(&shared("drivers", "transporter_id", ASSIGNED_COLUMNS))?;
-    let mut written = 0;
+    let mut drivers = Vec::new();
     for person in route_summaries["transporters"]
         .as_array()
         .into_iter()
@@ -431,17 +500,13 @@ pub(super) fn write_assigned(
         let Some(id) = text(&person["transporterId"]).filter(|id| assigned.contains(id)) else {
             continue;
         };
-        written += upsert.execute(params![
+        drivers.push(DriverWrite::new(
             id,
-            text(&person["firstName"]),
-            text(&person["lastName"]),
-            text(&person["initials"]),
-            person_type(person),
-            day,
-            day
-        ])?;
+            person,
+            vec![text(&person["initials"]).into(), person_type(person).into()],
+        ));
     }
-    Ok(written)
+    drivers
 }
 /// A stored response, compressed, inside the caller's transaction. Answers the rows written.
 pub(super) fn write_raw(
@@ -645,23 +710,8 @@ pub(super) fn write_shared(
         ];
         written += write_address.execute(shared_row(write, publication, day, sent))?;
     }
-    let person = &itinerary.person;
-    if !person.is_null() {
-        let company = itinerary
-            .columns
-            .iter()
-            .find(|(c, _)| c == "company_id")
-            .and_then(|(_, v)| v.as_str().map(str::to_owned));
-        let sent = vec![
-            itinerary.transporter_id.clone().into(),
-            text(&person["firstName"]).into(),
-            text(&person["lastName"]).into(),
-            text(&person["initials"]).into(),
-            text(&person["workPhoneNumber"]).into(),
-            person_type(person).into(),
-            company.into(),
-        ];
-        written += write_driver.execute(shared_row(write, publication, day, sent))?;
+    if let Some(driver) = DriverWrite::itinerary(itinerary) {
+        written += write_driver.execute(shared_row(write, publication, day, driver.sent()))?;
     }
     Ok(written)
 }
