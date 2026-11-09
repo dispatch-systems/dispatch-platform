@@ -140,14 +140,6 @@ macro_rules! on_drive {
 }
 pub(super) use on_drive;
 
-pub(crate) async fn tree(
-    state: &Arc<State>,
-    dsp: &str,
-) -> Result<(super::storage::Connection, Arc<Tree>)> {
-    let owner = grant::capture(state, dsp, None).await?;
-    let tree = tree_for(state, &owner).await?;
-    Ok((owner.connection, tree))
-}
 pub(super) async fn tree_for(state: &Arc<State>, owner: &Grant) -> Result<Arc<Tree>> {
     let root = owner.connection.folder_id.clone();
     let mirror = &owner.mirror;

@@ -34,6 +34,7 @@ const item = (id: string, items: number | null): DocumentsItem => ({
 });
 
 const top: DocumentsFolder = {
+  grantGeneration: 'b'.repeat(64),
   id: null,
   name: 'Documents',
   url: 'https://drive.google.com/drive/folders/top',

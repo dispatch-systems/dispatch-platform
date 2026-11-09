@@ -383,7 +383,7 @@ pub enum DocumentsQueryRead {
     Full {
         #[serde(flatten)]
         #[cfg_attr(feature = "ts", ts(flatten))]
-        reading: DocumentsQueryPage,
+        reading: Box<DocumentsQueryPage>,
         manifest: Option<DocumentsManifest>,
         content_revision: String,
     },

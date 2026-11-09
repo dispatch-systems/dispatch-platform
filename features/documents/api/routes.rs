@@ -74,10 +74,8 @@ async fn overview(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply>
         .me
         .as_ref()
         .is_some_and(|me| me.state == SharingState::Pending);
-    if pending && answer.connection.is_some() {
-        if let Some(connection) = &answer.connection {
-            team::nudge(&state, &dsp, connection.grant_generation.clone());
-        }
+    if pending && let Some(connection) = &answer.connection {
+        team::nudge(&state, &dsp, connection.grant_generation.clone());
     }
     Reply::of(&answer)
 }
@@ -223,7 +221,21 @@ async fn upload_file(
     })?;
     let name = file_name(&input.query)?;
     let kind = file_type(&input.query)?;
-    Reply::of(&files::upload(&state, c, access, folder, name, kind, upload, expected).await?)
+    Reply::of(
+        &files::upload(
+            &state,
+            c,
+            access,
+            folder,
+            files::FileUpload {
+                name,
+                mime: kind,
+                body: upload,
+            },
+            expected,
+        )
+        .await?,
+    )
 }
 /// The most files one pick adds.
 const PICKED: usize = 50;

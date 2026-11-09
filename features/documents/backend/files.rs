@@ -221,17 +221,27 @@ pub async fn create(
         .await
 }
 
+/// A streamed file with its name and media type.
+pub struct FileUpload {
+    pub name: String,
+    pub mime: String,
+    pub body: Upload,
+}
+
 /// Uploads a file named `name`, of `mime`, into the folder `parent`, or the main one.
 pub async fn upload(
     state: &Arc<State>,
     c: Context,
     access: Dsp,
     parent: Option<String>,
-    name: String,
-    mime: String,
-    upload: Upload,
+    file: FileUpload,
     expected: Option<String>,
 ) -> Result<DocumentsItem> {
+    let FileUpload {
+        name,
+        mime,
+        body: upload,
+    } = file;
     let dsp = c.dsp.id.clone();
     let owner = grant::capture_member(state, c.clone(), access, expected).await?;
     let tree = access::tree_for(state, &owner).await?;
@@ -712,7 +722,7 @@ pub async fn trash(
 mod tests;
 
 /// Shared preparation for the additive, ephemeral query protocol. Legacy callers retain
-/// access::tree and the complete reader. Captured grant ownership is independent of semantic snapshots.
+/// access::tree_for and the complete reader. Captured grant ownership is independent of semantic snapshots.
 pub(crate) struct QueryRequest {
     pub scope: crate::api::types::DocumentsQueryScope,
     pub page: u32,
@@ -788,7 +798,7 @@ async fn query_read(
             ensure(current == connection, "documents_not_connected", 409)?;
             let reset = |reason| match descriptions.as_ref() {
                 Some(_) => QueryAnswer::Descriptions(DocumentsDescriptionRead::Reset { reason }),
-                None => QueryAnswer::Page(Box::new(DocumentsQueryRead::Reset { reason })),
+                None => QueryAnswer::Page(DocumentsQueryRead::Reset { reason }),
             };
             let Some((tree, semantic)) = owner.snapshot(&connection.folder_id) else {
                 return Ok(reset(DocumentsResetReason::Changed));
@@ -888,7 +898,7 @@ async fn query_read(
                 let content_revision = query::digest(&("documents-query-page-v1", &reading))?;
                 let same_manifest =
                     manifest_since.as_deref() == Some(index.manifest_revision.as_str());
-                QueryAnswer::Page(Box::new(
+                QueryAnswer::Page(
                     if same_manifest && since.as_deref() == Some(content_revision.as_str()) {
                         DocumentsQueryRead::Unchanged {
                             snapshot: reading.snapshot,
@@ -897,12 +907,12 @@ async fn query_read(
                         }
                     } else {
                         DocumentsQueryRead::Full {
-                            reading,
+                            reading: Box::new(reading),
                             manifest: (!same_manifest).then(|| index.manifest.clone()),
                             content_revision,
                         }
                     },
-                ))
+                )
             };
             // Synchronous publications may run while this worker projects. No awaits follow this
             // check, and no mixed old manifest/current tree answer is allowed out.
@@ -915,7 +925,7 @@ async fn query_read(
 }
 
 enum QueryAnswer {
-    Page(Box<crate::api::types::DocumentsQueryRead>),
+    Page(crate::api::types::DocumentsQueryRead),
     Descriptions(crate::api::types::DocumentsDescriptionRead),
 }
 pub async fn query(
@@ -925,7 +935,7 @@ pub async fn query(
     request: QueryRequest,
 ) -> Result<crate::api::types::DocumentsQueryRead> {
     match query_read(state, c, access, request, None).await? {
-        QueryAnswer::Page(answer) => Ok(*answer),
+        QueryAnswer::Page(answer) => Ok(answer),
         QueryAnswer::Descriptions(_) => unreachable!("page request"),
     }
 }

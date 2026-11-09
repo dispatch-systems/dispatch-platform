@@ -107,7 +107,7 @@ fn full(answer: DocumentsQueryRead) -> (DocumentsQueryPage, DocumentsManifest, S
             manifest,
             content_revision,
         } => (
-            reading,
+            *reading,
             manifest.expect("opening includes complete manifest"),
             content_revision,
         ),
