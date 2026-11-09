@@ -25,12 +25,17 @@ export function SignDialog({
   const [notice] = useState(writeup);
   const [day, setDay] = useState(overview.today);
   const [photo, setPhoto] = useState<File>();
+  // The photo this dialog kept, and the revision keeping it moved the writeup to.
+  const [kept, setKept] = useState<{ photo: File; revision: number }>();
   const sign = useAction(
     async () => {
       // The photo first, of the notice as read: a signed writeup keeps the photo it has. Kept,
-      // the writeup moves to the revision the sign then names.
-      const kept = photo && (await keepCopy(notice.id, notice.revision, await shrunk(photo)));
-      const revision = kept ? kept.writeup.revision : notice.revision;
+      // the writeup moves to the revision the sign then names, a retry's too.
+      let revision = kept?.revision ?? notice.revision;
+      if (photo && photo !== kept?.photo) {
+        revision = (await keepCopy(notice.id, revision, await shrunk(photo))).writeup.revision;
+        setKept({ photo, revision });
+      }
       signed(await signWriteup(notice.id, day, revision));
     },
     { inline: true, success: 'Marked signed' },

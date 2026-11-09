@@ -7,7 +7,7 @@ import { addWriteup, changeWriteup } from '../../api/client.js';
 import { Notice } from '../notice/Notice.js';
 import { usePrintNotice } from '../notice/usePrintNotice.js';
 import { record } from '../tiers.js';
-import { SaveChanges } from '../SaveChanges.js';
+import { useSaveChanges } from '../useSaveChanges.js';
 import { TierPicker } from './TierPicker.js';
 import { type Draft, filled, filledOf, inputOf, missing, refill } from './draft.js';
 
@@ -70,10 +70,16 @@ export function WriteupForm({
     },
     { inline: true },
   );
-  const [confirming, setConfirming] = useState(false);
-  // Changes leave only through Save or Discard.
-  const leave = () =>
-    JSON.stringify(draft) !== JSON.stringify(start.draft) ? setConfirming(true) : cancel();
+  const { leave, asking } = useSaveChanges({
+    what: 'This writeup',
+    dirty: JSON.stringify(draft) !== JSON.stringify(start.draft),
+    saveable: !missing(draft),
+    // Saved, it opens the writeup, so leaving goes no further.
+    save: async () => {
+      await save.run(false);
+      return false;
+    },
+  });
 
   const { stood, earlier } = record(overview, draft.person, draft.category, editing?.id);
   const category = overview.categories.find((c) => c.id === draft.category);
@@ -93,14 +99,14 @@ export function WriteupForm({
   };
   return (
     <>
-      <button type="button" className="conduct-back" onClick={leave}>
+      <button type="button" className="conduct-back" onClick={() => leave(cancel)}>
         <ChevronLeft size={15} />
         Conduct
       </button>
       <div className="page-heading">
         <h1>{editing ? 'Edit writeup' : 'New writeup'}</h1>
         <div className="heading-actions">
-          <button type="button" onClick={leave}>
+          <button type="button" onClick={() => leave(cancel)}>
             Cancel
           </button>
           <button type="button" disabled={save.busy} onClick={() => void save.run(false)}>
@@ -206,18 +212,7 @@ export function WriteupForm({
         </div>
       </div>
       {sheet}
-      {confirming && (
-        <SaveChanges
-          what="This writeup"
-          saveable={!missing(draft)}
-          busy={save.busy}
-          // Saved, it opens the writeup.
-          save={async () => {
-            if (!(await save.run(false))) setConfirming(false);
-          }}
-          discard={cancel}
-        />
-      )}
+      {asking}
     </>
   );
 }

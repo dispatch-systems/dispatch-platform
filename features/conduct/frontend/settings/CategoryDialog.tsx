@@ -4,7 +4,7 @@ import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js'
 import type { CategoryInput, ConductCategory, ConductOverview } from '../../api/index.js';
 import { addCategory, changeCategory, retireCategory } from '../../api/client.js';
 import { tierShort, tiers } from '../tiers.js';
-import { SaveChanges } from '../SaveChanges.js';
+import { useSaveChanges } from '../useSaveChanges.js';
 import { StepDown, stepDownReady, usualStepDown } from './StepDown.js';
 
 const fresh = (): CategoryInput => ({
@@ -62,12 +62,14 @@ export function CategoryDialog({
   const ready =
     [input.name, input.statement, input.prior, input.plan].every((text) => text.trim()) &&
     stepDownReady(input.stepDown);
-  const [confirming, setConfirming] = useState(false);
-  // Changes leave only through Save or Discard.
-  const leave = () =>
-    JSON.stringify(input) !== JSON.stringify(start) ? setConfirming(true) : close();
+  const { leave, asking } = useSaveChanges({
+    what: 'This category',
+    dirty: JSON.stringify(input) !== JSON.stringify(start),
+    saveable: ready,
+    save: () => save.run(),
+  });
   return (
-    <Modal title={category ? 'Edit category' : 'Add category'} onClose={leave}>
+    <Modal title={category ? 'Edit category' : 'Add category'} onClose={() => leave(close)}>
       <form
         className="conduct-dialog"
         onSubmit={(event) => {
@@ -133,7 +135,7 @@ export function CategoryDialog({
               Retire
             </button>
           )}
-          <button type="button" onClick={leave}>
+          <button type="button" onClick={() => leave(close)}>
             Cancel
           </button>
           <button type="submit" className="primary" disabled={!ready || save.busy}>
@@ -141,17 +143,7 @@ export function CategoryDialog({
           </button>
         </div>
       </form>
-      {confirming && (
-        <SaveChanges
-          what="This category"
-          saveable={ready}
-          busy={save.busy}
-          save={async () => {
-            if (!(await save.run())) setConfirming(false);
-          }}
-          discard={close}
-        />
-      )}
+      {asking}
     </Modal>
   );
 }
