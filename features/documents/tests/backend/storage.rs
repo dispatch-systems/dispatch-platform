@@ -83,12 +83,58 @@ fn keeps_the_refresh_token_encrypted_until_the_connection_goes() {
         .unwrap();
     assert_ne!(replacement.generation, kept.generation);
     assert_eq!(replacement.folder_id, kept.folder_id);
+    // A previous binary omits the new column on replacement. Its trigger must still revoke
+    // the old local identity, even when every visible field and the refresh token is equal.
+    store
+        .dsp(&dsp)
+        .unwrap()
+        .exec(
+            "INSERT OR REPLACE INTO documents_connection \
+             (id,status,account_email,account_kind,folder_id,folder_name,connected_by,\
+             connected_at,broken_at,full_access) \
+             SELECT id,status,account_email,account_kind,folder_id,folder_name,connected_by,\
+             connected_at,broken_at,full_access FROM documents_connection WHERE id=1",
+            [],
+        )
+        .unwrap();
+    let legacy = store.documents_connection(&dsp).unwrap().unwrap();
+    assert_eq!(legacy.generation.len(), 64);
+    assert!(
+        legacy
+            .generation
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    );
+    assert_ne!(legacy.generation, replacement.generation);
+    let mut expected = replacement;
+    expected.generation = legacy.generation.clone();
+    assert_eq!(legacy, expected);
+    assert_eq!(
+        store.documents_refresh_token(&dsp).unwrap().as_deref(),
+        Some("refresh-secret")
+    );
+    // Failure to publish the encrypted secret leaves a durably broken replacement, never
+    // a connected old generation. Reconnecting through the normal writer restores it.
+    std::fs::remove_file(&file).unwrap();
+    std::fs::create_dir(&file).unwrap();
+    assert!(
+        store
+            .save_documents_connection(&dsp, &legacy, "replacement-secret")
+            .is_err()
+    );
+    let refused = store.documents_connection(&dsp).unwrap().unwrap();
+    assert!(refused.broken);
+    assert_ne!(refused.generation, legacy.generation);
+    std::fs::remove_dir(&file).unwrap();
+    let resumed = store
+        .save_documents_connection(&dsp, &legacy, "refresh-secret")
+        .unwrap();
     // Broken once, so the audit log says so once.
     assert!(store.break_documents_connection(&dsp).unwrap());
     assert!(!store.break_documents_connection(&dsp).unwrap());
     let broken = store.documents_connection(&dsp).unwrap().unwrap();
     assert!(broken.broken);
-    assert_eq!(broken.generation, replacement.generation);
+    assert_eq!(broken.generation, resumed.generation);
     store.remove_documents_connection(&dsp).unwrap();
     assert_eq!(store.documents_connection(&dsp).unwrap(), None);
     assert_eq!(store.documents_refresh_token(&dsp).unwrap(), None);
