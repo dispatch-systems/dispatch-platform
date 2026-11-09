@@ -9,6 +9,7 @@ import type { DocumentsOverview } from './generated/DocumentsOverview.js';
 import type { GoogleConnected } from './generated/GoogleConnected.js';
 import type { GoogleSignIn } from './generated/GoogleSignIn.js';
 import type { DocumentsFolder } from './generated/DocumentsFolder.js';
+import type { DocumentsFolderRead } from './generated/DocumentsFolderRead.js';
 import type { DocumentsItem } from './generated/DocumentsItem.js';
 import type { NewKind } from './generated/NewKind.js';
 import type { MySharing } from './generated/MySharing.js';
@@ -20,6 +21,7 @@ export type { DriveStorage } from './generated/DriveStorage.js';
 export type { DocumentsOverview } from './generated/DocumentsOverview.js';
 export type { DocumentsConnection } from './generated/DocumentsConnection.js';
 export type { DocumentsFolder } from './generated/DocumentsFolder.js';
+export type { DocumentsFolderRead } from './generated/DocumentsFolderRead.js';
 export type { FolderStep } from './generated/FolderStep.js';
 export type { DocumentsItem } from './generated/DocumentsItem.js';
 export type { ItemKind } from './generated/ItemKind.js';
@@ -113,15 +115,46 @@ export const moment = () => ++moments;
 /**
  * A folder as read, and the moment the page asked for it: a reading Google answers as it did the
  * last is still a new one, which a change Google confirmed before it was asked for waits on
- * (`usePending`). The top read ahead of the page, as its route opens, has no moment.
+ * (`usePending`). Legacy cached folders may have neither a revision nor a moment.
  */
-export type FolderReading = DocumentsFolder & { asked?: number };
-/** Reads the folder or search `url` names. */
+export type FolderReading = DocumentsFolder & { revision?: string; asked?: number };
+/** The transport route, while the legacy URL remains the single logical cache key. */
+const folderReadUrl = (url: string, since?: string) => {
+  const [path, query] = url.split('?');
+  const params = new URLSearchParams(query);
+  if (since) params.set('since', since);
+  const search = params.toString();
+  return `${path}/read${search ? `?${search}` : ''}`;
+};
+/** Reads the folder or search `url` names, against this request's captured complete baseline. */
 export const readFolder =
-  (url: string) =>
+  (url: string, priority: 'auto' | 'high' | 'low' = 'auto') =>
   async (signal: AbortSignal): Promise<FolderReading> => {
+    signal.throwIfAborted();
+    const session = dataCache.session;
+    const snapshot = dataCache.peek(url);
+    const baseline = snapshot.data as FolderReading | undefined;
+    const since = baseline?.revision;
     const asked = moment();
-    return { ...(await call<DocumentsFolder>(url, undefined, signal)), asked };
+    const answer = await call<DocumentsFolderRead>(
+      folderReadUrl(url, since),
+      undefined,
+      signal,
+      priority,
+    );
+    signal.throwIfAborted();
+    if (dataCache.session !== session || dataCache.peek(url).generation !== snapshot.generation)
+      throw new DOMException('Aborted', 'AbortError');
+    const folder =
+      answer.folder === null ? (since === answer.revision ? baseline : undefined) : answer.folder;
+    if (!folder || !/^[a-f0-9]{64}$/.test(answer.revision))
+      throw new ApiError(
+        'invalid_api_response',
+        'The server returned an unexpected response. Refresh and try again.',
+        502,
+      );
+    // A new reading must reach usePending even when all content is unchanged.
+    return { ...folder, revision: answer.revision, asked };
   };
 /** A folder, kept once read: it shows at once when it opens again, and is asked for anew. */
 export function useDocumentsFolder(folder?: string, query?: string) {

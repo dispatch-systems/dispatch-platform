@@ -758,3 +758,97 @@ test("a server with half of Google's environment variables refuses to start, nam
   assert.match(output, /DISPATCH_DEV_GOOGLE_CLIENT_ID/);
   assert.ok(!output.includes(secret));
 });
+
+test('conditional folder reads preserve the full response and scope, validate revisions and enforce current access', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const owner = await f.client();
+  const member = await f.client(demo.member);
+  const north = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
+  const summit = owner.session.dsps.find((d: { name: string }) => d.name === 'Summit Delivery');
+  await owner.select(north.id);
+  await useDocuments(owner, north.id, true);
+  await connect(owner);
+  const made = await owner.post('/api/dsp/documents/new', {
+    folder: null,
+    kind: 'folder',
+    name: 'Safety',
+  });
+  assert.equal(made.status, 200, made.body);
+  const safety = made.value.id as string;
+  const request = async (query = '') => {
+    const answer = await owner.get('/api/dsp/documents/folder/read' + query);
+    assert.equal(answer.status, 200, answer.body);
+    return answer.value;
+  };
+  const first = await request();
+  assert.match(first.revision, /^[a-f0-9]{64}$/);
+  assert.deepEqual(first.folder, await owner.read('/api/dsp/documents/folder'));
+  const unchanged = await request(`?since=${first.revision}`);
+  assert.deepEqual(unchanged, { revision: first.revision, folder: null });
+  const child = await owner.post('/api/dsp/documents/new', {
+    folder: safety,
+    kind: 'doc',
+    name: 'Rescue plan',
+  });
+  assert.equal(child.status, 200, child.body);
+  const counted = await request(`?since=${first.revision}`);
+  assert.notEqual(counted.revision, first.revision);
+  assert.equal(counted.folder.items[0].items, 1);
+  const search = await request('?q=rescue+plan');
+  assert.deepEqual(search.folder, await owner.read('/api/dsp/documents/folder?q=rescue+plan'));
+  assert.equal(search.folder.items[0].location, 'Safety');
+  assert.deepEqual(await request(`?q=rescue+plan&since=${search.revision}`), {
+    revision: search.revision,
+    folder: null,
+  });
+  const missing = await request('?q=nonexistent');
+  // Equal empty arrays under different queries do not share a scope validator.
+  const different = await request(`?q=other-absent&since=${missing.revision}`);
+  assert.ok(different.folder);
+  assert.notEqual(different.revision, missing.revision);
+  assert.ok((await request(`?since=${'0'.repeat(64)}`)).folder);
+  for (const query of [
+    '?since=',
+    '?since=a',
+    `?since=${'a'.repeat(65)}`,
+    `?since=${'A'.repeat(64)}`,
+    `?since=${'g'.repeat(64)}`,
+    '?id=bad%2Fid',
+    `?q=${'q'.repeat(101)}`,
+    '?extra=1',
+  ]) {
+    const invalid = await owner.get('/api/dsp/documents/folder/read' + query);
+    assert.equal(invalid.status, 400, query);
+    assert.equal(invalid.value.error, 'invalid_input', query);
+  }
+  await member.select(north.id);
+  const theirs = await member.read('/api/dsp/documents/folder/read');
+  await useDocuments(owner, north.id, false);
+  for (const path of [
+    '/api/dsp/documents/folder/read',
+    `/api/dsp/documents/folder/read?since=${theirs.revision}`,
+  ]) {
+    const denied = await member.get(path);
+    assert.ok([403, 409].includes(denied.status), denied.body);
+    assert.ok(['permission_denied', 'dsp_view_expired'].includes(denied.value.error), denied.body);
+  }
+  // Another DSP connected to the same fixture account cannot use Northline's revision or IDs.
+  await owner.select(summit.id);
+  await connect(owner);
+  const other = await request(`?since=${counted.revision}`);
+  assert.ok(other.folder);
+  assert.notEqual(other.revision, counted.revision);
+  assert.deepEqual(other.folder.items, []);
+  assert.equal(
+    (await owner.get(`/api/dsp/documents/folder/read?id=${safety}&since=${counted.revision}`))
+      .status,
+    404,
+  );
+  await owner.select(north.id);
+  const disconnected = await owner.post('/api/dsp/documents/disconnect', {});
+  assert.equal(disconnected.status, 200, disconnected.body);
+  const refused = await owner.get(`/api/dsp/documents/folder/read?since=${counted.revision}`);
+  assert.equal(refused.status, 409, refused.body);
+  assert.equal(refused.value.error, 'documents_not_connected');
+});

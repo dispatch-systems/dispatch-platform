@@ -1,8 +1,15 @@
 import { api } from './api.js';
 import { cacheLimits, dataCache } from './data-cache.js';
+import type { PrefetchRead, PrefetchReader } from './prefetch-types.js';
+export type { PrefetchRead, PrefetchReader } from './prefetch-types.js';
 
 // Selected records load immediately; this small queue only warms likely next selections.
-type Warmup = { generation: number; owners: Set<string>; priority: boolean };
+type Warmup = {
+  generation: number;
+  owners: Set<string>;
+  priority: boolean;
+  read?: PrefetchReader;
+};
 const queue = new Map<string, Warmup>();
 let running = 0;
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -17,7 +24,9 @@ function drain() {
     if (warmup.generation !== dataCache.generation) continue;
     running++;
     void dataCache
-      .read(url, (signal) => api(url, undefined, signal, 'low'))
+      .read(url, (signal) =>
+        warmup.read ? warmup.read(signal, 'low') : api(url, undefined, signal, 'low'),
+      )
       .catch(() => {}) // An optional preload must not interrupt the page; selection retries it.
       .finally(() => {
         running--;
@@ -44,14 +53,20 @@ export function canPrefetch() {
   );
 }
 
-export function prefetchData(urls: string[], options: { owner?: string; priority?: boolean } = {}) {
+export function prefetchData(
+  reads: PrefetchRead[],
+  options: { owner?: string; priority?: boolean } = {},
+) {
   if (!canPrefetch()) return;
   const owner = options.owner ?? location.hash.split('?')[0]!;
-  for (const url of urls) {
+  for (const request of reads) {
+    const url = typeof request === 'string' ? request : request.url;
+    const read = typeof request === 'string' ? undefined : request.read;
     if (!url) continue;
     const current = queue.get(url);
     if (current?.generation === dataCache.generation) {
       current.owners.add(owner);
+      current.read = read ?? current.read;
       current.priority ||= Boolean(options.priority);
     } else {
       if (queue.size >= cacheLimits.preloadQueued) {
@@ -64,6 +79,7 @@ export function prefetchData(urls: string[], options: { owner?: string; priority
         generation: dataCache.generation,
         owners: new Set([owner]),
         priority: Boolean(options.priority),
+        read,
       });
     }
   }

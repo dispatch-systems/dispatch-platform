@@ -67,3 +67,27 @@ pub async fn enable(state: &Arc<State>, dsp: &str) {
         .await
         .unwrap();
 }
+
+/// An authenticated fixture owner's current Documents context.
+pub async fn context(state: &Arc<State>, dsp: &str) -> dispatch_core::accounts::Context {
+    use dispatch_core::{accounts::SessionLifetime, foundation::config::Site};
+    let raw = state
+        .login(
+            "owner@example.test".into(),
+            "test-password-long".into(),
+            "127.0.0.1".into(),
+            "test".into(),
+            SessionLifetime::Standard,
+            Site::Admin,
+        )
+        .await
+        .unwrap();
+    let at = dsp.to_owned();
+    state
+        .read(move |db| {
+            let auth = db.authenticate(&raw, &Site::Admin)?;
+            db.context(&auth, &at, "documents.use")
+        })
+        .await
+        .unwrap()
+}

@@ -6,9 +6,9 @@ mod backend;
 /// What its API answers with, which the app writes to TypeScript.
 pub use api::types::{
     AccountKind, AddedFiles, ConnectionStatus, DocumentsAccount, DocumentsConnection,
-    DocumentsFolder, DocumentsItem, DocumentsOverview, DriveFile, DriveStorage, FolderStep,
-    GoogleConnected, GoogleSignIn, ItemKind, MovedItem, MySharing, NewKind, PickerKeys,
-    PickerSetup, SharingState,
+    DocumentsFolder, DocumentsFolderRead, DocumentsItem, DocumentsOverview, DriveFile,
+    DriveStorage, FolderStep, GoogleConnected, GoogleSignIn, ItemKind, MovedItem, MySharing,
+    NewKind, PickerKeys, PickerSetup, SharingState,
 };
 
 use dispatch_core::{
@@ -132,6 +132,7 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         DocumentsItem,
         FolderStep,
         DocumentsFolder,
+        DocumentsFolderRead,
         SharingState,
         MySharing,
         DriveStorage,

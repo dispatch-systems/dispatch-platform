@@ -13,12 +13,13 @@ use super::{
     tree::{Row, Tree},
 };
 use crate::api::types::{
-    AddedFiles, DocumentsFolder, DocumentsItem, FolderStep, MovedItem, NewKind,
+    AddedFiles, DocumentsFolder, DocumentsFolderRead, DocumentsItem, FolderStep, MovedItem, NewKind,
 };
 use dispatch_core::{
     Error, Result, State,
     accounts::Context,
     ensure,
+    foundation::crypto,
     server::http::{route::Dsp, upload::Upload},
 };
 use std::sync::Arc;
@@ -45,6 +46,19 @@ pub async fn folder(
     id: Option<String>,
     query: Option<String>,
 ) -> Result<DocumentsFolder> {
+    projected_folder(state, c, id, query)
+        .await
+        .map(|(_, folder)| folder)
+}
+
+/// The complete existing projection, including current provenance names and thumbnail
+/// capability registration, even when the conditional response will omit its items.
+async fn projected_folder(
+    state: &Arc<State>,
+    c: &Context,
+    id: Option<String>,
+    query: Option<String>,
+) -> Result<(Connection, DocumentsFolder)> {
     let (connection, tree) = access::tree(state, &c.dsp.id).await?;
     let at = id.clone().unwrap_or_else(|| tree.root().to_owned());
     ensure(tree.is_folder(&at), "documents_item_not_found", 404)?;
@@ -70,7 +84,7 @@ pub async fn folder(
         names: &names,
         account: &connection.account.email,
     };
-    Ok(DocumentsFolder {
+    let folder = DocumentsFolder {
         name: path
             .last()
             .map_or_else(|| connection.folder_name.clone(), |step| step.name.clone()),
@@ -81,6 +95,54 @@ pub async fn folder(
             .into_iter()
             .map(|row| described.item(row, searched))
             .collect(),
+    };
+    Ok((connection, folder))
+}
+
+/// A versioned, unambiguously framed hash of the actual response and its DSP/root/query
+/// scope. Struct field order and array order are deterministic; no runtime ages are included.
+fn folder_revision(
+    dsp: &str,
+    root: &str,
+    query: Option<&str>,
+    folder: &DocumentsFolder,
+) -> Result<String> {
+    let query = query.map(str::trim).filter(|query| !query.is_empty());
+    Ok(crypto::sha(serde_json::to_vec(&(
+        "documents-folder-read-v1",
+        dsp,
+        root,
+        query,
+        folder,
+    ))?))
+}
+
+/// A complete folder read, or permission to reuse the supplied exact revision. Neither
+/// answer bypasses projection, an awaited refresh error, or the final current access check.
+pub async fn folder_read(
+    state: &Arc<State>,
+    c: Context,
+    access: Dsp,
+    id: Option<String>,
+    query: Option<String>,
+    since: Option<String>,
+) -> Result<DocumentsFolderRead> {
+    let (connection, folder) = projected_folder(state, &c, id, query.clone()).await?;
+    let revision = folder_revision(&c.dsp.id, &connection.folder_id, query.as_deref(), &folder)?;
+    // Check after all async work, for full and unchanged alike. A revision grants no access.
+    state
+        .read(move |db| {
+            let c = access.revalidate(db, &c)?;
+            let current = db
+                .documents_connection(&c.dsp.id)?
+                .ok_or_else(|| Error::new("documents_not_connected", 409))?;
+            ensure(!current.broken, "google_connection_broken", 409)?;
+            ensure(current == connection, "documents_not_connected", 409)
+        })
+        .await?;
+    Ok(DocumentsFolderRead {
+        folder: (since.as_deref() != Some(revision.as_str())).then_some(folder),
+        revision,
     })
 }
 
@@ -538,3 +600,7 @@ pub async fn trash(state: &Arc<State>, c: Context, access: Dsp, id: String) -> R
         })
         .await
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/folder_reads.rs"]
+mod tests;

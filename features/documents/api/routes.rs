@@ -42,6 +42,7 @@ pub fn routes() -> Vec<Route> {
         async_post("/api/dsp/documents/connect/finish", CONNECTIONS, finish),
         async_post("/api/dsp/documents/disconnect", CONNECTIONS, disconnect),
         async_get("/api/dsp/documents/folder", USE, folder),
+        async_get("/api/dsp/documents/folder/read", USE, folder_read),
         async_post("/api/dsp/documents/new", USE, create),
         upload("/api/dsp/documents/upload", USE, UPLOAD_LIMIT, upload_file),
         async_get("/api/dsp/documents/items/{id}/download", USE, download),
@@ -64,7 +65,7 @@ pub fn routes() -> Vec<Route> {
 /// The connection as the member sees it. One Documents hasn't shared the folder with yet has
 /// it shared now, rather than within the minute.
 async fn overview(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
-    let c = state.run(move |db| access.authorize(db, &input)).await?;
+    let c = state.read(move |db| access.authorize(db, &input)).await?;
     let dsp = c.dsp.id.clone();
     let answer = state.read(move |db| connection::overview(db, &c)).await?;
     let pending = answer
@@ -77,7 +78,7 @@ async fn overview(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply>
     Reply::of(&answer)
 }
 async fn account(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
-    let c = state.run(move |db| access.authorize(db, &input)).await?;
+    let c = state.read(move |db| access.authorize(db, &input)).await?;
     Reply::of(&connection::account(&state, &c.dsp.id).await?)
 }
 fn connect(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
@@ -125,7 +126,7 @@ fn file_name(body: &serde_json::Value) -> Result<String> {
 
 async fn folder(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
-    let c = state.run(move |db| access.authorize(db, &asked)).await?;
+    let c = state.read(move |db| access.authorize(db, &asked)).await?;
     v::fields(&input.query, &["id", "q"])?;
     let id = optional(&input.query, "id", |q, key| {
         file_id(v::text(q, key, 1, 128)?)
@@ -134,6 +135,30 @@ async fn folder(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
         Ok(v::text(q, key, 0, 100)?.to_owned())
     })?;
     Reply::of(&files::folder(&state, &c, id, query).await?)
+}
+/// The same complete folder, omitted only when its exact scoped revision still matches.
+async fn folder_read(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    let asked = input.clone();
+    let c = state.read(move |db| access.authorize(db, &asked)).await?;
+    v::fields(&input.query, &["id", "q", "since"])?;
+    let id = optional(&input.query, "id", |q, key| {
+        file_id(v::text(q, key, 1, 128)?)
+    })?;
+    let query = optional(&input.query, "q", |q, key| {
+        Ok(v::text(q, key, 0, 100)?.to_owned())
+    })?;
+    let since = optional(&input.query, "since", |q, key| {
+        let revision = v::text(q, key, 64, 64)?;
+        ensure(
+            revision
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)),
+            "invalid_input",
+            400,
+        )?;
+        Ok(revision.to_owned())
+    })?;
+    Reply::of(&files::folder_read(&state, c, access, id, query, since).await?)
 }
 async fn create(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
@@ -205,7 +230,7 @@ async fn add_files(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply
 }
 async fn download(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
-    let c = state.run(move |db| access.authorize(db, &asked)).await?;
+    let c = state.read(move |db| access.authorize(db, &asked)).await?;
     v::fields(&input.query, &[])?;
     let id = file_id(input.param("id"))?;
     let file = files::download(&state, &c, id).await?;
@@ -220,7 +245,7 @@ async fn download(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply>
 /// one picture from the next, and its size, `s`, for the screen: 600 pixels unless it says.
 async fn thumbnail(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
-    let c = state.run(move |db| access.authorize(db, &asked)).await?;
+    let c = state.read(move |db| access.authorize(db, &asked)).await?;
     v::fields(&input.query, &["v", "s"])?;
     let id = file_id(input.param("id"))?;
     let size = optional(&input.query, "s", |q, key| {

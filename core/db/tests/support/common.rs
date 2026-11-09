@@ -287,6 +287,38 @@ pub fn owner_of(db: &Store, dsp: &str, email: &str, first: &str) -> Result<Strin
     Ok(user.id)
 }
 
+/// Sets an account's current name in its directory, as nothing but a test does: no
+/// validation or audit. With no DSP, the account is in the platform's directory.
+pub fn set_user_name(
+    db: &Store,
+    dsp: Option<&str>,
+    user: &str,
+    first: &str,
+    last: &str,
+) -> Result<()> {
+    db.directory(dsp)?.exec(
+        "UPDATE users SET first_name=?,last_name=? WHERE id=?",
+        [first, last, user],
+    )?;
+    Ok(())
+}
+
+/// Sets an account's status in its directory, as nothing but a test does: no audit,
+/// and its sessions and version as they were. With no DSP, the directory is the platform's.
+pub fn set_user_status(db: &Store, dsp: Option<&str>, user: &str, status: &str) -> Result<()> {
+    db.directory(dsp)?
+        .exec("UPDATE users SET status=? WHERE id=?", [status, user])?;
+    Ok(())
+}
+
+/// Takes platform ownership from an account without deleting or disabling it, as nothing
+/// but a test does: no audit or session changes.
+pub fn revoke_platform_owner(db: &Store, user: &str) -> Result<()> {
+    db.platform
+        .exec("UPDATE users SET platform_owner=0 WHERE id=?", [user])?;
+    Ok(())
+}
+
 /// The ID of the DSP named `name`.
 pub fn dsp_named(db: &Store, name: &str) -> String {
     let (id,): (String,) = db

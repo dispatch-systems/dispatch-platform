@@ -39,7 +39,18 @@ export const feature: FrontendFeature = {
       render: ({ view }) => createElement(DocumentsPage, { key: view.token, view }),
       // The top folder comes with the connection, so the page opens with its files.
       prefetch: ({ view, warm }) => {
-        if (can(view, 'documents.use')) warm(['/api/dsp/documents', '/api/dsp/documents/folder']);
+        if (can(view, 'documents.use'))
+          warm([
+            '/api/dsp/documents',
+            {
+              url: '/api/dsp/documents/folder',
+              read: async (signal, priority) => {
+                const { documentsFolderUrl, readFolder } = await import('../api/client.js');
+                signal.throwIfAborted();
+                return readFolder(documentsFolderUrl(), priority)(signal);
+              },
+            },
+          ]);
       },
     },
   ],
