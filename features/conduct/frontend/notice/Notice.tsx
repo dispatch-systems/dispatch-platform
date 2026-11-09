@@ -59,7 +59,7 @@ const lines = [30.4, 49.2, 68.0, 86.8];
 /** The smallest an answer's lettering shrinks to, as a share of its size, to fit its lines. */
 const smallest = 0.5;
 
-/** "Dillon Lillehaug" as the form's top line names a supervisor: "Dillon L.". */
+/** "Casey Supervisor" as the form's top line names a supervisor: "Casey S.". */
 export const shortName = (name: string) => {
   const parts = name.trim().split(/\s+/);
   const last = parts.length > 1 ? parts.at(-1) : undefined;
