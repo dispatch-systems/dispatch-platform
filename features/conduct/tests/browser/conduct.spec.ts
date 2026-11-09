@@ -43,13 +43,14 @@ test('a long writeup still prints on one letter page, its sections shrunk to fit
   await page.getByLabel('Category').selectOption({ label: 'Uniform' });
   // Longer than each section's four lines hold at full size.
   const long = 'DA did not arrive to work in full uniform and was reminded at stand up. '.repeat(6);
-  for (const section of [
-    '1. Statement of the problem',
-    '2. Prior discussion or warnings',
-    '3. Corrective action',
-  ]) {
-    await page.getByLabel(section).fill(long);
-  }
+  await page.getByLabel('1. Statement of the problem').fill(long);
+  // A line for each of many entries, which wrapping alone can't shorten.
+  const entries = Array.from(
+    { length: 25 },
+    (_, n) => `Incident ${n + 1}: late arrival discussed.`,
+  );
+  await page.getByLabel('2. Prior discussion or warnings').fill(entries.join('\n'));
+  await page.getByLabel('3. Corrective action').fill(long);
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Awaiting signature')).toBeVisible();
 

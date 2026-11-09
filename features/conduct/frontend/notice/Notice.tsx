@@ -57,8 +57,8 @@ const tierRows = [107.7, 120.5, 133.2];
 const sections = [206.1, 306.5, 406.8] as const;
 const lines = [30.4, 49.2, 68.0, 86.8];
 /** The smallest lettering shrinks to, as a share of its size: small enough that a section of
- * the most a writeup holds still fits its four lines. */
-const smallest = 0.2;
+ * the most a writeup holds, even a line for each of its characters, still fits its four lines. */
+const smallest = 0.001;
 
 /**
  * Shrinks `element`'s lettering (`--fit`, a share of its size) to the largest that fits its box,
@@ -73,7 +73,7 @@ function fit(element: HTMLElement, across: boolean) {
   scale(1);
   if (!fits()) {
     let [low, high] = [smallest, 1];
-    for (let step = 0; step < 10; step++) {
+    for (let step = 0; step < 20; step++) {
       const middle = (low + high) / 2;
       scale(middle);
       if (fits()) low = middle;
@@ -84,16 +84,16 @@ function fit(element: HTMLElement, across: boolean) {
   element.toggleAttribute('data-overflow', !fits());
 }
 
-/** A ref whose element `fit` keeps fitted as `deps` change, and again once lettering loads. */
-function useFit<T extends HTMLElement>(across: boolean, deps: readonly unknown[]) {
+/** A ref whose element `fit` keeps fitted as what it shows (`shown`) changes, and again once
+ * lettering loads. */
+function useFit<T extends HTMLElement>(across: boolean, shown: string) {
   const ref = useRef<T>(null);
   useLayoutEffect(() => {
     const element = ref.current;
     if (!element) return;
     fit(element, across);
     void document.fonts.ready.then(() => fit(element, across));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `deps` are what the element shows.
-  }, deps);
+  }, [across, shown]);
   return ref;
 }
 
@@ -111,7 +111,7 @@ function Filled({
   className?: string;
   children: string;
 }) {
-  const ref = useFit<HTMLSpanElement>(true, [children]);
+  const ref = useFit<HTMLSpanElement>(true, children);
   return (
     <span ref={ref} className={`conduct-notice-text ${className}`} style={at(top, left, width)}>
       {children}
@@ -138,7 +138,7 @@ export const formDay = (day: string) => {
  * written.
  */
 function Answer({ top, text, marked }: { top: number; text: string; marked: boolean }) {
-  const box = useFit<HTMLDivElement>(false, [text, marked]);
+  const box = useFit<HTMLDivElement>(false, `${marked}:${text}`);
   const parts = text.split(blank);
   const blanks = marked ? (text.match(blank) ?? []) : [];
   return (
