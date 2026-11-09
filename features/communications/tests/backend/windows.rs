@@ -1119,21 +1119,9 @@ async fn clipped_origins_use_stored_run_first_names_and_prior_run_first_for_both
     };
     let (_root, db, state, dsp, slack, text) = fixture(701);
     let connection = db.dsp(&dsp).unwrap();
-    let member = db
-        .create_user(
-            Some(&dsp),
-            "origin@example.test",
-            "Current",
-            "Member",
-            "test-password-long",
-        )
-        .unwrap();
-    connection
-        .exec(
-            "INSERT INTO memberships(id,user_id,dsp_id,role) VALUES ('origin-member',?,?,'member')",
-            params![member.id, dsp],
-        )
-        .unwrap();
+    let member =
+        dispatch_core::testing::owner_of(&db, &dsp, "origin@example.test", "Current").unwrap();
+    dispatch_core::testing::set_user_name(&db, Some(&dsp), &member, "Current", "Member").unwrap();
     let mut person = dispatch_core::manifest::people::Person {
         code: "origin-person".into(),
         name: "Directory name".into(),
@@ -1153,12 +1141,12 @@ async fn clipped_origins_use_stored_run_first_names_and_prior_run_first_for_both
             "UPDATE communications_messages SET direction=CASE WHEN ts='1700000000.000299' \
         THEN 'in' ELSE 'out' END,sent_by=CASE WHEN ts='1700000000.000299' THEN NULL ELSE ?1 END, \
         sender_name='Later name' WHERE conversation_id=?2",
-            params![member.id, slack.id()],
+            params![member, slack.id()],
         )
         .unwrap();
     connection.exec("UPDATE phones_texts SET direction=CASE WHEN id='text-000299' THEN 'in' ELSE 'out' END, \
         sent_by=CASE WHEN id='text-000299' THEN NULL ELSE ?1 END,sender_name='Later name' \
-        WHERE conversation_id=?2",params![member.id,text.id()]).unwrap();
+        WHERE conversation_id=?2",params![member,text.id()]).unwrap();
     for reference in [&slack, &text] {
         let transport = Transport::of(reference);
         let zone = texts::zone(&db, &dsp).unwrap();
@@ -1278,7 +1266,7 @@ async fn clipped_origins_use_stored_run_first_names_and_prior_run_first_for_both
             );
             for origin in [&selected.origin, &latest.origin] {
                 let sender = origin.sender.as_ref().unwrap();
-                assert_eq!(sender.user_id.as_deref(), Some(member.id.as_str()));
+                assert_eq!(sender.user_id.as_deref(), Some(member.as_str()));
                 assert!(
                     sender.phone_id.is_none(),
                     "a member's transport device is not its writer phone"
