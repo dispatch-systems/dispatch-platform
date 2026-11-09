@@ -479,7 +479,6 @@ async fn window_seeks_bound_work_at_both_ends_and_inside_a_long_tied_history() {
         texts::{numbers::Numbers, reading},
         windows::context,
     };
-    use rusqlite::params;
     db.exec(
         "UPDATE communications_messages SET direction='out',sent_by='user_1', \
         sender_name='Earlier sender' WHERE conversation_id=? AND ts='1700000000.000001'",
