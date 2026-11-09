@@ -823,7 +823,11 @@ test('conditional folder reads preserve the full response and scope, validate re
   assert.match(first.revision, /^[a-f0-9]{64}$/);
   assert.deepEqual(first.folder, await owner.read('/api/dsp/documents/folder'));
   const unchanged = await request(`?since=${first.revision}`);
-  assert.deepEqual(unchanged, { revision: first.revision, folder: null });
+  assert.deepEqual(unchanged, {
+    revision: first.revision,
+    grantGeneration: first.grantGeneration,
+    folder: null,
+  });
   const child = await owner.post('/api/dsp/documents/new', {
     folder: safety,
     kind: 'doc',
@@ -838,6 +842,7 @@ test('conditional folder reads preserve the full response and scope, validate re
   assert.equal(search.folder.items[0].location, 'Safety');
   assert.deepEqual(await request(`?q=rescue+plan&since=${search.revision}`), {
     revision: search.revision,
+    grantGeneration: search.grantGeneration,
     folder: null,
   });
   const missing = await request('?q=nonexistent');
