@@ -233,6 +233,19 @@ async fn a_live_day_emptied_once_its_over_is_heard_of_as_the_day_it_held_then_as
     // it held. Emptied again, holding none: of today there.
     let east = moved(&db, &dsp, EAST);
     dispatch_routes::clear_live(&state, &dsp).await.unwrap();
+    // An inactive publication's old day is not the day clear reports once there is no
+    // current live publication. The second clear still reports today in the east.
+    db.routes_live_db(&dsp)
+        .unwrap()
+        .exec(
+            "INSERT INTO route_publications(id,job_id,day,station,service_area_id,provider,\
+         timezone,mode,started_at,collected_at,active,route_count,itinerary_count,\
+         stop_count,task_count,adapter_version) VALUES \
+         ('inactive-live','inactive-job',?,'TST1','area','provider','UTC','snapshot',\
+         '2000-01-01T00:00:00Z','2000-01-01T00:00:00Z',0,0,0,0,0,0)",
+            [&west],
+        )
+        .unwrap();
     dispatch_routes::clear_live(&state, &dsp).await.unwrap();
     assert_eq!(heard(&dsp), [west.clone(), west, east]);
 }

@@ -15,14 +15,14 @@ pub use api::types::{
     Communications, CommunicationsUpdates, CommunicationsUpload, CommunicationsWaiting,
     CommunicationsWorkspace, ComposeLimits, Contact, Contacts, Conversation, ConversationKind,
     ConversationMessages, ConversationState, ConversationWindow, Conversations, Correspondent,
-    Direction, DispatchPhone, Elsewhere, FileStatus, GifSearch, GifVersion, Group, GroupChoice,
-    GroupChoiceKind, GroupChoices, GroupEntry, GroupMember, GroupMessages, GroupPeople,
-    GroupPerson, GroupPersonState, GroupProgress, Message, MessageFile, MessageGif, MessageGroup,
-    MessageNeighbor, MessageRange, MessageRenderContext, MessageSenderIdentity, NotSent, Pace,
-    PairingStatus, PhoneApp, PhoneHealth, PhonePairing, PhonePairingStatus, PhoneRow, Phones,
-    Profile, PushKey, QuickReplies, Reachable, RouteDriver, Sender, SentMessage, TextContact,
-    TextContacts, TextPeople, TextStatus, Today, TodaysRoutes, Typing, WaitingMessage, Workday,
-    Writing,
+    DayOrigin, Direction, DispatchPhone, Elsewhere, FileStatus, GifSearch, GifVersion, Group,
+    GroupChoice, GroupChoiceKind, GroupChoices, GroupEntry, GroupMember, GroupMessages,
+    GroupPeople, GroupPerson, GroupPersonState, GroupProgress, Message, MessageFile, MessageGif,
+    MessageGroup, MessageNeighbor, MessageRange, MessageRenderContext, MessageSenderIdentity,
+    NotSent, Pace, PairingStatus, PhoneApp, PhoneHealth, PhonePairing, PhonePairingStatus,
+    PhoneRow, Phones, Profile, PushKey, QuickReplies, Reachable, RouteDriver, RunOrigin,
+    SelectionOrigins, Sender, SentMessage, TextContact, TextContacts, TextPeople, TextStatus,
+    Today, TodaysRoutes, Typing, WaitingMessage, WindowOrigins, Workday, Writing,
 };
 
 use dispatch_core::db::{
@@ -83,6 +83,11 @@ pub const FEATURE: Feature = Feature {
             "phones_files",
             "phones_change",
             "communications_push",
+            "communications_origin_state",
+            "communications_origin_control",
+            "communications_origin_builds",
+            "communications_slack_origins",
+            "communications_text_origins",
         ],
     )],
     own_migrations: &[OwnMigrations {
@@ -221,6 +226,13 @@ pub const FEATURE: Feature = Feature {
                     "migrations/dsp/0021_communications_outgoing_indexes.sql"
                 )),
             },
+            Migration {
+                id: 22,
+                name: "communications_origins",
+                apply: Sql(include_str!(
+                    "migrations/dsp/0022_communications_origins.sql"
+                )),
+            },
         ],
     }],
     // Its dispatch phones are the DSP's own, managed on DSP Connections.
@@ -270,6 +282,7 @@ pub const FEATURE: Feature = Feature {
         backend::reply::MAINTENANCE,
         backend::groups::send::MAINTENANCE,
         backend::texts::filing::MAINTENANCE,
+        backend::origins::backfill::MAINTENANCE,
         backend::phone::tidy::MAINTENANCE,
         backend::push::MAINTENANCE,
         backend::copies::MAINTENANCE,
@@ -325,6 +338,10 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         Conversations,
         ConversationMessages,
         ConversationWindow,
+        WindowOrigins,
+        SelectionOrigins,
+        RunOrigin,
+        DayOrigin,
         MessageRange,
         MessageNeighbor,
         MessageRenderContext,

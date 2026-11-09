@@ -505,14 +505,40 @@ fn each_pass_is_pinned_to_the_pushed_head_and_later_ones_read_only_what_changed(
     take(root, 2, &Native).unwrap();
     record(root, 2, &models, &Native).unwrap();
 
+    // The review stays done through merging main in as git does unaided, but not through a merge
+    // edited by hand or a commit after it.
+    let unreviewed = || {
+        crate::merge::unreviewed(
+            root,
+            "## Review\n\nTier sensitive\n",
+            &fixture.head(),
+            &Native,
+        )
+        .unwrap()
+    };
+    let main = |path: &str| {
+        git(root, &["switch", "-q", "main"]);
+        write(root, path, "fn van() {}\n");
+        commit(root, path);
+        git(root, &["push", "-q", "origin", "main"]);
+        git(root, &["switch", "-q", "keep-week"]);
+    };
+    assert_eq!(unreviewed(), None);
+    main("features/vans/backend/van.rs");
+    git(root, &["merge", "-q", "--no-edit", "main"]);
+    assert_eq!(unreviewed(), None);
+    main("features/vans/backend/vans.rs");
+    git(root, &["merge", "-q", "--no-commit", "main"]);
+    write(
+        root,
+        "features/dvic/backend/week.rs",
+        "fn week(dsp: Dsp) { page(&dsp) }\n",
+    );
+    commit(root, "merge main, and a fix");
+    assert!(unreviewed().unwrap().contains("Pass 2 was recorded"));
+
     // Once main is merged in, a pass reads only the branch's own files of what changed: those it
     // changes, and those it changed before, such as a migration a fix took back out.
-    git(root, &["switch", "-q", "main"]);
-    write(root, "features/vans/backend/van.rs", "fn van() {}\n");
-    commit(root, "a van");
-    git(root, &["push", "-q", "origin", "main"]);
-    git(root, &["switch", "-q", "keep-week"]);
-    git(root, &["merge", "-q", "--no-edit", "main"]);
     fs::remove_file(root.join("features/dvic/migrations/0004_week.sql")).unwrap();
     write(root, "features/dvic/backend/week notes.rs", "// x\n");
     commit(root, "no migration after all");

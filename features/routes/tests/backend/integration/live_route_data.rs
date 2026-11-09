@@ -273,6 +273,126 @@ fn latest(driver: &str, phone: &str) -> DriverPhone {
     }
 }
 
+/// An unfinished live publication's metadata and itinerary, without its raw responses or any
+/// shared names. Fixture setup only: the current product still writes one live read in place.
+fn inactive_live_read(live: &Db) {
+    live.transaction(|| {
+        live.exec(
+            "INSERT INTO route_publications(id,job_id,day,station,service_area_id,provider,\
+             timezone,mode,started_at,collected_at,active,route_count,itinerary_count,\
+             stop_count,task_count,adapter_version) \
+             SELECT 'inactive-live','inactive-job',day,station,service_area_id,provider,\
+             timezone,mode,started_at,'9999-01-01T00:00:00Z',0,0,1,0,0,adapter_version \
+             FROM route_publications WHERE active=1",
+            [],
+        )?;
+        live.exec(
+            "INSERT INTO itineraries(publication_id,day,itinerary_id,transporter_id,driver_name,\
+             breaks,planned_breaks,summary,work_phone) \
+             SELECT id,day,'unpublished-itinerary','unpublished-driver','Unpublished Driver',\
+             '[]','[]','{}','5550100003' FROM route_publications WHERE id='inactive-live'",
+            [],
+        )?;
+        Ok(())
+    })
+    .unwrap();
+}
+
+#[tokio::test]
+async fn inactive_live_rows_do_not_make_a_planned_read_look_lost() {
+    let (_root, db, dsp, state) = ready();
+    let mut day = Day::new(&today(&db, &dsp).to_string());
+    day.summaries["itinerarySummaries"] = json!([]);
+    keep_live(&state, &dsp, day.read(0)).await.unwrap();
+    let live = db.routes_live_db(&dsp).unwrap();
+    let publication = live
+        .one("SELECT id FROM route_publications WHERE active=1", [])
+        .unwrap()
+        .unwrap();
+    inactive_live_read(&live);
+    for after in [1, 2] {
+        let kept = keep_live(&state, &dsp, day.read(after)).await.unwrap();
+        assert_eq!((kept.listed, kept.changed), (0, 0));
+    }
+    assert_eq!(
+        live.one("SELECT id FROM route_publications WHERE active=1", [])
+            .unwrap(),
+        Some(publication)
+    );
+    assert_eq!(
+        live.count("SELECT count(*) FROM itineraries", []).unwrap(),
+        1
+    );
+    assert_eq!(live_phones(&db, &dsp), DayPhones::Read(Vec::new()));
+    let historical = dispatch_routes_contract::for_dsp(&db, &dsp)
+        .unwrap()
+        .unwrap();
+    assert!(!historical.ever_work_phone(&db, &dsp, P3).unwrap());
+
+    // A driver seen only on an earlier route assignment is still someone in this live day.
+    day.route_summaries["rmsRouteSummaries"]
+        .as_array_mut()
+        .unwrap()
+        .pop();
+    day.route_summaries["transporters"]
+        .as_array_mut()
+        .unwrap()
+        .pop();
+    keep_live(&state, &dsp, day.read(3)).await.unwrap();
+    let people = dispatch_routes::FEATURE
+        .people
+        .iter()
+        .find(|people| people.kind.id == "routes_live")
+        .unwrap();
+    let mut named: Vec<_> = (people.read)(&db, &dsp)
+        .unwrap()
+        .into_iter()
+        .map(|person| (person.id, person.name))
+        .collect();
+    named.sort();
+    assert_eq!(
+        named,
+        [
+            ("driver-1".into(), "Fixture Driver".into()),
+            ("driver-2".into(), "Second Driver".into()),
+        ]
+    );
+    let (_, records) = people.records.unwrap();
+    assert!(records(&db, &dsp).unwrap().is_empty());
+
+    // Starting again without a current publication uses the existing full live reset.
+    live.exec("UPDATE route_publications SET active=0 WHERE active=1", [])
+        .unwrap();
+    keep_live(&state, &dsp, day.read(4)).await.unwrap();
+    assert_eq!(
+        live.count("SELECT count(*) FROM route_publications", [])
+            .unwrap(),
+        1
+    );
+    let named = (people.read)(&db, &dsp).unwrap();
+    assert_eq!(named.len(), 1);
+    assert_eq!(named[0].id, "driver-1");
+}
+
+#[tokio::test]
+async fn ambiguous_live_publications_are_refused_before_a_read_is_written() {
+    let (_root, db, dsp, state) = ready();
+    let day = Day::new(&today(&db, &dsp).to_string());
+    keep_live(&state, &dsp, day.read(0)).await.unwrap();
+    let live = db.routes_live_db(&dsp).unwrap();
+    inactive_live_read(&live);
+    live.exec(
+        "UPDATE route_publications SET service_area_id=service_area_id||'-other',active=1 \
+         WHERE id='inactive-live'",
+        [],
+    )
+    .unwrap();
+    let before = held(&live);
+    let refused = keep_live(&state, &dsp, day.read(1)).await.unwrap_err();
+    assert_eq!(refused.code, "routes_capture_invalid");
+    assert_eq!(held(&live), before);
+}
+
 #[tokio::test]
 async fn a_live_day_kept_in_place_reads_as_each_read_saved_whole() {
     let (_root, db, dsp, state) = ready();
@@ -423,7 +543,10 @@ async fn the_live_day_is_saved_once_under_its_reads_key_and_live_route_data_kept
     let read = day.read(1);
     let key = format!("live:{today}:{}", read.finished_at);
     keep_live(&state, &dsp, read).await.unwrap();
-    // Saved again, as after a restart, it is the day's read still, saved once.
+    let live = db.routes_live_db(&dsp).unwrap();
+    inactive_live_read(&live);
+    // Saved again, as after a restart, it is the day's read still, saved once. An inactive
+    // publication with a later timestamp and no raw responses must never supply the capture.
     for _ in 0..2 {
         assert_eq!(save_live_day(&state, &dsp).await.unwrap(), Some(true));
     }
@@ -443,6 +566,17 @@ async fn the_live_day_is_saved_once_under_its_reads_key_and_live_route_data_kept
         offered.live_day(&db, &dsp).unwrap(),
         Some(today.to_string())
     );
+
+    // Without an active publication there is no live capture to save, even while complete
+    // old responses and an unfinished publication remain in the live store.
+    live.exec("UPDATE route_publications SET active=0 WHERE active=1", [])
+        .unwrap();
+    assert_eq!(save_live_day(&state, &dsp).await.unwrap(), None);
+    live.exec(
+        "UPDATE route_publications SET active=1 WHERE id<>'inactive-live'",
+        [],
+    )
+    .unwrap();
 
     // A read made once its day had ended, as a window past midnight's, is the day's final.
     let midnight = (today + chrono::Duration::days(1))
@@ -572,6 +706,7 @@ async fn clearing_empties_live_route_data_and_gives_its_space_back() {
         live.count("SELECT page_count FROM pragma_page_count()", [])
             .unwrap()
     };
+    inactive_live_read(&db.routes_live_db(&dsp).unwrap());
     let full = pages(&db);
     clear_live(&state, &dsp).await.unwrap();
     let live = db.routes_live_db(&dsp).unwrap();

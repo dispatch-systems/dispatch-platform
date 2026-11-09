@@ -302,6 +302,9 @@ pub struct ConversationWindow {
     /// Matching render context for `latest`, usable as an immediate closed-cache tail seed.
     pub latest_context: MessageRenderContext,
     pub latest_workdays: Vec<Workday>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub origins: Option<WindowOrigins>,
     pub range: MessageRange,
     pub today: Option<Today>,
     pub working: bool,
@@ -526,4 +529,69 @@ pub struct CommunicationsUpload {
     pub mime: String,
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub size: i64,
+}
+
+/// Opt-in version 1. `ready=false` is a capability state, never an empty-history answer.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowOrigins {
+    pub version: u8,
+    pub algorithm: String,
+    pub time_zone: String,
+    pub ready: bool,
+    pub selected: Option<SelectionOrigins>,
+    pub latest: Option<SelectionOrigins>,
+}
+/// Only the first run and contiguous date segment can have a missing prefix in a selection.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectionOrigins {
+    pub origin: RunOrigin,
+    pub before_origin: Option<MessageNeighbor>,
+    /// First sender of the latest earlier sender-bearing RUN in this date segment.
+    pub sent_before_origin: Option<MessageSenderIdentity>,
+    pub first_day: DayOrigin,
+}
+/// Real origin metadata and current sender/group projections. Never a message, cursor, receipt
+/// or reply observation: it deliberately carries no body/files/GIF/status/thread/moved fields.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct RunOrigin {
+    pub id: String,
+    pub ts: String,
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub at: i64,
+    pub direction: Direction,
+    pub sender: Option<Sender>,
+    pub group: Option<MessageGroup>,
+    pub number: Option<String>,
+}
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct DayOrigin {
+    pub id: String,
+    pub ts: String,
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub at: i64,
+    pub number: Option<String>,
 }

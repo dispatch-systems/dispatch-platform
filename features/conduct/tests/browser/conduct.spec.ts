@@ -31,3 +31,50 @@ test('a driver is written up from the page, then marked signed and locked', asyn
   await expect(page.getByRole('button', { name: 'Edit' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Print' })).toBeVisible();
 });
+
+test('a long writeup still prints on one letter page, its sections shrunk to fit their lines', async ({
+  page,
+}) => {
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await page.getByRole('link', { name: 'Conduct', exact: true }).click();
+  await page.getByRole('button', { name: 'New writeup' }).click();
+  await page.getByLabel('Driver').selectOption({ index: 1 });
+  await page.getByLabel('Category').selectOption({ label: 'Uniform' });
+  // Longer than each section's four lines hold at full size.
+  const long = 'DA did not arrive to work in full uniform and was reminded at stand up. '.repeat(6);
+  await page.getByLabel('1. Statement of the problem').fill(long);
+  // A line for each of many entries, which wrapping alone can't shorten.
+  const entries = Array.from(
+    { length: 25 },
+    (_, n) => `Incident ${n + 1}: late arrival discussed.`,
+  );
+  await page.getByLabel('2. Prior discussion or warnings').fill(entries.join('\n'));
+  await page.getByLabel('3. Corrective action').fill(long);
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Awaiting signature')).toBeVisible();
+
+  // Printed as the browser prints it, without its dialog.
+  await page.evaluate(() => {
+    window.print = () => {};
+  });
+  await page.getByRole('button', { name: 'Print' }).click();
+  const sheet = page.locator('.conduct-print .conduct-notice');
+  await expect(sheet).toBeAttached();
+  await page.emulateMedia({ media: 'print' });
+  // Each section shrank to its lines, none of it cut off.
+  const answers = await sheet.locator('.conduct-notice-answer').evaluateAll((boxes) =>
+    boxes.map((box) => ({
+      fit: Number(getComputedStyle(box).getPropertyValue('--fit')),
+      whole: box.scrollHeight <= box.clientHeight + 1,
+    })),
+  );
+  expect(answers).toHaveLength(3);
+  for (const answer of answers) {
+    expect(answer.whole).toBe(true);
+    expect(answer.fit).toBeLessThan(1);
+  }
+  await expect(sheet.locator('[data-overflow]')).toHaveCount(0);
+  const pdf = (await page.pdf({ preferCSSPageSize: true })).toString('latin1');
+  expect(pdf.match(/\/Type\s*\/Page[^s]/g)).toHaveLength(1);
+});

@@ -187,7 +187,7 @@ pub(super) async fn outbox(state: Arc<State>, input: Input, access: Phone) -> Re
         }
         // Without admission, answer ready work but never an empty heartbeat or an idle wait.
         if texts.is_empty() && wanted.is_empty() && slot.is_none() {
-            return Err(Error::new("platform_busy", 503));
+            return Err(Error::busy("phone_outbox_idle_unavailable"));
         }
         if !texts.is_empty() || !wanted.is_empty() || tokio::time::Instant::now() >= until {
             return Reply::of(&Outbox {

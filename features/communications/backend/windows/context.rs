@@ -81,6 +81,19 @@ pub(crate) fn read(
     messages: &[Message],
     numbers: Option<&Numbers>,
 ) -> Result<MessageRenderContext> {
+    if messages.is_empty() {
+        return Ok(MessageRenderContext::default());
+    }
+    read_in_zone(db, dsp, reference, messages, numbers, texts::zone(db, dsp)?)
+}
+pub(crate) fn read_in_zone(
+    db: &Store,
+    dsp: &str,
+    reference: &Reference,
+    messages: &[Message],
+    numbers: Option<&Numbers>,
+    zone: chrono_tz::Tz,
+) -> Result<MessageRenderContext> {
     let (Some(first), Some(last)) = (messages.first(), messages.last()) else {
         return Ok(MessageRenderContext::default());
     };
@@ -119,7 +132,6 @@ pub(crate) fn read(
     };
     let previous = probe(first, false, false)?;
     let next = probe(last, true, false)?;
-    let zone = texts::zone(db, dsp)?;
     // Nearest outgoing seek first, local-day comparison second. No derived local-date SQL
     // filter, UTC truncation, 24-hour subtraction, incoming-suffix scan or day/run walk.
     let sent_before = probe(first, false, true)?
