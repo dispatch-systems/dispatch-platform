@@ -1060,3 +1060,49 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   `PICTURE_CACHE_MB`, how many megabytes of cached pictures and files the server keeps:
   `DISPATCH_DEV_PICTURE_CACHE_MB` on Dev and its previews, `DISPATCH_PRODUCTION_PICTURE_CACHE_MB`
   on Production; 10 GB unless it's set. The object store, and `R2_ONLY`, are core's.
+
+## Conversation window protocol
+
+The additive `GET /api/dsp/communications/conversations/{id}/window`, under
+`communications.use`, replaces one ascending window of at most 150 server messages and
+returns an independent latest-50 observation. No query selects latest; `anchor` (a message's
+full `ts`) and `leading=0..149` select around an ordering position, even after that row goes.
+A short side is filled from the other side. `cursor` alone accepts a returned before, after
+or refresh token. Navigation overlaps one row. These are positions, never access grants.
+Tokens are authenticated with the existing platform key and scoped to the DSP, conversation
+and protocol version; every request rechecks session, feature, role and conversation access.
+
+Each answer reads persisted messages, attachments and the Communications revision in one DSP
+transaction. The decimal revision is opaque; it does not version route/directory context or
+freeze history across requests. A stale continuation rebases to current data at its position
+and sets `rebased`; consumers replace the whole window even when false. A revision ahead of
+the database returns `communications_window_reset` (409); discard it and explicitly reopen
+latest or an anchor. Malformed, modified and wrong-scope tokens return `invalid_input` (400).
+The latest observation never becomes a continuation boundary. A refresh retains latest or
+anchor intent, so historical statuses, edits, file changes and refiling are reread.
+
+Each selection has compact previous/next neighbors and the nearest outgoing sender before its
+first row on the DSP-local day. Neighbors contain only ID/full place/at/direction, sender
+user/phone IDs and name, visible group ID and other-party number. No body, files, GIF or status
+is carried there. Use the authorized DSP timezone to reset run, pause, switch and sender-label
+comparisons at local midnight. A run continues only for the same writer within ten minutes on
+the same local day. A clipped end is not run-last while its next neighbor continues that run;
+failed messages still show status. `context` and `workdays` belong to `messages`;
+`latestContext` and `latestWorkdays` belong to the independent latest50. Replace each set
+atomically. Latest context supports immediate cached-tail rendering; it supplies no continuation
+range. A historical close seeds latest50 provisionally and reopening bootstraps latest150 before
+edge navigation. Never fabricate a complete range or concatenate selected history and latest.
+
+Migration21 adds only outgoing partial indexes for the one-row context seeks. There is no
+persistent cursor session, durable snapshot/epoch, message delta journal or stored-message
+format change. AES-GCM tokens use fresh random nonces: opaque transport values cannot identify
+semantic progress, changed data, a React key or a fetch dependency. A latest refresh token
+keeps latest intent, even after scrolling up; historical refresh must use the visible anchor.
+Tokens rejected after key replacement require one deliberate position/latest bootstrap rather
+than replay. A caught-up revision after DB restore is not detected as a separate epoch.
+
+The legacy 50-message route and its current cache/UI continue unchanged; this endpoint alone
+does not bound active memory. Compact immediate context cannot recover a clipped run's original
+first sender name/time or a clipped workday's first phone after an earlier phone switch. The
+consumer must preserve clipped continuation semantics; exact offscreen origin recovery would
+need a separately reviewed contract, not an unbounded run/day scan.

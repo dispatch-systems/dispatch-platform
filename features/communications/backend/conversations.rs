@@ -277,15 +277,27 @@ pub fn opened(
     id: &str,
     before: Option<&str>,
 ) -> Result<ConversationMessages> {
-    let kept = db
-        .communications_conversation(dsp, id)?
-        .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
-    let people = People::read(db, state, dsp)?;
     let mut read = db.communications_messages(dsp, id, before, PAGE + 1)?;
     let more = read.len() > PAGE;
     if more {
         read.remove(0);
     }
+    assembled(db, state, dsp, id, read, more)
+}
+
+/// Existing composition context, for the selected rows rather than an unrelated tail.
+pub(crate) fn assembled(
+    db: &Store,
+    state: &State,
+    dsp: &str,
+    id: &str,
+    read: Vec<StoredMessage>,
+    more: bool,
+) -> Result<ConversationMessages> {
+    let kept = db
+        .communications_conversation(dsp, id)?
+        .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
+    let people = People::read(db, state, dsp)?;
     // With someone Driver Match knows, the route they drive today, for its van, whether they're
     // working, and their conversations of each kind.
     let ((today, working), elsewhere) = match people.member_of(&kept.team, &kept.user) {

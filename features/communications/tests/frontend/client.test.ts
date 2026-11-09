@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import type { ConversationWindow } from '../../api/index.js';
 import { ApiError } from '../../../../core/shell/frontend/runtime/api.js';
 import { dataCache } from '../../../../core/shell/frontend/runtime/data-cache.js';
-import { quickRepliesUrl, saveQuickReplies, textAttachments } from '../../api/client.js';
+import { getConversationWindow, quickRepliesUrl, saveQuickReplies, textAttachments } from '../../api/client.js';
 
 /** A browser's request, as `upload` sends one, which the server refuses as `answer` says. */
 function refusing(answer: { status: number; body: unknown; requestId: string }) {
@@ -49,4 +50,47 @@ test('quick replies saved show as saved at once, on the revision the save answer
   t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify(saved)));
   await saveQuickReplies(saved.replies, 1);
   assert.deepEqual(dataCache.peek(quickRepliesUrl).data, saved);
+});
+
+
+test('window reads preserve opaque positions, zero leading, priority and cancellation without caching', async (t) => {
+  const controller = new AbortController();
+  const answer: ConversationWindow = {
+    conversation: {
+      id: 'tc_id', kind: 'number', teamId: null, number: '+12065550101', driverId: null,
+      contact: false, added: false, blocked: false,
+      with: { userId: null, name: 'Test', code: null, role: null, title: null, photo: null },
+      state: 'responded', waitingSince: null, lastAt: null, last: null, matched: [], groupId: null,
+    },
+    messages: [], latest: [],
+    context: { previous: null, next: null, sentBefore: null },
+    latestContext: { previous: null, next: null, sentBefore: null }, latestWorkdays: [],
+    range: { revision: '42', first: null, last: null, hasBefore: false, hasAfter: false,
+      before: null, after: null, refresh: 'opaque.refresh', rebased: true },
+    today: null, working: false, elsewhere: [], workdays: [],
+    limits: { text: 10000, photos: 10, largest: 20 * 1024 * 1024, kinds: [] },
+  };
+  const asked: { url: string; init?: RequestInit }[] = [];
+  t.mock.method(globalThis, 'fetch', async (url: string, init?: RequestInit) => {
+    asked.push({ url, init });
+    return new Response(JSON.stringify(answer));
+  });
+  const anchor = '1700000000000:text-000100';
+  assert.deepEqual(await getConversationWindow('tc_id', { anchor, leading: 0 }, 'low', controller.signal), answer);
+  const first = asked[0]!;
+  const parsed = new URL(first.url, 'https://dispatch.test');
+  assert.equal(parsed.pathname, '/api/dsp/communications/conversations/tc_id/window');
+  assert.equal(parsed.searchParams.get('anchor'), anchor);
+  assert.equal(parsed.searchParams.get('leading'), '0');
+  assert.equal(first.init?.signal?.aborted, false);
+  controller.abort();
+  assert.equal(first.init?.signal?.aborted, true);
+  assert.equal((first.init as RequestInit & { priority?: string })?.priority, 'low');
+  const cursor = 'opaque.with_-bytes';
+  await getConversationWindow('tc_id', { cursor });
+  assert.equal(new URL(asked[1]!.url, 'https://dispatch.test').searchParams.get('cursor'), cursor);
+  assert.equal(new URL(asked[1]!.url, 'https://dispatch.test').searchParams.has('anchor'), false);
+  await getConversationWindow('tc_id');
+  assert.equal(new URL(asked[2]!.url, 'https://dispatch.test').search, '');
+  assert.equal(dataCache.peek(parsed.pathname).data, undefined);
 });

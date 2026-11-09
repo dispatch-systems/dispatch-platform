@@ -323,14 +323,26 @@ pub fn opened(
     id: &str,
     before: Option<(i64, &str)>,
 ) -> Result<ConversationMessages> {
-    let kept = found(db, dsp, id)?;
-    let people = People::read(db, state, dsp)?;
-    let numbers = Numbers::read(db, dsp)?;
     let mut read = db.communications_texts(dsp, id, before, PAGE + 1)?;
     let more = read.len() > PAGE;
     if more {
         read.remove(0);
     }
+    assembled(db, state, dsp, id, read, more)
+}
+
+/// Existing composition context, for the selected rows rather than an unrelated tail.
+pub(crate) fn assembled(
+    db: &Store,
+    state: &State,
+    dsp: &str,
+    id: &str,
+    read: Vec<Text>,
+    more: bool,
+) -> Result<ConversationMessages> {
+    let kept = found(db, dsp, id)?;
+    let people = People::read(db, state, dsp)?;
+    let numbers = Numbers::read(db, dsp)?;
     let person = whose(&people, &kept);
     let (today, working, workdays) = match &kept.driver {
         Some((source, driver)) => {

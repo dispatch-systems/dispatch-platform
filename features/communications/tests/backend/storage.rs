@@ -375,3 +375,227 @@ fn latest_messages_stay_bounded_as_history_grows_and_keep_the_latest_incoming() 
         ["slack-in"]
     );
 }
+
+#[tokio::test]
+async fn window_seeks_bound_work_at_both_ends_and_inside_a_long_tied_history() {
+    use crate::backend::{
+        phone::support::paired,
+        texts::{model::Filed, storage::TextStore},
+    };
+    crate::backend::support::install();
+    let (_root, store, dsp) = testing::bootstrapped();
+    let phone = paired(&store, &dsp, "window-budget-key", "+12065550100");
+    let text = store
+        .open_communications_text(&dsp, &Filed::Number("+12065550101".into()))
+        .unwrap()
+        .id;
+    let slack = store
+        .keep_communications_message(
+            &dsp,
+            &written("1700000000.000000", 1_700_000_000_000, "First"),
+        )
+        .unwrap()
+        .unwrap()
+        .conversation;
+    let db = store.dsp(&dsp).unwrap();
+    db.exec("WITH RECURSIVE history(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM history WHERE n<10000) \
+        INSERT INTO communications_messages(id,conversation_id,ts,direction,text,at) \
+        SELECT 'slack-'||n,?1,printf('1700000000.%06d',n),'in','History',1700000000000 FROM history", [&slack]).unwrap();
+    db.exec("WITH RECURSIVE history(n) AS (VALUES(0) UNION ALL SELECT n+1 FROM history WHERE n<10000) \
+        INSERT INTO phones_texts(id,device_id,client_id,direction,origin,number,body,at,change,conversation_id) \
+        SELECT printf('text-%06d',n),?1,printf('text-%06d',n),'in','phone','+12065550101',\
+        'History',1700000000000,n,?2 FROM history", rusqlite::params![phone.id, text]).unwrap();
+    for n in [0, 5_000, 10_000] {
+        for leading in [0, 75, 149] {
+            let place = format!("1700000000.{n:06}");
+            let id = format!("text-{n:06}");
+            // Retain the existing 20,000 SQLite instruction guard unchanged, separately for
+            // each complete window selector. This is a work bound, never an elapsed-time test.
+            let budget = ReadBudget::new(&db.0);
+            let page = store
+                .communications_message_window(&dsp, &slack, Some((&place, leading)))
+                .unwrap();
+            drop(budget);
+            assert_eq!(page.messages.len(), 150);
+            let budget = ReadBudget::new(&db.0);
+            let page = store
+                .communications_text_window(&dsp, &text, Some((1_700_000_000_000, &id, leading)))
+                .unwrap();
+            drop(budget);
+            assert_eq!(page.messages.len(), 150);
+        }
+    }
+    let budget = ReadBudget::new(&db.0);
+    let page = store.communications_text_window(&dsp, &text, None).unwrap();
+    drop(budget);
+    assert!(page.has_before && !page.has_after);
+    let budget = ReadBudget::new(&db.0);
+    let page = store
+        .communications_message_window(&dsp, &slack, None)
+        .unwrap();
+    drop(budget);
+    assert!(page.has_before && !page.has_after);
+
+    // 004900 is a raw left-side candidate, outside the selected [004925,005074].
+    // Hydrating candidate attachments before selection would exceed the same work guard.
+    db.exec(
+        "WITH RECURSIVE files(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM files WHERE n<2000) \
+        INSERT INTO phones_files(id,text_id,name,mime,size,added_at) \
+        SELECT 'excluded-'||n,'text-004900','Excluded','image/png',1,0 FROM files",
+        [],
+    )
+    .unwrap();
+    db.exec(
+        "INSERT INTO phones_files(id,text_id,name,mime,size,added_at) \
+        VALUES ('selected-file','text-005000','Selected','image/png',1,0)",
+        [],
+    )
+    .unwrap();
+    let budget = ReadBudget::new(&db.0);
+    let page = store
+        .communications_text_window(&dsp, &text, Some((1_700_000_000_000, "text-005000", 75)))
+        .unwrap();
+    drop(budget);
+    assert!(
+        !page
+            .messages
+            .iter()
+            .any(|message| message.id == "text-004900")
+    );
+    assert_eq!(
+        page.messages
+            .iter()
+            .find(|message| message.id == "text-005000")
+            .unwrap()
+            .files[0]
+            .name,
+        "Selected"
+    );
+    // Sparse-outgoing cases reuse these same 10,001-row histories and the unchanged guard.
+    use crate::backend::{
+        conversations,
+        model::Reference,
+        people::People,
+        texts::{numbers::Numbers, reading},
+        windows::context,
+    };
+    use rusqlite::params;
+    db.exec(
+        "UPDATE communications_messages SET direction='out',sent_by='user_1', \
+        sender_name='Earlier sender' WHERE conversation_id=? AND ts='1700000000.000001'",
+        [&slack],
+    )
+    .unwrap();
+    db.exec(
+        "UPDATE phones_texts SET direction='out' WHERE id='text-000001'",
+        [],
+    )
+    .unwrap();
+    // These belong to the prior outgoing row, far outside both full-body selections.
+    db.exec(
+        "WITH RECURSIVE files(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM files WHERE n<2000) \
+        INSERT INTO phones_files(id,text_id,name,mime,size,added_at) SELECT \
+        'render-excluded-'||n,'text-000001','Excluded','image/png',1,0 FROM files",
+        [],
+    )
+    .unwrap();
+    db.exec(
+        "WITH RECURSIVE files(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM files WHERE n<2000) \
+        INSERT INTO communications_files(id,message_id,name,mime,size,status,added_at) SELECT \
+        'context-slack-excluded-'||n,'slack-1','Excluded','image/png',1,'waiting',0 FROM files",
+        [],
+    )
+    .unwrap();
+    let state = dispatch_core::State::new(store.config.clone()).unwrap();
+    let people = People::read(&store, &state, &dsp).unwrap();
+    let numbers = Numbers::read(&store, &dsp).unwrap();
+    let selected_slack = conversations::messages(
+        &store,
+        &people,
+        &dsp,
+        store
+            .communications_message_window(&dsp, &slack, Some(("1700000000.005000", 75)))
+            .unwrap()
+            .messages,
+    )
+    .unwrap();
+    let latest_slack = conversations::messages(
+        &store,
+        &people,
+        &dsp,
+        store
+            .communications_messages(&dsp, &slack, None, 50)
+            .unwrap(),
+    )
+    .unwrap();
+    let selected_text = reading::messages(
+        &people,
+        &numbers,
+        store
+            .communications_text_window(&dsp, &text, Some((1_700_000_000_000, "text-005000", 75)))
+            .unwrap()
+            .messages,
+    );
+    let latest_text = reading::messages(
+        &people,
+        &numbers,
+        store.communications_texts(&dsp, &text, None, 50).unwrap(),
+    );
+    for (reference, messages, numbers, previous, next, sender) in [
+        (
+            Reference::Slack(slack.clone()),
+            &selected_slack,
+            None,
+            "1700000000.004924",
+            Some("1700000000.005075"),
+            "Earlier sender",
+        ),
+        (
+            Reference::Slack(slack.clone()),
+            &latest_slack,
+            None,
+            "1700000000.009950",
+            None,
+            "Earlier sender",
+        ),
+        (
+            Reference::Text(text.clone()),
+            &selected_text,
+            Some(&numbers),
+            "1700000000000:text-004924",
+            Some("1700000000000:text-005075"),
+            numbers.phone(&phone.id).unwrap(),
+        ),
+        (
+            Reference::Text(text.clone()),
+            &latest_text,
+            Some(&numbers),
+            "1700000000000:text-009950",
+            None,
+            numbers.phone(&phone.id).unwrap(),
+        ),
+    ] {
+        let budget = ReadBudget::new(&db.0);
+        let context = context::read(&store, &dsp, &reference, messages, numbers).unwrap();
+        drop(budget);
+        assert_eq!(context.previous.unwrap().ts, previous);
+        assert_eq!(context.next.map(|row| row.ts).as_deref(), next);
+        assert_eq!(context.sent_before.unwrap().name, sender);
+    }
+    // An entirely absent outgoing prefix must also be a bounded index seek, not a scan.
+    db.exec("UPDATE communications_messages SET direction='in' WHERE conversation_id=? AND direction='out'", [&slack]).unwrap();
+    db.exec(
+        "UPDATE phones_texts SET direction='in' WHERE conversation_id=? AND direction='out'",
+        [&text],
+    )
+    .unwrap();
+    for (reference, messages, numbers) in [
+        (Reference::Slack(slack), &selected_slack, None),
+        (Reference::Text(text), &selected_text, Some(&numbers)),
+    ] {
+        let budget = ReadBudget::new(&db.0);
+        let context = context::read(&store, &dsp, &reference, messages, numbers).unwrap();
+        drop(budget);
+        assert!(context.sent_before.is_none());
+    }
+}

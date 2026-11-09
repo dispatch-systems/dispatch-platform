@@ -9,6 +9,9 @@ pub const TEXT_PREFIX: &str = "tc";
 /// How many answered conversations, or messages, are read at a time, of every kind.
 pub const PAGE: usize = 50;
 
+/// The most server messages in one authoritative conversation window.
+pub const WINDOW: usize = 150;
+
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     #[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]

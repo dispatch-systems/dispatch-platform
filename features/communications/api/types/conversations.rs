@@ -285,6 +285,107 @@ pub struct ConversationMessages {
     pub limits: ComposeLimits,
 }
 
+/// A complete replacement of one bounded window and an independent latest-50 observation.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationWindow {
+    pub conversation: Conversation,
+    pub messages: Vec<Message>,
+    pub latest: Vec<Message>,
+    /// Compact neighbors and same-local-day outgoing identity for `messages`.
+    pub context: MessageRenderContext,
+    /// Matching render context for `latest`, usable as an immediate closed-cache tail seed.
+    pub latest_context: MessageRenderContext,
+    pub latest_workdays: Vec<Workday>,
+    pub range: MessageRange,
+    pub today: Option<Today>,
+    pub working: bool,
+    pub elsewhere: Vec<Elsewhere>,
+    pub workdays: Vec<Workday>,
+    pub limits: ComposeLimits,
+}
+
+/// Only the identity compared by writer/sameSender: no photo, directory code or message body.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageSenderIdentity {
+    pub user_id: Option<String>,
+    pub phone_id: Option<String>,
+    /// sameSender compares the displayed name as well as both IDs.
+    pub name: String,
+}
+
+/// An adjacent persisted row, exclusively for run/day/phone-switch comparisons. Never a body,
+/// cursor, reply observation or status. group_id matches the visible Message.group, not an
+/// incoming Slack row's stored group attribution or a deleted group.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageNeighbor {
+    pub id: String,
+    pub ts: String,
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub at: i64,
+    pub direction: Direction,
+    pub sender: Option<MessageSenderIdentity>,
+    pub group_id: Option<String>,
+    pub number: Option<String>,
+}
+
+/// Context belongs only to its accompanying selection and replaces atomically with it.
+#[derive(Clone, Debug, Default, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageRenderContext {
+    /// Immediate predecessor/successor by full place, even across a local-day boundary.
+    pub previous: Option<MessageNeighbor>,
+    pub next: Option<MessageNeighbor>,
+    /// Nearest outgoing sender strictly before the first row, only on that DSP-local day;
+    /// incoming rows and ten-minute pauses do not reset it. No previous-day sender leaks in.
+    pub sent_before: Option<MessageSenderIdentity>,
+}
+
+/// Continuations are authenticated positions scoped to this DSP and conversation. Each read
+/// is a new database snapshot; a changed revision explicitly rebases the whole answer.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageRange {
+    /// Decimal i64, opaque to JS arithmetic. Covers Communications data, not route/directory data.
+    pub revision: String,
+    pub first: Option<String>,
+    pub last: Option<String>,
+    pub has_before: bool,
+    pub has_after: bool,
+    pub before: Option<String>,
+    pub after: Option<String>,
+    /// Repeat the original latest/anchor intent against current persisted data.
+    pub refresh: String,
+    pub rebased: bool,
+}
+
 /// What one message may carry: the most characters its text may have, how many photos, the most
 /// bytes each may be, and their kinds.
 #[derive(Clone, Debug, Serialize)]
