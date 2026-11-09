@@ -85,6 +85,88 @@ fn build_origins(db: &Store, dsp: &str, reference: &Reference, count: usize) {
     }
     panic!("fixture backfill did not reach EOF");
 }
+/// A real source writer: Slack insertion or phone reporting followed by first filing.
+fn place_for_candidate(db: &Store, dsp: &str, reference: &Reference, key: &str, at: i64) -> String {
+    match reference {
+        Reference::Slack(_) => {
+            let kept = db
+                .keep_communications_message(
+                    dsp,
+                    &Written {
+                        team: "T0FIXTURE1".into(),
+                        user: "U0JORDAN".into(),
+                        channel: "D0JORDAN".into(),
+                        name: "Jordan".into(),
+                        ts: key.into(),
+                        thread_ts: None,
+                        text: "suffix".into(),
+                        at,
+                        edited_at: None,
+                        files: Vec::new(),
+                    },
+                )
+                .unwrap()
+                .unwrap();
+            assert_eq!(kept.conversation, reference.id());
+            let (id,): (String,) = db
+                .dsp(dsp)
+                .unwrap()
+                .one_as(
+                    "SELECT id FROM communications_messages WHERE conversation_id=? AND ts=?",
+                    params![reference.id(), key],
+                )
+                .unwrap()
+                .unwrap();
+            id
+        }
+        Reference::Text(_) => {
+            use crate::backend::phone::{model::Direction as PhoneDirection, storage::Reported};
+            let connection = db.dsp(dsp).unwrap();
+            let (phone,): (String,) = connection
+                .one_as(
+                    "SELECT device_id FROM phones_texts WHERE id='text-000000'",
+                    [],
+                )
+                .unwrap()
+                .unwrap();
+            let report = db
+                .phones_report(
+                    dsp,
+                    &phone,
+                    vec![Reported {
+                        client_id: key.into(),
+                        direction: PhoneDirection::In,
+                        number: "+12065550101".into(),
+                        body: "suffix".into(),
+                        at,
+                        files: Vec::new(),
+                    }],
+                )
+                .unwrap();
+            assert_eq!(report.len(), 1);
+            let id = report[0].id.clone();
+            let (owner,): (Option<String>,) = connection
+                .one_as("SELECT conversation_id FROM phones_texts WHERE id=?", [&id])
+                .unwrap()
+                .unwrap();
+            assert!(owner.is_none());
+            assert_eq!(db.place_communications_text(
+                dsp, &id, &Filed::Number("+12065550101".into()), None,
+            ).unwrap(), reference.id());
+            id
+        }
+    }
+}
+/// Generation, accounted epoch, exact committed cursor, and current source epoch.
+fn candidate_checkpoint(connection: &Db, reference: &Reference) -> (String, i64, String, i64) {
+    let transport = crate::backend::origins::Transport::of(reference);
+    connection.one_as(
+        "SELECT b.generation,b.source_epoch,b.previous,s.source_epoch FROM communications_origin_builds b \
+        JOIN communications_origin_state s USING(transport,conversation_id) \
+        WHERE b.transport=? AND b.conversation_id=?",
+        params![transport.name(), reference.id()],
+    ).unwrap().unwrap()
+}
 fn bodies(page: &ConversationWindow) -> Vec<usize> {
     page.messages
         .iter()
@@ -1151,7 +1233,7 @@ async fn clipped_origins_use_stored_run_first_names_and_prior_run_first_for_both
         let transport = Transport::of(reference);
         let zone = texts::zone(&db, &dsp).unwrap();
         // Crash/restart-equivalent: a committed chunk retains its exact native cursor; source
-        // topology mutation between chunks forces a fresh candidate, never partial readiness.
+        // unaccounted topology mutation forces a fresh candidate, never partial readiness.
         assert!(!backfill::chunk(&connection, transport, reference.id(), zone).unwrap());
         let old_generation: (String,) = connection
             .one_as(
@@ -1161,6 +1243,28 @@ async fn clipped_origins_use_stored_run_first_names_and_prior_run_first_for_both
             )
             .unwrap()
             .unwrap();
+        let before = candidate_checkpoint(&connection, reference);
+        let previous: serde_json::Value = serde_json::from_str(&before.2).unwrap();
+        match reference {
+            Reference::Slack(_) => assert!("1700000000.000900" > previous["ts"].as_str().unwrap()),
+            Reference::Text(_) => assert!(AT + 1 > previous["at"].as_i64().unwrap()),
+        }
+        let id = place_for_candidate(&db, &dsp, reference, "1700000000.000900", AT + 1);
+        assert_eq!(
+            candidate_checkpoint(&connection, reference),
+            (
+                old_generation.0.clone(),
+                before.1 + 1,
+                before.2,
+                before.1 + 1
+            )
+        );
+        // Remove only this placement before the original source and slice assertions.
+        let sql = match reference {
+            Reference::Slack(_) => "DELETE FROM communications_messages WHERE id=?",
+            Reference::Text(_) => "DELETE FROM phones_texts WHERE id=?",
+        };
+        connection.exec(sql, [id]).unwrap();
         match reference {
             Reference::Slack(id) => connection
                 .exec(
@@ -1327,6 +1431,129 @@ async fn clipped_origins_use_stored_run_first_names_and_prior_run_first_for_both
         exact.before_origin.unwrap().number.as_deref(),
         Some("+12065550999")
     );
+}
+
+#[tokio::test]
+async fn candidate_progress_requires_audited_suffix_and_never_acknowledges_an_unknown_gap() {
+    use crate::backend::origins::{Transport, backfill};
+    let (_root, db, state, dsp, slack, text) = fixture(701);
+    let connection = db.dsp(&dsp).unwrap();
+    let zone = texts::zone(&db, &dsp).unwrap();
+    for reference in [&slack, &text] {
+        let transport = Transport::of(reference);
+        assert!(!backfill::chunk(&connection, transport, reference.id(), zone).unwrap());
+        let before = candidate_checkpoint(&connection, reference);
+        place_for_candidate(&db, &dsp, reference, "1700000000.100001", AT + 1);
+        let appended = candidate_checkpoint(&connection, reference);
+        assert_eq!(
+            appended,
+            (
+                before.0.clone(),
+                before.1 + 1,
+                before.2.clone(),
+                before.3 + 1
+            )
+        );
+
+        // A real late placement is not a suffix, even though it is a known single write.
+        place_for_candidate(&db, &dsp, reference, "1699999999.999999", AT - 1);
+        let late = candidate_checkpoint(&connection, reference);
+        assert_eq!(
+            late,
+            (
+                appended.0.clone(),
+                appended.1,
+                appended.2.clone(),
+                appended.3 + 1
+            )
+        );
+        assert!(
+            !read_origins(&db, &state, &dsp, reference, Request::Latest)
+                .unwrap()
+                .origins
+                .unwrap()
+                .ready
+        );
+        assert!(!backfill::chunk(&connection, transport, reference.id(), zone).unwrap());
+        let restarted = candidate_checkpoint(&connection, reference);
+        assert_ne!(restarted.0, late.0);
+        assert_eq!(restarted.1, late.3);
+
+        // Unknown topology changes cannot be hidden by a later legitimate suffix.
+        match reference {
+            Reference::Slack(_) => connection.exec(
+                "UPDATE communications_messages SET at=at+1 WHERE conversation_id=? AND ts='1700000000.000050'",
+                [reference.id()],
+            ).unwrap(),
+            Reference::Text(_) => connection.exec(
+                "UPDATE phones_texts SET number='+12065550999' WHERE conversation_id=? AND id='text-000050'",
+                [reference.id()],
+            ).unwrap(),
+        };
+        place_for_candidate(&db, &dsp, reference, "1700000000.100002", AT + 2);
+        let gap = candidate_checkpoint(&connection, reference);
+        assert_eq!(
+            gap,
+            (
+                restarted.0.clone(),
+                restarted.1,
+                restarted.2,
+                restarted.3 + 2
+            )
+        );
+        assert!(!backfill::chunk(&connection, transport, reference.id(), zone).unwrap());
+        let rebuilt = candidate_checkpoint(&connection, reference);
+        assert_ne!(rebuilt.0, gap.0);
+
+        // Source and candidate changes share the actual caller's transaction.
+        let rolled: dispatch_core::Result<()> = connection.transaction(|| {
+            place_for_candidate(&db, &dsp, reference, "1700000000.100003", AT + 3);
+            Err(dispatch_core::Error::new("fixture_rollback", 400))
+        });
+        assert_eq!(rolled.unwrap_err().code, "fixture_rollback");
+        assert_eq!(candidate_checkpoint(&connection, reference), rebuilt);
+
+        // An unreadable derived cursor must not prevent a normal source write.
+        connection.exec(
+            "UPDATE communications_origin_builds SET previous='{' WHERE transport=? AND conversation_id=?",
+            params![transport.name(), reference.id()],
+        ).unwrap();
+        place_for_candidate(&db, &dsp, reference, "1700000000.100004", AT + 4);
+        let invalid = candidate_checkpoint(&connection, reference);
+        assert_eq!(
+            invalid,
+            (rebuilt.0.clone(), rebuilt.1, "{".into(), rebuilt.3 + 1)
+        );
+        assert!(!backfill::chunk(&connection, transport, reference.id(), zone).unwrap());
+
+        let current = candidate_checkpoint(&connection, reference);
+        connection.exec(
+            "UPDATE communications_origin_builds SET algorithm='unsupported-fixture' WHERE transport=? AND conversation_id=?",
+            params![transport.name(), reference.id()],
+        ).unwrap();
+        place_for_candidate(&db, &dsp, reference, "1700000000.100005", AT + 5);
+        let unsupported = candidate_checkpoint(&connection, reference);
+        assert_eq!(
+            unsupported,
+            (current.0, current.1, current.2, current.3 + 1)
+        );
+        assert!(!backfill::chunk(&connection, transport, reference.id(), zone).unwrap());
+        let sql = match reference {
+            Reference::Slack(_) => {
+                "SELECT count(*) FROM communications_messages WHERE conversation_id=?"
+            }
+            Reference::Text(_) => "SELECT count(*) FROM phones_texts WHERE conversation_id=?",
+        };
+        assert_eq!(connection.count(sql, [reference.id()]).unwrap(), 706);
+        build_origins(&db, &dsp, reference, 706);
+        assert!(
+            read_origins(&db, &state, &dsp, reference, Request::Latest)
+                .unwrap()
+                .origins
+                .unwrap()
+                .ready
+        );
+    }
 }
 
 #[tokio::test]

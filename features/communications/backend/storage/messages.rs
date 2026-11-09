@@ -148,7 +148,7 @@ impl MessageStore for Store {
                 &written.name,
             )?;
             let id = crypto::id("msg")?;
-            let added = origins::change(&db, Transport::Slack, &id, Some(&conversation), || {
+            let added = origins::place(&db, Transport::Slack, &id, Some(&conversation), || {
                 db.exec(
                 "INSERT OR IGNORE INTO communications_messages (id,conversation_id,ts,thread_ts,\
                  direction,text,at,edited_at) VALUES (?,?,?,?,'in',?,?,?)",
@@ -323,7 +323,7 @@ pub(crate) fn sent_out(
     group: Option<&str>,
 ) -> Result<(String, Vec<String>)> {
     let id = crypto::id("msg")?;
-    origins::change(db, Transport::Slack, &id, Some(conversation), || {
+    origins::place(db, Transport::Slack, &id, Some(conversation), || {
         db.exec(
             "INSERT INTO communications_messages (id,conversation_id,ts,direction,sent_by,\
          sender_name,text,at,group_id,gif) VALUES (?,?,?,'out',?,?,?,?,?,?)",

@@ -1,5 +1,6 @@
-//! Resumable metadata-only builds. Each chunk and its cursor commit together. A busy source
-//! may starve its candidate; it stays explicitly unready and never falls back to an HTTP scan.
+//! Resumable metadata-only builds. Each chunk and its cursor commit together. Audited suffix
+//! placement preserves progress; other topology changes may still starve a candidate. It stays
+//! explicitly unready and never falls back to an HTTP scan.
 use super::*;
 use crate::backend::texts;
 use dispatch_core::{
@@ -14,12 +15,12 @@ pub const MAINTENANCE: Maintenance = Maintenance {
     every: Duration::from_secs(60),
     run: pass,
 };
-struct Build {
-    generation: String,
-    epoch: i64,
-    zone: String,
-    algorithm: String,
-    previous: Option<String>,
+pub(super) struct Build {
+    pub(super) generation: String,
+    pub(super) epoch: i64,
+    pub(super) zone: String,
+    pub(super) algorithm: String,
+    pub(super) previous: Option<String>,
 }
 impl FromRow for Build {
     fn from_row(row: &Row<'_>) -> Result<Self> {

@@ -429,7 +429,7 @@ impl TextStore for Store {
                 }
                 Filed::Driver { .. } | Filed::WorkPhone(_) => false,
             };
-            let placed = origins::change(&db, Transport::Text, id, Some(&conversation), || {
+            let placed = origins::place(&db, Transport::Text, id, Some(&conversation), || {
                 db.exec(
                     "UPDATE phones_texts SET conversation_id=?,sender_name=?,blocked=? \
                  WHERE id=? AND conversation_id IS NULL",

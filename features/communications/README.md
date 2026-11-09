@@ -1126,9 +1126,11 @@ faces, group names and phone labels are projected from current owners on read.
 
 Minute upkeep uses bookkeeping turns with DSP-active and feature checks, preserving unrelated
 cached reads. It visits at most eight conversations of each transport per DSP by durable keyset
-cursors, with one 256-row metadata chunk per visit. A source epoch, timezone or algorithm
-change restarts a candidate; EOF and epoch comparison publish atomically. Histories can stay
-unready under continuous topology writes. Timezone changes and initial indexing cost one
+cursors, with one 256-row metadata chunk per visit. A timezone, algorithm or unaccounted source
+epoch change restarts a candidate. An audited single insertion or initial Text filing strictly
+after its verified native cursor preserves the candidate by advancing only its accounted epoch;
+it never moves the cursor or publishes partial results. EOF and epoch comparison publish
+atomically. Histories can stay unready under continuous edits, moves or earlier insertions. Timezone changes and initial indexing cost one
 full metadata traversal; group existence changes fan out. Each visit also removes at most
 256 obsolete boundaries through generation-index ranges, protecting active and current
 candidate generations. Ready and removed conversations continue draining obsolete metadata;
