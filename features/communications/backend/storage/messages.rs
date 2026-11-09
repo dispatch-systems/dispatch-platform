@@ -117,6 +117,13 @@ pub trait MessageStore {
         before: Option<&str>,
         most: usize,
     ) -> Result<Vec<Message>>;
+    /// A complete bounded window at a stable position, or the latest window.
+    fn communications_message_window(
+        &self,
+        dsp: &str,
+        conversation: &str,
+        anchor: Option<(&str, usize)>,
+    ) -> Result<crate::backend::windows::Rows<Message>>;
     /// When the workspace's member `user`'s message `ts` was last edited, as kept: none when it
     /// isn't kept, and none within when it's kept unedited.
     fn communications_edited(
@@ -234,6 +241,35 @@ impl MessageStore for Store {
         )?;
         messages.reverse();
         Ok(messages)
+    }
+    fn communications_message_window(
+        &self,
+        dsp: &str,
+        conversation: &str,
+        anchor: Option<(&str, usize)>,
+    ) -> Result<crate::backend::windows::Rows<Message>> {
+        use crate::backend::{model::WINDOW, windows::select};
+        let db = self.dsp(dsp)?;
+        let most = (WINDOW + 1) as i64;
+        let Some((place, leading)) = anchor else {
+            let left = db.query_as(
+                "SELECT * FROM communications_messages WHERE conversation_id=? \
+                 ORDER BY ts DESC LIMIT ?",
+                params![conversation, most],
+            )?;
+            return Ok(select(left, Vec::new(), WINDOW));
+        };
+        let left = db.query_as(
+            "SELECT * FROM communications_messages WHERE conversation_id=? AND ts<? \
+             ORDER BY ts DESC LIMIT ?",
+            params![conversation, place, most],
+        )?;
+        let right = db.query_as(
+            "SELECT * FROM communications_messages WHERE conversation_id=? AND ts>=? \
+             ORDER BY ts ASC LIMIT ?",
+            params![conversation, place, most],
+        )?;
+        Ok(select(left, right, leading))
     }
     fn communications_edited(
         &self,

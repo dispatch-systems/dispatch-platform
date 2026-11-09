@@ -28,6 +28,48 @@ pub(super) fn conversation(db: &Store, c: &Member, input: &Input) -> Result<Repl
         before,
     )?)
 }
+/// Latest, explicitly anchored, or continued: every request is authorized by the read route
+/// in this same database turn. There is no await/provider work requiring a second access check.
+pub(super) fn window(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    use crate::backend::windows::{self, Request};
+    use dispatch_core::{Error, ensure};
+    v::fields(&input.query, &["anchor", "leading", "cursor"])?;
+    let reference = Reference::parse(input.param("id"))?;
+    let has = |key| input.query.get(key).is_some();
+    let request = if has("cursor") {
+        ensure(!has("anchor") && !has("leading"), "invalid_input", 400)?;
+        let cursor = optional_text(&input.query, "cursor", 1024)?;
+        ensure(!cursor.is_empty(), "invalid_input", 400)?;
+        Request::Continue(cursor.to_owned())
+    } else if has("anchor") || has("leading") {
+        ensure(has("anchor") && has("leading"), "invalid_input", 400)?;
+        let anchor = optional_text(&input.query, "anchor", PLACE_MOST)?;
+        let leading = optional_text(&input.query, "leading", 3)?;
+        ensure(
+            !anchor.is_empty()
+                && !leading.is_empty()
+                && leading.bytes().all(|b| b.is_ascii_digit()),
+            "invalid_input",
+            400,
+        )?;
+        let leading = leading
+            .parse()
+            .map_err(|_| Error::new("invalid_input", 400))?;
+        Request::Anchor {
+            place: anchor.to_owned(),
+            leading,
+        }
+    } else {
+        Request::Latest
+    };
+    Reply::of(&windows::read(
+        db,
+        c.state,
+        c.dsp_id(),
+        &reference,
+        request,
+    )?)
+}
 /// What the profile beside a conversation shows of whom it's with, a member of a workspace or a
 /// driver: behind `communications.use` alone, as it reads what other features know of them for
 /// the page.

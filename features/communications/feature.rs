@@ -14,14 +14,15 @@ pub use api::display::{
 pub use api::types::{
     Communications, CommunicationsUpdates, CommunicationsUpload, CommunicationsWaiting,
     CommunicationsWorkspace, ComposeLimits, Contact, Contacts, Conversation, ConversationKind,
-    ConversationMessages, ConversationState, Conversations, Correspondent, Direction,
-    DispatchPhone, Elsewhere, FileStatus, GifSearch, GifVersion, Group, GroupChoice,
+    ConversationMessages, ConversationState, ConversationWindow, Conversations, Correspondent,
+    Direction, DispatchPhone, Elsewhere, FileStatus, GifSearch, GifVersion, Group, GroupChoice,
     GroupChoiceKind, GroupChoices, GroupEntry, GroupMember, GroupMessages, GroupPeople,
     GroupPerson, GroupPersonState, GroupProgress, Message, MessageFile, MessageGif, MessageGroup,
-    NotSent, Pace, PairingStatus, PhoneApp, PhoneHealth, PhonePairing, PhonePairingStatus,
-    PhoneRow, Phones, Profile, PushKey, QuickReplies, Reachable, RouteDriver, Sender, SentMessage,
-    TextContact, TextContacts, TextPeople, TextStatus, Today, TodaysRoutes, Typing, WaitingMessage,
-    Workday, Writing,
+    MessageNeighbor, MessageRange, MessageRenderContext, MessageSenderIdentity, NotSent, Pace,
+    PairingStatus, PhoneApp, PhoneHealth, PhonePairing, PhonePairingStatus, PhoneRow, Phones,
+    Profile, PushKey, QuickReplies, Reachable, RouteDriver, Sender, SentMessage, TextContact,
+    TextContacts, TextPeople, TextStatus, Today, TodaysRoutes, Typing, WaitingMessage, Workday,
+    Writing,
 };
 
 use dispatch_core::db::{
@@ -213,6 +214,13 @@ pub const FEATURE: Feature = Feature {
                     "migrations/dsp/0020_communications_incoming_indexes.sql"
                 )),
             },
+            Migration {
+                id: 21,
+                name: "communications_outgoing_indexes",
+                apply: Sql(include_str!(
+                    "migrations/dsp/0021_communications_outgoing_indexes.sql"
+                )),
+            },
         ],
     }],
     // Its dispatch phones are the DSP's own, managed on DSP Connections.
@@ -316,6 +324,11 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         FileStatus,
         Conversations,
         ConversationMessages,
+        ConversationWindow,
+        MessageRange,
+        MessageNeighbor,
+        MessageRenderContext,
+        MessageSenderIdentity,
         SentMessage,
         ComposeLimits,
         Elsewhere,

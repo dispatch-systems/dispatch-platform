@@ -67,6 +67,11 @@ pub fn routes() -> Vec<Route> {
             conversations::conversation,
         ),
         read(
+            "/api/dsp/communications/conversations/{id}/window",
+            USE,
+            conversations::window,
+        ),
+        read(
             "/api/dsp/communications/conversations/{id}/profile",
             USE,
             conversations::profile,

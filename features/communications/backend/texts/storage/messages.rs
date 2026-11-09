@@ -65,6 +65,13 @@ pub trait TextStore {
         before: Option<(i64, &str)>,
         most: usize,
     ) -> Result<Vec<Text>>;
+    /// A complete bounded window; hydrate files only after choosing its rows.
+    fn communications_text_window(
+        &self,
+        dsp: &str,
+        conversation: &str,
+        anchor: Option<(i64, &str, usize)>,
+    ) -> Result<crate::backend::windows::Rows<Text>>;
     /// The text `id`, filed or waiting to be.
     fn communications_text(&self, dsp: &str, id: &str) -> Result<Option<Text>>;
     /// Of the texts `ids`, those waiting to be filed, in no order.
@@ -306,6 +313,41 @@ impl TextStore for Store {
         )?;
         texts.reverse();
         Ok(texts)
+    }
+    fn communications_text_window(
+        &self,
+        dsp: &str,
+        conversation: &str,
+        anchor: Option<(i64, &str, usize)>,
+    ) -> Result<crate::backend::windows::Rows<Text>> {
+        use crate::backend::{model::WINDOW, windows::select};
+        let db = self.dsp(dsp)?;
+        let most = (WINDOW + 1) as i64;
+        let mut rows = match anchor {
+            None => {
+                let left = db.query_as(
+                    "SELECT * FROM phones_texts WHERE conversation_id=? \
+                     ORDER BY at DESC,id DESC LIMIT ?",
+                    params![conversation, most],
+                )?;
+                select(left, Vec::new(), WINDOW)
+            }
+            Some((at, id, leading)) => {
+                let left = db.query_as(
+                    "SELECT * FROM phones_texts WHERE conversation_id=? AND (at,id)<(?,?) \
+                     ORDER BY at DESC,id DESC LIMIT ?",
+                    params![conversation, at, id, most],
+                )?;
+                let right = db.query_as(
+                    "SELECT * FROM phones_texts WHERE conversation_id=? AND (at,id)>=(?,?) \
+                     ORDER BY at,id LIMIT ?",
+                    params![conversation, at, id, most],
+                )?;
+                select(left, right, leading)
+            }
+        };
+        attach(self, dsp, &mut rows.messages)?;
+        Ok(rows)
     }
     fn communications_text(&self, dsp: &str, id: &str) -> Result<Option<Text>> {
         Ok(texts(self, dsp, "SELECT * FROM phones_texts WHERE id=?", [id])?.pop())
@@ -637,12 +679,17 @@ fn filed_in(db: &Db, id: &str) -> Result<Option<String>> {
 /// The DSP's texts `sql` reads, each with its files as the phone side keeps them.
 fn texts(db: &Store, dsp: &str, sql: &str, params: impl Params) -> Result<Vec<Text>> {
     let mut texts: Vec<Text> = db.dsp(dsp)?.query_as(sql, params)?;
+    attach(db, dsp, &mut texts)?;
+    Ok(texts)
+}
+
+fn attach(db: &Store, dsp: &str, texts: &mut [Text]) -> Result<()> {
     let ids: Vec<String> = texts.iter().map(|text| text.id.clone()).collect();
     let mut files = db.phones_files_of(dsp, &ids)?;
-    for text in &mut texts {
+    for text in texts {
         text.files = files.remove(&text.id).unwrap_or_default();
     }
-    Ok(texts)
+    Ok(())
 }
 
 /// Keeps whether the conversation waits on an answer, and since when, from its texts and which a
