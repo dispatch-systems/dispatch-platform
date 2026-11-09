@@ -168,9 +168,9 @@ fn storage_survives_backup_and_restore() {
             let row = provider
                 .one(
                     "SELECT * FROM paycom_timecard_payload_refs WHERE publication_id IN
-             (SELECT id FROM publications WHERE period_to='2020-09-05')
+             (SELECT id FROM publications WHERE period_from=? AND period_to=?)
              AND employee_code='E002' ORDER BY date LIMIT 1",
-                    [],
+                    [period.from.as_str(), period.to.as_str()],
                 )?
                 .unwrap();
             provider.exec(
@@ -223,6 +223,7 @@ fn storage_survives_backup_and_restore() {
                 .unwrap()
     );
     let before = snapshot(&provider);
+    drop(provider);
     let pulse = db::private_dir(
         &store
             .area(&id, "state")
