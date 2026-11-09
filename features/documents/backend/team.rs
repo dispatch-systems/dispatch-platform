@@ -22,10 +22,7 @@ use dispatch_core::{
     server::{http::route::Dsp, mail::templates},
 };
 use serde_json::json;
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    sync::Arc,
-};
+use std::{collections::BTreeSet, sync::Arc};
 
 /// The kind of email Dispatch sends a member who needs a Google account.
 pub const GOOGLE_ACCOUNT_MAIL: &str = "documents.google_account";
