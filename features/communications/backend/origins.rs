@@ -539,16 +539,24 @@ fn project(
 }
 /// Sparse boundary seeks. Joins happen AFTER the one-row seek, so no SQL filter can turn a
 /// missing source/group into a backward history walk.
+struct BoundarySeek<'a> {
+    subset: &'a str,
+    before: bool,
+    lower: Option<&'a Topology>,
+}
 fn seek(
     db: &Db,
     transport: Transport,
     conversation: &str,
     generation: &str,
     key: &Topology,
-    subset: &str,
-    before: bool,
-    lower: Option<&Topology>,
+    query: BoundarySeek<'_>,
 ) -> Result<Option<Topology>> {
+    let BoundarySeek {
+        subset,
+        before,
+        lower,
+    } = query;
     let bound = transport.bound("m", if before { "<" } else { "<=" }, 3, 4, 5);
     let lower_sql = if lower.is_some() {
         format!(" AND {}", transport.bound("m", ">=", 6, 7, 8))
@@ -634,9 +642,11 @@ fn selection(
         conversation,
         generation,
         &key,
-        "",
-        false,
-        None,
+        BoundarySeek {
+            subset: "",
+            before: false,
+            lower: None,
+        },
     )?
     .ok_or_else(invariant)?;
     let day = seek(
@@ -645,9 +655,11 @@ fn selection(
         conversation,
         generation,
         &key,
-        " AND m.day_start=1",
-        false,
-        None,
+        BoundarySeek {
+            subset: " AND m.day_start=1",
+            before: false,
+            lower: None,
+        },
     )?
     .ok_or_else(invariant)?;
     let sender = seek(
@@ -656,9 +668,11 @@ fn selection(
         conversation,
         generation,
         &run,
-        " AND m.sender_present=1",
-        true,
-        Some(&day),
+        BoundarySeek {
+            subset: " AND m.sender_present=1",
+            before: true,
+            lower: Some(&day),
+        },
     )?;
     let sent_before_origin = sender
         .map(|key| project(db, transport, conversation, &key, people, numbers))
