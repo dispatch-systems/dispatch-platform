@@ -228,7 +228,7 @@ fn people_impact(store: &Store, dsp: &str, read: &Shaped) -> Result<PeopleImpact
     let day = scope.date.as_str();
     let held = db.all(
         "SELECT id,day,station,service_area_id,provider,timezone,mode,active,collected_at,adapter_version \
-         FROM route_publications",
+         FROM route_publications LIMIT 2",
         [],
     )?;
     let [held] = held.as_slice() else {
