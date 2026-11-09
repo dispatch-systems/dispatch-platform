@@ -158,9 +158,11 @@ export const getConversation = (
     priority,
   );
 /** No automatic fallback or cache merge: the answer replaces the requested window. */
-export type ConversationWindowRequest =
+export type ConversationWindowRequest = { origins?: 1 } & (
   | { cursor: string; anchor?: never; leading?: never }
-  | { anchor: string; leading: number; cursor?: never };
+  | { anchor: string; leading: number; cursor?: never }
+  | { cursor?: never; anchor?: never; leading?: never }
+);
 /** A complete latest/anchored window or one of its before/after/refresh continuations. */
 export const getConversationWindow = (
   id: string,
@@ -170,6 +172,7 @@ export const getConversationWindow = (
 ) =>
   api<ConversationWindow>(
     address(`${communicationsUrl}/conversations/${encodeURIComponent(id)}/window`, {
+      origins: request?.origins === undefined ? undefined : String(request.origins),
       cursor: request?.cursor,
       anchor: request?.anchor,
       leading: request?.leading === undefined ? undefined : String(request.leading),

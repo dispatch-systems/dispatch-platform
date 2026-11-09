@@ -101,6 +101,7 @@
       ["communications", 19, "communications_gifs", "code"],
       ["communications", 20, "communications_incoming_indexes", "335900985ea6cf10"],
       ["communications", 21, "communications_outgoing_indexes", "d784644800b9f04c"],
+      ["communications", 22, "communications_origins", "0632ef4d6ba8579b"],
       ["slack", 1, "slack", "8ca8fd50f814a724"],
       ["slack", 2, "slack_new_connections", "code"],
       ["slack", 3, "slack_members", "a3cacf7486f2ded9"],

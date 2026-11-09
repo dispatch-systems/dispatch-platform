@@ -581,6 +581,49 @@ async fn window_seeks_bound_work_at_both_ends_and_inside_a_long_tied_history() {
         assert_eq!(context.next.map(|row| row.ts).as_deref(), next);
         assert_eq!(context.sent_before.unwrap().name, sender);
     }
+    // Build actual sparse boundaries from source metadata, outside only the existing context
+    // guard's setup. One guard covers readiness AND both independent full legacy+origin contexts.
+    use crate::backend::origins::{self, Transport, backfill};
+    let zone = crate::backend::texts::zone(&store, &dsp).unwrap();
+    for reference in [
+        Reference::Slack(slack.clone()),
+        Reference::Text(text.clone()),
+    ] {
+        for _ in 0..40 {
+            if backfill::chunk(&db, Transport::of(&reference), reference.id(), zone).unwrap() {
+                break;
+            }
+        }
+    }
+    for (reference, selected, latest, numbers, expected) in [
+        (
+            Reference::Slack(slack.clone()),
+            &selected_slack,
+            &latest_slack,
+            None,
+            "1700000000.000002",
+        ),
+        (
+            Reference::Text(text.clone()),
+            &selected_text,
+            &latest_text,
+            Some(&numbers),
+            "1700000000000:text-000002",
+        ),
+    ] {
+        let budget = ReadBudget::new(&db.0);
+        let _ = context::read_in_zone(&store, &dsp, &reference, selected, numbers, zone).unwrap();
+        let _ = context::read_in_zone(&store, &dsp, &reference, latest, numbers, zone).unwrap();
+        let exact =
+            origins::read(&db, &reference, zone, selected, latest, &people, numbers).unwrap();
+        drop(budget);
+        assert!(exact.ready);
+        for facts in [exact.selected.unwrap(), exact.latest.unwrap()] {
+            assert_eq!(facts.origin.ts, expected);
+            assert!(facts.sent_before_origin.is_some());
+        }
+    }
+
     // An entirely absent outgoing prefix must also be a bounded index seek, not a scan.
     db.exec("UPDATE communications_messages SET direction='in' WHERE conversation_id=? AND direction='out'", [&slack]).unwrap();
     db.exec(
@@ -589,12 +632,78 @@ async fn window_seeks_bound_work_at_both_ends_and_inside_a_long_tied_history() {
     )
     .unwrap();
     for (reference, messages, numbers) in [
-        (Reference::Slack(slack), &selected_slack, None),
-        (Reference::Text(text), &selected_text, Some(&numbers)),
+        (Reference::Slack(slack.clone()), &selected_slack, None),
+        (
+            Reference::Text(text.clone()),
+            &selected_text,
+            Some(&numbers),
+        ),
     ] {
         let budget = ReadBudget::new(&db.0);
         let context = context::read(&store, &dsp, &reference, messages, numbers).unwrap();
         drop(budget);
         assert!(context.sent_before.is_none());
+    }
+    // Dense starts on one day: Slack alternates +600000ms and negative gaps in ts order;
+    // texts alternate incoming numbers at tied numeric at. Sparse subsets skip the prefix.
+    db.exec(
+        "UPDATE communications_messages SET direction='in',sent_by=NULL,at=1700000000000 + \
+        (CAST(substr(ts,instr(ts,'.')+1) AS INTEGER)%2)*600000 WHERE conversation_id=?",
+        [&slack],
+    )
+    .unwrap();
+    db.exec(
+        "UPDATE phones_texts SET direction='in',sent_by=NULL,number=CASE WHEN \
+        CAST(substr(id,6) AS INTEGER)%2=0 THEN '+12065550101' ELSE '+12065550102' END \
+        WHERE conversation_id=?",
+        [&text],
+    )
+    .unwrap();
+    for reference in [
+        Reference::Slack(slack.clone()),
+        Reference::Text(text.clone()),
+    ] {
+        for _ in 0..40 {
+            if backfill::chunk(&db, Transport::of(&reference), reference.id(), zone).unwrap() {
+                break;
+            }
+        }
+    }
+    let latest_text = reading::messages(
+        &people,
+        &numbers,
+        store.communications_texts(&dsp, &text, None, 50).unwrap(),
+    );
+    let latest_slack = conversations::messages(
+        &store,
+        &people,
+        &dsp,
+        store
+            .communications_messages(&dsp, &slack, None, 50)
+            .unwrap(),
+    )
+    .unwrap();
+    for (reference, latest, numbers, first_day) in [
+        (
+            Reference::Slack(slack),
+            &latest_slack,
+            None,
+            "1700000000.000000",
+        ),
+        (
+            Reference::Text(text),
+            &latest_text,
+            Some(&numbers),
+            "1700000000000:text-000000",
+        ),
+    ] {
+        let budget = ReadBudget::new(&db.0);
+        let _ = context::read_in_zone(&store, &dsp, &reference, latest, numbers, zone).unwrap();
+        let exact = origins::read(&db, &reference, zone, latest, latest, &people, numbers).unwrap();
+        drop(budget);
+        assert!(exact.ready);
+        let facts = exact.selected.unwrap();
+        assert!(facts.sent_before_origin.is_none());
+        assert_eq!(facts.first_day.ts, first_day);
     }
 }

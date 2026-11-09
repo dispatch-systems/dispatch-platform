@@ -6,6 +6,7 @@ import type { Message } from "./Message";
 import type { MessageRange } from "./MessageRange";
 import type { MessageRenderContext } from "./MessageRenderContext";
 import type { Today } from "./Today";
+import type { WindowOrigins } from "./WindowOrigins";
 import type { Workday } from "./Workday";
 
 /**
@@ -19,4 +20,4 @@ context: MessageRenderContext,
 /**
  * Matching render context for `latest`, usable as an immediate closed-cache tail seed.
  */
-latestContext: MessageRenderContext, latestWorkdays: Array<Workday>, range: MessageRange, today: Today | null, working: boolean, elsewhere: Array<Elsewhere>, workdays: Array<Workday>, limits: ComposeLimits, };
+latestContext: MessageRenderContext, latestWorkdays: Array<Workday>, origins?: WindowOrigins, range: MessageRange, today: Today | null, working: boolean, elsewhere: Array<Elsewhere>, workdays: Array<Workday>, limits: ComposeLimits, };
