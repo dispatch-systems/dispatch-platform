@@ -1,6 +1,7 @@
 //! `dispatchdev merge`: the checkout's PR, squash-merged once nothing stops it. Its required
 //! check passed on the pushed head, the body on GitHub is the one written, and its review is
-//! done at that head, or says why it had none. Then it prints what to tell the user.
+//! done at that head, or at one that head only merges `main` into, or says why it had none.
+//! Then it prints what to tell the user.
 use crate::{REPOSITORY, Result, Runner, pr, require, review, workspace};
 use serde_json::Value;
 use std::path::Path;
@@ -105,7 +106,7 @@ pub fn unreviewed(
             done: true,
             head: at,
             ..
-        } if at == head => None,
+        } if at == head || only_main_since(root, &at, head, runner)? => None,
         review::Progress::Recorded {
             done: true, pass, ..
         } => Some(format!(
@@ -131,6 +132,37 @@ pub fn unreviewed(
                 .to_owned(),
         ),
     })
+}
+
+/// Whether each commit after `reviewed` up to `head` only merges `main` in, exactly as git
+/// merges it unaided: the change then has nothing of its own its review didn't read.
+fn only_main_since(root: &Path, reviewed: &str, head: &str, runner: &dyn Runner) -> Result<bool> {
+    let git = |args: &[&str]| {
+        let mut command = vec!["git"];
+        command.extend_from_slice(args);
+        workspace::text(runner, &command, Some(root))
+    };
+    let since = git(&[
+        "rev-list",
+        "--first-parent",
+        "--parents",
+        &format!("{reviewed}..{head}"),
+    ])?;
+    let mut after = head;
+    for line in since.lines() {
+        let [commit, ours, theirs] = line.split(' ').collect::<Vec<_>>()[..] else {
+            return Ok(false);
+        };
+        let from_main = git(&["rev-list", "--count", theirs, "--not", "origin/main"])? == "0";
+        // A merge git can't make unaided, or one edited by hand, holds the change's own work.
+        let unaided = git(&["merge-tree", "--write-tree", ours, theirs]).ok()
+            == Some(git(&["rev-parse", &format!("{commit}^{{tree}}")])?);
+        if commit != after || !from_main || !unaided {
+            return Ok(false);
+        }
+        after = ours;
+    }
+    Ok(after == reviewed)
 }
 
 /// `dispatchdev merge`.
