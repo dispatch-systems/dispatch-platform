@@ -123,7 +123,8 @@
       [3, "employee_history_index", "84322bbfe8d97d08"]
     ],
     "owned": [
-      ["timecard", 1, "people_summaries", "code"]
+      ["timecard", 1, "people_summaries", "code"],
+      ["timecard", 2, "payload_compatibility", "b7192b5e0baacb55"]
     ]
   },
   {

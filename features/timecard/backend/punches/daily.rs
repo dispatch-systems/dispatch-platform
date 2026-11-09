@@ -35,7 +35,7 @@ impl Listed {
 pub(crate) fn cards(db: &Db, sql: &str, p: impl rusqlite::Params) -> Result<Vec<Value>> {
     let mut rows = db.all(sql, p)?;
     for row in &mut rows {
-        row["punches"] = serde_json::from_str(s(row, "punches"))?;
+        super::payloads::punches(row)?;
     }
     Ok(rows)
 }

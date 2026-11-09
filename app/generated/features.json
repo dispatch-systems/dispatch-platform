@@ -1190,10 +1190,13 @@
       "paycom": [
         "employee_timecard_syncs",
         "employees",
+        "paycom_employee_sync_payload_refs",
+        "paycom_payloads",
         "paycom_people",
         "paycom_people_collected_days",
         "paycom_people_state",
         "paycom_people_workdays",
+        "paycom_timecard_payload_refs",
         "publications",
         "settings",
         "timecard_sources",

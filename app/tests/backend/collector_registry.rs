@@ -154,7 +154,76 @@ fn startup_refuses_a_dsp_whose_provider_storage_was_never_separated() {
 fn storage_survives_backup_and_restore() {
     crate::install();
     let (_root, store, id) = provisioned();
-    let before = snapshot(&store.collector(&id, paycom::PROVIDER).unwrap());
+    let historical = fixtures::fixture_date("UTC", Some("2020-09-05".parse().unwrap())).unwrap();
+    store.publish_timecards(&id, &historical).unwrap();
+    let period = paycom::timecards::EmployeeTimecardPeriod {
+        from: db::s(&historical, "from").into(),
+        to: db::s(&historical, "to").into(),
+    };
+    let historical_read = store.employee_timecard(&id, "E002", Some(&period)).unwrap();
+    let provider = store.collector(&id, paycom::PROVIDER).unwrap();
+    // One shared-only historical card beside legacy-only full inline data.
+    provider
+        .transaction(|| {
+            let row = provider
+                .one(
+                    "SELECT * FROM paycom_timecard_payload_refs WHERE publication_id IN
+             (SELECT id FROM publications WHERE period_from=? AND period_to=?)
+             AND employee_code='E002' ORDER BY date LIMIT 1",
+                    [period.from.as_str(), period.to.as_str()],
+                )?
+                .unwrap();
+            provider.exec(
+                r#"UPDATE timecards SET punches='{"$dispatchPayload":"paycom.punches.v1"}'
+               WHERE publication_id=? AND employee_code=? AND date=?"#,
+                [
+                    db::s(&row, "publication_id"),
+                    db::s(&row, "employee_code"),
+                    db::s(&row, "date"),
+                ],
+            )?;
+            provider.exec(
+                "INSERT INTO paycom_timecard_payload_refs
+             (publication_id,employee_code,date,format,digest) VALUES (?,?,?,?,?)",
+                rusqlite::params![
+                    db::s(&row, "publication_id"),
+                    db::s(&row, "employee_code"),
+                    db::s(&row, "date"),
+                    db::s(&row, "format"),
+                    db::s(&row, "digest")
+                ],
+            )?;
+            provider.exec(
+                "DELETE FROM paycom_timecard_payload_refs WHERE employee_code='E001'",
+                [],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    let payload_snapshot = |db: &Db| {
+        [
+            "paycom_payloads",
+            "paycom_timecard_payload_refs",
+            "paycom_employee_sync_payload_refs",
+        ]
+        .into_iter()
+        .map(|table| {
+            db.all(&format!("SELECT * FROM {table} ORDER BY 1,2"), [])
+                .unwrap()
+        })
+        .collect::<Vec<_>>()
+    };
+    let payload_before = payload_snapshot(&provider);
+    assert!(
+        provider
+            .count("SELECT count(*) FROM paycom_timecard_payload_refs", [])
+            .unwrap()
+            > provider
+                .count("SELECT count(*) FROM paycom_payloads", [])
+                .unwrap()
+    );
+    let before = snapshot(&provider);
+    drop(provider);
     let pulse = db::private_dir(
         &store
             .area(&id, "state")
@@ -195,6 +264,29 @@ fn storage_survives_backup_and_restore() {
     assert_eq!(
         snapshot(&reopened.collector(&id, paycom::PROVIDER).unwrap()),
         before
+    );
+    let provider = reopened.collector(&id, paycom::PROVIDER).unwrap();
+    assert_eq!(payload_snapshot(&provider), payload_before);
+    assert_eq!(
+        reopened
+            .employee_timecard(&id, "E002", Some(&period))
+            .unwrap(),
+        historical_read
+    );
+    provider
+        .exec(
+            "UPDATE timecards SET punches='[]' WHERE employee_code='E002'",
+            [],
+        )
+        .unwrap();
+    let legacy = reopened
+        .employee_timecard(&id, "E002", Some(&period))
+        .unwrap();
+    assert!(
+        legacy
+            .timecards
+            .iter()
+            .all(|card| card.card.punches.is_empty())
     );
 }
 #[cfg(feature = "timecard")]

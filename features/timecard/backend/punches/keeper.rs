@@ -79,25 +79,16 @@ impl Keeper for Timecards {
         Ok(collected.map(|(at,)| at))
     }
     fn published(&self, db: &Db) -> Result<Vec<Value>> {
-        let mut statement = db.0.prepare(
-            "SELECT employee_code,date,hours,status,punches \
-            FROM timecards WHERE publication_id=(SELECT id FROM publications WHERE active=1)",
-        )?;
-        let mut cards = vec![];
-        for value in statement.query_map([], |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                r.get::<_, String>(1)?,
-                r.get::<_, f64>(2)?,
-                r.get::<_, String>(3)?,
-                r.get::<_, String>(4)?,
-            ))
-        })? {
-            let (code, date, hours, status, punches) = value?;
-            cards.push(json!({"employeeCode":code,"date":date,"hours":hours,
-                "status":status,"punches":serde_json::from_str::<Value>(&punches)?}));
-        }
-        Ok(cards)
+        super::daily::cards(
+            db,
+            "SELECT t.employee_code employeeCode,t.date,t.hours,t.status,t.punches, \
+             r.format payload_format,b.body payload_body FROM timecards t \
+             LEFT JOIN paycom_timecard_payload_refs r ON r.publication_id=t.publication_id \
+             AND r.employee_code=t.employee_code AND r.date=t.date AND r.format='paycom.punches.v1' \
+             LEFT JOIN paycom_payloads b ON b.format=r.format AND b.digest=r.digest \
+             WHERE t.publication_id=(SELECT id FROM publications WHERE active=1)",
+            [],
+        )
     }
     fn scheduled(&self, _: &Store, _: &str, _: &str) -> Result<Vec<(String, Value)>> {
         Ok(vec![("paycom".into(), json!({}))])

@@ -93,7 +93,11 @@ pub(crate) fn daily_sources(
     for mut row in super::daily::cards(
         &db,
         "SELECT t.publication_id,t.employee_code employeeCode,e.name,e.department,e.station,\
-         t.date,t.hours,t.status,t.punches,u.url sourceUrl FROM timecards t \
+         t.date,t.hours,t.status,t.punches,r.format payload_format,b.body payload_body, \
+         u.url sourceUrl FROM timecards t \
+         LEFT JOIN paycom_timecard_payload_refs r ON r.publication_id=t.publication_id \
+         AND r.employee_code=t.employee_code AND r.date=t.date AND r.format='paycom.punches.v1' \
+         LEFT JOIN paycom_payloads b ON b.format=r.format AND b.digest=r.digest \
          JOIN employees e ON e.publication_id=t.publication_id AND e.code=t.employee_code \
          LEFT JOIN timecard_sources u ON u.publication_id=t.publication_id AND u.employee_code=t.employee_code \
          WHERE t.publication_id IN (SELECT value FROM json_each(?1)) AND t.date BETWEEN ?2 AND ?3 \
@@ -115,11 +119,16 @@ pub(crate) fn daily_sources(
     }
     let wanted = |code: &str| codes.is_none_or(|codes| codes.iter().any(|c| c == code));
     for sync in db.all(
-        "SELECT period_from,period_to,collected_at,data FROM employee_timecard_syncs \
-         WHERE period_from<=? AND period_to>=? ORDER BY collected_at,employee_code",
+        "SELECT s.period_from,s.period_to,s.collected_at,s.data,r.format payload_format, \
+         b.body payload_body,r.payload_collected_at FROM employee_timecard_syncs s \
+         LEFT JOIN paycom_employee_sync_payload_refs r ON r.employee_code=s.employee_code \
+         AND r.period_from=s.period_from AND r.period_to=s.period_to \
+         AND r.format='paycom.employee-capture.v1' \
+         LEFT JOIN paycom_payloads b ON b.format=r.format AND b.digest=r.digest \
+         WHERE s.period_from<=? AND s.period_to>=? ORDER BY s.collected_at,s.employee_code",
         [to, from],
     )? {
-        let data: Value = serde_json::from_str(s(&sync, "data"))?;
+        let data = super::payloads::capture(&sync)?;
         let employee = &data["employees"][0];
         let code = s(employee, "code");
         let cards: BTreeMap<_, _> = super::sync::synced_cards(&data)
