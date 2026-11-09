@@ -22,7 +22,7 @@ fn canonical(value: &Value, out: &mut String) -> Result<()> {
     match value {
         Value::Object(fields) => {
             let mut fields: Vec<_> = fields.iter().collect();
-            fields.sort_by(|(a, _), (b, _)| a.cmp(b));
+            fields.sort_by_key(|(key, _)| *key);
             out.push('{');
             for (index, (key, value)) in fields.into_iter().enumerate() {
                 if index != 0 {
