@@ -243,6 +243,18 @@ pub struct DocumentsFolder {
     pub items: Vec<DocumentsItem>,
 }
 
+/// A conditional full-folder read. A null folder reuses exactly the supplied revision's
+/// complete response; it never represents an empty folder.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/documents/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentsFolderRead {
+    /// An opaque SHA-256 revision of the scoped, projected response.
+    pub revision: String,
+    pub folder: Option<DocumentsFolder>,
+}
+
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     #[cfg_attr(feature = "ts", ts(export_to = "features/documents/api/generated/"))]

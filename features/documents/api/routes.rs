@@ -42,6 +42,7 @@ pub fn routes() -> Vec<Route> {
         async_post("/api/dsp/documents/connect/finish", CONNECTIONS, finish),
         async_post("/api/dsp/documents/disconnect", CONNECTIONS, disconnect),
         async_get("/api/dsp/documents/folder", USE, folder),
+        async_get("/api/dsp/documents/folder/read", USE, folder_read),
         async_post("/api/dsp/documents/new", USE, create),
         upload("/api/dsp/documents/upload", USE, UPLOAD_LIMIT, upload_file),
         async_get("/api/dsp/documents/items/{id}/download", USE, download),
@@ -134,6 +135,30 @@ async fn folder(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
         Ok(v::text(q, key, 0, 100)?.to_owned())
     })?;
     Reply::of(&files::folder(&state, &c, id, query).await?)
+}
+/// The same complete folder, omitted only when its exact scoped revision still matches.
+async fn folder_read(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    let asked = input.clone();
+    let c = state.run(move |db| access.authorize(db, &asked)).await?;
+    v::fields(&input.query, &["id", "q", "since"])?;
+    let id = optional(&input.query, "id", |q, key| {
+        file_id(v::text(q, key, 1, 128)?)
+    })?;
+    let query = optional(&input.query, "q", |q, key| {
+        Ok(v::text(q, key, 0, 100)?.to_owned())
+    })?;
+    let since = optional(&input.query, "since", |q, key| {
+        let revision = v::text(q, key, 64, 64)?;
+        ensure(
+            revision
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)),
+            "invalid_input",
+            400,
+        )?;
+        Ok(revision.to_owned())
+    })?;
+    Reply::of(&files::folder_read(&state, c, access, id, query, since).await?)
 }
 async fn create(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();

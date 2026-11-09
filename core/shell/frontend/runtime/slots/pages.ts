@@ -4,6 +4,7 @@ import type { DspView, Permission, SessionView } from '../../../../accounts/api/
 import type { Feature } from '../../../../tenancy/api/index.js';
 import { hasFeature } from '../features.js';
 import { manifests } from './installed.js';
+import type { PrefetchRead } from '../prefetch.js';
 
 // The pages slot: an owner's pages, inside a DSP or outside, and which of them a DSP opens on,
 // draws Settings, or saves a DSP's profile, and the sidebars of pages that list some of them.
@@ -25,7 +26,7 @@ export type RoutePrefetch = {
   /** Read now, at high priority, rather than queue a warmup. */
   immediate: boolean;
   /** Warms these reads for the page. */
-  warm: (urls: string[]) => void;
+  warm: (reads: PrefetchRead[]) => void;
 };
 
 type Page<Context> = {

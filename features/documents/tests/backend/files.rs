@@ -100,3 +100,68 @@ async fn a_delete_whose_request_went_still_forgets_the_dsps_token() {
     dispatch_core::tenancy::deletion::finish(&state).await;
     assert!(kept(&dsp).is_none());
 }
+
+#[tokio::test]
+async fn an_unchanged_folder_renews_thumbnail_admission_without_renewing_its_provider_observation()
+{
+    use crate::backend::{files::folder_read, mirror, support::context};
+    use dispatch_core::server::http::route::Dsp;
+    let (_root, state, dsp) = platform();
+    connect(&state, &dsp).await;
+    let c = context(&state, &dsp).await;
+    let at = dsp.clone();
+    let connection = state
+        .read(move |db| Ok(db.documents_connection(&at)?.unwrap()))
+        .await
+        .unwrap();
+    let given = Instant::now() - PICTURE_LINK_LASTS - Duration::from_secs(10);
+    let mut target = item("target", "Plan.pdf", None, false, "2026-11-01");
+    target.thumbnail_link = Some("fixture:target".into());
+    target.thumbnail_version = Some("7".into());
+    target.seen = given;
+    let shortcut = crate::backend::drive::Item {
+        mime_type: crate::backend::drive::SHORTCUT.into(),
+        shortcut_details: Some(crate::backend::drive::Shortcut {
+            target_id: "target".into(),
+            target_mime_type: "application/pdf".into(),
+        }),
+        ..item(
+            "shortcut",
+            "Plan",
+            Some(&connection.folder_id),
+            false,
+            "2026-11-01",
+        )
+    };
+    mirror::of(&dsp).replace(&connection.folder_id, vec![shortcut, target], "0".into());
+    let first = folder_read(&state, c.clone(), Dsp("documents.use"), None, None, None)
+        .await
+        .unwrap();
+    assert_eq!(
+        first.folder.as_ref().unwrap().items[0].thumbnail.as_deref(),
+        Some("/api/dsp/documents/items/target/thumbnail?v=7")
+    );
+    // Expire shown admission using the cache's actual std::Instant, with no sleep or timer.
+    PICTURES
+        .lock()
+        .unwrap()
+        .get_mut(&(dsp.clone(), "target".into()))
+        .unwrap()
+        .shown = Instant::now() - PICTURE_LINK_LASTS;
+    assert!(shown(&dsp, "target").is_none());
+    let again = folder_read(
+        &state,
+        c,
+        Dsp("documents.use"),
+        None,
+        None,
+        Some(first.revision.clone()),
+    )
+    .await
+    .unwrap();
+    assert!(again.folder.is_none());
+    assert_eq!(again.revision, first.revision);
+    let renewed = shown(&dsp, "target").expect("unchanged must renew the shown target");
+    assert_eq!(renewed.given, given);
+    assert!(shown(&dsp, "shortcut").is_none());
+}

@@ -1,16 +1,22 @@
 import type { DspView, SessionView } from '../../../accounts/api/index.js';
 import { api, view as admittedToken } from './api.js';
 import { dataCache } from './data-cache.js';
-import { canPrefetch, prefetchData } from './prefetch.js';
+import { canPrefetch, prefetchData, type PrefetchRead } from './prefetch.js';
 import { routeOf } from './slots.js';
 
-/** Reads `urls` for `owner`: at once and at high priority, or as queued warmups. */
-export function warm(urls: string[], owner: string, immediate: boolean) {
+/** Reads for `owner`: at once and at high priority, or as queued warmups. */
+export function warm(reads: PrefetchRead[], owner: string, immediate: boolean) {
   if (immediate) {
     if (document.hidden || !navigator.onLine) return;
-    for (const url of urls)
-      void dataCache.read(url, (signal) => api(url, undefined, signal, 'high')).catch(() => {});
-  } else if (canPrefetch()) prefetchData(urls, { owner, priority: true });
+    for (const request of reads) {
+      const url = typeof request === 'string' ? request : request.url;
+      const read = (signal: AbortSignal) =>
+        typeof request === 'string'
+          ? api(url, undefined, signal, 'high')
+          : request.read(signal, 'high');
+      void dataCache.read(url, read).catch(() => {});
+    }
+  } else if (canPrefetch()) prefetchData(reads, { owner, priority: true });
 }
 /** Whether reads made now belong to this view's admission. */
 export const admitted = (view?: DspView): view is DspView =>
@@ -26,7 +32,7 @@ export function prefetchRouteData(
   session?: SessionView,
   immediate = false,
 ) {
-  const warmPage = (urls: string[]) => warm(urls, `route:${page}`, immediate);
+  const warmPage = (reads: PrefetchRead[]) => warm(reads, `route:${page}`, immediate);
   if (!view) {
     if (!admittedToken)
       routeOf('platform', page)?.prefetch?.({ session, immediate, warm: warmPage });

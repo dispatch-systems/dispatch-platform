@@ -56,6 +56,18 @@ and weeks, so it's best submitted well before the limit.
   of Documents in Drive. Every call to Google is logged with how long it took
   (`documents.google`), and each refusal with Google's reason and its words, without the IDs
   and addresses in them (`documents.google_refused`).
+- **Conditional reads:** `GET /api/dsp/documents/folder/read` has the same permission,
+  folder and search rules as `…/folder`, plus optional `since` (64 lowercase SHA-256 hex
+  characters). It returns `{ revision, folder }`; a null folder permits reuse of exactly that
+  revision's complete response. Every read still projects the full current mirror result,
+  resolves current provenance names and registers thumbnails before hashing the scoped response.
+  Permission and the current connection are checked again after async work, for both answers.
+  This reduces unchanged response bytes and browser JSON parsing, not server work: full Tree
+  selection, provenance reads, projection, hashing and client cache comparison remain. A changed
+  response also serializes the full folder again for the envelope. An unchanged read does not
+  advance mirror freshness or mean Google was contacted; the existing five/sixty-second rules
+  still apply. The client keeps one bounded session cache under the existing folder URL, and
+  assigns each full or unchanged answer its own request-start moment for optimistic confirmation.
 - **Google sign-in:** the platform's Google client, which this feature reads from the server's
   environment: `DISPATCH_DEV_GOOGLE_CLIENT_ID` and `…_SECRET` on Dev and its previews
   (`DISPATCH_PRODUCTION_…` on Production), declared in its `env`. Without both, no DSP can
