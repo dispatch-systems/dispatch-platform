@@ -1,6 +1,6 @@
 use super::*;
 use crate::testing;
-use axum::{Router, routing::get};
+use axum::{Json, Router, routing::get};
 
 #[test]
 fn request_events_name_only_the_final_refusing_gate() {
