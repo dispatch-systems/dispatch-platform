@@ -1107,7 +1107,6 @@ first sender name/time or a clipped workday's first phone after an earlier phone
 consumer must preserve clipped continuation semantics; exact offscreen origin recovery would
 need a separately reviewed contract, not an unbounded run/day scan.
 
-
 ### Opt-in exact origins
 
 `/window?origins=1` adds `origins`: version, algorithm (including bundled IANA tzdata),
