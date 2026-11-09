@@ -73,6 +73,18 @@ fn fixture(count: usize) -> (impl Drop, Store, Arc<State>, String, Reference, Re
         Reference::Text(text),
     )
 }
+fn build_origins(db: &Store, dsp: &str, reference: &Reference, count: usize) {
+    use crate::backend::origins::{Transport, backfill};
+    let connection = db.dsp(dsp).unwrap();
+    let zone = texts::zone(db, dsp).unwrap();
+    // A finite fixture traversal, not a timing wait. One extra visit observes exact-chunk EOF.
+    for _ in 0..=count / 256 {
+        if backfill::chunk(&connection, Transport::of(reference), reference.id(), zone).unwrap() {
+            return;
+        }
+    }
+    panic!("fixture backfill did not reach EOF");
+}
 fn bodies(page: &ConversationWindow) -> Vec<usize> {
     page.messages
         .iter()
@@ -153,6 +165,15 @@ async fn empty_exact_and_short_sides_keep_authoritative_flags_and_the_legacy_fif
             );
             assert_eq!(page.range.has_before, count > 150);
             assert!(!page.range.has_after);
+            assert!(page.origins.is_none());
+            let pending = read_origins(&db, &state, &dsp, reference, Request::Latest).unwrap();
+            assert!(!pending.origins.unwrap().ready);
+            build_origins(&db, &dsp, reference, count);
+            let ready = read_origins(&db, &state, &dsp, reference, Request::Latest).unwrap();
+            let origins = ready.origins.unwrap();
+            assert!(origins.ready);
+            assert_eq!(origins.selected.is_none(), count == 0);
+            assert_eq!(origins.latest.is_none(), count == 0);
             let legacy = dispatcher::opened(&db, &state, &dsp, reference, None).unwrap();
             assert_eq!(legacy.messages.len(), count.min(50));
             assert_eq!(legacy.more, count > 50);
@@ -559,6 +580,7 @@ async fn revision_and_message_data_share_a_snapshot_even_when_another_connection
     connection.exec("UPDATE communications_messages SET direction='out',sent_by='user_1', sender_name='Before \
         snapshot' WHERE conversation_id=? AND ts IN \
         ('1700000000.000099','1700000000.000250','1700000000.000650')", [slack.id()]).unwrap();
+    build_origins(&db, &dsp, &slack, 701);
     let writer = Db::open(
         &db.area(&dsp, "data").unwrap().join("dispatch.sqlite"),
         Kind::DSP,
@@ -588,6 +610,7 @@ async fn revision_and_message_data_share_a_snapshot_even_when_another_connection
                 write.writer.exec("UPDATE communications_messages SET text='Changed during read' WHERE ts='1700000000.000100'", [])?;
                 write.writer.exec("UPDATE communications_messages SET sender_name='After snapshot' WHERE conversation_id=? \
                     AND ts IN ('1700000000.000099','1700000000.000250','1700000000.000650')", [&write.conversation])?;
+                write.writer.exec("DELETE FROM communications_messages WHERE conversation_id=? AND ts='1700000000.000000'", [&write.conversation])?;
                 changed_conversation(&write.writer, &write.conversation)
             });
             if let Err(error) = result {
@@ -607,7 +630,7 @@ async fn revision_and_message_data_share_a_snapshot_even_when_another_connection
         );
     }
     let trace = Trace(&connection.0);
-    let page = read(
+    let page = read_origins(
         &db,
         &state,
         &dsp,
@@ -622,6 +645,23 @@ async fn revision_and_message_data_share_a_snapshot_even_when_another_connection
     assert!(write.fired.get());
     assert!(write.error.borrow().is_none(), "{:?}", write.error.borrow());
     assert_eq!(page.range.revision, revision.to_string());
+    let origins = page.origins.as_ref().unwrap();
+    assert!(origins.ready);
+    assert_eq!(
+        origins.selected.as_ref().unwrap().first_day.ts,
+        "1700000000.000000"
+    );
+    assert_eq!(
+        origins
+            .selected
+            .as_ref()
+            .unwrap()
+            .sent_before_origin
+            .as_ref()
+            .unwrap()
+            .name,
+        "Before snapshot"
+    );
     assert_eq!(
         page.messages
             .iter()
@@ -648,7 +688,7 @@ async fn revision_and_message_data_share_a_snapshot_even_when_another_connection
         page.latest_context.sent_before.as_ref().unwrap().name,
         "Before snapshot"
     );
-    let current = read(
+    let current = read_origins(
         &db,
         &state,
         &dsp,
@@ -657,6 +697,17 @@ async fn revision_and_message_data_share_a_snapshot_even_when_another_connection
     )
     .unwrap();
     assert!(current.range.rebased);
+    assert!(!current.origins.as_ref().unwrap().ready);
+    build_origins(&db, &dsp, &slack, 700);
+    let rebuilt = read_origins(&db, &state, &dsp, &slack, Request::Latest)
+        .unwrap()
+        .origins
+        .unwrap();
+    assert!(rebuilt.ready);
+    assert_eq!(
+        rebuilt.selected.as_ref().unwrap().first_day.ts,
+        "1700000000.000001"
+    );
     assert_ne!(current.range.revision, revision.to_string());
     assert_eq!(
         current
@@ -992,6 +1043,63 @@ async fn selected_and_latest_sender_context_reset_at_dsp_midnight_and_survive_bo
                 page.latest_context.sent_before.is_some(),
                 cutoff != 651 || same_day
             );
+            build_origins(&db, &dsp, &text, 701);
+            let exact = read_origins(
+                &db,
+                &state,
+                &dsp,
+                &text,
+                Request::Anchor {
+                    place: format!("{at:013}:text-000100"),
+                    leading: 0,
+                },
+            )
+            .unwrap()
+            .origins
+            .unwrap();
+            assert!(exact.ready);
+            assert_eq!(exact.time_zone, "America/Los_Angeles");
+            assert_eq!(
+                exact.selected.as_ref().unwrap().first_day.ts,
+                if cutoff == 100 && !same_day {
+                    format!("{first:013}:text-000100")
+                } else {
+                    format!("{previous:013}:text-000000")
+                }
+            );
+            assert_eq!(
+                exact.latest.as_ref().unwrap().first_day.ts,
+                if !same_day {
+                    format!("{first:013}:text-{cutoff:06}")
+                } else {
+                    format!("{previous:013}:text-000000")
+                }
+            );
+            // A timezone edit versions readiness independently from message revision.
+            db.keep_dsp_profile(&dsp, &name, "UTC", None, None).unwrap();
+            assert!(
+                !read_origins(&db, &state, &dsp, &text, Request::Latest)
+                    .unwrap()
+                    .origins
+                    .unwrap()
+                    .ready
+            );
+            assert_eq!(
+                read(&db, &state, &dsp, &text, Request::Latest)
+                    .unwrap()
+                    .messages
+                    .len(),
+                150
+            );
+            build_origins(&db, &dsp, &text, 701);
+            assert_eq!(
+                read_origins(&db, &state, &dsp, &text, Request::Latest)
+                    .unwrap()
+                    .origins
+                    .unwrap()
+                    .time_zone,
+                "UTC"
+            );
             // Neighbors keep their true times across midnight; only sender/day comparisons reset.
             assert_eq!(page.context.previous.as_ref().unwrap().at, previous);
             assert_eq!(
@@ -1000,4 +1108,816 @@ async fn selected_and_latest_sender_context_reset_at_dsp_midnight_and_survive_bo
             );
         }
     }
+}
+
+#[tokio::test]
+async fn clipped_origins_use_stored_run_first_names_and_prior_run_first_for_both_independent_slices()
+ {
+    use crate::backend::{
+        model::Direction,
+        origins::{Transport, backfill},
+    };
+    let (_root, db, state, dsp, slack, text) = fixture(701);
+    let connection = db.dsp(&dsp).unwrap();
+    let member = db
+        .create_user(
+            Some(&dsp),
+            "origin@example.test",
+            "Current",
+            "Member",
+            "test-password-long",
+        )
+        .unwrap();
+    connection
+        .exec(
+            "INSERT INTO memberships(id,user_id,dsp_id,role) VALUES ('origin-member',?,?,'member')",
+            params![member.id, dsp],
+        )
+        .unwrap();
+    let mut person = dispatch_core::manifest::people::Person {
+        code: "origin-person".into(),
+        name: "Directory name".into(),
+        names: vec!["Directory name".into()],
+        role: dispatch_core::manifest::people::PersonRole::Driver,
+        title: None,
+        ids: Default::default(),
+        emails: vec!["origin@example.test".into()],
+        phones: vec!["+12065550101".into()],
+        added_phones: Vec::new(),
+        confirmed: true,
+        photo: Some("origin-photo".into()),
+    };
+    support::know(&state, &dsp, vec![person.clone()], Vec::new(), Vec::new());
+    connection
+        .exec(
+            "UPDATE communications_messages SET direction=CASE WHEN ts='1700000000.000299' \
+        THEN 'in' ELSE 'out' END,sent_by=CASE WHEN ts='1700000000.000299' THEN NULL ELSE ?1 END, \
+        sender_name='Later name' WHERE conversation_id=?2",
+            params![member.id, slack.id()],
+        )
+        .unwrap();
+    connection.exec("UPDATE phones_texts SET direction=CASE WHEN id='text-000299' THEN 'in' ELSE 'out' END, \
+        sent_by=CASE WHEN id='text-000299' THEN NULL ELSE ?1 END,sender_name='Later name' \
+        WHERE conversation_id=?2",params![member.id,text.id()]).unwrap();
+    for reference in [&slack, &text] {
+        let transport = Transport::of(reference);
+        let zone = texts::zone(&db, &dsp).unwrap();
+        // Crash/restart-equivalent: a committed chunk retains its exact native cursor; source
+        // topology mutation between chunks forces a fresh candidate, never partial readiness.
+        assert!(!backfill::chunk(&connection, transport, reference.id(), zone).unwrap());
+        let old_generation: (String,) = connection
+            .one_as(
+                "SELECT generation FROM communications_origin_builds \
+            WHERE transport=? AND conversation_id=?",
+                params![transport.name(), reference.id()],
+            )
+            .unwrap()
+            .unwrap();
+        match reference {
+            Reference::Slack(id) => connection
+                .exec(
+                    "UPDATE communications_messages SET at=at+1 WHERE conversation_id=? \
+                AND ts='1700000000.000500'",
+                    [id],
+                )
+                .unwrap(),
+            Reference::Text(id) => connection
+                .exec(
+                    "UPDATE phones_texts SET number='+12065550999' WHERE conversation_id=? \
+                AND id='text-000500'",
+                    [id],
+                )
+                .unwrap(),
+        };
+        assert!(!backfill::chunk(&connection, transport, reference.id(), zone).unwrap());
+        let restarted: (String,) = connection
+            .one_as(
+                "SELECT generation FROM communications_origin_builds \
+            WHERE transport=? AND conversation_id=?",
+                params![transport.name(), reference.id()],
+            )
+            .unwrap()
+            .unwrap();
+        assert_ne!(old_generation, restarted);
+        match reference {
+            Reference::Slack(id) => connection
+                .exec(
+                    "UPDATE communications_messages SET at=?1 WHERE conversation_id=?2 \
+                AND ts='1700000000.000500'",
+                    params![AT, id],
+                )
+                .unwrap(),
+            Reference::Text(id) => connection
+                .exec(
+                    "UPDATE phones_texts SET number='+12065550101' WHERE conversation_id=? \
+                AND id='text-000500'",
+                    [id],
+                )
+                .unwrap(),
+        };
+        build_origins(&db, &dsp, reference, 701);
+        let mut prior_bodies = None;
+        for (first_name, latest_name) in [("Original A", "Second A"), ("Original B", "Second B")] {
+            match reference {
+                Reference::Slack(id) => connection
+                    .exec(
+                        "UPDATE communications_messages SET sender_name=CASE \
+                    WHEN ts='1700000000.000000' THEN ?1 ELSE ?2 END WHERE conversation_id=?3 AND \
+                    ts IN ('1700000000.000000','1700000000.000300')",
+                        params![first_name, latest_name, id],
+                    )
+                    .unwrap(),
+                Reference::Text(id) => connection
+                    .exec(
+                        "UPDATE phones_texts SET sender_name=CASE WHEN \
+                    id='text-000000' THEN ?1 ELSE ?2 END WHERE conversation_id=?3 AND \
+                    id IN ('text-000000','text-000300')",
+                        params![first_name, latest_name, id],
+                    )
+                    .unwrap(),
+            };
+            let anchor = match reference {
+                Reference::Slack(_) => "1700000000.000100",
+                Reference::Text(_) => "1700000000000:text-000100",
+            };
+            let page = read_origins(
+                &db,
+                &state,
+                &dsp,
+                reference,
+                Request::Anchor {
+                    place: anchor.into(),
+                    leading: 0,
+                },
+            )
+            .unwrap();
+            bounded(&page);
+            let bodies = serde_json::to_value((&page.messages, &page.latest)).unwrap();
+            if let Some(previous) = &prior_bodies {
+                assert_eq!(&bodies, previous);
+            }
+            prior_bodies = Some(bodies);
+            let exact = page.origins.unwrap();
+            assert!(exact.ready);
+            let selected = exact.selected.unwrap();
+            let latest = exact.latest.unwrap();
+            assert_eq!(selected.origin.sender.as_ref().unwrap().name, first_name);
+            assert_eq!(latest.origin.sender.as_ref().unwrap().name, latest_name);
+            assert_eq!(latest.sent_before_origin.as_ref().unwrap().name, first_name);
+            assert!(selected.sent_before_origin.is_none());
+            assert!(selected.before_origin.is_none());
+            assert_eq!(selected.origin.at, AT);
+            assert_eq!(latest.origin.at, AT);
+            assert_eq!(
+                latest.before_origin.as_ref().unwrap().direction,
+                Direction::In
+            );
+            assert_eq!(
+                page.context.sent_before.as_ref().unwrap().name,
+                "Later name"
+            );
+            for origin in [&selected.origin, &latest.origin] {
+                let sender = origin.sender.as_ref().unwrap();
+                assert_eq!(sender.user_id.as_deref(), Some(member.id.as_str()));
+                assert!(
+                    sender.phone_id.is_none(),
+                    "a member's transport device is not its writer phone"
+                );
+                assert_eq!(sender.code.as_deref(), Some("origin-person"));
+                assert_eq!(sender.photo.as_deref(), Some("origin-photo"));
+                let wire = serde_json::to_value(origin).unwrap();
+                for field in [
+                    "text", "body", "files", "gif", "status", "error", "moved", "inThread",
+                ] {
+                    assert!(wire.get(field).is_none());
+                }
+            }
+        }
+    }
+    person.name = "Current directory name".into();
+    person.photo = Some("changed-photo".into());
+    support::know(&state, &dsp, vec![person], Vec::new(), Vec::new());
+    let current = read_origins(&db, &state, &dsp, &text, Request::Latest).unwrap();
+    assert_eq!(current.conversation.with.name, "Current directory name");
+    assert_eq!(
+        current.conversation.with.photo.as_deref(),
+        Some("changed-photo")
+    );
+    let sender = current
+        .origins
+        .unwrap()
+        .latest
+        .unwrap()
+        .origin
+        .sender
+        .unwrap();
+    assert_eq!(sender.name, "Second B");
+    assert_eq!(sender.photo.as_deref(), Some("changed-photo"));
+    // Original segment-first phone survives a later number/writer switch outside the window.
+    connection
+        .exec(
+            "UPDATE phones_texts SET number='+12065550999' WHERE id='text-000000'",
+            [],
+        )
+        .unwrap();
+    build_origins(&db, &dsp, &text, 701);
+    let page = read_origins(
+        &db,
+        &state,
+        &dsp,
+        &text,
+        Request::Anchor {
+            place: "1700000000000:text-000100".into(),
+            leading: 0,
+        },
+    )
+    .unwrap();
+    let exact = page.origins.unwrap().selected.unwrap();
+    assert_eq!(exact.origin.id, "text-000001");
+    assert_eq!(exact.first_day.number.as_deref(), Some("+12065550999"));
+    assert_eq!(
+        exact.before_origin.unwrap().number.as_deref(),
+        Some("+12065550999")
+    );
+}
+
+#[tokio::test]
+async fn known_inserts_placement_moves_and_retry_preserve_readiness_but_unknown_writes_do_not() {
+    use crate::backend::{
+        phone::model::Direction as PhoneDirection,
+        phone::storage::{Reported, TextStore as _},
+    };
+    let (_root, db, state, dsp, slack, text) = fixture(701);
+    let connection = db.dsp(&dsp).unwrap();
+    build_origins(&db, &dsp, &slack, 701);
+    build_origins(&db, &dsp, &text, 701);
+    // Leave a canonical microsecond gap inside a huge same-writer run, rebuild the dirty
+    // fixture, then insert through the real normal writer. Only x and its successor change.
+    connection.exec("DELETE FROM communications_messages WHERE conversation_id=? AND ts='1700000000.000050'",[slack.id()]).unwrap();
+    build_origins(&db, &dsp, &slack, 700);
+    db.keep_communications_message(
+        &dsp,
+        &Written {
+            team: "T0FIXTURE1".into(),
+            user: "U0JORDAN".into(),
+            channel: "D0JORDAN".into(),
+            name: "Jordan".into(),
+            ts: "1700000000.000050".into(),
+            thread_ts: None,
+            text: "Inserted".into(),
+            at: AT,
+            edited_at: None,
+            files: Vec::new(),
+        },
+    )
+    .unwrap();
+    assert!(
+        read_origins(&db, &state, &dsp, &slack, Request::Latest)
+            .unwrap()
+            .origins
+            .unwrap()
+            .ready
+    );
+    let phone: (String,) = connection
+        .one_as(
+            "SELECT device_id FROM phones_texts WHERE id='text-000000'",
+            [],
+        )
+        .unwrap()
+        .unwrap();
+    let report = db
+        .phones_report(
+            &dsp,
+            &phone.0,
+            vec![Reported {
+                client_id: "origin-placement".into(),
+                direction: PhoneDirection::Out,
+                number: "+12065550101".into(),
+                body: "Phone origin".into(),
+                at: AT,
+                files: Vec::new(),
+            }],
+        )
+        .unwrap();
+    let id = &report[0].id;
+    db.place_communications_text(&dsp, id, &Filed::Number("+12065550101".into()), None)
+        .unwrap();
+    db.settle_communications_texts(&dsp, &[id.clone()]).unwrap();
+    let destination = db
+        .open_communications_text(&dsp, &Filed::Number("+12065550102".into()))
+        .unwrap()
+        .id;
+    let there = Reference::Text(destination.clone());
+    build_origins(&db, &dsp, &there, 0);
+    db.refile_communications_texts(
+        &dsp,
+        &[
+            ("text-000100".into(), Filed::Number("+12065550102".into())),
+            ("text-000101".into(), Filed::Number("+12065550102".into())),
+        ],
+    )
+    .unwrap();
+    for reference in [&text, &there] {
+        assert!(
+            read_origins(&db, &state, &dsp, reference, Request::Latest)
+                .unwrap()
+                .origins
+                .unwrap()
+                .ready
+        );
+    }
+    let target = read_origins(&db, &state, &dsp, &there, Request::Latest).unwrap();
+    assert_eq!(
+        target.origins.unwrap().selected.unwrap().origin.id,
+        "text-000100"
+    );
+    // A real failed text's retry preserves ID/at/name; transport device changes do not split a
+    // member's writer. Raw fixture setup first dirties and is rebuilt through production code.
+    connection
+        .exec(
+            "UPDATE phones_texts SET origin='dispatch',direction='out',sent_by='user_1', \
+        sender_name='Stored retry name',status='failed',attempt=1 WHERE id='text-000200'",
+            [],
+        )
+        .unwrap();
+    build_origins(&db, &dsp, &text, 701);
+    let retried = db
+        .phones_retry(&dsp, "text-000200", AT + 1_000_000)
+        .unwrap();
+    assert_eq!(retried.id, "text-000200");
+    assert_eq!(retried.at, AT);
+    let exact = read_origins(
+        &db,
+        &state,
+        &dsp,
+        &text,
+        Request::Anchor {
+            place: "1700000000000:text-000200".into(),
+            leading: 0,
+        },
+    )
+    .unwrap();
+    assert!(exact.origins.as_ref().unwrap().ready);
+    assert_eq!(
+        exact
+            .origins
+            .unwrap()
+            .selected
+            .unwrap()
+            .origin
+            .sender
+            .unwrap()
+            .name,
+        "Stored retry name"
+    );
+    // An enclosing operation failure rolls source + index + epoch back together.
+    let before: (i64,) = connection
+        .one_as(
+            "SELECT source_epoch FROM communications_origin_state WHERE \
+        transport='text' AND conversation_id=?",
+            [text.id()],
+        )
+        .unwrap()
+        .unwrap();
+    let failed: Result<()> = connection.transaction(|| {
+        db.refile_communications_texts(
+            &dsp,
+            &[("text-000102".into(), Filed::Number("+12065550102".into()))],
+        )?;
+        Err(Error::new("fixture_rollback", 500))
+    });
+    assert!(failed.is_err());
+    let after: (i64,) = connection
+        .one_as(
+            "SELECT source_epoch FROM communications_origin_state WHERE \
+        transport='text' AND conversation_id=?",
+            [text.id()],
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(before, after);
+    assert_eq!(
+        db.communications_text(&dsp, "text-000102")
+            .unwrap()
+            .unwrap()
+            .conversation
+            .as_deref(),
+        Some(text.id())
+    );
+    // Storage errors still roll the entire source savepoint back; only an unsupported
+    // derived calendar projection can leave the source successful and its index dirty.
+    let boundaries = connection
+        .all(
+            "SELECT * FROM communications_text_origins ORDER BY conversation_id,generation,at,id",
+            [],
+        )
+        .unwrap();
+    let broken = db
+        .phones_report(
+            &dsp,
+            &phone.0,
+            vec![Reported {
+                client_id: "origin-storage-error".into(),
+                direction: PhoneDirection::In,
+                number: "+12065550101".into(),
+                body: "Storage refusal".into(),
+                at: AT + 1_000_000,
+                files: Vec::new(),
+            }],
+        )
+        .unwrap();
+    connection
+        .exec(
+            "CREATE TEMP TRIGGER origin_storage_error BEFORE INSERT ON communications_text_origins \
+        BEGIN SELECT RAISE(ABORT,'fixture_origin_storage_error'); END",
+            [],
+        )
+        .unwrap();
+    let refused = db
+        .place_communications_text(
+            &dsp,
+            &broken[0].id,
+            &Filed::Number("+12065550101".into()),
+            None,
+        )
+        .unwrap_err();
+    assert_eq!(refused.code, "operation_failed");
+    assert!(
+        std::error::Error::source(&refused)
+            .unwrap()
+            .to_string()
+            .contains("fixture_origin_storage_error")
+    );
+    connection
+        .exec("DROP TRIGGER origin_storage_error", [])
+        .unwrap();
+    let unfiled: (Option<String>,) = connection
+        .one_as(
+            "SELECT conversation_id FROM phones_texts WHERE id=?",
+            [&broken[0].id],
+        )
+        .unwrap()
+        .unwrap();
+    assert!(unfiled.0.is_none());
+    let restored: (i64,) = connection
+        .one_as(
+            "SELECT source_epoch FROM communications_origin_state WHERE \
+        transport='text' AND conversation_id=?",
+            [text.id()],
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(restored, after);
+    assert_eq!(connection.all("SELECT * FROM communications_text_origins ORDER BY conversation_id,generation,at,id",[]).unwrap(),boundaries);
+    assert!(
+        read_origins(&db, &state, &dsp, &text, Request::Latest)
+            .unwrap()
+            .origins
+            .unwrap()
+            .ready
+    );
+
+    // Index readiness must not change which raw transport dates the filing pipeline accepts.
+    let bad = db
+        .phones_report(
+            &dsp,
+            &phone.0,
+            vec![Reported {
+                client_id: "bad-origin-date".into(),
+                direction: PhoneDirection::In,
+                number: "+12065550101".into(),
+                body: "Filed without an index".into(),
+                at: i64::MAX,
+                files: Vec::new(),
+            }],
+        )
+        .unwrap();
+    assert_eq!(
+        db.place_communications_text(
+            &dsp,
+            &bad[0].id,
+            &Filed::Number("+12065550101".into()),
+            None
+        )
+        .unwrap(),
+        text.id()
+    );
+    let filed: (Option<String>,) = connection
+        .one_as(
+            "SELECT conversation_id FROM phones_texts WHERE id=?",
+            [&bad[0].id],
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(filed.0.as_deref(), Some(text.id()));
+    let dirty: (i64, Option<i64>) = connection
+        .one_as(
+            "SELECT source_epoch,indexed_epoch FROM communications_origin_state WHERE \
+        transport='text' AND conversation_id=?",
+            [text.id()],
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(dirty, (after.0 + 1, Some(after.0)));
+    assert_eq!(connection.all("SELECT * FROM communications_text_origins ORDER BY conversation_id,generation,at,id",[]).unwrap(),boundaries);
+
+    // Unknown/old writer invalidation is durable across a later known send.
+    connection.exec("DELETE FROM communications_messages WHERE conversation_id=? AND ts='1700000000.000050'",[slack.id()]).unwrap();
+    db.keep_communications_message(
+        &dsp,
+        &Written {
+            team: "T0FIXTURE1".into(),
+            user: "U0JORDAN".into(),
+            channel: "D0JORDAN".into(),
+            name: "Jordan".into(),
+            ts: "1700000001.000000".into(),
+            thread_ts: None,
+            text: "After unknown write".into(),
+            at: AT + 1000,
+            edited_at: None,
+            files: Vec::new(),
+        },
+    )
+    .unwrap();
+    assert!(
+        !read_origins(&db, &state, &dsp, &slack, Request::Latest)
+            .unwrap()
+            .origins
+            .unwrap()
+            .ready
+    );
+    assert_eq!(
+        read(&db, &state, &dsp, &slack, Request::Latest)
+            .unwrap()
+            .messages
+            .len(),
+        150
+    );
+    build_origins(&db, &dsp, &slack, 702);
+    assert!(
+        read_origins(&db, &state, &dsp, &slack, Request::Latest)
+            .unwrap()
+            .origins
+            .unwrap()
+            .ready
+    );
+    // Group restoration changes projected writer despite there being no message UPDATE.
+    connection.exec("UPDATE communications_messages SET direction='out',group_id='restored-group',sent_by='user_1' \
+        WHERE conversation_id=? AND ts='1700000000.000051'",[slack.id()]).unwrap();
+    build_origins(&db, &dsp, &slack, 702);
+    connection
+        .exec(
+            "INSERT INTO communications_groups(id,name,created_by,created_at,last_at) \
+        VALUES ('restored-group','Current group','user_1',0,0)",
+            [],
+        )
+        .unwrap();
+    assert!(
+        !read_origins(&db, &state, &dsp, &slack, Request::Latest)
+            .unwrap()
+            .origins
+            .unwrap()
+            .ready
+    );
+    build_origins(&db, &dsp, &slack, 702);
+    let grouped = read_origins(
+        &db,
+        &state,
+        &dsp,
+        &slack,
+        Request::Anchor {
+            place: "1700000000.000051".into(),
+            leading: 0,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        grouped
+            .origins
+            .unwrap()
+            .selected
+            .unwrap()
+            .origin
+            .group
+            .unwrap()
+            .name,
+        "Current group"
+    );
+    connection
+        .exec(
+            "DELETE FROM communications_groups WHERE id='restored-group'",
+            [],
+        )
+        .unwrap();
+    assert!(
+        !read_origins(&db, &state, &dsp, &slack, Request::Latest)
+            .unwrap()
+            .origins
+            .unwrap()
+            .ready
+    );
+}
+
+#[tokio::test]
+async fn exact_pause_threshold_and_recurring_slack_date_segments_keep_true_origins() {
+    for gap in [599_999_i64, 600_000] {
+        let (_root, db, state, dsp, slack, text) = fixture(701);
+        let connection = db.dsp(&dsp).unwrap();
+        connection.exec("UPDATE communications_messages SET direction='out',sent_by='user_1',sender_name=CASE \
+            WHEN ts='1700000000.000000' THEN 'First' WHEN ts='1700000000.000100' THEN 'After pause' ELSE 'Interior' END, \
+            at=CASE WHEN ts<'1700000000.000100' THEN ?1 ELSE ?2 END WHERE conversation_id=?3",params![AT,AT+gap,slack.id()]).unwrap();
+        connection.exec("UPDATE phones_texts SET direction='out',sent_by='user_1',sender_name=CASE \
+            WHEN id='text-000000' THEN 'First' WHEN id='text-000100' THEN 'After pause' ELSE 'Interior' END, \
+            at=CASE WHEN id<'text-000100' THEN ?1 ELSE ?2 END WHERE conversation_id=?3",params![AT,AT+gap,text.id()]).unwrap();
+        for reference in [&slack, &text] {
+            build_origins(&db, &dsp, reference, 701);
+            let anchor = match reference {
+                Reference::Slack(_) => "1700000000.000100".to_owned(),
+                Reference::Text(_) => format!("{:013}:text-000100", AT + gap),
+            };
+            let page = read_origins(
+                &db,
+                &state,
+                &dsp,
+                reference,
+                Request::Anchor {
+                    place: anchor,
+                    leading: 0,
+                },
+            )
+            .unwrap();
+            let facts = page.origins.unwrap();
+            assert!(facts.ready);
+            let expected = if gap == 599_999 {
+                "First"
+            } else {
+                "After pause"
+            };
+            for facts in [facts.selected.unwrap(), facts.latest.unwrap()] {
+                assert_eq!(facts.origin.sender.unwrap().name, expected);
+                assert_eq!(
+                    facts.sent_before_origin.map(|sender| sender.name),
+                    (gap == 600_000).then(|| "First".to_owned())
+                );
+            }
+        }
+    }
+    // Slack's persisted at may move backwards relative to exact ts order. The same calendar
+    // label can recur in a later segment; no global-date clamp or timestamp normalization fits.
+    let (_root, db, state, dsp, slack, _text) = fixture(701);
+    let name = db.find_dsp(&dsp).unwrap().name;
+    db.keep_dsp_profile(&dsp, &name, "UTC", None, None).unwrap();
+    let connection = db.dsp(&dsp).unwrap();
+    let at = |value: &str| {
+        chrono::DateTime::parse_from_rfc3339(value)
+            .unwrap()
+            .timestamp_millis()
+    };
+    connection.exec("UPDATE communications_messages SET direction=CASE WHEN ts>='1700000000.000100' \
+        AND ts<'1700000000.000200' THEN 'in' ELSE 'out' END,sent_by=CASE WHEN ts>='1700000000.000100' \
+        AND ts<'1700000000.000200' THEN NULL ELSE 'user_1' END,sender_name=CASE \
+        WHEN ts='1700000000.000050' THEN 'New day first' ELSE 'Interior' END,at=CASE \
+        WHEN ts<'1700000000.000050' THEN ?1 WHEN ts<'1700000000.000100' THEN ?2 \
+        WHEN ts<'1700000000.000200' THEN ?3 WHEN ts<'1700000000.000600' THEN ?4 \
+        WHEN ts<'1700000000.000650' THEN ?5 ELSE ?6 END WHERE conversation_id=?7",params![
+        at("2024-01-01T23:59:00Z"),at("2024-01-02T00:01:00Z"),at("2024-01-02T00:02:00Z"),
+        at("2024-01-02T00:03:00Z"),at("2024-01-01T23:58:00Z"),at("2024-01-02T00:04:00Z"),slack.id()]).unwrap();
+    build_origins(&db, &dsp, &slack, 701);
+    let exact = read_origins(
+        &db,
+        &state,
+        &dsp,
+        &slack,
+        Request::Anchor {
+            place: "1700000000.000100".into(),
+            leading: 0,
+        },
+    )
+    .unwrap()
+    .origins
+    .unwrap();
+    let selected = exact.selected.unwrap();
+    let latest = exact.latest.unwrap();
+    assert_eq!(selected.first_day.ts, "1700000000.000050");
+    assert_eq!(selected.sent_before_origin.unwrap().name, "New day first");
+    assert_eq!(latest.origin.ts, "1700000000.000650");
+    assert_eq!(latest.first_day.ts, "1700000000.000650");
+    assert!(latest.sent_before_origin.is_none());
+}
+
+#[tokio::test]
+async fn origin_restarts_drain_obsolete_generations_without_deleting_source_history() {
+    use crate::backend::origins::{Transport, backfill};
+    let (_root, db, state, dsp, slack, text) = fixture(701);
+    let connection = db.dsp(&dsp).unwrap();
+    let zone = texts::zone(&db, &dsp).unwrap();
+    let cached = support::cached(&state, &dsp);
+    for reference in [&slack, &text] {
+        let transport = Transport::of(reference);
+        let (source, boundaries, conversations, place, body) = match reference {
+            Reference::Slack(_) => (
+                "communications_messages",
+                "communications_slack_origins",
+                "communications_conversations",
+                "ts='1700000000.000700'",
+                "text",
+            ),
+            Reference::Text(_) => (
+                "phones_texts",
+                "communications_text_origins",
+                "communications_text_conversations",
+                "id='text-000700'",
+                "body",
+            ),
+        };
+        let ordinal = match reference {
+            Reference::Slack(_) => "CAST(substr(ts,12) AS INTEGER)",
+            Reference::Text(_) => "CAST(substr(id,6) AS INTEGER)",
+        };
+        connection.exec(&format!("UPDATE {source} SET direction=CASE WHEN {ordinal}%2=0 THEN 'in' ELSE 'out' END \
+            WHERE conversation_id=?"),[reference.id()]).unwrap();
+        build_origins(&db, &dsp, reference, 701);
+        let source_rows = connection
+            .all(
+                &format!("SELECT id,at,{body} FROM {source} WHERE conversation_id=? ORDER BY id"),
+                [reference.id()],
+            )
+            .unwrap();
+        let count = || {
+            connection
+                .count(
+                    &format!("SELECT count(*) FROM {boundaries} WHERE conversation_id=?"),
+                    [reference.id()],
+                )
+                .unwrap()
+        };
+        assert_eq!(count(), 701);
+        for attempt in 0..12 {
+            connection
+                .exec(
+                    &format!("UPDATE {source} SET at=? WHERE conversation_id=? AND {place}"),
+                    params![AT + (attempt % 2) + 1, reference.id()],
+                )
+                .unwrap();
+            assert!(!backfill::chunk(&connection, transport, reference.id(), zone).unwrap());
+            assert!(
+                count() <= 701 + 256,
+                "restarts must drain abandoned candidates as fast as they create boundaries"
+            );
+        }
+        connection
+            .exec(
+                &format!("UPDATE {source} SET at=? WHERE conversation_id=? AND {place}"),
+                params![AT, reference.id()],
+            )
+            .unwrap();
+        build_origins(&db, &dsp, reference, 701);
+        assert_eq!(
+            connection
+                .all(
+                    &format!(
+                        "SELECT id,at,{body} FROM {source} WHERE conversation_id=? ORDER BY id"
+                    ),
+                    [reference.id()]
+                )
+                .unwrap(),
+            source_rows
+        );
+        assert!(count() <= 1402);
+        for _ in 0..4 {
+            let before = count();
+            assert!(backfill::chunk(&connection, transport, reference.id(), zone).unwrap());
+            let after = count();
+            assert!((0..=256).contains(&(before - after)));
+        }
+        assert_eq!(count(), 701);
+        // Existing conversation removal may leave derived ownership behind. Each subsequent
+        // maintenance unit drains at most one chunk, then removes the now-empty owner state.
+        connection
+            .exec(
+                &format!("DELETE FROM {source} WHERE conversation_id=?"),
+                [reference.id()],
+            )
+            .unwrap();
+        connection
+            .exec(
+                &format!("DELETE FROM {conversations} WHERE id=?"),
+                [reference.id()],
+            )
+            .unwrap();
+        for _ in 0..8 {
+            let before = count();
+            (backfill::MAINTENANCE.run)(state.clone(), true).await;
+            assert!((0..=256).contains(&(before - count())));
+        }
+        assert_eq!(count(), 0);
+        assert_eq!(connection.count("SELECT count(*) FROM communications_origin_state WHERE transport=? AND conversation_id=?",
+            params![transport.name(),reference.id()]).unwrap(),0);
+        assert_eq!(connection.count("SELECT count(*) FROM communications_origin_builds WHERE transport=? AND conversation_id=?",
+            params![transport.name(),reference.id()]).unwrap(),0);
+    }
+    assert!(
+        cached(),
+        "origin maintenance must not invalidate unchanged cached DSP reads"
+    );
 }

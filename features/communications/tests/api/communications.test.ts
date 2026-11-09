@@ -229,6 +229,13 @@ test('Communications answers only those whose role gives them it, and the profil
   assert.equal(window.latestContext.next, null);
   assert.deepEqual(window.workdays, []);
   assert.deepEqual(window.latestWorkdays, []);
+  assert.equal(window.origins, undefined);
+  const exact = await member.read(`${url}?origins=1`);
+  assert.equal(exact.origins.version, 1);
+  assert.equal(typeof exact.origins.ready, 'boolean');
+  assert.deepEqual(exact.messages, window.messages);
+  assert.deepEqual(exact.latest, window.latest);
+  assert.equal((await f.request(`${url}?origins=1`)).status, 401);
   const legacy = await member.read(`${route}/conversations/${conversation.id}`);
   assert.deepEqual([legacy.messages.length, legacy.more], [50, true]);
   const cursorQuery = `?cursor=${encodeURIComponent(window.range.refresh)}`;
@@ -236,6 +243,10 @@ test('Communications answers only those whose role gives them it, and the profil
   // An unauthenticated request cannot use the new route.
   assert.equal((await f.request(url)).status, 401);
   for (const query of [
+    '?origins=',
+    '?origins=0',
+    '?origins=2',
+    '?origins=01',
     '?leading=1',
     '?anchor=',
     '?anchor=1800000000.000100',

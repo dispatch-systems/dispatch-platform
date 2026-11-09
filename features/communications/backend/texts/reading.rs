@@ -340,10 +340,21 @@ pub(crate) fn assembled(
     read: Vec<Text>,
     more: bool,
 ) -> Result<ConversationMessages> {
-    let kept = found(db, dsp, id)?;
     let people = People::read(db, state, dsp)?;
     let numbers = Numbers::read(db, dsp)?;
-    let person = whose(&people, &kept);
+    assembled_with(db, &people, &numbers, dsp, id, read, more)
+}
+pub(crate) fn assembled_with(
+    db: &Store,
+    people: &People,
+    numbers: &Numbers,
+    dsp: &str,
+    id: &str,
+    read: Vec<Text>,
+    more: bool,
+) -> Result<ConversationMessages> {
+    let kept = found(db, dsp, id)?;
+    let person = whose(people, &kept);
     let (today, working, workdays) = match &kept.driver {
         Some((source, driver)) => {
             let ids = std::slice::from_ref(driver);
@@ -389,8 +400,8 @@ pub(crate) fn assembled(
         None => Vec::new(),
     };
     Ok(ConversationMessages {
-        conversation: conversations(db, &people, &numbers, dsp, vec![kept])?.remove(0),
-        messages: messages(&people, &numbers, read),
+        conversation: conversations(db, people, numbers, dsp, vec![kept])?.remove(0),
+        messages: messages(people, numbers, read),
         more,
         today,
         working,

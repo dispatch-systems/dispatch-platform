@@ -1106,3 +1106,34 @@ does not bound active memory. Compact immediate context cannot recover a clipped
 first sender name/time or a clipped workday's first phone after an earlier phone switch. The
 consumer must preserve clipped continuation semantics; exact offscreen origin recovery would
 need a separately reviewed contract, not an unbounded run/day scan.
+
+
+### Opt-in exact origins
+
+`/window?origins=1` adds `origins`: version, algorithm (including bundled IANA tzdata),
+`timeZone`, explicit `ready`, and independent selected/latest prefix facts. Defaults and
+legacy `context.sentBefore` remain unchanged. A ready empty slice has null facts; an unready
+index has `ready:false`. Origin metadata is never a Message, cursor, receipt or reply signal.
+The frontend is not enabled by this contract.
+
+Owned migration 22 creates timezone-aware sparse run/day/sender boundary tables, state,
+resumable metadata build cursors and a write-lock/discovery row. SQLite triggers advance
+source epochs for projected topology changes, including group existence fanout. Known Slack
+inserts, text placement/refiling and phone retry repair adjacent positions transactionally,
+acknowledging only their accounted epoch change from a previously ready generation. An
+unsupported derived calendar leaves the source write successful and the generation dirty;
+actual storage errors still roll the enclosing operation back. A raw writer dirties readiness. Name/body/status/file changes do not change topology; origin names,
+faces, group names and phone labels are projected from current owners on read.
+
+Minute upkeep uses bookkeeping turns with DSP-active and feature checks, preserving unrelated
+cached reads. It visits at most eight conversations of each transport per DSP by durable keyset
+cursors, with one 256-row metadata chunk per visit. A source epoch, timezone or algorithm
+change restarts a candidate; EOF and epoch comparison publish atomically. Histories can stay
+unready under continuous topology writes. Timezone changes and initial indexing cost one
+full metadata traversal; group existence changes fan out. Each visit also removes at most
+256 obsolete boundaries through generation-index ranges, protecting active and current
+candidate generations. Ready and removed conversations continue draining obsolete metadata;
+source messages and bodies are never removed by index upkeep. No source/body retention policy or
+reclamation is changed, and no history scan or rebuild occurs in HTTP. Rollback disables
+opt-in, retains tables/triggers and uses old reads. A binary downgrade must separately satisfy
+host and migration-version compatibility; no binary downgrade is claimed here.

@@ -61,6 +61,25 @@ pub fn read(
     reference: &Reference,
     request: Request,
 ) -> Result<ConversationWindow> {
+    read_inner(db, state, dsp, reference, request, false)
+}
+pub(crate) fn read_origins(
+    db: &Store,
+    state: &State,
+    dsp: &str,
+    reference: &Reference,
+    request: Request,
+) -> Result<ConversationWindow> {
+    read_inner(db, state, dsp, reference, request, true)
+}
+fn read_inner(
+    db: &Store,
+    state: &State,
+    dsp: &str,
+    reference: &Reference,
+    request: Request,
+    want_origins: bool,
+) -> Result<ConversationWindow> {
     let connection = db.dsp(dsp)?;
     connection.transaction(|| {
         // First Communications read establishes the snapshot before any message selection.
@@ -112,21 +131,32 @@ pub fn read(
             .anchor
             .as_deref()
             .map(|place| (place, position.leading));
+        let people = People::read(db, state, dsp)?;
+        let numbers = match reference {
+            Reference::Text(_) => Some(Numbers::read(db, dsp)?),
+            _ => None,
+        };
+        let zone = want_origins.then(|| texts::zone(db, dsp)).transpose()?;
+        let read_context =
+            |messages: &[crate::api::types::Message], numbers: Option<&Numbers>| match zone {
+                Some(zone) => context::read_in_zone(db, dsp, reference, messages, numbers, zone),
+                None => context::read(db, dsp, reference, messages, numbers),
+            };
         let (page, latest, context, latest_context, latest_workdays, has_before, has_after) =
             match reference {
                 Reference::Slack(id) => {
                     let rows = db.communications_message_window(dsp, id, anchor)?;
                     let (before, after) = (rows.has_before, rows.has_after);
-                    let page = conversations::assembled(db, state, dsp, id, rows.messages, before)?;
-                    let people = People::read(db, state, dsp)?;
+                    let page =
+                        conversations::assembled_with(db, &people, dsp, id, rows.messages, before)?;
                     let latest = conversations::messages(
                         db,
                         &people,
                         dsp,
                         db.communications_messages(dsp, id, None, PAGE)?,
                     )?;
-                    let context = context::read(db, dsp, reference, &page.messages, None)?;
-                    let latest_context = context::read(db, dsp, reference, &latest, None)?;
+                    let context = read_context(&page.messages, None)?;
+                    let latest_context = read_context(&latest, None)?;
                     (
                         page,
                         latest,
@@ -148,10 +178,20 @@ pub fn read(
                         .map(|(at, id, leading)| (*at, id.as_str(), *leading));
                     let rows = db.communications_text_window(dsp, id, anchor)?;
                     let (before, after) = (rows.has_before, rows.has_after);
-                    let page =
-                        texts::reading::assembled(db, state, dsp, id, rows.messages, before)?;
-                    let people = People::read(db, state, dsp)?;
-                    let numbers = Numbers::read(db, dsp)?;
+                    let page = texts::reading::assembled_with(
+                        db,
+                        &people,
+                        numbers
+                            .as_ref()
+                            .ok_or_else(|| Error::new("communications_origins_invariant", 500))?,
+                        dsp,
+                        id,
+                        rows.messages,
+                        before,
+                    )?;
+                    let numbers = numbers
+                        .as_ref()
+                        .ok_or_else(|| Error::new("communications_origins_invariant", 500))?;
                     let latest_read = db.communications_texts(dsp, id, None, PAGE)?;
                     let kept = db
                         .communications_text_conversation(dsp, id)?
@@ -162,11 +202,9 @@ pub fn read(
                         }
                         None => Vec::new(),
                     };
-                    let latest = texts::reading::messages(&people, &numbers, latest_read);
-                    let context =
-                        context::read(db, dsp, reference, &page.messages, Some(&numbers))?;
-                    let latest_context =
-                        context::read(db, dsp, reference, &latest, Some(&numbers))?;
+                    let latest = texts::reading::messages(&people, numbers, latest_read);
+                    let context = read_context(&page.messages, Some(numbers))?;
+                    let latest_context = read_context(&latest, Some(numbers))?;
                     (
                         page,
                         latest,
@@ -178,6 +216,19 @@ pub fn read(
                     )
                 }
             };
+        let origins = zone
+            .map(|zone| {
+                super::origins::read(
+                    &connection,
+                    reference,
+                    zone,
+                    &page.messages,
+                    &latest,
+                    &people,
+                    numbers.as_ref(),
+                )
+            })
+            .transpose()?;
         let first = page.messages.first().map(|message| message.ts.clone());
         let last = page.messages.last().map(|message| message.ts.clone());
         let token = |anchor: Option<String>, leading| -> Result<String> {
@@ -211,6 +262,7 @@ pub fn read(
             context,
             latest_context,
             latest_workdays,
+            origins,
             range: MessageRange {
                 revision: revision.to_string(),
                 first,

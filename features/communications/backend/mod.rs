@@ -19,6 +19,7 @@ pub(crate) mod initials;
 pub(crate) mod live;
 pub(crate) mod logged;
 pub(crate) mod model;
+pub(crate) mod origins;
 pub(crate) mod people;
 pub(crate) mod phone;
 pub(crate) mod previews;

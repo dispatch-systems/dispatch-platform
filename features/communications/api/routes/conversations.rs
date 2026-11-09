@@ -33,7 +33,7 @@ pub(super) fn conversation(db: &Store, c: &Member, input: &Input) -> Result<Repl
 pub(super) fn window(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     use crate::backend::windows::{self, Request};
     use dispatch_core::{Error, ensure};
-    v::fields(&input.query, &["anchor", "leading", "cursor"])?;
+    v::fields(&input.query, &["anchor", "leading", "cursor", "origins"])?;
     let reference = Reference::parse(input.param("id"))?;
     let has = |key| input.query.get(key).is_some();
     let request = if has("cursor") {
@@ -62,13 +62,14 @@ pub(super) fn window(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     } else {
         Request::Latest
     };
-    Reply::of(&windows::read(
-        db,
-        c.state,
-        c.dsp_id(),
-        &reference,
-        request,
-    )?)
+    let origins = optional_text(&input.query, "origins", 1)?;
+    ensure(!has("origins") || origins == "1", "invalid_input", 400)?;
+    let read = if has("origins") {
+        windows::read_origins
+    } else {
+        windows::read
+    };
+    Reply::of(&read(db, c.state, c.dsp_id(), &reference, request)?)
 }
 /// What the profile beside a conversation shows of whom it's with, a member of a workspace or a
 /// driver: behind `communications.use` alone, as it reads what other features know of them for

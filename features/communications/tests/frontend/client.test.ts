@@ -124,5 +124,12 @@ test('window reads preserve opaque positions, zero leading, priority and cancell
   assert.equal(new URL(asked[1]!.url, 'https://dispatch.test').searchParams.has('anchor'), false);
   await getConversationWindow('tc_id');
   assert.equal(new URL(asked[2]!.url, 'https://dispatch.test').search, '');
+  await getConversationWindow('tc_id', { origins: 1 });
+  assert.equal(new URL(asked[3]!.url, 'https://dispatch.test').searchParams.get('origins'), '1');
+  await getConversationWindow('tc_id', { cursor, origins: 1 });
+  const exact = new URL(asked[4]!.url, 'https://dispatch.test');
+  assert.equal(exact.searchParams.get('cursor'), cursor);
+  assert.equal(exact.searchParams.get('origins'), '1');
+  assert.equal(exact.searchParams.has('anchor'), false);
   assert.equal(dataCache.peek(parsed.pathname).data, undefined);
 });

@@ -8,6 +8,7 @@ use super::{
     next_change,
 };
 use crate::backend::gifs;
+use crate::backend::origins::{self, Transport};
 use crate::backend::phone::{
     LIMITS,
     model::{Direction, EXPIRY_MS, Origin, Outgoing, PHONE_OFFLINE, PHONE_REMOVED, Status, Text},
@@ -314,11 +315,13 @@ impl TextStore for Store {
                 [id],
             )?;
             let change = next_change(&db)?;
-            db.exec(
-                "UPDATE phones_texts SET device_id=?1, status='waiting', status_at=?2, \
+            origins::change(&db, Transport::Text, id, None, || {
+                db.exec(
+                    "UPDATE phones_texts SET device_id=?1, status='waiting', status_at=?2, \
                  attempt=?3, error=NULL, change=?3 WHERE id=?4",
-                params![device, at, change, id],
-            )?;
+                    params![device, at, change, id],
+                )
+            })?;
             Ok(())
         })?;
         drop(db);

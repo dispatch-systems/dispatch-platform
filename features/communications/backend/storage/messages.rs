@@ -1,6 +1,7 @@
 //! Slack messages and incoming edits, with their attachments and history queries.
 //! Incoming persistence and its conversation/group settlement stay in one transaction.
 use super::{conversations::opened, settlement::settle_with};
+use crate::backend::origins::{self, Transport};
 use crate::{
     api::types::MessageGif,
     backend::{changes::changed_conversation, gifs, model::Direction},
@@ -147,7 +148,8 @@ impl MessageStore for Store {
                 &written.name,
             )?;
             let id = crypto::id("msg")?;
-            let added = db.exec(
+            let added = origins::change(&db, Transport::Slack, &id, Some(&conversation), || {
+                db.exec(
                 "INSERT OR IGNORE INTO communications_messages (id,conversation_id,ts,thread_ts,\
                  direction,text,at,edited_at) VALUES (?,?,?,?,'in',?,?,?)",
                 params![
@@ -159,7 +161,8 @@ impl MessageStore for Store {
                     written.at,
                     written.edited_at
                 ],
-            )?;
+            )
+            })?;
             if added == 0 {
                 // Kept already: only a later edit changes it.
                 let Some(edited_at) = written.edited_at else {
@@ -320,21 +323,23 @@ pub(crate) fn sent_out(
     group: Option<&str>,
 ) -> Result<(String, Vec<String>)> {
     let id = crypto::id("msg")?;
-    db.exec(
-        "INSERT INTO communications_messages (id,conversation_id,ts,direction,sent_by,\
+    origins::change(&db, Transport::Slack, &id, Some(conversation), || {
+        db.exec(
+            "INSERT INTO communications_messages (id,conversation_id,ts,direction,sent_by,\
          sender_name,text,at,group_id,gif) VALUES (?,?,?,'out',?,?,?,?,?,?)",
-        params![
-            id,
-            conversation,
-            sent.ts,
-            sent.by,
-            sent.name,
-            sent.text,
-            sent.at,
-            group,
-            gifs::column(sent.gif)?
-        ],
-    )?;
+            params![
+                id,
+                conversation,
+                sent.ts,
+                sent.by,
+                sent.name,
+                sent.text,
+                sent.at,
+                group,
+                gifs::column(sent.gif)?
+            ],
+        )
+    })?;
     let after = "FROM communications_messages WHERE conversation_id=?1 AND direction='in' \
                  AND ts>?2 AND group_id IS NOT ?3";
     let mut touched: Vec<String> = db
