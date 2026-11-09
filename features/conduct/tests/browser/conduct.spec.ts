@@ -31,3 +31,36 @@ test('a driver is written up from the page, then marked signed and locked', asyn
   await expect(page.getByRole('button', { name: 'Edit' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Print' })).toBeVisible();
 });
+
+test('a long writeup still prints on one letter page, its sections shrunk to fit their lines', async ({
+  page,
+}) => {
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await page.getByRole('link', { name: 'Conduct', exact: true }).click();
+  await page.getByRole('button', { name: 'New writeup' }).click();
+  await page.getByLabel('Driver').selectOption({ index: 1 });
+  await page.getByLabel('Category').selectOption({ label: 'Uniform' });
+  // Longer than each section's four lines hold at full size.
+  const long = 'DA did not arrive to work in full uniform and was reminded at stand up. '.repeat(6);
+  for (const section of [
+    '1. Statement of the problem',
+    '2. Prior discussion or warnings',
+    '3. Corrective action',
+  ]) {
+    await page.getByLabel(section).fill(long);
+  }
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Awaiting signature')).toBeVisible();
+
+  // Printed as the browser prints it, without its dialog.
+  await page.evaluate(() => {
+    window.print = () => {};
+  });
+  await page.getByRole('button', { name: 'Print' }).click();
+  const sheet = page.locator('.conduct-print .conduct-notice');
+  await expect(sheet).toBeAttached();
+  await expect(sheet.locator('[data-overflow]')).toHaveCount(0);
+  const pdf = (await page.pdf({ preferCSSPageSize: true })).toString('latin1');
+  expect(pdf.match(/\/Type\s*\/Page[^s]/g)).toHaveLength(1);
+});
