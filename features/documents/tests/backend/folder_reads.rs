@@ -109,10 +109,12 @@ async fn unchanged_still_projects_current_member_names_counts_shortcut_targets_a
  {
     let (_root, state, dsp) = platform();
     connect(&state, &dsp).await;
-    let c = context(&state, &dsp).await;
+    let mut c = context(&state, &dsp).await;
     let at = dsp.clone();
     let (connection, author) = state
         .run(move |db| {
+            // The author's later removal must leave another DSP owner.
+            testing::owner_of(db, &at, "remaining@example.test", "Remaining")?;
             Ok((
                 db.documents_connection(&at)?.unwrap(),
                 testing::owner_of(db, &at, "author@example.test", "Avery")?,
@@ -157,17 +159,17 @@ async fn unchanged_still_projects_current_member_names_counts_shortcut_targets_a
         })
         .await
         .unwrap();
-    let read = |since| {
+    let read = |c, since| {
         folder_read(
             &state,
-            c.clone(),
+            c,
             Dsp("documents.use"),
             None,
             Some("plan".into()),
             since,
         )
     };
-    let first = read(None).await.unwrap();
+    let first = read(c.clone(), None).await.unwrap();
     let full = first.folder.as_ref().unwrap();
     assert_eq!(full.items.len(), 1);
     assert_eq!(full.items[0].name, "Plan.pdf");
@@ -179,7 +181,7 @@ async fn unchanged_still_projects_current_member_names_counts_shortcut_targets_a
         serde_json::to_value(folder(&state, &c, None, Some("plan".into())).await.unwrap()).unwrap()
     );
     assert!(
-        read(Some(first.revision.clone()))
+        read(c.clone(), Some(first.revision.clone()))
             .await
             .unwrap()
             .folder
@@ -189,15 +191,12 @@ async fn unchanged_still_projects_current_member_names_counts_shortcut_targets_a
     let (at, by) = (dsp.clone(), author.clone());
     state
         .run(move |db| {
-            db.dsp(&at)?.exec(
-                "UPDATE users SET first_name='Renamed', status='disabled' WHERE id=?",
-                [&by],
-            )?;
-            Ok(())
+            testing::set_user_name(db, Some(&at), &by, "Renamed", "Owner")?;
+            testing::set_user_status(db, Some(&at), &by, "disabled")
         })
         .await
         .unwrap();
-    let renamed = read(Some(first.revision)).await.unwrap();
+    let renamed = read(c.clone(), Some(first.revision)).await.unwrap();
     assert_eq!(
         renamed.folder.as_ref().unwrap().items[0]
             .added_by
@@ -210,17 +209,21 @@ async fn unchanged_still_projects_current_member_names_counts_shortcut_targets_a
             .as_deref(),
         Some("Renamed Owner")
     );
-    let (at, by) = (dsp.clone(), author);
-    state
+    let (at, by, actor) = (dsp.clone(), author, c.clone());
+    c = state
         .run(move |db| {
-            db.dsp(&at)?
-                .exec("DELETE FROM memberships WHERE user_id=?", [&by])?;
-            db.dsp(&at)?.exec("DELETE FROM users WHERE id=?", [&by])?;
-            Ok(())
+            let member = db
+                .members(&at)?
+                .into_iter()
+                .find(|member| member.user_id == by)
+                .expect("the author's membership");
+            db.set_role(&actor, &member.id, None)?;
+            // Removal changes the DSP revision; the next read opens its current view.
+            db.context(&actor.auth, &at, "documents.use")
         })
         .await
         .unwrap();
-    let removed = read(Some(renamed.revision)).await.unwrap();
+    let removed = read(c.clone(), Some(renamed.revision)).await.unwrap();
     assert!(removed.folder.as_ref().unwrap().items[0].added_by.is_none());
 
     let at = dsp.clone();
@@ -238,7 +241,7 @@ async fn unchanged_still_projects_current_member_names_counts_shortcut_targets_a
         })
         .await
         .unwrap();
-    let supported = read(Some(removed.revision)).await.unwrap();
+    let supported = read(c.clone(), Some(removed.revision)).await.unwrap();
     assert_eq!(
         supported.folder.as_ref().unwrap().items[0]
             .modified_by
@@ -246,14 +249,10 @@ async fn unchanged_still_projects_current_member_names_counts_shortcut_targets_a
         Some("Platform support")
     );
     state
-        .run(move |db| {
-            db.platform
-                .exec("UPDATE users SET platform_owner=0 WHERE id=?", [&support])?;
-            Ok(())
-        })
+        .run(move |db| testing::revoke_platform_owner(db, &support))
         .await
         .unwrap();
-    let no_support = read(Some(supported.revision)).await.unwrap();
+    let no_support = read(c.clone(), Some(supported.revision)).await.unwrap();
     assert!(
         no_support.folder.as_ref().unwrap().items[0]
             .modified_by
@@ -263,7 +262,7 @@ async fn unchanged_still_projects_current_member_names_counts_shortcut_targets_a
     let mut renamed_folder = safety.clone();
     renamed_folder.name = "Compliance".into();
     mirror.put(root, renamed_folder);
-    let relocated = read(Some(no_support.revision)).await.unwrap();
+    let relocated = read(c.clone(), Some(no_support.revision)).await.unwrap();
     assert_eq!(
         relocated.folder.as_ref().unwrap().items[0]
             .location
@@ -273,7 +272,7 @@ async fn unchanged_still_projects_current_member_names_counts_shortcut_targets_a
     let mut changed_target = target;
     changed_target.name = "New plan.pdf".into();
     mirror.put(root, changed_target);
-    let changed = read(Some(relocated.revision)).await.unwrap();
+    let changed = read(c.clone(), Some(relocated.revision)).await.unwrap();
     assert_eq!(
         changed.folder.as_ref().unwrap().items[0].name,
         "New plan.pdf"
@@ -345,11 +344,11 @@ async fn full_and_unchanged_refuse_permission_loss_disconnect_or_broken_connecti
             let (_root, state, dsp) = platform();
             connect(&state, &dsp).await;
             let owner = context(&state, &dsp).await;
-            let at = dsp.clone();
+            let (at, actor) = (dsp.clone(), owner.clone());
             let c = state
                 .run(move |db| {
-                    let role = db.create_role(&owner, "Reader", &["documents.use".into()])?;
-                    let mut auth = owner.auth.clone();
+                    let role = db.create_role(&actor, "Reader", &["documents.use".into()])?;
+                    let mut auth = actor.auth.clone();
                     auth.preview = Some(role.id);
                     db.context(&auth, &at, "documents.use")
                 })
@@ -378,10 +377,7 @@ async fn full_and_unchanged_refuse_permission_loss_disconnect_or_broken_connecti
                 let db = Store::open(config, key).unwrap();
                 match loss {
                     "permission" => {
-                        db.dsp(&at)
-                            .unwrap()
-                            .exec("UPDATE roles SET permissions='[]' WHERE id=?", [&role])
-                            .unwrap();
+                        db.update_role(&owner, &role, "Reader", &[]).unwrap();
                     }
                     "disconnect" => {
                         db.remove_documents_connection(&at).unwrap();
