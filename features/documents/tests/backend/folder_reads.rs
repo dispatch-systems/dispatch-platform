@@ -307,7 +307,13 @@ async fn unchanged_still_projects_current_member_names_counts_shortcut_targets_a
     )
     .await
     .unwrap();
-    mirror.remove(root, "target");
+    mirror.follow(
+        root,
+        drive::Changes {
+            changed: vec![drive::Changed::Gone("target".into())],
+            next: "1".into(),
+        },
+    );
     let missing = folder_read(
         &state,
         c,
