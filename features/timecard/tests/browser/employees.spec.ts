@@ -417,33 +417,6 @@ test('Sync now keeps its displayed-period batch across employee and view changes
       status.paycom.completed === 1
     );
   });
-  // Temporary reproduction: the real batch queues every Cortex day before Paycom.
-  const sqlText = (value: string) => `'${value.replaceAll("'", "''")}'`;
-  await page.route('**/api/dsp/jobs/employees', async (route) => {
-    if (route.request().method() !== 'POST') return route.continue();
-    const { requestId } = route.request().postDataJSON();
-    const prefix = `employees:${requestId}:`;
-    const at = Date.now();
-    const cortexAt = new Date(at).toISOString();
-    const paycomAt = new Date(at + 1).toISOString();
-    dispatch.database('data/preview/jobs.sqlite', (db) => {
-      db.exec(`
-        CREATE TRIGGER timecard_batch_arrangement AFTER INSERT ON jobs
-        WHEN NEW.dsp_id = ${sqlText(dsp.id)}
-          AND substr(NEW.idempotency_key, 1, ${prefix.length}) = ${sqlText(prefix)}
-        BEGIN
-          UPDATE jobs
-          SET available_at = 253402300799000,
-              created_at = CASE
-                WHEN NEW.kind = 'cortex.meal_breaks.collect' THEN ${sqlText(cortexAt)}
-                ELSE ${sqlText(paycomAt)}
-              END
-          WHERE id = NEW.id;
-        END;
-      `);
-    });
-    await route.continue();
-  });
   await sync.click();
   const body = (await request).postDataJSON();
   expect(body).toEqual({ requestId: expect.any(String), ...period });
@@ -460,42 +433,6 @@ test('Sync now keeps its displayed-period batch across employee and view changes
     }),
   );
   await expect.poll(() => batchReads.at(-1)).toBe(body.requestId);
-  dispatch.database('data/preview/jobs.sqlite', (db) => {
-    const prefix = `employees:${body.requestId}:`;
-    db.exec('BEGIN IMMEDIATE');
-    try {
-      const rows = db
-        .prepare(
-          `
-          SELECT kind, status FROM jobs
-          WHERE dsp_id = ? AND substr(idempotency_key, 1, ?) = ?
-          ORDER BY created_at, id
-        `,
-        )
-        .all(dsp.id, prefix.length, prefix) as { kind: string; status: string }[];
-      expect(rows).toHaveLength(15);
-      expect(
-        rows
-          .slice(0, 14)
-          .every((row) => row.kind === 'cortex.meal_breaks.collect' && row.status === 'queued'),
-      ).toBe(true);
-      expect(rows[14]).toEqual({ kind: 'paycom.collect', status: 'queued' });
-      db.exec('DROP TRIGGER timecard_batch_arrangement');
-      const released = db
-        .prepare(
-          `
-          UPDATE jobs SET available_at = ?
-          WHERE dsp_id = ? AND substr(idempotency_key, 1, ?) = ? AND status = 'queued'
-        `,
-        )
-        .run(Date.now(), dsp.id, prefix.length, prefix);
-      expect(Number(released.changes)).toBe(15);
-      db.exec('COMMIT');
-    } catch (error) {
-      db.exec('ROLLBACK');
-      throw error;
-    }
-  });
   await paycomComplete;
   await expect(page.getByRole('status', { name: 'Paycom period sync', exact: true })).toContainText(
     'Complete',
