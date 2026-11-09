@@ -272,7 +272,7 @@ pub(super) async fn make(
     mime: &str,
     name: &str,
 ) -> Result<(Connection, Item)> {
-    let (_, made) = on_drive!(state, owner, |google, token| google.create(
+    let (connection, made) = on_drive!(state, owner, |google, token| google.create(
         token,
         name,
         mime,
