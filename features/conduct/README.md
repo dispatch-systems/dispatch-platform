@@ -55,7 +55,10 @@ with a photo of the paper if they like.
   them now.
 - `frontend/tiers.ts`: how tiers read and climb on the page, from what the server works out,
   and what a writeup prints.
-- `frontend/notice/`: the notice, its fixed wording in `wording.ts`, and printing it alone.
+- `frontend/notice/`: the notice, laid out in points as the DSP's own form so it prints on one
+  letter page, a section too long for its four lines shrinking to fit; its fixed wording in
+  `wording.ts`; printing it alone; and in `fonts/`, the free fonts it falls back on where a
+  computer lacks Arial Narrow, Arial or Snell Roundhand, each with its license.
 - `frontend/compose/`: the writeup form; `draft.ts` fills it as a person and a category are
   chosen, keeping whatever someone changed.
 - `frontend/drivers/`, `frontend/writeups/`, `frontend/settings/`: each screen;
