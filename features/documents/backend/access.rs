@@ -1,12 +1,7 @@
 //! Captured-generation Drive access and RAM refresh. Provider awaits happen outside State
 //! turns; each provider operation and every publication uses the captured owner only.
 use super::{
-    cache, connection,
-    google::Google,
-    grant::{self, Grant},
-    mirror,
-    storage::DocumentsStore,
-    team,
+    cache, connection, google::Google, grant::Grant, mirror, storage::DocumentsStore, team,
     tree::Tree,
 };
 use dispatch_core::{Result, State, foundation::observability};
