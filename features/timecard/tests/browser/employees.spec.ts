@@ -1,5 +1,5 @@
 import { test, expect, login, openDsp } from '../../../../core/shell/tests/support/fixtures.js';
-import type { Punch } from '../../api/index.js';
+import type { EmployeeSyncStatus, Punch } from '../../api/index.js';
 
 test('employee workspace keeps period history across people, filters and themes', async ({
   page,
@@ -394,6 +394,29 @@ test('Sync now keeps its displayed-period batch across employee and view changes
   const request = page.waitForRequest(
     (request) => request.method() === 'POST' && request.url().endsWith('/api/dsp/jobs/employees'),
   );
+  const paycomComplete = page.waitForResponse(async (response) => {
+    const url = new URL(response.url());
+    if (
+      response.request().method() !== 'GET' ||
+      response.status() !== 200 ||
+      url.pathname !== '/api/dsp/jobs/employees' ||
+      url.searchParams.get('from') !== period.from ||
+      url.searchParams.get('to') !== period.to ||
+      !url.searchParams.has('requestId')
+    )
+      return false;
+
+    const { requestId } = (await request).postDataJSON();
+    if (url.searchParams.get('requestId') !== requestId) return false;
+    const status: EmployeeSyncStatus = await response.json();
+    return (
+      status.requestId === requestId &&
+      status.period.from === period.from &&
+      status.period.to === period.to &&
+      status.paycom.total === 1 &&
+      status.paycom.completed === 1
+    );
+  });
   await sync.click();
   const body = (await request).postDataJSON();
   expect(body).toEqual({ requestId: expect.any(String), ...period });
@@ -410,6 +433,7 @@ test('Sync now keeps its displayed-period batch across employee and view changes
     }),
   );
   await expect.poll(() => batchReads.at(-1)).toBe(body.requestId);
+  await paycomComplete;
   await expect(page.getByRole('status', { name: 'Paycom period sync', exact: true })).toContainText(
     'Complete',
   );
