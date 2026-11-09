@@ -164,4 +164,69 @@ async fn an_unchanged_folder_renews_thumbnail_admission_without_renewing_its_pro
     let renewed = shown(&dsp, "target").expect("unchanged must renew the shown target");
     assert_eq!(renewed.given, given);
     assert!(shown(&dsp, "shortcut").is_none());
+    use crate::api::types::{DocumentsFilter, DocumentsQueryRead, DocumentsQueryScope};
+    use crate::backend::files::{QueryRequest, query};
+    let query_context = context(&state, &dsp).await;
+    let scope = DocumentsQueryScope {
+        id: None,
+        q: None,
+        filter: DocumentsFilter::All,
+    };
+    let page = query(
+        &state,
+        query_context.clone(),
+        Dsp("documents.use"),
+        QueryRequest {
+            scope: scope.clone(),
+            page: 0,
+            size: 100,
+            snapshot: None,
+            manifest_since: None,
+            since: None,
+        },
+    )
+    .await
+    .unwrap();
+    let (reading, content_revision) = match page {
+        DocumentsQueryRead::Full {
+            reading,
+            content_revision,
+            ..
+        } => (reading, content_revision),
+        other => panic!("expected query opening: {other:?}"),
+    };
+    assert_eq!(
+        reading.items[0].thumbnail.as_deref(),
+        Some("/api/dsp/documents/items/target/thumbnail?v=7")
+    );
+    PICTURES
+        .lock()
+        .unwrap()
+        .get_mut(&(dsp.clone(), "target".into()))
+        .unwrap()
+        .shown = Instant::now() - PICTURE_LINK_LASTS;
+    assert!(shown(&dsp, "target").is_none());
+    let page = query(
+        &state,
+        query_context,
+        Dsp("documents.use"),
+        QueryRequest {
+            scope,
+            page: 0,
+            size: 100,
+            snapshot: Some(reading.snapshot),
+            manifest_since: Some(reading.manifest_revision),
+            since: Some(content_revision),
+        },
+    )
+    .await
+    .unwrap();
+    assert!(matches!(page, DocumentsQueryRead::Unchanged { .. }));
+    assert_eq!(
+        shown(&dsp, "target")
+            .expect("unchanged page renews shown")
+            .given,
+        given
+    );
+    assert!(shown(&dsp, "shortcut").is_none());
 }

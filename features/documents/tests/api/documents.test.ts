@@ -852,3 +852,115 @@ test('conditional folder reads preserve the full response and scope, validate re
   assert.equal(refused.status, 409, refused.body);
   assert.equal(refused.value.error, 'documents_not_connected');
 });
+
+test('query reads validate bounds, preserve complete manifests and isolate continuation scope', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const owner = await f.client();
+  const north = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
+  const summit = owner.session.dsps.find((d: { name: string }) => d.name === 'Summit Delivery');
+  await owner.select(north.id);
+  await connect(owner);
+  const folder = (
+    await owner.post('/api/dsp/documents/new', { kind: 'folder', name: 'Plans', folder: null })
+  ).value;
+  const doc = (
+    await owner.post('/api/dsp/documents/new', { kind: 'doc', name: 'Plan', folder: folder.id })
+  ).value;
+  const path = '/api/dsp/documents/query';
+  const first = await owner.read(`${path}?q=plan&size=1`);
+  assert.equal(first.kind, 'full');
+  assert.equal(first.total, 2);
+  assert.equal(first.unfilteredTotal, 2);
+  assert.deepEqual(
+    first.manifest.entries.map((entry: { id: string }) => entry.id),
+    [folder.id, doc.id],
+  );
+  assert.equal(first.items[0].id, folder.id);
+  assert.equal(first.items[0].items, 1);
+  const params = new URLSearchParams({
+    q: 'plan',
+    size: '1',
+    snapshot: first.snapshot,
+    manifestSince: first.manifestRevision,
+    since: first.contentRevision,
+  });
+  assert.equal((await owner.read(`${path}?${params}`)).kind, 'unchanged');
+  params.delete('manifestSince');
+  const missingBaseline = await owner.read(`${path}?${params}`);
+  assert.equal(missingBaseline.kind, 'full');
+  assert.ok(missingBaseline.manifest);
+  const described = await owner.read(
+    `${path}/describe?${new URLSearchParams({ q: 'plan', snapshot: first.snapshot, ids: doc.id })}`,
+  );
+  assert.equal(described.items[0].id, doc.id);
+  for (const suffix of [
+    'size=101',
+    'size=0',
+    'page=-1',
+    'page=4294967296',
+    'filter=pdf',
+    'sort=name',
+    'snapshot=invalid',
+  ]) {
+    const invalid = await owner.get(`${path}?${suffix}`);
+    assert.equal(invalid.status, 400, suffix);
+  }
+  for (const ids of [
+    `${doc.id},${doc.id}`,
+    'bad:id',
+    Array.from({ length: 101 }, (_, n) => `f${n}`).join(','),
+  ]) {
+    assert.equal(
+      (
+        await owner.get(
+          `${path}/describe?${new URLSearchParams({ q: 'plan', snapshot: first.snapshot, ids })}`,
+        )
+      ).status,
+      400,
+    );
+  }
+  assert.equal(
+    (
+      await owner.get(
+        `${path}/describe?${new URLSearchParams({ q: 'plan', snapshot: first.snapshot, ids: 'valid-but-outside' })}`,
+      )
+    ).status,
+    404,
+  );
+  const otherFilter = await owner.read(
+    `${path}?${new URLSearchParams({ q: 'plan', filter: 'docs', snapshot: first.snapshot })}`,
+  );
+  assert.deepEqual(otherFilter, { kind: 'reset', reason: 'changed' });
+  await owner.select(summit.id);
+  await connect(owner);
+  const isolated = await owner.read(
+    `${path}?${new URLSearchParams({ q: 'plan', snapshot: first.snapshot })}`,
+  );
+  assert.deepEqual(isolated, { kind: 'reset', reason: 'changed' });
+  const member = await f.client(demo.member);
+  await owner.select(north.id);
+  await useDocuments(owner, north.id, true);
+  await member.select(north.id);
+  const allowed = await member.get(path);
+  assert.equal(allowed.status, 200, allowed.body);
+  await useDocuments(owner, north.id, false);
+  await member.select(north.id);
+  for (const url of [
+    path,
+    `${path}/describe?${new URLSearchParams({ snapshot: first.snapshot, ids: doc.id })}`,
+  ]) {
+    const denied = await member.get(url);
+    assert.equal(denied.status, 403, denied.body);
+    assert.equal(denied.value.error, 'permission_denied', denied.body);
+  }
+  await owner.select(north.id);
+  const renamed = await owner.post(`/api/dsp/documents/items/${doc.id}/rename`, {
+    name: 'Revised plan',
+  });
+  assert.equal(renamed.status, 200, renamed.body);
+  assert.deepEqual(
+    await owner.read(`${path}?${new URLSearchParams({ q: 'plan', snapshot: first.snapshot })}`),
+    { kind: 'reset', reason: 'changed' },
+  );
+});

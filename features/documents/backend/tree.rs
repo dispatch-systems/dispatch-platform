@@ -75,6 +75,29 @@ pub struct Row {
     pub stands_for: Option<Arc<Row>>,
 }
 impl Row {
+    /// A record's own metadata. `seen` is observation time; `stands_for` is resolved by
+    /// grown(), so incoming records must be compared with the canonical rows/linked entry.
+    fn same_metadata(&self, other: &Self) -> bool {
+        self.id == other.id
+            && self.name == other.name
+            && self.mime == other.mime
+            && self.parent == other.parent
+            && self.modified == other.modified
+            && self.by == other.by
+            && self.size == other.size
+            && self.link == other.link
+            && self.thumbnail == other.thumbnail
+            && self.version == other.version
+            && self.target == other.target
+    }
+    fn same_semantics(&self, other: &Self) -> bool {
+        self.same_metadata(other)
+            && match (&self.stands_for, &other.stands_for) {
+                (Some(a), Some(b)) => a.same_semantics(b),
+                (None, None) => true,
+                _ => false,
+            }
+    }
     pub fn folder(&self) -> bool {
         self.mime == Mime::Folder
     }
@@ -134,7 +157,13 @@ pub struct Tree {
     held: Vec<u32>,
     /// The files outside the main folder that shortcuts inside stand for, by ID.
     linked: HashMap<Arc<str>, Row>,
+    /// Owner-local mutation sequence, preserved through regrow; never a cache revision.
+    mutation: u64,
 }
+/// Only IDs touched in one mutation, with their initial membership and canonical record.
+/// This temporary baseline is dropped after regrow; it never retains an old Tree.
+type Before = HashMap<Arc<str>, Option<(bool, Row)>>;
+
 impl Tree {
     /// The files of `all` inside the folder `root`.
     pub fn new(root: &str, all: Vec<Item>) -> Self {
@@ -251,6 +280,7 @@ impl Tree {
             starts,
             held,
             linked,
+            mutation: 0,
         }
     }
     pub fn root(&self) -> &str {
@@ -284,6 +314,40 @@ impl Tree {
             None => return &[],
         };
         &self.held[self.starts[folder] as usize..self.starts[folder + 1] as usize]
+    }
+    /// Borrowed direct children in the existing order; no complete result allocation.
+    pub(super) fn ordered_children(&self, id: &str) -> impl Iterator<Item = &Row> {
+        self.held(id)
+            .iter()
+            .map(|place| &self.rows[*place as usize])
+    }
+    /// Complete equality is needed only when a full listing replaces the tree.
+    pub(super) fn same_semantics(&self, other: &Self) -> bool {
+        // Duplicate raw IDs cannot be matched one-to-one through places. Conservatively
+        // invalidate rather than let one canonical row stand for multiple different rows.
+        self.root == other.root
+            && self.rows.len() == other.rows.len()
+            && self.places.len() == self.rows.len()
+            && other.places.len() == other.rows.len()
+            && self.rows.iter().all(|row| {
+                other
+                    .get(&row.id)
+                    .is_some_and(|other| row.same_semantics(other))
+            })
+    }
+    pub(super) fn mutation(&self) -> u64 {
+        self.mutation
+    }
+    /// Canonical records, never the potentially stale resolved target on a shortcut.
+    fn record(&self, id: &str) -> Option<(bool, &Row)> {
+        self.get(id)
+            .map(|row| (true, row))
+            .or_else(|| self.linked.get(id).map(|row| (false, row)))
+    }
+    fn remember(&self, before: &mut Before, id: &str) {
+        before
+            .entry(Arc::from(id))
+            .or_insert_with(|| self.record(id).map(|(inside, row)| (inside, row.clone())));
     }
     /// What the folder `id` holds: its folders by name, then its files, the newest first.
     pub fn children(&self, id: &str) -> Vec<&Row> {
@@ -335,30 +399,33 @@ impl Tree {
     /// main folder goes. The last observation
     /// of an ID wins, including IDs first seen in this batch.
     pub fn put_many(&mut self, items: impl IntoIterator<Item = Item>) {
-        let mut places = mem::take(&mut self.places);
-        let mut changed = false;
+        let count = self.rows.len();
+        let mut before = Before::new();
         for item in items {
-            changed = true;
+            self.remember(&mut before, &item.id);
             let row = Row::from(item);
-            match places.get(&row.id) {
+            match self.places.get(&row.id) {
                 Some(place) => self.rows[*place as usize] = row,
                 None => {
                     self.linked.remove(&row.id);
-                    places.insert(Arc::clone(&row.id), self.rows.len() as u32);
+                    self.places
+                        .insert(Arc::clone(&row.id), self.rows.len() as u32);
                     self.rows.push(row);
                 }
             }
         }
-        self.places = places;
-        if changed {
-            self.regrow();
+        if !before.is_empty() {
+            self.regrow(before, count);
         }
     }
     /// Takes out the file `id`, and anything inside it.
     pub fn remove(&mut self, id: &str) {
-        if let Some(place) = self.places.get(id) {
-            self.rows.remove(*place as usize);
-            self.regrow();
+        if let Some(place) = self.places.get(id).copied() {
+            let count = self.rows.len();
+            let mut before = Before::new();
+            self.remember(&mut before, id);
+            self.rows.remove(place as usize);
+            self.regrow(before, count);
         }
     }
     /// Brings the tree up to date with what changed in Drive. A file Dispatch changed itself
@@ -369,43 +436,66 @@ impl Tree {
         if changes.is_empty() {
             return false;
         }
+        let count = self.rows.len();
+        let mut before = Before::new();
         let mut arrived = Vec::new();
         let mut gone = HashSet::new();
         for change in changes {
             match change {
-                Changed::Kept(item) => match self.places.get(item.id.as_str()) {
-                    Some(place) => {
-                        let row = &mut self.rows[*place as usize];
-                        if *row.modified <= *item.modified_time {
-                            *row = Row::from(*item);
+                Changed::Kept(item) => {
+                    self.remember(&mut before, &item.id);
+                    match self.places.get(item.id.as_str()) {
+                        Some(place) => {
+                            let row = &mut self.rows[*place as usize];
+                            if *row.modified <= *item.modified_time {
+                                *row = Row::from(*item);
+                            }
+                        }
+                        None => {
+                            if item.mime_type == FOLDER {
+                                arrived.push(item.id.clone());
+                            }
+                            self.linked.remove(item.id.as_str());
+                            self.rows.push(Row::from(*item));
                         }
                     }
-                    None => {
-                        if item.mime_type == FOLDER {
-                            arrived.push(item.id.clone());
-                        }
-                        self.linked.remove(item.id.as_str());
-                        self.rows.push(Row::from(*item));
-                    }
-                },
+                }
                 Changed::Gone(id) => {
+                    self.remember(&mut before, &id);
                     gone.insert(id);
                 }
             }
         }
         self.rows.retain(|row| !gone.contains(&*row.id));
         self.linked.retain(|id, _| !gone.contains(&**id));
-        self.regrow();
+        self.regrow(before, count);
         // A folder that stays outside, such as another DSP's in the same account, brings
         // nothing in.
         arrived
             .iter()
             .any(|id| self.places.contains_key(id.as_str()))
     }
-    fn regrow(&mut self) {
+    fn regrow(&mut self, before: Before, count: usize) {
+        let mutation = self.mutation;
         let mut rows = mem::take(&mut self.rows);
         rows.extend(mem::take(&mut self.linked).into_values());
         *self = Self::grown(Arc::clone(&self.root), rows);
+        // Parent edges and target IDs determine paths, counts, membership and resolution.
+        // Any derived change has a touched record whose metadata or membership changed.
+        // Comparing final canonical records also handles duplicate IDs and restored batches.
+        let changed = count != self.rows.len()
+            || before
+                .into_iter()
+                .any(|(id, before)| match (before, self.record(&id)) {
+                    (Some((inside, row)), Some((current, other))) => {
+                        inside != current || !row.same_metadata(other)
+                    }
+                    (None, None) => false,
+                    _ => true,
+                });
+        self.mutation = mutation
+            .checked_add(u64::from(changed))
+            .expect("Documents mutation sequence exhausted");
     }
 }
 
