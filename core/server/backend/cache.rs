@@ -36,10 +36,19 @@ impl ReadTurns {
     }
     /// Takes a keyed turn with the caller's waiting budget, before entering the database pool.
     pub(crate) async fn enter_for(&self, key: String, wait: Duration) -> Result<ReadTurn> {
-        let busy = || Error::new("platform_busy", 503);
-        let slot = self.slots.clone().try_acquire_owned().map_err(|_| busy())?;
+        let slot = self
+            .slots
+            .clone()
+            .try_acquire_owned()
+            .map_err(|error| match error {
+                tokio::sync::TryAcquireError::NoPermits => Error::busy("read_turns_full"),
+                tokio::sync::TryAcquireError::Closed => Error::busy("read_turns_closed"),
+            })?;
         let lock = {
-            let mut keys = self.keys.lock().map_err(|_| busy())?;
+            let mut keys = self
+                .keys
+                .lock()
+                .map_err(|_| Error::busy("read_turns_poisoned"))?;
             keys.retain(|_, lock| lock.strong_count() > 0);
             if let Some(lock) = keys.get(&key).and_then(Weak::upgrade) {
                 lock
@@ -51,7 +60,7 @@ impl ReadTurns {
         };
         let lock = tokio::time::timeout(wait, lock.lock_owned())
             .await
-            .map_err(|_| busy())?;
+            .map_err(|_| Error::busy("read_turns_key_timeout"))?;
         Ok(ReadTurn {
             _slot: slot,
             _lock: lock,
