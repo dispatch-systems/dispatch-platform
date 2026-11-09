@@ -34,29 +34,77 @@ async fn a_running_job_waits_its_turn_at_the_database_where_a_request_is_turned_
         }
     });
     started.await.unwrap();
-    let behind: Vec<_> = (0..state.db_slots.available_permits())
+    let mut behind: Vec<_> = (0..state.db_slots.available_permits())
         .map(|_| {
             let state = Arc::clone(&state);
-            tokio::spawn(requested(
+            Box::pin(requested(
                 async move { state.run_bookkeeping(|_| Ok(())).await },
             ))
         })
         .collect();
-    while state.db_slots.available_permits() > 0 {
-        tokio::time::sleep(Duration::from_millis(10)).await;
+    for write in &mut behind {
+        let pending =
+            std::future::poll_fn(|cx| std::task::Poll::Ready(write.as_mut().poll(cx).is_pending()))
+                .await;
+        assert!(pending);
     }
+    assert_eq!(state.db_slots.available_permits(), 0);
     let job = tokio::spawn({
         let state = Arc::clone(&state);
         async move { state.read(ready).await }
     });
     let request = requested(state.read(ready)).await;
-    assert_eq!(request.unwrap_err().code, "platform_busy");
     release.send(()).unwrap();
     long.await.unwrap().unwrap();
     for write in behind {
-        write.await.unwrap().unwrap();
+        write.await.unwrap();
     }
     assert_eq!(job.await.unwrap().unwrap().unwrap()["ready"], 1);
+    let error = request.unwrap_err();
+    assert_eq!(error.code, "platform_busy");
+    assert_eq!(error.admission_origin(), Some("db_slots_timeout"));
+}
+
+#[tokio::test]
+async fn request_queue_refusals_keep_their_origin_before_the_work_runs() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    for closed in [false, true] {
+        let (_root, state) = started();
+        let held = state
+            .db_queue
+            .clone()
+            .acquire_many_owned(state.db_queue.available_permits() as u32)
+            .await
+            .unwrap();
+        if closed {
+            state.db_queue.close();
+        }
+        let ran = Arc::new(AtomicBool::new(false));
+        let entered = ran.clone();
+        let error = requested(state.read(move |_| {
+            entered.store(true, Ordering::SeqCst);
+            Ok(())
+        }))
+        .await
+        .unwrap_err();
+        assert_eq!((error.code.as_str(), error.status), ("platform_busy", 503));
+        assert_eq!(
+            error.admission_origin(),
+            Some(if closed {
+                "db_queue_closed"
+            } else {
+                "db_queue_full"
+            })
+        );
+        assert!(!ran.load(Ordering::SeqCst));
+        drop(held);
+        if !closed {
+            assert_eq!(
+                requested(state.read(ready)).await.unwrap().unwrap()["ready"],
+                1
+            );
+        }
+    }
 }
 
 #[tokio::test]

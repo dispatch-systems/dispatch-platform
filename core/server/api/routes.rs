@@ -76,7 +76,10 @@ async fn collection_updates(state: Arc<State>, input: Input, access: Dsp) -> Res
         .slots
         .clone()
         .try_acquire_owned()
-        .map_err(|_| Error::new("platform_busy", 503))?;
+        .map_err(|error| match error {
+            tokio::sync::TryAcquireError::NoPermits => Error::busy("collection_wait_full"),
+            tokio::sync::TryAcquireError::Closed => Error::busy("collection_wait_closed"),
+        })?;
     let mut updates = state.updates.subscribe(&dsp);
     if state.updates.token(&updates) == after {
         let _ = tokio::time::timeout(Duration::from_secs(20), updates.changed()).await;

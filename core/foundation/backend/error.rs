@@ -124,6 +124,7 @@ pub struct Error {
     pub status: u16,
     /// What the operating system or SQLite reported. Never sent to a client.
     cause: Option<Cause>,
+    admission_origin: Option<&'static str>,
 }
 pub type Result<T> = std::result::Result<T, Error>;
 impl Error {
@@ -132,7 +133,19 @@ impl Error {
             code: code.into(),
             status,
             cause: None,
+            admission_origin: None,
         }
+    }
+    /// A temporary admission refusal, named by a static server-only origin.
+    pub fn busy(origin: &'static str) -> Self {
+        Self {
+            admission_origin: Some(origin),
+            ..Self::new("platform_busy", 503)
+        }
+    }
+    /// The refusing admission point, for the final request event. Never sent to a client.
+    pub fn admission_origin(&self) -> Option<&'static str> {
+        self.admission_origin
     }
     pub(crate) fn caused(code: &str, status: u16, cause: impl Into<Cause>) -> Self {
         Self {

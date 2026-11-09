@@ -98,7 +98,10 @@ async fn updates(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> 
         .slots
         .clone()
         .try_acquire_owned()
-        .map_err(|_| Error::new("platform_busy", 503))?;
+        .map_err(|error| match error {
+            tokio::sync::TryAcquireError::NoPermits => Error::busy("topic_wait_full"),
+            tokio::sync::TryAcquireError::Closed => Error::busy("topic_wait_closed"),
+        })?;
     // Subscribe before reading: a commit between the read and wait cannot be missed.
     let mut listener = state.topics.subscribe(STOCK, &dsp);
     let auth = input.clone();
