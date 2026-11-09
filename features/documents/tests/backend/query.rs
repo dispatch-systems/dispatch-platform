@@ -107,7 +107,7 @@ fn full(answer: DocumentsQueryRead) -> (DocumentsQueryPage, DocumentsManifest, S
             manifest,
             content_revision,
         } => (
-            reading,
+            *reading,
             manifest.expect("opening includes complete manifest"),
             content_revision,
         ),
@@ -165,7 +165,11 @@ async fn full_order_search_filters_and_counts_survive_page_boundaries_and_shortc
         mime_type: drive::SHEET.into(),
         ..item("outside-target", "Plan needle target", None, false, "zz")
     });
-    let owner = mirror::of(&dsp);
+    let key = crate::backend::grant::capture(&state, &dsp, None)
+        .await
+        .unwrap()
+        .key;
+    let owner = mirror::of(&key);
     owner.replace(root, all, "cursor".into());
     let (tree, _) = owner.snapshot(root).unwrap();
     let before = Arc::strong_count(&tree);
@@ -366,7 +370,11 @@ async fn continuations_project_only_the_page_and_current_authors_then_reset_with
             row
         })
         .collect();
-    let owner = mirror::of(&dsp);
+    let key = crate::backend::grant::capture(&state, &dsp, None)
+        .await
+        .unwrap()
+        .key;
+    let owner = mirror::of(&key);
     owner.replace(&connection.folder_id, rows.clone(), "cursor".into());
     let (first, _, revision) = full(
         files::query(
@@ -379,12 +387,12 @@ async fn continuations_project_only_the_page_and_current_authors_then_reset_with
         .unwrap(),
     );
     assert_eq!(first.items[0].added_by.as_deref(), Some("Avery Owner"));
-    assert!(cache::shown(&dsp, "f099").is_some());
+    assert!(cache::shown(&key, "f099").is_some());
     assert!(
-        cache::shown(&dsp, "f100").is_none(),
+        cache::shown(&key, "f100").is_none(),
         "off-page projection admits an unwanted thumbnail"
     );
-    assert_eq!(cache::shown(&dsp, "f000").unwrap().given, given);
+    assert_eq!(cache::shown(&key, "f000").unwrap().given, given);
     let mut req = request(DocumentsFilter::All, 0);
     req.snapshot = Some(first.snapshot.clone());
     req.manifest_since = Some(first.manifest_revision.clone());
@@ -442,7 +450,7 @@ async fn continuations_project_only_the_page_and_current_authors_then_reset_with
         }
         other => panic!("description reset: {other:?}"),
     }
-    assert_eq!(cache::shown(&dsp, "f100").unwrap().given, given);
+    assert_eq!(cache::shown(&key, "f100").unwrap().given, given);
     state.read_cache.invalidate_dsp(&dsp);
     let mut req = request(DocumentsFilter::All, 1);
     req.snapshot = Some(first.snapshot.clone());
@@ -508,8 +516,8 @@ async fn continuations_project_only_the_page_and_current_authors_then_reset_with
         .await
         .unwrap(),
     );
-    mirror::forget(&dsp);
-    let replacement = mirror::of(&dsp);
+    mirror::forget(&key.namespace, &dsp);
+    let replacement = mirror::of(&key);
     replacement.replace(&connection.folder_id, rows, "new incarnation".into());
     replacement.put(&connection.folder_id, changed);
     assert_eq!(
@@ -593,7 +601,7 @@ async fn continuations_project_only_the_page_and_current_authors_then_reset_with
         DocumentsQueryRead::Unchanged { .. }
     ));
     assert_eq!(
-        cache::shown(&dsp, "external-target").unwrap().given,
+        cache::shown(&key, "external-target").unwrap().given,
         target.seen
     );
     match files::describe(

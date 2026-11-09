@@ -2,6 +2,7 @@
 use super::{
     cache, drive,
     google::FOLDER,
+    grant::Key,
     storage::{DocumentsStore, Record},
     tree::{Row, Tree},
 };
@@ -36,7 +37,7 @@ pub(super) fn known(
 
 /// Files as the page shows them.
 pub(super) struct Described<'a> {
-    pub(super) dsp: &'a str,
+    pub(super) owner: &'a Key,
     pub(super) tree: &'a Tree,
     pub(super) records: &'a BTreeMap<String, Record>,
     pub(super) names: &'a BTreeMap<String, String>,
@@ -80,7 +81,7 @@ impl Described<'_> {
                 .and_then(|parent| self.tree.get(parent))
                 .filter(|_| located)
                 .map(|parent| parent.name.to_string()),
-            thumbnail: cache::picture(self.dsp, shown),
+            thumbnail: cache::picture(self.owner, shown),
             extension: extension(&shown.name, row.mime.as_str()).map(str::to_owned),
             shortcut: row.target.is_some(),
             unavailable: row.unavailable(),

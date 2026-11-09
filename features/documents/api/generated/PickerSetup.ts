@@ -7,6 +7,10 @@ import type { PickerKeys } from "./PickerKeys";
  */
 export type PickerSetup = {
 /**
+ * Opaque replacement identity; never authority or OAuth material.
+ */
+grantGeneration: string,
+/**
  * The Google account that holds the DSP's Documents, which a file picked elsewhere is
  * shared with to come in.
  */

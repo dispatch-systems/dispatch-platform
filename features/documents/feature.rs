@@ -87,6 +87,11 @@ pub const FEATURE: Feature = Feature {
                 name: "documents_outside_names",
                 apply: Code(backend::storage::add_outside_names),
             },
+            Migration {
+                id: 4,
+                name: "documents_grant_generation",
+                apply: Code(backend::storage::add_grant_generation),
+            },
         ],
     }],
     // Google's sign-in client, and its file picker's keys.

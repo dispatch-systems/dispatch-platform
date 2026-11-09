@@ -7,6 +7,10 @@ import type { DocumentsFolder } from "./DocumentsFolder";
  */
 export type DocumentsFolderRead = {
 /**
+ * Opaque replacement identity; never authority or OAuth material.
+ */
+grantGeneration: string,
+/**
  * An opaque SHA-256 revision of the scoped, projected response.
  */
 revision: string, folder: DocumentsFolder | null, };

@@ -7,6 +7,7 @@ use super::{
     access,
     files::{self, make, put},
     google::FOLDER,
+    grant::{self, Grant},
     storage::DocumentsStore,
     tree::{Mime, Row},
 };
@@ -58,7 +59,9 @@ impl Files for DocumentsFiles {
         id: Option<&'a str>,
     ) -> Answer<'a, Browsed> {
         Box::pin(async move {
-            let (connection, tree) = access::tree(state, dsp).await?;
+            let owner = grant::capture(state, dsp, None).await?;
+            let tree = access::tree_for(state, &owner).await?;
+            let connection = owner.connection.clone();
             let at = id.unwrap_or(tree.root());
             ensure(tree.is_folder(at), FOLDER_NOT_FOUND, 404)?;
             let folder = |row: &Row| Folder {
@@ -69,7 +72,7 @@ impl Files for DocumentsFiles {
                 id: tree.root().to_owned(),
                 name: connection.folder_name,
             };
-            Ok(Browsed {
+            let answer = Browsed {
                 path: std::iter::once(top)
                     .chain(tree.path(at).into_iter().map(folder))
                     .collect(),
@@ -79,7 +82,9 @@ impl Files for DocumentsFiles {
                     .filter(|row| row.folder())
                     .map(folder)
                     .collect(),
-            })
+            };
+            access::current(state, &owner).await?;
+            Ok(answer)
         })
     }
     fn folder<'a>(
@@ -89,13 +94,17 @@ impl Files for DocumentsFiles {
         id: &'a str,
     ) -> Answer<'a, Option<Folder>> {
         Box::pin(async move {
-            let (connection, tree) = access::tree(state, dsp).await?;
+            let owner = grant::capture(state, dsp, None).await?;
+            let tree = access::tree_for(state, &owner).await?;
+            let connection = owner.connection.clone();
             if id == tree.root() {
+                access::current(state, &owner).await?;
                 return Ok(Some(Folder {
                     id: id.to_owned(),
                     name: connection.folder_name,
                 }));
             }
+            access::current(state, &owner).await?;
             Ok(tree
                 .get(id)
                 .filter(|_| tree.is_folder(id))
@@ -113,15 +122,16 @@ impl Files for DocumentsFiles {
         by: &'a Author,
     ) -> Answer<'a, Folder> {
         Box::pin(async move {
-            let (_, tree) = access::tree(state, dsp).await?;
-            let (_, made) = make(state, dsp, tree.root(), FOLDER, name).await?;
+            let owner = grant::capture(state, dsp, None).await?;
+            let tree = access::tree_for(state, &owner).await?;
+            let (_, made) = make(state, &owner, tree.root(), FOLDER, name).await?;
             let folder = Folder {
                 id: made.id,
                 name: made.name,
             };
             record(
                 state,
-                dsp,
+                &owner,
                 &folder.id,
                 by,
                 "documents.created",
@@ -140,11 +150,20 @@ impl Files for DocumentsFiles {
     ) -> Answer<'a, Saved> {
         Box::pin(async move {
             ensure(file.bytes.length <= self.largest(), "upload_too_large", 413)?;
-            let (_, tree) = access::tree(state, dsp).await?;
+            let owner = grant::capture(state, dsp, None).await?;
+            let tree = access::tree_for(state, &owner).await?;
             ensure(tree.is_folder(folder), FOLDER_NOT_FOUND, 404)?;
-            let (_, made) = put(state, dsp, folder, &file.name, &file.mime, file.bytes).await?;
+            let (_, made) = put(state, &owner, folder, &file.name, &file.mime, file.bytes).await?;
             let detail = format!("{} from {}", made.name, file.from);
-            record(state, dsp, &made.id, &file.by, "documents.saved", &detail).await?;
+            record(
+                state,
+                &owner,
+                &made.id,
+                &file.by,
+                "documents.saved",
+                &detail,
+            )
+            .await?;
             Ok(Saved {
                 id: made.id,
                 name: made.name,
@@ -161,11 +180,20 @@ impl Files for DocumentsFiles {
     ) -> Answer<'a, Saved> {
         Box::pin(async move {
             ensure(page.html.len() <= PAGE_LIMIT, "upload_too_large", 413)?;
-            let (_, tree) = access::tree(state, dsp).await?;
+            let owner = grant::capture(state, dsp, None).await?;
+            let tree = access::tree_for(state, &owner).await?;
             ensure(tree.is_folder(folder), FOLDER_NOT_FOUND, 404)?;
-            let made = files::write(state, dsp, folder, &page.name, &page.html).await?;
+            let made = files::write(state, &owner, folder, &page.name, &page.html).await?;
             let detail = format!("{} from {}", made.name, page.from);
-            record(state, dsp, &made.id, &page.by, "documents.saved", &detail).await?;
+            record(
+                state,
+                &owner,
+                &made.id,
+                &page.by,
+                "documents.saved",
+                &detail,
+            )
+            .await?;
             Ok(Saved {
                 id: made.id,
                 name: made.name,
@@ -182,19 +210,22 @@ impl Files for DocumentsFiles {
     ) -> Answer<'a, Option<Saved>> {
         Box::pin(async move {
             ensure(page.html.len() <= PAGE_LIMIT, "upload_too_large", 413)?;
-            let (_, tree) = access::tree(state, dsp).await?;
+            let owner = grant::capture(state, dsp, None).await?;
+            let tree = access::tree_for(state, &owner).await?;
             if !tree.get(id).is_some_and(|row| row.mime == Mime::Doc) {
                 return Ok(None);
             }
-            let written = match files::rewrite(state, dsp, id, &page.name, &page.html).await {
+            let written = match files::rewrite(state, &owner, id, &page.name, &page.html).await {
                 Err(error) if error.code == "documents_item_not_found" => return Ok(None),
                 written => written?,
             };
             // Changed as a member changes a file in Drive: shown as theirs, not logged.
             let (at, by) = (dsp.to_owned(), page.by);
             let changed = written.id.clone();
-            state
-                .run(move |db| db.record_documents_change_by(&at, &changed, &by))
+            owner
+                .run(state, move |db, _| {
+                    db.record_documents_change_by(&at, &changed, &by)
+                })
                 .await?;
             Ok(Some(Saved {
                 id: written.id,
@@ -209,15 +240,20 @@ impl Files for DocumentsFiles {
 /// with no member as its actor for someone known only by name.
 async fn record(
     state: &Arc<State>,
-    dsp: &str,
+    owner: &Grant,
     id: &str,
     by: &Author,
     action: &'static str,
     detail: &str,
 ) -> Result<()> {
-    let (at, id, by, detail) = (dsp.to_owned(), id.to_owned(), by.clone(), detail.to_owned());
-    state
-        .run(move |db| {
+    let (at, id, by, detail) = (
+        owner.key.dsp.clone(),
+        id.to_owned(),
+        by.clone(),
+        detail.to_owned(),
+    );
+    owner
+        .run(state, move |db, _| {
             db.record_documents_change_by(&at, &id, &by)?;
             let actor = match &by {
                 Author::Member(user) => Some(user.as_str()),

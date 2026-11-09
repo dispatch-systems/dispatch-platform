@@ -8,4 +8,8 @@ import type { DocumentsResetReason } from "./DocumentsResetReason";
 /**
  * Exact page readings; null manifest reuses only the supplied matching manifest revision.
  */
-export type DocumentsQueryRead = { "kind": "full", manifest: DocumentsManifest | null, contentRevision: string, snapshot: string, manifestRevision: string, page: number, pageSize: number, total: number, unfilteredTotal: number, counts: DocumentsCounts, folder: DocumentsQueryFolder, items: Array<DocumentsItem>, } | { "kind": "unchanged", snapshot: string, manifestRevision: string, contentRevision: string, } | { "kind": "reset", reason: DocumentsResetReason, };
+export type DocumentsQueryRead = { "kind": "full", manifest: DocumentsManifest | null, contentRevision: string,
+/**
+ * Opaque replacement identity; never authority or OAuth material.
+ */
+grantGeneration: string, snapshot: string, manifestRevision: string, page: number, pageSize: number, total: number, unfilteredTotal: number, counts: DocumentsCounts, folder: DocumentsQueryFolder, items: Array<DocumentsItem>, } | { "kind": "unchanged", snapshot: string, manifestRevision: string, contentRevision: string, } | { "kind": "reset", reason: DocumentsResetReason, };

@@ -29,6 +29,7 @@ fn response() -> DocumentsFolder {
         unavailable: false,
     };
     DocumentsFolder {
+        grant_generation: "a".repeat(64),
         id: Some("safety".into()),
         name: "Safety".into(),
         url: "https://example.test/safety".into(),
@@ -57,6 +58,7 @@ fn every_visible_response_field_and_its_scope_participate_in_the_revision() {
     );
     type FolderChange = (&'static str, fn(&mut DocumentsFolder));
     let changes: &[FolderChange] = &[
+        ("grant generation", |f| f.grant_generation = "b".repeat(64)),
         ("folder id", |f| f.id = None),
         ("folder name", |f| f.name.push('!')),
         ("folder url", |f| f.url.push('!')),
@@ -139,7 +141,11 @@ async fn unchanged_still_projects_current_member_names_counts_shortcut_targets_a
             "2026-11-01",
         )
     };
-    let mirror = mirror::of(&dsp);
+    let key = crate::backend::grant::capture(&state, &dsp, None)
+        .await
+        .unwrap()
+        .key;
+    let mirror = mirror::of(&key);
     mirror.replace(
         root,
         vec![safety.clone(), target.clone(), shortcut],
@@ -396,8 +402,8 @@ async fn full_and_unchanged_refuse_permission_loss_disconnect_or_broken_connecti
                     .await
                     .unwrap();
                 // Force an awaited cold refresh through the existing fixture-provider boundary.
-                mirror::forget(&dsp);
-                cache::forget(&dsp);
+                mirror::forget(&state.config.environment_root(), &dsp);
+                cache::forget(&state.config.environment_root(), &dsp);
                 let entered = Arc::new(AtomicBool::new(false));
                 let observed = Arc::clone(&entered);
                 let (config, key, at, role) = (

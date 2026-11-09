@@ -3,4 +3,8 @@ import type { DocumentsCounts } from "./DocumentsCounts";
 import type { DocumentsItem } from "./DocumentsItem";
 import type { DocumentsQueryFolder } from "./DocumentsQueryFolder";
 
-export type DocumentsQueryPage = { snapshot: string, manifestRevision: string, page: number, pageSize: number, total: number, unfilteredTotal: number, counts: DocumentsCounts, folder: DocumentsQueryFolder, items: Array<DocumentsItem>, };
+export type DocumentsQueryPage = {
+/**
+ * Opaque replacement identity; never authority or OAuth material.
+ */
+grantGeneration: string, snapshot: string, manifestRevision: string, page: number, pageSize: number, total: number, unfilteredTotal: number, counts: DocumentsCounts, folder: DocumentsQueryFolder, items: Array<DocumentsItem>, };

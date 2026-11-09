@@ -249,7 +249,7 @@ pub async fn forget(state: &Arc<State>, dsp: &str) {
         .iter()
         .filter_map(|f| f.deleting.forgotten)
     {
-        forgotten(dsp);
+        forgotten(state, dsp);
     }
 }
 

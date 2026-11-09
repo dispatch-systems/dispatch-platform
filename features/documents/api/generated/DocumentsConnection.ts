@@ -5,7 +5,11 @@ import type { ConnectionStatus } from "./ConnectionStatus";
 /**
  * The Google account that holds the DSP's Documents, and its main folder there.
  */
-export type DocumentsConnection = { status: ConnectionStatus, accountEmail: string, accountKind: AccountKind, folderName: string, folderUrl: string,
+export type DocumentsConnection = {
+/**
+ * Opaque replacement identity; never authority or OAuth material.
+ */
+grantGeneration: string, status: ConnectionStatus, accountEmail: string, accountKind: AccountKind, folderName: string, folderUrl: string,
 /**
  * Who connected it, while their account exists.
  */

@@ -19,7 +19,7 @@ pub struct Deleting {
     /// tables, in the transaction that deletes the DSP's rows there.
     pub forget: Option<fn(&Store, &str) -> Result<()>>,
     /// Lets go of what it holds of the DSP in memory, once the DSP is deleted.
-    pub forgotten: Option<fn(&str)>,
+    pub forgotten: Option<fn(&State, &str)>,
 }
 impl Deleting {
     /// A feature keeping nothing of a DSP outside its folder.

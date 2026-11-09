@@ -74,14 +74,16 @@ async fn overview(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply>
         .me
         .as_ref()
         .is_some_and(|me| me.state == SharingState::Pending);
-    if pending && answer.connection.is_some() {
-        team::nudge(&state, &dsp);
+    if pending && let Some(connection) = &answer.connection {
+        team::nudge(&state, &dsp, connection.grant_generation.clone());
     }
     Reply::of(&answer)
 }
 async fn account(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let c = state.read(move |db| access.authorize(db, &input)).await?;
-    Reply::of(&connection::account(&state, &c.dsp.id).await?)
+    let answer = connection::account(&state, &c.dsp.id).await?;
+    state.read(move |db| access.revalidate(db, &c)).await?;
+    Reply::of(&answer)
 }
 fn connect(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &[])?;
@@ -89,7 +91,7 @@ fn connect(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 }
 async fn finish(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
-    let c = state.run(move |db| access.authorize(db, &asked)).await?;
+    let c = state.read(move |db| access.authorize(db, &asked)).await?;
     v::fields(&input.body, &["state", "code"])?;
     let sign_in = v::text(&input.body, "state", 40, 200)?.to_owned();
     let code = v::text(&input.body, "code", 1, 2048)?.to_owned();
@@ -97,7 +99,7 @@ async fn finish(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
 }
 async fn disconnect(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
-    let c = state.run(move |db| access.authorize(db, &asked)).await?;
+    let c = state.read(move |db| access.authorize(db, &asked)).await?;
     v::fields(&input.body, &[])?;
     Reply::of(&connection::disconnect(&state, c, access).await?)
 }
@@ -162,10 +164,16 @@ async fn folder_read(state: Arc<State>, input: Input, access: Dsp) -> Result<Rep
     })?;
     Reply::of(&files::folder_read(&state, c, access, id, query, since).await?)
 }
+/// An optional equality precondition, not permission. Explicit null/empty/malformed values
+/// fail validation; omission preserves the legacy body and captures current ownership once.
+fn expected_generation(value: &serde_json::Value) -> Result<Option<String>> {
+    optional(value, "grantGeneration", revision)
+}
 async fn create(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
-    let c = state.run(move |db| access.authorize(db, &asked)).await?;
-    v::fields(&input.body, &["folder", "kind", "name"])?;
+    let c = state.read(move |db| access.authorize(db, &asked)).await?;
+    v::fields(&input.body, &["folder", "kind", "name", "grantGeneration"])?;
+    let expected = expected_generation(&input.body)?;
     let folder = into_folder(&input.body)?;
     let kind = NewKind::parse(v::choice(
         &input.body,
@@ -174,7 +182,7 @@ async fn create(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     )?)
     .ok_or_else(|| dispatch_core::Error::new("invalid_input", 400))?;
     let name = file_name(&input.body)?;
-    Reply::of(&files::create(&state, c, access, folder, kind, name).await?)
+    Reply::of(&files::create(&state, c, access, folder, kind, name, expected).await?)
 }
 /// A file's type as the browser named it, or bytes of no type it knows. Never one of
 /// Google's own, which Google would try to make of the bytes.
@@ -205,21 +213,37 @@ async fn upload_file(
     upload: Upload,
 ) -> Result<Reply> {
     let asked = input.clone();
-    let c = state.run(move |db| access.authorize(db, &asked)).await?;
-    v::fields(&input.query, &["folder", "name", "type"])?;
+    let c = state.read(move |db| access.authorize(db, &asked)).await?;
+    v::fields(&input.query, &["folder", "name", "type", "grantGeneration"])?;
+    let expected = expected_generation(&input.query)?;
     let folder = optional(&input.query, "folder", |q, key| {
         file_id(v::text(q, key, 1, 128)?)
     })?;
     let name = file_name(&input.query)?;
     let kind = file_type(&input.query)?;
-    Reply::of(&files::upload(&state, c, access, folder, name, kind, upload).await?)
+    Reply::of(
+        &files::upload(
+            &state,
+            c,
+            access,
+            folder,
+            files::FileUpload {
+                name,
+                mime: kind,
+                body: upload,
+            },
+            expected,
+        )
+        .await?,
+    )
 }
 /// The most files one pick adds.
 const PICKED: usize = 50;
 async fn add_files(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
-    let c = state.run(move |db| access.authorize(db, &asked)).await?;
-    v::fields(&input.body, &["files", "folder"])?;
+    let c = state.read(move |db| access.authorize(db, &asked)).await?;
+    v::fields(&input.body, &["files", "folder", "grantGeneration"])?;
+    let expected = expected_generation(&input.body)?;
     let folder = into_folder(&input.body)?;
     let files = input.body["files"]
         .as_array()
@@ -228,7 +252,7 @@ async fn add_files(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply
         .iter()
         .map(|file| file_id(file.as_str().unwrap_or("")))
         .collect::<Result<Vec<_>>>()?;
-    Reply::of(&files::add(&state, c, access, files, folder).await?)
+    Reply::of(&files::add(&state, c, access, files, folder, expected).await?)
 }
 async fn download(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
@@ -262,23 +286,26 @@ async fn thumbnail(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply
 }
 async fn rename(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
-    let c = state.run(move |db| access.authorize(db, &asked)).await?;
-    v::fields(&input.body, &["name"])?;
+    let c = state.read(move |db| access.authorize(db, &asked)).await?;
+    v::fields(&input.body, &["name", "grantGeneration"])?;
+    let expected = expected_generation(&input.body)?;
     let (id, name) = (file_id(input.param("id"))?, file_name(&input.body)?);
-    Reply::of(&files::rename(&state, c, access, id, name).await?)
+    Reply::of(&files::rename(&state, c, access, id, name, expected).await?)
 }
 async fn move_item(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
-    let c = state.run(move |db| access.authorize(db, &asked)).await?;
-    v::fields(&input.body, &["folder"])?;
+    let c = state.read(move |db| access.authorize(db, &asked)).await?;
+    v::fields(&input.body, &["folder", "grantGeneration"])?;
+    let expected = expected_generation(&input.body)?;
     let (id, folder) = (file_id(input.param("id"))?, into_folder(&input.body)?);
-    Reply::of(&files::move_to(&state, c, access, id, folder).await?)
+    Reply::of(&files::move_to(&state, c, access, id, folder, expected).await?)
 }
 async fn trash(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
-    let c = state.run(move |db| access.authorize(db, &asked)).await?;
-    v::fields(&input.body, &[])?;
-    files::trash(&state, c, access, file_id(input.param("id"))?).await?;
+    let c = state.read(move |db| access.authorize(db, &asked)).await?;
+    v::fields(&input.body, &["grantGeneration"])?;
+    let expected = expected_generation(&input.body)?;
+    files::trash(&state, c, access, file_id(input.param("id"))?, expected).await?;
     Ok(Reply::ok())
 }
 
@@ -293,7 +320,7 @@ fn link(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 }
 async fn finish_link(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
-    let c = state.run(move |db| access.authorize(db, &asked)).await?;
+    let c = state.read(move |db| access.authorize(db, &asked)).await?;
     v::fields(&input.body, &["state", "code"])?;
     let sign_in = v::text(&input.body, "state", 40, 200)?.to_owned();
     let code = v::text(&input.body, "code", 1, 2048)?.to_owned();

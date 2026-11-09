@@ -38,6 +38,7 @@ pub async fn connect_as(state: &Arc<State>, dsp: &str, account: &str) {
         .await
         .unwrap();
     let connection = Connection {
+        generation: String::new(),
         broken: false,
         full: true,
         account: granted.account,
@@ -48,7 +49,10 @@ pub async fn connect_as(state: &Arc<State>, dsp: &str, account: &str) {
     };
     let (at, refresh) = (dsp.to_owned(), granted.refresh);
     state
-        .run(move |db| db.save_documents_connection(&at, &connection, &refresh))
+        .run(move |db| {
+            db.save_documents_connection(&at, &connection, &refresh)
+                .map(drop)
+        })
         .await
         .unwrap();
 }

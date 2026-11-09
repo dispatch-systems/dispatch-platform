@@ -8,6 +8,10 @@ import type { FolderStep } from "./FolderStep";
  */
 export type DocumentsFolder = {
 /**
+ * Opaque replacement identity; never authority or OAuth material.
+ */
+grantGeneration: string,
+/**
  * The folder; none for the main folder.
  */
 id: string | null, name: string,

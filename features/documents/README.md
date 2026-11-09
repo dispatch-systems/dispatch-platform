@@ -198,7 +198,21 @@ and weeks, so it's best submitted well before the limit.
   `documents_people` (who the folder is shared with, and at what address) and
   `documents_shared_files` (the shares Dispatch made of files someone else owns), in each
   DSP's own database; the account's refresh token, encrypted in the DSP's secrets as
-  `google.enc`.
+  `google.enc`. Migration 4 gives every replacement connection an opaque `grant_generation`.
+  It survives reopening storage; a successful older writer's replacement also changes it.
+  The current writer marks the replacement broken before changing its encrypted token,
+  then connects it after that write succeeds. An interrupted older binary's secret-first
+  replacement is outside that ordering guarantee.
+- **Captured connection ownership:** access tokens, mirrors and shown-thumbnail provenance
+  are keyed by environment storage, DSP and connection generation. Async work retains the
+  connection it began with and checks current member access, lifecycle and generation before
+  admitting another provider operation or publishing a result. An already admitted Google
+  operation may finish; its obsolete result cannot repopulate the replacement's caches.
+  Reconnect and deletion forget only the matching environment and DSP. Mutation clients can
+  send the captured `grantGeneration` as an equality precondition; omitted preconditions
+  preserve legacy requests, which capture the current connection once. Query/page/folder
+  replies and picker setup expose that identity without OAuth material. Prepared browser
+  actions must retain their original identity rather than taking the latest one at submission.
 - **Upkeep:** every minute, the folder is shared anew for each connected DSP whose team
   changed, read from Dispatch alone. Hourly, a connection Google stopped accepting is marked
   broken, and each connected DSP's sharing is checked against Google's own list.
@@ -232,4 +246,6 @@ and weeks, so it's best submitted well before the limit.
   chunk description URLs to at most 4 KiB (or a smaller host HTTP limit), discard partial
   results on reset, and fall back once to the complete reader after repeated cache resets.
   This protocol is unused by the current browser. It retains O(N) compact metadata on
-  opening, adds no persisted state, and grants no durable reconnect-generation guarantee.
+  opening; the query index remains ephemeral. Its scope includes the persisted connection
+  generation as well as the process, mirror incarnation and semantic revision. This does not
+  make the mirror or its continuation state persistent across restart or restore.
