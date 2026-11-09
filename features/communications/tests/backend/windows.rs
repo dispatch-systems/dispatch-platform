@@ -1837,6 +1837,22 @@ async fn origin_restarts_drain_obsolete_generations_without_deleting_source_hist
         connection.exec(&format!("UPDATE {source} SET direction=CASE WHEN {ordinal}%2=0 THEN 'in' ELSE 'out' END \
             WHERE conversation_id=?"),[reference.id()]).unwrap();
         build_origins(&db, &dsp, reference, 701);
+        assert_eq!(
+            connection
+                .count(
+                    &format!(
+                        "SELECT count(*) FROM {boundaries} b JOIN communications_origin_state s \
+             ON s.conversation_id=b.conversation_id AND s.active_generation=b.generation \
+             WHERE s.transport=? AND b.conversation_id=?"
+                    ),
+                    params![transport.name(), reference.id()]
+                )
+                .unwrap(),
+            701
+        );
+        // The earlier transport's real upkeep can have published the other transport's
+        // one-boundary generation. Finish one bounded ready visit before the restart baseline.
+        assert!(backfill::chunk(&connection, transport, reference.id(), zone).unwrap());
         let source_rows = connection
             .all(
                 &format!("SELECT id,at,{body} FROM {source} WHERE conversation_id=? ORDER BY id"),
