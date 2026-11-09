@@ -294,10 +294,20 @@ pub(crate) fn assembled(
     read: Vec<StoredMessage>,
     more: bool,
 ) -> Result<ConversationMessages> {
+    let people = People::read(db, state, dsp)?;
+    assembled_with(db, &people, dsp, id, read, more)
+}
+pub(crate) fn assembled_with(
+    db: &Store,
+    people: &People,
+    dsp: &str,
+    id: &str,
+    read: Vec<StoredMessage>,
+    more: bool,
+) -> Result<ConversationMessages> {
     let kept = db
         .communications_conversation(dsp, id)?
         .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
-    let people = People::read(db, state, dsp)?;
     // With someone Driver Match knows, the route they drive today, for its van, whether they're
     // working, and their conversations of each kind.
     let ((today, working), elsewhere) = match people.member_of(&kept.team, &kept.user) {
@@ -308,8 +318,8 @@ pub(crate) fn assembled(
         None => ((None, false), Vec::new()),
     };
     Ok(ConversationMessages {
-        conversation: conversations(db, &people, dsp, vec![kept])?.remove(0),
-        messages: messages(db, &people, dsp, read)?,
+        conversation: conversations(db, people, dsp, vec![kept])?.remove(0),
+        messages: messages(db, people, dsp, read)?,
         more,
         today,
         working,

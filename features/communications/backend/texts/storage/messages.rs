@@ -5,6 +5,7 @@
 //! written in, the name its sender was shown by as it was filed, whether its number was blocked as
 //! it came, and the Done that covered it; the rest of the row, and the text's files, are the phone
 //! side's (`phone::storage`).
+use crate::backend::origins::{self, Transport};
 use crate::backend::{
     changes::changed_conversation,
     model::{ConversationState, TEXT_PREFIX},
@@ -428,11 +429,13 @@ impl TextStore for Store {
                 }
                 Filed::Driver { .. } | Filed::WorkPhone(_) => false,
             };
-            let placed = db.exec(
-                "UPDATE phones_texts SET conversation_id=?,sender_name=?,blocked=? \
+            let placed = origins::change(&db, Transport::Text, id, Some(&conversation), || {
+                db.exec(
+                    "UPDATE phones_texts SET conversation_id=?,sender_name=?,blocked=? \
                  WHERE id=? AND conversation_id IS NULL",
-                params![conversation, sender_name, blocked, id],
-            )?;
+                    params![conversation, sender_name, blocked, id],
+                )
+            })?;
             ensure(placed == 1, "communications_message_not_found", 404)?;
             Ok(conversation)
         })
@@ -467,10 +470,12 @@ impl TextStore for Store {
                 if was == to {
                     continue;
                 }
-                db.exec(
-                    "UPDATE phones_texts SET conversation_id=? WHERE id=?",
-                    params![to, text],
-                )?;
+                origins::change(&db, Transport::Text, text, Some(&to), || {
+                    db.exec(
+                        "UPDATE phones_texts SET conversation_id=? WHERE id=?",
+                        params![to, text],
+                    )
+                })?;
                 touched.insert(was);
                 touched.insert(to);
             }

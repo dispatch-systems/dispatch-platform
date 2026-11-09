@@ -318,7 +318,6 @@ impl State {
         // allocating another database pool or failing otherwise healthy requests.
         let started = std::time::Instant::now();
         let trace = observability::REQUEST_TRACE.try_with(Clone::clone).ok();
-        let busy = || Error::new("platform_busy", 503);
         let unavailable = |_| Error::new("platform_unavailable", 503);
         // Work outside a request has no one to try it again, so it waits as a job's does, and
         // takes one of the background turns first, so it never holds every slot.
@@ -333,20 +332,23 @@ impl State {
                 Ok((turn, queued, self.db_slots.clone().acquire_owned().await?))
             })
             .await
-            .map_err(|_| busy())?
+            .map_err(|_| Error::busy("db_patient_timeout"))?
             .map_err(unavailable)?
         } else {
-            let queued = self
-                .db_queue
-                .clone()
-                .try_acquire_owned()
-                .map_err(|_| busy())?;
+            let queued =
+                self.db_queue
+                    .clone()
+                    .try_acquire_owned()
+                    .map_err(|error| match error {
+                        tokio::sync::TryAcquireError::NoPermits => Error::busy("db_queue_full"),
+                        tokio::sync::TryAcquireError::Closed => Error::busy("db_queue_closed"),
+                    })?;
             let permit = tokio::time::timeout(
                 std::time::Duration::from_secs(2),
                 self.db_slots.clone().acquire_owned(),
             )
             .await
-            .map_err(|_| busy())?
+            .map_err(|_| Error::busy("db_slots_timeout"))?
             .map_err(unavailable)?;
             (None, queued, permit)
         };

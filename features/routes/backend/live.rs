@@ -32,6 +32,7 @@ use dispatch_cortex::{
 };
 use dispatch_routes_contract::RouteDataChanged;
 use rusqlite::params;
+use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Arc,
@@ -340,6 +341,18 @@ fn people_impact(store: &Store, dsp: &str, read: &Shaped) -> Result<PeopleImpact
     })
 }
 
+/// The live store's one current publication. Inactive rows never identify its read; more than
+/// one active scope is ambiguous even though the database's uniqueness rule is per scope.
+fn held_publication(db: &Db) -> Result<Option<Value>> {
+    let rows = db.all(
+        "SELECT id,job_id,day,mode,station,service_area_id,provider,timezone,started_at,\
+         collected_at,adapter_version FROM route_publications WHERE active=1 LIMIT 2",
+        [],
+    )?;
+    ensure(rows.len() <= 1, "routes_capture_invalid", 502)?;
+    Ok(rows.into_iter().next())
+}
+
 /// Keeps a shaped read in the DSP's live route data in place, in one transaction, answering what
 /// it did: each of its itineraries that shows no work phone keeps the one the day's last read
 /// stored for it (`Stored`). Refuses a read of a day that isn't today as it's written, however long
@@ -351,11 +364,7 @@ fn keep(store: &Store, dsp: &str, read: &mut Shaped) -> Result<Kept> {
     let db = &*store.routes_live_db(dsp)?;
     let listed: Vec<String> = read.itineraries.iter().map(|i| i.id.clone()).collect();
     db.transaction(|| {
-        let held = db.one(
-            "SELECT id,day,station,service_area_id,provider,collected_at,adapter_version,\
-             (SELECT count(*) FROM itineraries) itineraries FROM route_publications",
-            [],
-        )?;
+        let held = held_publication(db)?;
         let same = held.as_ref().filter(|row| {
             (s(row, "day"), s(row, "station"), s(row, "service_area_id"), s(row, "provider"))
                 == (
@@ -379,7 +388,11 @@ fn keep(store: &Store, dsp: &str, read: &mut Shaped) -> Result<Kept> {
                     });
                 }
                 ensure(
-                    !listed.is_empty() || row["itineraries"] == 0,
+                    !listed.is_empty()
+                        || db.count(
+                            "SELECT count(*) FROM itineraries WHERE publication_id=?",
+                            [s(row, "id")],
+                        )? == 0,
                     "routes_capture_invalid",
                     502,
                 )?;
@@ -389,7 +402,11 @@ fn keep(store: &Store, dsp: &str, read: &mut Shaped) -> Result<Kept> {
                 (s(row, "id").to_owned(), unextracted)
             }
             None => {
-                if held.is_some() {
+                // Starting afresh still clears the old live store when only inactive rows
+                // remain; their shared names must not carry into a new live day.
+                if held.is_some()
+                    || db.one("SELECT 1 FROM route_publications LIMIT 1", [])?.is_some()
+                {
                     empty(db)?;
                 }
                 let publication = crypto::id("routes")?;
@@ -520,7 +537,7 @@ pub async fn clear_live(state: &Arc<State>, dsp: &str) -> Result<()> {
         ensure(db.feature_enabled(&d, COLLECTION)?, "routes_off", 409)?;
         let live = db.routes_live_db(&d)?;
         let held = live.transaction(|| {
-            let held = live.one("SELECT day FROM route_publications", [])?;
+            let held = held_publication(&live)?;
             empty(&live)?;
             Ok(held.map(|row| s(&row, "day").to_owned()))
         })?;
@@ -550,12 +567,7 @@ pub async fn save_live_day(state: &Arc<State>, dsp: &str) -> Result<Option<bool>
         .read(move |db| {
             ensure(db.feature_enabled(&d, COLLECTION)?, "routes_off", 409)?;
             let live = db.routes_live_db(&d)?;
-            let Some(row) = live.one(
-                "SELECT id,job_id,day,mode,station,service_area_id,provider,timezone,started_at,\
-                 collected_at FROM route_publications",
-                [],
-            )?
-            else {
+            let Some(row) = held_publication(&live)? else {
                 return Ok(None);
             };
             let mut capture = stored_capture(&live, &row)?;

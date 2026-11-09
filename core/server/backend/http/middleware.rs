@@ -22,15 +22,27 @@ const BODY_TIMEOUT: Duration = Duration::from_secs(15);
 
 // The error code of a failed request, carried to the request log.
 #[derive(Clone)]
-struct Failure(String);
+struct Failure {
+    code: String,
+    admission_origin: Option<&'static str>,
+}
 
 pub fn failure(error: Error) -> Response {
     let code = error.code.clone();
-    noted(error.into_response(), &code)
+    let admission_origin = error.admission_origin();
+    let mut response = error.into_response();
+    response.extensions_mut().insert(Failure {
+        code,
+        admission_origin,
+    });
+    response
 }
 /// A response a handler made itself, with the error code the request log should carry.
 pub fn noted(mut response: Response, code: &str) -> Response {
-    response.extensions_mut().insert(Failure(code.to_owned()));
+    response.extensions_mut().insert(Failure {
+        code: code.to_owned(),
+        admission_origin: None,
+    });
     response
 }
 
@@ -88,12 +100,11 @@ pub async fn pipeline(
         400.. => "warn",
         _ => "info",
     };
-    let error = response.extensions().get::<Failure>().map(|f| f.0.clone());
+    let failure = response.extensions().get::<Failure>();
+    let error = failure.map(|f| f.code.clone());
+    let admission_origin = failure.and_then(|f| f.admission_origin);
     let context = trace.lock().unwrap_or_else(|poison| poison.into_inner());
-    observability::event(
-        level,
-        "http.request",
-        json!({
+    let mut fields = json!({
             "requestId":request_id,
             "method":method.as_str(),
             "route":context.route.unwrap_or(route),
@@ -105,8 +116,11 @@ pub async fn pipeline(
             "status":status,
             "elapsedMs":started.elapsed().as_millis(),
             "error":error
-        }),
-    );
+    });
+    if let Some(origin) = admission_origin {
+        fields["admissionOrigin"] = json!(origin);
+    }
+    observability::event(level, "http.request", fields);
     let headers = response.headers_mut();
     headers.insert("x-request-id", request_id.parse().unwrap());
     if state.config.origin.starts_with("https://") {
@@ -171,7 +185,7 @@ fn agent_challenge(state: &State, response: &mut Response) {
     let code = response
         .extensions()
         .get::<Failure>()
-        .map(|failure| failure.0.clone());
+        .map(|failure| failure.code.clone());
     let headers = response.headers_mut();
     match status {
         401 => {
@@ -336,3 +350,7 @@ pub async fn bytes(body: Body) -> Result<Bytes> {
         .map_err(|_| Error::new("request_timeout", 408))?
         .map_err(|_| Error::new("request_too_large", 413))
 }
+
+#[cfg(test)]
+#[path = "../../tests/backend/http/middleware.rs"]
+mod tests;

@@ -46,7 +46,10 @@ it is live route data, in a database of its own, `routelive`.
   `live:<day>:<collected ms>`, so saving it again saves nothing twice: a final read if it was read
   once its day had ended where the DSP is, a snapshot otherwise, so a day's later final read
   replaces it. It answers none when live route data holds no day, and leaves live route data as it
-  was. `save_and_clear_live` saves the day so, then empties live route data, as a stopped day does:
+  was. Keep, save and clear identify that read by its active publication, ignoring inactive rows;
+  two active live publications are refused as ambiguous (`routes_capture_invalid`). The drivers
+  named earlier in the live day remain named until the existing day/scope reset or explicit clear.
+  `save_and_clear_live` saves the day so, then empties live route data, as a stopped day does:
   once it's saved, or once it holds no day, as after an earlier call emptied it but couldn't give
   its space back. All four refuse while Routes is off.
 - **People cache:** a forward live poll in the same current publication preserves the DSP's
