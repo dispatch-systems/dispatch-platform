@@ -14,7 +14,8 @@ pub(crate) const LIMIT: u64 = 8 * 1024 * 1024;
 
 /// Keeps `bytes` as the photo of the writeup `id`'s signed paper, in place of one kept before,
 /// while the writeup is unsigned and still as read at `revision`: the paper photographed is the
-/// notice as it reads, which signing it next at the same revision holds. A signed writeup's
+/// notice as it reads. Keeping one moves the writeup to its next revision, which signing it
+/// names, so a sign that read it before another photo was kept is refused. A signed writeup's
 /// photo stays, and a change to the writeup drops it.
 pub(crate) fn keep(
     store: &Store,
@@ -32,6 +33,10 @@ pub(crate) fn keep(
              VALUES (?,?,?,?,?) ON CONFLICT(writeup_id) DO UPDATE SET media_type=excluded.media_type,\
              bytes=excluded.bytes,added_by_name=excluded.added_by_name,added_at=excluded.added_at",
             params![id, media_type, bytes, c.auth.user.name(), iso()],
+        )?;
+        db.exec(
+            "UPDATE conduct_writeups SET revision=revision+1,updated_at=? WHERE id=?",
+            params![iso(), id],
         )?;
         Ok(())
     })

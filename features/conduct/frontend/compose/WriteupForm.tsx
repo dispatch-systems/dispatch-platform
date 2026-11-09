@@ -2,12 +2,12 @@ import { useState } from 'react';
 import { ChevronLeft, Printer } from 'lucide-react';
 import { DateField, ErrorBox } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
-import { useUnsavedEdits } from '../../../../core/shell/frontend/runtime/useUnsavedEdits.js';
 import type { ConductOverview, ConductSaved, ConductWriteup } from '../../api/index.js';
 import { addWriteup, changeWriteup } from '../../api/client.js';
 import { Notice } from '../notice/Notice.js';
 import { usePrintNotice } from '../notice/usePrintNotice.js';
 import { record } from '../tiers.js';
+import { SaveChanges } from '../SaveChanges.js';
 import { TierPicker } from './TierPicker.js';
 import { type Draft, filled, filledOf, inputOf, missing, refill } from './draft.js';
 
@@ -70,16 +70,10 @@ export function WriteupForm({
     },
     { inline: true },
   );
-  const { leave, asking } = useUnsavedEdits({
-    what: 'This writeup',
-    dirty: JSON.stringify(draft) !== JSON.stringify(start.draft),
-    saveable: !missing(draft) && !save.busy,
-    // Saving opens the writeup saved, so leaving goes no further.
-    save: async () => {
-      await save.run(false);
-      return false;
-    },
-  });
+  const [confirming, setConfirming] = useState(false);
+  // Changes leave only through Save or Discard.
+  const leave = () =>
+    JSON.stringify(draft) !== JSON.stringify(start.draft) ? setConfirming(true) : cancel();
 
   const { stood, earlier } = record(overview, draft.person, draft.category, editing?.id);
   const category = overview.categories.find((c) => c.id === draft.category);
@@ -99,14 +93,14 @@ export function WriteupForm({
   };
   return (
     <>
-      <button type="button" className="conduct-back" onClick={() => leave(cancel)}>
+      <button type="button" className="conduct-back" onClick={leave}>
         <ChevronLeft size={15} />
         Conduct
       </button>
       <div className="page-heading">
         <h1>{editing ? 'Edit writeup' : 'New writeup'}</h1>
         <div className="heading-actions">
-          <button type="button" onClick={() => leave(cancel)}>
+          <button type="button" onClick={leave}>
             Cancel
           </button>
           <button type="button" disabled={save.busy} onClick={() => void save.run(false)}>
@@ -212,7 +206,18 @@ export function WriteupForm({
         </div>
       </div>
       {sheet}
-      {asking}
+      {confirming && (
+        <SaveChanges
+          what="This writeup"
+          saveable={!missing(draft)}
+          busy={save.busy}
+          // Saved, it opens the writeup.
+          save={async () => {
+            if (!(await save.run(false))) setConfirming(false);
+          }}
+          discard={cancel}
+        />
+      )}
     </>
   );
 }

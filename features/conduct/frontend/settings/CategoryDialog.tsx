@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { ErrorBox, Modal } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
-import { useUnsavedEdits } from '../../../../core/shell/frontend/runtime/useUnsavedEdits.js';
 import type { CategoryInput, ConductCategory, ConductOverview } from '../../api/index.js';
 import { addCategory, changeCategory, retireCategory } from '../../api/client.js';
 import { tierShort, tiers } from '../tiers.js';
+import { SaveChanges } from '../SaveChanges.js';
 import { StepDown, stepDownReady, usualStepDown } from './StepDown.js';
 
 const fresh = (): CategoryInput => ({
@@ -62,14 +62,12 @@ export function CategoryDialog({
   const ready =
     [input.name, input.statement, input.prior, input.plan].every((text) => text.trim()) &&
     stepDownReady(input.stepDown);
-  const { leave, asking } = useUnsavedEdits({
-    what: 'This category',
-    dirty: JSON.stringify(input) !== JSON.stringify(start),
-    saveable: ready && !save.busy,
-    save: () => save.run(),
-  });
+  const [confirming, setConfirming] = useState(false);
+  // Changes leave only through Save or Discard.
+  const leave = () =>
+    JSON.stringify(input) !== JSON.stringify(start) ? setConfirming(true) : close();
   return (
-    <Modal title={category ? 'Edit category' : 'Add category'} onClose={() => leave(close)}>
+    <Modal title={category ? 'Edit category' : 'Add category'} onClose={leave}>
       <form
         className="conduct-dialog"
         onSubmit={(event) => {
@@ -135,7 +133,7 @@ export function CategoryDialog({
               Retire
             </button>
           )}
-          <button type="button" onClick={() => leave(close)}>
+          <button type="button" onClick={leave}>
             Cancel
           </button>
           <button type="submit" className="primary" disabled={!ready || save.busy}>
@@ -143,7 +141,17 @@ export function CategoryDialog({
           </button>
         </div>
       </form>
-      {asking}
+      {confirming && (
+        <SaveChanges
+          what="This category"
+          saveable={ready}
+          busy={save.busy}
+          save={async () => {
+            if (!(await save.run())) setConfirming(false);
+          }}
+          discard={close}
+        />
+      )}
     </Modal>
   );
 }

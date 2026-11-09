@@ -20,25 +20,30 @@ export function SignDialog({
   close: () => void;
   signed: (saved: ConductSaved) => void;
 }) {
+  // The notice as the dialog opened on it: a later read of the writeup doesn't move it, so a
+  // photo of its paper is never kept for, nor signed as, a changed one.
+  const [notice] = useState(writeup);
   const [day, setDay] = useState(overview.today);
   const [photo, setPhoto] = useState<File>();
   const sign = useAction(
     async () => {
-      // The photo first, of the notice as read: a signed writeup keeps the photo it has.
-      if (photo) await keepCopy(writeup.id, writeup.revision, await shrunk(photo));
-      signed(await signWriteup(writeup.id, day, writeup.revision));
+      // The photo first, of the notice as read: a signed writeup keeps the photo it has. Kept,
+      // the writeup moves to the revision the sign then names.
+      const kept = photo && (await keepCopy(notice.id, notice.revision, await shrunk(photo)));
+      const revision = kept ? kept.writeup.revision : notice.revision;
+      signed(await signWriteup(notice.id, day, revision));
     },
     { inline: true, success: 'Marked signed' },
   );
-  const note = writeup.tier === 'final' ? finalNote(writeup.finalKind, writeup.suspension) : '';
+  const note = notice.tier === 'final' ? finalNote(notice.finalKind, notice.suspension) : '';
   return (
     <Modal title="Mark signed" onClose={close}>
       <div className="conduct-dialog">
         <div className="conduct-sign-summary">
-          <Person person={personOf(overview, writeup.person)} />
+          <Person person={personOf(overview, notice.person)} />
           <span className="muted">
-            {categoryName(overview, writeup.categoryId)} · {tierShort[writeup.tier]}
-            {note && ` ${note}`} · {printedDay(writeup.writtenOn)}
+            {categoryName(overview, notice.categoryId)} · {tierShort[notice.tier]}
+            {note && ` ${note}`} · {printedDay(notice.writtenOn)}
           </span>
         </div>
         <div className="conduct-field">
@@ -48,7 +53,7 @@ export function SignDialog({
           <DateField
             label="Signed on"
             value={day}
-            min={writeup.writtenOn}
+            min={notice.writtenOn}
             max={overview.today}
             today={overview.today}
             onChange={setDay}
