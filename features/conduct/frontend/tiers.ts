@@ -77,7 +77,7 @@ export function record(
 export function stepDown({ stepsDownOn, stepsDownTo }: ConductStanding) {
   if (!stepsDownOn) return '';
   const on = printedDay(stepsDownOn);
-  return stepsDownTo ? `Steps down to ${tierShort[stepsDownTo]} on ${on}` : `Resets on ${on}`;
+  return stepsDownTo ? `Reduces to ${tierShort[stepsDownTo]} on ${on}` : `Full reset on ${on}`;
 }
 
 /** The line a new writeup's prior discussion ends with, naming the earlier writeups. */

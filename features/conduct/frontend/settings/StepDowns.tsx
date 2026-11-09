@@ -28,7 +28,8 @@ export const usualStepDowns = (): ConductStepDown[] => [...tiers].reverse().map(
 export const stepDownsReady = (steps: readonly ConductStepDown[]) =>
   steps.every((step) => Number.isInteger(step.after) && step.after >= 1 && step.after <= longest);
 
-/** Each tier's step down, highest first: how long until, and to which tier or a clean record. */
+/** Each tier's step down, highest first: how long until, and whether it reduces to a lower
+ * tier or fully resets. */
 export function StepDowns({
   steps,
   change,
@@ -41,14 +42,14 @@ export function StepDowns({
   return (
     <div className="conduct-field">
       <span className="conduct-label" id="conduct-steps">
-        Steps down
+        Reduce or reset
       </span>
       <table className="conduct-steps" aria-labelledby="conduct-steps">
         <thead>
           <tr>
             <th>Tier</th>
             <th>After</th>
-            <th>To</th>
+            <th>Then</th>
           </tr>
         </thead>
         <tbody>
@@ -92,23 +93,26 @@ export function StepDowns({
                   </div>
                 </td>
                 <td>
-                  {step && (
-                    <select
-                      aria-label={`${name} steps down to`}
-                      value={step.to ?? 'clean'}
-                      onChange={(e) => {
-                        const to = e.target.value;
-                        set(tier, { ...step, to: to === 'clean' ? null : (to as ConductTier) });
-                      }}
-                    >
-                      {lower(tier).map((to) => (
-                        <option key={to} value={to}>
-                          {tierShort[to]}
-                        </option>
-                      ))}
-                      <option value="clean">Clean</option>
-                    </select>
-                  )}
+                  {step &&
+                    (lower(tier).length === 0 ? (
+                      'Full reset'
+                    ) : (
+                      <select
+                        aria-label={`${name} then`}
+                        value={step.to ?? 'reset'}
+                        onChange={(e) => {
+                          const to = e.target.value;
+                          set(tier, { ...step, to: to === 'reset' ? null : (to as ConductTier) });
+                        }}
+                      >
+                        {lower(tier).map((to) => (
+                          <option key={to} value={to}>
+                            Reduce to {tierShort[to]}
+                          </option>
+                        ))}
+                        <option value="reset">Full reset</option>
+                      </select>
+                    ))}
                 </td>
               </tr>
             );

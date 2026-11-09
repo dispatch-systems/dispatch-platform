@@ -4,13 +4,13 @@ A DSP's writeups of its drivers, and where each driver stands. A writeup is a Co
 Notice in a category (Safety, Excessive Tardies, POD, …), at a tier: Verbal, Written or Final, a
 final one just that, with a suspension of a length someone types, or pending further
 investigation. Each category climbs its tiers on its own, and steps back down in time: each of
-its tiers waits a set number of days, weeks or months, or forever, then steps down to a lower
-tier or to a clean record. The wait runs from the driver's latest writeup in the category, and
-each step down starts the next tier's. A driver's next writeup in it is suggested one tier above
-where they stand, never below the tier the category starts at, and Final again once they're at
-Final; written, it puts them at its tier, or keeps them higher, and starts the wait again. The
-page prints the notice; the driver signs it on paper; someone marks it signed, with a photo of
-the paper if they like.
+its tiers waits a set number of days, weeks or months, or forever, then reduces to a lower tier
+or fully resets to a clean record. The wait runs from the driver's latest writeup in the
+category, and each step down starts the next tier's. A driver's next writeup in it is suggested
+one tier above where they stand, never below the tier the category starts at, and Final again
+once they're at Final; written, it puts them at its tier, or keeps them higher, and starts the
+wait again. The page prints the notice; the driver signs it on paper; someone marks it signed,
+with a photo of the paper if they like.
 
 - **Switch:** `conduct`, off for every DSP until the platform owner switches it on. It needs no
   connection.
