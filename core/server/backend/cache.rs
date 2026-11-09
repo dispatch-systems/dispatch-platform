@@ -270,6 +270,17 @@ impl ReadCache {
             )
         })
     }
+    /// An admitted immutable result, without loading on a miss. Like shared(), call only
+    /// after authorization under State's transition read lock, using data_revision.
+    /// In-flight results rejected by the retention budget are deliberately not returned.
+    pub fn lookup_shared<T: Send + Sync + 'static>(
+        &self,
+        scope: &Scope,
+        key: &str,
+        revision: u64,
+    ) -> Option<Arc<T>> {
+        self.cached(scope, key, revision)
+    }
     /// Join before waiting: every joined reader holds the same in-flight value alive.
     fn begin_shared(&self, named: SharedRead) -> Arc<SharedValue> {
         let mut keys = self

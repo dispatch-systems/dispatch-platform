@@ -32,6 +32,7 @@ const PENDING: usize = 100;
 /// What the account's Drive held when Dispatch last asked.
 struct Copy {
     tree: Arc<Tree>,
+    semantic: u64,
     /// Where the account's change feed goes on from.
     changes: String,
     /// When Google last said what changed.
@@ -40,9 +41,22 @@ struct Copy {
     pending: Vec<Item>,
 }
 impl Copy {
+    fn publish<T>(&mut self, change: impl FnOnce(&mut Tree) -> T) -> T {
+        let tree = Arc::make_mut(&mut self.tree);
+        let before = tree.mutation();
+        let result = change(tree);
+        if before != tree.mutation() {
+            self.semantic = self
+                .semantic
+                .checked_add(1)
+                .expect("Documents revision exhausted");
+        }
+        result
+    }
     fn flush(&mut self) {
         if !self.pending.is_empty() {
-            Arc::make_mut(&mut self.tree).put_many(std::mem::take(&mut self.pending));
+            let pending = std::mem::take(&mut self.pending);
+            self.publish(|tree| tree.put_many(pending));
         }
     }
 }
@@ -51,10 +65,13 @@ impl Copy {
 /// asked once at a time. When asking last failed, and why.
 pub struct Mirror {
     copy: Mutex<Option<Copy>>,
+    /// Unique within this process, even when a forgotten DSP reconnects to the same root.
+    incarnation: u64,
     viewed: Mutex<Instant>,
     turn: Arc<tokio::sync::Mutex<()>>,
     failed: Mutex<Option<(Instant, String, u16)>>,
 }
+static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 static MIRRORS: LazyLock<Mutex<HashMap<String, Arc<Mirror>>>> = LazyLock::new(Default::default);
 
 fn mirrors() -> MutexGuard<'static, HashMap<String, Arc<Mirror>>> {
@@ -65,6 +82,12 @@ fn mirrors() -> MutexGuard<'static, HashMap<String, Arc<Mirror>>> {
 /// The DSP's mirror.
 pub fn of(dsp: &str) -> Arc<Mirror> {
     Arc::clone(mirrors().entry(dsp.to_owned()).or_default())
+}
+/// Does not create a replacement while checking a captured owner.
+pub(super) fn current(dsp: &str, owner: &Arc<Mirror>) -> bool {
+    mirrors()
+        .get(dsp)
+        .is_some_and(|mirror| Arc::ptr_eq(mirror, owner))
 }
 /// Forgets the DSP's copy, as a disconnect or a new connection does.
 pub fn forget(dsp: &str) {
@@ -79,6 +102,7 @@ impl Default for Mirror {
     fn default() -> Self {
         Self {
             copy: Mutex::new(None),
+            incarnation: NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             viewed: Mutex::new(Instant::now()),
             turn: Arc::default(),
             failed: Mutex::new(None),
@@ -120,6 +144,22 @@ impl Mirror {
         copy.flush();
         Some(Arc::clone(&copy.tree))
     }
+    pub(super) fn incarnation(&self) -> u64 {
+        self.incarnation
+    }
+    /// A transient tree and its semantic sequence. The bounded query cache retains neither
+    /// this Arc nor an old mirror. Pending confirmations publish before a reading is captured.
+    pub(super) fn snapshot(&self, root: &str) -> Option<(Arc<Tree>, u64)> {
+        *self.viewed() = Instant::now();
+        let mut copy = self.copy();
+        let copy = copy.as_mut().filter(|copy| copy.tree.root() == root)?;
+        copy.flush();
+        Some((Arc::clone(&copy.tree), copy.semantic))
+    }
+    pub(super) fn matches(&self, root: &str, semantic: u64) -> bool {
+        self.snapshot(root)
+            .is_some_and(|(_, current)| current == semantic)
+    }
     /// Where the change feed goes on from, for a copy of `root`.
     pub fn changes(&self, root: &str) -> Option<String> {
         let copy = self.copy();
@@ -129,8 +169,16 @@ impl Mirror {
     /// Makes a new copy of `root` from every file Drive listed, its change feed going on from
     /// `changes`, asked before they were listed.
     pub fn replace(&self, root: &str, all: Vec<Item>, changes: String) {
-        *self.copy() = Some(Copy {
-            tree: Arc::new(Tree::new(root, all)),
+        let tree = Arc::new(Tree::new(root, all));
+        let mut current = self.copy();
+        let semantic = current.as_ref().map_or(1, |copy| {
+            copy.semantic
+                .checked_add(u64::from(!copy.tree.same_semantics(&tree)))
+                .expect("Documents revision exhausted")
+        });
+        *current = Some(Copy {
+            tree,
+            semantic,
             changes,
             synced: Instant::now(),
             pending: Vec::new(),
@@ -142,7 +190,10 @@ impl Mirror {
         self.change(root, |copy| {
             copy.changes = changes.next;
             copy.synced = Instant::now();
-            Arc::make_mut(&mut copy.tree).follow(changes.changed)
+            if changes.changed.is_empty() {
+                return false;
+            }
+            copy.publish(|tree| tree.follow(changes.changed))
         })
         .unwrap_or(false)
     }
@@ -163,7 +214,7 @@ impl Mirror {
     }
     /// Takes out a file Dispatch trashed, or Google said is gone.
     pub fn remove(&self, root: &str, id: &str) {
-        self.change(root, |copy| Arc::make_mut(&mut copy.tree).remove(id));
+        self.change(root, |copy| copy.publish(|tree| tree.remove(id)));
     }
     /// The turn to ask Google about the DSP's Drive, once whoever has it is done.
     pub async fn wait(&self) -> OwnedMutexGuard<()> {

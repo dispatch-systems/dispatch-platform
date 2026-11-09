@@ -604,3 +604,238 @@ pub async fn trash(state: &Arc<State>, c: Context, access: Dsp, id: String) -> R
 #[cfg(test)]
 #[path = "../tests/backend/folder_reads.rs"]
 mod tests;
+
+/// Shared preparation for the additive, ephemeral query protocol. Legacy callers retain
+/// access::tree and the complete reader. No reconnect/durable-generation guarantee is added.
+pub(crate) struct QueryRequest {
+    pub scope: crate::api::types::DocumentsQueryScope,
+    pub page: u32,
+    pub size: u32,
+    pub snapshot: Option<String>,
+    pub manifest_since: Option<String>,
+    pub since: Option<String>,
+}
+async fn query_read(
+    state: &Arc<State>,
+    c: Context,
+    access: Dsp,
+    request: QueryRequest,
+    descriptions: Option<Vec<String>>,
+) -> Result<QueryAnswer> {
+    use super::query;
+    use crate::api::types::{
+        DocumentsDescriptionRead, DocumentsQueryPage, DocumentsQueryRead, DocumentsResetReason,
+    };
+    use dispatch_core::server::cache::Scope;
+    use std::sync::atomic::Ordering;
+    let QueryRequest {
+        scope,
+        snapshot,
+        page,
+        size,
+        manifest_since,
+        since,
+    } = request;
+    let scope = query::normalized(scope);
+    ensure((1..=100).contains(&size), "invalid_input", 400)?;
+    if let Some(ids) = &descriptions {
+        let unique: std::collections::HashSet<&String> = ids.iter().collect();
+        ensure(
+            !ids.is_empty() && ids.len() <= 100 && unique.len() == ids.len(),
+            "invalid_input",
+            400,
+        )?;
+    }
+    let owner = mirror::of(&c.dsp.id);
+    let (connection, _) = access::tree(state, &c.dsp.id).await?;
+    // Serialize openings before database admission; a cancelled caller's worker keeps its
+    // turn until the calculation ends. Continuations have no builder and need no keyed turn.
+    let turn = if snapshot.is_none() {
+        Some(
+            state
+                .read_turns
+                .enter(query::digest(&(
+                    "documents-query-turn-v1",
+                    &c.dsp.id,
+                    owner.incarnation(),
+                    &connection.folder_id,
+                    &scope.id,
+                    &scope.q,
+                ))?)
+                .await?,
+        )
+    } else {
+        None
+    };
+    let shared = Arc::clone(state);
+    state
+        .read(move |db| {
+            let _turn = turn;
+            let c = access.revalidate(db, &c)?;
+            let current = db
+                .documents_connection(&c.dsp.id)?
+                .ok_or_else(|| Error::new("documents_not_connected", 409))?;
+            ensure(!current.broken, "google_connection_broken", 409)?;
+            ensure(current == connection, "documents_not_connected", 409)?;
+            let reset = |reason| match descriptions.as_ref() {
+                Some(_) => QueryAnswer::Descriptions(DocumentsDescriptionRead::Reset { reason }),
+                None => QueryAnswer::Page(DocumentsQueryRead::Reset { reason }),
+            };
+            let Some((tree, semantic)) = owner.snapshot(&connection.folder_id) else {
+                return Ok(reset(DocumentsResetReason::Changed));
+            };
+            if !mirror::current(&c.dsp.id, &owner) || !owner.matches(tree.root(), semantic) {
+                return Ok(reset(DocumentsResetReason::Changed));
+            }
+            let at = scope.id.as_deref().unwrap_or(tree.root());
+            if !tree.is_folder(at) {
+                if snapshot.is_some() {
+                    return Ok(reset(DocumentsResetReason::Changed));
+                }
+                return Err(not_found());
+            }
+            // Every stored connection field participates; this is an ephemeral equality fence,
+            // not proof against reconnect ABA. Process identity prevents cross-restart reuse.
+            let key = query::digest(&(
+                "documents-query-index-v1",
+                query::process()?,
+                shared.config.environment_root(),
+                &c.dsp.id,
+                owner.incarnation(),
+                semantic,
+                &connection.folder_id,
+                (
+                    connection.broken,
+                    connection.full,
+                    &connection.account.email,
+                    connection.account.workspace,
+                    &connection.folder_name,
+                    &connection.connected_by,
+                    &connection.connected_at,
+                ),
+                &scope.id,
+                &scope.q,
+            ))?;
+            let expected = query::digest(&("documents-query-snapshot-v1", &key, scope.filter))?;
+            if snapshot
+                .as_ref()
+                .is_some_and(|snapshot| *snapshot != expected)
+            {
+                return Ok(reset(DocumentsResetReason::Changed));
+            }
+            // Global revision, never the mirror sequence: core prunes unequal revisions globally.
+            let global = shared.data_revision.load(Ordering::Relaxed);
+            let Some(index) = query::index(
+                &shared.read_cache,
+                Scope::tenant(query::CACHED, &c.dsp.id),
+                key,
+                global,
+                &tree,
+                (at, scope.q.as_deref()),
+                snapshot.is_none(),
+            )?
+            else {
+                return Ok(reset(DocumentsResetReason::Missing));
+            };
+            let answer = if let Some(ids) = &descriptions {
+                ensure(
+                    ids.iter().all(|id| index.contains(scope.filter, id)),
+                    "documents_item_not_found",
+                    404,
+                )?;
+                QueryAnswer::Descriptions(DocumentsDescriptionRead::Full {
+                    snapshot: expected,
+                    items: query::describe(
+                        db,
+                        &c.dsp.id,
+                        &connection.account.email,
+                        &tree,
+                        ids,
+                        scope.q.is_some(),
+                    )?,
+                })
+            } else {
+                let (page, ids) = index.page(scope.filter, page, size);
+                let reading = DocumentsQueryPage {
+                    snapshot: expected,
+                    manifest_revision: index.manifest_revision.clone(),
+                    page,
+                    page_size: size,
+                    total: index.total(scope.filter),
+                    unfiltered_total: index.counts().all,
+                    counts: index.counts(),
+                    folder: query::header(&tree, at, &scope, &connection.folder_name),
+                    items: query::describe(
+                        db,
+                        &c.dsp.id,
+                        &connection.account.email,
+                        &tree,
+                        &ids,
+                        scope.q.is_some(),
+                    )?,
+                };
+                let content_revision = query::digest(&("documents-query-page-v1", &reading))?;
+                let same_manifest =
+                    manifest_since.as_deref() == Some(index.manifest_revision.as_str());
+                QueryAnswer::Page(
+                    if same_manifest && since.as_deref() == Some(content_revision.as_str()) {
+                        DocumentsQueryRead::Unchanged {
+                            snapshot: reading.snapshot,
+                            manifest_revision: reading.manifest_revision,
+                            content_revision,
+                        }
+                    } else {
+                        DocumentsQueryRead::Full {
+                            reading,
+                            manifest: (!same_manifest).then(|| index.manifest.clone()),
+                            content_revision,
+                        }
+                    },
+                )
+            };
+            // Synchronous publications may run while this worker projects. No awaits follow this
+            // check, and no mixed old manifest/current tree answer is allowed out.
+            if !mirror::current(&c.dsp.id, &owner) || !owner.matches(tree.root(), semantic) {
+                return Ok(reset(DocumentsResetReason::Changed));
+            }
+            Ok(answer)
+        })
+        .await
+}
+
+enum QueryAnswer {
+    Page(crate::api::types::DocumentsQueryRead),
+    Descriptions(crate::api::types::DocumentsDescriptionRead),
+}
+pub async fn query(
+    state: &Arc<State>,
+    c: Context,
+    access: Dsp,
+    request: QueryRequest,
+) -> Result<crate::api::types::DocumentsQueryRead> {
+    match query_read(state, c, access, request, None).await? {
+        QueryAnswer::Page(answer) => Ok(answer),
+        QueryAnswer::Descriptions(_) => unreachable!("page request"),
+    }
+}
+pub async fn describe(
+    state: &Arc<State>,
+    c: Context,
+    access: Dsp,
+    scope: crate::api::types::DocumentsQueryScope,
+    snapshot: String,
+    ids: Vec<String>,
+) -> Result<crate::api::types::DocumentsDescriptionRead> {
+    let request = QueryRequest {
+        scope,
+        snapshot: Some(snapshot),
+        page: 0,
+        size: 100,
+        manifest_since: None,
+        since: None,
+    };
+    match query_read(state, c, access, request, Some(ids)).await? {
+        QueryAnswer::Descriptions(answer) => Ok(answer),
+        QueryAnswer::Page(_) => unreachable!("description request"),
+    }
+}

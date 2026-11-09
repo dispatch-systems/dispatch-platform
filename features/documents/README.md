@@ -216,3 +216,21 @@ and weeks, so it's best submitted well before the limit.
   open; it asks for a folder as the pointer rests on it. A folder opening for the first time,
   or a search, leaves what was shown until it comes. Making, renaming, moving and trashing show
   at once, and go back with the reason if Google refuses; an upload shows its file as it lands.
+
+
+- **Additive query reads:** `GET /api/dsp/documents/query` accepts `id`, `q`,
+  `filter` (`all`, `folders`, `docs`, `sheets`, `slides`, `uploads`), zero-based `page`
+  and `size` (1–100, default 100), plus `snapshot`, `manifestSince` and `since`.
+  Opening builds a compact complete unfiltered manifest and per-filter ordinal indices in
+  core's existing bounded read cache. A continuation only looks up an admitted index and
+  returns typed `reset` when it is missing, expired, evicted or no longer current. It never
+  rebuilds the full index. A full answer includes at most 100 descriptions; `unchanged`
+  permits reuse only of the exact scoped page and matching manifest supplied. A null
+  manifest means reuse that matching manifest, never an empty universe. Current author
+  names and shown-thumbnail admission are projected before every page digest, including
+  unchanged answers. `GET …/query/describe` resolves at most 100 unique query-member IDs
+  in request order under the same snapshot and current authorization. Future clients must
+  chunk description URLs to at most 4 KiB (or a smaller host HTTP limit), discard partial
+  results on reset, and fall back once to the complete reader after repeated cache resets.
+  This protocol is unused by the current browser. It retains O(N) compact metadata on
+  opening, adds no persisted state, and grants no durable reconnect-generation guarantee.
