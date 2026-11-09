@@ -6,6 +6,7 @@ export type { ConductPerson } from './generated/ConductPerson';
 export type { ConductSaved } from './generated/ConductSaved';
 export type { ConductStanding } from './generated/ConductStanding';
 export type { ConductStepDown } from './generated/ConductStepDown';
+export type { ConductStepKind } from './generated/ConductStepKind';
 export type { ConductTier } from './generated/ConductTier';
 export type { ConductUnit } from './generated/ConductUnit';
 export type { ConductWriteup } from './generated/ConductWriteup';
@@ -33,7 +34,7 @@ export interface WriteupInput {
 export interface CategoryInput {
   name: string;
   startTier: ConductTier;
-  stepDowns: ConductStepDown[];
+  stepDown: ConductStepDown | null;
   statement: string;
   prior: string;
   plan: string;

@@ -6,4 +6,11 @@ use dispatch_core::manifest::{Section, section};
 /// Conduct's own component, saved through its own routes. Its id is permanent once shipped.
 pub const CATEGORIES: Section = section("conduct.categories", "Categories", "conduct.manage", &[])
     .custom()
-    .keywords(&["writeups", "templates", "wording", "tiers", "step down"]);
+    .keywords(&[
+        "writeups",
+        "templates",
+        "wording",
+        "tiers",
+        "reduce",
+        "reset",
+    ]);

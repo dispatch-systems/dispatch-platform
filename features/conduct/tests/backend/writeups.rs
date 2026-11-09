@@ -1,7 +1,9 @@
 //! A writeup from written to signed, against a real store in a temporary directory.
 use super::*;
 use crate::{
-    api::types::{CategoryInput, ConductFinalKind, ConductStepDown, ConductTier, ConductUnit},
+    api::types::{
+        CategoryInput, ConductFinalKind, ConductStepDown, ConductStepKind, ConductTier, ConductUnit,
+    },
     backend::{categories, copies},
 };
 use dispatch_core::{accounts::Auth, db::s, server::operations, testing};
@@ -170,12 +172,11 @@ fn a_retired_category_takes_no_new_writeup_and_keeps_its_own() {
         &CategoryInput {
             name: "POD".into(),
             start_tier: ConductTier::Verbal,
-            step_downs: vec![ConductStepDown {
-                tier: ConductTier::Final,
+            step_down: Some(ConductStepDown {
+                kind: ConductStepKind::Reset,
                 after: 2,
                 unit: ConductUnit::Weeks,
-                to: None,
-            }],
+            }),
             statement: "Statement".into(),
             prior: "Prior".into(),
             plan: "Plan".into(),
@@ -189,15 +190,17 @@ fn a_retired_category_takes_no_new_writeup_and_keeps_its_own() {
             .code,
         "conduct_category_name_taken"
     );
-    // It keeps the step downs it was given: here only Final's, straight to a clean record.
+    // It keeps the step down it was given: a full reset two weeks on.
     let db = store.dsp(&c.dsp.id).unwrap();
     let added = categories::all(&db)
         .unwrap()
         .into_iter()
         .find(|category| category.name == "POD" && !category.retired)
         .unwrap();
-    assert_eq!(added.step_downs.len(), 1);
-    assert_eq!(added.step_downs[0].to, None);
+    assert_eq!(
+        added.step_down.map(|step| (step.kind, step.after)),
+        Some((ConductStepKind::Reset, 2))
+    );
 }
 
 #[test]

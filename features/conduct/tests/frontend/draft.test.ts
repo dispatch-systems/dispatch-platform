@@ -28,7 +28,7 @@ const category = (id: string, name: string, startTier: ConductWriteupRow['tier']
   id,
   name,
   startTier,
-  stepDowns: [],
+  stepDown: null,
   statement: `${name} statement on [date].`,
   prior: `${name} prior.`,
   plan: `${name} plan.`,

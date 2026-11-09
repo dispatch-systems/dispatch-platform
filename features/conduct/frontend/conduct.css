@@ -336,31 +336,15 @@
   flex-direction: column;
   gap: 16px;
 }
-.conduct-steps {
-  width: 100%;
-  border-collapse: collapse;
+.conduct-step {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
   font-size: 13px;
 }
-.conduct-steps th {
-  padding: 0 8px 6px 0;
-  text-align: left;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--muted-foreground);
-}
-.conduct-steps td {
-  padding: 4px 8px 4px 0;
-  vertical-align: middle;
-}
-.conduct-steps td:first-child {
-  width: 84px;
-}
-.conduct-step-after {
-  display: flex;
-  gap: 6px;
-}
-.conduct-step-after input {
-  width: 64px;
+.conduct-step input {
+  width: 72px;
 }
 .conduct-sign-summary {
   display: flex;

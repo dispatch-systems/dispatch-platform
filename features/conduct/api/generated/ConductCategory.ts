@@ -8,9 +8,9 @@ import type { ConductTier } from "./ConductTier";
  */
 export type ConductCategory = { id: string, name: string, startTier: ConductTier,
 /**
- * Each tier's step down, highest tier first: a tier without one never steps down.
+ * How its tiers step down: none never does.
  */
-stepDowns: Array<ConductStepDown>,
+stepDown: ConductStepDown | null,
 /**
  * The wording of each section a new writeup starts with: `[…]` marks a blank to fill.
  */

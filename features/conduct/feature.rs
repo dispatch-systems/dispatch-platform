@@ -7,7 +7,8 @@ mod backend;
 /// What its API answers with, which the app writes to TypeScript.
 pub use api::types::{
     ConductCategory, ConductFinalKind, ConductOverview, ConductPerson, ConductSaved,
-    ConductStanding, ConductStepDown, ConductTier, ConductUnit, ConductWriteup, ConductWriteupRow,
+    ConductStanding, ConductStepDown, ConductStepKind, ConductTier, ConductUnit, ConductWriteup,
+    ConductWriteupRow,
 };
 
 use dispatch_core::{
@@ -27,12 +28,7 @@ pub const FEATURE: Feature = Feature {
     settings: &[backend::settings::CATEGORIES],
     tables: &[(
         "dsp",
-        &[
-            "conduct_categories",
-            "conduct_step_downs",
-            "conduct_writeups",
-            "conduct_copies",
-        ],
+        &["conduct_categories", "conduct_writeups", "conduct_copies"],
     )],
     own_migrations: &[OwnMigrations {
         kind: Kind::DSP,
@@ -56,6 +52,7 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         ConductTier,
         ConductFinalKind,
         ConductUnit,
+        ConductStepKind,
         ConductStepDown,
         ConductCategory,
         ConductPerson,

@@ -4,19 +4,19 @@ import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js'
 import type { CategoryInput, ConductCategory, ConductOverview } from '../../api/index.js';
 import { addCategory, changeCategory, retireCategory } from '../../api/client.js';
 import { tierShort, tiers } from '../tiers.js';
-import { StepDowns, stepDownsReady, usualStepDowns } from './StepDowns.js';
+import { StepDown, stepDownReady, usualStepDown } from './StepDown.js';
 
 const fresh = (): CategoryInput => ({
   name: '',
   startTier: 'verbal',
-  stepDowns: usualStepDowns(),
+  stepDown: usualStepDown(),
   statement: '',
   prior: '',
   plan: '',
 });
 
 /**
- * A category's name, starting tier, step downs and wording, new or as it is; one in use can be
+ * A category's name, starting tier, step down and wording, new or as it is; one in use can be
  * retired.
  */
 export function CategoryDialog({
@@ -33,7 +33,7 @@ export function CategoryDialog({
       ? {
           name: category.name,
           startTier: category.startTier,
-          stepDowns: category.stepDowns,
+          stepDown: category.stepDown,
           statement: category.statement,
           prior: category.prior,
           plan: category.plan,
@@ -59,7 +59,7 @@ export function CategoryDialog({
   );
   const ready =
     [input.name, input.statement, input.prior, input.plan].every((text) => text.trim()) &&
-    stepDownsReady(input.stepDowns);
+    stepDownReady(input.stepDown);
   return (
     <Modal title={category ? 'Edit category' : 'Add category'} onClose={close}>
       <form
@@ -98,7 +98,7 @@ export function CategoryDialog({
             </div>
           </div>
         </div>
-        <StepDowns steps={input.stepDowns} change={(stepDowns) => set({ stepDowns })} />
+        <StepDown step={input.stepDown} change={(stepDown) => set({ stepDown })} />
         <label className="conduct-field">
           <span className="conduct-label">1. Statement of the problem</span>
           <textarea

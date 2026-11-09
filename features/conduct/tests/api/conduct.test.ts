@@ -41,14 +41,10 @@ test('a writeup is written up for someone, suggests the next tier, and locks onc
       'OODT',
     ],
   );
-  // Each starts at Verbal and steps down a tier at a time, six months at each.
+  // Each starts at Verbal and reduces a tier every six months.
   for (const category of overview.categories) {
     assert.equal(category.startTier, 'verbal', category.name);
-    assert.deepEqual(category.stepDowns, [
-      { tier: 'final', after: 6, unit: 'months', to: 'written' },
-      { tier: 'written', after: 6, unit: 'months', to: 'verbal' },
-      { tier: 'verbal', after: 6, unit: 'months', to: null },
-    ]);
+    assert.deepEqual(category.stepDown, { kind: 'reduce', after: 6, unit: 'months' });
   }
   const person = overview.people.find((p) => !p.left)!;
   assert(person, 'the demo DSP has someone to write up');
@@ -119,7 +115,7 @@ test('Conduct answers only those whose role grants it, and categories only those
   assert.equal((await member.post(`${route}/categories/pod/retire`, {})).status, 403);
 });
 
-test('a category steps down as its manager sets it, each tier only to a lower one', async (t) => {
+test('a category reduces or resets as its manager sets it, or never', async (t) => {
   const { f, owner } = await setup();
   t.after(f.close);
   const overview: ConductOverview = (await owner.get(route)).value;
@@ -127,34 +123,33 @@ test('a category steps down as its manager sets it, each tier only to a lower on
   const input: CategoryInput = {
     name: pod.name,
     startTier: 'written',
-    stepDowns: [
-      { tier: 'written', after: 10, unit: 'days', to: null },
-      { tier: 'final', after: 2, unit: 'weeks', to: null },
-    ],
+    stepDown: { kind: 'reset', after: 2, unit: 'weeks' },
     statement: pod.statement,
     prior: pod.prior,
     plan: pod.plan,
     revision: pod.revision,
   };
-  for (const stepDowns of [
-    [{ tier: 'written', after: 1, unit: 'days', to: 'final' }],
-    [{ tier: 'final', after: 0, unit: 'days', to: null }],
-    [
-      { tier: 'final', after: 1, unit: 'days', to: null },
-      { tier: 'final', after: 2, unit: 'days', to: 'verbal' },
-    ],
+  for (const stepDown of [
+    { kind: 'reduce', after: 0, unit: 'days' },
+    { kind: 'drop', after: 1, unit: 'days' },
+    { kind: 'reset', after: 1, unit: 'years' },
+    { kind: 'reset', after: 1 },
   ]) {
-    const refused = await owner.post(`${route}/categories/pod`, { ...input, stepDowns });
-    assert.equal(refused.status, 400, JSON.stringify(stepDowns));
+    const refused = await owner.post(`${route}/categories/pod`, { ...input, stepDown });
+    assert.equal(refused.status, 400, JSON.stringify(stepDown));
   }
   const changed = await owner.post(`${route}/categories/pod`, input);
   assert.equal(changed.status, 200, changed.body);
-  const after: ConductOverview = changed.value;
-  const kept = after.categories.find((c) => c.id === 'pod')!;
+  const kept = (changed.value as ConductOverview).categories.find((c) => c.id === 'pod')!;
   assert.equal(kept.startTier, 'written');
-  // Highest tier first; Verbal, left out, never steps down.
-  assert.deepEqual(kept.stepDowns, [
-    { tier: 'final', after: 2, unit: 'weeks', to: null },
-    { tier: 'written', after: 10, unit: 'days', to: null },
-  ]);
+  assert.deepEqual(kept.stepDown, { kind: 'reset', after: 2, unit: 'weeks' });
+
+  const never = await owner.post(`${route}/categories/pod`, {
+    ...input,
+    stepDown: null,
+    revision: kept.revision,
+  });
+  assert.equal(never.status, 200, never.body);
+  const neverKept = (never.value as ConductOverview).categories.find((c) => c.id === 'pod')!;
+  assert.equal(neverKept.stepDown, null);
 });

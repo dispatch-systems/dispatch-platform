@@ -29,26 +29,16 @@ fn writeup(
     }
 }
 
-fn step(
-    tier: ConductTier,
-    after: i64,
-    unit: ConductUnit,
-    to: Option<ConductTier>,
-) -> ConductStepDown {
-    ConductStepDown {
-        tier,
-        after,
-        unit,
-        to,
-    }
+fn step(kind: ConductStepKind, after: i64, unit: ConductUnit) -> Option<ConductStepDown> {
+    Some(ConductStepDown { kind, after, unit })
 }
 
-fn category(id: &str, step_downs: Vec<ConductStepDown>) -> ConductCategory {
+fn category(id: &str, step_down: Option<ConductStepDown>) -> ConductCategory {
     ConductCategory {
         id: id.into(),
         name: id.into(),
         start_tier: Verbal,
-        step_downs,
+        step_down,
         statement: String::new(),
         prior: String::new(),
         plan: String::new(),
@@ -58,25 +48,20 @@ fn category(id: &str, step_downs: Vec<ConductStepDown>) -> ConductCategory {
 }
 
 #[test]
-fn each_tier_steps_down_as_its_category_says_and_a_writeup_starts_the_wait_again() {
+fn a_category_reduces_a_tier_at_a_time_or_resets_and_a_writeup_starts_the_wait_again() {
+    use ConductStepKind::{Reduce, Reset};
     use ConductUnit::{Months, Weeks};
     let categories = [
         // One tier at a time, six months at each.
-        category(
-            "tardies",
-            vec![
-                step(Final, 6, Months, Some(Written)),
-                step(Written, 6, Months, Some(Verbal)),
-                step(Verbal, 6, Months, None),
-            ],
-        ),
-        // Straight from Final to a clean record.
-        category("damage", vec![step(Final, 2, Weeks, None)]),
+        category("tardies", step(Reduce, 6, Months)),
+        // Straight to a clean record two weeks on.
+        category("damage", step(Reset, 2, Weeks)),
         // Never steps down.
-        category("safety", vec![]),
+        category("safety", None),
     ];
     // The newest first, as the overview lists them.
     let writeups = [
+        writeup("c1", "cy", "tardies", Final, "2026-10-01"),
         writeup("b2", "ben", "tardies", Verbal, "2026-10-01"),
         writeup("a5", "ana", "damage", Final, "2026-10-20"),
         writeup("a2", "ana", "tardies", Written, "2026-03-01"),
@@ -109,6 +94,15 @@ fn each_tier_steps_down_as_its_category_says_and_a_writeup_starts_the_wait_again
             ("ana", "tardies", Verbal, "a2", Some("2027-03-01"), None),
             // Ben's Final stepped all the way down to clean before his Verbal, which starts over.
             ("ben", "tardies", Verbal, "b2", Some("2027-04-01"), None),
+            // A Final reduces to Written first.
+            (
+                "cy",
+                "tardies",
+                Final,
+                "c1",
+                Some("2027-04-01"),
+                Some(Written)
+            ),
             // Ana's damage Final cleared two weeks on, on 11/3.
         ]
     );
@@ -125,9 +119,9 @@ fn each_tier_steps_down_as_its_category_says_and_a_writeup_starts_the_wait_again
 
 #[test]
 fn a_wait_in_months_ends_on_the_same_day_or_the_months_last() {
-    let six = step(Written, 6, ConductUnit::Months, Some(Verbal));
+    let six = step(ConductStepKind::Reduce, 6, ConductUnit::Months).unwrap();
     assert_eq!(due(day("2026-03-01"), &six), Some(day("2026-09-01")));
     assert_eq!(due(day("2026-08-31"), &six), Some(day("2027-02-28")));
-    let ten = step(Final, 10, ConductUnit::Days, None);
+    let ten = step(ConductStepKind::Reset, 10, ConductUnit::Days).unwrap();
     assert_eq!(due(day("2026-12-25"), &ten), Some(day("2027-01-04")));
 }
