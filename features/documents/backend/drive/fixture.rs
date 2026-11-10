@@ -26,9 +26,10 @@ pub(in crate::backend) struct Drive {
     pub(super) changes: u64,
     pub(super) changed: BTreeMap<String, u64>,
     #[cfg(test)]
-    pub(super) requests: usize,
+    pub(in crate::backend) requests: usize,
     #[cfg(test)]
-    pub(super) holds: BTreeMap<usize, std::pin::Pin<Box<dyn Future<Output = ()> + Send>>>,
+    pub(in crate::backend) holds:
+        BTreeMap<usize, std::pin::Pin<Box<dyn Future<Output = ()> + Send>>>,
 }
 impl Drive {
     pub(in crate::backend) fn create(
