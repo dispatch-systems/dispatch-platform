@@ -35,6 +35,7 @@ test('Paycom window scales input, supports drag/scroll/keyboard, and only contin
         updatedAt: new Date().toISOString(),
         lastVerifiedAt: null,
         accountLabel: 'DEMO',
+        checks: [],
         ...(!ready ? { verificationSessionId: sessionId } : {}),
       },
     }),
