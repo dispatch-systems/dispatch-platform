@@ -4,38 +4,11 @@ use crate::{
     api::types::{
         CategoryInput, ConductFinalKind, ConductStepDown, ConductStepKind, ConductTier, ConductUnit,
     },
-    backend::{categories, copies},
+    backend::{categories, copies, support::ready},
 };
-use dispatch_core::{accounts::Auth, db::s, server::operations, testing};
+use dispatch_core::testing;
 
 const TODAY: &str = "2026-11-08";
-
-/// A preview platform's first DSP, every feature on, and its owner writing up.
-fn ready() -> (tempfile::TempDir, Store, Context) {
-    testing::install(&[], &[&crate::FEATURE]);
-    let (root, store) = testing::store();
-    let bootstrap = operations::bootstrap(
-        &store,
-        "conduct@example.test",
-        "Casey",
-        "Supervisor",
-        "test-password-long",
-    )
-    .unwrap();
-    let auth = Auth {
-        user: serde_json::from_value(bootstrap["owner"].clone()).unwrap(),
-        hash: String::new(),
-        csrf: String::new(),
-        raw: String::new(),
-        preview: None,
-        site: dispatch_core::foundation::config::Site::Admin,
-        scope: None,
-    };
-    let c = store
-        .context(&auth, s(&bootstrap["dsp"], "id"), "conduct.manage")
-        .unwrap();
-    (root, store, c)
-}
 
 fn subject() -> Subject {
     Subject {

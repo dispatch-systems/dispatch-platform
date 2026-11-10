@@ -118,13 +118,16 @@ impl Files for DocumentsFiles {
         &'a self,
         state: &'a Arc<State>,
         dsp: &'a str,
+        parent: Option<&'a str>,
         name: &'a str,
         by: &'a Author,
     ) -> Answer<'a, Folder> {
         Box::pin(async move {
             let owner = grant::capture(state, dsp, None).await?;
             let tree = access::tree_for(state, &owner).await?;
-            let made = make(state, &owner, tree.root(), FOLDER, name).await?;
+            let parent = parent.unwrap_or(tree.root());
+            ensure(tree.is_folder(parent), FOLDER_NOT_FOUND, 404)?;
+            let made = make(state, &owner, parent, FOLDER, name).await?;
             let folder = Folder {
                 id: made.id,
                 name: made.name,

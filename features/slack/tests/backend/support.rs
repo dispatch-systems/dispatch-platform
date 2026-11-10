@@ -177,6 +177,7 @@ impl Files for Keeping {
         &'a self,
         _: &'a Arc<State>,
         _: &'a str,
+        _: Option<&'a str>,
         name: &'a str,
         _: &'a Author,
     ) -> Answer<'a, Folder> {

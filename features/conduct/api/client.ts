@@ -3,6 +3,7 @@ import { useData } from '../../../core/shell/frontend/runtime/data-reads.js';
 import { upload } from '../../../core/shell/frontend/runtime/transfer.js';
 import type {
   CategoryInput,
+  ConductBackup,
   ConductOverview,
   ConductSaved,
   ConductWriteup,
@@ -52,6 +53,11 @@ export const deleteWriteup = (id: string, revision: number) =>
 /** Keeps `photo` as the signed paper of the writeup `id` as it reads at `revision`. */
 export const keepCopy = (id: string, revision: number, photo: Blob) =>
   upload<ConductSaved>(`${copyUrl(id)}?revision=${revision}`, photo);
+
+export const backupUrl = `${conductUrl}/backup`;
+/** How backing signed copies up is going, read again whenever `refreshKey` changes. */
+export const useConductBackup = (refreshKey: string) =>
+  useData<ConductBackup>(backupUrl, 0, refreshKey);
 
 const categoryUrl = (id: string) => `${conductUrl}/categories/${encodeURIComponent(id)}`;
 export const addCategory = (input: CategoryInput) =>

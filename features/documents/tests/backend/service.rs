@@ -47,7 +47,7 @@ async fn files_are_kept_inside_the_dsps_folder_once_connected_and_named_for_who_
     // there; anything else isn't one.
     let member = Author::Member(owner);
     let folder = files
-        .create_folder(&state, &dsp, "photos", &member)
+        .create_folder(&state, &dsp, None, "photos", &member)
         .await
         .unwrap();
     let found = files.folder(&state, &dsp, &folder.id).await.unwrap();
@@ -59,6 +59,18 @@ async fn files_are_kept_inside_the_dsps_folder_once_connected_and_named_for_who_
     assert_eq!(files.folder(&state, &dsp, "elsewhere").await.unwrap(), None);
     let browsing = files.browse(&state, &dsp, Some("elsewhere")).await;
     assert_eq!(browsing.unwrap_err().code, "files_folder_not_found");
+
+    // One made inside it is there, and none is made inside what isn't a folder of the DSP's.
+    let vans = files
+        .create_folder(&state, &dsp, Some(&folder.id), "vans", &member)
+        .await
+        .unwrap();
+    let inside = files.browse(&state, &dsp, Some(&folder.id)).await.unwrap();
+    assert_eq!(inside.folders, std::slice::from_ref(&vans));
+    let refused = files
+        .create_folder(&state, &dsp, Some("elsewhere"), "vans", &member)
+        .await;
+    assert_eq!(refused.unwrap_err().code, "files_folder_not_found");
 
     // A file from someone known only by name goes into the folder, as theirs, logged with no
     // member as its actor.
@@ -129,7 +141,13 @@ async fn a_page_is_written_as_a_doc_in_the_dsps_folder_and_over_it_where_it_is()
     connect(&state, &dsp).await;
     let owner = state.read(|db| Ok(testing::a_user(db))).await.unwrap();
     let folder = files
-        .create_folder(&state, &dsp, "canvases", &Author::Member(owner.clone()))
+        .create_folder(
+            &state,
+            &dsp,
+            None,
+            "canvases",
+            &Author::Member(owner.clone()),
+        )
         .await
         .unwrap();
 

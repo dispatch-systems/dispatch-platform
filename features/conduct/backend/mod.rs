@@ -3,15 +3,21 @@
 //! - `categories`: the kinds of writeup and the wording each starts with.
 //! - `writeups`: each writeup, from written to signed.
 //! - `copies`: photos of signed paper.
+//! - `backups`: backing those photos up where the DSP keeps its files.
 //! - `standing`: the rules a category's tiers climb and step down by.
 //! - `overview`: what the page reads, in one answer.
 //! - `settings`: what a DSP sets on Conduct's page of Settings.
+pub(crate) mod backups;
 pub(crate) mod categories;
 pub(crate) mod copies;
 pub(crate) mod overview;
 pub(crate) mod settings;
 pub(crate) mod standing;
 pub(crate) mod writeups;
+
+#[cfg(test)]
+#[path = "../tests/backend/support.rs"]
+pub(crate) mod support;
 
 use dispatch_core::{
     Result,

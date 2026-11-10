@@ -33,11 +33,13 @@ pub trait Files: Shown + Send + Sync {
         dsp: &'a str,
         id: &'a str,
     ) -> Answer<'a, Option<Folder>>;
-    /// Makes a folder named `name` at the top of the DSP's files, as `by`.
+    /// Makes a folder named `name` in the folder `parent`, or at the top of the DSP's files, as
+    /// `by`.
     fn create_folder<'a>(
         &'a self,
         state: &'a Arc<State>,
         dsp: &'a str,
+        parent: Option<&'a str>,
         name: &'a str,
         by: &'a Author,
     ) -> Answer<'a, Folder>;
