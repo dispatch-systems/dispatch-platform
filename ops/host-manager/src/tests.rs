@@ -308,6 +308,12 @@ fn runs_url(commit: &str) -> String {
         "repos/{REPOSITORY}/actions/workflows/checks.yml/runs?event=push&branch=main&head_sha={commit}&per_page=20"
     )
 }
+/// Main's passed push runs, newest first.
+fn passed_url() -> String {
+    format!(
+        "repos/{REPOSITORY}/actions/workflows/checks.yml/runs?event=push&branch=main&status=success&per_page=20"
+    )
+}
 fn git(root: &Path, args: &[&str]) -> String {
     let mut all = vec![
         "git",
@@ -395,6 +401,7 @@ impl Fixture {
         if environment == Environment::Dev {
             // Unless a test runs the checks on it, a commit on main has no run yet.
             system.reply(&runs_url(&new), vec![json!({"workflow_runs":[]})]);
+            system.reply(&passed_url(), vec![json!({"workflow_runs":[]})]);
         }
         let updater = Updater::new(&root, environment, &system).unwrap();
         let old_manifest = artifact(&updater.active, &old, "0.1.0", false);
@@ -763,6 +770,60 @@ fn a_pending_or_failed_push_run_keeps_the_old_runtime() {
         assert!(f.system.actions().is_empty());
         assert_eq!(
             io::read_json(&f.updater().status_file).unwrap()["status"],
+            if failed {
+                "checks_failed"
+            } else {
+                "waiting_for_checks"
+            }
+        );
+    }
+}
+#[test]
+fn a_passed_commit_installs_while_a_later_one_is_pending_or_failed() {
+    for failed in [false, true] {
+        let f = Fixture::new(Environment::Dev);
+        // Another merge lands on main, and its checks have yet to pass.
+        let later = git(
+            &f.root,
+            &[
+                "commit-tree",
+                &format!("{}^{{tree}}", f.new),
+                "-p",
+                &f.new,
+                "-m",
+                "later",
+            ],
+        );
+        git(&f.root, &["update-ref", "refs/remotes/origin/main", &later]);
+        let mut run = f.run();
+        run["id"] = json!(18);
+        run["head_sha"] = json!(later);
+        if failed {
+            run["conclusion"] = json!("failure");
+        } else {
+            run["status"] = json!("in_progress");
+            run["conclusion"] = Value::Null;
+        }
+        f.system
+            .reply(&runs_url(&later), vec![json!({"workflow_runs":[run]})]);
+        f.dev_download();
+        f.system
+            .reply(&f.run_url(), vec![json!({"workflow_runs":[f.run()]})]);
+        f.system
+            .reply(&passed_url(), vec![json!({"workflow_runs":[f.run()]})]);
+        let u = f.updater();
+        u.run_locked().unwrap();
+        assert_eq!(git(&f.root, &["rev-parse", "HEAD"]), f.new);
+        assert_eq!(
+            artifact::verify(&u.active, Some(&f.new)).unwrap(),
+            f.new_manifest
+        );
+        // The next check finds no passed commit after the one it installed, and waits.
+        let installed = f.system.actions();
+        u.run_locked().unwrap();
+        assert_eq!(f.system.actions(), installed);
+        assert_eq!(
+            io::read_json(&u.status_file).unwrap()["status"],
             if failed {
                 "checks_failed"
             } else {

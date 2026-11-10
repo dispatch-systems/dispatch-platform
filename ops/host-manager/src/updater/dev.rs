@@ -91,9 +91,9 @@ impl Updater<'_> {
         let branch = self.tracked_branch()?;
         let tracked = format!("origin/{branch}");
         self.git(&["fetch", "origin", branch])?;
-        let commit = self.git(&["rev-parse", &tracked])?;
+        let head = self.git(&["rev-parse", &tracked])?;
         let current = self.git(&["rev-parse", "HEAD"])?;
-        if commit == current {
+        if head == current {
             return Ok(());
         }
         let current_manifest = artifact::verify(&self.active, Some(&current))?;
@@ -108,19 +108,22 @@ impl Updater<'_> {
                 json!({"commit":current}),
             )
         };
-        let (run, record) = match self.validated_build(branch, &commit)? {
-            Checked::Passed(run, record) => (run, record),
-            Checked::Pending(run) => return waiting(&run),
+        let (commit, run, record) = match self.validated_build(branch, &head)? {
+            Checked::Passed(run, record) => (head, run, record),
+            // An earlier merge whose checks passed doesn't wait for those of the ones after it.
+            Checked::Pending(head_run) => match self.passed_since(branch, &current)? {
+                Some(passed) => passed,
+                None => return waiting(&head_run),
+            },
         };
         let temp = tempfile::Builder::new()
             .prefix("update-")
             .tempdir_in(&self.runtime)?;
         releases::download_run(self.system, &record, temp.path(), &commit, None)?;
+        // The branch may have moved on during the download; one rewritten to leave the commit
+        // out is what activation refuses.
         self.git(&["fetch", "origin", branch])?;
-        if self.git(&["rev-parse", &tracked])? != commit {
-            return waiting(&Value::Null);
-        }
-        // A rerun can revoke validation during a download, even when the head stays put.
+        // A rerun can revoke validation during a download.
         match self.validated_build(branch, &commit)? {
             Checked::Passed(again, _) if again == run => {}
             _ => return waiting(&Value::Null),
@@ -135,6 +138,39 @@ impl Updater<'_> {
             run["id"]
         );
         Ok(())
+    }
+    /// The newest commit of `branch` after `current` whose push run passed, with that run and
+    /// the build it published. GitHub lists the branch's passed runs newest first, so one
+    /// request finds it however many commits ahead of it are still deciding or failed.
+    fn passed_since(&self, branch: &str, current: &str) -> Result<Option<(String, Value, Value)>> {
+        let passed = io::github(
+            self.system,
+            &format!(
+                "actions/workflows/checks.yml/runs?event=push&branch={branch}&status=success&per_page=20"
+            ),
+        )?;
+        let ahead = self.git(&[
+            "rev-list",
+            "--first-parent",
+            &format!("{current}..origin/{branch}"),
+        ])?;
+        let Some(commit) = ahead.lines().find(|commit| {
+            releases::latest_run(
+                &passed["workflow_runs"],
+                commit,
+                "push",
+                Some(branch),
+                false,
+            )
+            .is_some()
+        }) else {
+            return Ok(None);
+        };
+        // The listing only names the commit: its own runs decide, the latest of them.
+        Ok(match self.validated_build(branch, commit)? {
+            Checked::Passed(run, record) => Some((commit.to_owned(), run, record)),
+            Checked::Pending(_) => None,
+        })
     }
     /// The passed push run of `commit` on `branch` and the build it published, or the run still
     /// deciding. The push run tests exactly the commit the branch moved to, so its run decides;
