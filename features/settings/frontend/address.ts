@@ -23,7 +23,7 @@ export function followAddress(follow: () => void) {
   };
 }
 /** The page an address, a hash, names, if it names one. */
-export const pageIn = (hash: string) => new URLSearchParams(hash.split('?')[1]).get('tab');
+const pageIn = (hash: string) => new URLSearchParams(hash.split('?')[1]).get('tab');
 /** The page the address names, if it names one. */
 export const addressedPage = () => pageIn(location.hash);
 /**

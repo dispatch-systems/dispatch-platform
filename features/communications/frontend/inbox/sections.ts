@@ -8,7 +8,7 @@ import type { Listing } from '../../api/client.js';
 // searched; and whether it shows one workspace's or every one's. How each shows is
 // page/section-views.tsx's, keyed by the same IDs.
 
-export type SectionModel = {
+type SectionModel = {
   /** Whether the DSP has it, as the overview and each update say. */
   offered: (inbox: Pick<Communications, 'routes' | 'texting' | 'workspaces'>) => boolean;
   /** Whether `conversation` is its own: every conversation is one section's, but a blocked

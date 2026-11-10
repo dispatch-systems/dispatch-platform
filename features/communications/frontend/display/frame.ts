@@ -15,7 +15,7 @@ const WHOLE_LEAST = 900;
 export const ACTUAL_LEAST = 420;
 
 /** The screen previewed, `aside` of it kept out of view at its left, made `scale` times its size. */
-export type Frame = Size & { scale: number; aside: number };
+type Frame = Size & { scale: number; aside: number };
 
 /**
  * The screen previewed in `room`: a phone at its actual size, in as much of one as there's room

@@ -86,7 +86,7 @@ export type Pending = {
   confirmed?: number;
   counted?: boolean;
 };
-export const SETTLING_MS = 30_000;
+const SETTLING_MS = 30_000;
 /** Something Google moved, and the folder it was in: `null` for the top. */
 export type Moved = { item: DocumentsItem; from: string | null };
 /** What the page's own drags carry, beside a link: the IDs of what's dragged. */
@@ -98,7 +98,7 @@ export const look = (item: DocumentsItem) =>
   making(item) ? ' documents-making' : item.unavailable ? ' documents-unavailable' : '';
 
 /** Folders first, by name; then files, the most recently changed first: as the server sorts. */
-export function arranged(items: DocumentsItem[]) {
+function arranged(items: DocumentsItem[]) {
   const order = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
   return [...items].sort(
     (a, b) =>

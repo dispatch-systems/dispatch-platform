@@ -390,9 +390,6 @@ button.driver-list-person:hover strong {
 }
 
 /* A person, as the merge dialog names them. */
-.driver-person > span:last-child {
-  min-width: 0;
-}
 .driver-person strong {
   display: block;
   font-size: 13.5px;
@@ -478,10 +475,6 @@ button.driver-list-person:hover strong {
 .driver-tag.sage {
   background: var(--sage-surface);
   color: var(--sage);
-}
-.driver-tag.warning {
-  background: var(--warning-surface);
-  color: var(--warning);
 }
 .driver-tag.steel {
   background: var(--steel-surface);

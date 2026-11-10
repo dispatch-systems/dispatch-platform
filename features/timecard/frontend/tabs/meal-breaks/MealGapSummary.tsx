@@ -5,19 +5,8 @@ import { gapLabel } from '../../meal-breaks.js';
 import { timecardDate, timecardPeriod } from '../../timecard-format.js';
 import type { MealLine } from './mealColumns.js';
 
-export function MealGapSummary({
-  data,
-  date,
-  compact,
-}: {
-  data: MealPeriod;
-  date?: string;
-  compact?: boolean;
-}) {
-  const gaps = date ? data.gaps.filter((gap) => gap.date === date) : data.gaps;
-  const excess = date
-    ? gaps.reduce((sum, gap) => sum + gap.milliseconds - 300_000, 0)
-    : data.excessMilliseconds;
+export function MealGapSummary({ data, compact }: { data: MealPeriod; compact?: boolean }) {
+  const { gaps } = data;
   return (
     <section className="meal-gap-summary" aria-label="Meal break gap summary">
       <div className="meal-gap-summary-heading">
@@ -25,14 +14,10 @@ export function MealGapSummary({
           <strong>{gaps.length}</strong> {gaps.length === 1 ? 'gap' : 'gaps'} over 5 min
         </div>
         <div>
-          Total time beyond 5 min <strong>{gapLabel(excess)}</strong>
+          Total time beyond 5 min <strong>{gapLabel(data.excessMilliseconds)}</strong>
         </div>
       </div>
-      {!date && (
-        <p className="muted">
-          {timecardPeriod(data.period.from, data.period.to)} · Timecard period
-        </p>
-      )}
+      <p className="muted">{timecardPeriod(data.period.from, data.period.to)} · Timecard period</p>
       {!compact &&
         (gaps.length ? (
           <table className="meal-gap-list">

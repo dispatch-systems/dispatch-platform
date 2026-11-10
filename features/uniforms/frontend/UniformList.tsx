@@ -17,7 +17,6 @@ export function UniformList({
   onQuery: (query: string) => void;
   onSelect: (id: string) => void;
   onAdd?: () => void;
-  live: boolean;
 }) {
   const groups = groupUniforms(
     uniforms.filter((u) => `${u.name} ${u.category}`.toLowerCase().includes(query.toLowerCase())),

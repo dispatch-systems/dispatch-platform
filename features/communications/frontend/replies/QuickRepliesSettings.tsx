@@ -17,8 +17,8 @@ import './quick-replies-settings.css';
 // does, and stays where a save fails. Closing the browser tab drops them silently.
 
 /** The most a DSP keeps, and the most characters each holds, as the server allows. */
-export const MOST_REPLIES = 30;
-export const LONGEST_REPLY = 500;
+const MOST_REPLIES = 30;
+const LONGEST_REPLY = 500;
 
 /** Each reply as edited, by a key of its own while it's edited, and the revision of the list the
  * edits began at. */

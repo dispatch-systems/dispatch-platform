@@ -3,7 +3,7 @@ import { bytes } from '../../../shell/frontend/lib/format.js';
 import type { CollectionSource } from './collection-history.js';
 
 /** One line of Overview's "Needs attention". Add a check by adding an entry to `issues`. */
-export interface Issue {
+interface Issue {
   id: string;
   title: string;
   details: string[];

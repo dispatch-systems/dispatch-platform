@@ -12,7 +12,7 @@ import type { TodaysRead } from './todays-routes.js';
 // again, as the dashboard's reads are.
 
 /** How often Today's Routes is read again while it shows, for its drivers' progress. */
-export const ROUTES_READ_MS = 60_000;
+const ROUTES_READ_MS = 60_000;
 
 /** Today's Routes while `shown`, as it last answered and when; why the latest read failed, if it
  * did; and reading it again. */

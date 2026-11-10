@@ -1,7 +1,7 @@
 type Snapshot = { data?: unknown; generation: number };
 type Entry = { snapshot: Snapshot; expires: number; bytes: number; json: string };
 type Request = { controller: AbortController; promise: Promise<unknown> };
-export type CacheFilter = (key: string) => boolean;
+type CacheFilter = (key: string) => boolean;
 
 /** Bounded session memory. Its byte budget estimates payloads plus comparison strings, not heap size. */
 export class ResponseCache {

@@ -21,9 +21,9 @@ export function WorkspaceMark({
 }
 
 /** Every workspace's mark: Slack's. */
-export function AllWorkspacesMark({ className = 'workspace-mark' }: { className?: string }) {
+export function AllWorkspacesMark() {
   return (
-    <span className={`${className} all`} aria-hidden="true">
+    <span className="workspace-mark all" aria-hidden="true">
       <SlackLogo size={14} />
     </span>
   );

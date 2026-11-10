@@ -6,9 +6,6 @@
   min-width: 0;
   padding-top: 24px;
 }
-.paycom-data-view > button {
-  align-self: flex-start;
-}
 /* Tables fill the page: no card border, and their edges align with the tabs above. */
 .paycom-data-table {
   min-width: 0;

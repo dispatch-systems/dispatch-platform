@@ -70,7 +70,6 @@ export function UniformInventoryPage({ view }: { view: DspView }) {
                 onQuery={setQuery}
                 onSelect={setSelected}
                 onAdd={canManage && live ? () => setEditing('new') : undefined}
-                live={live}
               />
               <UniformDetail
                 uniform={active}

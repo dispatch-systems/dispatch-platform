@@ -58,7 +58,7 @@ export function upload<T>(
 }
 
 /** The name `Content-Disposition` gives a file, exactly when it says so. */
-export function savedName(disposition: string | null): string | undefined {
+function savedName(disposition: string | null): string | undefined {
   const exact = /filename\*=UTF-8''([^;]+)/i.exec(disposition ?? '')?.[1];
   if (exact)
     try {

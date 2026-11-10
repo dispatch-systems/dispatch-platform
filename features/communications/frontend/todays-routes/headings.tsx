@@ -13,7 +13,7 @@ export const groupHeading = (group: RouteGroup) =>
   group.key === 'no_driver' ? 'No driver' : undefined;
 
 /** Today's Routes with nobody on it. */
-export function NoRoutes() {
+function NoRoutes() {
   return (
     <div className="no-routes">
       <Route aria-hidden="true" />

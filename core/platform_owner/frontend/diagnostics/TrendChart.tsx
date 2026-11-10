@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-export interface TrendPoint {
+interface TrendPoint {
   id: string;
   label: string;
   value: number;

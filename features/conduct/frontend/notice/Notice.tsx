@@ -120,14 +120,14 @@ function Filled({
 }
 
 /** "Casey Supervisor" as the form's top line names a supervisor: "Casey S.". */
-export const shortName = (name: string) => {
+const shortName = (name: string) => {
   const parts = name.trim().split(/\s+/);
   const last = parts.length > 1 ? parts.at(-1) : undefined;
   return last ? `${parts[0]} ${last[0]}.` : name.trim();
 };
 
 /** A day, YYYY-MM-DD, as the form writes it: 08/23/2026. */
-export const formDay = (day: string) => {
+const formDay = (day: string) => {
   const [year, month, date] = day.split('-');
   return `${month}/${date}/${year}`;
 };

@@ -124,8 +124,7 @@ const watchPhone = (changed: () => void) => {
   return () => query.removeEventListener('change', changed);
 };
 /** Whether this is a phone, as it changes. */
-export const usePhone = () =>
-  useSyncExternalStore(watchPhone, () => matchMedia(phoneQuery).matches);
+const usePhone = () => useSyncExternalStore(watchPhone, () => matchMedia(phoneQuery).matches);
 /** The screen this is. */
 export const thisScreen = (): Screen => (matchMedia(phoneQuery).matches ? 'phone' : 'desktop');
 
@@ -164,7 +163,7 @@ export const lookOf = (display: Display) =>
 const spacing = { compact: 0.67, comfortable: 1, spacious: 1.33 };
 const line = { tight: 1.3, normal: 1.42, relaxed: 1.62 };
 /** The list's width, by its choice. */
-export const listWidths = { narrow: 300, medium: 340, wide: 400 };
+const listWidths = { narrow: 300, medium: 340, wide: 400 };
 const radius = { round: '1.3em', soft: '0.75em', square: '0.3em' };
 
 /** The list's and the profile's widths as drawn: as chosen at 14px, growing with the text. */
