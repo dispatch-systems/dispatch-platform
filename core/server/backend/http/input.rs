@@ -44,37 +44,15 @@ impl Input {
             .map_or("", |(_, segment)| segment)
     }
     pub fn session_token(&self, development: bool) -> &str {
-        let prefix = if development {
-            "dispatch_session="
-        } else {
-            "__Host-dispatch_session="
-        };
-        let mut values = self
-            .headers
-            .get_all("cookie")
-            .iter()
-            .filter_map(|header| header.to_str().ok())
-            .flat_map(|header| header.split(';'))
-            .map(str::trim)
-            .filter_map(|part| part.strip_prefix(prefix));
-        let first = values.next().unwrap_or("");
-        if values.next().is_some() { "" } else { first }
+        self.only_cookie("dispatch_session", development)
     }
     /// A support investigation's separate, read-only identity. Duplicate cookies are refused.
     pub fn support_read_token(&self, development: bool) -> &str {
-        let prefix = if development {
-            "dispatch_support_read="
-        } else {
-            "__Host-dispatch_support_read="
-        };
-        let mut values = self
-            .headers
-            .get_all("cookie")
-            .iter()
-            .filter_map(|header| header.to_str().ok())
-            .flat_map(|header| header.split(';'))
-            .map(str::trim)
-            .filter_map(|part| part.strip_prefix(prefix));
+        self.only_cookie("dispatch_support_read", development)
+    }
+    /// The value of the one cookie called `name`: empty when there is none, or more than one.
+    fn only_cookie(&self, name: &'static str, development: bool) -> &str {
+        let mut values = cookies(&self.headers, name, development);
         let first = values.next().unwrap_or("");
         if values.next().is_some() { "" } else { first }
     }
@@ -109,6 +87,14 @@ pub struct Reply {
     kept: bool,
 }
 impl Reply {
+    fn new(value: Payload, status: u16) -> Self {
+        Self {
+            value,
+            status,
+            cookie: None,
+            kept: false,
+        }
+    }
     pub fn json(value: Value) -> Self {
         Self::status(value, 200)
     }
@@ -117,41 +103,22 @@ impl Reply {
         Self::of_status(value, 200)
     }
     pub fn of_status<T: serde::Serialize>(value: &T, status: u16) -> Result<Self> {
-        Ok(Self {
-            value: Payload::Encoded(Bytes::from(serde_json::to_vec(value)?)),
-            status,
-            cookie: None,
-            kept: false,
-        })
+        let encoded = Bytes::from(serde_json::to_vec(value)?);
+        Ok(Self::new(Payload::Encoded(encoded), status))
     }
     pub fn ok() -> Self {
         Self::json(json!({"ok":true}))
     }
     pub fn status(value: Value, status: u16) -> Self {
-        Self {
-            value: Payload::Value(value),
-            status,
-            cookie: None,
-            kept: false,
-        }
+        Self::new(Payload::Value(value), status)
     }
     /// JSON already serialized by a trusted response producer, never raw request input.
     pub fn encoded(value: Bytes) -> Self {
-        Self {
-            value: Payload::Encoded(value),
-            status: 200,
-            cookie: None,
-            kept: false,
-        }
+        Self::new(Payload::Encoded(value), 200)
     }
     /// A document made by the server, never request input, that a client saves as `name`.
     pub fn file(content_type: &'static str, name: &'static str, body: String) -> Self {
-        Self {
-            value: Payload::File(content_type, name, body),
-            status: 200,
-            cookie: None,
-            kept: false,
-        }
+        Self::new(Payload::File(content_type, name, body), 200)
     }
     /// A file a client saves as `name`, streamed as `body` arrives: of `content_type`, and
     /// `length` bytes when that is known.
@@ -161,56 +128,26 @@ impl Reply {
         length: Option<u64>,
         body: axum::body::Body,
     ) -> Self {
-        Self {
-            value: Payload::Download(content_type.to_owned(), name.to_owned(), length, body),
-            status: 200,
-            cookie: None,
-            kept: false,
-        }
+        let payload = Payload::Download(content_type.to_owned(), name.to_owned(), length, body);
+        Self::new(payload, 200)
     }
     /// A picture of `content_type` for the page to show, which the browser keeps: its address
     /// names the version, so a new picture comes at a new one. Kept apart for each view of a
     /// DSP, since the view decides who may see it.
     pub fn picture(content_type: &str, body: Bytes) -> Self {
-        Self {
-            value: Payload::Picture(content_type.to_owned(), body),
-            status: 200,
-            cookie: None,
-            kept: false,
-        }
+        Self::new(Payload::Picture(content_type.to_owned(), body), 200)
     }
     /// A `302 Found` to `location`, which the server built from what it validated.
     pub fn redirect(location: String) -> Self {
-        Self {
-            value: Payload::Redirect(location),
-            status: 302,
-            cookie: None,
-            kept: false,
-        }
+        Self::new(Payload::Redirect(location), 302)
     }
     /// `{"ok":true}` that also starts the browser's session.
     pub fn signed_in(raw: &str, development: bool, lifetime: SessionLifetime) -> Self {
-        let secure = if development { "" } else { "; Secure" };
-        let name = if development {
-            "dispatch_session"
-        } else {
-            "__Host-dispatch_session"
-        };
-        Self::ok().cookie(format!(
-            "{name}={raw}; Path=/; HttpOnly; SameSite=Strict; Max-Age={}{secure}",
-            lifetime.seconds()
-        ))
+        Self::ok().cookie(session_cookie(raw, lifetime.seconds(), development))
     }
     /// `{"ok":true}` that also ends the browser's session.
     pub fn signed_out(development: bool) -> Self {
-        let (name, secure) = if development {
-            ("dispatch_session", "")
-        } else {
-            ("__Host-dispatch_session", "; Secure")
-        };
-        Self::ok().cookie(format!(
-            "{name}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0{secure}"
-        ))
+        Self::ok().cookie(session_cookie("", 0, development))
     }
     pub fn cookie(mut self, cookie: String) -> Self {
         self.cookie = Some(cookie);
@@ -299,6 +236,37 @@ impl IntoResponse for Reply {
         }
         response
     }
+}
+
+/// A cookie's name in the browser: outside development, `__Host-` keeps it to this address.
+fn cookie_name(name: &str, development: bool) -> String {
+    if development {
+        name.to_owned()
+    } else {
+        format!("__Host-{name}")
+    }
+}
+/// The value of each cookie called `name` that the request sent.
+pub(super) fn cookies<'a>(
+    headers: &'a HeaderMap,
+    name: &'static str,
+    development: bool,
+) -> impl Iterator<Item = &'a str> {
+    let prefix = format!("{}=", cookie_name(name, development));
+    headers
+        .get_all("cookie")
+        .iter()
+        .filter_map(|header| header.to_str().ok())
+        .flat_map(|header| header.split(';'))
+        .map(str::trim)
+        .filter_map(move |part| part.strip_prefix(prefix.as_str()))
+}
+/// The browser's session cookie, holding `raw` for `seconds`; outside development it is
+/// sent over HTTPS alone.
+fn session_cookie(raw: &str, seconds: i64, development: bool) -> String {
+    let name = cookie_name("dispatch_session", development);
+    let secure = if development { "" } else { "; Secure" };
+    format!("{name}={raw}; Path=/; HttpOnly; SameSite=Strict; Max-Age={seconds}{secure}")
 }
 
 /// `Content-Disposition` for saving a file as `name`: a plain ASCII name for any client, and

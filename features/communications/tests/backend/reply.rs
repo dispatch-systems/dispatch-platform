@@ -27,7 +27,7 @@ const TEAM: &str = "T0FIXTURE1";
 /// The conversation Jordan Ellis started in the direct message `dm`.
 async fn started(state: &Arc<State>, bot: &Bot, dm: &str) -> String {
     let event = json!({"type": "message", "channel_type": "im", "channel": dm,
-        "user": "U0FIXJORDAN", "text": "Van won't start", "ts": incoming::ts(now() - 1)});
+        "user": "U0FIXJORDAN", "text": "Van won't start", "ts": model::ts(now() - 1)});
     incoming::heard(state, &bot.dsp, TEAM, &event)
         .await
         .unwrap();

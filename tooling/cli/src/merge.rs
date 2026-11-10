@@ -212,28 +212,29 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
     for outcome in review::left(root)? {
         println!("{}: {}", outcome.tag, outcome.what);
     }
-    let told = match repository {
-        Repository::Platform => {
+    let finish =
+        format!("`dispatchdev finish {branch} --plan`, then `dispatchdev finish {branch}`");
+    let next = match repository {
+        Repository::Platform => vec![
             "Tell the user what merged; Dev installs it once main's run publishes its build"
-                .to_owned()
-        }
-        // Every session reads the docs from the clone, which a merge on GitHub doesn't move.
-        Repository::AgentDocs => format!(
-            "Tell the user what merged; `git -C {} pull --ff-only` puts it where every session \
-             reads the docs",
-            workspace::quote(&Clone::of(root, runner)?.root.to_string_lossy())
-        ),
-    };
-    println!(
-        "{}",
-        workspace::next(&[
-            told,
+                .to_owned(),
+            "`dispatchdev landed`, in the background, waits for main's run of the merge: it is \
+             yours until that run passes"
+                .to_owned(),
+            format!("Once it passed, from outside the worktree, {finish}"),
+        ],
+        // Nothing runs on the docs' `main`; every session reads them from the clone, which a
+        // merge on GitHub doesn't move.
+        Repository::AgentDocs => vec![
             format!(
-                "From outside the worktree, `dispatchdev finish {branch} --plan`, then \
-                 `dispatchdev finish {branch}`"
+                "Tell the user what merged; `git -C {} pull --ff-only` puts it where every \
+                 session reads the docs",
+                workspace::quote(&Clone::of(root, runner)?.root.to_string_lossy())
             ),
-        ])
-    );
+            format!("From outside the worktree, {finish}"),
+        ],
+    };
+    println!("{}", workspace::next(&next));
     Ok(())
 }
 

@@ -671,6 +671,7 @@ label.agents-tool {
 /* An app's call: who made it, as a key or an app. */
 .agents-filters {
   justify-content: flex-start;
+  flex-wrap: wrap;
 }
 .agents-caller {
   display: inline-flex;

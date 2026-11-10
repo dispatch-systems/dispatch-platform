@@ -12,7 +12,7 @@ use super::{
         self,
         storage::groups::{Answered, GroupStore},
     },
-    model::{ConversationKind, Direction, FileStatus, PAGE},
+    model::{self, ConversationKind, Direction, FileStatus, PAGE},
     people::People,
     search,
     storage::{
@@ -29,7 +29,7 @@ use crate::{
     },
     integrations::messages::{self, ID},
 };
-use dispatch_core::{Error, Result, State, db::Store, ensure, manifest::people::Photo};
+use dispatch_core::{Error, Result, State, db::Store, ensure};
 use dispatch_slack::kit;
 use std::collections::HashMap;
 
@@ -267,7 +267,7 @@ pub fn before(value: &str) -> Result<&str> {
 /// millisecond.
 pub fn seen(value: &str) -> Result<(i64, &str)> {
     let ts = before(value)?;
-    let at = messages::incoming::millis(ts).ok_or_else(|| Error::new("invalid_input", 400))?;
+    let at = model::millis(ts).ok_or_else(|| Error::new("invalid_input", 400))?;
     Ok((at, ts))
 }
 /// The conversation `id` and its latest messages, or those before the one Slack knows as
@@ -323,9 +323,7 @@ fn assembled(
     read: Vec<StoredMessage>,
     more: bool,
 ) -> Result<ConversationMessages> {
-    let kept = db
-        .communications_conversation(dsp, id)?
-        .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
+    let kept = found(db, dsp, id)?;
     // With someone Driver Match knows, the route they drive today, for its van, whether they're
     // working, and their conversations of each kind.
     let ((today, working), elsewhere) = match people.member_of(&kept.team, &kept.user) {
@@ -346,11 +344,14 @@ fn assembled(
         limits: compose::SLACK.into(),
     })
 }
+/// The DSP's Slack conversation `id`.
+pub(crate) fn found(db: &Store, dsp: &str, id: &str) -> Result<StoredConversation> {
+    db.communications_conversation(dsp, id)?
+        .ok_or_else(|| Error::new("communications_conversation_not_found", 404))
+}
 /// The conversation `id` as its pages read it.
 pub fn one(db: &Store, state: &State, dsp: &str, id: &str) -> Result<Conversation> {
-    let kept = db
-        .communications_conversation(dsp, id)?
-        .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
+    let kept = found(db, dsp, id)?;
     let people = People::read(db, state, dsp)?;
     Ok(conversations(db, &people, dsp, vec![kept])?.remove(0))
 }
@@ -360,10 +361,6 @@ pub fn named(workspace: &kit::Workspace) -> String {
         .label
         .clone()
         .unwrap_or_else(|| workspace.name.clone())
-}
-/// The workspace `team`'s logo, the copy Slack keeps of it: its kind, and its picture.
-pub fn logo(db: &Store, dsp: &str, team: &str) -> Result<Option<Photo>> {
-    kit::logo(db, dsp, team)
 }
 /// The DSP's workspaces, by name, each with whether Communications works there, the address of
 /// the app's Messages tab in it, whether it needs updating for Communications, and its logo's

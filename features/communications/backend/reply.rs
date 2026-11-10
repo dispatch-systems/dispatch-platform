@@ -21,7 +21,7 @@ use super::{
     conversations, files,
     files::{File, FileStore},
     gifs::{self, Sending},
-    live,
+    live, model,
     people::People,
     sender::{self, Identity},
     storage::{
@@ -34,7 +34,7 @@ use super::{
 };
 use crate::{
     api::types::{CommunicationsUpload, Conversation, Message, MessageGif},
-    integrations::messages::{ID, incoming},
+    integrations::messages::ID,
 };
 use dispatch_core::{
     Error, Result, State,
@@ -183,9 +183,7 @@ fn begin(
     chosen: &[String],
     until: i64,
 ) -> Result<(StoredConversation, Vec<File>, Noted, bool)> {
-    let conversation = db
-        .communications_conversation(dsp, id)?
-        .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
+    let conversation = conversations::found(db, dsp, id)?;
     ensure(
         kit::workspaces_on(db, dsp, ID)?.contains(&conversation.team),
         "communications_off",
@@ -289,7 +287,7 @@ async fn deliver(
 /// Keeps the message `noted` as Slack took it, `ts`, waiting its turn at the database rather
 /// than turned away: the message, as the page reads it.
 async fn keep(state: &Arc<State>, dsp: &str, noted: &Noted, ts: &str) -> Result<Message> {
-    let at = incoming::millis(ts).ok_or_else(|| Error::new("slack_refused", 502))?;
+    let at = model::millis(ts).ok_or_else(|| Error::new("slack_refused", 502))?;
     let (shared, of, noted, ts) = (state.clone(), dsp.to_owned(), noted.clone(), ts.to_owned());
     let message = State::patiently(state.run_scoped(dsp, DOMAIN, move |db| {
         let sent = Sent {
@@ -410,7 +408,7 @@ pub(crate) async fn posted(
         let page = bot
             .call(
                 "conversations.history",
-                &json!({"channel": channel, "oldest": incoming::ts(since - 60_000),
+                &json!({"channel": channel, "oldest": model::ts(since - 60_000),
                     "include_all_metadata": true, "limit": 200, "cursor": cursor}),
             )
             .await?;

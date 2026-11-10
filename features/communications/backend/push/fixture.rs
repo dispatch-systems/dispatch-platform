@@ -1,8 +1,8 @@
-//! Fixture mode's push services, so previews and tests never reach one: each push is kept for the
-//! server's run, by the endpoint it went to, as its browser reads it, and a test reads them with
-//! `pushed`. An endpoint whose last part begins `gone` answers as one its browser let go of (410),
-//! `missing` as one never known (404), `busy` refuses the first push to it (503), and `slow` takes
-//! a second to answer.
+//! Fixture mode's push services, so previews and tests never reach one: in a test, each push is
+//! kept for its run, by the endpoint it went to, as its browser reads it, read with `pushed`. An
+//! endpoint whose last part begins `gone` answers as one its browser let go of (410), `missing` as
+//! one never known (404), `busy` refuses the first push to it (503), and `slow` takes a second to
+//! answer.
 use super::sending::Answer;
 use serde_json::Value;
 use std::{
@@ -10,6 +10,7 @@ use std::{
     sync::{LazyLock, Mutex},
 };
 
+#[cfg(test)]
 static PUSHED: LazyLock<Mutex<Vec<(String, Value)>>> = LazyLock::new(Default::default);
 /// The `busy` endpoints that refused their first push.
 static REFUSED: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::default);
@@ -42,13 +43,16 @@ pub async fn deliver(endpoint: &str, message: &[u8]) -> Answer {
     {
         return Answer::Failed(Some(503));
     }
-    let Ok(read) = serde_json::from_slice(message) else {
+    let Ok(read) = serde_json::from_slice::<Value>(message) else {
         return Answer::Failed(Some(400));
     };
+    #[cfg(test)]
     PUSHED
         .lock()
         .unwrap_or_else(|poison| poison.into_inner())
         .push((endpoint.to_owned(), read));
+    #[cfg(not(test))]
+    drop(read);
     Answer::Sent
 }
 

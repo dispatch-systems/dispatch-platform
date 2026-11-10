@@ -1,21 +1,27 @@
 //! `dispatchdev ci`: why the checks on the checkout's PR head failed. Each failed job with the
 //! end of its failing step's log, as soon as the job ended, and whether `main`'s latest finished
 //! run fails the same job: then the fix is `main`'s, in its own PR, and the change's job runs
-//! again once it merged.
-use crate::{REPOSITORY, Result, Runner, merge::short, review, workspace};
+//! again once it merged. `dispatchdev landed`: how `main`'s own run of a merged change ended.
+use crate::{REPOSITORY, Result, Runner, merge::short, require, review, workspace};
 use serde_json::Value;
-use std::path::Path;
+use std::{path::Path, time::Duration};
 
 /// The workflow whose jobs a PR needs.
 const WORKFLOW: &str = "checks.yml";
 /// How much of a failed job's log is shown: its last lines.
 const LINES: usize = 40;
+/// How long `landed` waits for `main`'s run of a merge to end, which its jobs' own limits do
+/// well before, and how often it asks GitHub meanwhile.
+const LANDS: Duration = Duration::from_secs(45 * 60);
+const ASKS: Duration = Duration::from_secs(20);
 
 /// A run of the checks, and its failed jobs by name and id.
 struct Run {
     id: u64,
     head: String,
     done: bool,
+    /// What it came to once done: a run can fail before it has a job to fail in.
+    conclusion: String,
     failed: Vec<Failed>,
 }
 /// A job that ended without passing: failed, timed out or cancelled.
@@ -32,11 +38,13 @@ fn gh(root: &Path, args: &[&str], runner: &dyn Runner) -> Result<String> {
     command.extend_from_slice(&["--repo", REPOSITORY]);
     workspace::text(runner, &command, Some(root))
 }
-/// The newest run of the checks on `branch` for `event`, or the newest `finished` one.
+/// The newest run of the checks on `branch` for `event`, or the newest `finished` one: of
+/// `commit` alone when one is named.
 fn latest(
     root: &Path,
     branch: &str,
     event: &str,
+    commit: Option<&str>,
     finished: bool,
     runner: &dyn Runner,
 ) -> Result<Option<Run>> {
@@ -52,10 +60,13 @@ fn latest(
         "--limit",
         "1",
         "--json",
-        "databaseId,headSha,status",
+        "databaseId,headSha,status,conclusion",
     ];
     if finished {
         list.extend(["--status", "completed"]);
+    }
+    if let Some(commit) = commit {
+        list.extend(["--commit", commit]);
     }
     let runs: Vec<Value> = serde_json::from_str(&gh(root, &list, runner)?)?;
     let Some(run) = runs.first() else {
@@ -101,6 +112,7 @@ fn latest(
         id,
         head: run["headSha"].as_str().unwrap_or_default().to_owned(),
         done: run["status"] == "completed",
+        conclusion: run["conclusion"].as_str().unwrap_or_default().to_owned(),
         failed,
     }))
 }
@@ -112,7 +124,7 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
     }
     let (branch, head) = review::pushed(root, runner)?;
     let Some(run) =
-        latest(root, &branch, "pull_request", false, runner)?.filter(|run| run.head == head)
+        latest(root, &branch, "pull_request", None, false, runner)?.filter(|run| run.head == head)
     else {
         println!("No checks have started on {} yet.", short(&head));
         return Ok(());
@@ -129,7 +141,7 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
         );
         return Ok(());
     }
-    let main = latest(root, "main", "push", true, runner)?;
+    let main = latest(root, "main", "push", None, true, runner)?;
     let log = |job: u64| log(root, job, runner);
     let others = run
         .failed
@@ -205,7 +217,7 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
 /// `dispatchdev ci` on `main`: why main's latest run of the checks failed, which is main's to
 /// fix at once.
 fn main(root: &Path, runner: &dyn Runner) -> Result<()> {
-    let Some(run) = latest(root, "main", "push", false, runner)? else {
+    let Some(run) = latest(root, "main", "push", None, false, runner)? else {
         println!("main has no run of the checks yet.");
         return Ok(());
     };
@@ -221,6 +233,19 @@ fn main(root: &Path, runner: &dyn Runner) -> Result<()> {
         );
         return Ok(());
     }
+    report(root, &run, runner);
+    println!(
+        "{}",
+        workspace::next(&[format!(
+            "It blocks every PR: fix it at once in its own PR off main, merged with no review; \
+             a flake unrelated to its commit runs again once, `gh run rerun {} --failed`",
+            run.id
+        )])
+    );
+    Ok(())
+}
+/// Each job of `run` that failed, with the end of what its failed step wrote.
+fn report(root: &Path, run: &Run, runner: &dyn Runner) {
     let others = run
         .failed
         .iter()
@@ -241,15 +266,70 @@ fn main(root: &Path, runner: &dyn Runner) -> Result<()> {
             println!("    {line}");
         }
     }
+}
+
+/// `dispatchdev landed`: `main`'s run of the checks on the commit the branch's PR merged as,
+/// waited for to its end, and an error when it failed. Whoever merged a change answers for that
+/// run: once a later merge's run passes, nothing else reads it. `pause` waits between asks.
+pub fn landed(root: &Path, runner: &dyn Runner, pause: &dyn Fn(Duration)) -> Result<()> {
+    let branch = workspace::text(runner, &["git", "branch", "--show-current"], Some(root))?;
+    let merged: Vec<Value> = serde_json::from_str(&gh(
+        root,
+        &[
+            "pr",
+            "list",
+            "--head",
+            &branch,
+            "--state",
+            "merged",
+            "--limit",
+            "1",
+            "--json",
+            "number,mergeCommit",
+        ],
+        runner,
+    )?)?;
+    let Some(pull) = merged.first() else {
+        return Err(format!("{branch} has no merged PR: `dispatchdev merge` merges it.").into());
+    };
+    let commit = pull["mergeCommit"]["oid"]
+        .as_str()
+        .ok_or("A merged PR without its commit")?;
+    let merge = format!(
+        "{}, the commit #{} merged as",
+        short(commit),
+        pull["number"]
+    );
+    let mut waited = Duration::ZERO;
+    let run = loop {
+        if let Some(run) = latest(root, "main", "push", Some(commit), true, runner)? {
+            break run;
+        }
+        require(
+            waited < LANDS,
+            &format!(
+                "main's run of the checks on {merge} hasn't ended after {}: look at it on GitHub.",
+                workspace::duration(LANDS)
+            ),
+        )?;
+        pause(ASKS);
+        waited += ASKS;
+    };
+    if run.conclusion == "success" {
+        println!("main's checks passed on {merge}.");
+        return Ok(());
+    }
+    report(root, &run, runner);
     println!(
         "{}",
         workspace::next(&[format!(
-            "It blocks every PR: fix it at once in its own PR off main, merged with no review; \
-             a flake unrelated to its commit runs again once, `gh run rerun {} --failed`",
+            "The merge is yours until this run passes: a flake unrelated to it runs again once, \
+             `gh run rerun {} --failed`, then `dispatchdev landed` again; what it broke is fixed \
+             at once in its own PR off main, merged with no review",
             run.id
         )])
     );
-    Ok(())
+    Err(format!("main's checks ended in {} on {merge}.", run.conclusion).into())
 }
 
 /// A job's whole log, which GitHub hands out once the job ended: `gh run view --log-failed`
@@ -353,6 +433,89 @@ fn failing<Line: AsRef<str>>(lines: &[Line]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::{Cell, RefCell};
+
+    /// GitHub as `landed` asks it: the branch's merged PR, then main's finished run of its
+    /// commit, which isn't there until the wait paused `after` times, and that run's jobs.
+    struct Github {
+        merged: &'static str,
+        conclusion: &'static str,
+        jobs: String,
+        after: u32,
+        paused: Cell<u32>,
+        asked: RefCell<Vec<Vec<String>>>,
+    }
+    impl Runner for Github {
+        fn command(&self, args: &[&str], _: Option<&Path>, _: u64) -> Result<Vec<u8>> {
+            self.asked
+                .borrow_mut()
+                .push(args.iter().map(|arg| (*arg).to_owned()).collect());
+            let run = format!(
+                r#"[{{"databaseId":5,"headSha":"abc","status":"completed","conclusion":"{}"}}]"#,
+                self.conclusion
+            );
+            let answer = match args {
+                ["git", ..] => "change",
+                ["gh", "pr", ..] => self.merged,
+                ["gh", "run", "list", ..] if self.paused.get() < self.after => "[]",
+                ["gh", "run", "list", ..] => &run,
+                ["gh", "run", "view", ..] => &self.jobs,
+                // A job's log.
+                _ => "",
+            };
+            Ok(answer.as_bytes().to_vec())
+        }
+    }
+    #[test]
+    fn landed_waits_for_mains_run_of_the_merge_and_fails_when_that_run_failed() {
+        let merged = r#"[{"number":7,"mergeCommit":{"oid":"abc"}}]"#;
+        let jobs = |conclusion: &'static str| {
+            let job = format!(r#"{{"name":"core","databaseId":9,"conclusion":"{conclusion}"}}"#);
+            (conclusion, format!(r#"{{"jobs":[{job}]}}"#))
+        };
+        let landed = |merged, (conclusion, jobs): (&'static str, String), after| {
+            let github = Github {
+                merged,
+                conclusion,
+                jobs,
+                after,
+                paused: Cell::new(0),
+                asked: RefCell::new(vec![]),
+            };
+            let result = landed(Path::new("."), &github, &|_| {
+                github.paused.set(github.paused.get() + 1)
+            });
+            (result.map_err(|error| error.to_string()), github)
+        };
+        // It asks for main's run of the commit the PR merged as, and waits until that ended.
+        let (result, github) = landed(merged, jobs("success"), 2);
+        assert_eq!(result, Ok(()));
+        assert_eq!(github.paused.get(), 2);
+        assert!(github.asked.borrow().iter().any(|args| {
+            args[..3] == ["gh", "run", "list"]
+                && args.windows(2).any(|pair| pair == ["--commit", "abc"])
+        }));
+        // A run that failed is an error, so what waits on the command hears of it: one that
+        // failed before it had a job to fail in too.
+        let (result, _) = landed(merged, jobs("failure"), 0);
+        assert_eq!(
+            result.unwrap_err(),
+            "main's checks ended in failure on abc, the commit #7 merged as."
+        );
+        let (result, _) = landed(merged, ("startup_failure", r#"{"jobs":[]}"#.to_owned()), 0);
+        assert_eq!(
+            result.unwrap_err(),
+            "main's checks ended in startup_failure on abc, the commit #7 merged as."
+        );
+        // One that never ends stops the wait, by the clock the pauses move.
+        let (result, github) = landed(merged, jobs("success"), u32::MAX);
+        assert!(result.unwrap_err().contains("hasn't ended after 45m 00s"));
+        assert_eq!(github.paused.get(), 135);
+        // A branch whose PR hasn't merged has no such run to wait for.
+        let (result, github) = landed("[]", jobs("success"), 0);
+        assert!(result.unwrap_err().contains("change has no merged PR"));
+        assert_eq!(github.paused.get(), 0);
+    }
     #[test]
     fn a_failure_is_mains_only_when_main_fails_the_same_tests() {
         let log = |tests: &[(&str, &str)]| {

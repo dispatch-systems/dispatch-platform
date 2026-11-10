@@ -153,6 +153,13 @@ const COMMANDS: &[Spec] = &[
          whether main's latest run fails it too, which makes the fix main's.",
     ),
     spec(
+        "landed",
+        &["landed"],
+        "Wait for main's own run of the checks on the commit the branch's PR merged as, and \
+         say how it ended: an error, with each failed job's log, when it failed. Whoever \
+         merged a change answers for that run.",
+    ),
+    spec(
         "status",
         &["status"],
         "Where the change stands, from branch to merge: committed and pushed, its tier, whether \
@@ -359,7 +366,7 @@ const SECTIONS: &[(&str, &[&str])] = &[
     ("Checking a branch:", &["check", "test", "verify"]),
     (
         "Reviewing and merging:",
-        &["preview", "review", "ci", "merge", "status"],
+        &["preview", "review", "ci", "merge", "landed", "status"],
     ),
     ("Trying it:", &["dev", "api", "shot", "browser", "android"]),
     (
@@ -556,6 +563,7 @@ fn run() -> Result<()> {
         },
         "merge" => merge::run(&line.root()?, &Native),
         "ci" => ci::run(&line.root()?, &Native),
+        "landed" => ci::landed(&line.root()?, &Native, &std::thread::sleep),
         "status" => status::run(&line.root()?, &Native),
         "preview" => match line.arguments.first().map(String::as_str) {
             None => {

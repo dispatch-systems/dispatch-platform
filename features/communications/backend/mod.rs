@@ -36,6 +36,19 @@ pub(crate) mod texts;
 pub(crate) mod today;
 pub(crate) mod windows;
 
+use dispatch_core::{Result, db::Store};
+
+/// Of `dsps`, those with Communications on, in the same order.
+pub(crate) fn switched_on(db: &Store, dsps: Vec<String>) -> Result<Vec<String>> {
+    let mut on = Vec::new();
+    for dsp in dsps {
+        if db.feature_enabled(&dsp, crate::FEATURE.switch.id)? {
+            on.push(dsp);
+        }
+    }
+    Ok(on)
+}
+
 #[cfg(test)]
 #[path = "../tests/backend/support/mod.rs"]
 pub(crate) mod support;

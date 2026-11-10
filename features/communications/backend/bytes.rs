@@ -76,9 +76,25 @@ pub struct Folder {
     pub kept: fn(&Store, &str) -> Result<Vec<String>>,
 }
 
-/// Where bytes arrive, let go of should they never take their place among the DSP's, however
-/// receiving them ends.
-struct Arriving(PathBuf);
+/// Where bytes arrive, let go of should they never take their place, however receiving them
+/// ends.
+pub struct Arriving(PathBuf);
+impl Arriving {
+    /// Makes the file at `path` to write them to, new and only the server's to read.
+    pub async fn create(path: PathBuf) -> std::io::Result<(Self, tokio::fs::File)> {
+        let arriving = Self(path);
+        let file = tokio::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&arriving.0)
+            .await?;
+        Ok((arriving, file))
+    }
+    pub fn path(&self) -> &Path {
+        &self.0
+    }
+}
 impl Drop for Arriving {
     fn drop(&mut self) {
         let _ = std::fs::remove_file(&self.0);
@@ -205,13 +221,8 @@ impl Folder {
     ) -> Result<Arrived> {
         ensure(bytes.length <= most, "upload_too_large", 413)?;
         let folder = self.data(state, dsp).await?;
-        let arriving = Arriving(folder.join(format!("{ARRIVING}{}", crypto::id("arriving")?)));
-        let mut written = tokio::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&arriving.0)
-            .await?;
+        let (arriving, mut written) =
+            Arriving::create(folder.join(format!("{ARRIVING}{}", crypto::id("arriving")?))).await?;
         let mut hash = Sha256::new();
         let mut size = 0i64;
         let mut bytes = Box::pin(bytes.stream());
@@ -345,16 +356,10 @@ impl Folder {
         };
         let copy = match cached {
             Some(cached) => {
-                let arriving =
-                    Arriving(cached.join(format!("{ARRIVING}{}", crypto::id("arriving")?)));
-                tokio::fs::OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .mode(0o600)
-                    .open(&arriving.0)
+                Arriving::create(cached.join(format!("{ARRIVING}{}", crypto::id("arriving")?)))
                     .await
                     .ok()
-                    .map(|file| Caching {
+                    .map(|(arriving, file)| Caching {
                         file,
                         arriving,
                         place: cached.join(sha256),

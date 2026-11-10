@@ -65,12 +65,9 @@ pub fn prepare_server_store(config: &Config) -> Result<Store> {
 }
 
 fn expire_verifications(store: &Store) -> Result<()> {
-    for dsp in store.platform.all(
-        "SELECT id FROM dsps WHERE status IN ('active','suspended')",
-        [],
-    )? {
+    for id in store.kept_dsps()? {
         for provider in Provider::all() {
-            store.collector(db::s(&dsp, "id"), provider)?.exec("UPDATE connections SET \
+            store.collector(&id, provider)?.exec("UPDATE connections SET \
                 status='error',error='verification_expired' WHERE status IN ('signing_in','needs_verification')",[])?;
         }
     }

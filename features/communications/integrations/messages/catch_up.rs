@@ -9,10 +9,13 @@
 //! down. Its direct messages are those Dispatch knows, and every other Slack lists the app as
 //! having (`im:read`) once the workspace's admin has approved that.
 use super::{ID, incoming};
-use crate::backend::storage::{
-    DOMAIN,
-    catch_up::CatchUpStore,
-    conversations::{Conversation, ConversationStore},
+use crate::backend::{
+    model,
+    storage::{
+        DOMAIN,
+        catch_up::CatchUpStore,
+        conversations::{Conversation, ConversationStore},
+    },
 };
 use dispatch_core::{
     Result, State,
@@ -200,7 +203,7 @@ async fn since(
     from: i64,
     before: Option<&str>,
 ) -> Result<Option<String>> {
-    let (oldest, mut cursor, mut last) = (incoming::ts(from), Value::Null, None);
+    let (oldest, mut cursor, mut last) = (model::ts(from), Value::Null, None);
     for _ in 0..PAGES {
         let page = bot
             .call(
@@ -225,7 +228,7 @@ async fn since(
 /// `channel` in the week before: each edit, and each reply in its threads. A pass reads as much
 /// of it as it reads of anything.
 async fn earlier(state: &Arc<State>, bot: &Bot, channel: &str, from: i64) -> Result<()> {
-    let (oldest, latest) = (incoming::ts(from - THREADS_MS), incoming::ts(from));
+    let (oldest, latest) = (model::ts(from - THREADS_MS), model::ts(from));
     let mut cursor = Value::Null;
     for _ in 0..PAGES {
         let page = bot
@@ -236,7 +239,7 @@ async fn earlier(state: &Arc<State>, bot: &Bot, channel: &str, from: i64) -> Res
             )
             .await?;
         for message in page["messages"].as_array().into_iter().flatten() {
-            let edited = message["edited"]["ts"].as_str().and_then(incoming::millis);
+            let edited = message["edited"]["ts"].as_str().and_then(model::millis);
             if edited > Some(from) {
                 incoming::keep(state, &bot.dsp, &bot.team, channel, message).await?;
             }
@@ -257,10 +260,10 @@ async fn replied(
     message: &Value,
     from: i64,
 ) -> Result<()> {
-    let latest = message["latest_reply"].as_str().and_then(incoming::millis);
+    let latest = message["latest_reply"].as_str().and_then(model::millis);
     match message["ts"].as_str() {
         Some(thread) if latest > Some(from) => {
-            replies(state, bot, channel, thread, &incoming::ts(from)).await
+            replies(state, bot, channel, thread, &model::ts(from)).await
         }
         _ => Ok(()),
     }

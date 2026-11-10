@@ -62,10 +62,8 @@ fn pass(state: Arc<State>, _: bool) -> Upkeep {
         let pushing = state
             .read(|db| {
                 let mut pushing = Vec::new();
-                for dsp in db.kept_dsps()? {
-                    if db.feature_enabled(&dsp, crate::FEATURE.switch.id)?
-                        && db.communications_pushing(&dsp)?
-                    {
+                for dsp in crate::backend::switched_on(db, db.kept_dsps()?)? {
+                    if db.communications_pushing(&dsp)? {
                         pushing.push(dsp);
                     }
                 }

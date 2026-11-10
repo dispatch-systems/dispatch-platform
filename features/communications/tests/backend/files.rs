@@ -4,7 +4,10 @@
 //! go, as a failure once in place or a removal that failed leave them; and bytes left arriving go
 //! once abandoned an hour, as a restart leaves them, those under way staying.
 use super::*;
-use crate::{backend::support, integrations::messages::incoming};
+use crate::{
+    backend::{model, support},
+    integrations::messages::incoming,
+};
 use dispatch_core::testing;
 use std::time::SystemTime;
 
@@ -14,7 +17,7 @@ const TEAM: &str = "T0FIXTURE1";
 /// downloaded at once.
 async fn shared(state: &Arc<State>, dsp: &str, at: i64) {
     let event = json!({"type": "message", "subtype": "file_share", "channel_type": "im",
-        "channel": "D0FIXCAM", "user": "U0FIXCAM", "text": "", "ts": incoming::ts(at),
+        "channel": "D0FIXCAM", "user": "U0FIXCAM", "text": "", "ts": model::ts(at),
         "files": [{"id": "F0FIXDMPHOTO", "name": "Flat tire.png", "mimetype": "image/png",
             "size": 69}]});
     incoming::heard(state, dsp, TEAM, &event).await.unwrap();
