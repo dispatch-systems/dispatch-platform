@@ -1076,9 +1076,9 @@ server, at a DSP's own address, by a phone's key, the phones' own:
 
 `GET /api/dsp/communications/conversations/{id}/window`, under `communications.use`, answers with
 one window of a conversation, at most 150 of its messages, oldest first, and, apart from it, the
-conversation's latest 50. No page calls it yet: the page reads a conversation fifty messages at a
-time ([API](#api)), by a route, a cache and a view this endpoint leaves as they are, and the
-endpoint alone bounds nothing the page holds in memory.
+conversation's latest 50. The page reads a conversation through it, holding that window and the
+latest 50 in place of every page it loaded; while a conversation's origins aren't ready, and for
+a group's history, it reads fifty messages at a time ([API](#api)) as before.
 
 With no query it answers with the latest window. `anchor`, a message's full `ts`, with `leading`,
 0 to 149, the messages to come before that place, answers with the window around it, whether or
@@ -1137,8 +1137,8 @@ what came before the first run and day of each set, each on its own: `selected` 
 messages, `latest` for the latest 50. Asking for them changes nothing else of the answer,
 `context.sentBefore` included, and an answer not asked for them has none. While the index is
 ready, a set with no messages has none of these (null); while it isn't, `ready` is false. An
-origin is never a message, a token, a receipt or a sign that someone replied. No page asks for
-origins.
+origin is never a message, a token, a receipt or a sign that someone replied. The page asks for
+origins with every window it reads.
 
 The index is Communications' own (migration 22): by the DSP's timezone, where each run, day and
 sender starts in a conversation, and only those (`communications_slack_origins`,

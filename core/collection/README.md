@@ -1,6 +1,6 @@
 # Collection
 
-The job engine, schedules, live results, live readers, checkpoints, metrics, the collection
+The job engine, schedules, live results, live readers, metrics, the collection
 browser and the Connections and Collectors pages. It runs what the registry's collectors declare and hands each
 result to the one feature that keeps it, naming neither. A collection runs only while the
 feature that keeps it is on, and each feature serves its own jobs under routes core builds for
