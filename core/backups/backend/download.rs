@@ -1,7 +1,7 @@
 //! One of a DSP's backups as the platform owner saves it: a zip of its files as they were, each
 //! at its place in the DSP's folder, a picture under `objects/`, with `backup.json`, the backup's
 //! own description, but the platform's key. Put together aside, then sent as it's read.
-use super::{FILES, MANIFESTS, Vault, history, schedule, seal, take};
+use super::{FILES, MANIFESTS, Vault, blocking, history, schedule, seal, take};
 use crate::{
     Error, Result, State,
     db::{self, s},
@@ -84,16 +84,10 @@ async fn zipped(vault: &Vault, dsp: &str, id: &str, files: &[Value], path: &Path
     let options = SimpleFileOptions::default().large_file(true);
     let sealed = path.with_extension("sealed");
     let mut manifest = {
-        let fetched = vault
-            .objects
-            .get(dsp, MANIFESTS, &vault.manifest(id))
-            .await?
-            .ok_or_else(|| Error::new("backup_incomplete", 502))?;
-        take::written(fetched, &sealed).await?;
+        let object = vault.manifest(id);
+        take::fetch(vault, dsp, MANIFESTS, &object, "backup_incomplete", &sealed).await?;
         let (key, binding, from) = (vault.key, Vault::described(dsp, id), sealed.clone());
-        tokio::task::spawn_blocking(move || seal::open_json(&key, &binding, &from))
-            .await
-            .map_err(|_| Error::new("backup_failed", 500))??
+        blocking(move || seal::open_json(&key, &binding, &from)).await?
     };
     // The description is this backup's: of its DSP, by its ID, naming the files it holds.
     let named: Vec<&str> = manifest["files"]
@@ -115,12 +109,7 @@ async fn zipped(vault: &Vault, dsp: &str, id: &str, files: &[Value], path: &Path
     }
     for file in files {
         let (object, sha256, at) = (s(file, "object"), s(file, "sha256"), s(file, "path"));
-        let fetched = vault
-            .objects
-            .get(dsp, FILES, object)
-            .await?
-            .ok_or_else(|| Error::new("backup_incomplete", 502))?;
-        take::written(fetched, &sealed).await?;
+        take::fetch(vault, dsp, FILES, object, "backup_incomplete", &sealed).await?;
         let (key, binding, sha256, at, from) = (
             vault.key,
             dsp.to_owned(),
@@ -128,17 +117,16 @@ async fn zipped(vault: &Vault, dsp: &str, id: &str, files: &[Value], path: &Path
             at.to_owned(),
             sealed.clone(),
         );
-        zip = tokio::task::spawn_blocking(move || -> Result<ZipWriter<File>> {
+        zip = blocking(move || {
             zip.start_file(at, options)
                 .map_err(|_| Error::new("backup_failed", 500))?;
             seal::open(&key, &binding, &from, &mut zip, &sha256)?;
             Ok(zip)
         })
-        .await
-        .map_err(|_| Error::new("backup_failed", 500))??;
+        .await?;
     }
     let _ = std::fs::remove_file(&sealed);
-    tokio::task::spawn_blocking(move || -> Result<()> {
+    blocking(move || {
         zip.start_file("backup.json", options)
             .map_err(|_| Error::new("backup_failed", 500))?;
         zip.write_all(&serde_json::to_vec_pretty(&manifest)?)?;
@@ -148,5 +136,4 @@ async fn zipped(vault: &Vault, dsp: &str, id: &str, files: &[Value], path: &Path
         Ok(())
     })
     .await
-    .map_err(|_| Error::new("backup_failed", 500))?
 }

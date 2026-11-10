@@ -18,7 +18,7 @@ pub mod when;
 pub use keeper::keeper;
 
 use crate::{
-    Result,
+    Error, Result,
     db::objects::Objects,
     foundation::{config::BackupStore, crypto},
 };
@@ -61,6 +61,15 @@ impl Vault {
         mac.update(value.as_bytes());
         crypto::hex(&mac.finalize().into_bytes())
     }
+}
+
+/// Runs `work` on a blocking thread, as a backup's files are copied, sealed and opened.
+async fn blocking<T: Send + 'static>(
+    work: impl FnOnce() -> Result<T> + Send + 'static,
+) -> Result<T> {
+    tokio::task::spawn_blocking(work)
+        .await
+        .map_err(|_| Error::new("backup_failed", 500))?
 }
 
 #[cfg(test)]
