@@ -86,10 +86,12 @@ and packs the relay app's APKs CI signed, from the folder `DISPATCH_RELAY_APPS` 
 `dashboard/relay/` ([Releases](../../android/README.md#releases)), which `npm run build` copies into
 the package.
 `dispatchdev test` runs the tests a change touches, committed or not, or `--all` of the Rust and
-API tests, one at a time, a line each. Each run builds in a folder of its own under
+API tests, one at a time, a line each. Each run builds in a folder it holds under
 `.test-build/`, without incremental data, and deletes it when it ends, with the release build
 and package it made for the browser tests (`--keep` keeps them), so worktrees hold no test
-builds and several can test at once. Its commands, like `check`'s and `verify`'s, run in
+builds and several can test at once. The folders are numbered, so a run builds where the one
+before it did, and sccache, which keys a compile by its paths, serves it that run's compiles.
+Its commands, like `check`'s and `verify`'s, run in
 systemd scopes of one slice, `app-dispatchdev.slice`, which shares a low CPU weight and a
 memory ceiling between them, so Dev keeps priority. They are the first the out-of-memory killer
 ends, before the agents' sessions, and stop when the session that started them ends.

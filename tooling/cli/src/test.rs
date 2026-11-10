@@ -1,5 +1,5 @@
 //! `dispatchdev test [--all | --owner <owner>] [--keep]`: the tests a change needs, or one
-//! owner's, built in a folder of the run's own and deleted when it ends, so a worktree keeps no
+//! owner's, built in a folder the run holds and deletes when it ends, so a worktree keeps no
 //! test build and several can test at once. Each command runs below Dev (`workspace::logged`).
 use crate::{
     Result, Runner, check, require,
@@ -7,16 +7,18 @@ use crate::{
     test_selection::{self, Workspace},
     workspace,
 };
+use fs2::FileExt;
 use serde::Serialize;
 use serde_json::Value;
 use std::{
     ffi::OsStr,
     fs,
+    os::unix::fs::{MetadataExt, OpenOptionsExt},
     path::{Path, PathBuf},
 };
 
-/// Where a run builds: a folder per run inside the checkout, so the compiler's path policy
-/// covers it, ignored by Git.
+/// Where runs build: a folder each inside the checkout, so the compiler's path policy covers
+/// it, ignored by Git.
 const BUILDS: &str = ".test-build";
 
 /// Packages the runtime for the browser tests with the debug backend, which the run's own Rust
@@ -270,32 +272,78 @@ pub fn label(command: &str) -> String {
         .collect();
     format!("{} ({tests} test files)", kept.join(" "))
 }
-/// Removes the folders of runs that ended without cleaning up, killed or interrupted, each named
-/// for its run's process.
-fn sweep(builds: &Path) {
-    let Ok(entries) = fs::read_dir(builds) else {
-        return;
+/// Holds the build folder `folder`, unless another run does or it isn't a folder: by a lock on
+/// it, which the system lets go of however its run ends. A symbolic link is never followed: a
+/// commit can carry one there that leads out of the checkout.
+fn hold(folder: &Path) -> Option<fs::File> {
+    let lock = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_DIRECTORY)
+        .open(folder)
+        .ok()?;
+    lock.try_lock_exclusive().ok()?;
+    // The run that held it may have deleted it since it was opened: the path is another folder
+    // then, or none.
+    let same = fs::symlink_metadata(folder).ok()?.ino() == lock.metadata().ok()?.ino();
+    same.then_some(lock)
+}
+/// The run's build folder in `builds`, held: the lowest-numbered no run holds, emptied of what a
+/// killed or kept run left in it, with the other numbered ones no run holds removed. Numbered, a
+/// run builds where the one before it did: the compiler cache keys a compile by the paths it
+/// names, and serves a run what an earlier one compiled only at the same ones. `builds` itself
+/// stays once made, so no run ending takes it from under one starting.
+fn claim(builds: &Path) -> Result<(PathBuf, fs::File)> {
+    fs::create_dir_all(builds)?;
+    require(
+        fs::symlink_metadata(builds)?.is_dir(),
+        &format!(
+            "{} is a link, not the checkout's own folder: remove it.",
+            builds.display()
+        ),
+    )?;
+    let mut number = 0;
+    let (build, lock) = loop {
+        number += 1;
+        let folder = builds.join(number.to_string());
+        match fs::create_dir(&folder) {
+            Err(error) if error.kind() != std::io::ErrorKind::AlreadyExists => {
+                return Err(error.into());
+            }
+            _ => {}
+        }
+        if let Some(lock) = hold(&folder) {
+            break (folder, lock);
+        }
     };
-    for entry in entries.filter_map(|entry| entry.ok()) {
-        let pid = entry
+    for entry in fs::read_dir(&build)? {
+        let entry = entry?;
+        match entry.file_type()?.is_dir() {
+            true => fs::remove_dir_all(entry.path())?,
+            false => fs::remove_file(entry.path())?,
+        }
+    }
+    for entry in fs::read_dir(builds)?.filter_map(|entry| entry.ok()) {
+        let numbered = entry
             .file_name()
             .to_str()
-            .and_then(|name| name.parse::<i32>().ok())
-            .filter(|pid| *pid > 0);
-        if let Some(pid) = pid
-            && unsafe { libc::kill(pid, 0) } != 0
-            && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
+            .is_some_and(|name| name.parse::<u32>().is_ok());
+        // Held while it goes, so no run starting now takes it.
+        if numbered
+            && entry.path() != build
+            && let Some(_held) = hold(&entry.path())
         {
             let _ = fs::remove_dir_all(entry.path());
         }
     }
+    Ok((build, lock))
 }
 /// A run's build folder in a checkout, and what the browser tests' packaging makes there, all
 /// deleted when the run ends.
 pub struct Run {
     root: PathBuf,
-    builds: PathBuf,
     pub build: PathBuf,
+    /// Holds the build folder until the run ends.
+    _held: fs::File,
     made: Vec<PathBuf>,
     binary: PathBuf,
     tmp: PathBuf,
@@ -307,10 +355,7 @@ pub struct Run {
 impl Run {
     /// A run in `root`, its temporary files in `tmp`.
     pub fn start(root: &Path, tmp: &Path) -> Result<Self> {
-        let builds = root.join(BUILDS);
-        sweep(&builds);
-        let build = builds.join(std::process::id().to_string());
-        fs::create_dir_all(&build)?;
+        let (build, held) = claim(&root.join(BUILDS))?;
         Ok(Self {
             root: root.to_owned(),
             // What the browser tests' packaging makes in the checkout, if it isn't there already.
@@ -320,8 +365,8 @@ impl Run {
                 .filter(|path| !path.exists())
                 .collect(),
             binary: build.join("debug/dispatch-backend"),
-            builds,
             build,
+            _held: held,
             tmp: tmp.to_owned(),
             debug_package: fs::read_to_string(root.join("tooling/build/build.ts"))
                 .is_ok_and(|build| build.contains("'--debug'")),
@@ -387,7 +432,6 @@ impl Run {
             freed += workspace::size(&crate::Native, &path).unwrap_or(0);
             fs::remove_dir_all(&path)?;
         }
-        let _ = fs::remove_dir(&self.builds);
         Ok(freed)
     }
 }
@@ -626,22 +670,18 @@ mod tests {
         );
     }
     #[test]
-    fn a_run_builds_in_its_own_folder_and_deletes_it_unless_kept() {
+    fn a_run_builds_where_the_last_did_and_deletes_it_unless_kept() {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("run-test-checkout");
         fs::create_dir_all(&root).unwrap();
         let command = |text: &str| vec![text.to_owned()];
         // Each command sees its run's folder and no incremental builds; the folder goes after.
         let wrote = "echo \"$CARGO_TARGET_DIR $CARGO_INCREMENTAL\" > seen && touch \"$CARGO_TARGET_DIR/built\"";
+        let first = root.join(BUILDS).join("1");
         assert!(run_commands(&root, &command(wrote), false).unwrap());
         let seen = fs::read_to_string(root.join("seen")).unwrap();
-        let (folder, incremental) = seen.trim().split_once(' ').unwrap();
-        assert!(
-            folder.starts_with(root.join(BUILDS).to_str().unwrap()),
-            "{folder}"
-        );
-        assert_eq!(incremental, "0");
-        assert!(!root.join(BUILDS).exists(), "the run's build is deleted");
+        assert_eq!(seen.trim(), format!("{} 0", first.display()));
+        assert!(!first.exists(), "the run's build is deleted");
         // A failure stops the run, and still deletes what it built.
         assert!(
             !run_commands(
@@ -651,37 +691,59 @@ mod tests {
             )
             .unwrap()
         );
-        assert!(!root.join("never").exists() && !root.join(BUILDS).exists());
-        // Kept, it stays for the next run of the same change; a dead run's is swept then.
-        assert!(run_commands(&root, &command("true"), true).unwrap());
-        let kept = root.join(BUILDS).join(std::process::id().to_string());
-        assert!(kept.is_dir());
-        let dead = root.join(BUILDS).join("4194999");
+        assert!(!root.join("never").exists() && !first.exists());
+        // Kept, it stays until the next run, which builds there again from nothing; a folder a
+        // killed run left goes then too.
+        assert!(run_commands(&root, &command(wrote), true).unwrap());
+        assert!(first.join("built").exists());
+        let dead = root.join(BUILDS).join("2");
         fs::create_dir_all(&dead).unwrap();
+        let fresh = "test ! -e \"$CARGO_TARGET_DIR/built\" && echo \"$CARGO_TARGET_DIR\" > seen";
+        assert!(run_commands(&root, &command(fresh), true).unwrap());
+        assert_eq!(
+            fs::read_to_string(root.join("seen")).unwrap().trim(),
+            first.to_str().unwrap()
+        );
+        assert!(!dead.exists());
         assert!(run_commands(&root, &command("true"), false).unwrap());
-        assert!(!dead.exists() && !root.join(BUILDS).exists());
+        assert!(!first.exists());
         let _ = fs::remove_dir_all(workspace::scratch("run-test-checkout"));
     }
     #[test]
-    fn a_new_run_preserves_another_live_process_build() {
-        use std::process::{Command, Stdio};
+    fn a_run_leaves_a_folder_it_cannot_hold_and_builds_in_the_next() {
         let temp = tempfile::tempdir().unwrap();
-        let mut child = Command::new("cat")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::null())
-            .spawn()
-            .unwrap();
-        let build = temp.path().join(BUILDS).join(child.id().to_string());
-        fs::create_dir_all(&build).unwrap();
-        fs::write(build.join("active"), "keep").unwrap();
-        let result = run_commands(temp.path(), &["true".into()], false);
-        let preserved = build.join("active").exists();
-        drop(child.stdin.take());
-        child.wait().unwrap();
-        assert!(result.unwrap());
-        assert!(preserved, "another live process owns this build");
-        assert!(run_commands(temp.path(), &["true".into()], false).unwrap());
-        assert!(!build.exists(), "the ended process's build can be swept");
+        let root = temp.path().join("held-test-checkout");
+        let first = root.join(BUILDS).join("1");
+        fs::create_dir_all(&first).unwrap();
+        fs::write(first.join("active"), "keep").unwrap();
+        let other = hold(&first).expect("no run holds it yet");
+        let wrote = ["echo \"$CARGO_TARGET_DIR\" > seen".to_owned()];
+        assert!(run_commands(&root, &wrote, false).unwrap());
+        assert_eq!(
+            fs::read_to_string(root.join("seen")).unwrap().trim(),
+            root.join(BUILDS).join("2").to_str().unwrap()
+        );
+        assert!(first.join("active").exists(), "another run holds it");
+        // Once that run ended without deleting it, the next takes it, emptied.
+        drop(other);
+        assert!(run_commands(&root, &["true".into()], false).unwrap());
+        assert!(!first.exists());
+        // A link a commit carried there is never followed: not the folder's, nor the folders'.
+        let outside = temp.path().join("outside");
+        fs::create_dir_all(outside.join("1")).unwrap();
+        fs::write(outside.join("1/mine"), "keep").unwrap();
+        std::os::unix::fs::symlink(outside.join("1"), &first).unwrap();
+        assert!(run_commands(&root, &wrote, false).unwrap());
+        assert_eq!(
+            fs::read_to_string(root.join("seen")).unwrap().trim(),
+            root.join(BUILDS).join("2").to_str().unwrap()
+        );
+        fs::remove_dir_all(root.join(BUILDS)).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join(BUILDS)).unwrap();
+        let refused = run_commands(&root, &["true".into()], false).unwrap_err();
+        assert!(refused.to_string().contains("is a link"), "{refused}");
+        assert!(outside.join("1/mine").exists());
+        let _ = fs::remove_dir_all(workspace::scratch("held-test-checkout"));
     }
     #[test]
     fn an_old_python3_stops_the_tests_and_verify_before_anything_runs() {
