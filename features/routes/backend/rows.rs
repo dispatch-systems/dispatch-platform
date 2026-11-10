@@ -1,13 +1,8 @@
 //! An itinerary as the tables hold it: its summary and detail flattened into the itinerary's
 //! row, and its stops, tasks, breaks and unknown stops into theirs.
-use super::shaping::{flag, identifier, integer, json_list, number, opt, stamp, text};
+use super::shaping::{flag, identifier, integer, json_list, list_text, number, opt, stamp, text};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-
-/// A driver's itinerary flattened for its row.
-pub(super) struct Flat {
-    pub(super) itinerary: Vec<(&'static str, Value)>,
-}
 
 /// The itinerary row's columns from the list's summary and the detail.
 pub(super) fn flatten(
@@ -15,7 +10,7 @@ pub(super) fn flatten(
     detail: &Value,
     transporter: &str,
     driver_name: &str,
-) -> Flat {
+) -> Vec<(&'static str, Value)> {
     let either = |key: &str| {
         if summary[key].is_null() {
             &detail[key]
@@ -24,102 +19,84 @@ pub(super) fn flatten(
         }
     };
     let packages = &summary["packageSummary"];
-    Flat {
-        itinerary: vec![
-            ("transporter_id", json!(transporter)),
-            ("driver_name", json!(driver_name)),
-            ("route_code", opt(text(either("routeCode")))),
-            (
-                "route_id",
-                opt(text(&summary["routes"][0]["routeId"]).or_else(|| text(&detail["rmsRouteId"]))),
-            ),
-            ("company_id", opt(text(either("companyId")))),
-            ("vin", opt(text(&summary["vinNumber"]))),
-            ("service_type", opt(text(either("serviceTypeName")))),
-            ("execution_status", opt(text(either("executionStatus")))),
-            ("progress_status", opt(text(either("progressStatus")))),
-            (
-                "planned_departure_at",
-                opt(stamp(either("plannedDepartureTime"))),
-            ),
-            (
-                "departed_at",
-                opt(stamp(
-                    &detail["transporterTimeAttributes"]["actualDepartureTime"],
-                )),
-            ),
-            ("started_at", opt(stamp(either("itineraryStartTime")))),
-            ("wave_start_at", opt(stamp(either("waveStartTime")))),
-            ("session_end_at", opt(stamp(either("sessionEndTime")))),
-            (
-                "projected_completion_at",
-                opt(stamp(either("projectedCompletionTime"))),
-            ),
-            (
-                "last_stop_at",
-                opt(stamp(&summary["lastStopExecutionTime"])),
-            ),
-            (
-                "block_minutes",
-                opt(integer(either("blockDurationInMinutes"))),
-            ),
-            ("total_locations", opt(integer(&summary["totalLocations"]))),
-            (
-                "completed_locations",
-                opt(integer(&summary["completedLocations"])),
-            ),
-            ("total_packages", opt(integer(&summary["totalPackages"]))),
-            ("delivered", opt(integer(&packages["DELIVERED"]))),
-            ("remaining", opt(integer(&packages["REMAINING"]))),
-            ("undeliverable", opt(integer(&packages["UNDELIVERABLE"]))),
-            ("stops_impacted", opt(integer(either("stopsImpacted")))),
-            (
-                "packages_impacted",
-                opt(integer(either("packagesImpacted"))),
-            ),
-            (
-                "breaks_secs",
-                opt(integer(&summary["totalBreaksDurationSecs"])),
-            ),
-            (
-                "overtime_secs",
-                opt(integer(either("overtimeDurationSecs"))),
-            ),
-            (
-                "stop_completion_rate",
-                opt(number(either("stopCompletionRate"))),
-            ),
-            (
-                "breaks",
-                json!(
-                    either("breaks")
-                        .as_array()
-                        .map(|v| Value::Array(v.clone()).to_string())
-                        .unwrap_or_else(|| "[]".into())
-                ),
-            ),
-            (
-                "planned_breaks",
-                json!(
-                    either("plannedBreaks")
-                        .as_array()
-                        .map(|v| Value::Array(v.clone()).to_string())
-                        .unwrap_or_else(|| "[]".into())
-                ),
-            ),
-            ("rescue_actions", json_list(either("rescueActions"))),
-            ("sequence_edits", json_list(either("sequenceEdits"))),
-            ("pause_events", json_list(either("routePauseEvents"))),
-            (
-                "summary",
-                json!(if summary.is_null() {
-                    "{}".to_owned()
-                } else {
-                    summary.to_string()
-                }),
-            ),
-        ],
-    }
+    vec![
+        ("transporter_id", json!(transporter)),
+        ("driver_name", json!(driver_name)),
+        ("route_code", opt(text(either("routeCode")))),
+        (
+            "route_id",
+            opt(text(&summary["routes"][0]["routeId"]).or_else(|| text(&detail["rmsRouteId"]))),
+        ),
+        ("company_id", opt(text(either("companyId")))),
+        ("vin", opt(text(&summary["vinNumber"]))),
+        ("service_type", opt(text(either("serviceTypeName")))),
+        ("execution_status", opt(text(either("executionStatus")))),
+        ("progress_status", opt(text(either("progressStatus")))),
+        (
+            "planned_departure_at",
+            opt(stamp(either("plannedDepartureTime"))),
+        ),
+        (
+            "departed_at",
+            opt(stamp(
+                &detail["transporterTimeAttributes"]["actualDepartureTime"],
+            )),
+        ),
+        ("started_at", opt(stamp(either("itineraryStartTime")))),
+        ("wave_start_at", opt(stamp(either("waveStartTime")))),
+        ("session_end_at", opt(stamp(either("sessionEndTime")))),
+        (
+            "projected_completion_at",
+            opt(stamp(either("projectedCompletionTime"))),
+        ),
+        (
+            "last_stop_at",
+            opt(stamp(&summary["lastStopExecutionTime"])),
+        ),
+        (
+            "block_minutes",
+            opt(integer(either("blockDurationInMinutes"))),
+        ),
+        ("total_locations", opt(integer(&summary["totalLocations"]))),
+        (
+            "completed_locations",
+            opt(integer(&summary["completedLocations"])),
+        ),
+        ("total_packages", opt(integer(&summary["totalPackages"]))),
+        ("delivered", opt(integer(&packages["DELIVERED"]))),
+        ("remaining", opt(integer(&packages["REMAINING"]))),
+        ("undeliverable", opt(integer(&packages["UNDELIVERABLE"]))),
+        ("stops_impacted", opt(integer(either("stopsImpacted")))),
+        (
+            "packages_impacted",
+            opt(integer(either("packagesImpacted"))),
+        ),
+        (
+            "breaks_secs",
+            opt(integer(&summary["totalBreaksDurationSecs"])),
+        ),
+        (
+            "overtime_secs",
+            opt(integer(either("overtimeDurationSecs"))),
+        ),
+        (
+            "stop_completion_rate",
+            opt(number(either("stopCompletionRate"))),
+        ),
+        ("breaks", json!(list_text(either("breaks")))),
+        ("planned_breaks", json!(list_text(either("plannedBreaks")))),
+        ("rescue_actions", json_list(either("rescueActions"))),
+        ("sequence_edits", json_list(either("sequenceEdits"))),
+        ("pause_events", json_list(either("routePauseEvents"))),
+        (
+            "summary",
+            json!(if summary.is_null() {
+                "{}".to_owned()
+            } else {
+                summary.to_string()
+            }),
+        ),
+    ]
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub(super) struct StopRow {

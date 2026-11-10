@@ -4,7 +4,7 @@
 //! own; live route data's one day is kept in place, read by read.
 use super::{
     rows::TaskRow,
-    shaping::{PreparedItinerary, flag, integer, number, stamp, text},
+    shaping::{PreparedItinerary, flag, integer, list_text, number, stamp, text},
     staging::Staged,
     work_phones::Stored,
 };
@@ -309,14 +309,6 @@ pub(super) fn widened_seen(table: &str, first: &str, last: &str) -> [String; 2] 
     ]
 }
 
-/// A driver's kinds of person, as their row keeps them.
-pub(super) fn person_type(person: &Value) -> String {
-    person["personType"]
-        .as_array()
-        .map(|v| Value::Array(v.clone()).to_string())
-        .unwrap_or_else(|| "[]".into())
-}
-
 /// What a read sends of a row the days share, as its statement takes it: staged under
 /// `publication`, or in place with `day`, the day it was seen.
 pub(super) fn shared_row(
@@ -427,7 +419,7 @@ impl DriverWrite {
             vec![
                 text(&person["initials"]).into(),
                 text(&person["workPhoneNumber"]).into(),
-                person_type(person).into(),
+                list_text(&person["personType"]).into(),
                 company.into(),
             ],
         ))
