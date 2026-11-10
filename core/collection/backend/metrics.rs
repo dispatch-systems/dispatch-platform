@@ -1,7 +1,10 @@
 //! Per-attempt diagnostics. Only timings, counts, memory totals and fixed failure
 //! labels are persisted.
 use crate::collection::api::metrics::{DocumentState, JobOutcome, PageRead, PageReads, PageStage};
-pub use crate::collection::api::metrics::{JobMetrics as Metrics, JobPhase as Phase};
+pub use crate::collection::api::{
+    metrics::{JobMetrics as Metrics, JobPhase as Phase},
+    types::RunCounts as Counts,
+};
 use crate::{
     Result,
     db::{self, Store, n, s},
@@ -10,7 +13,7 @@ use serde_json::Value;
 use std::{
     collections::HashSet,
     fs,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, MutexGuard},
     time::Instant,
 };
 
@@ -36,16 +39,6 @@ impl Counted {
         }
     }
 }
-/// What a finished collection brought, as its collector counts it from its data.
-#[derive(Default)]
-pub struct Counts {
-    pub employees: Option<usize>,
-    pub timecards: Option<usize>,
-    pub itineraries: Option<usize>,
-    pub meals: Option<usize>,
-    pub rows: Option<usize>,
-}
-
 /// A label from collector code, when it is a short identifier.
 fn identifier(label: &str) -> Option<String> {
     let valid = (1..=48).contains(&label.len())
@@ -151,50 +144,31 @@ impl Recorder {
             pages: Vec::new(),
         })))
     }
+    fn clock(&self) -> MutexGuard<'_, Clock> {
+        self.0.lock().expect("job metrics")
+    }
     pub fn resumed(&self, count: usize) {
-        self.0
-            .lock()
-            .expect("job metrics")
-            .value
-            .page_reads_mut()
-            .resumed = count;
+        self.clock().value.page_reads_mut().resumed = count;
     }
     pub fn early_ready(&self) {
-        self.0
-            .lock()
-            .expect("job metrics")
-            .value
-            .page_reads_mut()
-            .early_ready += 1;
+        self.clock().value.page_reads_mut().early_ready += 1;
     }
     /// Timecards read from the provider's response instead of a rendered page.
     pub fn direct(&self) {
-        self.0
-            .lock()
-            .expect("job metrics")
-            .value
-            .page_reads_mut()
-            .direct += 1;
+        self.clock().value.page_reads_mut().direct += 1;
     }
     /// Response reads that a rendered read of the same employee confirmed.
     pub fn spot_checked(&self) {
-        self.0
-            .lock()
-            .expect("job metrics")
-            .value
-            .page_reads_mut()
-            .spot_checked += 1;
+        self.clock().value.page_reads_mut().spot_checked += 1;
     }
     /// A response read that handed over to a rendered read is not a page failure.
     pub fn page_cancel(&self, ordinal: usize) {
-        self.0
-            .lock()
-            .expect("job metrics")
+        self.clock()
             .pages
             .retain(|(page, _, _)| page.ordinal != ordinal);
     }
     pub fn page_start(&self, ordinal: usize, attempt: usize) {
-        let mut clock = self.0.lock().expect("job metrics");
+        let mut clock = self.clock();
         if attempt > 1 {
             clock.value.page_reads_mut().retries += 1;
         }
@@ -217,7 +191,7 @@ impl Recorder {
     }
     pub fn page_stage(&self, ordinal: usize, stage: &'static str) {
         let stage = PageStage::parse(stage).expect("known page stage");
-        let mut clock = self.0.lock().expect("job metrics");
+        let mut clock = self.clock();
         if let Some((page, _, changed)) = clock
             .pages
             .iter_mut()
@@ -230,7 +204,7 @@ impl Recorder {
         }
     }
     pub fn page_loading(&self, ordinal: usize, pending: Option<usize>, state: &'static str) {
-        let mut clock = self.0.lock().expect("job metrics");
+        let mut clock = self.clock();
         if let Some((page, _, _)) = clock
             .pages
             .iter_mut()
@@ -241,7 +215,7 @@ impl Recorder {
         }
     }
     pub fn page_finish(&self, ordinal: usize, error: Option<&str>) {
-        let mut clock = self.0.lock().expect("job metrics");
+        let mut clock = self.clock();
         if let Some(index) = clock
             .pages
             .iter()
@@ -272,7 +246,7 @@ impl Recorder {
         }
     }
     pub fn phase(&self, phase: Phase) {
-        let mut clock = self.0.lock().expect("job metrics");
+        let mut clock = self.clock();
         if let Some(previous) = clock.value.phase {
             let elapsed = clock.changed.elapsed().as_millis() as u64;
             clock.value.add(previous, elapsed);
@@ -284,19 +258,19 @@ impl Recorder {
     /// The most recent reason a provider page was not ready. Labels come from
     /// collector code, so anything that is not a short identifier is dropped.
     pub fn detail(&self, label: &str) {
-        self.0.lock().expect("job metrics").value.detail = identifier(label);
+        self.clock().value.detail = identifier(label);
     }
     /// How the collector read what it collected, which a run that succeeds keeps.
     pub fn method(&self, label: &str) {
-        self.0.lock().expect("job metrics").value.method = identifier(label);
+        self.clock().value.method = identifier(label);
     }
     /// Why the collector fell back from its first way of reading, which a run that succeeds
     /// keeps too.
     pub fn fallback(&self, label: &str) {
-        self.0.lock().expect("job metrics").value.fallback = identifier(label);
+        self.clock().value.fallback = identifier(label);
     }
     pub fn counts(&self, counts: Counts) {
-        let mut clock = self.0.lock().expect("job metrics");
+        let mut clock = self.clock();
         clock.value.employees = counts.employees;
         clock.value.timecards = counts.timecards;
         clock.value.itineraries = counts.itineraries;
@@ -304,7 +278,7 @@ impl Recorder {
         clock.value.rows = counts.rows;
     }
     pub fn snapshot(&self) -> Metrics {
-        let clock = self.0.lock().expect("job metrics");
+        let clock = self.clock();
         let mut value = clock.value.clone();
         if value.phase.is_some() {
             value.page_reads_mut().active = clock
@@ -325,7 +299,7 @@ impl Recorder {
         value
     }
     pub fn finish(&self, outcome: &str, error: Option<&str>) {
-        let mut clock = self.0.lock().expect("job metrics");
+        let mut clock = self.clock();
         if let Some(phase) = clock.value.phase.take() {
             let elapsed = clock.changed.elapsed().as_millis() as u64;
             clock.value.add(phase, elapsed);
@@ -348,7 +322,7 @@ impl Recorder {
         }
     }
     pub fn observe(&self, sample: Memory) {
-        let mut clock = self.0.lock().expect("job metrics");
+        let mut clock = self.clock();
         let value = &mut clock.value;
         value.memory_samples += 1;
         value.peak_rss_bytes = Some(value.peak_rss_bytes.unwrap_or(0).max(sample.rss));
