@@ -1,6 +1,6 @@
 //! What the dashboard polls: readiness, its own updates, collection progress and presence.
 use crate::{
-    Error, Result, State,
+    Result, State,
     accounts::Context,
     foundation::{crypto, validate as v},
     manifest::registry,

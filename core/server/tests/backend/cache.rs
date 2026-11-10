@@ -199,7 +199,7 @@ fn a_failed_or_panicking_shared_calculation_leaves_the_next_read_free_to_retry()
     let cache = ReadCache::default();
     assert!(
         cache
-            .shared::<i32>(meals("a"), "people".into(), 1, || Err(Error::new(
+            .shared::<i32>(meals("a"), "people".into(), 1, || Err(crate::Error::new(
                 "failed", 500
             )))
             .is_err()
