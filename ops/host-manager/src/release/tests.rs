@@ -52,8 +52,11 @@ struct Fake {
     branches: RefCell<BTreeMap<String, String>>,
     /// The conclusion a dispatched run reaches.
     dispatched: Cell<&'static str>,
-    /// Whether every database in Production's restored backup checks out.
+    /// Whether every database in the synthetic Dev copy checks out.
     restorable: Cell<bool>,
+    snapshot: PathBuf,
+    host: RefCell<String>,
+    copy_control: RefCell<Value>,
     /// What the release's backend reports of starting a copy of Production's backup.
     rehearsal: RefCell<Value>,
     /// What Production reports of itself before a release publishes.
@@ -304,32 +307,90 @@ impl System for Fake {
             Value::Null
         } else if args.starts_with(&["git", "fetch"]) {
             Value::Null
-        } else if args[0] == "scp" {
-            return Ok(vec![]);
+        } else if args == ["/usr/bin/cat", "/proc/sys/kernel/hostname"] {
+            return Ok(self.host.borrow().as_bytes().to_vec());
+        } else if args[0] == "/usr/bin/bwrap" {
+            self.maybe_fail("sandbox")?;
+            if args.contains(&"/check.py") {
+                let input = args
+                    .windows(3)
+                    .find(|c| c[0] == "--ro-bind" && c[2] == "/input")
+                    .unwrap()[1];
+                let mut control = self.copy_control.borrow().clone();
+                control["report"] = self.rehearsal.borrow().clone();
+                control["restorable"] = json!(self.restorable.get());
+                fs::write(
+                    Path::new(input).join("control.json"),
+                    serde_json::to_vec(&control)?,
+                )?;
+            }
+            let result = Native.command(args, cwd, timeout, output);
+            if self.copy_control.borrow()["cleanupFail"] == true && args.contains(&"/check.py") {
+                let input = args
+                    .windows(3)
+                    .find(|c| c[0] == "--ro-bind" && c[2] == "/input")
+                    .unwrap()[1];
+                fs::set_permissions(input, fs::Permissions::from_mode(0o500))?;
+            }
+            return result;
         } else if args[0] == "ssh" {
             // Production, by its backend's own words.
             let script = args.last().unwrap();
-            return Ok(if script.contains("dispatch-upgrade-check-XXXXXX") {
-                "/srv/dispatch/dispatch-platform/tmp/dispatch-upgrade-check-x\n".into()
-            } else if script.contains("rm -rf -- ") {
-                String::new()
-            } else if script.contains("upgrade-check") {
-                format!("{}\n", self.rehearsal.borrow())
+            assert!(!script.contains("upgrade-check") && !script.contains(" restore "));
+            return Ok(if script.contains("exec tar -cf -") {
+                self.maybe_fail("export")?;
+                let file = fs::File::create(output.ok_or("Export needs a private file")?)?;
+                let mut archive = tar::Builder::new(file);
+                archive.follow_symlinks(false);
+                let shape = io::text(&self.copy_control.borrow(), "archive");
+                if !shape.is_empty() {
+                    let mut header = tar::Header::new_gnu();
+                    header.set_mode(0o600);
+                    header.set_size(0);
+                    header.set_path("extra")?;
+                    if shape == "escape" {
+                        header.as_mut_bytes()[..100].fill(0);
+                        header.as_mut_bytes()[..9].copy_from_slice(b"../escape");
+                    }
+                    if shape == "large" {
+                        header.set_size(crate::MAX_BYTES + 1);
+                        header.set_cksum();
+                        archive.get_mut().write_all(header.as_bytes())?;
+                        return Ok(vec![]);
+                    }
+                    if shape == "duplicate" { header.set_entry_type(tar::EntryType::Directory); }
+                    header.set_cksum();
+                    archive.append(&header, Cursor::new([]))?;
+                    if shape == "duplicate" { archive.append(&header, Cursor::new([]))?; }
+                }
+                archive.append_dir_all(".", &self.snapshot)?;
+                archive.finish()?;
+                return Ok(vec![]);
             } else if script.contains("dispatch-backend backup") {
-                json!({"destination":"/srv/dispatch/backups/2026-10-14-091500-before-v1.0.0","files":12}).to_string()
-            } else if script.contains("dispatch-backend\" restore") {
-                let failed: &[&str] = if self.restorable.get() { &[] } else { &["platform.sqlite"] };
-                format!(
-                    "{}\n{}\n",
-                    json!({"target":"/srv/dispatch/dispatch-platform/tmp/dispatch-restore-check-x/r","files":12}),
-                    json!({"databases":4,"failed":failed})
-                )
+                let path = self.snapshot.join("backup.json");
+                let mut manifest = io::read_json(&path)?;
+                manifest["createdAt"] = json!(chrono::DateTime::from_timestamp(self.now() as i64, 0).unwrap().to_rfc3339());
+                fs::write(path, serde_json::to_vec(&manifest)?)?;
+                json!({"destination":"/srv/dispatch/backups/2026-10-14-091500-before-v1.0.0","files":self.copy_control.borrow()["captureFiles"].as_u64().unwrap_or(12)}).to_string()
             } else if script.contains("production-update-failure.json") {
+                if self.copy_control.borrow()["expireOnReady"] == true
+                    && self.calls.borrow().iter().filter(|c| c[0] == "ssh" && c.last().unwrap().contains("production-update-failure.json")).count() == 2 {
+                    self.elapsed.set(self.elapsed.get() + Duration::from_secs(6 * 3600 + 1));
+                }
+                if self.calls.borrow().iter().filter(|c| c[0] == "ssh" && c.last().unwrap().contains("production-update-failure.json")).count() == 2 {
+                    if self.copy_control.borrow()["changeStartupOnReady"] == true {
+                        fs::write(self.snapshot.join("config/platform.env"), "DISPATCH_ENVIRONMENT=production\nDISPATCH_PROVIDER_MODE=native\nCHANGED=1\n")?;
+                    }
+                    if self.copy_control.borrow()["collectionsOnReady"] == true {
+                        self.production.borrow_mut()["running"] = json!(1);
+                    }
+                }
                 let mut report = self.production.borrow().clone();
                 if self.collections_end.get().is_some_and(|end| self.elapsed.get() >= end) {
                     report["running"] = json!(0);
                 }
                 report["slackManifest"] = self.slack.borrow().0.clone();
+                report["startupConfigSha256"] = json!(artifact::file_hash(&self.snapshot.join("config/platform.env"))?);
                 report.to_string()
             } else {
                 assert!(script.contains("journalctl --user -u dispatch-production.service"));
@@ -389,6 +450,9 @@ impl System for Fake {
             location: None,
             body: Box::new(Cursor::new(bytes)),
         })
+    }
+    fn now(&self) -> f64 {
+        1_794_326_400.0 + self.elapsed.get().as_secs_f64()
     }
     fn monotonic(&self) -> Duration {
         self.elapsed.get()
@@ -532,6 +596,39 @@ fn databases(dsp: &[&str]) -> String {
     .to_string()
 }
 impl Fixture {
+    fn snapshot(&self) {
+        let root = &self.system.snapshot;
+        fs::create_dir_all(root.join("data/platform")).unwrap();
+        fs::create_dir_all(root.join("config")).unwrap();
+        fs::write(
+            root.join("config/platform.env"),
+            "DISPATCH_ENVIRONMENT=production\nDISPATCH_PROVIDER_MODE=native\n",
+        )
+        .unwrap();
+        Native.command(&["python3", "-c", "import sqlite3,sys; db=sqlite3.connect(sys.argv[1]); db.execute('CREATE TABLE sample(id INTEGER)'); db.commit()", root.join("data/platform/0.sqlite").to_str().unwrap()], None, 30, None).unwrap();
+        for i in 1..4 {
+            fs::copy(
+                root.join("data/platform/0.sqlite"),
+                root.join(format!("data/platform/{i}.sqlite")),
+            )
+            .unwrap();
+        }
+        for i in 4..11 {
+            fs::write(root.join(format!("data/platform/{i}.txt")), "synthetic").unwrap();
+        }
+        fs::write(root.join("data/platform/platform.key"), [7u8; 32]).unwrap();
+        self.snapshot_manifest();
+    }
+    fn snapshot_manifest(&self) {
+        let root = &self.system.snapshot;
+        let mut files = vec![];
+        for entry in fs::read_dir(root.join("data/platform")).unwrap() {
+            let path = entry.unwrap().path();
+            files.push(json!({"path":path.strip_prefix(root).unwrap().to_str().unwrap(),
+                "sha256":artifact::file_hash(&path).unwrap(),"size":path.metadata().unwrap().len()}));
+        }
+        fs::write(root.join("backup.json"), json!({"format":2,"createdAt":chrono::DateTime::from_timestamp(self.system.now() as i64, 0).unwrap().to_rfc3339(),"files":files}).to_string()).unwrap();
+    }
     fn new() -> Self {
         Self::merging(false, App::None)
     }
@@ -607,6 +704,9 @@ impl Fixture {
             branches: RefCell::new(BTreeMap::new()),
             dispatched: Cell::new("success"),
             restorable: Cell::new(true),
+            snapshot: temp.path().join("snapshot"),
+            host: RefCell::new("dispatch-dev".into()),
+            copy_control: RefCell::new(json!({})),
             rehearsal: RefCell::new(rehearsed()),
             production: RefCell::new(json!({"failure":null,"gh":true,"service":"active",
                 "timer":"active","health":"ready","free":50u64 << 30,"running":0})),
@@ -618,6 +718,7 @@ impl Fixture {
             handover: RefCell::new(vec![]),
         };
         let fixture = Self { temp, root, system };
+        fixture.snapshot();
         fixture.build(None);
         fixture
     }
@@ -638,6 +739,8 @@ impl Fixture {
                 candidate.join(name),
                 if name.ends_with(".json") {
                     json!({"commit":commit}).to_string()
+                } else if name.ends_with("dispatch-backend") {
+                    include_str!("fixture-backend.py").into()
                 } else {
                     "fixture".into()
                 },
@@ -1522,6 +1625,10 @@ fn a_release_needs_something_new_on_main_since_the_previous_one() {
 }
 
 #[test]
+#[cfg_attr(
+    not(target_os = "linux"),
+    ignore = "requires Linux Bubblewrap namespaces"
+)]
 fn migrations_publish_only_after_a_recent_production_backup_that_restores() {
     let f = Fixture::migrating();
     let prepared = f.draft_after_v0_9_0();
@@ -1559,43 +1666,52 @@ fn migrations_publish_only_after_a_recent_production_backup_that_restores() {
     assert_eq!(backup["databases"], 4);
     let receipt = release.directory.join(".v1.0.0-backup.json");
     let mut recorded = io::read_json(&receipt).unwrap();
-    recorded["takenAt"] = json!(f.system.now() - 7.0 * 3600.0);
+    recorded["proof"]["takenAt"] = json!(f.system.now() - 7.0 * 3600.0);
     io::write_json(&receipt, &recorded).unwrap();
     let stale = release.publish(&prepared).unwrap_err().to_string();
     assert!(stale.contains("older than six hours"), "{stale}");
     release.backup().unwrap();
     release.publish(&prepared).unwrap();
     assert!(published());
-    // Every Production step went over ssh, each backup with its restore, the rehearsal's three
-    // and the checks before publishing on either side of it, which no refusal reached, and the
-    // backup starts the service and its updates again whatever happens.
+    // No candidate is uploaded and no restored-copy work is sent to Production.
     let calls = f.system.calls.borrow();
-    let ssh: Vec<_> = calls.iter().filter(|c| c[0] == "ssh").collect();
-    assert_eq!(ssh.len(), 11);
-    assert!(ssh.iter().any(|c| {
+    assert!(calls.iter().any(|c| {
         let script = c.last().unwrap();
-        script.contains("systemctl --user stop dispatch-production.service")
+        c[0] == "ssh" && script.contains("systemctl --user stop dispatch-production.service")
             && script.contains("systemctl --user start dispatch-production.service dispatch-production-update.timer")
             && script.contains("EXIT")
     }));
-    // Each copy restored there, the backups' checks and the rehearsal's, goes in a private
-    // folder on Production's disk, never in memory.
-    let temporary: Vec<_> = ssh
-        .iter()
-        .map(|c| c.last().unwrap())
-        .filter(|script| script.contains("mktemp"))
-        .collect();
-    assert_eq!(temporary.len(), 4);
-    for script in temporary {
-        assert!(
-            script.contains(r#"mkdir -p -m 700 "$HOME/dispatch-platform/tmp""#)
-                && script.contains(r#"mktemp -d "$HOME/dispatch-platform/tmp/dispatch-"#),
-            "{script}"
-        );
-    }
+    assert!(!calls.iter().any(|c| c[0] == "scp"));
+    assert!(
+        calls
+            .iter()
+            .any(|c| c[0] == "/usr/bin/bwrap" && c.last().unwrap() == "upgrade")
+    );
+    assert!(calls.iter().filter(|c| c[0] == "ssh").all(|c| {
+        let script = c.last().unwrap();
+        !script.contains(" restore ")
+            && !script.contains("upgrade-check")
+            && !script.contains("integrity_check")
+    }));
+    assert!(
+        fs::read_dir(release.directory.join(".dev-verification"))
+            .unwrap()
+            .next()
+            .is_none()
+    );
+    let recorded = io::read_json(&receipt).unwrap();
+    assert_eq!(recorded["format"], 2);
+    assert_eq!(recorded["executor"], "dispatch-dev");
+    assert_eq!(recorded["commit"], prepared.commit);
+    assert_eq!(recorded["archiveSha256"], prepared.archive_sha256);
+    assert_eq!(recorded["proof"]["takenAt"], f.system.now());
 }
 
 #[test]
+#[cfg_attr(
+    not(target_os = "linux"),
+    ignore = "requires Linux Bubblewrap namespaces"
+)]
 fn publishing_with_backup_backs_production_up_once_it_can_take_the_release() {
     let f = Fixture::migrating();
     f.draft_after_v0_9_0();
@@ -1650,6 +1766,365 @@ fn a_release_without_migrations_needs_no_backup_or_rehearsal() {
 }
 
 #[test]
+#[cfg_attr(
+    not(target_os = "linux"),
+    ignore = "requires Linux Bubblewrap namespaces"
+)]
+fn final_readiness_refuses_late_config_changes_and_collections_after_the_export() {
+    for (case, message) in [
+        (
+            "changeStartupOnReady",
+            "startup config changed after Dev rehearsal",
+        ),
+        ("collectionsOnReady", "Collections are running"),
+    ] {
+        let f = Fixture::migrating();
+        let prepared = f.draft_after_v0_9_0();
+        let release = Release {
+            take_backup: true,
+            ..f.release()
+        };
+        f.system.copy_control.borrow_mut()[case] = json!(true);
+        let error = release.publish(&prepared).unwrap_err().to_string();
+        assert!(error.contains(message), "{case}: {error}");
+        assert!(!f.system.has_call(&["-F", "draft=false"]));
+    }
+}
+
+// Each case changes one otherwise passing input at the real host/backend boundary.
+// Existing tests above guard integrity, startup exit/carry-over and candidate selection.
+#[test]
+#[cfg_attr(
+    not(target_os = "linux"),
+    ignore = "requires Linux Bubblewrap namespaces"
+)]
+fn dev_checks_refuse_before_capture_or_receipt_and_clean_private_staging() {
+    for (case, message) in [
+        ("host", "physical dispatch-dev"),
+        ("sandbox", "sandbox unavailable"),
+        ("custody", "Unfinished private Dev staging"),
+        ("export", "export failed"),
+        ("files", "restore every file"),
+        ("captureFiles", "restore every captured file"),
+        ("noDatabases", "holds no database"),
+        ("config", "sandbox failed"),
+        ("native", "sandbox failed"),
+        ("runtimeMode", "sandbox failed"),
+        ("fileLimit", "sandbox failed"),
+        ("memoryLimit", "sandbox failed"),
+        ("descriptorLimit", "sandbox failed"),
+        ("content", "differs from its manifest"),
+        ("link", "only regular files"),
+        ("escape", "Unsafe backup export path"),
+        ("large", "1 GiB input limit"),
+        ("duplicate", "duplicate members"),
+        ("key", "platform key is missing"),
+        ("missingConfig", "startup config is missing"),
+        ("format", "Unsupported backup format"),
+        ("unlisted", "unlisted data"),
+    ] {
+        let f = Fixture::migrating();
+        let prepared = f.prepare();
+        let release = f.release();
+        match case {
+            "host" => {
+                f.system.host.replace("dispatch-production".into());
+            }
+            "sandbox" | "export" => f.system.fail(case),
+            "custody" => {
+                io::private_directory(&release.directory.join(".dev-verification/leftover"))
+                    .unwrap();
+            }
+            "files" => {
+                f.system.copy_control.borrow_mut()["files"] = json!(11);
+            }
+            "captureFiles" => {
+                f.system.copy_control.borrow_mut()["captureFiles"] = json!(11);
+            }
+            "noDatabases" => {
+                f.system.copy_control.borrow_mut()["noDatabases"] = json!(true);
+            }
+            "config" => {
+                fs::write(
+                    f.system.snapshot.join("config/platform.env"),
+                    "DISPATCH_ENVIRONMENT=preview\nDISPATCH_PROVIDER_MODE=native\n",
+                )
+                .unwrap();
+            }
+            "native" | "runtimeMode" => {
+                fs::write(f.system.snapshot.join("config/platform.env"), if case == "native" {
+                    "DISPATCH_ENVIRONMENT=production\nDISPATCH_PROVIDER_MODE=fixture\n"
+                } else { "DISPATCH_ENVIRONMENT=production\nDISPATCH_PROVIDER_MODE=native\nNODE_ENV=development\n" }).unwrap();
+            }
+            "fileLimit" | "memoryLimit" | "descriptorLimit" => {
+                f.system.copy_control.borrow_mut()[case] = json!(true);
+            }
+            "content" => {
+                fs::write(f.system.snapshot.join("data/platform/4.txt"), "changed").unwrap();
+            }
+            "link" => {
+                symlink("platform.env", f.system.snapshot.join("config/linked")).unwrap();
+            }
+            "escape" | "large" | "duplicate" => {
+                f.system.copy_control.borrow_mut()["archive"] = json!(case);
+            }
+            "key" => {
+                fs::remove_file(f.system.snapshot.join("data/platform/platform.key")).unwrap();
+                f.snapshot_manifest();
+            }
+            "missingConfig" => {
+                fs::remove_file(f.system.snapshot.join("config/platform.env")).unwrap();
+            }
+            "format" => {
+                let path = f.system.snapshot.join("backup.json");
+                let mut value = io::read_json(&path).unwrap();
+                value["format"] = json!(1);
+                fs::write(path, value.to_string()).unwrap();
+            }
+            "unlisted" => {
+                fs::write(f.system.snapshot.join("unexpected"), "extra").unwrap();
+            }
+            _ => unreachable!(),
+        }
+        let error = if ["config", "native", "runtimeMode", "files", "key"].contains(&case) {
+            release
+                .dev_copy(
+                    "/srv/dispatch/backups/2026-10-14-091500-before-v1.0.0",
+                    &prepared,
+                    if ["config", "native", "runtimeMode"].contains(&case) {
+                        local::Check::Upgrade
+                    } else {
+                        local::Check::Restore
+                    },
+                )
+                .err()
+                .unwrap()
+                .to_string()
+        } else {
+            release.backup().unwrap_err().to_string()
+        };
+        assert!(error.contains(message), "{case}: {error}");
+        assert!(!release.backup_path().exists(), "{case}");
+        if ["host", "sandbox", "custody"].contains(&case) {
+            assert!(
+                !f.system.calls.borrow().iter().any(|c| c[0] == "ssh"),
+                "{case}"
+            );
+        }
+        if case != "custody" && case != "host" {
+            assert!(
+                fs::read_dir(release.directory.join(".dev-verification"))
+                    .unwrap()
+                    .next()
+                    .is_none(),
+                "{case}"
+            );
+        }
+    }
+}
+
+#[test]
+#[cfg_attr(
+    not(target_os = "linux"),
+    ignore = "requires Linux Bubblewrap namespaces"
+)]
+fn cleanup_failure_keeps_private_custody_and_never_records_passing_evidence() {
+    let f = Fixture::migrating();
+    f.prepare();
+    let release = f.release();
+    f.system.copy_control.borrow_mut()["cleanupFail"] = json!(true);
+    let result = release.backup();
+    let custody = release.directory.join(".dev-verification");
+    let left: Vec<_> = fs::read_dir(&custody)
+        .unwrap()
+        .map(|v| v.unwrap().path())
+        .collect();
+    let receipt = release.backup_path().exists();
+    let retry = release.dev_preflight();
+    // Restore access to these listed synthetic fixtures even when an assertion will fail.
+    for path in &left {
+        if path.join("input").exists() {
+            fs::set_permissions(path.join("input"), fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        fs::remove_dir_all(path).unwrap();
+    }
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("Dev cleanup failed")
+    );
+    assert!(!receipt);
+    assert_eq!(left.len(), 1);
+    assert!(
+        retry
+            .unwrap_err()
+            .to_string()
+            .contains("Unfinished private Dev staging")
+    );
+}
+
+#[test]
+#[cfg_attr(
+    not(target_os = "linux"),
+    ignore = "requires Linux Bubblewrap namespaces"
+)]
+fn startup_exit_success_cannot_hide_a_stopped_or_malformed_report() {
+    let f = Fixture::migrating();
+    let prepared = f.draft_after_v0_9_0();
+    let release = f.release();
+    release.backup().unwrap();
+    f.system.copy_control.borrow_mut()["successExit"] = json!(true);
+    for (field, value, message) in [
+        ("stopped", json!("migration_failed"), "Dev startup stopped"),
+        ("migrations", json!({"platform":"bad"}), "sandbox failed"),
+        ("carryOverFailures", json!({}), "sandbox failed"),
+    ] {
+        let mut report = rehearsed();
+        report[field] = value;
+        f.system.rehearsal.replace(report);
+        let error = release.rehearse(&prepared).unwrap_err().to_string();
+        assert!(error.contains(message), "{field}: {error}");
+        assert!(!release.output.join("upgrade-rehearsal.json").exists());
+    }
+}
+
+#[test]
+#[cfg_attr(
+    not(target_os = "linux"),
+    ignore = "requires Linux Bubblewrap namespaces"
+)]
+fn backup_receipts_bind_dev_candidate_and_original_capture_time() {
+    let f = Fixture::migrating();
+    let prepared = f.prepare();
+    let release = f.release();
+    release.backup().unwrap();
+    let mut changed_candidate: Provenance =
+        serde_json::from_value(serde_json::to_value(&prepared).unwrap()).unwrap();
+    changed_candidate.archive_sha256 = "0".repeat(64);
+    let error = release
+        .dev_copy(
+            "/srv/dispatch/backups/2026-10-14-091500-before-v1.0.0",
+            &changed_candidate,
+            local::Check::Inventory,
+        )
+        .err()
+        .unwrap()
+        .to_string();
+    assert!(
+        error.contains("candidate changed after preparation"),
+        "{error}"
+    );
+    let baseline = io::read_json(&release.backup_path()).unwrap();
+    for (field, value) in [
+        ("format", json!(1)),
+        ("executor", json!("dispatch-production")),
+        ("version", json!("0.9.0")),
+        ("commit", json!("b".repeat(40))),
+        ("runtimeDigest", json!("0".repeat(64))),
+        ("archiveSha256", json!("0".repeat(64))),
+        ("destination", json!("/tmp/../backup-before-v1.0.0")),
+    ] {
+        let mut changed = baseline.clone();
+        changed[field] = value;
+        io::write_json(&release.backup_path(), &changed).unwrap();
+        assert!(release.checked_backup(&prepared).is_err(), "{field}");
+    }
+    for offset in [-1.0, 6.0 * 3600.0 + 1.0] {
+        let mut changed = baseline.clone();
+        changed["proof"]["takenAt"] = json!(f.system.now() - offset);
+        io::write_json(&release.backup_path(), &changed).unwrap();
+        let error = release.checked_backup(&prepared).err().unwrap().to_string();
+        assert!(error.contains("capture timestamp"), "{error}");
+    }
+    // Exactly six hours is still valid; verification never resets capture time.
+    io::write_json(&release.backup_path(), &baseline).unwrap();
+    f.system.elapsed.set(Duration::from_secs(6 * 3600));
+    release.checked_backup(&prepared).unwrap();
+    f.system.elapsed.set(Duration::from_secs(6 * 3600 + 1));
+    assert!(release.checked_backup(&prepared).is_err());
+}
+
+#[test]
+#[cfg_attr(
+    not(target_os = "linux"),
+    ignore = "requires Linux Bubblewrap namespaces"
+)]
+fn a_changed_backup_or_config_and_legacy_rehearsal_never_supply_cached_proof() {
+    let f = Fixture::migrating();
+    let prepared = f.draft_after_v0_9_0();
+    let release = f.release();
+    release.backup().unwrap();
+    // Old Production receipts are not Dev proof: a real failed local startup must refuse.
+    io::write_json(
+        &release.output.join("upgrade-rehearsal.json"),
+        &json!({"commit":prepared.commit,"runtimeDigest":prepared.runtime_digest,
+            "backup":"/srv/dispatch/backups/2026-10-14-091500-before-v1.0.0"}),
+    )
+    .unwrap();
+    f.system.rehearsal.borrow_mut()["carryOverFailures"] = json!([true]);
+    assert!(
+        release
+            .rehearse(&prepared)
+            .unwrap_err()
+            .to_string()
+            .contains("carry-over")
+    );
+    f.system.rehearsal.replace(rehearsed());
+    release.rehearse(&prepared).unwrap();
+    release.rehearse(&prepared).unwrap(); // genuine cache reuse
+    let receipt = release.output.join("upgrade-rehearsal.json");
+    let original = io::read_json(&receipt).unwrap();
+    let mut mismatched = original.clone();
+    mismatched["binding"]["archiveSha256"] = json!("0".repeat(64));
+    io::write_json(&receipt, &mismatched).unwrap();
+    let refused = release
+        .revalidate_rehearsal(&prepared)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        refused.contains("No matching Dev startup proof"),
+        "{refused}"
+    );
+    io::write_json(&receipt, &original).unwrap();
+    for path in ["data/platform/4.txt", "config/platform.env"] {
+        let file = f.system.snapshot.join(path);
+        let original = fs::read(&file).unwrap();
+        fs::write(
+            &file,
+            if path.ends_with(".env") {
+                "DISPATCH_ENVIRONMENT=production\nDISPATCH_PROVIDER_MODE=native\nCHANGED=1\n"
+            } else {
+                "changed"
+            },
+        )
+        .unwrap();
+        f.snapshot_manifest();
+        let error = release
+            .revalidate_rehearsal(&prepared)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("changed after Dev verification"),
+            "{path}: {error}"
+        );
+        assert!(!f.system.has_call(&["-F", "draft=false"]));
+        fs::write(file, original).unwrap();
+        f.snapshot_manifest();
+    }
+    release.revalidate_rehearsal(&prepared).unwrap();
+    // The final readiness check can consume freshness after a successful rehearsal.
+    f.system.copy_control.borrow_mut()["expireOnReady"] = json!(true);
+    let error = release.publish(&prepared).unwrap_err().to_string();
+    assert!(error.contains("capture timestamp"), "{error}");
+    assert!(!f.system.has_call(&["-F", "draft=false"]));
+}
+
+#[test]
+#[cfg_attr(
+    not(target_os = "linux"),
+    ignore = "requires Linux Bubblewrap namespaces"
+)]
 fn migrations_publish_only_once_a_copy_of_productions_backup_starts_under_the_release() {
     let f = Fixture::migrating();
     let prepared = f.draft_after_v0_9_0();
@@ -1659,7 +2134,7 @@ fn migrations_publish_only_once_a_copy_of_productions_backup_starts_under_the_re
     let at = |calls: &[Vec<String>], found: &dyn Fn(&[String]) -> bool| {
         calls.iter().position(|c| found(c))
     };
-    let rehearsal = |c: &[String]| c[0] == "ssh" && c.last().unwrap().contains("upgrade-check \"");
+    let rehearsal = |c: &[String]| c[0] == "/usr/bin/bwrap" && c.last().unwrap() == "upgrade";
     let rehearsals = || calls().iter().filter(|c| rehearsal(c)).count();
     let published = |c: &[String]| c.iter().any(|word| word == "draft=false");
     let logged = |event: &str, fields: Value| json!([{"at":"2026-10-14T09:20:00Z","level":"error","event":event,"fields":fields}]);
@@ -1676,34 +2151,21 @@ fn migrations_publish_only_once_a_copy_of_productions_backup_starts_under_the_re
     let section = json!({"dspId":"dsp_1","section":"routes.retention","error":"operation_failed"});
     carried["carryOverFailures"] = json!([section]);
     carried["errors"] = logged("settings.carry_over_failed", section);
-    for (report, named) in [
-        (
-            stopped,
-            "it stopped with migration_failed\n- storage.migration_failed {\"kind\":\"dsp\"",
-        ),
-        (carried, r#"- settings.carry_over_failed {"dspId":"dsp_1""#),
-    ] {
+    for (report, named) in [(stopped, "sandbox failed"), (carried, "carry-over failed")] {
         f.system.rehearsal.replace(report);
         let refused = release.publish(&prepared).unwrap_err().to_string();
         assert!(refused.contains(named), "{named}: {refused}");
+        assert!(
+            fs::read_dir(release.directory.join(".dev-verification"))
+                .unwrap()
+                .next()
+                .is_none()
+        );
+        assert!(!release.output.join("upgrade-rehearsal.json").exists());
     }
     let tried = calls();
     assert!(at(&tried, &published).is_none());
-    let removed = |c: &[String]| {
-        c[0] == "ssh"
-            && c.last()
-                .unwrap()
-                .contains("rm -rf -- /srv/dispatch/dispatch-platform/tmp/dispatch-upgrade-check-x")
-    };
-    assert_eq!(tried.iter().filter(|c| removed(c)).count(), 2);
-    assert!(tried.iter().rposition(|c| removed(c)) > tried.iter().rposition(|c| rehearsal(c)));
-    // What starts there is the release's own backend, copied into that folder.
-    let copied = tried.iter().find(|c| c[0] == "scp").unwrap();
-    assert!(copied[copied.len() - 2].ends_with("/services/rust/dispatch-backend"));
-    assert_eq!(
-        copied.last().unwrap(),
-        "dispatch-production:/srv/dispatch/dispatch-platform/tmp/dispatch-upgrade-check-x/dispatch-backend"
-    );
+    assert!(!tried.iter().any(|c| c[0] == "scp"));
     // One that starts, though it logs an error Production logs at each start already, lets it
     // publish once Production, checked again after it, can take it; it isn't rehearsed again
     // for the same commit and backup, and the release's result reports it.
@@ -1717,16 +2179,23 @@ fn migrations_publish_only_once_a_copy_of_productions_backup_starts_under_the_re
     });
     assert!(done.iter().rposition(|c| rehearsal(c)) < checked);
     assert!(checked < at(&done, &published));
+    let exported = done
+        .iter()
+        .rposition(|c| c[0] == "ssh" && c.last().unwrap().contains("exec tar -cf -"));
+    assert!(
+        exported < checked,
+        "the final readiness must follow every backup export"
+    );
     release.rehearse(&prepared).unwrap();
     assert_eq!(rehearsals(), 3);
     let result = release.execute(Stage::Publish, None).unwrap();
     let reported = &result["upgradeRehearsal"];
     assert_eq!(
         (&reported["migrations"], &reported["errors"]),
-        (&started["migrations"], &started["errors"])
+        (&started["migrations"], &json!([true]))
     );
     assert_eq!(
-        reported["backup"],
+        reported["binding"]["backup"],
         "/srv/dispatch/backups/2026-10-14-091500-before-v1.0.0"
     );
 }

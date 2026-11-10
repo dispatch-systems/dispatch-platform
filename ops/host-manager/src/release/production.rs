@@ -11,7 +11,7 @@ use super::*;
 /// filling up whatever this release needs.
 const FREE_SPACE: u64 = 2 * 1024 * 1024 * 1024;
 /// What the release found on Production before publishing, kept beside the release.
-const CHECKED: &str = "production-check.json";
+pub(super) const CHECKED: &str = "production-check.json";
 /// How long a release waits for collections running on Production to finish before refusing.
 /// Most finish within minutes; one waiting on someone's verification may not.
 const COLLECTIONS_WAIT: Duration = Duration::from_secs(10 * 60);
@@ -33,7 +33,7 @@ fn check_script() -> String {
     format!(
         r#"set -eu
 {SLACK_MANIFEST}
-python3 -c 'import json,os,pathlib,shutil,sqlite3,subprocess,sys,urllib.request
+python3 -c 'import hashlib,json,os,pathlib,shutil,sqlite3,subprocess,sys,urllib.request
 public=pathlib.Path(sys.argv[1])
 failure=public/"data/platform/production-update-failure.json"
 jobs=public/"data/production/jobs.sqlite"
@@ -47,7 +47,8 @@ running=sqlite3.connect(f"file:{{jobs}}?mode=ro",uri=True).execute("SELECT count
 print(json.dumps({{"failure":json.loads(failure.read_text()) if failure.exists() else None,
 "gh":os.access("/usr/local/bin/gh",os.X_OK),"service":state("dispatch-production.service"),
 "timer":state("dispatch-production-update.timer"),"health":health,
-"free":shutil.disk_usage(public).free,"running":running,"slackManifest":json.loads(sys.argv[2])}}))' "$public" "$manifest""#
+"free":shutil.disk_usage(public).free,"running":running,"slackManifest":json.loads(sys.argv[2]),
+"startupConfigSha256":hashlib.sha256((public/"config/platform.env").read_bytes()).hexdigest()}}))' "$public" "$manifest""#
     )
 }
 /// Reads the warnings and errors Production's service logged since `since`, seconds since the

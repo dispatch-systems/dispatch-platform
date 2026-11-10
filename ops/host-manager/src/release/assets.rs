@@ -556,14 +556,24 @@ impl Release<'_> {
         // as must a release published since this one was prepared that its app no longer follows.
         self.checked_source(&prepared.commit)?;
         self.app_follows()?;
+        let needs_rehearsal = !self.new_migrations(&prepared.commit)?.is_empty();
+        if needs_rehearsal {
+            self.dev_preflight()?;
+        }
         self.check_production()?;
         // Only once Production can take the release, so stopping it for the copy never
         // interrupts a collection, fills a short disk or lands on a failing updater.
         let backup = needs_backup.then(|| self.backup()).transpose()?;
-        // A rehearsal takes minutes, so Production is checked again after one, next to
-        // publication.
-        if self.rehearse(prepared)? {
-            self.check_production()?;
+        self.rehearse(prepared)?;
+        self.checked_source(&prepared.commit)?;
+        self.app_follows()?;
+        self.revalidate_rehearsal(prepared)?;
+        // Both startup and the final export can take minutes. Readiness belongs after
+        // all of them; only local candidate/config/freshness validation follows it.
+        self.check_production()?;
+        self.prepared(Some(&prepared.commit))?;
+        if needs_rehearsal {
+            self.ready_rehearsal(prepared)?;
         }
         self.api(
             &format!("releases/{}", release["id"]),
