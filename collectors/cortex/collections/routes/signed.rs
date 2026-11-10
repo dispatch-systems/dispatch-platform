@@ -9,6 +9,7 @@
 //! as downloads finish, so no signature waits long to be used. A read that fails is signed
 //! and downloaded once more; whatever is still unread is left to the application's moves.
 use super::capture::{ItineraryCapture, MAX_BODY};
+use super::page::patterns;
 use super::protocol::{CaptureBudget, ITINERARY, ROUTE_SUMMARIES, itinerary_path, owned_by};
 use crate as cortex;
 use crate::{connection::Tab, discovery::Scope};
@@ -238,19 +239,6 @@ fn decoded(segment: &str) -> Option<String> {
     }
     String::from_utf8(text).ok()
 }
-/// What the tab pauses while the application signs: its requests for either API, before
-/// they are sent.
-fn request_patterns() -> Value {
-    let patterns: Vec<Value> = [ITINERARY, ROUTE_SUMMARIES]
-        .iter()
-        .flat_map(|path| {
-            ["XHR", "Fetch"].map(|kind| {
-                json!({"urlPattern":format!("*{path}*"),"resourceType":kind,"requestStage":"Request"})
-            })
-        })
-        .collect();
-    json!({ "patterns": patterns })
-}
 fn refused(refusal: &Refusal) -> &'static str {
     match refusal {
         Refusal::Unavailable => "http_unavailable",
@@ -381,8 +369,12 @@ impl Tab<'_> {
                 throttled: false,
                 signed_out: false,
             };
+            // The application's requests for either API pause before they are sent.
             self.page
-                .command("Fetch.enable", request_patterns())
+                .command(
+                    "Fetch.enable",
+                    patterns(&[ITINERARY, ROUTE_SUMMARIES], "Request"),
+                )
                 .await?;
             let result = self
                 .sign(&mut signing, &pending, &http, &referer, downloads)

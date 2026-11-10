@@ -13,10 +13,12 @@
 //! opened (`Browser`), the same way.
 use super::{
     Day, INVALID, Method, NATIVE, Navigation,
-    capture::{Capture, Collection, ItineraryCapture, MAX_ITINERARIES, Request, listed, token},
+    capture::{Capture, Collection, ItineraryCapture, Request},
     native::Native,
     page::{MOVE_FAILED, patterns, routes_page},
-    protocol::{CaptureBudget, ITINERARY, ROUTE_SUMMARIES, SUMMARIES, owned_by},
+    protocol::{
+        CaptureBudget, ITINERARY, ROUTE_SUMMARIES, SUMMARIES, itineraries_listed, owned_by, parsed,
+    },
 };
 use crate as cortex;
 use crate::{
@@ -101,9 +103,6 @@ impl Tab<'_> {
         let method = &method;
         self.ensure_page().await?;
         let origin = self.origin;
-        let parse = |text: String| -> Result<Value> {
-            serde_json::from_str(&text).map_err(|_| Error::new("cortex_content_incomplete", 502))
-        };
         let summaries_body = self
             .capture_page(
                 self.page,
@@ -114,21 +113,8 @@ impl Tab<'_> {
             )
             .await?;
         let bytes = CaptureBudget::new(summaries_body.len())?;
-        let summaries = parse(summaries_body)?;
-        let listed = listed(&summaries, scope);
-        ensure(
-            listed.len() <= MAX_ITINERARIES,
-            "routes_source_too_large",
-            502,
-        )?;
-        // As the capture is checked at the end; every read asks by these.
-        ensure(
-            listed
-                .iter()
-                .all(|(id, transporter)| token(id, 128) && token(transporter, 64)),
-            "routes_scope_mismatch",
-            502,
-        )?;
+        let summaries = parsed(&summaries_body)?;
+        let listed = itineraries_listed(&summaries, scope)?;
         // Loading the routes page leaves the list's application; the original reading
         // reloads every itinerary anyway, so it reads that page first.
         let mut route_summaries: Option<Value> = None;
@@ -143,7 +129,7 @@ impl Tab<'_> {
                 )
                 .await?;
             bytes.add(body.len())?;
-            route_summaries = Some(parse(body)?);
+            route_summaries = Some(parsed(&body)?);
         }
         progress(15, format!("Reading {} itineraries", listed.len())).await?;
         let mut itineraries: Vec<Option<ItineraryCapture>> = vec![None; listed.len()];
@@ -221,7 +207,7 @@ impl Tab<'_> {
             None => {
                 let body = self.route_summaries(scope, method, metrics).await?;
                 lanes.bytes.add(body.len())?;
-                parse(body)?
+                parsed(&body)?
             }
         };
         ensure(
@@ -355,7 +341,8 @@ where
         let in_app = self.method.navigation != Navigation::Reload;
         let mut ready = in_app && loaded;
         if ready {
-            page.command("Fetch.enable", patterns(&[ITINERARY])).await?;
+            page.command("Fetch.enable", patterns(&[ITINERARY], "Response"))
+                .await?;
         }
         let result = self.lane(page, &mut ready).await;
         if ready {
@@ -410,7 +397,8 @@ where
                     )
                     .await;
                 if result.is_ok() && self.method.navigation != Navigation::Reload {
-                    page.command("Fetch.enable", patterns(&[ITINERARY])).await?;
+                    page.command("Fetch.enable", patterns(&[ITINERARY], "Response"))
+                        .await?;
                     *ready = true;
                 }
             }
