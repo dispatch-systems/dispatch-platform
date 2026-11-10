@@ -5,7 +5,7 @@ use crate::{
         Auth, Context,
         api::{
             requests::DspSetupRequest,
-            types::{Dsp, DspProfile, DspSummary, DspSummaryLegacy, Member},
+            types::{Dsp, DspProfile, DspSummary, Member},
         },
     },
     collection::api::types::ConnectionStatus,
@@ -270,31 +270,25 @@ impl Store {
         for dsp in rows {
             // A DSP still being provisioned, or that failed to be, has no directory yet.
             let opened = [DspStatus::Active, DspStatus::Suspended].contains(&dsp.status);
-            let mut legacy = DspSummaryLegacy {
-                member_role: None,
-                owner_email: None,
-                platform_email: dsp.permanent.then(|| platform_email.clone()).flatten(),
-                invite_email: None,
-            };
+            let (mut owner_email, mut invite_email, mut member_role) = (None, None, None);
             let mut members = 0;
             if opened {
                 let people = self.dsp(&dsp.id)?;
                 let owner: Option<(Option<String>,)> = people.one_as(OWNER_EMAIL, [&dsp.id])?;
-                legacy.owner_email = owner.and_then(|(email,)| email);
+                owner_email = owner.and_then(|(email,)| email);
                 let invite: Option<(String,)> =
                     people.one_as(INVITE_EMAIL, params![dsp.id, now()])?;
-                legacy.invite_email = invite.map(|(email,)| email);
+                invite_email = invite.map(|(email,)| email);
                 members =
                     people.count("SELECT count(*) FROM memberships WHERE dsp_id=?", [&dsp.id])?;
                 if !platform {
-                    legacy.member_role = self.grant(&a.user.id, &dsp.id)?.map(|grant| grant.name);
+                    member_role = self.grant(&a.user.id, &dsp.id)?.map(|grant| grant.name);
                 }
             }
-            let owner = legacy
-                .owner_email
+            let owner = owner_email
                 .as_deref()
-                .or(legacy.platform_email.as_deref());
-            let invite = legacy.invite_email.as_deref();
+                .or(platform_email.as_deref().filter(|_| dsp.permanent));
+            let invite = invite_email.as_deref();
             let owner_status = if owner.is_some() {
                 OwnerStatus::Active
             } else if invite.is_some() {
@@ -322,10 +316,9 @@ impl Store {
                 role: if platform {
                     Some("platform_owner".to_owned())
                 } else {
-                    legacy.member_role.clone()
+                    member_role
                 },
                 dsp,
-                legacy,
             };
             if [DspStatus::Active, DspStatus::Suspended].contains(&summary.dsp.status) {
                 let id = &summary.dsp.id;

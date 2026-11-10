@@ -102,12 +102,13 @@ fn matching_totp(secret: &[u8], code: &str, time: i64) -> Option<i64> {
 
 impl Store {
     fn factor_counts(&self, a: &Auth) -> Result<(i64, bool)> {
+        let people = self.people(a)?;
         Ok((
-            self.people(a)?.count(
+            people.count(
                 "SELECT count(*) FROM account_passkeys WHERE user_id=?",
                 [&a.user.id],
             )?,
-            self.people(a)?.count(
+            people.count(
                 "SELECT count(*) FROM authenticator_apps WHERE user_id=?",
                 [&a.user.id],
             )? > 0,
@@ -211,7 +212,8 @@ impl Store {
 
     fn save_challenge<T: serde::Serialize>(&self, a: &Auth, kind: &str, state: &T) -> Result<()> {
         self.throttle(&format!("mfa-start:{}", a.user.id), 20, 60000)?;
-        self.people(a)?.exec(
+        let people = self.people(a)?;
+        people.exec(
             "DELETE FROM security_challenges WHERE expires_at<?",
             [now()],
         )?;
@@ -220,7 +222,7 @@ impl Store {
             &Self::challenge_binding(a, kind),
             &serde_json::to_value(state)?,
         )?;
-        self.people(a)?.exec(
+        people.exec(
             "INSERT INTO security_challenges VALUES (?,?,?,?) ON CONFLICT(session_hash) \
              DO UPDATE SET kind=excluded.kind,state=excluded.state,expires_at=excluded.expires_at",
             params![a.hash, kind, state, now() + CHALLENGE_TTL],
@@ -235,12 +237,13 @@ impl Store {
         consume: bool,
     ) -> Result<T> {
         self.throttle(&format!("mfa-finish:{}", a.user.id), 10, 60000)?;
-        let row: Option<(String,)> = self.people(a)?.one_as(
+        let people = self.people(a)?;
+        let row: Option<(String,)> = people.one_as(
             "SELECT state FROM security_challenges WHERE session_hash=? AND kind=? AND expires_at>?",
             params![a.hash, kind, now()],
         )?;
         if consume {
-            self.people(a)?.exec(
+            people.exec(
                 "DELETE FROM security_challenges WHERE session_hash=?",
                 [&a.hash],
             )?;
@@ -282,16 +285,15 @@ impl Store {
             .finish_passkey_registration(&credential, &state)
             .map_err(|_| Error::new("passkey_failed", 400))?;
         let id = passkey_id(&key)?;
-        self.people(a)?.transaction(|| {
+        let people = self.people(a)?;
+        people.transaction(|| {
             let first = !self.security_status(a)?.enrolled;
             ensure(
-                self.people(a)?
-                    .count("SELECT count(*) FROM account_passkeys WHERE id=?", [&id])?
-                    == 0,
+                people.count("SELECT count(*) FROM account_passkeys WHERE id=?", [&id])? == 0,
                 "passkey_exists",
                 409,
             )?;
-            self.people(a)?.exec(
+            people.exec(
                 "INSERT INTO account_passkeys VALUES (?,?,?,?,?)",
                 params![id, a.user.id, serde_json::to_string(&key)?, name, now()],
             )?;
@@ -315,12 +317,13 @@ impl Store {
         let result = webauthn(self, a)?
             .finish_passkey_authentication(&credential, &state)
             .map_err(|_| Error::new("passkey_failed", 403))?;
-        self.people(a)?.transaction(|| {
+        let people = self.people(a)?;
+        people.transaction(|| {
             let mut matched = false;
             for mut key in self.passkeys(a)? {
                 if key.update_credential(&result).is_some() {
                     let id = passkey_id(&key)?;
-                    self.people(a)?.exec(
+                    people.exec(
                         "UPDATE account_passkeys SET credential=? WHERE id=? AND user_id=?",
                         params![serde_json::to_string(&key)?, id, a.user.id],
                     )?;
@@ -376,21 +379,22 @@ impl Store {
             &format!("authenticator:{}", a.user.id),
             &serde_json::json!(secret),
         )?;
-        self.people(a)?.transaction(|| {
+        let people = self.people(a)?;
+        people.transaction(|| {
             let first = !self.security_status(a)?.enrolled;
             ensure(
-                self.people(a)?.count(
+                people.count(
                     "SELECT count(*) FROM authenticator_apps WHERE user_id=?",
                     [&a.user.id],
                 )? == 0,
                 "authenticator_exists",
                 409,
             )?;
-            self.people(a)?.exec(
+            people.exec(
                 "INSERT INTO authenticator_apps(user_id,secret,created_at,last_counter) VALUES (?,?,?,?)",
                 params![a.user.id, encrypted, now(), counter],
             )?;
-            self.people(a)?.exec(
+            people.exec(
                 "DELETE FROM security_challenges WHERE session_hash=?",
                 [&a.hash],
             )?;
@@ -415,7 +419,8 @@ impl Store {
 
     pub fn authenticator_verify(&self, a: &Auth, code: &str) -> Result<()> {
         self.throttle(&format!("totp:{}", a.user.id), 5, 5 * 60000)?;
-        let row: Option<(String, i64)> = self.people(a)?.one_as(
+        let people = self.people(a)?;
+        let row: Option<(String, i64)> = people.one_as(
             "SELECT secret,last_counter FROM authenticator_apps WHERE user_id=?",
             [&a.user.id],
         )?;
@@ -434,9 +439,9 @@ impl Store {
         let counter = matching_totp(&decoded, code, now())
             .filter(|counter| *counter > last_counter)
             .ok_or_else(|| Error::new("invalid_authenticator_code", 403))?;
-        self.people(a)?.transaction(|| {
+        people.transaction(|| {
             ensure(
-                self.people(a)?.exec(
+                people.exec(
                     "UPDATE authenticator_apps SET last_counter=? WHERE user_id=? AND last_counter<?",
                     params![counter, a.user.id, counter],
                 )? == 1,
@@ -472,14 +477,14 @@ impl Store {
 
     fn disable_if_last_factor(&self, a: &Auth) -> Result<()> {
         if !self.security_status(a)?.enrolled {
-            self.people(a)?
-                .exec("DELETE FROM recovery_codes WHERE user_id=?", [&a.user.id])?;
-            self.people(a)?.exec(
+            let people = self.people(a)?;
+            people.exec("DELETE FROM recovery_codes WHERE user_id=?", [&a.user.id])?;
+            people.exec(
                 "DELETE FROM security_challenges WHERE session_hash IN \
                  (SELECT hash FROM sessions WHERE user_id=?)",
                 [&a.user.id],
             )?;
-            self.people(a)?.exec(
+            people.exec(
                 "DELETE FROM session_security WHERE session_hash=?",
                 [&a.hash],
             )?;
@@ -489,9 +494,10 @@ impl Store {
 
     pub fn remove_passkey(&self, a: &Auth, id: &str) -> Result<()> {
         self.ensure_recent(a)?;
-        self.people(a)?.transaction(|| {
+        let people = self.people(a)?;
+        people.transaction(|| {
             ensure(
-                self.people(a)?.exec(
+                people.exec(
                     "DELETE FROM account_passkeys WHERE id=? AND user_id=?",
                     [id, &a.user.id],
                 )? == 1,
@@ -506,9 +512,10 @@ impl Store {
 
     pub fn remove_authenticator(&self, a: &Auth) -> Result<()> {
         self.ensure_recent(a)?;
-        self.people(a)?.transaction(|| {
+        let people = self.people(a)?;
+        people.transaction(|| {
             ensure(
-                self.people(a)?.exec(
+                people.exec(
                     "DELETE FROM authenticator_apps WHERE user_id=?",
                     [&a.user.id],
                 )? == 1,
@@ -534,12 +541,12 @@ impl Store {
     }
 
     fn create_recovery_codes(&self, a: &Auth) -> Result<Vec<String>> {
-        self.people(a)?
-            .exec("DELETE FROM recovery_codes WHERE user_id=?", [&a.user.id])?;
+        let people = self.people(a)?;
+        people.exec("DELETE FROM recovery_codes WHERE user_id=?", [&a.user.id])?;
         let mut codes = Vec::new();
         for _ in 0..10 {
             let code = crypto::recovery_code()?;
-            self.people(a)?.exec(
+            people.exec(
                 "INSERT INTO recovery_codes VALUES (?,?)",
                 params![crypto::sha(&code), a.user.id],
             )?;
@@ -557,9 +564,10 @@ impl Store {
     pub fn use_recovery_code(&self, a: &Auth, code: &str) -> Result<()> {
         self.ensure_recent_password(a)?;
         self.throttle(&format!("recovery-code:{}", a.user.id), 5, 900000)?;
-        self.people(a)?.transaction(|| {
+        let people = self.people(a)?;
+        people.transaction(|| {
             ensure(
-                self.people(a)?.exec(
+                people.exec(
                     "DELETE FROM recovery_codes WHERE hash=? AND user_id=?",
                     params![crypto::sha(code.trim()), a.user.id],
                 )? == 1,
@@ -599,13 +607,12 @@ impl Store {
     }
 
     pub fn revoke_session(&self, a: &Auth, id: &str) -> Result<()> {
-        for (hash,) in self
-            .people(a)?
+        let people = self.people(a)?;
+        for (hash,) in people
             .query_as::<(String,)>("SELECT hash FROM sessions WHERE user_id=?", [&a.user.id])?
         {
             if crypto::equal(id, &crypto::sign(&self.key, &format!("session-id:{hash}"))) {
-                self.people(a)?
-                    .exec("DELETE FROM sessions WHERE hash=?", [&hash])?;
+                people.exec("DELETE FROM sessions WHERE hash=?", [&hash])?;
                 return self.audit_account(
                     &a.user,
                     a.scope.as_deref(),
