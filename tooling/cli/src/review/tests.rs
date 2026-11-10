@@ -582,21 +582,6 @@ fn each_pass_is_pinned_to_the_pushed_head_and_later_ones_read_only_what_changed(
     commit(root, "no second van");
     assert!(unreviewed().unwrap().contains("Pass 2 was recorded"));
     git(root, &["reset", "-q", "--hard", "HEAD^^"]);
-    // Nor through a merge of more than two parents, of which git shows nothing: main and a
-    // branch that left this one before the merge.
-    git(root, &["switch", "-q", "-c", "notes", &first]);
-    write(root, "features/dvic/README.md", "# DVIC\n");
-    commit(root, "notes");
-    git(root, &["switch", "-q", "keep-week"]);
-    git(root, &["merge", "-q", "--no-commit", "main", "notes"]);
-    write(
-        root,
-        "features/dvic/backend/week.rs",
-        "fn week(dsp: Dsp) { page(&dsp) }\n",
-    );
-    commit(root, "merge main and the notes, and a fix");
-    assert!(unreviewed().unwrap().contains("Pass 2 was recorded"));
-    git(root, &["reset", "-q", "--hard", "HEAD^"]);
     git(root, &["merge", "-q", "--no-commit", "main"]);
     write(
         root,
@@ -732,6 +717,67 @@ fn commits_no_answer_accounts_for_get_the_review_their_paths_need() {
     );
     commit(root, "test less");
     assert!(unreviewed().unwrap().contains("review prepare --pass 4"));
+}
+
+#[test]
+fn a_merge_of_more_than_two_parents_gets_a_pass_of_the_whole_change() {
+    let fixture = Fixture::new();
+    let root = &fixture.root;
+    write(
+        root,
+        "features/dvic/backend/week.rs",
+        "fn week() { page() }\n",
+    );
+    commit(root, "keep the week");
+    git(root, &["push", "-q", "-u", "origin", "keep-week"]);
+    fixture.prepare(1).unwrap();
+    write(&fixture.dir(1), "findings.md", "No findings.\n");
+    take(root, 1, &Native).unwrap();
+    let alone = Models {
+        model: "gpt-6.1-sol",
+        security: None,
+    };
+    record(root, 1, &alone, &Native).unwrap();
+
+    // Git shows nothing of what such a merge holds of its own, here a fix beside `main` and a
+    // branch of notes: nothing can be told from the commits, nor from what differs since the
+    // pass, which would hide the undoing of something `main` brought.
+    git(root, &["switch", "-q", "-c", "notes", "HEAD^"]);
+    write(root, "features/dvic/README.md", "# DVIC\n");
+    commit(root, "notes");
+    git(root, &["switch", "-q", "main"]);
+    write(root, "features/vans/backend/van.rs", "fn van() {}\n");
+    commit(root, "a van");
+    git(root, &["push", "-q", "origin", "main"]);
+    git(root, &["switch", "-q", "keep-week"]);
+    git(root, &["merge", "-q", "--no-commit", "main", "notes"]);
+    write(
+        root,
+        "features/dvic/backend/week.rs",
+        "fn week(dsp: Dsp) { page(dsp) }\n",
+    );
+    commit(root, "merge main and the notes, and a fix");
+    let needs = crate::merge::unreviewed(
+        root,
+        "## Review\n\nTier standard\n",
+        &fixture.head(),
+        &Native,
+    );
+    assert!(needs.unwrap().unwrap().contains("Pass 1 was recorded"));
+    git(root, &["push", "-q", "origin", "keep-week"]);
+    fixture.prepare(2).unwrap();
+    let brief = fs::read_to_string(fixture.dir(2).join("brief.md")).unwrap();
+    let main = Checkout {
+        root,
+        runner: &Native,
+    }
+    .git(&["rev-parse", "origin/main"])
+    .unwrap();
+    assert!(brief.contains("the whole change again"), "{brief}");
+    assert!(
+        brief.contains(&format!("`git diff {main}..{}`", fixture.head())),
+        "{brief}"
+    );
 }
 
 #[test]

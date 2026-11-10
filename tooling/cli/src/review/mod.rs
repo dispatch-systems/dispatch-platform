@@ -394,11 +394,12 @@ pub fn prepare(root: &Path, ask: &Prepare, runner: &dyn Runner) -> Result<()> {
     }
     let base = previous
         .as_ref()
-        .map_or(main, |(pass, _)| pass.head.clone());
+        .map_or(main.clone(), |(pass, _)| pass.head.clone());
     // A later pass reads what the branch itself changed since the one before, and that sets
     // who reads it: the tests alone when nothing else changed, and the security reviewer only
     // for a sensitive path in it, a fix its own review asked for, or a tier that was asked for.
-    // Where that can't be told, it reads all that differs, its security reviewer too.
+    // Where that can't be told, it reads the whole change again, its security reviewer too:
+    // what differs since the last pass could hide the undoing of something `main` brought.
     let since = match &previous {
         Some(_) => git.since(&base, &head)?,
         None => None,
@@ -407,26 +408,30 @@ pub fn prepare(root: &Path, ask: &Prepare, runner: &dyn Runner) -> Result<()> {
         Some(_) if git.main_merged(&base, &head)? => {
             format!("git {} -p {base}..{head} {NOT_MAIN}", COMMITS.join(" "))
         }
-        _ => format!("git diff {base}..{head}"),
+        Some(_) => format!("git diff {base}..{head}"),
+        None => format!("git diff {main}..{head}"),
     };
-    let (tests, security) = match &previous {
-        None => (false, true),
-        Some((_, recorded)) => (
-            since
-                .as_ref()
-                .is_some_and(|since| tier::later(since) == Later::Tests),
-            asked
-                || since.is_none_or(|since| {
-                    since
-                        .iter()
-                        .any(|file| tier::sensitive(&file.path).is_some())
-                })
-                || recorded.answers.iter().any(|outcome| {
-                    outcome.security && outcome.tag == "Important" && outcome.answer == "fixed"
-                }),
-        ),
+    let reads = match (&previous, &since) {
+        (None, _) => Reads::Change,
+        (Some(_), None) => Reads::ChangeAgain,
+        (Some(_), Some(since)) if tier::later(since) == Later::Tests => Reads::Tests,
+        (Some(_), Some(_)) => Reads::Since,
     };
-    let security = security && tier == Tier::Sensitive;
+    let security = tier == Tier::Sensitive
+        && match &previous {
+            None => true,
+            Some((_, recorded)) => {
+                asked
+                    || since.is_none_or(|since| {
+                        since
+                            .iter()
+                            .any(|file| tier::sensitive(&file.path).is_some())
+                    })
+                    || recorded.answers.iter().any(|outcome| {
+                        outcome.security && outcome.tag == "Important" && outcome.answer == "fixed"
+                    })
+            }
+        };
     let pass = Pass {
         pass: n,
         head: head.clone(),
@@ -444,7 +449,7 @@ pub fn prepare(root: &Path, ask: &Prepare, runner: &dyn Runner) -> Result<()> {
         dir: &dir,
         branch: &branch,
         pass: &pass,
-        tests,
+        reads,
         paths: &paths,
         runner,
     };
@@ -467,11 +472,17 @@ pub fn prepare(root: &Path, ask: &Prepare, runner: &dyn Runner) -> Result<()> {
             false => format!(" ({})", pass.reasons.join(", ")),
         }
     );
-    if tests {
-        println!(
+    match reads {
+        Reads::Tests => println!(
             "Tests alone changed since pass {}: its reviewer reads them alone.",
             n - 1
-        );
+        ),
+        Reads::ChangeAgain => println!(
+            "A merge of more than two parents hides what changed since pass {}: it reads the \
+             whole change again.",
+            n - 1
+        ),
+        Reads::Change | Reads::Since => {}
     }
     if tier == Tier::Sensitive && !pass.security {
         println!(
@@ -496,6 +507,18 @@ pub fn prepare(root: &Path, ask: &Prepare, runner: &dyn Runner) -> Result<()> {
     Ok(())
 }
 
+/// What a pass's reviewers read.
+#[derive(Clone, Copy)]
+enum Reads {
+    /// The whole change: the first pass.
+    Change,
+    /// The whole change again: what changed since the pass before can't be told.
+    ChangeAgain,
+    /// What changed since the pass before.
+    Since,
+    /// The tests among it, all that changed.
+    Tests,
+}
 /// What a brief is written from.
 struct Fill<'a> {
     root: &'a Path,
@@ -504,8 +527,7 @@ struct Fill<'a> {
     dir: &'a Path,
     branch: &'a str,
     pass: &'a Pass,
-    /// Whether the pass reads tests alone: all that changed since the pass before.
-    tests: bool,
+    reads: Reads,
     paths: &'a [&'a str],
     runner: &'a dyn Runner,
 }
@@ -521,13 +543,17 @@ impl Fill<'_> {
                 decisions.display()
             ),
         )?;
-        let scope = match self.pass.pass {
-            1 => "the whole change".to_owned(),
-            n if self.tests => format!("the tests changed since pass {}, alone", n - 1),
-            n => format!(
-                "what changed since pass {}, and how it fits the rest of the change",
-                n - 1
+        let last = self.pass.pass.saturating_sub(1);
+        let scope = match self.reads {
+            Reads::Change => "the whole change".to_owned(),
+            Reads::ChangeAgain => format!(
+                "the whole change again, a merge of more than two parents hiding what changed \
+                 since pass {last}"
             ),
+            Reads::Tests => format!("the tests changed since pass {last}, alone"),
+            Reads::Since => {
+                format!("what changed since pass {last}, and how it fits the rest of the change")
+            }
         };
         let earlier = match self.pass.pass {
             1 => String::new(),
