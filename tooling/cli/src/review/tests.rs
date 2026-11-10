@@ -16,6 +16,32 @@ fn a_change_is_light_standard_or_sensitive_by_the_paths_it_changes() {
                 .collect::<Vec<_>>(),
         )
     };
+    // What commits after a pass need: nothing for documentation, the tests read alone for
+    // tests, and a pass for the rest, a test or a README on a sensitive path among it.
+    for (paths, needs) in [
+        (vec![], tier::Later::Nothing),
+        (vec!["README.md"], tier::Later::Nothing),
+        (
+            vec!["README.md", "features/dvic/tests/api/week.rs"],
+            tier::Later::Tests,
+        ),
+        (
+            vec!["features/dvic/tests/api/week.rs", "features/dvic/api/week.rs"],
+            tier::Later::Pass,
+        ),
+        (vec!["core/accounts/tests/api/mfa.rs"], tier::Later::Pass),
+        (vec!["core/accounts/README.md"], tier::Later::Pass),
+        (vec!["AGENTS.md"], tier::Later::Pass),
+    ] {
+        let changed: Vec<Changed> = paths
+            .iter()
+            .map(|path| Changed {
+                path: (*path).to_owned(),
+                lines: 1,
+            })
+            .collect();
+        assert_eq!(tier::later(&changed), needs, "{paths:?}");
+    }
     for (path, shown) in [
         (
             "android/relay/src/main/kotlin/com/dspdispatch/relay/ui/SetupScreen.kt",
@@ -480,19 +506,23 @@ fn each_pass_is_pinned_to_the_pushed_head_and_later_ones_read_only_what_changed(
         "{body}"
     );
 
-    // Every pass of a sensitive change has its security review beside it.
+    // A later pass of a sensitive change has no security review beside it when nothing
+    // sensitive changed since and the security review asked for no fix.
     fixture.prepare(2).unwrap();
     let pass: Pass = read_json(&fixture.dir(2).join("pass.json"))
         .unwrap()
         .unwrap();
-    assert_eq!((pass.base.as_str(), pass.security), (first.as_str(), true));
+    assert_eq!(
+        (pass.base.as_str(), pass.tier, pass.security),
+        (first.as_str(), Tier::Sensitive, false)
+    );
     let brief = fs::read_to_string(fixture.dir(2).join("brief.md")).unwrap();
     assert!(brief.contains("what changed since pass 1"), "{brief}");
     assert!(
         brief.contains("don't raise again what they settled"),
         "{brief}"
     );
-    assert!(fixture.dir(2).join("security-brief.md").exists());
+    assert!(!fixture.dir(2).join("security-brief.md").exists());
     assert!(
         brief.contains(&format!("`git diff {first}..{}`", pass.head)),
         "{brief}"
@@ -500,10 +530,14 @@ fn each_pass_is_pinned_to_the_pushed_head_and_later_ones_read_only_what_changed(
     assert!(error(fixture.prepare(3)).contains("Answer pass 2 first"));
     assert!(error(fixture.prepare(4)).contains("--over-cap"));
     write(&fixture.dir(2), "findings.md", "No findings.\n");
-    write(&fixture.dir(2), "security-findings.md", "No findings.\n");
     assert!(error(fixture.prepare(2)).contains("reviewed already"));
     take(root, 2, &Native).unwrap();
-    record(root, 2, &models, &Native).unwrap();
+    assert!(error(record(root, 2, &models, &Native)).contains("drop --security-model"));
+    let alone = Models {
+        security: None,
+        ..models
+    };
+    record(root, 2, &alone, &Native).unwrap();
 
     // The review stays done through merging main in as git does unaided, but not through a merge
     // edited by hand or a commit after it.
@@ -557,12 +591,118 @@ fn each_pass_is_pinned_to_the_pushed_head_and_later_ones_read_only_what_changed(
         brief.contains("'features/dvic/backend/week notes.rs'"),
         "{brief}"
     );
-    // Without its migration the change is standard, but a later pass reviews no less.
+    // Without its migration the change is standard, but a later pass reviews no less, and this
+    // one reads a migration: its security review is beside it again.
     let pass: Pass = read_json(&fixture.dir(3).join("pass.json"))
         .unwrap()
         .unwrap();
     assert_eq!((pass.tier, pass.security), (Tier::Sensitive, true));
     assert!(!brief.contains("features/vans"), "{brief}");
+}
+
+#[test]
+fn commits_no_answer_accounts_for_get_the_review_their_paths_need() {
+    let fixture = Fixture::new();
+    let root = &fixture.root;
+    let push = || git(root, &["push", "-q", "-u", "origin", "keep-week"]);
+    let both = Models {
+        model: "gpt-6.1-sol",
+        security: Some("gpt-daybreak-blue-latest"),
+    };
+    let alone = Models {
+        security: None,
+        ..both
+    };
+    let pass = |n: u32| -> Pass {
+        read_json(&fixture.dir(n).join("pass.json"))
+            .unwrap()
+            .unwrap()
+    };
+    let unreviewed = || {
+        crate::merge::unreviewed(
+            root,
+            "## Review\n\nTier sensitive\n",
+            &fixture.head(),
+            &Native,
+        )
+        .unwrap()
+    };
+    write(root, "features/dvic/api/routes.rs", "fn routes() {}\n");
+    commit(root, "a route");
+    push();
+    fixture.prepare(1).unwrap();
+    write(&fixture.dir(1), "findings.md", "No findings.\n");
+    write(
+        &fixture.dir(1),
+        "security-findings.md",
+        "## Important: features/dvic/api/routes.rs:1 anyone may call it\nx\n",
+    );
+    take(root, 1, &Native).unwrap();
+    let answers = fixture.dir(1).join("security-answers.md");
+    let text = fs::read_to_string(&answers)
+        .unwrap()
+        .replace("call it\nAnswer:", "call it\nAnswer: fixed");
+    fs::write(&answers, text).unwrap();
+    write(
+        root,
+        "features/dvic/backend/week.rs",
+        "fn week() { member() }\n",
+    );
+    commit(root, "members alone");
+    push();
+    record(root, 1, &both, &Native).unwrap();
+
+    // The security review reads the fix it asked for, on a path that isn't sensitive itself.
+    fixture.prepare(2).unwrap();
+    assert!(pass(2).security);
+    write(&fixture.dir(2), "findings.md", "No findings.\n");
+    write(&fixture.dir(2), "security-findings.md", "No findings.\n");
+    take(root, 2, &Native).unwrap();
+
+    // A test committed since, which no answer accounts for, needs a pass: of the reviewer
+    // alone, on the tests alone.
+    write(
+        root,
+        "features/dvic/tests/api/week.rs",
+        "#[test]\nfn week() {}\n",
+    );
+    commit(root, "test the week");
+    push();
+    record(root, 2, &both, &Native).unwrap();
+    assert!(unreviewed().unwrap().contains("Pass 2 asks for another"));
+    fixture.prepare(3).unwrap();
+    assert!(!pass(3).security);
+    let brief = fs::read_to_string(fixture.dir(3).join("brief.md")).unwrap();
+    assert!(
+        brief.contains("the tests changed since pass 2, alone"),
+        "{brief}"
+    );
+
+    // Documentation and `main` merged in since a pass leave its review done, when it is
+    // recorded and after; another test doesn't.
+    write(&fixture.dir(3), "findings.md", "No findings.\n");
+    take(root, 3, &Native).unwrap();
+    git(root, &["switch", "-q", "main"]);
+    write(root, "features/vans/backend/van.rs", "fn van() {}\n");
+    commit(root, "a van");
+    git(root, &["push", "-q", "origin", "main"]);
+    git(root, &["switch", "-q", "keep-week"]);
+    git(root, &["merge", "-q", "--no-edit", "main"]);
+    write(root, "features/dvic/README.md", "# DVIC\n");
+    commit(root, "say what it does");
+    push();
+    record(root, 3, &alone, &Native).unwrap();
+    assert_eq!(unreviewed(), None);
+    write(root, "features/dvic/README.md", "# DVIC\n\nIts week.\n");
+    commit(root, "say more");
+    assert_eq!(unreviewed(), None);
+    write(
+        root,
+        "features/dvic/tests/api/week.rs",
+        "#[test]\nfn week() { assert!(true) }\n",
+    );
+    commit(root, "test less");
+    assert!(unreviewed().unwrap().contains("review prepare --pass 4"));
 }
 
 #[test]

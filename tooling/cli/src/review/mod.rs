@@ -1,8 +1,9 @@
 //! A change's review, pass by pass. `prepare` judges the change's tier and writes each pass's
 //! brief, pinned to the pushed head: the whole change first, then only what changed since the
-//! pass before. `take` checks the reviewer left the worktree as it was and starts the answers;
-//! `record` checks every finding is answered and writes the PR body's Review line. Each pass
-//! keeps its files in the checkout's scratch folder, under `review/<pass>/`.
+//! pass before, with a security review beside it only where that calls for one. `take` checks
+//! the reviewer left the worktree as it was and starts the answers; `record` checks every
+//! finding is answered and writes the PR body's Review line. Each pass keeps its files in the
+//! checkout's scratch folder, under `review/<pass>/`.
 pub mod findings;
 pub mod tier;
 
@@ -13,7 +14,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
-use tier::Tier;
+use tier::{Later, Tier};
 
 /// Passes a review stops after, unless more were asked for.
 pub const CAP: u32 = 3;
@@ -142,6 +143,83 @@ impl Checkout<'_> {
         )?;
         Ok((branch, head))
     }
+    /// Where `rev` left `main`, and the files it changes against it.
+    fn against_main(&self, rev: &str) -> Result<(String, Vec<tier::Changed>)> {
+        let main = self.git(&["merge-base", "origin/main", rev])?;
+        let changed = self.changed(&format!("{main}..{rev}"), &[])?;
+        Ok((main, changed))
+    }
+    /// The files that differ across `range`, or those of `paths` that do.
+    fn changed(&self, range: &str, paths: &[String]) -> Result<Vec<tier::Changed>> {
+        let mut args = vec!["diff", "--numstat", "--no-renames", "-z", range];
+        if !paths.is_empty() {
+            args.push("--");
+            args.extend(paths.iter().map(String::as_str));
+        }
+        Ok(tier::numstat(&self.git(&args)?))
+    }
+    /// Whether each commit after `reviewed` up to `head` only merges `main` in, exactly as git
+    /// merges it unaided: the change then has nothing of its own its review didn't read.
+    fn only_main_since(&self, reviewed: &str, head: &str) -> Result<bool> {
+        let since = self.git(&[
+            "rev-list",
+            "--first-parent",
+            "--parents",
+            &format!("{reviewed}..{head}"),
+        ])?;
+        let mut after = head;
+        for line in since.lines() {
+            let [commit, ours, theirs] = line.split(' ').collect::<Vec<_>>()[..] else {
+                return Ok(false);
+            };
+            let from_main =
+                self.git(&["rev-list", "--count", theirs, "--not", "origin/main"])? == "0";
+            // A merge git can't make unaided, or one edited by hand, holds the change's own work.
+            let unaided = self.git(&["merge-tree", "--write-tree", ours, theirs]).ok()
+                == Some(self.git(&["rev-parse", &format!("{commit}^{{tree}}")])?);
+            if commit != after || !from_main || !unaided {
+                return Ok(false);
+            }
+            after = ours;
+        }
+        Ok(after == reviewed)
+    }
+}
+
+/// The paths of the branch's own files, where a diff from an earlier commit of it needs them
+/// named. Once `main` was merged in since, what changed holds `main`'s changes too: the branch's
+/// own are the files it changed against `main` `before` or changes `now`, so a fix that put a
+/// file back as `main` has it stays in. Until then the whole diff is its own, and none are named.
+fn own(merged: bool, before: &[String], now: &[String]) -> Vec<String> {
+    if !merged {
+        return vec![];
+    }
+    let mut own = before.to_vec();
+    for path in now {
+        if !own.contains(path) {
+            own.push(path.clone());
+        }
+    }
+    own
+}
+fn paths(changed: &[tier::Changed]) -> Vec<String> {
+    changed.iter().map(|file| file.path.clone()).collect()
+}
+
+/// What the commits from `reviewed` to `head` still need of the review that read `reviewed`, or
+/// whose answers account for it: nothing for `main` merged in as git merges it unaided or for
+/// documentation alone, a pass on the tests for tests alone, and a pass for the rest.
+pub fn later(root: &Path, reviewed: &str, head: &str, runner: &dyn Runner) -> Result<Later> {
+    let git = Checkout { root, runner };
+    if reviewed == head || git.only_main_since(reviewed, head)? {
+        return Ok(Later::Nothing);
+    }
+    let (before, then) = git.against_main(reviewed)?;
+    let (main, now) = git.against_main(head)?;
+    let named = own(before != main, &paths(&then), &paths(&now));
+    Ok(tier::later(
+        &git.changed(&format!("{reviewed}..{head}"), &named)?,
+    ))
 }
 
 /// The checkout's branch and head, committed and pushed as they are.
@@ -201,15 +279,8 @@ pub fn left(root: &Path) -> Result<Vec<Outcome>> {
 }
 /// The tier the change's paths give it now.
 pub fn judged(root: &Path, runner: &dyn Runner) -> Result<tier::Judged> {
-    let git = Checkout { root, runner };
-    let main = git.git(&["merge-base", "origin/main", "HEAD"])?;
-    Ok(tier::judge(&tier::numstat(&git.git(&[
-        "diff",
-        "--numstat",
-        "--no-renames",
-        "-z",
-        &format!("{main}..HEAD"),
-    ])?)))
+    let (_, changed) = Checkout { root, runner }.against_main("HEAD")?;
+    Ok(tier::judge(&changed))
 }
 
 /// The folder of pass `pass`.
@@ -290,15 +361,15 @@ pub fn prepare(root: &Path, ask: &Prepare, runner: &dyn Runner) -> Result<()> {
     let previous = match n {
         1 => None,
         _ => {
-            require(
-                folder(root, n - 1)?.join("record.json").exists(),
-                &format!(
-                    "Answer pass {} first: `dispatchdev review record --pass {}`.",
-                    n - 1,
-                    n - 1
-                ),
-            )?;
-            Some(pinned(root, n - 1)?)
+            let recorded: Recorded = read_json(&folder(root, n - 1)?.join("record.json"))?
+                .ok_or_else(|| {
+                    format!(
+                        "Answer pass {} first: `dispatchdev review record --pass {}`.",
+                        n - 1,
+                        n - 1
+                    )
+                })?;
+            Some((pinned(root, n - 1)?, recorded))
         }
     };
     for earlier in 1..n {
@@ -311,14 +382,7 @@ pub fn prepare(root: &Path, ask: &Prepare, runner: &dyn Runner) -> Result<()> {
             ),
         )?;
     }
-    let main = git.git(&["merge-base", "origin/main", "HEAD"])?;
-    let changed = tier::numstat(&git.git(&[
-        "diff",
-        "--numstat",
-        "--no-renames",
-        "-z",
-        &format!("{main}..HEAD"),
-    ])?);
+    let (main, changed) = git.against_main(&head)?;
     require(
         !changed.is_empty(),
         "The branch changes nothing against origin/main.",
@@ -331,7 +395,7 @@ pub fn prepare(root: &Path, ask: &Prepare, runner: &dyn Runner) -> Result<()> {
         ),
         // A later pass never reviews less than the one before: a fix that shrank the change
         // still needs what found it.
-        (None, Some(previous)) => (previous.tier.max(judged.tier), previous.asked),
+        (None, Some((previous, _))) => (previous.tier.max(judged.tier), previous.asked),
         (None, None) => (judged.tier, false),
     };
     if tier == Tier::Light {
@@ -343,44 +407,62 @@ pub fn prepare(root: &Path, ask: &Prepare, runner: &dyn Runner) -> Result<()> {
     }
     let base = previous
         .as_ref()
-        .map_or(main.clone(), |pass| pass.head.clone());
-    let paths: Vec<String> = changed.iter().map(|file| file.path.clone()).collect();
-    // After `main` was merged in, what changed since the last pass holds `main`'s own changes
-    // too: the branch's own are the files it changed then or changes now, so a fix that put a
-    // file back as `main` has it stays in.
-    let diff = match &previous {
-        Some(previous) if previous.main != main => {
-            let mut own: Vec<&str> = previous.paths.iter().map(String::as_str).collect();
-            for path in &paths {
-                if !own.contains(&path.as_str()) {
-                    own.push(path);
-                }
-            }
-            let own: Vec<String> = own.into_iter().map(workspace::quote).collect();
-            format!("git diff {base}..{head} -- {}", own.join(" "))
-        }
-        _ => format!("git diff {base}..{head}"),
+        .map_or(main.clone(), |(pass, _)| pass.head.clone());
+    let changed = paths(&changed);
+    let range = format!("{base}..{head}");
+    let named = match &previous {
+        Some((previous, _)) => own(previous.main != main, &previous.paths, &changed),
+        None => vec![],
     };
-    let security = tier == Tier::Sensitive;
+    let diff = match named.is_empty() {
+        true => format!("git diff {range}"),
+        false => format!(
+            "git diff {range} -- {}",
+            named
+                .iter()
+                .map(|path| workspace::quote(path))
+                .collect::<Vec<_>>()
+                .join(" ")
+        ),
+    };
+    // A later pass reads what changed since the one before, and that sets who reads it: the
+    // tests alone when nothing else changed, and the security reviewer only for something
+    // sensitive in it, a fix its own review asked for, or a tier that was asked for.
+    let (tests, security) = match &previous {
+        None => (false, true),
+        Some((_, recorded)) => {
+            let since = git.changed(&range, &named)?;
+            (
+                tier::later(&since) == Later::Tests,
+                asked
+                    || tier::judge(&since).tier == Tier::Sensitive
+                    || recorded.answers.iter().any(|outcome| {
+                        outcome.security && outcome.tag == "Important" && outcome.answer == "fixed"
+                    }),
+            )
+        }
+    };
+    let security = security && tier == Tier::Sensitive;
     let pass = Pass {
         pass: n,
         head: head.clone(),
         base: base.clone(),
         main: main.clone(),
         diff,
-        paths: paths.clone(),
+        paths: changed.clone(),
         tier,
         reasons: judged.reasons,
         asked,
         security,
     };
-    let paths: Vec<&str> = paths.iter().map(String::as_str).collect();
+    let paths: Vec<&str> = changed.iter().map(String::as_str).collect();
     let fill = Fill {
         root,
         instructions: instructions(root, ask.source)?,
         dir: &dir,
         branch: &branch,
         pass: &pass,
+        tests,
         paths: &paths,
         runner,
     };
@@ -403,6 +485,19 @@ pub fn prepare(root: &Path, ask: &Prepare, runner: &dyn Runner) -> Result<()> {
             false => format!(" ({})", pass.reasons.join(", ")),
         }
     );
+    if tests {
+        println!(
+            "Tests alone changed since pass {}: its reviewer reads them alone.",
+            n - 1
+        );
+    }
+    if tier == Tier::Sensitive && !pass.security {
+        println!(
+            "No security review beside it: nothing sensitive changed since pass {}, whose \
+             security review asked for no fix.",
+            n - 1
+        );
+    }
     println!("Wrote {}.", written.join(" and "));
     println!(
         "{}",
@@ -427,6 +522,8 @@ struct Fill<'a> {
     dir: &'a Path,
     branch: &'a str,
     pass: &'a Pass,
+    /// Whether the pass reads tests alone: all that changed since the pass before.
+    tests: bool,
     paths: &'a [&'a str],
     runner: &'a dyn Runner,
 }
@@ -444,6 +541,7 @@ impl Fill<'_> {
         )?;
         let scope = match self.pass.pass {
             1 => "the whole change".to_owned(),
+            n if self.tests => format!("the tests changed since pass {}, alone", n - 1),
             n => format!(
                 "what changed since pass {}, and how it fits the rest of the change",
                 n - 1
@@ -700,9 +798,9 @@ pub fn record(root: &Path, n: u32, models: &Models, runner: &dyn Runner) -> Resu
     let important_fixed = answers
         .iter()
         .any(|outcome| outcome.tag == "Important" && outcome.answer == "fixed");
-    // Commits no answer accounts for were reviewed by no one: the pass is kept, but the review
-    // isn't done at this head.
-    let unreviewed = !changed && head != pass.head;
+    // Commits no answer accounts for were reviewed by no one, and all but `main` merged in and
+    // documentation need it: the pass is kept, but the review isn't done at this head.
+    let unreviewed = !changed && later(root, &pass.head, &head, runner)? != Later::Nothing;
     let recorded = Recorded {
         model: models.model.to_owned(),
         security_model: models.security.map(str::to_owned),

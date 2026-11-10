@@ -1,6 +1,6 @@
 //! How deep a change's review goes, from the paths it changes: none for documentation and tests
-//! alone, one pass for the rest, and a security review beside each pass for what a missed bug
-//! costs most in.
+//! alone, one pass for the rest, and a security review beside it for what a missed bug costs
+//! most in; and what commits after a pass still need.
 use std::fmt;
 
 /// Ordered from the least review to the most.
@@ -13,7 +13,8 @@ pub enum Tier {
     Light,
     /// One pass, and another only for what fixing an Important finding changed.
     Standard,
-    /// Each pass with a security review beside it.
+    /// A security review beside the first pass, and beside a later one that reads something
+    /// sensitive or follows a security finding's fix.
     Sensitive,
 }
 impl Tier {
@@ -154,6 +155,27 @@ pub fn judge(changed: &[Changed]) -> Judged {
         Tier::Standard
     };
     Judged { tier, reasons }
+}
+
+/// What commits after a pass still need of a review, when no answer to it accounts for them.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Later {
+    /// Nothing of the change's own, or documentation alone: no pass.
+    Nothing,
+    /// Tests alone, documentation aside: a pass that reads them alone.
+    Tests,
+    /// A pass, as the change's tier has it.
+    Pass,
+}
+
+/// What a pass's reviewers haven't read needs, from the files `changed` since. Only what is
+/// Light by itself is let off a whole pass: a test or a README on a sensitive path isn't.
+pub fn later(changed: &[Changed]) -> Later {
+    match judge(changed).tier {
+        Tier::Light if changed.iter().all(|file| documentation(&file.path)) => Later::Nothing,
+        Tier::Light => Later::Tests,
+        Tier::Standard | Tier::Sensitive => Later::Pass,
+    }
 }
 
 /// Reads `git diff --numstat --no-renames -z` into changed files, each path as it is; a

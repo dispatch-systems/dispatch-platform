@@ -123,11 +123,14 @@ const COMMANDS: &[Spec] = &[
             "       [--security-model <model>]",
         ],
         "A pushed change's review, a pass at a time. prepare judges its tier from the paths it \
-         changes, light needing no review, and writes the pass's brief, with a security brief \
-         beside it for a sensitive change: the whole change first, then what changed since the \
-         pass before, up to three passes. take checks the reviewers left the worktree as it was \
-         and starts the answers to their findings; record checks each is answered and writes \
-         the PR body's Review line.",
+         changes, light needing no review, and writes the pass's brief: the whole change first, \
+         with a security brief beside it for a sensitive change, then what changed since the \
+         pass before, up to three passes, with a security brief only for something sensitive in \
+         it or a fix the security review asked for. take checks the reviewers left the worktree \
+         as it was and starts the answers to their findings; record checks each is answered and \
+         writes the PR body's Review line. Commits after a pass that no answer accounts for \
+         need another, unless they hold documentation alone or main merged in as git merges \
+         it.",
     )
     .flags(&["--over-cap"])
     .options(&["--pass", "--tier", "--model", "--security-model"])
