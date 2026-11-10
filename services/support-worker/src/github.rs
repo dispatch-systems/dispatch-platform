@@ -49,24 +49,8 @@ pub async fn look(config: &Config, tree: &Worktree, number: u64) -> Result<Value
         .repository
         .split_once('/')
         .ok_or("Invalid repository")?;
-    let output = command(
-        &tree.path,
-        "gh",
-        &[
-            "api",
-            "graphql",
-            "-f",
-            &format!("query={LOOK}"),
-            "-f",
-            &format!("owner={owner}"),
-            "-f",
-            &format!("name={name}"),
-            "-F",
-            &format!("number={number}"),
-        ],
-    )
-    .await?;
-    let result: Value = serde_json::from_str(&output)?;
+    let strings = [("owner", owner), ("name", name)];
+    let result = graphql(tree, LOOK, &strings, &[("number", number)]).await?;
     require(result["errors"].is_null(), "GitHub status query failed")?;
     let pr = result["data"]["repository"]["pullRequest"].clone();
     require(pr.is_object(), "Support PR is unavailable")?;
@@ -87,41 +71,36 @@ pub async fn publish(
             job.detail.ticket.dsp_name.as_deref().unwrap_or(""),
         ],
     );
+    let bug = job.detail.ticket.kind == "bug";
     let title = format!(
         "{}: implement support ticket {}",
-        if job.detail.ticket.kind == "bug" {
-            "fix"
-        } else {
-            "feat"
-        },
+        if bug { "fix" } else { "feat" },
         job.detail
             .ticket
             .id
             .strip_prefix("support_")
             .unwrap_or(&job.detail.ticket.id)
     );
-    let kind = if job.detail.ticket.kind == "bug" {
-        "bug fix"
-    } else {
-        "feature"
-    };
     let verification = checks
         .iter()
         .map(|s| format!("- {s}"))
         .collect::<Vec<_>>()
         .join("\n");
-    // Reports, reporter identity, credentials and private screenshots stay in the platform.
-    let body = if kind == "bug fix" {
+    let change = if bug {
         format!(
-            "## Summary\n\n{summary}\n\n## Symptom\n\nThe approved support proposal identified behavior requiring a fix.\n\n## Cause\n\nSee the scoped implementation and regression test in this patch.\n\n## Fix\n\nImplements the exact owner-approved proposal version {}.\n\n## Verification\n\nAn independent agent exercised every acceptance criterion in a real browser on this exact head.\n\n{verification}\n\n## Review\n\nIndependent browser review completed. Code review omitted under the owner’s support workflow policy. Screenshots and traces remain in the private AI Support ticket to preserve reporter and DSP privacy.\n",
+            "## Symptom\n\nThe approved support proposal identified behavior requiring a fix.\n\n## Cause\n\nSee the scoped implementation and regression test in this patch.\n\n## Fix\n\nImplements the exact owner-approved proposal version {}.",
             job.version
         )
     } else {
         format!(
-            "## Summary\n\n{summary}\n\n## Problem\n\nThe owner approved a support proposal for this feature.\n\n## Change\n\nImplements the exact approved proposal version {}.\n\n## Rollout\n\nThe merge reaches Dev after checks; production requires a separately published release.\n\n## Verification\n\nAn independent agent exercised every acceptance criterion in a real browser on this exact head.\n\n{verification}\n\n## Review\n\nIndependent browser review completed. Code review omitted under the owner’s support workflow policy. Screenshots and traces remain in the private AI Support ticket to preserve reporter and DSP privacy.\n",
+            "## Problem\n\nThe owner approved a support proposal for this feature.\n\n## Change\n\nImplements the exact approved proposal version {}.\n\n## Rollout\n\nThe merge reaches Dev after checks; production requires a separately published release.",
             job.version
         )
     };
+    // Reports, reporter identity, credentials and private screenshots stay in the platform.
+    let body = format!(
+        "## Summary\n\n{summary}\n\n{change}\n\n## Verification\n\nAn independent agent exercised every acceptance criterion in a real browser on this exact head.\n\n{verification}\n\n## Review\n\nIndependent browser review completed. Code review omitted under the owner’s support workflow policy. Screenshots and traces remain in the private AI Support ticket to preserve reporter and DSP privacy.\n"
+    );
     let scratch = tree.scratch();
     fs::create_dir_all(&scratch)?;
     let file = scratch.join("pr-body.md");
@@ -337,22 +316,31 @@ pub async fn merge(tree: &Worktree, status: &Value, head: &str) -> Result<()> {
     )?;
     let query = "mutation($id:ID!,$head:GitObjectID!){mergePullRequest(input:{pullRequestId:$id,expectedHeadOid:$head,mergeMethod:SQUASH}){pullRequest{number}}}";
     let id = status["id"].as_str().ok_or("PR node id missing")?;
-    let result = graphql(tree, query, &[("id", id), ("head", head)]).await?;
+    let result = graphql(tree, query, &[("id", id), ("head", head)], &[]).await?;
     require(
         result["errors"].is_null(),
         "GitHub did not merge the verified support PR",
     )
 }
 
-async fn graphql(tree: &Worktree, query: &str, variables: &[(&str, &str)]) -> Result<Value> {
+async fn graphql(
+    tree: &Worktree,
+    query: &str,
+    strings: &[(&str, &str)],
+    numbers: &[(&str, u64)],
+) -> Result<Value> {
     let mut args = vec![
         "api".to_owned(),
         "graphql".to_owned(),
         "-f".to_owned(),
         format!("query={query}"),
     ];
-    for (name, value) in variables {
+    for (name, value) in strings {
         args.extend(["-f".to_owned(), format!("{name}={value}")]);
+    }
+    // `-F` sends a number as a number, where `-f` would send its digits as a string.
+    for (name, value) in numbers {
+        args.extend(["-F".to_owned(), format!("{name}={value}")]);
     }
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
     Ok(serde_json::from_str(
