@@ -422,21 +422,39 @@ async fn inspect_responses(driver: &Driver, data: &Value, samples: usize) -> Res
 #[path = "../tests/backend/probes.rs"]
 mod tests;
 
-/// A field's name as a report may print it: a word of letters, with at most a short number
-/// after it, that isn't the four characters of an employee's code. An answer keyed by
-/// anything else, as by its records' ids, has its keys hidden as `pattern` hides a value.
-fn field(name: &str) -> String {
-    let word = name.trim_end_matches(|c: char| c.is_ascii_digit());
-    let named = !word.is_empty()
-        && name.len() <= 48
-        && name.len() - word.len() <= 3
-        && word.chars().all(|c| c.is_ascii_alphabetic() || c == '_')
-        && !(name.len() == 4 && word.len() < 4);
-    if named {
-        name.to_owned()
-    } else {
-        pattern(&json!(name))
-    }
+/// The fields a collection through the API reads, and those an answer is wrapped in: the
+/// only names a report prints.
+const FIELDS: &[&str] = &[
+    "result",
+    "data",
+    "errors",
+    "eecode",
+    "eename",
+    "firstname",
+    "lastname",
+    "eestatus",
+    "deptcode",
+    "deptdesc",
+    "position",
+    "position_title",
+    "entrytype",
+    "punchtime",
+    "timeadded",
+    "punchtype",
+    "hours",
+    "isdeleted",
+    "catcode",
+    "catdesc",
+];
+/// Whether a field is one a report names: one of `FIELDS`, or a labor allocation category's,
+/// `cat1` to `cat20` and each one's `desc`.
+fn named(name: &str) -> bool {
+    FIELDS.contains(&name)
+        || name
+            .strip_prefix("cat")
+            .map(|rest| rest.strip_suffix("desc").unwrap_or(rest))
+            .and_then(|number| number.parse::<u8>().ok())
+            .is_some_and(|number| (1..=20).contains(&number))
 }
 /// What kind of value this is.
 fn kind(value: &Value) -> &'static str {
@@ -449,17 +467,23 @@ fn kind(value: &Value) -> &'static str {
         Value::Object(_) => "object",
     }
 }
-/// The names of a record's fields and the kind of value each holds, never a value.
+/// A record by its shape: the kind of value each field a collection reads holds, and how
+/// many other fields it has of each kind. Never a value, nor a name a collection doesn't read,
+/// as an answer keyed by its records' ids would have.
 fn shape(record: &Value) -> Value {
-    match record {
-        Value::Object(fields) => Value::Object(
-            fields
-                .iter()
-                .map(|(name, value)| (field(name), json!(kind(value))))
-                .collect(),
-        ),
-        other => json!(kind(other)),
+    let Value::Object(fields) = record else {
+        return json!(kind(record));
+    };
+    let mut read = serde_json::Map::new();
+    let mut others = std::collections::BTreeMap::new();
+    for (name, value) in fields {
+        if named(name) {
+            read.insert(name.clone(), json!(kind(value)));
+        } else {
+            *others.entry(kind(value)).or_insert(0usize) += 1;
+        }
     }
+    json!({"fields":read,"others":others})
 }
 /// How a value is written, its digits and letters hidden: `9999-99-99 99:99:99` for a time.
 fn pattern(value: &Value) -> String {
@@ -486,32 +510,38 @@ async fn answer_shape(client: &rest::Client, function: &str, path: &str) -> Resu
     let mut report = json!({"function":function,"status":answer.status,"bytes":answer.body.len(),
         "wrapper":shape(&parsed),"rows":rows.len(),"record":rows.first().map(shape)});
     if function == "punch_history" {
-        let distinct = |field: &str, written: fn(&Value) -> String| {
+        // A value a collection knows, as it is written; any other by its kind alone.
+        fn known(value: &Value, known: &[&str]) -> String {
+            let written = match value {
+                Value::String(text) => text.clone(),
+                Value::Number(_) | Value::Bool(_) => value.to_string(),
+                _ => String::new(),
+            };
+            if known.contains(&written.as_str()) {
+                written
+            } else {
+                format!("another {}", kind(value))
+            }
+        }
+        let distinct = |field: &str, written: &dyn Fn(&Value) -> String| {
             rows.iter()
                 .map(|row| written(&row[field]))
                 .collect::<std::collections::BTreeSet<_>>()
         };
-        // A kind's code as Paycom writes one, one to three capital letters, a flag or a
-        // single digit: anything else is named by what it is, never printed.
-        let plain = |value: &Value| match value {
-            Value::String(text)
-                if (1..=3).contains(&text.len())
-                    && text.bytes().all(|b| b.is_ascii_uppercase())
-                    || text.len() == 1 && text.as_bytes()[0].is_ascii_digit() =>
-            {
-                text.clone()
-            }
-            Value::Number(number) if number.as_u64().is_some_and(|digit| digit <= 9) => {
-                number.to_string()
-            }
-            Value::Bool(flag) => flag.to_string(),
-            other => format!("another {}", kind(other)),
-        };
-        report["punchtime"] = json!(distinct("punchtime", pattern));
-        report["timeadded"] = json!(distinct("timeadded", pattern));
-        report["punchtype"] = json!(distinct("punchtype", plain));
-        report["entrytype"] = json!(distinct("entrytype", plain));
-        report["isdeleted"] = json!(distinct("isdeleted", plain));
+        report["punchtime"] = json!(distinct("punchtime", &pattern));
+        report["timeadded"] = json!(distinct("timeadded", &pattern));
+        report["punchtype"] = json!(distinct("punchtype", &|value| known(
+            value,
+            &["ID", "OD", "OL", "IL", "OB", "IB", "TR"]
+        )));
+        report["entrytype"] = json!(distinct("entrytype", &|value| known(
+            value,
+            &["1", "2", "3", "4"]
+        )));
+        report["isdeleted"] = json!(distinct("isdeleted", &|value| known(
+            value,
+            &["0", "1", "true", "false"]
+        )));
     }
     eprintln!("SHAPE {report}");
     Ok(rows)
@@ -523,8 +553,10 @@ async fn answer_shape(client: &rest::Client, function: &str, path: &str) -> Resu
 /// a collection by sign-in, so the two read the same punches. It needs the DSP's folder
 /// (`DISPATCH_BENCHMARK_DSP`), where the DSP is (`DISPATCH_BENCHMARK_TIMEZONE`), and the SID
 /// and Token (`DISPATCH_BENCHMARK_PAYCOM_SID`, `DISPATCH_BENCHMARK_PAYCOM_TOKEN`), which
-/// it keeps nowhere. It prints each check, each function's answer by its shape, and counts:
-/// never a name, a code, a time or an hour of anyone's.
+/// it keeps nowhere. Nothing ties those to the DSP, so it reads only the people Paycom's own
+/// directory lists and sends Paycom nothing from the publication. It prints each check, each
+/// function's answer by its shape, and counts: never a name, a code, a time or an hour of
+/// anyone's, nor any field's name or value that a collection doesn't itself read.
 pub async fn compare_api_collection() -> Result<()> {
     use crate::timecards::{EmployeeTimecardPeriod, PERIOD_DAYS, api};
     use std::collections::{BTreeMap, BTreeSet};
@@ -609,31 +641,16 @@ pub async fn compare_api_collection() -> Result<()> {
     let source = driver
         .source()
         .ok_or_else(|| Error::new("verification_required", 409))?;
-    // The publication holds people the active directory may leave out by now, as a
-    // collection by sign-in reads everyone known: they are read here too, by their code alone.
-    let known = published
-        .keys()
-        .map(|(code, _)| code.as_str())
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .map(|code| {
-            json!({"code":code,"name":code,"department":"","position":"","station":"",
-                "active":false})
-        })
-        .collect::<Vec<_>>();
+    // Only the people Paycom's own directory lists are read. Nothing ties the SID and Token to
+    // the DSP whose folder this is, so no code from its publication is ever sent to Paycom:
+    // those the directory leaves out by now are counted below, not compared.
     let started = Instant::now();
-    let data = api::everyone(
-        &source,
-        zone,
-        &period,
-        Some(&known),
-        |done, total| async move {
-            if done % 20 == 0 || done == total {
-                eprintln!("BENCH {}", json!({"read":done,"of":total}));
-            }
-            Ok(())
-        },
-    )
+    let data = api::everyone(&source, zone, &period, None, |done, total| async move {
+        if done % 20 == 0 || done == total {
+            eprintln!("BENCH {}", json!({"read":done,"of":total}));
+        }
+        Ok(())
+    })
     .await?;
     let cards = data["timecards"].as_array().unwrap();
 
