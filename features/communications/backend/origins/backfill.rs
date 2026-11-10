@@ -103,63 +103,162 @@ fn prune(
 pub(crate) fn chunk(db: &Db, transport: Transport, conversation: &str, zone: Tz) -> Result<bool> {
     db.transaction(|| {
         lock(db)?;
-        ensure_state(db,transport,conversation)?;
-        let exists:Option<(String,)>=db.one_as(&format!("SELECT id FROM {} WHERE id=?",transport.conversations()),[conversation])?;
+        ensure_state(db, transport, conversation)?;
+        let exists: Option<(String,)> = db.one_as(
+            &format!("SELECT id FROM {} WHERE id=?", transport.conversations()),
+            [conversation],
+        )?;
         if exists.is_none() {
             // Conversation removal can leave derived rows behind. Discovery visits these
             // owners too, draining bounded chunks before forgetting their state.
-            db.exec("UPDATE communications_origin_state SET active_generation=NULL,indexed_epoch=NULL \
-                WHERE transport=? AND conversation_id=?",params![transport.name(),conversation])?;
-            db.exec("DELETE FROM communications_origin_builds WHERE transport=? AND conversation_id=?",params![transport.name(),conversation])?;
-            if !prune(db,transport,conversation,None,None)? {
-                db.exec("DELETE FROM communications_origin_state WHERE transport=? AND conversation_id=?",params![transport.name(),conversation])?;
+            db.exec(
+                "UPDATE communications_origin_state \
+                SET active_generation=NULL,indexed_epoch=NULL \
+                WHERE transport=? AND conversation_id=?",
+                params![transport.name(), conversation],
+            )?;
+            forget_build(db, transport, conversation)?;
+            if !prune(db, transport, conversation, None, None)? {
+                db.exec(
+                    "DELETE FROM communications_origin_state \
+                    WHERE transport=? AND conversation_id=?",
+                    params![transport.name(), conversation],
+                )?;
             }
             return Ok(true);
         }
-        let index=state(db,transport,conversation)?.ok_or_else(invariant)?;
+        let index = state(db, transport, conversation)?.ok_or_else(invariant)?;
         if index.ready(zone.name()) {
-            prune(db,transport,conversation,index.generation.as_deref(),None)?;
-            db.exec("DELETE FROM communications_origin_builds WHERE transport=? AND conversation_id=?",params![transport.name(),conversation])?;
+            prune(
+                db,
+                transport,
+                conversation,
+                index.generation.as_deref(),
+                None,
+            )?;
+            forget_build(db, transport, conversation)?;
             return Ok(true);
         }
-        let build:Option<Build>=db.one_as("SELECT generation,source_epoch,zone,algorithm,previous \
-            FROM communications_origin_builds WHERE transport=? AND conversation_id=?",
-            params![transport.name(),conversation])?;
-        let mut build=match build.filter(|build| build.epoch==index.epoch && build.zone==zone.name()
-            && build.algorithm==algorithm()) {
-            Some(build)=>build,
-            None=>Build { generation:crypto::id("origin")?,epoch:index.epoch,zone:zone.name().to_owned(),
-                algorithm:algorithm(),previous:None },
+        let current = build(db, transport, conversation)?.filter(|build| {
+            build.epoch == index.epoch
+                && build.zone == zone.name()
+                && build.algorithm == algorithm()
+        });
+        let mut build = match current {
+            Some(build) => build,
+            None => Build {
+                generation: crypto::id("origin")?,
+                epoch: index.epoch,
+                zone: zone.name().to_owned(),
+                algorithm: algorithm(),
+                previous: None,
+            },
         };
-        prune(db,transport,conversation,index.generation.as_deref(),Some(&build.generation))?;
-        let previous:Option<Topology>=build.previous.as_deref().map(serde_json::from_str).transpose()?;
-        let prefix=format!("SELECT {} FROM {} m {} WHERE m.conversation_id=?1",transport.columns(),transport.source(),transport.join());
-        let rows:Vec<Topology>=if let Some(previous)=&previous {
-            db.query_as(&format!("{prefix} AND {} AND ?2 IS NOT NULL ORDER BY {} LIMIT ?5",
-                transport.bound("m",">",2,3,4),transport.order(false)),
-                params![conversation,previous.ts,previous.at,previous.id,CHUNK as i64])?
+        prune(
+            db,
+            transport,
+            conversation,
+            index.generation.as_deref(),
+            Some(&build.generation),
+        )?;
+        let previous: Option<Topology> = build
+            .previous
+            .as_deref()
+            .map(serde_json::from_str)
+            .transpose()?;
+        let prefix = format!(
+            "SELECT {} FROM {} m {} WHERE m.conversation_id=?1",
+            transport.columns(),
+            transport.source(),
+            transport.join()
+        );
+        let rows: Vec<Topology> = if let Some(previous) = &previous {
+            db.query_as(
+                &format!(
+                    "{prefix} AND {} AND ?2 IS NOT NULL ORDER BY {} LIMIT ?5",
+                    transport.bound("m", ">", 2, 3, 4),
+                    transport.order(false)
+                ),
+                params![
+                    conversation,
+                    previous.ts,
+                    previous.at,
+                    previous.id,
+                    CHUNK as i64
+                ],
+            )?
         } else {
-            db.query_as(&format!("{prefix} ORDER BY {} LIMIT ?2",transport.order(false)),params![conversation,CHUNK as i64])?
+            db.query_as(
+                &format!("{prefix} ORDER BY {} LIMIT ?2", transport.order(false)),
+                params![conversation, CHUNK as i64],
+            )?
         };
-        let mut previous=previous;
+        let mut previous = previous;
         for row in &rows {
-            boundary(db,transport,conversation,&build.generation,zone,previous.as_ref(),row)?;
-            previous=Some(row.clone());
+            boundary(
+                db,
+                transport,
+                conversation,
+                &build.generation,
+                zone,
+                previous.as_ref(),
+                row,
+            )?;
+            previous = Some(row.clone());
         }
-        build.previous=previous.as_ref().map(serde_json::to_string).transpose()?;
-        db.exec("INSERT INTO communications_origin_builds \
-            (transport,conversation_id,generation,source_epoch,zone,algorithm,previous) VALUES (?,?,?,?,?,?,?) \
+        build.previous = previous.as_ref().map(serde_json::to_string).transpose()?;
+        db.exec(
+            "INSERT INTO communications_origin_builds \
+            (transport,conversation_id,generation,source_epoch,zone,algorithm,previous) \
+            VALUES (?,?,?,?,?,?,?) \
             ON CONFLICT(transport,conversation_id) DO UPDATE SET generation=excluded.generation, \
-            source_epoch=excluded.source_epoch,zone=excluded.zone,algorithm=excluded.algorithm,previous=excluded.previous",
-            params![transport.name(),conversation,build.generation,build.epoch,build.zone,build.algorithm,build.previous])?;
-        if rows.len()==CHUNK { return Ok(false); }
+            source_epoch=excluded.source_epoch,zone=excluded.zone,algorithm=excluded.algorithm,\
+            previous=excluded.previous",
+            params![
+                transport.name(),
+                conversation,
+                build.generation,
+                build.epoch,
+                build.zone,
+                build.algorithm,
+                build.previous
+            ],
+        )?;
+        if rows.len() == CHUNK {
+            return Ok(false);
+        }
         // EOF was observed under this write lock, not inferred from cursor age or row count.
-        let published=db.exec("UPDATE communications_origin_state SET active_generation=?,indexed_epoch=?, \
+        let published = db.exec(
+            "UPDATE communications_origin_state SET active_generation=?,indexed_epoch=?, \
             zone=?,algorithm=? WHERE transport=? AND conversation_id=? AND source_epoch=?",
-            params![build.generation,build.epoch,build.zone,build.algorithm,transport.name(),conversation,build.epoch])?;
-        ensure(published==1,"communications_origins_owner",500)?;
+            params![
+                build.generation,
+                build.epoch,
+                build.zone,
+                build.algorithm,
+                transport.name(),
+                conversation,
+                build.epoch
+            ],
+        )?;
+        ensure(published == 1, "communications_origins_owner", 500)?;
         Ok(true)
     })
+}
+/// The conversation's unfinished build, if it has one.
+pub(super) fn build(db: &Db, transport: Transport, conversation: &str) -> Result<Option<Build>> {
+    db.one_as(
+        "SELECT generation,source_epoch,zone,algorithm,previous \
+        FROM communications_origin_builds WHERE transport=? AND conversation_id=?",
+        params![transport.name(), conversation],
+    )
+}
+fn forget_build(db: &Db, transport: Transport, conversation: &str) -> Result<()> {
+    db.exec(
+        "DELETE FROM communications_origin_builds WHERE transport=? AND conversation_id=?",
+        params![transport.name(), conversation],
+    )?;
+    Ok(())
 }
 /// Keyset discovery is bounded in conversation count. Source metadata work is at most one
 /// CHUNK for each discovered conversation per pass, plus at most CHUNK obsolete boundaries.
