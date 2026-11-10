@@ -1,5 +1,9 @@
 //! Whole-day rebuilding from stored responses, preserving kept phones and changed-day notes.
-use super::{RoutesStore, reads::publication, stored_capture};
+use super::{
+    RoutesStore,
+    reads::{PUBLICATION_SELECT, publication},
+    stored_capture,
+};
 use crate::{
     api::types::RouteReprocess,
     backend::{
@@ -86,11 +90,7 @@ pub(super) fn reprocess_routes(
             Ok(())
         })?;
         let fresh = db
-            .one(
-                "SELECT id,day,mode,station,collected_at,route_count,itinerary_count,stop_count,task_count \
-                 FROM route_publications WHERE id=?",
-                [&publication],
-            )?
+            .one(&format!("{PUBLICATION_SELECT} WHERE id=?"), [&publication])?
             .ok_or_else(|| Error::new("not_found", 404))?;
         rebuilt.push(self::publication(&fresh));
     }
