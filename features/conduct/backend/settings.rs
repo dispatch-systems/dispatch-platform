@@ -13,6 +13,7 @@ use serde::Deserialize;
 /// Conduct's own component, saved through its own routes. Its id is permanent once shipped.
 pub const CATEGORIES: Section = section("conduct.categories", "Categories", "conduct.manage", &[])
     .custom()
+    .order(10)
     .keywords(&[
         "writeups",
         "templates",
@@ -23,8 +24,8 @@ pub const CATEGORIES: Section = section("conduct.categories", "Categories", "con
     ]);
 
 /// Whether signed copies are backed up where the DSP keeps its files: drawn by Conduct's own
-/// component, only while something keeps them, with whether the backup is failing. Its id and
-/// its field's are permanent once shipped.
+/// component, only while something keeps them, with whether the backup is failing, above the
+/// categories, whose list is long. Its id and its field's are permanent once shipped.
 pub const BACKUP: Section = section(
     "conduct.backup",
     "Backup",
@@ -32,7 +33,6 @@ pub const BACKUP: Section = section(
     &[toggle("signed_copies", "Back up signed copies", false)],
 )
 .custom()
-.order(10)
 .keywords(&["photos", "files", "folder"]);
 
 /// `BACKUP`'s values, as Conduct reads them.
