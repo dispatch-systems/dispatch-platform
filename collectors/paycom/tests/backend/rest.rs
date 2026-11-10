@@ -90,3 +90,29 @@ fn a_connection_is_ready_only_when_every_check_passed_and_fails_by_its_first_fai
         ]
     );
 }
+
+#[test]
+fn production_refuses_api_credentials_before_a_connection_is_touched_and_takes_a_sign_ins() {
+    dispatch_core::testing::install(&[&crate::COLLECTOR], &[]);
+    let (_root, mut store, dsp) = dispatch_core::testing::bootstrapped();
+    let api = json!({"sid":"abc123","token":"t0ken"});
+    let sign_in = json!({"clientCode":"TEST","username":"user","password":"synthetic-password",
+        "securityAnswers":["one","two","three","four","five"]});
+    for credentials in [&api, &sign_in] {
+        assert!(
+            store
+                .accepts_credentials(&dsp, crate::PROVIDER, credentials)
+                .is_ok()
+        );
+    }
+    store.config.environment = dispatch_core::foundation::config::Environment::Production;
+    let refused = store
+        .accepts_credentials(&dsp, crate::PROVIDER, &api)
+        .unwrap_err();
+    assert!(refused.is(codes::API_UNAVAILABLE));
+    assert!(
+        store
+            .accepts_credentials(&dsp, crate::PROVIDER, &sign_in)
+            .is_ok()
+    );
+}

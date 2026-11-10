@@ -115,8 +115,20 @@ fn midnight(zone: Tz, date: NaiveDate) -> Result<i64> {
         .ok_or_else(|| Error::new("invalid_period", 400))
 }
 
-/// An employee's cards for `period`. Their punches are asked for from half a day either
-/// side of it, so a shift that crosses its first or last midnight is read whole.
+/// The punches a period's cards are made from, as two times in seconds since the epoch: the
+/// period's, with the whole day before it and the whole day after. A card takes its shift's
+/// punches from the day after it began, so the last day's shift is read to its end, and a
+/// shift that began the evening before brings its IN DAY, which keeps its punches off the
+/// first day's card.
+pub(crate) fn window(zone: Tz, period: &EmployeeTimecardPeriod) -> Result<(i64, i64)> {
+    let start = period.start()?;
+    Ok((
+        midnight(zone, start - Duration::days(1))?,
+        midnight(zone, start + Duration::days(PERIOD_DAYS + 1))?,
+    ))
+}
+
+/// An employee's cards for `period`.
 async fn cards(
     source: &Source<'_>,
     zone: Tz,
@@ -124,9 +136,7 @@ async fn cards(
     period: &EmployeeTimecardPeriod,
 ) -> Result<Vec<Value>> {
     ensure(path_code(code), "invalid_input", 400)?;
-    let start = period.start()?;
-    let from = midnight(zone, start)? - 12 * 3600;
-    let to = midnight(zone, start + Duration::days(PERIOD_DAYS))? + 12 * 3600;
+    let (from, to) = window(zone, period)?;
     let rows = source.client.all(&punch_history(code, from, to)).await?;
     punches::cards(&rows, code, period, zone)
 }

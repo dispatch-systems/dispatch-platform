@@ -132,10 +132,18 @@ impl Store {
         )?;
         Ok(())
     }
+    /// Whether the DSP may connect to `provider` with these credentials here: valid as its
+    /// collector reads them, and, when they need no browser, ones its collector will connect
+    /// with. Asked before anything of the connection the DSP has is stopped or replaced, so
+    /// credentials refused leave it as it was.
+    pub fn accepts_credentials(&self, id: &str, provider: Provider, value: &Value) -> Result<()> {
+        provider.validate_credentials(value)?;
+        provider.collector().direct(self, id, value).map(drop)
+    }
     pub fn save_credentials(&self, c: &Context, value: &Value, provider: Provider) -> Result<()> {
         self.revalidate(c, "connections.manage")?;
-        provider.validate_credentials(value)?;
         let id = c.dsp.id.as_str();
+        self.accepts_credentials(id, provider, value)?;
         let area = self.area(id, "secrets")?;
         let key = db::key_file(&area.join("vault.key"))?;
         db::write_private(

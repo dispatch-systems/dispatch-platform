@@ -88,7 +88,9 @@ of its provider as it connects (`Driver::checks`), each check by the collector's
 it, and how each went: core keeps that with the connection, in the DSP's settings
 (`connection.checks.<provider>`) under the revision it was found at, and a connection's answer
 carries it (`checks`), each waiting while it connects, so the collector's card can say which
-one failed. New credentials start without them. A connection that signs in through a browser
+one failed. New credentials start without them, and ones a collector won't connect with
+here are refused before the connection the DSP has is stopped or replaced
+(`Store::accepts_credentials`). A connection that signs in through a browser
 has none. Requests to such an API go through `http::Http::answer`, which hands back the status
 with the body, as an API's refusals are told apart by it.
 

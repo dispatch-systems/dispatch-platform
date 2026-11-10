@@ -112,9 +112,16 @@ async fn save(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let (c, provider) = open(&state, &input, access).await?;
     let id = c.dsp.id.as_str();
     let _operation = state.browsers.operation(id)?;
-    provider.validate_credentials(&input.body)?;
+    let (dsp, credentials) = (c.dsp.id.clone(), input.body);
+    // Refused before its jobs are cancelled and its browser closed, as before it's replaced.
+    let credentials = state
+        .read(move |db| {
+            db.accepts_credentials(&dsp, provider, &credentials)?;
+            Ok(credentials)
+        })
+        .await?;
     stop(&state, &c, provider, access).await?;
-    let (context, credentials) = (c.clone(), input.body);
+    let context = c.clone();
     state
         .run(move |db| db.save_credentials(&context, &credentials, provider))
         .await?;

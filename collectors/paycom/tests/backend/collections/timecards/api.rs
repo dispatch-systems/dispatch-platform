@@ -49,3 +49,34 @@ fn a_pay_period_is_counted_in_fortnights_from_the_anchor_before_it_and_after() {
         );
     }
 }
+
+#[test]
+fn the_punches_asked_for_reach_a_whole_day_either_side_of_the_period() {
+    let zone = chrono_tz::America::Chicago;
+    let period = period_of(
+        NaiveDate::from_ymd_opt(2026, 9, 6).unwrap(),
+        NaiveDate::from_ymd_opt(2026, 9, 6).unwrap(),
+    );
+    let at = |date: &str, clock: &str| {
+        zone.from_local_datetime(
+            &chrono::NaiveDateTime::parse_from_str(&format!("{date} {clock}"), "%Y-%m-%d %H:%M")
+                .unwrap(),
+        )
+        .unwrap()
+        .timestamp()
+    };
+    let (from, to) = window(zone, &period).unwrap();
+    // A shift that began the morning before the period, and one from its last evening that
+    // ends late the next day: cards place punches that far, so both are read whole.
+    for inside in [
+        at("2026-09-05", "00:00"),
+        at("2026-09-05", "06:00"),
+        at("2026-09-20", "23:59"),
+    ] {
+        assert!((from..=to).contains(&inside), "{inside}");
+    }
+    assert_eq!(
+        (from, to),
+        (at("2026-09-05", "00:00"), at("2026-09-21", "00:00"))
+    );
+}
