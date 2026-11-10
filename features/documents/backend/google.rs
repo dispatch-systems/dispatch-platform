@@ -30,7 +30,6 @@ const TOKEN: &str = "https://oauth2.googleapis.com/token";
 const REVOKE: &str = "https://oauth2.googleapis.com/revoke";
 const USERINFO: &str = "https://openidconnect.googleapis.com/v1/userinfo";
 pub(super) const FILES: &str = "https://www.googleapis.com/drive/v3/files";
-/// Only the files Dispatch makes or is given: Google asks no review for it.
 /// Everything in the account's Drive: what's in the DSP's folder, whoever made it, and what
 /// the team adds from elsewhere.
 const DRIVE: &str = "https://www.googleapis.com/auth/drive";
