@@ -10,28 +10,22 @@ use dispatch_core::{Result, db::Store, foundation::clock};
 
 /// `messages` is the selected slice, never candidate rows or local receipts. The caller owns
 /// the DSP transaction and shares the same Numbers snapshot as its text message hydration.
+/// `zone` is the DSP's where the caller holds it already; without one it is read here, and
+/// only for a nonempty selection.
 pub(crate) fn read(
     db: &Store,
     dsp: &str,
     reference: &Reference,
     messages: &[Message],
     numbers: Option<&Numbers>,
-) -> Result<MessageRenderContext> {
-    if messages.is_empty() {
-        return Ok(MessageRenderContext::default());
-    }
-    read_in_zone(db, dsp, reference, messages, numbers, texts::zone(db, dsp)?)
-}
-pub(crate) fn read_in_zone(
-    db: &Store,
-    dsp: &str,
-    reference: &Reference,
-    messages: &[Message],
-    numbers: Option<&Numbers>,
-    zone: chrono_tz::Tz,
+    zone: Option<chrono_tz::Tz>,
 ) -> Result<MessageRenderContext> {
     let (Some(first), Some(last)) = (messages.first(), messages.last()) else {
         return Ok(MessageRenderContext::default());
+    };
+    let zone = match zone {
+        Some(zone) => zone,
+        None => texts::zone(db, dsp)?,
     };
     let connection = db.dsp(dsp)?;
     // Where a message stands: a text's place is the one its `ts` names.

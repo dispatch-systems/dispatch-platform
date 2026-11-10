@@ -2,12 +2,11 @@
 use super::{
     changes::ChangeStore,
     conversations, dispatcher,
-    model::{PAGE, Reference, WINDOW},
+    model::{Reference, WINDOW},
     people::People,
-    storage::messages::MessageStore,
-    texts::{self, numbers::Numbers, storage::TextStore},
+    texts::{self, numbers::Numbers},
 };
-use crate::api::types::{ConversationWindow, MessageRange};
+use crate::api::types::{ConversationMessages, ConversationWindow, Message, MessageRange, Workday};
 use dispatch_core::{Error, Result, State, db::Store, ensure, foundation::crypto};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -50,6 +49,16 @@ pub(crate) fn select<T>(mut left: Vec<T>, mut right: Vec<T>, leading: usize) -> 
         has_before,
         has_after,
     }
+}
+
+/// One transport's read of a window: the selection as its page assembles one, the separate
+/// latest observation, and whether the selection left candidates on either side.
+pub(crate) struct Window {
+    pub page: ConversationMessages,
+    pub latest: Vec<Message>,
+    pub latest_workdays: Vec<Workday>,
+    pub has_before: bool,
+    pub has_after: bool,
 }
 
 /// Reads revision, selection, latest observation, bodies and attachments in one DSP
@@ -137,85 +146,23 @@ fn read_inner(
             _ => None,
         };
         let zone = want_origins.then(|| texts::zone(db, dsp)).transpose()?;
-        let read_context =
-            |messages: &[crate::api::types::Message], numbers: Option<&Numbers>| match zone {
-                Some(zone) => context::read_in_zone(db, dsp, reference, messages, numbers, zone),
-                None => context::read(db, dsp, reference, messages, numbers),
-            };
-        let (page, latest, context, latest_context, latest_workdays, has_before, has_after) =
-            match reference {
-                Reference::Slack(id) => {
-                    let rows = db.communications_message_window(dsp, id, anchor)?;
-                    let (before, after) = (rows.has_before, rows.has_after);
-                    let page =
-                        conversations::assembled_with(db, &people, dsp, id, rows.messages, before)?;
-                    let latest = conversations::messages(
-                        db,
-                        &people,
-                        dsp,
-                        db.communications_messages(dsp, id, None, PAGE)?,
-                    )?;
-                    let context = read_context(&page.messages, None)?;
-                    let latest_context = read_context(&latest, None)?;
-                    (
-                        page,
-                        latest,
-                        context,
-                        latest_context,
-                        Vec::new(),
-                        before,
-                        after,
-                    )
-                }
-                Reference::Text(id) => {
-                    let parsed = anchor
-                        .map(|(place, leading)| {
-                            texts::reading::before(place).map(|(at, id)| (at, id, leading))
-                        })
-                        .transpose()?;
-                    let anchor = parsed
-                        .as_ref()
-                        .map(|(at, id, leading)| (*at, id.as_str(), *leading));
-                    let rows = db.communications_text_window(dsp, id, anchor)?;
-                    let (before, after) = (rows.has_before, rows.has_after);
-                    let page = texts::reading::assembled_with(
-                        db,
-                        &people,
-                        numbers
-                            .as_ref()
-                            .ok_or_else(|| Error::new("communications_origins_invariant", 500))?,
-                        dsp,
-                        id,
-                        rows.messages,
-                        before,
-                    )?;
-                    let numbers = numbers
-                        .as_ref()
-                        .ok_or_else(|| Error::new("communications_origins_invariant", 500))?;
-                    let latest_read = db.communications_texts(dsp, id, None, PAGE)?;
-                    let kept = db
-                        .communications_text_conversation(dsp, id)?
-                        .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
-                    let latest_workdays = match kept.driver {
-                        Some((source, driver)) => {
-                            texts::workdays::of(db, dsp, &source, &driver, &latest_read)?
-                        }
-                        None => Vec::new(),
-                    };
-                    let latest = texts::reading::messages(&people, numbers, latest_read);
-                    let context = read_context(&page.messages, Some(numbers))?;
-                    let latest_context = read_context(&latest, Some(numbers))?;
-                    (
-                        page,
-                        latest,
-                        context,
-                        latest_context,
-                        latest_workdays,
-                        before,
-                        after,
-                    )
-                }
-            };
+        let Window {
+            page,
+            latest,
+            latest_workdays,
+            has_before,
+            has_after,
+        } = match reference {
+            Reference::Slack(id) => conversations::window(db, &people, dsp, id, anchor)?,
+            Reference::Text(id) => {
+                let numbers = numbers
+                    .as_ref()
+                    .ok_or_else(|| Error::new("communications_origins_invariant", 500))?;
+                texts::reading::window(db, &people, numbers, dsp, id, anchor)?
+            }
+        };
+        let context = context::read(db, dsp, reference, &page.messages, numbers.as_ref(), zone)?;
+        let latest_context = context::read(db, dsp, reference, &latest, numbers.as_ref(), zone)?;
         let origins = zone
             .map(|zone| {
                 super::origins::read(

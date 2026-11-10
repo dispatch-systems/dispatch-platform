@@ -1,6 +1,6 @@
-//! A conversation of either kind, by its ID, through the backend's `dispatcher`: reading it, its
-//! profile, sending in it, Done and who's writing; and Slack's own, opening a direct message and
-//! whom the DSP can message there.
+//! A conversation of either kind, by its ID: reading it, its profile, sending in it, Done and
+//! who's writing, through the backend's `dispatcher`, and a window of it, through `windows`; and
+//! Slack's own, opening a direct message and whom the DSP can message there.
 use super::{PLACE_MOST, gif, photo_id, photos, slack_id, team};
 use crate::backend::{compose, contacts, dispatcher, live, model::Reference, reply};
 use dispatch_core::{
