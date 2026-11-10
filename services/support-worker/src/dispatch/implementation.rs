@@ -106,9 +106,7 @@ pub(super) async fn run(
                 let collections =
                     collection_verification::collect(config, &tree, job, proposal).await?;
                 for proof in &collections.proofs {
-                    platform
-                        .update(job, "evidence", json!({"evidence":proof}))
-                        .await?;
+                    platform.evidence(job, proof).await?;
                 }
                 // Every preview executes the committed artifact with no host network or secrets.
                 let native =

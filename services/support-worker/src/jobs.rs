@@ -1,5 +1,5 @@
 use crate::{Result, config::Origin, require};
-use dispatch_core::support::api::types::{SupportBrowserGrant, SupportJob};
+use dispatch_core::support::api::types::{SupportBrowserGrant, SupportEvidence, SupportJob};
 use reqwest::Client;
 use serde_json::{Value, json};
 
@@ -45,6 +45,13 @@ impl Platform {
             &body,
         )
         .await
+    }
+
+    /// Records one piece of evidence on the job; the platform gives it its id and time.
+    pub async fn evidence(&self, job: &SupportJob, evidence: &SupportEvidence) -> Result<()> {
+        self.update(job, "evidence", json!({"evidence":evidence}))
+            .await?;
+        Ok(())
     }
 
     pub async fn metadata(&self, job: &SupportJob) -> Result<SupportBrowserGrant> {
