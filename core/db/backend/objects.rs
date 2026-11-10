@@ -306,14 +306,7 @@ fn answered(
 /// The key of the bytes the DSP's `owner` keeps by `sha256`: a DSP's ID, an owner's name and
 /// a SHA-256 in hexadecimal, or refused.
 fn key(dsp: &str, owner: &str, sha256: &str) -> Result<String> {
-    ensure(
-        sha256.len() == 64
-            && sha256
-                .bytes()
-                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)),
-        "invalid_object_key",
-        400,
-    )?;
+    ensure(crypto::is_hex(sha256, 64), "invalid_object_key", 400)?;
     Ok(format!("{}{sha256}", owned(dsp, owner)?))
 }
 /// Where the DSP's `owner`'s keys begin: an owner's name is lowercase letters and underscores.

@@ -17,11 +17,9 @@ pub use schema::{
 };
 pub use store::{CACHE, DspLease, Store};
 pub fn identifier(value: &str, prefix: &str) -> bool {
-    value.strip_prefix(prefix).is_some_and(|s| {
-        s.len() == 32
-            && s.bytes()
-                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-    })
+    value
+        .strip_prefix(prefix)
+        .is_some_and(|s| crate::foundation::crypto::is_hex(s, 32))
 }
 pub fn now() -> i64 {
     chrono::Utc::now().timestamp_millis()

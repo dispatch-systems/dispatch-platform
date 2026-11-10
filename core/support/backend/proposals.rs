@@ -24,10 +24,7 @@ pub(crate) fn get(db: &Store, ticket: &str, version: u32) -> Result<SupportPropo
     decode(&body)
 }
 pub fn sha(value: &str) -> bool {
-    value.len() == 40
-        && value
-            .bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    crate::foundation::crypto::is_hex(value, 40)
 }
 pub(crate) fn publish(
     db: &Store,

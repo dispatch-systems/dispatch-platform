@@ -19,6 +19,13 @@ pub fn random<const N: usize>() -> Result<[u8; N]> {
 pub fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
+/// Whether `value` is `length` digits of hexadecimal as `hex` writes them, in lowercase.
+pub fn is_hex(value: &str, length: usize) -> bool {
+    value.len() == length
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
 pub fn id(prefix: &str) -> Result<String> {
     Ok(format!("{prefix}_{}", hex(&random::<16>()?)))
 }

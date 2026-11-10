@@ -90,7 +90,7 @@ impl VerificationAuthority {
         let receipt: Receipt = serde_json::from_slice(&bytes)?;
         projection_check(
             receipt.schema_version == 1
-                && hex_digest(&receipt.source_sha, 40)
+                && crypto::is_hex(&receipt.source_sha, 40)
                 && config.source.commit.as_deref() == Some(receipt.source_sha.as_str()),
         )?;
         confined(&receipt.host_namespaces)?;
@@ -149,12 +149,6 @@ impl VerificationAuthority {
 fn projection_check(valid: bool) -> Result<()> {
     ensure(valid, "support_browser_projection_invalid", 403)
 }
-fn hex_digest(value: &str, length: usize) -> bool {
-    value.len() == length
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-}
 fn confined(host: &Namespaces) -> Result<()> {
     for (name, expected) in [
         ("pid", &host.pid),
@@ -196,7 +190,7 @@ fn checked_file(path: &Path, digest: &str) -> Result<()> {
             && stat.is_file()
             && stat.mode() & 0o111 != 0
             && stat.mode() & 0o022 == 0
-            && hex_digest(digest, 64),
+            && crypto::is_hex(digest, 64),
     )?;
     read_only(path)?;
     let mut file = OpenOptions::new()
