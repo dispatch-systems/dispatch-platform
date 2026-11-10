@@ -214,28 +214,22 @@ pub fn answered_work(
     Ok((conversations(db, people, numbers, dsp, answered)?, more))
 }
 
-/// The answered work conversations before `before`, the time last written in and the ID.
-pub fn older_work(
+/// The answered conversations of `kind`, numbers' or work, before `before`, the time last
+/// written in and the ID.
+pub fn older(
     db: &Store,
     state: &State,
     dsp: &str,
+    kind: ConversationKind,
     before: (i64, &str),
 ) -> Result<Conversations> {
     let people = People::read(db, state, dsp)?;
     let numbers = Numbers::read(db, dsp)?;
-    let (conversations, more) = answered_work(db, &people, &numbers, dsp, Some(before))?;
-    Ok(Conversations {
-        conversations,
-        groups: Vec::new(),
-        more,
-    })
-}
-
-/// The answered numbers' conversations before `before`, the time last written in and the ID.
-pub fn older(db: &Store, state: &State, dsp: &str, before: (i64, &str)) -> Result<Conversations> {
-    let people = People::read(db, state, dsp)?;
-    let numbers = Numbers::read(db, dsp)?;
-    let (conversations, more) = answered(db, &people, &numbers, dsp, Some(before))?;
+    let page = match kind {
+        ConversationKind::Work => answered_work,
+        _ => answered,
+    };
+    let (conversations, more) = page(db, &people, &numbers, dsp, Some(before))?;
     Ok(Conversations {
         conversations,
         groups: Vec::new(),

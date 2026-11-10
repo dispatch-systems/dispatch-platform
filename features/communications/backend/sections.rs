@@ -55,7 +55,9 @@ pub const TODAYS_ROUTES: Section = Section {
         (None, Asked::Typed(typed)) => {
             reading::search(db, state, dsp, ConversationKind::Work, typed)
         }
-        (None, Asked::Before(before)) => reading::older_work(db, state, dsp, *before),
+        (None, Asked::Before(before)) => {
+            reading::older(db, state, dsp, ConversationKind::Work, *before)
+        }
         _ => Err(Error::new("invalid_input", 400)),
     },
 };
@@ -80,7 +82,9 @@ pub const MESSAGING: Section = Section {
         ensure(query.team.is_none(), "invalid_input", 400)?;
         match query.asked {
             Asked::Typed(typed) => reading::search(db, state, dsp, ConversationKind::Number, typed),
-            Asked::Before(before) => reading::older(db, state, dsp, before),
+            Asked::Before(before) => {
+                reading::older(db, state, dsp, ConversationKind::Number, before)
+            }
         }
     },
 };
