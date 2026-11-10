@@ -447,14 +447,13 @@ const FIELDS: &[&str] = &[
     "catdesc",
 ];
 /// Whether a field is one a report names: one of `FIELDS`, or a labor allocation category's,
-/// `cat1` to `cat20` and each one's `desc`.
+/// `cat1` to `cat20` and each one's `desc`, written exactly so.
 fn named(name: &str) -> bool {
     FIELDS.contains(&name)
         || name
             .strip_prefix("cat")
             .map(|rest| rest.strip_suffix("desc").unwrap_or(rest))
-            .and_then(|number| number.parse::<u8>().ok())
-            .is_some_and(|number| (1..=20).contains(&number))
+            .is_some_and(|number| (1..=20u8).any(|category| category.to_string() == number))
 }
 /// What kind of value this is.
 fn kind(value: &Value) -> &'static str {
