@@ -323,9 +323,7 @@ fn assembled(
     read: Vec<StoredMessage>,
     more: bool,
 ) -> Result<ConversationMessages> {
-    let kept = db
-        .communications_conversation(dsp, id)?
-        .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
+    let kept = found(db, dsp, id)?;
     // With someone Driver Match knows, the route they drive today, for its van, whether they're
     // working, and their conversations of each kind.
     let ((today, working), elsewhere) = match people.member_of(&kept.team, &kept.user) {
@@ -346,11 +344,14 @@ fn assembled(
         limits: compose::SLACK.into(),
     })
 }
+/// The DSP's Slack conversation `id`.
+pub(crate) fn found(db: &Store, dsp: &str, id: &str) -> Result<StoredConversation> {
+    db.communications_conversation(dsp, id)?
+        .ok_or_else(|| Error::new("communications_conversation_not_found", 404))
+}
 /// The conversation `id` as its pages read it.
 pub fn one(db: &Store, state: &State, dsp: &str, id: &str) -> Result<Conversation> {
-    let kept = db
-        .communications_conversation(dsp, id)?
-        .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
+    let kept = found(db, dsp, id)?;
     let people = People::read(db, state, dsp)?;
     Ok(conversations(db, &people, dsp, vec![kept])?.remove(0))
 }

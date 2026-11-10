@@ -183,9 +183,7 @@ fn begin(
     chosen: &[String],
     until: i64,
 ) -> Result<(StoredConversation, Vec<File>, Noted, bool)> {
-    let conversation = db
-        .communications_conversation(dsp, id)?
-        .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
+    let conversation = conversations::found(db, dsp, id)?;
     ensure(
         kit::workspaces_on(db, dsp, ID)?.contains(&conversation.team),
         "communications_off",
