@@ -110,23 +110,34 @@ pub fn seal(key: &[u8; 32], binding: &str, from: &Path, to: &Path) -> Result<(St
     let mut source = BufReader::new(File::open(from)?);
     let sealer = Sealer::new(BufWriter::new(File::create(to)?), key, binding)?;
     let mut compressed = GzEncoder::new(sealer, Compression::default());
-    let mut hash = Sha256::new();
-    let mut size = 0u64;
-    let mut buffer = vec![0; 64 * 1024];
-    loop {
-        let read = source.read(&mut buffer)?;
-        if read == 0 {
-            break;
-        }
-        hash.update(&buffer[..read]);
-        size += read as u64;
-        compressed.write_all(&buffer[..read])?;
-    }
+    let read = copy_hashed(&mut source, &mut compressed, Error::from)?;
     compressed
         .finish()?
         .finish()?
         .into_inner()
         .map_err(|e| e.into_error())?;
+    Ok(read)
+}
+
+/// Copies all of `from` into `to`, and gives back the SHA-256 of what it read and how many bytes
+/// that was. A read that fails is the error `unreadable` makes of it.
+fn copy_hashed(
+    from: &mut impl Read,
+    to: &mut impl Write,
+    unreadable: impl Fn(io::Error) -> Error,
+) -> Result<(String, u64)> {
+    let mut hash = Sha256::new();
+    let mut size = 0u64;
+    let mut buffer = vec![0; 64 * 1024];
+    loop {
+        let read = from.read(&mut buffer).map_err(&unreadable)?;
+        if read == 0 {
+            break;
+        }
+        hash.update(&buffer[..read]);
+        size += read as u64;
+        to.write_all(&buffer[..read])?;
+    }
     Ok((crypto::hex(&hash.finalize()), size))
 }
 
@@ -218,25 +229,8 @@ pub fn open(
 ) -> Result<u64> {
     let opener = Opener::new(BufReader::new(File::open(from)?), key, binding)?;
     let mut plain = GzDecoder::new(opener);
-    let mut hash = Sha256::new();
-    let mut size = 0u64;
-    let mut buffer = vec![0; 64 * 1024];
-    loop {
-        let read = plain
-            .read(&mut buffer)
-            .map_err(|_| Error::new("invalid_backup", 400))?;
-        if read == 0 {
-            break;
-        }
-        hash.update(&buffer[..read]);
-        size += read as u64;
-        to.write_all(&buffer[..read])?;
-    }
-    crate::ensure(
-        crypto::hex(&hash.finalize()) == sha256,
-        "invalid_backup",
-        400,
-    )?;
+    let (read, size) = copy_hashed(&mut plain, to, |_| Error::new("invalid_backup", 400))?;
+    crate::ensure(read == sha256, "invalid_backup", 400)?;
     Ok(size)
 }
 

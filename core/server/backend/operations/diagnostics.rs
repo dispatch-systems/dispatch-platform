@@ -28,10 +28,7 @@ pub fn directories(config: &Config) -> Result<Value> {
     let read_only = |path: &Path| -> Result<db::Db> {
         ensure(path.is_file(), "platform_not_initialized", 404)?;
         db::private_file(path, false)?;
-        Ok(db::Db(rusqlite::Connection::open_with_flags(
-            path,
-            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-        )?))
+        Ok(db::Db(db::read_only(path)?))
     };
     let platform = read_only(&config.platform().join("accounts.sqlite"))?;
     let mut dsps = Vec::new();
@@ -73,9 +70,7 @@ pub fn status(config: &Config) -> Result<Value> {
     let path = config.platform().join("accounts.sqlite");
     ensure(path.is_file(), "platform_not_initialized", 404)?;
     db::private_file(&path, false)?;
-    let connection =
-        rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
-    let db = db::Db(connection);
+    let db = db::Db(db::read_only(path)?);
     Ok(
         json!({"environment":config.environment.as_str(),"runtime":"rust","dsps":db.all("SELECT name,environment,status FROM dsps",[])?}),
     )
@@ -139,10 +134,7 @@ fn migrations_recorded(root: &Path) -> Result<BTreeMap<PathBuf, i64>> {
                 .extension()
                 .is_some_and(|extension| extension == "sqlite")
             {
-                let db = rusqlite::Connection::open_with_flags(
-                    &path,
-                    rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-                )?;
+                let db = db::read_only(&path)?;
                 let mut count = 0;
                 for table in ["schema_migrations", "owner_migrations"] {
                     if table_exists(&db, table)? {

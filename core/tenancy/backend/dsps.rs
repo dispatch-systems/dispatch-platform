@@ -686,10 +686,7 @@ pub fn ensure_listed(config: &Config, id: &str) -> Result<()> {
     let path = config.platform().join("accounts.sqlite");
     ensure(path.is_file(), "platform_not_initialized", 404)?;
     db::private_file(&path, false)?;
-    let platform = db::Db(rusqlite::Connection::open_with_flags(
-        path,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )?);
+    let platform = db::Db(db::read_only(path)?);
     ensure(
         platform
             .one("SELECT id FROM dsps WHERE id=?", [id])?

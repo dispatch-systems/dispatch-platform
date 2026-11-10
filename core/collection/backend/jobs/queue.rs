@@ -109,7 +109,7 @@ impl FromRow for Claimable {
 /// The parts of a job its outcome's log entry is written from.
 pub struct JobFacts<'a> {
     pub idempotency_key: &'a str,
-    pub provider: Option<Provider>,
+    pub provider: Provider,
     /// The collection it runs, as its job kind.
     pub kind: &'a str,
     pub attempt: i64,
@@ -121,7 +121,7 @@ impl<'a> From<&'a JobRow> for JobFacts<'a> {
     fn from(job: &'a JobRow) -> Self {
         Self {
             idempotency_key: &job.idempotency_key,
-            provider: Some(job.provider()),
+            provider: job.provider(),
             kind: job.kind.as_str(),
             attempt: job.attempt,
             max_attempts: job.max_attempts,
@@ -483,11 +483,9 @@ impl Store {
             .and_then(|key| key.split(':').next())
             .and_then(|id| self.schedule_label(dsp, id).ok().flatten())
             .map(str::to_owned);
-        // Only a registered kind is ever claimed, so a job always names its provider.
-        let provider = job.provider.map_or("", Provider::id);
         // The collection names the outcome; the provider words one written before it did.
         let mut facts = vec![
-            ("provider", None, Some(provider.to_owned())),
+            ("provider", None, Some(job.provider.id().to_owned())),
             ("collection", None, Some(job.kind.to_owned())),
         ];
         if job.attempt > 1 || job.max_attempts > 1 {

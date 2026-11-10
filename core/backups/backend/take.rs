@@ -4,7 +4,7 @@
 //! store, the same way; then the backup's description, which names each file, what it belongs
 //! to and what it's kept as, with the DSP as the platform knows it and the release that took it,
 //! which is all a restore needs beside the bucket and the key.
-use super::{FILES, MANIFESTS, Vault, contents, seal};
+use super::{FILES, MANIFESTS, Vault, blocking, contents, seal};
 use crate::{
     Error, Result, State,
     db::{
@@ -15,7 +15,6 @@ use crate::{
 };
 use base64::{Engine, engine::general_purpose::STANDARD as B64};
 use futures_util::StreamExt;
-use rusqlite::OpenFlags;
 use serde_json::{Value, json};
 use std::{
     collections::{HashMap, HashSet},
@@ -132,7 +131,7 @@ struct Copied {
 /// it was added or let go of as they were.
 async fn copied(folder: &Path, held: &[String], here: &Path) -> Result<Vec<Copied>> {
     let (folder, held, here) = (folder.to_owned(), held.to_vec(), here.to_owned());
-    tokio::task::spawn_blocking(move || -> Result<Vec<Copied>> {
+    blocking(move || {
         let mut copied: Vec<Copied> = Vec::new();
         let mut made = 0;
         let mut copy_each = |found: Vec<contents::Found>| -> Result<()> {
@@ -141,7 +140,7 @@ async fn copied(folder: &Path, held: &[String], here: &Path) -> Result<Vec<Copie
                 made += 1;
                 let from = folder.join(&file.path);
                 if file.database {
-                    copy(&from, &plain, true)?;
+                    copy_database(&from, &plain)?;
                 } else {
                     match fs::copy(&from, &plain) {
                         Ok(_) => {}
@@ -188,7 +187,6 @@ async fn copied(folder: &Path, held: &[String], here: &Path) -> Result<Vec<Copie
         Ok(copied)
     })
     .await
-    .map_err(|_| Error::new("backup_failed", 500))?
 }
 
 /// A backup on its way: where it's going, what it has sent, and what its files describe.
@@ -215,13 +213,12 @@ impl Sending<'_> {
                 self.vault.key,
                 self.asked.dsp.clone(),
             );
-            tokio::task::spawn_blocking(move || -> Result<(String, u64)> {
+            blocking(move || {
                 let sealed = seal::seal(&key, &dsp, &plain, &sealed);
                 fs::remove_file(&plain)?;
                 sealed
             })
-            .await
-            .map_err(|_| Error::new("backup_failed", 500))??
+            .await?
         };
         let object = self.vault.file(&self.asked.generation, &sha256);
         if !self.kept.contains(&object) {
@@ -272,10 +269,7 @@ impl Sending<'_> {
                 written(fetched, &plain).await?;
                 let (key, binding, from, to) =
                     (self.vault.key, dsp.clone(), plain.clone(), sealed.clone());
-                let (read, size) =
-                    tokio::task::spawn_blocking(move || seal::seal(&key, &binding, &from, &to))
-                        .await
-                        .map_err(|_| Error::new("backup_failed", 500))??;
+                let (read, size) = blocking(move || seal::seal(&key, &binding, &from, &to)).await?;
                 fs::remove_file(&plain)?;
                 // A picture is kept by the SHA-256 of what it holds: one that came down otherwise
                 // isn't the picture.
@@ -342,16 +336,12 @@ async fn send(
     Ok(sending.files)
 }
 
-/// Copies the file `from` to `to`: a database as SQLite copies one while it's written to, all of
-/// it as it was at one moment.
-fn copy(from: &Path, to: &Path, database: bool) -> Result<()> {
-    if database {
-        let source = rusqlite::Connection::open_with_flags(from, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
-        source.busy_timeout(Duration::from_secs(30))?;
-        source.execute("VACUUM INTO ?", [to.to_string_lossy().as_ref()])?;
-    } else {
-        fs::copy(from, to)?;
-    }
+/// Copies the database `from` to `to` as SQLite copies one while it's written to, all of it as it
+/// was at one moment.
+fn copy_database(from: &Path, to: &Path) -> Result<()> {
+    let source = db::read_only(from)?;
+    source.busy_timeout(Duration::from_secs(30))?;
+    source.execute("VACUUM INTO ?", [to.to_string_lossy().as_ref()])?;
     Ok(())
 }
 
@@ -376,18 +366,10 @@ async fn sent(
 ) -> Result<()> {
     vault.objects.put(dsp, FILES, object, sealed).await?;
     let back = here.join("back.sealed");
-    let fetched = vault
-        .objects
-        .get(dsp, FILES, object)
-        .await?
-        .ok_or_else(|| Error::new("backup_not_kept", 502))?;
-    written(fetched, &back).await?;
+    fetch(vault, dsp, FILES, object, "backup_not_kept", &back).await?;
     let (key, dsp, sha256, from) = (vault.key, dsp.to_owned(), sha256.to_owned(), back.clone());
-    tokio::task::spawn_blocking(move || {
-        seal::open(&key, &dsp, &from, &mut std::io::sink(), &sha256).map(drop)
-    })
-    .await
-    .map_err(|_| Error::new("backup_failed", 500))??;
+    blocking(move || seal::open(&key, &dsp, &from, &mut std::io::sink(), &sha256).map(drop))
+        .await?;
     fs::remove_file(back)?;
     Ok(())
 }
@@ -402,28 +384,36 @@ async fn describe(vault: &Vault, dsp: &str, id: &str, manifest: &Value, here: &P
             manifest.clone(),
             sealed.clone(),
         );
-        tokio::task::spawn_blocking(move || seal::seal_json(&key, &binding, &manifest, &to))
-            .await
-            .map_err(|_| Error::new("backup_failed", 500))??;
+        blocking(move || seal::seal_json(&key, &binding, &manifest, &to)).await?;
     }
     let object = vault.manifest(id);
     vault.objects.put(dsp, MANIFESTS, &object, &sealed).await?;
     let back = here.join("manifest.back");
-    let fetched = vault
-        .objects
-        .get(dsp, MANIFESTS, &object)
-        .await?
-        .ok_or_else(|| Error::new("backup_not_kept", 502))?;
-    written(fetched, &back).await?;
+    fetch(vault, dsp, MANIFESTS, &object, "backup_not_kept", &back).await?;
     let (key, binding) = (vault.key, Vault::described(dsp, id));
-    let read = tokio::task::spawn_blocking(move || seal::open_json(&key, &binding, &back))
-        .await
-        .map_err(|_| Error::new("backup_failed", 500))??;
+    let read = blocking(move || seal::open_json(&key, &binding, &back)).await?;
     crate::ensure(&read == manifest, "backup_not_kept", 502)
 }
 
+/// Writes the bucket's `object`, kept as `kind`, to `to`: `missing` when the bucket hasn't it.
+pub async fn fetch(
+    vault: &Vault,
+    dsp: &str,
+    kind: &str,
+    object: &str,
+    missing: &'static str,
+    to: &Path,
+) -> Result<()> {
+    let fetched = vault
+        .objects
+        .get(dsp, kind, object)
+        .await?
+        .ok_or_else(|| Error::new(missing, 502))?;
+    written(fetched, to).await
+}
+
 /// Writes what came down to `to`.
-pub async fn written(mut fetched: Fetched, to: &Path) -> Result<()> {
+async fn written(mut fetched: Fetched, to: &Path) -> Result<()> {
     let mut file = File::create(to)?;
     while let Some(chunk) = fetched.chunks.next().await {
         file.write_all(&chunk.map_err(|_| Error::new("object_store_unavailable", 503))?)?;

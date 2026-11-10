@@ -99,7 +99,7 @@ async fn report(error: &Error, notes: &Notes) {
     let _ = output.write_all(report.as_bytes()).await;
     let _ = output.flush().await;
 }
-pub(super) async fn run(mode: &str) -> Result<()> {
+pub async fn run(mode: &str) -> Result<()> {
     let notes = Notes::default();
     let result = serve(mode, &notes).await;
     if let Err(error) = &result {

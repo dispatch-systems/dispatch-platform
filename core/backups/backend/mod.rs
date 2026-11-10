@@ -18,12 +18,10 @@ pub mod when;
 pub use keeper::keeper;
 
 use crate::{
-    Result,
+    Error, Result,
     db::objects::Objects,
     foundation::{config::BackupStore, crypto},
 };
-use hmac::{Hmac, KeyInit, Mac};
-use sha2::Sha256;
 
 /// What the backups' bucket keeps each DSP's files as, and their descriptions as.
 const FILES: &str = "backup_files";
@@ -56,11 +54,17 @@ impl Vault {
         format!("{dsp}\nmanifest\n{id}")
     }
     fn named(&self, value: &str) -> String {
-        let mut mac = <Hmac<Sha256> as KeyInit>::new_from_slice(&self.key)
-            .expect("HMAC supports any key length");
-        mac.update(value.as_bytes());
-        crypto::hex(&mac.finalize().into_bytes())
+        crypto::hex(&crypto::hmac(&self.key, value))
     }
+}
+
+/// Runs `work` on a blocking thread, as a backup's files are copied, sealed and opened.
+async fn blocking<T: Send + 'static>(
+    work: impl FnOnce() -> Result<T> + Send + 'static,
+) -> Result<T> {
+    tokio::task::spawn_blocking(work)
+        .await
+        .map_err(|_| Error::new("backup_failed", 500))?
 }
 
 #[cfg(test)]

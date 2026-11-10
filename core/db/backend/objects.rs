@@ -16,7 +16,6 @@ use crate::{
 };
 use axum::body::Bytes;
 use futures_util::{Stream, StreamExt, stream};
-use hmac::{Hmac, KeyInit, Mac};
 use reqwest::{Method, StatusCode, header};
 use sha2::{Digest, Sha256};
 use std::{path::Path, pin::Pin, time::Duration};
@@ -307,14 +306,7 @@ fn answered(
 /// The key of the bytes the DSP's `owner` keeps by `sha256`: a DSP's ID, an owner's name and
 /// a SHA-256 in hexadecimal, or refused.
 fn key(dsp: &str, owner: &str, sha256: &str) -> Result<String> {
-    ensure(
-        sha256.len() == 64
-            && sha256
-                .bytes()
-                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)),
-        "invalid_object_key",
-        400,
-    )?;
+    ensure(crypto::is_hex(sha256, 64), "invalid_object_key", 400)?;
     Ok(format!("{}{sha256}", owned(dsp, owner)?))
 }
 /// Where the DSP's `owner`'s keys begin: an owner's name is lowercase letters and underscores.
@@ -363,19 +355,13 @@ impl Signing<'_> {
         let key = [day, region, "s3", "aws4_request"]
             .iter()
             .fold(format!("AWS4{secret}").into_bytes(), |key, part| {
-                hmac(&key, part)
+                crypto::hmac(&key, part)
             });
         format!(
             "AWS4-HMAC-SHA256 Credential={key_id}/{scope},SignedHeaders={SIGNED},Signature={}",
-            crypto::hex(&hmac(&key, &signed))
+            crypto::hex(&crypto::hmac(&key, &signed))
         )
     }
-}
-fn hmac(key: &[u8], value: &str) -> Vec<u8> {
-    let mut mac =
-        <Hmac<Sha256> as KeyInit>::new_from_slice(key).expect("HMAC supports any key length");
-    mac.update(value.as_bytes());
-    mac.finalize().into_bytes().to_vec()
 }
 /// `value` as a signed address carries it: every byte but letters, digits and `-._~` as
 /// `%XX`, and `/` too unless it's a `path`.

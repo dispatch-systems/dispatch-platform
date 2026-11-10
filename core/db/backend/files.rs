@@ -113,6 +113,23 @@ fn check_metadata(path: &Path, metadata: std::io::Result<fs::Metadata>) -> Resul
         Err(e) => Err(e.into()),
     }
 }
+/// The SQLite database `path`, opened to read alone.
+pub fn read_only(path: impl AsRef<Path>) -> Result<rusqlite::Connection> {
+    Ok(rusqlite::Connection::open_with_flags(
+        path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )?)
+}
+/// The lock file `path`, made private when it isn't there yet and opened for its caller to
+/// lock, never through a link.
+pub fn lock_file(path: &Path) -> Result<fs::File> {
+    private_file(path, true)?;
+    Ok(OpenOptions::new()
+        .read(true)
+        .write(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)?)
+}
 pub fn write_private(path: &Path, bytes: &[u8]) -> Result<()> {
     private_file(path, false)?;
     let temp = path.with_extension(crypto::id("tmp")?);

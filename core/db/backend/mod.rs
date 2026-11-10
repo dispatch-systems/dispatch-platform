@@ -7,7 +7,7 @@ mod schema;
 mod store;
 pub use crate::tenancy::audit::{AuditChange, AuditQuery};
 pub use connection::{Db, boolean, flag, n, s};
-pub use files::{key_file, private_dir, private_file, retire, write_private};
+pub use files::{key_file, lock_file, private_dir, private_file, read_only, retire, write_private};
 pub use migrations::{Kind, Migration, Migrations, OwnMigrations, migrate, owned_ledger};
 pub use row::{FromRow, Row};
 /// Core's own databases, what its parts add to them and the tables it keeps, as the
@@ -17,11 +17,9 @@ pub use schema::{
 };
 pub use store::{CACHE, DspLease, Store};
 pub fn identifier(value: &str, prefix: &str) -> bool {
-    value.strip_prefix(prefix).is_some_and(|s| {
-        s.len() == 32
-            && s.bytes()
-                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-    })
+    value
+        .strip_prefix(prefix)
+        .is_some_and(|s| crate::foundation::crypto::is_hex(s, 32))
 }
 pub fn now() -> i64 {
     chrono::Utc::now().timestamp_millis()

@@ -8,7 +8,6 @@ use crate::{
     ensure,
     foundation::{config::Config, crypto},
 };
-use rusqlite::OpenFlags;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
@@ -37,10 +36,7 @@ struct Credentials {
 }
 impl Credentials {
     fn current(&self) -> Result<bool> {
-        let connection = rusqlite::Connection::open_with_flags(
-            &self.source_connection,
-            OpenFlags::SQLITE_OPEN_READ_ONLY,
-        )?;
+        let connection = db::read_only(&self.source_connection)?;
         let current: (bool, i64) = connection.query_row(
             "SELECT enabled,revision FROM connections WHERE provider=?",
             [self.provider.id()],
@@ -55,39 +51,11 @@ impl Drop for Credentials {
     }
 }
 
+/// `run` checked the environment and the request before it built the state this runs in.
 fn install_credentials(db: &Store, request: &Request, provider: Provider) -> Result<Credentials> {
-    ensure(
-        db.config.development && db.config.environment.is_preview() && !db.config.fixture,
-        "support_verification_dev_only",
-        403,
-    )?;
-    ensure(
-        request.source_root.is_absolute()
-            && request.source_root.canonicalize()? == request.source_root,
-        "unsafe_storage_path",
-        400,
-    )?;
-    ensure(
-        request
-            .source_root
-            .file_name()
-            .is_some_and(|name| name == "dev")
-            && !db.config.root.starts_with(&request.source_root)
-            && !request.source_root.starts_with(&db.config.root),
-        "support_verification_isolation_required",
-        403,
-    )?;
-    ensure(
-        db::identifier(&request.source_dsp, "dsp_")
-            && db::identifier(&request.target_dsp, "dsp_")
-            && db::identifier(&request.ticket_id, "support_"),
-        "invalid_verification_reference",
-        400,
-    )?;
     let platform = request.source_root.join("data/platform/accounts.sqlite");
     db::private_file(&platform, false)?;
-    let accounts =
-        rusqlite::Connection::open_with_flags(platform, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+    let accounts = db::read_only(platform)?;
     let active: bool = accounts.query_row(
         "SELECT EXISTS(SELECT 1 FROM dsps WHERE id=? AND status='active')",
         [&request.source_dsp],
@@ -99,14 +67,10 @@ fn install_credentials(db: &Store, request: &Request, provider: Provider) -> Res
         [&request.source_dsp],
         |row| Ok((row.get(0)?, row.get(1)?)),
     )?;
-    let source_profile = request
-        .source_root
-        .join("dsps")
-        .join(&request.source_dsp)
-        .join("data/dispatch.sqlite");
+    let folder = request.source_root.join("dsps").join(&request.source_dsp);
+    let source_profile = folder.join("data/dispatch.sqlite");
     db::private_file(&source_profile, false)?;
-    let profile =
-        rusqlite::Connection::open_with_flags(source_profile, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+    let profile = db::read_only(source_profile)?;
     let profile: String = profile.query_row(
         "SELECT value FROM settings WHERE key='dsp.profile'",
         [],
@@ -121,29 +85,19 @@ fn install_credentials(db: &Store, request: &Request, provider: Provider) -> Res
         profile["stationCode"].as_str().unwrap_or_default(),
     )?;
     let _account_lease = credential_lease(&request.source_root, &request.source_dsp, provider)?;
-    let source_connection = request
-        .source_root
-        .join("dsps")
-        .join(&request.source_dsp)
+    let source_connection = folder
         .join("data")
         .join(provider.id())
         .join(format!("{}.sqlite", provider.id()));
     db::private_file(&source_connection, false)?;
-    let connection = rusqlite::Connection::open_with_flags(
-        &source_connection,
-        OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )?;
+    let connection = db::read_only(&source_connection)?;
     let (enabled, revision): (bool, i64) = connection.query_row(
         "SELECT enabled,revision FROM connections WHERE provider=?",
         [provider.id()],
         |row| Ok((row.get(0)?, row.get(1)?)),
     )?;
     ensure(enabled, "connection_required", 409)?;
-    let area = request
-        .source_root
-        .join("dsps")
-        .join(&request.source_dsp)
-        .join("secrets");
+    let area = folder.join("secrets");
     let source = area.join(format!("{}.enc", provider.id()));
     db::private_file(&source, false)?;
     ensure(
@@ -284,24 +238,18 @@ pub async fn run(
         owner,
     ));
     let mut waiting = false;
-    let mut revoked = false;
+    let mut revoked;
     loop {
-        if !retained.current()? {
-            revoked = true;
-            let (job_id, dsp) = (id.clone(), request.target_dsp.clone());
-            state
-                .run(move |db| db.cancel(&job_id, &dsp).map(|_| ()))
-                .await?;
-            executing.abort();
-            break;
+        revoked = !retained.current()?;
+        if !revoked {
+            if executing.is_finished() {
+                break;
+            }
+            let job_id = id.clone();
+            let job = state.read(move |db| db.job_row(&job_id, None)).await?;
+            waiting = job.status == JobStatus::WaitingVerification;
         }
-        if executing.is_finished() {
-            break;
-        }
-        let job_id = id.clone();
-        let job = state.read(move |db| db.job_row(&job_id, None)).await?;
-        if job.status == JobStatus::WaitingVerification {
-            waiting = true;
+        if revoked || waiting {
             let (job_id, dsp) = (id.clone(), request.target_dsp.clone());
             state
                 .run(move |db| db.cancel(&job_id, &dsp).map(|_| ()))
