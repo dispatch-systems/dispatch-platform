@@ -2298,7 +2298,7 @@ fn publishing_after_a_commit_waits_for_dev_to_serve_it_first() {
     let commit = f.system.commit.clone();
     let publish = || f.publish(&["--after", &commit, "--bump", "major"]);
     // Dev still serves another commit and waits for main's checks on this one: the wait ends
-    // naming it, and nothing else ran.
+    // naming it, having only asked git whether the commit Dev serves contains it.
     let before = git(&f.root, &["commit-tree", "HEAD^{tree}", "-m", "before"]);
     f.dev(&before, "waiting_for_checks", RUNNING);
     let error = publish().unwrap_err().to_string();
@@ -2306,7 +2306,13 @@ fn publishing_after_a_commit_waits_for_dev_to_serve_it_first() {
         error.contains(&format!("Dev did not install {commit} within")),
         "{error}"
     );
-    assert!(f.system.calls.borrow().is_empty());
+    assert!(
+        f.system
+            .calls
+            .borrow()
+            .iter()
+            .all(|call| call[..2] == ["git", "merge-base"])
+    );
     // Once Dev serves it with the host tool already running, that tool releases it.
     f.dev(&commit, "ready", RUNNING);
     assert_eq!(publish().unwrap()["stage"], "complete");
