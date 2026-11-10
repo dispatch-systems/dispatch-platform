@@ -59,16 +59,36 @@ pub(crate) fn boundary(
         return Ok(());
     }
     match transport {
-        Transport::Slack => db.exec("INSERT INTO communications_slack_origins \
-            (conversation_id,generation,ts,message_id,day_start,sender_present) VALUES (?,?,?,?,?,?) \
-            ON CONFLICT(conversation_id,generation,ts) DO UPDATE SET message_id=excluded.message_id, \
+        Transport::Slack => db.exec(
+            "INSERT INTO communications_slack_origins \
+            (conversation_id,generation,ts,message_id,day_start,sender_present) \
+            VALUES (?,?,?,?,?,?) \
+            ON CONFLICT(conversation_id,generation,ts) DO UPDATE SET \
+            message_id=excluded.message_id, \
             day_start=excluded.day_start,sender_present=excluded.sender_present",
-            params![conversation,generation,row.ts,row.id,day_start,row.sender_present()])?,
-        Transport::Text => db.exec("INSERT INTO communications_text_origins \
+            params![
+                conversation,
+                generation,
+                row.ts,
+                row.id,
+                day_start,
+                row.sender_present()
+            ],
+        )?,
+        Transport::Text => db.exec(
+            "INSERT INTO communications_text_origins \
             (conversation_id,generation,at,id,day_start,sender_present) VALUES (?,?,?,?,?,?) \
             ON CONFLICT(conversation_id,generation,at,id) DO UPDATE SET \
             day_start=excluded.day_start,sender_present=excluded.sender_present",
-            params![conversation,generation,row.at,row.id,day_start,row.sender_present()])?,
+            params![
+                conversation,
+                generation,
+                row.at,
+                row.id,
+                day_start,
+                row.sender_present()
+            ],
+        )?,
     };
     Ok(())
 }
@@ -131,12 +151,8 @@ fn mutate<T>(
                 .map(|row| neighbor(db, transport, &conversation, row, true))
                 .transpose()?
                 .flatten();
-            let candidate: Option<backfill::Build> = if placement {
-                db.one_as(
-                    "SELECT generation,source_epoch,zone,algorithm,previous FROM communications_origin_builds \
-                    WHERE transport=? AND conversation_id=?",
-                    params![transport.name(), conversation],
-                )?
+            let candidate = if placement {
+                backfill::build(db, transport, &conversation)?
             } else {
                 None
             };
@@ -165,12 +181,22 @@ fn mutate<T>(
             let expected = i64::from(changed && (from_here || to_here));
             let current = state(db, transport, &conversation)?.ok_or_else(invariant)?;
             if placement
-                && before.as_ref().is_none_or(|row| row.conversation_id.is_none())
+                && before
+                    .as_ref()
+                    .is_none_or(|row| row.conversation_id.is_none())
                 && to_here
                 && entry.epoch.checked_add(1) == Some(current.epoch)
                 && let (Some(candidate), Some(row)) = (candidate, after.as_ref())
             {
-                advance_candidate(db, transport, &conversation, &entry, &current, &candidate, row)?;
+                advance_candidate(
+                    db,
+                    transport,
+                    &conversation,
+                    &entry,
+                    &current,
+                    &candidate,
+                    row,
+                )?;
             }
             let Some(zone) = entry.zone.as_deref().filter(|zone| entry.ready(zone)) else {
                 continue;

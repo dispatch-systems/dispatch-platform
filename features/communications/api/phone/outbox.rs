@@ -320,25 +320,15 @@ async fn fail_outdated(
     dsp: &str,
     texts: Vec<(Text, i64)>,
 ) -> Result<()> {
-    let asked = input.clone();
-    filing::changing(state, dsp, move |db| {
-        let caller = access.authorize(db, &asked)?;
-        let mut moved = Vec::new();
-        for (text, attempt) in texts {
-            let report = StatusReport {
-                id: text.id,
-                attempt,
-                status: Status::Failed,
-                at: now(),
-                error: Some(gifs::OUTDATED.to_owned()),
-            };
-            if db.phones_status(&caller.dsp, &caller.device.id, &report)? {
-                moved.push(report.id);
-            }
-        }
-        Ok(((), moved))
-    })
-    .await
+    // Made as each is noted, inside the write, so each is timed then.
+    let failed = texts.into_iter().map(|(text, attempt)| StatusReport {
+        id: text.id,
+        attempt,
+        status: Status::Failed,
+        at: now(),
+        error: Some(gifs::OUTDATED.to_owned()),
+    });
+    noted(state, input, access, dsp, failed).await
 }
 
 /// Notes how the texts Dispatch had for the phone went, and files those that moved.
@@ -352,19 +342,29 @@ pub(super) async fn statuses(state: Arc<State>, input: Input, access: Phone) -> 
         .map(reported)
         .collect::<Result<Vec<_>>>()?;
     let caller = checked_in(&state, &input, access).await?;
+    noted(&state, &input, access, &caller.dsp, statuses).await?;
+    Ok(Reply::ok())
+}
+/// Notes how each of `reports` went, as the phone reports it, and files those that moved.
+async fn noted(
+    state: &Arc<State>,
+    input: &Input,
+    access: Phone,
+    dsp: &str,
+    reports: impl IntoIterator<Item = StatusReport> + Send + 'static,
+) -> Result<()> {
     let asked = input.clone();
-    filing::changing(&state, &caller.dsp, move |db| {
+    filing::changing(state, dsp, move |db| {
         let caller = access.authorize(db, &asked)?;
         let mut moved = Vec::new();
-        for report in statuses {
+        for report in reports {
             if db.phones_status(&caller.dsp, &caller.device.id, &report)? {
                 moved.push(report.id);
             }
         }
         Ok(((), moved))
     })
-    .await?;
-    Ok(Reply::ok())
+    .await
 }
 /// How one attempt went, as the phone reports it.
 fn reported(status: &Value) -> Result<StatusReport> {

@@ -131,7 +131,8 @@ impl Topology {
     }
 }
 /// Use actual timestamp dates, never clock::day's fixture-today override. Invalid chrono dates
-/// cannot be indexed; they remain on the legacy reader. This does not normalize stored time.
+/// cannot be indexed; their conversation's index stays unready, and `read` answers its windows
+/// without origins. This does not normalize stored time.
 fn day(zone: Tz, at: i64) -> Result<chrono::NaiveDate> {
     DateTime::<Utc>::from_timestamp_millis(at)
         .map(|at| at.with_timezone(&zone).date_naive())

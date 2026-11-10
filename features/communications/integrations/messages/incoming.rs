@@ -8,6 +8,7 @@
 use super::ID;
 use crate::backend::{
     files, live,
+    model::millis,
     storage::{
         DOMAIN,
         messages::{Attached, MessageStore, Written},
@@ -18,22 +19,6 @@ use dispatch_core::{Result, State, db::Store};
 use dispatch_slack::kit::{self, Bot};
 use serde_json::{Value, json};
 use std::{collections::HashMap, sync::Arc};
-
-/// The time Slack's `ts` names, in milliseconds: seconds, a point, then microseconds. None for
-/// one that isn't, or is past what milliseconds hold.
-pub fn millis(ts: &str) -> Option<i64> {
-    let (seconds, micros) = ts.split_once('.').unwrap_or((ts, "0"));
-    let micros = format!("{micros:0<6}");
-    seconds
-        .parse::<i64>()
-        .ok()?
-        .checked_mul(1000)?
-        .checked_add(micros.get(..3)?.parse::<i64>().ok()?)
-}
-/// Slack's `ts` for the time `at`, in milliseconds.
-pub fn ts(at: i64) -> String {
-    format!("{}.{:03}000", at.div_euclid(1000), at.rem_euclid(1000))
-}
 
 /// From when the DSP's messages in the workspace `team` may be kept, in milliseconds: since
 /// Slack, Communications and its integration there were all on. None while any is off.

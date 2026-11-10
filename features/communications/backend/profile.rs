@@ -7,7 +7,6 @@
 use super::{
     conversations,
     people::People,
-    storage::conversations::ConversationStore,
     texts::{reading, storage::TextStore},
 };
 use crate::api::types::Profile;
@@ -20,9 +19,7 @@ use dispatch_slack::kit;
 
 /// The profile of the member the Slack conversation `id` is with.
 pub fn member(db: &Store, state: &State, dsp: &str, id: &str) -> Result<Profile> {
-    let conversation = db
-        .communications_conversation(dsp, id)?
-        .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
+    let conversation = conversations::found(db, dsp, id)?;
     let everyone = people::everyone(db, state, dsp)?;
     let person = everyone.holding(
         kit::SOURCE,

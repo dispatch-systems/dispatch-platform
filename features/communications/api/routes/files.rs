@@ -2,7 +2,7 @@
 //! kept, a workspace's logo, and the public image of someone's initials.
 use super::{id, slack_id};
 use crate::backend::{
-    attachments, conversations,
+    attachments,
     files::{self, FileStore},
     initials,
     model::FileStatus,
@@ -24,6 +24,7 @@ use dispatch_core::{
         upload::Upload,
     },
 };
+use dispatch_slack::kit;
 use std::sync::Arc;
 
 /// Keeps a photo added for a message not sent yet: its `name` and `type` in the query.
@@ -95,7 +96,7 @@ pub(super) fn logo(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.query, &["v"])?;
     let team = slack_id(input.param("team"), b"T")?;
     let (kind, picture) =
-        conversations::logo(db, c.dsp_id(), &team)?.ok_or_else(|| Error::new("not_found", 404))?;
+        kit::logo(db, c.dsp_id(), &team)?.ok_or_else(|| Error::new("not_found", 404))?;
     Ok(Reply::picture(kind, picture.into()))
 }
 

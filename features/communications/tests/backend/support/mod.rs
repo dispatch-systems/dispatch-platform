@@ -24,7 +24,7 @@ pub use routes::failing;
 
 use crate::api::types::Message;
 use crate::backend::{
-    conversations,
+    conversations, model,
     storage::{
         conversations::{Conversation, ConversationStore},
         messages::Written,
@@ -314,7 +314,7 @@ pub async fn member(
 /// The workspace `team`'s member `user` writing `text` to the app, as Slack tells of it.
 pub async fn writes(state: &Arc<State>, dsp: &str, team: &str, user: &str, text: &str) {
     let event = json!({"type": "message", "channel_type": "im", "channel": format!("D{}", &user[1..]),
-        "user": user, "text": text, "ts": incoming::ts(now())});
+        "user": user, "text": text, "ts": model::ts(now())});
     incoming::heard(state, dsp, team, &event).await.unwrap();
 }
 /// A message the fixture workspace's member `U0JORDAN` wrote at `at`, in milliseconds.

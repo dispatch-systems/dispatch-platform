@@ -8,7 +8,7 @@
 //! else. A picture small enough already, one that can't be read as a picture, or one only the
 //! object store has while the DSP's cache can't be used to bring it down, has none: it's shown as
 //! it is. A preview that can't be kept is shown all the same.
-use super::bytes::{self, Folder, Reading};
+use super::bytes::{self, Arriving, Folder, Reading};
 use dispatch_core::{Error, Result, State, foundation::crypto, foundation::observability};
 use image::{
     DynamicImage, GrayImage, ImageDecoder, ImageFormat, ImageReader, Limits, Rgb, RgbImage,
@@ -141,24 +141,12 @@ async fn stored(kept: &Path, jpeg: &[u8]) -> Result<()> {
     let folder = kept
         .parent()
         .ok_or_else(|| Error::new("unsafe_storage_path", 500))?;
-    let arriving = Arriving(folder.join(format!(".{}", crypto::id("preview")?)));
-    let mut file = tokio::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(&arriving.0)
-        .await?;
+    let (arriving, mut file) =
+        Arriving::create(folder.join(format!(".{}", crypto::id("preview")?))).await?;
     file.write_all(jpeg).await?;
     file.sync_all().await?;
-    tokio::fs::rename(&arriving.0, kept).await?;
+    tokio::fs::rename(arriving.path(), kept).await?;
     Ok(())
-}
-/// A preview being written, let go of should it never take its place.
-struct Arriving(PathBuf);
-impl Drop for Arriving {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
-    }
 }
 
 /// One asking for the preview at `kept`, among those asking for it at once, who take their turns

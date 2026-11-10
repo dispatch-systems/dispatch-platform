@@ -11,7 +11,7 @@ use super::{
     model::ConversationKind,
     people::People,
     storage::conversations::ConversationStore,
-    texts::{live_day, numbers::Numbers, reading, todays_routes},
+    texts::{live_day, numbers::Numbers, reading, storage::TextStore, todays_routes},
 };
 use crate::api::types::{Conversation, Conversations, Group};
 use dispatch_core::{Error, Result, State, db::Store, ensure};
@@ -55,7 +55,9 @@ pub const TODAYS_ROUTES: Section = Section {
         (None, Asked::Typed(typed)) => {
             reading::search(db, state, dsp, ConversationKind::Work, typed)
         }
-        (None, Asked::Before(before)) => reading::older_work(db, state, dsp, *before),
+        (None, Asked::Before(before)) => {
+            reading::older(db, state, dsp, ConversationKind::Work, *before)
+        }
         _ => Err(Error::new("invalid_input", 400)),
     },
 };
@@ -65,9 +67,9 @@ pub const MESSAGING: Section = Section {
     id: "messaging",
     kind: ConversationKind::Number,
     offered: |_, _| Ok(true),
-    waiting: |db, dsp| Ok(reading::waiting_numbers(db, dsp)?.len()),
+    waiting: |db, dsp| Ok(db.waiting_communications_texts(dsp)?.len()),
     listed: |r| {
-        let waiting = reading::waiting_numbers(r.db, r.dsp)?;
+        let waiting = r.db.waiting_communications_texts(r.dsp)?;
         let (answered, more) = reading::answered(r.db, r.people, r.numbers, r.dsp, None)?;
         Ok(Listed {
             waiting: reading::conversations(r.db, r.people, r.numbers, r.dsp, waiting)?,
@@ -80,7 +82,9 @@ pub const MESSAGING: Section = Section {
         ensure(query.team.is_none(), "invalid_input", 400)?;
         match query.asked {
             Asked::Typed(typed) => reading::search(db, state, dsp, ConversationKind::Number, typed),
-            Asked::Before(before) => reading::older(db, state, dsp, before),
+            Asked::Before(before) => {
+                reading::older(db, state, dsp, ConversationKind::Number, before)
+            }
         }
     },
 };

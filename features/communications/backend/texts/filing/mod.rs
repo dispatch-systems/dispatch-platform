@@ -80,15 +80,7 @@ pub fn refile(state: Arc<State>, dsp: String, changed: RouteDataChanged) -> Upke
 fn pass(state: Arc<State>, _: bool) -> Upkeep {
     Box::pin(async move {
         let on = state
-            .read(|db| {
-                let mut found = Vec::new();
-                for dsp in db.served_ids()? {
-                    if db.feature_enabled(&dsp, crate::FEATURE.switch.id)? {
-                        found.push(dsp);
-                    }
-                }
-                Ok(found)
-            })
+            .read(|db| crate::backend::switched_on(db, db.served_ids()?))
             .await;
         match on {
             Ok(dsps) => {

@@ -170,6 +170,18 @@ pub trait DeviceStore {
     fn phones_demo(&self, dsp: &str, number: &str, received: Vec<Reported>, at: i64) -> Result<()>;
 }
 
+/// The phone whose `column` is `value`, not removed.
+fn device(store: &Store, dsp: &str, column: &str, value: &str) -> Result<Option<Device>> {
+    let db = store.dsp(dsp)?;
+    Ok(db
+        .one(
+            &format!("SELECT * FROM phones_devices WHERE {column}=? AND removed_at IS NULL"),
+            [value],
+        )?
+        .as_ref()
+        .map(Device::of))
+}
+
 impl DeviceStore for Store {
     fn phones_devices(&self, dsp: &str) -> Result<Vec<Device>> {
         let db = self.dsp(dsp)?;
@@ -180,24 +192,10 @@ impl DeviceStore for Store {
         Ok(rows.iter().map(Device::of).collect())
     }
     fn phones_device(&self, dsp: &str, id: &str) -> Result<Option<Device>> {
-        let db = self.dsp(dsp)?;
-        Ok(db
-            .one(
-                "SELECT * FROM phones_devices WHERE id=? AND removed_at IS NULL",
-                [id],
-            )?
-            .as_ref()
-            .map(Device::of))
+        device(self, dsp, "id", id)
     }
     fn phones_device_by_key(&self, dsp: &str, key_sha256: &str) -> Result<Option<Device>> {
-        let db = self.dsp(dsp)?;
-        Ok(db
-            .one(
-                "SELECT * FROM phones_devices WHERE key_sha256=? AND removed_at IS NULL",
-                [key_sha256],
-            )?
-            .as_ref()
-            .map(Device::of))
+        device(self, dsp, "key_sha256", key_sha256)
     }
     fn phones_seen(&self, dsp: &str, device: &str, at: i64) -> Result<()> {
         self.dsp(dsp)?.exec(

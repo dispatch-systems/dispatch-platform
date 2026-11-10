@@ -160,14 +160,10 @@ pub fn messages(people: &People, numbers: &Numbers, kept: Vec<Text>) -> Vec<Mess
         .collect()
 }
 
-/// The numbers' conversations waiting, the longest waiting first, but a blocked number's.
-pub fn waiting_numbers(db: &Store, dsp: &str) -> Result<Vec<TextConversation>> {
-    db.waiting_communications_texts(dsp)
-}
 /// The conversations by text waiting, the longest waiting first: the numbers', but a blocked
 /// number's, and the work conversations waiting on the live day.
 pub fn waiting(db: &Store, dsp: &str) -> Result<Vec<TextConversation>> {
-    let mut waiting = waiting_numbers(db, dsp)?;
+    let mut waiting = db.waiting_communications_texts(dsp)?;
     waiting.extend(live_day::waiting(db, dsp)?);
     waiting.sort_by(|a, b| {
         a.waiting_since
@@ -214,28 +210,22 @@ pub fn answered_work(
     Ok((conversations(db, people, numbers, dsp, answered)?, more))
 }
 
-/// The answered work conversations before `before`, the time last written in and the ID.
-pub fn older_work(
+/// The answered conversations of `kind`, numbers' or work, before `before`, the time last
+/// written in and the ID.
+pub fn older(
     db: &Store,
     state: &State,
     dsp: &str,
+    kind: ConversationKind,
     before: (i64, &str),
 ) -> Result<Conversations> {
     let people = People::read(db, state, dsp)?;
     let numbers = Numbers::read(db, dsp)?;
-    let (conversations, more) = answered_work(db, &people, &numbers, dsp, Some(before))?;
-    Ok(Conversations {
-        conversations,
-        groups: Vec::new(),
-        more,
-    })
-}
-
-/// The answered numbers' conversations before `before`, the time last written in and the ID.
-pub fn older(db: &Store, state: &State, dsp: &str, before: (i64, &str)) -> Result<Conversations> {
-    let people = People::read(db, state, dsp)?;
-    let numbers = Numbers::read(db, dsp)?;
-    let (conversations, more) = answered(db, &people, &numbers, dsp, Some(before))?;
+    let page = match kind {
+        ConversationKind::Work => answered_work,
+        _ => answered,
+    };
+    let (conversations, more) = page(db, &people, &numbers, dsp, Some(before))?;
     Ok(Conversations {
         conversations,
         groups: Vec::new(),
