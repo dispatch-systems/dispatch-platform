@@ -305,11 +305,35 @@ pub(crate) fn boundary(
 /// destination of an insertion or move. No callbacks in triggers and no connection-local flag.
 /// Epoch deltas must equal exactly this row's projected transition; an earlier unknown mutation
 /// or an unexpected extra write cannot be acknowledged by the next ordinary send.
+/// Audited single INSERT or NULL-owner filing only. The callback must perform exactly
+/// that row's placement; refiles, retries and arbitrary mutations use `change`.
+pub(crate) fn place<T>(
+    db: &Db,
+    transport: Transport,
+    id: &str,
+    to: Option<&str>,
+    write: impl FnOnce() -> Result<T>,
+) -> Result<T> {
+    mutate(db, transport, id, to, true, write)
+}
+
+/// A general known mutation keeps unfinished candidates subject to normal epoch invalidation.
 pub(crate) fn change<T>(
     db: &Db,
     transport: Transport,
     id: &str,
     to: Option<&str>,
+    write: impl FnOnce() -> Result<T>,
+) -> Result<T> {
+    mutate(db, transport, id, to, false, write)
+}
+
+fn mutate<T>(
+    db: &Db,
+    transport: Transport,
+    id: &str,
+    to: Option<&str>,
+    placement: bool,
     write: impl FnOnce() -> Result<T>,
 ) -> Result<T> {
     db.transaction(|| {
@@ -335,7 +359,16 @@ pub(crate) fn change<T>(
                 .map(|row| neighbor(db, transport, &conversation, row, true))
                 .transpose()?
                 .flatten();
-            entries.push((conversation, entry, successor));
+            let candidate: Option<backfill::Build> = if placement {
+                db.one_as(
+                    "SELECT generation,source_epoch,zone,algorithm,previous FROM communications_origin_builds \
+                    WHERE transport=? AND conversation_id=?",
+                    params![transport.name(), conversation],
+                )?
+            } else {
+                None
+            };
+            entries.push((conversation, entry, successor, candidate));
         }
         let result = write()?;
         let after = by_id(db, transport, id)?;
@@ -344,12 +377,12 @@ pub(crate) fn change<T>(
             .and_then(|row| row.conversation_id.as_deref())
         {
             ensure(
-                entries.iter().any(|(id, _, _)| id == conversation),
+                entries.iter().any(|(id, _, _, _)| id == conversation),
                 "communications_origins_owner",
                 500,
             )?;
         }
-        for (conversation, entry, old_next) in entries {
+        for (conversation, entry, old_next, candidate) in entries {
             let changed = before != after;
             let from_here = before
                 .as_ref()
@@ -359,6 +392,14 @@ pub(crate) fn change<T>(
                 .is_some_and(|row| row.conversation_id.as_deref() == Some(conversation.as_str()));
             let expected = i64::from(changed && (from_here || to_here));
             let current = state(db, transport, &conversation)?.ok_or_else(invariant)?;
+            if placement
+                && before.as_ref().is_none_or(|row| row.conversation_id.is_none())
+                && to_here
+                && entry.epoch.checked_add(1) == Some(current.epoch)
+                && let (Some(candidate), Some(row)) = (candidate, after.as_ref())
+            {
+                advance_candidate(db, transport, &conversation, &entry, &current, &candidate, row)?;
+            }
             let Some(zone) = entry.zone.as_deref().filter(|zone| entry.ready(zone)) else {
                 continue;
             };
@@ -434,6 +475,60 @@ pub(crate) fn change<T>(
         Ok(result)
     })
 }
+fn advance_candidate(
+    db: &Db,
+    transport: Transport,
+    conversation: &str,
+    entry: &IndexState,
+    current: &IndexState,
+    candidate: &backfill::Build,
+    row: &Topology,
+) -> Result<()> {
+    if candidate.epoch != entry.epoch
+        || candidate.algorithm != algorithm()
+        || candidate.zone.parse::<Tz>().is_err()
+    {
+        return Ok(());
+    }
+    let Some(previous) = candidate.previous.as_deref() else {
+        return Ok(());
+    };
+    // A candidate is derived state. An unsupported cursor cannot become a source-write
+    // prerequisite: keep its old epoch so the next chunk starts a fresh build.
+    let Ok(previous_row) = serde_json::from_str::<Topology>(previous) else {
+        return Ok(());
+    };
+    let bound = transport.bound("m", ">", 2, 3, 4);
+    let suffix = db.count(
+        &format!(
+            "SELECT count(*) FROM {} m WHERE m.id=?1 AND {bound} \
+            AND ?2 IS NOT NULL AND ?4 IS NOT NULL",
+            transport.source()
+        ),
+        params![row.id, previous_row.ts, previous_row.at, previous_row.id],
+    )? == 1;
+    if !suffix {
+        return Ok(());
+    }
+    let advanced = db.exec(
+        "UPDATE communications_origin_builds SET source_epoch=?1 WHERE transport=?2 \
+        AND conversation_id=?3 AND generation=?4 AND source_epoch=?5 AND zone=?6 \
+        AND algorithm=?7 AND previous=?8",
+        params![
+            current.epoch,
+            transport.name(),
+            conversation,
+            candidate.generation,
+            candidate.epoch,
+            candidate.zone,
+            candidate.algorithm,
+            previous
+        ],
+    )?;
+    ensure(advanced == 1, "communications_origins_invariant", 500)?;
+    Ok(())
+}
+
 fn invariant() -> Error {
     Error::new("communications_origins_invariant", 500)
 }
