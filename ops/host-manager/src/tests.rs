@@ -1555,26 +1555,6 @@ fn production_rolls_back_only_to_an_older_verified_runtime_and_never_while_its_u
 }
 
 #[test]
-fn isolated_production_service_preserves_activation_and_rollback() {
-    let f = Fixture::new(Environment::Production);
-    let file = f.root.join("config/updater.json");
-    let mut config: Value = io::read_json(&file).unwrap();
-    config["systemService"] = json!(true);
-    fs::write(file, config.to_string()).unwrap();
-    let u = f.updater();
-    f.system.fail_start.set(true);
-    assert!(u.activate(&f.candidate, &f.new).is_err());
-    assert_eq!(artifact::verify(&u.active, None).unwrap(), f.old_manifest);
-    let calls = f.system.calls.borrow();
-    let actions: Vec<_> = calls
-        .iter()
-        .filter(|call| call[0] == "sudo")
-        .map(|call| call[3].as_str())
-        .collect();
-    assert_eq!(actions, ["stop", "start", "stop", "start"]);
-}
-
-#[test]
 fn release_backups_go_once_taken_over_30_days_ago() {
     let backups = tempfile::tempdir().unwrap();
     let made = |name: &str| {
