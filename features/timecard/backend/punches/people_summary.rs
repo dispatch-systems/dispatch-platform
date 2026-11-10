@@ -1,6 +1,6 @@
 //! Compact directory data beside the immutable payroll history. A publisher refreshes it in
-//! the same transaction. Writes from an older rollback binary mark it dirty; readers then use
-//! the original history until a publisher or upkeep rebuilds it.
+//! the same transaction. Writes by an older release, after a rollback, mark it dirty; readers
+//! then use the payroll history until a publisher or upkeep rebuilds it.
 use super::people;
 use dispatch_core::manifest::people::Named;
 use dispatch_core::{
@@ -111,7 +111,8 @@ pub(super) fn employees(db: &Db) -> Result<Vec<Named>> {
         })
         .collect())
 }
-/// Repairs writes made during rollback without adding work to a directory read.
+/// Rebuilds what an older release's writes marked dirty, without adding work to a directory
+/// read.
 pub const MAINTENANCE: Maintenance = Maintenance {
     every: Duration::from_secs(60 * 60),
     run: maintain,

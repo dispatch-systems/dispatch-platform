@@ -82,15 +82,7 @@ pub(super) async fn updates(state: Arc<State>, input: Input, access: Dsp) -> Res
     let (after, seen) = (number("after")?, number("typing")?);
     let asked = input.clone();
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
-    let _slot = state
-        .topics
-        .slots
-        .clone()
-        .try_acquire_owned()
-        .map_err(|error| match error {
-            tokio::sync::TryAcquireError::NoPermits => Error::busy("topic_wait_full"),
-            tokio::sync::TryAcquireError::Closed => Error::busy("topic_wait_closed"),
-        })?;
+    let _slot = state.topics.wait_slot()?;
     // Subscribed before reading, so a change between the read and the wait still wakes it.
     let mut listener = state.topics.subscribe(live::TOPIC, &c.dsp.id);
     let until = tokio::time::Instant::now() + WAIT;

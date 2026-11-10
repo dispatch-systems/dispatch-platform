@@ -1,5 +1,9 @@
 //! Employee timecards: calendar navigation and explicitly scoped collections.
-use super::{cards, sync::synced_cards};
+use super::{
+    cards,
+    payloads::{COLUMNS, capture_join, punches_join},
+    sync::synced_cards,
+};
 use crate::api::types::{EmployeeTimecardResponse, Timecard};
 use dispatch_core::{
     Error, Result,
@@ -120,27 +124,26 @@ pub(crate) fn employee_timecard(
     let mut timecards = if let Some(p) = &publication {
         cards(
             &db,
-            "SELECT t.employee_code employeeCode,t.date,t.hours,t.status,t.punches,r.format payload_format,b.body payload_body,u.url \
-             sourceUrl FROM timecards t \
-             LEFT JOIN paycom_timecard_payload_refs r ON r.publication_id=t.publication_id \
-             AND r.employee_code=t.employee_code AND r.date=t.date AND r.format='paycom.punches.v1' \
-             LEFT JOIN paycom_payloads b ON b.format=r.format AND b.digest=r.digest \
-             LEFT JOIN timecard_sources u ON \
-             u.publication_id=t.publication_id AND u.employee_code=t.employee_code \
-             WHERE t.publication_id=? AND t.employee_code=? ORDER BY t.date DESC",
+            &format!(
+                "SELECT t.employee_code employeeCode,t.date,t.hours,t.status,t.punches,{COLUMNS},\
+                 u.url sourceUrl FROM timecards t {} \
+                 LEFT JOIN timecard_sources u ON \
+                 u.publication_id=t.publication_id AND u.employee_code=t.employee_code \
+                 WHERE t.publication_id=? AND t.employee_code=? ORDER BY t.date DESC",
+                punches_join()
+            ),
             [s(p, "id"), code],
         )?
     } else {
         vec![]
     };
     if let Some(sync) = db.one(
-        "SELECT s.data,s.collected_at,r.format payload_format,b.body payload_body, \
-         r.payload_collected_at FROM employee_timecard_syncs s \
-         LEFT JOIN paycom_employee_sync_payload_refs r ON r.employee_code=s.employee_code \
-         AND r.period_from=s.period_from AND r.period_to=s.period_to \
-         AND r.format='paycom.employee-capture.v1' \
-         LEFT JOIN paycom_payloads b ON b.format=r.format AND b.digest=r.digest \
-         WHERE s.employee_code=? AND s.period_from=? AND s.period_to=? AND s.collected_at>=?",
+        &format!(
+            "SELECT s.data,s.collected_at,{COLUMNS},r.payload_collected_at \
+             FROM employee_timecard_syncs s {} \
+             WHERE s.employee_code=? AND s.period_from=? AND s.period_to=? AND s.collected_at>=?",
+            capture_join()
+        ),
         params![
             code,
             period.from,

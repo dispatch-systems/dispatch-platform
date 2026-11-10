@@ -1,11 +1,11 @@
 //! In-memory wakeups and bounded invalidation hints; reads always recheck authority. Collection
 //! progress has its hub, `Updates`; every feature's own live channel is a `Topic` of `Topics`.
-use crate::{Result, collection::api::types::CollectionChange};
+use crate::{Result, collection::api::types::CollectionChange, server::admission};
 use std::{
     collections::{HashMap, VecDeque},
     sync::{Arc, Mutex, Weak},
 };
-use tokio::sync::{Semaphore, watch};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, watch};
 
 struct Tenant {
     sender: watch::Sender<u64>,
@@ -24,6 +24,14 @@ impl Updates {
             tenants: Mutex::new(HashMap::new()),
             slots: Arc::new(Semaphore::new(128)),
         })
+    }
+    /// One of the slots a request holds while it waits for collection progress.
+    pub fn wait_slot(&self) -> Result<OwnedSemaphorePermit> {
+        admission::slot(
+            &self.slots,
+            "collection_wait_full",
+            "collection_wait_closed",
+        )
     }
     pub fn subscribe(&self, dsp: &str) -> watch::Receiver<u64> {
         self.tenants
@@ -110,7 +118,8 @@ pub struct Topic(pub &'static str);
 pub struct Topics {
     senders: Mutex<HashMap<(Topic, String), watch::Sender<u64>>>,
     scoped: Arc<Mutex<ScopedSenders>>,
-    /// The requests that may wait at once, across every topic.
+    /// The requests that may wait at once, across every topic, but for a phone's wait for its
+    /// outbox, which Communications bounds itself.
     pub slots: Arc<Semaphore>,
 }
 impl Default for Topics {
@@ -160,6 +169,10 @@ impl Drop for ScopedListener {
 }
 
 impl Topics {
+    /// One of the slots a request holds while it waits on a topic.
+    pub fn wait_slot(&self) -> Result<OwnedSemaphorePermit> {
+        admission::slot(&self.slots, "topic_wait_full", "topic_wait_closed")
+    }
     /// Waits on `topic` in `dsp`. Subscribe before reading, so a change between the read and
     /// the wait still wakes it.
     pub fn subscribe(&self, topic: Topic, dsp: &str) -> watch::Receiver<u64> {

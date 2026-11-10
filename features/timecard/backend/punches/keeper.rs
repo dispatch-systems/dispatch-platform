@@ -1,4 +1,5 @@
 //! Timecard keeps Paycom's timecards: a pay period's, or one employee's.
+use super::payloads::{COLUMNS, punches_join};
 use crate::backend::TimecardStore;
 use dispatch_core::{
     Result,
@@ -81,12 +82,12 @@ impl Keeper for Timecards {
     fn published(&self, db: &Db) -> Result<Vec<Value>> {
         super::daily::cards(
             db,
-            "SELECT t.employee_code employeeCode,t.date,t.hours,t.status,t.punches, \
-             r.format payload_format,b.body payload_body FROM timecards t \
-             LEFT JOIN paycom_timecard_payload_refs r ON r.publication_id=t.publication_id \
-             AND r.employee_code=t.employee_code AND r.date=t.date AND r.format='paycom.punches.v1' \
-             LEFT JOIN paycom_payloads b ON b.format=r.format AND b.digest=r.digest \
-             WHERE t.publication_id=(SELECT id FROM publications WHERE active=1)",
+            &format!(
+                "SELECT t.employee_code employeeCode,t.date,t.hours,t.status,t.punches,{COLUMNS} \
+                 FROM timecards t {} \
+                 WHERE t.publication_id=(SELECT id FROM publications WHERE active=1)",
+                punches_join()
+            ),
             [],
         )
     }

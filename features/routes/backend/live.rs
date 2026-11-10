@@ -10,7 +10,7 @@ use super::{
     },
     saving,
     scope::{day_allowed, day_request, routes_day, routes_today},
-    shaping::{PreparedItinerary, Shaper, gzip, identifier},
+    shaping::{PreparedItinerary, PreparedResponse, Shaper, identifier, prepare_lists},
     staging::blocking,
     storage::stored_capture,
     work_phones::{PHONES_SINCE, Stored},
@@ -73,7 +73,7 @@ struct Kept {
 /// compressed as they're stored, and each itinerary's rows.
 struct Shaped {
     lists: Capture,
-    responses: Vec<(&'static str, usize, Vec<u8>)>,
+    responses: Vec<PreparedResponse>,
     itineraries: Vec<PreparedItinerary>,
 }
 impl Shaped {
@@ -96,17 +96,9 @@ impl Shaped {
             .into_iter()
             .map(|captured| shaper.shape(&captured))
             .collect::<Result<Vec<_>>>()?;
-        let mut responses = Vec::new();
-        for (name, list) in [
-            ("summaries", &capture.summaries),
-            ("route_summaries", &capture.route_summaries),
-        ] {
-            let body = serde_json::to_vec(list)?;
-            responses.push((name, body.len(), gzip(&body)?));
-        }
         Ok(Self {
+            responses: prepare_lists(&capture)?,
             lists: capture,
-            responses,
             itineraries,
         })
     }
@@ -197,7 +189,7 @@ pub async fn keep_live(
     })
     .await
 }
-/// Typed held row, including exactly the seen expressions used by the production upsert.
+/// Typed held row, including exactly the seen expressions the drivers' upsert uses.
 struct HeldDriver {
     id: String,
     first: Option<String>,
@@ -402,8 +394,8 @@ fn keep(store: &Store, dsp: &str, read: &mut Shaped) -> Result<Kept> {
                 (s(row, "id").to_owned(), unextracted)
             }
             None => {
-                // Starting afresh still clears the old live store when only inactive rows
-                // remain; their shared names must not carry into a new live day.
+                // Starting afresh clears the live store even when only inactive rows remain:
+                // their shared names must not carry into a new live day.
                 if held.is_some()
                     || db.one("SELECT 1 FROM route_publications LIMIT 1", [])?.is_some()
                 {
@@ -449,8 +441,15 @@ fn keep(store: &Store, dsp: &str, read: &mut Shaped) -> Result<Kept> {
             &read.itineraries,
         )?;
         let mut raw = 0;
-        for (name, bytes, body) in &read.responses {
-            raw += write_raw(db, Writes::InPlace, &publication, name, *bytes, body)?;
+        for response in &read.responses {
+            raw += write_raw(
+                db,
+                Writes::InPlace,
+                &publication,
+                response.name,
+                response.bytes,
+                &response.body,
+            )?;
         }
         for itinerary in &read.itineraries {
             let name = format!("itinerary:{}", itinerary.id);

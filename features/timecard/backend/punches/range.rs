@@ -1,4 +1,5 @@
 //! Historical daily sources loaded once for a range, including guarded employee overlays.
+use super::payloads::{COLUMNS, capture_join, punches_join};
 use dispatch_core::{
     Result,
     db::{Store, s},
@@ -92,16 +93,15 @@ pub(crate) fn daily_sources(
     let selected = codes.map(serde_json::to_string).transpose()?;
     for mut row in super::daily::cards(
         &db,
-        "SELECT t.publication_id,t.employee_code employeeCode,e.name,e.department,e.station,\
-         t.date,t.hours,t.status,t.punches,r.format payload_format,b.body payload_body, \
-         u.url sourceUrl FROM timecards t \
-         LEFT JOIN paycom_timecard_payload_refs r ON r.publication_id=t.publication_id \
-         AND r.employee_code=t.employee_code AND r.date=t.date AND r.format='paycom.punches.v1' \
-         LEFT JOIN paycom_payloads b ON b.format=r.format AND b.digest=r.digest \
-         JOIN employees e ON e.publication_id=t.publication_id AND e.code=t.employee_code \
-         LEFT JOIN timecard_sources u ON u.publication_id=t.publication_id AND u.employee_code=t.employee_code \
-         WHERE t.publication_id IN (SELECT value FROM json_each(?1)) AND t.date BETWEEN ?2 AND ?3 \
-         AND (?4 IS NULL OR t.employee_code IN (SELECT value FROM json_each(?4)))",
+        &format!(
+            "SELECT t.publication_id,t.employee_code employeeCode,e.name,e.department,e.station,\
+             t.date,t.hours,t.status,t.punches,{COLUMNS},u.url sourceUrl FROM timecards t {} \
+             JOIN employees e ON e.publication_id=t.publication_id AND e.code=t.employee_code \
+             LEFT JOIN timecard_sources u ON u.publication_id=t.publication_id AND u.employee_code=t.employee_code \
+             WHERE t.publication_id IN (SELECT value FROM json_each(?1)) AND t.date BETWEEN ?2 AND ?3 \
+             AND (?4 IS NULL OR t.employee_code IN (SELECT value FROM json_each(?4)))",
+            punches_join()
+        ),
         params![ids, from, to, selected],
     )? {
         let Some(source) = days.get_mut(s(&row, "date")) else {
@@ -119,13 +119,12 @@ pub(crate) fn daily_sources(
     }
     let wanted = |code: &str| codes.is_none_or(|codes| codes.iter().any(|c| c == code));
     for sync in db.all(
-        "SELECT s.period_from,s.period_to,s.collected_at,s.data,r.format payload_format, \
-         b.body payload_body,r.payload_collected_at FROM employee_timecard_syncs s \
-         LEFT JOIN paycom_employee_sync_payload_refs r ON r.employee_code=s.employee_code \
-         AND r.period_from=s.period_from AND r.period_to=s.period_to \
-         AND r.format='paycom.employee-capture.v1' \
-         LEFT JOIN paycom_payloads b ON b.format=r.format AND b.digest=r.digest \
-         WHERE s.period_from<=? AND s.period_to>=? ORDER BY s.collected_at,s.employee_code",
+        &format!(
+            "SELECT s.period_from,s.period_to,s.collected_at,s.data,{COLUMNS},\
+             r.payload_collected_at FROM employee_timecard_syncs s {} \
+             WHERE s.period_from<=? AND s.period_to>=? ORDER BY s.collected_at,s.employee_code",
+            capture_join()
+        ),
         [to, from],
     )? {
         let data = super::payloads::capture(&sync)?;

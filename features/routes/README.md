@@ -24,6 +24,12 @@ it is live route data, in a database of its own, `routelive`.
   `finished_at`, where the DSP is), a final read of a day not yet ended or a snapshot of another day
   than it was then, is refused (`routes_day_not_available`). It tells Driver Match of new drivers at
   once (`people.changed`), and refuses while Routes is off.
+- **Staging:** a day's read is staged in an inactive publication before it becomes the day's.
+  Both summary responses are prepared before the staging's database turn. Inactive writes
+  serialize per DSP before entering the database pool and hold a shared transition lock, so
+  foreground WAL reads can proceed. Every turn rechecks tenant lifetime and the caller's job,
+  feature and connection guards; final publication is exclusive. Shared driver and address
+  merges leave identical rows unwritten while preserving seen-day bounds.
 - **Live route data:** a feature that depends on Routes and reads today live asks Cortex for what
   `live_request` names, a snapshot of today where the DSP is at its station, as a job asks for a
   day; and keeps each whole read with `keep_live` (`backend/live.rs`), counting for its read's
@@ -48,17 +54,19 @@ it is live route data, in a database of its own, `routelive`.
   replaces it. It answers none when live route data holds no day, and leaves live route data as it
   was. Keep, save and clear identify that read by its active publication, ignoring inactive rows;
   two active live publications are refused as ambiguous (`routes_capture_invalid`). The drivers
-  named earlier in the live day remain named until the existing day/scope reset or explicit clear.
+  named earlier in the live day remain named until a read of another day or scope resets it, or
+  it's cleared.
   `save_and_clear_live` saves the day so, then empties live route data, as a stopped day does:
   once it's saved, or once it holds no day, as after an earlier call emptied it but couldn't give
   its space back. All four refuse while Routes is off.
 - **People cache:** a forward live poll in the same current publication preserves the DSP's
   people cache only when read-only preparation under State's exclusive transition proves every
-  driver name/seen upsert and distinct active driver/day unchanged. Settings and other reads
-  still invalidate on the Routes domain. Resets, older captures, unknown storage and proof read
-  failures keep conservative invalidation. Events keep their existing new-driver/day-data rules.
-  Acknowledging delivered changed-day notes is bookkeeping; creating them and publishing routes
-  remain domain writes. No other Routes writer receives this exception.
+  driver name/seen upsert and distinct active driver/day unchanged. Settings and every other
+  cached read are evicted as by any write in the Routes domain. A reset, an older capture,
+  storage the proof doesn't know and a proof that fails to read evict the people cache too. The
+  events a poll sends follow new drivers and changed day data, whatever the proof finds.
+  Acknowledging delivered changed-day notes is bookkeeping, which evicts nothing; creating them
+  and publishing routes are domain writes. No other Routes writer preserves the people cache.
 - **Each itinerary's work phone:** every itinerary keeps the company phone its driver's records show
   with it, by its last ten digits, in both route databases (`backend/work_phones.rs`): the day's
   list's record of them, else the itinerary's own response's, so a list record without a phone gives
@@ -109,6 +117,8 @@ it is live route data, in a database of its own, `routelive`.
   owner rebuilds a DSP's rows from its stored responses with
   `POST /api/platform/dsps/{id}/routes/reprocess`, for every day or one, after a release that
   reads fields the earlier one didn't, in the audit log as `routes.reprocessed`, with the day.
+  An itinerary's read groups its active tasks by stop once, and keeps the stored task order and
+  the history of inactive tasks.
 - **Data:** each itinerary's work phone in its row, in both; in historical route data found by
   the phone too, for whether a number was ever one. Live route data, in `routelive`: today's one
   read, in historical route data's tables
@@ -121,7 +131,7 @@ it is live route data, in a database of its own, `routelive`.
   (`route_days_untold`, each note by an ID `route_days_noted` never gives again, migration 12).
   Reprocessing starts its shared staging afresh in the same transaction that rebuilds and
   shares the day; an omitted address or driver never replays an earlier staged value. Shared
-  staging is still deleted as it is shared. Raw responses stay inline in both databases.
+  staging is deleted as it is shared. Raw responses are stored inline in both databases.
   The holds on work phones that Routes kept before each day's work phones were its itineraries'
   (`work_phones` in both, `work_phones_shown` in live route data) are dropped by a migration of
   each.
@@ -167,10 +177,3 @@ it is live route data, in a database of its own, `routelive`.
   names no one driver; a day not collected, or not live, and one whose phones aren't extracted yet,
   are told apart from a day without phones. And whether a number, by its last ten digits, is an
   itinerary's work phone on any day kept, live or historical (`ever_work_phone`).
-
-Historical staging prepares both summary responses before its database turn. Inactive writes
-serialize per DSP before entering the database pool and retain a shared transition lock, so
-foreground WAL reads can proceed. Every turn rechecks tenant lifetime and the caller's job,
-feature and connection guards; final publication remains exclusive. Shared driver
-and address merges leave identical rows unwritten while preserving seen-day bounds. Itinerary
-reads group active tasks by stop once and keep the stored task order and inactive-task history.

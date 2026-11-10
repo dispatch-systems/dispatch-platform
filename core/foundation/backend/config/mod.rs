@@ -67,12 +67,16 @@ fn browser_capacity(value: &str) -> Result<usize> {
     let capacity = value
         .parse()
         .map_err(|_| crate::Error::new("invalid_browser_capacity", 400))?;
+    ensure_browser_capacity(capacity)?;
+    Ok(capacity)
+}
+/// Refuses a number of browsers a server may not run at once (`invalid_browser_capacity`).
+pub fn ensure_browser_capacity(capacity: usize) -> Result<()> {
     ensure(
         (1..=16).contains(&capacity),
         "invalid_browser_capacity",
         400,
-    )?;
-    Ok(capacity)
+    )
 }
 impl Config {
     pub fn load() -> Result<Self> {

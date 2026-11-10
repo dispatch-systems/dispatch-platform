@@ -79,9 +79,10 @@ through Driver Match.
   the entries history holds.
 - **People:** its employees and its meal breaks' drivers are Driver Match's `timecards` and
   `meal_breaks` kinds of data. Paycom's directory reads compact roster and workday summaries,
-  refreshed with each period publication, including unchanged collections whose collection
-  time advances. Original publications stay intact. Legacy writes mark the summaries dirty;
-  reads use history until the next publication or hourly upkeep rebuilds them.
+  refreshed with each period publication, one whose collection changed nothing but its time
+  included. The publications they summarize are kept whole. A write by an older release, after
+  a rollback, marks the summaries dirty, and reads use the publications until the next
+  publication or the hourly upkeep rebuilds them.
 - **Storage:** in the collectors' own databases, which it migrates: Paycom's (`paycom`) and
   Cortex's (`cortex`). Its settings are core's, in the DSP's own database; the preferences it
   kept in Paycom's `settings` before (`paycom.preferences`) move into them once, as the DSP
@@ -94,15 +95,18 @@ through Driver Match.
   publications to their actual collection job. Each day validates and publishes all scopes
   in one transaction. Existing meal fields and privacy cleanup remain unchanged. The additive
   table can remain during a code rollback; do not remove it or rewrite shipped migrations.
-  Paycom own migration 2 adds an immutable DSP-local JSON pool and sidecar references for
-  timecard punches and employee captures. Full inline JSON remains written; legacy writes
-  invalidate only their affected references. Reads join supported bodies or fall back to
-  complete inline JSON, including historical publications. A capture's raw collectedAt
-  envelope stays separate from its ordering timestamp. The private v1 formats sort object
-  keys, preserve array order and null/absent keys, and use SHA-256 over format, NUL and body.
-  This additive phase increases hashing, writes and disk use, including unreferenced replaced
-  sync bodies. It does no backfill, marker emission or garbage collection. Reclamation
-  requires a separately shipped compatibility release as the supported rollback target.
+  Paycom's own migration 2 adds a pool of JSON bodies, each stored once in the DSP's database
+  and never changed, with references to them beside timecard punches and employee captures.
+  Every row holds its whole JSON inline as well. A read joins the pooled body where a reference
+  in a format it supports names one, and takes the inline JSON otherwise, as for publications
+  from before the pool. A write by an older release, after a rollback, drops only the
+  references of the rows it touches. A capture's raw collectedAt envelope stays separate from
+  its ordering timestamp. The private v1 formats sort object keys, preserve array order and
+  null/absent keys, and use SHA-256 over format, NUL and body. Storing both costs hashing,
+  writes and disk, the bodies of replaced syncs that nothing references among them: nothing
+  backfills older rows, writes a marker in place of inline JSON, or collects unreferenced
+  bodies. Reclaiming the inline copies needs a release that reads the pool shipped first, as
+  the one a rollback goes back to.
 - **Exposed:** `timecards`, through its contract in `contract/` (`dispatch-timecard-contract`),
   for any feature or agent tool, while it's on for the DSP: the days its collections of
   everyone reached, and a driver's timecards by their Paycom codes, matched exactly, over up

@@ -32,7 +32,9 @@ sign-in and the pages outside services send the browser back to are the admin's 
 
 Database work uses four shared workers and a 64-entry queue. Routine polling and background
 work first wait in a separate bounded queue of 56 callers for their three-worker share, so
-waiting for that share does not occupy the shared queue. Both queues together retain at most
-120 callers; this does not bound idle HTTP waits or every task the server retains. Normal
-worker waits share one two-second deadline; patient work waits up to a minute. Started
-blocking work retains its admission until it finishes, including after its caller disconnects.
+waiting for that share does not occupy the shared queue, and background work holds at most two
+workers at once. Both queues together retain at most 120 callers; this does not bound idle HTTP
+waits or every task the server retains. Normal worker waits share one two-second deadline;
+patient work waits up to a minute. A refusal is `platform_busy`, and the request's log names
+the limiter that refused it. Started blocking work retains its admission until it finishes,
+including after its caller disconnects.

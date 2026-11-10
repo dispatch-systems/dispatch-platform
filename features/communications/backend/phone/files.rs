@@ -154,15 +154,7 @@ pub async fn fetch(
     id: &str,
     authorize: impl Fn(&Store) -> Result<()> + Clone + Send + 'static,
 ) -> Result<bool> {
-    let _slot = state
-        .topics
-        .slots
-        .clone()
-        .try_acquire_owned()
-        .map_err(|error| match error {
-            tokio::sync::TryAcquireError::NoPermits => Error::busy("topic_wait_full"),
-            tokio::sync::TryAcquireError::Closed => Error::busy("topic_wait_closed"),
-        })?;
+    let _slot = state.topics.wait_slot()?;
     // Subscribed before asking, so bytes that come between the ask and the wait still wake it.
     let mut listener = state.topics.subscribe(crate::backend::live::TOPIC, dsp);
     let (at, wanted, allowed) = (dsp.to_owned(), id.to_owned(), authorize.clone());
