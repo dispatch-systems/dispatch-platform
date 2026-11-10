@@ -211,7 +211,7 @@ impl Connected {
         let mut at = from.to_owned();
         for _ in 0..PAGES {
             let page: ChangePage = if let Google::Fixture = self.google {
-                let (from, offset) = at.split_once(':').map_or((at.as_str(), "0"), |pair| pair);
+                let (from, offset) = at.split_once(':').unwrap_or((at.as_str(), "0"));
                 let from: u64 = from
                     .parse()
                     .map_err(|_| Error::new("documents_changes_lost", 410))?;
