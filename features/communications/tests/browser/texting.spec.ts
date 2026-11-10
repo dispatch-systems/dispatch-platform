@@ -530,7 +530,8 @@ test('bounded text windows keep the visible part anchored and defer eviction unt
   const bubbles = thread.locator('.bubble[data-message-id]');
   await expect(bubbles).toHaveCount(150);
   const photo = pane.getByRole('button', { name: 'door.png', exact: true });
-  await photo.scrollIntoViewIfNeeded();
+  await thread.locator('[data-message-part="file:bounded-photo"]').scrollIntoViewIfNeeded();
+  await expect(photo).toBeEnabled();
   await photo.click();
   const opener = await photo.elementHandle();
   const viewer = page.getByRole('dialog', { name: 'door.png' });
@@ -967,7 +968,8 @@ test('a legacy photo viewer retains its opener while an already-dispatched readi
     const pane = await openText(page);
     const thread = pane.locator('.thread');
     const photo = pane.getByRole('button', { name: 'door.png', exact: true });
-    await photo.scrollIntoViewIfNeeded();
+    await thread.locator('[data-message-part="file:bounded-photo"]').scrollIntoViewIfNeeded();
+    await expect(photo).toBeEnabled();
     await pane.getByLabel('Message', { exact: true }).focus();
     fixture.ready = true;
     fixture.beforeWindow = async () => {
