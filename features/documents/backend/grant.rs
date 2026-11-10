@@ -7,6 +7,23 @@ use super::{
 use dispatch_core::{Error, Result, State, db::Store, ensure};
 use std::{path::PathBuf, sync::Arc};
 
+#[derive(Clone)]
+pub(super) struct Admission {
+    state: Arc<State>,
+    owner: Grant,
+}
+impl Admission {
+    pub fn new(state: &Arc<State>, owner: &Grant) -> Self {
+        Self {
+            state: Arc::clone(state),
+            owner: owner.clone(),
+        }
+    }
+    pub async fn check(&self) -> Result<()> {
+        self.owner.read(&self.state, |_, _| Ok(())).await
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(super) struct Key {
     pub namespace: PathBuf,

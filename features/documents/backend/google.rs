@@ -1,6 +1,10 @@
 //! Google, as Documents talks to it: signing a DSP's account in, and the Drive calls it makes
 //! with that account. Fixture mode answers in-process, so previews and tests never reach Google.
+#[path = "transport.rs"]
+pub(super) mod transport;
+use super::grant::{Admission, Grant};
 use crate::api::types::PickerKeys;
+use dispatch_core::State;
 use dispatch_core::{
     Error, Result,
     foundation::{
@@ -10,6 +14,7 @@ use dispatch_core::{
 };
 use serde::Deserialize;
 use serde_json::json;
+use std::sync::Arc;
 #[cfg(test)]
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -50,6 +55,66 @@ pub(super) static HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
         .build()
         .expect("the TLS backend is built in")
 });
+
+/// Grant-bound clients never send a hidden redirect or protocol retry.
+pub(super) static DRIVE_HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .redirect(reqwest::redirect::Policy::none())
+        .retry(reqwest::retry::never())
+        .build()
+        .expect("the TLS backend is built in")
+});
+
+/// Existing-grant operations can only be constructed with their captured owner.
+pub(super) struct Connected {
+    pub(super) google: Google,
+    pub(super) admission: Admission,
+}
+impl Connected {
+    pub fn new(state: &Arc<State>, owner: &Grant) -> Result<Self> {
+        Ok(Self {
+            google: Google::of(&state.config)?,
+            admission: Admission::new(state, owner),
+        })
+    }
+    pub(super) async fn response(
+        &self,
+        request: reqwest::RequestBuilder,
+        policy: transport::Policy,
+    ) -> Result<reqwest::Response> {
+        transport::response(&self.admission, request, policy).await
+    }
+    pub(super) async fn send<T: for<'de> Deserialize<'de>>(
+        &self,
+        request: reqwest::RequestBuilder,
+    ) -> Result<T> {
+        read(self.response(request, transport::Policy::Ordinary).await?).await
+    }
+    /// A fresh access token for the account. One Google won't renew means the owner removed
+    /// Dispatch, or the account is gone: the connection is broken until someone reconnects.
+    pub async fn access(&self, refresh: &str) -> Result<Access> {
+        let client = match &self.google {
+            Google::Fixture => {
+                self.admission.check().await?;
+                return fixture_access(refresh);
+            }
+            Google::Live(client) => client,
+        };
+        let tokens: Tokens = self
+            .send(DRIVE_HTTP.post(TOKEN).form(&[
+                ("client_id", client.id.as_str()),
+                ("client_secret", client.secret.as_str()),
+                ("refresh_token", refresh),
+                ("grant_type", "refresh_token"),
+            ]))
+            .await?;
+        Ok(Access {
+            token: tokens.access_token,
+            lasts: Duration::from_secs(tokens.expires_in.unwrap_or(3600)),
+        })
+    }
+}
 
 /// The Google account a sign-in proved, and whether a Google Workspace holds it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -293,32 +358,21 @@ impl Google {
             access,
         })
     }
-    /// A fresh access token for the account. One Google won't renew means the owner removed
-    /// Dispatch, or the account is gone: the connection is broken until someone reconnects.
-    pub async fn access(&self, refresh: &str) -> Result<Access> {
-        let client = match self {
-            Self::Fixture => return fixture_access(refresh),
-            Self::Live(client) => client,
-        };
-        let tokens: Tokens = form(
-            TOKEN,
-            &[
-                ("client_id", client.id.as_str()),
-                ("client_secret", client.secret.as_str()),
-                ("refresh_token", refresh),
-                ("grant_type", "refresh_token"),
-            ],
-        )
-        .await?;
-        Ok(Access {
-            token: tokens.access_token,
-            lasts: Duration::from_secs(tokens.expires_in.unwrap_or(3600)),
-        })
-    }
     /// Makes a folder at the top of the account's Drive and answers its ID. Fixture mode's
     /// account then holds files elsewhere in its Drive, as an account does.
     pub async fn create_folder(&self, access: &str, name: &str) -> Result<String> {
-        let id = self.create(access, name, FOLDER, None).await?.id;
+        // This prospective token has no persisted Grant yet. Only connection setup uses it.
+        let id = if let Self::Fixture = self {
+            let id = format!("fixture-{}", crypto::hex(&crypto::random::<8>()?));
+            super::drive::fixture::fixture(access, |drive| drive.create(id, name, FOLDER, None))?.id
+        } else {
+            let made: super::drive::Item = send(HTTP.post(FILES)
+                .bearer_auth(access)
+                .query(&[("fields", super::drive::FIELDS)])
+                .json(&json!({"name": name, "mimeType": FOLDER, "parents": [], "writersCanShare": false})))
+                .await?;
+            made.id
+        };
         if let Self::Fixture = self {
             super::drive::fixture_elsewhere(access)?;
         }

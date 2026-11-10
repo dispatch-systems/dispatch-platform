@@ -1,9 +1,6 @@
 //! Folder listings, account storage and change-feed pagination.
-use super::{
-    FIELDS, Item, Storage,
-    fixture::{described, fixture},
-};
-use crate::backend::google::{FILES, FOLDER, Google, HTTP, send};
+use super::{FIELDS, Item, Storage, fixture::described};
+use crate::backend::google::{Connected, DRIVE_HTTP as HTTP, FILES, FOLDER, Google};
 use dispatch_core::{Error, Result, ensure};
 use serde::Deserialize;
 use std::collections::BTreeSet;
@@ -81,13 +78,10 @@ impl ChangePage {
     }
 }
 
-impl Google {
+impl Connected {
     /// Everything inside the folder `root`, out of the trash, read a few folders at a time,
     /// and the files outside it that shortcuts inside stand for.
     pub async fn inside(&self, access: &str, root: &str) -> Result<Vec<Item>> {
-        if let Self::Fixture = self {
-            return fixture(access, |drive| Ok(drive.values().map(described).collect()));
-        }
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct Page {
@@ -126,8 +120,32 @@ impl Google {
                     ("includeItemsFromAllDrives", "true".to_owned()),
                     ("supportsAllDrives", "true".to_owned()),
                 ];
-                query.extend(next.take().map(|token| ("pageToken", token)));
-                let page: Page = send(HTTP.get(FILES).bearer_auth(access).query(&query)).await?;
+                let page: Page = if let Google::Fixture = self.google {
+                    let offset = next
+                        .take()
+                        .map(|at| at.parse::<usize>())
+                        .transpose()
+                        .map_err(|_| Error::new("google_sign_in_failed", 502))?
+                        .unwrap_or(0);
+                    self.fixture(access, |drive| {
+                        let mut found = drive
+                            .values()
+                            .filter(|item| item.parents.iter().any(|parent| batch.contains(parent)))
+                            .skip(offset);
+                        let files: Vec<Item> = found.by_ref().take(1000).map(described).collect();
+                        let next_page_token =
+                            found.next().map(|_| (offset + files.len()).to_string());
+                        Ok(Page {
+                            files,
+                            next_page_token,
+                        })
+                    })
+                    .await?
+                } else {
+                    query.extend(next.take().map(|token| ("pageToken", token)));
+                    self.send(HTTP.get(FILES).bearer_auth(access).query(&query))
+                        .await?
+                };
                 folders.extend(
                     page.files
                         .iter()
@@ -166,42 +184,85 @@ impl Google {
     /// Where the account's changes are read from, for those after now: asked before its files
     /// are listed, so nothing changed while they were is missed.
     pub async fn start_changes(&self, access: &str) -> Result<String> {
-        if let Self::Fixture = self {
-            return fixture(access, |drive| Ok(drive.changes.to_string()));
+        if let Google::Fixture = self.google {
+            return self
+                .fixture(access, |drive| Ok(drive.changes.to_string()))
+                .await;
         }
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct Start {
             start_page_token: String,
         }
-        let start: Start = send(
-            HTTP.get(format!("{CHANGES}/startPageToken"))
-                .bearer_auth(access),
-        )
-        .await?;
+        let start: Start = self
+            .send(
+                HTTP.get(format!("{CHANGES}/startPageToken"))
+                    .bearer_auth(access),
+            )
+            .await?;
         Ok(start.start_page_token)
     }
     /// What changed in the files Dispatch can reach since `from`, each as it is now.
     pub async fn changes(&self, access: &str, from: &str) -> Result<Changes> {
-        if let Self::Fixture = self {
-            return fixture(access, |drive| drive.changes(from));
-        }
         let fields = format!(
             "nextPageToken,newStartPageToken,changes(fileId,removed,file({FIELDS},trashed))"
         );
         let mut changed = Vec::new();
         let mut at = from.to_owned();
         for _ in 0..PAGES {
-            let page: ChangePage = send(HTTP.get(CHANGES).bearer_auth(access).query(&[
-                ("pageToken", at.as_str()),
-                ("fields", fields.as_str()),
-                ("pageSize", "1000"),
-                ("spaces", "drive"),
-                ("includeRemoved", "true"),
-                ("includeItemsFromAllDrives", "true"),
-                ("supportsAllDrives", "true"),
-            ]))
-            .await?;
+            let page: ChangePage = if let Google::Fixture = self.google {
+                let (from, offset) = at.split_once(':').map_or((at.as_str(), "0"), |pair| pair);
+                let from: u64 = from
+                    .parse()
+                    .map_err(|_| Error::new("documents_changes_lost", 410))?;
+                let offset: usize = offset
+                    .parse()
+                    .map_err(|_| Error::new("documents_changes_lost", 410))?;
+                self.fixture(access, |drive| {
+                    let mut found = drive
+                        .changed
+                        .iter()
+                        .filter(|(_, time)| **time > from)
+                        .skip(offset);
+                    let changes: Vec<Change> = found
+                        .by_ref()
+                        .take(1000)
+                        .map(|(id, _)| {
+                            let file = drive
+                                .files
+                                .get(id)
+                                .filter(|_| !drive.hidden.contains(id))
+                                .map(|item| ChangedFile {
+                                    item: described(item),
+                                    trashed: false,
+                                });
+                            Change {
+                                file_id: Some(id.clone()),
+                                removed: file.is_none(),
+                                file,
+                            }
+                        })
+                        .collect();
+                    let more = found.next().is_some();
+                    Ok(ChangePage {
+                        next_page_token: more.then(|| format!("{from}:{}", offset + changes.len())),
+                        new_start_page_token: (!more).then(|| drive.changes.to_string()),
+                        changes,
+                    })
+                })
+                .await?
+            } else {
+                self.send(HTTP.get(CHANGES).bearer_auth(access).query(&[
+                    ("pageToken", at.as_str()),
+                    ("fields", fields.as_str()),
+                    ("pageSize", "1000"),
+                    ("spaces", "drive"),
+                    ("includeRemoved", "true"),
+                    ("includeItemsFromAllDrives", "true"),
+                    ("supportsAllDrives", "true"),
+                ]))
+                .await?
+            };
             match page.read(&mut changed) {
                 Some(Then::Done(next)) => return Ok(Changes { changed, next }),
                 Some(Then::Page(token)) => at = token,
@@ -212,13 +273,15 @@ impl Google {
     }
     /// How full the account's Drive is.
     pub async fn storage(&self, access: &str) -> Result<Storage> {
-        if let Self::Fixture = self {
-            return fixture(access, |drive| {
-                Ok(Storage {
-                    used: drive.files.len() as u64 * 1_000_000,
-                    limit: Some(15_000_000_000),
+        if let Google::Fixture = self.google {
+            return self
+                .fixture(access, |drive| {
+                    Ok(Storage {
+                        used: drive.files.len() as u64 * 1_000_000,
+                        limit: Some(15_000_000_000),
+                    })
                 })
-            });
+                .await;
         }
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -230,12 +293,13 @@ impl Google {
             limit: Option<String>,
             usage: Option<String>,
         }
-        let about: About = send(
-            HTTP.get("https://www.googleapis.com/drive/v3/about")
-                .bearer_auth(access)
-                .query(&[("fields", "storageQuota(limit,usage)")]),
-        )
-        .await?;
+        let about: About = self
+            .send(
+                HTTP.get("https://www.googleapis.com/drive/v3/about")
+                    .bearer_auth(access)
+                    .query(&[("fields", "storageQuota(limit,usage)")]),
+            )
+            .await?;
         let number = |value: Option<String>| value.and_then(|v| v.parse::<u64>().ok());
         Ok(Storage {
             used: number(about.storage_quota.usage).unwrap_or(0),

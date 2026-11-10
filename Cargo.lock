@@ -1117,6 +1117,7 @@ dependencies = [
  "dispatch-core",
  "dispatch-documents-contract",
  "futures-util",
+ "h2",
  "reqwest",
  "rusqlite",
  "serde",

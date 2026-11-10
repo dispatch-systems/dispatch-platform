@@ -7,7 +7,7 @@ use crate::backend::{
     description::Described,
     drive::DOC,
     files::make,
-    google::{self, Google},
+    google,
     storage::DocumentsStore,
     support::{ACCOUNT, connect, disabling, platform},
     tree::{Tree, tests::item},
@@ -65,8 +65,10 @@ async fn a_lifecycle_change_during_renewal_cannot_admit_the_old_grant() {
             kept(&grant.key).is_none(),
             "late renewal must not retain its token"
         );
-        let google = Google::of(&state.config).unwrap();
-        let made = google.inside(ACCOUNT, &folder).await.unwrap();
+        let made = crate::backend::drive::fixture::fixture(ACCOUNT, |drive| {
+            Ok(drive.values().cloned().collect::<Vec<_>>())
+        })
+        .unwrap();
         assert!(
             !made
                 .iter()
@@ -97,7 +99,10 @@ async fn a_lifecycle_change_during_renewal_cannot_admit_the_old_grant() {
         .unwrap();
         assert!(kept(&current.key).is_some());
         assert!(
-            google
+            crate::backend::access::open_for(&state, &current, false)
+                .await
+                .unwrap()
+                .google
                 .inside(ACCOUNT, &folder)
                 .await
                 .unwrap()

@@ -365,7 +365,7 @@ pub async fn add(
     let parent = parent.unwrap_or_else(|| tree.root().to_owned());
     ensure(tree.is_folder(&parent), "documents_item_not_found", 404)?;
     let drive = access::open_for(state, &owner, false).await?;
-    drive.google.grant(&drive.access, &ids)?;
+    drive.google.grant(&drive.access, &ids).await?;
     let mut added = Vec::new();
     // Keep this connection's mirror: a disconnect must not repopulate its replacement.
     // The captured owner is retained across every pick and callback.

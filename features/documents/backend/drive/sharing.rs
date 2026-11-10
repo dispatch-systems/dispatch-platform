@@ -1,8 +1,10 @@
 //! Drive permissions and sharing refusals.
+use super::ALL_DRIVES;
 #[cfg(test)]
 use super::fixture::fixture_sharing_changed;
-use super::{ALL_DRIVES, fixture::fixture};
-use crate::backend::google::{FILES, Google, HTTP, Timed, read, send, unreachable};
+use crate::backend::google::{
+    Connected, DRIVE_HTTP as HTTP, FILES, Google, read, transport::Policy,
+};
 use dispatch_core::Result;
 use serde::Deserialize;
 use serde_json::json;
@@ -29,34 +31,26 @@ pub enum Refused {
     Other(String),
 }
 
-impl Google {
+impl Connected {
     /// Who the folder `id` is shared with.
     pub async fn shares(&self, access: &str, id: &str) -> Result<Vec<Share>> {
-        if let Self::Fixture = self {
-            return fixture(access, |drive| {
-                let mut shares = vec![Share {
-                    id: "owner".into(),
-                    role: "owner".into(),
-                    kind: "user".into(),
-                    email_address: Some(drive.account.clone()),
-                }];
-                shares.extend(drive.shares.get(id).cloned().unwrap_or_default());
-                Ok(shares)
-            });
+        if let Google::Fixture = self.google {
+            return self.fixture(access, |drive| Ok(drive.shares(id))).await;
         }
         #[derive(Deserialize)]
         struct Shares {
             permissions: Vec<Share>,
         }
-        let listed: Shares = send(
-            HTTP.get(format!("{FILES}/{id}/permissions"))
-                .bearer_auth(access)
-                .query(&[
-                    ("fields", "permissions(id,role,type,emailAddress)"),
-                    ALL_DRIVES,
-                ]),
-        )
-        .await?;
+        let listed: Shares = self
+            .send(
+                HTTP.get(format!("{FILES}/{id}/permissions"))
+                    .bearer_auth(access)
+                    .query(&[
+                        ("fields", "permissions(id,role,type,emailAddress)"),
+                        ALL_DRIVES,
+                    ]),
+            )
+            .await?;
         Ok(listed.permissions)
     }
     /// Lets `email` edit the folder `id` and everything in it, without Google emailing them:
@@ -67,24 +61,25 @@ impl Google {
         id: &str,
         email: &str,
     ) -> Result<std::result::Result<String, Refused>> {
-        if let Self::Fixture = self {
-            let shared = fixture(access, |drive| drive.share(id, email));
+        if let Google::Fixture = self.google {
+            let shared = self.fixture(access, |drive| drive.share(id, email)).await;
             #[cfg(test)]
             fixture_sharing_changed(id);
             return shared;
         }
-        let response = HTTP
-            .post(format!("{FILES}/{id}/permissions"))
-            .bearer_auth(access)
-            .query(&[
-                ("sendNotificationEmail", "false"),
-                ("fields", "id"),
-                ALL_DRIVES,
-            ])
-            .json(&json!({"type": "user", "role": "writer", "emailAddress": email}))
-            .timed()
-            .await
-            .map_err(unreachable)?;
+        let response = self
+            .response(
+                HTTP.post(format!("{FILES}/{id}/permissions"))
+                    .bearer_auth(access)
+                    .query(&[
+                        ("sendNotificationEmail", "false"),
+                        ("fields", "id"),
+                        ALL_DRIVES,
+                    ])
+                    .json(&json!({"type": "user", "role": "writer", "emailAddress": email})),
+                Policy::Ordinary,
+            )
+            .await?;
         if response.status() == reqwest::StatusCode::BAD_REQUEST
             || response.status() == reqwest::StatusCode::FORBIDDEN
         {
@@ -107,24 +102,27 @@ impl Google {
     }
     /// Takes back the share `share` of the folder `id`. One already gone is taken back.
     pub async fn unshare(&self, access: &str, id: &str, share: &str) -> Result<()> {
-        if let Self::Fixture = self {
-            let unshared = fixture(access, |drive| {
-                if let Some(shares) = drive.shares.get_mut(id) {
-                    shares.retain(|each| each.id != share);
-                }
-                Ok(())
-            });
+        if let Google::Fixture = self.google {
+            let unshared = self
+                .fixture(access, |drive| {
+                    if let Some(shares) = drive.shares.get_mut(id) {
+                        shares.retain(|each| each.id != share);
+                    }
+                    Ok(())
+                })
+                .await;
             #[cfg(test)]
             fixture_sharing_changed(id);
             return unshared;
         }
-        let response = HTTP
-            .delete(format!("{FILES}/{id}/permissions/{share}"))
-            .query(&[ALL_DRIVES])
-            .bearer_auth(access)
-            .timed()
-            .await
-            .map_err(unreachable)?;
+        let response = self
+            .response(
+                HTTP.delete(format!("{FILES}/{id}/permissions/{share}"))
+                    .query(&[ALL_DRIVES])
+                    .bearer_auth(access),
+                Policy::Ordinary,
+            )
+            .await?;
         if response.status() == reqwest::StatusCode::NOT_FOUND || response.status().is_success() {
             return Ok(());
         }

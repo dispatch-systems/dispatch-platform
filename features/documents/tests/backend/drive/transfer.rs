@@ -98,3 +98,150 @@ fn a_page_goes_to_google_with_its_description_first_parted_from_it_by_a_boundary
     );
     assert_eq!(parts[3], "--");
 }
+
+#[tokio::test]
+async fn a_picture_waiting_for_a_permit_cannot_use_a_replaced_or_removed_connection() {
+    use super::super::fixture::fixture;
+    use crate::backend::{
+        access, grant,
+        storage::DocumentsStore,
+        support::{connect_as, platform},
+        tree::tests::item,
+    };
+    use dispatch_core::foundation::crypto;
+    use std::{
+        future::Future,
+        task::{Context, Waker},
+    };
+
+    for reconnect in [false, true] {
+        let (_root, state, dsp) = platform();
+        let account = format!(
+            "fixture:picture-{}@example.test",
+            crypto::token().unwrap().to_ascii_lowercase()
+        );
+        connect_as(&state, &dsp, &account).await;
+        let owner = grant::capture(&state, &dsp, None).await.unwrap();
+        let drive = access::open_for(&state, &owner, false).await.unwrap();
+        fixture(&account, |remote| {
+            let mut image = item(
+                "image",
+                "Image.png",
+                Some(&owner.connection.folder_id),
+                false,
+                "2026-11-01",
+            );
+            image.mime_type = "image/png".into();
+            remote.files.insert("image".into(), image);
+            remote.contents.insert("image".into(), vec![1, 2, 3]);
+            Ok(())
+        })
+        .unwrap();
+        let before = fixture(&account, |remote| Ok(remote.requests)).unwrap();
+        let permit = super::PICTURES.acquire_many(8).await.unwrap();
+        let mut picture = Box::pin(drive.google.picture(&account, "fixture:image", 300));
+        assert!(
+            picture
+                .as_mut()
+                .poll(&mut Context::from_waker(Waker::noop()))
+                .is_pending()
+        );
+        let (at, connection) = (dsp.clone(), owner.connection.clone());
+        state
+            .run(move |db| {
+                if reconnect {
+                    let refresh = db.documents_refresh_token(&at)?.unwrap();
+                    db.save_documents_connection(&at, &connection, &refresh)?;
+                } else {
+                    db.remove_documents_connection(&at)?;
+                }
+                Ok(())
+            })
+            .await
+            .unwrap();
+        drop(permit);
+        assert_eq!(picture.await.err().unwrap().code, "documents_not_connected");
+        assert_eq!(
+            fixture(&account, |remote| Ok(remote.requests)).unwrap(),
+            before
+        );
+        if reconnect {
+            let current = grant::capture(&state, &dsp, None).await.unwrap();
+            let current = access::open_for(&state, &current, false).await.unwrap();
+            assert_eq!(
+                current
+                    .google
+                    .picture(&account, "fixture:image", 300)
+                    .await
+                    .unwrap()
+                    .bytes
+                    .as_ref(),
+                &[1, 2, 3]
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn fixture_upload_rechecks_after_consuming_the_waited_body_before_mutating_drive() {
+    use super::super::fixture::fixture;
+    use crate::backend::{
+        access, grant,
+        storage::DocumentsStore,
+        support::{connect_as, platform},
+    };
+    use axum::body::Bytes;
+    use dispatch_core::{foundation::crypto, server::http::upload::Upload};
+    let (_root, state, dsp) = platform();
+    let account = format!(
+        "fixture:upload-{}@example.test",
+        crypto::token().unwrap().to_ascii_lowercase()
+    );
+    connect_as(&state, &dsp, &account).await;
+    let owner = grant::capture(&state, &dsp, None).await.unwrap();
+    let drive = access::open_for(&state, &owner, false).await.unwrap();
+    let session = drive
+        .google
+        .start_upload(
+            &account,
+            "Held.pdf",
+            "application/pdf",
+            &owner.connection.folder_id,
+            4,
+        )
+        .await
+        .unwrap();
+    let before = fixture(&account, |remote| Ok(remote.requests)).unwrap();
+    let (entered, waiting) = tokio::sync::oneshot::channel();
+    let (release, released) = tokio::sync::oneshot::channel::<()>();
+    let bytes = futures_util::stream::once(async move {
+        entered.send(()).unwrap();
+        released.await.unwrap();
+        Ok::<_, std::io::Error>(Bytes::from_static(b"held"))
+    });
+    let upload = Upload::streamed(4, 4, bytes).await.unwrap();
+    let (token, held_session) = (account.clone(), session.clone());
+    let work = tokio::spawn(async move {
+        drive
+            .google
+            .finish_upload(&token, &held_session, upload)
+            .await
+    });
+    waiting.await.unwrap();
+    state
+        .run(move |db| db.remove_documents_connection(&dsp))
+        .await
+        .unwrap();
+    release.send(()).unwrap();
+    assert_eq!(
+        work.await.unwrap().unwrap_err().code,
+        "documents_not_connected"
+    );
+    fixture(&account, |remote| {
+        assert_eq!(remote.requests, before);
+        assert!(remote.uploads.contains_key(&session));
+        assert!(!remote.files.values().any(|file| file.name == "Held.pdf"));
+        Ok(())
+    })
+    .unwrap();
+}

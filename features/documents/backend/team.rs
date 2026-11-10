@@ -145,7 +145,10 @@ async fn sync_held(state: &Arc<State>, owner: &Grant) -> Result<Vec<Share>> {
                     stopped = Some(error);
                     break;
                 }
-                drive.google.unshare(&drive.access, &folder, &old).await?;
+                if let Err(error) = drive.google.unshare(&drive.access, &folder, &old).await {
+                    stopped = Some(error);
+                    break;
+                }
                 shares.retain(|share| share.id != old);
                 person.shared = None;
             }
@@ -157,7 +160,19 @@ async fn sync_held(state: &Arc<State>, owner: &Grant) -> Result<Vec<Share>> {
                 stopped = Some(error);
                 break;
             }
-            match drive.google.share(&drive.access, &folder, &target).await? {
+            let sharing = match drive.google.share(&drive.access, &folder, &target).await {
+                Ok(sharing) => sharing,
+                Err(error) => {
+                    // Keep an already removed old address and earlier completed members
+                    // before returning an inner provider-admission refusal.
+                    if before != Some(&person) {
+                        changed.push(person);
+                    }
+                    stopped = Some(error);
+                    break;
+                }
+            };
+            match sharing {
                 Ok(id) => {
                     shares.push(Share {
                         id: id.clone(),
@@ -199,7 +214,10 @@ async fn sync_held(state: &Arc<State>, owner: &Grant) -> Result<Vec<Share>> {
                 stopped = Some(error);
                 break;
             }
-            drive.google.unshare(&drive.access, &folder, id).await?;
+            if let Err(error) = drive.google.unshare(&drive.access, &folder, id).await {
+                stopped = Some(error);
+                break;
+            }
             shares.retain(|share| &share.id != id);
         }
         gone.push(person);

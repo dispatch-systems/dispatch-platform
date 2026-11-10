@@ -1,10 +1,8 @@
 //! Uploads, downloads and bounded thumbnails from Google's own hosts.
-use super::{
-    ALL_DRIVES, DOC, FIELDS, Item, SHEET, SLIDES,
-    fixture::{described, fixture},
-    missing,
+use super::{ALL_DRIVES, DOC, FIELDS, Item, SHEET, SLIDES, fixture::described, missing};
+use crate::backend::google::{
+    Connected, DRIVE_HTTP as HTTP, FILES, Google, read, transport::Policy, unreachable,
 };
-use crate::backend::google::{FILES, Google, HTTP, Timed, read, send, unreachable};
 use axum::body::{Body, Bytes};
 use dispatch_core::{
     Error, Result, db::iso, ensure, foundation::crypto, server::http::upload::Upload,
@@ -28,13 +26,8 @@ const PICTURE_KINDS: [&str; 4] = ["image/png", "image/jpeg", "image/gif", "image
 static PICTURE_HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
         .timeout(Duration::from_secs(20))
-        .redirect(reqwest::redirect::Policy::custom(|attempt| {
-            if attempt.previous().len() < 5 && google(attempt.url()) {
-                attempt.follow()
-            } else {
-                attempt.stop()
-            }
-        }))
+        .redirect(reqwest::redirect::Policy::none())
+        .retry(reqwest::retry::never())
         .build()
         .expect("the TLS backend is built in")
 });
@@ -58,6 +51,8 @@ static TRANSFER: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(10))
         .read_timeout(Duration::from_secs(60))
+        .redirect(reqwest::redirect::Policy::none())
+        .retry(reqwest::retry::never())
         .build()
         .expect("the TLS backend is built in")
 });
@@ -71,19 +66,21 @@ pub struct Download {
     pub body: Body,
 }
 
-impl Google {
+impl Connected {
     /// Makes a Doc named `name` in the folder `parent`, written from the page `html`: Google
     /// turns the page, with the pictures in it, into the Doc. As with what Dispatch makes, its
     /// editors can't share it on.
     pub async fn write(&self, access: &str, name: &str, parent: &str, html: &str) -> Result<Item> {
-        if let Self::Fixture = self {
+        if let Google::Fixture = self.google {
             let made = self.create(access, name, DOC, Some(parent)).await?;
-            return fixture(access, |drive| {
-                drive
-                    .contents
-                    .insert(made.id.clone(), html.as_bytes().to_vec());
-                Ok(made)
-            });
+            return self
+                .fixture(access, |drive| {
+                    drive
+                        .contents
+                        .insert(made.id.clone(), html.as_bytes().to_vec());
+                    Ok(made)
+                })
+                .await;
         }
         let metadata = json!({
             "name": name,
@@ -92,43 +89,53 @@ impl Google {
             "writersCanShare": false,
         });
         let (kind, body) = page(&metadata, html)?;
-        send(
-            TRANSFER
-                .post(UPLOADS)
-                .bearer_auth(access)
-                .query(&[("uploadType", "multipart"), ("fields", FIELDS), ALL_DRIVES])
-                .header(reqwest::header::CONTENT_TYPE, kind)
-                .body(body),
+        read(
+            self.response(
+                TRANSFER
+                    .post(UPLOADS)
+                    .bearer_auth(access)
+                    .query(&[("uploadType", "multipart"), ("fields", FIELDS), ALL_DRIVES])
+                    .header(reqwest::header::CONTENT_TYPE, kind)
+                    .body(body),
+                Policy::Transfer,
+            )
+            .await?,
         )
         .await
     }
     /// Writes the page `html` over the Doc `id`, named `name`, where it is.
     pub async fn rewrite(&self, access: &str, id: &str, name: &str, html: &str) -> Result<Item> {
-        if let Self::Fixture = self {
-            return fixture(access, |drive| {
-                let item = drive
-                    .files
-                    .get_mut(id)
-                    .filter(|item| item.mime_type == DOC)
-                    .ok_or_else(missing)?;
-                item.name = name.to_owned();
-                item.modified_time = iso();
-                let item = described(item);
-                drive
-                    .contents
-                    .insert(id.to_owned(), html.as_bytes().to_vec());
-                drive.touch(id);
-                Ok(item)
-            });
+        if let Google::Fixture = self.google {
+            return self
+                .fixture(access, |drive| {
+                    let item = drive
+                        .files
+                        .get_mut(id)
+                        .filter(|item| item.mime_type == DOC)
+                        .ok_or_else(missing)?;
+                    item.name = name.to_owned();
+                    item.modified_time = iso();
+                    let item = described(item);
+                    drive
+                        .contents
+                        .insert(id.to_owned(), html.as_bytes().to_vec());
+                    drive.touch(id);
+                    Ok(item)
+                })
+                .await;
         }
         let (kind, body) = page(&json!({"name": name}), html)?;
-        send(
-            TRANSFER
-                .patch(format!("{UPLOADS}/{id}"))
-                .bearer_auth(access)
-                .query(&[("uploadType", "multipart"), ("fields", FIELDS), ALL_DRIVES])
-                .header(reqwest::header::CONTENT_TYPE, kind)
-                .body(body),
+        read(
+            self.response(
+                TRANSFER
+                    .patch(format!("{UPLOADS}/{id}"))
+                    .bearer_auth(access)
+                    .query(&[("uploadType", "multipart"), ("fields", FIELDS), ALL_DRIVES])
+                    .header(reqwest::header::CONTENT_TYPE, kind)
+                    .body(body),
+                Policy::Transfer,
+            )
+            .await?,
         )
         .await
     }
@@ -142,18 +149,22 @@ impl Google {
         parent: &str,
         length: u64,
     ) -> Result<String> {
-        if let Self::Fixture = self {
+        if let Google::Fixture = self.google {
             let session = format!("fixture-upload-{}", crypto::hex(&crypto::random::<8>()?));
-            return fixture(access, |drive| {
-                let started = (name.to_owned(), mime.to_owned(), parent.to_owned());
-                drive.uploads.insert(session.clone(), started);
-                Ok(session)
-            });
+            return self
+                .fixture(access, |drive| {
+                    let started = (name.to_owned(), mime.to_owned(), parent.to_owned());
+                    drive.uploads.insert(session.clone(), started);
+                    Ok(session)
+                })
+                .await;
         }
-        let response = upload_start(access, name, mime, parent, length)
-            .timed()
-            .await
-            .map_err(unreachable)?;
+        let response = self
+            .response(
+                upload_start(access, name, mime, parent, length),
+                Policy::Ordinary,
+            )
+            .await?;
         if !response.status().is_success() {
             return Err(read::<serde_json::Value>(response)
                 .await
@@ -171,60 +182,60 @@ impl Google {
     /// the upload's start asked for it.
     pub async fn finish_upload(&self, access: &str, session: &str, upload: Upload) -> Result<Item> {
         let length = upload.length;
-        if let Self::Fixture = self {
+        if let Google::Fixture = self.google {
             let bytes: Vec<u8> = upload
                 .stream()
                 .map_ok(|chunk| chunk.to_vec())
                 .try_concat()
                 .await
                 .map_err(|_| Error::new("upload_incomplete", 400))?;
-            return fixture(access, |drive| drive.finish_upload(session, length, bytes));
+            return self
+                .fixture(access, |drive| drive.finish_upload(session, length, bytes))
+                .await;
         }
-        let response = TRANSFER
-            .put(session)
-            .bearer_auth(access)
-            .header(reqwest::header::CONTENT_LENGTH, length)
-            .body(reqwest::Body::wrap_stream(upload.stream()))
-            .timed()
-            .await
-            .map_err(|error| {
-                // The member's bytes stopped coming, rather than Google answering.
-                if error.is_body() || error.is_request() {
-                    Error::new("upload_incomplete", 400)
-                } else {
-                    unreachable(error)
-                }
-            })?;
+        let response = self
+            .response(
+                TRANSFER
+                    .put(session)
+                    .bearer_auth(access)
+                    .header(reqwest::header::CONTENT_LENGTH, length)
+                    .body(reqwest::Body::wrap_stream(upload.stream())),
+                Policy::Upload,
+            )
+            .await?;
         read(response).await
     }
     /// Google's picture of what a file holds, by the `link` a listing gave, sized for a card.
     /// Google refusing it only leaves the card its drawing, so it never counts against the
     /// connection.
     pub async fn picture(&self, access: &str, link: &str, size: u32) -> Result<Picture> {
-        if let Self::Fixture = self {
-            let id = link.strip_prefix("fixture:").ok_or_else(missing)?;
-            return fixture(access, |drive| {
-                let item = drive.files.get(id).ok_or_else(missing)?;
-                let bytes = drive.contents.get(id).ok_or_else(missing)?;
-                ensure(
-                    handed(&item.mime_type, bytes.len()),
-                    "documents_item_not_found",
-                    404,
-                )?;
-                Ok(Picture {
-                    kind: item.mime_type.clone(),
-                    bytes: Bytes::from(bytes.clone()),
-                })
-            });
-        }
-        let link = sized(link, size).ok_or_else(missing)?;
+        let link = if let Google::Fixture = self.google {
+            link.to_owned()
+        } else {
+            sized(link, size).ok_or_else(missing)?
+        };
         let _turn = PICTURES.acquire().await.map_err(|_| missing())?;
-        let mut response = PICTURE_HTTP
-            .get(link)
-            .bearer_auth(access)
-            .timed()
-            .await
-            .map_err(unreachable)?;
+        if let Google::Fixture = self.google {
+            let id = link.strip_prefix("fixture:").ok_or_else(missing)?;
+            return self
+                .fixture(access, |drive| {
+                    let item = drive.files.get(id).ok_or_else(missing)?;
+                    let bytes = drive.contents.get(id).ok_or_else(missing)?;
+                    ensure(
+                        handed(&item.mime_type, bytes.len()),
+                        "documents_item_not_found",
+                        404,
+                    )?;
+                    Ok(Picture {
+                        kind: item.mime_type.clone(),
+                        bytes: Bytes::from(bytes.clone()),
+                    })
+                })
+                .await;
+        }
+        let mut response = self
+            .response(PICTURE_HTTP.get(link).bearer_auth(access), Policy::Picture)
+            .await?;
         let kind = response
             .headers()
             .get(reqwest::header::CONTENT_TYPE)
@@ -278,15 +289,17 @@ impl Google {
             Some((kind, ending)) => (kind.to_owned(), format!("{name}.{ending}")),
             None => (mime.to_owned(), name.to_owned()),
         };
-        if let Self::Fixture = self {
-            let bytes = fixture(access, |drive| {
-                drive.files.get(id).ok_or_else(missing)?;
-                Ok(drive
-                    .contents
-                    .get(id)
-                    .cloned()
-                    .unwrap_or_else(|| format!("Fixture mode's export of {name}").into_bytes()))
-            })?;
+        if let Google::Fixture = self.google {
+            let bytes = self
+                .fixture(access, |drive| {
+                    drive.files.get(id).ok_or_else(missing)?;
+                    Ok(drive
+                        .contents
+                        .get(id)
+                        .cloned()
+                        .unwrap_or_else(|| format!("Fixture mode's export of {name}").into_bytes()))
+                })
+                .await?;
             return Ok(Download {
                 kind,
                 name: saved,
@@ -302,11 +315,9 @@ impl Google {
                 .get(format!("{FILES}/{id}"))
                 .query(&[("alt", "media"), ALL_DRIVES]),
         };
-        let response = request
-            .bearer_auth(access)
-            .timed()
-            .await
-            .map_err(unreachable)?;
+        let response = self
+            .response(request.bearer_auth(access), Policy::Transfer)
+            .await?;
         if !response.status().is_success() {
             return Err(read::<serde_json::Value>(response)
                 .await
@@ -369,18 +380,10 @@ pub struct Picture {
 fn handed(kind: &str, length: usize) -> bool {
     PICTURE_KINDS.contains(&kind) && length <= PICTURE_LIMIT
 }
-/// Whether `url` is Google's own, over HTTPS: the only place a picture is fetched from, since
-/// the account's token goes with it.
-fn google(url: &reqwest::Url) -> bool {
-    let host = url.host_str().unwrap_or_default();
-    url.scheme() == "https"
-        && (host.ends_with(".googleusercontent.com")
-            || ["docs.google.com", "drive.google.com"].contains(&host))
-}
 /// Google's link to a picture, asking for it `size` pixels on its longest side: only a link of
 /// Google's own.
 fn sized(link: &str, size: u32) -> Option<String> {
-    if !google(&reqwest::Url::parse(link).ok()?) {
+    if !crate::backend::google::transport::picture_host(&reqwest::Url::parse(link).ok()?) {
         return None;
     }
     // Google names the size at the link's end, `=s220`.
