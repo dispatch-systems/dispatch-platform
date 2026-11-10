@@ -17,7 +17,7 @@ function storeAppearance(userId: string, mode: Appearance) {
     return false;
   }
 }
-export function applyAppearance(mode: Appearance) {
+function applyAppearance(mode: Appearance) {
   document.documentElement.dataset.theme =
     mode === 'system'
       ? matchMedia('(prefers-color-scheme: dark)').matches

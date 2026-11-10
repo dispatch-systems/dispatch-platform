@@ -12,7 +12,7 @@ import { messageOf } from '../lib/errors.js';
 import { ErrorBox } from '../ui/ErrorBox.js';
 
 /** A button a toast offers beside its notice, such as Undo: pressing it closes the toast. */
-export type ToastAction = { label: string; run: () => void };
+type ToastAction = { label: string; run: () => void };
 type Feedback = {
   error: string;
   notice: string;

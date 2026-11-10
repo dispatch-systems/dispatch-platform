@@ -31,8 +31,7 @@ export const roles: Record<PersonRole, { label: string; filter: string; tone: st
 export const left = (person: Pick<Person, 'role'>) =>
   person.role === 'former' || person.role === 'offboarded';
 /** How a title is named: "OPs Manager". */
-export const titleLabel = (title: PersonTitle) =>
-  personTitles.find((t) => t.id === title)?.label ?? title;
+const titleLabel = (title: PersonTitle) => personTitles.find((t) => t.id === title)?.label ?? title;
 /** Every role someone may give a person, in the order offered: the roles, then the titles. */
 export const givenRoles: { id: GivenRole; label: string }[] = [
   ...(['driver', 'helper', 'offboarded'] as const).map((id) => ({ id, label: roles[id].label })),

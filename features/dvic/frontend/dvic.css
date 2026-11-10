@@ -265,11 +265,6 @@
 .dvic-duration-bar[data-band='low'] > span {
   background: var(--destructive);
 }
-.dvic-more {
-  display: flex;
-  width: 100%;
-  justify-content: center;
-}
 /* Week grid */
 .dvic-legend {
   display: flex;

@@ -164,9 +164,6 @@
   margin-top: 6px;
   max-width: 640px;
 }
-.documents-broken .documents-google-button {
-  background: var(--background);
-}
 
 /* Connected: the folder, and where it lives. */
 

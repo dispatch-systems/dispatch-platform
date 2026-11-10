@@ -7,7 +7,7 @@ import { Apple, Car, Clock, Flag, Hand, Heart, Lamp, Leaf, Smile, Volleyball } f
 // with the words it's found by and its skin tones, as the device's own emoji font draws them.
 
 /** The newest Emoji version offered: iOS 14.5's and Android 12's. */
-export const SUPPORTED = 13.1;
+const SUPPORTED = 13.1;
 
 /** A skin tone: none, then light to dark, as Unicode numbers them. */
 export type Tone = 0 | 1 | 2 | 3 | 4 | 5;

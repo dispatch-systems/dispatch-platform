@@ -138,9 +138,6 @@
   color: var(--destructive);
   font-size: 13px;
 }
-.archived-connection-card header p {
-  margin-top: 8px;
-}
 .archived-connection-content {
   display: flex;
   flex-direction: column;

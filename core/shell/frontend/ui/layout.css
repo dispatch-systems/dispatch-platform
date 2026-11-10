@@ -69,7 +69,6 @@
     flex-wrap: wrap;
     align-items: flex-start;
     gap: 18px;
-    margin-bottom: 28px;
   }
   .page-heading h1 {
     font-size: 28px;
@@ -84,18 +83,6 @@
   .page-heading {
     margin-bottom: 24px;
   }
-}
-.details {
-  display: grid;
-  grid-template-columns: minmax(120px, 1fr) 2fr;
-  gap: 16px;
-  padding: 24px;
-}
-.details dt {
-  color: var(--muted-foreground);
-}
-.details dd {
-  margin: 0;
 }
 @media (max-width: 760px) {
   .page-heading {

@@ -4,7 +4,7 @@
 const ID = /^[\w-]+$/;
 
 /** The file or folder a Google link names: none for any other text, or a published copy. */
-export function driveLink(text: string): { file: string } | { folder: string } | undefined {
+function driveLink(text: string): { file: string } | { folder: string } | undefined {
   let url: URL;
   try {
     url = new URL(text);

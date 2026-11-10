@@ -62,14 +62,13 @@ export interface TableColumn<T> {
   scope?: 'col';
   className?: string | ((row: T, context: RowContext) => string | undefined);
   headerClassName?: string;
-  dataLabel?: string;
   /** Keeps the column in view while the table scrolls sideways on a narrow screen. */
   sticky?: boolean;
   /** Export columns, when one cell holds more than one value. Defaults to `name` and `value`. */
   exports?: [name: string, value: (row: T) => string | number | null | undefined][];
 }
 
-export interface DataTableOptions<T> {
+interface DataTableOptions<T> {
   columns: TableColumn<T>[];
   rows: T[];
   rowId: (row: T, index: number) => string;

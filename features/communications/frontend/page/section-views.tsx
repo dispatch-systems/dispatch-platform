@@ -67,7 +67,7 @@ export type ListContext = {
 };
 
 /** What a section's board is drawn with: the switch and the view above it. */
-export type BoardContext = Pick<ListContext, 'typing' | 'timeZone' | 'now' | 'routes'> & {
+type BoardContext = Pick<ListContext, 'typing' | 'timeZone' | 'now' | 'routes'> & {
   tools: ReactNode;
 };
 

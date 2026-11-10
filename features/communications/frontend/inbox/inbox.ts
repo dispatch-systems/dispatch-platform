@@ -64,7 +64,7 @@ export function waitingIn(inbox: Communications): Record<Section, number> {
   return waiting;
 }
 /** Whether older answered rows of `section`'s own are left to read: never of one read whole. */
-export const moreIn = (inbox: Communications, section: Section) => {
+const moreIn = (inbox: Communications, section: Section) => {
   const { more } = sectionNamed(section);
   return more ? inbox[more] : false;
 };

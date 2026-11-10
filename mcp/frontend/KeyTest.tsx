@@ -15,7 +15,7 @@ const failures: Record<string, string> = {
 };
 
 /** What a successful test says: the key's access, its DSPs and today's date. */
-export function whoamiText(whoami: AgentWhoami) {
+function whoamiText(whoami: AgentWhoami) {
   const dsps = whoami.dsps.length === 1 ? '1 DSP' : `${whoami.dsps.length} DSPs`;
   const today = dateFormatter('en-US', { weekday: 'long', month: 'short', day: 'numeric' }).format(
     new Date(whoami.now),

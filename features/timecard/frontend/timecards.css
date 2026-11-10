@@ -5,9 +5,6 @@
 .paycom-page .page-heading {
   margin-bottom: 24px;
 }
-.paycom-page .embedded-page > .page-heading {
-  display: none;
-}
 /* A tab filling the window (the Employees tab) gets the height the page's heading and tabs leave. */
 .main-area.fills :is(.paycom-page, .paycom-tab, .embedded-page) {
   display: flex;

@@ -56,7 +56,7 @@ function runs(entries: readonly GroupEntry[], timeZone: string) {
 }
 
 /** How far a message to the group has gone: going, or gone to all, or to some of them. */
-export function progressText({ people, sent, failed }: GroupProgress) {
+function progressText({ people, sent, failed }: GroupProgress) {
   if (sent + failed < people) return { text: `Sending ${sent} of ${people}`, sending: true };
   return { text: failed ? `Sent to ${sent} of ${people}` : `Sent to ${people}`, sending: false };
 }

@@ -99,11 +99,7 @@ export function DataTable<T>({
                 {column.cell(row.data, row.context)}
               </th>
             ) : (
-              <td
-                key={column.id}
-                className={cellClass(column, row.data, row.context)}
-                data-label={column.dataLabel}
-              >
+              <td key={column.id} className={cellClass(column, row.data, row.context)}>
                 {column.cell(row.data, row.context)}
               </td>
             ),

@@ -13,7 +13,7 @@ import { hasFeature } from './features.js';
  */
 export type ExposedName = 'files';
 /** One as a page using it sees it. */
-export type Offered = {
+type Offered = {
   /** The feature offering it, by its switch. */
   feature: string;
   /** What it's called where members see it, as its page is named. */
