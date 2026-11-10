@@ -5,7 +5,7 @@ use crate::backend::{
     phone::{
         self,
         model::Status,
-        storage::{DeviceStore, FileStore, ReportedFile, TextStore, Wanting},
+        storage::{DeviceStore, FileStore, Pairing, ReportedFile, TextStore, Wanting},
         support::{outgoing, paired, reported},
     },
     support::install,
@@ -77,7 +77,22 @@ async fn pending_work_survives_phone_admission_exhaustion() {
     let key_c = "c".repeat(64);
     let phone_a = paired(&db, &a, &crypto::sha(&key_a), "2065550100");
     let phone_b = paired(&db, &b, &crypto::sha(&key_b), "2065550177");
-    let phone_c = paired(&db, &a, &crypto::sha(&key_c), "2065550188");
+    // The shared pairing helper uses one fixed code per DSP; this third device needs its own.
+    let code_c = crypto::sha("idle-admission-third-phone");
+    db.phones_new_pairing(&a, &owner, &code_c, 1_000).unwrap();
+    let phone_c = db
+        .phones_pair(
+            &a,
+            &code_c,
+            &crypto::sha(&key_c),
+            &Pairing {
+                number: "2065550188",
+                model: "Pixel 8a",
+                app_version: "1.0.0",
+            },
+            2_000,
+        )
+        .unwrap();
     assert!(!phone_a.stand_in && !phone_b.stand_in && !phone_c.stand_in);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
