@@ -1,4 +1,6 @@
-//! The server: HTTP, `State`, the response cache, live updates, presence, operations and mail.
+//! The server: HTTP, `State`, admission, the response cache, live updates, presence, operations
+//! and mail.
+pub mod admission;
 #[path = "../api/mod.rs"]
 pub mod api;
 pub mod cache;

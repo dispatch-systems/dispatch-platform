@@ -2,7 +2,7 @@
 //! while holding State's transition read lock. Unknown writes advance the global
 //! revision; a write on a DSP's route evicts that DSP's scopes and those every DSP shares;
 //! reviewed writes evict the scopes that depend on their changed data.
-use crate::{Error, Result, manifest::registry};
+use crate::{Result, manifest::registry};
 use serde::Serialize;
 use std::any::Any;
 use std::{
@@ -10,63 +10,6 @@ use std::{
     sync::{Arc, Mutex, Weak},
     time::{Duration, Instant},
 };
-
-/// Identical expensive reads take turns before entering the database pool. The next
-/// reader checks authorization and the cache again, so neither credentials nor errors
-/// are shared. Keep the turn inside the database closure if its caller is cancelled.
-pub struct ReadTurns {
-    keys: Mutex<HashMap<String, Weak<tokio::sync::Mutex<()>>>>,
-    slots: Arc<tokio::sync::Semaphore>,
-}
-pub struct ReadTurn {
-    _slot: tokio::sync::OwnedSemaphorePermit,
-    _lock: tokio::sync::OwnedMutexGuard<()>,
-}
-impl Default for ReadTurns {
-    fn default() -> Self {
-        Self {
-            keys: Mutex::new(HashMap::new()),
-            slots: Arc::new(tokio::sync::Semaphore::new(64)),
-        }
-    }
-}
-impl ReadTurns {
-    pub async fn enter(&self, key: String) -> Result<ReadTurn> {
-        self.enter_for(key, Duration::from_secs(15)).await
-    }
-    /// Takes a keyed turn with the caller's waiting budget, before entering the database pool.
-    pub(crate) async fn enter_for(&self, key: String, wait: Duration) -> Result<ReadTurn> {
-        let slot = self
-            .slots
-            .clone()
-            .try_acquire_owned()
-            .map_err(|error| match error {
-                tokio::sync::TryAcquireError::NoPermits => Error::busy("read_turns_full"),
-                tokio::sync::TryAcquireError::Closed => Error::busy("read_turns_closed"),
-            })?;
-        let lock = {
-            let mut keys = self
-                .keys
-                .lock()
-                .map_err(|_| Error::busy("read_turns_poisoned"))?;
-            keys.retain(|_, lock| lock.strong_count() > 0);
-            if let Some(lock) = keys.get(&key).and_then(Weak::upgrade) {
-                lock
-            } else {
-                let lock = Arc::new(tokio::sync::Mutex::new(()));
-                keys.insert(key, Arc::downgrade(&lock));
-                lock
-            }
-        };
-        let lock = tokio::time::timeout(wait, lock.lock_owned())
-            .await
-            .map_err(|_| Error::busy("read_turns_key_timeout"))?;
-        Ok(ReadTurn {
-            _slot: slot,
-            _lock: lock,
-        })
-    }
-}
 
 struct Entry {
     key: String,

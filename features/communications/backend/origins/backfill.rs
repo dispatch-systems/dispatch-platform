@@ -1,12 +1,23 @@
 //! Resumable metadata-only builds. Each chunk and its cursor commit together. Audited suffix
 //! placement preserves progress; other topology changes may still starve a candidate. It stays
 //! explicitly unready and never falls back to an HTTP scan.
-use super::*;
+use super::{
+    algorithm, invariant,
+    repair::{boundary, ensure_state, lock},
+    source::{Topology, Transport},
+    state,
+};
 use crate::backend::texts;
+use chrono_tz::Tz;
 use dispatch_core::{
-    State,
+    Error, Result, State,
+    db::{Db, FromRow, Row},
+    ensure,
+    foundation::{crypto, observability},
     manifest::{Maintenance, Upkeep},
 };
+use rusqlite::params;
+use serde_json::json;
 use std::{sync::Arc, time::Duration};
 
 const CHUNK: usize = 256;

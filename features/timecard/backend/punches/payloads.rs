@@ -1,4 +1,4 @@
-//! Private, versioned stored formats. Writers retain full inline JSON throughout phase one.
+//! Private, versioned stored formats, pooled beside the whole inline JSON every writer stores.
 use dispatch_core::{
     Error, Result,
     db::{Db, s},
@@ -11,6 +11,26 @@ use serde_json::Value;
 
 const PUNCHES: &str = "paycom.punches.v1";
 const CAPTURE: &str = "paycom.employee-capture.v1";
+
+/// What a reader selects beside a row's inline JSON for `punches` or `capture` to read its
+/// shared payload, from the join below that fits the row.
+pub(super) const COLUMNS: &str = "r.format payload_format,b.body payload_body";
+/// Joins `timecards t` to its shared punches, when it has them.
+pub(super) fn punches_join() -> String {
+    format!(
+        "LEFT JOIN paycom_timecard_payload_refs r ON r.publication_id=t.publication_id \
+         AND r.employee_code=t.employee_code AND r.date=t.date AND r.format='{PUNCHES}' \
+         LEFT JOIN paycom_payloads b ON b.format=r.format AND b.digest=r.digest"
+    )
+}
+/// Joins `employee_timecard_syncs s` to its shared capture, when it has one.
+pub(super) fn capture_join() -> String {
+    format!(
+        "LEFT JOIN paycom_employee_sync_payload_refs r ON r.employee_code=s.employee_code \
+         AND r.period_from=s.period_from AND r.period_to=s.period_to AND r.format='{CAPTURE}' \
+         LEFT JOIN paycom_payloads b ON b.format=r.format AND b.digest=r.digest"
+    )
+}
 
 fn unavailable() -> Error {
     Error::new("paycom_payload_unavailable", 503)
@@ -88,7 +108,8 @@ impl Payload {
     pub(super) fn digest(&self) -> &str {
         &self.digest
     }
-    /// Called only inside the legacy writer's transaction, once per distinct payload.
+    /// Called only inside the transaction that writes the rows it's for, once per distinct
+    /// payload.
     pub(super) fn intern(&self, db: &Db) -> Result<()> {
         db.exec(
             "INSERT INTO paycom_payloads(format,digest,body) VALUES (?,?,?) \

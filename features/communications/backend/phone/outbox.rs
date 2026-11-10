@@ -1,7 +1,7 @@
 //! Queuing a text for a phone to send: one Dispatch sends, or one that failed, again. Each runs
 //! inside the write its caller opens, so whatever it checks there of where the text goes, and of
-//! who sends it, holds as the text is queued. Once that write is done, `live::queued` wakes the
-//! phone.
+//! who sends it, holds as the text is queued. Once that write is done, `live::queued_for` wakes
+//! the phone it chose.
 use super::{
     model::{Outgoing, Text},
     storage::{DeviceStore, TextStore},

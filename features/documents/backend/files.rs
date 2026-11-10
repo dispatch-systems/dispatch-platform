@@ -184,7 +184,7 @@ pub async fn create(
     expected: Option<String>,
 ) -> Result<DocumentsItem> {
     let dsp = c.dsp.id.clone();
-    let owner = grant::capture_member(state, c.clone(), access, expected).await?;
+    let owner = grant::capture_member(state, c, access, expected).await?;
     let tree = access::tree_for(state, &owner).await?;
     let parent = parent.unwrap_or_else(|| tree.root().to_owned());
     ensure(tree.is_folder(&parent), "documents_item_not_found", 404)?;
@@ -198,8 +198,7 @@ pub async fn create(
     let (id, title) = (made.id.clone(), made.name.clone());
     let at = dsp.clone();
     let (records, names) = owner
-        .run(state, move |db, _| {
-            let c = access.revalidate(db, &c)?;
+        .run_member(state, move |db, c| {
             db.record_documents_change(&at, &id, c.actor())?;
             c.audit(db, "documents.created", &title)?;
             known(db, &at, &[id])
@@ -243,7 +242,7 @@ pub async fn upload(
         body: upload,
     } = file;
     let dsp = c.dsp.id.clone();
-    let owner = grant::capture_member(state, c.clone(), access, expected).await?;
+    let owner = grant::capture_member(state, c, access, expected).await?;
     let tree = access::tree_for(state, &owner).await?;
     let parent = parent.unwrap_or_else(|| tree.root().to_owned());
     ensure(tree.is_folder(&parent), "documents_item_not_found", 404)?;
@@ -251,8 +250,7 @@ pub async fn upload(
     let (id, title) = (made.id.clone(), made.name.clone());
     let at = dsp.clone();
     let (records, names) = owner
-        .run(state, move |db, _| {
-            let c = access.revalidate(db, &c)?;
+        .run_member(state, move |db, c| {
             db.record_documents_change(&at, &id, c.actor())?;
             c.audit(db, "documents.uploaded", &title)?;
             known(db, &at, &[id])
@@ -311,7 +309,7 @@ pub(super) async fn put(
             .start_upload(&drive.access, name, mime, parent, length)
     )?;
     // The bytes go once, with the token that just started the upload.
-    drive.admit(state).await?;
+    owner.admit(state).await?;
     let made = drive
         .google
         .finish_upload(&drive.access, &session, upload)
@@ -360,22 +358,21 @@ pub async fn add(
     expected: Option<String>,
 ) -> Result<AddedFiles> {
     let dsp = c.dsp.id.clone();
-    let owner = grant::capture_member(state, c.clone(), access, expected).await?;
+    let owner = grant::capture_member(state, c, access, expected).await?;
     let tree = access::tree_for(state, &owner).await?;
     let parent = parent.unwrap_or_else(|| tree.root().to_owned());
     ensure(tree.is_folder(&parent), "documents_item_not_found", 404)?;
     let drive = access::open_for(state, &owner, false).await?;
     drive.google.grant(&drive.access, &ids).await?;
     let mut added = Vec::new();
-    // Keep this connection's mirror: a disconnect must not repopulate its replacement.
-    // The captured owner is retained across every pick and callback.
     // Whether it made a shortcut to a file someone else owns, to share with the team, and
     // those the account may not share on.
     let mut shortcuts = false;
     let mut unshared = Vec::new();
+    // Every pick goes in the copy of the connection captured above, and the sharing after
+    // them asks as it: a disconnect meanwhile never fills its replacement's copy.
     for id in &ids {
         // One the account that holds Documents doesn't reach: the member couldn't bring it.
-        drive.admit(state).await?;
         let item = match drive.google.get(&drive.access, id).await {
             Err(error) if error.code == "documents_item_not_found" => {
                 return Err(Error::new("documents_picked_elsewhere", 409));
@@ -398,7 +395,6 @@ pub async fn add(
         }
         // Only its owner moves a file. Documents gets a shortcut to one shared with the
         // account, as Drive's own "Add shortcut" does, and to one Google won't move.
-        drive.admit(state).await?;
         let moved = match item.owned_by_me {
             true => drive.google.move_into(&drive.access, &item, &parent).await,
             false => Err(Error::new("documents_cannot_move", 409)),
@@ -409,7 +405,7 @@ pub async fn add(
                 if !item.capabilities.can_share {
                     unshared.push(item.name.clone());
                 }
-                drive.admit(state).await?;
+                owner.admit(state).await?;
                 let made = drive.google.shortcut(&drive.access, &item, &parent).await?;
                 (made, Some(item))
             }
@@ -436,8 +432,7 @@ pub async fn add(
         .collect();
     let at = dsp.clone();
     owner
-        .run(state, move |db, _| {
-            let c = access.revalidate(db, &c)?;
+        .run_member(state, move |db, c| {
             for (id, name) in &named {
                 db.record_documents_change(&at, id, c.actor())?;
                 c.audit(db, "documents.added", name)?;
@@ -511,7 +506,6 @@ pub async fn picture(
     let link = if shown.given.elapsed() < PICTURE_LINK_LASTS {
         shown.link
     } else {
-        drive.admit(state).await?;
         let answer = drive.google.get(&drive.access, &id).await;
         let item = gone(state, &owner, &id, answer).await?;
         let link = item.thumbnail_link.clone().ok_or_else(not_found)?;
@@ -525,7 +519,7 @@ pub async fn picture(
             .await?;
         link
     };
-    drive.admit(state).await?;
+    owner.admit(state).await?;
     let picture = drive.google.picture(&drive.access, &link, size).await?;
     access::current(state, &owner).await?;
     Ok(picture)
@@ -541,7 +535,7 @@ pub async fn rename(
     expected: Option<String>,
 ) -> Result<DocumentsItem> {
     let dsp = c.dsp.id.clone();
-    let owner = grant::capture_member(state, c.clone(), access, expected).await?;
+    let owner = grant::capture_member(state, c, access, expected).await?;
     let tree = access::tree_for(state, &owner).await?;
     let item = tree.get(&id).ok_or_else(not_found)?;
     let before = item.name.to_string();
@@ -557,8 +551,7 @@ pub async fn rename(
     let after = renamed.name.clone();
     let at = dsp.clone();
     let (records, names) = owner
-        .run(state, move |db, _| {
-            let c = access.revalidate(db, &c)?;
+        .run_member(state, move |db, c| {
             db.record_documents_change(&at, &id, c.actor())?;
             db.audit_with(
                 Some(c.actor()),
@@ -597,7 +590,7 @@ pub async fn move_to(
     expected: Option<String>,
 ) -> Result<MovedItem> {
     let dsp = c.dsp.id.clone();
-    let owner = grant::capture_member(state, c.clone(), access, expected).await?;
+    let owner = grant::capture_member(state, c, access, expected).await?;
     let connection = owner.connection.clone();
     let tree = access::tree_for(state, &owner).await?;
     let root = connection.folder_id;
@@ -636,8 +629,7 @@ pub async fn move_to(
         let at = dsp.clone();
         let title = name.clone();
         owner
-            .run(state, move |db, _| {
-                let c = access.revalidate(db, &c)?;
+            .run_member(state, move |db, c| {
                 db.audit_with(
                     Some(c.actor()),
                     Some(&at),
@@ -683,7 +675,7 @@ pub async fn trash(
     id: String,
     expected: Option<String>,
 ) -> Result<()> {
-    let owner = grant::capture_member(state, c.clone(), access, expected).await?;
+    let owner = grant::capture_member(state, c, access, expected).await?;
     let tree = access::tree_for(state, &owner).await?;
     let row = tree.get(&id).ok_or_else(not_found)?;
     let name = row.name.to_string();
@@ -710,10 +702,7 @@ pub async fn trash(
         team::share_soon(state, &owner);
     }
     owner
-        .run(state, move |db, _| {
-            let c = access.revalidate(db, &c)?;
-            c.audit(db, "documents.trashed", &name)
-        })
+        .run_member(state, move |db, c| c.audit(db, "documents.trashed", &name))
         .await
 }
 
@@ -721,8 +710,9 @@ pub async fn trash(
 #[path = "../tests/backend/folder_reads.rs"]
 mod tests;
 
-/// Shared preparation for the additive, ephemeral query protocol. Legacy callers retain
-/// access::tree_for and the complete reader. Captured grant ownership is independent of semantic snapshots.
+/// Shared preparation for the ephemeral query protocol, its pages and its descriptions.
+/// `folder` and `folder_read` read through access::tree_for and the complete reader.
+/// Captured grant ownership is independent of semantic snapshots.
 pub(crate) struct QueryRequest {
     pub scope: crate::api::types::DocumentsQueryScope,
     pub page: u32,
@@ -790,12 +780,6 @@ async fn query_read(
         .read(move |db| {
             let _turn = turn;
             captured.check(db)?;
-            let c = access.revalidate(db, &c)?;
-            let current = db
-                .documents_connection(&c.dsp.id)?
-                .ok_or_else(|| Error::new("documents_not_connected", 409))?;
-            ensure(!current.broken, "google_connection_broken", 409)?;
-            ensure(current == connection, "documents_not_connected", 409)?;
             let reset = |reason| match descriptions.as_ref() {
                 Some(_) => QueryAnswer::Descriptions(DocumentsDescriptionRead::Reset { reason }),
                 None => QueryAnswer::Page(DocumentsQueryRead::Reset { reason }),

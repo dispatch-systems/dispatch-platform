@@ -129,7 +129,8 @@ pub(super) fn stage_routes_start(
     stage_prepared_routes_start(store, id, job, lists, itineraries, &responses)
 }
 
-/// Starts a runtime publication from responses prepared before entering the platform write.
+/// Starts a day's inactive publication as `stage_routes_start` does, from responses prepared
+/// before its database turn.
 pub(in crate::backend) fn stage_prepared_routes_start(
     store: &Store,
     id: &str,

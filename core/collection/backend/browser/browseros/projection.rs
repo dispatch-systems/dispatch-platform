@@ -2,7 +2,10 @@
 //! Normal browser construction retains its root ownership checks. Only the verifier CLI
 //! accepts this host-written receipt after checking its namespace and mount boundary.
 use super::Runtime;
-use crate::{Result, db, ensure, foundation::crypto};
+use crate::{
+    Result, db, ensure,
+    foundation::{config, crypto},
+};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::{
@@ -128,11 +131,7 @@ impl VerificationAuthority {
         })
     }
     pub(crate) fn runtime(self, runs: &Path, capacity: usize) -> Result<Runtime> {
-        ensure(
-            (1..=16).contains(&capacity),
-            "invalid_browser_capacity",
-            400,
-        )?;
+        config::ensure_browser_capacity(capacity)?;
         Ok(Runtime {
             browser: self.tools.browser.path.clone(),
             sandbox: self.tools.sandbox.path.clone(),

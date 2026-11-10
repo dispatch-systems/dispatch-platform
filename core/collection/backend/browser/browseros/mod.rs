@@ -11,7 +11,10 @@ mod worker;
 pub use projection::VerificationAuthority;
 
 use super::egress::Egress;
-use crate::{Error, Result, db, ensure, foundation::crypto};
+use crate::{
+    Error, Result, db, ensure,
+    foundation::{config, crypto},
+};
 use protocol::{COMMAND_BYTES, RESPONSE_BYTES, WireCommand, frame, read_frame};
 use serde_json::{Value, json};
 use std::{
@@ -71,11 +74,7 @@ impl Runtime {
         runs: &Path,
         capacity: usize,
     ) -> Result<Self> {
-        ensure(
-            (1..=16).contains(&capacity),
-            "invalid_browser_capacity",
-            400,
-        )?;
+        config::ensure_browser_capacity(capacity)?;
         let browser = sandbox::trusted(browser, true)?;
         ensure(
             browser.file_name().is_some_and(|s| s == "browseros"),

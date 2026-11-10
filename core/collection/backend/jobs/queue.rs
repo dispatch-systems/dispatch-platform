@@ -29,9 +29,10 @@ const LEASED_COUNT: &str = concat!(
 const INSERT: &str = "INSERT INTO jobs(id,dsp_id,environment,kind,status,available_at,created_at,\
     release,actor_id,connection_revision,idempotency_key,request) \
     VALUES (?,?,?,?,'queued',?,?,?,?,?,?,?)";
+// How many claimable jobs a claim reads at a time.
+const CLAIM_PAGE_SIZE: i64 = 200;
 // The oldest queued job of the DSP that has waited longest since its last collection,
 // among DSPs no worker is collecting for.
-const CLAIM_PAGE_SIZE: i64 = 200;
 const CLAIMABLE: &str = concat!(
     "SELECT j.id,j.dsp_id,j.kind FROM jobs j WHERE j.status='queued' AND j.available_at<=? \
      AND j.kind IN (SELECT value FROM json_each(?)) AND NOT EXISTS \

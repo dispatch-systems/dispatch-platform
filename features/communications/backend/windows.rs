@@ -283,8 +283,9 @@ fn read_inner(
     })
 }
 
-/// The new protocol is stricter than the legacy endpoint: text places are canonical, and
-/// Slack retains all six microsecond digits. Neither transport is converted through f64.
+/// Refuses `value` unless a window may anchor at it, a place held more strictly than a page's
+/// `before`: text places are canonical, and Slack retains all six microsecond digits. Neither
+/// transport is converted through f64.
 fn checked(reference: &Reference, value: &str) -> Result<()> {
     match reference {
         Reference::Slack(_) => {

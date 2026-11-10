@@ -141,10 +141,6 @@ async fn sync_held(state: &Arc<State>, owner: &Grant) -> Result<Vec<Share>> {
         } else {
             // A share at an address they moved on from goes.
             if let Some((_, old)) = person.shared.clone() {
-                if let Err(error) = drive.admit(state).await {
-                    stopped = Some(error);
-                    break;
-                }
                 if let Err(error) = drive.google.unshare(&drive.access, &folder, &old).await {
                     stopped = Some(error);
                     break;
@@ -152,19 +148,12 @@ async fn sync_held(state: &Arc<State>, owner: &Grant) -> Result<Vec<Share>> {
                 shares.retain(|share| share.id != old);
                 person.shared = None;
             }
-            if let Err(error) = drive.admit(state).await {
-                // Only the share at their old address was taken back, if any.
-                if before.is_some_and(|before| before != &person) {
-                    changed.push(person);
-                }
-                stopped = Some(error);
-                break;
-            }
             let sharing = match drive.google.share(&drive.access, &folder, &target).await {
                 Ok(sharing) => sharing,
                 Err(error) => {
-                    // As above: someone not shared with yet isn't saved, so the minute's
-                    // check still finds them missing and shares with them.
+                    // Only the share at their old address was taken back, if any: someone not
+                    // shared with yet isn't saved, so the minute's check still finds them
+                    // missing and shares with them.
                     if before.is_some_and(|before| before != &person) {
                         changed.push(person);
                     }
@@ -210,10 +199,6 @@ async fn sync_held(state: &Arc<State>, owner: &Grant) -> Result<Vec<Share>> {
             break;
         }
         if let Some((_, id)) = &person.shared {
-            if let Err(error) = drive.admit(state).await {
-                stopped = Some(error);
-                break;
-            }
             if let Err(error) = drive.google.unshare(&drive.access, &folder, id).await {
                 stopped = Some(error);
                 break;
@@ -284,7 +269,9 @@ async fn share_files(
         if missing.is_empty() {
             continue;
         }
-        drive.admit(state).await?;
+        // Admitted first: what Google refuses below only passes the file over, and a grant no
+        // longer current must end the sharing instead.
+        owner.admit(state).await?;
         // Its owner may not let the account see who has it, or share it on.
         let Ok(shares) = drive.google.shares(&drive.access, file).await else {
             continue;
@@ -299,7 +286,8 @@ async fn share_files(
             if has {
                 continue;
             }
-            drive.admit(state).await?;
+            // Admitted first, as above: what Google refuses only passes the address over.
+            owner.admit(state).await?;
             let share = match drive.google.share(&drive.access, file, email).await {
                 Ok(Ok(share)) => share,
                 Err(error) if error.code == "google_connection_broken" => return Err(error),
@@ -321,7 +309,6 @@ async fn share_files(
             {
                 // Existing compensation is attempted only while the original grant remains
                 // current. Never use a replacement grant to undo an old external effect.
-                drive.admit(state).await?;
                 drive
                     .google
                     .unshare(&drive.access, &shared.file, &shared.share)
@@ -334,7 +321,8 @@ async fn share_files(
         if targets.contains(&shared.file) && wanted.contains(&shared.email) {
             continue;
         }
-        drive.admit(state).await?;
+        // Admitted first, as above: a busy Google only leaves the share for the next sync.
+        owner.admit(state).await?;
         match drive
             .google
             .unshare(&drive.access, &shared.file, &shared.share)
@@ -510,14 +498,13 @@ pub async fn finish_link(
     let verifier = state
         .run(move |db| db.finish_documents_sign_in(&dsp, &actor, &sign_in))
         .await?;
-    let owner = grant::capture_member(state, c.clone(), access, None).await?;
+    let owner = grant::capture_member(state, c, access, None).await?;
     let google = Google::of(&state.config)?;
     let email = google
         .linked_email(&state.config.origin, &code, &verifier)
         .await?;
     let c = owner
-        .run(state, move |db, _| {
-            let c = access.revalidate(db, &c)?;
+        .run_member(state, move |db, c| {
             db.link_documents_google(&c.dsp.id, c.actor(), &email)?;
             c.audit(db, "documents.linked", &email)?;
             Ok(c)

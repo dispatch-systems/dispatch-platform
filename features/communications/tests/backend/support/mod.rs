@@ -9,12 +9,15 @@
 //! for it, and its dispatch phone paired (`phone`), which `texted` and `reported` speak for; or
 //! with one of its fixture workspaces connected too, its members read: the workspace's admin has
 //! approved all the app asks for.
+mod budget;
 mod directory;
 mod fleet;
 mod live;
 mod phone;
 mod routes;
+pub mod windows;
 
+pub use budget::ReadBudget;
 pub use live::{read_live, routed};
 pub use phone::{reported, sent, texted};
 pub use routes::failing;
@@ -22,7 +25,10 @@ pub use routes::failing;
 use crate::api::types::Message;
 use crate::backend::{
     conversations,
-    storage::conversations::{Conversation, ConversationStore},
+    storage::{
+        conversations::{Conversation, ConversationStore},
+        messages::Written,
+    },
     texts::{model::TextConversation, storage::TextStore},
 };
 use crate::integrations::messages::incoming;
@@ -310,6 +316,21 @@ pub async fn writes(state: &Arc<State>, dsp: &str, team: &str, user: &str, text:
     let event = json!({"type": "message", "channel_type": "im", "channel": format!("D{}", &user[1..]),
         "user": user, "text": text, "ts": incoming::ts(now())});
     incoming::heard(state, dsp, team, &event).await.unwrap();
+}
+/// A message the fixture workspace's member `U0JORDAN` wrote at `at`, in milliseconds.
+pub fn written(ts: &str, at: i64, text: &str) -> Written {
+    Written {
+        team: "T0FIXTURE1".into(),
+        user: "U0JORDAN".into(),
+        channel: "D0JORDAN".into(),
+        name: "Jordan Ellis".into(),
+        ts: ts.into(),
+        thread_ts: None,
+        text: text.into(),
+        at,
+        edited_at: None,
+        files: Vec::new(),
+    }
 }
 /// The conversation's messages, as the page reads them.
 pub async fn messages(state: &Arc<State>, dsp: &str, conversation: &str) -> Vec<Message> {

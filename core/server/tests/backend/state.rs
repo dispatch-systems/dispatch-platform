@@ -217,8 +217,8 @@ async fn polling_saturation_leaves_foreground_admission_and_execution() {
                 std::task::Poll::Ready(result) => answers.push(result),
             }
         }
-        // Release before asserting, including on the original ordering where ordinary
-        // calls fail at the full queue. Every started blocking callback must finish.
+        // Release before asserting, so every started blocking callback finishes even when an
+        // assertion below fails.
         resume.send(()).unwrap();
         for _ in 0..64 {
             release.send(()).unwrap();

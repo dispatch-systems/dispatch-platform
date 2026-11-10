@@ -289,10 +289,7 @@ impl Http {
         }
         let mut body = Vec::new();
         while let Some(chunk) = response.chunk().await.map_err(|_| Refusal::Unavailable)? {
-            if body.len().saturating_add(chunk.len()) > limit {
-                return Err(Refusal::Unreadable("http_body_too_large"));
-            }
-            body.extend_from_slice(&chunk);
+            append_within(&mut body, &chunk, limit, "http_body_too_large")?;
         }
         Ok(Download {
             body: Some(body),
@@ -426,7 +423,7 @@ impl Http {
         }
         let mut bytes = Vec::new();
         while let Some(chunk) = response.chunk().await.map_err(|_| Refusal::Unavailable)? {
-            append_within(&mut bytes, &chunk, limit)?;
+            append_within(&mut bytes, &chunk, limit, "http_too_large")?;
         }
         Ok(bytes)
     }
@@ -603,18 +600,19 @@ impl Http {
     }
 }
 
-/// Refuse an oversized chunk before copying it into the retained body.
+/// Refuse an oversized chunk, as `too_large`, before copying it into the retained body.
 fn append_within(
     bytes: &mut Vec<u8>,
     chunk: &[u8],
     limit: usize,
+    too_large: &'static str,
 ) -> std::result::Result<(), Refusal> {
     if bytes
         .len()
         .checked_add(chunk.len())
         .is_none_or(|n| n > limit)
     {
-        return Err(Refusal::Unreadable("http_too_large"));
+        return Err(Refusal::Unreadable(too_large));
     }
     bytes.extend_from_slice(chunk);
     Ok(())

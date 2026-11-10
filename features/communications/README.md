@@ -377,17 +377,19 @@ decides ([Texts](#texts)).
   hour (`FETCHED_MS`) so another who plays it soon after has them at once, then let go of. Waiting
   on the outbox and reporting texts or statuses count as checking in, noted at most every thirty
   seconds (`SEEN_MS`), as bookkeeping no cached read depends on; a file's bytes, either way, don't.
-  At most 128 phone requests hold active idle admission; another 128 may queue FIFO for it.
-  A queued request keeps its place across topic wakes, and its queue time consumes the same
-  twenty-second deadline. Send, retry and video demand wake the selected phone; lifecycle
-  changes and unknown-device hints remain DSP-wide. Keyed subscriptions disappear when their
-  last listener leaves. An unchanged initial poll authorizes and reads work in one shared turn;
-  necessary presence/metadata writes and subsequent probes still authorize afresh.
-  Ready texts/videos bypass idle saturation. An empty heartbeat needs
-  an active permit and fresh authorization; an unadmitted empty request still gets busy at
-  expiry or when the pending queue is full. These bounds do not guarantee service to every
-  phone in a synchronized 400-phone burst. Each call, with every payload, unit and limit, is
-  in the [protocol reference](api/phone/README.md) beside the code.
+  At most 128 phones wait on their outboxes at once, and another 128 wait their turn to, first
+  come, first served. One waiting its turn keeps its place however often it's woken, and the time
+  it waits there counts toward the same twenty seconds. A text sent or tried again, and a video
+  someone plays, wake the phone they're for alone; a change to a phone itself, as its removal, and
+  a wake that names no phone, wake every phone of the DSP. A phone's own wakes are kept open only
+  while something listens for them. A wait with nothing to note has its key checked and its work
+  read in one turn of the database; noting that it checked in, its app or how it stands, and
+  every read after that, check its key afresh. Texts and videos ready are handed out at once,
+  however many phones wait. An answer with nothing needs one of the 128 places and its key
+  checked afresh; a wait that never had a place is refused as busy (`platform_busy`) once its
+  twenty seconds end, or at once while 128 already wait their turn. These bounds don't promise
+  every phone an answer when 400 call at the same moment. Each call, with every payload, unit and
+  limit, is in the [protocol reference](api/phone/README.md) beside the code.
 - **The app:** DSP Dispatch: Relay, which the DSP's address hands out (`phone::app`), as the
   build packed it: CI's signed builds, named in `relay.json` beside their APKs in the runtime's
   `dashboard/relay/` ([Android apps](../../android/README.md#releases)). A preview server, as
@@ -1072,78 +1074,100 @@ server, at a DSP's own address, by a phone's key, the phones' own:
 
 ## Conversation window protocol
 
-The additive `GET /api/dsp/communications/conversations/{id}/window`, under
-`communications.use`, replaces one ascending window of at most 150 server messages and
-returns an independent latest-50 observation. No query selects latest; `anchor` (a message's
-full `ts`) and `leading=0..149` select around an ordering position, even after that row goes.
-A short side is filled from the other side. `cursor` alone accepts a returned before, after
-or refresh token. Navigation overlaps one row. These are positions, never access grants.
-Tokens are authenticated with the existing platform key and scoped to the DSP, conversation
-and protocol version; every request rechecks session, feature, role and conversation access.
+`GET /api/dsp/communications/conversations/{id}/window`, under `communications.use`, answers with
+one window of a conversation, at most 150 of its messages, oldest first, and, apart from it, the
+conversation's latest 50. No page calls it yet: the page reads a conversation fifty messages at a
+time ([API](#api)), by a route, a cache and a view this endpoint leaves as they are, and the
+endpoint alone bounds nothing the page holds in memory.
 
-Each answer reads persisted messages, attachments and the Communications revision in one DSP
-transaction. The decimal revision is opaque; it does not version route/directory context or
-freeze history across requests. A stale continuation rebases to current data at its position
-and sets `rebased`; consumers replace the whole window even when false. A revision ahead of
-the database returns `communications_window_reset` (409); discard it and explicitly reopen
-latest or an anchor. Malformed, modified and wrong-scope tokens return `invalid_input` (400).
-The latest observation never becomes a continuation boundary. A refresh retains latest or
-anchor intent, so historical statuses, edits, file changes and refiling are reread.
+With no query it answers with the latest window. `anchor`, a message's full `ts`, with `leading`,
+0 to 149, the messages to come before that place, answers with the window around it, whether or
+not the message is still there; a side with too few is made up from the other. `cursor` alone
+takes a token an answer gave: `before`, `after` or `refresh`. A window read before or after
+another shares one message with it. A token is a place, never a grant: it's sealed with the
+platform's key for its DSP, conversation and version of the protocol, and every request checks
+the session, the feature, the role and the conversation again.
 
-Each selection has compact previous/next neighbors and the nearest outgoing sender before its
-first row on the DSP-local day. Neighbors contain only ID/full place/at/direction, sender
-user/phone IDs and name, visible group ID and other-party number. No body, files, GIF or status
-is carried there. Use the authorized DSP timezone to reset run, pause, switch and sender-label
-comparisons at local midnight. A run continues only for the same writer within ten minutes on
-the same local day. A clipped end is not run-last while its next neighbor continues that run;
-failed messages still show status. `context` and `workdays` belong to `messages`;
-`latestContext` and `latestWorkdays` belong to the independent latest50. Replace each set
-atomically. Latest context supports immediate cached-tail rendering; it supplies no continuation
-range. A historical close seeds latest50 provisionally and reopening bootstraps latest150 before
-edge navigation. Never fabricate a complete range or concatenate selected history and latest.
+Each answer reads the messages kept, their files and Communications' revision in one transaction
+on the DSP's database. The revision, a decimal number, is opaque: it covers Communications' data,
+not routes or who people are, and holds no history still between requests. A token of an earlier
+revision is answered from what's kept now at its place, with `rebased` set; whoever reads the
+answer replaces the whole window, set or not. One of a revision ahead of the database is refused
+`communications_window_reset` (409): drop it, and open latest or an anchor again. A token
+malformed, changed, or made for another DSP, conversation or version is refused `invalid_input`
+(400). The latest 50 are never where a token goes on from. A `refresh` token keeps whether its
+window was the latest or around an anchor, so reading it again rereads an old window's statuses,
+edits, file changes and refiling.
 
-Migration21 adds only outgoing partial indexes for the one-row context seeks. There is no
-persistent cursor session, durable snapshot/epoch, message delta journal or stored-message
-format change. AES-GCM tokens use fresh random nonces: opaque transport values cannot identify
-semantic progress, changed data, a React key or a fetch dependency. A latest refresh token
-keeps latest intent, even after scrolling up; historical refresh must use the visible anchor.
-Tokens rejected after key replacement require one deliberate position/latest bootstrap rather
-than replay. A caught-up revision after DB restore is not detected as a separate epoch.
+With each set of messages comes what draws its edges: the message just before it and the one just
+after (`previous`, `next`), and whoever at the DSP last sent one before its first message, that
+day in the DSP's timezone (`sentBefore`). A neighbour is its ID, full place, `at` and direction,
+its sender's user or phone ID and name, the group it shows and the other party's number: nothing
+of its body, files, GIF or status. By the DSP's timezone, runs, pauses, a switch of phones and the
+sender's label start over at midnight: a run goes on only for the same writer, within ten
+minutes, on the same day there. A message at a window's end isn't the last of its run while the
+neighbour after it goes on with the run; one that failed shows its status all the same. `context`
+and `workdays` go with `messages`, `latestContext` and `latestWorkdays` with the latest 50, and
+each set is replaced whole. The latest 50's context draws a kept tail at once, and gives no range
+to go on from. Closing a conversation read far back leaves its latest 50 to show for the moment,
+and opening it again reads the latest 150 before reading on from an edge. A reader never makes up
+a complete range, nor joins a window read far back to the latest 50.
 
-The legacy 50-message route and its current cache/UI continue unchanged; this endpoint alone
-does not bound active memory. Compact immediate context cannot recover a clipped run's original
-first sender name/time or a clipped workday's first phone after an earlier phone switch. The
-consumer must preserve clipped continuation semantics; exact offscreen origin recovery would
-need a separately reviewed contract, not an unbounded run/day scan.
+Each of these is one seek for one row; the nearest one the DSP sent is found by indexes of its
+outgoing messages alone (migration 21). Nothing is kept for a window between requests: no cursor's
+session, no lasting snapshot or epoch, no journal of changes to messages, and messages are stored
+as they are without it. A token is encrypted with AES-GCM under a nonce made anew each time, so one
+place gives a different token every time: a token says nothing of progress or of whether data
+changed, and serves as no React key and no dependency of a fetch. A `refresh` token of the latest
+window stays the latest window's, even once its reader has scrolled up; refreshing a window read
+far back takes the anchor in view. Once the platform's key is replaced its tokens are refused, and
+a reader opens a place or latest again, deliberately, rather than sending them again. A database
+restored, then caught up to the revision it had, isn't told apart from the one before.
+
+The neighbours alone can't say who first sent a run the window's edge cuts off, or when, nor a
+cut-off workday's first phone once its driver changed phones earlier; a reader keeps a cut-off run
+or day going on as one. Recovering them takes the exact origins below, an index, never a scan of
+a whole run or day.
 
 ### Opt-in exact origins
 
-`/window?origins=1` adds `origins`: version, algorithm (including bundled IANA tzdata),
-`timeZone`, explicit `ready`, and independent selected/latest prefix facts. Defaults and
-legacy `context.sentBefore` remain unchanged. A ready empty slice has null facts; an unready
-index has `ready:false`. Origin metadata is never a Message, cursor, receipt or reply signal.
-The frontend is not enabled by this contract.
+With `origins=1` the answer carries `origins` too: its `version`, the `algorithm` (which names
+the IANA timezone data built in), the `timeZone` it was worked out in, whether it's `ready`, and
+what came before the first run and day of each set, each on its own: `selected` for the window's
+messages, `latest` for the latest 50. Asking for them changes nothing else of the answer,
+`context.sentBefore` included, and an answer not asked for them has none. While the index is
+ready, a set with no messages has none of these (null); while it isn't, `ready` is false. An
+origin is never a message, a token, a receipt or a sign that someone replied. No page asks for
+origins.
 
-Owned migration 22 creates timezone-aware sparse run/day/sender boundary tables, state,
-resumable metadata build cursors and a write-lock/discovery row. SQLite triggers advance
-source epochs for projected topology changes, including group existence fanout. Known Slack
-inserts, text placement/refiling and phone retry repair adjacent positions transactionally,
-acknowledging only their accounted epoch change from a previously ready generation. An
-unsupported derived calendar leaves the source write successful and the generation dirty;
-actual storage errors still roll the enclosing operation back. A raw writer dirties readiness. Name/body/status/file changes do not change topology; origin names,
-faces, group names and phone labels are projected from current owners on read.
+The index is Communications' own (migration 22): by the DSP's timezone, where each run, day and
+sender starts in a conversation, and only those (`communications_slack_origins`,
+`communications_text_origins`); how far each conversation's stands (`communications_origin_state`);
+where a build has reached, so it goes on from there (`communications_origin_builds`); and one row
+a write locks, which keeps upkeep's place too (`communications_origin_control`). Triggers in
+SQLite count each change to what a run or day depends on, a conversation's source epoch, a group
+made or deleted in every conversation it shows in. A Slack message kept, a text filed or filed
+elsewhere, and a text tried again mend the places beside the change in the same transaction, and
+count as indexed only the change they made, to an index ready before it. A time no calendar date
+can be made of leaves the write done and the index not ready; an error from storage still undoes
+the whole write. A write that goes around these leaves the index not ready. A change of name,
+body, status or file changes no run or day: an origin's name, face, group's name and phone's label
+are read from whoever holds them now, as it's read.
 
-Minute upkeep uses bookkeeping turns with DSP-active and feature checks, preserving unrelated
-cached reads. It visits at most eight conversations of each transport per DSP by durable keyset
-cursors, with one 256-row metadata chunk per visit. A timezone, algorithm or unaccounted source
-epoch change restarts a candidate. An audited single insertion or initial Text filing strictly
-after its verified native cursor preserves the candidate by advancing only its accounted epoch;
-it never moves the cursor or publishes partial results. EOF and epoch comparison publish
-atomically. Histories can stay unready under continuous edits, moves or earlier insertions. Timezone changes and initial indexing cost one
-full metadata traversal; group existence changes fan out. Each visit also removes at most
-256 obsolete boundaries through generation-index ranges, protecting active and current
-candidate generations. Ready and removed conversations continue draining obsolete metadata;
-source messages and bodies are never removed by index upkeep. No source/body retention policy or
-reclamation is changed, and no history scan or rebuild occurs in HTTP. Rollback disables
-opt-in, retains tables/triggers and uses old reads. A binary downgrade must separately satisfy
-host and migration-version compatibility; no binary downgrade is claimed here.
+Upkeep builds it, every minute, in bookkeeping turns that check the DSP is active and
+Communications on there, so no cached read of anything else is let go. A pass visits at most eight
+conversations of each transport at a DSP, going on from where the last stopped, a place kept in the
+database, and reads one chunk of 256 rows' metadata at each. A build starts over once the DSP's
+timezone, the algorithm, or a source epoch it didn't count changes. One known insertion, or a
+text's first filing, that the source shows to be strictly after where a build has reached keeps the
+build, counting that change alone; it never moves the build's place, and nothing half built is
+published. Reaching the end and comparing the epoch publish a build in one write. A conversation
+edited, moved or added to earlier without pause can stay not ready. A change of timezone, and the
+first build, each read a conversation's metadata through once; a group made or deleted reaches
+every conversation it shows in. Each visit also removes at most 256 boundaries no longer used, by
+their generation, never the one in use or the one being built; a conversation that's ready, and one
+removed, go on being cleared of them. Upkeep never removes a message or its body and changes
+nothing of how long either is kept, and no request scans or rebuilds a history. To roll back, stop
+asking for origins: the tables and triggers stay, and reads are as they are without them. Running
+an older binary is a separate matter, which the host and the migrations' versions must each allow;
+nothing here makes it safe.

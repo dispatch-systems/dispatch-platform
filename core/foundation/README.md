@@ -15,6 +15,7 @@ type's fields the narrower types the backend really sends, and `runtime.ts` hold
 validators' primitives and how the frontend checks a reply.
 
 The operator may set `DISPATCH_BROWSER_CAPACITY` to an integer from 1 through 16. It defaults
-to 2, controlling both leased collection jobs and native browser slots. The existing memory
-admission check still limits launches. Choose a higher value only from representative workload
-measurements; setting capacity does not change saved schedules or guarantee available memory.
+to 2, controlling both leased collection jobs and native browser slots. The memory admission
+check limits launches whatever the capacity. Choose a higher value only from representative
+workload measurements; setting capacity does not change saved schedules or guarantee available
+memory.

@@ -20,7 +20,7 @@ impl Admission {
         }
     }
     pub async fn check(&self) -> Result<()> {
-        self.owner.read(&self.state, |_, _| Ok(())).await
+        self.owner.admit(&self.state).await
     }
 }
 
@@ -76,10 +76,13 @@ impl Grant {
             member: None,
         })
     }
-    pub fn check(&self, db: &Store) -> Result<()> {
-        if let Some((c, access)) = &self.member {
-            access.revalidate(db, c)?;
-        }
+    /// Refuses a grant no longer the DSP's, or one whose member may no longer use it. For a
+    /// grant captured for a member, answers their access as this turn finds it.
+    pub fn check(&self, db: &Store) -> Result<Option<dispatch_core::accounts::Context>> {
+        let member = match &self.member {
+            Some((c, access)) => Some(access.revalidate(db, c)?),
+            None => None,
+        };
         ensure(
             db.config.environment_root() == self.key.namespace,
             "documents_not_connected",
@@ -99,10 +102,11 @@ impl Grant {
             current == self.connection && mirror::current(&self.key, &self.mirror),
             "documents_not_connected",
             409,
-        )
+        )?;
+        Ok(member)
     }
-    /// Already completed sharing bookkeeping is kept through suspension, as before, but
-    /// never under a replacement/deleted/broken generation. No provider work is admitted here.
+    /// Already completed sharing bookkeeping is kept through suspension, but never under a
+    /// replacement/deleted/broken generation. No provider work is admitted here.
     pub async fn run_finished<T: Send + 'static>(
         &self,
         state: &Arc<State>,
@@ -138,6 +142,11 @@ impl Grant {
             })
             .await
     }
+    /// The check alone, in a shared transition of its own: before a provider attempt, and
+    /// before an answer nothing else was read for.
+    pub async fn admit(&self, state: &Arc<State>) -> Result<()> {
+        self.read(state, |_, _| Ok(())).await
+    }
     /// Actual provenance, sharing and audit changes retain the exclusive State transition.
     pub async fn run<T: Send + 'static>(
         &self,
@@ -149,6 +158,23 @@ impl Grant {
             .run(move |db| {
                 owner.check(db)?;
                 f(db, &owner)
+            })
+            .await
+    }
+    /// As `run`, for what a member changes: `f` records it with their access as the check
+    /// in this transition found it. A grant captured for no member has none to change as.
+    pub async fn run_member<T: Send + 'static>(
+        &self,
+        state: &Arc<State>,
+        f: impl FnOnce(&Store, dispatch_core::accounts::Context) -> Result<T> + Send + 'static,
+    ) -> Result<T> {
+        let owner = self.clone();
+        state
+            .run(move |db| {
+                let member = owner
+                    .check(db)?
+                    .ok_or_else(|| Error::new("permission_denied", 403))?;
+                f(db, member)
             })
             .await
     }

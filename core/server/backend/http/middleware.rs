@@ -20,7 +20,8 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 const BODY_LIMIT: usize = 64 * 1024;
 const BODY_TIMEOUT: Duration = Duration::from_secs(15);
 
-// The error code of a failed request, carried to the request log.
+// A failed request's error code, and the limiter behind a busy refusal, carried to the
+// request log.
 #[derive(Clone)]
 struct Failure {
     code: String,
@@ -105,17 +106,17 @@ pub async fn pipeline(
     let admission_origin = failure.and_then(|f| f.admission_origin);
     let context = trace.lock().unwrap_or_else(|poison| poison.into_inner());
     let mut fields = json!({
-            "requestId":request_id,
-            "method":method.as_str(),
-            "route":context.route.unwrap_or(route),
-            "actorId":context.actor,
-            "dspId":context.tenant,
-            "account":context.account,
-            "client":client,
-            "bulk":context.bulk,
-            "status":status,
-            "elapsedMs":started.elapsed().as_millis(),
-            "error":error
+        "requestId":request_id,
+        "method":method.as_str(),
+        "route":context.route.unwrap_or(route),
+        "actorId":context.actor,
+        "dspId":context.tenant,
+        "account":context.account,
+        "client":client,
+        "bulk":context.bulk,
+        "status":status,
+        "elapsedMs":started.elapsed().as_millis(),
+        "error":error
     });
     if let Some(origin) = admission_origin {
         fields["admissionOrigin"] = json!(origin);
