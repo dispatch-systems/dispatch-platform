@@ -1,11 +1,11 @@
 use crate::{
     Result, artifact,
     io::Native,
-    management, releases, require,
+    management, require,
     updater::{Environment, Updater},
 };
 use serde_json::{Value, json};
-use std::{io::Read, path::Path};
+use std::path::Path;
 
 pub fn run(args: &[String]) -> Result<()> {
     if args.first().is_some_and(|arg| arg == "support") {
@@ -26,7 +26,7 @@ pub fn run(args: &[String]) -> Result<()> {
     }
     if args.is_empty() || args.iter().any(|a| a == "--help" || a == "-h") {
         println!(
-            "Dispatch host management: capabilities | release --help | artifact <inventory|write|verify|unpack|actions|download> ... | <dev|production> --root PATH [--verify|--verify-management|--install-management] | production --root PATH --rollback | dev --root PATH --wait COMMIT [--timeout SECONDS]"
+            "Dispatch host management: capabilities | release --help | artifact <inventory|write|verify|unpack> ... | <dev|production> --root PATH [--verify|--verify-management|--install-management] | production --root PATH --rollback | dev --root PATH --wait COMMIT [--timeout SECONDS]"
         );
         return Ok(());
     }
@@ -48,26 +48,6 @@ pub fn run(args: &[String]) -> Result<()> {
         ["artifact", "unpack", archive, destination] => {
             artifact::unpack(Path::new(archive), Path::new(destination))?;
             Value::Null
-        }
-        ["artifact", "actions", download, directory, package, commit] => {
-            let record = stdin_json()?;
-            serde_json::to_value(artifact::unpack_actions(
-                Path::new(download),
-                record["size_in_bytes"].as_u64().unwrap_or(0),
-                record["digest"].as_str().unwrap_or(""),
-                Path::new(directory),
-                Path::new(package),
-                commit,
-            )?)?
-        }
-        ["artifact", "download", directory, commit, package] => {
-            serde_json::to_value(releases::download_run(
-                &Native,
-                &stdin_json()?,
-                Path::new(directory),
-                commit,
-                Some(Path::new(package)),
-            )?)?
         }
         [environment, rest @ ..] if matches!(*environment, "dev" | "production") => {
             let environment = if *environment == "dev" {
@@ -139,12 +119,4 @@ pub fn run(args: &[String]) -> Result<()> {
     };
     println!("{output}");
     Ok(())
-}
-fn stdin_json() -> Result<Value> {
-    let mut bytes = vec![];
-    std::io::stdin()
-        .take(1024 * 1024 + 1)
-        .read_to_end(&mut bytes)?;
-    require(bytes.len() <= 1024 * 1024, "Input too large")?;
-    Ok(serde_json::from_slice(&bytes)?)
 }
