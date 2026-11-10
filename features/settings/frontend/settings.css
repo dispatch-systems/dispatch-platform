@@ -66,37 +66,8 @@
   cursor: pointer;
 }
 .settings-toggle input[role='switch'] {
-  appearance: none;
-  position: relative;
-  width: 32px;
-  height: 18px;
-  min-height: 18px;
-  padding: 0;
-  margin: 0;
-  border: 1px solid var(--input);
-  border-radius: 10px;
-  background: var(--muted);
-  cursor: pointer;
-  transition: background-color var(--motion-duration);
-}
-.settings-toggle input[role='switch']::before {
-  content: '';
-  position: absolute;
-  width: 12px;
-  height: 12px;
-  top: 2px;
-  left: 2px;
-  border-radius: 50%;
-  background: var(--foreground);
-  transition: left var(--motion-duration);
-}
-.settings-toggle input[role='switch']:checked {
-  background: var(--primary);
-  border-color: var(--primary);
-}
-.settings-toggle input[role='switch']:checked::before {
-  left: 16px;
-  background: var(--primary-foreground);
+  --switch-width: 32px;
+  --switch-height: 18px;
 }
 
 .settings-segments {
