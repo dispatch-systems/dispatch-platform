@@ -177,9 +177,6 @@ pub struct File {
 /// A text to send.
 #[derive(Clone, Debug)]
 pub struct Outgoing {
-    /// The phone to send it from; none for the one that last texted `to`, else the one seen
-    /// last, one online before any offline.
-    pub phone: Option<String>,
     /// The number to send it to.
     pub to: String,
     /// What it says, at most `LIMITS.body` characters: empty only with a picture.

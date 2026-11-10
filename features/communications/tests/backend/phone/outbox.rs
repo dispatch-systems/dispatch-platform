@@ -15,7 +15,6 @@ use dispatch_core::{db::now, testing};
 /// A text `by` sends to `to`, from whichever phone it goes from.
 fn to(to: &str, body: String, files: Vec<String>, by: &str) -> Outgoing {
     Outgoing {
-        phone: None,
         to: to.into(),
         body,
         files,

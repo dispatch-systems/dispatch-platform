@@ -52,7 +52,6 @@ pub async fn send(
     let (sent, device) = filing::changing(state, &c.dsp.id, move |db| {
         let c = access.revalidate(db, &asked)?;
         let outgoing = Outgoing {
-            phone: None,
             to: recipient(db, &c.dsp.id, &at)?,
             body,
             files,

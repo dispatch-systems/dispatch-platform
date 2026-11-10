@@ -86,9 +86,9 @@ pub trait TextStore {
     /// phone that had it. Answers whether it moved.
     fn phones_status(&self, dsp: &str, device: &str, report: &StatusReport) -> Result<bool>;
     fn phones_text(&self, dsp: &str, id: &str) -> Result<Option<Text>>;
-    /// Queues `outgoing` from the phone it names, else the one that last texted its number, else
-    /// the one seen last, one online at `at` before any offline: refused as `invalid_input` for a
-    /// number that isn't one, or a text with nothing in it or past `LIMITS`.
+    /// Queues `outgoing` from the phone that last texted its number, else the one seen last, one
+    /// online at `at` before any offline: refused as `invalid_input` for a number that isn't one,
+    /// or a text with nothing in it or past `LIMITS`.
     fn phones_send(&self, dsp: &str, outgoing: &Outgoing, at: i64) -> Result<Text>;
     /// Queues again the text `id`, one Dispatch sent that failed, as a new attempt from the phone
     /// a new text to its number would go from: refused as `phones_none` while none is paired.
@@ -251,16 +251,7 @@ impl TextStore for Store {
         let id = crypto::id("text")?;
         let db = self.dsp(dsp)?;
         db.transaction(|| {
-            let device = match &outgoing.phone {
-                Some(phone) => db
-                    .one(
-                        "SELECT id FROM phones_devices WHERE id=? AND removed_at IS NULL",
-                        [phone],
-                    )?
-                    .map(|found| s(&found, "id").to_owned())
-                    .ok_or_else(|| Error::new("phones_not_found", 404))?,
-                None => sender(&db, &to, at)?,
-            };
+            let device = sender(&db, &to, at)?;
             let change = next_change(&db)?;
             db.exec(
                 "INSERT INTO phones_texts \
