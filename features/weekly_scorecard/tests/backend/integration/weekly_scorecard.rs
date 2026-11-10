@@ -317,6 +317,46 @@ fn a_week_that_shrank_waits_for_a_second_read() {
     assert_eq!(active(), json!(legacy));
 }
 
+// A dataset gone empty, as it reads while Cortex answers nothing, waits twelve hours for a
+// second read to agree before the week publishes it.
+#[test]
+fn a_week_gone_empty_waits_half_a_day() {
+    install();
+    let (_root, db, id) = ready();
+    let full = weekly_scorecard::fixture(&request("2026-W35")).unwrap();
+    let first = publish(&db, &id, "full", "2026-W35", &full);
+    let mut empty = full.clone();
+    empty.datasets[1].rows.clear();
+    let storage = db.weekly_scorecard_db(&id).unwrap();
+    let active = || {
+        storage
+            .one(
+                "SELECT job_id FROM weekly_scorecard_publications WHERE active=1",
+                [],
+            )
+            .unwrap()
+            .unwrap()["job_id"]
+            .clone()
+    };
+    // The published read a day old, and the held ones `held_minutes` old.
+    let age = |held_minutes: i64| {
+        let ago = |minutes: i64| dispatch_core::db::at(dispatch_core::db::now() - minutes * 60_000);
+        storage
+            .exec(
+                "UPDATE weekly_scorecard_publications SET collected_at=CASE active WHEN 1 THEN ? ELSE ? END",
+                [ago(24 * 60), ago(held_minutes)],
+            )
+            .unwrap()
+    };
+    publish(&db, &id, "empty-1", "2026-W35", &empty);
+    age(31);
+    publish(&db, &id, "empty-2", "2026-W35", &empty);
+    assert_eq!(active(), json!(first));
+    age(13 * 60);
+    let confirmed = publish(&db, &id, "empty-3", "2026-W35", &empty);
+    assert_eq!(active(), json!(confirmed));
+}
+
 #[test]
 fn week_counts_use_capture_metadata_and_recover_missing_legacy_dataset_counts() {
     install();
