@@ -466,11 +466,7 @@ jobs:
           fetch-depth: 2
       - uses: ./.github/actions/changes
         id: changes
-      # The tests' sandbox installs from apt while the rest sets up. It runs no action, so it
-      # can't race the setup's own for the same one.
-      - id: sandbox
-        if: steps.changes.outputs.core == 'true'
-        background: true
+      - if: steps.changes.outputs.core == 'true'
         uses: ./.github/actions/setup-support-sandbox
       - if: steps.changes.outputs.core == 'true'
         uses: ./.github/actions/setup-tools
@@ -479,8 +475,6 @@ jobs:
         with:
           profile: debug
           save: 'false'
-      - if: steps.changes.outputs.core == 'true'
-        wait: sandbox
       - if: steps.changes.outputs.core == 'true'
         run: npm run check:ci -- core tests unit
   core-integration:
@@ -494,9 +488,7 @@ jobs:
           fetch-depth: 2
       - uses: ./.github/actions/changes
         id: changes
-      - id: sandbox
-        if: steps.changes.outputs.core == 'true'
-        background: true
+      - if: steps.changes.outputs.core == 'true'
         uses: ./.github/actions/setup-support-sandbox
       - if: steps.changes.outputs.core == 'true'
         uses: ./.github/actions/setup-tools
@@ -505,8 +497,6 @@ jobs:
         with:
           profile: debug
           save: 'false'
-      - if: steps.changes.outputs.core == 'true'
-        wait: sandbox
       - if: steps.changes.outputs.core == 'true'
         run: npm run check:ci -- core tests integration
   # What every generator writes, made in a copy of the checkout: scaffold-lint holds it to
