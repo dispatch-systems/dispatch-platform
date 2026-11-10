@@ -443,7 +443,25 @@ fn each_pass_is_pinned_to_the_pushed_head_and_later_ones_read_only_what_changed(
         "the change's purpose: {brief}"
     );
     assert!(fixture.dir(1).join("security-brief.md").exists());
-    // A pass stays pinned to the head its reviewers read, and keeps a lane's results.
+    // Its reviewers read a checkout of their own, which the brief sends them to.
+    let reading = fs::canonicalize(fixture.dir(1).join("checkout")).unwrap();
+    let read = || {
+        let checkout = Checkout {
+            root: &reading,
+            runner: &Native,
+        };
+        (
+            checkout.head().unwrap(),
+            fs::read_to_string(reading.join("features/dvic/backend/week.rs")).unwrap(),
+        )
+    };
+    assert_eq!(read(), (first.clone(), "fn week() { page() }\n".to_owned()));
+    assert!(
+        brief.contains(&format!("checked out for you\nin {}.", reading.display())),
+        "{brief}"
+    );
+    // A pass stays pinned to the head its reviewers read, as their checkout does while the
+    // worktree moves on, and keeps a lane's results.
     write(
         root,
         "features/dvic/backend/week.rs",
@@ -452,6 +470,7 @@ fn each_pass_is_pinned_to_the_pushed_head_and_later_ones_read_only_what_changed(
     commit(root, "a later push");
     git(root, &["push", "-q", "origin", "keep-week"]);
     assert!(error(fixture.prepare(1)).contains("is pinned to"));
+    assert_eq!(read(), (first.clone(), "fn week() { page() }\n".to_owned()));
     git(root, &["reset", "-q", "--hard", &first]);
     git(root, &["push", "-q", "-f", "origin", "keep-week"]);
     write(&fixture.dir(1), "security-findings.md", "No findings.\n");
@@ -463,17 +482,19 @@ fn each_pass_is_pinned_to_the_pushed_head_and_later_ones_read_only_what_changed(
         "findings.md",
         "## Important: features/dvic/backend/week.rs:1 forgets the DSP\nx\n",
     );
-    write(
-        root,
-        "features/dvic/backend/week.rs",
-        "edited by the reviewer\n",
-    );
-    assert!(error(take(root, 1, &Native)).contains("isn't as pass 1 left it"));
-    git(root, &["checkout", "--", "."]);
     git(root, &["switch", "-q", "--detach", "HEAD^"]);
     assert!(error(take(root, 1, &Native)).contains("or after it"));
     git(root, &["switch", "-q", "keep-week"]);
+    // A fix begun while they read doesn't stop it, and their checkout goes once all answered.
+    write(
+        root,
+        "features/dvic/backend/week.rs",
+        "being fixed while they read\n",
+    );
+    assert!(reading.exists());
     take(root, 1, &Native).unwrap();
+    assert!(!reading.exists());
+    git(root, &["checkout", "--", "."]);
 
     let models = Models {
         model: "gpt-6.1-sol",
@@ -982,4 +1003,60 @@ fn a_checkout_without_review_instructions_is_reviewed_by_the_clis_own() {
         brief.contains(&source.join("tooling/review/rules.md").display().to_string()),
         "{brief}"
     );
+}
+
+#[test]
+fn a_pass_never_taken_leaves_no_checkout_behind() {
+    let fixture = Fixture::new();
+    let root = &fixture.root;
+    write(
+        root,
+        "features/dvic/backend/week.rs",
+        "fn week() { page() }\n",
+    );
+    commit(root, "keep the week");
+    git(root, &["push", "-q", "-u", "origin", "keep-week"]);
+    fixture.prepare(1).unwrap();
+    let worktrees = || {
+        Checkout {
+            root,
+            runner: &Native,
+        }
+        .git(&["worktree", "list", "--porcelain"])
+        .unwrap()
+        .matches("worktree ")
+        .count()
+    };
+    assert_eq!(worktrees(), 2);
+    // Prepared again, as when the brief is lost, the pass keeps the checkout it has.
+    fs::remove_file(fixture.dir(1).join("brief.md")).unwrap();
+    fixture.prepare(1).unwrap();
+    assert_eq!(worktrees(), 2);
+    // Only a checkout that is there itself goes, never one a link in the pass's place names.
+    let aside = fixture.scratch.join("aside");
+    fs::rename(fixture.dir(1), &aside).unwrap();
+    std::os::unix::fs::symlink(&aside, fixture.dir(1)).unwrap();
+    discard(root, &fixture.scratch, &Native).unwrap();
+    assert!(
+        aside
+            .join("checkout/features/dvic/backend/week.rs")
+            .exists()
+    );
+    fs::remove_file(fixture.dir(1)).unwrap();
+    fs::rename(&aside, fixture.dir(1)).unwrap();
+    discard(root, &fixture.scratch, &Native).unwrap();
+    assert!(!fixture.dir(1).join("checkout").exists());
+    assert_eq!(worktrees(), 1);
+    // A pass deleted with its checkout is prepared anew over what git remembers of it.
+    fixture.prepare(1).unwrap();
+    fs::remove_dir_all(fixture.dir(1)).unwrap();
+    fixture.prepare(1).unwrap();
+    assert!(
+        fixture
+            .dir(1)
+            .join("checkout/tooling/review/brief.md")
+            .exists()
+    );
+    discard(root, &fixture.scratch, &Native).unwrap();
+    assert_eq!(worktrees(), 1);
 }

@@ -1,5 +1,5 @@
 use super::{Clone, valid_name};
-use crate::{REPOSITORY, Result, Runner, dev, require, workspace};
+use crate::{REPOSITORY, Result, Runner, dev, require, review, workspace};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -312,6 +312,8 @@ pub fn finish(from: &Path, name: &str, abandon: bool, runner: &dyn Runner) -> Re
                 .is_symlink(),
             "Scratch changed into a symlink: preserve it.",
         )?;
+        // A review pass never taken left its reviewers' checkout there, which git knows of.
+        review::discard(&clone.root, &plan.scratch, runner)?;
         fs::remove_dir_all(&plan.scratch)?;
     }
     println!(

@@ -1,9 +1,10 @@
 //! A change's review, pass by pass. `prepare` judges the change's tier and writes each pass's
 //! brief, pinned to the pushed head: the whole change first, then only what changed since the
-//! pass before, with a security review beside it only where that calls for one. `take` checks
-//! the reviewer left no change in the worktree and starts the answers; `record` checks every
-//! finding is answered, pushes the fixes and writes the PR body's Review line. Each pass keeps
-//! its files in the checkout's scratch folder, under `review/<pass>/`.
+//! pass before, with a security review beside it only where that calls for one. The reviewers
+//! read a checkout of that head made for them, so the change's own worktree is free meanwhile.
+//! `take` removes it and starts the answers; `record` checks every finding is answered, pushes
+//! the fixes and writes the PR body's Review line. Each pass keeps its files in the checkout's
+//! scratch folder, under `review/<pass>/`.
 pub mod findings;
 pub mod tier;
 
@@ -110,6 +111,15 @@ impl Checkout<'_> {
     }
     fn head(&self) -> Result<String> {
         self.git(&["rev-parse", "HEAD"])
+    }
+    /// Removes the reviewers' checkout at `path`, its real one, if it is there, with whatever
+    /// they left in it: never what a link on the way to it names.
+    fn unread(&self, path: &Path) -> Result<()> {
+        if fs::canonicalize(path).is_ok_and(|real| real == path) {
+            let path = path.to_str().ok_or("A checkout path that isn't UTF-8")?;
+            self.git(&["worktree", "remove", "--force", path])?;
+        }
+        Ok(())
     }
     /// The branch and its head, with nothing uncommitted.
     fn committed(&self) -> Result<(String, String)> {
@@ -279,6 +289,30 @@ fn folder(root: &Path, pass: u32) -> Result<PathBuf> {
     Ok(workspace::checkout_scratch(root)?
         .join("review")
         .join(pass.to_string()))
+}
+/// The reviewers' own checkout of a pass's head, in the pass's folder `dir`: a worktree of the
+/// clone on no branch, with nothing installed or built.
+fn reading(dir: &Path) -> PathBuf {
+    dir.join("checkout")
+}
+/// Removes the reviewers' checkouts left in the scratch folder `scratch` of a change of the
+/// clone at `clone`: those of passes `take` never reached. Only a folder that is there itself
+/// goes, never what a link in its place names.
+pub fn discard(clone: &Path, scratch: &Path, runner: &dyn Runner) -> Result<()> {
+    let Ok(passes) = fs::canonicalize(scratch).map(|scratch| scratch.join("review")) else {
+        return Ok(());
+    };
+    let Ok(folders) = fs::read_dir(&passes) else {
+        return Ok(());
+    };
+    let git = Checkout {
+        root: clone,
+        runner,
+    };
+    for folder in folders {
+        git.unread(&reading(&passes.join(folder?.file_name())))?;
+    }
+    Ok(())
 }
 fn read_json<T: for<'a> Deserialize<'a>>(path: &Path) -> Result<Option<T>> {
     match fs::read_to_string(path) {
@@ -451,6 +485,7 @@ pub fn prepare(root: &Path, ask: &Prepare, runner: &dyn Runner) -> Result<()> {
         root,
         instructions: instructions(root, ask.source)?,
         dir: &dir,
+        reading: &reading(&dir),
         branch: &branch,
         pass: &pass,
         reads,
@@ -458,6 +493,16 @@ pub fn prepare(root: &Path, ask: &Prepare, runner: &dyn Runner) -> Result<()> {
         runner,
     };
     fs::create_dir_all(&dir)?;
+    // The reviewers' own checkout of the head they are pinned to: the change's worktree is free
+    // to fix what its checks find while they read. A pass prepared again keeps the one it has.
+    if !fill.reading.exists() {
+        let path = fill
+            .reading
+            .to_str()
+            .ok_or("A checkout path that isn't UTF-8")?;
+        // Forced over what git still remembers of one deleted with its folder.
+        git.git(&["worktree", "add", "-q", "--force", "--detach", path, &head])?;
+    }
     let mut written = vec![];
     for review in reviews(&pass) {
         let brief = fill.brief(review)?;
@@ -505,7 +550,8 @@ pub fn prepare(root: &Path, ask: &Prepare, runner: &dyn Runner) -> Result<()> {
                     .to_owned(),
                 false => "Start the reviewer on brief.md with the model the skill names".to_owned(),
             },
-            format!("Once it answers, `dispatchdev review take --pass {n}`"),
+            "They read their own checkout of that head: the worktree is free meanwhile".to_owned(),
+            format!("Once they answer, `dispatchdev review take --pass {n}`"),
         ])
     );
     Ok(())
@@ -529,6 +575,8 @@ struct Fill<'a> {
     /// Where the templates and rules come from.
     instructions: &'a Path,
     dir: &'a Path,
+    /// The reviewers' own checkout of the pass's head.
+    reading: &'a Path,
     branch: &'a str,
     pass: &'a Pass,
     reads: Reads,
@@ -573,7 +621,7 @@ impl Fill<'_> {
             ("branch", self.branch.to_owned()),
             ("head", self.pass.head.clone()),
             ("diff", self.pass.diff.clone()),
-            ("worktree", self.root.display().to_string()),
+            ("checkout", self.reading.display().to_string()),
             ("scope", scope),
             (
                 "findings",
@@ -678,43 +726,22 @@ fn purpose(root: &Path) -> Result<String> {
         .join("\n>\n"))
 }
 
-/// `dispatchdev review take`: once the reviewers answered, checks they left the worktree as it
-/// was and starts the answers to their findings. Fixes committed already don't stop it, and it
-/// names the commits since the pass, so one a reviewer made shows among them.
+/// `dispatchdev review take`: once the reviewers answered, starts the answers to their findings
+/// and removes the checkout they read. The worktree needn't be as the pass left it: they never
+/// worked in it, so what is uncommitted or committed since is the change's own.
 pub fn take(root: &Path, n: u32, runner: &dyn Runner) -> Result<()> {
     let pass = pinned(root, n)?;
     let dir = folder(root, n)?;
     let git = Checkout { root, runner };
     require(
-        git.git(&["status", "--porcelain"])?.is_empty(),
+        git.git(&["merge-base", "--is-ancestor", &pass.head, "HEAD"])
+            .is_ok(),
         &format!(
-            "The worktree isn't as pass {n} left it: it holds uncommitted changes. See what the \
-             reviewer changed before taking its findings.",
+            "The branch isn't at pass {n}'s {} or after it: go back to it before taking its \
+             findings.",
+            short(&pass.head)
         ),
     )?;
-    let since = git
-        .git(&["log", "--format=%h %s", &format!("{}..HEAD", pass.head)])
-        .ok()
-        .filter(|_| {
-            git.git(&["merge-base", "--is-ancestor", &pass.head, "HEAD"])
-                .is_ok()
-        })
-        .ok_or_else(|| {
-            format!(
-                "The branch isn't at pass {n}'s {} or after it: go back to it before taking \
-                 its findings.",
-                short(&pass.head)
-            )
-        })?;
-    if !since.is_empty() {
-        println!(
-            "Committed since pass {n}'s {}, yours unless a reviewer's:",
-            short(&pass.head)
-        );
-        for commit in since.lines() {
-            println!("  {commit}");
-        }
-    }
     let mut any = false;
     for review in reviews(&pass) {
         let found = dir.join(review.findings());
@@ -745,6 +772,8 @@ pub fn take(root: &Path, n: u32, runner: &dyn Runner) -> Result<()> {
             }
         );
     }
+    // Every reviewer answered: nobody reads their checkout any more.
+    git.unread(&reading(&dir))?;
     let record = format!(
         "`dispatchdev review record --pass {n} --model <model>{}`",
         if pass.security {
