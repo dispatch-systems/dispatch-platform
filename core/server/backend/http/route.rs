@@ -243,12 +243,6 @@ pub enum Work {
 type Blocking = Arc<dyn Fn(&Store, &State, &Input, Work) -> Result<Reply> + Send + Sync>;
 /// A route's gate: its access's `Grant::gate`, run before the database is asked for.
 type Gate = Arc<dyn Fn(&State, &Input) -> Result<()> + Send + Sync>;
-fn gate_of<A: Grant>(access: A) -> Gate {
-    Arc::new(move |state, input| access.gate(state, input))
-}
-fn open() -> Gate {
-    Arc::new(|_, _| Ok(()))
-}
 type Pending = Pin<Box<dyn Future<Output = Result<Reply>> + Send>>;
 pub type Served = Pin<Box<dyn Future<Output = Response> + Send>>;
 type Uploaded = Box<dyn Fn(Arc<State>, Input, Upload) -> Pending + Send + Sync>;
@@ -317,16 +311,8 @@ fn blocking<A: Grant>(
         }
         handler(db, &Ctx { state, who }, input)
     };
-    Route {
-        method,
-        path,
-        access: access.access(),
-        work,
-        invalidates_schedules: false,
-        logged: false,
-        gate: gate_of(access),
-        handler: Handler::Blocking(Arc::new(handler)),
-    }
+    let handler = Handler::Blocking(Arc::new(handler));
+    Route::new(method, path, access, work, handler)
 }
 /// `GET path`: authorizes, then runs the handler, in one shared-lock database closure.
 pub fn read<A: Grant>(
@@ -414,16 +400,8 @@ where
     F: Future<Output = Result<Reply>> + Send + 'static,
 {
     let handler = move |state, input| Box::pin(handler(state, input, access)) as Pending;
-    Route {
-        method,
-        path,
-        access: access.access(),
-        work: Work::Async,
-        invalidates_schedules: false,
-        logged: false,
-        gate: gate_of(access),
-        handler: Handler::Async(Box::new(handler)),
-    }
+    let handler = Handler::Async(Box::new(handler));
+    Route::new(method, path, access, Work::Async, handler)
 }
 /// `GET path` for work that waits outside the database. The handler receives the
 /// registered access and must call `access.authorize(db, &input)` inside its own
@@ -465,16 +443,8 @@ where
     assert!(limit <= UPLOAD_LIMIT, "{path}: an upload of at most 100 MB");
     let handler =
         move |state, input, upload| Box::pin(handler(state, input, access, upload)) as Pending;
-    Route {
-        method: Method::POST,
-        path,
-        access: access.access(),
-        work: Work::Upload,
-        invalidates_schedules: false,
-        logged: false,
-        gate: gate_of(access),
-        handler: Handler::Upload(limit, Box::new(handler)),
-    }
+    let handler = Handler::Upload(limit, Box::new(handler));
+    Route::new(Method::POST, path, access, Work::Upload, handler)
 }
 /// `method path` for a protocol an agent speaks whose requests the handler reads itself,
 /// such as MCP. The caller is signed in and counted first, under the shared lock; the
@@ -498,16 +468,8 @@ where
             extensions.insert(who);
         }))
     });
-    Route {
-        method,
-        path,
-        access: access.access(),
-        work: Work::Async,
-        invalidates_schedules: false,
-        logged: false,
-        gate: gate_of(access),
-        handler: Handler::Protocol(signer, handler),
-    }
+    let handler = Handler::Protocol(signer, handler);
+    Route::new(method, path, access, Work::Async, handler)
 }
 /// How an agent's request ended, as its route saw it, for the agents' piece to record.
 pub struct Answered<'a> {
@@ -528,16 +490,7 @@ pub fn protocol(
     path: &'static str,
     handler: fn(Arc<State>, Request) -> Served,
 ) -> Route {
-    Route {
-        method,
-        path,
-        access: Access::Public,
-        work: Work::Async,
-        invalidates_schedules: false,
-        logged: false,
-        gate: open(),
-        handler: Handler::Open(handler),
-    }
+    Route::new(method, path, Public, Work::Async, Handler::Open(handler))
 }
 /// A public `GET` page of Dispatch's own that the handler answers itself, at every address:
 /// one that sets its own rules, as for an outside service's scripts.
@@ -549,19 +502,29 @@ pub fn page(path: &'static str, handler: fn(Arc<State>, Request) -> Served) -> R
 }
 /// A public `GET` answered from memory: no session, query, body or database.
 pub fn probe(path: &'static str, handler: fn(&State) -> Reply) -> Route {
-    Route {
-        method: Method::GET,
-        path,
-        access: Access::Public,
-        work: Work::Memory,
-        invalidates_schedules: false,
-        logged: false,
-        gate: open(),
-        handler: Handler::Memory(handler),
-    }
+    let handler = Handler::Memory(handler);
+    Route::new(Method::GET, path, Public, Work::Memory, handler)
 }
 
 impl Route {
+    fn new<A: Grant>(
+        method: Method,
+        path: &'static str,
+        access: A,
+        work: Work,
+        handler: Handler,
+    ) -> Self {
+        Route {
+            method,
+            path,
+            access: access.access(),
+            work,
+            invalidates_schedules: false,
+            logged: false,
+            gate: Arc::new(move |state, input| access.gate(state, input)),
+            handler,
+        }
+    }
     /// The owner's reviewed write changes only bookkeeping, never data a cached read
     /// uses. It keeps the write lock and all of the route's authorization checks.
     pub fn bookkeeping(mut self) -> Self {
