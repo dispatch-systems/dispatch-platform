@@ -2,6 +2,7 @@ import type { DvicInspection } from '../api/index.js';
 import { useInspection } from '../api/client.js';
 import {
   bandLabel,
+  fleetDetail,
   fleetLabel,
   inspectionBand,
   inspectionClock,
@@ -87,7 +88,7 @@ function InspectionBody({
       <dl className="dvic-facts">
         <div>
           <dt>Vehicle type</dt>
-          <dd>{fleetLabel(row.fleetType)}</dd>
+          <dd>{fleetDetail(row.fleetType)}</dd>
         </div>
         <div>
           <dt>VIN</dt>
@@ -132,7 +133,7 @@ function InspectionBody({
         related.map((item) => (
           <button className="dvic-related" key={item.id} onClick={() => onSelect(item.id)}>
             <span>
-              {inspectionDate(item.startDate)} · {item.fleetType}
+              {inspectionDate(item.startDate)} · {fleetLabel(item.fleetType)}
             </span>
             <strong>{duration(item.durationSeconds)}</strong>
           </button>

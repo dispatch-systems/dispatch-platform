@@ -4,6 +4,7 @@ import type { DvicInspection, DvicDaySummary } from '../../../api/index.js';
 import { useDayInspections } from '../../../api/client.js';
 import {
   bandLabel,
+  fleetLabel,
   inspectionBand,
   inspectionClock,
   inspectionDuration as duration,
@@ -67,7 +68,7 @@ function VehicleGroup({
             <span className="dvic-driver">
               <strong>{row.driverName || row.driverId}</strong>
               <small>
-                {inspectionClock(row.startTime)} · {row.fleetType} · VIN …{row.vin.slice(-6)}
+                {inspectionClock(row.startTime)} · {fleetLabel(row.fleetType)}
               </small>
             </span>
             <span className="dvic-took">

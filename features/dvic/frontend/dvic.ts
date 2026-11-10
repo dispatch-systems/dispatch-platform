@@ -45,11 +45,13 @@ export const inspectionShortfall = (seconds: number) =>
 export type VehicleClass = '' | 'dot' | 'non-dot';
 
 const FLEET_LABELS: Record<string, string> = {
-  CV: 'CV · Cargo Van',
-  EDV: 'EDV · Electric Delivery Van',
-  SV: 'SV · Step Van',
+  CV: 'Cargo Van',
+  SV: 'Step Van',
 };
 export const fleetLabel = (fleet: string) => FLEET_LABELS[fleet] ?? fleet;
+/** An inspection's own panel also says what an EDV is. */
+export const fleetDetail = (fleet: string) =>
+  fleet === 'EDV' ? 'EDV · Rivian' : fleetLabel(fleet);
 
 /** Share of the required minimum the inspection reached, capped at 1. */
 export const inspectionShare = (row: Pick<DvicInspection, 'durationSeconds' | 'minimumSeconds'>) =>
