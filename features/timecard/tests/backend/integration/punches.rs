@@ -367,10 +367,10 @@ fn timecard_links_publish_with_unchanged_hours_and_are_returned() {
         assert_eq!(card.card.source_url, Some(link("E003")));
     }
     let date = s(&data["timecards"][0], "date");
-    let (_, _, rows) = db.daily_timecards_source(id, date).unwrap();
+    let rows = db.daily_timecards(id, date, "name", false).unwrap().rows;
     assert_eq!(rows.len(), 12);
     for row in rows {
-        assert_eq!(row["sourceUrl"], json!(link(s(&row, "employeeCode"))));
+        assert_eq!(row.card.source_url, Some(link(&row.card.employee_code)));
     }
     linked["employees"][0]["name"] = json!("Retained Actor");
     linked["collectedAt"] = json!("2099-01-03T00:00:00.000Z");
@@ -537,10 +537,10 @@ fn unchanged_publications_reuse_storage_but_changed_data_and_history_survive() {
         card.source_url.as_deref(),
         Some("https://paycom.example/timecard/P1")
     );
-    let (_, _, rows) = db.daily_timecards_source(id, date).unwrap();
-    let row = rows.iter().find(|r| r["employeeCode"] == "E002").unwrap();
-    assert_eq!(row["punches"][0]["in"], "07:59");
-    assert_eq!(row["name"], "Changed Name");
+    let rows = db.daily_timecards(id, date, "name", false).unwrap().rows;
+    let row = rows.iter().find(|r| r.card.employee_code == "E002").unwrap();
+    assert_eq!(row.card.punches[0].clock_in.as_deref(), Some("07:59"));
+    assert_eq!(row.name, "Changed Name");
     let selected = ["E002".to_owned()];
     let range = db
         .daily_timecards_range(id, date, "2026-09-14", "name", false, Some(&selected))
@@ -661,14 +661,14 @@ fn unchanged_publications_reuse_storage_but_changed_data_and_history_survive() {
         )
         .unwrap();
     assert!(
-        db.daily_timecards_source(id, date)
+        db.daily_timecards(id, date, "name", false)
             .unwrap()
-            .2
+            .rows
             .iter()
-            .find(|c| c["employeeCode"] == "E002")
-            .unwrap()["punches"]
-            .as_array()
+            .find(|r| r.card.employee_code == "E002")
             .unwrap()
+            .card
+            .punches
             .is_empty()
     );
     // Deleting one publication cascades its refs, never bodies used by other history.
@@ -704,7 +704,7 @@ fn unchanged_publications_reuse_storage_but_changed_data_and_history_survive() {
         "paycom_payload_unavailable"
     );
     assert_eq!(
-        db.daily_timecards_source(id, date).unwrap_err().code,
+        db.daily_timecards(id, date, "name", false).unwrap_err().code,
         "paycom_payload_unavailable"
     );
     assert_eq!(

@@ -50,11 +50,6 @@ pub trait TimecardStore {
         timezone: &str,
         people: &Everyone,
     ) -> Result<MealPeriodGaps>;
-    fn daily_timecards_source(
-        &self,
-        id: &str,
-        date: &str,
-    ) -> Result<(Option<Value>, Vec<Value>, Vec<Value>)>;
     fn daily_timecards(
         &self,
         id: &str,
@@ -184,13 +179,6 @@ impl TimecardStore for Store {
         people: &Everyone,
     ) -> Result<MealPeriodGaps> {
         super::meals::period::meal_period_gaps(self, id, date, timezone, people)
-    }
-    fn daily_timecards_source(
-        &self,
-        id: &str,
-        date: &str,
-    ) -> Result<(Option<Value>, Vec<Value>, Vec<Value>)> {
-        super::punches::daily::daily_timecards_source(self, id, date)
     }
     fn daily_timecards(
         &self,
