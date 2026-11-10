@@ -2,7 +2,7 @@
 """Runs cargo-nextest, the release `nextest.json` pins, with the arguments given, as
 `nextest.py run --locked`.
 
-The core job's Rust tests run through it: `cargo test` runs one test program after another,
+The core jobs' Rust tests run through it: `cargo test` runs one test program after another,
 each of its tests on a thread, while nextest runs every test of every program side by side, each
 in its own process. The archive downloads once into `.ci-tools/nextest/`, and its SHA-256 is
 checked against the pin there and on every run, before the executable is unpacked from it.

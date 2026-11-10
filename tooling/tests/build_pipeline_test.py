@@ -96,6 +96,12 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(run.call_count, 2, "build and selected Node tests only; no live host probe")
         self.assertEqual(run.call_args.kwargs["env"]["DISPATCH_TEST_NATIVE"], "1")
         self.assertEqual(run.call_args.args[0][-1], collectors.SHARDS["paycom-recovery"][-1])
+        # The host shard runs the live host probe and no Node tests.
+        with patch.object(sys, "argv", ["browseros-check.py", "--shard", "host"]), \
+                patch.object(collectors.subprocess, "run", return_value=done) as run:
+            collectors.main()
+        self.assertEqual([call.args[0][:2] for call in run.call_args_list],
+                         [["tooling/cli/dispatchdev", "build"], ["cargo", "test"]])
 
 
 if __name__ == "__main__":

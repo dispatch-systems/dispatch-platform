@@ -154,7 +154,7 @@ jobs:
           path: .ci-tools/fixture/
           key: ${{ steps.restore.outputs.fixture-key }}
       # The fixture's build alone left clippy re-checking every dependency, the tests and the
-      # capacity shard compiling those it doesn't use, in every run: whenever the debug cache is
+      # host shard compiling those it doesn't use, in every run: whenever the debug cache is
       # new, what each of them compiles goes in too (`check:ci -- cache`).
       - uses: ./.github/actions/setup-packages
         if: steps.debug-cache.outputs.cache-hit != 'true'

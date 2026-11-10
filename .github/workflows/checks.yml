@@ -451,7 +451,10 @@ jobs:
           save: 'false'
       - if: steps.changes.outputs.core == 'true'
         run: npm run check:ci -- core lint
-  # The Rust tests. A release's checks find a full run by this job's name.
+  # The Rust tests, in two jobs side by side that each compile only the test programs they run:
+  # here those inside the crates' libraries and executables, with the doctests, and in
+  # core-integration the crates' `[[test]]` programs. A release's checks find a full run by this
+  # job's name.
   core:
     if: ${{ !inputs.tested-run }}
     runs-on: ubuntu-24.04
@@ -463,7 +466,11 @@ jobs:
           fetch-depth: 2
       - uses: ./.github/actions/changes
         id: changes
-      - if: steps.changes.outputs.core == 'true'
+      # The tests' sandbox installs from apt while the rest sets up. It runs no action, so it
+      # can't race the setup's own for the same one.
+      - id: sandbox
+        if: steps.changes.outputs.core == 'true'
+        background: true
         uses: ./.github/actions/setup-support-sandbox
       - if: steps.changes.outputs.core == 'true'
         uses: ./.github/actions/setup-tools
@@ -473,7 +480,35 @@ jobs:
           profile: debug
           save: 'false'
       - if: steps.changes.outputs.core == 'true'
-        run: npm run check:ci -- core tests
+        wait: sandbox
+      - if: steps.changes.outputs.core == 'true'
+        run: npm run check:ci -- core tests unit
+  core-integration:
+    if: ${{ !inputs.tested-run }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - uses: ./.github/actions/changes
+        id: changes
+      - id: sandbox
+        if: steps.changes.outputs.core == 'true'
+        background: true
+        uses: ./.github/actions/setup-support-sandbox
+      - if: steps.changes.outputs.core == 'true'
+        uses: ./.github/actions/setup-tools
+      - if: steps.changes.outputs.core == 'true'
+        uses: ./.github/actions/setup-build
+        with:
+          profile: debug
+          save: 'false'
+      - if: steps.changes.outputs.core == 'true'
+        wait: sandbox
+      - if: steps.changes.outputs.core == 'true'
+        run: npm run check:ci -- core tests integration
   # What every generator writes, made in a copy of the checkout: scaffold-lint holds it to
   # clippy, TypeScript, the linter and the rules, and scaffold runs its Rust tests and agent
   # tools' tests, side by side. The copy's path isn't the checkout's, so Cargo keeps none of its
@@ -608,7 +643,8 @@ jobs:
         with:
           path: .ci-rust-cache/
           key: dispatch-rust-binary-debug-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.binary-key }}
-  # The API tests against the debug backend, the Python tooling tests and the npm audit.
+  # The API tests against the debug backend, in two shards, the first with the Python tooling
+  # tests and the npm audit.
   api:
     needs: [changes, debug]
     if: >-
@@ -616,6 +652,10 @@ jobs:
       (needs.debug.result == 'success' || needs.debug.result == 'skipped') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -637,8 +677,9 @@ jobs:
       # cache held before the restored binaries replaced it.
       - run: cargo fetch --locked
       - wait: sandbox
-      - run: npm run check:ci -- api
-  # The native collectors against their fixtures, with a real isolated browser.
+      - run: npm run check:ci -- api ${{ matrix.shard }}/2
+  # The native collectors against their fixtures, with a real isolated browser, and in the host
+  # shard the Rust probe of that isolation on the runner.
   collectors:
     needs: [changes, debug]
     if: >-
@@ -649,20 +690,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [paycom, paycom-recovery, cortex, cortex-meals, live-route-data, capacity]
+        shard: [paycom, paycom-recovery, cortex, cortex-meals, live-route-data, host, capacity]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-tools
-      # The debug backend and worker the debug job or main's run saved; the capacity shard also
-      # compiles the host's tests, so it keeps Cargo's dependency cache beside them.
+      # The debug backend and worker the debug job or main's run saved; the host shard also
+      # compiles its probe, so it keeps Cargo's dependency cache beside them.
       - uses: ./.github/actions/setup-build
         with:
           profile: debug
           save: 'false'
           binaries: 'true'
-          dependencies: ${{ matrix.shard == 'capacity' }}
+          dependencies: ${{ matrix.shard == 'host' }}
       # Not in the background: it restores its package with actions/cache, as the steps above do,
       # and two steps preparing the same action at once fail.
       - uses: ./.github/actions/setup-browseros
@@ -762,6 +803,7 @@ jobs:
       - smoke
       - core-lint
       - core
+      - core-integration
       - debug
       - api
       - collectors
@@ -796,18 +838,18 @@ jobs:
               exit 1
             fi
             echo "The source's suites passed in $(echo "$tested" | jq -r .html_url)"
-            skippable='["relay-dev", "relay-production", "checks", "core-lint", "core", "debug", "api", "collectors", "scaffold-lint", "scaffold", "browser"]'
+            skippable='["relay-dev", "relay-production", "checks", "core-lint", "core", "core-integration", "debug", "api", "collectors", "scaffold-lint", "scaffold", "browser"]'
           fi
           # Each job and what it came to, a suite the change can't reach as not needed: core's and
-          # scaffold's jobs pass without running it, and the others skip. A -lint job follows its
-          # suite.
+          # scaffold's jobs pass without running it, and the others skip. A -lint or -integration
+          # job follows its suite.
           {
             echo "Changed: $(echo "$RESULTS" | jq -r '.changes.outputs.changed // "unknown"')"
             echo
             echo "| Job | Result |"
             echo "| --- | --- |"
             echo "$RESULTS" | jq -r '.changes.outputs as $needed | to_entries[]
-              | "| \(.key) | \(if $needed[.key | sub("-lint$"; "")] == "false" then "not needed"
+              | "| \(.key) | \(if $needed[.key | sub("-(lint|integration)$"; "")] == "false" then "not needed"
                 else .value.result end) |"'
           } >> "$GITHUB_STEP_SUMMARY"
           # A suite skips only where the changes job said the change can't reach it.
@@ -815,7 +857,7 @@ jobs:
             .changes.outputs as $needed | to_entries[]
             | select(.value.result != "success")
             | select(.value.result != "skipped"
-              or (((.key | IN($skippable[])) or $needed[.key | sub("-lint$"; "")] == "false") | not))
+              or (((.key | IN($skippable[])) or $needed[.key | sub("-(lint|integration)$"; "")] == "false") | not))
             | "\(.key): \(.value.result)"')
           if [ -n "$failed" ]; then
             echo "Suites that did not pass:"

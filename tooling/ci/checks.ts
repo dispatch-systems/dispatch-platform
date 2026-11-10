@@ -14,17 +14,39 @@ import { workspaceCrates } from './workspace.js';
 const mode = process.argv[2] ?? 'full';
 const modes = ['full', 'build', 'checks', 'browser', 'core', 'api', 'smoke', 'scaffold', 'cache'];
 if (!modes.includes(mode)) throw new Error('Unknown validation mode');
-// core and scaffold each run as two jobs side by side, their lints and their tests; without
-// a part, both.
-const part = ['core', 'scaffold'].includes(mode)
-  ? process.argv.slice(3).find((arg) => !arg.startsWith('--'))
-  : undefined;
+/**
+ * The halves of core's tests, as the targets Cargo builds for each: the tests inside the crates'
+ * libraries and executables, and those in their `[[test]]` programs. Together they are every test
+ * `cargo test` runs but the doctests.
+ */
+const testTargets = { unit: ['--lib', '--bins'], integration: ['--test', '*'] };
+// core and scaffold each run as jobs side by side, their lints and their tests; without a
+// part, both. core's tests are two jobs themselves, `core tests unit` and
+// `core tests integration`; without a half, both at once.
+const [part, half] = ['core', 'scaffold'].includes(mode)
+  ? process.argv.slice(3).filter((arg) => !arg.startsWith('--'))
+  : [];
 if (part !== undefined && !['lint', 'tests'].includes(part))
   throw new Error('Unknown part: lint or tests');
+if (
+  half !== undefined &&
+  !(mode === 'core' && part === 'tests' && Object.hasOwn(testTargets, half))
+)
+  throw new Error('Unknown half of core tests: unit or integration');
+// api's Node tests run as jobs side by side too, as `api 1/2`; without a shard, all at once.
+const apiShard = mode === 'api' ? /^([1-9]\d*)\/([1-9]\d*)$/.exec(process.argv[3] ?? '') : null;
+if (apiShard && Number(apiShard[1]) > Number(apiShard[2]))
+  throw new Error('API shard out of range, as 1/2');
+// The Python tooling tests and the npm audit run once, in the first shard.
+const apiFirst = !apiShard || apiShard[1] === '1';
 const started = Date.now();
 const failures: string[] = [];
 const dashboardCommand = nodeTests('dashboard', { concurrency: 1 });
-const coreCommand = nodeTests('core', { concurrency: os.availableParallelism() });
+const coreCommand = nodeTests('core', {
+  concurrency: os.availableParallelism(),
+  // Node deals the files out in turn, the same on every runner, so the shards share them whole.
+  ...(apiShard ? { args: [`--test-shard=${apiShard[1]}/${apiShard[2]}`] } : {}),
+});
 const pythonCommands = [pythonTests('rules'), pythonTests('integration')];
 /**
  * The crates with live probes, behind their operator-probes feature: each collector's, whose own
@@ -59,15 +81,25 @@ const rustLint: Command[] = [
 /**
  * The Rust tests: nextest (`nextest.py`) runs every test program's tests side by side, where
  * `cargo test` runs one program after another, and reports every failure rather than stopping
- * at the first program with one. The doctests, which nextest can't run, follow.
+ * at the first program with one. The doctests, which nextest can't run, follow. A half compiles
+ * only its own test programs, of every crate: the crates Cargo selects are the same, so each
+ * compiles with the features the whole run gives it.
  */
 const rustTests: Command[] = [
   {
     name: 'Rust tests',
     command: 'python3',
-    args: ['tooling/ci/nextest.py', 'run', '--locked', '--no-fail-fast'],
+    args: [
+      'tooling/ci/nextest.py',
+      'run',
+      '--locked',
+      '--no-fail-fast',
+      ...(half ? testTargets[half as keyof typeof testTargets] : []),
+    ],
   },
-  { name: 'Rust doctests', command: 'cargo', args: ['test', '--locked', '--doc'] },
+  ...(half === 'integration'
+    ? []
+    : [{ name: 'Rust doctests', command: 'cargo', args: ['test', '--locked', '--doc'] }]),
 ];
 const rustCommands =
   part === 'lint' ? rustLint : part === 'tests' ? rustTests : [...rustLint, ...rustTests];
@@ -85,7 +117,7 @@ if (process.argv.includes('--list')) {
     mode === 'checks'
       ? checkCommands
       : mode === 'api'
-        ? [...pythonCommands, coreCommand]
+        ? [...(apiFirst ? pythonCommands : []), coreCommand]
         : mode === 'core'
           ? rustCommands
           : [];
@@ -205,8 +237,8 @@ async function core() {
   for (const command of rustCommands) if (!(await execute(command))) break;
 }
 /**
- * What the Rust jobs compile, none of it run: clippy and the probes, the tests, the capacity
- * shard's host tests (`browseros-check.py`), which build one package with its own features, and
+ * What the Rust jobs compile, none of it run: clippy and the probes, the tests, the host
+ * shard's probe (`browseros-check.py`), which builds one package with its own features, and
  * the debug build. Main's caches workflow runs it when it fills Cargo's debug cache, so each of
  * those jobs finds its dependencies built.
  */
@@ -226,9 +258,9 @@ async function cache() {
 /** The API tests against a debug backend, with the Python tooling tests and the npm audit. */
 async function api() {
   const python = (async () => {
-    for (const command of pythonCommands) await execute(command);
+    if (apiFirst) for (const command of pythonCommands) await execute(command);
   })();
-  const audit = run('dependency audit', 'npm', ['audit', '--audit-level=high']);
+  const audit = apiFirst ? run('dependency audit', 'npm', ['audit', '--audit-level=high']) : true;
   if (await run('debug build', 'tooling/cli/dispatchdev', ['build'])) {
     await execute(coreCommand);
   }

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Isolated native suites; the capacity shard gets its own otherwise idle runner."""
+"""Isolated native suites, a shard at a time. The capacity shard gets its own otherwise idle
+runner, and so does `host`, the Rust probe of the browser's isolation on this machine, which
+compiles its own test program."""
 
 import argparse
 import json
@@ -14,20 +16,19 @@ SHARDS = PLAN["native"]
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--shard", choices=["all", *SHARDS], default="all")
-    parser.add_argument("--host-only", action="store_true")
+    parser.add_argument("--shard", choices=["all", "host", *SHARDS], default="all")
     args = parser.parse_args()
     shard = args.shard
     root = Path(__file__).resolve().parents[2]
     environment = dict(os.environ)
     environment.setdefault("DISPATCH_BWRAP_EXECUTABLE", "/usr/local/libexec/dispatch-dev/bwrap")
     subprocess.run(["tooling/cli/dispatchdev", "build"], cwd=root, env=environment, check=True)
-    if args.host_only or shard in ("all", "capacity"):
+    if shard in ("all", "host"):
         subprocess.run([
             "cargo", "test", "--locked", "--test", "browseros_host", "--",
             "--ignored", "--nocapture", "--test-threads=1",
         ], cwd=root, env=environment, check=True)
-    if args.host_only:
+    if shard == "host":
         return
     environment["DISPATCH_TEST_NATIVE"] = "1"
     files = [file for group in SHARDS.values() for file in group] if shard == "all" else SHARDS[shard]
