@@ -156,9 +156,7 @@ pub(crate) async fn back_up(state: &Arc<State>, dsp: &str, at: i64) -> Result<()
         }
         let of = dsp.to_owned();
         state
-            .run_serving(dsp, DOMAIN, move |db| {
-                finish(db, &of, &photo, &outcome, at)
-            })
+            .run_serving(dsp, DOMAIN, move |db| finish(db, &of, &photo, &outcome, at))
             .await?;
         if stopped {
             break;

@@ -282,7 +282,13 @@ impl Files for Keeping {
             })
         })
     }
-    fn write<'a>(&'a self, _: &'a Arc<State>, _: &'a str, _: &'a str, _: Page) -> Answer<'a, Saved> {
+    fn write<'a>(
+        &'a self,
+        _: &'a Arc<State>,
+        _: &'a str,
+        _: &'a str,
+        _: Page,
+    ) -> Answer<'a, Saved> {
         Box::pin(async { Err(Error::new("keeping_no_pages", 501)) })
     }
     fn rewrite<'a>(

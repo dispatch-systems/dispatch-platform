@@ -69,7 +69,14 @@ async fn signed_copies_go_in_their_persons_and_categorys_folder_once_the_dsp_bac
     let (_root, state, c) = platform();
     let dsp = c.dsp.id.clone();
     let casey = Author::Named("Casey Supervisor".into());
-    let saving = |name: &str| (TARDIES.to_owned(), name.to_owned(), PHOTO.len(), casey.clone());
+    let saving = |name: &str| {
+        (
+            TARDIES.to_owned(),
+            name.to_owned(),
+            PHOTO.len(),
+            casey.clone(),
+        )
+    };
 
     // Until the DSP chooses to, nothing is saved.
     written(&state, &c, ConductTier::Verbal, true, true).await;
@@ -99,7 +106,10 @@ async fn signed_copies_go_in_their_persons_and_categorys_folder_once_the_dsp_bac
     support::trash(&dsp, "Writeups/Jordan Gray");
     written(&state, &c, ConductTier::Final, true, true).await;
     back_up(&state, &dsp, 4000).await.unwrap();
-    assert_eq!(support::files(&dsp).last(), Some(&saving("2026-11-02 Final.jpg")));
+    assert_eq!(
+        support::files(&dsp).last(),
+        Some(&saving("2026-11-02 Final.jpg"))
+    );
     assert_eq!(support::folders(&dsp), 3);
 }
 

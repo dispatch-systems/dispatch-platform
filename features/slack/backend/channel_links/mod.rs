@@ -231,7 +231,9 @@ pub async fn folder_for(
         Some(id) => self::chosen(state, files, &c.dsp.id, &id).await,
         None => {
             let by = Author::Member(c.actor().to_owned());
-            files.create_folder(state, &c.dsp.id, None, named, &by).await
+            files
+                .create_folder(state, &c.dsp.id, None, named, &by)
+                .await
         }
     }
 }
