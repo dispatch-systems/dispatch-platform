@@ -9,8 +9,8 @@ use people_impact::people_impact;
 use super::{
     ADAPTER_VERSION, COLLECTION, DOMAIN, RoutesStore,
     publishing::{
-        ASSIGNED_COLUMNS, DriverWrite, Writes, person_type, route_id, shared, shared_row, tasks,
-        write_itinerary, write_raw, write_routes, write_shared,
+        DriverWrite, Writes, person_type, route_id, shared, shared_row, tasks, write_itinerary,
+        write_raw, write_routes, write_shared,
     },
     saving,
     scope::{day_allowed, day_request, routes_day, routes_today},
@@ -371,6 +371,9 @@ fn prune_routes(db: &Db, publication: &str, routes: &[Value]) -> Result<usize> {
         params![publication, serde_json::to_string(&kept)?],
     )
 }
+/// What the route list sends of a driver it assigns: their phone and company come with their
+/// itinerary.
+const ASSIGNED_COLUMNS: &[&str] = &["first_name", "last_name", "initials", "person_type"];
 /// The drivers the provider's routes on the day's route list assign who have none of
 /// `itineraries`, the read's, written over the rows of the drivers live route data names where
 /// they changed, inside the caller's transaction: a driver assigned to a route is known before

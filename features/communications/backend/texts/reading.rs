@@ -1,8 +1,9 @@
 //! Reading the DSP's conversations by text as the page reads them, beside the Slack ones: those
 //! waiting, the answered a page at a time, those found by a name or a number's digits, and a
-//! conversation with its texts, each under whoever wrote it. A work conversation waits only on
-//! the live day (`live_day`); a driver's comes with their route today, each workday's route, and
-//! their conversations of other kinds.
+//! conversation with its texts, each under whoever wrote it, or for `windows` a bounded window
+//! of them around a place. A work conversation waits only on the live day (`live_day`); a
+//! driver's comes with their route today, each workday's route, and their conversations of
+//! other kinds.
 use super::{
     live_day::{self, LiveDay, Stopped},
     model::{Text, TextConversation, TextStatus},

@@ -2,8 +2,9 @@
 //! them, else as their Slack profile last named them; each message with who at the DSP sent it, its
 //! files and the group it went to; and the workspaces they're in. The latest answered and the
 //! groups among them, of every workspace or one, fifty at a time, and those found by a name typed;
-//! a conversation's messages the latest fifty at a time, in the order written. The list of every
-//! kind, with those waiting, is `inbox`'s.
+//! a conversation's messages the latest fifty at a time, in the order written, or for `windows`
+//! a bounded window of them around a place. The list of every kind, with those waiting, is
+//! `inbox`'s.
 use super::{
     bytes, compose, elsewhere,
     files::{File, FileStore},

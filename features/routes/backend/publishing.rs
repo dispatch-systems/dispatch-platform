@@ -244,11 +244,6 @@ const DRIVER_COLUMNS: &[&str] = &[
     "person_type",
     "company_id",
 ];
-/// What the route list sends of a driver it assigns: their phone and company come with their
-/// itinerary.
-pub(super) const ASSIGNED_COLUMNS: &[&str] =
-    &["first_name", "last_name", "initials", "person_type"];
-
 fn list(items: impl IntoIterator<Item = String>) -> String {
     items.into_iter().collect::<Vec<_>>().join(",")
 }
