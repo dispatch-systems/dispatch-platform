@@ -145,24 +145,31 @@ impl Release<'_> {
     /// branch, if its newest passed the full suite, or the package's checks on main's passed
     /// suites. Main's push run alone never counts: only a release's run builds Production's app.
     pub(super) fn fully_validated(&self, commit: &str) -> Result<Option<Value>> {
+        if let Some(run) = self.dispatched_run(commit)?
+            && releases::passed(&run)
+            && self.full_run(&run, commit)?
+        {
+            return Ok(Some(run));
+        }
+        Ok(None)
+    }
+    /// The newest run of the checks dispatched on the release's temporary branch at exactly
+    /// `commit`.
+    fn dispatched_run(&self, commit: &str) -> Result<Option<Value>> {
         let runs = io::github(
             self.system,
             &format!(
                 "actions/workflows/checks.yml/runs?event=workflow_dispatch&head_sha={commit}&per_page=100"
             ),
         )?;
-        if let Some(run) = releases::latest_run(
+        Ok(releases::latest_run(
             &runs["workflow_runs"],
             commit,
             "workflow_dispatch",
             Some(&self.checks_branch),
             false,
-        ) && releases::passed(run)
-            && self.full_run(run, commit)?
-        {
-            return Ok(Some(run.clone()));
-        }
-        Ok(None)
+        )
+        .cloned())
     }
     /// Requires the full suite on exactly `commit`, in the release's own run: dispatched on a
     /// temporary branch at the commit with `relay`, the app version it builds (empty to carry
@@ -176,21 +183,7 @@ impl Release<'_> {
         self.remove_checks_branch()
     }
     fn dispatch_full(&self, commit: &str, relay: &str) -> Result<String> {
-        let runs = io::github(
-            self.system,
-            &format!(
-                "actions/workflows/checks.yml/runs?event=workflow_dispatch&head_sha={commit}&per_page=100"
-            ),
-        )?;
-        if releases::latest_run(
-            &runs["workflow_runs"],
-            commit,
-            "workflow_dispatch",
-            Some(&self.checks_branch),
-            false,
-        )
-        .is_none()
-        {
+        if self.dispatched_run(commit)?.is_none() {
             let tested = self.tested(commit)?;
             let relay = format!("relay-version={relay}");
             let reused = tested
