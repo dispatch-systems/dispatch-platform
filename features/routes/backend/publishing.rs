@@ -4,7 +4,7 @@
 //! own; live route data's one day is kept in place, read by read.
 use super::{
     rows::TaskRow,
-    shaping::{PreparedItinerary, flag, integer, number, stamp, text},
+    shaping::{PreparedItinerary, flag, integer, list_text, number, stamp, text},
     staging::Staged,
     work_phones::Stored,
 };
@@ -64,27 +64,23 @@ pub(super) fn publish_day(db: &Db, job: &str, staged: &Staged, stored: Stored) -
         if later.is_some() {
             return Ok(false);
         }
+        let in_scope = params![
+            staged.day,
+            staged.station,
+            staged.service_area_id,
+            staged.provider
+        ];
         // The phones the day's read it replaces stored, after those `stored` keeps.
         let mut kept = stored;
         for replaced in db.all(
             &format!("SELECT id FROM route_publications WHERE {scope}"),
-            params![
-                staged.day,
-                staged.station,
-                staged.service_area_id,
-                staged.provider
-            ],
+            in_scope,
         )? {
             kept = kept.or(Stored::of(db, s(&replaced, "id"))?);
         }
         db.exec(
             &format!("UPDATE route_publications SET active=0 WHERE {scope}"),
-            params![
-                staged.day,
-                staged.station,
-                staged.service_area_id,
-                staged.provider
-            ],
+            in_scope,
         )?;
         db.exec(
             "UPDATE route_publications SET active=1 WHERE id=?",
@@ -313,14 +309,6 @@ pub(super) fn widened_seen(table: &str, first: &str, last: &str) -> [String; 2] 
     ]
 }
 
-/// A driver's kinds of person, as their row keeps them.
-pub(super) fn person_type(person: &Value) -> String {
-    person["personType"]
-        .as_array()
-        .map(|v| Value::Array(v.clone()).to_string())
-        .unwrap_or_else(|| "[]".into())
-}
-
 /// What a read sends of a row the days share, as its statement takes it: staged under
 /// `publication`, or in place with `day`, the day it was seen.
 pub(super) fn shared_row(
@@ -431,7 +419,7 @@ impl DriverWrite {
             vec![
                 text(&person["initials"]).into(),
                 text(&person["workPhoneNumber"]).into(),
-                person_type(person).into(),
+                list_text(&person["personType"]).into(),
                 company.into(),
             ],
         ))

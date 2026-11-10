@@ -15,7 +15,7 @@ use dispatch_core::{
     },
 };
 use dispatch_cortex as cortex;
-use dispatch_paycom as paycom;
+use dispatch_paycom::{self as paycom, timecards::EmployeeTimecardPeriod};
 const VIEW: Dsp = Dsp("timecard.view");
 const RUN: Dsp = Dsp("collections.run");
 /// What the page keeps: the only jobs its job routes list or cancel. Every other feature's
@@ -134,6 +134,14 @@ fn page_bounds(q: &serde_json::Value) -> Result<(usize, Option<usize>)> {
         Some(query_number(q, "limit", 100, 1, 100)?)
     };
     Ok((offset, limit))
+}
+
+/// The pay period `from` and `to` name, as sent.
+fn sent_period(q: &serde_json::Value) -> Result<EmployeeTimecardPeriod> {
+    Ok(EmployeeTimecardPeriod {
+        from: v::text(q, "from", 10, 10)?.into(),
+        to: v::text(q, "to", 10, 10)?.into(),
+    })
 }
 
 /// A tab switched off answers as a route that never existed.

@@ -1,5 +1,5 @@
 //! Employee search, period reads and collection requests.
-use super::{EMPLOYEES, tab};
+use super::{EMPLOYEES, sent_period, tab};
 use crate::backend::{TimecardStore, punches::employees::identify};
 use dispatch_core::{
     Result,
@@ -98,10 +98,7 @@ pub(super) fn sync_employee(db: &Store, c: &Member, input: &Input) -> Result<Rep
     tab(c, EMPLOYEES)?;
     let body = &input.body;
     v::fields(body, &["requestId", "from", "to"])?;
-    let period = EmployeeTimecardPeriod {
-        from: v::text(body, "from", 10, 10)?.into(),
-        to: v::text(body, "to", 10, 10)?.into(),
-    };
+    let period = sent_period(body)?;
     let code = input.param("code");
     let job = db.enqueue_employee_timecard(
         c.dsp_id(),
@@ -122,10 +119,7 @@ pub(super) fn employee_sync_status(db: &Store, c: &Member, input: &Input) -> Res
     tab(c, EMPLOYEES)?;
     let query = &input.query;
     v::fields(query, &["from", "to", "requestId"])?;
-    let period = EmployeeTimecardPeriod {
-        from: v::text(query, "from", 10, 10)?.into(),
-        to: v::text(query, "to", 10, 10)?.into(),
-    };
+    let period = sent_period(query)?;
     let request_id = optional(query, "requestId", |query, key| v::text(query, key, 1, 128))?;
     Reply::of(&db.employee_sync_status(c.dsp_id(), &period, request_id)?)
 }
@@ -134,10 +128,7 @@ pub(super) fn sync_employees(db: &Store, c: &Member, input: &Input) -> Result<Re
     tab(c, EMPLOYEES)?;
     let body = &input.body;
     v::fields(body, &["requestId", "from", "to"])?;
-    let period = EmployeeTimecardPeriod {
-        from: v::text(body, "from", 10, 10)?.into(),
-        to: v::text(body, "to", 10, 10)?.into(),
-    };
+    let period = sent_period(body)?;
     let status = db.enqueue_employee_sync(
         c.dsp_id(),
         c.actor(),

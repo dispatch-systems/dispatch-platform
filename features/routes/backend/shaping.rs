@@ -214,7 +214,7 @@ impl Shaper {
         Ok(PreparedItinerary {
             id: id.to_owned(),
             transporter_id: transporter_id.to_owned(),
-            columns: (flat.itinerary.into_iter())
+            columns: (flat.into_iter())
                 .chain([("work_phone", opt(work_phone))])
                 .map(|(c, v)| (c.to_owned(), v))
                 .collect(),
@@ -269,6 +269,13 @@ pub fn prepare(capture: &Capture) -> Result<Vec<PreparedItinerary>> {
 
 pub(super) fn opt<T: Into<Value>>(value: Option<T>) -> Value {
     value.map(Into::into).unwrap_or(Value::Null)
+}
+/// A list as JSON text, `[]` when absent.
+pub(super) fn list_text(value: &Value) -> String {
+    match value.as_array() {
+        Some(items) => Value::Array(items.clone()).to_string(),
+        None => "[]".into(),
+    }
 }
 /// A list as JSON text, or nothing when absent or empty.
 pub(super) fn json_list(value: &Value) -> Value {

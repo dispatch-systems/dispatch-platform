@@ -22,6 +22,9 @@ use serde_json::{Value, json};
 const LATEST: &str = "SELECT p.period_from,p.period_to FROM publications p \
     JOIN employees e ON e.publication_id=p.id WHERE e.code=? \
     ORDER BY p.period_to DESC,p.period_from DESC LIMIT 1";
+/// The newest pay period any collection reached.
+const NEWEST: &str = "SELECT period_from,period_to FROM publications \
+    ORDER BY period_to DESC,period_from DESC LIMIT 1";
 
 const EARLIEST_DATE: &str = "2000-01-01";
 
@@ -29,12 +32,18 @@ const EARLIEST_DATE: &str = "2000-01-01";
 pub(crate) fn latest_period(store: &Store, id: &str) -> Result<Value> {
     let latest = store
         .collector(id, paycom::PROVIDER)?
-        .one_as::<EmployeeTimecardPeriod>(
-            "SELECT period_from,period_to FROM publications \
-             ORDER BY period_to DESC,period_from DESC LIMIT 1",
-            [],
-        )?;
+        .one_as::<EmployeeTimecardPeriod>(NEWEST, [])?;
     Ok(latest.map_or(Value::Null, |period| json!(period)))
+}
+
+/// A period on or before `latest`, a whole number of pay periods back, and not before 2000.
+fn check_period(latest: &EmployeeTimecardPeriod, period: &EmployeeTimecardPeriod) -> Result<()> {
+    let offset = (latest.start()? - period.start()?).num_days();
+    ensure(
+        period.from.as_str() >= EARLIEST_DATE && offset >= 0 && offset % PERIOD_DAYS == 0,
+        "invalid_period",
+        400,
+    )
 }
 
 pub(crate) fn timecard_period(
@@ -51,11 +60,7 @@ pub(crate) fn timecard_period(
     let latest = if let Some(code) = code {
         db.one_as::<EmployeeTimecardPeriod>(LATEST, [code])?
     } else {
-        db.one_as::<EmployeeTimecardPeriod>(
-            "SELECT period_from,period_to FROM publications \
-             ORDER BY period_to DESC,period_from DESC LIMIT 1",
-            [],
-        )?
+        db.one_as::<EmployeeTimecardPeriod>(NEWEST, [])?
     }
     .ok_or_else(|| Error::new("timecard_period_unavailable", 404))?;
     let period = if let Some(date) = date {
@@ -65,12 +70,7 @@ pub(crate) fn timecard_period(
     } else {
         requested.unwrap_or(&latest).clone()
     };
-    let offset = (latest.start()? - period.start()?).num_days();
-    ensure(
-        period.from.as_str() >= EARLIEST_DATE && offset >= 0 && offset % PERIOD_DAYS == 0,
-        "invalid_period",
-        400,
-    )?;
+    check_period(&latest, &period)?;
     Ok(period)
 }
 
@@ -118,12 +118,7 @@ pub(crate) fn employee_timecard(
         .one_as::<EmployeeTimecardPeriod>(LATEST, [code])?
         .ok_or_else(|| Error::new("employee_not_found", 404))?;
     let period = requested.unwrap_or(&latest);
-    let offset = (latest.start()? - period.start()?).num_days();
-    ensure(
-        period.from.as_str() >= EARLIEST_DATE && offset >= 0 && offset % PERIOD_DAYS == 0,
-        "invalid_period",
-        400,
-    )?;
+    check_period(&latest, period)?;
     let publication = db.one(
         "SELECT p.id,p.collected_at FROM publications p JOIN employees e ON e.publication_id=p.id \
          WHERE e.code=? AND p.period_from=? AND p.period_to=? \

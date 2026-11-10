@@ -37,14 +37,47 @@ pub(crate) fn meal_sync_scopes(store: &Store, id: &str, date: &str) -> Result<Ve
     let rows = db.all(SCOPES, [date])?;
     Ok(rows
         .iter()
-        .map(|row| Scope {
-            date: date.into(),
-            station: s(row, "station").into(),
-            service_area_id: s(row, "service_area_id").into(),
-            provider: s(row, "provider").into(),
-            timezone: s(row, "timezone").into(),
-        })
+        .map(|row| publication_scope(row, date))
         .collect())
+}
+pub(super) fn publication_scope(row: &Value, date: &str) -> Scope {
+    Scope {
+        date: date.into(),
+        station: s(row, "station").into(),
+        service_area_id: s(row, "service_area_id").into(),
+        provider: s(row, "provider").into(),
+        timezone: s(row, "timezone").into(),
+    }
+}
+/// Whether the DSP's own station code can start a Cortex discovery.
+pub(super) fn station_available(station: &str) -> bool {
+    (3..=8).contains(&station.len())
+        && station
+            .bytes()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+}
+/// The discovery a sync falls back to when no scope has been collected yet.
+pub(super) fn required_discovery(store: &Store, id: &str, date: &str) -> Result<Discovery> {
+    let discovery = meal_sync_discovery(store, id, date)?;
+    ensure(
+        !discovery.station.is_empty(),
+        "meal_sync_scope_required",
+        409,
+    )?;
+    discovery.scope("discovery", "discovery")?;
+    Ok(discovery)
+}
+pub(super) fn require_connections(store: &Store, id: &str) -> Result<()> {
+    ensure(
+        store.connection_for(id, paycom::PROVIDER)?.enabled,
+        "meal_sync_paycom_required",
+        409,
+    )?;
+    ensure(
+        store.connection_for(id, cortex::PROVIDER)?.enabled,
+        "meal_sync_flex_required",
+        409,
+    )
 }
 fn sync_source(store: &Store, id: &str, date: &str, provider: Provider) -> Result<DailySyncSource> {
     let kind = provider.job_kind();
@@ -90,14 +123,10 @@ pub(crate) fn meal_sync_status(store: &Store, id: &str, date: &str) -> Result<Da
     // of the DSP. Collection still validates each provider's business date.
     dispatch_core::foundation::validate::date(date)?;
     let discovery = meal_sync_discovery(store, id, date)?;
-    let station_available = (3..=8).contains(&discovery.station.len())
-        && discovery
-            .station
-            .bytes()
-            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit());
     Ok(DailySyncStatus {
         date: date.into(),
-        scope_available: station_available || !meal_sync_scopes(store, id, date)?.is_empty(),
+        scope_available: station_available(&discovery.station)
+            || !meal_sync_scopes(store, id, date)?.is_empty(),
         paycom: sync_source(store, id, date, paycom::PROVIDER)?,
         flex: sync_source(store, id, date, cortex::PROVIDER)?,
     })
@@ -126,16 +155,7 @@ pub(crate) fn enqueue_meal_sync(
     date: &str,
 ) -> Result<Value> {
     collection_date(&json!({"date":date}), &store.find_dsp(id)?.timezone)?;
-    ensure(
-        store.connection_for(id, paycom::PROVIDER)?.enabled,
-        "meal_sync_paycom_required",
-        409,
-    )?;
-    ensure(
-        store.connection_for(id, cortex::PROVIDER)?.enabled,
-        "meal_sync_flex_required",
-        409,
-    )?;
+    require_connections(store, id)?;
     // Replay the original batch even after discovery publishes its first
     // scope, or subsequent collections change the available stations.
     let prefix = format!("meal:{key}:");
@@ -167,17 +187,10 @@ pub(crate) fn enqueue_meal_sync(
         json!({"date":date}),
     )];
     if scopes.is_empty() {
-        let discovery = meal_sync_discovery(store, id, date)?;
-        ensure(
-            !discovery.station.is_empty(),
-            "meal_sync_scope_required",
-            409,
-        )?;
-        discovery.scope("discovery", "discovery")?;
         requests.push((
             format!("meal:{key}:flex:0"),
             cortex::PROVIDER,
-            serde_json::to_value(discovery)?,
+            serde_json::to_value(required_discovery(store, id, date)?)?,
         ));
     }
     for (index, scope) in scopes.iter().enumerate() {

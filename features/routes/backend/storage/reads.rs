@@ -22,8 +22,7 @@ pub(super) fn route_days(store: &Store, id: &str) -> Result<RouteDays> {
     let db = store.routes_db(id)?;
     let days = db
         .all(
-            "SELECT id,day,mode,station,collected_at,route_count,itinerary_count,stop_count,task_count \
-             FROM route_publications WHERE station=? AND active=1 ORDER BY day DESC",
+            &format!("{PUBLICATION_SELECT} WHERE station=? AND active=1 ORDER BY day DESC"),
             [&station],
         )?
         .iter()
@@ -42,8 +41,7 @@ pub(super) fn route_day(store: &Store, id: &str, day: &str) -> Result<Option<Rou
     let station = store.profile(id)?.station_code;
     let db = store.routes_db(id)?;
     let Some(row) = db.one(
-        "SELECT id,day,mode,station,collected_at,route_count,itinerary_count,stop_count,task_count \
-         FROM route_publications WHERE station=? AND day=? AND active=1",
+        &format!("{PUBLICATION_SELECT} WHERE station=? AND day=? AND active=1"),
         [&station, day],
     )?
     else {
@@ -77,8 +75,7 @@ pub(super) fn route_itinerary(
     let station = store.profile(id)?.station_code;
     let db = store.routes_db(id)?;
     let Some(row) = db.one(
-        "SELECT id,day,mode,station,collected_at,route_count,itinerary_count,stop_count,task_count \
-         FROM route_publications WHERE station=? AND day=? AND active=1",
+        &format!("{PUBLICATION_SELECT} WHERE station=? AND day=? AND active=1"),
         [&station, day],
     )?
     else {
@@ -270,6 +267,9 @@ fn address_from(row: &Value, latitude: &str, longitude: &str) -> Option<RouteAdd
     })
 }
 
+/// The columns a `RoutePublication` is read from.
+pub(super) const PUBLICATION_SELECT: &str = "SELECT id,day,mode,station,collected_at,\
+    route_count,itinerary_count,stop_count,task_count FROM route_publications";
 pub(super) fn publication(row: &Value) -> RoutePublication {
     RoutePublication {
         id: s(row, "id").into(),

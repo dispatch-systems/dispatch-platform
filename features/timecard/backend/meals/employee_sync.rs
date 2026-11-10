@@ -1,4 +1,8 @@
 //! One immutable employee-period sync: every Paycom employee and every elapsed Cortex day.
+use super::sync::{
+    meal_sync_discovery, publication_scope, require_connections, required_discovery,
+    station_available,
+};
 use crate::{
     api::employee_sync::{EmployeeSyncSource, EmployeeSyncStatus},
     backend::TimecardStore,
@@ -9,7 +13,7 @@ use dispatch_core::{
         api::jobs::{JobRow, JobStatus},
         registry::Provider,
     },
-    db::{Store, s},
+    db::Store,
     ensure,
 };
 use dispatch_cortex::{
@@ -73,13 +77,7 @@ fn period_scopes(store: &Store, id: &str, period: &EmployeeTimecardPeriod) -> Re
     )?);
     let mut scopes = BTreeMap::new();
     for row in rows {
-        let scope = Scope {
-            date: period.from.clone(),
-            station: s(&row, "station").into(),
-            service_area_id: s(&row, "service_area_id").into(),
-            provider: s(&row, "provider").into(),
-            timezone: s(&row, "timezone").into(),
-        };
+        let scope = publication_scope(&row, &period.from);
         scopes
             .entry((
                 scope.station.clone(),
@@ -95,12 +93,8 @@ fn scope_available(store: &Store, id: &str, period: &EmployeeTimecardPeriod) -> 
     if !period_scopes(store, id, period)?.is_empty() {
         return Ok(true);
     }
-    let discovery = super::sync::meal_sync_discovery(store, id, &period.from)?;
-    Ok((3..=8).contains(&discovery.station.len())
-        && discovery
-            .station
-            .bytes()
-            .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit()))
+    let discovery = meal_sync_discovery(store, id, &period.from)?;
+    Ok(station_available(&discovery.station))
 }
 
 fn summarize(
@@ -278,16 +272,7 @@ pub(crate) fn enqueue_employee_sync(
         to: period.to.clone(),
     };
     paycom_request.date(&store.find_dsp(id)?.timezone)?;
-    ensure(
-        store.connection_for(id, paycom::PROVIDER)?.enabled,
-        "meal_sync_paycom_required",
-        409,
-    )?;
-    ensure(
-        store.connection_for(id, cortex::PROVIDER)?.enabled,
-        "meal_sync_flex_required",
-        409,
-    )?;
+    require_connections(store, id)?;
     let through = period.to.clone().min(store.local_date(id)?);
     let templates = period_scopes(store, id, period)?;
     let start = period.start()?;
@@ -303,13 +288,7 @@ pub(crate) fn enqueue_employee_sync(
             break;
         }
         let scope_requests = if templates.is_empty() {
-            let discovery = super::sync::meal_sync_discovery(store, id, &date)?;
-            ensure(
-                !discovery.station.is_empty(),
-                "meal_sync_scope_required",
-                409,
-            )?;
-            discovery.scope("discovery", "discovery")?;
+            let discovery = required_discovery(store, id, &date)?;
             vec![CollectionRequest::Discover(discovery)]
         } else {
             templates

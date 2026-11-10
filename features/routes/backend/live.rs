@@ -9,12 +9,12 @@ use people_impact::people_impact;
 use super::{
     ADAPTER_VERSION, COLLECTION, DOMAIN, RoutesStore,
     publishing::{
-        DriverWrite, Writes, person_type, route_id, shared, shared_row, tasks, write_itinerary,
-        write_raw, write_routes, write_shared,
+        DriverWrite, Writes, route_id, shared, shared_row, tasks, write_itinerary, write_raw,
+        write_routes, write_shared,
     },
     saving,
     scope::{day_allowed, day_request, routes_day, routes_today},
-    shaping::{PreparedItinerary, PreparedResponse, Shaper, prepare_lists, text},
+    shaping::{PreparedItinerary, PreparedResponse, Shaper, list_text, prepare_lists, text},
     staging::blocking,
     storage::stored_capture,
     work_phones::{PHONES_SINCE, Stored},
@@ -427,7 +427,10 @@ fn assigned_drivers(
         drivers.push(DriverWrite::new(
             id,
             person,
-            vec![text(&person["initials"]).into(), person_type(person).into()],
+            vec![
+                text(&person["initials"]).into(),
+                list_text(&person["personType"]).into(),
+            ],
         ));
     }
     drivers

@@ -1,5 +1,5 @@
 //! Meal comparisons, period gaps and Cortex publications.
-use super::{KINDS, MEAL_BREAKS, day_key, page_bounds, tab};
+use super::{KINDS, MEAL_BREAKS, day_key, page_bounds, sent_period, tab};
 use crate::backend::{TimecardStore, settings};
 use dispatch_core::{
     Result,
@@ -11,7 +11,6 @@ use dispatch_core::{
         route::Member,
     },
 };
-use dispatch_paycom::timecards::EmployeeTimecardPeriod;
 
 pub(super) fn meal_key(db: &Store, c: &Member, input: &Input) -> Result<String> {
     tab(c, MEAL_BREAKS)?;
@@ -151,10 +150,7 @@ pub(super) fn meal_period(db: &Store, c: &Member, input: &Input) -> Result<Reply
         400,
     )?;
     let requested = if q.get("from").is_some() || q.get("to").is_some() {
-        Some(EmployeeTimecardPeriod {
-            from: v::text(q, "from", 10, 10)?.into(),
-            to: v::text(q, "to", 10, 10)?.into(),
-        })
+        Some(sent_period(q)?)
     } else {
         None
     };
