@@ -49,15 +49,7 @@ fn pass(state: Arc<State>, due: bool) -> Upkeep {
             return;
         }
         let dsps = state
-            .read(|db| {
-                let mut on = Vec::new();
-                for dsp in db.kept_dsps()? {
-                    if db.feature_enabled(&dsp, crate::FEATURE.switch.id)? {
-                        on.push(dsp);
-                    }
-                }
-                Ok(on)
-            })
+            .read(|db| crate::backend::switched_on(db, db.kept_dsps()?))
             .await;
         match dsps {
             Ok(dsps) => {
