@@ -1,4 +1,5 @@
 // Conduct's API types, as its screens use them.
+export type { ConductBackup } from './generated/ConductBackup';
 export type { ConductCategory } from './generated/ConductCategory';
 export type { ConductFinalKind } from './generated/ConductFinalKind';
 export type { ConductOverview } from './generated/ConductOverview';

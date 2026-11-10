@@ -8,7 +8,7 @@ use crate::backend::{
 };
 use axum::body::Bytes;
 use dispatch_core::{server::http::upload::Upload, testing};
-use dispatch_documents_contract::{self as files, Files, Page};
+use dispatch_documents_contract::{self as files, Files, NewFolder, Page};
 use futures_util::stream;
 use serde_json::json;
 
@@ -46,8 +46,14 @@ async fn files_are_kept_inside_the_dsps_folder_once_connected_and_named_for_who_
     // A folder a member makes for them is at the top, found by its ID, and browsed into from
     // there; anything else isn't one.
     let member = Author::Member(owner);
+    let named = |parent, name, logged_as| NewFolder {
+        parent,
+        name,
+        by: &member,
+        logged_as,
+    };
     let folder = files
-        .create_folder(&state, &dsp, "photos", &member)
+        .create_folder(&state, &dsp, named(None, "photos", None))
         .await
         .unwrap();
     let found = files.folder(&state, &dsp, &folder.id).await.unwrap();
@@ -59,6 +65,28 @@ async fn files_are_kept_inside_the_dsps_folder_once_connected_and_named_for_who_
     assert_eq!(files.folder(&state, &dsp, "elsewhere").await.unwrap(), None);
     let browsing = files.browse(&state, &dsp, Some("elsewhere")).await;
     assert_eq!(browsing.unwrap_err().code, "files_folder_not_found");
+
+    // One made inside it is there, logged as what it's to be called where its name is someone's,
+    // and none is made inside what isn't a folder of the DSP's.
+    let theirs = named(Some(&folder.id), "Dre Holloway", Some("a driver's folder"));
+    let made = files.create_folder(&state, &dsp, theirs).await.unwrap();
+    let inside = files.browse(&state, &dsp, Some(&folder.id)).await.unwrap();
+    assert_eq!(inside.folders, std::slice::from_ref(&made));
+    // Read as the platform reads it: its owner made them, whose doings a DSP's own log leaves out.
+    let logged = state.read(|db| testing::audits(db, None)).await.unwrap();
+    let created: Vec<&str> = logged
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|event| event["action"] == "documents.created")
+        .filter_map(|event| event["detail"].as_str())
+        .collect();
+    assert_eq!(created.len(), 2);
+    assert!(created.contains(&"photos") && created.contains(&"a driver's folder"));
+    let refused = files
+        .create_folder(&state, &dsp, named(Some("elsewhere"), "vans", None))
+        .await;
+    assert_eq!(refused.unwrap_err().code, "files_folder_not_found");
 
     // A file from someone known only by name goes into the folder, as theirs, logged with no
     // member as its actor.
@@ -128,10 +156,13 @@ async fn a_page_is_written_as_a_doc_in_the_dsps_folder_and_over_it_where_it_is()
     let files = offered(&state, &dsp).await.expect("Documents is on");
     connect(&state, &dsp).await;
     let owner = state.read(|db| Ok(testing::a_user(db))).await.unwrap();
-    let folder = files
-        .create_folder(&state, &dsp, "canvases", &Author::Member(owner.clone()))
-        .await
-        .unwrap();
+    let canvases = NewFolder {
+        parent: None,
+        name: "canvases",
+        by: &Author::Member(owner.clone()),
+        logged_as: None,
+    };
+    let folder = files.create_folder(&state, &dsp, canvases).await.unwrap();
 
     // Written, it's a Doc in the folder, added by who wrote it and logged as saved from Slack.
     let dre = Author::Named("Dre Holloway".into());
