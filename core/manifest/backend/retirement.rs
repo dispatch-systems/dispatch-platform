@@ -5,11 +5,15 @@ use crate::{
     manifest::{Registry, registry},
 };
 use serde_json::Value;
-fn renamed(value: &str) -> &str {
+/// Every feature's retired identifiers, each as its old spelling and its current one.
+fn retirements() -> impl Iterator<Item = &'static (&'static str, &'static str)> {
     registry()
         .features
         .iter()
         .flat_map(|feature| feature.retired_identifiers)
+}
+fn renamed(value: &str) -> &str {
+    retirements()
         .find(|(old, _)| *old == value)
         .map_or(value, |(_, new)| *new)
 }
@@ -38,7 +42,7 @@ pub(crate) fn roles(db: &Db) -> Result<()> {
 }
 pub(crate) fn platform(store: &Store) -> Result<()> {
     store.platform.transaction(|| {
-        for (old,new) in registry().features.iter().flat_map(|feature| feature.retired_identifiers) {
+        for (old,new) in retirements() {
             store.platform.exec("INSERT INTO dsp_features(dsp_id,feature,enabled,changed_by,changed_at) \
                 SELECT dsp_id,?,enabled,changed_by,changed_at FROM dsp_features old WHERE feature=? \
                 AND NOT EXISTS(SELECT 1 FROM dsp_features current WHERE current.dsp_id=old.dsp_id AND current.feature=?)",
@@ -46,19 +50,13 @@ pub(crate) fn platform(store: &Store) -> Result<()> {
             store.platform.exec("DELETE FROM dsp_features WHERE feature=?", [old])?;
         }
         roles(&store.platform)?;
-        for (old,new) in registry().features.iter().flat_map(|feature| feature.retired_identifiers)
-            .filter(|(old,_)| !old.contains('.')) {
+        for (old,new) in retirements().filter(|(old,_)| !old.contains('.')) {
             store.platform.exec("UPDATE audit SET action=? || substr(action,length(?) + 1) WHERE substr(action,1,length(?) + 1)=? || '.'",
                 [new,old,old,old])?;
         }
         Ok(())
     })?;
-    let retired: Vec<&str> = registry()
-        .features
-        .iter()
-        .flat_map(|feature| feature.retired_identifiers)
-        .map(|(old, _)| *old)
-        .collect();
+    let retired: Vec<&str> = retirements().map(|(old, _)| *old).collect();
     let retired = serde_json::to_string(&retired)?;
     store.jobs.transaction(|| {
         for row in store.jobs.all(
@@ -87,11 +85,7 @@ pub(crate) fn platform(store: &Store) -> Result<()> {
 pub(crate) fn dsp(store: &Store, id: &str) -> Result<()> {
     let data = store.dsp(id)?;
     data.transaction(|| {
-        for (old, new) in registry()
-            .features
-            .iter()
-            .flat_map(|feature| feature.retired_identifiers)
-        {
+        for (old, new) in retirements() {
             data.exec(
                 "UPDATE collection_schedules SET collection=? WHERE collection=?",
                 [new, old],
