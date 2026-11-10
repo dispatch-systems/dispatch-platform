@@ -12,6 +12,22 @@ pub const PAGE: usize = 50;
 /// The most server messages in one authoritative conversation window.
 pub const WINDOW: usize = 150;
 
+/// The time Slack's `ts` names, in milliseconds: seconds, a point, then microseconds. None for
+/// one that isn't, or is past what milliseconds hold.
+pub fn millis(ts: &str) -> Option<i64> {
+    let (seconds, micros) = ts.split_once('.').unwrap_or((ts, "0"));
+    let micros = format!("{micros:0<6}");
+    seconds
+        .parse::<i64>()
+        .ok()?
+        .checked_mul(1000)?
+        .checked_add(micros.get(..3)?.parse::<i64>().ok()?)
+}
+/// Slack's `ts` for the time `at`, in milliseconds.
+pub fn ts(at: i64) -> String {
+    format!("{}.{:03}000", at.div_euclid(1000), at.rem_euclid(1000))
+}
+
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     #[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]

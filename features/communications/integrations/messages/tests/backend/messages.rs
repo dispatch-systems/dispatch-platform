@@ -1,7 +1,9 @@
 //! A workspace forgotten, as on disconnecting it, keeps every message the DSP had there; and
 //! which of the DSP's workspaces need updating for Communications.
 use super::*;
-use crate::backend::{conversations, reply, storage::conversations::ConversationStore, support};
+use crate::backend::{
+    conversations, model, reply, storage::conversations::ConversationStore, support,
+};
 use dispatch_core::db::now;
 use dispatch_slack::testing as slack;
 use serde_json::json;
@@ -22,7 +24,7 @@ async fn a_workspace_forgotten_keeps_its_messages_and_lets_go_of_conversations_w
     let (_root, state, bot) = support::connected(TEAM).await;
     let dsp = bot.dsp.clone();
     let event = json!({"type": "message", "channel_type": "im", "channel": "D0FORGET",
-        "user": "U0FIXOWNER", "text": "Keys are in the van", "ts": incoming::ts(now())});
+        "user": "U0FIXOWNER", "text": "Keys are in the van", "ts": model::ts(now())});
     incoming::heard(&state, &dsp, TEAM, &event).await.unwrap();
     let at = dsp.clone();
     state

@@ -30,10 +30,10 @@ use crate::{
         changes::ChangeStore,
         compose,
         files::{self, FileStore},
-        initials, live, reply, sender,
+        initials, live, model, reply, sender,
         storage::{DOMAIN, conversations::ConversationStore},
     },
-    integrations::messages::{ID, incoming},
+    integrations::messages::ID,
 };
 use dispatch_core::{
     Code, Error, Result, State,
@@ -519,7 +519,7 @@ async fn deliver(
         Ok(Outcome::Sent {
             name: member.name.clone(),
             channel: channel.clone(),
-            at: incoming::millis(&ts).ok_or_else(|| Error::new("slack_refused", 502))?,
+            at: model::millis(&ts).ok_or_else(|| Error::new("slack_refused", 502))?,
             ts,
             photos: shown
                 .iter()

@@ -6,7 +6,7 @@
 use super::*;
 use crate::api::types::Today;
 use crate::backend::support::{self, DRIVERS, phoned, route, routed, texted, van};
-use crate::backend::{conversations, texts::reading};
+use crate::backend::{conversations, model, texts::reading};
 use crate::integrations::messages::incoming;
 use dispatch_core::{db::now, foundation::clock, manifest::people::PersonRole};
 use dispatch_slack::kit::{self, Bot};
@@ -23,7 +23,7 @@ const DAY: i64 = 24 * HOUR;
 /// The conversation the member `user` started.
 async fn started(state: &Arc<State>, bot: &Bot, user: &str) -> String {
     let event = json!({"type": "message", "channel_type": "im", "channel": format!("D{user}"),
-        "user": user, "text": "Van won't start", "ts": incoming::ts(now() - 1)});
+        "user": user, "text": "Van won't start", "ts": model::ts(now() - 1)});
     incoming::heard(state, &bot.dsp, TEAM, &event)
         .await
         .unwrap();

@@ -12,7 +12,7 @@ use super::{
         self,
         storage::groups::{Answered, GroupStore},
     },
-    model::{ConversationKind, Direction, FileStatus, PAGE},
+    model::{self, ConversationKind, Direction, FileStatus, PAGE},
     people::People,
     search,
     storage::{
@@ -267,7 +267,7 @@ pub fn before(value: &str) -> Result<&str> {
 /// millisecond.
 pub fn seen(value: &str) -> Result<(i64, &str)> {
     let ts = before(value)?;
-    let at = messages::incoming::millis(ts).ok_or_else(|| Error::new("invalid_input", 400))?;
+    let at = model::millis(ts).ok_or_else(|| Error::new("invalid_input", 400))?;
     Ok((at, ts))
 }
 /// The conversation `id` and its latest messages, or those before the one Slack knows as
