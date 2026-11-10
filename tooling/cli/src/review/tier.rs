@@ -168,13 +168,19 @@ pub enum Later {
     Pass,
 }
 
-/// What a pass's reviewers haven't read needs, from the files `changed` since. Only what is
-/// Light by itself is let off a whole pass: a test or a README on a sensitive path isn't.
+/// What a pass's reviewers haven't read needs, from the files `changed` since, whatever their
+/// size: a change's size sets its tier once, at its first pass. A test or a README on a
+/// sensitive path is read as part of the change.
 pub fn later(changed: &[Changed]) -> Later {
-    match judge(changed).tier {
-        Tier::Light if changed.iter().all(|file| documentation(&file.path)) => Later::Nothing,
-        Tier::Light => Later::Tests,
-        Tier::Standard | Tier::Sensitive => Later::Pass,
+    let all = |light: fn(&str) -> bool| changed.iter().all(|file| light(&file.path));
+    if changed.iter().any(|file| sensitive(&file.path).is_some()) {
+        Later::Pass
+    } else if all(documentation) {
+        Later::Nothing
+    } else if all(|path| documentation(path) || test(path)) {
+        Later::Tests
+    } else {
+        Later::Pass
     }
 }
 

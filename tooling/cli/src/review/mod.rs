@@ -146,80 +146,47 @@ impl Checkout<'_> {
     /// Where `rev` left `main`, and the files it changes against it.
     fn against_main(&self, rev: &str) -> Result<(String, Vec<tier::Changed>)> {
         let main = self.git(&["merge-base", "origin/main", rev])?;
-        let changed = self.changed(&format!("{main}..{rev}"), &[])?;
+        let changed = self.changed(&format!("{main}..{rev}"))?;
         Ok((main, changed))
     }
-    /// The files that differ across `range`, or those of `paths` that do.
-    fn changed(&self, range: &str, paths: &[String]) -> Result<Vec<tier::Changed>> {
-        let mut args = vec!["diff", "--numstat", "--no-renames", "-z", range];
-        if !paths.is_empty() {
-            args.push("--");
-            args.extend(paths.iter().map(String::as_str));
-        }
-        Ok(tier::numstat(&self.git(&args)?))
+    /// The files that differ across `range`.
+    fn changed(&self, range: &str) -> Result<Vec<tier::Changed>> {
+        Ok(tier::numstat(&self.git(&[
+            "diff",
+            "--numstat",
+            "--no-renames",
+            "-z",
+            range,
+        ])?))
     }
-    /// Whether each commit after `reviewed` up to `head` only merges `main` in, exactly as git
-    /// merges it unaided: the change then has nothing of its own its review didn't read.
-    fn only_main_since(&self, reviewed: &str, head: &str) -> Result<bool> {
-        let since = self.git(&[
-            "rev-list",
-            "--first-parent",
-            "--parents",
-            &format!("{reviewed}..{head}"),
-        ])?;
-        let mut after = head;
-        for line in since.lines() {
-            let [commit, ours, theirs] = line.split(' ').collect::<Vec<_>>()[..] else {
-                return Ok(false);
-            };
-            let from_main =
-                self.git(&["rev-list", "--count", theirs, "--not", "origin/main"])? == "0";
-            // A merge git can't make unaided, or one edited by hand, holds the change's own work.
-            let unaided = self.git(&["merge-tree", "--write-tree", ours, theirs]).ok()
-                == Some(self.git(&["rev-parse", &format!("{commit}^{{tree}}")])?);
-            if commit != after || !from_main || !unaided {
-                return Ok(false);
-            }
-            after = ours;
-        }
-        Ok(after == reviewed)
+    /// What the branch itself changed from `reviewed` to `head`: the files that differ, or once
+    /// `main` was merged in since, those that differ from `reviewed` with that `main` merged in
+    /// as git merges it unaided, so undoing what `main` brought counts and bringing it doesn't.
+    /// None when git can't make that merge: how it was resolved is the branch's own work.
+    fn since(&self, reviewed: &str, head: &str) -> Result<Option<Vec<tier::Changed>>> {
+        let main = self.git(&["merge-base", "origin/main", head])?;
+        let before = match self.git(&["merge-base", "origin/main", reviewed])? == main {
+            true => reviewed.to_owned(),
+            false => match self.git(&["merge-tree", "--write-tree", reviewed, &main]) {
+                Ok(merged) => merged,
+                Err(_) => return Ok(None),
+            },
+        };
+        Ok(Some(self.changed(&format!("{before}..{head}"))?))
     }
-}
-
-/// The paths of the branch's own files, where a diff from an earlier commit of it needs them
-/// named. Once `main` was merged in since, what changed holds `main`'s changes too: the branch's
-/// own are the files it changed against `main` `before` or changes `now`, so a fix that put a
-/// file back as `main` has it stays in. Until then the whole diff is its own, and none are named.
-fn own(merged: bool, before: &[String], now: &[String]) -> Vec<String> {
-    if !merged {
-        return vec![];
-    }
-    let mut own = before.to_vec();
-    for path in now {
-        if !own.contains(path) {
-            own.push(path.clone());
-        }
-    }
-    own
-}
-fn paths(changed: &[tier::Changed]) -> Vec<String> {
-    changed.iter().map(|file| file.path.clone()).collect()
 }
 
 /// What the commits from `reviewed` to `head` still need of the review that read `reviewed`, or
 /// whose answers account for it: nothing for `main` merged in as git merges it unaided or for
 /// documentation alone, a pass on the tests for tests alone, and a pass for the rest.
 pub fn later(root: &Path, reviewed: &str, head: &str, runner: &dyn Runner) -> Result<Later> {
-    let git = Checkout { root, runner };
-    if reviewed == head || git.only_main_since(reviewed, head)? {
+    if reviewed == head {
         return Ok(Later::Nothing);
     }
-    let (before, then) = git.against_main(reviewed)?;
-    let (main, now) = git.against_main(head)?;
-    let named = own(before != main, &paths(&then), &paths(&now));
-    Ok(tier::later(
-        &git.changed(&format!("{reviewed}..{head}"), &named)?,
-    ))
+    Ok(match (Checkout { root, runner }).since(reviewed, head)? {
+        Some(changed) => tier::later(&changed),
+        None => Later::Pass,
+    })
 }
 
 /// The checkout's branch and head, committed and pushed as they are.
@@ -408,34 +375,41 @@ pub fn prepare(root: &Path, ask: &Prepare, runner: &dyn Runner) -> Result<()> {
     let base = previous
         .as_ref()
         .map_or(main.clone(), |(pass, _)| pass.head.clone());
-    let changed = paths(&changed);
-    let range = format!("{base}..{head}");
-    let named = match &previous {
-        Some((previous, _)) => own(previous.main != main, &previous.paths, &changed),
-        None => vec![],
-    };
-    let diff = match named.is_empty() {
-        true => format!("git diff {range}"),
-        false => format!(
-            "git diff {range} -- {}",
-            named
-                .iter()
-                .map(|path| workspace::quote(path))
-                .collect::<Vec<_>>()
-                .join(" ")
-        ),
+    let paths: Vec<String> = changed.iter().map(|file| file.path.clone()).collect();
+    // After `main` was merged in, what changed since the last pass holds `main`'s own changes
+    // too: the branch's own are the files it changed then or changes now, so a fix that put a
+    // file back as `main` has it stays in.
+    let diff = match &previous {
+        Some((previous, _)) if previous.main != main => {
+            let mut own: Vec<&str> = previous.paths.iter().map(String::as_str).collect();
+            for path in &paths {
+                if !own.contains(&path.as_str()) {
+                    own.push(path);
+                }
+            }
+            let own: Vec<String> = own.into_iter().map(workspace::quote).collect();
+            format!("git diff {base}..{head} -- {}", own.join(" "))
+        }
+        _ => format!("git diff {base}..{head}"),
     };
     // A later pass reads what changed since the one before, and that sets who reads it: the
-    // tests alone when nothing else changed, and the security reviewer only for something
-    // sensitive in it, a fix its own review asked for, or a tier that was asked for.
+    // tests alone when nothing else changed, and the security reviewer only for a sensitive
+    // path in it, a fix its own review asked for, or a tier that was asked for. A merge of
+    // `main` git couldn't make unaided may hold anything.
     let (tests, security) = match &previous {
         None => (false, true),
         Some((_, recorded)) => {
-            let since = git.changed(&range, &named)?;
+            let since = git.since(&base, &head)?;
             (
-                tier::later(&since) == Later::Tests,
+                since
+                    .as_ref()
+                    .is_some_and(|since| tier::later(since) == Later::Tests),
                 asked
-                    || tier::judge(&since).tier == Tier::Sensitive
+                    || since.is_none_or(|since| {
+                        since
+                            .iter()
+                            .any(|file| tier::sensitive(&file.path).is_some())
+                    })
                     || recorded.answers.iter().any(|outcome| {
                         outcome.security && outcome.tag == "Important" && outcome.answer == "fixed"
                     }),
@@ -449,13 +423,13 @@ pub fn prepare(root: &Path, ask: &Prepare, runner: &dyn Runner) -> Result<()> {
         base: base.clone(),
         main: main.clone(),
         diff,
-        paths: changed.clone(),
+        paths: paths.clone(),
         tier,
         reasons: judged.reasons,
         asked,
         security,
     };
-    let paths: Vec<&str> = changed.iter().map(String::as_str).collect();
+    let paths: Vec<&str> = paths.iter().map(String::as_str).collect();
     let fill = Fill {
         root,
         instructions: instructions(root, ask.source)?,

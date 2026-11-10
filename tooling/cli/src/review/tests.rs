@@ -36,11 +36,12 @@ fn a_change_is_light_standard_or_sensitive_by_the_paths_it_changes() {
         (vec!["core/accounts/README.md"], tier::Later::Pass),
         (vec!["AGENTS.md"], tier::Later::Pass),
     ] {
+        // Whatever their size, which sets a change's tier at its first pass alone.
         let changed: Vec<Changed> = paths
             .iter()
             .map(|path| Changed {
                 path: (*path).to_owned(),
-                lines: 1,
+                lines: tier::LARGE,
             })
             .collect();
         assert_eq!(tier::later(&changed), needs, "{paths:?}");
@@ -573,6 +574,21 @@ fn each_pass_is_pinned_to_the_pushed_head_and_later_ones_read_only_what_changed(
     );
     commit(root, "merge main, and a fix");
     assert!(unreviewed().unwrap().contains("Pass 2 was recorded"));
+    // Nor through undoing what main brought, which leaves the branch's files as they were read.
+    git(root, &["reset", "-q", "--hard", "HEAD^"]);
+    git(root, &["merge", "-q", "--no-edit", "main"]);
+    assert_eq!(unreviewed(), None);
+    fs::remove_file(root.join("features/vans/backend/vans.rs")).unwrap();
+    commit(root, "no second van");
+    assert!(unreviewed().unwrap().contains("Pass 2 was recorded"));
+    git(root, &["reset", "-q", "--hard", "HEAD^^"]);
+    git(root, &["merge", "-q", "--no-commit", "main"]);
+    write(
+        root,
+        "features/dvic/backend/week.rs",
+        "fn week(dsp: Dsp) { page(&dsp) }\n",
+    );
+    commit(root, "merge main, and a fix");
 
     // Once main is merged in, a pass reads only the branch's own files of what changed: those it
     // changes, and those it changed before, such as a migration a fix took back out.
