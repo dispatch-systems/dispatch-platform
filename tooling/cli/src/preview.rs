@@ -534,8 +534,8 @@ fn placed(settings: &serde_json::Value, section: &str) -> Option<String> {
 /// The checkout's dev server, serving its backend as it is now: the one running, else a new one,
 /// once the one it replaces, checked to be the server it recorded, has stopped.
 fn serving(root: &Path, runner: &dyn Runner) -> Result<dev::Status> {
-    // Only a server started from the checkout as it is now serves it: a newer build on disk
-    // says nothing of what an older server runs.
+    // Only a server started from the checkout's files as they are now, its pages' code aside,
+    // serves it: a newer build on disk says nothing of what an older server runs.
     let status = dev::status(root, runner)?;
     if status.running && status.source_matches == Some(true) {
         return Ok(status);
