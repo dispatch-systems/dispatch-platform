@@ -159,7 +159,7 @@ const COMMANDS: &[Spec] = &[
         "Show the change as it is: serve it, restarting the dev server when it serves other \
          code, and save a screenshot of each page it touches, on the tab or Settings section it \
          touches, or --pages, <page>/<tab> for a tab and platform:<page> for the platform owner's \
-         own, wide and on a phone, with the link to click through it. Once the user approved how \
+         own, wide and on a phone, each with a link that opens on it. Once the user approved how \
          it looks, approve keeps its UI files: pr opens no PR for a change to what a page shows \
          until those are the files it pushes.",
     )
@@ -767,7 +767,7 @@ fn run() -> Result<()> {
                 size: line.option("--size").unwrap_or(shot::DESKTOP),
                 theme: line.option("--theme").unwrap_or("light"),
             };
-            shot::run(&line.root()?, &shot, &Native)
+            shot::run(&line.root()?, &shot, &Native).map(drop)
         }
         "browser" => {
             let target = line.name()?;

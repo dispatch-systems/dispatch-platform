@@ -137,7 +137,8 @@ fn file_name(shot: &Shot<'_>) -> String {
     format!("{}.png", name.to_lowercase())
 }
 
-pub fn run(root: &Path, shot: &Shot<'_>, runner: &dyn Runner) -> Result<()> {
+/// Saves the screenshot and prints its path. Answers with the fragment the page opened at.
+pub fn run(root: &Path, shot: &Shot<'_>, runner: &dyn Runner) -> Result<String> {
     let open = &shot.open;
     open.check()?;
     let who = shot.who.unwrap_or(OWNER);
@@ -215,7 +216,7 @@ pub fn run(root: &Path, shot: &Shot<'_>, runner: &dyn Runner) -> Result<()> {
         println!("{}", said.trim());
     }
     println!("{png}");
-    Ok(())
+    Ok(fragment)
 }
 
 #[cfg(test)]
