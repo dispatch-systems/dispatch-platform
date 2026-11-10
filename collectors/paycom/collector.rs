@@ -11,6 +11,7 @@ pub use collections::timecards::{self, PaycomStore};
 #[cfg(feature = "operator-probes")]
 pub use probes::measure_live_collection;
 
+use connection::rest;
 use dispatch_core::collection::registry::Provider;
 use dispatch_core::{
     Error, Result,
@@ -186,6 +187,9 @@ impl Collector for Paycom {
         NetworkPolicy::Hosts(&BROWSER_HOSTS)
     }
     fn validate_credentials(&self, value: &Value) -> Result<()> {
+        if rest::Credentials::offered(value) {
+            return rest::Credentials::parse(value).map(drop);
+        }
         v::fields(
             value,
             &["clientCode", "username", "password", "securityAnswers"],
@@ -228,6 +232,17 @@ impl Collector for Paycom {
                     as Box<dyn Driver>,
             )
         })
+    }
+    fn direct(
+        &self,
+        store: &Store,
+        dsp: &str,
+        credentials: &Value,
+    ) -> Result<Option<Box<dyn Driver>>> {
+        if !rest::Credentials::offered(credentials) {
+            return Ok(None);
+        }
+        rest::driver(store, dsp, credentials).map(Some)
     }
     fn fixture(&self, timezone: &str, request: &Value) -> Result<Collected> {
         let data = if let Some(scope) = PeriodSync::parse(request)? {
@@ -275,6 +290,18 @@ pub(crate) mod codes {
 
     pub const TIMECARD_EXTRACTION_FAILED: Code = Code::new("timecard_extraction_failed");
     pub const INVALID_TIMECARD_HOURS: Code = Code::new("invalid_timecard_hours");
+    /// Paycom's API took neither the SID and Token nor the address they came from.
+    pub const API_REFUSED: Code = Code::new("paycom_api_refused");
+    /// A function a collection reads through is switched off for the client.
+    pub const API_FUNCTION_OFF: Code = Code::new("paycom_api_function_off");
+    /// An answer of the API's in a shape a collection can't read.
+    pub const API_UNREADABLE: Code = Code::new("paycom_api_unreadable");
+    /// The API isn't offered on this server yet.
+    pub const API_UNAVAILABLE: Code = Code::new("paycom_api_unavailable");
+    /// The client has no labor allocation category for the delivery station.
+    pub const STATION_MISSING: Code = Code::new("paycom_station_missing");
+    /// The DSP has no pay period to count from: none collected, and none given.
+    pub const PERIOD_REQUIRED: Code = Code::new("paycom_period_required");
 }
 
 /// Its API types, which the app's export writes to TypeScript in its `api/generated/`.

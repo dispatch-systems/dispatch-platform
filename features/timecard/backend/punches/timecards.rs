@@ -25,6 +25,18 @@ const LATEST: &str = "SELECT p.period_from,p.period_to FROM publications p \
 
 const EARLIEST_DATE: &str = "2000-01-01";
 
+/// The newest pay period any collection reached, as `{from, to}`; null before the first.
+pub(crate) fn latest_period(store: &Store, id: &str) -> Result<Value> {
+    let latest = store
+        .collector(id, paycom::PROVIDER)?
+        .one_as::<EmployeeTimecardPeriod>(
+            "SELECT period_from,period_to FROM publications \
+             ORDER BY period_to DESC,period_from DESC LIMIT 1",
+            [],
+        )?;
+    Ok(latest.map_or(Value::Null, |period| json!(period)))
+}
+
 pub(crate) fn timecard_period(
     store: &Store,
     id: &str,

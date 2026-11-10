@@ -112,9 +112,18 @@ async fn save(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let (c, provider) = open(&state, &input, access).await?;
     let id = c.dsp.id.as_str();
     let _operation = state.browsers.operation(id)?;
-    provider.validate_credentials(&input.body)?;
-    stop(&state, &c, provider, access).await?;
     let (context, credentials) = (c.clone(), input.body);
+    // Refused before its jobs are cancelled and its browser closed, as before it's replaced,
+    // and asked only for a member who still manages the DSP's connections.
+    let credentials = state
+        .read(move |db| {
+            access.revalidate(db, &context)?;
+            db.accepts_credentials(context.dsp.id.as_str(), provider, &credentials)?;
+            Ok(credentials)
+        })
+        .await?;
+    stop(&state, &c, provider, access).await?;
+    let context = c.clone();
     state
         .run(move |db| db.save_credentials(&context, &credentials, provider))
         .await?;

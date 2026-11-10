@@ -210,6 +210,19 @@ pub struct Http {
     /// How many of the browser's cookies its requests carry.
     cookies: usize,
 }
+/// What a provider's own API answered, from `Http::answer`.
+pub struct Answer {
+    pub status: u16,
+    /// Its JSON text; empty when it sent none.
+    pub body: String,
+    headers: reqwest::header::HeaderMap,
+}
+impl Answer {
+    /// One of its headers, when it sent it as text.
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers.get(name).and_then(|value| value.to_str().ok())
+    }
+}
 pub struct Download {
     pub body: Option<Vec<u8>>,
     pub etag: Option<String>,
@@ -548,6 +561,57 @@ impl Http {
         Ok(Wire {
             body: Self::bytes(response, kind, limit).await?,
             gzipped,
+        })
+    }
+    /// The header that signs a request to a provider's own API with a key and its secret, as
+    /// HTTP Basic authentication carries them.
+    pub fn basic(key: &str, secret: &str) -> (String, String) {
+        use base64::Engine;
+        let pair = base64::engine::general_purpose::STANDARD.encode(format!("{key}:{secret}"));
+        ("Authorization".into(), format!("Basic {pair}"))
+    }
+    /// What the provider's own API answers a GET of `url` sent with `headers`, whatever its
+    /// status, with its JSON text within `limit` when it sent any: a reader of an API tells
+    /// its refusals apart by their status. Throttled, failing or unreachable is `Unavailable`,
+    /// and a redirect is refused as `http_redirected`.
+    pub async fn answer(
+        &self,
+        url: &str,
+        headers: &[(String, String)],
+        limit: usize,
+    ) -> std::result::Result<Answer, Refusal> {
+        let target = self.target(url)?;
+        let mut request = self
+            .client
+            .get(target)
+            .timeout(Duration::from_secs(60))
+            .header("Accept", "application/json");
+        for (name, value) in headers {
+            request = request.header(name, value);
+        }
+        let response = request.send().await.map_err(|_| Refusal::Unavailable)?;
+        let status = response.status();
+        if status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
+            return Err(Refusal::Unavailable);
+        }
+        if status.is_redirection() {
+            return Err(Refusal::Unreadable("http_redirected"));
+        }
+        let headers = response.headers().clone();
+        let json = headers
+            .get(CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.split(';').next())
+            .is_some_and(|v| v.trim().eq_ignore_ascii_case("application/json"));
+        let body = if json {
+            utf8(Self::bytes(response, "application/json", limit).await?)?
+        } else {
+            String::new()
+        };
+        Ok(Answer {
+            status: status.as_u16(),
+            body,
+            headers,
         })
     }
     /// Where `url` redirects, as a tab following it would go next: for an address the

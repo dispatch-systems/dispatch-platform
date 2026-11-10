@@ -2,14 +2,17 @@
 use crate::{
     Error, Result,
     accounts::Context,
-    collection::{api::types::Connection, registry::Provider},
+    collection::{
+        api::types::{Connection, ConnectionCheck},
+        registry::Provider,
+    },
     db::{self, FromRow, Row, Store, iso},
     ensure,
     foundation::crypto,
 };
 use fs2::FileExt;
 use rusqlite::params;
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::{
     fs::{File, OpenOptions},
     os::unix::fs::OpenOptionsExt,
@@ -47,6 +50,11 @@ pub fn credential_lease(root: &Path, dsp: &str, provider: Provider) -> Result<Fi
     Ok(file)
 }
 
+/// Where a DSP's settings keep what its connection to `provider` last checked.
+fn checks_key(provider: Provider) -> String {
+    format!("connection.checks.{}", provider.id())
+}
+
 impl Store {
     pub(crate) fn connection_lease(
         &self,
@@ -68,13 +76,35 @@ impl Store {
             .map(|lease| lease.revision))
     }
     pub fn connection_for(&self, id: &str, provider: Provider) -> Result<Connection> {
-        self.collector(id, provider)?
+        let mut connection: Connection = self
+            .collector(id, provider)?
             .one_as(
                 "SELECT provider,enabled,status,error,updated_at,verified_at,account_label \
                  FROM connections WHERE provider=?",
                 [provider.id()],
             )?
-            .ok_or_else(|| Error::new("connection_required", 409))
+            .ok_or_else(|| Error::new("connection_required", 409))?;
+        // Kept under the revision they were found at, so new credentials start without them.
+        let kept = self.dsp(id)?.setting(&checks_key(provider), Value::Null)?;
+        let revision = self.connection_revision(id, provider)?;
+        if revision.is_some() && kept["revision"].as_i64() == revision {
+            connection.checks = serde_json::from_value(kept["checks"].clone())?;
+        }
+        Ok(connection)
+    }
+    /// Keeps what the DSP's connection to `provider` checked as it connected at `revision`,
+    /// in the DSP's own settings: no more than how each check went, by its code.
+    pub(crate) fn connection_checks(
+        &self,
+        id: &str,
+        provider: Provider,
+        revision: i64,
+        checks: &[ConnectionCheck],
+    ) -> Result<()> {
+        self.dsp(id)?.set(
+            &checks_key(provider),
+            &json!({"revision":revision,"checks":checks}),
+        )
     }
     pub fn connection_state(
         &self,
@@ -102,10 +132,18 @@ impl Store {
         )?;
         Ok(())
     }
+    /// Whether the DSP may connect to `provider` with these credentials here: valid as its
+    /// collector reads them, and, when they need no browser, ones its collector will connect
+    /// with. Asked before anything of the connection the DSP has is stopped or replaced, so
+    /// credentials refused leave it as it was.
+    pub fn accepts_credentials(&self, id: &str, provider: Provider, value: &Value) -> Result<()> {
+        provider.validate_credentials(value)?;
+        provider.collector().direct(self, id, value).map(drop)
+    }
     pub fn save_credentials(&self, c: &Context, value: &Value, provider: Provider) -> Result<()> {
         self.revalidate(c, "connections.manage")?;
-        provider.validate_credentials(value)?;
         let id = c.dsp.id.as_str();
+        self.accepts_credentials(id, provider, value)?;
         let area = self.area(id, "secrets")?;
         let key = db::key_file(&area.join("vault.key"))?;
         db::write_private(

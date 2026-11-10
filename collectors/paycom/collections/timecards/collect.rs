@@ -29,12 +29,12 @@ mod proof;
 mod reading;
 
 use proof::{Direct, Proof};
-#[cfg(not(feature = "operator-probes"))]
-use reading::source_url;
-use reading::{Queue, Reader, read_timecard};
+// A timecard's link, which a collection through the API keeps too.
+pub(crate) use reading::source_url;
 // The operator probes measure a live collection at the addresses the lanes read.
 #[cfg(feature = "operator-probes")]
-pub(crate) use reading::{source_url, timecard_url};
+pub(crate) use reading::timecard_url;
+use reading::{Queue, Reader, read_timecard};
 // A timecard page that is still rendering reads as one of these; wait for it to settle.
 const UNSETTLED_PAGE: &[dispatch_core::Code] = &[
     codes::TIMECARD_EXTRACTION_FAILED,

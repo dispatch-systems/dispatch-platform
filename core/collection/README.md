@@ -80,6 +80,20 @@ takes from a sign-in to keep after the browser closes, as a provider's cookies, 
 while it's disabled. Replacing the credentials or disabling the connection moves it on, so what
 was taken under another revision is stale and goes unused.
 
+A collector whose connection needs no browser, as one that reads its provider's own API with a
+key, hands core its own driver for those credentials (`Collector::direct`): core starts no
+browser for it, holds no memory for one, and keeps nothing in `state/browsers`, though the
+session still takes one of the server's turns, as a job does. Such a driver says what it asks
+of its provider as it connects (`Driver::checks`), each check by the collector's own name for
+it, and how each went: core keeps that with the connection, in the DSP's settings
+(`connection.checks.<provider>`) under the revision it was found at, and a connection's answer
+carries it (`checks`), each waiting while it connects, so the collector's card can say which
+one failed. New credentials start without them, and ones a collector won't connect with
+here are refused before the connection the DSP has is stopped or replaced
+(`Store::accepts_credentials`). A connection that signs in through a browser
+has none. Requests to such an API go through `http::Http::answer`, which hands back the status
+with the body, as an API's refusals are told apart by it.
+
 Its Connections page is a custom section of a DSP's Settings, `collection.connections`, on the
 Connections page: the server shows it to every member, and its component in
 `frontend/feature.ts` says whether they have anything there.

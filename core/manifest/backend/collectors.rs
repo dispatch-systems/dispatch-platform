@@ -104,6 +104,17 @@ pub trait Collector: Sync {
         profile: &'a Path,
         fixture: Option<&'a str>,
     ) -> Pending<'a, Box<dyn Driver>>;
+    /// Its driver for a connection that needs no browser, as one that reads the provider's
+    /// own API with a key: none while its credentials sign in through one. Asked with the
+    /// DSP's storage open, for what such a driver starts from.
+    fn direct(
+        &self,
+        _: &Store,
+        _dsp: &str,
+        _credentials: &Value,
+    ) -> Result<Option<Box<dyn Driver>>> {
+        Ok(None)
+    }
     /// What a collection returns in fixture mode, where no browser runs.
     fn fixture(&self, timezone: &str, request: &Value) -> Result<Collected>;
     /// The job's message while it collects `request`.

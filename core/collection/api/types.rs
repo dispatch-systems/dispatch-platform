@@ -22,6 +22,33 @@ pub struct Connection {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub verification_session_id: Option<String>,
+    /// What a connection that needs no browser asked of its provider as it last connected,
+    /// line by line; none for one that signs in through a browser.
+    pub checks: Vec<ConnectionCheck>,
+}
+/// One thing a connection that needs no browser asks of its provider as it connects, and how
+/// that went. Its `id` is its collector's name for it, which the collector's card words.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionCheck {
+    pub id: String,
+    pub state: CheckState,
+    /// Why it failed, by its code.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub error: Option<String>,
+}
+impl ConnectionCheck {
+    /// A check not asked yet.
+    pub fn waiting(id: &str) -> Self {
+        Self {
+            id: id.into(),
+            state: CheckState::Waiting,
+            error: None,
+        }
+    }
 }
 impl FromRow for Connection {
     fn from_row(row: &Row<'_>) -> Result<Self> {
@@ -34,6 +61,7 @@ impl FromRow for Connection {
             last_verified_at: row.get("verified_at")?,
             account_label: row.get("account_label")?,
             verification_session_id: None,
+            checks: Vec::new(),
         })
     }
 }
@@ -225,6 +253,15 @@ text_enum! {
         SigningIn => "signing_in",
         NeedsVerification => "needs_verification",
         Error => "error",
+    }
+}
+text_enum! {
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
+        pub enum CheckState {
+        Waiting => "waiting",
+        Passed => "passed",
+        Failed => "failed",
     }
 }
 /// What a schedule collects: one provider's data, several at once, or one read another way.

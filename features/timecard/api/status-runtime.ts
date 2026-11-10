@@ -28,6 +28,13 @@ export const paycomStatusSchema = z.object({
     lastVerifiedAt: z.nullable(text),
     accountLabel: z.nullable(text),
     verificationSessionId: z.optional(text),
+    checks: z.array(
+      z.object({
+        id: text,
+        state: z.enum(['waiting', 'passed', 'failed']),
+        error: z.optional(text),
+      }),
+    ),
   }),
   workforce: z.object({ collectedAt: z.nullable(text) }),
 }) satisfies z.ZodMiniType<PaycomStatus>;
