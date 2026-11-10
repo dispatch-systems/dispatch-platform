@@ -49,12 +49,15 @@ pub fn source_address(config: &crate::foundation::config::Config) -> Option<Stri
             .filter(|address| public_address(*address))
             .map(|address| address.to_string());
     }
+    // An address reserved for examples: no server answers there.
+    const EXAMPLE: &str = "203.0.113.10";
     if config.fixture {
-        return Some("203.0.113.10".into());
+        return Some(EXAMPLE.into());
     }
-    // Connecting a datagram socket sends nothing; it only picks the route, and so the address.
+    // Connecting a datagram socket sends nothing; it only picks the route out, and so the
+    // address requests leave by, whichever public address it's pointed at.
     let socket = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
-    socket.connect("1.1.1.1:443").ok()?;
+    socket.connect((EXAMPLE, 443)).ok()?;
     let address = socket.local_addr().ok()?.ip();
     public_address(address).then(|| address.to_string())
 }
