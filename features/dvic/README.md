@@ -68,11 +68,9 @@ Example schedule body, every day at 6:00 PM, its first rule:
 }
 ```
 
-No schedule is created automatically. A scheduled run checks current/previous
-publication weeks and at most two older weeks in a rolling 26-week lookback. It
-prioritizes never-checked weeks, then least recently checked weeks older than seven
-days. Missing/empty reports stay eligible for later checks. Manual sync can target
-older publication weeks explicitly. DVIC's schedule is set on Settings' Collectors page,
+No schedule is created automatically. A scheduled run checks the current and previous
+publication weeks, as a manual sync does unless told otherwise, and never reaches back
+for older ones. Manual sync can target older publication weeks explicitly. DVIC's schedule is set on Settings' Collectors page,
 behind `dvic.manage` (its keeper's `schedules`), and runs only while DVIC is on; the DVIC
 page's Collection settings button opens Collectors on DVIC, which shows what it collects
 under it from `frontend/collected.ts` (the `collected` slot). It has no Settings page of its
