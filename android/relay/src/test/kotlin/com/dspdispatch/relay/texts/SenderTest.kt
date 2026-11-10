@@ -11,10 +11,9 @@ import com.dspdispatch.relay.dispatch.OutgoingText
 import com.dspdispatch.relay.dispatch.SendStatus
 import com.dspdispatch.relay.pairing.Paired
 import java.nio.file.Files
-import kotlin.time.Duration.Companion.seconds
-import kotlin.time.measureTime
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
@@ -482,18 +481,30 @@ class SenderTest {
     }
 
     @Test
-    fun waitsAgainAtOnceForNothingElseOnceDispatchHearsHowATextWent() = runBlocking {
-        val sender = sender()
-        assertTrue(measureTime { sender.take(paired, Outbox(emptyList())) } < 1.seconds)
+    fun waitsAgainAtOnceForNothingElseOnceDispatchHearsHowATextWent() = runTest {
+        val taken = CompletableDeferred<Send>()
+        val sender = sender(object : Sends by sends {
+            override suspend fun start(send: Send) = sends.start(send).also { taken.complete(it) }
+        })
+        // The waits, on a clock of their own that nothing moves: one ends only for what it waits on.
+        val waits = TestScope()
+        val idle = waits.launch { sender.take(paired, Outbox(emptyList())) }
+        waits.testScheduler.runCurrent()
+        assertTrue("nothing to wait for", idle.isCompleted)
 
         sends.start(Send("text_1", 1, "+14255550199", "Hi", clock))
         sends.failed(Send("text_1", 1, "+14255550199", "Hi", clock), Failure.NOT_SENT, clock)
+        backgroundScope.launch { sender.run(paired, KEY) }
+        val waiting = waits.launch { sender.take(paired, Outbox(listOf(text("text_1", 1, "Hi")))) }
+        waits.testScheduler.runCurrent()
+        assertTrue("waits until Dispatch hears how it went", waiting.isActive)
+        assertEquals("text_1", taken.await().id)
+        assertTrue(waiting.isActive)
+
         server.enqueue(json(200, """{"ok":true}"""))
-        val took = measureTime {
-            launch { statuses.tell(paired.site, KEY) }
-            sender.take(paired, Outbox(listOf(text("text_1", 1, "Hi"))))
-        }
-        assertTrue(took < 4.seconds)
+        statuses.tell(paired.site, KEY)
+        waits.testScheduler.runCurrent()
+        assertTrue("waits no more once Dispatch heard", waiting.isCompleted && !waiting.isCancelled)
     }
 
     private fun text(id: String, attempt: Long, body: String, vararg files: OutgoingFile) =
