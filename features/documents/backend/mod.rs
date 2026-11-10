@@ -17,6 +17,15 @@ pub(crate) mod storage;
 pub(crate) mod team;
 pub(crate) mod tree;
 
+use std::sync::{Mutex, MutexGuard};
+
+/// Holds `mutex`, as a panic while another held it left it.
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 #[cfg(test)]
 #[path = "../tests/backend/support.rs"]
 pub(crate) mod support;

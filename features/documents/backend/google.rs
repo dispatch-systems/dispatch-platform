@@ -390,10 +390,7 @@ impl Google {
             let _ = HTTP.post(REVOKE).form(&[("token", refresh)]).timed().await;
         }
         #[cfg(test)]
-        REVOKED
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .insert(refresh.to_owned());
+        super::lock(&REVOKED).insert(refresh.to_owned());
     }
 }
 
@@ -454,10 +451,7 @@ static ON_RENEWAL: LazyLock<Mutex<BTreeMap<String, OnRenewal>>> = LazyLock::new(
 type OnRenewal = Box<dyn FnOnce() + Send>;
 #[cfg(test)]
 pub fn fixture_on_renewal(refresh: &str, then: impl FnOnce() + Send + 'static) {
-    ON_RENEWAL
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .insert(refresh.to_owned(), Box::new(then));
+    super::lock(&ON_RENEWAL).insert(refresh.to_owned(), Box::new(then));
 }
 /// What a test has a sign-in wait for once fixture mode's Google has traded the code `code`
 /// for tokens: as the sign-in holding there while another DSP is deleted.
@@ -467,17 +461,11 @@ static ON_EXCHANGE: LazyLock<Mutex<BTreeMap<String, Held>>> = LazyLock::new(Defa
 type Held = std::pin::Pin<Box<dyn Future<Output = ()> + Send>>;
 #[cfg(test)]
 pub fn fixture_on_exchange(code: &str, hold: impl Future<Output = ()> + Send + 'static) {
-    ON_EXCHANGE
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .insert(code.to_owned(), Box::pin(hold));
+    super::lock(&ON_EXCHANGE).insert(code.to_owned(), Box::pin(hold));
 }
 #[cfg(test)]
 async fn fixture_exchanged(code: &str) {
-    let hold = ON_EXCHANGE
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .remove(code);
+    let hold = super::lock(&ON_EXCHANGE).remove(code);
     if let Some(hold) = hold {
         hold.await;
     }
@@ -487,17 +475,11 @@ async fn fixture_exchanged(code: &str) {
 static REVOKED: LazyLock<Mutex<BTreeSet<String>>> = LazyLock::new(Default::default);
 #[cfg(test)]
 pub fn revoked(refresh: &str) -> bool {
-    REVOKED
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .contains(refresh)
+    super::lock(&REVOKED).contains(refresh)
 }
 #[cfg(test)]
 fn fixture_renewed(refresh: &str) {
-    let then = ON_RENEWAL
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .remove(refresh);
+    let then = super::lock(&ON_RENEWAL).remove(refresh);
     if let Some(then) = then {
         then();
     }

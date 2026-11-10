@@ -1,6 +1,6 @@
 //! Account-scoped in-memory Drive state shared by every connected DSP.
 use super::{Capabilities, DOC, Item, Person, Refused, SHEET, Share, link, missing};
-use crate::backend::google::FOLDER;
+use crate::backend::{google::FOLDER, lock};
 use dispatch_core::{Error, Result, db::iso, foundation::crypto};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -162,9 +162,7 @@ pub(in crate::backend) fn fixture<T>(
     let account = access
         .strip_prefix("fixture:")
         .ok_or_else(|| Error::new("google_connection_broken", 409))?;
-    let mut drives = DRIVES
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut drives = lock(&DRIVES);
     let drive = drives.entry(account.to_owned()).or_insert_with(|| Drive {
         account: account.to_owned(),
         files: BTreeMap::new(),
@@ -303,17 +301,11 @@ static ON_SHARING: LazyLock<Mutex<BTreeMap<String, OnSharing>>> = LazyLock::new(
 type OnSharing = Box<dyn FnOnce() + Send>;
 #[cfg(test)]
 pub fn fixture_on_sharing(id: &str, then: impl FnOnce() + Send + 'static) {
-    ON_SHARING
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .insert(id.to_owned(), Box::new(then));
+    lock(&ON_SHARING).insert(id.to_owned(), Box::new(then));
 }
 #[cfg(test)]
 pub(super) fn fixture_sharing_changed(id: &str) {
-    let then = ON_SHARING
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .remove(id);
+    let then = lock(&ON_SHARING).remove(id);
     if let Some(then) = then {
         then();
     }
