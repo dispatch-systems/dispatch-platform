@@ -156,7 +156,7 @@ fn each_version_of_the_source_is_built_once() {
         .env("BUILDS", temp.path().join("builds"))
         .output()
         .unwrap();
-    assert_eq!(said(&output), "built 5 status");
+    assert_eq!(said(&output), "built 12 status");
 }
 
 #[test]
