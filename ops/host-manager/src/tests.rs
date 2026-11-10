@@ -303,9 +303,9 @@ impl System for Fake {
         self.elapsed.set(self.elapsed.get() + d);
     }
 }
-fn runs_url(commit: &str) -> String {
+fn runs_url() -> String {
     format!(
-        "repos/{REPOSITORY}/actions/workflows/checks.yml/runs?event=push&branch=main&head_sha={commit}&per_page=20"
+        "repos/{REPOSITORY}/actions/workflows/checks.yml/runs?event=push&branch=main&per_page=40"
     )
 }
 fn git(root: &Path, args: &[&str]) -> String {
@@ -394,7 +394,7 @@ impl Fixture {
         system.root.replace(Some((root.clone(), environment)));
         if environment == Environment::Dev {
             // Unless a test runs the checks on it, a commit on main has no run yet.
-            system.reply(&runs_url(&new), vec![json!({"workflow_runs":[]})]);
+            system.reply(&runs_url(), vec![json!({"workflow_runs":[]})]);
         }
         let updater = Updater::new(&root, environment, &system).unwrap();
         let old_manifest = artifact(&updater.active, &old, "0.1.0", false);
@@ -443,7 +443,7 @@ impl Fixture {
         json!({"id":17,"head_sha":self.new,"head_branch":"main","event":"push","status":"completed","conclusion":"success","head_repository":{"full_name":REPOSITORY},"run_attempt":1})
     }
     fn run_url(&self) -> String {
-        runs_url(&self.new)
+        runs_url()
     }
     fn package(&self) -> Vec<u8> {
         let mut tar = tar::Builder::new(flate2::write::GzEncoder::new(
@@ -770,6 +770,35 @@ fn a_pending_or_failed_push_run_keeps_the_old_runtime() {
             }
         );
     }
+}
+#[test]
+fn a_passed_commit_installs_while_one_merged_after_it_still_checks() {
+    let f = Fixture::new(Environment::Dev);
+    f.dev_download();
+    git(&f.root, &["reset", "--hard", &f.new]);
+    fs::write(f.root.join("app"), "newest").unwrap();
+    git(&f.root, &["commit", "-am", "newest"]);
+    let newest = git(&f.root, &["rev-parse", "HEAD"]);
+    git(
+        &f.root,
+        &["update-ref", "refs/remotes/origin/main", &newest],
+    );
+    git(&f.root, &["reset", "--hard", &f.old]);
+    let mut checking = f.run();
+    checking["id"] = json!(18);
+    checking["head_sha"] = json!(newest);
+    checking["status"] = json!("in_progress");
+    checking["conclusion"] = Value::Null;
+    f.system.reply(
+        &f.run_url(),
+        vec![json!({"workflow_runs":[checking, f.run()]})],
+    );
+    f.updater().run_locked().unwrap();
+    assert_eq!(
+        artifact::verify(&f.updater().active, None).unwrap(),
+        f.new_manifest
+    );
+    assert_eq!(git(&f.root, &["rev-parse", "HEAD"]), f.new);
 }
 #[test]
 fn only_a_push_run_on_main_with_its_build_installs() {
