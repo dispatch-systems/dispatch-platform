@@ -405,6 +405,17 @@ test('refresh tokens rotate once, and replay ends the entire connection immediat
   const callback = `http://127.0.0.1:${await freePort()}/callback`;
   const first = await c.connect(claudeCode, callback, everything('Desktop – Claude Code'));
 
+  // Only by the client it was issued to, only as a refresh token, and only for Dispatch's MCP
+  // endpoint; none of these refusals uses it up.
+  const wrong = await c.refresh(chatgpt, first.refresh_token);
+  assert.deepEqual([wrong.status, wrong.body.error], [400, 'invalid_grant']);
+  const access = await c.refresh(claudeCode, first.access_token);
+  assert.deepEqual([access.status, access.body.error], [400, 'invalid_grant']);
+  const unknown = await c.refresh('https://evil.example/c.json', first.refresh_token);
+  assert.deepEqual([unknown.status, unknown.body.error], [401, 'invalid_client']);
+  const target = await c.refresh(claudeCode, first.refresh_token, { resource: c.issuer });
+  assert.deepEqual([target.status, target.body.error], [400, 'invalid_target']);
+
   // Rotated: a new pair in the same shape, with any extra scope asked for ignored.
   const second = await c.refresh(claudeCode, first.refresh_token, {
     scope: 'dispatch offline_access',
@@ -761,39 +772,4 @@ test('the platform owner is emailed when an app connects and when Dispatch disco
   assert.ok(disconnected.text.includes('Sent access to: chatgpt.com'), disconnected.text);
   c.refused(await c.whoami((exchanged.body as Tokens).access_token), 'the replayed app');
   assert.equal((await c.whoami(tokens.access_token)).status, 200);
-});
-
-test('a request opens only in the browser the app sent to Dispatch', async (t) => {
-  const f = await fixture();
-  t.after(f.close);
-  const c = await oauth(f);
-  const callback = `http://localhost:${await freePort()}/callback`;
-  const started = await c.begin(claudeCode, callback);
-  const path = `/api/platform/oauth/requests/${started.id}`;
-  // The browser the app sent holds the request; the same owner signed in anywhere else, as
-  // from a link someone sent them, does not.
-  const held = c.owner.headers.cookie!;
-  assert.match(held, new RegExp(`; dispatch_oauth_request_${started.id}=[\\w-]{43}$`));
-  const elsewhere = await f.client();
-  for (const answered of [
-    await elsewhere.get(path),
-    await elsewhere.post(`${path}/approve`, everything('Claude Code')),
-    await elsewhere.post(`${path}/deny`),
-  ]) {
-    assert.deepEqual([answered.status, answered.value.error], [403, 'wrong_browser']);
-  }
-  assert.equal((await c.owner.get(path)).status, 200);
-  // A second app started in the same browser before the first is approved: both open, and
-  // each approval clears only its own cookie.
-  const second = await c.begin(chatgpt, chatgptRedirect);
-  assert.equal((await c.owner.get(`/api/platform/oauth/requests/${second.id}`)).status, 200);
-  assert.equal((await c.owner.get(path)).status, 200);
-  const redirect = await c.approve(started.id, everything('Claude Code'));
-  assert.ok(redirect.startsWith(`${callback}?`), redirect);
-  assert.ok(!c.owner.headers.cookie!.includes(started.id));
-  assert.ok(c.owner.headers.cookie!.includes(second.id));
-  const after = await c.owner.get(path);
-  assert.deepEqual([after.status, after.value.error], [403, 'wrong_browser']);
-  await c.approve(second.id, everything('ChatGPT'));
-  assert.equal(c.owner.headers.cookie, held.split('; dispatch_oauth_request_')[0]);
 });

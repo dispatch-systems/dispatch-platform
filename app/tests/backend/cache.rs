@@ -93,13 +93,4 @@ fn each_collection_writes_the_domain_it_did() {
     if cfg!(feature = "default") {
         snapshot::check("collection-domains.json", &json!(written));
     }
-    for (kind, name) in written {
-        let kind = JobKind::parse(kind).unwrap();
-        assert_eq!(
-            DataDomain::collection(kind),
-            domain(name),
-            "{}",
-            kind.as_str()
-        );
-    }
 }

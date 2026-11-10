@@ -283,6 +283,12 @@ async fn only_the_browser_that_brought_a_request_sees_or_answers_it() {
         .unwrap()
         .to_owned();
     assert_eq!(nonce.len(), 43);
+    assert!(
+        nonce
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'),
+        "{nonce}"
+    );
     assert_eq!(attributes, " Path=/; HttpOnly; SameSite=Lax; Max-Age=600");
     let stored = server
         .state
@@ -356,6 +362,8 @@ async fn only_the_browser_that_brought_a_request_sees_or_answers_it() {
         )
         .await;
     assert_eq!(approved.status, 200, "{}", approved.body);
+    let redirect = s(&approved.body, "redirect");
+    assert!(redirect.starts_with(&format!("{local}?")), "{redirect}");
     assert_eq!(
         approved.header("set-cookie"),
         format!("{name}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0")
