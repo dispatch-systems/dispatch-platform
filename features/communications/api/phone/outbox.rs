@@ -37,6 +37,8 @@ const WAIT: Duration = Duration::from_secs(20);
 // Ordinary page and video waits can depend on phones receiving work. Keep their admission
 // separate so those waits cannot consume the phones' own bounded capacity.
 static WAITING: Semaphore = Semaphore::const_new(128);
+// Queued idle admission is bounded separately; ready work still bypasses both gates.
+static QUEUED: Semaphore = Semaphore::const_new(128);
 /// The most characters a phone may say of why a text failed.
 pub(super) const ERROR_MOST: usize = 500;
 /// The highest `versionCode` Android takes.
@@ -157,7 +159,11 @@ async fn waiting(state: Arc<State>, input: Input, access: Phone) -> Result<Reply
             })
             .await?;
     }
-    let slot = WAITING.try_acquire().ok();
+    let mut slot = WAITING.try_acquire().ok();
+    let mut queued = None;
+    let admission = WAITING.acquire();
+    tokio::pin!(admission);
+    let unavailable = || Error::busy("phone_outbox_idle_unavailable");
     // Subscribed before reading, so a text queued, or a video asked for, between the read and the
     // wait still wakes it.
     let mut listener = state.topics.subscribe(live::TOPIC, &caller.dsp);
@@ -189,18 +195,43 @@ async fn waiting(state: Arc<State>, input: Input, access: Phone) -> Result<Reply
                 })
                 .await?;
         }
-        // Without admission, answer ready work but never an empty heartbeat or an idle wait.
-        if texts.is_empty() && wanted.is_empty() && slot.is_none() {
-            return Err(Error::busy("phone_outbox_idle_unavailable"));
-        }
-        if !texts.is_empty() || !wanted.is_empty() || tokio::time::Instant::now() >= until {
+        let ready = !texts.is_empty() || !wanted.is_empty();
+        if ready || (slot.is_some() && tokio::time::Instant::now() >= until) {
             return Reply::of(&Outbox {
                 texts: texts.into_iter().map(Outgoing::of).collect(),
                 wanted,
                 app: app.map(Latest::of),
             });
         }
-        let _ = tokio::time::timeout_at(until, listener.changed()).await;
+        if slot.is_none() {
+            if tokio::time::Instant::now() >= until {
+                // Observe an already assigned grant before expiring this request. The
+                // pinned acquisition keeps its FIFO position through every probe/wake.
+                if queued.is_some()
+                    && let Ok(Ok(granted)) =
+                        tokio::time::timeout_at(until, admission.as_mut()).await
+                {
+                    slot = Some(granted);
+                    drop(queued.take());
+                    continue; // Authorization must follow admission, including at expiry.
+                }
+                return Err(unavailable());
+            }
+            if queued.is_none() {
+                queued = Some(QUEUED.try_acquire().map_err(|_| unavailable())?);
+            }
+            tokio::select! {
+                biased;
+                granted = admission.as_mut() => {
+                    slot = Some(granted.map_err(|_| unavailable())?);
+                    drop(queued.take());
+                }
+                _ = tokio::time::sleep_until(until) => {}
+                _ = listener.changed() => {}
+            }
+        } else {
+            let _ = tokio::time::timeout_at(until, listener.changed()).await;
+        }
     }
 }
 

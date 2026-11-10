@@ -377,8 +377,13 @@ decides ([Texts](#texts)).
   hour (`FETCHED_MS`) so another who plays it soon after has them at once, then let go of. Waiting
   on the outbox and reporting texts or statuses count as checking in, noted at most every thirty
   seconds (`SEEN_MS`), as bookkeeping no cached read depends on; a file's bytes, either way, don't.
-  Each call, with every payload, unit and limit, is in the [protocol reference](api/phone/README.md)
-  beside the code.
+  At most 128 phone requests hold active idle admission; another 128 may queue FIFO for it.
+  A queued request keeps its place across topic wakes, and its queue time consumes the same
+  twenty-second deadline. Ready texts/videos bypass idle saturation. An empty heartbeat needs
+  an active permit and fresh authorization; an unadmitted empty request still gets busy at
+  expiry or when the pending queue is full. These bounds do not guarantee service to every
+  phone in a synchronized 400-phone burst. Each call, with every payload, unit and limit, is
+  in the [protocol reference](api/phone/README.md) beside the code.
 - **The app:** DSP Dispatch: Relay, which the DSP's address hands out (`phone::app`), as the
   build packed it: CI's signed builds, named in `relay.json` beside their APKs in the runtime's
   `dashboard/relay/` ([Android apps](../../android/README.md#releases)). A preview server, as
