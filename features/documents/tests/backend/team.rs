@@ -100,9 +100,19 @@ async fn folder(state: &Arc<State>, dsp: &str) -> String {
     let connection = state.read(move |db| db.documents_connection(&at));
     connection.await.unwrap().unwrap().folder_id
 }
-/// Who Google says the file or folder `id` is shared with, beside the account.
-async fn shared_with(_state: &Arc<State>, id: &str) -> Vec<String> {
-    let mut emails: Vec<String> = drive::fixture::fixture(ACCOUNT, |drive| Ok(drive.shares(id)))
+/// An account of fixture mode's Google that no other test signs in as, so the requests a
+/// test counts are its own.
+fn own_account() -> String {
+    format!(
+        "fixture:sharing-{}@example.test",
+        dispatch_core::foundation::crypto::token()
+            .unwrap()
+            .to_ascii_lowercase()
+    )
+}
+/// Who Google says `account`'s file or folder `id` is shared with, beside the account.
+fn shared_with(account: &str, id: &str) -> Vec<String> {
+    let mut emails: Vec<String> = drive::fixture::fixture(account, |drive| Ok(drive.shares(id)))
         .unwrap()
         .into_iter()
         .filter(|share| share.role != "owner")
@@ -111,38 +121,61 @@ async fn shared_with(_state: &Arc<State>, id: &str) -> Vec<String> {
     emails.sort();
     emails
 }
+/// Has `then` happen once Google next shares `id` or takes a share of it back: before
+/// Dispatch asks Google for anything more, or with `inside`, while its next request to Google
+/// waits to be let through.
+fn on_sharing(account: &str, id: &str, inside: bool, then: impl FnOnce() + Send + 'static) {
+    if !inside {
+        return drive::fixture_on_sharing(id, then);
+    }
+    let account = account.to_owned();
+    drive::fixture_on_sharing(id, move || {
+        drive::fixture::fixture(&account, |remote| {
+            remote
+                .holds
+                .insert(remote.requests + 1, Box::pin(async move { then() }));
+            Ok(())
+        })
+        .unwrap();
+    });
+}
 
 // Disabled while the folder is shared with the team, the DSP's folder is shared with no one
-// more, and who Google already shared it with is kept: once enabled, the next sync goes on.
+// more, and who Google already shared it with is kept: once enabled, the minute's check finds
+// the member still to share with, who was never told they need a Google account.
 #[tokio::test]
 async fn a_dsp_disabled_between_two_members_shares_shares_the_folder_with_no_one_more() {
-    let (_root, state, dsp) = platform();
-    connect(&state, &dsp).await;
-    join(&state, &dsp, "Avery", "avery@example.test").await;
-    join(&state, &dsp, "Blake", "blake@example.test").await;
-    let folder = folder(&state, &dsp).await;
-    // Disabled once the folder is shared with Avery, the first of the team.
-    drive::fixture_on_sharing(&folder, disabling(&state, &dsp));
-    let refused = sync(&state, &dsp).await.unwrap_err();
-    assert!(refused.is(Code::DspUnavailable));
-    assert_eq!(shared_with(&state, &folder).await, ["avery@example.test"]);
-    let at = dsp.clone();
-    let people = state
-        .read(move |db| db.documents_people(&at))
-        .await
-        .unwrap();
-    let kept: Vec<_> = people
-        .iter()
-        .filter_map(|person| person.shared.clone())
-        .collect();
-    assert_eq!(kept.len(), 1);
-    assert_eq!(kept[0].0, "avery@example.test");
-    enable(&state, &dsp).await;
-    sync(&state, &dsp).await.unwrap();
-    assert_eq!(
-        shared_with(&state, &folder).await,
-        ["avery@example.test", "blake@example.test"]
-    );
+    for inside in [false, true] {
+        let (_root, state, dsp) = platform();
+        let account = own_account();
+        crate::backend::support::connect_as(&state, &dsp, &account).await;
+        join(&state, &dsp, "Avery", "avery@example.test").await;
+        join(&state, &dsp, "Blake", "blake@example.test").await;
+        let folder = folder(&state, &dsp).await;
+        // Disabled once the folder is shared with Avery, the first of the team.
+        on_sharing(&account, &folder, inside, disabling(&state, &dsp));
+        let refused = sync(&state, &dsp).await.unwrap_err();
+        assert!(refused.is(Code::DspUnavailable));
+        assert_eq!(shared_with(&account, &folder), ["avery@example.test"]);
+        let at = dsp.clone();
+        let people = state
+            .read(move |db| db.documents_people(&at))
+            .await
+            .unwrap();
+        let kept: Vec<_> = people
+            .iter()
+            .map(|person| person.shared.as_ref().map(|(email, _)| &**email))
+            .collect();
+        assert_eq!(kept, [Some("avery@example.test")]);
+        enable(&state, &dsp).await;
+        let at = dsp.clone();
+        assert!(state.read(move |db| stale(db, &at)).await.unwrap());
+        sync(&state, &dsp).await.unwrap();
+        assert_eq!(
+            shared_with(&account, &folder),
+            ["avery@example.test", "blake@example.test"]
+        );
+    }
 }
 
 // Disabled while a file someone else owns is shared with the team, it's shared with no one
@@ -172,7 +205,7 @@ async fn a_dsp_disabled_between_two_file_shares_shares_the_file_with_no_one_more
     drive::fixture_on_sharing(&sheet.id, disabling(&state, &dsp));
     let refused = sync(&state, &dsp).await.unwrap_err();
     assert!(refused.is(Code::DspUnavailable));
-    assert_eq!(shared_with(&state, &sheet.id).await, ["avery@example.test"]);
+    assert_eq!(shared_with(ACCOUNT, &sheet.id), ["avery@example.test"]);
     let at = dsp.clone();
     let made = state
         .read(move |db| db.documents_shared_files(&at))
@@ -186,7 +219,7 @@ async fn a_dsp_disabled_between_two_file_shares_shares_the_file_with_no_one_more
     enable(&state, &dsp).await;
     sync(&state, &dsp).await.unwrap();
     assert_eq!(
-        shared_with(&state, &sheet.id).await,
+        shared_with(ACCOUNT, &sheet.id),
         ["avery@example.test", "blake@example.test"]
     );
 }
@@ -196,63 +229,30 @@ async fn a_dsp_disabled_between_two_file_shares_shares_the_file_with_no_one_more
 // they're told it's on its way.
 #[tokio::test]
 async fn a_dsp_disabled_between_a_members_two_addresses_shares_at_the_new_one_once_enabled() {
-    for inner in [false, true] {
+    for inside in [false, true] {
         let (_root, state, dsp) = platform();
-        let account = format!(
-            "fixture:sharing-{}@example.test",
-            dispatch_core::foundation::crypto::token()
-                .unwrap()
-                .to_ascii_lowercase()
-        );
+        let account = own_account();
         crate::backend::support::connect_as(&state, &dsp, &account).await;
         let avery = join(&state, &dsp, "Avery", "avery@example.test").await;
         let folder = folder(&state, &dsp).await;
-        let shared = || {
-            let mut emails: Vec<_> =
-                drive::fixture::fixture(&account, |remote| Ok(remote.shares(&folder)))
-                    .unwrap()
-                    .into_iter()
-                    .filter(|share| share.role != "owner")
-                    .filter_map(|share| share.email_address)
-                    .collect();
-            emails.sort();
-            emails
-        };
         sync(&state, &dsp).await.unwrap();
-        assert_eq!(shared(), ["avery@example.test"]);
+        assert_eq!(shared_with(&account, &folder), ["avery@example.test"]);
         let (at, user) = (dsp.clone(), avery.clone());
         state
             .run(move |db| db.link_documents_google(&at, &user, "avery.r@example.test"))
             .await
             .unwrap();
-        let disable = disabling(&state, &dsp);
-        if inner {
-            let account = account.clone();
-            drive::fixture_on_sharing(&folder, move || {
-                drive::fixture::fixture(&account, |remote| {
-                    remote.holds.insert(
-                        remote.requests + 1,
-                        Box::pin(async move {
-                            disable();
-                        }),
-                    );
-                    Ok(())
-                })
-                .unwrap();
-            });
-        } else {
-            drive::fixture_on_sharing(&folder, disable);
-        }
+        on_sharing(&account, &folder, inside, disabling(&state, &dsp));
         let refused = sync(&state, &dsp).await.unwrap_err();
         assert!(refused.is(Code::DspUnavailable));
-        assert!(shared().is_empty());
+        assert!(shared_with(&account, &folder).is_empty());
         enable(&state, &dsp).await;
         let at = dsp.clone();
         assert!(state.read(move |db| stale(db, &at)).await.unwrap());
         let sharing = mine_of(&state, &dsp, &avery, "avery@example.test").await;
         assert_eq!(sharing.state, SharingState::Pending);
         sync(&state, &dsp).await.unwrap();
-        assert_eq!(shared(), ["avery.r@example.test"]);
+        assert_eq!(shared_with(&account, &folder), ["avery.r@example.test"]);
         let sharing = mine_of(&state, &dsp, &avery, "avery@example.test").await;
         assert_eq!(sharing.state, SharingState::Shared);
     }

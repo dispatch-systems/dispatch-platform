@@ -163,9 +163,9 @@ async fn sync_held(state: &Arc<State>, owner: &Grant) -> Result<Vec<Share>> {
             let sharing = match drive.google.share(&drive.access, &folder, &target).await {
                 Ok(sharing) => sharing,
                 Err(error) => {
-                    // Keep an already removed old address and earlier completed members
-                    // before returning an inner provider-admission refusal.
-                    if before != Some(&person) {
+                    // As above: someone not shared with yet isn't saved, so the minute's
+                    // check still finds them missing and shares with them.
+                    if before.is_some_and(|before| before != &person) {
                         changed.push(person);
                     }
                     stopped = Some(error);
