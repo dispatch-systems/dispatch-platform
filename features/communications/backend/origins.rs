@@ -67,3 +67,7 @@ pub(crate) fn state(
 fn invariant() -> Error {
     Error::new("communications_origins_invariant", 500)
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/origins.rs"]
+mod tests;
