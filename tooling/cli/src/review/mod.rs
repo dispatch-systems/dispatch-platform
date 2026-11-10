@@ -159,11 +159,19 @@ impl Checkout<'_> {
         Ok(left(reviewed)? != left(head)?)
     }
     /// The files the branch itself changed from `reviewed` to `head`: those that differ, or once
-    /// `main` was merged in since, those its own commits changed (`COMMITS`).
-    fn since(&self, reviewed: &str, head: &str) -> Result<Vec<tier::Changed>> {
+    /// `main` was merged in since, those its own commits changed (`COMMITS`). None when one of
+    /// those commits merges more than two parents: git shows nothing of what such a merge holds
+    /// of its own, so nothing can be told from them.
+    fn since(&self, reviewed: &str, head: &str) -> Result<Option<Vec<tier::Changed>>> {
         let range = format!("{reviewed}..{head}");
         if !self.main_merged(reviewed, head)? {
-            return self.changed(&range);
+            return Ok(Some(self.changed(&range)?));
+        }
+        if !self
+            .git(&["rev-list", "--min-parents=3", &range, NOT_MAIN])?
+            .is_empty()
+        {
+            return Ok(None);
         }
         let mut args = COMMITS.to_vec();
         args.extend([
@@ -174,7 +182,7 @@ impl Checkout<'_> {
             &range,
             NOT_MAIN,
         ]);
-        Ok(tier::numstat(&self.git(&args)?))
+        Ok(Some(tier::numstat(&self.git(&args)?)))
     }
 }
 
@@ -189,13 +197,16 @@ const NOT_MAIN: &str = "^origin/main";
 
 /// What the commits from `reviewed` to `head` still need of the review that read `reviewed`, or
 /// whose answers account for it: nothing for `main` merged in as git merges it unaided or for
-/// documentation alone, a pass on the tests for tests alone, and a pass for the rest.
+/// documentation alone, a pass on the tests for tests alone, and a pass for the rest, as for
+/// what can't be told.
 pub fn later(root: &Path, reviewed: &str, head: &str, runner: &dyn Runner) -> Result<Later> {
     if reviewed == head {
         return Ok(Later::Nothing);
     }
-    let since = Checkout { root, runner }.since(reviewed, head)?;
-    Ok(tier::later(&since))
+    Ok(match (Checkout { root, runner }).since(reviewed, head)? {
+        Some(since) => tier::later(&since),
+        None => Later::Pass,
+    })
 }
 
 /// The checkout's branch and head, committed and pushed as they are.
@@ -387,7 +398,12 @@ pub fn prepare(root: &Path, ask: &Prepare, runner: &dyn Runner) -> Result<()> {
     // A later pass reads what the branch itself changed since the one before, and that sets
     // who reads it: the tests alone when nothing else changed, and the security reviewer only
     // for a sensitive path in it, a fix its own review asked for, or a tier that was asked for.
-    let diff = match &previous {
+    // Where that can't be told, it reads all that differs, its security reviewer too.
+    let since = match &previous {
+        Some(_) => git.since(&base, &head)?,
+        None => None,
+    };
+    let diff = match &since {
         Some(_) if git.main_merged(&base, &head)? => {
             format!("git {} -p {base}..{head} {NOT_MAIN}", COMMITS.join(" "))
         }
@@ -395,19 +411,20 @@ pub fn prepare(root: &Path, ask: &Prepare, runner: &dyn Runner) -> Result<()> {
     };
     let (tests, security) = match &previous {
         None => (false, true),
-        Some((_, recorded)) => {
-            let since = git.since(&base, &head)?;
-            (
-                tier::later(&since) == Later::Tests,
-                asked
-                    || since
+        Some((_, recorded)) => (
+            since
+                .as_ref()
+                .is_some_and(|since| tier::later(since) == Later::Tests),
+            asked
+                || since.is_none_or(|since| {
+                    since
                         .iter()
                         .any(|file| tier::sensitive(&file.path).is_some())
-                    || recorded.answers.iter().any(|outcome| {
-                        outcome.security && outcome.tag == "Important" && outcome.answer == "fixed"
-                    }),
-            )
-        }
+                })
+                || recorded.answers.iter().any(|outcome| {
+                    outcome.security && outcome.tag == "Important" && outcome.answer == "fixed"
+                }),
+        ),
     };
     let security = security && tier == Tier::Sensitive;
     let pass = Pass {

@@ -582,6 +582,20 @@ fn each_pass_is_pinned_to_the_pushed_head_and_later_ones_read_only_what_changed(
     commit(root, "no second van");
     assert!(unreviewed().unwrap().contains("Pass 2 was recorded"));
     git(root, &["reset", "-q", "--hard", "HEAD^^"]);
+    // Nor through a merge of more than two parents, of which git shows nothing.
+    git(root, &["switch", "-q", "-c", "notes"]);
+    write(root, "features/dvic/README.md", "# DVIC\n");
+    commit(root, "notes");
+    git(root, &["switch", "-q", "keep-week"]);
+    git(root, &["merge", "-q", "--no-commit", "main", "notes"]);
+    write(
+        root,
+        "features/dvic/backend/week.rs",
+        "fn week(dsp: Dsp) { page(&dsp) }\n",
+    );
+    commit(root, "merge main and the notes, and a fix");
+    assert!(unreviewed().unwrap().contains("Pass 2 was recorded"));
+    git(root, &["reset", "-q", "--hard", "HEAD^"]);
     git(root, &["merge", "-q", "--no-commit", "main"]);
     write(
         root,
