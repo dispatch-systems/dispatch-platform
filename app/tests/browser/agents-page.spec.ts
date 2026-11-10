@@ -185,7 +185,7 @@ test('the Activity tab lists each call a key makes, and what Dispatch answered',
 
   const owner = await dispatch.client();
   const made = await owner.post('/api/platform/agents/keys', {
-    name: 'Nightly report script',
+    name: 'Platform operations reporting automation',
     allDsps: true,
     dsps: [],
     access: 'read',
@@ -200,7 +200,7 @@ test('the Activity tab lists each call a key makes, and what Dispatch answered',
   expect(call.status, call.body).toBe(200);
 
   // Calls are written a moment after they're made; the tab reads them when it opens.
-  const row = page.getByRole('row').filter({ hasText: 'Nightly report script' });
+  const row = page.getByRole('row').filter({ hasText: 'Platform operations reporting automation' });
   await expect(async () => {
     await page.getByRole('tab', { name: 'Keys', exact: true }).click();
     await page.getByRole('tab', { name: 'Activity', exact: true }).click();
@@ -211,8 +211,15 @@ test('the Activity tab lists each call a key makes, and what Dispatch answered',
   await expect(row).toContainText('OK');
   await expect(row).toContainText(/\d+ ms/);
 
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await expect(page.getByRole('button', { name: 'Refused', exact: true })).toBeInViewport();
+  await page.setViewportSize({ width: 1440, height: 1000 });
+
   // Filtered to the key, and to refusals, of which it has none.
-  await page.getByLabel('Connection').selectOption({ label: 'Nightly report script' });
+  await page
+    .getByLabel('Connection')
+    .selectOption({ label: 'Platform operations reporting automation' });
   await expect(row).toBeVisible();
   await page.getByRole('button', { name: 'Refused', exact: true }).click();
   await expect(page.getByText('No matching calls')).toBeVisible();
@@ -227,14 +234,14 @@ test('the Activity tab lists each call a key makes, and what Dispatch answered',
         `INSERT INTO agent_activity(at,key_id,key_name,key_kind,surface,outcome,ms,bytes)
          VALUES (?,?,?,'key','activity:capped','capped',0,0)`,
       )
-      .run(Date.parse(capped), made.value.key.id, 'Nightly report script'),
+      .run(Date.parse(capped), made.value.key.id, 'Platform operations reporting automation'),
   );
   await page.getByRole('tab', { name: 'Keys', exact: true }).click();
   await page.getByRole('tab', { name: 'Activity', exact: true }).click();
   const note = page.getByRole('row').filter({ hasText: 'Over 10,000 calls' });
   await expect(note.getByRole('cell')).toHaveCount(1);
   await expect(note).toHaveText(
-    `Over 10,000 calls from Nightly report script on ${utcDay(capped)} (UTC); later calls that day aren’t listed.`,
+    `Over 10,000 calls from Platform operations reporting automation on ${utcDay(capped)} (UTC); later calls that day aren’t listed.`,
   );
   await expect(page.getByRole('row')).toHaveCount(3);
 });
