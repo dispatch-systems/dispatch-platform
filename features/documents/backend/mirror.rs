@@ -38,6 +38,8 @@ struct Copy {
     confirmed: u64,
     /// Where the account's change feed goes on from.
     changes: String,
+    /// Whether the feed asked for a whole listing that hasn't been made since.
+    relist: bool,
     /// When Google last said what changed.
     synced: Instant,
     /// Confirmed changes in their original order, before any later change-feed/removal turn.
@@ -203,24 +205,28 @@ impl Mirror {
             semantic,
             confirmed: confirmed.unwrap_or(0),
             changes,
+            relist: false,
             synced: Instant::now(),
             pending: Vec::new(),
         });
     }
     /// Brings the copy of `root` up to date with what changed. Answers whether the Drive
-    /// needs listing whole again, as a folder came in from elsewhere in the account. A local
-    /// confirmation since the read discards this answer; the next normal turn reads again.
+    /// needs listing whole again, as a folder came in from elsewhere in the account: it does
+    /// until that listing is made, so one a confirmation discarded is asked for again. A
+    /// local confirmation since the read discards this answer; the next normal turn reads
+    /// again.
     pub fn follow(&self, root: &str, confirmed: Option<u64>, changes: Changes) -> bool {
         self.change(root, |copy| {
             if Some(copy.confirmed) != confirmed {
-                return false;
+                return copy.relist;
             }
             copy.changes = changes.next;
             copy.synced = Instant::now();
-            if changes.changed.is_empty() {
-                return false;
+            if !changes.changed.is_empty() {
+                let relist = copy.publish(|tree| tree.follow(changes.changed));
+                copy.relist |= relist;
             }
-            copy.publish(|tree| tree.follow(changes.changed))
+            copy.relist
         })
         .unwrap_or(false)
     }

@@ -540,3 +540,59 @@ fn an_external_move_with_equal_modified_time_is_applied_without_an_intervening_c
     assert_ne!(current, semantic);
     assert_eq!(mirror.changes("main").as_deref(), Some("after"));
 }
+
+#[test]
+fn a_listing_the_feed_asked_for_is_still_owed_after_a_confirmation_discards_it() {
+    let mirror = Mirror::default();
+    let file = item("file", "File.pdf", Some("main"), false, "same-time");
+    mirror.replace(
+        "main",
+        mirror.confirmation(),
+        vec![file.clone()],
+        "before".into(),
+    );
+    // A folder comes in from elsewhere in the account: what it holds is unknown until listed.
+    let arrived = item("arrived", "Arrived", Some("main"), true, "same-time");
+    assert!(mirror.follow(
+        "main",
+        mirror.confirmation(),
+        changes(vec![kept(arrived.clone())], "advanced")
+    ));
+    // That listing is read, and a rename is confirmed before it is published.
+    let listed = mirror.confirmation();
+    let mut renamed = file.clone();
+    renamed.name = "Renamed.pdf".into();
+    mirror.put("main", renamed.clone());
+    let inside = item("inside", "Inside.pdf", Some("arrived"), false, "same-time");
+    mirror.replace(
+        "main",
+        listed,
+        vec![file, arrived.clone(), inside.clone()],
+        "discarded".into(),
+    );
+    assert_eq!(mirror.tree("main").unwrap().count("arrived"), 0);
+    assert_eq!(mirror.changes("main").as_deref(), Some("advanced"));
+    // The next turn's feed has nothing new, and the listing is still owed.
+    assert!(
+        mirror.follow("main", mirror.confirmation(), changes(Vec::new(), "later")),
+        "the folder that came in is never listed"
+    );
+    // So is it when that turn's feed answer is itself discarded.
+    let read = mirror.confirmation();
+    mirror.remove("main", "absent");
+    assert!(mirror.follow("main", read, changes(Vec::new(), "discarded-feed")));
+    mirror.replace(
+        "main",
+        mirror.confirmation(),
+        vec![renamed, arrived, inside],
+        "listed".into(),
+    );
+    let tree = mirror.tree("main").unwrap();
+    assert_eq!(tree.count("arrived"), 1);
+    assert_eq!(&*tree.get("file").unwrap().name, "Renamed.pdf");
+    assert!(!mirror.follow(
+        "main",
+        mirror.confirmation(),
+        changes(Vec::new(), "settled")
+    ));
+}
