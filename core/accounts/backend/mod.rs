@@ -254,12 +254,10 @@ impl Store {
         }
         Ok(self
             .dsp(dsp)?
-            .query_as::<(String,)>(
+            .one_as::<(String,)>(
                 "SELECT first_name||' '||last_name FROM users WHERE id=?",
                 [user],
             )?
-            .into_iter()
-            .next()
             .map(|(name,)| name))
     }
     /// A new account: a platform owner's in the platform's directory, or with `dsp`, one of
