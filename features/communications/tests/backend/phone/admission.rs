@@ -263,14 +263,15 @@ async fn an_admitted_poll_reads_queued_work(fixture: &Fixture, served: &Served) 
     let at = now();
     let (of, device, author) = (b.clone(), phone_b.id.clone(), owner.clone());
     let (id, attempt) = testing::requested(filing::changing(state, b, move |db| {
-        let heard = db.phones_report(&of, &device, vec![reported("heard", "4255550199", at, 0)])?;
+        let heard = reported("heard", "+14255550199", at, 0);
+        let heard = db.phones_report(&of, &device, vec![heard])?.remove(0).id;
         let sent = phone::outbox::send(db, &of, &outgoing("4255550199", vec![], &author), at)?;
         assert_eq!(sent.phone, device);
         assert_eq!(sent.status, Some(Status::Waiting));
         let pending = db.phones_outbox(&of, &device)?;
         assert_eq!(pending.len(), 1);
         assert_eq!(pending[0].0.id, sent.id);
-        Ok(((sent.id.clone(), pending[0].1), vec![heard[0].id.clone(), sent.id]))
+        Ok(((sent.id.clone(), pending[0].1), vec![heard, sent.id]))
     }))
     .await
     .unwrap();
