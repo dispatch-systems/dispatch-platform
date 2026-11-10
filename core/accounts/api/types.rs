@@ -90,18 +90,6 @@ pub struct DspSummary {
     pub features: Vec<String>,
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub members: i64,
-    /// The query's own columns, which earlier releases sent along. No dashboard reads
-    /// them; they stay until a release has shipped without a reader that could.
-    #[serde(flatten)]
-    #[cfg_attr(feature = "ts", ts(skip))]
-    pub legacy: DspSummaryLegacy,
-}
-#[derive(Clone, Debug, Serialize)]
-pub struct DspSummaryLegacy {
-    pub member_role: Option<String>,
-    pub owner_email: Option<String>,
-    pub platform_email: Option<String>,
-    pub invite_email: Option<String>,
 }
 /// One queued email as platform Diagnostics lists it. What it was for is known only for
 /// mail queued since the outbox recorded it; an invitation's row lasts as long as the
