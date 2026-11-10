@@ -34,10 +34,14 @@ impl Repository {
     pub fn at(url: &str) -> Option<Self> {
         let name = if let Some(name) = url.strip_prefix("https://github.com/") {
             name
-        } else if let Some(ssh) = url.strip_prefix("ssh://") {
-            ssh.strip_prefix("git@github.com/")?
         } else {
-            url.strip_prefix("git@github.com:")?
+            // `ssh://<user>@<host>/<name>`, or `<user>@<host>:<name>` as scp writes it.
+            let (user, rest) = url.strip_prefix("ssh://").unwrap_or(url).split_once('@')?;
+            let (host, name) = rest.split_once(match url.starts_with("ssh://") {
+                true => '/',
+                false => ':',
+            })?;
+            (user == "git" && host == "github.com").then_some(name)?
         };
         let name = name.strip_suffix(".git").unwrap_or(name);
         if dispatch_shared::REPOSITORIES.contains(&name) {

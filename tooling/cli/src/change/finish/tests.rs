@@ -25,11 +25,13 @@ fn repository_transports_keep_the_same_identity_and_refuse_other_authorities() {
             assert_eq!(Repository::at(&url), None, "{url}");
         }
     }
-    // The name the platform moved from still names it.
-    assert_eq!(
-        Repository::at("https://github.com/dillonlille/dispatch-platform"),
-        Some(Repository::Platform)
-    );
+    // Every name the platform answers to names it.
+    for name in dispatch_shared::REPOSITORIES {
+        assert_eq!(
+            Repository::at(&format!("https://{host}/{name}")),
+            Some(Repository::Platform)
+        );
+    }
 }
 
 struct Fixture {
