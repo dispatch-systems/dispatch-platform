@@ -143,7 +143,7 @@ pub(in crate::backend) fn stage_prepared_routes_start(
     let publication = dispatch_core::foundation::crypto::id("routes")?;
     let routes = capture.route_summaries["rmsRouteSummaries"]
         .as_array()
-        .cloned()
+        .map(Vec::as_slice)
         .unwrap_or_default();
     let day = capture.scope.date.as_str();
     db.transaction(|| {
@@ -174,7 +174,7 @@ pub(in crate::backend) fn stage_prepared_routes_start(
             itineraries as i64,
             ADAPTER_VERSION
         ])?;
-        write_routes(&db, Writes::Staged, &publication, day, &routes)?;
+        write_routes(&db, Writes::Staged, &publication, day, routes)?;
         for response in responses {
             write_raw(&db, Writes::Staged, &publication, response.name, response.bytes, &response.body)?;
         }

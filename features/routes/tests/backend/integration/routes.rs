@@ -307,6 +307,291 @@ fn a_reprocess_rebuilds_every_row_from_the_stored_responses() {
     assert!(db.reprocess_routes(&id, Some("bad")).is_err());
 }
 
+/// A prior shaper's staged keys, absent from the current capture. These must never be
+/// merged when replay rebuilds that capture's staging.
+fn omitted_shared_staging(storage: &dispatch_core::db::Db, publication: &str) {
+    storage
+        .exec(
+            "INSERT INTO staged_addresses(publication_id,address_id,address1) \
+             VALUES (?,'address-2','Obsolete street')",
+            [publication],
+        )
+        .unwrap();
+    storage
+        .exec(
+            "INSERT INTO staged_drivers(publication_id,transporter_id,first_name,person_type) \
+             VALUES (?,'driver-2','Obsolete','[]')",
+            [publication],
+        )
+        .unwrap();
+}
+
+/// Every persisted row, with raw response bytes compared too (Db's JSON reader omits blobs).
+fn replay_storage_rows(storage: &dispatch_core::db::Db) -> Vec<(String, Vec<Value>)> {
+    storage
+        .all(
+            "SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' \
+             ORDER BY name",
+            [],
+        )
+        .unwrap()
+        .into_iter()
+        .map(|row| {
+            let table = s(&row, "name").to_owned();
+            let query = if table == "route_raw" {
+                "SELECT publication_id,name,encoding,raw_bytes,hex(body) body FROM route_raw \
+                 ORDER BY publication_id,name"
+                    .to_owned()
+            } else {
+                format!(
+                    "SELECT * FROM \"{}\" ORDER BY rowid",
+                    table.replace('"', "\"\"")
+                )
+            };
+            let rows = storage.all(&query, []).unwrap();
+            (table, rows)
+        })
+        .collect()
+}
+
+#[test]
+fn a_reprocess_rebuilds_shared_staging_without_replaying_omitted_keys() {
+    install();
+    let (_root, db, id) = ready();
+    let day = "2026-09-24";
+    let mut capture = routes::fixture(&request(day, Mode::Final)).unwrap();
+    capture.itineraries.truncate(1);
+    capture.summaries["itinerarySummaries"]
+        .as_array_mut()
+        .unwrap()
+        .truncate(1);
+    // Replaying this day shapes neither address-2 nor a second itinerary's driver.
+    let mut detail: Value = serde_json::from_str(&capture.itineraries[0].detail).unwrap();
+    detail["addresses"].as_array_mut().unwrap().truncate(1);
+    capture.itineraries[0].detail = detail.to_string();
+    publish(&db, &id, "replay", day, &capture);
+    let storage = db.routes_db(&id).unwrap();
+    let publication = storage
+        .one(
+            "SELECT id FROM route_publications WHERE day=? AND active=1",
+            [day],
+        )
+        .unwrap()
+        .unwrap();
+    omitted_shared_staging(&storage, s(&publication, "id"));
+
+    // A later day's actual publication supplies the identities the omitted keys must keep.
+    let mut later = routes::fixture(&request("2026-09-25", Mode::Final)).unwrap();
+    later.summaries["transporters"][1]["firstName"] = json!("Current");
+    for itinerary in &mut later.itineraries {
+        let mut detail: Value = serde_json::from_str(&itinerary.detail).unwrap();
+        detail["addresses"][1]["address1"] = json!("Current street");
+        itinerary.detail = detail.to_string();
+    }
+    publish(&db, &id, "later", "2026-09-25", &later);
+
+    // An unfinished publication, cancelled before activation, owns separate staging.
+    let jobs = db
+        .enqueue_routes(&id, None, "cancelled", Some(day), Mode::Final, 1)
+        .unwrap();
+    let job = s(&jobs[0], "id");
+    let cancelled = db
+        .stage_routes(
+            &id,
+            job,
+            renamed(
+                &routes::fixture(&request(day, Mode::Final)).unwrap(),
+                "Cancelled",
+                "Cancelled street",
+            ),
+        )
+        .unwrap();
+    common::set_job_status(&db, job, "cancelled").unwrap();
+    let staged = |table: &str| {
+        storage
+            .all(
+                &format!("SELECT * FROM {table} WHERE publication_id=? ORDER BY rowid"),
+                [&cancelled.publication],
+            )
+            .unwrap()
+    };
+    let unconsumed = (staged("staged_addresses"), staged("staged_drivers"));
+    assert!(!unconsumed.0.is_empty());
+    assert!(!unconsumed.1.is_empty());
+
+    // Another DSP uses the same driver/address keys. Replaying this DSP changes none of it.
+    let owner = common::platform_owner(&db);
+    let other = db
+        .new_dsp("Other fixture", "UTC", &owner, false)
+        .unwrap()
+        .id;
+    let other_storage = db.routes_db(&other).unwrap();
+    let other_staged = db
+        .stage_routes_start(&other, "other", &capture, capture.itineraries.len())
+        .unwrap();
+    omitted_shared_staging(&other_storage, &other_staged.publication);
+    let other_before = replay_storage_rows(&other_storage);
+    let raw_before = storage
+        .all(
+            "SELECT publication_id,name,encoding,raw_bytes,hex(body) body FROM route_raw \
+         ORDER BY publication_id,name",
+            [],
+        )
+        .unwrap();
+
+    for _ in 0..2 {
+        let replayed = db.reprocess_routes(&id, Some(day)).unwrap();
+        assert_eq!(replayed.publications.len(), 1);
+        assert_eq!(replayed.publications[0].itinerary_count, 1);
+        assert_eq!(storage.one(
+            "SELECT (SELECT first_name FROM drivers WHERE transporter_id='driver-2') driver,\
+             (SELECT address1 FROM addresses WHERE address_id='address-2') street", [],
+        ).unwrap(), Some(json!({"driver":"Current","street":"Current street"})));
+        assert_eq!(
+            (staged("staged_addresses"), staged("staged_drivers")),
+            unconsumed
+        );
+        for table in ["staged_addresses", "staged_drivers"] {
+            assert_eq!(
+                storage
+                    .count(
+                        &format!("SELECT count(*) FROM {table} WHERE publication_id=?"),
+                        [s(&publication, "id")],
+                    )
+                    .unwrap(),
+                0
+            );
+        }
+        assert_eq!(replay_storage_rows(&other_storage), other_before);
+        assert_eq!(
+            storage
+                .all(
+                    "SELECT publication_id,name,encoding,raw_bytes,hex(body) body FROM route_raw \
+             ORDER BY publication_id,name",
+                    [],
+                )
+                .unwrap(),
+            raw_before
+        );
+    }
+    assert_eq!(db.route_days(&id).unwrap().days.len(), 2);
+    assert_eq!(
+        storage
+            .count(
+                "SELECT count(*) FROM route_publications WHERE id=? AND active=0",
+                [&cancelled.publication]
+            )
+            .unwrap(),
+        1
+    );
+}
+
+#[test]
+fn a_failed_reprocess_restores_rows_and_staging_and_needs_only_inline_responses() {
+    install();
+    let (_root, db, id) = ready();
+    let day = "2026-09-25";
+    let capture = routes::fixture(&request(day, Mode::Final)).unwrap();
+    publish(&db, &id, "replay", day, &capture);
+    let storage = db.routes_db(&id).unwrap();
+    let publication = storage
+        .one("SELECT id FROM route_publications WHERE active=1", [])
+        .unwrap()
+        .unwrap();
+    // Extra keys model staging a previous reader left, including one no raw response names.
+    storage.exec(
+        "INSERT INTO staged_addresses(publication_id,address_id,address1) VALUES (?,'omitted','Old')",
+        [s(&publication, "id")],
+    ).unwrap();
+    storage
+        .exec(
+            "INSERT INTO staged_drivers(publication_id,transporter_id,first_name,person_type) \
+         VALUES (?,'omitted','Old','[]')",
+            [s(&publication, "id")],
+        )
+        .unwrap();
+    let before = replay_storage_rows(&storage);
+    // Fail after the fresh staging was shared, but before the day transaction commits.
+    storage.0.execute_batch(
+        "CREATE TEMP TRIGGER refuse_reprocess BEFORE UPDATE OF adapter_version ON route_publications \
+         BEGIN SELECT RAISE(ABORT,'fixture reprocess refused'); END;",
+    ).unwrap();
+    let error = db.reprocess_routes(&id, Some(day)).unwrap_err();
+    assert!(
+        std::error::Error::source(&error)
+            .unwrap()
+            .to_string()
+            .contains("fixture reprocess refused")
+    );
+    assert_eq!(replay_storage_rows(&storage), before);
+    storage
+        .0
+        .execute_batch("DROP TRIGGER refuse_reprocess")
+        .unwrap();
+
+    // Corrupt and missing legacy inline responses refuse before any rows or staging change.
+    let raw: (i64, Vec<u8>) = storage.0.query_row(
+        "SELECT raw_bytes,body FROM route_raw WHERE publication_id=? AND name='itinerary:itinerary-1'",
+        [s(&publication, "id")], |r| Ok((r.get(0)?, r.get(1)?)),
+    ).unwrap();
+    storage.exec(
+        "UPDATE route_raw SET body=x'00' WHERE publication_id=? AND name='itinerary:itinerary-1'",
+        [s(&publication, "id")],
+    ).unwrap();
+    let corrupt = replay_storage_rows(&storage);
+    assert_eq!(
+        db.reprocess_routes(&id, Some(day)).unwrap_err().code,
+        "operation_failed"
+    );
+    assert_eq!(replay_storage_rows(&storage), corrupt);
+    storage
+        .exec(
+            "DELETE FROM route_raw WHERE publication_id=? AND name='itinerary:itinerary-1'",
+            [s(&publication, "id")],
+        )
+        .unwrap();
+    let missing = replay_storage_rows(&storage);
+    assert_eq!(
+        db.reprocess_routes(&id, Some(day)).unwrap_err().code,
+        "operation_failed"
+    );
+    assert_eq!(replay_storage_rows(&storage), missing);
+    storage
+        .exec(
+            "INSERT INTO route_raw(publication_id,name,encoding,raw_bytes,body) \
+         VALUES (?,'itinerary:itinerary-1','gzip',?,?)",
+            rusqlite::params![s(&publication, "id"), raw.0, raw.1],
+        )
+        .unwrap();
+    assert_eq!(replay_storage_rows(&storage), before);
+    // Restored inline bytes are sufficient: no format, sidecar or metadata migration is needed.
+    assert_eq!(
+        db.reprocess_routes(&id, Some(day))
+            .unwrap()
+            .publications
+            .len(),
+        1
+    );
+    assert_eq!(
+        db.route_day(&id, day).unwrap().unwrap().itineraries.len(),
+        2
+    );
+    for table in ["staged_addresses", "staged_drivers"] {
+        assert_eq!(
+            storage
+                .count(&format!("SELECT count(*) FROM {table}"), [])
+                .unwrap(),
+            0
+        );
+    }
+    assert!(
+        storage
+            .all("PRAGMA foreign_key_check", [])
+            .unwrap()
+            .is_empty()
+    );
+}
+
 #[test]
 fn mismatched_incomplete_and_oversized_captures_fail_before_changing_publications() {
     install();
