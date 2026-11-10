@@ -26,7 +26,10 @@ fn a_change_is_light_standard_or_sensitive_by_the_paths_it_changes() {
             tier::Later::Tests,
         ),
         (
-            vec!["features/dvic/tests/api/week.rs", "features/dvic/api/week.rs"],
+            vec![
+                "features/dvic/tests/api/week.rs",
+                "features/dvic/api/week.rs",
+            ],
             tier::Later::Pass,
         ),
         (vec!["core/accounts/tests/api/mfa.rs"], tier::Later::Pass),
