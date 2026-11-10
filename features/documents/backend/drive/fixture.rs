@@ -1,7 +1,5 @@
 //! Account-scoped in-memory Drive state shared by every connected DSP.
-use super::{
-    Capabilities, Changed, Changes, DOC, Item, Person, Refused, SHEET, Share, link, missing,
-};
+use super::{Capabilities, DOC, Item, Person, Refused, SHEET, Share, link, missing};
 use crate::backend::google::FOLDER;
 use dispatch_core::{Error, Result, db::iso, foundation::crypto};
 use std::{
@@ -11,7 +9,7 @@ use std::{
 };
 
 /// One account's Drive, in fixture mode.
-pub(super) struct Drive {
+pub(in crate::backend) struct Drive {
     pub(super) account: String,
     pub(super) files: BTreeMap<String, Item>,
     /// Who each folder is shared with, beside the account.
@@ -26,10 +24,15 @@ pub(super) struct Drive {
     /// How many changes the Drive has had, and which of them each file changed in last, as
     /// Google's change feed counts them.
     pub(super) changes: u64,
-    changed: BTreeMap<String, u64>,
+    pub(super) changed: BTreeMap<String, u64>,
+    #[cfg(test)]
+    pub(in crate::backend) requests: usize,
+    #[cfg(test)]
+    pub(in crate::backend) holds:
+        BTreeMap<usize, std::pin::Pin<Box<dyn Future<Output = ()> + Send>>>,
 }
 impl Drive {
-    pub(super) fn create(
+    pub(in crate::backend) fn create(
         &mut self,
         id: String,
         name: &str,
@@ -60,23 +63,15 @@ impl Drive {
         self.touch(&id);
         Ok(item)
     }
-    pub(super) fn changes(&self, from: &str) -> Result<Changes> {
-        let from: u64 = from
-            .parse()
-            .map_err(|_| Error::new("documents_changes_lost", 410))?;
-        let changed = self
-            .changed
-            .iter()
-            .filter(|(_, at)| **at > from)
-            .map(|(id, _)| match self.files.get(id) {
-                Some(item) if !self.hidden.contains(id) => Changed::Kept(Box::new(described(item))),
-                _ => Changed::Gone(id.clone()),
-            })
-            .collect();
-        Ok(Changes {
-            changed,
-            next: self.changes.to_string(),
-        })
+    pub(in crate::backend) fn shares(&self, id: &str) -> Vec<Share> {
+        let mut shares = vec![Share {
+            id: "owner".into(),
+            role: "owner".into(),
+            kind: "user".into(),
+            email_address: Some(self.account.clone()),
+        }];
+        shares.extend(self.shares.get(id).cloned().unwrap_or_default());
+        shares
     }
     pub(super) fn share(
         &mut self,
@@ -140,7 +135,7 @@ impl Drive {
         Ok(item)
     }
     /// The files Dispatch can reach.
-    pub(super) fn values(&self) -> impl Iterator<Item = &Item> {
+    pub(in crate::backend) fn values(&self) -> impl Iterator<Item = &Item> {
         self.files
             .values()
             .filter(|item| !self.hidden.contains(&item.id))
@@ -160,7 +155,10 @@ pub(super) fn described(item: &Item) -> Item {
 }
 static DRIVES: LazyLock<Mutex<BTreeMap<String, Drive>>> = LazyLock::new(Default::default);
 /// Runs `work` on the Drive of the account fixture mode's access token names.
-pub(super) fn fixture<T>(access: &str, work: impl FnOnce(&mut Drive) -> Result<T>) -> Result<T> {
+pub(in crate::backend) fn fixture<T>(
+    access: &str,
+    work: impl FnOnce(&mut Drive) -> Result<T>,
+) -> Result<T> {
     let account = access
         .strip_prefix("fixture:")
         .ok_or_else(|| Error::new("google_connection_broken", 409))?;
@@ -176,9 +174,40 @@ pub(super) fn fixture<T>(access: &str, work: impl FnOnce(&mut Drive) -> Result<T
         hidden: BTreeSet::new(),
         changes: 0,
         changed: BTreeMap::new(),
+        #[cfg(test)]
+        requests: 0,
+        #[cfg(test)]
+        holds: BTreeMap::new(),
     });
     work(drive)
 }
+impl crate::backend::google::Connected {
+    /// The in-process transport uses the same post-wait admission boundary as HTTP.
+    pub(in crate::backend) async fn fixture<T>(
+        &self,
+        access: &str,
+        work: impl FnOnce(&mut Drive) -> Result<T>,
+    ) -> Result<T> {
+        #[cfg(test)]
+        {
+            let hold = fixture(access, |drive| {
+                Ok(drive.holds.remove(&(drive.requests + 1)))
+            })?;
+            if let Some(hold) = hold {
+                hold.await;
+            }
+        }
+        self.admission.check().await?;
+        fixture(access, |drive| {
+            #[cfg(test)]
+            {
+                drive.requests += 1;
+            }
+            work(drive)
+        })
+    }
+}
+
 /// Puts files in fixture mode's Drive elsewhere than the main folder, as its account holds
 /// them: a picture someone made directly in its Drive, and two Sheets someone else owns and
 /// shared with the account, one to view only. Each comes into Documents once it's picked.

@@ -101,11 +101,8 @@ async fn folder(state: &Arc<State>, dsp: &str) -> String {
     connection.await.unwrap().unwrap().folder_id
 }
 /// Who Google says the file or folder `id` is shared with, beside the account.
-async fn shared_with(state: &Arc<State>, id: &str) -> Vec<String> {
-    let google = Google::of(&state.config).unwrap();
-    let mut emails: Vec<String> = google
-        .shares(ACCOUNT, id)
-        .await
+async fn shared_with(_state: &Arc<State>, id: &str) -> Vec<String> {
+    let mut emails: Vec<String> = drive::fixture::fixture(ACCOUNT, |drive| Ok(drive.shares(id)))
         .unwrap()
         .into_iter()
         .filter(|share| share.role != "owner")
@@ -163,7 +160,13 @@ async fn a_dsp_disabled_between_two_file_shares_shares_the_file_with_no_one_more
         .into_iter()
         .find(|item| item.name == drive::SHARED_SHEET)
         .unwrap();
-    let google = Google::of(&state.config).unwrap();
+    let owner = crate::backend::grant::capture(&state, &dsp, None)
+        .await
+        .unwrap();
+    let google = crate::backend::access::open_for(&state, &owner, false)
+        .await
+        .unwrap()
+        .google;
     google.shortcut(ACCOUNT, &sheet, &folder).await.unwrap();
     // Disabled once the Sheet is shared with Avery, the first of the team.
     drive::fixture_on_sharing(&sheet.id, disabling(&state, &dsp));
@@ -193,28 +196,64 @@ async fn a_dsp_disabled_between_two_file_shares_shares_the_file_with_no_one_more
 // they're told it's on its way.
 #[tokio::test]
 async fn a_dsp_disabled_between_a_members_two_addresses_shares_at_the_new_one_once_enabled() {
-    let (_root, state, dsp) = platform();
-    connect(&state, &dsp).await;
-    let avery = join(&state, &dsp, "Avery", "avery@example.test").await;
-    let folder = folder(&state, &dsp).await;
-    sync(&state, &dsp).await.unwrap();
-    assert_eq!(shared_with(&state, &folder).await, ["avery@example.test"]);
-    let (at, user) = (dsp.clone(), avery.clone());
-    state
-        .run(move |db| db.link_documents_google(&at, &user, "avery.r@example.test"))
-        .await
-        .unwrap();
-    drive::fixture_on_sharing(&folder, disabling(&state, &dsp));
-    let refused = sync(&state, &dsp).await.unwrap_err();
-    assert!(refused.is(Code::DspUnavailable));
-    assert!(shared_with(&state, &folder).await.is_empty());
-    enable(&state, &dsp).await;
-    let at = dsp.clone();
-    assert!(state.read(move |db| stale(db, &at)).await.unwrap());
-    let sharing = mine_of(&state, &dsp, &avery, "avery@example.test").await;
-    assert_eq!(sharing.state, SharingState::Pending);
-    sync(&state, &dsp).await.unwrap();
-    assert_eq!(shared_with(&state, &folder).await, ["avery.r@example.test"]);
-    let sharing = mine_of(&state, &dsp, &avery, "avery@example.test").await;
-    assert_eq!(sharing.state, SharingState::Shared);
+    for inner in [false, true] {
+        let (_root, state, dsp) = platform();
+        let account = format!(
+            "fixture:sharing-{}@example.test",
+            dispatch_core::foundation::crypto::token()
+                .unwrap()
+                .to_ascii_lowercase()
+        );
+        crate::backend::support::connect_as(&state, &dsp, &account).await;
+        let avery = join(&state, &dsp, "Avery", "avery@example.test").await;
+        let folder = folder(&state, &dsp).await;
+        let shared = || {
+            let mut emails: Vec<_> =
+                drive::fixture::fixture(&account, |remote| Ok(remote.shares(&folder)))
+                    .unwrap()
+                    .into_iter()
+                    .filter(|share| share.role != "owner")
+                    .filter_map(|share| share.email_address)
+                    .collect();
+            emails.sort();
+            emails
+        };
+        sync(&state, &dsp).await.unwrap();
+        assert_eq!(shared(), ["avery@example.test"]);
+        let (at, user) = (dsp.clone(), avery.clone());
+        state
+            .run(move |db| db.link_documents_google(&at, &user, "avery.r@example.test"))
+            .await
+            .unwrap();
+        let disable = disabling(&state, &dsp);
+        if inner {
+            let account = account.clone();
+            drive::fixture_on_sharing(&folder, move || {
+                drive::fixture::fixture(&account, |remote| {
+                    remote.holds.insert(
+                        remote.requests + 1,
+                        Box::pin(async move {
+                            disable();
+                        }),
+                    );
+                    Ok(())
+                })
+                .unwrap();
+            });
+        } else {
+            drive::fixture_on_sharing(&folder, disable);
+        }
+        let refused = sync(&state, &dsp).await.unwrap_err();
+        assert!(refused.is(Code::DspUnavailable));
+        assert!(shared().is_empty());
+        enable(&state, &dsp).await;
+        let at = dsp.clone();
+        assert!(state.read(move |db| stale(db, &at)).await.unwrap());
+        let sharing = mine_of(&state, &dsp, &avery, "avery@example.test").await;
+        assert_eq!(sharing.state, SharingState::Pending);
+        sync(&state, &dsp).await.unwrap();
+        assert_eq!(shared(), ["avery.r@example.test"]);
+        let sharing = mine_of(&state, &dsp, &avery, "avery@example.test").await;
+        assert_eq!(sharing.state, SharingState::Shared);
+    }
 }
