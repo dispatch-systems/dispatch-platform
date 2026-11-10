@@ -290,7 +290,7 @@ impl Store {
         let Some(row) = UserRow::find(&directory, "id", user)?.filter(UserRow::active) else {
             return Ok(false);
         };
-        if !row.active() || !admitted(&directory, &row.user, scope.as_deref())? {
+        if !admitted(&directory, &row.user, scope.as_deref())? {
             return Ok(false);
         }
         let a = Auth {
