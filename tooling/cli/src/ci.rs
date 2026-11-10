@@ -23,6 +23,8 @@ struct Failed {
     name: String,
     id: u64,
     conclusion: String,
+    /// When its first step that didn't pass started and ended, as GitHub tells the second.
+    step: Option<(String, String)>,
 }
 fn gh(root: &Path, args: &[&str], runner: &dyn Runner) -> Result<String> {
     let mut command = vec!["gh"];
@@ -76,10 +78,22 @@ fn latest(
             )
         })
         .filter_map(|job| {
+            let step = job["steps"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|step| !matches!(step["conclusion"].as_str(), Some("success" | "skipped")))
+                .find_map(|step| {
+                    Some((
+                        step["startedAt"].as_str()?.to_owned(),
+                        step["completedAt"].as_str()?.to_owned(),
+                    ))
+                });
             Some(Failed {
                 name: job["name"].as_str()?.to_owned(),
                 id: job["databaseId"].as_u64()?,
                 conclusion: job["conclusion"].as_str()?.to_owned(),
+                step,
             })
         })
         .collect();
@@ -128,7 +142,7 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
             println!("FAIL {}: it fails because the jobs above did", job.name);
             continue;
         }
-        let failed = lines(&log(job.id));
+        let failed = lines(&log(job.id), job.step.as_ref());
         let verdict = match main
             .as_ref()
             .and_then(|main| main.failed.iter().find(|failed| failed.name == job.name))
@@ -142,7 +156,7 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
                 "the change's own: main's latest run passes it"
             }
             Some(theirs) => {
-                let theirs = failing(&lines(&log(theirs.id)));
+                let theirs = failing(&lines(&log(theirs.id), theirs.step.as_ref()));
                 let ours = failing(&failed);
                 // Main's only when everything that fails here fails there too.
                 if ours.is_empty() || theirs.is_empty() {
@@ -222,7 +236,7 @@ fn main(root: &Path, runner: &dyn Runner) -> Result<()> {
             job.conclusion,
             short(&run.head)
         );
-        let failed = lines(&log(root, job.id, runner));
+        let failed = lines(&log(root, job.id, runner), job.step.as_ref());
         for line in &failed[failed.len().saturating_sub(LINES)..] {
             println!("    {line}");
         }
@@ -253,23 +267,22 @@ fn log(root: &Path, job: u64, runner: &dyn Runner) -> String {
     )
     .unwrap_or_default()
 }
-/// The error GitHub writes where a step fails.
-const FAILED_STEP: &str = "##[error]Process completed with exit code";
-/// A job's log as lines, up to where its first step failed: what follows is the job cleaning
-/// up. Each without the timestamp it starts with and the colours within it.
-fn lines(log: &str) -> Vec<String> {
-    let mut lines: Vec<String> = log
-        .trim_start_matches('\u{feff}')
+/// The lines of a job's log its failed `step` wrote, by the time each starts with: the log is
+/// the whole job's, and what follows a failed step is the job cleaning up. All of them where
+/// GitHub names no such step. Each without that time and the colours within it.
+fn lines(log: &str, step: Option<&(String, String)>) -> Vec<String> {
+    // To the second, as a step's times are.
+    let second = |time: &str| time.get(..19).unwrap_or(time).to_owned();
+    let step = step.map(|(started, ended)| second(started)..=second(ended));
+    log.trim_start_matches('\u{feff}')
         .lines()
-        .map(|line| {
-            let text = line.split_once(' ').map_or("", |(_, rest)| rest);
-            plain(text).trim_end().to_owned()
+        .filter_map(|line| {
+            let (time, text) = line.split_once(' ').unwrap_or((line, ""));
+            step.as_ref()
+                .is_none_or(|step| step.contains(&second(time)))
+                .then(|| plain(text).trim_end().to_owned())
         })
-        .collect();
-    if let Some(failed) = lines.iter().position(|line| line.starts_with(FAILED_STEP)) {
-        lines.truncate(failed + 1);
-    }
-    lines
+        .collect()
 }
 /// `text` without its terminal colours: each escape sequence up to the letter that ends it.
 fn plain(text: &str) -> String {
@@ -346,10 +359,10 @@ mod tests {
         };
         let reload = "meal-breaks.spec.ts:594:1 › survives a reload";
         let home = "home.spec.ts:3:1 › opens";
-        let ours = failing(&lines(&log(&[("22", reload)])));
+        let ours = failing(&lines(&log(&[("22", reload)]), None));
         assert_eq!(ours, [format!("✘ {reload}")]);
         let shared = |theirs: &[(&str, &str)]| {
-            let theirs = failing(&lines(&log(theirs)));
+            let theirs = failing(&lines(&log(theirs), None));
             ours.iter().all(|test| theirs.contains(test))
         };
         assert!(
@@ -378,17 +391,30 @@ mod tests {
             ]),
             ["error[E0308]: mismatched types"]
         );
-        assert!(failing(&lines("2026-11-07T04:45:07.0Z [fail] test:ui (41.6s)\n")).is_empty());
-        // A job's log ends for the reader where its step failed, without its colours.
+        assert!(
+            failing(&lines(
+                "2026-11-07T04:45:07.0Z [fail] test:ui (41.6s)\n",
+                None
+            ))
+            .is_empty()
+        );
+        // Of a job's whole log, only what its failed step wrote is read, without its colours:
+        // an action that fails says so in words of its own, and the job cleans up after it.
+        let step = (
+            "2026-11-10T20:22:39Z".to_owned(),
+            "2026-11-10T20:22:40Z".to_owned(),
+        );
         assert_eq!(
             lines(
-                "\u{feff}2026-11-10T20:22:39.3Z \u{1b}[31;1mFAIL\u{1b}[0m [ 1.256s] review::tests::x\n\
-                 2026-11-10T20:22:39.4Z ##[error]Process completed with exit code 100.\n\
-                 2026-11-10T20:22:40.0Z Post job cleanup.\n"
+                "\u{feff}2026-11-10T20:22:38.9Z Set up job\n\
+                 2026-11-10T20:22:39.3Z \u{1b}[31;1mFAIL\u{1b}[0m [ 1.256s] review::tests::x\n\
+                 2026-11-10T20:22:40.4Z ##[error]Cache restore failed\n\
+                 2026-11-10T20:22:41.0Z Post job cleanup.\n",
+                Some(&step)
             ),
             [
                 "FAIL [ 1.256s] review::tests::x",
-                "##[error]Process completed with exit code 100."
+                "##[error]Cache restore failed"
             ]
         );
         assert_eq!(
