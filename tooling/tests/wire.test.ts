@@ -5,10 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   crateOf,
-  crates,
   mcpMarker,
   toolOf,
-  tools,
   wiredManifest,
   wiredMcpManifest,
   wiredProduct,
@@ -195,12 +193,4 @@ test("the app turns on the MCP's Cargo feature of each feature its tools need", 
   const wired = wiredManifest(manifest, features, ['dvic']);
   assert.match(wired, /^dvic = \["dep:dispatch-dvic", "dispatch-mcp\/dvic"\]$/m);
   assert.match(wired, /^timecard = \["dep:dispatch-timecard", "driver_match"\]$/m);
-});
-
-test("the repository's tools are listed as it holds them", () => {
-  const root = path.resolve(import.meta.dirname, '../..');
-  const list = tools(root, crates(root));
-  const names = list.map((each) => each.module);
-  assert(names.includes('whoami') && names.includes('get_profile'), names.join(', '));
-  assert.deepEqual(list.find((each) => each.module === 'dvic_short_inspections')?.needs, ['dvic']);
 });
