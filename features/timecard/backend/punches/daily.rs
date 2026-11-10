@@ -39,21 +39,6 @@ pub(crate) fn cards(db: &Db, sql: &str, p: impl rusqlite::Params) -> Result<Vec<
     }
     Ok(rows)
 }
-/// Overlay completed employee pages from the current guarded attempt.
-pub(crate) fn daily_timecards_source(
-    store: &Store,
-    id: &str,
-    date: &str,
-) -> Result<(Option<Value>, Vec<Value>, Vec<Value>)> {
-    let source = super::range::daily_sources(store, id, date, date, None)?
-        .remove(date)
-        .unwrap();
-    Ok((
-        source.publication,
-        source.roster.values().cloned().collect(),
-        source.rows.into_values().collect(),
-    ))
-}
 pub(crate) fn daily_timecards(
     store: &Store,
     id: &str,

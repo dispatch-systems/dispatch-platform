@@ -63,9 +63,9 @@ fn a_scoped_publication_rejects_other_employees_periods_and_incomplete_captures(
         saved
     );
     assert_eq!(
-        store
-            .timecard_employees(id, "", 0, None, false, None)
-            .map(|value| serde_json::to_value(value).unwrap())?["total"],
+        super::super::employees::roster(&store, id)?
+            .page("", 0, None, false, None)
+            .total,
         12
     );
     let db = store.collector(id, paycom::PROVIDER)?;
@@ -151,10 +151,9 @@ fn a_scoped_publication_rejects_other_employees_periods_and_incomplete_captures(
         range[&scope.to].rows[0].card.punches[0].clock_in.as_deref(),
         Some("07:56")
     );
-    let daily = store.daily_timecards_source(id, &scope.to)?.2;
     assert_eq!(
-        daily.iter().find(|c| c["employeeCode"] == "E001").unwrap()["sourceUrl"],
-        "https://paycom.example/timecard/accepted"
+        range[&scope.to].rows[0].card.source_url.as_deref(),
+        Some("https://paycom.example/timecard/accepted")
     );
 
     // Missing ref/body cannot turn a compact employee capture into empty payroll.
@@ -169,7 +168,7 @@ fn a_scoped_publication_rejects_other_employees_periods_and_incomplete_captures(
         );
         assert_eq!(
             store
-                .daily_timecards_source(id, &scope.to)
+                .daily_timecards(id, &scope.to, "name", false)
                 .unwrap_err()
                 .code,
             "paycom_payload_unavailable"
