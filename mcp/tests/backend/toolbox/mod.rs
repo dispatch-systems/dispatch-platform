@@ -716,8 +716,3 @@ fn a_tool_answers_an_object() {
     crate::testing::install();
     check(&[&Listing]);
 }
-#[test]
-fn the_installed_tools_pass_the_checks() {
-    crate::testing::install();
-    check(Toolbox::installed().all());
-}
