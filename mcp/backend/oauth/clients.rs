@@ -72,10 +72,6 @@ const MOST_UNUSED: i64 = 200;
 /// An unused registration belongs only to the short pairing attempt that created it.
 pub(super) const UNUSED_LIFETIME: i64 = 15 * 60 * 1000;
 
-/// Whether `url` is a known app's client document.
-pub fn known(url: &str) -> bool {
-    KNOWN.iter().any(|known| known.url == url)
-}
 /// The known app whose client document is at `url`, as the owner's choice of apps names it.
 pub fn known_app(url: &str) -> Option<OAuthAppId> {
     KNOWN
