@@ -214,8 +214,9 @@ test('a driver’s work conversation keeps what’s being written while they hol
   );
   const readAgain = page.waitForResponse(
     (response) =>
-      /\/api\/dsp\/communications\/conversations\/[^/?]+$/.test(new URL(response.url()).pathname) &&
-      response.request().method() === 'GET',
+      /\/api\/dsp\/communications\/conversations\/[^/?]+(?:\/window)?$/.test(
+        new URL(response.url()).pathname,
+      ) && response.request().method() === 'GET',
   );
   await northline.end();
   await readAgain;
