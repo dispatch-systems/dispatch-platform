@@ -8,8 +8,8 @@ import { replaceBuild } from './build-output.js';
 
 const root = process.cwd(),
   out = path.join(root, '.build'),
-  // For browser tests on this machine only: the debug backend, built through the cache in seconds
-  // where a release build takes minutes. The checks on GitHub test the release build.
+  // For a change's own tests, on this machine and on its PR: the debug backend, built through the
+  // cache in seconds where a release build takes minutes. Main's checks test the release build.
   debug = process.argv.includes('--debug');
 // An installed runtime holds the host's management tools, in `.runtime/management` on Dev and
 // `management` on Production; a checkout's dev server records itself in `.runtime` without

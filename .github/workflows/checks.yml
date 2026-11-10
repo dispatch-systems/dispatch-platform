@@ -222,11 +222,14 @@ jobs:
       - name: Remove the signing key
         if: always()
         run: rm -f "$RUNNER_TEMP/relay.p12"
-  # Packages the runtime: the release backend and support worker, built together or from the
-  # exact-input cache when their sources are unchanged, on a PR whose sources aren't main's
-  # without LTO (setup-build), and the dashboard from Vite, with the relay apps signed above, or
-  # in a release's run without a new Production app, the one the latest release carries.
-  # Everything that tests the runtime downloads this package instead of building again.
+  # Packages the runtime: the backend and support worker, built together or from the exact-input
+  # cache when their sources are unchanged, and the dashboard from Vite, with the relay apps
+  # signed above, or in a release's run without a new Production app, the one the latest release
+  # carries. Everything that tests the runtime downloads this package instead of building again.
+  # A PR's package carries the debug backend and worker, which compile in a fifth of the release
+  # ones' time: it only feeds the PR's own tests, which main's run of the merged commit repeats on
+  # the release build Dev installs. It compiles them beside the debug job rather than wait for
+  # its build, so the browser suite, the last to end, starts that much sooner.
   build:
     needs: [relay-dev, relay-production]
     # Once the relay apps are built, or skipped, as on a PR, where it starts at once.
@@ -247,11 +250,10 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-tools
       - uses: ./.github/actions/setup-build
-        id: tools
         with:
-          profile: release
+          profile: ${{ github.event_name == 'pull_request' && 'debug' || 'release' }}
           save: 'false'
-          pull-request-lto: 'false'
+          binaries: 'true'
       # The relay apps go by fixed names, each attempt replacing the last, not by job outputs:
       # GitHub drops an output that holds a secret's value, and the relay environments hold
       # secrets that match words of these names.
@@ -275,17 +277,7 @@ jobs:
           if [ -d "$RUNNER_TEMP/relay-apps" ]; then
             export DISPATCH_RELAY_APPS="$RUNNER_TEMP/relay-apps"
           fi
-          npm run check:ci -- build
-      # A pull request's build without LTO, for its later pushes whose Rust inputs are the same:
-      # they restore it instead of compiling (setup-build). Main's come from the caches workflow.
-      - name: Save the pull request's build
-        if: >-
-          github.event_name == 'pull_request' && steps.tools.outputs.binary-hit != 'true' &&
-          steps.tools.outputs.binary-key != '' && hashFiles('.ci-rust-cache/**/sha256') != ''
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-        with:
-          path: .ci-rust-cache/
-          key: dispatch-rust-binary-release-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.binary-key }}
+          npm run check:ci -- build ${{ github.event_name == 'pull_request' && '--debug' || '' }}
       # Where the release compile spent its time, when it compiled.
       - name: Preserve the compile's timings
         if: always()
@@ -587,9 +579,9 @@ jobs:
       - name: Test, lint and build
         working-directory: android
         run: ./gradlew test lintDevDebug lintProductionRelease assembleDebug
-  # The debug backend and worker, built once for the run when the change reaches what they
-  # compile from (the changes job), and saved for api and the collectors, which restore it
-  # instead of each building their own. Otherwise they restore main's, which main's own run of
+  # The debug backend and worker, built when the change reaches what they compile from (the
+  # changes job), and saved for api and the collectors, which restore it instead of each
+  # building their own, and for the build job of the PR's later pushes. Otherwise they restore main's, which main's own run of
   # this job saved.
   debug:
     needs: changes

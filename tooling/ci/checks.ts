@@ -8,8 +8,9 @@ import { nodeTests, pythonTests, type Command } from './execution-plan.js';
 import { workspaceCrates } from './workspace.js';
 
 // One job of the platform checks, or locally the whole suite in sequence. CI runs each mode
-// on its own runner: `build` packages the runtime, and the modes that test it, `browser` and
-// `smoke`, download that package into `.build` first.
+// on its own runner: `build` packages the runtime, with the debug backend when `--debug`
+// follows, as on a PR, and the modes that test it, `browser` and `smoke`, download that package
+// into `.build` first.
 const mode = process.argv[2] ?? 'full';
 const modes = ['full', 'build', 'checks', 'browser', 'core', 'api', 'smoke', 'scaffold', 'cache'];
 if (!modes.includes(mode)) throw new Error('Unknown validation mode');
@@ -233,7 +234,7 @@ async function api() {
   }
   await Promise.all([python, audit]);
 }
-if (mode === 'build') await npm('build');
+if (mode === 'build') await npm('build', ...(process.argv.includes('--debug') ? ['--debug'] : []));
 else if (mode === 'checks') await checks();
 else if (mode === 'browser') await browser();
 else if (mode === 'core') await core();
