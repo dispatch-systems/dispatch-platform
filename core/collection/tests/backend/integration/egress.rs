@@ -46,7 +46,9 @@ async fn long_socket_paths_proxy_concurrent_fixture_requests_and_close_cleanly()
             result.unwrap();
         }
     });
-    let proxy = Egress::start(&directory, ("fixture.dispatch.invalid".into(), port)).unwrap();
+    let proxy =
+        Egress::start_with_policy(&directory, NetworkPolicy::Fixture(port.try_into().unwrap()))
+            .unwrap();
     let handle = Arc::new(std::fs::File::open(&directory).unwrap());
     let mut clients = tokio::task::JoinSet::new();
     for _ in 0..20 {
@@ -112,7 +114,11 @@ async fn buffered_connect_preserves_prefetched_tunnel_bytes() {
         assert_eq!(&bytes, b"clienthello");
         socket.write_all(b"serverhello").await.unwrap();
     });
-    let _proxy = Egress::start(root.path(), ("fixture.dispatch.invalid".into(), port)).unwrap();
+    let _proxy = Egress::start_with_policy(
+        root.path(),
+        NetworkPolicy::Fixture(port.try_into().unwrap()),
+    )
+    .unwrap();
     let mut client = UnixStream::connect(root.path().join("egress.sock"))
         .await
         .unwrap();
