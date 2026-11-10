@@ -76,16 +76,7 @@ impl Platform {
     }
 
     pub async fn diagnostics(&self, job: &SupportJob) -> Result<Value> {
-        let response = self
-            .client
-            .get(format!(
-                "{}/api/v1/support/worker/jobs/{}/diagnostics",
-                self.origin, job.id
-            ))
-            .bearer_auth(&self.token)
-            .header("x-support-lease", &job.lease)
-            .send()
-            .await?;
+        let response = self.leased(job, "diagnostics").await?;
         require(
             response.status().is_success(),
             "Support diagnostics unavailable",
@@ -99,16 +90,7 @@ impl Platform {
                 && image.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'),
             "Invalid support image id",
         )?;
-        let response = self
-            .client
-            .get(format!(
-                "{}/api/v1/support/worker/jobs/{}/attachments/{image}",
-                self.origin, job.id
-            ))
-            .bearer_auth(&self.token)
-            .header("x-support-lease", &job.lease)
-            .send()
-            .await?;
+        let response = self.leased(job, &format!("attachments/{image}")).await?;
         require(
             response.status().is_success(),
             "Support report screenshot unavailable",
@@ -127,6 +109,20 @@ impl Platform {
             "Unsupported report screenshot format",
         )?;
         Ok((kind, response.bytes().await?.to_vec()))
+    }
+
+    /// A GET of one of the job's own resources, which its lease authorizes.
+    async fn leased(&self, job: &SupportJob, resource: &str) -> Result<reqwest::Response> {
+        Ok(self
+            .client
+            .get(format!(
+                "{}/api/v1/support/worker/jobs/{}/{resource}",
+                self.origin, job.id
+            ))
+            .bearer_auth(&self.token)
+            .header("x-support-lease", &job.lease)
+            .send()
+            .await?)
     }
 
     async fn post(&self, path: &str, body: &Value) -> Result<Value> {
