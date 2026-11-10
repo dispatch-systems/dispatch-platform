@@ -27,7 +27,7 @@ pub use reply::{Answer, Answered, Failure, Image, ImageType, Refusal, Reply};
 /// The schema crate the tools' types derive theirs with.
 pub use schemars;
 
-use super::{Caller, api::types::AgentDsp};
+use super::{Caller, KeyStore, api::types::AgentDsp};
 use crate::api::types::{AgentTool, ToolLevel};
 use dispatch_core::{
     State, accounts::api::types::Dsp, db::Store, manifest::registry, tenancy::catalog,
@@ -310,7 +310,7 @@ impl Toolbox {
             let tools = Toolbox(self.0.clone());
             let offered = state
                 .read(move |db| {
-                    let current = db_caller(db, &caller)?;
+                    let current = db.revalidate_agent(&caller)?;
                     let offered = tools.offered(db, &current)?;
                     Ok(offered.iter().map(|o| o.tool.name().to_owned()).collect())
                 })
@@ -391,12 +391,6 @@ enum Named {
     None,
 }
 
-/// The connection as it stands now.
-fn db_caller(db: &Store, caller: &Caller) -> dispatch_core::Result<Caller> {
-    use crate::KeyStore;
-    db.revalidate_agent(caller)
-}
-
 /// A call checked: the connection as it stands now, the DSPs the call is about, and its
 /// arguments as the tool takes them.
 struct Checked {
@@ -418,7 +412,9 @@ fn check_call(
     named: Named,
 ) -> Result<Checked, Unchecked> {
     let none = |failure: Failure| (failure, vec![]);
-    let current = db_caller(db, caller).map_err(|error| none(error.into()))?;
+    let current = db
+        .revalidate_agent(caller)
+        .map_err(|error| none(error.into()))?;
     if current.tools.level(tool) == ToolLevel::Off {
         return Err(none(refused(&current, tool).into()));
     }
