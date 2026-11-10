@@ -340,3 +340,81 @@ fn cleanup_uses_a_remote_lease_and_allows_explicit_closed_abandonment() {
             .is_empty()
     );
 }
+
+#[test]
+fn finishing_brings_a_clone_on_main_up_to_origins_and_leaves_any_other() {
+    /// What merged since the clone last looked: a commit on origin's `main` alone.
+    fn merged(fixture: &Fixture) -> String {
+        let tree = fixture.git(&["rev-parse", "HEAD^{tree}"]);
+        let merged = fixture.git(&[
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit-tree",
+            &tree,
+            "-p",
+            &fixture.head,
+            "-m",
+            "merged",
+        ]);
+        fixture.git(&["push", "-q", "origin", &format!("{merged}:refs/heads/main")]);
+        merged
+    }
+    let finished = |fixture: &Fixture| {
+        finish(
+            &fixture.root,
+            &fixture.name,
+            false,
+            &fixture.reviewer("MERGED"),
+        )
+        .unwrap();
+        assert!(!fixture.worktree.exists());
+        fixture.git(&["rev-parse", "HEAD"])
+    };
+    let fixture = Fixture::new();
+    let on_main = merged(&fixture);
+    assert_eq!(finished(&fixture), on_main);
+    // A clone with something uncommitted, a new file or a staged one, or on another branch,
+    // stays where it is, and the change is finished all the same.
+    for staged in [false, true] {
+        let fixture = Fixture::new();
+        merged(&fixture);
+        fs::write(fixture.root.join("begun"), "keep").unwrap();
+        if staged {
+            fixture.git(&["add", "begun"]);
+        }
+        // Whatever the clone's configuration hides of new files.
+        fixture.git(&["config", "status.showUntrackedFiles", "no"]);
+        assert_eq!(finished(&fixture), fixture.head, "staged: {staged}");
+        assert!(fixture.root.join("begun").exists());
+    }
+    let fixture = Fixture::new();
+    merged(&fixture);
+    fixture.git(&["switch", "-qc", "elsewhere"]);
+    assert_eq!(finished(&fixture), fixture.head);
+    assert_eq!(fixture.git(&["rev-parse", "main"]), fixture.head);
+
+    /// Another session switching the clone to a branch of its own while `finish` fetches.
+    struct Switching<'a>(&'a Fixture, Github);
+    impl Runner for Switching<'_> {
+        fn command(&self, args: &[&str], cwd: Option<&Path>, timeout: u64) -> Result<Vec<u8>> {
+            let done = self.1.command(args, cwd, timeout)?;
+            if args.get(1) == Some(&"fetch") {
+                self.0.git(&["switch", "-qc", "elsewhere"]);
+            }
+            Ok(done)
+        }
+    }
+    let fixture = Fixture::new();
+    merged(&fixture);
+    let switching = Switching(&fixture, fixture.reviewer("MERGED"));
+    finish(&fixture.root, &fixture.name, false, &switching).unwrap();
+    for branch in ["main", "elsewhere"] {
+        assert_eq!(
+            fixture.git(&["rev-parse", branch]),
+            fixture.head,
+            "{branch}"
+        );
+    }
+}

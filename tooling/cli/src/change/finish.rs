@@ -299,5 +299,42 @@ pub fn finish(from: &Path, name: &str, abandon: bool, runner: &dyn Runner) -> Re
         "Finished {name}: its worktree, branches and scratch folder are gone{}.",
         if abandon { ", unmerged" } else { "" }
     );
+    println!("{}", updated(&clone, runner));
     Ok(())
+}
+
+/// Brings the clone up to `origin/main`, and says so, or why it was left as it is. A merge on
+/// GitHub doesn't move the clone, which is where every session reads the agent docs from, and
+/// where a checkout without the CLI runs it from. Only a clone on `main` with nothing
+/// uncommitted, a new file included, moves, and only forward; the cleanup is done by now, so
+/// nothing here fails it.
+fn updated(clone: &Clone, runner: &dyn Runner) -> String {
+    let at = clone.root.display();
+    let moved = || -> Result<Option<String>> {
+        // Fetched first: the clone is looked at once the network is done with, just before it
+        // moves, so what another session did to it meanwhile is seen.
+        clone.git(runner, &["fetch", "-q", "origin", "main"])?;
+        let on = clone.git(runner, &["branch", "--show-current"])?;
+        if on != "main" {
+            return Ok(Some(match on.is_empty() {
+                true => "it is on no branch".to_owned(),
+                false => format!("it is on {on}"),
+            }));
+        }
+        // A new file counts, whatever the clone's configuration hides of them.
+        let changed = clone.git(
+            runner,
+            &["status", "--porcelain", "--untracked-files=normal"],
+        )?;
+        if !changed.is_empty() {
+            return Ok(Some("it holds uncommitted changes".to_owned()));
+        }
+        clone.git(runner, &["merge", "-q", "--ff-only", "origin/main"])?;
+        Ok(None)
+    };
+    match moved() {
+        Ok(None) => format!("Its clone, {at}, is at origin's main."),
+        Ok(Some(why)) => format!("Left its clone, {at}, where it is: {why}."),
+        Err(error) => format!("Couldn't bring its clone, {at}, up to origin's main: {error}"),
+    }
 }

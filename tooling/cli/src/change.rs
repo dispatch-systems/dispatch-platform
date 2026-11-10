@@ -1,7 +1,7 @@
 //! A change from start to finish, around git and gh: `start` makes its worktree beside the clone,
 //! off `origin/main`, with its packages and its scratch folder, and `finish` removes them once
-//! its PR merged, or with `--abandon` for one that never will. Both work from any checkout of
-//! the repository: the platform's, or the agent docs'.
+//! its PR merged, or with `--abandon` for one that never will, and brings the clone up to
+//! `main`. Both work from any checkout of the repository: the platform's, or the agent docs'.
 use crate::{REPOSITORY, Result, Runner, require, workspace};
 use std::{
     fs,

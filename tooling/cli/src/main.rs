@@ -182,8 +182,9 @@ const COMMANDS: &[Spec] = &[
         "finish",
         &["finish <name> [--abandon]", "       [--plan [--json]]"],
         "Once the change's PR merged, or with --abandon for one that never will, its worktree, \
-         its branches and its scratch folder go, only at the inspected heads. --plan lists \
-         their identity, data and blockers without removing anything.",
+         its branches and its scratch folder go, only at the inspected heads, and its clone, on \
+         main with nothing uncommitted, moves forward to origin's main. --plan lists their \
+         identity, data and blockers without removing anything.",
     )
     .flags(&["--abandon", "--plan", "--json"])
     .arguments(1),
