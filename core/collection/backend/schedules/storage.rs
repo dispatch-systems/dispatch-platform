@@ -234,16 +234,6 @@ pub(super) fn save_rule(
 }
 
 impl Store {
-    pub(crate) fn initialize_schedules(&self, id: &str) -> Result<()> {
-        let db = self.dsp(id)?;
-        // v0.0.9 imports the DSP's old single schedule unless this is set.
-        if db.setting("collectionSchedules.initialized", serde_json::json!(false))?
-            != serde_json::json!(true)
-        {
-            db.set("collectionSchedules.initialized", &serde_json::json!(true))?;
-        }
-        Ok(())
-    }
     pub(super) fn rows_of(&self, id: &str, scheduled: Scheduled) -> Result<Vec<ScheduleRow>> {
         self.dsp(id)?.query_as(
             "SELECT * FROM collection_schedules \

@@ -151,7 +151,7 @@ type Database =
  * them for pieces added to a feature that exists (`dispatchdev add`): its permissions follow its
  * own, and `--table` names the table its people are read from.
  */
-export function featureValues(root: string, argv: string[], adding = false) {
+function featureValues(root: string, argv: string[], adding = false) {
   const args = parseArguments(withPreset(argv), FLAGS, adding ? [...OPTIONS, 'table'] : OPTIONS);
   if (args.positional.length !== 1) throw new UsageError('Name one feature');
   const names = namesOf(args.positional[0]!, args.options.get('label'));
@@ -669,7 +669,7 @@ export const settingsNote = (name: string, slug: string) =>
  * The commands that show what the feature shows on the dev server, as the fixtures' Dev DSP has
  * it, once `npm run dev` restarts on the backend the feature changed.
  */
-export function devServerNote(values: Values) {
+function devServerNote(values: Values) {
   const { slug, hostPage, hostLabel } = values;
   const opens = (
     [

@@ -12,7 +12,7 @@ export type Todo = { file: string; line: number; text: string };
  * An owner's markers: the owner as `dispatchdev test --owner` names it, `feature:parking`, and
  * apart, its kind and its name, which a top folder such as `app` or `mcp` has none of.
  */
-export type Owned = { owner: string; kind: string; name: string; todos: Todo[] };
+type Owned = { owner: string; kind: string; name: string; todos: Todo[] };
 
 /** What opens a line comment, which the next lines of a marker's comment open too. */
 const COMMENT = /^\s*(\/\/[!/]?|--)(?=\s|$)/;

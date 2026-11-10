@@ -64,7 +64,7 @@ const oauthApps = '/api/platform/oauth/apps';
 export const useOAuthApps = () => useData<OAuthAllowedApps>(oauthApps);
 export const allowOAuthApp = (choice: OAuthAppChoice) => api<OAuthAllowedApps>(oauthApps, choice);
 /** One page of the calls agents made, newest first; `next` reads the page after it. */
-export const agentActivityUrl = (filter: AgentActivityFilter, before?: string) => {
+const agentActivityUrl = (filter: AgentActivityFilter, before?: string) => {
   const query = new URLSearchParams();
   if (filter.key) query.set('key', filter.key);
   if (filter.outcome) query.set('outcome', filter.outcome);

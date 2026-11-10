@@ -39,7 +39,6 @@ fn upgrade_dsps(store: &Store) -> Result<()> {
         let id = s(&row, "id");
         store.migrate_dsp(id)?;
         store.open_collectors(id)?;
-        store.initialize_schedules(id)?;
     }
     Ok(())
 }

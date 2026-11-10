@@ -18,14 +18,6 @@ pub enum Endpoint {
     Revoke,
 }
 impl Endpoint {
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Authorize => "authorize",
-            Self::Register => "register",
-            Self::Token => "token",
-            Self::Revoke => "revoke",
-        }
-    }
     fn limits(self) -> (u32, u32) {
         match self {
             // Durable, longer-window limits still apply to authorization and registration.

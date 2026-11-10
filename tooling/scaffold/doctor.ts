@@ -7,7 +7,7 @@ import { unwired } from './wire.js';
 // with what fixes it. Each check is a function of the checkout, in CHECKS: a new one is a line
 // there.
 
-export type Finding = { check: string; ok: boolean; fix?: string; detail?: string[] };
+type Finding = { check: string; ok: boolean; fix?: string; detail?: string[] };
 type Check = { name: string; run: (root: string) => Omit<Finding, 'check'> };
 
 /** The marker a generator leaves where its author writes, as the anatomy rule finds it. */

@@ -16,7 +16,7 @@ const variant = z.object({
   revision: count,
   requestId: z.nullable(z.string()),
 });
-export const uniformInventorySchema = z.object({
+const uniformInventorySchema = z.object({
   revision: count,
   uniforms: z.array(
     z.object({
@@ -28,18 +28,18 @@ export const uniformInventorySchema = z.object({
     }),
   ),
 }) satisfies z.ZodMiniType<UniformInventory>;
-export const uniformAdjustmentSchema = z.object({
+const uniformAdjustmentSchema = z.object({
   revision: count,
   variantId: z.string(),
   quantity: count,
   requestId: z.nullable(z.string()),
 }) satisfies z.ZodMiniType<UniformAdjustment>;
-export const uniformUpdatesSchema = z.object({
+const uniformUpdatesSchema = z.object({
   revision: count,
   inventory: z.nullable(uniformInventorySchema),
   adjustments: z.array(uniformAdjustmentSchema),
 }) satisfies z.ZodMiniType<UniformUpdates>;
-export const uniformHistorySchema = z.object({
+const uniformHistorySchema = z.object({
   events: z.array(
     z.object({
       revision: count,

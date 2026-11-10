@@ -163,9 +163,9 @@ export function wiredList(features: Crate[]) {
   );
 }
 
-export const mcpManifest = 'mcp/Cargo.toml';
-export const toolList = 'mcp/tools/mod.rs';
-export const productList = 'mcp/tests/support/product.rs';
+const mcpManifest = 'mcp/Cargo.toml';
+const toolList = 'mcp/tools/mod.rs';
+const productList = 'mcp/tests/support/product.rs';
 /** Each of the MCP manifest's sections that lists the features its tools need starts here. */
 export const mcpMarker =
   "# Every feature the MCP's tools need: written from mcp/tools/ by `npm run contracts:generate`, to the blank line.";

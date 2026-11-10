@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 /** A crate of the Rust workspace: its directory, its package's name and its features. */
-export type WorkspaceCrate = { dir: string; name: string; features: string[] };
+type WorkspaceCrate = { dir: string; name: string; features: string[] };
 
 /** Each [table] of a Cargo.toml with the keys written under it; enough for names and features. */
 function tables(text: string) {

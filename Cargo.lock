@@ -1151,13 +1151,10 @@ dependencies = [
 name = "dispatch-driver-profiles"
 version = "0.0.0"
 dependencies = [
- "chrono",
- "chrono-tz",
  "dispatch-core",
  "dispatch-cortex",
  "dispatch-driver-profiles-contract",
  "rusqlite",
- "serde",
  "serde_json",
  "tokio",
 ]
@@ -1428,7 +1425,6 @@ dependencies = [
  "dispatch-cortex",
  "dispatch-vans-contract",
  "rusqlite",
- "serde",
  "serde_json",
 ]
 

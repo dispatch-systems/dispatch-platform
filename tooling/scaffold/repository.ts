@@ -5,7 +5,7 @@ import { UsageError } from './common.js';
 export const read = (root: string, file: string) => fs.readFileSync(path.join(root, file), 'utf8');
 export const exists = (root: string, file: string) => fs.existsSync(path.join(root, file));
 /** The directories in `dir`, sorted; none when it does not exist. */
-export function directories(root: string, dir: string) {
+function directories(root: string, dir: string) {
   if (!exists(root, dir)) return [];
   return fs
     .readdirSync(path.join(root, dir), { withFileTypes: true })

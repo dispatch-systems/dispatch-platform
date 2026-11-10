@@ -130,7 +130,7 @@ const labelOf = (name: string) => {
   return [words[0]![0]!.toUpperCase() + words[0]!.slice(1), ...words.slice(1)].join(' ');
 };
 
-export function toolValues(root: string, argv: string[]) {
+function toolValues(root: string, argv: string[]) {
   const args = parseArguments(argv, FLAGS, OPTIONS);
   if (args.positional.length !== 1) throw new UsageError('Name the tool, and only the tool');
   const [name] = args.positional as [string];

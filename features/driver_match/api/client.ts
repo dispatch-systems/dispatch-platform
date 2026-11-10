@@ -14,7 +14,7 @@ const api = wordedApi({
 });
 /** Everyone with a Driver Match code, and the questions waiting. */
 export const useDriverMatch = () => useCachedData<DriverMatch>(driverMatch);
-export const personPath = (code: string) => `${driverMatch}/people/${encodeURIComponent(code)}`;
+const personPath = (code: string) => `${driverMatch}/people/${encodeURIComponent(code)}`;
 export const usePersonDetails = (code: string) => useCachedData<PersonDetails>(personPath(code));
 /** `code`'s IDs move to `into`, whose code both keep from then on. */
 export const mergePeople = (code: string, into: string) =>

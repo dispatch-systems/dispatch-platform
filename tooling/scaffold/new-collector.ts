@@ -30,7 +30,7 @@ const OPTIONS = ['collection', 'host', 'label', 'out', 'root'];
 const testPlan = 'tooling/ci/test-plan.json';
 const workflow = '.github/workflows/checks.yml';
 
-export function collectorValues(root: string, argv: string[]) {
+function collectorValues(root: string, argv: string[]) {
   const args = parseArguments(argv, FLAGS, OPTIONS);
   if (args.positional.length !== 1) throw new UsageError('Name one site');
   const names = namesOf(args.positional[0]!, args.options.get('label'));

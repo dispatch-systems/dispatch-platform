@@ -34,7 +34,7 @@ import {
 
 const optionalText = z.optional(z.nullable(text));
 const whole = z.number().check(z.int());
-export const employeeSchema = z.object({
+const employeeSchema = z.object({
   code: text,
   name: text,
   department: text,
@@ -70,7 +70,7 @@ const card = z.object({
   sourceUrl: optionalText,
 });
 const period = z.object({ from: text, to: text });
-export const employeeTimecardSchema = z.object({
+const employeeTimecardSchema = z.object({
   employee: employeeSchema,
   timecards: z.array(
     z.extend(card, {
@@ -87,18 +87,18 @@ export const employeeTimecardSchema = z.object({
     z.enum(['queued', 'running', 'waiting_verification', 'succeeded', 'failed', 'cancelled']),
   ),
 }) satisfies z.ZodMiniType<EmployeeTimecardResponse>;
-export const employeesSchema = z.object({
+const employeesSchema = z.object({
   employees: z.array(employeeSchema),
   total: count,
   collectedAt: z.nullable(text),
 }) satisfies z.ZodMiniType<EmployeesResponse>;
 const dailyCard = z.extend(card, { name: text }) satisfies z.ZodMiniType<DailyTimecard>;
-export const dailyTimecardsSchema = z.object({
+const dailyTimecardsSchema = z.object({
   rows: z.array(dailyCard),
   collectedAt: z.nullable(text),
   available: z.boolean(),
 }) satisfies z.ZodMiniType<DailyTimecards>;
-export const dailyPageSchema = z.extend(dailyTimecardsSchema, {
+const dailyPageSchema = z.extend(dailyTimecardsSchema, {
   total: count,
 }) satisfies z.ZodMiniType<DailyTimecardPage>;
 const cortexMeal = z.object({
@@ -194,7 +194,7 @@ const mealEmployee = z
       }
     }),
   ) satisfies z.ZodMiniType<MealEmployee>;
-export const mealComparisonSchema = z.object({
+const mealComparisonSchema = z.object({
   date: text,
   timezone: text,
   rows: z.array(mealEmployee),
@@ -217,11 +217,11 @@ export const mealComparisonSchema = z.object({
     }),
   ),
 }) satisfies z.ZodMiniType<MealComparison>;
-export const mealPageSchema = z.extend(mealComparisonSchema, {
+const mealPageSchema = z.extend(mealComparisonSchema, {
   total: count,
   counts: z.object({ all: count, late: count, different: count, missing: count, gaps: count }),
 }) satisfies z.ZodMiniType<MealComparisonPage>;
-export const mealPeriodSchema = z.object({
+const mealPeriodSchema = z.object({
   period,
   days: z.array(mealComparisonSchema),
   gaps: z.array(
@@ -229,11 +229,11 @@ export const mealPeriodSchema = z.object({
   ),
   excessMilliseconds: count,
 }) satisfies z.ZodMiniType<MealPeriod>;
-export const mealPeriodGapsSchema = z.object({
+const mealPeriodGapsSchema = z.object({
   period: z.nullable(period),
   counts: z.record(text, count),
 }) satisfies z.ZodMiniType<MealPeriodGaps>;
-export const paycomSettingsSchema = z.object({
+const paycomSettingsSchema = z.object({
   nameOrder: z.enum(['first_last', 'last_first']),
   driverDepartments: z.nullable(z.array(text)),
   late: z.object({
