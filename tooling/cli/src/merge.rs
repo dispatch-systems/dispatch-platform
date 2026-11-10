@@ -225,7 +225,7 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
     println!(
         "{}",
         workspace::next(&[
-            "Tell the user what merged; Dev installs it once main's checks pass".to_owned(),
+            "Tell the user what merged; Dev installs it once main's run publishes its build".to_owned(),
             format!(
                 "From outside the worktree, `dispatchdev finish {branch} --plan`, then \
                  `dispatchdev finish {branch}`"

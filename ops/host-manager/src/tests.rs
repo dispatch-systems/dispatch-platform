@@ -303,16 +303,15 @@ impl System for Fake {
         self.elapsed.set(self.elapsed.get() + d);
     }
 }
-fn runs_url(commit: &str) -> String {
+/// Main's latest push runs of the checks.
+fn runs_url() -> String {
     format!(
-        "repos/{REPOSITORY}/actions/workflows/checks.yml/runs?event=push&branch=main&head_sha={commit}&per_page=20"
+        "repos/{REPOSITORY}/actions/workflows/checks.yml/runs?event=push&branch=main&per_page=20"
     )
 }
-/// Main's passed push runs, newest first.
-fn passed_url() -> String {
-    format!(
-        "repos/{REPOSITORY}/actions/workflows/checks.yml/runs?event=push&branch=main&status=success&per_page=20"
-    )
+/// What workflow run `run` uploaded.
+fn artifacts_url(run: u64) -> String {
+    format!("repos/{REPOSITORY}/actions/runs/{run}/artifacts")
 }
 fn git(root: &Path, args: &[&str]) -> String {
     let mut all = vec![
@@ -400,8 +399,7 @@ impl Fixture {
         system.root.replace(Some((root.clone(), environment)));
         if environment == Environment::Dev {
             // Unless a test runs the checks on it, a commit on main has no run yet.
-            system.reply(&runs_url(&new), vec![json!({"workflow_runs":[]})]);
-            system.reply(&passed_url(), vec![json!({"workflow_runs":[]})]);
+            system.reply(&runs_url(), vec![json!({"workflow_runs":[]})]);
         }
         let updater = Updater::new(&root, environment, &system).unwrap();
         let old_manifest = artifact(&updater.active, &old, "0.1.0", false);
@@ -450,7 +448,7 @@ impl Fixture {
         json!({"id":17,"head_sha":self.new,"head_branch":"main","event":"push","status":"completed","conclusion":"success","head_repository":{"full_name":REPOSITORY},"run_attempt":1})
     }
     fn run_url(&self) -> String {
-        runs_url(&self.new)
+        runs_url()
     }
     fn package(&self) -> Vec<u8> {
         let mut tar = tar::Builder::new(flate2::write::GzEncoder::new(
@@ -476,10 +474,8 @@ impl Fixture {
         zip.write_all(&data).unwrap();
         let bytes = zip.finish().unwrap().into_inner();
         let record = json!({"id":id,"name":name,"expired":false,"size_in_bytes":bytes.len(),"digest":format!("sha256:{}",artifact::hash(&bytes))});
-        self.system.reply(
-            &format!("repos/{REPOSITORY}/actions/runs/{run}/artifacts"),
-            vec![json!({"artifacts":[record]})],
-        );
+        self.system
+            .reply(&artifacts_url(run), vec![json!({"artifacts":[record]})]);
         self.system.bodies.borrow_mut().insert(
             format!("repos/{REPOSITORY}/actions/artifacts/{id}/zip"),
             bytes,
@@ -752,14 +748,33 @@ fn dev_download_installs_only_with_still_current_validation() {
     }
 }
 #[test]
-fn a_pending_or_failed_push_run_keeps_the_old_runtime() {
+fn a_push_run_installs_once_it_published_its_build_while_its_last_suite_still_runs() {
+    let f = Fixture::new(Environment::Dev);
+    f.dev_download();
+    let mut run = f.run();
+    run["status"] = json!("in_progress");
+    run["conclusion"] = Value::Null;
+    f.system
+        .reply(&f.run_url(), vec![json!({"workflow_runs":[run]})]);
+    f.updater().run_locked().unwrap();
+    assert_eq!(git(&f.root, &["rev-parse", "HEAD"]), f.new);
+    assert_eq!(
+        artifact::verify(&f.updater().active, Some(&f.new)).unwrap(),
+        f.new_manifest
+    );
+}
+#[test]
+fn a_push_run_yet_to_publish_its_build_or_failed_keeps_the_old_runtime() {
     for failed in [false, true] {
         let f = Fixture::new(Environment::Dev);
-        f.dev_download();
         let mut run = f.run();
         if failed {
+            // The suite that failed it ended after its build was published.
+            f.dev_download();
             run["conclusion"] = json!("failure");
         } else {
+            f.system
+                .reply(&artifacts_url(17), vec![json!({"artifacts":[]})]);
             run["status"] = json!("in_progress");
             run["conclusion"] = Value::Null;
         }
@@ -805,12 +820,10 @@ fn a_passed_commit_installs_while_a_later_one_is_pending_or_failed() {
             run["conclusion"] = Value::Null;
         }
         f.system
-            .reply(&runs_url(&later), vec![json!({"workflow_runs":[run]})]);
+            .reply(&artifacts_url(18), vec![json!({"artifacts":[]})]);
         f.dev_download();
         f.system
-            .reply(&f.run_url(), vec![json!({"workflow_runs":[f.run()]})]);
-        f.system
-            .reply(&passed_url(), vec![json!({"workflow_runs":[f.run()]})]);
+            .reply(&f.run_url(), vec![json!({"workflow_runs":[run, f.run()]})]);
         let u = f.updater();
         u.run_locked().unwrap();
         assert_eq!(git(&f.root, &["rev-parse", "HEAD"]), f.new);
@@ -818,7 +831,7 @@ fn a_passed_commit_installs_while_a_later_one_is_pending_or_failed() {
             artifact::verify(&u.active, Some(&f.new)).unwrap(),
             f.new_manifest
         );
-        // The next check finds no passed commit after the one it installed, and waits.
+        // The next check finds no build after the one it installed, and waits.
         let installed = f.system.actions();
         u.run_locked().unwrap();
         assert_eq!(f.system.actions(), installed);
@@ -852,7 +865,7 @@ fn only_a_push_run_on_main_with_its_build_installs() {
     // A passed run whose build expired is an error, not a wait: nothing else can supply it.
     let f = Fixture::new(Environment::Dev);
     f.system.reply(
-        &format!("repos/{REPOSITORY}/actions/runs/17/artifacts"),
+        &artifacts_url(17),
         vec![
             json!({"artifacts":[{"id":42,"name":format!("dispatch-main-{}", f.new),"expired":true}]}),
         ],

@@ -25,6 +25,8 @@ struct Fake {
     /// The release GitHub calls the latest, none before any.
     latest: RefCell<Option<Value>>,
     runs: RefCell<Value>,
+    /// What main's run, still going, comes to while the release waits on it.
+    ending: RefCell<Option<Value>>,
     /// The build the release's own checks publish, and its bytes.
     artifact: RefCell<Value>,
     download: RefCell<Vec<u8>>,
@@ -459,6 +461,11 @@ impl System for Fake {
     }
     fn sleep(&self, duration: Duration) {
         self.elapsed.set(self.elapsed.get() + duration);
+        if let Some(conclusion) = self.ending.take() {
+            let mut runs = self.runs.borrow_mut();
+            runs[0]["status"] = json!("completed");
+            runs[0]["conclusion"] = conclusion;
+        }
     }
     fn current_exe(&self) -> Result<PathBuf> {
         Ok(self.exe.clone())
@@ -685,6 +692,7 @@ impl Fixture {
             listed: RefCell::new(vec![]),
             latest: RefCell::new(None),
             runs: RefCell::new(json!([run])),
+            ending: RefCell::new(None),
             artifact: RefCell::new(Value::Null),
             download: RefCell::new(vec![]),
             commit: commit.clone(),
@@ -2396,14 +2404,28 @@ fn the_releases_checks_reuse_mains_suites_only_once_mains_run_of_the_commit_pass
     );
     let provenance = io::read_json(&f.release().output.join("provenance.json")).unwrap();
     assert_eq!(provenance["workflowRun"], 6);
-    // While main's run is still going, or once it failed, the release's run runs every suite.
-    for (status, conclusion) in [
-        ("in_progress", Value::Null),
-        ("completed", json!("failure")),
-    ] {
+    // Dev serves a commit while main's run is still going: the release waits for that run to
+    // end, and names it once it passed.
+    let f = Fixture::new();
+    f.system.runs.borrow_mut()[0]["status"] = json!("in_progress");
+    f.system.runs.borrow_mut()[0]["conclusion"] = Value::Null;
+    f.system.ending.replace(Some(json!("success")));
+    f.prepare();
+    assert!(
+        f.system
+            .has_call(&["-f", "relay-version=", "-f", "tested-run=5"])
+    );
+    // Once main's run failed, before the release or while it waited, the release's run runs
+    // every suite.
+    for waited in [false, true] {
         let f = Fixture::new();
-        f.system.runs.borrow_mut()[0]["status"] = json!(status);
-        f.system.runs.borrow_mut()[0]["conclusion"] = conclusion;
+        if waited {
+            f.system.runs.borrow_mut()[0]["status"] = json!("in_progress");
+            f.system.runs.borrow_mut()[0]["conclusion"] = Value::Null;
+            f.system.ending.replace(Some(json!("failure")));
+        } else {
+            f.system.runs.borrow_mut()[0]["conclusion"] = json!("failure");
+        }
         f.prepare();
         assert_eq!(f.system.count(&["gh", "workflow", "run"]), 1);
         assert!(

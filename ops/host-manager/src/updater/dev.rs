@@ -6,13 +6,6 @@ use std::time::Duration;
 /// How many attempts in a row, ten seconds apart on Dev's timer, fail before waiting for Dev
 /// stops: past one that a moment's network trouble explains.
 const FAILED_ATTEMPTS: u64 = 3;
-/// What the checks say about a commit Dev could install.
-enum Checked {
-    /// A passed run and the build it published.
-    Passed(Value, Value),
-    /// The run still deciding, or the one that failed, if there is one.
-    Pending(Value),
-}
 
 impl Updater<'_> {
     /// Wait until Dev runs `commit`, or a later commit of its branch that contains it, and
@@ -112,13 +105,11 @@ impl Updater<'_> {
                 json!({"commit":current}),
             )
         };
-        let (commit, run, record) = match self.validated_build(branch, &head)? {
-            Checked::Passed(run, record) => (head, run, record),
-            // An earlier merge whose checks passed doesn't wait for those of the ones after it.
-            Checked::Pending(head_run) => match self.passed_since(branch, &current)? {
-                Some(passed) => passed,
-                None => return waiting(&head_run),
-            },
+        let runs = self.push_runs(branch)?;
+        let Some((commit, run, record)) = self.newest_build(&runs, branch, &current)? else {
+            let head_run =
+                releases::latest_run(&runs["workflow_runs"], &head, "push", Some(branch), false);
+            return waiting(head_run.unwrap_or(&Value::Null));
         };
         let temp = tempfile::Builder::new()
             .prefix("update-")
@@ -127,9 +118,9 @@ impl Updater<'_> {
         // The branch may have moved on during the download; one rewritten to leave the commit
         // out is what activation refuses.
         self.git(&["fetch", "origin", branch])?;
-        // A rerun can revoke validation during a download.
-        match self.validated_build(branch, &commit)? {
-            Checked::Passed(again, _) if again == run => {}
+        // A rerun can fail the commit's run during a download, and its build goes with it.
+        match self.published(&self.push_runs(branch)?, branch, &commit)? {
+            Some((_, again)) if again == record => {}
             _ => return waiting(&Value::Null),
         }
         self.activate(&temp.path().join("candidate"), &commit)?;
@@ -143,61 +134,57 @@ impl Updater<'_> {
         );
         Ok(())
     }
-    /// The newest commit of `branch` after `current` whose push run passed, with that run and
-    /// the build it published. GitHub lists the branch's passed runs newest first, so one
-    /// request finds it however many commits ahead of it are still deciding or failed.
-    fn passed_since(&self, branch: &str, current: &str) -> Result<Option<(String, Value, Value)>> {
-        let passed = io::github(
+    /// The branch's latest push runs of the checks, newest first, whatever they have come to:
+    /// one request, however many commits Dev has yet to install. A commit whose run is older
+    /// than these waits for a newer one to install.
+    fn push_runs(&self, branch: &str) -> Result<Value> {
+        io::github(
             self.system,
-            &format!(
-                "actions/workflows/checks.yml/runs?event=push&branch={branch}&status=success&per_page=20"
-            ),
-        )?;
-        let ahead = self.git(&[
-            "rev-list",
-            "--first-parent",
-            &format!("{current}..origin/{branch}"),
-        ])?;
-        let Some(commit) = ahead.lines().find(|commit| {
-            releases::latest_run(
-                &passed["workflow_runs"],
-                commit,
-                "push",
-                Some(branch),
-                false,
-            )
-            .is_some()
-        }) else {
-            return Ok(None);
-        };
-        // The listing only names the commit: its own runs decide, the latest of them.
-        Ok(match self.validated_build(branch, commit)? {
-            Checked::Passed(run, record) => Some((commit.to_owned(), run, record)),
-            Checked::Pending(_) => None,
-        })
+            &format!("actions/workflows/checks.yml/runs?event=push&branch={branch}&per_page=20"),
+        )
     }
-    /// The passed push run of `commit` on `branch` and the build it published, or the run still
-    /// deciding. The push run tests exactly the commit the branch moved to, so its run decides;
-    /// a commit without one waits.
-    fn validated_build(&self, branch: &str, commit: &str) -> Result<Checked> {
-        let runs = io::github(
-            self.system,
-            &format!(
-                "actions/workflows/checks.yml/runs?event=push&branch={branch}&head_sha={commit}&per_page=20"
-            ),
-        )?;
+    /// The newest commit of `branch` after `current` with a published build, its run and that
+    /// build: the branch's newest need not be it, so a merge doesn't wait for the checks of
+    /// those that follow it.
+    fn newest_build(
+        &self,
+        runs: &Value,
+        branch: &str,
+        current: &str,
+    ) -> Result<Option<(String, Value, Value)>> {
+        let newest = self.git(&["rev-list", "--first-parent", &format!("origin/{branch}")])?;
+        for commit in newest.lines().take_while(|commit| *commit != current) {
+            if let Some((run, record)) = self.published(runs, branch, commit)? {
+                return Ok(Some((commit.to_owned(), run, record)));
+            }
+        }
+        Ok(None)
+    }
+    /// The latest push run of `commit` on `branch` among `runs` and the build it published,
+    /// unless that run failed. The push run tests exactly the commit the branch moved to, and
+    /// publishes its build once every suite but the browser one passed, so Dev installs it
+    /// while that suite still runs; a commit without a run, or a build yet, waits.
+    fn published(
+        &self,
+        runs: &Value,
+        branch: &str,
+        commit: &str,
+    ) -> Result<Option<(Value, Value)>> {
         let Some(run) =
             releases::latest_run(&runs["workflow_runs"], commit, "push", Some(branch), false)
         else {
-            return Ok(Checked::Pending(Value::Null));
+            return Ok(None);
         };
-        if !releases::passed(run) {
-            return Ok(Checked::Pending(run.clone()));
+        if run["status"] == "completed" && !releases::passed(run) {
+            return Ok(None);
         }
-        let record = self
-            .build(run, &format!("dispatch-{branch}-{commit}"))?
-            .ok_or("Verified Dev build unavailable")?;
-        Ok(Checked::Passed(run.clone(), record))
+        let record = self.build(run, &format!("dispatch-{branch}-{commit}"))?;
+        // A passed run published its build: nothing else can supply one that is gone.
+        require(
+            record.is_some() || !releases::passed(run),
+            "Verified Dev build unavailable",
+        )?;
+        Ok(record.map(|record| (run.clone(), record)))
     }
     /// The unexpired build `name` that `run` published.
     fn build(&self, run: &Value, name: &str) -> Result<Option<Value>> {
