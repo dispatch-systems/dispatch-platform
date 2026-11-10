@@ -104,11 +104,10 @@ through Driver Match.
   from before the pool. A write by an older release, after a rollback, drops only the
   references of the rows it touches. A capture's raw collectedAt envelope stays separate from
   its ordering timestamp. The private v1 formats sort object keys, preserve array order and
-  null/absent keys, and use SHA-256 over format, NUL and body. Storing both costs hashing,
-  writes and disk, the bodies of replaced syncs that nothing references among them: nothing
-  backfills older rows, writes a marker in place of inline JSON, or collects unreferenced
-  bodies. Reclaiming the inline copies needs a release that reads the pool shipped first, as
-  the one a rollback goes back to.
+  null/absent keys, and use SHA-256 over format, NUL and body. Publications and employee
+  captures now write only full inline JSON, with no new pool bodies or references. The
+  compatibility readers and additive schema remain for older stored data. No backfill,
+  marker emission or garbage collection is enabled.
 - **Exposed:** `timecards`, through its contract in `contract/` (`dispatch-timecard-contract`),
   for any feature or agent tool, while it's on for the DSP: the days its collections of
   everyone reached, and a driver's timecards by their Paycom codes, matched exactly, over up

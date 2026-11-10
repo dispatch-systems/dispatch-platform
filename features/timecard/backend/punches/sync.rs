@@ -54,7 +54,7 @@ pub(crate) fn publish_employee_timecard(
     // Older releases safely ignore this additive table on rollback.
     let db = store.collector(id, paycom::PROVIDER)?;
     db.transaction(|| {
-        let changed = db.exec(
+        db.exec(
             "INSERT INTO employee_timecard_syncs VALUES (?,?,?,?,?) \
              ON CONFLICT(employee_code,period_from,period_to) DO UPDATE SET \
              collected_at=excluded.collected_at,data=excluded.data \
@@ -67,17 +67,6 @@ pub(crate) fn publish_employee_timecard(
                 data.to_string()
             ],
         )?;
-        if changed != 0 {
-            let payload = super::payloads::Payload::capture(data)?;
-            payload.intern(&db)?;
-            payload.attach_sync(
-                &db,
-                &scope.employee_code,
-                &scope.from,
-                &scope.to,
-                s(data, "collectedAt"),
-            )?;
-        }
         Ok(())
     })
 }

@@ -165,38 +165,40 @@ fn storage_survives_backup_and_restore() {
     // One shared-only historical card beside legacy-only full inline data.
     provider
         .transaction(|| {
-            let row = provider
-                .one(
-                    "SELECT * FROM paycom_timecard_payload_refs WHERE publication_id IN
-             (SELECT id FROM publications WHERE period_from=? AND period_to=?)
-             AND employee_code='E002' ORDER BY date LIMIT 1",
-                    [period.from.as_str(), period.to.as_str()],
-                )?
-                .unwrap();
+            let body = r#"[{"hours":4,"in":"08:00","out":"12:00"},{"hours":4.0,"in":"12:30","out":"16:30"}]"#;
+            let digest = "5da53763be42520b30ee743a7273da465107758d0dc1c0754cf379c3604b1cdc";
+            provider.exec(
+                "INSERT INTO paycom_payloads VALUES ('paycom.punches.v1',?,?)",
+                [digest, body],
+            )?;
+            let rows = provider.all(
+                "SELECT publication_id,employee_code,date FROM timecards WHERE publication_id IN
+                 (SELECT id FROM publications WHERE period_from=? AND period_to=?)
+                 AND employee_code='E002' ORDER BY date",
+                [period.from.as_str(), period.to.as_str()],
+            )?;
+            let row = &rows[0];
             provider.exec(
                 r#"UPDATE timecards SET punches='{"$dispatchPayload":"paycom.punches.v1"}'
                WHERE publication_id=? AND employee_code=? AND date=?"#,
                 [
-                    db::s(&row, "publication_id"),
-                    db::s(&row, "employee_code"),
-                    db::s(&row, "date"),
+                    db::s(row, "publication_id"),
+                    db::s(row, "employee_code"),
+                    db::s(row, "date"),
                 ],
             )?;
-            provider.exec(
-                "INSERT INTO paycom_timecard_payload_refs
-             (publication_id,employee_code,date,format,digest) VALUES (?,?,?,?,?)",
-                rusqlite::params![
-                    db::s(&row, "publication_id"),
-                    db::s(&row, "employee_code"),
-                    db::s(&row, "date"),
-                    db::s(&row, "format"),
-                    db::s(&row, "digest")
-                ],
-            )?;
-            provider.exec(
-                "DELETE FROM paycom_timecard_payload_refs WHERE employee_code='E001'",
-                [],
-            )?;
+            for row in rows {
+                provider.exec(
+                    "INSERT INTO paycom_timecard_payload_refs
+                     (publication_id,employee_code,date,format,digest) VALUES (?,?,?,'paycom.punches.v1',?)",
+                    rusqlite::params![
+                        db::s(&row, "publication_id"),
+                        db::s(&row, "employee_code"),
+                        db::s(&row, "date"),
+                        digest
+                    ],
+                )?;
+            }
             Ok(())
         })
         .unwrap();
