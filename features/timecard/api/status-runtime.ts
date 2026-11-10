@@ -35,6 +35,7 @@ export const paycomStatusSchema = z.object({
         error: z.optional(text),
       }),
     ),
+    sourceAddress: z.optional(text),
   }),
   workforce: z.object({ collectedAt: z.nullable(text) }),
 }) satisfies z.ZodMiniType<PaycomStatus>;

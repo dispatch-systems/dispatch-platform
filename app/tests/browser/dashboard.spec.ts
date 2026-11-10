@@ -73,15 +73,21 @@ test('owner dashboard, search, workforce, timecards, connection verification and
     .filter({ has: page.getByRole('heading', { name: 'Paycom', exact: true }) })
     .getByRole('button', { name: 'Update credentials' })
     .click();
+  // The demo DSP signs in: on past that way's check of the security questions, to its login.
+  for (const step of ['Connect Paycom', 'Check your security questions'])
+    await page
+      .getByRole('dialog', { name: step, exact: true })
+      .getByRole('button', { name: 'Next' })
+      .click();
   await page.getByLabel('Client code').fill('DEMO1');
   await page.getByLabel('Username', { exact: true }).fill('test-user');
   await page.getByLabel('Password', { exact: true }).fill('require-verification');
   for (const number of [1, 2, 3, 4, 5]) {
-    const field = page.getByLabel(`PIN ${number}`, { exact: true });
+    const field = page.getByLabel(`PIN #${number}`, { exact: true });
     await expect(field).toHaveAttribute('type', 'password');
     await field.fill(`test-pin-${number}`);
   }
-  await page.getByRole('button', { name: 'Save credentials' }).click();
+  await page.getByRole('button', { name: 'Connect', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByLabel('Verification code').fill('123456');
   await page.getByRole('button', { name: 'Verify', exact: true }).click();

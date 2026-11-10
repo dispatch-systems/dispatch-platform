@@ -92,7 +92,19 @@ one failed. New credentials start without them, and ones a collector won't conne
 here are refused before the connection the DSP has is stopped or replaced
 (`Store::accepts_credentials`). A connection that signs in through a browser
 has none. Requests to such an API go through `http::Http::answer`, which hands back the status
-with the body, as an API's refusals are told apart by it.
+with the body, as an API's refusals are told apart by it. A collector whose provider answers
+only the addresses a client has allowed says so (`Collector::allows_by_address`), and its
+connection's answer then carries the address this server's requests come from
+(`sourceAddress`, `egress::source_address`): the one `DISPATCH_SOURCE_ADDRESS` names, else the
+public address its requests leave by, and with fixture providers one reserved for examples.
+
+A collector's card (`frontend/ConnectionCard.tsx`) asks for a username and a password, with what
+the collector adds, or opens the collector's own dialog (`dialog`), as one that leads a member
+through steps. Given how to word them (`checks`), it lists a connection's checks while it
+connects and while one has failed, in place of its line of text, with Check again and Setup
+steps, which opens the dialog to put the failure right; it says why such a connection failed
+there, and not at the top of the page as well. A card may put a word beside its name (`tag`),
+and is told where the server runs (`environment`), for what it offers only while it's tried.
 
 Its Connections page is a custom section of a DSP's Settings, `collection.connections`, on the
 Connections page: the server shows it to every member, and its component in

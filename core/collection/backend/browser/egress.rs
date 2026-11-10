@@ -36,6 +36,28 @@ pub fn public_address(address: IpAddr) -> bool {
         || (a == 203 && b == 0 && c == 113)
         || (a == 233 && b == 252 && c == 0))
 }
+/// The address this server's own requests to a provider come from, for a provider that
+/// answers only the addresses a client has allowed: the one named for it
+/// (`DISPATCH_SOURCE_ADDRESS`), as a server behind another's address needs; else the public
+/// address its requests leave by, found without sending anything. A server with fixture
+/// providers, which reaches none, answers one reserved for examples.
+pub fn source_address(config: &crate::foundation::config::Config) -> Option<String> {
+    if let Ok(named) = std::env::var("DISPATCH_SOURCE_ADDRESS") {
+        return named
+            .parse::<IpAddr>()
+            .ok()
+            .filter(|address| public_address(*address))
+            .map(|address| address.to_string());
+    }
+    if config.fixture {
+        return Some("203.0.113.10".into());
+    }
+    // Connecting a datagram socket sends nothing; it only picks the route, and so the address.
+    let socket = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
+    socket.connect("1.1.1.1:443").ok()?;
+    let address = socket.local_addr().ok()?.ip();
+    public_address(address).then(|| address.to_string())
+}
 pub struct Egress {
     task: JoinHandle<()>,
     path: std::path::PathBuf,

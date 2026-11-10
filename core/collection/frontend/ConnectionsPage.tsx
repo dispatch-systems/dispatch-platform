@@ -3,6 +3,7 @@ import { ShieldCheck } from 'lucide-react';
 import type { Connection } from '../api/index.js';
 import {
   connectionCard,
+  type ConnectionCardContext,
   type ConnectionPiece,
   type SettingsContext,
 } from '../../shell/frontend/runtime/slots.js';
@@ -14,6 +15,7 @@ import { NewConnection } from './NewConnection.js';
  */
 export function ConnectionsPage({
   development,
+  environment,
   timezone,
   providers,
   dsp,
@@ -22,6 +24,7 @@ export function ConnectionsPage({
   context,
 }: {
   development: boolean;
+  environment: ConnectionCardContext['environment'];
   timezone: string;
   /** The collectors' connections the member manages, in the order shown. */
   providers: readonly Connection['provider'][];
@@ -47,7 +50,7 @@ export function ConnectionsPage({
           <div className="connection-cards">
             {providers.map((provider) => (
               <Fragment key={provider}>
-                {connectionCard(provider)?.render({ development, timezone })}
+                {connectionCard(provider)?.render({ development, environment, timezone })}
               </Fragment>
             ))}
             {dsp.map((piece) => (
