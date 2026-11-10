@@ -51,8 +51,16 @@ class ConnectionTest {
         server.enqueue(json(200, """{"texts":[]}"""))
         server.enqueue(json(401, """{"error":"phones_removed"}"""))
         val links = mutableListOf<Link>()
-        connection.run(paired, "key", { null }) { links += connection.link.value }
-        assertEquals(listOf<Link>(Link.Connected(1_000)), links)
+        // How the line stands as each call goes, a second after the one before.
+        val calling = mutableListOf<Link>()
+        val health = {
+            calling += connection.link.value
+            clock += 1_000
+            null
+        }
+        connection.run(paired, "key", health) { links += connection.link.value }
+        assertEquals(listOf(Link.Connecting, Link.Reconnecting(2_000), Link.Reconnecting(2_000), Link.Connected(4_000)), calling)
+        assertEquals(listOf<Link>(Link.Connected(4_000)), links)
         assertEquals(4, server.requestCount)
     }
 
