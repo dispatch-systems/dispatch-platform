@@ -54,7 +54,11 @@ impl Updater<'_> {
     fn live(&self, commit: &str) -> Result<Option<Value>> {
         let status = io::read_json(&self.status_file)?;
         let installed = io::text(&status, "commit");
-        if status["status"] != "ready"
+        // Waiting on a later commit's checks, Dev still serves the commit its status names.
+        let serving = ["ready", "waiting_for_checks", "checks_failed"]
+            .iter()
+            .any(|state| status["status"] == *state);
+        if !serving
             || !artifact::hex(&installed, 40)
             || self
                 .git(&["merge-base", "--is-ancestor", commit, &installed])

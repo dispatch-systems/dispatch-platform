@@ -883,10 +883,10 @@ impl Fixture {
         self.system.listed.borrow_mut().push(previous);
         prepared
     }
-    /// Makes the checkout Dev's as its updater leaves it, reporting `status` for the release
-    /// commit, with `tool` as the host tool its build brings, installed. The release runs as
-    /// `RUNNING`.
-    fn dev(&self, status: &str, tool: &str) {
+    /// Makes the checkout Dev's as its updater leaves it, reporting `status` while it serves
+    /// the commit `serving`, with `tool` as the host tool its build brings, installed. The
+    /// release runs as `RUNNING`.
+    fn dev(&self, serving: &str, status: &str, tool: &str) {
         fs::set_permissions(&self.root, fs::Permissions::from_mode(0o700)).unwrap();
         let origin = format!("https://github.com/{REPOSITORY}.git");
         git(&self.root, &["config", "remote.origin.url", &origin]);
@@ -915,7 +915,7 @@ impl Fixture {
         fs::write(management::directory(&dev).join("dispatch-host"), tool).unwrap();
         io::write_json(
             &dev.status_file,
-            &json!({"status":status,"commit":self.system.commit,"digest":runtime}),
+            &json!({"status":status,"commit":serving,"digest":runtime}),
         )
         .unwrap();
         self.system.dev_runtime.replace(runtime);
@@ -2297,8 +2297,10 @@ fn publishing_after_a_commit_waits_for_dev_to_serve_it_first() {
     let f = Fixture::new();
     let commit = f.system.commit.clone();
     let publish = || f.publish(&["--after", &commit, "--bump", "major"]);
-    // Dev still waits for main's checks on it: the wait ends naming it, and nothing else ran.
-    f.dev("waiting_for_checks", RUNNING);
+    // Dev still serves another commit and waits for main's checks on this one: the wait ends
+    // naming it, and nothing else ran.
+    let before = git(&f.root, &["commit-tree", "HEAD^{tree}", "-m", "before"]);
+    f.dev(&before, "waiting_for_checks", RUNNING);
     let error = publish().unwrap_err().to_string();
     assert!(
         error.contains(&format!("Dev did not install {commit} within")),
@@ -2306,7 +2308,7 @@ fn publishing_after_a_commit_waits_for_dev_to_serve_it_first() {
     );
     assert!(f.system.calls.borrow().is_empty());
     // Once Dev serves it with the host tool already running, that tool releases it.
-    f.dev("ready", RUNNING);
+    f.dev(&commit, "ready", RUNNING);
     assert_eq!(publish().unwrap()["stage"], "complete");
     assert!(f.system.handover.borrow().is_empty());
 }
@@ -2315,7 +2317,7 @@ fn publishing_after_a_commit_waits_for_dev_to_serve_it_first() {
 fn publishing_after_a_commit_hands_the_release_to_the_host_tool_dev_installed_with_it() {
     let f = Fixture::new();
     let commit = f.system.commit.clone();
-    f.dev("ready", "the host tool main's head brings");
+    f.dev(&commit, "ready", "the host tool main's head brings");
     assert!(f.publish(&["--after", &commit, "--bump", "major"]).is_err());
     let installed = f.root.join(".runtime/management/dispatch-host");
     let root = f.root.to_str().unwrap();
