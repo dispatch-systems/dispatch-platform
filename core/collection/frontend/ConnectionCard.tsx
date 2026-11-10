@@ -202,12 +202,12 @@ export function ConnectionCard({
       <DataState data={data} error={error} retry={refresh}>
         {(data) => (
           <article className="archived-connection-card">
-            <header>
+            <header className="connection-name">
               <h3>
                 <Plug size={20} />
                 {name}
-                {!saving && tag?.(data) && <span className="connection-tag">{tag(data)}</span>}
               </h3>
+              {!saving && tag?.(data) && <span className="connection-tag">{tag(data)}</span>}
             </header>
             <div className="archived-connection-content">
               <div role="status">

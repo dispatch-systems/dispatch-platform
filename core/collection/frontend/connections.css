@@ -79,6 +79,11 @@
   font-size: 16px;
   font-weight: 600;
 }
+.connection-name {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
 .connection-tag {
   border: 1px solid var(--border);
   border-radius: 999px;

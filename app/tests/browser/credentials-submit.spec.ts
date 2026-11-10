@@ -134,12 +134,9 @@ test("connecting through Paycom's API is led step by step, and the card says whi
     await entry.getByLabel('Token', { exact: true }).fill(token);
     await entry.getByRole('button', { name: 'Connect', exact: true }).click();
   };
-  // The demo DSP signs in: the dialog opens on that way, and the API is the other.
-  await card.getByRole('button', { name: 'Update credentials' }).click();
-  await expect(step('Connect Paycom').getByRole('radio', { name: /Paycom sign-in/ })).toBeChecked();
-  await step('Connect Paycom')
-    .getByRole('radio', { name: /Paycom API/ })
-    .check();
+  // A DSP not yet connected is offered the API first.
+  await card.getByRole('button', { name: 'Connect Paycom' }).click();
+  await expect(step('Connect Paycom').getByRole('radio', { name: /Paycom API/ })).toBeChecked();
   await next('Connect Paycom');
   // The address Paycom has to allow, as the server names it.
   await expect(step('Ask for API access')).toContainText('203.0.113.10');
