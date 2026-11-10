@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 use std::{path::PathBuf, process::Stdio};
 use tokio::process::Command;
 
+#[derive(Default)]
 pub(crate) struct Collected {
     pub summaries: Vec<String>,
     pub state: Option<PathBuf>,
@@ -63,11 +64,7 @@ pub(crate) async fn collect(
             area.contains("collection") || area.contains("paycom") || area.contains("cortex")
         });
     if !relevant {
-        return Ok(Collected {
-            summaries: vec![],
-            state: None,
-            proofs: vec![],
-        });
+        return Ok(Collected::default());
     }
     // An interrupted previous attempt can leave rows, never credential copies. The new
     // attempt starts clean; all successful cases below share their returned private state.
@@ -89,9 +86,7 @@ pub(crate) async fn collect(
     } else {
         providers
     };
-    let mut evidence = vec![];
-    let mut state: Option<PathBuf> = None;
-    let mut proofs = vec![];
+    let mut collected = Collected::default();
     let date = crate::process::command(
         &tree.path,
         "/usr/bin/date",
@@ -136,7 +131,7 @@ pub(crate) async fn collect(
                 "--request",
                 &request,
             ]);
-            if let Some(path) = &state {
+            if let Some(path) = &collected.state {
                 command.arg("--state-root").arg(path);
             }
             command.stdout(Stdio::piped()).stderr(Stdio::piped());
@@ -165,9 +160,9 @@ pub(crate) async fn collect(
                 root.starts_with(tree.scratch()),
                 "Collection state leaves the assigned scratch directory",
             )?;
-            state = Some(root);
-            evidence.push(format!("Changed {provider}/{collection} collector completed isolated live verification using the configured Dev verification account"));
-            let proof = SupportEvidence {
+            collected.state = Some(root);
+            collected.summaries.push(format!("Changed {provider}/{collection} collector completed isolated live verification using the configured Dev verification account"));
+            collected.proofs.push(SupportEvidence {
                 id: String::new(),
                 phase: "collection".into(),
                 source_sha: tree.head().await?,
@@ -185,13 +180,8 @@ pub(crate) async fn collect(
                 passed: true,
                 attachment_ids: vec![],
                 created_at: 0,
-            };
-            proofs.push(proof);
+            });
         }
     }
-    Ok(Collected {
-        summaries: evidence,
-        state,
-        proofs,
-    })
+    Ok(collected)
 }
