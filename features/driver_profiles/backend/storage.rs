@@ -50,7 +50,7 @@ pub(crate) fn roster_request() -> Value {
     json!({"collection": "associates"})
 }
 /// The request a roster job runs with: the DSP's code, as its profile has it now.
-pub(crate) fn bind_roster_request(store: &Store, dsp: &str) -> Result<Value> {
+pub(crate) fn bind_roster_request(store: &Store, dsp: &str) -> Result<Request> {
     let abbreviation = store.profile(dsp)?.abbreviation;
     ensure(
         !abbreviation.is_empty(),
@@ -62,7 +62,7 @@ pub(crate) fn bind_roster_request(store: &Store, dsp: &str) -> Result<Value> {
         dsp_abbreviation: abbreviation,
     };
     request.validate()?;
-    Ok(serde_json::to_value(request)?)
+    Ok(request)
 }
 
 /// What Driver Profiles reads and writes for one DSP.
@@ -118,9 +118,7 @@ impl DriverProfilesStore for Store {
         Ok(kept)
     }
     fn publish_roster(&self, dsp: &str, job: &str, capture: &Capture) -> Result<()> {
-        let request = Request::parse(&bind_roster_request(self, dsp)?)?
-            .ok_or_else(|| dispatch_core::Error::new("invalid_input", 400))?;
-        capture.validate(&request)?;
+        capture.validate(&bind_roster_request(self, dsp)?)?;
         let dir = photos::dir(self, dsp)?;
         let collected_at = at(capture.finished_at);
         let db = self.driver_profiles_db(dsp)?;

@@ -6,7 +6,7 @@ use dispatch_core::{
     db::Store,
     foundation::validate as v,
     server::http::{
-        input::{Input, Reply, optional_text, query_number},
+        input::{Input, Reply, optional, optional_text, query_number},
         route::{Dsp, Member, Route, coalesced_read, read, write},
     },
 };
@@ -92,17 +92,9 @@ fn collect(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     let b = &input.body;
     v::fields(b, &["requestId", "week", "weeks", "viewing"])?;
     let key = v::text(b, "requestId", 1, 128)?;
-    let week = if b.get("week").is_some() {
-        Some(v::text(b, "week", 8, 8)?)
-    } else {
-        None
-    };
+    let week = optional(b, "week", |b, key| v::text(b, key, 8, 8))?;
     // A day of the week the page shows, whose publication weeks the sync checks too.
-    let viewing = if b.get("viewing").is_some() {
-        Some(v::text(b, "viewing", 10, 10)?)
-    } else {
-        None
-    };
+    let viewing = optional(b, "viewing", |b, key| v::text(b, key, 10, 10))?;
     let weeks = if b.get("weeks").is_some() {
         v::integer(b, "weeks", 1, dvic::MAX_WEEKS as i64)? as usize
     } else if week.is_some() {
@@ -124,22 +116,13 @@ fn inspections(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(q, &["from", "to", "driver", "after", "limit"])?;
     let from = v::text(q, "from", 10, 10)?;
     let to = v::text(q, "to", 10, 10)?;
-    let driver = if q.get("driver").is_some() {
-        Some(v::text(q, "driver", 1, 128)?)
-    } else {
-        None
-    };
-    let after = if q.get("after").is_some() {
-        v::text(q, "after", 1, 256)?
-    } else {
-        ""
-    };
-    let limit = if q.get("limit").is_some() {
-        v::text(q, "limit", 1, 3)?
+    let driver = optional(q, "driver", |q, key| v::text(q, key, 1, 128))?;
+    let after = optional(q, "after", |q, key| v::text(q, key, 1, 256))?.unwrap_or("");
+    let limit = match optional(q, "limit", |q, key| v::text(q, key, 1, 3))? {
+        Some(limit) => limit
             .parse()
-            .map_err(|_| dispatch_core::Error::new("invalid_input", 400))?
-    } else {
-        100
+            .map_err(|_| dispatch_core::Error::new("invalid_input", 400))?,
+        None => 100,
     };
     Reply::of(&db.dvic_inspections(c.dsp_id(), from, to, driver, after, limit)?)
 }

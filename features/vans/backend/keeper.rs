@@ -35,9 +35,7 @@ impl Keeper for Fleet {
     fn last_collected(&self, store: &Store, dsp: &str) -> Result<Option<String>> {
         Ok(store
             .vans_db(dsp)?
-            .query_as::<(Option<String>,)>("SELECT max(collected_at) FROM fleet_runs", [])?
-            .into_iter()
-            .next()
+            .one_as::<(Option<String>,)>("SELECT max(collected_at) FROM fleet_runs", [])?
             .and_then(|(at,)| at))
     }
     fn schedule_ready(&self, store: &Store, dsp: &str) -> Result<()> {

@@ -162,7 +162,6 @@ impl DvicStore for Store {
                 let revision = hash(format!("{report_id}:{}",report.sha256).as_bytes());
                 let min_date = rows.iter().map(|r|r.start_date.as_str()).min();
                 let max_date = rows.iter().map(|r|r.start_date.as_str()).max();
-                let shorts = rows.iter().map(|row| row.is_short()).collect::<Result<Vec<_>>>()?.into_iter().filter(|short|*short).count();
                 db.exec(
                     "INSERT INTO dvic_reports(id,company_id,dsp_code,station,source_key,name,week,report_date,\
                      modified_at,etag,sha256,revision_id,row_count,short_count,min_date,max_date,checked_at,scope_verified) \
@@ -172,7 +171,7 @@ impl DvicStore for Store {
                      min_date=excluded.min_date,max_date=excluded.max_date,checked_at=excluded.checked_at,scope_verified=1",
                     params![report_id,capture.company_id,capture.dsp_code,capture.station,report.source_key,
                         report.name,report.week,report.report_date,report.modified_at,report.etag,report.sha256,
-                        revision,rows.len() as i64,shorts as i64,min_date,max_date,checked],
+                        revision,rows.len() as i64,super::hidden::shorts(&rows)? as i64,min_date,max_date,checked],
                 )?;
                 db.exec("INSERT OR IGNORE INTO dvic_revisions(id,report_id,sha256,modified_at,collected_at,rows) VALUES \
                     (?,?,?,?,?,?)",
@@ -379,8 +378,8 @@ pub(crate) fn bind_dvic_request(store: &Store, id: &str, weeks: Vec<String>) -> 
 }
 pub(crate) fn dvic_request(store: &Store, id: &str, weeks: Vec<String>) -> Result<Value> {
     let request = bind_dvic_request(store, id, weeks)?;
-    // Keep the durable job payload readable by the previous binary. The worker
-    // binds live tenant context immediately before collection and publication.
+    // A queued job keeps only its station and weeks: the DSP's details are bound as they are
+    // when it collects and when it publishes, and a station changed since is refused.
     Ok(json!({"collection":"dvic","station":request["station"],"weeks":request["weeks"]}))
 }
 pub(crate) fn dvic_schedule_ready(store: &Store, id: &str) -> Result<()> {

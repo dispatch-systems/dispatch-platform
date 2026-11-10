@@ -24,6 +24,12 @@ pub fn kept<'a>(rows: &'a [Inspection], hidden: &HashSet<String>) -> Vec<&'a Ins
         .collect()
 }
 
+/// How many of `rows` are short of their minimum.
+pub(crate) fn shorts(rows: &[&Inspection]) -> Result<usize> {
+    rows.iter()
+        .try_fold(0, |count, row| Ok(count + usize::from(row.is_short()?)))
+}
+
 /// Amazon's transporter IDs are short uppercase letters and digits.
 fn driver_id(driver: &str) -> Result<()> {
     ensure(
@@ -72,18 +78,11 @@ pub fn hide(db: &Db, driver: &str, note: &str, at: &str) -> Result<Value> {
                 "UPDATE dvic_revisions SET rows=? WHERE id=?",
                 [serde_json::to_string(&rows)?, id.to_owned()],
             )?;
-            let shorts = rows
-                .iter()
-                .map(|row| row.is_short())
-                .collect::<Result<Vec<_>>>()?
-                .into_iter()
-                .filter(|short| *short)
-                .count();
             db.exec(
                 "UPDATE dvic_reports SET row_count=?,short_count=?,min_date=?,max_date=? WHERE revision_id=?",
                 rusqlite::params![
                     rows.len() as i64,
-                    shorts as i64,
+                    shorts(&rows)? as i64,
                     rows.iter().map(|row| row.start_date.as_str()).min(),
                     rows.iter().map(|row| row.start_date.as_str()).max(),
                     id,
