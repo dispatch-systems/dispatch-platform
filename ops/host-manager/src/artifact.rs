@@ -340,6 +340,18 @@ pub fn unpack_actions(
     package: &Path,
     commit: &str,
 ) -> Result<Manifest> {
+    extract_actions(download, expected_size, expected_digest, package)?;
+    unpack(package, &directory.join("candidate"))?;
+    verify(&directory.join("candidate"), Some(commit))
+}
+/// Takes the one package out of `download`, the zip GitHub serves an artifact as, into
+/// `package`, unopened: the download must be the size and digest GitHub records for it.
+pub fn extract_actions(
+    download: &Path,
+    expected_size: u64,
+    expected_digest: &str,
+    package: &Path,
+) -> Result<()> {
     require(
         expected_size > 0 && expected_size <= MAX_BYTES,
         "Invalid artifact size",
@@ -368,6 +380,5 @@ pub fn unpack_actions(
         "Package is too large or truncated",
     )?;
     out.flush()?;
-    unpack(package, &directory.join("candidate"))?;
-    verify(&directory.join("candidate"), Some(commit))
+    Ok(())
 }

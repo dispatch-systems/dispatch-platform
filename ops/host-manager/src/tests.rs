@@ -473,7 +473,10 @@ impl Fixture {
     }
     /// The candidate as the build `name` of workflow run `run`, artifact `id`.
     fn publish(&self, run: u64, name: &str, id: u64) {
-        let data = self.package();
+        self.publish_package(run, name, id, &self.package());
+    }
+    /// `data` as the package of the build `name` of workflow run `run`, artifact `id`.
+    fn publish_package(&self, run: u64, name: &str, id: u64, data: &[u8]) {
         let mut zip = zip::ZipWriter::new(Cursor::new(vec![]));
         zip.start_file(
             "dispatch-dev.tar.gz",
@@ -481,7 +484,7 @@ impl Fixture {
         )
         .unwrap();
         use std::io::Write;
-        zip.write_all(&data).unwrap();
+        zip.write_all(data).unwrap();
         let bytes = zip.finish().unwrap().into_inner();
         let record = json!({"id":id,"name":name,"expired":false,"size_in_bytes":bytes.len(),"digest":format!("sha256:{}",artifact::hash(&bytes))});
         self.system
@@ -906,10 +909,11 @@ fn only_a_push_run_on_main_with_its_build_installs() {
     let error = f.updater().run_locked().unwrap_err().to_string();
     assert!(error.contains("build unavailable"), "{error}");
     f.assert_old();
-    // A build under the right name that GitHub doesn't attest to is refused: any job of the
-    // run could have uploaded it.
+    // A package under the build's name that GitHub doesn't attest to is refused unopened: any
+    // job of the run could have uploaded it.
     let f = Fixture::new(Environment::Dev);
-    f.dev_download();
+    let name = format!("dispatch-main-{}", f.new);
+    f.publish_package(17, &name, 42, b"not an archive");
     f.system
         .reply(&f.run_url(), vec![json!({"workflow_runs":[f.run()]})]);
     f.system.unattested.set(true);

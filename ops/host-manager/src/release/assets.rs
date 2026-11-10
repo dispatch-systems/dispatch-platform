@@ -135,7 +135,6 @@ impl Release<'_> {
             .tempdir_in(&self.directory)?;
         let download = tempfile::tempdir_in(staging.path())?;
         releases::download_run(self.system, artifacts[0], download.path(), commit, None)?;
-        releases::verify_attestation(self.system, &download.path().join("build.tar.gz"), commit)?;
         self.command(
             &[
                 "gh",
