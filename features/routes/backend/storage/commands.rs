@@ -4,7 +4,7 @@ use crate::backend::{
     ADAPTER_VERSION, BACKFILL_DAYS, MAX_DAYS_PER_REQUEST, MAX_JOBS_PER_RUN, changed,
     publishing::{Writes, publish_day, write_itinerary, write_raw, write_routes, write_shared},
     scope::{day_allowed, default_day, retention_start, routes_request, routes_today},
-    shaping::{PreparedItinerary, PreparedResponse, Shaper, prepare_lists},
+    shaping::{PreparedItinerary, PreparedResponse},
     staging::Staged,
     work_phones,
 };
@@ -16,7 +16,7 @@ use dispatch_core::{
 };
 use dispatch_cortex::{
     self as cortex,
-    routes::{Capture, Collection, Mode, Request},
+    routes::{Capture, Collection, Mode},
 };
 use rusqlite::params;
 use serde_json::Value;
@@ -114,23 +114,10 @@ pub(super) fn routes_jobs(store: &Store, id: &str, mode: Mode) -> Result<Vec<(St
 }
 
 /// Starts a day's inactive publication for `job`: the publication row, both lists'
-/// responses and the planned routes. A previous attempt's publication is left to the
-/// sweep.
+/// responses, prepared before its database turn, and the planned routes. A previous attempt's
+/// publication is left to the sweep.
 /// `lists` is the validated capture with its itineraries taken out; `itineraries`
 /// is how many it had.
-pub(super) fn stage_routes_start(
-    store: &Store,
-    id: &str,
-    job: &str,
-    lists: &Capture,
-    itineraries: usize,
-) -> Result<Staged> {
-    let responses = prepare_lists(lists)?;
-    stage_prepared_routes_start(store, id, job, lists, itineraries, &responses)
-}
-
-/// Starts a day's inactive publication as `stage_routes_start` does, from responses prepared
-/// before its database turn.
 pub(in crate::backend) fn stage_prepared_routes_start(
     store: &Store,
     id: &str,
@@ -190,27 +177,6 @@ pub(in crate::backend) fn stage_prepared_routes_start(
         provider: capture.scope.provider.clone(),
         itineraries,
     })
-}
-
-/// Stages a whole capture at once, without the platform's lock: what tests and
-/// tools use where `stage` would need a running job.
-pub(super) fn stage_routes(
-    store: &Store,
-    id: &str,
-    job: &str,
-    mut capture: Capture,
-) -> Result<Staged> {
-    let request: Value = serde_json::from_str(&store.job_row(job, Some(id))?.request)?;
-    let request = Request::parse(&request)?.ok_or_else(|| Error::new("invalid_input", 400))?;
-    capture.validate(&request)?;
-    capture.validate_response_budget()?;
-    let shaper = Shaper::new(&capture);
-    let itineraries = std::mem::take(&mut capture.itineraries);
-    let staged = store.stage_routes_start(id, job, &capture, itineraries.len())?;
-    for captured in &itineraries {
-        store.stage_routes_itinerary(id, &staged, &shaper.shape(captured)?)?;
-    }
-    Ok(staged)
 }
 
 /// Adds one shaped itinerary to a staged publication, in one short transaction.

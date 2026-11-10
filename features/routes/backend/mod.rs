@@ -21,7 +21,7 @@ mod work_phones;
 
 pub use live::{LiveKept, clear_live, keep_live, live_request, save_and_clear_live, save_live_day};
 pub use saving::save_day;
-pub use shaping::{Shaper, gunzip, prepare};
+pub use shaping::{gunzip, prepare};
 pub use staging::stage;
 pub use storage::{DATABASE, LIVE_DATABASE, LIVE_STORAGE, RoutesStore, STORAGE};
 pub(crate) use storage::{add_details, add_live_work_phone, add_work_phone};

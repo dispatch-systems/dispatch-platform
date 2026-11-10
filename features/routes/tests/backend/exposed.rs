@@ -13,8 +13,8 @@ use dispatch_cortex::routes::{Capture, ItineraryCapture, Mode};
 use dispatch_routes_contract::{DriverPhone, MOST_ID_LENGTH};
 use serde_json::json;
 
-#[test]
-fn driver_routes_reads_a_drivers_days_only_while_routes_is_on() {
+#[tokio::test]
+async fn driver_routes_reads_a_drivers_days_only_while_routes_is_on() {
     testing::install(&[&dispatch_cortex::COLLECTOR], &[&crate::FEATURE]);
     let (_root, db, dsp) = testing::bootstrapped();
     db.set_profile(
@@ -23,6 +23,7 @@ fn driver_routes_reads_a_drivers_days_only_while_routes_is_on() {
     )
     .unwrap();
     testing::ready_connection(&db, &dsp, dispatch_cortex::PROVIDER).unwrap();
+    let state = dispatch_core::State::new(db.config.clone()).unwrap();
     let offered = dispatch_routes_contract::for_dsp(&db, &dsp)
         .unwrap()
         .expect("Routes is on");
@@ -33,8 +34,8 @@ fn driver_routes_reads_a_drivers_days_only_while_routes_is_on() {
     assert_eq!(offered.collected(&db, &dsp).unwrap(), None);
 
     // Three days ago and yesterday are left uncollected; today is read while under way.
-    publish(&db, &dsp, &day(2), Mode::Final);
-    publish(&db, &dsp, &day(0), Mode::Snapshot);
+    publish(&state, &db, &dsp, &day(2), Mode::Final).await;
+    publish(&state, &db, &dsp, &day(0), Mode::Snapshot).await;
     assert_eq!(
         offered.collected(&db, &dsp).unwrap(),
         Some(Collected {
@@ -442,7 +443,7 @@ async fn a_days_work_phones_are_each_drivers_latest_saying_when_two_share_one() 
     let (first, second) = ("2065550190", "2065550191");
 
     // The fixture's day: each driver on a phone of their own all day.
-    publish(&db, &dsp, &day(1), Mode::Final);
+    publish(&state, &db, &dsp, &day(1), Mode::Final).await;
     let own = vec![
         phone("driver-1", first, false),
         phone("driver-2", second, false),
@@ -450,11 +451,12 @@ async fn a_days_work_phones_are_each_drivers_latest_saying_when_two_share_one() 
     assert_eq!(phones(1), DayPhones::Read(own.clone()));
     // Swapped later in the day, each driver's next itinerary showing the other's phone: each has
     // the one they swapped to.
-    publish_edited(&db, &dsp, &day(2), Mode::Final, |read| {
+    publish_edited(&state, &db, &dsp, &day(2), Mode::Final, |read| {
         unlisted(read);
         later(read, "driver-1", second);
         later(read, "driver-2", first);
-    });
+    })
+    .await;
     let swapped = vec![
         phone("driver-1", second, false),
         phone("driver-2", first, false),
@@ -462,24 +464,26 @@ async fn a_days_work_phones_are_each_drivers_latest_saying_when_two_share_one() 
     assert_eq!(phones(2), DayPhones::Read(swapped));
     // The first driver's next showing the second's phone, who has it still: it's both drivers'
     // latest, and neither's alone.
-    publish_edited(&db, &dsp, &day(3), Mode::Final, |read| {
+    publish_edited(&state, &db, &dsp, &day(3), Mode::Final, |read| {
         unlisted(read);
         later(read, "driver-1", second);
-    });
+    })
+    .await;
     let both = vec![
         phone("driver-1", second, true),
         phone("driver-2", second, true),
     ];
     assert_eq!(phones(3), DayPhones::Read(both));
     // A day whose records show no phone is read, with none; one not collected isn't.
-    publish_edited(&db, &dsp, &day(4), Mode::Final, |read| {
+    publish_edited(&state, &db, &dsp, &day(4), Mode::Final, |read| {
         unlisted(read);
         for itinerary in &mut read.itineraries {
             let mut response: Value = serde_json::from_str(&itinerary.detail).unwrap();
             response["transporters"] = json!([]);
             itinerary.detail = response.to_string();
         }
-    });
+    })
+    .await;
     assert_eq!(phones(4), DayPhones::Read(Vec::new()));
     assert_eq!(phones(5), DayPhones::Uncollected);
     let refused = routes.day_phones(&db, &dsp, "2026-9-25").unwrap_err();

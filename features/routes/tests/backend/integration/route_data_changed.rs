@@ -122,21 +122,27 @@ async fn keep_live(state: &Arc<State>, dsp: &str, read: Capture) -> dispatch_rou
         .await
         .unwrap()
 }
-/// Collects `capture` under `key` as the standard collection does: queued, staged and published
-/// by Routes' keeper, as the executor publishes a job.
-fn collect(db: &Store, dsp: &str, key: &str, capture: Capture) {
+/// Collects `capture` under `key` as the standard collection does: queued, leased to a worker,
+/// staged and published by Routes' keeper, as the executor runs a job.
+async fn collect(state: &Arc<State>, db: &Store, dsp: &str, key: &str, capture: Capture) {
     let day = capture.scope.date.clone();
     let jobs = db
         .enqueue_routes(dsp, None, key, Some(&day), capture.mode, 1)
         .unwrap();
     let job = s(&jobs[0], "id").to_owned();
-    let staged = db.stage_routes(dsp, &job, capture).unwrap();
+    let leased = db.claim_job("worker", |at, _| at == dsp).unwrap();
+    assert_eq!(leased.map(|leased| leased.id), Some(job.clone()));
     let collected = Collected {
-        data: serde_json::to_value(staged).unwrap(),
+        data: serde_json::to_value(capture).unwrap(),
         scope: None,
     };
     let keeper = registry().keeper(JOB_KIND);
-    keeper.publish(db, dsp, &job, collected).unwrap();
+    let staged = keeper
+        .stage(state, dsp, &job, "worker", collected)
+        .await
+        .unwrap();
+    keeper.publish(db, dsp, &job, staged).unwrap();
+    common::set_job_status(db, &job, "succeeded").unwrap();
 }
 /// The day's work phones, as other features read them.
 fn day_phones(db: &Store, dsp: &str, day: &str) -> DayPhones {
@@ -255,7 +261,7 @@ async fn a_collected_or_reprocessed_day_is_heard_of_once_its_collection_succeeds
 {
     let (_root, db, dsp, state) = ready();
     // Collected, it's told once the collection is: the executor publishes in its database work.
-    collect(&db, &dsp, "first", read(&day(1), Mode::Final));
+    collect(&state, &db, &dsp, "first", read(&day(1), Mode::Final)).await;
     assert_eq!(heard(&dsp), Vec::<String>::new());
     let succeeded = |keeps| CollectionSucceeded { keeps };
     events::publish(&state, &dsp, succeeded(JOB_KIND)).await;
@@ -264,7 +270,7 @@ async fn a_collected_or_reprocessed_day_is_heard_of_once_its_collection_succeeds
 
     // One whose collection was never told succeeded, as when its job couldn't finish, and another
     // collection's success: told by the next upkeep.
-    collect(&db, &dsp, "second", read(&day(2), Mode::Final));
+    collect(&state, &db, &dsp, "second", read(&day(2), Mode::Final)).await;
     events::publish(&state, &dsp, succeeded(cortex::dvic::JOB_KIND)).await;
     assert_eq!(heard(&dsp), Vec::<String>::new());
     upkeep(&state).await;
@@ -274,7 +280,7 @@ async fn a_collected_or_reprocessed_day_is_heard_of_once_its_collection_succeeds
     let mut earlier = read(&day(1), Mode::Final);
     (earlier.started_at, earlier.finished_at) =
         (earlier.started_at - 60_000, earlier.finished_at - 60_000);
-    collect(&db, &dsp, "earlier", earlier);
+    collect(&state, &db, &dsp, "earlier", earlier).await;
     upkeep(&state).await;
     assert_eq!(heard(&dsp), Vec::<String>::new());
 
@@ -294,9 +300,9 @@ async fn a_day_kept_before_its_work_phones_were_has_them_extracted_from_its_stor
     // Three days collected: two then made as a release before kept their phones left them, the
     // version just before and an older one; and one whose drivers show no phone.
     for back in [1, 2] {
-        collect(&db, &dsp, &day(back), read(&day(back), Mode::Final));
+        collect(&state, &db, &dsp, &day(back), read(&day(back), Mode::Final)).await;
     }
-    collect(&db, &dsp, &day(3), phoneless(&day(3), Mode::Final));
+    collect(&state, &db, &dsp, &day(3), phoneless(&day(3), Mode::Final)).await;
     upkeep(&state).await;
     heard(&dsp);
     let historical = db.routes_db(&dsp).unwrap();
@@ -401,7 +407,7 @@ async fn a_saved_live_day_gives_no_phone_back_to_the_driver_live_route_data_took
     let (first, third) = ("2065550190", "2065550192");
     // Today collected with the first driver on a phone; then read live, the first's record blank,
     // the second's showing that phone, then another, then none.
-    collect(&db, &dsp, "before", read(&today, Mode::Snapshot));
+    collect(&state, &db, &dsp, "before", read(&today, Mode::Snapshot)).await;
     let mut blank = phoneless(&today, Mode::Snapshot);
     for phone in [Some(first), Some(third), None] {
         blank.finished_at += 1;
@@ -418,21 +424,21 @@ async fn a_saved_live_day_gives_no_phone_back_to_the_driver_live_route_data_took
 
 #[tokio::test]
 async fn a_saved_day_read_again_showing_no_phone_keeps_its_reads_but_never_the_day_befores() {
-    let (_root, db, dsp, _state) = ready();
+    let (_root, db, dsp, state) = ready();
     let own = DayPhones::Read(vec![
         latest("driver-1", "2065550190", false),
         latest("driver-2", "2065550191", false),
     ]);
-    collect(&db, &dsp, "first", read(&day(2), Mode::Final));
+    collect(&state, &db, &dsp, "first", read(&day(2), Mode::Final)).await;
     // Collected again, its drivers' records showing no phone: each itinerary keeps the one the read
     // it replaced stored; and rebuilt from those responses, keeps it still.
     let mut again = phoneless(&day(2), Mode::Final);
     again.finished_at += 1;
-    collect(&db, &dsp, "again", again);
+    collect(&state, &db, &dsp, "again", again).await;
     assert_eq!(day_phones(&db, &dsp, &day(2)), own);
     db.reprocess_routes(&dsp, Some(&day(2))).unwrap();
     assert_eq!(day_phones(&db, &dsp, &day(2)), own);
     // The day after, its records showing none: none of the day before's.
-    collect(&db, &dsp, "next", phoneless(&day(1), Mode::Final));
+    collect(&state, &db, &dsp, "next", phoneless(&day(1), Mode::Final)).await;
     assert_eq!(day_phones(&db, &dsp, &day(1)), DayPhones::Read(Vec::new()));
 }

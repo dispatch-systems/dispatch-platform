@@ -7,8 +7,8 @@ use chrono_tz::America::Chicago;
 use dispatch_core::testing;
 use dispatch_cortex::routes::Mode;
 
-#[test]
-fn a_window_saved_in_the_hour_before_midnight_names_the_day_the_expiry_after_it_keeps() {
+#[tokio::test]
+async fn a_window_saved_in_the_hour_before_midnight_names_the_day_the_expiry_after_it_keeps() {
     testing::install(&[&dispatch_cortex::COLLECTOR], &[&crate::FEATURE]);
     let (_root, db, dsp) = testing::bootstrapped();
     db.set_profile(
@@ -19,8 +19,9 @@ fn a_window_saved_in_the_hour_before_midnight_names_the_day_the_expiry_after_it_
     db.keep_dsp_profile(&dsp, "Dev DSP", "America/Chicago", None, None)
         .unwrap();
     testing::ready_connection(&db, &dsp, dispatch_cortex::PROVIDER).unwrap();
+    let state = dispatch_core::State::new(db.config.clone()).unwrap();
     // Its route data holds Sep 25: the first day 30 days keep on Oct 25 where the DSP is.
-    publish(&db, &dsp, "2026-09-25", Mode::Final);
+    publish(&state, &db, &dsp, "2026-09-25", Mode::Final).await;
     let window = json!({"days": 30});
     let saved_at = |hour, minute| {
         let at = Chicago.with_ymd_and_hms(2026, 10, 25, hour, minute, 0);

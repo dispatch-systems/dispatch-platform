@@ -11,8 +11,9 @@ use dispatch_cortex::{
     self as cortex,
     routes::{self, Capture, Mode, Request},
 };
-use dispatch_routes::{RoutesStore, save_day};
+use dispatch_routes::{RoutesStore, save_day, stage};
 use serde_json::{Value, json};
+use std::sync::Arc;
 
 /// Routes, and the Cortex collector whose routes it keeps.
 fn install() {
@@ -30,26 +31,48 @@ fn request(day: &str, mode: Mode) -> Request {
 /// A DSP with a station and an enabled Cortex connection.
 fn ready() -> (tempfile::TempDir, Store, String) {
     let (root, db, id) = common::bootstrapped();
+    station(&db, &id);
+    (root, db, id)
+}
+/// Gives the DSP a station and an enabled Cortex connection.
+fn station(db: &Store, id: &str) {
     db.set_profile(
-        &id,
+        id,
         json!({"stationCode":"TST1","abbreviation":"NLOG","setupRequired":false}),
     )
     .unwrap();
-    common::ready_connection(&db, &id, cortex::PROVIDER).unwrap();
-    (root, db, id)
+    common::ready_connection(db, id, cortex::PROVIDER).unwrap();
+}
+/// The worker the tests' jobs are leased to.
+const WORKER: &str = "worker";
+/// Leases `job`, the DSP's next, to the worker, as the executor does before it stages the job's
+/// capture.
+fn lease(db: &Store, id: &str, job: &str) {
+    let leased = db.claim_job(WORKER, |dsp, _| dsp == id).unwrap();
+    assert_eq!(leased.map(|leased| leased.id).as_deref(), Some(job));
 }
 /// Queues `day`, stages `capture` for that job and publishes it, as the executor does.
-fn publish(db: &Store, id: &str, key: &str, day: &str, capture: &Capture) -> String {
+async fn publish(
+    state: &Arc<State>,
+    db: &Store,
+    id: &str,
+    key: &str,
+    day: &str,
+    capture: &Capture,
+) -> String {
     let jobs = db
         .enqueue_routes(id, None, key, Some(day), capture.mode, 1)
         .unwrap();
     let job = s(&jobs[0], "id").to_owned();
-    finish(db, id, &job, capture);
+    finish(state, db, id, &job, capture).await;
     job
 }
 /// Stages `capture` for `job` and publishes it, as the executor does.
-fn finish(db: &Store, id: &str, job: &str, capture: &Capture) {
-    let staged = db.stage_routes(id, job, capture.clone()).unwrap();
+async fn finish(state: &Arc<State>, db: &Store, id: &str, job: &str, capture: &Capture) {
+    lease(db, id, job);
+    let staged = stage(state, id, job, WORKER, capture.clone())
+        .await
+        .unwrap();
     db.publish_routes(id, job, &staged).unwrap();
     // The executor publishes in the same transaction that finishes the job.
     common::set_job_status(db, job, "succeeded").unwrap();
@@ -76,12 +99,13 @@ fn retention() -> &'static Section {
     sections.find(|s| s.id == "routes.retention").unwrap()
 }
 
-#[test]
-fn a_day_is_published_into_normalized_rows_with_its_raw_responses() {
+#[tokio::test]
+async fn a_day_is_published_into_normalized_rows_with_its_raw_responses() {
     install();
     let (_root, db, id) = ready();
+    let state = State::new(db.config.clone()).unwrap();
     let capture = routes::fixture(&request("2026-09-25", Mode::Final)).unwrap();
-    let job = publish(&db, &id, "first", "2026-09-25", &capture);
+    let job = publish(&state, &db, &id, "first", "2026-09-25", &capture).await;
     let queued = db.job_row(&job, Some(&id)).unwrap();
     assert_eq!(queued.kind.as_str(), "cortex.routes.collect");
     let storage = db.routes_db(&id).unwrap();
@@ -262,12 +286,13 @@ fn a_day_is_published_into_normalized_rows_with_its_raw_responses() {
     );
 }
 
-#[test]
-fn a_reprocess_rebuilds_every_row_from_the_stored_responses() {
+#[tokio::test]
+async fn a_reprocess_rebuilds_every_row_from_the_stored_responses() {
     install();
     let (_root, db, id) = ready();
+    let state = State::new(db.config.clone()).unwrap();
     let capture = routes::fixture(&request("2026-09-25", Mode::Final)).unwrap();
-    publish(&db, &id, "first", "2026-09-25", &capture);
+    publish(&state, &db, &id, "first", "2026-09-25", &capture).await;
     let before = db.route_days(&id).unwrap().days.remove(0);
     let storage = db.routes_db(&id).unwrap();
     for table in ["tasks", "stops", "breaks", "unknown_stops", "driver_days"] {
@@ -354,10 +379,11 @@ fn replay_storage_rows(storage: &dispatch_core::db::Db) -> Vec<(String, Vec<Valu
         .collect()
 }
 
-#[test]
-fn a_reprocess_rebuilds_shared_staging_without_replaying_omitted_keys() {
+#[tokio::test]
+async fn a_reprocess_rebuilds_shared_staging_without_replaying_omitted_keys() {
     install();
     let (_root, db, id) = ready();
+    let state = State::new(db.config.clone()).unwrap();
     let day = "2026-09-24";
     let mut capture = routes::fixture(&request(day, Mode::Final)).unwrap();
     capture.itineraries.truncate(1);
@@ -369,7 +395,7 @@ fn a_reprocess_rebuilds_shared_staging_without_replaying_omitted_keys() {
     let mut detail: Value = serde_json::from_str(&capture.itineraries[0].detail).unwrap();
     detail["addresses"].as_array_mut().unwrap().truncate(1);
     capture.itineraries[0].detail = detail.to_string();
-    publish(&db, &id, "replay", day, &capture);
+    publish(&state, &db, &id, "replay", day, &capture).await;
     let storage = db.routes_db(&id).unwrap();
     let publication = storage
         .one(
@@ -388,24 +414,27 @@ fn a_reprocess_rebuilds_shared_staging_without_replaying_omitted_keys() {
         detail["addresses"][1]["address1"] = json!("Current street");
         itinerary.detail = detail.to_string();
     }
-    publish(&db, &id, "later", "2026-09-25", &later);
+    publish(&state, &db, &id, "later", "2026-09-25", &later).await;
 
     // An unfinished publication, cancelled before activation, owns separate staging.
     let jobs = db
         .enqueue_routes(&id, None, "cancelled", Some(day), Mode::Final, 1)
         .unwrap();
     let job = s(&jobs[0], "id");
-    let cancelled = db
-        .stage_routes(
-            &id,
-            job,
-            renamed(
-                &routes::fixture(&request(day, Mode::Final)).unwrap(),
-                "Cancelled",
-                "Cancelled street",
-            ),
-        )
-        .unwrap();
+    lease(&db, &id, job);
+    let cancelled = stage(
+        &state,
+        &id,
+        job,
+        WORKER,
+        renamed(
+            &routes::fixture(&request(day, Mode::Final)).unwrap(),
+            "Cancelled",
+            "Cancelled street",
+        ),
+    )
+    .await
+    .unwrap();
     common::set_job_status(&db, job, "cancelled").unwrap();
     let staged = |table: &str| {
         storage
@@ -425,9 +454,15 @@ fn a_reprocess_rebuilds_shared_staging_without_replaying_omitted_keys() {
         .new_dsp("Other fixture", "UTC", &owner, false)
         .unwrap()
         .id;
+    station(&db, &other);
     let other_storage = db.routes_db(&other).unwrap();
-    let other_staged = db
-        .stage_routes_start(&other, "other", &capture, capture.itineraries.len())
+    let jobs = db
+        .enqueue_routes(&other, None, "other", Some(day), Mode::Final, 1)
+        .unwrap();
+    let job = s(&jobs[0], "id");
+    lease(&db, &other, job);
+    let other_staged = stage(&state, &other, job, WORKER, capture.clone())
+        .await
         .unwrap();
     omitted_shared_staging(&other_storage, &other_staged.publication);
     let other_before = replay_storage_rows(&other_storage);
@@ -486,13 +521,14 @@ fn a_reprocess_rebuilds_shared_staging_without_replaying_omitted_keys() {
     );
 }
 
-#[test]
-fn a_failed_reprocess_restores_rows_and_staging_and_needs_only_inline_responses() {
+#[tokio::test]
+async fn a_failed_reprocess_restores_rows_and_staging_and_needs_only_inline_responses() {
     install();
     let (_root, db, id) = ready();
+    let state = State::new(db.config.clone()).unwrap();
     let day = "2026-09-25";
     let capture = routes::fixture(&request(day, Mode::Final)).unwrap();
-    publish(&db, &id, "replay", day, &capture);
+    publish(&state, &db, &id, "replay", day, &capture).await;
     let storage = db.routes_db(&id).unwrap();
     let publication = storage
         .one("SELECT id FROM route_publications WHERE active=1", [])
@@ -592,10 +628,11 @@ fn a_failed_reprocess_restores_rows_and_staging_and_needs_only_inline_responses(
     );
 }
 
-#[test]
-fn mismatched_incomplete_and_oversized_captures_fail_before_changing_publications() {
+#[tokio::test]
+async fn mismatched_incomplete_and_oversized_captures_fail_before_changing_publications() {
     install();
     let (_root, db, id) = ready();
+    let state = State::new(db.config.clone()).unwrap();
     let capture = routes::fixture(&request("2026-09-25", Mode::Final)).unwrap();
     // An itinerary that is not the one listed is refused before anything is stored.
     let mut swapped = capture.clone();
@@ -603,10 +640,11 @@ fn mismatched_incomplete_and_oversized_captures_fail_before_changing_publication
     let jobs = db
         .enqueue_routes(&id, None, "swapped", Some("2026-09-25"), Mode::Final, 1)
         .unwrap();
-    let error = db
-        .stage_routes(&id, s(&jobs[0], "id"), swapped)
-        .unwrap_err();
+    let job = s(&jobs[0], "id");
+    lease(&db, &id, job);
+    let error = stage(&state, &id, job, WORKER, swapped).await.unwrap_err();
     assert_eq!(error.code, "routes_scope_mismatch");
+    common::set_job_status(&db, job, "failed").unwrap();
     assert_eq!(
         count(&db, &id, "SELECT count(*) FROM route_publications"),
         0
@@ -616,7 +654,10 @@ fn mismatched_incomplete_and_oversized_captures_fail_before_changing_publication
         .enqueue_routes(&id, None, "partial", Some("2026-09-25"), Mode::Final, 1)
         .unwrap();
     let job = s(&jobs[0], "id");
-    let staged = db.stage_routes(&id, job, capture.clone()).unwrap();
+    lease(&db, &id, job);
+    let staged = stage(&state, &id, job, WORKER, capture.clone())
+        .await
+        .unwrap();
     db.routes_db(&id)
         .unwrap()
         .exec(
@@ -626,6 +667,7 @@ fn mismatched_incomplete_and_oversized_captures_fail_before_changing_publication
         .unwrap();
     let error = db.publish_routes(&id, job, &staged).unwrap_err();
     assert_eq!(error.code, "routes_capture_invalid");
+    common::set_job_status(&db, job, "failed").unwrap();
     assert_eq!(
         count(
             &db,
@@ -636,7 +678,7 @@ fn mismatched_incomplete_and_oversized_captures_fail_before_changing_publication
     );
     assert!(db.route_days(&id).unwrap().days.is_empty());
 
-    publish(&db, &id, "ordinary", "2026-09-25", &capture);
+    publish(&state, &db, &id, "ordinary", "2026-09-25", &capture).await;
     let before = count(&db, &id, "SELECT count(*) FROM tasks");
     db.routes_db(&id)
         .unwrap()
@@ -650,10 +692,11 @@ fn mismatched_incomplete_and_oversized_captures_fail_before_changing_publication
     assert_eq!(count(&db, &id, "SELECT count(*) FROM tasks"), before);
 }
 
-#[test]
-fn a_package_moved_between_drivers_keeps_a_row_under_each() {
+#[tokio::test]
+async fn a_package_moved_between_drivers_keeps_a_row_under_each() {
     install();
     let (_root, db, id) = ready();
+    let state = State::new(db.config.clone()).unwrap();
     let mut capture = routes::fixture(&request("2026-09-25", Mode::Final)).unwrap();
     // The second driver delivered task-13; the first driver's itinerary lists it as
     // removed from their route, as Amazon lists a rescued package.
@@ -666,7 +709,7 @@ fn a_package_moved_between_drivers_keeps_a_row_under_each() {
         .unwrap()
         .push(rescued);
     capture.itineraries[0].detail = first.to_string();
-    publish(&db, &id, "rescue", "2026-09-25", &capture);
+    publish(&state, &db, &id, "rescue", "2026-09-25", &capture).await;
     let rows = db
         .routes_db(&id)
         .unwrap()
@@ -714,12 +757,13 @@ fn renamed(capture: &Capture, name: &str, street: &str) -> Capture {
     }
     renamed
 }
-#[test]
-fn a_later_read_of_a_day_replaces_an_earlier_one_in_either_order_and_keeps_shared_rows() {
+#[tokio::test]
+async fn a_later_read_of_a_day_replaces_an_earlier_one_in_either_order_and_keeps_shared_rows() {
     install();
     let (_root, db, id) = ready();
+    let state = State::new(db.config.clone()).unwrap();
     let capture = routes::fixture(&request("2026-09-25", Mode::Final)).unwrap();
-    let first = publish(&db, &id, "first", "2026-09-25", &capture);
+    let first = publish(&state, &db, &id, "first", "2026-09-25", &capture).await;
     let mut again = renamed(&capture, "Newer", "1 Newer St");
     again.itineraries.truncate(1);
     again.summaries["itinerarySummaries"]
@@ -728,21 +772,22 @@ fn a_later_read_of_a_day_replaces_an_earlier_one_in_either_order_and_keeps_share
         .truncate(1);
     again.started_at += 1000;
     again.finished_at += 2000;
-    let second = publish(&db, &id, "second", "2026-09-25", &again);
+    let second = publish(&state, &db, &id, "second", "2026-09-25", &again).await;
     assert_ne!(first, second);
     // A read collected before the day's own changes nothing, though it arrives after it: not
     // the day, nor the drivers and addresses the days share. Nor does one collected later
     // that never becomes the day's read, its job ended before publishing.
     let mut earlier = renamed(&capture, "Older", "1 Older St");
     earlier.finished_at += 1000;
-    publish(&db, &id, "earlier", "2026-09-25", &earlier);
+    publish(&state, &db, &id, "earlier", "2026-09-25", &earlier).await;
     let mut unfinished = renamed(&capture, "Unfinished", "1 Unfinished St");
     unfinished.finished_at += 3000;
     let jobs = db
         .enqueue_routes(&id, None, "unfinished", Some("2026-09-25"), Mode::Final, 1)
         .unwrap();
     let job = s(&jobs[0], "id");
-    db.stage_routes(&id, job, unfinished).unwrap();
+    lease(&db, &id, job);
+    stage(&state, &id, job, WORKER, unfinished).await.unwrap();
     common::set_job_status(&db, job, "failed").unwrap();
     let storage = db.routes_db(&id).unwrap();
     let shared = storage
@@ -804,7 +849,10 @@ fn a_later_read_of_a_day_replaces_an_earlier_one_in_either_order_and_keeps_share
     let jobs = db
         .enqueue_routes(&id, None, "third", Some("2026-09-25"), Mode::Final, 1)
         .unwrap();
-    assert!(db.stage_routes(&id, s(&jobs[0], "id"), other).is_err());
+    let job = s(&jobs[0], "id");
+    lease(&db, &id, job);
+    let refused = stage(&state, &id, job, WORKER, other).await.unwrap_err();
+    assert_eq!(refused.code, "routes_scope_mismatch");
 }
 
 #[tokio::test]
@@ -839,7 +887,7 @@ async fn another_features_read_of_a_day_is_saved_whole_when_read_later() {
         .unwrap()
         .truncate(1);
     later.finished_at += 2000;
-    publish(&db, &id, "standard", day, &later);
+    publish(&state, &db, &id, "standard", day, &later).await;
     assert_eq!(read(&db), [1]);
     // One collected before it changes nothing; one collected after replaces it.
     let mut earlier = capture.clone();
@@ -897,10 +945,11 @@ async fn another_features_read_of_a_day_is_saved_whole_when_read_later() {
     );
 }
 
-#[test]
-fn a_schedule_queues_recent_days_without_a_final_publication() {
+#[tokio::test]
+async fn a_schedule_queues_recent_days_without_a_final_publication() {
     install();
     let (_root, db, id) = ready();
+    let state = State::new(db.config.clone()).unwrap();
     // The bootstrapped DSP keeps UTC, so its days are UTC days.
     let today = chrono::Utc::now().date_naive();
     let day = |back: i64| (today - chrono::Duration::days(back)).to_string();
@@ -914,7 +963,7 @@ fn a_schedule_queues_recent_days_without_a_final_publication() {
     assert_eq!(jobs[3].0, format!("routes:{}", day(4)));
     // A published day is not asked for again.
     let capture = routes::fixture(&request(&day(1), Mode::Final)).unwrap();
-    publish(&db, &id, "yesterday", &day(1), &capture);
+    publish(&state, &db, &id, "yesterday", &day(1), &capture).await;
     let jobs = db.routes_jobs(&id, Mode::Final).unwrap();
     assert_eq!(jobs[0].0, format!("routes:{}", day(2)));
     assert!(
@@ -923,7 +972,7 @@ fn a_schedule_queues_recent_days_without_a_final_publication() {
     );
     // A snapshot of today is a different reading and leaves the schedule's view alone.
     let snapshot = routes::fixture(&request(&day(0), Mode::Snapshot)).unwrap();
-    publish(&db, &id, "today", &day(0), &snapshot);
+    publish(&state, &db, &id, "today", &day(0), &snapshot).await;
     assert_eq!(db.route_days(&id).unwrap().days.len(), 2);
     assert_eq!(
         db.routes_jobs(&id, Mode::Final).unwrap()[0].0,
@@ -931,10 +980,11 @@ fn a_schedule_queues_recent_days_without_a_final_publication() {
     );
 }
 
-#[test]
-fn a_schedule_of_today_reads_it_so_far_and_leaves_its_final_read_to_the_next_day() {
+#[tokio::test]
+async fn a_schedule_of_today_reads_it_so_far_and_leaves_its_final_read_to_the_next_day() {
     install();
     let (_root, db, id) = ready();
+    let state = State::new(db.config.clone()).unwrap();
     db.enable_all_features(&id).unwrap();
     // The bootstrapped DSP keeps UTC, so its days are UTC days.
     let today = chrono::Utc::now().date_naive();
@@ -972,7 +1022,7 @@ fn a_schedule_of_today_reads_it_so_far_and_leaves_its_final_read_to_the_next_day
         .enqueue_batch(&id, None, &[("so-far".into(), cortex::PROVIDER, so_far)])
         .unwrap();
     let capture = routes::fixture(&request(&day(1), Mode::Snapshot)).unwrap();
-    finish(&db, &id, &jobs[0].id, &capture);
+    finish(&state, &db, &id, &jobs[0].id, &capture).await;
     assert_eq!(db.route_days(&id).unwrap().days[0].mode, "snapshot");
     let queued = run("routes");
     assert_eq!(read(&queued[0]), (json!("final"), json!(day(1))));
@@ -1022,17 +1072,21 @@ fn collection_requests_need_a_station_and_an_allowed_day() {
     assert_eq!(jobs.as_array().unwrap().len(), 3);
 }
 
-#[test]
-fn the_sweep_keeps_a_running_jobs_day_and_deletes_what_no_reader_sees() {
+#[tokio::test]
+async fn the_sweep_keeps_a_running_jobs_day_and_deletes_what_no_reader_sees() {
     install();
     let (_root, db, id) = ready();
+    let state = State::new(db.config.clone()).unwrap();
     let capture = routes::fixture(&request("2026-09-25", Mode::Final)).unwrap();
     let jobs = db
         .enqueue_routes(&id, None, "staging", Some("2026-09-25"), Mode::Final, 1)
         .unwrap();
     let job = s(&jobs[0], "id").to_owned();
-    db.stage_routes(&id, &job, capture.clone()).unwrap();
-    // Its job is still queued: the staged day is being written, not abandoned.
+    lease(&db, &id, &job);
+    stage(&state, &id, &job, WORKER, capture.clone())
+        .await
+        .unwrap();
+    // Its job still runs: the staged day is being written, not abandoned.
     assert_eq!(sweep(&db, &id), 0);
     assert_eq!(
         count(&db, &id, "SELECT count(*) FROM route_publications"),
@@ -1040,8 +1094,12 @@ fn the_sweep_keeps_a_running_jobs_day_and_deletes_what_no_reader_sees() {
     );
     assert!(db.route_days(&id).unwrap().days.is_empty());
     // A retry starts over: the first attempt's staged day is detached from the job and
-    // swept in steps, while the new one, its job still queued, stays.
-    db.stage_routes(&id, &job, capture.clone()).unwrap();
+    // swept in steps, while the new one, its job running again, stays.
+    common::set_job_status(&db, &job, "queued").unwrap();
+    lease(&db, &id, &job);
+    stage(&state, &id, &job, WORKER, capture.clone())
+        .await
+        .unwrap();
     assert_eq!(
         count(&db, &id, "SELECT count(*) FROM route_publications"),
         2
@@ -1078,10 +1136,11 @@ fn the_sweep_keeps_a_running_jobs_day_and_deletes_what_no_reader_sees() {
     }
 }
 
-#[test]
-fn a_retention_window_retires_older_days_only_while_routes_are_on() {
+#[tokio::test]
+async fn a_retention_window_retires_older_days_only_while_routes_are_on() {
     install();
     let (_root, db, id) = ready();
+    let state = State::new(db.config.clone()).unwrap();
     let actor = common::a_user(&db);
     db.set_feature(&id, "routes", true, &actor).unwrap();
     let today = today(&db, &id);
@@ -1089,7 +1148,7 @@ fn a_retention_window_retires_older_days_only_while_routes_are_on() {
     let recent = (today - chrono::Duration::days(1)).to_string();
     for (key, day) in [("old", &old), ("recent", &recent)] {
         let capture = routes::fixture(&request(day, Mode::Final)).unwrap();
-        publish(&db, &id, key, day, &capture);
+        publish(&state, &db, &id, key, day, &capture).await;
     }
     // Nothing is deleted by default.
     assert_eq!(db.expire_routes(&id).unwrap(), 0);
@@ -1280,9 +1339,9 @@ fn resident(field: &str) -> u64 {
 // Opening it migrates it; the day is rebuilt from its stored responses, then stored again
 // from them the way a job stores a collection, one step per itinerary, published and
 // swept. Prints step times and counts, never a value. Run in release, alone.
-#[test]
+#[tokio::test]
 #[ignore = "requires a private copy of a DSP's state"]
-fn a_stored_day_goes_through_storage_at_full_size() {
+async fn a_stored_day_goes_through_storage_at_full_size() {
     let root = std::env::var("DISPATCH_BENCHMARK_STATE").expect("DISPATCH_BENCHMARK_STATE");
     let id = std::env::var("DISPATCH_BENCHMARK_DSP_ID").expect("DISPATCH_BENCHMARK_DSP_ID");
     let day = std::env::var("DISPATCH_BENCHMARK_DAY").expect("DISPATCH_BENCHMARK_DAY");
@@ -1293,6 +1352,7 @@ fn a_stored_day_goes_through_storage_at_full_size() {
     let started = std::time::Instant::now();
     let db = startup::prepare_storage(config).unwrap();
     let opened_ms = started.elapsed().as_millis();
+    let state = State::new(db.config.clone()).unwrap();
     let tasks_after_migration = count(&db, &id, "SELECT count(*) FROM tasks");
     let started = std::time::Instant::now();
     let rebuilt = db.reprocess_routes(&id, Some(&day)).unwrap();
@@ -1416,30 +1476,10 @@ fn a_stored_day_goes_through_storage_at_full_size() {
         })
         .collect();
     let before = resident("VmRSS:");
-    // As `stage` does it: checking and shaping without the lock, each insert a step.
-    let request = routes::Request::parse(
-        &serde_json::from_str::<Value>(&db.job_row(&job, Some(&id)).unwrap().request).unwrap(),
-    )
-    .unwrap()
-    .unwrap();
-    capture.validate(&request).unwrap();
-    let shaper = dispatch_routes::Shaper::new(&capture);
-    let itineraries = std::mem::take(&mut capture.itineraries);
+    lease(&db, &id, &job);
     let started = std::time::Instant::now();
-    let staged = db
-        .stage_routes_start(&id, &job, &capture, itineraries.len())
-        .unwrap();
-    let start_ms = started.elapsed().as_millis();
-    let (mut shaping, mut inserts) = (Vec::new(), Vec::new());
-    for captured in itineraries {
-        let started = std::time::Instant::now();
-        let shaped = shaper.shape(&captured).unwrap();
-        drop(captured);
-        shaping.push(started.elapsed().as_millis());
-        let started = std::time::Instant::now();
-        db.stage_routes_itinerary(&id, &staged, &shaped).unwrap();
-        inserts.push(started.elapsed().as_millis());
-    }
+    let staged = stage(&state, &id, &job, WORKER, capture).await.unwrap();
+    let stage_ms = started.elapsed().as_millis();
     let started = std::time::Instant::now();
     db.publish_routes(&id, &job, &staged).unwrap();
     let publish_ms = started.elapsed().as_millis();
@@ -1475,8 +1515,7 @@ fn a_stored_day_goes_through_storage_at_full_size() {
             "reprocessMs": reprocess_ms, "reprocessed": rebuilt.publications.len(),
             "activeTasks": active, "rawActive": raw_active, "inactiveTasks": inactive, "rawInactive": raw_inactive,
             "delivered": delivered, "driverDaysDelivered": summed, "rawDelivered": raw_delivered,
-            "stageStartMs": start_ms, "shapeMaxMs": shaping.iter().max(), "shapeTotalMs": shaping.iter().sum::<u128>(),
-            "insertMaxMs": inserts.iter().max(), "insertTotalMs": inserts.iter().sum::<u128>(),
+            "stageMs": stage_ms,
             "publishMs": publish_ms,
             "sweepSteps": sweeps.len(), "sweepMaxMs": sweeps.iter().max(), "sweepTotalMs": sweeps.iter().sum::<u128>(),
             "rssBeforeStageKB": before, "hwmKB": resident("VmHWM:"),

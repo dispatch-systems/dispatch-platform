@@ -29,9 +29,7 @@ async fn a_pass_tries_at_most_its_batch_of_days_counting_those_it_cant_read() {
     // responses can't be read, then the oldest.
     let oldest = EXTRACTED_PER_PASS + 3;
     for back in 1..=oldest {
-        // Its job done, as the executor leaves one it published, so the queue takes the next.
-        let job = publish(&db, &dsp, &day(back), Mode::Final);
-        testing::set_job_status(&db, &job, "succeeded").unwrap();
+        publish(&state, &db, &dsp, &day(back), Mode::Final).await;
     }
     let historical = db.routes_db(&dsp).unwrap();
     let shaped = "UPDATE route_publications SET adapter_version=?";
