@@ -126,17 +126,17 @@ impl System for Native {
         })
     }
 }
+/// How much of a response's body the host manager reads.
+const BODY_LIMIT: usize = 16 * 1024 * 1024;
+/// `body`, unless it is longer than `BODY_LIMIT`.
+pub fn bounded_body(body: Box<dyn Read>) -> Result<Option<Vec<u8>>> {
+    let mut bytes = vec![];
+    body.take(BODY_LIMIT as u64 + 1).read_to_end(&mut bytes)?;
+    Ok((bytes.len() <= BODY_LIMIT).then_some(bytes))
+}
 pub fn json_response(response: Response) -> Result<Value> {
     require((200..300).contains(&response.status), "HTTP request failed")?;
-    let mut bytes = vec![];
-    response
-        .body
-        .take(16 * 1024 * 1024 + 1)
-        .read_to_end(&mut bytes)?;
-    require(
-        bytes.len() <= 16 * 1024 * 1024,
-        "JSON response is too large",
-    )?;
+    let bytes = bounded_body(response.body)?.ok_or("JSON response is too large")?;
     Ok(serde_json::from_slice(&bytes)?)
 }
 pub fn github(system: &dyn System, endpoint: &str) -> Result<Value> {
