@@ -8,7 +8,7 @@
 use super::{
     LIMITS, live,
     model::{Added, FETCH_WAIT_MS, File},
-    storage::{FileStore, ReportedFile, Wanting},
+    storage::{FileStore, ReportedFile, TextStore, Wanting},
 };
 use crate::backend::{
     attachments,
@@ -167,15 +167,21 @@ pub async fn fetch(
     let mut listener = state.topics.subscribe(crate::backend::live::TOPIC, dsp);
     let (at, wanted, allowed) = (dsp.to_owned(), id.to_owned(), authorize.clone());
     // Bookkeeping: no cached read depends on when a video was asked for.
-    let mut wanting = state
+    let (wanting, device) = state
         .run_bookkeeping(move |db| {
             allowed(db)?;
-            db.phones_want_file(&at, &wanted, db::now())
+            // Resolve the owning device in the same serialized write that records demand.
+            // Read before mutating so an error cannot leave demand recorded without its wake.
+            let device = match db.phones_file(&at, &wanted)?.and_then(|file| file.text_id) {
+                Some(text) => db.phones_text(&at, &text)?.map(|text| text.phone),
+                None => None,
+            };
+            Ok((db.phones_want_file(&at, &wanted, db::now())?, device))
         })
-        .await?
-        .ok_or_else(|| Error::new("communications_file_not_found", 404))?;
+        .await?;
+    let mut wanting = wanting.ok_or_else(|| Error::new("communications_file_not_found", 404))?;
     if wanting == Wanting::Asked {
-        live::queued(state, dsp);
+        live::queued_for(state, dsp, device.as_deref());
     }
     let until = tokio::time::Instant::now() + Duration::from_millis(FETCH_WAIT_MS as u64);
     while wanting == Wanting::Asked && tokio::time::Instant::now() < until {

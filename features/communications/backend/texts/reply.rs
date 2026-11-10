@@ -49,7 +49,7 @@ pub async fn send(
 ) -> Result<Message> {
     let body = checked(written, photos, gif.is_some(), compose::TEXT)?.to_owned();
     let (asked, at, files, gif) = (c.clone(), id.to_owned(), photos.to_vec(), gif.cloned());
-    let sent = filing::changing(state, &c.dsp.id, move |db| {
+    let (sent, device) = filing::changing(state, &c.dsp.id, move |db| {
         let c = access.revalidate(db, &asked)?;
         let outgoing = Outgoing {
             phone: None,
@@ -59,12 +59,12 @@ pub async fn send(
             gif,
             by: c.auth.user.id.clone(),
         };
-        let sent = outbox::send(db, &c.dsp.id, &outgoing, now())?.id;
-        db.queued_communications_text(&c.dsp.id, &sent, &at)?;
-        Ok((sent.clone(), vec![sent]))
+        let sent = outbox::send(db, &c.dsp.id, &outgoing, now())?;
+        db.queued_communications_text(&c.dsp.id, &sent.id, &at)?;
+        Ok(((sent.id.clone(), sent.phone), vec![sent.id]))
     })
     .await?;
-    phone::live::queued(state, &c.dsp.id);
+    phone::live::queued_for(state, &c.dsp.id, Some(&device));
     live::stopped(state, &c.dsp.id, id, &c.auth.user.id);
     let (shared, dsp) = (state.clone(), c.dsp.id.clone());
     state
@@ -120,14 +120,14 @@ pub async fn retry(
     text: &str,
 ) -> Result<Message> {
     let (asked, at, wanted) = (c.clone(), id.to_owned(), text.to_owned());
-    let sent = filing::changing(state, &c.dsp.id, move |db| {
+    let (sent, device) = filing::changing(state, &c.dsp.id, move |db| {
         let c = access.revalidate(db, &asked)?;
         goes_now(db, &c.dsp.id, &at, &wanted)?;
-        let sent = outbox::retry(db, &c.dsp.id, &wanted, now())?.id;
-        Ok((sent.clone(), vec![sent]))
+        let sent = outbox::retry(db, &c.dsp.id, &wanted, now())?;
+        Ok(((sent.id.clone(), sent.phone), vec![sent.id]))
     })
     .await?;
-    phone::live::queued(state, &c.dsp.id);
+    phone::live::queued_for(state, &c.dsp.id, Some(&device));
     let (shared, dsp) = (state.clone(), c.dsp.id.clone());
     state
         .read(move |db| message(db, &shared, &dsp, &sent))

@@ -11,7 +11,7 @@ use crate::backend::{
     changes::ChangeStore,
     phone::{
         model::{EXPIRY_MS, PHONE_OFFLINE, Status},
-        storage::FileStore,
+        storage::{DeviceStore, FileStore, TextStore as PhoneTextStore},
     },
     support::{
         self, at, filed, moved, phoned, phones, read_live, reported, saved, switch, texted, today,
@@ -28,7 +28,7 @@ use crate::backend::{
 use axum::body::Bytes;
 use chrono_tz::Tz;
 use dispatch_core::{db::now, server::http::upload::Upload};
-use futures_util::{StreamExt, stream};
+use futures_util::{FutureExt, StreamExt, stream};
 
 /// Thirty minutes, in milliseconds.
 const HALF_HOUR_MS: i64 = 30 * 60 * 1000;
@@ -74,6 +74,16 @@ async fn an_answer_that_failed_leaves_it_waiting_and_retry_sends_it_again() {
         state.read(move |db| Ok(one(db, &shared, &at, &id)?.state))
     };
 
+    let (at, text) = (dsp.clone(), asked.clone());
+    let device = state
+        .read(move |db| Ok(db.phones_text(&at, &text)?.unwrap().phone))
+        .await
+        .unwrap();
+    let mut listener = phone::live::listen(&state, &dsp, &device);
+    let mut duplicate = phone::live::listen(&state, &dsp, &device);
+    let mut unrelated = phone::live::listen(&state, &dsp, "another-device");
+    let mut other_dsp = phone::live::listen(&state, "another-dsp", &device);
+
     // The phone fails to send it: the answer shows so, why, under who wrote it, and it still
     // waits.
     let answer = send(
@@ -86,6 +96,10 @@ async fn an_answer_that_failed_leaves_it_waiting_and_retry_sends_it_again() {
     )
     .await
     .unwrap();
+    assert!(listener.changed().now_or_never().is_some());
+    assert!(duplicate.changed().now_or_never().is_some());
+    assert!(unrelated.changed().now_or_never().is_none());
+    assert!(other_dsp.changed().now_or_never().is_none());
     let sent = support::sent(&state, &dsp).await;
     assert_eq!(
         sent,
@@ -111,10 +125,27 @@ async fn an_answer_that_failed_leaves_it_waiting_and_retry_sends_it_again() {
     );
     assert_eq!(state_of().await.unwrap(), ConversationState::Waiting);
 
+    // Retry chooses again inside its write. Replace the failed attempt's phone, so waking
+    // the original attempt's device or a post-write guess cannot satisfy this assertion.
+    let (at, old_device) = (dsp.clone(), device.clone());
+    let replacement = filing::changing(&state, &dsp, move |db| {
+        let replacement = phone::support::paired(db, &at, "retry-key", "2065550101");
+        db.phones_seen(&at, &replacement.id, now())?;
+        let (_, failed) = db.phones_remove(&at, &old_device, now())?;
+        Ok((replacement.id, failed))
+    })
+    .await
+    .unwrap();
+    let mut retried = phone::live::listen(&state, &dsp, &replacement);
     // Sent again, it's on its way: an answer.
     let again = retry(&state, &c, support::USE, &conversation, &failed.id)
         .await
         .unwrap();
+    assert!(retried.changed().now_or_never().is_some());
+    assert!(listener.changed().now_or_never().is_none());
+    assert!(duplicate.changed().now_or_never().is_none());
+    assert!(unrelated.changed().now_or_never().is_none());
+    assert!(other_dsp.changed().now_or_never().is_none());
     assert_eq!(
         (again.id, again.status, again.error),
         (failed.id, Some(TextStatus::Waiting), None)

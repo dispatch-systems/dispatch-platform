@@ -1,6 +1,6 @@
 //! The texts Dispatch has for a phone to send, waited on, and how each attempt at them went.
 use super::{
-    access::{Phone, checked_in},
+    access::{Caller, Phone, checked_in},
     health,
     pairing::VERSION_MOST,
 };
@@ -8,6 +8,7 @@ use crate::api::types::GifVersion;
 use crate::backend::{
     gifs::{self, Sending},
     phone::{
+        self,
         app::{self, App},
         live,
         model::{EXPIRY_MS, ID_MOST, Status, Text, WANT_MS},
@@ -20,7 +21,7 @@ use crate::backend::{
 };
 use dispatch_core::{
     Error, Result, State,
-    db::now,
+    db::{Store, now},
     foundation::validate as v,
     server::http::{
         input::{Input, Reply, query_number},
@@ -130,6 +131,27 @@ impl Outgoing {
         }
     }
 }
+/// One authorized read of the work this phone can send and the app it can install.
+struct Snapshot {
+    texts: Vec<(Text, i64)>,
+    outdated: Vec<(Text, i64)>,
+    wanted: Vec<String>,
+    app: Option<App>,
+}
+impl Snapshot {
+    fn read(db: &Store, caller: &Caller) -> Result<Self> {
+        let (texts, outdated) = db
+            .phones_outbox(&caller.dsp, &caller.device.id)?
+            .into_iter()
+            .partition(|(text, _)| sendable(text, &caller.device));
+        Ok(Self {
+            texts,
+            outdated,
+            wanted: db.phones_wanted(&caller.dsp, &caller.device.id, now() - WANT_MS)?,
+            app: app::latest(&db.config),
+        })
+    }
+}
 /// Waits, up to twenty seconds, for texts Dispatch has for the phone, or videos it keeps that someone
 /// is playing, each handed out once each time it's asked for: checking in, as it does, and noting
 /// the app it runs and how it says it stands once either changed.
@@ -141,10 +163,35 @@ async fn waiting(state: Arc<State>, input: Input, access: Phone) -> Result<Reply
     v::fields(&input.query, &["version", "versionCode"])?;
     let running = running(&input.query)?;
     let health = health::reported(&input)?;
-    let caller = checked_in(&state, &input, access).await?;
+    let asked = input.clone();
+    let shared = state.clone();
+    let (mut caller, mut listener, first, until) = state
+        .read(move |db| {
+            let caller = access.authorize(db, &asked)?;
+            // Subscribe under the same read, before taking a snapshot that may enter a wait.
+            let listener = live::listen(&shared, &caller.dsp, &caller.device.id);
+            let until = tokio::time::Instant::now() + WAIT;
+            let first = Snapshot::read(db, &caller)?;
+            Ok((caller, listener, first, until))
+        })
+        .await?;
+    let mut first = Some(first);
+    if caller.device.noting(now()) {
+        first = None;
+        let asked = input.clone();
+        caller = state
+            .run_bookkeeping(move |db| {
+                let caller = access.authorize(db, &asked)?;
+                phone::seen(db, &caller.dsp, &caller.device, now())?;
+                Ok(caller)
+            })
+            .await?;
+    }
     let app = running.filter(|app| !caller.device.runs(app));
     let health = health.filter(|health| caller.device.health.as_ref() != Some(health));
     if app.is_some() || health.is_some() {
+        // App capability may change GIF eligibility. Never use a snapshot taken before a write.
+        first = None;
         let asked = input.clone();
         state
             .run_scoped(caller.dsp.clone(), DOMAIN, move |db| {
@@ -164,23 +211,31 @@ async fn waiting(state: Arc<State>, input: Input, access: Phone) -> Result<Reply
     let admission = WAITING.acquire();
     tokio::pin!(admission);
     let unavailable = || Error::busy("phone_outbox_idle_unavailable");
-    // Subscribed before reading, so a text queued, or a video asked for, between the read and the
-    // wait still wakes it.
-    let mut listener = state.topics.subscribe(live::TOPIC, &caller.dsp);
-    let until = tokio::time::Instant::now() + WAIT;
+    // Count the initial snapshot's work toward the wait. After check-in/metadata writes,
+    // start where the fresh probe does, as before consolidation.
+    let until = if first.is_some() {
+        until
+    } else {
+        tokio::time::Instant::now() + WAIT
+    };
     loop {
-        let asked = input.clone();
-        let (texts, outdated, wanted, app) = state
-            .read(move |db| {
-                let caller = access.authorize(db, &asked)?;
-                let (texts, outdated): (Vec<_>, Vec<_>) = db
-                    .phones_outbox(&caller.dsp, &caller.device.id)?
-                    .into_iter()
-                    .partition(|(text, _)| sendable(text, &caller.device));
-                let wanted = db.phones_wanted(&caller.dsp, &caller.device.id, now() - WANT_MS)?;
-                Ok((texts, outdated, wanted, app::latest(&db.config)))
-            })
-            .await?;
+        let Snapshot {
+            texts,
+            outdated,
+            wanted,
+            app,
+        } = match first.take() {
+            Some(snapshot) => snapshot,
+            None => {
+                let asked = input.clone();
+                state
+                    .read(move |db| {
+                        let caller = access.authorize(db, &asked)?;
+                        Snapshot::read(db, &caller)
+                    })
+                    .await?
+            }
+        };
         if !outdated.is_empty() {
             fail_outdated(&state, &input, access, &caller.dsp, outdated).await?;
             continue;
