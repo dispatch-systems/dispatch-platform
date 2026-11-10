@@ -1,5 +1,5 @@
 import type { Locator } from '@playwright/test';
-import { test, expect, login } from '../../../core/shell/tests/support/fixtures.js';
+import { test, expect, login, openDsp } from '../../../core/shell/tests/support/fixtures.js';
 
 // A feature's row in the Features tab's list, which opens its panel.
 const item = (pane: Locator, name: string) =>
@@ -402,4 +402,41 @@ test('a part reaches no more people than its feature, the list finds a feature b
   await expect(item(pane, 'Home Page')).toHaveCount(0);
   await meals.selectOption('shown');
   await expect(meals).toHaveValue('shown');
+});
+
+test('Conduct offers to back signed copies up only while something keeps the DSP’s files', async ({
+  page,
+  dispatch,
+}) => {
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await page
+    .getByRole('navigation', { name: 'Primary navigation' })
+    .getByRole('button', { name: 'Settings', exact: true })
+    .click();
+  const settings = page.getByRole('navigation', { name: 'Settings', exact: true });
+  await settings.getByRole('link', { name: 'Conduct', exact: true }).click();
+  const backup = page.getByRole('region', { name: 'Backup', exact: true });
+  const copies = backup.getByRole('switch', { name: 'Back up signed copies to Documents' });
+  // Switched on, it's saved, and says the backup is failing: Documents has no account yet.
+  await expect(copies).not.toBeChecked();
+  await copies.click();
+  await expect(copies).toBeChecked();
+  await expect(backup.getByRole('status')).toBeVisible();
+  await page.reload();
+  await expect(copies).toBeChecked();
+
+  // With Documents off there's nowhere to back them up, so Conduct's Settings doesn't offer to.
+  const platform = await dispatch.client();
+  const north = platform.session.dsps.find(
+    (dsp: { name: string }) => dsp.name === 'Northline Logistics',
+  );
+  const off = await platform.post(`/api/platform/dsps/${north.id}/features`, {
+    feature: 'documents',
+    enabled: false,
+  });
+  expect(off.status).toBe(200);
+  await page.reload();
+  await expect(page.getByRole('region', { name: 'Categories', exact: true })).toBeVisible();
+  await expect(backup).toHaveCount(0);
 });
