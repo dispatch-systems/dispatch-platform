@@ -11,13 +11,7 @@ use std::{
 };
 
 pub fn directory(updater: &Updater<'_>) -> std::path::PathBuf {
-    updater
-        .root
-        .join(if updater.environment == Environment::Dev {
-            ".runtime/management"
-        } else {
-            "management"
-        })
+    updater.root.join(updater.environment.management())
 }
 pub fn supported(root: &Path) -> Result<bool> {
     Ok(io::read_json(&root.join("tooling/build-info.json"))?["hostManagement"] == 1)

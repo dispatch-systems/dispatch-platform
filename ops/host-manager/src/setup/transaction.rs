@@ -48,14 +48,7 @@ impl Journal {
         let mut paths = vec![
             ("data", "data"),
             ("dsps", "dsps"),
-            (
-                "management",
-                if self.options.production {
-                    "management"
-                } else {
-                    ".runtime/management"
-                },
-            ),
+            ("management", self.options.environment().management()),
         ];
         if self.options.production {
             paths.push(("live", "live"));
@@ -155,11 +148,7 @@ pub(super) fn publish(journal: &Journal) -> Result<()> {
             }
         }
     }
-    let active = root.join(if journal.options.production {
-        "live"
-    } else {
-        ".build"
-    });
+    let active = root.join(journal.options.environment().active());
     require(
         artifact::verify(&active, Some(&journal.commit))?.digest == journal.digest,
         "Initialized runtime changed",

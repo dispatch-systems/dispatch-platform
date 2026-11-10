@@ -67,6 +67,27 @@ impl Environment {
             Self::Production => "dispatch-production.service",
         }
     }
+    /// The name of the environment's root folder.
+    pub fn root_name(self) -> &'static str {
+        match self {
+            Self::Dev => "live",
+            Self::Production => "public",
+        }
+    }
+    /// The runtime the environment serves, from its root.
+    pub fn active(self) -> &'static str {
+        match self {
+            Self::Dev => ".build",
+            Self::Production => "live",
+        }
+    }
+    /// Where the environment's host management is installed, from its root.
+    pub fn management(self) -> &'static str {
+        match self {
+            Self::Dev => ".runtime/management",
+            Self::Production => "management",
+        }
+    }
 }
 /// The `gh` Production verifies releases with, by its root-owned path, so a user-writable `gh`
 /// earlier on PATH can't fake `gh attestation verify`.
@@ -90,12 +111,7 @@ impl<'a> Updater<'a> {
     pub fn new(root: &Path, environment: Environment, system: &'a dyn System) -> Result<Self> {
         let root = std::path::absolute(root)?;
         require(
-            root.file_name().and_then(|s| s.to_str())
-                == Some(if environment == Environment::Dev {
-                    "live"
-                } else {
-                    "public"
-                }),
+            root.file_name().and_then(|s| s.to_str()) == Some(environment.root_name()),
             "Invalid environment root",
         )?;
         io::private_directory(&root)?;
@@ -103,11 +119,7 @@ impl<'a> Updater<'a> {
         let platform = root.join("data/platform");
         io::private_directory(&runtime)?;
         io::private_directory(&platform)?;
-        let active = root.join(if environment == Environment::Dev {
-            ".build"
-        } else {
-            "live"
-        });
+        let active = root.join(environment.active());
         require(!active.is_symlink(), "Runtime symlink denied")?;
         let config = io::read_json(&root.join("config/updater.json"))?;
         require(
