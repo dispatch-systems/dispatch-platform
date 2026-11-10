@@ -45,10 +45,14 @@ pub fn s256(value: &str) -> String {
     B64.encode(Sha256::digest(value))
 }
 pub fn sign(key: &[u8], value: &str) -> String {
+    B64.encode(hmac(key, value))
+}
+/// HMAC-SHA256 of `value` under `key`.
+pub fn hmac(key: &[u8], value: &str) -> Vec<u8> {
     let mut mac =
         <Hmac<Sha256> as KeyInit>::new_from_slice(key).expect("HMAC supports any key length");
     mac.update(value.as_bytes());
-    B64.encode(mac.finalize().into_bytes())
+    mac.finalize().into_bytes().to_vec()
 }
 pub fn equal(a: &str, b: &str) -> bool {
     bool::from(a.as_bytes().ct_eq(b.as_bytes()))

@@ -22,8 +22,6 @@ use crate::{
     db::objects::Objects,
     foundation::{config::BackupStore, crypto},
 };
-use hmac::{Hmac, KeyInit, Mac};
-use sha2::Sha256;
 
 /// What the backups' bucket keeps each DSP's files as, and their descriptions as.
 const FILES: &str = "backup_files";
@@ -56,10 +54,7 @@ impl Vault {
         format!("{dsp}\nmanifest\n{id}")
     }
     fn named(&self, value: &str) -> String {
-        let mut mac = <Hmac<Sha256> as KeyInit>::new_from_slice(&self.key)
-            .expect("HMAC supports any key length");
-        mac.update(value.as_bytes());
-        crypto::hex(&mac.finalize().into_bytes())
+        crypto::hex(&crypto::hmac(&self.key, value))
     }
 }
 

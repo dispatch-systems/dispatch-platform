@@ -16,7 +16,6 @@ use crate::{
 };
 use axum::body::Bytes;
 use futures_util::{Stream, StreamExt, stream};
-use hmac::{Hmac, KeyInit, Mac};
 use reqwest::{Method, StatusCode, header};
 use sha2::{Digest, Sha256};
 use std::{path::Path, pin::Pin, time::Duration};
@@ -363,19 +362,13 @@ impl Signing<'_> {
         let key = [day, region, "s3", "aws4_request"]
             .iter()
             .fold(format!("AWS4{secret}").into_bytes(), |key, part| {
-                hmac(&key, part)
+                crypto::hmac(&key, part)
             });
         format!(
             "AWS4-HMAC-SHA256 Credential={key_id}/{scope},SignedHeaders={SIGNED},Signature={}",
-            crypto::hex(&hmac(&key, &signed))
+            crypto::hex(&crypto::hmac(&key, &signed))
         )
     }
-}
-fn hmac(key: &[u8], value: &str) -> Vec<u8> {
-    let mut mac =
-        <Hmac<Sha256> as KeyInit>::new_from_slice(key).expect("HMAC supports any key length");
-    mac.update(value.as_bytes());
-    mac.finalize().into_bytes().to_vec()
 }
 /// `value` as a signed address carries it: every byte but letters, digits and `-._~` as
 /// `%XX`, and `/` too unless it's a `path`.
