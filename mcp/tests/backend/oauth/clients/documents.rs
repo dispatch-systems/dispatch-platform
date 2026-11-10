@@ -3,6 +3,7 @@ use super::{
     Documents, FRESH, Fetched, KEPT, MOST_WEBSITES, RETRY, WEBSITE_REQUESTS, Website, document,
     known_document,
 };
+use crate::oauth::network::FIXTURE_APP;
 use dispatch_core::{Error, Result, db::now};
 use serde_json::json;
 use std::{future::Future, time::Duration};
@@ -139,13 +140,28 @@ async fn documents_are_fetched_once_at_a_time_and_failures_wait_a_minute() {
 async fn website_document_waiters_and_cache_are_hard_bounded() {
     use std::sync::atomic::{AtomicBool, Ordering};
 
-    let documents = Documents::default();
+    // A request that finds every place among the website requests taken is refused before it
+    // touches the cache, which gains a URL's entry before any fetch for it; once a place is
+    // free, the same request is answered.
+    crate::testing::install();
+    let (_root, db) = dispatch_core::testing::store();
+    let admitting = Documents::default();
     let permits: Vec<_> = (0..WEBSITE_REQUESTS)
-        .map(|_| documents.website_requests.try_acquire().unwrap())
+        .map(|_| admitting.website_requests.try_acquire().unwrap())
         .collect();
-    assert!(documents.website_requests.try_acquire().is_err());
+    assert_eq!(
+        admitting
+            .website(&db.config, FIXTURE_APP)
+            .await
+            .unwrap_err(),
+        "app_unavailable"
+    );
+    assert!(admitting.websites.lock().unwrap().is_empty());
     drop(permits);
+    let answered = admitting.website(&db.config, FIXTURE_APP).await.unwrap();
+    assert_eq!(answered.id, FIXTURE_APP);
 
+    let documents = Documents::default();
     // If every cached URL has a request holding its fetch mutex, a new URL is refused
     // instead of making the nominal cache cap best-effort.
     let mut held = Vec::with_capacity(MOST_WEBSITES);
