@@ -68,6 +68,50 @@ input[type='radio'] {
   padding: 0;
   accent-color: var(--primary);
 }
+/* A switch: on or off, at once. Where one is drawn larger, `--switch-width`, `--switch-height` and
+   `--switch-inset`, the knob's gap from the track, size it. */
+input[type='checkbox'][role='switch'] {
+  --switch-width: 28px;
+  --switch-height: 16px;
+  --switch-inset: 2px;
+  --switch-knob: calc(var(--switch-height) - 2px - 2 * var(--switch-inset));
+  appearance: none;
+  position: relative;
+  flex-shrink: 0;
+  width: var(--switch-width);
+  height: var(--switch-height);
+  min-height: var(--switch-height);
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--input);
+  border-radius: 999px;
+  background: var(--muted);
+  cursor: pointer;
+  transition: background-color var(--motion-duration);
+}
+input[type='checkbox'][role='switch']::before {
+  content: '';
+  position: absolute;
+  top: var(--switch-inset);
+  left: var(--switch-inset);
+  width: var(--switch-knob);
+  height: var(--switch-knob);
+  border-radius: 50%;
+  background: var(--foreground);
+  transition: left var(--motion-duration);
+}
+input[type='checkbox'][role='switch']:checked {
+  border-color: var(--primary);
+  background: var(--primary);
+}
+input[type='checkbox'][role='switch']:checked::before {
+  left: calc(var(--switch-width) - 2px - var(--switch-inset) - var(--switch-knob));
+  background: var(--primary-foreground);
+}
+input[type='checkbox'][role='switch']:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 label {
   display: flex;
   flex-direction: column;

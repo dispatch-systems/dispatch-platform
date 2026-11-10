@@ -303,42 +303,6 @@ button.dsp-name:hover strong {
 .dsp-feature-row.off strong {
   color: var(--muted-foreground);
 }
-:is(.dsp-feature-row, .dsp-feature-switch, .dsp-backups) input[role='switch'] {
-  appearance: none;
-  position: relative;
-  width: 28px;
-  height: 16px;
-  min-height: 16px;
-  padding: 0;
-  margin: 0;
-  border: 1px solid var(--input);
-  border-radius: 10px;
-  background: var(--muted);
-  cursor: pointer;
-  flex-shrink: 0;
-}
-:is(.dsp-feature-row, .dsp-feature-switch, .dsp-backups) input[role='switch']::before {
-  content: '';
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  top: 2px;
-  left: 2px;
-  border-radius: 50%;
-  background: var(--foreground);
-}
-:is(.dsp-feature-row, .dsp-feature-switch, .dsp-backups) input[role='switch']:checked {
-  background: var(--primary);
-  border-color: var(--primary);
-}
-:is(.dsp-feature-row, .dsp-feature-switch, .dsp-backups) input[role='switch']:checked::before {
-  left: 14px;
-  background: var(--primary-foreground);
-}
-:is(.dsp-feature-row, .dsp-feature-switch, .dsp-backups) input[role='switch']:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
 
 /* Features: the list on the left, the chosen one's panel beside it. A narrow pane shows the list,
    then the chosen one with a way back. */
