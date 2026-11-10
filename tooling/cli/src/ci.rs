@@ -267,14 +267,17 @@ fn log(root: &Path, job: u64, runner: &dyn Runner) -> String {
     )
     .unwrap_or_default()
 }
-/// The lines of a job's log its failed `step` wrote, by the time each starts with: the log is
-/// the whole job's, and what follows a failed step is the job cleaning up. All of them where
-/// GitHub names no such step. Each without that time and the colours within it.
+/// The lines of a job's log its failed `step` wrote: the log is the whole job's, and what
+/// follows a failed step is the job going on and cleaning up. They are those stamped within the
+/// step's seconds, up to where the next step starts once it said what failed, since a second
+/// may hold two steps. All of them where GitHub names no such step. Each without its time and
+/// the colours within it.
 fn lines(log: &str, step: Option<&(String, String)>) -> Vec<String> {
     // To the second, as a step's times are.
     let second = |time: &str| time.get(..19).unwrap_or(time).to_owned();
     let step = step.map(|(started, ended)| second(started)..=second(ended));
-    log.trim_start_matches('\u{feff}')
+    let mut lines: Vec<String> = log
+        .trim_start_matches('\u{feff}')
         .lines()
         .filter_map(|line| {
             let (time, text) = line.split_once(' ').unwrap_or((line, ""));
@@ -282,7 +285,14 @@ fn lines(log: &str, step: Option<&(String, String)>) -> Vec<String> {
                 .is_none_or(|step| step.contains(&second(time)))
                 .then(|| plain(text).trim_end().to_owned())
         })
-        .collect()
+        .collect();
+    let starts = |line: &String| line.starts_with("##[group]Run ") || line == "Post job cleanup.";
+    if let Some(failed) = lines.iter().position(|line| line.starts_with("##[error]"))
+        && let Some(next) = lines[failed..].iter().position(starts)
+    {
+        lines.truncate(failed + next);
+    }
+    lines
 }
 /// `text` without its terminal colours: each escape sequence up to the letter that ends it.
 fn plain(text: &str) -> String {
@@ -399,7 +409,8 @@ mod tests {
             .is_empty()
         );
         // Of a job's whole log, only what its failed step wrote is read, without its colours:
-        // an action that fails says so in words of its own, and the job cleans up after it.
+        // an action that fails says so in words of its own, and the steps after it, which may
+        // start in the second it ended, aren't its own.
         let step = (
             "2026-11-10T20:22:39Z".to_owned(),
             "2026-11-10T20:22:40Z".to_owned(),
@@ -407,12 +418,16 @@ mod tests {
         assert_eq!(
             lines(
                 "\u{feff}2026-11-10T20:22:38.9Z Set up job\n\
+                 2026-11-10T20:22:39.2Z ##[group]Run actions/cache/restore@55cc834\n\
                  2026-11-10T20:22:39.3Z \u{1b}[31;1mFAIL\u{1b}[0m [ 1.256s] review::tests::x\n\
-                 2026-11-10T20:22:40.4Z ##[error]Cache restore failed\n\
+                 2026-11-10T20:22:40.1Z ##[error]Cache restore failed\n\
+                 2026-11-10T20:22:40.2Z ##[group]Run sccache --show-stats\n\
+                 2026-11-10T20:22:40.3Z Compile requests 0\n\
                  2026-11-10T20:22:41.0Z Post job cleanup.\n",
                 Some(&step)
             ),
             [
+                "##[group]Run actions/cache/restore@55cc834",
                 "FAIL [ 1.256s] review::tests::x",
                 "##[error]Cache restore failed"
             ]
