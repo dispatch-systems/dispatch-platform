@@ -160,6 +160,8 @@ struct Fake {
     bad_health: Cell<bool>,
     /// `/usr/local/bin/gh` is missing, as an OS update once left it.
     no_gh: Cell<bool>,
+    /// GitHub attests to no build Dev downloads, as for one its build job didn't make.
+    unattested: Cell<bool>,
     elapsed: Cell<Duration>,
     root: RefCell<Option<(PathBuf, Environment)>>,
 }
@@ -207,6 +209,10 @@ impl System for Fake {
             return Ok(vec![]);
         }
         if args.starts_with(&["/usr/local/bin/gh", "attestation", "verify"]) {
+            return Ok(vec![]);
+        }
+        if args.starts_with(&["gh", "attestation", "verify"]) {
+            require(!self.unattested.get(), "no attestations found")?;
             return Ok(vec![]);
         }
         if args[0] == "gh" {
@@ -312,6 +318,10 @@ fn runs_url() -> String {
 /// What workflow run `run` uploaded.
 fn artifacts_url(run: u64) -> String {
     format!("repos/{REPOSITORY}/actions/runs/{run}/artifacts")
+}
+/// The jobs of workflow run `run`.
+fn jobs_url(run: u64) -> String {
+    format!("repos/{REPOSITORY}/actions/runs/{run}/jobs?per_page=100")
 }
 fn git(root: &Path, args: &[&str]) -> String {
     let mut all = vec![
@@ -756,6 +766,10 @@ fn a_push_run_installs_once_it_published_its_build_while_its_last_suite_still_ru
     run["conclusion"] = Value::Null;
     f.system
         .reply(&f.run_url(), vec![json!({"workflow_runs":[run]})]);
+    f.system.reply(
+        &jobs_url(17),
+        vec![json!({"jobs":[{"name":"publish","conclusion":"success"}]})],
+    );
     f.updater().run_locked().unwrap();
     assert_eq!(git(&f.root, &["rev-parse", "HEAD"]), f.new);
     assert_eq!(
@@ -765,31 +779,48 @@ fn a_push_run_installs_once_it_published_its_build_while_its_last_suite_still_ru
 }
 #[test]
 fn a_push_run_yet_to_publish_its_build_or_failed_keeps_the_old_runtime() {
-    for failed in [false, true] {
+    for case in ["unpublished", "name taken", "rerun", "failed"] {
         let f = Fixture::new(Environment::Dev);
         let mut run = f.run();
-        if failed {
+        run["status"] = json!("in_progress");
+        run["conclusion"] = Value::Null;
+        match case {
+            "unpublished" => f
+                .system
+                .reply(&artifacts_url(17), vec![json!({"artifacts":[]})]),
+            // Another job uploaded under the build's name, which fails the publish job's own.
+            "name taken" => {
+                f.dev_download();
+                f.system.reply(
+                    &jobs_url(17),
+                    vec![json!({"jobs":[{"name":"publish","conclusion":"failure"}]})],
+                );
+            }
+            // It runs again, still holding the build of the attempt that failed.
+            "rerun" => {
+                f.dev_download();
+                run["run_attempt"] = json!(2);
+            }
             // The suite that failed it ended after its build was published.
-            f.dev_download();
-            run["conclusion"] = json!("failure");
-        } else {
-            f.system
-                .reply(&artifacts_url(17), vec![json!({"artifacts":[]})]);
-            run["status"] = json!("in_progress");
-            run["conclusion"] = Value::Null;
+            _ => {
+                f.dev_download();
+                run["status"] = json!("completed");
+                run["conclusion"] = json!("failure");
+            }
         }
         f.system
             .reply(&f.run_url(), vec![json!({"workflow_runs":[run]})]);
         f.updater().run_locked().unwrap();
         f.assert_old();
-        assert!(f.system.actions().is_empty());
+        assert!(f.system.actions().is_empty(), "{case}");
         assert_eq!(
             io::read_json(&f.updater().status_file).unwrap()["status"],
-            if failed {
+            if case == "failed" {
                 "checks_failed"
             } else {
                 "waiting_for_checks"
-            }
+            },
+            "{case}"
         );
     }
 }
@@ -875,6 +906,17 @@ fn only_a_push_run_on_main_with_its_build_installs() {
     let error = f.updater().run_locked().unwrap_err().to_string();
     assert!(error.contains("build unavailable"), "{error}");
     f.assert_old();
+    // A build under the right name that GitHub doesn't attest to is refused: any job of the
+    // run could have uploaded it.
+    let f = Fixture::new(Environment::Dev);
+    f.dev_download();
+    f.system
+        .reply(&f.run_url(), vec![json!({"workflow_runs":[f.run()]})]);
+    f.system.unattested.set(true);
+    let error = f.updater().run_locked().unwrap_err().to_string();
+    assert!(error.contains("no attestations found"), "{error}");
+    f.assert_old();
+    assert!(f.system.actions().is_empty());
 }
 #[test]
 fn dev_adopts_the_updater_of_each_build_it_installs_and_only_then() {

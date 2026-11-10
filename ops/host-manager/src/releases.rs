@@ -60,6 +60,30 @@ pub fn download_run(
         commit,
     )
 }
+/// Requires GitHub's attestation that the checks' build job, on a runner of GitHub's, built
+/// `package` from `commit`. Any job of a run can upload under a build's name; only its build job
+/// can attest to what it built.
+pub fn verify_attestation(system: &dyn System, package: &Path, commit: &str) -> Result<()> {
+    system.command(
+        &[
+            "gh",
+            "attestation",
+            "verify",
+            package.to_str().ok_or("Invalid package path")?,
+            "--repo",
+            REPOSITORY,
+            "--signer-workflow",
+            &format!("{REPOSITORY}/.github/workflows/checks.yml"),
+            "--source-digest",
+            commit,
+            "--deny-self-hosted-runners",
+        ],
+        None,
+        120,
+        None,
+    )?;
+    Ok(())
+}
 pub fn version(value: &str) -> Result<Vec<u64>> {
     require(
         regex::Regex::new(r"^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$")?

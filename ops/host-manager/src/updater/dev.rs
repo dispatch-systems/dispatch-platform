@@ -115,10 +115,11 @@ impl Updater<'_> {
             .prefix("update-")
             .tempdir_in(&self.runtime)?;
         releases::download_run(self.system, &record, temp.path(), &commit, None)?;
+        releases::verify_attestation(self.system, &temp.path().join("build.tar.gz"), &commit)?;
         // The branch may have moved on during the download; one rewritten to leave the commit
         // out is what activation refuses.
         self.git(&["fetch", "origin", branch])?;
-        // A rerun can fail the commit's run during a download, and its build goes with it.
+        // A run can fail, or be run again, during a download, and its build goes with it.
         match self.published(&self.push_runs(branch)?, branch, &commit)? {
             Some((_, again)) if again == record => {}
             _ => return waiting(&Value::Null),
@@ -160,10 +161,11 @@ impl Updater<'_> {
         }
         Ok(None)
     }
-    /// The latest push run of `commit` on `branch` among `runs` and the build it published,
-    /// unless that run failed. The push run tests exactly the commit the branch moved to, and
-    /// publishes its build once every suite but the browser one passed, so Dev installs it
-    /// while that suite still runs; a commit without a run, or a build yet, waits.
+    /// The latest push run of `commit` on `branch` among `runs` and the build it published. The
+    /// push run tests exactly the commit the branch moved to, and its `publish` job publishes
+    /// the build once every suite but the browser one passed, so Dev installs it while that
+    /// suite still runs; a commit without a run, or a build yet, waits, and a failed run's
+    /// build stays where it is.
     fn published(
         &self,
         runs: &Value,
@@ -175,16 +177,34 @@ impl Updater<'_> {
         else {
             return Ok(None);
         };
-        if run["status"] == "completed" && !releases::passed(run) {
+        let passed = releases::passed(run);
+        // A run going again still holds the build of the attempt before it, the one that may
+        // have failed: only once it passed is that build its own.
+        let first = run["status"] != "completed" && run["run_attempt"].as_u64().unwrap_or(1) == 1;
+        if !passed && !first {
             return Ok(None);
         }
-        let record = self.build(run, &format!("dispatch-{branch}-{commit}"))?;
-        // A passed run published its build: nothing else can supply one that is gone.
-        require(
-            record.is_some() || !releases::passed(run),
-            "Verified Dev build unavailable",
-        )?;
-        Ok(record.map(|record| (run.clone(), record)))
+        let Some(record) = self.build(run, &format!("dispatch-{branch}-{commit}"))? else {
+            // A passed run published its build: nothing else can supply one that is gone.
+            require(!passed, "Verified Dev build unavailable")?;
+            return Ok(None);
+        };
+        // In a run still going the build's name says nothing of who uploaded it. Its publish
+        // job's success does: the job fails when another took the name first.
+        if !passed && !self.job_passed(run, "publish")? {
+            return Ok(None);
+        }
+        Ok(Some((run.clone(), record)))
+    }
+    /// Whether the job `name` of `run` ended in success.
+    fn job_passed(&self, run: &Value, name: &str) -> Result<bool> {
+        let id = run["id"].as_u64().ok_or("Invalid workflow id")?;
+        let jobs = io::github(self.system, &format!("actions/runs/{id}/jobs?per_page=100"))?;
+        Ok(jobs["jobs"]
+            .as_array()
+            .ok_or("Missing jobs")?
+            .iter()
+            .any(|job| job["name"] == name && job["conclusion"] == "success"))
     }
     /// The unexpired build `name` that `run` published.
     fn build(&self, run: &Value, name: &str) -> Result<Option<Value>> {
