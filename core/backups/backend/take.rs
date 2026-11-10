@@ -15,7 +15,6 @@ use crate::{
 };
 use base64::{Engine, engine::general_purpose::STANDARD as B64};
 use futures_util::StreamExt;
-use rusqlite::OpenFlags;
 use serde_json::{Value, json};
 use std::{
     collections::{HashMap, HashSet},
@@ -340,7 +339,7 @@ async fn send(
 /// Copies the database `from` to `to` as SQLite copies one while it's written to, all of it as it
 /// was at one moment.
 fn copy_database(from: &Path, to: &Path) -> Result<()> {
-    let source = rusqlite::Connection::open_with_flags(from, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+    let source = db::read_only(from)?;
     source.busy_timeout(Duration::from_secs(30))?;
     source.execute("VACUUM INTO ?", [to.to_string_lossy().as_ref()])?;
     Ok(())

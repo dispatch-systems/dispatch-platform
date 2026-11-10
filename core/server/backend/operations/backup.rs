@@ -81,10 +81,7 @@ pub fn backup(config: &Config, destination: &Path) -> Result<Value> {
             )?;
             let target = destination.join(relative);
             if source.extension().is_some_and(|s| s == "sqlite") {
-                let source = rusqlite::Connection::open_with_flags(
-                    source,
-                    rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-                )?;
+                let source = db::read_only(source)?;
                 source.execute("VACUUM INTO ?", [target.to_string_lossy().as_ref()])?;
                 fs::set_permissions(&target, fs::Permissions::from_mode(0o600))?;
             } else {

@@ -8,7 +8,6 @@ use crate::{
     ensure,
     foundation::{config::Config, crypto},
 };
-use rusqlite::OpenFlags;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
@@ -37,10 +36,7 @@ struct Credentials {
 }
 impl Credentials {
     fn current(&self) -> Result<bool> {
-        let connection = rusqlite::Connection::open_with_flags(
-            &self.source_connection,
-            OpenFlags::SQLITE_OPEN_READ_ONLY,
-        )?;
+        let connection = db::read_only(&self.source_connection)?;
         let current: (bool, i64) = connection.query_row(
             "SELECT enabled,revision FROM connections WHERE provider=?",
             [self.provider.id()],
@@ -59,8 +55,7 @@ impl Drop for Credentials {
 fn install_credentials(db: &Store, request: &Request, provider: Provider) -> Result<Credentials> {
     let platform = request.source_root.join("data/platform/accounts.sqlite");
     db::private_file(&platform, false)?;
-    let accounts =
-        rusqlite::Connection::open_with_flags(platform, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+    let accounts = db::read_only(platform)?;
     let active: bool = accounts.query_row(
         "SELECT EXISTS(SELECT 1 FROM dsps WHERE id=? AND status='active')",
         [&request.source_dsp],
@@ -75,8 +70,7 @@ fn install_credentials(db: &Store, request: &Request, provider: Provider) -> Res
     let folder = request.source_root.join("dsps").join(&request.source_dsp);
     let source_profile = folder.join("data/dispatch.sqlite");
     db::private_file(&source_profile, false)?;
-    let profile =
-        rusqlite::Connection::open_with_flags(source_profile, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+    let profile = db::read_only(source_profile)?;
     let profile: String = profile.query_row(
         "SELECT value FROM settings WHERE key='dsp.profile'",
         [],
@@ -96,10 +90,7 @@ fn install_credentials(db: &Store, request: &Request, provider: Provider) -> Res
         .join(provider.id())
         .join(format!("{}.sqlite", provider.id()));
     db::private_file(&source_connection, false)?;
-    let connection = rusqlite::Connection::open_with_flags(
-        &source_connection,
-        OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )?;
+    let connection = db::read_only(&source_connection)?;
     let (enabled, revision): (bool, i64) = connection.query_row(
         "SELECT enabled,revision FROM connections WHERE provider=?",
         [provider.id()],
