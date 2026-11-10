@@ -5,6 +5,7 @@
 //! over it as the page changes. Every call works only inside the DSP's own folder.
 use super::{
     access,
+    drive::Item,
     files::{self, make, put},
     google::FOLDER,
     grant::{self, Grant},
@@ -167,21 +168,7 @@ impl Files for DocumentsFiles {
             let tree = access::tree_for(state, &owner).await?;
             ensure(tree.is_folder(folder), FOLDER_NOT_FOUND, 404)?;
             let made = put(state, &owner, folder, &file.name, &file.mime, file.bytes).await?;
-            let detail = format!("{} from {}", made.name, file.from);
-            record(
-                state,
-                &owner,
-                &made.id,
-                &file.by,
-                "documents.saved",
-                &detail,
-            )
-            .await?;
-            Ok(Saved {
-                id: made.id,
-                name: made.name,
-                link: made.web_view_link,
-            })
+            saved(state, &owner, made, &file.by, file.from).await
         })
     }
     fn write<'a>(
@@ -197,21 +184,7 @@ impl Files for DocumentsFiles {
             let tree = access::tree_for(state, &owner).await?;
             ensure(tree.is_folder(folder), FOLDER_NOT_FOUND, 404)?;
             let made = files::write(state, &owner, folder, &page.name, &page.html).await?;
-            let detail = format!("{} from {}", made.name, page.from);
-            record(
-                state,
-                &owner,
-                &made.id,
-                &page.by,
-                "documents.saved",
-                &detail,
-            )
-            .await?;
-            Ok(Saved {
-                id: made.id,
-                name: made.name,
-                link: made.web_view_link,
-            })
+            saved(state, &owner, made, &page.by, page.from).await
         })
     }
     fn rewrite<'a>(
@@ -248,6 +221,22 @@ impl Files for DocumentsFiles {
     }
 }
 
+/// Records the file `made` as saved by `by` from `from`, and answers it.
+async fn saved(
+    state: &Arc<State>,
+    owner: &Grant,
+    made: Item,
+    by: &Author,
+    from: &str,
+) -> Result<Saved> {
+    let detail = format!("{} from {from}", made.name);
+    record(state, owner, &made.id, by, "documents.saved", &detail).await?;
+    Ok(Saved {
+        id: made.id,
+        name: made.name,
+        link: made.web_view_link,
+    })
+}
 /// Records who `by` made or saved the file `id`, and logs it as `action`: as the member, or
 /// with no member as its actor for someone known only by name.
 async fn record(

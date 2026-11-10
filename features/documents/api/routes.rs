@@ -151,17 +151,7 @@ async fn folder_read(state: Arc<State>, input: Input, access: Dsp) -> Result<Rep
     let query = optional(&input.query, "q", |q, key| {
         Ok(v::text(q, key, 0, 100)?.to_owned())
     })?;
-    let since = optional(&input.query, "since", |q, key| {
-        let revision = v::text(q, key, 64, 64)?;
-        ensure(
-            revision
-                .bytes()
-                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)),
-            "invalid_input",
-            400,
-        )?;
-        Ok(revision.to_owned())
-    })?;
+    let since = optional(&input.query, "since", revision)?;
     Reply::of(&files::folder_read(&state, c, access, id, query, since).await?)
 }
 /// An optional equality precondition, not permission. Explicit null/empty/malformed values
