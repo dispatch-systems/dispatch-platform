@@ -78,6 +78,13 @@ export const CHECKS: Check[] = [
     },
   },
   {
+    name: 'sccache',
+    // tooling/build/rustc-remap.py compiles through it only when it is on PATH; without it
+    // every worktree and test run compiles each crate again.
+    run: () =>
+      spawnSync('sccache', ['--version']).status === 0 ? { ok: true } : { ok: false, fix: './setup' },
+  },
+  {
     name: 'loopback',
     run: (root) => {
       const have = spawnSync('tooling/testing/loopback', [], { cwd: root, encoding: 'utf8' });

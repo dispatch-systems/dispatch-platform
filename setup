@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Sets up this clone for developing Dispatch, on Linux or macOS: the Node and Rust it pins, its
-# packages, the browser `dispatchdev shot` drives, its first build and `dispatchdev` on PATH, then
-# the private agent docs, linked into the folder that holds this clone, where sessions start. Run
-# it again at any time: it does only what's missing, and updates the agent docs.
+# Sets up this clone for developing Dispatch, on Linux or macOS: the Node and Rust it pins, the
+# compiler cache its builds share, its packages, the browser `dispatchdev shot` drives, its first
+# build and `dispatchdev` on PATH, then the private agent docs, linked into the folder that holds
+# this clone, where sessions start. Run it again at any time: it does only what's missing, and
+# updates the agent docs.
 set -euo pipefail
 cd "$(dirname "$0")"
 shell_path=$PATH
@@ -23,6 +24,9 @@ at_least() {
   return 0
 }
 sha256() { if command -v sha256sum >/dev/null; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
+# Where it downloads to, removed when it ends.
+download=$(mktemp -d)
+trap 'rm -rf "$download"' EXIT
 
 # The toolchains. Rust needs a C compiler to link, which takes an administrator to install.
 command -v git >/dev/null || fail "Install git first."
@@ -54,8 +58,6 @@ if ! usable_node; then
   esac
   name=node-v$node_version-$platform
   say "Installing Node $node_version in ~/.local/lib/nodejs/$name"
-  download=$(mktemp -d)
-  trap 'rm -rf "$download"' EXIT
   curl -fsSL "https://nodejs.org/dist/v$node_version/$name.tar.xz" -o "$download/$name.tar.xz"
   curl -fsSL "https://nodejs.org/dist/v$node_version/SHASUMS256.txt" -o "$download/SHASUMS256.txt"
   (cd "$download" && grep " $name.tar.xz\$" SHASUMS256.txt | sha256 -c - >/dev/null) ||
@@ -80,6 +82,43 @@ if ! command -v rustup >/dev/null; then
   export PATH=$HOME/.cargo/bin:$PATH
 fi
 rustup toolchain install --no-self-update >/dev/null
+
+# sccache: tooling/build/rustc-remap.py compiles through it when it is on PATH, so worktrees and
+# test runs share the crates they compile. Without one, its pinned release goes in ~/.local/bin.
+if ! command -v sccache >/dev/null; then
+  sccache_version=0.19.0
+  case $(uname -s)-$(uname -m) in
+    Linux-x86_64)
+      platform=x86_64-unknown-linux-musl
+      checksum=aa73c7270c997894038c0d8f0d297865f57569e1687883322bc431713d4bb9dd
+      ;;
+    Linux-aarch64)
+      platform=aarch64-unknown-linux-musl
+      checksum=3e47fc4a71b1ddd1b4294a0de9d34498922fdf41e3cd0bda5df3954e3d6deb9d
+      ;;
+    Darwin-x86_64)
+      platform=x86_64-apple-darwin
+      checksum=2db7344bb96de350df79cd9f0124dd4e9baa47b3de2fac1e63e1346b66b20684
+      ;;
+    Darwin-arm64)
+      platform=aarch64-apple-darwin
+      checksum=a35a0b7d622618774bc1bb8102d72562dfb21e619f88b153b370d7f89bc286af
+      ;;
+    *) fail "Install sccache $sccache_version first: there's no official build for $(uname -sm)." ;;
+  esac
+  name=sccache-v$sccache_version-$platform
+  say "Installing sccache $sccache_version in ~/.local/bin"
+  curl -fsSL "https://github.com/mozilla/sccache/releases/download/v$sccache_version/$name.tar.gz" \
+    -o "$download/$name.tar.gz"
+  (cd "$download" && echo "$checksum  $name.tar.gz" | sha256 -c - >/dev/null) ||
+    fail "sccache's download doesn't match its pinned checksum."
+  tar -xzf "$download/$name.tar.gz" -C "$download"
+  mkdir -p "$HOME/.local/bin"
+  install -m 755 "$download/$name/sccache" "$HOME/.local/bin/sccache"
+  export PATH=$HOME/.local/bin:$PATH
+  [[ $(PATH=$shell_path command -v sccache) == "$HOME/.local/bin/sccache" ]] ||
+    say "Put ~/.local/bin on your PATH, so builds find sccache."
+fi
 
 # The packages, the browser `dispatchdev shot` drives, and the first build: the CLI, then the
 # backend `npm run dev` serves.
