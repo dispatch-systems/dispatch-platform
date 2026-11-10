@@ -9,6 +9,7 @@ import './message-run.css';
 
 export function MessageRun({
   direction,
+  continues,
   face,
   sender,
   after,
@@ -16,6 +17,7 @@ export function MessageRun({
   children,
 }: {
   direction: 'in' | 'out';
+  continues?: boolean;
   face: ReactNode;
   /** Whom it's by, above its messages, when that shows. */
   sender?: ReactNode;
@@ -26,7 +28,11 @@ export function MessageRun({
   children: ReactNode;
 }) {
   return (
-    <div className={['msg-group', direction, className].filter(Boolean).join(' ')}>
+    <div
+      className={['msg-group', direction, continues && 'continues', className]
+        .filter(Boolean)
+        .join(' ')}
+    >
       {face}
       <div className="stack">
         {sender}
@@ -38,8 +44,10 @@ export function MessageRun({
 }
 
 /** Whether two of the DSP's runs are by the same sender, so the later one needn't name them. */
-export const sameSender = (a: Sender | null | undefined, b: Sender | null | undefined) =>
-  Boolean(a && b) && a!.userId === b!.userId && a!.phoneId === b!.phoneId && a!.name === b!.name;
+export const sameSender = (
+  a: Pick<Sender, 'userId' | 'phoneId' | 'name'> | null | undefined,
+  b: Pick<Sender, 'userId' | 'phoneId' | 'name'> | null | undefined,
+) => Boolean(a && b) && a!.userId === b!.userId && a!.phoneId === b!.phoneId && a!.name === b!.name;
 
 /**
  * Whom a run is by: their name, when it began while the messages are plain (`at`), and what else
@@ -86,10 +94,18 @@ export function FaceButton({
 }
 
 /** Under a message: when it was written, while `time` shows, and how it went (`children`). */
-export function MessageMeta({ time, children }: { time?: ReactNode; children?: ReactNode }) {
+export function MessageMeta({
+  identity,
+  time,
+  children,
+}: {
+  identity?: string;
+  time?: ReactNode;
+  children?: ReactNode;
+}) {
   if (!time && !children) return null;
   return (
-    <div className="meta">
+    <div className="meta" data-message-id={identity} data-message-part="meta">
       {time && (
         <span className="at">
           {time}

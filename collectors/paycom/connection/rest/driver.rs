@@ -63,17 +63,15 @@ pub(crate) fn driver(store: &Store, dsp: &str, credentials: &Value) -> Result<Bo
                 .collect(),
         ),
     };
-    Ok(Box::new(Driver {
+    Ok(Box::new(Driver::new(
         credentials,
         site,
         data_centers,
         anchor,
-        checks: Checks::waiting(),
-        connected: None,
-    }))
+    )))
 }
 
-struct Driver {
+pub(crate) struct Driver {
     credentials: Credentials,
     site: String,
     data_centers: Vec<String>,
@@ -97,8 +95,53 @@ fn listed(rows: &[Value]) -> Option<&str> {
 }
 
 impl Driver {
+    /// A driver that reaches `data_centers` with `credentials`, its pay periods counted from
+    /// `anchor`, not yet connected.
+    fn new(
+        credentials: Credentials,
+        site: String,
+        data_centers: Vec<String>,
+        anchor: Option<NaiveDate>,
+    ) -> Self {
+        Self {
+            credentials,
+            site,
+            data_centers,
+            anchor,
+            checks: Checks::waiting(),
+            connected: None,
+        }
+    }
+    /// A driver for Paycom itself, as an operator's probe connects: with an SID and Token
+    /// given to it, and the period it measures to count from.
+    #[cfg(feature = "operator-probes")]
+    pub(crate) fn live(credentials: Credentials, anchor: NaiveDate) -> Self {
+        Self::new(
+            credentials,
+            SITE.to_owned(),
+            DATA_CENTERS
+                .iter()
+                .map(|&center| center.to_owned())
+                .collect(),
+            Some(anchor),
+        )
+    }
+    /// How each check went, the last time it connected.
+    pub(crate) fn asked(&self) -> Vec<ConnectionCheck> {
+        self.checks.list()
+    }
+    /// Where a collection reads from, once it has connected.
+    pub(crate) fn source(&self) -> Option<api::Source<'_>> {
+        let (connected, anchor) = (self.connected.as_ref()?, self.anchor?);
+        Some(api::Source {
+            client: &connected.client,
+            station: connected.station,
+            anchor,
+            site: &self.site,
+        })
+    }
     /// Connects, asking each check in turn; ready only when every one passed.
-    async fn connect(&mut self) -> Result<()> {
+    pub(crate) async fn connect(&mut self) -> Result<()> {
         self.connected = None;
         self.checks = Checks::waiting();
         // The client's data center is the first that doesn't refuse its SID and Token.
@@ -173,15 +216,9 @@ impl Drives for Driver {
     }
     fn collect<'a>(&'a mut self, run: &'a Run<'a>) -> Pending<'a, Collected> {
         Box::pin(async move {
-            let (Some(connected), Some(anchor)) = (&self.connected, self.anchor) else {
-                return Err(Error::new("verification_required", 409));
-            };
-            let source = api::Source {
-                client: &connected.client,
-                station: connected.station,
-                anchor,
-                site: &self.site,
-            };
+            let source = self
+                .source()
+                .ok_or_else(|| Error::new("verification_required", 409))?;
             let data = api::collect(&source, run).await?;
             Ok(Collected { data, scope: None })
         })
@@ -190,6 +227,6 @@ impl Drives for Driver {
         None
     }
     fn checks(&self) -> Vec<ConnectionCheck> {
-        self.checks.list()
+        self.asked()
     }
 }

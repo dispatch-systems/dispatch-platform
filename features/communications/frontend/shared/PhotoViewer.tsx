@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useRef,
@@ -36,6 +37,11 @@ type Photo =
 /** How long a video's bytes are kept once the viewer lets go of them, for a save still reading them. */
 const SAVING_MS = 60_000;
 
+const idleActivity = () => () => undefined;
+const Activity = createContext<() => () => void>(idleActivity);
+/** Holds the current contiguous window while an attachment operation owns its mounted controls. */
+export const useThreadActivity = () => useContext(Activity);
+
 const Viewing = createContext<((photo: Photo) => void) | null>(null);
 
 /**
@@ -43,8 +49,43 @@ const Viewing = createContext<((photo: Photo) => void) | null>(null);
  * messages coming regroup the one it opened from. An image already shown keeps showing once the
  * message's own copy of it is let go, so the viewer shows that copy, not one fetched again.
  */
-export function PhotoViewing({ children }: { children: ReactNode }) {
+export function PhotoViewing({
+  children,
+  activity,
+}: {
+  children: ReactNode;
+  activity?: (active: boolean) => void;
+}) {
+  const operations = useRef(new Set<() => void>());
+  const begin = useCallback(() => {
+    activity?.(true);
+    const release = () => {
+      if (operations.current.delete(release)) activity?.(false);
+    };
+    operations.current.add(release);
+    return release;
+  }, [activity]);
   const [shown, setShown] = useState<Photo>();
+  const release = useRef<(() => void) | undefined>(undefined);
+  const close = () => {
+    setShown(undefined);
+    release.current?.();
+    release.current = undefined;
+  };
+  const view = useCallback(
+    (photo: Photo) => {
+      release.current?.();
+      release.current = begin();
+      setShown(photo);
+    },
+    [begin],
+  );
+  useEffect(() => {
+    const owned = operations.current;
+    return () => {
+      for (const release of owned) release();
+    };
+  }, []);
   // A video's bytes are let go of once another opens, it closes, or the thread it's over goes: a
   // moment after, as a save of them started as it closed still reads them.
   const video = shown?.video ? shown.src : undefined;
@@ -53,9 +94,11 @@ export function PhotoViewing({ children }: { children: ReactNode }) {
     [video],
   );
   return (
-    <Viewing.Provider value={setShown}>
-      {children}
-      {shown && <PhotoViewer {...shown} onClose={() => setShown(undefined)} />}
+    <Viewing.Provider value={view}>
+      <Activity.Provider value={begin}>
+        {children}
+        {shown && <PhotoViewer {...shown} onClose={close} />}
+      </Activity.Provider>
     </Viewing.Provider>
   );
 }
@@ -78,9 +121,19 @@ function PhotoViewer({ onClose, ...shown }: Photo & { onClose: () => void }) {
   const whole = useWhole(shown.video ? undefined : shown.url);
   useFocusTrap(ref, { onEscape: onClose });
   // Inline: the page's own banner is under the viewer. A video saves the bytes it plays.
-  const save = useAction(async () => (shown.video ? saved(src, name) : download(shown.url)), {
-    inline: true,
-  });
+  const active = useThreadActivity();
+  const save = useAction(
+    async () => {
+      const release = active();
+      try {
+        if (shown.video) saved(src, name);
+        else await download(shown.url);
+      } finally {
+        release();
+      }
+    },
+    { inline: true },
+  );
   // Its width over its height, once it loads: the photo fills the screen at that shape.
   const [shape, setShape] = useState<number>();
   return createPortal(

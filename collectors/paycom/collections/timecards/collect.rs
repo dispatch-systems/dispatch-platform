@@ -31,8 +31,8 @@ mod reading;
 use proof::{Direct, Proof};
 // A timecard's link, which a collection through the API keeps too.
 pub(crate) use reading::source_url;
-// The operator probes measure a live collection at the addresses the lanes read.
-#[cfg(feature = "operator-probes")]
+// The operator probes' tests read a timecard at the address the lanes read it at.
+#[cfg(all(test, feature = "operator-probes"))]
 pub(crate) use reading::timecard_url;
 use reading::{Queue, Reader, read_timecard};
 // A timecard page that is still rendering reads as one of these; wait for it to settle.

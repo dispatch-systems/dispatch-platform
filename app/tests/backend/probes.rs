@@ -11,6 +11,13 @@ async fn measure_live_collection() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "requires an explicitly selected DSP and the SID and Token of Paycom's API"]
+async fn compare_api_collection() -> Result<()> {
+    crate::install();
+    dispatch_paycom::compare_api_collection().await
+}
+
+#[tokio::test]
 #[ignore = "requires an explicitly selected DSP and authenticated provider profile"]
 async fn measure_route_method() -> Result<()> {
     use dispatch_core::collection::browser::egress::counted::{RECEIVED, SENT};

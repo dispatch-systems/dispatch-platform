@@ -1,3 +1,5 @@
+import type { Page } from '@playwright/test';
+import type { Communications, ConversationWindow, Message } from '../../api/index.js';
 import {
   test,
   expect,
@@ -482,3 +484,655 @@ test('a teammate typing shows above the box, and their reply since the member st
   await expect(asking).toHaveCount(0);
   await expect(conversation.getByText('This gate')).toBeVisible();
 });
+
+test('bounded text windows keep the visible part anchored and defer eviction until the photo viewer and its focused opener release it', async ({
+  page,
+}) => {
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await page.route('**/files/bounded-photo**', (route) =>
+    route.fulfill({ contentType: 'image/png', body: PIXEL }),
+  );
+  const all = textHistory();
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let requested = () => {};
+  const request = new Promise<void>((resolve) => {
+    requested = resolve;
+  });
+  let shifts = 0;
+  await page.route('**/conversations/*/window?*', async (route) => {
+    const response = await route.fetch();
+    const source = (await response.json()) as ConversationWindow;
+    if (source.conversation.number !== '+14255550199') return route.fulfill({ response });
+    const url = new URL(route.request().url());
+    const anchor = url.searchParams.get('anchor');
+    if (anchor) {
+      shifts++;
+      requested();
+      await held;
+    }
+    const answer = textWindow(source, all, url, true);
+    await route.fulfill({ json: answer });
+  });
+  await page.getByRole('link', { name: 'Communications' }).click();
+  const list = page.getByRole('region', { name: 'Conversations' });
+  await list
+    .getByRole('listitem')
+    .filter({ hasText: '(425) 555-0199' })
+    .getByRole('button')
+    .first()
+    .click();
+  const pane = page.getByRole('region', { name: '(425) 555-0199' });
+  const thread = pane.locator('.thread.windowed');
+  const bubbles = thread.locator('.bubble[data-message-id]');
+  await expect(bubbles).toHaveCount(150);
+  const photo = pane.getByRole('button', { name: 'door.png', exact: true });
+  await thread.locator('[data-message-part="file:bounded-photo"]').scrollIntoViewIfNeeded();
+  await expect(photo).toBeEnabled();
+  await photo.click();
+  const opener = await photo.elementHandle();
+  const viewer = page.getByRole('dialog', { name: 'door.png' });
+  await expect(viewer.getByRole('img', { name: 'door.png' })).toBeVisible();
+  await thread.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await page.keyboard.press('Escape');
+  await expect(photo).toBeFocused();
+  expect(
+    await opener!.evaluate((element) => element.isConnected && document.activeElement === element),
+  ).toBe(true);
+  expect(shifts).toBe(0);
+  await pane.getByLabel('Message', { exact: true }).click();
+  await thread.evaluate((element) => {
+    element.scrollTop = 0;
+    element.dispatchEvent(new Event('scroll'));
+  });
+  await request;
+  // Move after dispatch: restoration must use the current viewport, not the request's old offset.
+  await thread.evaluate((element) => {
+    element.scrollTop = 35;
+  });
+  const anchor = await thread.evaluate((element) => {
+    const top = element.getBoundingClientRect().top;
+    const part = [
+      ...element.querySelectorAll<HTMLElement>('[data-message-id][data-message-part]'),
+    ].find((part) => part.getBoundingClientRect().bottom > top)!;
+    return {
+      id: part.dataset.messageId!,
+      part: part.dataset.messagePart!,
+      top: part.getBoundingClientRect().top - top,
+    };
+  });
+  release();
+  await expect(
+    thread.locator('[data-message-id="bounded-200"][data-message-part="text"]'),
+  ).toHaveCount(1);
+  await expect(bubbles).toHaveCount(150);
+  const retained = thread.locator(
+    `[data-message-id="${anchor.id}"][data-message-part="${anchor.part}"]`,
+  );
+  await expect
+    .poll(async () =>
+      retained.evaluate(
+        (part) =>
+          part.getBoundingClientRect().top - part.closest('.thread')!.getBoundingClientRect().top,
+      ),
+    )
+    .toBeCloseTo(anchor.top, 0);
+  expect(
+    new Set(
+      await bubbles.evaluateAll((elements) =>
+        elements.map((element) => element.getAttribute('data-message-id')),
+      ),
+    ).size,
+  ).toBe(150);
+  await pane.getByLabel('Message', { exact: true }).fill('Draft survives paging');
+  await thread.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect(
+    thread.locator('[data-message-id="bounded-399"][data-message-part="text"]'),
+  ).toHaveCount(1);
+  await expect(bubbles).toHaveCount(150);
+  await expect(pane.getByLabel('Message', { exact: true })).toHaveValue('Draft survives paging');
+});
+
+function eventGate() {
+  let release!: () => void;
+  const promise = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return { promise, release };
+}
+
+function textHistory(media = 380): Message[] {
+  return Array.from({ length: 400 }, (_, index) => ({
+    id: `bounded-${index}`,
+    ts: `${Date.UTC(2026, 9, 26, 10, index)}:bounded-${index}`,
+    at: Date.UTC(2026, 9, 26, 10, index),
+    direction: 'in',
+    text: `Bounded ${index}\n${'line\n'.repeat(index % 7)}`,
+    editedAt: null,
+    inThread: false,
+    sender: null,
+    gif: null,
+    group: null,
+    status: null,
+    error: null,
+    number: '+14255550199',
+    moved: false,
+    files:
+      index === media
+        ? [
+            {
+              id: 'bounded-photo',
+              name: 'door.png',
+              mime: 'image/png',
+              size: PIXEL.length,
+              status: 'kept',
+              version: 'bounded',
+              preview: true,
+            },
+          ]
+        : [],
+  }));
+}
+
+/** These histories have one date and no sender-bearing rows. Run starts still respect an
+ * outgoing retry, rather than assigning the incoming origin to every selected first row. */
+function textWindow(
+  source: ConversationWindow,
+  all: Message[],
+  url: URL,
+  ready: boolean,
+): ConversationWindow {
+  const anchor = url.searchParams.get('anchor');
+  const index = anchor ? all.findIndex((row) => row.ts === anchor) : all.length;
+  expect(index).toBeGreaterThanOrEqual(0);
+  const start = Math.max(
+    0,
+    Math.min(250, anchor ? index - Number(url.searchParams.get('leading')) : 250),
+  );
+  const rows = all.slice(start, start + 150);
+  const neighbor = (row?: Message) =>
+    row
+      ? {
+          id: row.id,
+          ts: row.ts,
+          at: row.at,
+          direction: row.direction,
+          sender: row.sender,
+          groupId: row.group?.id ?? null,
+          number: row.number,
+        }
+      : null;
+  const origin = (at: number) => {
+    while (
+      at > 0 &&
+      all[at - 1]!.direction === all[at]!.direction &&
+      all[at - 1]!.number === all[at]!.number &&
+      all[at]!.at - all[at - 1]!.at < 600_000
+    )
+      at--;
+    const first = all[at]!;
+    return {
+      origin: {
+        id: first.id,
+        ts: first.ts,
+        at: first.at,
+        direction: first.direction,
+        sender: first.sender,
+        group: first.group,
+        number: first.number,
+      },
+      beforeOrigin: neighbor(all[at - 1]),
+      sentBeforeOrigin: null,
+      firstDay: { id: all[0]!.id, ts: all[0]!.ts, at: all[0]!.at, number: all[0]!.number },
+    };
+  };
+  return {
+    ...source,
+    messages: rows,
+    latest: all.slice(-50),
+    context: {
+      previous: neighbor(all[start - 1]),
+      next: neighbor(all[start + 150]),
+      sentBefore: null,
+    },
+    latestContext: { previous: neighbor(all[349]), next: null, sentBefore: null },
+    latestWorkdays: [],
+    workdays: [],
+    origins: {
+      ready,
+      version: 1,
+      algorithm: 'conversation-origins-1:2026a',
+      timeZone: source.origins?.timeZone ?? 'America/Los_Angeles',
+      selected: ready ? origin(start) : null,
+      latest: ready ? origin(350) : null,
+    },
+    range: {
+      ...source.range,
+      first: rows[0]!.ts,
+      last: rows.at(-1)!.ts,
+      hasBefore: start > 0,
+      hasAfter: start + 150 < all.length,
+    },
+  };
+}
+
+async function textFixture(page: Page, all: Message[], ready = false) {
+  let source: ConversationWindow | undefined;
+  let revision = 0;
+  const stopped = eventGate();
+  const fixture = {
+    ready,
+    windows: [] as URL[],
+    beforeWindow: undefined as (() => Promise<void>) | undefined,
+    beforeLegacy: undefined as (() => Promise<void>) | undefined,
+  };
+  // Freeze background updates so the single explicit invalidation is the only refresh trigger.
+  await page.route('**/api/dsp/communications/updates?*', async (route) => {
+    await stopped.promise;
+    await route.abort();
+  });
+  await page.route('**/api/dsp/communications', async (route) => {
+    const response = await route.fetch();
+    const value = (await response.json()) as Communications;
+    await route.fulfill({ json: { ...value, revision: value.revision + revision } });
+  });
+  await page.route('**/conversations/*/window?*', async (route) => {
+    const response = await route.fetch();
+    const value = (await response.json()) as ConversationWindow;
+    if (value.conversation.number !== '+14255550199') return route.fulfill({ response });
+    source = value;
+    const url = new URL(route.request().url());
+    fixture.windows.push(url);
+    const answer = textWindow(value, all, url, fixture.ready);
+    await fixture.beforeWindow?.();
+    await route.fulfill({ json: answer });
+  });
+  await page.route(
+    /\/api\/dsp\/communications\/conversations\/[^/?]+(?:\?[^#]*)?$/,
+    async (route) => {
+      if (!source || !route.request().url().includes(`/conversations/${source.conversation.id}`))
+        return route.continue();
+      const url = new URL(route.request().url());
+      const before = url.searchParams.get('before');
+      const end = before ? all.findIndex((row) => row.ts === before) : all.length;
+      const start = Math.max(0, end - 50);
+      await fixture.beforeLegacy?.();
+      await route.fulfill({
+        json: { ...source, messages: all.slice(start, end), more: start > 0 },
+      });
+    },
+  );
+  await page.route('**/files/bounded-photo**', (route) =>
+    route.fulfill({ contentType: 'image/png', body: PIXEL }),
+  );
+  return {
+    fixture,
+    stop: stopped.release,
+    invalidate: async () => {
+      revision++;
+      const response = page.waitForResponse(
+        (response) => new URL(response.url()).pathname === '/api/dsp/communications',
+      );
+      await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+      await (await response).finished();
+      // A rendering event, never an elapsed wait: the inbox publication and its effects may run.
+      await page.evaluate(
+        () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+      );
+    },
+  };
+}
+
+async function openText(page: Page) {
+  await page.getByRole('link', { name: 'Communications' }).click();
+  const list = page.getByRole('region', { name: 'Conversations' });
+  await list
+    .getByRole('listitem')
+    .filter({ hasText: '(425) 555-0199' })
+    .getByRole('button')
+    .first()
+    .click();
+  const pane = page.getByRole('region', { name: '(425) 555-0199' });
+  await expect(
+    pane.locator('[data-message-id="bounded-399"][data-message-part="text"]'),
+  ).toHaveCount(1);
+  return pane;
+}
+
+function visibleParts(element: Element) {
+  const top = element.getBoundingClientRect().top;
+  const bottom = top + element.clientHeight;
+  return [...element.querySelectorAll<HTMLElement>('[data-message-id][data-message-part]')]
+    .filter(
+      (part) =>
+        part.getBoundingClientRect().bottom > top && part.getBoundingClientRect().top < bottom,
+    )
+    .map((part) => ({
+      id: part.dataset.messageId!,
+      part: part.dataset.messagePart!,
+      top: part.getBoundingClientRect().top - top,
+    }));
+}
+
+for (const status of ['waiting', 'delivered'] as const) {
+  test(`a focused failed Retry acknowledges ${status} before any replacement read can settle it`, async ({
+    page,
+  }) => {
+    await login(page);
+    await openDsp(page, 'Northline Logistics');
+    const all = textHistory();
+    all[399] = { ...all[399]!, direction: 'out', status: 'failed', error: 'phones_offline' };
+    const { stop } = await textFixture(page, all, true);
+    const entered = eventGate();
+    const acknowledge = eventGate();
+    await page.route('**/messages/bounded-399/retry', async (route) => {
+      entered.release();
+      await acknowledge.promise;
+      all[399] = { ...all[399]!, status, error: null };
+      await route.fulfill({ json: all[399] });
+    });
+    try {
+      const pane = await openText(page);
+      await pane.getByLabel('Message', { exact: true }).fill('Retry preserves the draft');
+      const retry = pane.getByRole('button', { name: 'Retry', exact: true });
+      await retry.click();
+      await entered.promise;
+      await expect(retry).toBeFocused();
+      // No blur, focus transfer or second invalidation before acknowledgement.
+      acknowledge.release();
+      await expect(
+        pane.getByText(status === 'waiting' ? 'Sending' : 'Delivered', { exact: true }),
+      ).toBeVisible();
+      await expect(pane.getByText('Not sent', { exact: true })).toHaveCount(0);
+      await expect(retry).toHaveCount(0);
+      await expect(pane.getByLabel('Message', { exact: true })).toHaveValue(
+        'Retry preserves the draft',
+      );
+    } finally {
+      acknowledge.release();
+      stop();
+    }
+  });
+}
+
+test('a selection made before readiness defers one update and its release resumes that update without a second invalidation', async ({
+  page,
+}) => {
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  const all = textHistory();
+  const { invalidate, stop } = await textFixture(page, all);
+  try {
+    const pane = await openText(page);
+    const thread = pane.locator('.thread');
+    await thread
+      .locator('[data-message-id="bounded-399"][data-message-part="text"]')
+      .evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const selection = getSelection()!;
+        selection.removeAllRanges();
+        selection.addRange(range);
+      });
+    all[399] = { ...all[399]!, text: 'The deferred update arrived' };
+    await invalidate();
+    await expect(thread).not.toHaveClass(/windowed/);
+    await page.evaluate(() => getSelection()!.removeAllRanges());
+    await expect(thread.getByText('The deferred update arrived', { exact: true })).toBeVisible();
+  } finally {
+    stop();
+  }
+});
+
+test('legacy400 first-visible250 retains its complete visible suffix and offset during readiness conversion', async ({
+  page,
+}) => {
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  const all = textHistory();
+  const { fixture, invalidate, stop } = await textFixture(page, all);
+  try {
+    const pane = await openText(page);
+    const thread = pane.locator('.thread');
+    for (let first = 200; first >= 0; first -= 50) {
+      await thread.evaluate((element) => {
+        element.scrollTop = 0;
+      });
+      await expect(
+        thread.locator(`[data-message-id="bounded-${first}"][data-message-part="text"]`),
+      ).toHaveCount(1);
+    }
+    await expect(thread.locator('.bubble[data-message-id]')).toHaveCount(400);
+    await pane.getByLabel('Message', { exact: true }).fill('Conversion preserves the draft');
+    await thread.evaluate((element) => {
+      const row = element.querySelector(
+        '[data-message-id="bounded-250"][data-message-part="text"]',
+      )!;
+      element.scrollTop += row.getBoundingClientRect().top - element.getBoundingClientRect().top;
+      element.dispatchEvent(new Event('scroll'));
+    });
+    const before = await thread.evaluate(visibleParts);
+    expect(before[0]!.id).toBe('bounded-250');
+    expect(new Set(before.map((part) => part.id)).size).toBeGreaterThan(1);
+    fixture.ready = true;
+    await invalidate();
+    await expect(thread).toHaveClass(/windowed/);
+    const suffix =
+      Math.max(...before.map((part) => Number(part.id.slice('bounded-'.length)))) - 250;
+    expect(Number(fixture.windows.at(-1)!.searchParams.get('leading'))).toBeLessThanOrEqual(
+      149 - suffix,
+    );
+    await expect(thread.locator('.bubble[data-message-id]')).toHaveCount(150);
+    for (const part of before) {
+      const retained = thread.locator(
+        `[data-message-id="${part.id}"][data-message-part="${part.part}"]`,
+      );
+      await expect(retained).toHaveCount(1);
+    }
+    const anchor = thread.locator(
+      `[data-message-id="${before[0]!.id}"][data-message-part="${before[0]!.part}"]`,
+    );
+    await expect
+      .poll(() =>
+        anchor.evaluate(
+          (part) =>
+            part.getBoundingClientRect().top - part.closest('.thread')!.getBoundingClientRect().top,
+        ),
+      )
+      .toBeCloseTo(before[0]!.top, 0);
+    await expect(pane.getByLabel('Message', { exact: true })).toHaveValue(
+      'Conversion preserves the draft',
+    );
+  } finally {
+    stop();
+  }
+});
+
+test('a legacy photo viewer retains its opener while an already-dispatched readiness response waits, then releases conversion after focus leaves', async ({
+  page,
+}) => {
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  const all = textHistory(250);
+  const { fixture, invalidate, stop } = await textFixture(page, all);
+  const entered = eventGate();
+  const answer = eventGate();
+  try {
+    const pane = await openText(page);
+    const thread = pane.locator('.thread');
+    const photo = pane.getByRole('button', { name: 'door.png', exact: true });
+    await thread.locator('[data-message-part="file:bounded-photo"]').scrollIntoViewIfNeeded();
+    await expect(photo).toBeEnabled();
+    await pane.getByLabel('Message', { exact: true }).focus();
+    fixture.ready = true;
+    fixture.beforeWindow = async () => {
+      entered.release();
+      await answer.promise;
+    };
+    await invalidate();
+    await entered.promise;
+    await photo.click();
+    const opener = await photo.elementHandle();
+    const viewer = page.getByRole('dialog', { name: 'door.png' });
+    await expect(viewer.getByRole('img', { name: 'door.png' })).toBeVisible();
+    const response = page.waitForResponse(
+      (response) => response.url().includes('/window?') && response.url().includes('anchor='),
+    );
+    answer.release();
+    await (await response).finished();
+    await page.evaluate(
+      () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+    );
+    await expect(thread).not.toHaveClass(/windowed/);
+    await page.keyboard.press('Escape');
+    await expect(photo).toBeFocused();
+    expect(
+      await opener!.evaluate(
+        (element) => element.isConnected && document.activeElement === element,
+      ),
+    ).toBe(true);
+    await pane.getByLabel('Message', { exact: true }).focus();
+    await expect(thread).toHaveClass(/windowed/);
+  } finally {
+    answer.release();
+    stop();
+  }
+});
+
+test('legacy on-phone video fetch and download own conversion until both operations release, even when disabling Play releases focus', async ({
+  page,
+}) => {
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  expect(
+    await page.evaluate(() => document.createElement('video').canPlayType('video/x-msvideo')),
+  ).toBe('');
+  const all = textHistory();
+  all[399] = {
+    ...all[399]!,
+    files: [
+      {
+        id: 'bounded-video',
+        name: 'route.avi',
+        mime: 'video/x-msvideo',
+        size: PIXEL.length,
+        status: 'on_phone',
+        version: null,
+        preview: false,
+      },
+    ],
+  };
+  const { fixture, invalidate, stop } = await textFixture(page, all);
+  const fetching = eventGate();
+  const fetched = eventGate();
+  const saving = eventGate();
+  const saved = eventGate();
+  await page.route('**/texts/files/bounded-video/fetch', async (route) => {
+    fetching.release();
+    await fetched.promise;
+    await route.fulfill({ json: { kept: true } });
+  });
+  await page.route('**/texts/files/bounded-video', async (route) => {
+    saving.release();
+    await saved.promise;
+    await route.fulfill({ contentType: 'video/x-msvideo', body: PIXEL });
+  });
+  try {
+    const pane = await openText(page);
+    const thread = pane.locator('.thread');
+    const play = pane.getByRole('button', { name: 'Play route.avi' });
+    await play.click();
+    await fetching.promise;
+    await expect(play).toBeDisabled();
+    fixture.ready = true;
+    await invalidate();
+    await expect(thread).not.toHaveClass(/windowed/);
+    fetched.release();
+    await saving.promise;
+    await expect(thread).not.toHaveClass(/windowed/);
+    const download = page.waitForEvent('download');
+    saved.release();
+    await download;
+    await expect(thread).toHaveClass(/windowed/);
+    await expect(pane.getByRole('alert')).toHaveCount(0);
+  } finally {
+    fetched.release();
+    saved.release();
+    stop();
+  }
+});
+
+for (const outside of [false, true]) {
+  test(
+    'a legacy fallback rechecks ' +
+      (outside ? 'outside-anchored' : 'inside') +
+      ' selection after its extra await and resumes on release without another invalidation',
+    async ({ page }) => {
+      await login(page);
+      await openDsp(page, 'Northline Logistics');
+      const all = textHistory();
+      const { fixture, invalidate, stop } = await textFixture(page, all);
+      const entered = eventGate();
+      const answer = eventGate();
+      try {
+        const pane = await openText(page);
+        const thread = pane.locator('.thread');
+        await thread.evaluate((element) => {
+          const row = element.querySelector(
+            '[data-message-id="bounded-300"][data-message-part="text"]',
+          )!;
+          element.scrollTop +=
+            row.getBoundingClientRect().top - element.getBoundingClientRect().top;
+          element.dispatchEvent(new Event('scroll'));
+        });
+        await pane.getByLabel('Message', { exact: true }).focus();
+        fixture.beforeLegacy = async () => {
+          entered.release();
+          await answer.promise;
+        };
+        all[399] = { ...all[399]!, text: 'Fallback published after release' };
+        await invalidate();
+        await entered.promise;
+        await pane.evaluate((element, outside) => {
+          const row = element.querySelector(
+            '[data-message-id="bounded-300"][data-message-part="text"]',
+          )!;
+          const range = document.createRange();
+          range.selectNodeContents(row);
+          if (outside) range.setStart(element.querySelector('.thread-head .who')!, 0);
+          const selection = getSelection()!;
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }, outside);
+        expect(
+          await thread.evaluate((element) => element.contains(getSelection()!.anchorNode)),
+        ).toBe(!outside);
+        const response = page.waitForResponse((response) =>
+          /\/conversations\/[^/?]+$/.test(new URL(response.url()).pathname),
+        );
+        answer.release();
+        await (await response).finished();
+        await page.evaluate(
+          () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+        );
+        await expect(
+          thread.getByText('Fallback published after release', { exact: true }),
+        ).toHaveCount(0);
+        await page.evaluate(() => getSelection()!.removeAllRanges());
+        await expect(
+          thread.getByText('Fallback published after release', { exact: true }),
+        ).toHaveCount(1);
+      } finally {
+        answer.release();
+        stop();
+      }
+    },
+  );
+}

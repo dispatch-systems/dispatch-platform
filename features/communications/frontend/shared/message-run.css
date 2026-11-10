@@ -116,3 +116,11 @@
   font-size: var(--small-size);
   font-weight: 400;
 }
+
+/* A bounded selection can stop inside a run; its real tail and face are still below it. */
+.msg-group.continues {
+  --tail: var(--bubble-radius);
+}
+.communications:not([data-style='plain']) .msg-group.continues > :is(.face, .face-button) {
+  visibility: hidden;
+}

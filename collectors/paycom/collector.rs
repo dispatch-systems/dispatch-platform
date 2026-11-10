@@ -9,7 +9,7 @@ pub use collections::timecards::{self, PaycomStore};
 /// Measures a live collection against what the feature keeping timecards last published,
 /// which only the app's registry holds: the app's tests run it.
 #[cfg(feature = "operator-probes")]
-pub use probes::measure_live_collection;
+pub use probes::{compare_api_collection, measure_live_collection};
 
 use connection::rest;
 use dispatch_core::collection::registry::Provider;

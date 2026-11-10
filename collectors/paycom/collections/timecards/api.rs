@@ -20,6 +20,7 @@ use dispatch_core::{
     manifest::registry,
 };
 use serde_json::{Value, json};
+use std::future::Future;
 
 /// How many employees are read at once. The client paces the requests themselves.
 const LANES: usize = 4;
@@ -201,7 +202,47 @@ pub(crate) async fn collect(source: &Source<'_>, run: &Run<'_>) -> Result<Value>
             collection_date(run.request, run.timezone)?.unwrap_or_else(|| clock::today(zone)),
         ),
     };
+    let known = match &scope {
+        // Known people the active directory leaves out still get their period read.
+        Some(_) => Some(kept(run, json!({"allEmployees":true})).await?),
+        None => None,
+    };
+    let known = match &known {
+        Some(known) => Some(
+            known
+                .as_array()
+                .ok_or_else(|| Error::new("invalid_workforce", 502))?
+                .as_slice(),
+        ),
+        None => None,
+    };
     run.progress(10, "Reading employee roster".into()).await?;
+    let data = everyone(source, zone, &period, known, |done, total| {
+        run.progress(
+            10 + (80 * done / total) as i64,
+            format!("Reading timecards ({done} of {total})"),
+        )
+    })
+    .await?;
+    if let Some(scope) = scope {
+        scope.validate_capture(&data)?;
+    }
+    Ok(data)
+}
+
+/// Everyone's cards for `period`: the directory's roster, with the `known` people it leaves
+/// out, read a few at a time. `progress` hears how many of them are read after each few.
+pub(crate) async fn everyone<F, Fut>(
+    source: &Source<'_>,
+    zone: Tz,
+    period: &EmployeeTimecardPeriod,
+    known: Option<&[Value]>,
+    mut progress: F,
+) -> Result<Value>
+where
+    F: FnMut(usize, usize) -> Fut,
+    Fut: Future<Output = Result<()>>,
+{
     let listed = source
         .client
         .all("api/v1/employeedirectory?eestatus=A")
@@ -216,12 +257,7 @@ pub(crate) async fn collect(source: &Source<'_>, run: &Run<'_>) -> Result<Value>
         .map(|row| employee(row, source.station))
         .collect::<Result<Vec<_>>>()?;
     let active = employees.len();
-    if scope.is_some() {
-        // Known people the active directory leaves out still get their period read.
-        let known = kept(run, json!({"allEmployees":true})).await?;
-        let known = known
-            .as_array()
-            .ok_or_else(|| Error::new("invalid_workforce", 502))?;
+    if let Some(known) = known {
         employees = with_known_employees(employees, known, &period.provider_period()?)?;
     }
     let mut timecards = Vec::with_capacity(employees.len() * PERIOD_DAYS as usize);
@@ -230,7 +266,6 @@ pub(crate) async fn collect(source: &Source<'_>, run: &Run<'_>) -> Result<Value>
         let first = lane * LANES;
         let read = group.iter().enumerate().map(|(index, employee)| {
             let code = s(employee, "code").to_owned();
-            let period = &period;
             async move {
                 // An employee the directory lists has a record; one known from before keeps
                 // the position they were last collected with.
@@ -255,18 +290,9 @@ pub(crate) async fn collect(source: &Source<'_>, run: &Run<'_>) -> Result<Value>
             }
             timecards.extend(cards);
         }
-        let done = (first + group.len()).min(total);
-        run.progress(
-            10 + (80 * done / total) as i64,
-            format!("Reading timecards ({done} of {total})"),
-        )
-        .await?;
+        progress((first + group.len()).min(total), total).await?;
     }
-    let data = workforce(source, employees, timecards, &period)?;
-    if let Some(scope) = scope {
-        scope.validate_capture(&data)?;
-    }
-    Ok(data)
+    workforce(source, employees, timecards, period)
 }
 
 #[cfg(test)]
