@@ -30,8 +30,9 @@ if [[ ! -x $binary ]]; then
   mkdir -p "$cache/$version"
   install -m 755 "$source/target/debug/dispatchdev" "$binary.$$"
   mv -f "$binary.$$" "$binary"
-  # The three newest versions stay; an older one is rebuilt if its source comes back.
+  # The ten newest versions stay, enough for each of a clone's worktrees to run its own; an
+  # older one is rebuilt if its source comes back.
   find "$cache" -mindepth 1 -maxdepth 1 -type d -exec ls -dt {} + |
-    tail -n +4 | xargs -r rm -rf
+    tail -n +11 | xargs -r rm -rf
 fi
 exec "$binary" "$@"
