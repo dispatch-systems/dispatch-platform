@@ -218,6 +218,90 @@ test(
         final.find((j) => j.id === jobs[0])!.metrics[0]!.queueMs,
     );
     await until(async () => (await owner.read('/api/platform/health')).browsers.active === 0);
+    // TEMPORARY MEASUREMENT, never merged: what the server's slow database turns were.
+    {
+      type Turn = {
+        at: string;
+        work?: string;
+        route?: string | null;
+        write: boolean;
+        unpublished: boolean;
+        queueMs: number;
+        lockMs: number;
+        workMs: number;
+        totalMs: number;
+      };
+      const turns: Turn[] = f
+        .logs()
+        .split('\n')
+        .filter((line) => line.includes('"event":"database.slow"'))
+        .map((line) => JSON.parse(line))
+        .map((event) => ({ at: event.at, ...event.fields }));
+      const groups = new Map<
+        string,
+        {
+          count: number;
+          queue: number;
+          lock: number;
+          work: number;
+          maxLock: number;
+          maxWork: number;
+          maxQueue: number;
+        }
+      >();
+      for (const turn of turns) {
+        const kind = turn.unpublished ? 'unpublished' : turn.write ? 'write' : 'read';
+        const key = `${kind} ${turn.route ?? turn.work ?? '?'}`;
+        const group = groups.get(key) ?? {
+          count: 0,
+          queue: 0,
+          lock: 0,
+          work: 0,
+          maxLock: 0,
+          maxWork: 0,
+          maxQueue: 0,
+        };
+        group.count++;
+        group.queue += turn.queueMs;
+        group.lock += turn.lockMs;
+        group.work += turn.workMs;
+        group.maxLock = Math.max(group.maxLock, turn.lockMs);
+        group.maxWork = Math.max(group.maxWork, turn.workMs);
+        group.maxQueue = Math.max(group.maxQueue, turn.queueMs);
+        groups.set(key, group);
+      }
+      const round = (value: number) => Math.round(value);
+      console.log('SLOWTURNS total', turns.length);
+      for (const [key, g] of [...groups].sort(
+        (a, b) => b[1].lock + b[1].work + b[1].queue - (a[1].lock + a[1].work + a[1].queue),
+      ))
+        console.log(
+          'SLOWTURNS group',
+          JSON.stringify({
+            key,
+            count: g.count,
+            sumQueue: round(g.queue),
+            sumLock: round(g.lock),
+            sumWork: round(g.work),
+            maxQueue: round(g.maxQueue),
+            maxLock: round(g.maxLock),
+            maxWork: round(g.maxWork),
+          }),
+        );
+      for (const turn of [...turns].sort((a, b) => b.totalMs - a.totalMs).slice(0, 40))
+        console.log(
+          'SLOWTURNS top',
+          JSON.stringify({
+            at: turn.at,
+            kind: turn.unpublished ? 'unpublished' : turn.write ? 'write' : 'read',
+            who: turn.route ?? turn.work,
+            queueMs: round(turn.queueMs),
+            lockMs: round(turn.lockMs),
+            workMs: round(turn.workMs),
+          }),
+        );
+      console.log('SLOWTURNS batches', JSON.stringify(latencies.map(round)));
+    }
     latencies.sort((a, b) => a - b);
     const p95 = latencies[Math.ceil(latencies.length * 0.95) - 1]!;
     assert(
