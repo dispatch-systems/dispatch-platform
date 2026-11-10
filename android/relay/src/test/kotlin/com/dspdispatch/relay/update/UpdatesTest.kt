@@ -180,7 +180,8 @@ class UpdatesTest {
                 if (request.url.encodedPath.endsWith("/download")) download(bytes) else details(bytes)
         }
         var updates = updates()
-        val waits = Updates.RETRIES_MS + Updates.RETRIES_MS.last()
+        // 1, 3, 12, then every 24 hours.
+        val waits = listOf(1L, 3L, 12L, 24L, 24L).map { it * HOUR_MS }
         for ((tried, wait) in waits.withIndex()) {
             updates.heard(site, newer)
             installer.tries.receive()
@@ -409,5 +410,9 @@ class UpdatesTest {
     /** The app's storage of the update held back, which outlives each [Updates] made. */
     private class FakeHolds : Holds {
         override var hold: Hold? = null
+    }
+
+    private companion object {
+        const val HOUR_MS = 60 * 60 * 1000L
     }
 }
