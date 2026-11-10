@@ -1,9 +1,10 @@
-//! Whether the folder needs sharing again, from the team and who it's shared with; and a DSP
+//! Whether the folder needs sharing again, from the team and who it's shared with; what Google
+//! takes back from a member who stops using Documents, and of a shortcut taken out; and a DSP
 //! disabled while it's shared, which Google is asked nothing more for.
 use super::*;
 use crate::backend::{
-    drive,
-    support::{ACCOUNT, connect, disabling, enable, platform},
+    drive, files,
+    support::{ACCOUNT, connect, context, disabling, enable, platform},
 };
 use dispatch_core::{
     Code,
@@ -138,6 +139,59 @@ fn on_sharing(account: &str, id: &str, inside: bool, then: impl FnOnce() + Send 
         })
         .unwrap();
     });
+}
+
+// A member who no longer holds Use Documents loses the folder and the files Dispatch shared
+// with them in Google, and a file whose shortcut is taken out of Documents is shared with no
+// one Dispatch shared it with.
+#[tokio::test]
+async fn google_takes_back_the_shares_of_a_member_who_leaves_documents_and_of_a_removed_shortcut() {
+    let (_root, state, dsp) = platform();
+    let account = own_account();
+    crate::backend::support::connect_as(&state, &dsp, &account).await;
+    join(&state, &dsp, "Avery", "avery@example.test").await;
+    let blake = join(&state, &dsp, "Blake", "blake@example.test").await;
+    let folder = folder(&state, &dsp).await;
+    // A Sheet someone else owns, which Documents holds a shortcut to.
+    let sheet = drive::fixture_hidden(&account)
+        .unwrap()
+        .into_iter()
+        .find(|item| item.name == drive::SHARED_SHEET)
+        .unwrap();
+    let owner = crate::backend::grant::capture(&state, &dsp, None)
+        .await
+        .unwrap();
+    let google = crate::backend::access::open_for(&state, &owner, false)
+        .await
+        .unwrap()
+        .google;
+    let shortcut = google.shortcut(&account, &sheet, &folder).await.unwrap();
+    sync(&state, &dsp).await.unwrap();
+    let team = ["avery@example.test", "blake@example.test"];
+    assert_eq!(shared_with(&account, &folder), team);
+    assert_eq!(shared_with(&account, &sheet.id), team);
+
+    // Blake's role changes to one without Use Documents.
+    let (c, at) = (context(&state, &dsp).await, dsp.clone());
+    state
+        .run(move |db| {
+            let role = db.create_role(&c, "Driver", &[])?;
+            let member = db.members(&at)?.into_iter().find(|m| m.user_id == blake);
+            db.set_role(&c, &member.unwrap().id, Some(&role.id))
+        })
+        .await
+        .unwrap();
+    sync(&state, &dsp).await.unwrap();
+    assert_eq!(shared_with(&account, &folder), ["avery@example.test"]);
+    assert_eq!(shared_with(&account, &sheet.id), ["avery@example.test"]);
+
+    // The shortcut taken out of Documents.
+    let c = context(&state, &dsp).await;
+    files::trash(&state, c, Dsp("documents.use"), shortcut.id, None)
+        .await
+        .unwrap();
+    sync(&state, &dsp).await.unwrap();
+    assert!(shared_with(&account, &sheet.id).is_empty());
 }
 
 // Disabled while the folder is shared with the team, the DSP's folder is shared with no one
