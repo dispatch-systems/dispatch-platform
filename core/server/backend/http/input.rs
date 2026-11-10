@@ -109,6 +109,14 @@ pub struct Reply {
     kept: bool,
 }
 impl Reply {
+    fn new(value: Payload, status: u16) -> Self {
+        Self {
+            value,
+            status,
+            cookie: None,
+            kept: false,
+        }
+    }
     pub fn json(value: Value) -> Self {
         Self::status(value, 200)
     }
@@ -117,41 +125,22 @@ impl Reply {
         Self::of_status(value, 200)
     }
     pub fn of_status<T: serde::Serialize>(value: &T, status: u16) -> Result<Self> {
-        Ok(Self {
-            value: Payload::Encoded(Bytes::from(serde_json::to_vec(value)?)),
-            status,
-            cookie: None,
-            kept: false,
-        })
+        let encoded = Bytes::from(serde_json::to_vec(value)?);
+        Ok(Self::new(Payload::Encoded(encoded), status))
     }
     pub fn ok() -> Self {
         Self::json(json!({"ok":true}))
     }
     pub fn status(value: Value, status: u16) -> Self {
-        Self {
-            value: Payload::Value(value),
-            status,
-            cookie: None,
-            kept: false,
-        }
+        Self::new(Payload::Value(value), status)
     }
     /// JSON already serialized by a trusted response producer, never raw request input.
     pub fn encoded(value: Bytes) -> Self {
-        Self {
-            value: Payload::Encoded(value),
-            status: 200,
-            cookie: None,
-            kept: false,
-        }
+        Self::new(Payload::Encoded(value), 200)
     }
     /// A document made by the server, never request input, that a client saves as `name`.
     pub fn file(content_type: &'static str, name: &'static str, body: String) -> Self {
-        Self {
-            value: Payload::File(content_type, name, body),
-            status: 200,
-            cookie: None,
-            kept: false,
-        }
+        Self::new(Payload::File(content_type, name, body), 200)
     }
     /// A file a client saves as `name`, streamed as `body` arrives: of `content_type`, and
     /// `length` bytes when that is known.
@@ -161,32 +150,18 @@ impl Reply {
         length: Option<u64>,
         body: axum::body::Body,
     ) -> Self {
-        Self {
-            value: Payload::Download(content_type.to_owned(), name.to_owned(), length, body),
-            status: 200,
-            cookie: None,
-            kept: false,
-        }
+        let payload = Payload::Download(content_type.to_owned(), name.to_owned(), length, body);
+        Self::new(payload, 200)
     }
     /// A picture of `content_type` for the page to show, which the browser keeps: its address
     /// names the version, so a new picture comes at a new one. Kept apart for each view of a
     /// DSP, since the view decides who may see it.
     pub fn picture(content_type: &str, body: Bytes) -> Self {
-        Self {
-            value: Payload::Picture(content_type.to_owned(), body),
-            status: 200,
-            cookie: None,
-            kept: false,
-        }
+        Self::new(Payload::Picture(content_type.to_owned(), body), 200)
     }
     /// A `302 Found` to `location`, which the server built from what it validated.
     pub fn redirect(location: String) -> Self {
-        Self {
-            value: Payload::Redirect(location),
-            status: 302,
-            cookie: None,
-            kept: false,
-        }
+        Self::new(Payload::Redirect(location), 302)
     }
     /// `{"ok":true}` that also starts the browser's session.
     pub fn signed_in(raw: &str, development: bool, lifetime: SessionLifetime) -> Self {
