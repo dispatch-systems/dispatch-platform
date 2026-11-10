@@ -1,7 +1,7 @@
 use crate::{Result, config::Config, require, worktrees::Worktree};
 use dispatch_core::support::api::types::{SupportEvidence, SupportJob, SupportProposal};
 use serde_json::{Value, json};
-use std::{fs, path::PathBuf, process::Stdio};
+use std::{path::PathBuf, process::Stdio};
 use tokio::process::Command;
 
 pub(crate) struct Collected {
@@ -71,20 +71,7 @@ pub(crate) async fn collect(
     }
     // An interrupted previous attempt can leave rows, never credential copies. The new
     // attempt starts clean; all successful cases below share their returned private state.
-    let scratch = PathBuf::from(format!("/tmp/dispatch-{}", tree.name));
-    if scratch.is_dir() {
-        for entry in fs::read_dir(&scratch)? {
-            let entry = entry?;
-            if entry.file_type()?.is_dir()
-                && entry
-                    .file_name()
-                    .to_string_lossy()
-                    .starts_with("support-native-")
-            {
-                fs::remove_dir_all(entry.path())?;
-            }
-        }
-    }
+    tree.clear_scratch(&["support-native-"])?;
     tree.build(config).await?;
     let providers: Vec<_> = ["paycom", "cortex"]
         .into_iter()
@@ -175,7 +162,7 @@ pub(crate) async fn collect(
             )
             .canonicalize()?;
             require(
-                root.starts_with(format!("/tmp/dispatch-{}/", tree.name)),
+                root.starts_with(tree.scratch()),
                 "Collection state leaves the assigned scratch directory",
             )?;
             state = Some(root);

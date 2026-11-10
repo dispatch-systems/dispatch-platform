@@ -122,7 +122,7 @@ pub async fn publish(
             job.version
         )
     };
-    let scratch = std::path::PathBuf::from(format!("/tmp/dispatch-{}", tree.name));
+    let scratch = tree.scratch();
     fs::create_dir_all(&scratch)?;
     let file = scratch.join("pr-body.md");
     fs::write(&file, body)?;

@@ -27,18 +27,8 @@ impl NativePreview {
     /// Builds the worktree, then serves the build in a sandbox of its own.
     pub async fn start(config: &Config, tree: &Worktree, state: Option<&PathBuf>) -> Result<Self> {
         tree.build(config).await?;
-        let scratch = PathBuf::from(format!("/tmp/dispatch-{}", tree.name));
-        if scratch.is_dir() {
-            for entry in fs::read_dir(&scratch)? {
-                let entry = entry?;
-                let name = entry.file_name().to_string_lossy().into_owned();
-                if entry.file_type()?.is_dir()
-                    && (name.starts_with("browser-state-") || name.starts_with("browser-bridge-"))
-                {
-                    fs::remove_dir_all(entry.path())?;
-                }
-            }
-        }
+        let scratch = tree.scratch();
+        tree.clear_scratch(&["browser-state-", "browser-bridge-"])?;
         let mut command = Command::new("/usr/bin/python3");
         command
             .arg("-I")
