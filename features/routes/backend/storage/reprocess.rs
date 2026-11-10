@@ -40,11 +40,16 @@ pub(super) fn reprocess_routes(
         let mut prepared = prepare(&capture)?;
         let routes = capture.route_summaries["rmsRouteSummaries"]
             .as_array()
-            .cloned()
+            .map(Vec::as_slice)
             .unwrap_or_default();
         db.transaction(|| {
             work_phones::Stored::of(&db, &publication)?.keep_in(&mut prepared);
+            // Rebuild shared staging from this capture too: keys omitted by the current
+            // shaper must not replay an earlier staged identity over a later day's. Keep
+            // this reset and the final share inside the same day transaction.
             for table in [
+                "staged_addresses",
+                "staged_drivers",
                 "routes",
                 "itineraries",
                 "stops",
@@ -59,7 +64,7 @@ pub(super) fn reprocess_routes(
                 )?;
             }
             let day = s(row, "day");
-            write_routes(&db, Writes::Staged, &publication, day, &routes)?;
+            write_routes(&db, Writes::Staged, &publication, day, routes)?;
             for itinerary in &prepared {
                 write_itinerary(&db, Writes::Staged, &publication, day, itinerary)?;
                 write_shared(&db, Writes::Staged, &publication, day, itinerary)?;

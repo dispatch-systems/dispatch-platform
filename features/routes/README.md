@@ -119,6 +119,9 @@ it is live route data, in a database of its own, `routelive`.
   addresses and drivers the days share, as the last read to become its day's read sent them
   (each read's are staged with it until then); and the days changed not told of yet
   (`route_days_untold`, each note by an ID `route_days_noted` never gives again, migration 12).
+  Reprocessing starts its shared staging afresh in the same transaction that rebuilds and
+  shares the day; an omitted address or driver never replays an earlier staged value. Shared
+  staging is still deleted as it is shared. Raw responses stay inline in both databases.
   The holds on work phones that Routes kept before each day's work phones were its itineraries'
   (`work_phones` in both, `work_phones_shown` in live route data) are dropped by a migration of
   each.
