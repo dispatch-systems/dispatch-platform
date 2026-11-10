@@ -372,20 +372,14 @@ impl Collector for Cortex {
         })
     }
     fn progress(&self, request: &Value) -> &'static str {
-        if associates::Request::is(request) {
-            "Collecting the roster"
-        } else if vans::Request::is(request) {
-            "Collecting vans"
-        } else if dvic::Request::is(request) {
-            "Collecting DVIC"
-        } else if daily_performance::Request::is(request) {
-            "Collecting daily performance"
-        } else if weekly_scorecard::Request::is(request) {
-            "Collecting weekly scorecard"
-        } else if routes::Request::is(request) {
-            "Collecting routes"
-        } else {
-            "Collecting meal breaks"
+        match self.job_kind_for(request) {
+            associates::JOB_KIND => "Collecting the roster",
+            vans::JOB_KIND => "Collecting vans",
+            dvic::JOB_KIND => "Collecting DVIC",
+            daily_performance::JOB_KIND => "Collecting daily performance",
+            weekly_scorecard::JOB_KIND => "Collecting weekly scorecard",
+            routes::JOB_KIND => "Collecting routes",
+            _ => "Collecting meal breaks",
         }
     }
     fn counts(&self, data: &Value) -> Counts {

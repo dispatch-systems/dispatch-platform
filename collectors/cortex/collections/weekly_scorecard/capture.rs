@@ -2,7 +2,7 @@
 //! each scorecard page, one week at a time, every row as Amazon sent it.
 use crate::discovery::{CollectionRequest as ScopeRequest, Discovery, Scope};
 use dispatch_core::{
-    Error, Result,
+    Result,
     db::now,
     ensure,
     foundation::{
@@ -166,8 +166,7 @@ impl Request {
         if !Self::is(value) {
             return Ok(None);
         }
-        let request: Self =
-            serde_json::from_value(value.clone()).map_err(|_| Error::new("invalid_input", 400))?;
+        let request: Self = dispatch_core::foundation::wire::request(value)?;
         request.validate()?;
         Ok(Some(request))
     }
