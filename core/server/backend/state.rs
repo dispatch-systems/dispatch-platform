@@ -22,8 +22,9 @@ const PATIENCE: std::time::Duration = std::time::Duration::from_secs(60);
 /// How many of the database's slots work outside a request holds at once. The rest are left to
 /// requests, so every DSP's upkeep starting together keeps no page waiting behind it.
 const BACKGROUND_SLOTS: usize = 2;
-// Reserve eight of the existing 64 entries and one of the four workers for foreground
-// requests. These gates reduce automatic work's share; they never add pool capacity.
+// At most 56 routine callers wait for three workers before joining the global queue.
+// The two bounded queues retain at most 120 callers in total; only four workers run.
+// Routine callers waiting for their own worker take no global queue entry.
 const ROUTINE_QUEUE: usize = 56;
 const ROUTINE_SLOTS: usize = 3;
 
@@ -352,12 +353,12 @@ impl State {
                     } else {
                         None
                     };
-                    let queued = self.db_queue.clone().acquire_owned().await?;
                     let routine_permit = if routine {
                         Some(self.routine_slots.clone().acquire_owned().await?)
                     } else {
                         None
                     };
+                    let queued = self.db_queue.clone().acquire_owned().await?;
                     let permit = self.db_slots.clone().acquire_owned().await?;
                     Ok((turn, routine_queued, queued, routine_permit, permit))
                 })
@@ -379,14 +380,6 @@ impl State {
                 } else {
                     None
                 };
-                let queued =
-                    self.db_queue
-                        .clone()
-                        .try_acquire_owned()
-                        .map_err(|error| match error {
-                            tokio::sync::TryAcquireError::NoPermits => Error::busy("db_queue_full"),
-                            tokio::sync::TryAcquireError::Closed => Error::busy("db_queue_closed"),
-                        })?;
                 // Both worker waits share the original two-second budget.
                 let until = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
                 let routine_permit = if routine {
@@ -399,6 +392,14 @@ impl State {
                 } else {
                     None
                 };
+                let queued =
+                    self.db_queue
+                        .clone()
+                        .try_acquire_owned()
+                        .map_err(|error| match error {
+                            tokio::sync::TryAcquireError::NoPermits => Error::busy("db_queue_full"),
+                            tokio::sync::TryAcquireError::Closed => Error::busy("db_queue_closed"),
+                        })?;
                 let permit = tokio::time::timeout_at(until, self.db_slots.clone().acquire_owned())
                     .await
                     .map_err(|_| Error::busy("db_slots_timeout"))?
