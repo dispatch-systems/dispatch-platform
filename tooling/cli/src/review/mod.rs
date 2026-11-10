@@ -622,6 +622,12 @@ impl Fill<'_> {
                 n - 1
             ),
         };
+        // The change's own rules are read as the pinned head has them, like the rest of it.
+        let rules = match self.instructions == self.root {
+            true => self.reading,
+            false => self.instructions,
+        }
+        .join("tooling/review/rules.md");
         let values = [
             ("branch", self.branch.to_owned()),
             ("head", self.pass.head.clone()),
@@ -634,13 +640,7 @@ impl Fill<'_> {
             ),
             ("purpose", purpose(self.root)?),
             ("decisions", decisions.display().to_string()),
-            (
-                "rules",
-                self.instructions
-                    .join("tooling/review/rules.md")
-                    .display()
-                    .to_string(),
-            ),
+            ("rules", rules.display().to_string()),
             ("reading", self.reading()?),
             ("earlier", earlier),
         ];

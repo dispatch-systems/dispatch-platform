@@ -523,6 +523,13 @@ fn each_pass_is_pinned_to_the_pushed_head_and_later_ones_read_only_what_changed(
         brief.contains(&format!("checked out for you\nin {}.", reading.display())),
         "{brief}"
     );
+    assert!(
+        brief.contains(&format!(
+            "Hold the change to {}",
+            reading.join("tooling/review/rules.md").display()
+        )),
+        "its rules as that head has them: {brief}"
+    );
     // A pass stays pinned to the head its reviewers read, as their checkout does while the
     // worktree moves on, and keeps a lane's results.
     write(
