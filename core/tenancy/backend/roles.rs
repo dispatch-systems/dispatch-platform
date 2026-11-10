@@ -451,9 +451,7 @@ impl Store {
                 "UPDATE invitations SET role=? WHERE role_id=? AND used_at IS NULL",
                 [mirror, id],
             )?;
-            // Open views sign the DSP revision, so members pick up the change.
-            self.platform
-                .exec("UPDATE dsps SET revision=revision+1 WHERE id=?", [dsp])?;
+            self.expire_views(dsp)?;
             let mut changes = permission_changes(&role.permissions, &permissions);
             if role.name != name {
                 changes.insert(0, ("name", Some(role.name.clone()), Some(name.clone())));

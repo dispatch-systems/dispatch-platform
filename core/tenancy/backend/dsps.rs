@@ -89,6 +89,12 @@ impl Store {
             .one_as("SELECT * FROM dsps WHERE id=?", [id])?
             .ok_or_else(|| Error::new("dsp_not_found", 404))
     }
+    /// Open views sign the DSP revision, so moving it on makes members pick up a change at once.
+    pub(crate) fn expire_views(&self, dsp: &str) -> Result<()> {
+        self.platform
+            .exec("UPDATE dsps SET revision=revision+1 WHERE id=?", [dsp])?;
+        Ok(())
+    }
     /// The DSP of this environment whose address has short code `code`, if any has.
     pub fn dsp_at(&self, code: &str) -> Result<Option<Dsp>> {
         self.platform.one_as(
@@ -370,8 +376,7 @@ impl Store {
                 "dsp.ai_support_hidden"
             };
             self.audit(Some(actor), Some(id), action, "")?;
-            self.platform
-                .exec("UPDATE dsps SET revision=revision+1 WHERE id=?", [id])?;
+            self.expire_views(id)?;
             Ok(())
         })?;
         Ok(profile)
@@ -655,8 +660,7 @@ impl Store {
             if next.is_none() {
                 self.delete_account(dsp, user)?;
             }
-            self.platform
-                .exec("UPDATE dsps SET revision=revision+1 WHERE id=?", [dsp])?;
+            self.expire_views(dsp)?;
             Ok(())
         })
     }
