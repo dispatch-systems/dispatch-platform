@@ -399,14 +399,9 @@ async fn a_cancelled_started_poll_keeps_its_permits_until_its_write_finishes() {
         state.routine_slots.available_permits(),
     );
     release.send(()).unwrap();
-    // Acquiring the entire class's execution share joins its started callback rather than
-    // mistaking the dropped request future for completion.
-    let joined = state
-        .routine_slots
-        .clone()
-        .acquire_many_owned(3)
-        .await
-        .unwrap();
+    // Acquiring every database slot joins its started callback rather than mistaking the
+    // dropped request future for completion: its slot is the last thing the callback lets go.
+    let joined = state.db_slots.clone().acquire_many_owned(4).await.unwrap();
     drop(joined);
     let count = requested(state.read(|db| {
         db.platform
