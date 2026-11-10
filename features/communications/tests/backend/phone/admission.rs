@@ -19,6 +19,7 @@ use dispatch_core::{
     server::http::{self, middleware},
     testing,
 };
+use futures_util::FutureExt;
 use reqwest::{Method, RequestBuilder};
 use serde_json::{Value, json};
 use std::{
@@ -75,6 +76,7 @@ async fn pending_work_survives_phone_admission_exhaustion() {
     let key_a = "a".repeat(64);
     let key_b = "b".repeat(64);
     let key_c = "c".repeat(64);
+    let key_d = "d".repeat(64);
     let phone_a = paired(&db, &a, &crypto::sha(&key_a), "2065550100");
     let phone_b = paired(&db, &b, &crypto::sha(&key_b), "2065550177");
     // The shared pairing helper uses one fixed code per DSP; this third device needs its own.
@@ -94,6 +96,22 @@ async fn pending_work_survives_phone_admission_exhaustion() {
         )
         .unwrap();
     assert!(!phone_a.stand_in && !phone_b.stand_in && !phone_c.stand_in);
+    let code_d = crypto::sha("idle-admission-fourth-phone");
+    db.phones_new_pairing(&b, &owner, &code_d, 1_000).unwrap();
+    let phone_d = db
+        .phones_pair(
+            &b,
+            &code_d,
+            &crypto::sha(&key_d),
+            &Pairing {
+                number: "2065550189",
+                model: "Pixel 8a",
+                app_version: "1.0.0",
+            },
+            2_000,
+        )
+        .unwrap();
+    assert!(!phone_d.stand_in);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -302,7 +320,7 @@ async fn pending_work_survives_phone_admission_exhaustion() {
     }))
     .await
     .unwrap();
-    phone::live::queued(&state, &b);
+    phone::live::queued_for(&state, &b, Some(&phone_b.id));
     assert_eq!(
         answer(call(Method::GET, OUTBOX, &host_b, &key_b), 200).await,
         json!({
@@ -349,6 +367,11 @@ async fn pending_work_survives_phone_admission_exhaustion() {
     tokio::time::pause();
 
     // Use the public parser, then a real request trace, when polling the actual handler.
+    // Make presence current: this poll needs neither bookkeeping nor metadata writes.
+    let (of, device) = (b.clone(), phone_b.id.clone());
+    testing::requested(state.run_bookkeeping(move |db| db.phones_seen(&of, &device, now())))
+        .await
+        .unwrap();
     let input = outbox_input(&state, &host_b, &key_b);
     let mut waiting = Box::pin(testing::requested(outbox(
         state.clone(),
@@ -358,6 +381,17 @@ async fn pending_work_survives_phone_admission_exhaustion() {
     let wake = Arc::new(Awoken(Notify::new()));
     let waker = Waker::from(wake.clone());
     let mut cx = Context::from_waker(&waker);
+    {
+        // Let the handler submit its first real DB turn, but hold its read until this poll ends.
+        let transition = state.transition.write().unwrap();
+        assert!(waiting.as_mut().poll(&mut cx).is_pending());
+        assert_eq!(state.db_queue.available_permits(), 63);
+        drop(transition);
+    }
+    // Taking every permit waits for that turn to finish, without resuming the handler. An
+    // unchanged poll must be able to enter its idle wait using that answer alone, even when
+    // another request occupies the queue. A restored checked_in + probe fails db_queue_full.
+    let queued = state.db_queue.acquire_many(64).await.unwrap();
     loop {
         assert!(
             waiting.as_mut().poll(&mut cx).is_pending(),
@@ -371,6 +405,7 @@ async fn pending_work_survives_phone_admission_exhaustion() {
     }
     drop(waiting);
     assert_eq!(WAITING.available_permits(), capacity);
+    drop(queued);
 
     // A bounded queued caller expires at the original deadline without an empty success.
     let mut held = WAITING.try_acquire_many(capacity as u32).unwrap();
@@ -436,10 +471,15 @@ async fn pending_work_survives_phone_admission_exhaustion() {
     drop(held);
     assert_eq!(WAITING.available_permits(), capacity);
 
-    // Ready work arriving after registration does not wait for an idle permit.
+    // Ready work arriving after registration does not wait for an idle permit. Another real
+    // phone in the same DSP must receive no dependency wake or perform another probe for it.
     let held = WAITING.try_acquire_many(capacity as u32).unwrap();
+    let mut quiet = Waiting::new(state.clone(), outbox_input(&state, &host_b, &key_d));
+    quiet.drive_to(127).await;
+    // Notify coalesces to one permit; consume the completed initial DB dependency's wake.
+    let _ = quiet.wake.0.notified().now_or_never();
     let mut ready = Waiting::new(state.clone(), input.clone());
-    ready.drive_to(127).await;
+    ready.drive_to(126).await;
     let later = now();
     let (of, device, author) = (b.clone(), phone_b.id.clone(), owner.clone());
     let (late_id, late_attempt) = testing::requested(filing::changing(&state, &b, move |db| {
@@ -452,7 +492,8 @@ async fn pending_work_survives_phone_admission_exhaustion() {
     }))
     .await
     .unwrap();
-    phone::live::queued(&state, &b);
+    phone::live::queued_for(&state, &b, Some(&phone_b.id));
+    assert!(quiet.wake.0.notified().now_or_never().is_none());
     let response = ready.call.await.unwrap().into_response();
     let body = axum::body::to_bytes(response.into_body(), 65_536)
         .await
@@ -466,6 +507,12 @@ async fn pending_work_survives_phone_admission_exhaustion() {
         })
     );
     assert_eq!(WAITING.available_permits(), 0);
+    assert_eq!(QUEUED.available_permits(), 127);
+    assert!(quiet.wake.0.notified().now_or_never().is_none());
+    // Unknown-device fallback still wakes this exact same idle handler.
+    phone::live::queued_for(&state, &b, None);
+    quiet.wake.0.notified().await;
+    drop(quiet);
     assert_eq!(QUEUED.available_permits(), 128);
     drop(held);
 
@@ -492,6 +539,26 @@ async fn pending_work_survives_phone_admission_exhaustion() {
     drop(held);
     assert_eq!(WAITING.available_permits(), capacity);
 
+    // Broad removal wakes a registered phone before its heartbeat or idle admission.
+    let held = WAITING.try_acquire_many(capacity as u32).unwrap();
+    let mut removed = Waiting::new(state.clone(), outbox_input(&state, &host_b, &key_d));
+    removed.drive_to(127).await;
+    let (of, device) = (b.clone(), phone_d.id.clone());
+    testing::requested(filing::changing(&state, &b, move |db| {
+        let (_, failed) = db.phones_remove(&of, &device, now())?;
+        Ok(((), failed))
+    }))
+    .await
+    .unwrap();
+    phone::live::queued(&state, &b);
+    let Err(error) = removed.call.await else {
+        panic!("removed phone did not reauthorize after its lifecycle wake");
+    };
+    assert_eq!(error.code, "phones_removed");
+    assert_eq!(QUEUED.available_permits(), 128);
+    assert_eq!(WAITING.available_permits(), 0);
+    drop(held);
+
     // Running blocking work retains its own permits; wait for that work to release them.
     let queued = state.db_queue.acquire_many(64).await.unwrap();
     let slots = state.db_slots.acquire_many(4).await.unwrap();
@@ -500,6 +567,13 @@ async fn pending_work_survives_phone_admission_exhaustion() {
     testing::requested(state.read(|_| Ok(()))).await.unwrap();
     assert_eq!(state.db_queue.available_permits(), 64);
     assert_eq!(state.db_slots.available_permits(), 4);
+    // State's DSP deletion hook closes phone listeners. The facade rechecks once and then
+    // stays pending, so callers that ignore changed()'s value cannot spin on closure.
+    let mut closing = phone::live::listen(&state, &b, &phone_b.id);
+    state.forget_dsp(&b);
+    assert!(closing.changed().now_or_never().is_some());
+    assert!(closing.changed().now_or_never().is_none());
+    drop(closing);
     drop(state);
     // Inventory the owned fixture root before its explicit cleanup.
     let contents = std::fs::read_dir(root.path())

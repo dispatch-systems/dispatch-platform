@@ -3,7 +3,7 @@
 use crate::{Result, collection::api::types::CollectionChange};
 use std::{
     collections::{HashMap, VecDeque},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, Weak},
 };
 use tokio::sync::{Semaphore, watch};
 
@@ -109,6 +109,7 @@ pub struct Topic(pub &'static str);
 /// something there changes, then reads what changed from the feature's own storage.
 pub struct Topics {
     senders: Mutex<HashMap<(Topic, String), watch::Sender<u64>>>,
+    scoped: Arc<Mutex<ScopedSenders>>,
     /// The requests that may wait at once, across every topic.
     pub slots: Arc<Semaphore>,
 }
@@ -116,10 +117,48 @@ impl Default for Topics {
     fn default() -> Self {
         Self {
             senders: Mutex::new(HashMap::new()),
+            scoped: Arc::new(Mutex::new(HashMap::new())),
             slots: Arc::new(Semaphore::new(128)),
         }
     }
 }
+type ScopedSenders = HashMap<(Topic, String), HashMap<String, watch::Sender<u64>>>;
+
+/// A keyed subscription. Its last listener removes the channel; dropping Topics closes it.
+/// The weak registry link lets a pending request outlive its server without retaining it.
+pub struct ScopedListener {
+    receiver: Option<watch::Receiver<u64>>,
+    senders: Weak<Mutex<ScopedSenders>>,
+    tenant: (Topic, String),
+    key: String,
+}
+impl ScopedListener {
+    pub async fn changed(&mut self) -> std::result::Result<(), watch::error::RecvError> {
+        self.receiver.as_mut().unwrap().changed().await
+    }
+}
+impl Drop for ScopedListener {
+    fn drop(&mut self) {
+        // Release our receiver before counting: another listener or a new subscription keeps
+        // the channel alive. All subscription/removal decisions share this registry lock.
+        drop(self.receiver.take());
+        if let Some(senders) = self.senders.upgrade() {
+            let mut senders = senders.lock().unwrap_or_else(|poison| poison.into_inner());
+            if let Some(keys) = senders.get_mut(&self.tenant) {
+                if keys
+                    .get(&self.key)
+                    .is_some_and(|sender| sender.receiver_count() == 0)
+                {
+                    keys.remove(&self.key);
+                }
+                if keys.is_empty() {
+                    senders.remove(&self.tenant);
+                }
+            }
+        }
+    }
+}
+
 impl Topics {
     /// Waits on `topic` in `dsp`. Subscribe before reading, so a change between the read and
     /// the wait still wakes it.
@@ -131,7 +170,51 @@ impl Topics {
             .or_insert_with(|| watch::channel(0).0)
             .subscribe()
     }
-    /// Wakes whatever waits on `topic` in `dsp`.
+    /// Subscribes to one key before reading. Entries exist only while listeners do; a targeted
+    /// notification with no listener never creates one. Broad `notify` reaches these too.
+    pub fn subscribe_scoped(&self, topic: Topic, dsp: &str, key: &str) -> ScopedListener {
+        let tenant = (topic, dsp.to_owned());
+        let key = key.to_owned();
+        let receiver = self
+            .scoped
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .entry(tenant.clone())
+            .or_default()
+            .entry(key.clone())
+            .or_insert_with(|| watch::channel(0).0)
+            .subscribe();
+        ScopedListener {
+            receiver: Some(receiver),
+            senders: Arc::downgrade(&self.scoped),
+            tenant,
+            key,
+        }
+    }
+    /// Wakes only listeners of this key, topic and DSP. Default subscriptions are unchanged.
+    pub fn notify_scoped(&self, topic: Topic, dsp: &str, key: &str) {
+        if let Some(sender) = self
+            .scoped
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .get(&(topic, dsp.to_owned()))
+            .and_then(|keys| keys.get(key))
+        {
+            sender.send_modify(|revision| *revision += 1);
+        }
+    }
+    /// Closes a deleted DSP's channels, including any requests still waiting on them.
+    pub fn forget_dsp(&self, dsp: &str) {
+        self.senders
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .retain(|(_, at), _| at != dsp);
+        self.scoped
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .retain(|(_, at), _| at != dsp);
+    }
+    /// Wakes whatever waits on `topic` in `dsp`, including its keyed listeners.
     pub fn notify(&self, topic: Topic, dsp: &str) {
         if let Some(sender) = self
             .senders
@@ -140,6 +223,16 @@ impl Topics {
             .get(&(topic, dsp.to_owned()))
         {
             sender.send_modify(|revision| *revision += 1);
+        }
+        if let Some(keys) = self
+            .scoped
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .get(&(topic, dsp.to_owned()))
+        {
+            for sender in keys.values() {
+                sender.send_modify(|revision| *revision += 1);
+            }
         }
     }
 }

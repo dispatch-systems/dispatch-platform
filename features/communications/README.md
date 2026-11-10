@@ -379,7 +379,11 @@ decides ([Texts](#texts)).
   seconds (`SEEN_MS`), as bookkeeping no cached read depends on; a file's bytes, either way, don't.
   At most 128 phone requests hold active idle admission; another 128 may queue FIFO for it.
   A queued request keeps its place across topic wakes, and its queue time consumes the same
-  twenty-second deadline. Ready texts/videos bypass idle saturation. An empty heartbeat needs
+  twenty-second deadline. Send, retry and video demand wake the selected phone; lifecycle
+  changes and unknown-device hints remain DSP-wide. Keyed subscriptions disappear when their
+  last listener leaves. An unchanged initial poll authorizes and reads work in one shared turn;
+  necessary presence/metadata writes and subsequent probes still authorize afresh.
+  Ready texts/videos bypass idle saturation. An empty heartbeat needs
   an active permit and fresh authorization; an unadmitted empty request still gets busy at
   expiry or when the pending queue is full. These bounds do not guarantee service to every
   phone in a synchronized 400-phone burst. Each call, with every payload, unit and limit, is

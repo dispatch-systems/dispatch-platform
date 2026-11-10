@@ -16,7 +16,7 @@ use crate::backend::{
 };
 use axum::body::Bytes;
 use dispatch_core::{db::now, testing};
-use futures_util::{StreamExt, stream};
+use futures_util::{FutureExt, StreamExt, stream};
 use std::task::Poll;
 
 /// `bytes`, as an upload brings them.
@@ -229,4 +229,42 @@ async fn a_picture_past_what_a_text_carries_is_refused_before_any_of_it_is_kept(
     let refused = receive(&state, &dsp, upload).await;
     assert_eq!(refused.err().unwrap().code.as_str(), "upload_too_large");
     assert_eq!(std::fs::read_dir(&folder).unwrap().count(), 0);
+}
+
+#[tokio::test]
+async fn video_demand_wakes_its_owning_phone_and_keeps_other_phones_quiet() {
+    let (_root, db, dsp) = store();
+    let phone = paired(&db, &dsp, "video-key", "2065550100");
+    let mut text = reported("video-wake", "4255550199", now(), 1);
+    text.files[0].name = "door.mp4".into();
+    text.files[0].mime = "video/mp4".into();
+    text.files[0].on_phone = true;
+    let video = db.phones_report(&dsp, &phone.id, vec![text]).unwrap()[0].files[0].clone();
+    db.phones_seen(&dsp, &phone.id, now()).unwrap();
+    let config = db.config.clone();
+    drop(db);
+    let state = State::new(config).unwrap();
+    let mut listener = live::listen(&state, &dsp, &phone.id);
+    let mut unrelated = live::listen(&state, &dsp, "another-device");
+    let mut other_dsp = live::listen(&state, "another-dsp", &phone.id);
+    let mut request = Box::pin(fetch(&state, &dsp, &video, |_| Ok(())));
+    tokio::select! {
+        result = &mut request => panic!("video answered before its bytes: {result:?}"),
+        _ = listener.changed() => {}
+    }
+    assert!(unrelated.changed().now_or_never().is_none());
+    assert!(other_dsp.changed().now_or_never().is_none());
+    let (at, device, file) = (dsp.clone(), phone.id.clone(), video.clone());
+    state
+        .read(move |db| {
+            assert_eq!(db.phones_wanted(&at, &device, 0)?, vec![file]);
+            Ok(())
+        })
+        .await
+        .unwrap();
+    arrive(&state, &dsp, &phone.id, &video, b"video")
+        .await
+        .unwrap();
+    assert!(request.await.unwrap());
+    assert!(unrelated.changed().now_or_never().is_none());
 }

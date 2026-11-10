@@ -233,6 +233,7 @@ impl State {
     /// and the connections each idle store keeps to its databases. A store at work keeps its
     /// own until it's least recently used, as it can't open them again.
     pub fn forget_dsp(&self, dsp: &str) {
+        self.topics.forget_dsp(dsp);
         self.read_cache.invalidate_dsp(dsp);
         let pool = self
             .pool
