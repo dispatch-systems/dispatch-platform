@@ -330,13 +330,6 @@ impl Session {
     }
 }
 
-async fn cancelled(receiver: &mut watch::Receiver<bool>) {
-    loop {
-        if *receiver.borrow_and_update() || receiver.changed().await.is_err() {
-            return;
-        }
-    }
-}
 /// Why a worker never reported itself ready. The supervisor discards the worker's
 /// standard error, so its own failure code arrives as a frame on this pipe.
 fn start_failure(frame: Option<&Value>, sandbox: &str) -> String {
@@ -388,7 +381,7 @@ async fn serve_child(
     let mut reader = BufReader::new(stdout);
     let startup = tokio::select! {
         biased;
-        _ = cancelled(&mut cancellation) => return,
+        _ = crate::cancelled(&mut cancellation) => return,
         _ = ready.closed() => return,
         result = timeout(START_TIMEOUT, read_frame(&mut reader, RESPONSE_BYTES)) => result,
     };
@@ -414,7 +407,7 @@ async fn serve_child(
     loop {
         let request = tokio::select! {
             biased;
-            _ = cancelled(&mut cancellation) => break,
+            _ = crate::cancelled(&mut cancellation) => break,
             _ = tokio::time::sleep_until(lifetime) => break,
             _ = tokio::time::sleep(Duration::from_secs(600)) => break,
             _ = child.wait() => break,
@@ -446,7 +439,7 @@ async fn serve_child(
         };
         let result = tokio::select! {
             biased;
-            _ = cancelled(&mut cancellation) => break,
+            _ = crate::cancelled(&mut cancellation) => break,
             _ = request.reply.closed() => break,
             result = timeout_at(request.deadline.min(lifetime),
                 operation) => result.unwrap_or_else(|_| Err(Error::new("browser_command_timeout", 504))),
