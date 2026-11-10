@@ -155,9 +155,7 @@ pub(super) fn surviving(db: &Db, code: &str) -> Result<String> {
     let mut code = code.to_owned();
     for _ in 0..32 {
         let row = db
-            .query_as::<(Option<String>,)>("SELECT merged_into FROM people WHERE code=?", [&code])?
-            .into_iter()
-            .next()
+            .one_as::<(Option<String>,)>("SELECT merged_into FROM people WHERE code=?", [&code])?
             .ok_or_else(|| Error::new("not_found", 404))?;
         match row.0 {
             Some(next) => code = next,
