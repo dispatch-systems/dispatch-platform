@@ -609,9 +609,7 @@ fn check_feature(registry: &Registry, feature: &Feature, section: &Section) {
     if let Some(collection) = section.collection {
         let keeper = feature.keeps.iter().find(|keeper| {
             registry
-                .collectors
-                .iter()
-                .flat_map(|collector| collector.collections())
+                .collections()
                 .any(|kept| kept.job_kind == keeper.keeps() && kept.schedule == collection)
         });
         assert!(

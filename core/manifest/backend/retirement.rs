@@ -182,9 +182,7 @@ pub(crate) fn check(registry: &Registry) {
             for name in *into {
                 let kept = feature.keeps.iter().any(|keeper| {
                     registry
-                        .collectors
-                        .iter()
-                        .flat_map(|collector| collector.collections())
+                        .collections()
                         .any(|kept| kept.job_kind == keeper.keeps() && kept.schedule == *name)
                 });
                 assert!(
