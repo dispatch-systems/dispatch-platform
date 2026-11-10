@@ -678,8 +678,7 @@ jobs:
       - run: cargo fetch --locked
       - wait: sandbox
       - run: npm run check:ci -- api ${{ matrix.shard }}/2
-  # The native collectors against their fixtures, with a real isolated browser, and in the host
-  # shard the Rust probe of that isolation on the runner.
+  # The native collectors against their fixtures, with a real isolated browser.
   collectors:
     needs: [changes, debug]
     if: >-
@@ -690,25 +689,48 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [paycom, paycom-recovery, cortex, cortex-meals, live-route-data, host, capacity]
+        shard: [paycom, paycom-recovery, cortex, cortex-meals, live-route-data, capacity]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-tools
-      # The debug backend and worker the debug job or main's run saved; the host shard also
-      # compiles its probe, so it keeps Cargo's dependency cache beside them.
+      # Its only Rust build is the debug backend and worker, which the debug job or main's run
+      # saved.
       - uses: ./.github/actions/setup-build
         with:
           profile: debug
           save: 'false'
           binaries: 'true'
-          dependencies: ${{ matrix.shard == 'host' }}
       # Not in the background: it restores its package with actions/cache, as the steps above do,
       # and two steps preparing the same action at once fail.
       - uses: ./.github/actions/setup-browseros
       - name: Native collector verification
         run: npm run test:browseros -- --shard ${{ matrix.shard }}
+  # The Rust probe of that browser's isolation on the runner, on a runner of its own beside the
+  # collectors' shards: it compiles its own test program, so it keeps Cargo's dependency cache
+  # beside the debug backend and worker.
+  collectors-host:
+    needs: [changes, debug]
+    if: >-
+      ${{ !cancelled() && !inputs.tested-run && needs.changes.outputs.collectors == 'true' &&
+      (needs.debug.result == 'success' || needs.debug.result == 'skipped') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-tools
+      - uses: ./.github/actions/setup-build
+        with:
+          profile: debug
+          save: 'false'
+          binaries: 'true'
+          dependencies: 'true'
+      - uses: ./.github/actions/setup-browseros
+      - name: Host isolation probe
+        run: npm run test:browseros -- --shard host
   # `cargo audit`, denying every warning but the yanked versions `cargo-audit.py` allows, each
   # with its reason. A release's run that names main's audits again: advisories come out by the
   # day, not by the commit.
@@ -807,6 +829,7 @@ jobs:
       - debug
       - api
       - collectors
+      - collectors-host
       - rust-advisories
       - scaffold-lint
       - scaffold
@@ -838,18 +861,18 @@ jobs:
               exit 1
             fi
             echo "The source's suites passed in $(echo "$tested" | jq -r .html_url)"
-            skippable='["relay-dev", "relay-production", "checks", "core-lint", "core", "core-integration", "debug", "api", "collectors", "scaffold-lint", "scaffold", "browser"]'
+            skippable='["relay-dev", "relay-production", "checks", "core-lint", "core", "core-integration", "debug", "api", "collectors", "collectors-host", "scaffold-lint", "scaffold", "browser"]'
           fi
           # Each job and what it came to, a suite the change can't reach as not needed: core's and
-          # scaffold's jobs pass without running it, and the others skip. A -lint or -integration
-          # job follows its suite.
+          # scaffold's jobs pass without running it, and the others skip. A -lint, -integration
+          # or -host job follows its suite.
           {
             echo "Changed: $(echo "$RESULTS" | jq -r '.changes.outputs.changed // "unknown"')"
             echo
             echo "| Job | Result |"
             echo "| --- | --- |"
             echo "$RESULTS" | jq -r '.changes.outputs as $needed | to_entries[]
-              | "| \(.key) | \(if $needed[.key | sub("-(lint|integration)$"; "")] == "false" then "not needed"
+              | "| \(.key) | \(if $needed[.key | sub("-(lint|integration|host)$"; "")] == "false" then "not needed"
                 else .value.result end) |"'
           } >> "$GITHUB_STEP_SUMMARY"
           # A suite skips only where the changes job said the change can't reach it.
@@ -857,7 +880,7 @@ jobs:
             .changes.outputs as $needed | to_entries[]
             | select(.value.result != "success")
             | select(.value.result != "skipped"
-              or (((.key | IN($skippable[])) or $needed[.key | sub("-(lint|integration)$"; "")] == "false") | not))
+              or (((.key | IN($skippable[])) or $needed[.key | sub("-(lint|integration|host)$"; "")] == "false") | not))
             | "\(.key): \(.value.result)"')
           if [ -n "$failed" ]; then
             echo "Suites that did not pass:"

@@ -237,10 +237,10 @@ async function core() {
   for (const command of rustCommands) if (!(await execute(command))) break;
 }
 /**
- * What the Rust jobs compile, none of it run: clippy and the probes, the tests, the host
- * shard's probe (`browseros-check.py`), which builds one package with its own features, and
- * the debug build. Main's caches workflow runs it when it fills Cargo's debug cache, so each of
- * those jobs finds its dependencies built.
+ * What the Rust jobs compile, none of it run: clippy and the probes, the tests, the
+ * collectors-host job's probe (`browseros-check.py`), which builds one package with its own
+ * features, and the debug build. Main's caches workflow runs it when it fills Cargo's debug
+ * cache, so each of those jobs finds its dependencies built.
  */
 async function cache() {
   const builds: Command[] = [

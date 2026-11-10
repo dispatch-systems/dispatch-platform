@@ -18,7 +18,8 @@ locally the whole suite in sequence:
 | api ×2           | `api <n>/2`                                | The API tests, and in the first shard the Python tooling tests and the npm audit.         |
 | scaffold-lint    | `scaffold lint`                            | What every generator writes builds, lints and keeps the rules.                            |
 | scaffold         | `scaffold tests`                           | What every generator writes passes its Rust tests and its agent tools' tests.             |
-| collectors ×7    | `npm run test:browseros -- --shard <name>` | The native collectors with a real browser, and in `host` the probe of its isolation.      |
+| collectors ×6    | `npm run test:browseros -- --shard <name>` | The native collectors with a real browser.                                                |
+| collectors-host  | `npm run test:browseros -- --shard host`   | The Rust probe of that browser's isolation on the runner.                                 |
 | rust-advisories  |                                            | `cargo audit`, denying yanked crates but those `cargo-audit.py` allows.                   |
 | relay-dev        |                                            | Outside a PR, Dev's relay app, signed, for the build to pack (`relay.py`).                |
 | relay-production |                                            | In a release's run that names its app version, Production's relay app, signed.            |
@@ -37,8 +38,8 @@ waiting for it, and pass without running when not needed; the gate accepts any o
 The `debug` job builds the debug backend and worker when `changes` finds the change reaches
 what they compile from, and saves them for api and the collectors to restore through
 `dispatchdev build`'s exact-input cache. Otherwise `debug` skips, and they restore the build
-`main`'s own run saved, without waiting for one. The host shard, which also compiles its probe,
-restores Cargo's dependency cache too.
+`main`'s own run saved, without waiting for one. The `collectors-host` job, which also compiles
+its probe, restores Cargo's dependency cache too.
 
 The Rust tests run as two jobs, each compiling only the test programs it runs: `core` those
 inside the crates' libraries and executables (`--lib --bins`), `core-integration` their
@@ -61,7 +62,8 @@ installs `main`'s, which carries Dev's app. A release dispatches its own run on 
 at its commit, which builds or carries Production's app beside Dev's, and stamps its version into
 that run's package ([Android apps](../../android/README.md#releases)). Once `main`'s push run of
 the commit passed, the release names it (`tested-run`), and its run skips checks, core-lint,
-core, core-integration, debug, api, collectors, scaffold-lint, scaffold and browser, the suites that tested the source there, and keeps build and
+core, core-integration, debug, api, collectors, collectors-host, scaffold-lint, scaffold and
+browser, the suites that tested the source there, and keeps build and
 smoke, which test its own package; the gate accepts them skipped only once GitHub answers that the
 named run is `main`'s passed push run of the same commit.
 
