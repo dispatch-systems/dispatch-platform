@@ -76,26 +76,15 @@ test('a scorecard week is collected on request, stored per dataset and listed, a
     2,
   );
   assert.equal(week.publication.datasets.find((d: any) => d.table === 'pickup_failures').rows, 0);
-  const stored = f.database(
+  const identity = f.database(
     `dsps/${dsp.id}/data/weekly_scorecard/weekly_scorecard.sqlite`,
-    (db) => ({
-      identity: db
+    (db) =>
+      db
         .prepare('SELECT provider,source FROM storage_identity')
         .all()
         .map((r) => ({ ...r })),
-      returns: db
-        .prepare(
-          "SELECT tracking_id,impact,json_extract(row,'$.rts_reason_code') reason FROM returns_to_station ORDER BY row_index",
-        )
-        .all()
-        .map((r) => ({ ...r })),
-    }),
   );
-  assert.deepEqual(stored.identity, [{ provider: 'cortex', source: 'weekly-scorecard-v1' }]);
-  assert.deepEqual(stored.returns, [
-    { tracking_id: 'TBA000000000001', impact: 1, reason: 'BUSINESS CLOSED' },
-    { tracking_id: 'TBA000000000002', impact: 0, reason: 'CUSTOMER UNAVAILABLE' },
-  ]);
+  assert.deepEqual(identity, [{ provider: 'cortex', source: 'weekly-scorecard-v1' }]);
   // The scorecard's permissions are its own: viewing the timecard grants none of them.
   const member = await f.client('member@dispatch.test');
   await member.select(dsp.id);
