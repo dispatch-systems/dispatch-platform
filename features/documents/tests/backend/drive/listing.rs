@@ -240,3 +240,270 @@ async fn every_listing_and_change_page_rechecks_the_captured_member_and_connecti
         }
     }
 }
+
+#[tokio::test]
+async fn a_confirmed_undo_survives_an_older_feed_page() {
+    confirmed_undo_survives(OlderRefresh::Feed).await;
+}
+
+#[tokio::test]
+async fn a_confirmed_undo_survives_a_held_paginated_feed() {
+    confirmed_undo_survives(OlderRefresh::PagedFeed).await;
+}
+
+#[tokio::test]
+async fn a_confirmed_undo_survives_an_older_full_relist() {
+    confirmed_undo_survives(OlderRefresh::Relist).await;
+}
+
+enum OlderRefresh {
+    Feed,
+    PagedFeed,
+    Relist,
+}
+
+// The provider answers before Undo, but publication waits until after its confirmation.
+// The paginated case holds the real traversal after its first physical page.
+async fn confirmed_undo_survives(refresh: OlderRefresh) {
+    use crate::backend::{
+        access,
+        drive::Changed,
+        drive::fixture::fixture,
+        files, grant,
+        support::{connect_as, context, platform},
+        tree::tests::item,
+    };
+    use dispatch_core::{foundation::crypto, server::http::route::Dsp};
+
+    let paged = matches!(refresh, OlderRefresh::PagedFeed);
+    let (_root, state, dsp) = platform();
+    let account = format!(
+        "fixture:stale-undo-{}@example.test",
+        crypto::token().unwrap().to_ascii_lowercase()
+    );
+    connect_as(&state, &dsp, &account).await;
+    let c = context(&state, &dsp).await;
+    let owner = grant::capture_member(&state, c.clone(), Dsp("documents.use"), None)
+        .await
+        .unwrap();
+    let root = owner.connection.folder_id.clone();
+    let drive = access::open_for(&state, &owner, false).await.unwrap();
+    let destination = drive
+        .google
+        .create(
+            &account,
+            "EOS Sheets",
+            crate::backend::google::FOLDER,
+            Some(&root),
+        )
+        .await
+        .unwrap()
+        .id;
+    fixture(&account, |remote| {
+        remote.files.insert(
+            "000-target".into(),
+            item(
+                "000-target",
+                "October EOS.pdf",
+                Some(&root),
+                false,
+                "2026-11-01T00:00:00.000Z",
+            ),
+        );
+        remote.touch("000-target");
+        Ok(())
+    })
+    .unwrap();
+    let from = drive.google.start_changes(&account).await.unwrap();
+    let all = drive.google.inside(&account, &root).await.unwrap();
+    // The normal refresh turn is held throughout; moves are deliberately independent.
+    let turn = owner.mirror.wait().await;
+    owner
+        .mirror
+        .replace(&root, owner.mirror.confirmation(), all, from.clone());
+    let moved = files::move_to(
+        &state,
+        c.clone(),
+        Dsp("documents.use"),
+        "000-target".into(),
+        Some(destination.clone()),
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(moved.from, None);
+    assert_eq!(owner.mirror.tree(&root).unwrap().count(&destination), 1);
+
+    let confirmed = owner.mirror.confirmation();
+    if paged {
+        fixture(&account, |remote| {
+            for n in 0..1000 {
+                let id = format!("zz-padding-{n:04}");
+                // Account-wide feed entries outside this DSP's tree.
+                remote
+                    .files
+                    .insert(id.clone(), item(&id, &id, None, false, "2026-11-01"));
+                remote.touch(&id);
+            }
+            Ok(())
+        })
+        .unwrap();
+    }
+    let (entered, waiting) = tokio::sync::oneshot::channel();
+    let (release, released) = tokio::sync::oneshot::channel::<()>();
+    let mut work = None;
+    let mut saved = None;
+    if paged {
+        fixture(&account, |remote| {
+            remote.holds.insert(
+                remote.requests + 2,
+                Box::pin(async move {
+                    entered.send(()).unwrap();
+                    released.await.unwrap();
+                }),
+            );
+            Ok(())
+        })
+        .unwrap();
+        let (state, owner, token, from) =
+            (state.clone(), owner.clone(), account.clone(), from.clone());
+        work = Some(tokio::spawn(async move {
+            let drive = access::open_for(&state, &owner, false).await.unwrap();
+            drive.google.changes(&token, &from).await.unwrap()
+        }));
+        waiting.await.unwrap();
+    } else {
+        if !matches!(refresh, OlderRefresh::Relist) {
+            saved = Some(drive.google.changes(&account, &from).await.unwrap());
+        }
+        drop(entered);
+        drop(released);
+    }
+
+    let listed = if matches!(refresh, OlderRefresh::Relist) {
+        Some(drive.google.inside(&account, &root).await.unwrap())
+    } else {
+        None
+    };
+    let undone = files::move_to(
+        &state,
+        c.clone(),
+        Dsp("documents.use"),
+        "000-target".into(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(undone.from.as_deref(), Some(destination.as_str()));
+    let before = files::folder(&state, &c, None, None).await.unwrap();
+    let before_count = before
+        .items
+        .iter()
+        .find(|r| r.id == destination)
+        .unwrap()
+        .items;
+    assert_eq!(before_count, Some(0));
+    assert!(before.items.iter().any(|r| r.id == "000-target"));
+    let confirmed_time = owner
+        .mirror
+        .tree(&root)
+        .unwrap()
+        .get("000-target")
+        .unwrap()
+        .modified
+        .to_string();
+    if paged {
+        release.send(()).unwrap();
+    } else {
+        drop(release);
+    }
+    let (state_for_publish, root_for_publish) = (state.clone(), root.clone());
+    if let Some(listed) = listed {
+        owner
+            .read(&state_for_publish, move |_, owner| {
+                owner.mirror.replace(
+                    &root_for_publish,
+                    confirmed,
+                    listed,
+                    "discarded-relist".into(),
+                );
+                Ok(())
+            })
+            .await
+            .unwrap();
+    } else {
+        let changes = match work {
+            Some(work) => work.await.unwrap(),
+            None => saved.unwrap(),
+        };
+        let captured = changes
+            .changed
+            .iter()
+            .find_map(|change| match change {
+                Changed::Kept(file) if file.id == "000-target" => Some(file),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(captured.parents, std::slice::from_ref(&destination));
+        assert_eq!(captured.modified_time, confirmed_time);
+        // Same captured-grant publication boundary as access::follow.
+        owner
+            .read(&state_for_publish, move |_, owner| {
+                assert!(!owner.mirror.follow(&root_for_publish, confirmed, changes));
+                Ok(())
+            })
+            .await
+            .unwrap();
+    }
+    let after = files::folder(&state, &c, None, None).await.unwrap();
+    let after_count = after
+        .items
+        .iter()
+        .find(|r| r.id == destination)
+        .unwrap()
+        .items;
+    let root_has_target = after.items.iter().any(|r| r.id == "000-target");
+    let remote_parent = fixture(&account, |remote| {
+        Ok(remote.files["000-target"].parents.clone())
+    })
+    .unwrap();
+    assert_eq!(remote_parent, std::slice::from_ref(&root));
+    assert_eq!(
+        after_count,
+        Some(0),
+        "older refresh must preserve the confirmed folder count"
+    );
+    assert!(
+        root_has_target,
+        "older refresh must preserve the confirmed root projection"
+    );
+    assert_eq!(
+        owner
+            .mirror
+            .tree(&root)
+            .unwrap()
+            .get("000-target")
+            .unwrap()
+            .parent
+            .as_deref(),
+        Some(root.as_str())
+    );
+    assert_eq!(
+        owner.mirror.changes(&root).as_deref(),
+        Some(from.as_str()),
+        "discarded refresh must retain its cursor"
+    );
+    // The next ordinary refresh starts at the retained cursor, including when the held
+    // traversal returned a terminal cursor that had already advanced past Undo.
+    let next = drive
+        .google
+        .changes(&account, &owner.mirror.changes(&root).unwrap())
+        .await
+        .unwrap();
+    owner
+        .mirror
+        .follow(&root, owner.mirror.confirmation(), next);
+    assert_eq!(owner.mirror.tree(&root).unwrap().count(&destination), 0);
+    drop(turn);
+}

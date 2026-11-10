@@ -29,6 +29,7 @@ fn the_copy_follows_drive_and_keeps_what_dispatch_changed() {
     let mirror = Mirror::default();
     mirror.replace(
         "main",
+        mirror.confirmation(),
         vec![
             item("main", "Northline Documents", None, true, "2026-10-01"),
             item("safety", "Safety", Some("main"), true, "2026-10-01"),
@@ -49,6 +50,7 @@ fn the_copy_follows_drive_and_keeps_what_dispatch_changed() {
     );
     let relist = mirror.follow(
         "main",
+        mirror.confirmation(),
         changes(
             vec![
                 kept(item("plan", "Plan", Some("main"), false, "2026-10-02")),
@@ -86,6 +88,7 @@ fn the_copy_follows_drive_and_keeps_what_dispatch_changed() {
     // Moved out to the other folder; and a folder moved in, whose files the copy can't know.
     let relist = mirror.follow(
         "main",
+        mirror.confirmation(),
         changes(
             vec![
                 kept(item("new", "New plan", Some("other"), false, "2026-10-08")),
@@ -112,6 +115,7 @@ fn confirmations_are_ordered_before_later_renames_removals_and_advanced_feed_cur
         let mirror = Mirror::default();
         mirror.replace(
             "main",
+            mirror.confirmation(),
             vec![item("a", "Before", Some("main"), false, "2026-10-01")],
             "before".into(),
         );
@@ -126,7 +130,11 @@ fn confirmations_are_ordered_before_later_renames_removals_and_advanced_feed_cur
         } else {
             kept(item("a", "Renamed", Some("main"), false, "2026-10-03"))
         };
-        mirror.follow("main", changes(vec![changed], "advanced"));
+        mirror.follow(
+            "main",
+            mirror.confirmation(),
+            changes(vec![changed], "advanced"),
+        );
         mirror.put(
             "main",
             item("b", "Second", Some("main"), false, "2026-10-04"),
@@ -142,7 +150,7 @@ fn confirmations_are_ordered_before_later_renames_removals_and_advanced_feed_cur
     }
     // A direct trash has the same ordering, including while successful picker results wait.
     let mirror = Mirror::default();
-    mirror.replace("main", Vec::new(), "before".into());
+    mirror.replace("main", mirror.confirmation(), Vec::new(), "before".into());
     mirror.put(
         "main",
         item("a", "Picked", Some("main"), false, "2026-10-02"),
@@ -156,7 +164,7 @@ fn confirmations_are_ordered_before_later_renames_removals_and_advanced_feed_cur
 
     // The file a shortcut stands for can disappear before a later selected file answers.
     let mirror = Mirror::default();
-    mirror.replace("main", Vec::new(), "before".into());
+    mirror.replace("main", mirror.confirmation(), Vec::new(), "before".into());
     let shortcut = Item {
         mime_type: crate::backend::drive::SHORTCUT.into(),
         shortcut_details: Some(crate::backend::drive::Shortcut {
@@ -174,6 +182,7 @@ fn confirmations_are_ordered_before_later_renames_removals_and_advanced_feed_cur
     );
     mirror.follow(
         "main",
+        mirror.confirmation(),
         changes(vec![Changed::Gone("target".into())], "advanced"),
     );
     mirror.put(
@@ -190,11 +199,21 @@ fn semantic_publication_ignores_seen_and_layout_but_tracks_paths_counts_and_targ
     let mirror = Mirror::default();
     let folder = item("folder", "Folder", Some("main"), true, "text-date");
     let file = item("file", "File.pdf", Some("folder"), false, "text-date");
-    mirror.replace("main", vec![folder.clone(), file.clone()], "a".into());
+    mirror.replace(
+        "main",
+        mirror.confirmation(),
+        vec![folder.clone(), file.clone()],
+        "a".into(),
+    );
     let (first, semantic) = mirror.snapshot("main").unwrap();
     let mut observed = file.clone();
     observed.seen = first.get("file").unwrap().seen + Duration::from_secs(1);
-    mirror.replace("main", vec![observed.clone(), folder.clone()], "b".into());
+    mirror.replace(
+        "main",
+        mirror.confirmation(),
+        vec![observed.clone(), folder.clone()],
+        "b".into(),
+    );
     let (same, current) = mirror.snapshot("main").unwrap();
     assert_eq!(
         current, semantic,
@@ -207,22 +226,31 @@ fn semantic_publication_ignores_seen_and_layout_but_tracks_paths_counts_and_targ
         "confirmation reobservation is not content"
     );
     observed.seen += Duration::from_secs(1);
-    assert!(!mirror.follow("main", changes(vec![kept(observed.clone())], "c")));
+    assert!(!mirror.follow(
+        "main",
+        mirror.confirmation(),
+        changes(vec![kept(observed.clone())], "c")
+    ));
     let (seen, current) = mirror.snapshot("main").unwrap();
     assert_eq!(current, semantic, "feed reobservation is not content");
     assert_eq!(seen.get("file").unwrap().seen, observed.seen);
     let mut stale = observed.clone();
     stale.modified_time = "a-before".into();
     stale.name = "Rejected older feed".into();
-    assert!(!mirror.follow("main", changes(vec![kept(stale)], "d")));
+    assert!(!mirror.follow(
+        "main",
+        mirror.confirmation(),
+        changes(vec![kept(stale)], "d")
+    ));
     assert!(
         mirror.matches("main", semantic),
         "rejected older metadata is not published"
     );
-    mirror.follow("main", changes(Vec::new(), "e"));
+    mirror.follow("main", mirror.confirmation(), changes(Vec::new(), "e"));
     mirror.remove("main", "absent");
     assert!(!mirror.follow(
         "main",
+        mirror.confirmation(),
         changes(
             vec![
                 kept(item("outside", "Outside", Some("other-dsp"), false, "date")),
@@ -293,7 +321,11 @@ fn semantic_publication_ignores_seen_and_layout_but_tracks_paths_counts_and_targ
     assert_ne!(after, before);
     drop(unique);
     moved.seen += Duration::from_secs(1);
-    mirror.follow("main", changes(vec![kept(moved)], "g"));
+    mirror.follow(
+        "main",
+        mirror.confirmation(),
+        changes(vec![kept(moved)], "g"),
+    );
     let (unique, observed_at) = mirror.snapshot("main").unwrap();
     assert_eq!(Arc::as_ptr(&unique), address);
     assert_eq!(observed_at, after);
@@ -319,6 +351,7 @@ fn semantic_publication_ignores_seen_and_layout_but_tracks_paths_counts_and_targ
     );
     assert!(!mirror.follow(
         "main",
+        mirror.confirmation(),
         changes(vec![kept(target.clone()), kept(target.clone())], "h")
     ));
     let (current, observed_at) = mirror.snapshot("main").unwrap();
@@ -338,7 +371,11 @@ fn semantic_publication_ignores_seen_and_layout_but_tracks_paths_counts_and_targ
     );
     target.name = "Renamed target.pdf".into();
     target.size = Some("42".into());
-    mirror.follow("main", changes(vec![kept(target.clone())], "i"));
+    mirror.follow(
+        "main",
+        mirror.confirmation(),
+        changes(vec![kept(target.clone())], "i"),
+    );
     let (current, named) = mirror.snapshot("main").unwrap();
     assert_ne!(named, pictured);
     assert_eq!(
@@ -346,7 +383,11 @@ fn semantic_publication_ignores_seen_and_layout_but_tracks_paths_counts_and_targ
         "Renamed target.pdf"
     );
     drop(current);
-    mirror.follow("main", changes(vec![Changed::Gone("target".into())], "j"));
+    mirror.follow(
+        "main",
+        mirror.confirmation(),
+        changes(vec![Changed::Gone("target".into())], "j"),
+    );
     let (current, missing) = mirror.snapshot("main").unwrap();
     assert_ne!(
         missing, named,
@@ -363,10 +404,16 @@ fn semantic_publication_ignores_seen_and_layout_but_tracks_paths_counts_and_targ
     // Keep the existing feed's duplicate-ID behavior: losing one duplicate changes counts
     // even when the final canonical record for that ID is unchanged.
     let duplicates = Mirror::default();
-    duplicates.replace("main", Vec::new(), "start".into());
+    duplicates.replace(
+        "main",
+        duplicates.confirmation(),
+        Vec::new(),
+        "start".into(),
+    );
     let repeated = item("repeat", "Repeated", Some("main"), false, "same");
     duplicates.follow(
         "main",
+        duplicates.confirmation(),
         changes(vec![kept(repeated.clone()), kept(repeated)], "duplicates"),
     );
     let (both, before) = duplicates.snapshot("main").unwrap();
@@ -382,12 +429,14 @@ fn semantic_publication_ignores_seen_and_layout_but_tracks_paths_counts_and_targ
     let repeated = item("repeat", "Repeated", Some("main"), false, "same");
     duplicates.replace(
         "main",
+        duplicates.confirmation(),
         vec![repeated.clone(), repeated.clone()],
         "two".into(),
     );
     let (_, before) = duplicates.snapshot("main").unwrap();
     duplicates.replace(
         "main",
+        duplicates.confirmation(),
         vec![repeated, item("new", "New", Some("main"), false, "same")],
         "distinct".into(),
     );
@@ -395,4 +444,155 @@ fn semantic_publication_ignores_seen_and_layout_but_tracks_paths_counts_and_targ
         !duplicates.matches("main", before),
         "a canonical ID match must not hide replacing one duplicate with another ID"
     );
+}
+
+#[test]
+fn refreshes_crossing_confirmations_keep_the_cursor_and_sync_instant() {
+    for relist in [false, true] {
+        for confirmation in ["pending", "noop", "batch", "remove", "absent"] {
+            let mirror = Mirror::default();
+            let before = item("file", "Before", Some("main"), false, "same-time");
+            mirror.replace(
+                "main",
+                mirror.confirmation(),
+                vec![before.clone()],
+                "retained".into(),
+            );
+            let (_, semantic) = mirror.snapshot("main").unwrap();
+            let confirmed = mirror.confirmation();
+            let synced = mirror.copy().as_ref().unwrap().synced;
+            let mut renamed = before.clone();
+            renamed.name = "Confirmed".into();
+            match confirmation {
+                "pending" => mirror.put("main", renamed),
+                "noop" => mirror.put("main", before.clone()),
+                "batch" => mirror.put_many("main", [before.clone(), renamed]),
+                "remove" => mirror.remove("main", "file"),
+                "absent" => mirror.remove("main", "absent"),
+                _ => unreachable!(),
+            }
+            if matches!(confirmation, "pending" | "batch") {
+                assert!(!mirror.copy().as_ref().unwrap().pending.is_empty());
+            } else if matches!(confirmation, "noop" | "absent") {
+                assert!(
+                    mirror.matches("main", semantic),
+                    "no semantic change to fence with"
+                );
+            }
+            if relist {
+                mirror.replace("main", confirmed, vec![before], "discarded".into());
+            } else {
+                assert!(!mirror.follow(
+                    "main",
+                    confirmed,
+                    changes(vec![kept(before)], "discarded")
+                ));
+            }
+            assert_eq!(
+                mirror.changes("main").as_deref(),
+                Some("retained"),
+                "{confirmation}, relist={relist}: a rejected refresh must retain its cursor"
+            );
+            assert_eq!(
+                mirror.copy().as_ref().unwrap().synced,
+                synced,
+                "a rejected refresh must retain its synchronization instant"
+            );
+            let tree = mirror.tree("main").unwrap();
+            match confirmation {
+                "remove" => assert!(
+                    tree.get("file").is_none(),
+                    "a rejected refresh must not resurrect a removed file"
+                ),
+                "pending" | "batch" => assert_eq!(&*tree.get("file").unwrap().name, "Confirmed"),
+                _ => assert_eq!(&*tree.get("file").unwrap().name, "Before"),
+            }
+            // An empty later feed is also rejected after another no-op confirmation.
+            let confirmed = mirror.confirmation();
+            mirror.remove("main", "absent");
+            assert!(!mirror.follow("main", confirmed, changes(Vec::new(), "discarded-empty")));
+            assert_eq!(mirror.changes("main").as_deref(), Some("retained"));
+            assert_eq!(mirror.copy().as_ref().unwrap().synced, synced);
+        }
+    }
+}
+
+#[test]
+fn an_external_move_with_equal_modified_time_is_applied_without_an_intervening_confirmation() {
+    let mirror = Mirror::default();
+    let folder = item("folder", "Folder", Some("main"), true, "same-time");
+    let before = item("file", "File.pdf", Some("main"), false, "same-time");
+    mirror.replace(
+        "main",
+        mirror.confirmation(),
+        vec![folder, before.clone()],
+        "before".into(),
+    );
+    let (_, semantic) = mirror.snapshot("main").unwrap();
+    let confirmed = mirror.confirmation();
+    let mut moved = before;
+    moved.parents = vec!["folder".into()];
+    assert!(!mirror.follow("main", confirmed, changes(vec![kept(moved)], "after")));
+    let (tree, current) = mirror.snapshot("main").unwrap();
+    assert_eq!(tree.get("file").unwrap().parent.as_deref(), Some("folder"));
+    assert_eq!(tree.count("main"), 1);
+    assert_eq!(tree.count("folder"), 1);
+    assert_ne!(current, semantic);
+    assert_eq!(mirror.changes("main").as_deref(), Some("after"));
+}
+
+#[test]
+fn a_listing_the_feed_asked_for_is_still_owed_after_a_confirmation_discards_it() {
+    let mirror = Mirror::default();
+    let file = item("file", "File.pdf", Some("main"), false, "same-time");
+    mirror.replace(
+        "main",
+        mirror.confirmation(),
+        vec![file.clone()],
+        "before".into(),
+    );
+    // A folder comes in from elsewhere in the account: what it holds is unknown until listed.
+    let arrived = item("arrived", "Arrived", Some("main"), true, "same-time");
+    assert!(mirror.follow(
+        "main",
+        mirror.confirmation(),
+        changes(vec![kept(arrived.clone())], "advanced")
+    ));
+    // That listing is read, and a rename is confirmed before it is published.
+    let listed = mirror.confirmation();
+    let mut renamed = file.clone();
+    renamed.name = "Renamed.pdf".into();
+    mirror.put("main", renamed.clone());
+    let inside = item("inside", "Inside.pdf", Some("arrived"), false, "same-time");
+    mirror.replace(
+        "main",
+        listed,
+        vec![file, arrived.clone(), inside.clone()],
+        "discarded".into(),
+    );
+    assert_eq!(mirror.tree("main").unwrap().count("arrived"), 0);
+    assert_eq!(mirror.changes("main").as_deref(), Some("advanced"));
+    // The next turn's feed has nothing new, and the listing is still owed.
+    assert!(
+        mirror.follow("main", mirror.confirmation(), changes(Vec::new(), "later")),
+        "the folder that came in is never listed"
+    );
+    // So is it when that turn's feed answer is itself discarded.
+    let read = mirror.confirmation();
+    mirror.remove("main", "absent");
+    assert!(mirror.follow("main", read, changes(Vec::new(), "discarded-feed")));
+    mirror.replace(
+        "main",
+        mirror.confirmation(),
+        vec![renamed, arrived, inside],
+        "listed".into(),
+    );
+    let tree = mirror.tree("main").unwrap();
+    assert_eq!(tree.count("arrived"), 1);
+    assert_eq!(&*tree.get("file").unwrap().name, "Renamed.pdf");
+    assert!(!mirror.follow(
+        "main",
+        mirror.confirmation(),
+        changes(Vec::new(), "settled")
+    ));
 }
