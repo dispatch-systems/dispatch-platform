@@ -1,6 +1,9 @@
 //! What a scorecard collection reads from Cortex's performance API: the datasets behind
 //! each scorecard page, one week at a time, every row as Amazon sent it.
-use crate::discovery::{CollectionRequest as ScopeRequest, Discovery, Scope};
+use crate::{
+    discovery::{CollectionRequest as ScopeRequest, Discovery, Scope},
+    performance::names_only,
+};
 use dispatch_core::{
     Result,
     db::now,
@@ -232,32 +235,14 @@ impl Capture {
                 502,
             )?;
             // A row that names its station, company or DSP names this one.
-            for row in &captured.rows {
-                for field in ["station_code", "station"] {
-                    if let Some(station) = row[field].as_str().filter(|value| !value.is_empty()) {
-                        ensure(
-                            station == self.station,
-                            "weekly_scorecard_scope_mismatch",
-                            502,
-                        )?;
-                    }
-                }
-                if let Some(company) = row["company_id"].as_str().filter(|value| !value.is_empty())
-                {
-                    ensure(
-                        company == self.company_id,
-                        "weekly_scorecard_scope_mismatch",
-                        502,
-                    )?;
-                }
-                if let Some(code) = row["dsp_code"].as_str().filter(|value| !value.is_empty()) {
-                    ensure(
-                        code.eq_ignore_ascii_case(&self.dsp_code),
-                        "weekly_scorecard_scope_mismatch",
-                        502,
-                    )?;
-                }
-            }
+            ensure(
+                captured
+                    .rows
+                    .iter()
+                    .all(|row| names_only(row, &self.station, &self.company_id, &self.dsp_code)),
+                "weekly_scorecard_scope_mismatch",
+                502,
+            )?;
         }
         let posted = self
             .datasets
