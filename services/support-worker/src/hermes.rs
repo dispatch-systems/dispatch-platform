@@ -22,6 +22,7 @@ pub fn resources() -> PathBuf {
         })
 }
 
+/// A builder's or a reviewer's run; an analyst's goes through `analyze`, which names its stage.
 pub async fn run(
     config: &Config,
     job: &SupportJob,
@@ -35,11 +36,7 @@ pub async fn run(
         job,
         Some(worktree),
         role,
-        if role == "analyst" {
-            Some("browser")
-        } else {
-            None
-        },
+        None,
         instructions,
         context,
     )
@@ -149,14 +146,11 @@ async fn run_private(
     let input = home.join("request.json");
     atomic_json(&input, &request)?;
     let result = home.join("result.json");
-    if result.exists() {
-        fs::remove_file(&result)?;
-    }
-    if home.join("witness.json").exists() {
-        fs::remove_file(home.join("witness.json"))?;
-    }
-    if home.join("browser-attempt.json").exists() {
-        fs::remove_file(home.join("browser-attempt.json"))?;
+    // Nothing a previous run left is read as this run's.
+    for file in ["result.json", "witness.json", "browser-attempt.json"] {
+        if home.join(file).exists() {
+            fs::remove_file(home.join(file))?;
+        }
     }
     if home.join("evidence").exists() {
         fs::remove_dir_all(home.join("evidence"))?;
