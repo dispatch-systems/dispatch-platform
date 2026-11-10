@@ -3,8 +3,8 @@ use crate::{Error, Result, db, ensure};
 use fs2::FileExt;
 use serde_json::{Value, json};
 use std::{
-    fs::{self, File, OpenOptions},
-    os::unix::fs::{MetadataExt, OpenOptionsExt},
+    fs::{self, File},
+    os::unix::fs::MetadataExt,
     path::{Component, Path},
 };
 
@@ -188,12 +188,7 @@ pub(super) fn lease(profile: &Path) -> Result<File> {
         .and_then(|s| s.to_str())
         .ok_or_else(|| Error::new("unsafe_storage_path", 500))?;
     let path = parent.join(format!(".{name}.browseros.lock"));
-    db::private_file(&path, true)?;
-    let file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .custom_flags(libc::O_NOFOLLOW)
-        .open(&path)?;
+    let file = db::lock_file(&path)?;
     let stat = file.metadata()?;
     ensure(
         stat.is_file()

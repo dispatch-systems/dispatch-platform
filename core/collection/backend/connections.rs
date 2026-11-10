@@ -14,11 +14,7 @@ use crate::{
 use fs2::FileExt;
 use rusqlite::params;
 use serde_json::{Value, json};
-use std::{
-    fs::{File, OpenOptions},
-    os::unix::fs::OpenOptionsExt,
-    path::Path,
-};
+use std::{fs::File, path::Path};
 
 /// What a worker needs to know about a provider's connection before it collects.
 pub(crate) struct ConnectionLease {
@@ -40,12 +36,7 @@ pub fn credential_lease(root: &Path, dsp: &str, provider: Provider) -> Result<Fi
     ensure(db::identifier(dsp, "dsp_"), "invalid_dsp_id", 400)?;
     let directory = db::private_dir(&root.join("dsps").join(dsp).join("state/credential-leases"))?;
     let path = directory.join(format!("{}.lock", provider.id()));
-    db::private_file(&path, true)?;
-    let file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .custom_flags(libc::O_NOFOLLOW)
-        .open(path)?;
+    let file = db::lock_file(&path)?;
     file.try_lock_exclusive()
         .map_err(|_| Error::new("browser_capacity_busy", 429))?;
     Ok(file)
