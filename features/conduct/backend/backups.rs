@@ -11,11 +11,12 @@ use crate::api::types::{ConductBackup, ConductTier};
 use dispatch_core::{
     Result, State,
     db::{FromRow, Row, Store, now},
+    ensure,
     foundation::observability,
     manifest::{Maintenance, Upkeep, people},
     server::http::upload::Upload,
 };
-use dispatch_documents_contract::{self as files, Author, Files, Incoming};
+use dispatch_documents_contract::{self as files, Author, Files, Incoming, NewFolder};
 use futures_util::stream;
 use rusqlite::params;
 use serde_json::json;
@@ -43,6 +44,12 @@ const RETRIES_MS: &[i64] = &[
 const FROM: &str = "Conduct";
 /// The folder that holds everyone's.
 const EVERYONE: &str = "Writeups";
+/// What the activity log calls a person's folder: it keeps no one's disciplinary record, and
+/// the folder's name, with where it is, says they have one.
+const THEIRS: &str = "a driver's folder";
+/// How a try ends once the DSP no longer backs its copies up: nothing more is sent, and the
+/// photo waits as it was.
+const STOPPED: &str = "conduct_backup_stopped";
 
 fn pass(state: Arc<State>, _: bool) -> Upkeep {
     Box::pin(async move {
@@ -103,6 +110,12 @@ fn chosen(db: &Store, dsp: &str) -> Result<bool> {
     Ok(db.serves_dsp(dsp)? && db.feature_enabled(dsp, "conduct")? && settings::backs_up(db, dsp)?)
 }
 
+/// Refuses, as `STOPPED`, once Conduct no longer backs the DSP's signed copies up: checked in
+/// the read before each thing sent where the DSP keeps its files.
+fn still_chosen(db: &Store, dsp: &str) -> Result<()> {
+    ensure(chosen(db, dsp)?, STOPPED, 409)
+}
+
 /// The DSP's photos due a try by `at`, the longest waiting first, `most` at most, each person
 /// as the directory knows them now.
 fn due(store: &Store, state: &State, dsp: &str, at: i64, most: usize) -> Result<Vec<Photo>> {
@@ -125,8 +138,9 @@ fn due(store: &Store, state: &State, dsp: &str, at: i64, most: usize) -> Result<
 }
 
 /// Saves the DSP's photos due by `at`, in milliseconds, while it backs them up and what keeps
-/// its files can. After a failure the rest wait for the next pass, as whatever failed one fails
-/// the others.
+/// its files can: once it no longer does, as the backup or Conduct switched off, nothing more is
+/// sent, in a pass under way too. After a failure the rest wait for the next pass, as whatever
+/// failed one fails the others.
 pub(crate) async fn back_up(state: &Arc<State>, dsp: &str, at: i64) -> Result<()> {
     let (of, with) = (dsp.to_owned(), state.clone());
     let found = state
@@ -147,9 +161,10 @@ pub(crate) async fn back_up(state: &Arc<State>, dsp: &str, at: i64) -> Result<()
         return Ok(());
     }
     for photo in due {
-        let outcome = save(state, files, dsp, &photo)
-            .await
-            .map_err(|error| error.code);
+        let outcome = match save(state, files, dsp, &photo).await {
+            Err(error) if error.code == STOPPED => return Ok(()),
+            outcome => outcome.map_err(|error| error.code),
+        };
         let stopped = outcome.is_err();
         if let Err(code) = &outcome {
             failed(Some(dsp), code);
@@ -179,20 +194,30 @@ async fn save(
         dsp,
         by: &by,
     };
-    let everyone = place.folder("", "", None, EVERYONE).await?;
+    let everyone = place.folder(("", ""), None, EVERYONE, None).await?;
     let theirs = place
-        .folder(&photo.person, "", Some(&everyone), &photo.person_name)
+        .folder(
+            (&photo.person, ""),
+            Some(&everyone),
+            &photo.person_name,
+            Some(THEIRS),
+        )
         .await?;
     let into = place
         .folder(
-            &photo.person,
-            &photo.category,
+            (&photo.person, &photo.category),
             Some(&theirs),
             &photo.category_name,
+            None,
         )
         .await?;
     let (at, id) = (dsp.to_owned(), photo.writeup.clone());
-    let (mime, bytes) = state.read(move |db| copies::read(db, &at, &id)).await?;
+    let (mime, bytes) = state
+        .read(move |db| {
+            still_chosen(db, &at)?;
+            copies::read(db, &at, &id)
+        })
+        .await?;
     let name = format!(
         "{} {}.{}",
         photo.written_on,
@@ -219,19 +244,22 @@ struct Place<'a> {
     by: &'a Author,
 }
 impl Place<'_> {
-    /// The folder kept for `person` and `category`, while it's still among the DSP's files;
-    /// else one made in `parent`, named `name`, and kept in its place.
+    /// The folder kept for the person and category `of`, while it's still among the DSP's
+    /// files; else one made in `parent`, named `name`, which the activity log calls
+    /// `logged_as` instead when given, and kept in its place.
     async fn folder(
         &self,
-        person: &str,
-        category: &str,
+        of: (&str, &str),
         parent: Option<&str>,
         name: &str,
+        logged_as: Option<&'static str>,
     ) -> Result<String> {
+        let (person, category) = of;
         let (at, whose, which) = (self.dsp.to_owned(), person.to_owned(), category.to_owned());
         let kept = self
             .state
             .read(move |db| {
+                still_chosen(db, &at)?;
                 db.dsp(&at)?.one_as::<(String,)>(
                     "SELECT folder_id FROM conduct_backup_folders WHERE person=? AND category_id=?",
                     [&whose, &which],
@@ -247,9 +275,15 @@ impl Place<'_> {
         {
             return Ok(id);
         }
+        let folder = NewFolder {
+            parent,
+            name,
+            by: self.by,
+            logged_as,
+        };
         let made = self
             .files
-            .create_folder(self.state, self.dsp, parent, name, self.by)
+            .create_folder(self.state, self.dsp, folder)
             .await?;
         let (at, whose, which, id) = (
             self.dsp.to_owned(),
@@ -305,7 +339,9 @@ fn finish(
 
 /// Where the DSP's signed copies are backed up and how that's going, for Conduct's page of
 /// Settings: nowhere while nothing keeps the DSP's files, and nothing failing or waiting while
-/// the DSP doesn't back them up.
+/// the DSP doesn't back them up. It's failing while what keeps the DSP's files says it can't, or
+/// the photo tried latest wasn't saved, and says why in the words of what keeps them, where it
+/// has some.
 pub(crate) async fn status(state: &Arc<State>, dsp: &str) -> Result<ConductBackup> {
     let at = dsp.to_owned();
     let found = state
@@ -316,11 +352,18 @@ pub(crate) async fn status(state: &Arc<State>, dsp: &str) -> Result<ConductBacku
             if !chosen(db, &at)? {
                 return Ok(Some((files, None)));
             }
-            let counted = db.dsp(&at)?.one_as::<(i64, i64)>(
-                &format!("SELECT COUNT(*),COALESCE(SUM(COALESCE(b.attempts,0)>0),0) {UNSAVED}"),
+            let db = db.dsp(&at)?;
+            let waiting = db
+                .one_as::<(i64,)>(&format!("SELECT COUNT(*) {UNSAVED}"), [])?
+                .map_or(0, |(waiting,)| waiting);
+            // Why the photo tried latest wasn't saved, by its error's code.
+            let refused = db.one_as::<(String,)>(
+                &format!(
+                    "SELECT b.reason {UNSAVED} AND b.attempts>0 ORDER BY b.due_at DESC LIMIT 1"
+                ),
                 [],
             )?;
-            Ok(Some((files, counted)))
+            Ok(Some((files, Some((waiting, refused.map(|(code,)| code))))))
         })
         .await?;
     let Some((files, counted)) = found else {
@@ -332,7 +375,7 @@ pub(crate) async fn status(state: &Arc<State>, dsp: &str) -> Result<ConductBacku
         });
     };
     let place = Some(files.place().to_owned());
-    let Some((waiting, tried)) = counted else {
+    let Some((waiting, refused)) = counted else {
         return Ok(ConductBackup {
             place,
             failing: false,
@@ -340,11 +383,14 @@ pub(crate) async fn status(state: &Arc<State>, dsp: &str) -> Result<ConductBacku
             waiting: 0,
         });
     };
-    let why = files.unready(state, dsp).await?;
+    let unready = files.unready(state, dsp).await?;
     Ok(ConductBackup {
         place,
-        failing: why.is_some() || tried > 0,
-        why,
+        failing: unready.is_some() || refused.is_some(),
+        why: unready.or_else(|| {
+            let words = files.refusal(&refused?)?;
+            Some(words.to_owned())
+        }),
         waiting,
     })
 }

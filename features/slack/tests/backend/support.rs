@@ -17,7 +17,9 @@ use dispatch_core::{
     server::http::upload::UPLOAD_LIMIT,
     testing,
 };
-use dispatch_documents_contract::{Answer, Author, Browsed, Files, Folder, Incoming, Page, Saved};
+use dispatch_documents_contract::{
+    Answer, Author, Browsed, Files, Folder, Incoming, NewFolder, Page, Saved,
+};
 use futures_util::TryStreamExt;
 use std::{
     collections::BTreeSet,
@@ -146,6 +148,9 @@ impl Files for Keeping {
     fn place(&self) -> &'static str {
         "Kept Drive"
     }
+    fn refusal(&self, _: &str) -> Option<&'static str> {
+        None
+    }
     fn unready<'a>(&'a self, _: &'a Arc<State>, dsp: &'a str) -> Answer<'a, Option<String>> {
         let unready = UNREADY.lock().unwrap().contains(dsp);
         Box::pin(async move { Ok(unready.then(|| "Not ready".to_owned())) })
@@ -180,14 +185,12 @@ impl Files for Keeping {
         &'a self,
         _: &'a Arc<State>,
         _: &'a str,
-        _: Option<&'a str>,
-        name: &'a str,
-        _: &'a Author,
+        folder: NewFolder<'a>,
     ) -> Answer<'a, Folder> {
         Box::pin(async move {
             Ok(Folder {
-                id: format!("folder-{name}"),
-                name: name.to_owned(),
+                id: format!("folder-{}", folder.name),
+                name: folder.name.to_owned(),
             })
         })
     }

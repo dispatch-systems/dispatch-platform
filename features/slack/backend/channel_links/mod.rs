@@ -23,7 +23,7 @@ use dispatch_core::{
     ensure,
     server::http::route::Dsp,
 };
-use dispatch_documents_contract::{self as files, Author, Files, Folder};
+use dispatch_documents_contract::{self as files, Author, Files, Folder, NewFolder};
 use serde_json::json;
 use std::sync::Arc;
 use storage::{Link, LinkStore};
@@ -231,9 +231,13 @@ pub async fn folder_for(
         Some(id) => self::chosen(state, files, &c.dsp.id, &id).await,
         None => {
             let by = Author::Member(c.actor().to_owned());
-            files
-                .create_folder(state, &c.dsp.id, None, named, &by)
-                .await
+            let folder = NewFolder {
+                parent: None,
+                name: named,
+                by: &by,
+                logged_as: None,
+            };
+            files.create_folder(state, &c.dsp.id, folder).await
         }
     }
 }

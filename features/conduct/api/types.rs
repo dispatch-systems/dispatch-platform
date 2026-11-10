@@ -259,7 +259,8 @@ pub struct ConductBackup {
     pub place: Option<String>,
     /// Whether it's failing: what keeps the DSP's files can't now, or a copy's last try failed.
     pub failing: bool,
-    /// Why what keeps the DSP's files can't now, in words a member reads.
+    /// Why, in the words of what keeps the DSP's files, for a member to read: why it can't keep
+    /// them now, or why it didn't keep the copy tried latest. None where it has no words.
     pub why: Option<String>,
     /// How many signed copies aren't backed up yet.
     #[cfg_attr(feature = "ts", ts(type = "number"))]

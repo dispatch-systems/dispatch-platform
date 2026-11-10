@@ -14,7 +14,9 @@ use super::{
 use dispatch_core::{
     Result, State, ensure, manifest::exposes::Shown, server::http::upload::UPLOAD_LIMIT,
 };
-use dispatch_documents_contract::{Answer, Author, Browsed, Files, Folder, Incoming, Page, Saved};
+use dispatch_documents_contract::{
+    Answer, Author, Browsed, Files, Folder, Incoming, NewFolder, Page, Saved,
+};
 use std::sync::Arc;
 
 /// How it refuses a folder that isn't one of the DSP's.
@@ -41,6 +43,13 @@ impl Files for DocumentsFiles {
     }
     fn place(&self) -> &'static str {
         "Google Drive"
+    }
+    fn refusal(&self, code: &str) -> Option<&'static str> {
+        match code {
+            "documents_storage_full" => Some("Google Drive is out of storage"),
+            "google_unavailable" => Some("Google Drive isn't responding"),
+            _ => None,
+        }
     }
     fn unready<'a>(&'a self, state: &'a Arc<State>, dsp: &'a str) -> Answer<'a, Option<String>> {
         Box::pin(async move {
@@ -121,30 +130,28 @@ impl Files for DocumentsFiles {
         &'a self,
         state: &'a Arc<State>,
         dsp: &'a str,
-        parent: Option<&'a str>,
-        name: &'a str,
-        by: &'a Author,
+        folder: NewFolder<'a>,
     ) -> Answer<'a, Folder> {
         Box::pin(async move {
             let owner = grant::capture(state, dsp, None).await?;
             let tree = access::tree_for(state, &owner).await?;
-            let parent = parent.unwrap_or(tree.root());
+            let parent = folder.parent.unwrap_or(tree.root());
             ensure(tree.is_folder(parent), FOLDER_NOT_FOUND, 404)?;
-            let made = make(state, &owner, parent, FOLDER, name).await?;
-            let folder = Folder {
-                id: made.id,
-                name: made.name,
-            };
+            let made = make(state, &owner, parent, FOLDER, folder.name).await?;
+            let logged = folder.logged_as.unwrap_or(&made.name);
             record(
                 state,
                 &owner,
-                &folder.id,
-                by,
+                &made.id,
+                folder.by,
                 "documents.created",
-                &folder.name,
+                logged,
             )
             .await?;
-            Ok(folder)
+            Ok(Folder {
+                id: made.id,
+                name: made.name,
+            })
         })
     }
     fn save<'a>(

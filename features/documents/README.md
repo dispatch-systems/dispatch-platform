@@ -222,10 +222,12 @@ and weeks, so it's best submitted well before the limit.
   it's sent.
 - **Files for other features:** Documents exposes `files` (its contract, in `contract/`), somewhere for a
   feature bringing files in, as Slack does, to keep them. It says where it keeps them, Google
-  Drive, for a page to say so. It says why it can't yet, in words a member
+  Drive, for a page to say so, and why it refused a file, where the reason is one a member can
+  act on, as the account being out of storage. It says why it can't yet, in words a member
   reads: Google Drive isn't connected, or needs reconnecting. It browses the folders, from the main folder down, and finds a
   folder by its ID, the main folder or one inside it;
-  makes a folder at the top of the main folder or inside a folder there, as a member; and streams a file of up to
+  makes a folder at the top of the main folder or inside a folder there, as a member, logged by
+  its name or by what its maker has the log call it instead, where its name is someone's; and streams a file of up to
   100 MB into a folder inside the main folder only, never elsewhere in the Drive
   (`files_folder_not_found`). A file saved so is Documents' like any upload, added by the
   member it came from, or by the name of someone who isn't one, as a Slack member no member

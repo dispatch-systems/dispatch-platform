@@ -153,10 +153,13 @@ fn category_restore(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     Reply::of(&overview::read(db, c.state, c)?)
 }
 
-/// How backing signed copies up is going, which asks what keeps the DSP's files whether it can.
+/// How backing signed copies up is going, which asks what keeps the DSP's files whether it can:
+/// answered only to a member who may still read it once that's asked.
 async fn backup_read(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
-    let dsp = state
-        .read(move |db| Ok(access.authorize(db, &input)?.dsp.id))
+    let c = state.read(move |db| access.authorize(db, &input)).await?;
+    let status = backups::status(&state, &c.dsp.id).await?;
+    state
+        .read(move |db| access.revalidate(db, &c).map(drop))
         .await?;
-    Reply::of(&backups::status(&state, &dsp).await?)
+    Reply::of(&status)
 }

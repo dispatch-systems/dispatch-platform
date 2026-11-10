@@ -29,8 +29,9 @@ with a photo of the paper if they like.
   `/api/dsp/conduct/writeups[/{id}[/sign|/delete|/copy]]`, behind `conduct.use`; categories under
   `/api/dsp/conduct/categories[/{id}[/retire|/restore]]`, behind `conduct.manage`, as is
   `GET /api/dsp/conduct/backup`: where the DSP's files are kept, by the name members know that
-  by; whether the backup is failing; why where they're kept can't keep them now, in its words;
-  and how many signed copies aren't backed up yet.
+  by; whether the backup is failing; why, in the words of what keeps them: why it can't keep
+  them now, or why it didn't keep the copy tried latest; and how many signed copies aren't
+  backed up yet. It answers only a member who may still read it once those are asked.
 - **Data**, in each DSP's own database:
   - `conduct_categories`: each category's name, starting tier, step down (reduce or reset, and
     after how long, or none) and the wording of the three sections a new writeup starts with,
@@ -59,14 +60,17 @@ with a photo of the paper if they like.
   writeups not yet saved go where the DSP keeps its files, 20 a pass for each DSP, those signed
   before it chose to as well: into `Writeups`, the person's folder inside it, named as the
   directory knows them now, and the category's inside theirs, each file named for the writeup's
-  date and tier (`2026-11-02 Written.jpg`), from whoever marked it signed. A writeup signed
+  date and tier (`2026-11-02 Written.jpg`), from whoever marked it signed. The activity log
+  is given "a driver's folder" for a person's folder, never their name: it keeps no one's
+  disciplinary record. A writeup signed
   without a photo has nothing to save. Marking one signed never waits on it. A folder is known
   by its ID, so one renamed or moved still takes its copies, and one no longer there is made
   again. A try that fails is reported (`conduct.backup_failed`) and waits a minute, five,
   fifteen, an hour, then six hours between tries, for as long as it isn't saved; the rest of
   the pass waits for the next. While what keeps the DSP's files says it can't, nothing is
   tried. What's saved is everyone's who sees those files, and is never changed or taken back:
-  Conduct keeps its own copy. Switched off, the backup stops, and what was saved stays.
+  Conduct keeps its own copy. Switched off, as Conduct itself or the DSP disabled, the backup
+  stops before the next thing it would send, in a pass under way too, and what was saved stays.
 - **Activity log:** a category added, changed, retired or restored, and a writeup deleted, under
   Settings (`frontend/audit-wording.ts`). A writeup keeps who wrote it and who marked it signed
   itself.

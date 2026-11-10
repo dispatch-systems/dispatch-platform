@@ -11,7 +11,9 @@ use dispatch_core::{
     server::{http::upload::UPLOAD_LIMIT, operations},
     testing,
 };
-use dispatch_documents_contract::{Answer, Author, Browsed, Files, Folder, Incoming, Page, Saved};
+use dispatch_documents_contract::{
+    Answer, Author, Browsed, Files, Folder, Incoming, NewFolder, Page, Saved,
+};
 use futures_util::TryStreamExt;
 use std::{
     collections::BTreeSet,
@@ -52,12 +54,14 @@ pub fn platform() -> (tempfile::TempDir, Arc<State>, Context) {
     (root, State::new(config).unwrap(), c)
 }
 
-/// A folder the stand-in keeps: its DSP, its ID, the folder it's in, and its name.
+/// A folder the stand-in keeps: its DSP, its ID, the folder it's in, its name, and what the
+/// activity log was to call it in its name's place.
 struct KeptFolder {
     dsp: String,
     id: String,
     parent: Option<String>,
     name: String,
+    logged_as: Option<&'static str>,
 }
 /// A file the stand-in keeps: its DSP, the folder it's in, its name, how many bytes it holds,
 /// and who it came from.
@@ -79,6 +83,7 @@ struct Kept {
     files: Vec<KeptFile>,
     unready: BTreeSet<String>,
     refusing: BTreeSet<String>,
+    switching_off: BTreeSet<String>,
 }
 impl Kept {
     /// The names of the DSP's folders from the top down to `id`, as a path.
@@ -100,6 +105,7 @@ static KEPT: Mutex<Kept> = Mutex::new(Kept {
     files: Vec::new(),
     unready: BTreeSet::new(),
     refusing: BTreeSet::new(),
+    switching_off: BTreeSet::new(),
 });
 fn kept() -> std::sync::MutexGuard<'static, Kept> {
     KEPT.lock().unwrap_or_else(|poison| poison.into_inner())
@@ -121,9 +127,15 @@ pub fn files(dsp: &str) -> Vec<Saving> {
         })
         .collect()
 }
-/// How many folders the stand-in keeps for the DSP `dsp`.
-pub fn folders(dsp: &str) -> usize {
-    kept().folders.iter().filter(|f| f.dsp == dsp).count()
+/// The folders the stand-in keeps for the DSP `dsp`, each as the activity log was to call it:
+/// by its name, unless it was given something to call it in its place.
+pub fn folders(dsp: &str) -> Vec<String> {
+    kept()
+        .folders
+        .iter()
+        .filter(|folder| folder.dsp == dsp)
+        .map(|folder| folder.logged_as.unwrap_or(&folder.name).to_owned())
+        .collect()
 }
 /// Takes the DSP's folder at `path` away, with every folder and file in it, as a member
 /// trashing it.
@@ -163,6 +175,12 @@ pub fn refuse(dsp: &str, refusing: bool) {
     }
 }
 
+/// Has the stand-in switch Conduct off for the DSP once it keeps the next file of theirs, as
+/// the platform owner switching it off while its copies are saved.
+pub fn switch_off_on_save(dsp: &str) {
+    kept().switching_off.insert(dsp.to_owned());
+}
+
 /// The stand-in for where a DSP keeps its files.
 struct Keeping;
 static KEEPING: Keeping = Keeping;
@@ -185,6 +203,8 @@ impl Shown for Keeping {
         "keeping.use"
     }
 }
+/// How the stand-in refuses what's saved, which it has words for.
+const REFUSED: &str = "keeping_refused";
 fn not_found() -> Error {
     Error::new("files_folder_not_found", 404)
 }
@@ -194,6 +214,9 @@ impl Files for Keeping {
     }
     fn place(&self) -> &'static str {
         "Kept Drive"
+    }
+    fn refusal(&self, code: &str) -> Option<&'static str> {
+        (code == REFUSED).then_some("Kept Drive is full")
     }
     fn unready<'a>(&'a self, _: &'a Arc<State>, dsp: &'a str) -> Answer<'a, Option<String>> {
         let unready = kept().unready.contains(dsp);
@@ -232,14 +255,12 @@ impl Files for Keeping {
         &'a self,
         _: &'a Arc<State>,
         dsp: &'a str,
-        parent: Option<&'a str>,
-        name: &'a str,
-        _: &'a Author,
+        folder: NewFolder<'a>,
     ) -> Answer<'a, Folder> {
         Box::pin(async move {
             let mut kept = kept();
             let inside = |id: &str| kept.folders.iter().any(|f| f.dsp == dsp && f.id == id);
-            if parent.is_some_and(|id| !inside(id)) {
+            if folder.parent.is_some_and(|id| !inside(id)) {
                 return Err(not_found());
             }
             kept.made += 1;
@@ -247,18 +268,19 @@ impl Files for Keeping {
             kept.folders.push(KeptFolder {
                 dsp: dsp.to_owned(),
                 id: id.clone(),
-                parent: parent.map(str::to_owned),
-                name: name.to_owned(),
+                parent: folder.parent.map(str::to_owned),
+                name: folder.name.to_owned(),
+                logged_as: folder.logged_as,
             });
             Ok(Folder {
                 id,
-                name: name.to_owned(),
+                name: folder.name.to_owned(),
             })
         })
     }
     fn save<'a>(
         &'a self,
-        _: &'a Arc<State>,
+        state: &'a Arc<State>,
         dsp: &'a str,
         folder: &'a str,
         file: Incoming,
@@ -270,21 +292,35 @@ impl Files for Keeping {
                 .map_ok(|chunk| chunk.to_vec())
                 .try_concat()
                 .await?;
-            let mut kept = kept();
-            if kept.refusing.contains(dsp) {
-                return Err(Error::new("keeping_refused", 502));
+            let (id, switching_off) = {
+                let mut kept = kept();
+                if kept.refusing.contains(dsp) {
+                    return Err(Error::new(REFUSED, 502));
+                }
+                if !kept.folders.iter().any(|f| f.dsp == dsp && f.id == folder) {
+                    return Err(not_found());
+                }
+                kept.files.push(KeptFile {
+                    dsp: dsp.to_owned(),
+                    folder: folder.to_owned(),
+                    name: file.name.clone(),
+                    length: bytes.len(),
+                    by: file.by,
+                });
+                (
+                    format!("saved-{}", kept.files.len()),
+                    kept.switching_off.remove(dsp),
+                )
+            };
+            if switching_off {
+                let at = dsp.to_owned();
+                state
+                    .run(move |db| {
+                        let owner = testing::a_user(db);
+                        db.set_feature(&at, "conduct", false, &owner).map(drop)
+                    })
+                    .await?;
             }
-            if !kept.folders.iter().any(|f| f.dsp == dsp && f.id == folder) {
-                return Err(not_found());
-            }
-            let id = format!("saved-{}", kept.files.len() + 1);
-            kept.files.push(KeptFile {
-                dsp: dsp.to_owned(),
-                folder: folder.to_owned(),
-                name: file.name.clone(),
-                length: bytes.len(),
-                by: file.by,
-            });
             Ok(Saved {
                 link: format!("https://example.test/{id}"),
                 id,

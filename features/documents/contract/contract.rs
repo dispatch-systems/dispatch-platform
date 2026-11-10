@@ -19,6 +19,9 @@ pub trait Files: Shown + Send + Sync {
     /// Where it keeps the files, by the name members know that by, as a page says where what
     /// it saves goes.
     fn place(&self) -> &'static str;
+    /// Why it didn't keep what it was given, in words a member reads, by the code of the error
+    /// it refused with: none for a code it has no words for.
+    fn refusal(&self, code: &str) -> Option<&'static str>;
     /// Why it can't keep the DSP's files now, in words a member reads, as what it keeps them in
     /// isn't connected; none once it can.
     fn unready<'a>(&'a self, state: &'a Arc<State>, dsp: &'a str) -> Answer<'a, Option<String>>;
@@ -36,15 +39,12 @@ pub trait Files: Shown + Send + Sync {
         dsp: &'a str,
         id: &'a str,
     ) -> Answer<'a, Option<Folder>>;
-    /// Makes a folder named `name` in the folder `parent`, or at the top of the DSP's files, as
-    /// `by`.
+    /// Makes `folder`.
     fn create_folder<'a>(
         &'a self,
         state: &'a Arc<State>,
         dsp: &'a str,
-        parent: Option<&'a str>,
-        name: &'a str,
-        by: &'a Author,
+        folder: NewFolder<'a>,
     ) -> Answer<'a, Folder>;
     /// Keeps `file` in the folder `folder`.
     fn save<'a>(
@@ -85,6 +85,19 @@ pub fn for_dsp(db: &Store, dsp: &str) -> Result<Option<&'static dyn Files>> {
 pub struct Folder {
     pub id: String,
     pub name: String,
+}
+
+/// A folder to make.
+#[derive(Clone, Copy, Debug)]
+pub struct NewFolder<'a> {
+    /// The folder it goes in: none for the top of the DSP's files.
+    pub parent: Option<&'a str>,
+    pub name: &'a str,
+    /// Who it's from.
+    pub by: &'a Author,
+    /// What the activity log calls it in place of its name, for a name the log doesn't keep,
+    /// as a person's: none logs its name.
+    pub logged_as: Option<&'static str>,
 }
 
 /// A folder, as a member choosing one sees it.

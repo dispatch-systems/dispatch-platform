@@ -15,7 +15,8 @@ place: string | null,
  */
 failing: boolean,
 /**
- * Why what keeps the DSP's files can't now, in words a member reads.
+ * Why, in the words of what keeps the DSP's files, for a member to read: why it can't keep
+ * them now, or why it didn't keep the copy tried latest. None where it has no words.
  */
 why: string | null,
 /**

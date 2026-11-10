@@ -100,14 +100,16 @@ async fn signed_copies_go_in_their_persons_and_categorys_folder_once_the_dsp_bac
         saving("2026-11-02 Written.jpg"),
     ];
     assert_eq!(support::files(&dsp), both);
-    assert_eq!(support::folders(&dsp), 3);
+    // The activity log is given no driver's name for their folder.
+    let folders = ["Writeups", "a driver's folder", "Excessive Tardies"];
+    assert_eq!(support::folders(&dsp), folders);
 
     // A folder no longer there is made again, with the one inside it, for the next copy.
     support::trash(&dsp, "Writeups/Jordan Gray");
     written(&state, &c, ConductTier::Final, true, true).await;
     back_up(&state, &dsp, 4000).await.unwrap();
     assert_eq!(support::files(&dsp), [saving("2026-11-02 Final.jpg")]);
-    assert_eq!(support::folders(&dsp), 3);
+    assert_eq!(support::folders(&dsp), folders);
 }
 
 #[tokio::test]
@@ -134,16 +136,33 @@ async fn a_copy_that_isnt_saved_is_tried_again_later_and_the_backup_says_its_fai
         going(true, Some("Not ready"), 1)
     );
 
-    // A copy refused is failing too, and waits a minute for its next try.
+    // A copy refused is failing too, for the reason what keeps the files gives, and waits a
+    // minute for its next try.
     support::ready_to_keep(&dsp, true);
     assert_eq!(status(&state, &dsp).await.unwrap(), going(false, None, 1));
     support::refuse(&dsp, true);
     back_up(&state, &dsp, 1000).await.unwrap();
-    assert_eq!(status(&state, &dsp).await.unwrap(), going(true, None, 1));
+    assert_eq!(
+        status(&state, &dsp).await.unwrap(),
+        going(true, Some("Kept Drive is full"), 1)
+    );
     support::refuse(&dsp, false);
     back_up(&state, &dsp, 1000 + 59 * 1000).await.unwrap();
     assert_eq!(support::files(&dsp), []);
     back_up(&state, &dsp, 1000 + 60 * 1000).await.unwrap();
     assert_eq!(support::files(&dsp).len(), 1);
     assert_eq!(status(&state, &dsp).await.unwrap(), going(false, None, 0));
+}
+
+#[tokio::test]
+async fn once_conduct_is_switched_off_no_more_copies_are_sent_in_the_pass_under_way() {
+    let (_root, state, c) = platform();
+    let dsp = c.dsp.id.clone();
+    written(&state, &c, ConductTier::Verbal, true, true).await;
+    written(&state, &c, ConductTier::Written, true, true).await;
+    choose(&state, &c).await;
+
+    support::switch_off_on_save(&dsp);
+    back_up(&state, &dsp, 1000).await.unwrap();
+    assert_eq!(support::files(&dsp).len(), 1);
 }
