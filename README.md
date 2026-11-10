@@ -45,7 +45,8 @@ dispatchdev pr --skeleton --title "<title>"   # starts the PR's body; write it, 
 dispatchdev pr             # checks the title, body and check's pass, pushes, opens or updates the PR
 dispatchdev review prepare --pass 1   # its tier, and the pass's brief unless it needs no review
 dispatchdev merge          # once its checks pass and its review is done
-dispatchdev finish <name>  # once it merged: the worktree, its branches and scratch folder go
+dispatchdev landed         # waits for main's own run of the merge, which is yours until it passes
+dispatchdev finish <name>  # once that passed: the worktree, its branches and scratch folder go
 ```
 
 The PR's checks run every suite on GitHub, and it's squash-merged by hand once they pass; Dev

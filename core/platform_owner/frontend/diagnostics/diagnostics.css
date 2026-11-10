@@ -94,6 +94,7 @@
 .diagnostics-tile small {
   font-size: 12px;
   color: var(--muted-foreground);
+  overflow-wrap: anywhere;
 }
 .diagnostics-slots {
   display: flex;

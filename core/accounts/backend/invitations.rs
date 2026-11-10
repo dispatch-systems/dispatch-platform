@@ -106,8 +106,6 @@ impl Store {
         )
     }
     /// Withdraws a DSP's open invitation to an address; an accepted one stays.
-    /// Revokes what is outstanding of `email`'s invitations to the member's DSP, and logs it,
-    /// as every invitation's events are.
     pub fn revoke_invitation(&self, c: &Context, email: &str) -> Result<()> {
         let people = self.dsp(&c.dsp.id)?;
         self.across(&people, || {

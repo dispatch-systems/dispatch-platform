@@ -1,5 +1,5 @@
-use super::{Clone, valid_name};
-use crate::{REPOSITORY, Result, Runner, dev, require, review, workspace};
+use super::{Clone, Repository, valid_name};
+use crate::{Result, Runner, dev, require, review, workspace};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -96,26 +96,6 @@ fn inventory(path: &Path) -> Result<Vec<String>> {
     Ok(entries)
 }
 
-fn repository(url: &str) -> Option<&str> {
-    let repository = if let Some(repository) = url.strip_prefix("https://github.com/") {
-        repository
-    } else if let Some(ssh) = url.strip_prefix("ssh://") {
-        let (user, host) = ssh.split_once('@')?;
-        if user != "git" {
-            return None;
-        }
-        host.strip_prefix("github.com/")?
-    } else {
-        let (authority, repository) = url.split_once(':')?;
-        let (user, host) = authority.split_once('@')?;
-        if user != "git" || host != "github.com" {
-            return None;
-        }
-        repository
-    };
-    Some(repository.strip_suffix(".git").unwrap_or(repository))
-}
-
 pub fn finish_plan(
     from: &Path,
     name: &str,
@@ -126,13 +106,12 @@ pub fn finish_plan(
     let clone = Clone::of(from, runner)?;
     let fetch_url = clone.git(runner, &["remote", "get-url", "origin"])?;
     let push_url = clone.git(runner, &["remote", "get-url", "--push", "origin"])?;
-    for url in [&fetch_url, &push_url] {
-        require(
-            repository(url)
-                .is_some_and(|repository| dispatch_shared::REPOSITORIES.contains(&repository)),
-            "Origin must name Dispatch's GitHub repository; inspect its fetch and push URLs before cleanup.",
+    let repository = Repository::at(&fetch_url)
+        .filter(|fetched| Repository::at(&push_url) == Some(*fetched))
+        .ok_or(
+            "Origin must name Dispatch's GitHub repository, the platform's or the agent docs', \
+             to fetch from and to push to; inspect both URLs before cleanup.",
         )?;
-    }
     let pulls: Vec<Pull> = serde_json::from_str(&workspace::text(
         runner,
         &[
@@ -140,7 +119,7 @@ pub fn finish_plan(
             "pr",
             "list",
             "--repo",
-            REPOSITORY,
+            repository.name(),
             "--head",
             name,
             "--state",

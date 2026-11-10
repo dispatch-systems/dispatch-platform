@@ -3,8 +3,11 @@
 //! come from `pr-body.md` in the checkout's scratch folder, whose first line is `# <title>`;
 //! `--skeleton --title` starts that file with the title and the sections its type needs, and
 //! `--check` checks all of it, running `dispatchdev check` when it hasn't passed on the committed
-//! tree, without pushing.
-use crate::{REPOSITORY, Result, Runner, build::Environment, check, preview, require, workspace};
+//! tree, without pushing. The agent docs' PR opens the same way, without that check: they hold
+//! nothing it checks.
+use crate::{
+    Result, Runner, build::Environment, change::Repository, check, preview, require, workspace,
+};
 use std::{io::Write, os::unix::fs::OpenOptionsExt, path::Path};
 
 const TYPES: &[&str] = &[
@@ -247,16 +250,27 @@ pub fn run(root: &Path, only_check: bool, env: &Environment, runner: &dyn Runner
     let Some(published) = publish(root, only_check, env, runner)? else {
         return Ok(());
     };
-    let mut next = vec![format!(
-        "Its checks run on GitHub ({}/checks): fix what they find and run `dispatchdev pr` again",
-        published.url
-    )];
+    let checked = published.repository == Repository::Platform;
+    let mut next = vec![];
+    if checked {
+        next.push(format!(
+            "Its checks run on GitHub ({}/checks): fix what they find and run `dispatchdev pr` \
+             again",
+            published.url
+        ));
+    }
     if published.pending {
         next.push(
             "`dispatchdev review prepare --pass 1` judges how deep its review goes".to_owned(),
         );
     }
-    next.push("Once they pass and its review is done, `dispatchdev merge` merges it".to_owned());
+    next.push(
+        match checked {
+            true => "Once they pass and its review is done, `dispatchdev merge` merges it",
+            false => "Once its review is done, `dispatchdev merge` merges it",
+        }
+        .to_owned(),
+    );
     println!("{}", workspace::next(&next));
     Ok(())
 }
@@ -264,14 +278,15 @@ pub fn run(root: &Path, only_check: bool, env: &Environment, runner: &dyn Runner
 /// A PR as `publish` left it.
 pub struct Published {
     pub url: String,
+    pub repository: Repository,
     /// Whether its review is still to come: only then does it need starting.
     pending: bool,
 }
 
 /// Opens the checkout's PR, or updates the one open, from its scratch folder's `pr-body.md`,
-/// once its title and body follow the rules and `dispatchdev check` passes on the committed
-/// tree, which it runs unless it passed there already; with `only_check`, says whether they do
-/// and pushes nothing.
+/// once its title and body follow the rules and, on the platform, `dispatchdev check` passes on
+/// the committed tree, which it runs unless it passed there already; with `only_check`, says
+/// whether they do and pushes nothing.
 pub fn publish(
     root: &Path,
     only_check: bool,
@@ -302,29 +317,9 @@ pub fn publish(
         git(&["status", "--porcelain"])?.is_empty(),
         "Commit the change before opening its PR.",
     )?;
-    match check::passed(root, env, runner)? {
-        Some(true) => {}
-        Some(false) => {
-            check::here(root, "pr", runner)?;
-            let plan = check::plan(root, runner)?;
-            require(
-                check::execute(root, &plan, env, runner)?,
-                "A check failed: the PR waits for `dispatchdev check` to pass.",
-            )?;
-            // It passed on the tree it started with: a commit made while it ran isn't that one.
-            require(
-                check::passed(root, env, runner)? == Some(true),
-                "The checkout changed while `dispatchdev check` ran: `dispatchdev pr` checks it \
-                 as it is now.",
-            )?;
-        }
-        None => {
-            return Err(
-                "This checkout keeps no record of `dispatchdev check` passing: unset \
-                        CARGO_TARGET_DIR, RUSTFLAGS and CARGO_BUILD_*, then run it."
-                    .into(),
-            );
-        }
+    let repository = Repository::of(root, runner)?;
+    if repository == Repository::Platform {
+        checked(root, env, runner)?;
     }
     let gh = |args: &[&str]| {
         let mut command = vec!["gh"];
@@ -335,7 +330,7 @@ pub fn publish(
         "pr",
         "list",
         "--repo",
-        REPOSITORY,
+        repository.name(),
         "--head",
         &branch,
         "--state",
@@ -368,22 +363,46 @@ pub fn publish(
         }
     }
     if only_check {
-        println!("The title, the body and `dispatchdev check` pass: `dispatchdev pr` pushes it.");
+        println!(
+            "The title{} pass: `dispatchdev pr` pushes it.",
+            match repository {
+                Repository::Platform => ", the body and `dispatchdev check`",
+                Repository::AgentDocs => " and the body",
+            }
+        );
         return Ok(None);
     }
     git(&["push", "-q", "--force-with-lease", "-u", "origin", &branch])?;
     let url = match open.split_once(' ') {
         Some((number, url)) => {
             gh(&[
-                "pr", "edit", number, "--repo", REPOSITORY, "--title", title, "--body", text,
+                "pr",
+                "edit",
+                number,
+                "--repo",
+                repository.name(),
+                "--title",
+                title,
+                "--body",
+                text,
             ])?;
             println!("Updated #{number}: {url}");
             url.to_owned()
         }
         None => {
             let url = gh(&[
-                "pr", "create", "--repo", REPOSITORY, "--base", "main", "--head", &branch,
-                "--title", title, "--body", text,
+                "pr",
+                "create",
+                "--repo",
+                repository.name(),
+                "--base",
+                "main",
+                "--head",
+                &branch,
+                "--title",
+                title,
+                "--body",
+                text,
             ])?;
             println!("Opened {url}");
             url
@@ -391,7 +410,36 @@ pub fn publish(
     };
     // A recorded or skipped review is done.
     let pending = section(text, "Review").and_then(|review| review.lines().next()) == Some(PENDING);
-    Ok(Some(Published { url, pending }))
+    Ok(Some(Published {
+        url,
+        repository,
+        pending,
+    }))
+}
+/// `dispatchdev check` passed on the committed tree, run now unless it passed there already.
+fn checked(root: &Path, env: &Environment, runner: &dyn Runner) -> Result<()> {
+    match check::passed(root, env, runner)? {
+        Some(true) => Ok(()),
+        Some(false) => {
+            check::here(root, "pr", runner)?;
+            let plan = check::plan(root, runner)?;
+            require(
+                check::execute(root, &plan, env, runner)?,
+                "A check failed: the PR waits for `dispatchdev check` to pass.",
+            )?;
+            // It passed on the tree it started with: a commit made while it ran isn't that one.
+            require(
+                check::passed(root, env, runner)? == Some(true),
+                "The checkout changed while `dispatchdev check` ran: `dispatchdev pr` checks it \
+                 as it is now.",
+            )
+        }
+        None => Err(
+            "This checkout keeps no record of `dispatchdev check` passing: unset \
+             CARGO_TARGET_DIR, RUSTFLAGS and CARGO_BUILD_*, then run it."
+                .into(),
+        ),
+    }
 }
 
 #[cfg(test)]
