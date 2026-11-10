@@ -396,6 +396,10 @@ fn commit(root: &Path, message: &str) {
 fn error(result: Result<()>) -> String {
     result.unwrap_err().to_string()
 }
+/// `record`, in an environment of nothing.
+fn record(root: &Path, n: u32, models: &Models, runner: &dyn Runner) -> Result<()> {
+    super::record(root, n, models, &Environment::default(), runner)
+}
 
 #[test]
 fn each_pass_is_pinned_to_the_pushed_head_and_later_ones_read_only_what_changed() {
@@ -466,6 +470,9 @@ fn each_pass_is_pinned_to_the_pushed_head_and_later_ones_read_only_what_changed(
     );
     assert!(error(take(root, 1, &Native)).contains("isn't as pass 1 left it"));
     git(root, &["checkout", "--", "."]);
+    git(root, &["switch", "-q", "--detach", "HEAD^"]);
+    assert!(error(take(root, 1, &Native)).contains("or after it"));
+    git(root, &["switch", "-q", "keep-week"]);
     take(root, 1, &Native).unwrap();
 
     let models = Models {
@@ -671,16 +678,16 @@ fn commits_no_answer_accounts_for_get_the_review_their_paths_need() {
     assert!(pass(2).security);
     write(&fixture.dir(2), "findings.md", "No findings.\n");
     write(&fixture.dir(2), "security-findings.md", "No findings.\n");
-    take(root, 2, &Native).unwrap();
 
     // A test committed since, which no answer accounts for, needs a pass: of the reviewer
-    // alone, on the tests alone.
+    // alone, on the tests alone. Committed before the findings are taken, it doesn't stop that.
     write(
         root,
         "features/dvic/tests/api/week.rs",
         "#[test]\nfn week() {}\n",
     );
     commit(root, "test the week");
+    take(root, 2, &Native).unwrap();
     push();
     record(root, 2, &both, &Native).unwrap();
     assert!(unreviewed().unwrap().contains("Pass 2 asks for another"));

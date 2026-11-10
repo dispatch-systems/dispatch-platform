@@ -1,13 +1,13 @@
 //! A change's review, pass by pass. `prepare` judges the change's tier and writes each pass's
 //! brief, pinned to the pushed head: the whole change first, then only what changed since the
 //! pass before, with a security review beside it only where that calls for one. `take` checks
-//! the reviewer left the worktree as it was and starts the answers; `record` checks every
-//! finding is answered and writes the PR body's Review line. Each pass keeps its files in the
-//! checkout's scratch folder, under `review/<pass>/`.
+//! the reviewer left no change in the worktree and starts the answers; `record` checks every
+//! finding is answered, pushes the fixes and writes the PR body's Review line. Each pass keeps
+//! its files in the checkout's scratch folder, under `review/<pass>/`.
 pub mod findings;
 pub mod tier;
 
-use crate::{Result, Runner, change::Clone, pr, preview, require, workspace};
+use crate::{Result, Runner, build::Environment, change::Clone, pr, preview, require, workspace};
 use findings::{Answered, Tag};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -675,19 +675,42 @@ fn purpose(root: &Path) -> Result<String> {
 }
 
 /// `dispatchdev review take`: once the reviewers answered, checks they left the worktree as it
-/// was and starts the answers to their findings.
+/// was and starts the answers to their findings. Fixes committed already don't stop it, and it
+/// names the commits since the pass, so one a reviewer made shows among them.
 pub fn take(root: &Path, n: u32, runner: &dyn Runner) -> Result<()> {
     let pass = pinned(root, n)?;
     let dir = folder(root, n)?;
     let git = Checkout { root, runner };
     require(
-        git.git(&["status", "--porcelain"])?.is_empty() && git.head()? == pass.head,
+        git.git(&["status", "--porcelain"])?.is_empty(),
         &format!(
-            "The worktree isn't as pass {n} left it, at {} with nothing uncommitted: see what \
-             the reviewer changed before taking its findings.",
-            short(&pass.head)
+            "The worktree isn't as pass {n} left it: it holds uncommitted changes. See what the \
+             reviewer changed before taking its findings.",
         ),
     )?;
+    let since = git
+        .git(&["log", "--format=%h %s", &format!("{}..HEAD", pass.head)])
+        .ok()
+        .filter(|_| {
+            git.git(&["merge-base", "--is-ancestor", &pass.head, "HEAD"])
+                .is_ok()
+        })
+        .ok_or_else(|| {
+            format!(
+                "The branch isn't at pass {n}'s {} or after it: go back to it before taking \
+                 its findings.",
+                short(&pass.head)
+            )
+        })?;
+    if !since.is_empty() {
+        println!(
+            "Committed since pass {n}'s {}, yours unless a reviewer's:",
+            short(&pass.head)
+        );
+        for commit in since.lines() {
+            println!("  {commit}");
+        }
+    }
     let mut any = false;
     for review in reviews(&pass) {
         let found = dir.join(review.findings());
@@ -734,7 +757,7 @@ pub fn take(root: &Path, n: u32, runner: &dyn Runner) -> Result<()> {
                     "Check each finding against the code and answer it in {}",
                     dir.join("answers.md").display()
                 ),
-                format!("Commit the fixes and {}", publishing(root).0),
+                publishing(root).fixes.to_owned(),
                 format!("Then {record}"),
             ],
             false => vec![format!("Nothing to answer: {record}")],
@@ -750,8 +773,15 @@ pub struct Models<'a> {
 }
 
 /// `dispatchdev review record`: every finding of pass `n` answered and its fixes pushed, the
-/// answers kept, and the PR body's Review line written from every pass so far.
-pub fn record(root: &Path, n: u32, models: &Models, runner: &dyn Runner) -> Result<()> {
+/// answers kept, and the PR body's Review line written from every pass so far. On the platform
+/// it pushes the fixes and updates the PR's body itself, as `dispatchdev pr` does.
+pub fn record(
+    root: &Path,
+    n: u32,
+    models: &Models,
+    env: &Environment,
+    runner: &dyn Runner,
+) -> Result<()> {
     let pass = pinned(root, n)?;
     require(
         models.security.is_some() == pass.security,
@@ -778,6 +808,12 @@ pub fn record(root: &Path, n: u32, models: &Models, runner: &dyn Runner) -> Resu
         );
     }
     let git = Checkout { root, runner };
+    let how = publishing(root);
+    // The fixes go up before the pass is recorded, held to what `dispatchdev pr` holds them to:
+    // a check that fails then is fixed in the same pass.
+    if how.by_record && git.pushed().is_err() {
+        pr::publish(root, false, env, runner)?;
+    }
     let (_, head) = git.pushed()?;
     // A pass is recorded at one head: recording it again later would vouch for what came after.
     if let Some(earlier) =
@@ -844,7 +880,10 @@ pub fn record(root: &Path, n: u32, models: &Models, runner: &dyn Runner) -> Resu
     {
         println!("  {}: {}", outcome.tag, outcome.what);
     }
-    let (_, update, merge) = publishing(root);
+    if how.by_record {
+        pr::publish(root, false, env, runner)?;
+    }
+    let (update, merge) = (how.body, how.merge);
     let next = match (important_fixed || unreviewed, n < CAP) {
         (true, true) if unreviewed => format!(
             "Commits since pass {n}'s {} were reviewed by no one: `dispatchdev review prepare \
@@ -858,34 +897,46 @@ pub fn record(root: &Path, n: u32, models: &Models, runner: &dyn Runner) -> Resu
             short(&pass.head)
         ),
         (true, true) => format!(
-            "{update}; then `dispatchdev review prepare --pass {}` reviews what fixing the \
-             Important findings changed",
+            "{update}`dispatchdev review prepare --pass {}` reviews what fixing the Important \
+             findings changed",
             n + 1
         ),
         (true, false) => format!(
-            "The review stops at pass {CAP}: {update}; {merge}, unless more passes were asked \
-             for (--over-cap)"
+            "The review stops at pass {CAP}: {update}{merge}, unless more passes were asked for \
+             (--over-cap)"
         ),
-        (false, _) => format!("The review is done: {update}; {merge}"),
+        (false, _) => format!("The review is done: {update}{merge}"),
     };
     println!("{}", workspace::next(&[next]));
     Ok(())
 }
-/// How the checkout's PR takes its new body and merges: through `dispatchdev` on the platform,
-/// through `gh` in a checkout without the CLI, such as the agent docs', as their skill says.
-/// Each is a step: pushing fixes, updating the body, merging.
-fn publishing(root: &Path) -> (&'static str, &'static str, &'static str) {
+/// How a checkout's fixes and its PR's new body reach GitHub, and how it merges: through
+/// `dispatchdev` on the platform, where `record` publishes both itself, and through `gh` in a
+/// checkout without the CLI, such as the agent docs', as their skill says.
+struct Publishing {
+    /// Whether `record` pushes the fixes and updates the PR's body.
+    by_record: bool,
+    /// What becomes of the fixes before `record`.
+    fixes: &'static str,
+    /// The step that updates the PR's body after `record`, if it is one of its own.
+    body: &'static str,
+    merge: &'static str,
+}
+fn publishing(root: &Path) -> Publishing {
     match root.join("tooling/cli/dispatchdev").is_file() {
-        true => (
-            "push them with `dispatchdev pr`",
-            "`dispatchdev pr` updates the PR's body",
-            "`dispatchdev merge` merges it once its checks pass",
-        ),
-        false => (
-            "push them with `git push`",
-            "`gh pr edit <n> --body \"$(tail -n +3 <scratch>/pr-body.md)\"` updates the PR's body",
-            "`gh pr merge <n> --squash --match-head-commit <head>` merges it",
-        ),
+        true => Publishing {
+            by_record: true,
+            fixes: "Commit the fixes: recording the pass pushes them and updates the PR's body",
+            body: "",
+            merge: "`dispatchdev merge` merges it once its checks pass",
+        },
+        false => Publishing {
+            by_record: false,
+            fixes: "Commit the fixes and push them with `git push`",
+            body: "`gh pr edit <n> --body \"$(tail -n +3 <scratch>/pr-body.md)\"` updates the PR's \
+                   body; ",
+            merge: "`gh pr merge <n> --squash --match-head-commit <head>` merges it",
+        },
     }
 }
 fn outcome(answered: Answered, security: bool) -> Outcome {
