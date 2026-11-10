@@ -229,6 +229,9 @@ async function check(copied: string, logs: string) {
   return true;
 }
 
+// macOS's temporary folder sits behind a symlink (`/var` to `/private/var`), and a store refuses
+// a path that crosses one: this run and the tests it starts take the folder's real path.
+process.env.TMPDIR = fs.realpathSync(os.tmpdir());
 // One place for every run, which the build's records name, so a run after it builds only what
 // changed.
 const at = path.join(os.tmpdir(), 'dispatch-scaffold-check');
