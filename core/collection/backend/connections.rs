@@ -4,6 +4,7 @@ use crate::{
     accounts::Context,
     collection::{
         api::types::{Connection, ConnectionCheck},
+        browser::egress,
         registry::Provider,
     },
     db::{self, FromRow, Row, Store, iso},
@@ -89,6 +90,9 @@ impl Store {
         let revision = self.connection_revision(id, provider)?;
         if revision.is_some() && kept["revision"].as_i64() == revision {
             connection.checks = serde_json::from_value(kept["checks"].clone())?;
+        }
+        if provider.collector().allows_by_address() {
+            connection.source_address = egress::source_address(&self.config);
         }
         Ok(connection)
     }

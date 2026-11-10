@@ -233,6 +233,9 @@ impl Collector for Paycom {
             )
         })
     }
+    fn allows_by_address(&self) -> bool {
+        true
+    }
     fn direct(
         &self,
         store: &Store,

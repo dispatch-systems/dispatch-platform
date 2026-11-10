@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import type { DspView } from '../../../../accounts/api/index.js';
+import type { DspView, SessionView } from '../../../../accounts/api/index.js';
 import type { ConnectionFeature, Feature } from '../../../../tenancy/api/index.js';
 import { manifests, present } from './installed.js';
 import type { SettingsContext } from './settings.js';
@@ -81,7 +81,12 @@ export type ConnectionSectionContext = SettingsContext & {
 };
 
 /** What a connection's card is drawn with on a DSP's Connections page. */
-export type ConnectionCardContext = { development: boolean; timezone: string };
+export type ConnectionCardContext = {
+  development: boolean;
+  /** Where the server runs, for what a collector offers only while it's being tried. */
+  environment: SessionView['environment'];
+  timezone: string;
+};
 /** A collector's card on a DSP's Connections page. */
 export type ConnectionCard = {
   /** The connection's catalog id. */

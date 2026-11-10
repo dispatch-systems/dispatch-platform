@@ -11,4 +11,9 @@ verificationSessionId?: string,
  * What a connection that needs no browser asked of its provider as it last connected,
  * line by line; none for one that signs in through a browser.
  */
-checks: Array<ConnectionCheck>, };
+checks: Array<ConnectionCheck>,
+/**
+ * The address this server's requests to the provider come from, for a provider that
+ * answers only the addresses a client has allowed.
+ */
+sourceAddress?: string, };

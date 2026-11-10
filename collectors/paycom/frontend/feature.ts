@@ -20,6 +20,12 @@ export const feature: FrontendFeature = {
     connection_required: 'Connect Paycom before starting a collection.',
     verification_incomplete:
       'Paycom still needs verification. Complete the CAPTCHA, then press Submit again.',
+    paycom_api_refused: 'Paycom refused the SID and Token.',
+    paycom_api_function_off: 'A function Dispatch reads through is turned off in Paycom.',
+    paycom_api_unreadable: "Paycom's answer couldn't be read.",
+    paycom_api_unavailable: "Connecting through Paycom's API isn't available here yet.",
+    paycom_station_missing: 'Paycom has no category named Delivery Station Code.',
+    paycom_period_required: 'Enter the first day of a pay period.',
   },
   scheduleIssues: {
     schedule_paycom_required: 'Connect Paycom before enabling this schedule.',

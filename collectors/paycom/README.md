@@ -25,7 +25,16 @@ offers the punches alone, not the hours Paycom's timecard totals, so a day's hou
 time between each in and its out, plus hours entered without a punch; an answer in a shape it
 can't place fails the read (`paycom_api_unreadable`) rather than becoming a wrong card. It
 isn't offered in Production (`paycom_api_unavailable`) until those hours are proven against
-Paycom's own totals: the `compare_api_collection` probe collects the period last published
-through the API, with an SID and Token given to it, and counts how its cards differ from the
-publication's, printing each function's answer by its shape and never a record. In fixture mode the Token chooses how connecting goes (`connection/rest/fixture.rs`):
+Paycom's own totals, and its card offers it only outside Production: the
+`compare_api_collection` probe collects the period last published through the API, with an SID
+and Token given to it, and counts how its cards differ from the publication's, printing each
+function's answer by its shape and never a record. In fixture mode the Token chooses how
+connecting goes (`connection/rest/fixture.rs`):
 `refused-token` is refused and `punch-history-off` finds that function off.
+
+Its card connects a step at a time (`frontend/PaycomConnect.tsx`): which way, then what to do
+in Paycom before anything is entered. Through the API: whom to ask for access, with this
+server's address to give them; the four functions to switch on, and where; then the SID and
+Token, and the first day of a pay period when the connection's check found none. Signing in:
+that each of the five security questions is the PIN's, which is how the sign-in tells them
+apart; then the login. The card words the API's checks (`frontend/checks.ts`).

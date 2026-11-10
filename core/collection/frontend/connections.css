@@ -79,6 +79,65 @@
   font-size: 16px;
   font-weight: 600;
 }
+.connection-name {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.connection-tag {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+}
+.connection-checks {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+}
+.connection-checks > li {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding-block: 10px;
+  border-top: 1px solid var(--border);
+}
+.connection-checks > li:first-child {
+  border-top: 0;
+}
+.connection-checks > li > svg,
+.connection-checks > li > i {
+  margin-top: 2px;
+}
+.connection-checks > li.passed > svg {
+  color: var(--success);
+}
+.connection-checks > li.failed > svg {
+  color: var(--destructive);
+}
+.connection-checks > li.waiting {
+  color: var(--muted-foreground);
+}
+.connection-checks > li > i {
+  justify-self: center;
+  height: 6px;
+  width: 6px;
+  margin-top: 8px;
+  border-radius: 50%;
+  background: var(--muted-foreground);
+}
+.connection-checks small {
+  display: block;
+  margin-top: 2px;
+  color: var(--destructive);
+  font-size: 13px;
+}
 .archived-connection-card header p {
   margin-top: 8px;
 }

@@ -104,6 +104,11 @@ pub trait Collector: Sync {
         profile: &'a Path,
         fixture: Option<&'a str>,
     ) -> Pending<'a, Box<dyn Driver>>;
+    /// Whether its provider answers only the addresses a client has allowed, so that a DSP
+    /// must tell it this server's: its connection then says what that is.
+    fn allows_by_address(&self) -> bool {
+        false
+    }
     /// Its driver for a connection that needs no browser, as one that reads the provider's
     /// own API with a key: none while its credentials sign in through one. Asked with the
     /// DSP's storage open, for what such a driver starts from.

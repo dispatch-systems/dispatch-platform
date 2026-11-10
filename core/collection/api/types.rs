@@ -25,6 +25,11 @@ pub struct Connection {
     /// What a connection that needs no browser asked of its provider as it last connected,
     /// line by line; none for one that signs in through a browser.
     pub checks: Vec<ConnectionCheck>,
+    /// The address this server's requests to the provider come from, for a provider that
+    /// answers only the addresses a client has allowed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub source_address: Option<String>,
 }
 /// One thing a connection that needs no browser asks of its provider as it connects, and how
 /// that went. Its `id` is its collector's name for it, which the collector's card words.
@@ -62,6 +67,7 @@ impl FromRow for Connection {
             account_label: row.get("account_label")?,
             verification_session_id: None,
             checks: Vec::new(),
+            source_address: None,
         })
     }
 }

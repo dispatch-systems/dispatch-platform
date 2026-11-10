@@ -17,6 +17,7 @@ export function ConnectionsTab({ session, view }: { session: SessionView; view: 
     <div className="settings-connections">
       <ConnectionsPage
         development={session.providerMode === 'fixture'}
+        environment={session.environment}
         timezone={view.dsp.timezone}
         providers={manages ? connectionFeatures(view.features).map((f) => f.id) : []}
         dsp={dsp}
