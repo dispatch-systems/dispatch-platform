@@ -20,8 +20,8 @@ use std::{
 const BUILDS: &str = ".test-build";
 
 /// Packages the runtime for the browser tests with the debug backend, which the run's own Rust
-/// builds share or the build cache holds, where a release build takes minutes. The checks on
-/// GitHub test the release build.
+/// builds share or the build cache holds, where a release build takes minutes. A PR's checks do
+/// the same; main's test the release build.
 pub const PACKAGE: &str = "npm run build -- --debug";
 /// What a checkout from before the debug package runs instead: the release build, through the
 /// build cache in the checkout.

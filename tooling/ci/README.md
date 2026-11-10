@@ -7,7 +7,7 @@ locally the whole suite in sequence:
 
 | Job              | `npm run check:ci -- …`                    | What it proves                                                                            |
 | ---------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| build            | `build`                                    | The runtime packages: the release backend and worker, and the dashboard.                  |
+| build            | `build [--debug]`                          | The runtime packages: the backend and worker, a PR's the debug ones, and the dashboard.   |
 | checks           | `checks`                                   | Source privacy/secrets, types, formatting, the linter and dashboard logic.                |
 | browser ×6       | `browser <n>/6 [spec]`                     | The browser suite against the packaged runtime.                                           |
 | smoke            | `smoke`                                    | The package's manifest, build paths and budgets, and that it starts, signs in and serves. |
@@ -33,11 +33,19 @@ scaffold and their -lint jobs, the longest, decide for themselves instead of wai
 pass without running when not needed; the gate accepts any other suite skipped only where
 `changes` said so, and its summary names each job's result and what the change touched.
 
-The debug backend and worker are built once a run: by the `debug` job, when `changes` finds the
-change reaches what they compile from, and saved for api and the collectors to restore through
+The `debug` job builds the debug backend and worker when `changes` finds the change reaches
+what they compile from, and saves them for api and the collectors to restore through
 `dispatchdev build`'s exact-input cache. Otherwise `debug` skips, and they restore the build
 `main`'s own run saved, without waiting for one. The capacity shard, which also compiles the
 host's tests, restores Cargo's dependency cache too.
+
+A PR's package carries those debug executables (`build --debug`), not the release ones: they
+compile in a fifth of the time, and the package only feeds the PR's browser and smoke tests,
+which `main`'s run of the merged commit repeats on the release build Dev installs. The build job
+restores them when the PR's earlier run or `main` saved a build of the same Rust inputs, and
+otherwise compiles them itself, beside the `debug` job rather than after it, so the browser
+suite starts sooner. Only `main`'s runs, a dispatched run and a release's compile the release
+executables.
 
 The gate passes only when every job passed, the relay apps' builds wherever they ran, and the
 package carries the run's own commit and a complete inventory (`ci-verify.py`, which runs
@@ -91,9 +99,9 @@ again at once; `--plan` only names them.
 
 Caches: only `main`'s reach every branch, since a PR's run saves caches only that PR reads.
 `caches.yml` refreshes them on every push to `main`: the release executables keyed by their
-Rust inputs, which the build job restores instead of compiling when a branch's Rust is `main`'s
-(`main`'s run of the `debug` job saves the debug ones; a PR whose Rust isn't builds its release
-executables without LTO and saves them for its own later pushes whose Rust is the same), the CI
+Rust inputs, which the build job outside a PR restores instead of compiling when the commit's
+Rust is that of an earlier one (`main`'s run of the `debug` job saves the debug ones, a PR's its
+own, for its later pushes whose Rust is the same), the CI
 and host tools, the assessment fixture, the Playwright browser, the
 BrowserOS package and the installed packages, which every job restores through
 `.github/actions/setup-packages` instead of running `npm ci` (on a miss, `npm ci` installs from
