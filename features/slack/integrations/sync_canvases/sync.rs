@@ -7,26 +7,18 @@ use super::{
     page::{self, Picture},
     storage::{Canvas, Outcome, Status},
 };
-use crate::backend::{author, bot::Bot, slack::Bytestream};
-use dispatch_core::{Code, Error, Result, State, db::now};
+use crate::backend::{
+    author,
+    bot::Bot,
+    slack::{Bytestream, text},
+    work,
+};
+use dispatch_core::{Error, Result, State};
 use dispatch_documents_contract::{self as files, Author, Page};
 use futures_util::TryStreamExt;
-use serde_json::{Value, json};
+use serde_json::json;
 use std::{collections::BTreeMap, sync::Arc};
 
-/// How long a canvas waits while it can't be synced yet, in milliseconds.
-const WAIT_MS: i64 = 15 * 60 * 1000;
-/// How long a canvas waits after each failure, in milliseconds: given up after the last, until
-/// it's edited again.
-const RETRIES_MS: &[i64] = &[
-    60 * 1000,
-    5 * 60 * 1000,
-    15 * 60 * 1000,
-    60 * 60 * 1000,
-    3 * 60 * 60 * 1000,
-    6 * 60 * 60 * 1000,
-    12 * 60 * 60 * 1000,
-];
 /// Where a canvas came from, as where it's kept says.
 const FROM: &str = "Slack";
 /// The most of Slack's HTML of a canvas read, in bytes: far more than any canvas holds.
@@ -231,7 +223,7 @@ fn synced(id: String, link: String, title: String, edit: i64) -> Outcome {
 fn wait(reason: &str) -> Outcome {
     Outcome::Later {
         reason: reason.to_owned(),
-        at: now() + WAIT_MS,
+        at: work::waited(),
         counted: false,
     }
 }
@@ -245,33 +237,16 @@ fn left(status: Status, reason: &str) -> Outcome {
 /// to work again, or for the DSP disabled meanwhile to be enabled, is tried again later each
 /// time, or is given up until it's edited again, as one too large is at once.
 fn failure(canvas: &Canvas, error: &Error) -> Outcome {
-    if ["slack_needs_update", "slack_connection_broken"].contains(&error.code.as_str()) {
-        return wait(&error.code);
-    }
-    if error.is(Code::DspUnavailable) {
-        return Outcome::Later {
-            reason: error.code.clone(),
-            at: now(),
-            counted: false,
-        };
-    }
+    // Not a code `work::again` waits on, so it's given up first.
     if error.code == "upload_too_large" {
         return left(Status::Failed, &error.code);
     }
-    match RETRIES_MS.get(canvas.attempts.max(0) as usize) {
-        Some(after) => Outcome::Later {
+    match work::again(error, canvas.attempts) {
+        Some((at, counted)) => Outcome::Later {
             reason: error.code.clone(),
-            at: now() + after,
-            counted: true,
+            at,
+            counted,
         },
         None => left(Status::Failed, &error.code),
     }
-}
-
-fn text(value: &Value) -> Option<String> {
-    value
-        .as_str()
-        .map(str::trim)
-        .filter(|text| !text.is_empty())
-        .map(str::to_owned)
 }

@@ -141,6 +141,27 @@ pub struct Client {
     secret: String,
     picker: Option<(String, String)>,
 }
+impl Client {
+    /// Trades the code Google sent the browser back to `origin` with for the account's tokens.
+    async fn tokens(&self, origin: &str, code: &str, verifier: &str) -> Result<Tokens> {
+        let back = format!("{origin}{RETURN_PATH}");
+        let fields = [
+            ("client_id", self.id.as_str()),
+            ("client_secret", self.secret.as_str()),
+            ("code", code),
+            ("code_verifier", verifier),
+            ("grant_type", "authorization_code"),
+            ("redirect_uri", back.as_str()),
+        ];
+        // A code Google no longer honors was used already, or waited too long.
+        send(HTTP.post(TOKEN).form(&fields))
+            .await
+            .map_err(|error| match error.code.as_str() {
+                "google_connection_broken" => Error::new("documents_connect_expired", 409),
+                _ => error,
+            })
+    }
+}
 static CLIENT: OnceLock<Option<Client>> = OnceLock::new();
 /// This server's Google sign-in client, read once from the settings Documents declares:
 /// `DISPATCH_DEV_GOOGLE_CLIENT_ID` and `…_SECRET` on Dev and its previews,
@@ -274,23 +295,7 @@ impl Google {
             Self::Fixture => return fixture_grant(code).map(|granted| granted.account.email),
             Self::Live(client) => client,
         };
-        let back = format!("{origin}{RETURN_PATH}");
-        let tokens: Tokens = form(
-            TOKEN,
-            &[
-                ("client_id", client.id.as_str()),
-                ("client_secret", client.secret.as_str()),
-                ("code", code),
-                ("code_verifier", verifier),
-                ("grant_type", "authorization_code"),
-                ("redirect_uri", back.as_str()),
-            ],
-        )
-        .await
-        .map_err(|error| match error.code.as_str() {
-            "google_connection_broken" => Error::new("documents_connect_expired", 409),
-            _ => error,
-        })?;
+        let tokens = client.tokens(origin, code, verifier).await?;
         let profile: Result<Profile> =
             send(HTTP.get(USERINFO).bearer_auth(&tokens.access_token)).await;
         let _ = HTTP
@@ -316,24 +321,7 @@ impl Google {
             }
             Self::Live(client) => client,
         };
-        let back = format!("{origin}{RETURN_PATH}");
-        // A code Google no longer honors was used already, or waited too long.
-        let tokens: Tokens = form(
-            TOKEN,
-            &[
-                ("client_id", client.id.as_str()),
-                ("client_secret", client.secret.as_str()),
-                ("code", code),
-                ("code_verifier", verifier),
-                ("grant_type", "authorization_code"),
-                ("redirect_uri", back.as_str()),
-            ],
-        )
-        .await
-        .map_err(|error| match error.code.as_str() {
-            "google_connection_broken" => Error::new("documents_connect_expired", 409),
-            _ => error,
-        })?;
+        let tokens = client.tokens(origin, code, verifier).await?;
         let access = tokens.access_token;
         let Some(refresh) = tokens.refresh_token else {
             return Err(Error::new("google_sign_in_failed", 502));
@@ -402,10 +390,7 @@ impl Google {
             let _ = HTTP.post(REVOKE).form(&[("token", refresh)]).timed().await;
         }
         #[cfg(test)]
-        REVOKED
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .insert(refresh.to_owned());
+        super::lock(&REVOKED).insert(refresh.to_owned());
     }
 }
 
@@ -466,10 +451,7 @@ static ON_RENEWAL: LazyLock<Mutex<BTreeMap<String, OnRenewal>>> = LazyLock::new(
 type OnRenewal = Box<dyn FnOnce() + Send>;
 #[cfg(test)]
 pub fn fixture_on_renewal(refresh: &str, then: impl FnOnce() + Send + 'static) {
-    ON_RENEWAL
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .insert(refresh.to_owned(), Box::new(then));
+    super::lock(&ON_RENEWAL).insert(refresh.to_owned(), Box::new(then));
 }
 /// What a test has a sign-in wait for once fixture mode's Google has traded the code `code`
 /// for tokens: as the sign-in holding there while another DSP is deleted.
@@ -479,17 +461,11 @@ static ON_EXCHANGE: LazyLock<Mutex<BTreeMap<String, Held>>> = LazyLock::new(Defa
 type Held = std::pin::Pin<Box<dyn Future<Output = ()> + Send>>;
 #[cfg(test)]
 pub fn fixture_on_exchange(code: &str, hold: impl Future<Output = ()> + Send + 'static) {
-    ON_EXCHANGE
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .insert(code.to_owned(), Box::pin(hold));
+    super::lock(&ON_EXCHANGE).insert(code.to_owned(), Box::pin(hold));
 }
 #[cfg(test)]
 async fn fixture_exchanged(code: &str) {
-    let hold = ON_EXCHANGE
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .remove(code);
+    let hold = super::lock(&ON_EXCHANGE).remove(code);
     if let Some(hold) = hold {
         hold.await;
     }
@@ -499,17 +475,11 @@ async fn fixture_exchanged(code: &str) {
 static REVOKED: LazyLock<Mutex<BTreeSet<String>>> = LazyLock::new(Default::default);
 #[cfg(test)]
 pub fn revoked(refresh: &str) -> bool {
-    REVOKED
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .contains(refresh)
+    super::lock(&REVOKED).contains(refresh)
 }
 #[cfg(test)]
 fn fixture_renewed(refresh: &str) {
-    let then = ON_RENEWAL
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .remove(refresh);
+    let then = super::lock(&ON_RENEWAL).remove(refresh);
     if let Some(then) = then {
         then();
     }
@@ -555,9 +525,6 @@ impl Refusal {
 
 pub(super) fn unreachable(_: reqwest::Error) -> Error {
     Error::new("google_unreachable", 502)
-}
-async fn form<T: for<'de> Deserialize<'de>>(url: &str, fields: &[(&str, &str)]) -> Result<T> {
-    send(HTTP.post(url).form(fields)).await
 }
 pub(super) async fn send<T: for<'de> Deserialize<'de>>(
     request: reqwest::RequestBuilder,

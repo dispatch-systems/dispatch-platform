@@ -22,15 +22,6 @@ const PICTURE_LIMIT: usize = 2 * 1024 * 1024;
 static PICTURES: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(8);
 /// The kinds of picture Dispatch hands on.
 const PICTURE_KINDS: [&str; 4] = ["image/png", "image/jpeg", "image/gif", "image/webp"];
-/// Fetches pictures, following a redirect only to Google's own hosts.
-static PICTURE_HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
-    reqwest::Client::builder()
-        .timeout(Duration::from_secs(20))
-        .redirect(reqwest::redirect::Policy::none())
-        .retry(reqwest::retry::never())
-        .build()
-        .expect("the TLS backend is built in")
-});
 /// The Office files Google's own Docs, Sheets and Slides download as, with their endings.
 const DOCX: (&str, &str) = (
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -88,20 +79,8 @@ impl Connected {
             "parents": [parent],
             "writersCanShare": false,
         });
-        let (kind, body) = page(&metadata, html)?;
-        read(
-            self.response(
-                TRANSFER
-                    .post(UPLOADS)
-                    .bearer_auth(access)
-                    .query(&[("uploadType", "multipart"), ("fields", FIELDS), ALL_DRIVES])
-                    .header(reqwest::header::CONTENT_TYPE, kind)
-                    .body(body),
-                Policy::Transfer,
-            )
-            .await?,
-        )
-        .await
+        self.send_page(TRANSFER.post(UPLOADS), access, &metadata, html)
+            .await
     }
     /// Writes the page `html` over the Doc `id`, named `name`, where it is.
     pub async fn rewrite(&self, access: &str, id: &str, name: &str, html: &str) -> Result<Item> {
@@ -124,11 +103,23 @@ impl Connected {
                 })
                 .await;
         }
-        let (kind, body) = page(&json!({"name": name}), html)?;
+        let request = TRANSFER.patch(format!("{UPLOADS}/{id}"));
+        self.send_page(request, access, &json!({"name": name}), html)
+            .await
+    }
+    /// Sends `request` carrying the page `html` and the Doc's description `metadata`, and
+    /// answers the Doc Google wrote from them.
+    async fn send_page(
+        &self,
+        request: reqwest::RequestBuilder,
+        access: &str,
+        metadata: &serde_json::Value,
+        html: &str,
+    ) -> Result<Item> {
+        let (kind, body) = page(metadata, html)?;
         read(
             self.response(
-                TRANSFER
-                    .patch(format!("{UPLOADS}/{id}"))
+                request
                     .bearer_auth(access)
                     .query(&[("uploadType", "multipart"), ("fields", FIELDS), ALL_DRIVES])
                     .header(reqwest::header::CONTENT_TYPE, kind)
@@ -165,13 +156,8 @@ impl Connected {
                 Policy::Ordinary,
             )
             .await?;
-        if !response.status().is_success() {
-            return Err(read::<serde_json::Value>(response)
-                .await
-                .err()
-                .unwrap_or_else(|| Error::new("google_unreachable", 502)));
-        }
-        response
+        succeeded(response)
+            .await?
             .headers()
             .get(reqwest::header::LOCATION)
             .and_then(|location| location.to_str().ok())
@@ -234,7 +220,7 @@ impl Connected {
                 .await;
         }
         let mut response = self
-            .response(PICTURE_HTTP.get(link).bearer_auth(access), Policy::Picture)
+            .response(HTTP.get(link).bearer_auth(access), Policy::Picture)
             .await?;
         let kind = response
             .headers()
@@ -318,12 +304,7 @@ impl Connected {
         let response = self
             .response(request.bearer_auth(access), Policy::Transfer)
             .await?;
-        if !response.status().is_success() {
-            return Err(read::<serde_json::Value>(response)
-                .await
-                .err()
-                .unwrap_or_else(|| Error::new("google_unreachable", 502)));
-        }
+        let response = succeeded(response).await?;
         Ok(Download {
             kind,
             name: saved,
@@ -331,6 +312,17 @@ impl Connected {
             body: Body::from_stream(response.bytes_stream()),
         })
     }
+}
+
+/// `response` when Google answered with success; otherwise what its refusal means.
+async fn succeeded(response: reqwest::Response) -> Result<reqwest::Response> {
+    if response.status().is_success() {
+        return Ok(response);
+    }
+    Err(read::<serde_json::Value>(response)
+        .await
+        .err()
+        .unwrap_or_else(|| Error::new("google_unreachable", 502)))
 }
 
 /// The request that starts an upload. Google describes the file it makes with the fields

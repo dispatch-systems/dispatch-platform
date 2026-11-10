@@ -26,29 +26,24 @@ pub struct Picture {
 
 /// The Slack files the canvas `html` shows as pictures, in order, each once.
 pub fn pictures(html: &str) -> Vec<String> {
-    let page = Html::parse_fragment(html);
-    let mut found = Vec::new();
-    for element in page.root_element().descendent_elements() {
-        if element.value().name() == "img"
-            && let Some(file) = picture(element)
-            && !found.contains(&file)
-        {
-            found.push(file);
-        }
-    }
-    found
+    each(html, "img", picture)
 }
 
 /// The workspace's members the canvas `html` mentions, by their Slack IDs, each once.
 pub fn mentioned(html: &str) -> Vec<String> {
+    each(html, "a", mention)
+}
+
+/// What `named` finds in each `tag` element of the canvas `html`, in order, each once.
+fn each(html: &str, tag: &str, named: fn(ElementRef<'_>) -> Option<String>) -> Vec<String> {
     let page = Html::parse_fragment(html);
     let mut found = Vec::new();
     for element in page.root_element().descendent_elements() {
-        if element.value().name() == "a"
-            && let Some(user) = mention(element)
-            && !found.contains(&user)
+        if element.value().name() == tag
+            && let Some(id) = named(element)
+            && !found.contains(&id)
         {
-            found.push(user);
+            found.push(id);
         }
     }
     found

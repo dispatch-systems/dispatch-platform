@@ -7,6 +7,7 @@
 use super::{
     drive::{Changes, Item},
     grant::Key,
+    lock,
     tree::Tree,
 };
 use dispatch_core::Error;
@@ -88,9 +89,7 @@ static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1)
 static MIRRORS: LazyLock<Mutex<HashMap<Key, Arc<Mirror>>>> = LazyLock::new(Default::default);
 
 fn mirrors() -> MutexGuard<'static, HashMap<Key, Arc<Mirror>>> {
-    MIRRORS
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+    lock(&MIRRORS)
 }
 /// The DSP's mirror.
 pub(super) fn of(key: &Key) -> Arc<Mirror> {
@@ -127,14 +126,10 @@ impl Default for Mirror {
 }
 impl Mirror {
     fn copy(&self) -> MutexGuard<'_, Option<Copy>> {
-        self.copy
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+        lock(&self.copy)
     }
     fn viewed(&self) -> MutexGuard<'_, Instant> {
-        self.viewed
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+        lock(&self.viewed)
     }
     /// Runs `change` on the copy of the main folder `root`, if there is one.
     fn change<T>(&self, root: &str, change: impl FnOnce(&mut Copy) -> T) -> Option<T> {
@@ -262,9 +257,7 @@ impl Mirror {
         Arc::clone(&self.turn).try_lock_owned().ok()
     }
     fn failure(&self) -> MutexGuard<'_, Option<(Instant, String, u16)>> {
-        self.failed
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+        lock(&self.failed)
     }
     /// Notes that asking Google failed with `error`.
     pub fn fail(&self, error: &Error) {

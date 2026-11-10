@@ -8,7 +8,7 @@ use super::{
     drive::{self, Download, Item},
     google::{FOLDER, folder_url},
     grant::{self, Grant},
-    storage::{Connection, DocumentsStore},
+    storage::{Connection, DocumentsStore, Record},
     team,
     tree::{Row, Tree},
 };
@@ -22,7 +22,7 @@ use dispatch_core::{
     foundation::crypto,
     server::http::{route::Dsp, upload::Upload},
 };
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 pub(super) fn not_found() -> Error {
     Error::new("documents_item_not_found", 404)
@@ -53,6 +53,45 @@ async fn confirmed(state: &Arc<State>, owner: &Grant, item: Item) -> Result<()> 
         .read(state, move |_, owner| {
             owner.mirror.put(&owner.connection.folder_id, item);
             Ok(())
+        })
+        .await
+}
+/// Files of `tree` as the page shows them to `owner`'s DSP.
+fn described<'a>(
+    owner: &'a Grant,
+    tree: &'a Tree,
+    records: &'a BTreeMap<String, Record>,
+    names: &'a BTreeMap<String, String>,
+) -> Described<'a> {
+    Described {
+        owner: &owner.key,
+        tree,
+        records,
+        names,
+        account: &owner.connection.account.email,
+    }
+}
+/// Records the file `item` the member just made, audited as `action`, and answers it as the
+/// page shows it.
+async fn made(
+    state: &Arc<State>,
+    owner: &Grant,
+    item: Item,
+    action: &'static str,
+) -> Result<DocumentsItem> {
+    let (id, title) = (item.id.clone(), item.name.clone());
+    let (records, names) = owner
+        .run_member(state, move |db, c| {
+            db.record_documents_change(&c.dsp.id, &id, c.actor())?;
+            c.audit(db, action, &title)?;
+            known(db, &c.dsp.id, &[id])
+        })
+        .await?;
+    // A file just made holds nothing, so an empty tree counts it right.
+    let empty = Tree::new(&owner.connection.folder_id, Vec::new());
+    owner
+        .read(state, move |_, owner| {
+            Ok(described(owner, &empty, &records, &names).item(&Row::from(item), false))
         })
         .await
 }
@@ -99,13 +138,7 @@ async fn projected_folder(
             };
             let ids: Vec<String> = shown.iter().map(|row| row.id.to_string()).collect();
             let (records, names) = known(db, &owner.key.dsp, &ids)?;
-            let described = Described {
-                owner: &owner.key,
-                tree: &tree,
-                records: &records,
-                names: &names,
-                account: &connection.account.email,
-            };
+            let described = described(owner, &tree, &records, &names);
             let folder = DocumentsFolder {
                 grant_generation: connection.generation.clone(),
                 name: path
@@ -192,29 +225,8 @@ pub async fn create(
         NewKind::Sheet => drive::SHEET,
         NewKind::Slides => drive::SLIDES,
     };
-    let made = make(state, &owner, &parent, mime, &name).await?;
-    let (id, title) = (made.id.clone(), made.name.clone());
-    let (records, names) = owner
-        .run_member(state, move |db, c| {
-            db.record_documents_change(&c.dsp.id, &id, c.actor())?;
-            c.audit(db, "documents.created", &title)?;
-            known(db, &c.dsp.id, &[id])
-        })
-        .await?;
-    // A file just made holds nothing, so an empty tree counts it right.
-    let empty = Tree::new(&owner.connection.folder_id, Vec::new());
-    owner
-        .read(state, move |_, owner| {
-            Ok(Described {
-                owner: &owner.key,
-                tree: &empty,
-                records: &records,
-                names: &names,
-                account: &owner.connection.account.email,
-            }
-            .item(&Row::from(made), false))
-        })
-        .await
+    let item = make(state, &owner, &parent, mime, &name).await?;
+    made(state, &owner, item, "documents.created").await
 }
 
 /// A streamed file with its name and media type.
@@ -242,28 +254,8 @@ pub async fn upload(
     let tree = access::tree_for(state, &owner).await?;
     let parent = parent.unwrap_or_else(|| tree.root().to_owned());
     ensure(tree.is_folder(&parent), "documents_item_not_found", 404)?;
-    let made = put(state, &owner, &parent, &name, &mime, upload).await?;
-    let (id, title) = (made.id.clone(), made.name.clone());
-    let (records, names) = owner
-        .run_member(state, move |db, c| {
-            db.record_documents_change(&c.dsp.id, &id, c.actor())?;
-            c.audit(db, "documents.uploaded", &title)?;
-            known(db, &c.dsp.id, &[id])
-        })
-        .await?;
-    let empty = Tree::new(&owner.connection.folder_id, Vec::new());
-    owner
-        .read(state, move |_, owner| {
-            Ok(Described {
-                owner: &owner.key,
-                tree: &empty,
-                records: &records,
-                names: &names,
-                account: &owner.connection.account.email,
-            }
-            .item(&Row::from(made), false))
-        })
-        .await
+    let item = put(state, &owner, &parent, &name, &mime, upload).await?;
+    made(state, &owner, item, "documents.uploaded").await
 }
 
 /// Makes a folder, Doc, Sheet or Slides named `name`, of `mime`, in the folder `parent` of the
@@ -441,13 +433,7 @@ pub async fn add(
     owner
         .read(state, move |db, owner| {
             let (records, names) = known(db, &owner.key.dsp, &ids)?;
-            let described = Described {
-                owner: &owner.key,
-                tree: &tree,
-                records: &records,
-                names: &names,
-                account: &owner.connection.account.email,
-            };
+            let described = described(owner, &tree, &records, &names);
             let items = added
                 .into_iter()
                 .map(|item| match tree.get(&item.id) {
@@ -555,14 +541,7 @@ pub async fn rename(
     let captured_tree = tree.clone();
     owner
         .read(state, move |_, owner| {
-            Ok(Described {
-                owner: &owner.key,
-                tree: &captured_tree,
-                records: &records,
-                names: &names,
-                account: &owner.connection.account.email,
-            }
-            .item(&Row::from(renamed), false))
+            Ok(described(owner, &captured_tree, &records, &names).item(&Row::from(renamed), false))
         })
         .await
 }
@@ -631,13 +610,7 @@ pub async fn move_to(
     owner
         .read(state, move |db, owner| {
             let (records, names) = known(db, &owner.key.dsp, &[id])?;
-            let described = Described {
-                owner: &owner.key,
-                tree: &tree,
-                records: &records,
-                names: &names,
-                account: &owner.connection.account.email,
-            };
+            let described = described(owner, &tree, &records, &names);
             let item = match tree.get(&moved.id) {
                 Some(row) => described.item(row, false),
                 None => described.item(&Row::from(moved), false),

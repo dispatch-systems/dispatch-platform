@@ -1,6 +1,6 @@
 //! Tokens and shown-file thumbnail provenance, retained independently of Drive mirrors.
 //! One deletion tombstone coordinates both caches; each retention check holds its cache lock.
-use super::{grant::Key, tree::Row};
+use super::{grant::Key, lock, tree::Row};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     sync::{LazyLock, Mutex},
@@ -13,30 +13,18 @@ use std::{
 static DELETED: LazyLock<Mutex<HashSet<(std::path::PathBuf, String)>>> =
     LazyLock::new(Default::default);
 fn deleted(key: &Key) -> bool {
-    DELETED
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .contains(&(key.namespace.clone(), key.dsp.clone()))
+    lock(&DELETED).contains(&(key.namespace.clone(), key.dsp.clone()))
 }
 /// Forgets what's kept in memory of the DSP's files once it's deleted, and keeps none after.
 pub(super) fn forget_deleted(namespace: &std::path::Path, dsp: &str) {
-    DELETED
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .insert((namespace.to_owned(), dsp.to_owned()));
+    lock(&DELETED).insert((namespace.to_owned(), dsp.to_owned()));
     forget(namespace, dsp);
-    PICTURES
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .retain(|(key, _), _| key.namespace != namespace || key.dsp != dsp);
 }
 
 /// The access tokens Google gave, by DSP, until a minute before each lapses.
 static ACCESS: LazyLock<Mutex<BTreeMap<Key, (String, Instant)>>> = LazyLock::new(Default::default);
 pub(super) fn kept(key: &Key) -> Option<String> {
-    let tokens = ACCESS
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let tokens = lock(&ACCESS);
     tokens
         .get(key)
         .filter(|(_, until)| Instant::now() < *until)
@@ -44,39 +32,27 @@ pub(super) fn kept(key: &Key) -> Option<String> {
 }
 /// Keeps the DSP's access token `token` until `until`, unless the DSP is deleted.
 pub(super) fn keep(key: &Key, token: &str, until: Instant) {
-    let mut tokens = ACCESS
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut tokens = lock(&ACCESS);
     if !deleted(key) {
         tokens.insert(key.clone(), (token.to_owned(), until));
     }
 }
 /// Forgets the DSP's access token, as a disconnect or a new account does.
 pub(super) fn forget(namespace: &std::path::Path, dsp: &str) {
-    PICTURES
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .retain(|(key, _), _| key.namespace != namespace || key.dsp != dsp);
-    ACCESS
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .retain(|key, _| key.namespace != namespace || key.dsp != dsp);
+    lock(&PICTURES).retain(|(key, _), _| key.namespace != namespace || key.dsp != dsp);
+    lock(&ACCESS).retain(|key, _| key.namespace != namespace || key.dsp != dsp);
 }
 
 /// Retires exactly the refused token; another renewal may have already replaced it.
 pub(super) fn refused(key: &Key, token: &str) {
-    let mut tokens = ACCESS.lock().unwrap_or_else(|p| p.into_inner());
+    let mut tokens = lock(&ACCESS);
     if tokens.get(key).is_some_and(|(current, _)| current == token) {
         tokens.remove(key);
     }
 }
 /// A refreshed metadata observation also renews the admitted link, under the same owner.
 pub(super) fn observed(key: &Key, id: &str, link: &str, given: Instant) {
-    if let Some(shown) = PICTURES
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .get_mut(&(key.clone(), id.to_owned()))
-    {
+    if let Some(shown) = lock(&PICTURES).get_mut(&(key.clone(), id.to_owned())) {
         shown.link = link.to_owned();
         shown.given = given;
     }
@@ -101,9 +77,7 @@ pub(super) const PICTURE_LINK_LASTS: Duration = Duration::from_secs(60 * 60);
 const PICTURE_LINKS: usize = 20_000;
 /// The picture of the file `id`, when the DSP's Documents showed it within the hour.
 pub(super) fn shown(key: &Key, id: &str) -> Option<Shown> {
-    PICTURES
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+    lock(&PICTURES)
         .get(&(key.clone(), id.to_owned()))
         .filter(|shown| shown.shown.elapsed() < PICTURE_LINK_LASTS)
         .cloned()
@@ -114,9 +88,7 @@ pub(super) fn shown(key: &Key, id: &str) -> Option<Shown> {
 /// picture's version, so the browser keeps each until the file changes.
 pub(super) fn picture(owner: &Key, row: &Row) -> Option<String> {
     let link = row.thumbnail.as_deref()?.to_owned();
-    let mut links = PICTURES
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut links = lock(&PICTURES);
     if deleted(owner) {
         return None;
     }

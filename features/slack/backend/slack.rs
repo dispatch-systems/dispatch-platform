@@ -154,6 +154,24 @@ impl Slack {
     }
 }
 
+/// Whether `id` is one of Slack's IDs as Slack writes them: of a kind that starts with one of
+/// `kinds`, then capital letters and digits, up to 32 in all.
+pub fn id(id: &str, kinds: &[char]) -> bool {
+    (2..=32).contains(&id.len())
+        && id.starts_with(kinds)
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+}
+/// The text Slack sent as `value`, trimmed: none when it sent none.
+pub(crate) fn text(value: &Value) -> Option<String> {
+    value
+        .as_str()
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(str::to_owned)
+}
+
 fn unreachable(_: reqwest::Error) -> Error {
     Error::new("slack_unreachable", 502)
 }

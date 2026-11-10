@@ -5,6 +5,7 @@
 //! Slackbot aren't members here; guests are.
 use super::{
     bot::{self, Bot},
+    slack::text,
     storage::{
         members::{Member, MemberStore},
         workspaces::WorkspaceStore,
@@ -29,13 +30,6 @@ pub fn member(user: &Value) -> Option<Member> {
     if id == "USLACKBOT" || user["is_bot"] == true || user["is_app_user"] == true {
         return None;
     }
-    let text = |value: &Value| {
-        value
-            .as_str()
-            .map(str::trim)
-            .filter(|text| !text.is_empty())
-            .map(str::to_owned)
-    };
     let profile = &user["profile"];
     // Their username only when their profile gives no name at all.
     let name = text(&profile["real_name"])

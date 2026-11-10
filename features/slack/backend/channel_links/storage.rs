@@ -57,14 +57,14 @@ pub trait LinkStore {
     ) -> Result<Option<Link>>;
     /// Keeps the link, in place of any the channel had.
     fn save_slack_channel_link(&self, dsp: &str, of: &Linking, link: &Link) -> Result<()>;
-    /// Takes the link away, with what `of` takes with it: whether there was one.
+    /// Takes the link away, with what `of` takes with it.
     fn remove_slack_channel_link(
         &self,
         dsp: &str,
         of: &Linking,
         team: &str,
         channel: &str,
-    ) -> Result<bool>;
+    ) -> Result<()>;
 }
 
 impl LinkStore for Store {
@@ -118,15 +118,15 @@ impl LinkStore for Store {
         of: &Linking,
         team: &str,
         channel: &str,
-    ) -> Result<bool> {
+    ) -> Result<()> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             (of.unlinking)(&db, team, channel)?;
-            let removed = db.exec(
+            db.exec(
                 &format!("DELETE FROM {} WHERE team_id=? AND channel_id=?", of.table),
                 [team, channel],
             )?;
-            Ok(removed > 0)
+            Ok(())
         })
     }
 }

@@ -233,16 +233,7 @@ pub async fn finish(
         .await?;
     drop(granting);
     // The team gets the folder shared with them while the owner looks around.
-    let sharing = Arc::clone(state);
-    tokio::spawn(async move {
-        if let Err(error) = team::sync_for(&sharing, &owner).await {
-            observability::event(
-                "warn",
-                "documents_share_failed",
-                json!({"error": error.code}),
-            );
-        }
-    });
+    team::share_soon(state, &owner);
     Ok(GoogleConnected {
         account: account(state, &shared).await?,
         made_folder,

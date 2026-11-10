@@ -73,15 +73,15 @@ fn check(state: Arc<State>, due: bool) -> Upkeep {
         if !due {
             return;
         }
-        let Ok(google) = Google::of(&state.config) else {
+        if !Google::available(&state.config) {
             return;
-        };
+        }
         let dsps = match state.read(|db| db.served_ids()).await {
             Ok(dsps) => dsps,
             Err(error) => return failed(&error),
         };
         stream::iter(dsps)
-            .map(|dsp| access::check(state.clone(), &google, dsp))
+            .map(|dsp| access::check(state.clone(), dsp))
             .buffer_unordered(2)
             .for_each(|result| async move {
                 if let Err(error) = result {

@@ -6,7 +6,7 @@
 use super::{LINKING, choices, overview::overview};
 use crate::{
     api::routes::{SETTINGS, channel, folder, team},
-    backend::channel_links,
+    backend::{channel_links, slack},
 };
 use dispatch_core::{
     Error, Result, State, ensure,
@@ -68,15 +68,7 @@ pub fn routes() -> Vec<Route> {
 
 /// A canvas's ID, as Slack writes a file's.
 fn canvas(id: &str) -> Result<String> {
-    ensure(
-        (2..=32).contains(&id.len())
-            && id.starts_with('F')
-            && id
-                .bytes()
-                .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit()),
-        "invalid_input",
-        400,
-    )?;
+    ensure(slack::id(id, &['F']), "invalid_input", 400)?;
     Ok(id.to_owned())
 }
 
