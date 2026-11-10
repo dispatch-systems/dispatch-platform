@@ -278,6 +278,20 @@ impl Store {
                     .replace('_', "\\_")
             )
         };
+        // The page takes all ten, its total the first eight, and the counts by area the first
+        // seven, which leave out the area.
+        let params = rusqlite::params![
+            query.dsp,
+            query.from,
+            query.actor,
+            search,
+            query.within,
+            query.subject,
+            query.named,
+            query.area,
+            query.before,
+            query.limit
+        ];
         let mut events = self.platform.all(
             &format!(
                 "SELECT a.id,a.at,CASE WHEN {SUPPORT} \
@@ -286,18 +300,7 @@ impl Store {
             a.id<?9) ORDER BY a.id DESC LIMIT \
             ?10"
             ),
-            rusqlite::params![
-                query.dsp,
-                query.from,
-                query.actor,
-                search,
-                query.within,
-                query.subject,
-                query.named,
-                query.area,
-                query.before,
-                query.limit
-            ],
+            params,
         )?;
         for event in &mut events {
             let data = event["data"]
@@ -318,16 +321,7 @@ impl Store {
         }
         let total = self.platform.count(
             &format!("SELECT count(*) {filters} AND {area}"),
-            rusqlite::params![
-                query.dsp,
-                query.from,
-                query.actor,
-                search,
-                query.within,
-                query.subject,
-                query.named,
-                query.area
-            ],
+            &params[..8],
         )?;
         let mut counts = serde_json::Map::new();
         let mut failures = 0;
@@ -335,15 +329,7 @@ impl Store {
             &format!(
                 "SELECT {areas} area,count(*) count,sum({FAILED}) failures {filters} GROUP BY 1"
             ),
-            rusqlite::params![
-                query.dsp,
-                query.from,
-                query.actor,
-                search,
-                query.within,
-                query.subject,
-                query.named
-            ],
+            &params[..7],
         )? {
             counts.insert(s(&row, "area").to_owned(), json!(n(&row, "count")));
             failures += n(&row, "failures");

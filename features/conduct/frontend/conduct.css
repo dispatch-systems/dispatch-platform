@@ -413,6 +413,20 @@
 .conduct-retired td:first-child {
   color: var(--muted-foreground);
 }
+.conduct-backup-failing {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+  color: var(--destructive);
+}
+.conduct-backup-failing svg {
+  flex: none;
+  margin-top: 2px;
+}
 
 /* The notice: a letter page, white in either theme, laid out in points as the DSP's own form
    is (Notice.tsx places each part). Its lettering is the form's own, Arial Narrow, Arial and

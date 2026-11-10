@@ -141,6 +141,12 @@ pub trait Keeper: Sync {
 }
 
 impl Registry {
+    /// Every collector's collections, in the registry's order.
+    pub fn collections(&self) -> impl Iterator<Item = &'static Collection> {
+        self.collectors
+            .iter()
+            .flat_map(|collector| collector.collections())
+    }
     /// Every feature's keepers, in the registry's order.
     pub fn keepers(&self) -> impl Iterator<Item = &'static dyn Keeper> {
         self.features
@@ -169,11 +175,7 @@ impl Registry {
     /// Every collection a schedule may name, in the registry's order, each alias right after
     /// the last of the collections it runs.
     pub fn schedule_collections(&self) -> Vec<&'static str> {
-        let collections: Vec<&'static Collection> = self
-            .collectors
-            .iter()
-            .flat_map(|collector| collector.collections())
-            .collect();
+        let collections: Vec<&'static Collection> = self.collections().collect();
         let runs = |alias: &ScheduleAlias, collection: &Collection| {
             alias.runs.contains(&collection.job_kind)
         };
@@ -216,9 +218,7 @@ impl Registry {
 /// choosing among its own name and aliases that read it alone, every alias chosen once.
 pub(crate) fn check(registry: &Registry) {
     let kinds: Vec<&str> = registry
-        .collectors
-        .iter()
-        .flat_map(|collector| collector.collections())
+        .collections()
         .map(|collection| collection.job_kind)
         .collect();
     for kind in &kinds {
@@ -233,9 +233,7 @@ pub(crate) fn check(registry: &Registry) {
         );
     }
     let mut schedule_names: Vec<&str> = registry
-        .collectors
-        .iter()
-        .flat_map(|collector| collector.collections())
+        .collections()
         .map(|collection| collection.schedule)
         .collect();
     for feature in registry.features {
@@ -272,9 +270,7 @@ fn check_schedules(registry: &Registry, feature: &Feature) {
             schedules.permission
         );
         let own = registry
-            .collectors
-            .iter()
-            .flat_map(|collector| collector.collections())
+            .collections()
             .find(|collection| collection.job_kind == keeper.keeps())
             .map(|collection| collection.schedule);
         let Some((_, options)) = schedules.choice else {

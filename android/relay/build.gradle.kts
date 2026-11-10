@@ -80,6 +80,9 @@ android {
 
     lint {
         warningsAsErrors = true
+        // A newer Gradle or Android plugin is Dependabot's weekly PR to make. As an error it
+        // failed whatever change next touched an app, on the day of each release.
+        informational += "AndroidGradlePluginVersion"
     }
 
     buildFeatures {

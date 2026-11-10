@@ -2,6 +2,7 @@
 # database access its work runs under, and whether it wakes the scheduler.
 # Each changes with this file, so a reviewer sees who can reach what.
 GET /api/dsp/conduct Dsp("conduct.use") Read
+GET /api/dsp/conduct/backup Dsp("conduct.manage") Async
 GET /api/dsp/conduct/writeups/{id} Dsp("conduct.use") Read
 GET /api/dsp/conduct/writeups/{id}/copy Dsp("conduct.use") Read
 POST /api/dsp/conduct/categories Dsp("conduct.manage") Write

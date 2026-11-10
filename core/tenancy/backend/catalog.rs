@@ -126,9 +126,7 @@ pub fn automation(kind_or_collection: &str) -> Option<&'static str> {
         })
     };
     registry
-        .collectors
-        .iter()
-        .flat_map(|collector| collector.collections())
+        .collections()
         .find(|c| c.job_kind == kind_or_collection || c.schedule == kind_or_collection)
         .and_then(|collection| registry.keeping(collection.job_kind))
         .or_else(aliasing)

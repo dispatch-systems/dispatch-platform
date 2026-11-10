@@ -163,9 +163,7 @@ impl Store {
                     Some(&feature.name()),
                     &[],
                 )?;
-                // Open views sign the DSP revision, so members lose or regain it at once.
-                self.platform
-                    .exec("UPDATE dsps SET revision=revision+1 WHERE id=?", [dsp])?;
+                self.expire_views(dsp)?;
             }
             self.dsp_visibility(dsp)
         })

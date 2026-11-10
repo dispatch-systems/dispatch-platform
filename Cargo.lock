@@ -1014,11 +1014,13 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "dispatch-core",
+ "dispatch-documents-contract",
  "futures-util",
  "rusqlite",
  "serde",
  "serde_json",
  "tempfile",
+ "tokio",
  "ts-rs",
 ]
 

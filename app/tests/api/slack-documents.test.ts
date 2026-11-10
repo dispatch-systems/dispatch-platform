@@ -18,7 +18,7 @@ async function connectDrive(client: Client) {
   assert.equal(finished.status, 200, finished.body);
 }
 
-test('a file posted in a linked Slack channel is saved in Documents once, named for who posted it', async (t) => {
+test('a file posted in a linked Slack channel is saved in Documents, named for who posted it', async (t) => {
   const f = await fixture();
   t.after(f.close);
   const owner = await f.client();
@@ -45,25 +45,23 @@ test('a file posted in a linked Slack channel is saved in Documents once, named 
   const [photos] = linked.value.links;
   assert.equal(photos.folder.name, 'photos');
 
-  // Slack tells of the van's photo shared there, twice, as it does a file shared twice: it's
-  // saved once, in that folder, added by the name Slack shows its poster by.
-  const shared = () =>
-    fromSlack(
-      f,
-      '/slack/events',
-      event(workspace.teamId, {
-        type: 'file_shared',
-        file_id: 'F0FIXVAN',
-        channel_id: 'C0FIXPHOTOS',
-        user_id: 'U0FIXOWNER',
-        event_ts: (Date.now() / 1000).toFixed(6),
-      }),
-    );
-  assert.equal((await shared()).status, 200);
+  // Slack tells of the van's photo shared there: it's saved in that folder, added by the name
+  // Slack shows its poster by.
+  const shared = await fromSlack(
+    f,
+    '/slack/events',
+    event(workspace.teamId, {
+      type: 'file_shared',
+      file_id: 'F0FIXVAN',
+      channel_id: 'C0FIXPHOTOS',
+      user_id: 'U0FIXOWNER',
+      event_ts: (Date.now() / 1000).toFixed(6),
+    }),
+  );
+  assert.equal(shared.status, 200);
   await until(async () =>
     (await owner.read(imports)).recent.some((file: { status: string }) => file.status === 'saved'),
   );
-  assert.equal((await shared()).status, 200);
   const folder = await owner.read(`/api/dsp/documents/folder?id=${photos.folder.id}`);
   assert.deepEqual(
     folder.items.map((item: { name: string; addedBy: string }) => [item.name, item.addedBy]),

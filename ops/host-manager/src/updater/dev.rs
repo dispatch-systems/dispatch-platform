@@ -114,7 +114,7 @@ impl Updater<'_> {
         let temp = tempfile::Builder::new()
             .prefix("update-")
             .tempdir_in(&self.runtime)?;
-        releases::download_run(self.system, &record, temp.path(), &commit, None)?;
+        releases::download_run(self.system, &record, temp.path(), &commit)?;
         // The branch may have moved on during the download; one rewritten to leave the commit
         // out is what activation refuses.
         self.git(&["fetch", "origin", branch])?;

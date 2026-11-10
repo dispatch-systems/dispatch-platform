@@ -17,6 +17,7 @@ ts = ["dep:ts-rs", "dispatch-core/ts"]
 
 # Core, the collectors it uses and the features it declares: nothing else compiles.
 [dependencies]
+dispatch-documents-contract = { path = "../documents/contract" }
 dispatch-core = { path = "../../core" }
 chrono = { workspace = true }
 chrono-tz = { workspace = true }
@@ -29,3 +30,4 @@ ts-rs = { workspace = true, optional = true }
 [dev-dependencies]
 dispatch-core = { path = "../../core", features = ["testing"] }
 tempfile = { workspace = true }
+tokio = { workspace = true }

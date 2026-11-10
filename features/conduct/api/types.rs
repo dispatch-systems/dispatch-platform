@@ -247,6 +247,26 @@ pub struct ConductSaved {
     pub overview: ConductOverview,
 }
 
+/// `GET /api/dsp/conduct/backup`: where signed copies are backed up, and how that's going, for
+/// Conduct's page of Settings. While the DSP doesn't back them up, nothing is failing or waiting.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/conduct/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct ConductBackup {
+    /// Where the DSP's files are kept, by the name members know that by: none while nothing
+    /// keeps them.
+    pub place: Option<String>,
+    /// Whether it's failing: what keeps the DSP's files can't now, or a copy's last try failed.
+    pub failing: bool,
+    /// Why, in the words of what keeps the DSP's files, for a member to read: why it can't keep
+    /// them now, or why it didn't keep the copy tried latest. None where it has no words.
+    pub why: Option<String>,
+    /// How many signed copies aren't backed up yet.
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub waiting: i64,
+}
+
 /// The most characters a section of a writeup or a category's wording holds.
 const SECTION: usize = 4000;
 

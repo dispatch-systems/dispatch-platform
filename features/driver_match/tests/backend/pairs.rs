@@ -21,8 +21,14 @@ fn pair(person: &str, strength: Strength, reasons: usize) -> Pair {
 #[test]
 fn strong_pairs_come_first_then_more_reasons_then_names_and_three_at_most_for_anyone() {
     use Strength::{Possible, Strong};
-    let names = BTreeMap::from([("BAYLEE", "Baylee Ortiz"), ("ADAM", "Adam Lee")]);
+    let names = BTreeMap::from([
+        ("BAYLEE", "Baylee Ortiz"),
+        ("ADAM", "Adam Lee"),
+        ("ZOE", "Zoe Park"),
+    ]);
+    // Zoe and Adam tie on strength and reasons, and both are asked: their names decide.
     let pairs = vec![
+        pair("ZOE", Possible, 1),
         pair("BAYLEE", Possible, 1),
         pair("ADAM", Possible, 1),
         pair("BAYLEE", Possible, 3),
@@ -42,6 +48,7 @@ fn strong_pairs_come_first_then_more_reasons_then_names_and_three_at_most_for_an
             ("Baylee Ortiz", Possible, 3),
             ("Baylee Ortiz", Possible, 2),
             ("Adam Lee", Possible, 1),
+            ("Zoe Park", Possible, 1),
         ]
     );
 }

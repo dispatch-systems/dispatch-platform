@@ -1,8 +1,9 @@
 import { createElement, lazy } from 'react';
 import { FileWarning } from 'lucide-react';
+import { offered } from '../../../core/shell/frontend/runtime/exposes.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import type { FrontendFeature } from '../../../core/shell/frontend/runtime/slots.js';
-import { conductUrl } from '../api/client.js';
+import { backupUrl, conductUrl } from '../api/client.js';
 
 // Conduct's frontend manifest, loaded up front: it stays small and loads the rest lazily.
 
@@ -17,6 +18,7 @@ const ConductPage = lazy(() => load().then((module) => ({ default: module.Conduc
 const CategoriesSection = lazy(() =>
   load().then((module) => ({ default: module.CategoriesSection })),
 );
+const BackupSection = lazy(() => load().then((module) => ({ default: module.BackupSection })));
 
 export const feature: FrontendFeature = {
   name: 'conduct',
@@ -36,13 +38,22 @@ export const feature: FrontendFeature = {
       },
     },
   ],
-  // Its categories, on its page of Settings beside how long a writeup counts.
+  // On its page of Settings: its categories, beside how long a writeup counts, and backing
+  // signed copies up, only while something keeps the DSP's files (what a feature exposes as
+  // `files`).
   settingsSections: [
     {
       id: 'conduct.categories',
       load,
       render: () => createElement(CategoriesSection),
       prefetch: () => [conductUrl],
+    },
+    {
+      id: 'conduct.backup',
+      load,
+      render: ({ view, refresh }) => view && createElement(BackupSection, { view, refresh }),
+      visible: (view) => Boolean(offered('files', view)),
+      prefetch: (view) => (offered('files', view) ? [backupUrl] : []),
     },
   ],
   // Its switch's icon on the DSPs page, and how its events read in the activity log.

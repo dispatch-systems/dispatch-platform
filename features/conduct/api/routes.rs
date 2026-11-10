@@ -1,15 +1,16 @@
 //! Conduct's endpoints, each registered with its path and access. The server checks the
 //! session and the permission before a handler runs. Writing up, changing, signing and
-//! deleting writeups is `conduct.use`; categories are `conduct.manage`.
+//! deleting writeups is `conduct.use`; categories and how the backup is going are
+//! `conduct.manage`.
 use super::types::{CategoryInput, ConductSaved, WriteupInput};
-use crate::backend::{DOMAIN, categories, copies, overview, writeups};
+use crate::backend::{DOMAIN, backups, categories, copies, overview, writeups};
 use dispatch_core::{
     Result, State,
     db::Store,
     foundation::validate as v,
     server::http::{
         input::{Input, Reply, query_number},
-        route::{Dsp, Grant, Member, Route, read, upload, write},
+        route::{Dsp, Grant, Member, Route, async_get, read, upload, write},
         upload::Upload,
     },
 };
@@ -46,6 +47,7 @@ pub fn routes() -> Vec<Route> {
             MANAGE,
             category_restore,
         ),
+        async_get("/api/dsp/conduct/backup", MANAGE, backup_read),
     ]
 }
 
@@ -149,4 +151,15 @@ fn category_restore(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &[])?;
     categories::retire(db, c, input.param("id"), true)?;
     Reply::of(&overview::read(db, c.state, c)?)
+}
+
+/// How backing signed copies up is going, which asks what keeps the DSP's files whether it can:
+/// answered only to a member who may still read it once that's asked.
+async fn backup_read(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    let c = state.read(move |db| access.authorize(db, &input)).await?;
+    let status = backups::status(&state, &c.dsp.id).await?;
+    state
+        .read(move |db| access.revalidate(db, &c).map(drop))
+        .await?;
+    Reply::of(&status)
 }

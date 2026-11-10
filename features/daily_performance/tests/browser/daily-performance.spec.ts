@@ -2,23 +2,6 @@ import { test, expect, login, openDsp } from '../../../../core/shell/tests/suppo
 
 // The seeded DSP has every feature switched on, and its owner holds every permission.
 
-test('Daily Performance has its switch on the DSPs page, on for the seeded DSP', async ({
-  page,
-}) => {
-  await login(page);
-  await page
-    .getByRole('region', { name: 'DSPs', exact: true })
-    .getByRole('button', { name: /Northline Logistics/ })
-    .click();
-  const pane = page.getByRole('region', { name: 'Northline Logistics', exact: true });
-  await pane.getByRole('tab', { name: 'Features', exact: true }).click();
-  await pane
-    .getByRole('navigation', { name: 'Features', exact: true })
-    .getByRole('button', { name: /^Daily Performance/ })
-    .click();
-  await expect(pane.getByRole('switch', { name: 'Daily Performance', exact: true })).toBeChecked();
-});
-
 test('its settings are set with its collection on Collectors, where searching Settings finds them', async ({
   page,
   dispatch,

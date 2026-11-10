@@ -197,7 +197,9 @@
       ],
       "integrations": [],
       "live": [],
-      "maintenance": [],
+      "maintenance": [
+        60
+      ],
       "on": [],
       "people": [],
       "routes": [
@@ -212,18 +214,22 @@
         "POST /api/dsp/conduct/categories",
         "POST /api/dsp/conduct/categories/{id}",
         "POST /api/dsp/conduct/categories/{id}/retire",
-        "POST /api/dsp/conduct/categories/{id}/restore"
+        "POST /api/dsp/conduct/categories/{id}/restore",
+        "GET /api/dsp/conduct/backup"
       ],
       "exposes": [],
       "env": [],
       "settings": [
-        "conduct.categories"
+        "conduct.categories",
+        "conduct.backup"
       ]
     },
     "switch": "conduct",
     "mandatory": false,
     "tables": {
       "dsp": [
+        "conduct_backup_folders",
+        "conduct_backups",
         "conduct_categories",
         "conduct_copies",
         "conduct_writeups"

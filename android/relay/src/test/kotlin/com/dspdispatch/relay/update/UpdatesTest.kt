@@ -6,7 +6,7 @@ import java.io.File
 import java.security.MessageDigest
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.job
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import mockwebserver3.Dispatcher
@@ -58,7 +58,9 @@ class UpdatesTest {
         serve(bytes)
         updates.heard(site, newer)
         assertArrayEquals(bytes, installer.installed.await())
-        assertEquals(Update.Installing(newer), updates.update.first { it is Update.Installing })
+        ended()
+        assertNull(holds.hold)
+        assertFalse(apk.exists())
         assertEquals("/api/communications/phone/app", server.takeRequest().url.encodedPath)
         val download = server.takeRequest()
         assertEquals("/api/communications/phone/app/download", download.url.encodedPath)
@@ -71,7 +73,6 @@ class UpdatesTest {
         installer.allowed = false
         val updates = updates()
         updates.heard(site, newer)
-        assertEquals(Update.Available(newer), updates.update.value)
         assertEquals(0, server.requestCount)
         installer.allowed = true
         serve(bytes)
@@ -90,7 +91,7 @@ class UpdatesTest {
         assertFalse(installer.installed.isCompleted)
         quiet.complete(Unit)
         assertArrayEquals(bytes, installer.installed.await())
-        updates.update.first { it is Update.Confirming }
+        installer.confirmations.receive()
         assertEquals(1, released)
     }
 
@@ -101,7 +102,7 @@ class UpdatesTest {
         val updates = updates()
         serve(bytes)
         updates.heard(site, newer)
-        updates.update.first { it is Update.Confirming }
+        installer.confirmations.receive()
         assertEquals(listOf(newer), notice.shown)
     }
 
@@ -112,7 +113,7 @@ class UpdatesTest {
         val updates = updates()
         serve(bytes)
         updates.heard(site, newer)
-        updates.update.first { it is Update.Confirming }
+        installer.confirmations.receive()
         assertNull(notice.showing)
         updates.heard(site, newer)
         assertEquals(emptyList<AppVersion>(), notice.shown)
@@ -128,7 +129,7 @@ class UpdatesTest {
         val updates = updates()
         serve(bytes)
         updates.heard(site, newer)
-        assertEquals(Update.Confirming(newer), updates.update.first { it is Update.Confirming })
+        installer.confirmations.receive()
         assertEquals(listOf(newer), notice.shown)
         assertEquals(newer.versionCode, notice.showing)
         updates.heard(site, newer)
@@ -144,10 +145,10 @@ class UpdatesTest {
         val updates = updates()
         serve(bytes, app = newest)
         updates.heard(site, newest)
-        updates.update.first { it is Update.Confirming }
+        installer.confirmations.receive()
         serve(bytes, app = newer)
         updates.heard(site, newer)
-        assertEquals(Update.Confirming(newer), updates.update.first { it == Update.Confirming(newer) })
+        installer.confirmations.receive()
         assertTrue(installer.dropped.isCompleted)
         assertEquals(listOf(newest, newer), notice.shown)
         assertEquals(1, notice.cancelled)
@@ -159,9 +160,8 @@ class UpdatesTest {
         val updates = updates()
         serve(bytes)
         updates.heard(site, newer)
-        updates.update.first { it is Update.Confirming }
+        installer.confirmations.receive()
         updates.heard(site, own)
-        assertEquals(Update.None, updates.update.value)
         installer.dropped.await()
         assertNull(notice.visible)
         // After the update, the version it asked about is the app's own.
@@ -180,11 +180,12 @@ class UpdatesTest {
                 if (request.url.encodedPath.endsWith("/download")) download(bytes) else details(bytes)
         }
         var updates = updates()
-        val waits = Updates.RETRIES_MS + Updates.RETRIES_MS.last()
+        // 1, 3, 12, then every 24 hours.
+        val waits = listOf(1L, 3L, 12L, 24L, 24L).map { it * HOUR_MS }
         for ((tried, wait) in waits.withIndex()) {
             updates.heard(site, newer)
             installer.tries.receive()
-            assertEquals(Update.Available(newer, Problem.INSTALL), updates.update.first { it is Update.Available })
+            ended()
             assertEquals(Hold(newer.versionCode, clock + wait, tried + 1), holds.hold)
             clock += wait - 1
             updates.heard(site, newer)
@@ -213,11 +214,12 @@ class UpdatesTest {
         val updates = updates()
         updates.heard(site, newer)
         installer.tries.receive()
-        updates.update.first { it == Update.Available(newer, Problem.INSTALL) }
+        ended()
         reachable = false
         clock += Updates.RETRIES_MS[0]
         updates.heard(site, newer)
-        updates.update.first { it == Update.Available(newer, Problem.DOWNLOAD) }
+        ended()
+        assertEquals(2, holds.hold?.tries)
         reachable = true
         installer.outcome = Outcome.INSTALLED
         clock += Updates.RETRIES_MS[1]
@@ -234,14 +236,15 @@ class UpdatesTest {
         serve(bytes)
         updates.heard(site, newer)
         installer.installed.await()
-        updates.update.first { it == Update.Available(newer) }
+        ended()
         updates.heard(site, newer)
         assertEquals(1, installer.installs.size)
         installer.outcome = Outcome.INSTALLED
         serve(bytes)
         updates.install(site)
-        assertEquals(Update.Installing(newer), updates.update.first { it is Update.Installing })
+        ended()
         assertEquals(2, installer.installs.size)
+        assertFalse(apk.exists())
     }
 
     @Test
@@ -250,7 +253,8 @@ class UpdatesTest {
         val updates = updates()
         serve(bytes)
         updates.heard(site, newer)
-        assertEquals(Update.Available(newer, Problem.NOT_THIS_APP), updates.update.first { it is Update.Available && it.problem != null })
+        ended()
+        assertEquals(Hold(newer.versionCode, null), holds.hold)
         assertTrue(installer.installs.isEmpty())
         clock += 2 * Updates.RETRIES_MS.last()
         updates.heard(site, newer)
@@ -268,17 +272,19 @@ class UpdatesTest {
         val updates = updates()
         serve("another apk!!".toByteArray(), sha256 = sha256(bytes))
         updates.heard(site, newer)
-        assertEquals(Update.Available(newer, Problem.MISMATCH), updates.update.first { it is Update.Available && it.problem != null })
+        ended()
+        assertEquals(Hold(newer.versionCode, HOUR_MS), holds.hold)
         assertTrue(installer.installs.isEmpty())
         assertFalse(apk.exists())
     }
 
     @Test
-    fun saysTheDownloadFailedWhenTheDspRefusesIt() = runTest {
+    fun triesAgainLaterADownloadTheDspRefused() = runTest {
         val updates = updates()
         server.enqueue(json(404, """{"error":"phones_app_not_found","message":"…"}"""))
         updates.heard(site, newer)
-        assertEquals(Update.Available(newer, Problem.DOWNLOAD), updates.update.first { it is Update.Available && it.problem != null })
+        ended()
+        assertEquals(Hold(newer.versionCode, HOUR_MS), holds.hold)
     }
 
     @Test
@@ -287,25 +293,27 @@ class UpdatesTest {
         val updates = updates()
         serve(bytes, app = newer)
         updates.heard(site, newest)
-        assertEquals(Update.Available(newer, Problem.INSTALL), updates.update.first { it is Update.Available && it.problem != null })
+        ended()
+        assertEquals(1, installer.installs.size)
+        assertEquals(Hold(newer.versionCode, HOUR_MS), holds.hold)
     }
 
     @Test
-    fun saysTheDownloadOfTheVersionTheDetailsNameFailed() = runTest {
+    fun holdsTheVersionTheDetailsNameWhoseDownloadFailed() = runTest {
         val updates = updates()
         server.enqueue(json(200, """{"version":"1.0.5","versionCode":5,"size":13,"sha256":"${sha256(bytes)}"}"""))
         server.enqueue(json(404, """{"error":"phones_app_not_found","message":"…"}"""))
         updates.heard(site, newest)
-        assertEquals(Update.Available(newer, Problem.DOWNLOAD), updates.update.first { it is Update.Available && it.problem != null })
+        ended()
         assertEquals(Hold(newer.versionCode, Updates.RETRIES_MS.first()), holds.hold)
     }
 
     @Test
-    fun saysTheVersionTheDetailsNameIsNotTheOneDescribed() = runTest {
+    fun holdsTheVersionTheDetailsNameWhoseDownloadIsNotTheOneDescribed() = runTest {
         val updates = updates()
         serve("another apk!!".toByteArray(), sha256 = sha256(bytes), app = newer)
         updates.heard(site, newest)
-        assertEquals(Update.Available(newer, Problem.MISMATCH), updates.update.first { it is Update.Available && it.problem != null })
+        ended()
         assertEquals(Hold(newer.versionCode, Updates.RETRIES_MS.first()), holds.hold)
     }
 
@@ -314,7 +322,8 @@ class UpdatesTest {
         val updates = updates()
         server.enqueue(json(200, """{"version":"1.0.4","versionCode":4,"size":13,"sha256":"${sha256(bytes)}"}"""))
         updates.heard(site, newer)
-        assertEquals(Update.None, updates.update.first { it == Update.None })
+        ended()
+        assertNull(holds.hold)
         assertEquals(1, server.requestCount)
         assertTrue(installer.installs.isEmpty())
     }
@@ -337,6 +346,9 @@ class UpdatesTest {
         now = { clock },
     )
 
+    /** Waits for each try at updating started so far to end. */
+    private suspend fun TestScope.ended() = backgroundScope.coroutineContext.job.children.forEach { it.join() }
+
     private fun serve(apk: ByteArray, sha256: String = sha256(apk), app: AppVersion = newer) {
         server.enqueue(details(apk, sha256, app))
         server.enqueue(download(apk))
@@ -353,7 +365,10 @@ class UpdatesTest {
 
     private fun sha256(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
-    /** Android's installer: each APK handed to it, the first [installed]; while it asks the person, a try dropped is [dropped]. */
+    /**
+     * Android's installer: each APK handed to it, the first [installed]; each time it asks the
+     * person, [confirmations]; while it asks, a try dropped is [dropped].
+     */
     private class FakeInstaller : Installer {
         var allowed = true
         var outcome = Outcome.INSTALLED
@@ -362,6 +377,7 @@ class UpdatesTest {
         val installs = mutableListOf<ByteArray>()
         val installed = CompletableDeferred<ByteArray>()
         val tries = Channel<Unit>(Channel.UNLIMITED)
+        val confirmations = Channel<Unit>(Channel.UNLIMITED)
         val dropped = CompletableDeferred<Unit>()
 
         override fun allowed() = allowed
@@ -373,6 +389,7 @@ class UpdatesTest {
             tries.trySend(Unit)
             if (!confirm) return outcome
             confirming()
+            confirmations.trySend(Unit)
             try {
                 return CompletableDeferred<Outcome>().await()
             } finally {
@@ -409,5 +426,9 @@ class UpdatesTest {
     /** The app's storage of the update held back, which outlives each [Updates] made. */
     private class FakeHolds : Holds {
         override var hold: Hold? = null
+    }
+
+    private companion object {
+        const val HOUR_MS = 60 * 60 * 1000L
     }
 }

@@ -6,7 +6,7 @@ mod backend;
 
 /// What its API answers with, which the app writes to TypeScript.
 pub use api::types::{
-    ConductCategory, ConductFinalKind, ConductOverview, ConductPerson, ConductSaved,
+    ConductBackup, ConductCategory, ConductFinalKind, ConductOverview, ConductPerson, ConductSaved,
     ConductStanding, ConductStepDown, ConductStepKind, ConductTier, ConductUnit, ConductWriteup,
     ConductWriteupRow,
 };
@@ -24,20 +24,36 @@ pub const FEATURE: Feature = Feature {
         perm("conduct.manage", "Manage Conduct", 161).implies(&["conduct.use"]),
     ],
     routes: api::routes::routes,
-    // The categories, with their tiers' step downs, on its own page of Settings.
-    settings: &[backend::settings::CATEGORIES],
+    // The categories, with their tiers' step downs, and backing signed copies up, on its own
+    // page of Settings.
+    settings: &[backend::settings::CATEGORIES, backend::settings::BACKUP],
     tables: &[(
         "dsp",
-        &["conduct_categories", "conduct_writeups", "conduct_copies"],
+        &[
+            "conduct_categories",
+            "conduct_writeups",
+            "conduct_copies",
+            "conduct_backups",
+            "conduct_backup_folders",
+        ],
     )],
     own_migrations: &[OwnMigrations {
         kind: Kind::DSP,
-        list: &[Migration {
-            id: 1,
-            name: "conduct",
-            apply: Sql(include_str!("migrations/dsp/0001_conduct.sql")),
-        }],
+        list: &[
+            Migration {
+                id: 1,
+                name: "conduct",
+                apply: Sql(include_str!("migrations/dsp/0001_conduct.sql")),
+            },
+            Migration {
+                id: 2,
+                name: "conduct_backups",
+                apply: Sql(include_str!("migrations/dsp/0002_conduct_backups.sql")),
+            },
+        ],
     }],
+    // Every minute, the signed copies not yet backed up.
+    maintenance: &[backend::backups::MAINTENANCE],
     domains: &[backend::DOMAIN],
     // Its categories' changes and a writeup's deletion, filed under Settings.
     audit: Audit::NONE,
@@ -61,5 +77,6 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         ConductOverview,
         ConductWriteup,
         ConductSaved,
+        ConductBackup,
     )
 }
