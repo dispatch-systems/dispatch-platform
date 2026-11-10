@@ -2,7 +2,7 @@
 //! requires, so a route cannot exist without one, and hands the handler only
 //! what that access produced.
 use super::{
-    input::{Input, Reply},
+    input::{self, Input, Reply},
     middleware,
     upload::{UPLOAD_LIMIT, Upload},
 };
@@ -658,18 +658,13 @@ impl Route {
     async fn answer(&self, state: Arc<State>, request: Request) -> Result<Response> {
         // Even public routes and GET routes registered as writes cannot mutate through the
         // support browser. The one POST opens a signed view and skips its visit audit below.
-        let support_cookie = if state.config.development {
-            "dispatch_support_read="
-        } else {
-            "__Host-dispatch_support_read="
-        };
-        let support = request
-            .headers()
-            .get_all("cookie")
-            .iter()
-            .filter_map(|h| h.to_str().ok())
-            .flat_map(|h| h.split(';'))
-            .any(|part| part.trim().starts_with(support_cookie));
+        let support = input::cookies(
+            request.headers(),
+            "dispatch_support_read",
+            state.config.development,
+        )
+        .next()
+        .is_some();
         let observation = crate::accounts::browser::restricted_request(request.headers());
         if support || observation {
             let view = self.path == "/api/session/dsp" && request.method() == Method::POST;

@@ -44,37 +44,15 @@ impl Input {
             .map_or("", |(_, segment)| segment)
     }
     pub fn session_token(&self, development: bool) -> &str {
-        let prefix = if development {
-            "dispatch_session="
-        } else {
-            "__Host-dispatch_session="
-        };
-        let mut values = self
-            .headers
-            .get_all("cookie")
-            .iter()
-            .filter_map(|header| header.to_str().ok())
-            .flat_map(|header| header.split(';'))
-            .map(str::trim)
-            .filter_map(|part| part.strip_prefix(prefix));
-        let first = values.next().unwrap_or("");
-        if values.next().is_some() { "" } else { first }
+        self.only_cookie("dispatch_session", development)
     }
     /// A support investigation's separate, read-only identity. Duplicate cookies are refused.
     pub fn support_read_token(&self, development: bool) -> &str {
-        let prefix = if development {
-            "dispatch_support_read="
-        } else {
-            "__Host-dispatch_support_read="
-        };
-        let mut values = self
-            .headers
-            .get_all("cookie")
-            .iter()
-            .filter_map(|header| header.to_str().ok())
-            .flat_map(|header| header.split(';'))
-            .map(str::trim)
-            .filter_map(|part| part.strip_prefix(prefix));
+        self.only_cookie("dispatch_support_read", development)
+    }
+    /// The value of the one cookie called `name`: empty when there is none, or more than one.
+    fn only_cookie(&self, name: &'static str, development: bool) -> &str {
+        let mut values = cookies(&self.headers, name, development);
         let first = values.next().unwrap_or("");
         if values.next().is_some() { "" } else { first }
     }
@@ -165,27 +143,11 @@ impl Reply {
     }
     /// `{"ok":true}` that also starts the browser's session.
     pub fn signed_in(raw: &str, development: bool, lifetime: SessionLifetime) -> Self {
-        let secure = if development { "" } else { "; Secure" };
-        let name = if development {
-            "dispatch_session"
-        } else {
-            "__Host-dispatch_session"
-        };
-        Self::ok().cookie(format!(
-            "{name}={raw}; Path=/; HttpOnly; SameSite=Strict; Max-Age={}{secure}",
-            lifetime.seconds()
-        ))
+        Self::ok().cookie(session_cookie(raw, lifetime.seconds(), development))
     }
     /// `{"ok":true}` that also ends the browser's session.
     pub fn signed_out(development: bool) -> Self {
-        let (name, secure) = if development {
-            ("dispatch_session", "")
-        } else {
-            ("__Host-dispatch_session", "; Secure")
-        };
-        Self::ok().cookie(format!(
-            "{name}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0{secure}"
-        ))
+        Self::ok().cookie(session_cookie("", 0, development))
     }
     pub fn cookie(mut self, cookie: String) -> Self {
         self.cookie = Some(cookie);
@@ -274,6 +236,37 @@ impl IntoResponse for Reply {
         }
         response
     }
+}
+
+/// A cookie's name in the browser: outside development, `__Host-` keeps it to this address.
+fn cookie_name(name: &str, development: bool) -> String {
+    if development {
+        name.to_owned()
+    } else {
+        format!("__Host-{name}")
+    }
+}
+/// The value of each cookie called `name` that the request sent.
+pub(super) fn cookies<'a>(
+    headers: &'a HeaderMap,
+    name: &'static str,
+    development: bool,
+) -> impl Iterator<Item = &'a str> {
+    let prefix = format!("{}=", cookie_name(name, development));
+    headers
+        .get_all("cookie")
+        .iter()
+        .filter_map(|header| header.to_str().ok())
+        .flat_map(|header| header.split(';'))
+        .map(str::trim)
+        .filter_map(move |part| part.strip_prefix(prefix.as_str()))
+}
+/// The browser's session cookie, holding `raw` for `seconds`; outside development it is
+/// sent over HTTPS alone.
+fn session_cookie(raw: &str, seconds: i64, development: bool) -> String {
+    let name = cookie_name("dispatch_session", development);
+    let secure = if development { "" } else { "; Secure" };
+    format!("{name}={raw}; Path=/; HttpOnly; SameSite=Strict; Max-Age={seconds}{secure}")
 }
 
 /// `Content-Disposition` for saving a file as `name`: a plain ASCII name for any client, and
