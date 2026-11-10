@@ -87,7 +87,6 @@
   "features/communications/tests/browser/todays-routes.spec.ts › Today’s Routes lists the day’s drivers on the board and in the list, and opens a driver’s conversation from each": 5.1,
   "features/communications/tests/browser/todays-routes.spec.ts › a driver’s progress stays as it was last read, though another driver’s change finds Today’s Routes unreadable": 5.5,
   "features/communications/tests/browser/todays-routes.spec.ts › a driver’s work conversation keeps what’s being written while they hold no work phone, and their phone through the two hours after the stop": 6.0,
-  "features/daily_performance/tests/browser/daily-performance.spec.ts › Daily Performance has its switch on the DSPs page, on for the seeded DSP": 3.5,
   "features/daily_performance/tests/browser/daily-performance.spec.ts › its settings are set with its collection on Collectors, where searching Settings finds them": 4.4,
   "features/documents/tests/browser/documents.spec.ts › a file only the member reaches comes in through Google's picker, signed in as them, in the tab": 7.7,
   "features/documents/tests/browser/documents.spec.ts › a file the Documents account reaches comes in from its link at once": 6.0,
