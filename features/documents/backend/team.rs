@@ -86,26 +86,25 @@ pub(super) async fn sync_for(state: &Arc<State>, owner: &Grant) -> Result<Vec<Sh
     sync_held(state, owner).await
 }
 async fn sync_held(state: &Arc<State>, owner: &Grant) -> Result<Vec<Share>> {
-    let dsp = owner.key.dsp.as_str();
     let (drive, mut shares) = on_drive!(
         state,
         owner,
         drive,
         drive
             .google
-            .shares(&drive.access, &drive.connection.folder_id)
+            .shares(&drive.access, &owner.connection.folder_id)
     )?;
-    let at = dsp.to_owned();
     let (wanted, people, name) = owner
-        .read(state, move |db, _| {
+        .read(state, |db, owner| {
+            let dsp = &owner.key.dsp;
             Ok((
-                members(db, &at)?,
-                db.documents_people(&at)?,
-                db.find_dsp(&at)?.name,
+                members(db, dsp)?,
+                db.documents_people(dsp)?,
+                db.find_dsp(dsp)?.name,
             ))
         })
         .await?;
-    let folder = drive.connection.folder_id.clone();
+    let folder = owner.connection.folder_id.clone();
     let shared_with = |shares: &[Share], email: &str| {
         shares
             .iter()
@@ -207,21 +206,21 @@ async fn sync_held(state: &Arc<State>, owner: &Grant) -> Result<Vec<Share>> {
         }
         gone.push(person);
     }
-    let at = dsp.to_owned();
     let origin = state.config.origin.clone();
     let dev = state.config.environment.is_preview();
     // What Google made is kept, the DSP disabled meanwhile or not: the next sync once it's
     // enabled goes on from there.
     owner
-        .run_finished(state, move |db, _| {
+        .run_finished(state, move |db, owner| {
+            let dsp = &owner.key.dsp;
             for person in &changed {
-                db.save_documents_person(&at, person)?;
+                db.save_documents_person(dsp, person)?;
             }
             for person in &gone {
-                db.remove_documents_person(&at, &person.user)?;
+                db.remove_documents_person(dsp, &person.user)?;
             }
             for user in &mail {
-                email(db, &at, user, &name, &origin, dev);
+                email(db, dsp, user, &name, &origin, dev);
             }
             Ok(())
         })
@@ -229,7 +228,7 @@ async fn sync_held(state: &Arc<State>, owner: &Grant) -> Result<Vec<Share>> {
     if let Some(error) = stopped {
         return Err(error);
     }
-    share_files(state, dsp, &drive, &addresses).await?;
+    share_files(state, &drive, &addresses).await?;
     access::current(state, owner).await?;
     Ok(shares)
 }
@@ -240,22 +239,20 @@ async fn sync_held(state: &Arc<State>, owner: &Grant) -> Result<Vec<Share>> {
 /// made stay, so someone the file's owner shared it with keeps it.
 async fn share_files(
     state: &Arc<State>,
-    dsp: &str,
     drive: &access::Drive,
     addresses: &[String],
 ) -> Result<()> {
     let owner = &drive.owner;
     let tree = access::tree_for(state, owner).await?;
     let targets = tree.targets();
-    let account = drive.connection.account.email.to_lowercase();
+    let account = owner.connection.account.email.to_lowercase();
     let wanted: BTreeSet<String> = addresses
         .iter()
         .map(|email| email.to_lowercase())
         .filter(|email| *email != account)
         .collect();
-    let at = dsp.to_owned();
     let made = owner
-        .read(state, move |db, _| db.documents_shared_files(&at))
+        .read(state, |db, owner| db.documents_shared_files(&owner.key.dsp))
         .await?;
     for file in &targets {
         let missing: Vec<&String> = wanted
@@ -300,10 +297,10 @@ async fn share_files(
                 email: email.clone(),
                 share,
             };
-            let (at, kept) = (dsp.to_owned(), shared.clone());
+            let kept = shared.clone();
             if let Err(error) = owner
-                .run_finished(state, move |db, _| {
-                    db.save_documents_shared_file(&at, &kept)
+                .run_finished(state, move |db, owner| {
+                    db.save_documents_shared_file(&owner.key.dsp, &kept)
                 })
                 .await
             {
@@ -335,10 +332,9 @@ async fn share_files(
             // Google may be busy: it's kept, and the next sync tries again.
             Err(_) => continue,
         }
-        let at = dsp.to_owned();
         owner
-            .run_finished(state, move |db, _| {
-                db.remove_documents_shared_file(&at, &shared)
+            .run_finished(state, move |db, owner| {
+                db.remove_documents_shared_file(&owner.key.dsp, &shared)
             })
             .await?;
     }

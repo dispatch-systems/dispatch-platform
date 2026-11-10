@@ -124,7 +124,7 @@ impl Files for DocumentsFiles {
         Box::pin(async move {
             let owner = grant::capture(state, dsp, None).await?;
             let tree = access::tree_for(state, &owner).await?;
-            let (_, made) = make(state, &owner, tree.root(), FOLDER, name).await?;
+            let made = make(state, &owner, tree.root(), FOLDER, name).await?;
             let folder = Folder {
                 id: made.id,
                 name: made.name,
@@ -153,7 +153,7 @@ impl Files for DocumentsFiles {
             let owner = grant::capture(state, dsp, None).await?;
             let tree = access::tree_for(state, &owner).await?;
             ensure(tree.is_folder(folder), FOLDER_NOT_FOUND, 404)?;
-            let (_, made) = put(state, &owner, folder, &file.name, &file.mime, file.bytes).await?;
+            let made = put(state, &owner, folder, &file.name, &file.mime, file.bytes).await?;
             let detail = format!("{} from {}", made.name, file.from);
             record(
                 state,
@@ -220,11 +220,10 @@ impl Files for DocumentsFiles {
                 written => written?,
             };
             // Changed as a member changes a file in Drive: shown as theirs, not logged.
-            let (at, by) = (dsp.to_owned(), page.by);
-            let changed = written.id.clone();
+            let (changed, by) = (written.id.clone(), page.by);
             owner
-                .run(state, move |db, _| {
-                    db.record_documents_change_by(&at, &changed, &by)
+                .run(state, move |db, owner| {
+                    db.record_documents_change_by(&owner.key.dsp, &changed, &by)
                 })
                 .await?;
             Ok(Some(Saved {
@@ -246,20 +245,15 @@ async fn record(
     action: &'static str,
     detail: &str,
 ) -> Result<()> {
-    let (at, id, by, detail) = (
-        owner.key.dsp.clone(),
-        id.to_owned(),
-        by.clone(),
-        detail.to_owned(),
-    );
+    let (id, by, detail) = (id.to_owned(), by.clone(), detail.to_owned());
     owner
-        .run(state, move |db, _| {
-            db.record_documents_change_by(&at, &id, &by)?;
+        .run(state, move |db, owner| {
+            db.record_documents_change_by(&owner.key.dsp, &id, &by)?;
             let actor = match &by {
                 Author::Member(user) => Some(user.as_str()),
                 Author::Named(_) => None,
             };
-            db.audit(actor, Some(&at), action, &detail)
+            db.audit(actor, Some(&owner.key.dsp), action, &detail)
         })
         .await
 }

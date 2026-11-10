@@ -18,7 +18,6 @@ use std::{
 
 pub(super) struct Drive {
     pub google: Connected,
-    pub connection: super::storage::Connection,
     pub access: String,
     pub owner: Grant,
 }
@@ -30,7 +29,6 @@ pub(super) async fn open_for(state: &Arc<State>, owner: &Grant, fresh: bool) -> 
     if let Some(access) = found.filter(|_| !fresh) {
         return Ok(Drive {
             google,
-            connection: owner.connection.clone(),
             access,
             owner: owner.clone(),
         });
@@ -48,7 +46,6 @@ pub(super) async fn open_for(state: &Arc<State>, owner: &Grant, fresh: bool) -> 
     if let Some(access) = cached.filter(|_| !fresh) {
         return Ok(Drive {
             google,
-            connection: owner.connection.clone(),
             access,
             owner: owner.clone(),
         });
@@ -67,7 +64,6 @@ pub(super) async fn open_for(state: &Arc<State>, owner: &Grant, fresh: bool) -> 
                 .await?;
             Ok(Drive {
                 google,
-                connection: owner.connection.clone(),
                 access: access.token,
                 owner: owner.clone(),
             })
@@ -108,9 +104,9 @@ macro_rules! on_drive {
                 let drive = $crate::backend::access::open_for($state, owner, false).await?;
                 owner.admit($state).await?;
                 let ($google, $token) = (&drive.google, drive.access.as_str());
-                $call.await.map(|value| (drive.connection, value))
+                $call.await
             }
-            answer => answer.map(|value| (drive.connection, value)),
+            answer => answer,
         }
     }};
     ($state:expr, $owner:expr, $drive:ident, $call:expr) => {{
@@ -198,7 +194,7 @@ async fn follow(state: &Arc<State>, owner: &Grant) -> Result<()> {
     let root = &owner.connection.folder_id;
     if let Some(from) = owner.mirror.changes(root) {
         match on_drive!(state, owner, |google, token| google.changes(token, &from)) {
-            Ok((_, changes)) => {
+            Ok(changes) => {
                 let relist = owner
                     .read(state, move |_, owner| {
                         Ok(owner.mirror.follow(&owner.connection.folder_id, changes))
@@ -219,8 +215,8 @@ async fn follow(state: &Arc<State>, owner: &Grant) -> Result<()> {
             }
         }
     }
-    let (_, changes) = on_drive!(state, owner, |google, token| google.start_changes(token))?;
-    let (_, all) = on_drive!(state, owner, |google, token| google.inside(token, root))?;
+    let changes = on_drive!(state, owner, |google, token| google.start_changes(token))?;
+    let all = on_drive!(state, owner, |google, token| google.inside(token, root))?;
     owner
         .read(state, move |_, owner| {
             owner

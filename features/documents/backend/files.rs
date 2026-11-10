@@ -183,7 +183,6 @@ pub async fn create(
     name: String,
     expected: Option<String>,
 ) -> Result<DocumentsItem> {
-    let dsp = c.dsp.id.clone();
     let owner = grant::capture_member(state, c, access, expected).await?;
     let tree = access::tree_for(state, &owner).await?;
     let parent = parent.unwrap_or_else(|| tree.root().to_owned());
@@ -194,18 +193,17 @@ pub async fn create(
         NewKind::Sheet => drive::SHEET,
         NewKind::Slides => drive::SLIDES,
     };
-    let (connection, made) = make(state, &owner, &parent, mime, &name).await?;
+    let made = make(state, &owner, &parent, mime, &name).await?;
     let (id, title) = (made.id.clone(), made.name.clone());
-    let at = dsp.clone();
     let (records, names) = owner
         .run_member(state, move |db, c| {
-            db.record_documents_change(&at, &id, c.actor())?;
+            db.record_documents_change(&c.dsp.id, &id, c.actor())?;
             c.audit(db, "documents.created", &title)?;
-            known(db, &at, &[id])
+            known(db, &c.dsp.id, &[id])
         })
         .await?;
     // A file just made holds nothing, so an empty tree counts it right.
-    let empty = Tree::new(&connection.folder_id, Vec::new());
+    let empty = Tree::new(&owner.connection.folder_id, Vec::new());
     owner
         .read(state, move |_, owner| {
             Ok(Described {
@@ -213,7 +211,7 @@ pub async fn create(
                 tree: &empty,
                 records: &records,
                 names: &names,
-                account: &connection.account.email,
+                account: &owner.connection.account.email,
             }
             .item(&Row::from(made), false))
         })
@@ -241,22 +239,20 @@ pub async fn upload(
         mime,
         body: upload,
     } = file;
-    let dsp = c.dsp.id.clone();
     let owner = grant::capture_member(state, c, access, expected).await?;
     let tree = access::tree_for(state, &owner).await?;
     let parent = parent.unwrap_or_else(|| tree.root().to_owned());
     ensure(tree.is_folder(&parent), "documents_item_not_found", 404)?;
-    let (connection, made) = put(state, &owner, &parent, &name, &mime, upload).await?;
+    let made = put(state, &owner, &parent, &name, &mime, upload).await?;
     let (id, title) = (made.id.clone(), made.name.clone());
-    let at = dsp.clone();
     let (records, names) = owner
         .run_member(state, move |db, c| {
-            db.record_documents_change(&at, &id, c.actor())?;
+            db.record_documents_change(&c.dsp.id, &id, c.actor())?;
             c.audit(db, "documents.uploaded", &title)?;
-            known(db, &at, &[id])
+            known(db, &c.dsp.id, &[id])
         })
         .await?;
-    let empty = Tree::new(&connection.folder_id, Vec::new());
+    let empty = Tree::new(&owner.connection.folder_id, Vec::new());
     owner
         .read(state, move |_, owner| {
             Ok(Described {
@@ -264,7 +260,7 @@ pub async fn upload(
                 tree: &empty,
                 records: &records,
                 names: &names,
-                account: &connection.account.email,
+                account: &owner.connection.account.email,
             }
             .item(&Row::from(made), false))
         })
@@ -272,25 +268,25 @@ pub async fn upload(
 }
 
 /// Makes a folder, Doc, Sheet or Slides named `name`, of `mime`, in the folder `parent` of the
-/// DSP's Drive, and puts it in the copy: the connection, and what Google made.
+/// DSP's Drive, and puts it in the copy: what Google made.
 pub(super) async fn make(
     state: &Arc<State>,
     owner: &Grant,
     parent: &str,
     mime: &str,
     name: &str,
-) -> Result<(Connection, Item)> {
-    let (connection, made) = on_drive!(state, owner, |google, token| google.create(
+) -> Result<Item> {
+    let made = on_drive!(state, owner, |google, token| google.create(
         token,
         name,
         mime,
         Some(parent)
     ))?;
     confirmed(state, owner, made.clone()).await?;
-    Ok((connection, made))
+    Ok(made)
 }
 /// Streams `upload`, named `name`, of `mime`, into the folder `parent` of the DSP's Drive, and
-/// puts it in the copy: the connection, and the file Google made.
+/// puts it in the copy: the file Google made.
 pub(super) async fn put(
     state: &Arc<State>,
     owner: &Grant,
@@ -298,7 +294,7 @@ pub(super) async fn put(
     name: &str,
     mime: &str,
     upload: Upload,
-) -> Result<(Connection, Item)> {
+) -> Result<Item> {
     let length = upload.length;
     let (drive, session) = on_drive!(
         state,
@@ -315,7 +311,7 @@ pub(super) async fn put(
         .finish_upload(&drive.access, &session, upload)
         .await?;
     confirmed(state, owner, made.clone()).await?;
-    Ok((drive.connection, made))
+    Ok(made)
 }
 
 /// Writes the page `html` as a Doc named `name` in the folder `parent` of the DSP's Drive, and
@@ -327,7 +323,7 @@ pub(super) async fn write(
     name: &str,
     html: &str,
 ) -> Result<Item> {
-    let (_, made) = on_drive!(state, owner, |google, token| google
+    let made = on_drive!(state, owner, |google, token| google
         .write(token, name, parent, html))?;
     confirmed(state, owner, made.clone()).await?;
     Ok(made)
@@ -340,7 +336,7 @@ pub(super) async fn rewrite(
     name: &str,
     html: &str,
 ) -> Result<Item> {
-    let (_, written) = on_drive!(state, owner, |google, token| google
+    let written = on_drive!(state, owner, |google, token| google
         .rewrite(token, id, name, html))?;
     confirmed(state, owner, written.clone()).await?;
     Ok(written)
@@ -357,7 +353,6 @@ pub async fn add(
     parent: Option<String>,
     expected: Option<String>,
 ) -> Result<AddedFiles> {
-    let dsp = c.dsp.id.clone();
     let owner = grant::capture_member(state, c, access, expected).await?;
     let tree = access::tree_for(state, &owner).await?;
     let parent = parent.unwrap_or_else(|| tree.root().to_owned());
@@ -430,11 +425,10 @@ pub async fn add(
         .iter()
         .map(|item| (item.id.clone(), item.name.clone()))
         .collect();
-    let at = dsp.clone();
     owner
         .run_member(state, move |db, c| {
             for (id, name) in &named {
-                db.record_documents_change(&at, id, c.actor())?;
+                db.record_documents_change(&c.dsp.id, id, c.actor())?;
                 c.audit(db, "documents.added", name)?;
             }
             Ok(())
@@ -443,19 +437,17 @@ pub async fn add(
     if shortcuts {
         team::share_soon(state, &owner);
     }
-    let connection = owner.connection.clone();
     let tree = access::tree_for(state, &owner).await?;
     let ids: Vec<String> = added.iter().map(|item| item.id.clone()).collect();
-    let at = dsp.clone();
     owner
         .read(state, move |db, owner| {
-            let (records, names) = known(db, &at, &ids)?;
+            let (records, names) = known(db, &owner.key.dsp, &ids)?;
             let described = Described {
                 owner: &owner.key,
                 tree: &tree,
                 records: &records,
                 names: &names,
-                account: &connection.account.email,
+                account: &owner.connection.account.email,
             };
             let items = added
                 .into_iter()
@@ -483,8 +475,7 @@ pub async fn download(state: &Arc<State>, c: &Context, id: String) -> Result<Dow
         &item.name,
         item.mime.as_str()
     ));
-    let (_, download) = gone(state, &owner, &id, answer).await?;
-    Ok(download)
+    gone(state, &owner, &id, answer).await
 }
 
 /// Google's picture of what the file `id` holds, `size` pixels on its longest side, by the
@@ -534,7 +525,6 @@ pub async fn rename(
     name: String,
     expected: Option<String>,
 ) -> Result<DocumentsItem> {
-    let dsp = c.dsp.id.clone();
     let owner = grant::capture_member(state, c, access, expected).await?;
     let tree = access::tree_for(state, &owner).await?;
     let item = tree.get(&id).ok_or_else(not_found)?;
@@ -546,22 +536,21 @@ pub async fn rename(
     }
     let answer = on_drive!(state, &owner, |google, token| google
         .rename(token, &id, &name));
-    let (connection, renamed) = gone(state, &owner, &id, answer).await?;
+    let renamed = gone(state, &owner, &id, answer).await?;
     confirmed(state, &owner, renamed.clone()).await?;
     let after = renamed.name.clone();
-    let at = dsp.clone();
     let (records, names) = owner
         .run_member(state, move |db, c| {
-            db.record_documents_change(&at, &id, c.actor())?;
+            db.record_documents_change(&c.dsp.id, &id, c.actor())?;
             db.audit_with(
                 Some(c.actor()),
-                Some(&at),
+                Some(&c.dsp.id),
                 "documents.renamed",
                 &after,
                 None,
                 &[("name", Some(before), Some(after.clone()))],
             )?;
-            known(db, &at, &[id])
+            known(db, &c.dsp.id, &[id])
         })
         .await?;
     let captured_tree = tree.clone();
@@ -572,7 +561,7 @@ pub async fn rename(
                 tree: &captured_tree,
                 records: &records,
                 names: &names,
-                account: &connection.account.email,
+                account: &owner.connection.account.email,
             }
             .item(&Row::from(renamed), false))
         })
@@ -589,7 +578,6 @@ pub async fn move_to(
     into: Option<String>,
     expected: Option<String>,
 ) -> Result<MovedItem> {
-    let dsp = c.dsp.id.clone();
     let owner = grant::capture_member(state, c, access, expected).await?;
     let connection = owner.connection.clone();
     let tree = access::tree_for(state, &owner).await?;
@@ -602,7 +590,7 @@ pub async fn move_to(
     let name = row.shown().name.to_string();
     // Someone may have moved it in Drive since the copy last heard: Google says where it is now.
     let answer = on_drive!(state, &owner, |google, token| google.get(token, &id));
-    let (_, now) = gone(state, &owner, &id, answer).await?;
+    let now = gone(state, &owner, &id, answer).await?;
     let Some(from) = now
         .parents
         .iter()
@@ -617,22 +605,20 @@ pub async fn move_to(
     } else {
         // Drive keeps a file in one folder, and only its owner moves it to another.
         ensure(now.owned_by_me, "documents_cannot_move", 409)?;
-        let answer = on_drive!(state, &owner, |google, token| google
-            .move_into(token, &now, &into));
-        let (_, moved) = answer?;
+        let moved = on_drive!(state, &owner, |google, token| google
+            .move_into(token, &now, &into))?;
         confirmed(state, &owner, moved.clone()).await?;
         let named = |folder: &str| match tree.get(folder) {
             Some(row) => row.name.to_string(),
             None => "Documents".to_owned(),
         };
         let (before, after) = (named(&from), named(&into));
-        let at = dsp.clone();
         let title = name.clone();
         owner
             .run_member(state, move |db, c| {
                 db.audit_with(
                     Some(c.actor()),
-                    Some(&at),
+                    Some(&c.dsp.id),
                     "documents.moved",
                     &title,
                     None,
@@ -642,18 +628,16 @@ pub async fn move_to(
             .await?;
         moved
     };
-    let connection = owner.connection.clone();
     let tree = access::tree_for(state, &owner).await?;
-    let at = dsp.clone();
     owner
         .read(state, move |db, owner| {
-            let (records, names) = known(db, &at, &[id])?;
+            let (records, names) = known(db, &owner.key.dsp, &[id])?;
             let described = Described {
                 owner: &owner.key,
                 tree: &tree,
                 records: &records,
                 names: &names,
-                account: &connection.account.email,
+                account: &owner.connection.account.email,
             };
             let item = match tree.get(&moved.id) {
                 Some(row) => described.item(row, false),
@@ -684,7 +668,7 @@ pub async fn trash(
     // Someone may have moved it out of Documents in Drive since the copy last heard: Google
     // says where it is now.
     let answer = on_drive!(state, &owner, |google, token| google.get(token, &id));
-    let (_, now) = gone(state, &owner, &id, answer).await?;
+    let now = gone(state, &owner, &id, answer).await?;
     if !now.parents.iter().any(|parent| tree.is_folder(parent)) {
         confirmed(state, &owner, now).await?;
         return Err(not_found());
