@@ -11,8 +11,8 @@ sealed interface Update {
         override val app = null
     }
 
-    /** A newer version, [app], to install; with the last try's [problem], if it failed. */
-    data class Available(override val app: AppVersion, val problem: Problem? = null) : Update
+    /** A newer version, [app], to install. */
+    data class Available(override val app: AppVersion) : Update
 
     /** Downloading [app]. */
     data class Downloading(override val app: AppVersion) : Update

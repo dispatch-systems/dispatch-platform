@@ -14,9 +14,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
@@ -91,15 +88,14 @@ class Updates(
     private val io: CoroutineContext = Dispatchers.IO,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
-    private val state = MutableStateFlow<Update>(Update.None)
-    val update: StateFlow<Update> = state.asStateFlow()
+    private var state: Update = Update.None
 
     /** The newer version the DSP last told of, in an outbox answer or a version's details. */
     private var offered: AppVersion? = null
     private var installing: Job? = null
 
     /** The version the try in progress is at. */
-    private val trying get() = state.value.app
+    private val trying get() = state.app
 
     // An APK left by an update that installed, which ended the process before it was deleted: any
     // but one kept for the next try at a newer version.
@@ -118,11 +114,11 @@ class Updates(
         val changed = newer != offered
         offer(newer)
         if (installing?.isActive == true) {
-            val confirming = state.value as? Update.Confirming ?: return
+            val confirming = state as? Update.Confirming ?: return
             if (!changed) return ask(confirming.app)
             installing?.cancel()
         }
-        if (changed) state.value = newer?.let { Update.Available(it) } ?: Update.None
+        if (changed) state = newer?.let { Update.Available(it) } ?: Update.None
         if (newer != null && installer.allowed() && due(newer)) start(site)
     }
 
@@ -132,7 +128,7 @@ class Updates(
      * good.
      */
     fun install(site: String) {
-        if (state.value is Update.Confirming) return installer.askAgain()
+        if (state is Update.Confirming) return installer.askAgain()
         val app = offered ?: return
         val held = holds.hold?.let { it.versionCode == app.versionCode && it.until == null } == true
         if (installing?.isActive == true || held) return
@@ -165,8 +161,8 @@ class Updates(
         val previous = installing
         installing = scope.launch {
             previous?.cancelAndJoin()
-            offered?.let { state.value = Update.Downloading(it) }
-            state.value = try {
+            offered?.let { state = Update.Downloading(it) }
+            state = try {
                 attempt(site)
             } catch (_: Refusal) {
                 failed(trying, Problem.DOWNLOAD)
@@ -199,17 +195,17 @@ class Updates(
         offer(app.takeIf { it.versionCode > own.versionCode })
         if (offered == null) return Update.None.also { letGo() }
         // From here the try is at the version the details name, which may not be the one heard of.
-        state.value = Update.Downloading(app)
+        state = Update.Downloading(app)
         if (!withContext(io) { saved(apk, details) }) download(site, details)
         if (!withContext(io) { check.isThisApp(apk) }) return failed(app, Problem.NOT_THIS_APP).also { letGo() }
         // Installing ends the process: never while a text is mid-send, nor while one starts.
         var installed = false
         val outcome = try {
             hold()
-            state.value = Update.Installing(app)
+            state = Update.Installing(app)
             installer.install(apk) {
                 release()
-                state.value = Update.Confirming(app)
+                state = Update.Confirming(app)
                 // Posted afresh for each confirmation: one posted before a restart is gone.
                 notice.showing = app.versionCode.takeIf { notice.show(app) }
             }.also { installed = it == Outcome.INSTALLED }
@@ -247,13 +243,13 @@ class Updates(
 
     /**
      * Where a try at [app] that didn't install, for [problem] or refused by the person, leaves
-     * updating: held, then offering the version the DSP last told of, older or newer, with the
-     * try's [problem] only if it's [app]; or nothing, if none.
+     * updating: held, then offering the version the DSP last told of, older or newer; or nothing,
+     * if none.
      */
     private fun failed(app: AppVersion?, problem: Problem?): Update {
         if (app != null) holds.hold = held(app, problem)
         val now = offered ?: return Update.None
-        return Update.Available(now, problem.takeIf { now == app })
+        return Update.Available(now)
     }
 
     /**
