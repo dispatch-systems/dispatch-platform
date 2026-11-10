@@ -205,24 +205,24 @@ async fn token(state: Arc<State>, request: Request) -> Response {
 }
 
 async fn register(state: Arc<State>, request: Request) -> Response {
+    let refuse = |refusal| refused(&Kept::of(&state).limits, "register", refusal);
     let (parts, body) = request.into_parts();
     let ip = match post_head(&state, &parts, "/oauth/register", Limited::Register) {
         Ok(ip) => ip,
-        Err(error) => return refused(&Kept::of(&state).limits, "register", error),
+        Err(error) => return refuse(error),
     };
     let body = match middleware::bytes(body).await {
         Ok(body) => body,
-        Err(error) => return refused(&Kept::of(&state).limits, "register", error.into()),
+        Err(error) => return refuse(error.into()),
     };
     let Some(metadata) = content_type(&parts, "application/json")
         .then(|| serde_json::from_slice::<Value>(&body).ok())
         .flatten()
     else {
-        return refused(
-            &Kept::of(&state).limits,
-            "register",
-            Refusal::new("invalid_client_metadata", "The body must be JSON"),
-        );
+        return refuse(Refusal::new(
+            "invalid_client_metadata",
+            "The body must be JSON",
+        ));
     };
     let answer = state
         .run_bookkeeping(move |db| {
@@ -236,7 +236,7 @@ async fn register(state: Arc<State>, request: Request) -> Response {
         .and_then(|answer| answer);
     match answer {
         Ok(client) => answered(201, client),
-        Err(refusal) => refused(&Kept::of(&state).limits, "register", refusal),
+        Err(refusal) => refuse(refusal),
     }
 }
 
