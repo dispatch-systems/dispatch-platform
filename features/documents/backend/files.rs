@@ -184,7 +184,7 @@ pub async fn create(
     expected: Option<String>,
 ) -> Result<DocumentsItem> {
     let dsp = c.dsp.id.clone();
-    let owner = grant::capture_member(state, c.clone(), access, expected).await?;
+    let owner = grant::capture_member(state, c, access, expected).await?;
     let tree = access::tree_for(state, &owner).await?;
     let parent = parent.unwrap_or_else(|| tree.root().to_owned());
     ensure(tree.is_folder(&parent), "documents_item_not_found", 404)?;
@@ -198,8 +198,7 @@ pub async fn create(
     let (id, title) = (made.id.clone(), made.name.clone());
     let at = dsp.clone();
     let (records, names) = owner
-        .run(state, move |db, _| {
-            let c = access.revalidate(db, &c)?;
+        .run_member(state, move |db, c| {
             db.record_documents_change(&at, &id, c.actor())?;
             c.audit(db, "documents.created", &title)?;
             known(db, &at, &[id])
@@ -243,7 +242,7 @@ pub async fn upload(
         body: upload,
     } = file;
     let dsp = c.dsp.id.clone();
-    let owner = grant::capture_member(state, c.clone(), access, expected).await?;
+    let owner = grant::capture_member(state, c, access, expected).await?;
     let tree = access::tree_for(state, &owner).await?;
     let parent = parent.unwrap_or_else(|| tree.root().to_owned());
     ensure(tree.is_folder(&parent), "documents_item_not_found", 404)?;
@@ -251,8 +250,7 @@ pub async fn upload(
     let (id, title) = (made.id.clone(), made.name.clone());
     let at = dsp.clone();
     let (records, names) = owner
-        .run(state, move |db, _| {
-            let c = access.revalidate(db, &c)?;
+        .run_member(state, move |db, c| {
             db.record_documents_change(&at, &id, c.actor())?;
             c.audit(db, "documents.uploaded", &title)?;
             known(db, &at, &[id])
@@ -360,7 +358,7 @@ pub async fn add(
     expected: Option<String>,
 ) -> Result<AddedFiles> {
     let dsp = c.dsp.id.clone();
-    let owner = grant::capture_member(state, c.clone(), access, expected).await?;
+    let owner = grant::capture_member(state, c, access, expected).await?;
     let tree = access::tree_for(state, &owner).await?;
     let parent = parent.unwrap_or_else(|| tree.root().to_owned());
     ensure(tree.is_folder(&parent), "documents_item_not_found", 404)?;
@@ -434,8 +432,7 @@ pub async fn add(
         .collect();
     let at = dsp.clone();
     owner
-        .run(state, move |db, _| {
-            let c = access.revalidate(db, &c)?;
+        .run_member(state, move |db, c| {
             for (id, name) in &named {
                 db.record_documents_change(&at, id, c.actor())?;
                 c.audit(db, "documents.added", name)?;
@@ -538,7 +535,7 @@ pub async fn rename(
     expected: Option<String>,
 ) -> Result<DocumentsItem> {
     let dsp = c.dsp.id.clone();
-    let owner = grant::capture_member(state, c.clone(), access, expected).await?;
+    let owner = grant::capture_member(state, c, access, expected).await?;
     let tree = access::tree_for(state, &owner).await?;
     let item = tree.get(&id).ok_or_else(not_found)?;
     let before = item.name.to_string();
@@ -554,8 +551,7 @@ pub async fn rename(
     let after = renamed.name.clone();
     let at = dsp.clone();
     let (records, names) = owner
-        .run(state, move |db, _| {
-            let c = access.revalidate(db, &c)?;
+        .run_member(state, move |db, c| {
             db.record_documents_change(&at, &id, c.actor())?;
             db.audit_with(
                 Some(c.actor()),
@@ -594,7 +590,7 @@ pub async fn move_to(
     expected: Option<String>,
 ) -> Result<MovedItem> {
     let dsp = c.dsp.id.clone();
-    let owner = grant::capture_member(state, c.clone(), access, expected).await?;
+    let owner = grant::capture_member(state, c, access, expected).await?;
     let connection = owner.connection.clone();
     let tree = access::tree_for(state, &owner).await?;
     let root = connection.folder_id;
@@ -633,8 +629,7 @@ pub async fn move_to(
         let at = dsp.clone();
         let title = name.clone();
         owner
-            .run(state, move |db, _| {
-                let c = access.revalidate(db, &c)?;
+            .run_member(state, move |db, c| {
                 db.audit_with(
                     Some(c.actor()),
                     Some(&at),
@@ -680,7 +675,7 @@ pub async fn trash(
     id: String,
     expected: Option<String>,
 ) -> Result<()> {
-    let owner = grant::capture_member(state, c.clone(), access, expected).await?;
+    let owner = grant::capture_member(state, c, access, expected).await?;
     let tree = access::tree_for(state, &owner).await?;
     let row = tree.get(&id).ok_or_else(not_found)?;
     let name = row.name.to_string();
@@ -707,10 +702,7 @@ pub async fn trash(
         team::share_soon(state, &owner);
     }
     owner
-        .run(state, move |db, _| {
-            let c = access.revalidate(db, &c)?;
-            c.audit(db, "documents.trashed", &name)
-        })
+        .run_member(state, move |db, c| c.audit(db, "documents.trashed", &name))
         .await
 }
 
@@ -787,12 +779,6 @@ async fn query_read(
         .read(move |db| {
             let _turn = turn;
             captured.check(db)?;
-            let c = access.revalidate(db, &c)?;
-            let current = db
-                .documents_connection(&c.dsp.id)?
-                .ok_or_else(|| Error::new("documents_not_connected", 409))?;
-            ensure(!current.broken, "google_connection_broken", 409)?;
-            ensure(current == connection, "documents_not_connected", 409)?;
             let reset = |reason| match descriptions.as_ref() {
                 Some(_) => QueryAnswer::Descriptions(DocumentsDescriptionRead::Reset { reason }),
                 None => QueryAnswer::Page(DocumentsQueryRead::Reset { reason }),

@@ -498,14 +498,13 @@ pub async fn finish_link(
     let verifier = state
         .run(move |db| db.finish_documents_sign_in(&dsp, &actor, &sign_in))
         .await?;
-    let owner = grant::capture_member(state, c.clone(), access, None).await?;
+    let owner = grant::capture_member(state, c, access, None).await?;
     let google = Google::of(&state.config)?;
     let email = google
         .linked_email(&state.config.origin, &code, &verifier)
         .await?;
     let c = owner
-        .run(state, move |db, _| {
-            let c = access.revalidate(db, &c)?;
+        .run_member(state, move |db, c| {
             db.link_documents_google(&c.dsp.id, c.actor(), &email)?;
             c.audit(db, "documents.linked", &email)?;
             Ok(c)
