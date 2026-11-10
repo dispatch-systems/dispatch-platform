@@ -538,7 +538,10 @@ fn unchanged_publications_reuse_storage_but_changed_data_and_history_survive() {
         Some("https://paycom.example/timecard/P1")
     );
     let rows = db.daily_timecards(id, date, "name", false).unwrap().rows;
-    let row = rows.iter().find(|r| r.card.employee_code == "E002").unwrap();
+    let row = rows
+        .iter()
+        .find(|r| r.card.employee_code == "E002")
+        .unwrap();
     assert_eq!(row.card.punches[0].clock_in.as_deref(), Some("07:59"));
     assert_eq!(row.name, "Changed Name");
     let selected = ["E002".to_owned()];
@@ -704,7 +707,9 @@ fn unchanged_publications_reuse_storage_but_changed_data_and_history_survive() {
         "paycom_payload_unavailable"
     );
     assert_eq!(
-        db.daily_timecards(id, date, "name", false).unwrap_err().code,
+        db.daily_timecards(id, date, "name", false)
+            .unwrap_err()
+            .code,
         "paycom_payload_unavailable"
     );
     assert_eq!(
