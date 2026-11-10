@@ -774,7 +774,13 @@ async function textFixture(page: Page, all: Message[], ready = false) {
   );
   return {
     fixture,
-    stop: stopped.release,
+    // The page asks for a window again as its updates end. A request still on its way as the
+    // test ends is let go here, where its handler would otherwise read an answer the closing
+    // browser has thrown away, and fail a test that had passed.
+    stop: async () => {
+      stopped.release();
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    },
     invalidate: async () => {
       revision++;
       const response = page.waitForResponse(
@@ -857,7 +863,7 @@ for (const status of ['waiting', 'delivered'] as const) {
       );
     } finally {
       acknowledge.release();
-      stop();
+      await stop();
     }
   });
 }
@@ -887,7 +893,7 @@ test('a selection made before readiness defers one update and its release resume
     await page.evaluate(() => getSelection()!.removeAllRanges());
     await expect(thread.getByText('The deferred update arrived', { exact: true })).toBeVisible();
   } finally {
-    stop();
+    await stop();
   }
 });
 
@@ -951,7 +957,7 @@ test('legacy400 first-visible250 retains its complete visible suffix and offset 
       'Conversion preserves the draft',
     );
   } finally {
-    stop();
+    await stop();
   }
 });
 
@@ -1002,7 +1008,7 @@ test('a legacy photo viewer retains its opener while an already-dispatched readi
     await expect(thread).toHaveClass(/windowed/);
   } finally {
     answer.release();
-    stop();
+    await stop();
   }
 });
 
@@ -1065,7 +1071,7 @@ test('legacy on-phone video fetch and download own conversion until both operati
   } finally {
     fetched.release();
     saved.release();
-    stop();
+    await stop();
   }
 });
 
@@ -1131,7 +1137,7 @@ for (const outside of [false, true]) {
         ).toHaveCount(1);
       } finally {
         answer.release();
-        stop();
+        await stop();
       }
     },
   );
