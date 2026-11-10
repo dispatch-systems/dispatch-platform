@@ -9,7 +9,7 @@ use dispatch_cortex::associates::Capture;
 
 /// The roster Cortex's fixture collects for the DSP.
 pub(crate) fn roster(store: &Store, dsp: &str) -> Capture {
-    let request = bind_roster_request(store, dsp).unwrap();
+    let request = serde_json::to_value(bind_roster_request(store, dsp).unwrap()).unwrap();
     let collected = dispatch_cortex::COLLECTOR
         .fixture("America/Chicago", &request)
         .unwrap();

@@ -32,7 +32,7 @@ impl Keeper for Roster {
         DOMAIN
     }
     fn bind(&self, store: &Store, dsp: &str, _: &Value) -> Result<Value> {
-        bind_roster_request(store, dsp)
+        Ok(serde_json::to_value(bind_roster_request(store, dsp)?)?)
     }
     /// The photos still standing for the company the question names.
     fn kept(&self, store: &Store, dsp: &str, question: &Value) -> Result<Value> {
