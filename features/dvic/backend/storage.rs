@@ -378,8 +378,8 @@ pub(crate) fn bind_dvic_request(store: &Store, id: &str, weeks: Vec<String>) -> 
 }
 pub(crate) fn dvic_request(store: &Store, id: &str, weeks: Vec<String>) -> Result<Value> {
     let request = bind_dvic_request(store, id, weeks)?;
-    // Keep the durable job payload readable by the previous binary. The worker
-    // binds live tenant context immediately before collection and publication.
+    // A queued job keeps only its station and weeks: the DSP's details are bound as they are
+    // when it collects and when it publishes, and a station changed since is refused.
     Ok(json!({"collection":"dvic","station":request["station"],"weeks":request["weeks"]}))
 }
 pub(crate) fn dvic_schedule_ready(store: &Store, id: &str) -> Result<()> {
