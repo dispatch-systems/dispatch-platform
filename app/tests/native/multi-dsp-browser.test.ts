@@ -8,6 +8,13 @@ import { until, seedQueuedJob } from '../../../core/shell/tests/support/support.
 import { processMemory } from '../../../core/shell/tests/support/process-memory.js';
 import type { Job } from '../../../core/collection/api/index.js';
 
+/** The database turns in a server's `log` that took 25 ms or more, a line each. */
+const slowTurns = (log: string) =>
+  log
+    .split('\n')
+    .filter((line) => line.includes('"event":"database.slow"'))
+    .join('\n');
+
 test(
   'multiple DSPs share two browsers fairly while API reads stay responsive',
   { skip: process.env.DISPATCH_TEST_NATIVE !== '1', timeout: 300000 },
@@ -125,6 +132,7 @@ test(
     let final: Job[] = [];
     await until(async () => {
       const start = performance.now();
+      const logged = f.logs().length;
       const [health, listed, employees, session] = await Promise.all([
         owner.get('/api/platform/health'),
         owner.get('/api/platform/jobs'),
@@ -132,8 +140,14 @@ test(
         owner.get('/api/session'),
       ]);
       latencies.push(performance.now() - start);
+      // A refused read names the limit it met, not what held it: the database turns that
+      // ended while these four waited do, by their caller and their queue, lock and work times.
       for (const response of [health, listed, employees, session])
-        assert.equal(response.status, 200, response.body);
+        assert.equal(
+          response.status,
+          200,
+          `${response.body}\n${slowTurns(f.logs().slice(logged))}`,
+        );
       memoryDelayed ||= !health.value.browsers.memory.canStart;
       peakBrowsers = Math.max(peakBrowsers, health.value.browsers.active);
       assert(health.value.browsers.active <= 2);
