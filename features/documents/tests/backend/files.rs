@@ -234,7 +234,13 @@ async fn an_unchanged_folder_renews_thumbnail_admission_without_renewing_its_pro
         .await
         .unwrap()
         .key;
-    mirror::of(&key).replace(&connection.folder_id, vec![shortcut, target], "0".into());
+    let mirror = mirror::of(&key);
+    mirror.replace(
+        &connection.folder_id,
+        mirror.confirmation(),
+        vec![shortcut, target],
+        "0".into(),
+    );
     let first = folder_read(&state, c.clone(), Dsp("documents.use"), None, None, None)
         .await
         .unwrap();

@@ -191,12 +191,15 @@ pub(super) async fn tree_for(state: &Arc<State>, owner: &Grant) -> Result<Arc<Tr
 }
 async fn follow(state: &Arc<State>, owner: &Grant) -> Result<()> {
     let root = &owner.connection.folder_id;
+    let confirmed = owner.mirror.confirmation();
     if let Some(from) = owner.mirror.changes(root) {
         match on_drive!(state, owner, |google, token| google.changes(token, &from)) {
             Ok(changes) => {
                 let relist = owner
                     .read(state, move |_, owner| {
-                        Ok(owner.mirror.follow(&owner.connection.folder_id, changes))
+                        Ok(owner
+                            .mirror
+                            .follow(&owner.connection.folder_id, confirmed, changes))
                     })
                     .await?;
                 if !relist {
@@ -214,13 +217,14 @@ async fn follow(state: &Arc<State>, owner: &Grant) -> Result<()> {
             }
         }
     }
+    let confirmed = owner.mirror.confirmation();
     let changes = on_drive!(state, owner, |google, token| google.start_changes(token))?;
     let all = on_drive!(state, owner, |google, token| google.inside(token, root))?;
     owner
         .read(state, move |_, owner| {
             owner
                 .mirror
-                .replace(&owner.connection.folder_id, all, changes);
+                .replace(&owner.connection.folder_id, confirmed, all, changes);
             Ok(())
         })
         .await

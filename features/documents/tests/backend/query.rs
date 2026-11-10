@@ -168,7 +168,7 @@ async fn full_order_search_filters_and_counts_survive_page_boundaries_and_shortc
         .unwrap()
         .key;
     let owner = mirror::of(&key);
-    owner.replace(root, all, "cursor".into());
+    owner.replace(root, owner.confirmation(), all, "cursor".into());
     let (tree, _) = owner.snapshot(root).unwrap();
     let before = Arc::strong_count(&tree);
     let (first, manifest, _) = full(
@@ -299,9 +299,10 @@ async fn full_order_search_filters_and_counts_survive_page_boundaries_and_shortc
 
     // Legacy feeds can retain two raw rows for one ID. Paging must not replace one
     // description with the canonical other's metadata, even when search selects only one.
-    owner.replace(root, Vec::new(), "empty".into());
+    owner.replace(root, owner.confirmation(), Vec::new(), "empty".into());
     owner.follow(
         root,
+        owner.confirmation(),
         drive::Changes {
             changed: vec![
                 drive::Changed::Kept(Box::new(item("repeat", "First", Some(root), false, "same"))),
@@ -373,7 +374,12 @@ async fn continuations_project_only_the_page_and_current_authors_then_reset_with
         .unwrap()
         .key;
     let owner = mirror::of(&key);
-    owner.replace(&connection.folder_id, rows.clone(), "cursor".into());
+    owner.replace(
+        &connection.folder_id,
+        owner.confirmation(),
+        rows.clone(),
+        "cursor".into(),
+    );
     let (first, _, revision) = full(
         query(
             &state,
@@ -516,7 +522,12 @@ async fn continuations_project_only_the_page_and_current_authors_then_reset_with
     );
     mirror::forget(&key.namespace, &dsp);
     let replacement = mirror::of(&key);
-    replacement.replace(&connection.folder_id, rows, "new incarnation".into());
+    replacement.replace(
+        &connection.folder_id,
+        replacement.confirmation(),
+        rows,
+        "new incarnation".into(),
+    );
     replacement.put(&connection.folder_id, changed);
     assert_eq!(
         owner.snapshot(&connection.folder_id).unwrap().1,
@@ -554,6 +565,7 @@ async fn continuations_project_only_the_page_and_current_authors_then_reset_with
     target.thumbnail_version = Some("1".into());
     replacement.replace(
         &connection.folder_id,
+        replacement.confirmation(),
         vec![shortcut.clone(), target.clone()],
         "external".into(),
     );
@@ -574,6 +586,7 @@ async fn continuations_project_only_the_page_and_current_authors_then_reset_with
     replacement.put_many(&connection.folder_id, [shortcut.clone(), target.clone()]);
     replacement.follow(
         &connection.folder_id,
+        replacement.confirmation(),
         drive::Changes {
             changed: vec![
                 drive::Changed::Kept(Box::new(target.clone())),
@@ -585,6 +598,7 @@ async fn continuations_project_only_the_page_and_current_authors_then_reset_with
     // Reverse the complete listing too: equivalent publication must still find the index.
     replacement.replace(
         &connection.folder_id,
+        replacement.confirmation(),
         vec![target.clone(), shortcut.clone()],
         "repacked".into(),
     );
@@ -667,6 +681,7 @@ async fn continuations_project_only_the_page_and_current_authors_then_reset_with
     );
     replacement.follow(
         &connection.folder_id,
+        replacement.confirmation(),
         drive::Changes {
             changed: vec![drive::Changed::Gone("external-target".into())],
             next: "lost-target".into(),

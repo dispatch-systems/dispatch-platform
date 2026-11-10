@@ -149,6 +149,7 @@ async fn unchanged_still_projects_current_member_names_counts_shortcut_targets_a
     let mirror = mirror::of(&key);
     mirror.replace(
         root,
+        mirror.confirmation(),
         vec![safety.clone(), target.clone(), shortcut],
         "0".into(),
     );
@@ -316,6 +317,7 @@ async fn unchanged_still_projects_current_member_names_counts_shortcut_targets_a
     .unwrap();
     mirror.follow(
         root,
+        mirror.confirmation(),
         drive::Changes {
             changed: vec![drive::Changed::Gone("target".into())],
             next: "1".into(),

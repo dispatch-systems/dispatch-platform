@@ -34,6 +34,8 @@ const PENDING: usize = 100;
 struct Copy {
     tree: Arc<Tree>,
     semantic: u64,
+    /// Local confirmations, including ones that leave the tree semantically unchanged.
+    confirmed: u64,
     /// Where the account's change feed goes on from.
     changes: String,
     /// When Google last said what changed.
@@ -42,6 +44,12 @@ struct Copy {
     pending: Vec<Item>,
 }
 impl Copy {
+    fn confirm(&mut self) {
+        self.confirmed = self
+            .confirmed
+            .checked_add(1)
+            .expect("Documents confirmation epoch exhausted");
+    }
     fn publish<T>(&mut self, change: impl FnOnce(&mut Tree) -> T) -> T {
         let tree = Arc::make_mut(&mut self.tree);
         let before = tree.mutation();
@@ -166,6 +174,10 @@ impl Mirror {
         self.snapshot(root)
             .is_some_and(|(_, current)| current == semantic)
     }
+    /// Captured before a provider read, then checked under the publication lock.
+    pub fn confirmation(&self) -> Option<u64> {
+        self.copy().as_ref().map(|copy| copy.confirmed)
+    }
     /// Where the change feed goes on from, for a copy of `root`.
     pub fn changes(&self, root: &str) -> Option<String> {
         let copy = self.copy();
@@ -173,10 +185,14 @@ impl Mirror {
         Some(copy.changes.clone())
     }
     /// Makes a new copy of `root` from every file Drive listed, its change feed going on from
-    /// `changes`, asked before they were listed.
-    pub fn replace(&self, root: &str, all: Vec<Item>, changes: String) {
+    /// `changes`, asked before they were listed. A local confirmation since the provider read
+    /// discards the listing, leaving the cursor and synchronization instant alone.
+    pub fn replace(&self, root: &str, confirmed: Option<u64>, all: Vec<Item>, changes: String) {
         let tree = Arc::new(Tree::new(root, all));
         let mut current = self.copy();
+        if current.as_ref().map(|copy| copy.confirmed) != confirmed {
+            return;
+        }
         let semantic = current.as_ref().map_or(1, |copy| {
             copy.semantic
                 .checked_add(u64::from(!copy.tree.same_semantics(&tree)))
@@ -185,15 +201,20 @@ impl Mirror {
         *current = Some(Copy {
             tree,
             semantic,
+            confirmed: confirmed.unwrap_or(0),
             changes,
             synced: Instant::now(),
             pending: Vec::new(),
         });
     }
     /// Brings the copy of `root` up to date with what changed. Answers whether the Drive
-    /// needs listing whole again, as a folder came in from elsewhere in the account.
-    pub fn follow(&self, root: &str, changes: Changes) -> bool {
+    /// needs listing whole again, as a folder came in from elsewhere in the account. A local
+    /// confirmation since the read discards this answer; the next normal turn reads again.
+    pub fn follow(&self, root: &str, confirmed: Option<u64>, changes: Changes) -> bool {
         self.change(root, |copy| {
+            if Some(copy.confirmed) != confirmed {
+                return false;
+            }
             copy.changes = changes.next;
             copy.synced = Instant::now();
             if changes.changed.is_empty() {
@@ -212,6 +233,7 @@ impl Mirror {
     pub fn put_many(&self, root: &str, items: impl IntoIterator<Item = Item>) {
         let mut copy = self.copy();
         if let Some(copy) = copy.as_mut().filter(|copy| copy.tree.root() == root) {
+            copy.confirm();
             copy.pending.extend(items);
             if copy.pending.len() >= PENDING {
                 copy.flush();
@@ -220,7 +242,10 @@ impl Mirror {
     }
     /// Takes out a file Dispatch trashed, or Google said is gone.
     pub fn remove(&self, root: &str, id: &str) {
-        self.change(root, |copy| copy.publish(|tree| tree.remove(id)));
+        self.change(root, |copy| {
+            copy.confirm();
+            copy.publish(|tree| tree.remove(id));
+        });
     }
     /// The turn to ask Google about the DSP's Drive, once whoever has it is done.
     pub async fn wait(&self) -> OwnedMutexGuard<()> {
