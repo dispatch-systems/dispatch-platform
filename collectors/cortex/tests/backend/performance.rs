@@ -53,7 +53,6 @@ fn addresses_follow_the_pages_parameter_order() {
     let api = Api {
         base: "https://logistics.amazon.com/performance/api/v1".into(),
         dsp: "NLOG".into(),
-        company_id: "company".into(),
     };
     let dataset = crate::weekly_scorecard::dataset("da_dsp_station_weekly_performance").unwrap();
     assert_eq!(
@@ -71,7 +70,6 @@ fn daily_thresholds_omit_station_while_day_rows_keep_their_exact_date() {
     let api = Api {
         base: "https://logistics.amazon.com/performance/api/v1".into(),
         dsp: "NLOG".into(),
-        company_id: "company".into(),
     };
     let threshold = crate::daily_performance::dataset("driver_thresholds").unwrap();
     let url = api.address(threshold, "TST1", "2026-10-03", "2026-10-03");
