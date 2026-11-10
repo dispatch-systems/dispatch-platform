@@ -115,20 +115,7 @@ pub fn ledger<'a>(kind: Kind, owners: impl IntoIterator<Item = &'a Migrations>) 
         .flat_map(|owned| owned.list.iter().copied())
         .collect();
     list.sort_by_key(|migration| migration.id);
-    for (index, migration) in list.iter().enumerate() {
-        let expected = index as u32 + 1;
-        assert!(
-            migration.id >= expected,
-            "{} migration {} is declared twice",
-            kind.name,
-            migration.id
-        );
-        assert!(
-            migration.id == expected,
-            "{} migration {expected} is missing",
-            kind.name
-        );
-    }
+    numbered(kind, &list, "");
     list
 }
 
@@ -151,23 +138,29 @@ pub fn owned_ledger<'a>(
     let mut ledger = Vec::new();
     for (owner, mut list) in gathered {
         list.sort_by_key(|migration| migration.id);
-        for (index, migration) in list.iter().enumerate() {
-            let expected = index as u32 + 1;
-            assert!(
-                migration.id >= expected,
-                "{} migration {} of {owner} is declared twice",
-                kind.name,
-                migration.id
-            );
-            assert!(
-                migration.id == expected,
-                "{} migration {expected} of {owner} is missing",
-                kind.name
-            );
-        }
+        numbered(kind, &list, &format!(" of {owner}"));
         ledger.extend(list.into_iter().map(|migration| (owner, migration)));
     }
     ledger
+}
+
+/// Panics unless `list`, sorted by id, runs from 1 without a gap or a repeat. `whose` follows
+/// the id in the panic, as ` of <feature>` for a feature's own.
+fn numbered(kind: Kind, list: &[Migration], whose: &str) {
+    for (index, migration) in list.iter().enumerate() {
+        let expected = index as u32 + 1;
+        assert!(
+            migration.id >= expected,
+            "{} migration {}{whose} is declared twice",
+            kind.name,
+            migration.id
+        );
+        assert!(
+            migration.id == expected,
+            "{} migration {expected}{whose} is missing",
+            kind.name
+        );
+    }
 }
 
 /// Adds a column unless an older binary's startup already did.
@@ -391,13 +384,19 @@ fn migrate_dsp_after_probe<F: FnOnce()>(db: &Db, id: &str, after_probe: F) -> Re
     }
     apply(db, Kind::DSP.name(), list, owned)?;
     if bind {
-        db.0.execute(
-            "INSERT INTO storage_identity(dsp_id,provider,source) VALUES (?,'dispatch','dispatch-v1')",
-            [id],
-        )?;
+        bind_identity(db, id)?;
     }
     verify_dsp_identity(db, id)?;
     tx.commit()?;
+    Ok(())
+}
+
+/// Records that core DSP storage belongs to the DSP `id`.
+pub(super) fn bind_identity(db: &Db, id: &str) -> Result<()> {
+    db.0.execute(
+        "INSERT INTO storage_identity(dsp_id,provider,source) VALUES (?,'dispatch','dispatch-v1')",
+        [id],
+    )?;
     Ok(())
 }
 
