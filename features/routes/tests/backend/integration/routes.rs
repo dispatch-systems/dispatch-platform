@@ -653,7 +653,10 @@ async fn mismatched_incomplete_and_oversized_captures_fail_before_changing_publi
         .enqueue_routes(&id, None, "swapped", Some("2026-09-25"), Mode::Final, 1)
         .unwrap();
     let job = s(&jobs[0], "id");
-    let error = stage(&state, &db, &id, job, swapped).await.unwrap_err();
+    let error = stage(&state, &db, &id, job, swapped)
+        .await
+        .map(drop)
+        .unwrap_err();
     assert_eq!(error.code, "routes_scope_mismatch");
     common::set_job_status(&db, job, "failed").unwrap();
     assert_eq!(
@@ -857,7 +860,10 @@ async fn a_later_read_of_a_day_replaces_an_earlier_one_in_either_order_and_keeps
         .enqueue_routes(&id, None, "third", Some("2026-09-25"), Mode::Final, 1)
         .unwrap();
     let job = s(&jobs[0], "id");
-    let refused = stage(&state, &db, &id, job, other).await.unwrap_err();
+    let refused = stage(&state, &db, &id, job, other)
+        .await
+        .map(drop)
+        .unwrap_err();
     assert_eq!(refused.code, "routes_scope_mismatch");
 }
 
