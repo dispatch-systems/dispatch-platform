@@ -116,7 +116,7 @@ test("a DSP connected through Paycom's API is checked function by function, then
     return ['succeeded', 'failed'].includes(finished.status);
   });
   assert.equal(finished!.status, 'succeeded', JSON.stringify(finished!));
-  assert.equal(finished!.metrics[0].method, 'api');
+  assert.equal(finished!.metrics[0]?.method, 'api');
   // The roster came a page at a time, each employee's punches from their own history.
   assert(api.answered.some((request) => request.startsWith('v1/employeedirectory?eestatus=A')));
   assert(api.answered.some((request) => request.includes('page=2')));

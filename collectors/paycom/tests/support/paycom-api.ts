@@ -109,7 +109,8 @@ export async function paycomApi(client: {
       answered.push(path);
       return answer(200, { result: true, data: { position: employee.position } });
     }
-    const [from, to] = ['startdate', 'enddate'].map((key) => Number(url.searchParams.get(key)));
+    const from = Number(url.searchParams.get('startdate'));
+    const to = Number(url.searchParams.get('enddate'));
     list(
       employee.punches
         .filter((punch) => punch.at >= from && punch.at <= to)

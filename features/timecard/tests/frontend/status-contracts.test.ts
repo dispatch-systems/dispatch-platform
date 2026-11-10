@@ -62,6 +62,7 @@ test('Paycom status preserves nullable publication and connection fields and opt
       updatedAt: '',
       lastVerifiedAt: null,
       accountLabel: null,
+      checks: [],
     },
     workforce: { collectedAt: null },
   };
