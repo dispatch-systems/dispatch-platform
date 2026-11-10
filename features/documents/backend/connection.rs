@@ -85,7 +85,8 @@ pub async fn account(state: &Arc<State>, dsp: &str) -> Result<DocumentsAccount> 
             let owner = grant::capture(state, dsp, Some(found.generation.clone())).await?;
             match access::open_for(state, &owner, false).await {
                 Ok(drive) => {
-                    drive.admit(state).await?;
+                    // Admitted first: Google not answering only leaves the storage out.
+                    owner.admit(state).await?;
                     drive.google.storage(&drive.access).await.ok()
                 }
                 Err(_) => None,

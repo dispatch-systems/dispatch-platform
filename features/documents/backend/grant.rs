@@ -20,7 +20,7 @@ impl Admission {
         }
     }
     pub async fn check(&self) -> Result<()> {
-        self.owner.read(&self.state, |_, _| Ok(())).await
+        self.owner.admit(&self.state).await
     }
 }
 
@@ -137,6 +137,11 @@ impl Grant {
                 f(db, &owner)
             })
             .await
+    }
+    /// The check alone, in a shared transition of its own: before a provider attempt, and
+    /// before an answer nothing else was read for.
+    pub async fn admit(&self, state: &Arc<State>) -> Result<()> {
+        self.read(state, |_, _| Ok(())).await
     }
     /// Actual provenance, sharing and audit changes retain the exclusive State transition.
     pub async fn run<T: Send + 'static>(

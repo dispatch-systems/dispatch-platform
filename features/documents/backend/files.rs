@@ -311,7 +311,7 @@ pub(super) async fn put(
             .start_upload(&drive.access, name, mime, parent, length)
     )?;
     // The bytes go once, with the token that just started the upload.
-    drive.admit(state).await?;
+    owner.admit(state).await?;
     let made = drive
         .google
         .finish_upload(&drive.access, &session, upload)
@@ -375,7 +375,6 @@ pub async fn add(
     let mut unshared = Vec::new();
     for id in &ids {
         // One the account that holds Documents doesn't reach: the member couldn't bring it.
-        drive.admit(state).await?;
         let item = match drive.google.get(&drive.access, id).await {
             Err(error) if error.code == "documents_item_not_found" => {
                 return Err(Error::new("documents_picked_elsewhere", 409));
@@ -398,7 +397,6 @@ pub async fn add(
         }
         // Only its owner moves a file. Documents gets a shortcut to one shared with the
         // account, as Drive's own "Add shortcut" does, and to one Google won't move.
-        drive.admit(state).await?;
         let moved = match item.owned_by_me {
             true => drive.google.move_into(&drive.access, &item, &parent).await,
             false => Err(Error::new("documents_cannot_move", 409)),
@@ -409,7 +407,7 @@ pub async fn add(
                 if !item.capabilities.can_share {
                     unshared.push(item.name.clone());
                 }
-                drive.admit(state).await?;
+                owner.admit(state).await?;
                 let made = drive.google.shortcut(&drive.access, &item, &parent).await?;
                 (made, Some(item))
             }
@@ -511,7 +509,6 @@ pub async fn picture(
     let link = if shown.given.elapsed() < PICTURE_LINK_LASTS {
         shown.link
     } else {
-        drive.admit(state).await?;
         let answer = drive.google.get(&drive.access, &id).await;
         let item = gone(state, &owner, &id, answer).await?;
         let link = item.thumbnail_link.clone().ok_or_else(not_found)?;
@@ -525,7 +522,7 @@ pub async fn picture(
             .await?;
         link
     };
-    drive.admit(state).await?;
+    owner.admit(state).await?;
     let picture = drive.google.picture(&drive.access, &link, size).await?;
     access::current(state, &owner).await?;
     Ok(picture)
