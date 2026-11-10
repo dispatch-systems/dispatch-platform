@@ -73,18 +73,12 @@ pub(super) fn addable(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 }
 /// Blocks the number of a conversation by text.
 pub(super) fn block(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
-    v::fields(&input.body, &[])?;
-    let conversation = texted(input)?;
-    Reply::of(&texts::contacts::block(
-        db,
-        c.state,
-        c.dsp_id(),
-        &conversation,
-        c.actor(),
-        true,
-    )?)
+    blocking(db, c, input, true)
 }
 pub(super) fn unblock(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    blocking(db, c, input, false)
+}
+fn blocking(db: &Store, c: &Member, input: &Input, blocked: bool) -> Result<Reply> {
     v::fields(&input.body, &[])?;
     let conversation = texted(input)?;
     Reply::of(&texts::contacts::block(
@@ -93,7 +87,7 @@ pub(super) fn unblock(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         c.dsp_id(),
         &conversation,
         c.actor(),
-        false,
+        blocked,
     )?)
 }
 /// Opens the conversation with a `number`, or one of today's drivers, `driverId`, to text them
