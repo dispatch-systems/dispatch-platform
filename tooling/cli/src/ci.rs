@@ -20,6 +20,8 @@ struct Run {
     id: u64,
     head: String,
     done: bool,
+    /// What it came to once done: a run can fail before it has a job to fail in.
+    conclusion: String,
     failed: Vec<Failed>,
 }
 /// A job that ended without passing: failed, timed out or cancelled.
@@ -58,7 +60,7 @@ fn latest(
         "--limit",
         "1",
         "--json",
-        "databaseId,headSha,status",
+        "databaseId,headSha,status,conclusion",
     ];
     if finished {
         list.extend(["--status", "completed"]);
@@ -110,6 +112,7 @@ fn latest(
         id,
         head: run["headSha"].as_str().unwrap_or_default().to_owned(),
         done: run["status"] == "completed",
+        conclusion: run["conclusion"].as_str().unwrap_or_default().to_owned(),
         failed,
     }))
 }
@@ -312,7 +315,7 @@ pub fn landed(root: &Path, runner: &dyn Runner, pause: &dyn Fn(Duration)) -> Res
         pause(ASKS);
         waited += ASKS;
     };
-    if run.failed.is_empty() {
+    if run.conclusion == "success" {
         println!("main's checks passed on {merge}.");
         return Ok(());
     }
@@ -326,7 +329,7 @@ pub fn landed(root: &Path, runner: &dyn Runner, pause: &dyn Fn(Duration)) -> Res
             run.id
         )])
     );
-    Err(format!("main's checks failed on {merge}.").into())
+    Err(format!("main's checks ended in {} on {merge}.", run.conclusion).into())
 }
 
 /// A job's whole log, which GitHub hands out once the job ended: `gh run view --log-failed`
@@ -436,6 +439,7 @@ mod tests {
     /// commit, which isn't there until the wait paused `after` times, and that run's jobs.
     struct Github {
         merged: &'static str,
+        conclusion: &'static str,
         jobs: String,
         after: u32,
         paused: Cell<u32>,
@@ -446,13 +450,15 @@ mod tests {
             self.asked
                 .borrow_mut()
                 .push(args.iter().map(|arg| (*arg).to_owned()).collect());
+            let run = format!(
+                r#"[{{"databaseId":5,"headSha":"abc","status":"completed","conclusion":"{}"}}]"#,
+                self.conclusion
+            );
             let answer = match args {
                 ["git", ..] => "change",
                 ["gh", "pr", ..] => self.merged,
                 ["gh", "run", "list", ..] if self.paused.get() < self.after => "[]",
-                ["gh", "run", "list", ..] => {
-                    r#"[{"databaseId":5,"headSha":"abc","status":"completed"}]"#
-                }
+                ["gh", "run", "list", ..] => &run,
                 ["gh", "run", "view", ..] => &self.jobs,
                 // A job's log.
                 _ => "",
@@ -463,12 +469,14 @@ mod tests {
     #[test]
     fn landed_waits_for_mains_run_of_the_merge_and_fails_when_that_run_failed() {
         let merged = r#"[{"number":7,"mergeCommit":{"oid":"abc"}}]"#;
-        let job = |conclusion: &str| {
-            format!(r#"{{"jobs":[{{"name":"core","databaseId":9,"conclusion":"{conclusion}"}}]}}"#)
+        let jobs = |conclusion: &'static str| {
+            let job = format!(r#"{{"name":"core","databaseId":9,"conclusion":"{conclusion}"}}"#);
+            (conclusion, format!(r#"{{"jobs":[{job}]}}"#))
         };
-        let landed = |merged, jobs, after| {
+        let landed = |merged, (conclusion, jobs): (&'static str, String), after| {
             let github = Github {
                 merged,
+                conclusion,
                 jobs,
                 after,
                 paused: Cell::new(0),
@@ -480,25 +488,31 @@ mod tests {
             (result.map_err(|error| error.to_string()), github)
         };
         // It asks for main's run of the commit the PR merged as, and waits until that ended.
-        let (result, github) = landed(merged, job("success"), 2);
+        let (result, github) = landed(merged, jobs("success"), 2);
         assert_eq!(result, Ok(()));
         assert_eq!(github.paused.get(), 2);
         assert!(github.asked.borrow().iter().any(|args| {
             args[..3] == ["gh", "run", "list"]
                 && args.windows(2).any(|pair| pair == ["--commit", "abc"])
         }));
-        // A run that failed is an error, so what waits on the command hears of it.
-        let (result, _) = landed(merged, job("failure"), 0);
+        // A run that failed is an error, so what waits on the command hears of it: one that
+        // failed before it had a job to fail in too.
+        let (result, _) = landed(merged, jobs("failure"), 0);
         assert_eq!(
             result.unwrap_err(),
-            "main's checks failed on abc, the commit #7 merged as."
+            "main's checks ended in failure on abc, the commit #7 merged as."
+        );
+        let (result, _) = landed(merged, ("startup_failure", r#"{"jobs":[]}"#.to_owned()), 0);
+        assert_eq!(
+            result.unwrap_err(),
+            "main's checks ended in startup_failure on abc, the commit #7 merged as."
         );
         // One that never ends stops the wait, by the clock the pauses move.
-        let (result, github) = landed(merged, job("success"), u32::MAX);
+        let (result, github) = landed(merged, jobs("success"), u32::MAX);
         assert!(result.unwrap_err().contains("hasn't ended after 45m 00s"));
         assert_eq!(github.paused.get(), 135);
         // A branch whose PR hasn't merged has no such run to wait for.
-        let (result, github) = landed("[]", job("success"), 0);
+        let (result, github) = landed("[]", jobs("success"), 0);
         assert!(result.unwrap_err().contains("change has no merged PR"));
         assert_eq!(github.paused.get(), 0);
     }
