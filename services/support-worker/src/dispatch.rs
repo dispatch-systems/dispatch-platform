@@ -2,9 +2,8 @@ use crate::{
     Result, checkpoint::Checkpoint, config::Config, github, hermes, jobs::Platform,
     worktrees::Worktree,
 };
-use dispatch_core::support::api::types::SupportJob;
+use dispatch_core::support::api::types::{SupportJob, SupportProposal};
 use fs2::FileExt;
-use serde_json::json;
 use std::{fs, time::Duration};
 
 mod implementation;
@@ -66,9 +65,7 @@ async fn leased(config: &Config, platform: &Platform, job: SupportJob) -> Result
     let heartbeat = async {
         loop {
             tokio::time::sleep(Duration::from_secs(25)).await;
-            platform
-                .update(&job, "heartbeat", json!({"checkpoint": checkpoint.saved()}))
-                .await?;
+            checkpoint.heartbeat(platform, &job).await?;
         }
         #[allow(unreachable_code)]
         Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
@@ -103,10 +100,20 @@ async fn leased(config: &Config, platform: &Platform, job: SupportJob) -> Result
         } else {
             "The agent is waiting for browser, provider or infrastructure access; private job diagnostics are available to the platform owner"
         };
-        let _ = platform.update(&job, "wait", json!({"reason":public_reason,"checkpoint":checkpoint.saved(),"retryAfterMs":60_000})).await;
+        let _ = checkpoint.wait(platform, &job, public_reason, 60_000).await;
         return Err(error);
     }
     Ok(())
+}
+
+/// The proposal version the job carries, the one the owner approved.
+fn approved_proposal(job: &SupportJob) -> Result<&SupportProposal> {
+    Ok(job
+        .detail
+        .proposals
+        .iter()
+        .find(|proposal| proposal.version == job.version)
+        .ok_or("Approved proposal not found")?)
 }
 
 async fn execute(

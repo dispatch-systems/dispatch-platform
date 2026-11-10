@@ -167,12 +167,7 @@ pub(super) async fn run(
                         json!({"phase":"isolated_reproduction","analysisStage":"isolated"}),
                     )
                     .await?;
-                let baseline = async {
-                    tree.build(config).await?;
-                    NativePreview::start(config, tree, None).await
-                }
-                .await;
-                match baseline {
+                match NativePreview::start(config, tree, None).await {
                     Ok(value) => preview = Some(value),
                     Err(error) => {
                         context["isolatedBaselineUnavailable"] = error.to_string().into();
@@ -182,8 +177,7 @@ pub(super) async fn run(
                 }
             }
             if let Some(preview) = &preview {
-                context["browser"] =
-                    json!({"url":preview.origin,"readOnly":false,"fixtureLogin":true});
+                context["browser"] = preview.browser();
                 AnalystStage::Browser
             } else {
                 AnalystStage::Source

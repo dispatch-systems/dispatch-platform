@@ -1,8 +1,8 @@
 use crate::{Result, config::Config, hermes::profile_home, jobs::Platform, require};
 use dispatch_core::support::api::types::{SupportEvidence, SupportJob};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
-use std::fs;
+use serde_json::Value;
+use std::{fs, path::Path};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -32,9 +32,7 @@ pub async fn investigation(
             "No actual browser investigation was attempted",
         )?;
         let evidence = SupportEvidence {id:String::new(), phase:"investigation".into(), source_sha:head.into(), criterion:"Real-browser investigation attempted".into(), steps:vec![format!("Attempt actual browser {}", attempt["action"])], outcome:"The real-browser attempt was unavailable. Analysis continues read-only with explicit reproduction uncertainty.".into(), passed:false, attachment_ids:vec![], created_at:0};
-        platform
-            .update(job, "evidence", json!({"evidence":evidence}))
-            .await?;
+        platform.evidence(job, &evidence).await?;
         return Ok(());
     }
     let witness: Witness = serde_json::from_slice(&fs::read(path)?)?;
@@ -45,38 +43,21 @@ pub async fn investigation(
     if witness.assertions.is_empty() {
         let mut attachments = vec![];
         if let Some(screenshot) = witness.final_screenshot {
-            require(
-                !screenshot.contains('/') && screenshot.ends_with(".png"),
-                "Invalid browser observation artifact",
-            )?;
-            attachments.push(
-                platform
-                    .upload(
-                        job,
-                        &screenshot,
-                        fs::read(home.join("evidence").join(&screenshot))?,
-                    )
-                    .await?,
-            );
+            let bytes =
+                read_screenshot(&home, &screenshot, "Invalid browser observation artifact")?;
+            attachments.push(platform.upload(job, &screenshot, bytes).await?);
         }
         let evidence = SupportEvidence {id:String::new(), phase:"investigation".into(), source_sha:head.into(), criterion:"Real-browser platform inspection".into(), steps:witness.steps, outcome:"The browser inspected the reported environment. The proposal distinguishes actual observations, reproduction uncertainty and inferred causes.".into(), passed:true, attachment_ids:attachments, created_at:0};
-        platform
-            .update(job, "evidence", json!({"evidence":evidence}))
-            .await?;
+        platform.evidence(job, &evidence).await?;
         return Ok(());
     }
     for assertion in witness.assertions {
-        require(
-            !assertion.screenshot.contains('/') && assertion.screenshot.ends_with(".png"),
+        let bytes = read_screenshot(
+            &home,
+            &assertion.screenshot,
             "Invalid investigation screenshot",
         )?;
-        let attachment = platform
-            .upload(
-                job,
-                &assertion.screenshot,
-                fs::read(home.join("evidence").join(&assertion.screenshot))?,
-            )
-            .await?;
+        let attachment = platform.upload(job, &assertion.screenshot, bytes).await?;
         let evidence = SupportEvidence {
             id: String::new(),
             phase: "investigation".into(),
@@ -88,11 +69,19 @@ pub async fn investigation(
             attachment_ids: vec![attachment],
             created_at: 0,
         };
-        platform
-            .update(job, "evidence", json!({"evidence":evidence}))
-            .await?;
+        platform.evidence(job, &evidence).await?;
     }
     Ok(())
+}
+
+/// A screenshot the browser saved in its evidence folder, by a name that cannot leave it;
+/// `invalid` refuses any other name.
+fn read_screenshot(home: &Path, screenshot: &str, invalid: &str) -> Result<Vec<u8>> {
+    require(
+        !screenshot.contains('/') && screenshot.ends_with(".png"),
+        invalid,
+    )?;
+    Ok(fs::read(home.join("evidence").join(screenshot))?)
 }
 
 #[derive(Deserialize, Serialize)]
@@ -129,11 +118,7 @@ pub async fn record(
             assertion.passed && assertion.steps.len() >= 2,
             "Browser verification did not pass every criterion",
         )?;
-        require(
-            !assertion.screenshot.contains('/') && assertion.screenshot.ends_with(".png"),
-            "Invalid browser artifact",
-        )?;
-        let bytes = fs::read(home.join("evidence").join(&assertion.screenshot))?;
+        let bytes = read_screenshot(&home, &assertion.screenshot, "Invalid browser artifact")?;
         require(
             bytes.starts_with(b"\x89PNG\r\n\x1a\n"),
             "Browser screenshot missing",
@@ -160,9 +145,7 @@ pub async fn record(
             attachment_ids: vec![attachment],
             created_at: 0,
         };
-        platform
-            .update(job, "evidence", json!({"evidence": evidence}))
-            .await?;
+        platform.evidence(job, &evidence).await?;
     }
     Ok(())
 }

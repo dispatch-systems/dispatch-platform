@@ -24,12 +24,7 @@ pub(super) async fn run(
         job.detail.ticket.approved_version == Some(job.version),
         "Implementation requires the exact approved proposal",
     )?;
-    let proposal = job
-        .detail
-        .proposals
-        .iter()
-        .find(|proposal| proposal.version == job.version)
-        .ok_or("Approved proposal not found")?;
+    let proposal = super::approved_proposal(job)?;
     let tree = Worktree::prepare(config, job, None).await?;
     let mut failure = checkpoint.failure();
     'correction: loop {
@@ -57,12 +52,7 @@ pub(super) async fn run(
             let summary;
             let checks;
             loop {
-                let initial = async {
-                    tree.build(config).await?;
-                    NativePreview::start(config, &tree, None).await
-                }
-                .await;
-                let initial = match initial {
+                let initial = match NativePreview::start(config, &tree, None).await {
                     Ok(preview) => Some(preview),
                     Err(error) => {
                         failure = format!(
@@ -73,8 +63,7 @@ pub(super) async fn run(
                 };
                 let mut context = json!({"rules":rules(config)?,"proposal":proposal,"approvedVersion":job.version,"failure":failure,"headSha":tree.head().await?});
                 if let Some(initial) = &initial {
-                    context["browser"] =
-                        json!({"url":initial.origin,"readOnly":false,"fixtureLogin":true});
+                    context["browser"] = initial.browser();
                 }
                 let built = hermes::run(config, job, &tree, "builder", "Implement the approved proposal completely or fix the supplied failure. Return the approved-implementation JSON contract. Do not change approval scope. The host runs checks, commits, then independent browser verification.", context).await?;
                 drop(initial);
@@ -117,16 +106,12 @@ pub(super) async fn run(
                 let collections =
                     collection_verification::collect(config, &tree, job, proposal).await?;
                 for proof in &collections.proofs {
-                    platform
-                        .update(job, "evidence", json!({"evidence":proof}))
-                        .await?;
+                    platform.evidence(job, proof).await?;
                 }
                 // Every preview executes the committed artifact with no host network or secrets.
-                tree.build(config).await?;
                 let native =
                     NativePreview::start(config, &tree, collections.state.as_ref()).await?;
-                let target = json!({"url":native.origin,"readOnly":false,"fixtureLogin":true});
-                let context = json!({"rules":rules(config)?,"proposal":proposal,"acceptanceCriteria":proposal.acceptance_criteria,"headSha":head,"collectionResults":collections.summaries,"browser":target});
+                let context = json!({"rules":rules(config)?,"proposal":proposal,"acceptanceCriteria":proposal.acceptance_criteria,"headSha":head,"collectionResults":collections.summaries,"browser":native.browser()});
                 let reviewed = hermes::run(config, job, &tree, "reviewer", "Independently verify every criterion in the actual changed application. Use real browser interactions and dispatch_browser assert for each exact criterion. Inspect persisted outcomes after refresh and relevant roles/layouts. Return the independent-verification JSON contract.", context).await?;
                 if reviewed["passed"] != true {
                     failure = format!(
@@ -181,9 +166,7 @@ pub(super) async fn run(
             }
             let head = tree.head().await?;
             // Recheck lease/approval before the trusted publisher can mutate GitHub.
-            platform
-                .update(job, "heartbeat", json!({"checkpoint":checkpoint.saved()}))
-                .await?;
+            checkpoint.heartbeat(platform, job).await?;
             let (number, url) = github::publish(config, job, &tree, &summary, &checks).await?;
             platform
                 .update(job, "github", json!({"prUrl":url,"headSha":head}))
@@ -226,7 +209,8 @@ pub(super) async fn run(
                     .update(job, "github", json!({"prUrl":pr_url,"headSha":head}))
                     .await?;
                 github::ready(config, &tree, number).await?;
-                platform.update(job, "wait", json!({"reason":"Waiting for GitHub to admit the verified head","checkpoint":checkpoint.saved(),"retryAfterMs":15_000})).await?;
+                let reason = "Waiting for GitHub to admit the verified head";
+                checkpoint.wait(platform, job, reason, 15_000).await?;
                 return Ok(());
             }
             if status["mergeable"] == "CONFLICTING" {
@@ -260,9 +244,7 @@ pub(super) async fn run(
                     continue 'correction;
                 }
                 github::Checks::Passed if status["mergeable"] == "MERGEABLE" => {
-                    platform
-                        .update(job, "heartbeat", json!({"checkpoint":checkpoint.saved()}))
-                        .await?;
+                    checkpoint.heartbeat(platform, job).await?;
                     github::merge(&tree, &status, &head).await?;
                 }
                 _ => {}
@@ -270,7 +252,9 @@ pub(super) async fn run(
             // Remote CI does not monopolize the local supervisor. The exact verified head
             // and PR remain checkpointed while other tickets can be investigated/answered.
             tree.relieve_disk_pressure(config).await?;
-            platform.update(job, "wait", json!({"reason":"Waiting for the PR's checks","checkpoint":checkpoint.saved(),"retryAfterMs":15_000})).await?;
+            checkpoint
+                .wait(platform, job, "Waiting for the PR's checks", 15_000)
+                .await?;
             return Ok(());
         }
     }

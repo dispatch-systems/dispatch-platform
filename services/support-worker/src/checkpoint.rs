@@ -158,6 +158,26 @@ impl Checkpoint {
         )
         .await
     }
+
+    /// Renews the lease with the checkpoint as it stands.
+    pub async fn heartbeat(&self, platform: &Platform, job: &SupportJob) -> Result<()> {
+        let body = json!({"checkpoint":self.saved()});
+        platform.update(job, "heartbeat", body).await?;
+        Ok(())
+    }
+
+    /// Hands the job back with the checkpoint as it stands, to be claimed again after `retry_ms`.
+    pub async fn wait(
+        &self,
+        platform: &Platform,
+        job: &SupportJob,
+        reason: &str,
+        retry_ms: u64,
+    ) -> Result<()> {
+        let body = json!({"reason":reason,"checkpoint":self.saved(),"retryAfterMs":retry_ms});
+        platform.update(job, "wait", body).await?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

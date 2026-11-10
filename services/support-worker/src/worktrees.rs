@@ -201,6 +201,30 @@ impl Worktree {
         Ok(Self { name, path })
     }
 
+    /// The branch's scratch folder, where its previews and collection runs keep their private
+    /// state and its PR body is written.
+    pub fn scratch(&self) -> PathBuf {
+        PathBuf::from(format!("/tmp/dispatch-{}", self.name))
+    }
+
+    /// Removes what an earlier attempt left in the scratch folder: each folder whose name starts
+    /// with one of `prefixes`.
+    pub fn clear_scratch(&self, prefixes: &[&str]) -> Result<()> {
+        let scratch = self.scratch();
+        if scratch.is_dir() {
+            for entry in std::fs::read_dir(&scratch)? {
+                let entry = entry?;
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if entry.file_type()?.is_dir()
+                    && prefixes.iter().any(|prefix| name.starts_with(prefix))
+                {
+                    std::fs::remove_dir_all(entry.path())?;
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub async fn head(&self) -> Result<String> {
         command(&self.path, "git", &["rev-parse", "HEAD"]).await
     }
@@ -317,7 +341,7 @@ impl Worktree {
         {
             return Err(error);
         }
-        let scratch = PathBuf::from(format!("/tmp/dispatch-{}", self.name));
+        let scratch = self.scratch();
         if scratch.exists() {
             std::fs::remove_dir_all(scratch)?;
         }

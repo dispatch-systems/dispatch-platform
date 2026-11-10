@@ -58,15 +58,11 @@ pub(super) async fn run(
         .await
         .is_err()
     {
-        platform.update(job, "wait", json!({"reason":"The merged change is awaiting a production release","checkpoint":checkpoint.saved(),"retryAfterMs":60_000})).await?;
+        let reason = "The merged change is awaiting a production release";
+        checkpoint.wait(platform, job, reason, 60_000).await?;
         return Ok(());
     }
-    let proposal = job
-        .detail
-        .proposals
-        .iter()
-        .find(|proposal| proposal.version == job.version)
-        .ok_or("Approved proposal not found")?;
+    let proposal = super::approved_proposal(job)?;
     let tree = Worktree::prepare(config, job, Some(source)).await?;
     let mut target = if let Some(grant) = &grant {
         browser(grant)?
@@ -92,9 +88,8 @@ pub(super) async fn run(
             "release",
         )
         .await?;
-        tree.build(config).await?;
         let preview = NativePreview::start(config, &tree, None).await?;
-        target = json!({"url":preview.origin,"readOnly":false,"fixtureLogin":true});
+        target = preview.browser();
         counterpart = Some(preview);
     }
     let context = json!({"rules":rules(config)?,"proposal":proposal,"acceptanceCriteria":proposal.production_verification,"priorImplementationEvidence":job.detail.evidence,"deploymentMetadata":metadata,"headSha":source,"browser":target,"originEnvironment":job.environment,"verificationBasis":if counterpart.is_some() {"Isolated counterpart built from actual deployed production source; public production identity and ancestry were separately verified. Authenticated production behavior is unobserved."} else {"Actual production readonly browser session with the reporter's current access"}});
