@@ -1,24 +1,33 @@
 //! Compact query indices retained by core's bounded read cache. No descriptions, provenance,
 //! picture admission or Tree handles are cached. Continuations only look up admitted indices.
 use super::{
+    access,
     description::{Described, kind, known},
+    files::not_found,
     google::folder_url,
+    grant, mirror,
     tree::Tree,
 };
 use crate::api::types::{
-    DocumentsCounts, DocumentsFilter, DocumentsItem, DocumentsManifest, DocumentsManifestEntry,
-    DocumentsQueryFolder, DocumentsQueryScope, FolderStep, ItemKind,
+    DocumentsCounts, DocumentsDescriptionRead, DocumentsFilter, DocumentsItem, DocumentsManifest,
+    DocumentsManifestEntry, DocumentsQueryFolder, DocumentsQueryPage, DocumentsQueryRead,
+    DocumentsQueryScope, DocumentsResetReason, FolderStep, ItemKind,
 };
 use dispatch_core::{
-    Result,
+    Result, State,
+    accounts::Context,
     db::Store,
+    ensure,
     foundation::crypto,
-    server::cache::{ReadCache, Scope},
+    server::{
+        cache::{ReadCache, Scope},
+        http::route::Dsp,
+    },
 };
 use serde::Serialize;
 use std::{
     collections::HashMap,
-    sync::{Arc, OnceLock},
+    sync::{Arc, OnceLock, atomic::Ordering},
 };
 
 pub(super) const CACHED: &str = "documents-query";
@@ -182,7 +191,7 @@ pub(super) fn index(
 }
 /// Only requested IDs reach the authoritative provenance query and thumbnail admission.
 /// The caller has revalidated current authorization and connection after every await.
-pub(super) fn describe(
+pub(super) fn items(
     db: &Store,
     owner: &super::grant::Key,
     account: &str,
@@ -228,6 +237,235 @@ pub(super) fn header(
         url: folder_url(at),
         path,
         items: tree.count(at) as u32,
+    }
+}
+
+/// Shared preparation for the ephemeral query protocol, its pages and its descriptions.
+/// `files::folder` and `files::folder_read` read through access::tree_for and the complete
+/// reader. Captured grant ownership is independent of semantic snapshots.
+pub(crate) struct QueryRequest {
+    pub scope: DocumentsQueryScope,
+    pub page: u32,
+    pub size: u32,
+    pub snapshot: Option<String>,
+    pub manifest_since: Option<String>,
+    pub since: Option<String>,
+}
+async fn query_read(
+    state: &Arc<State>,
+    c: Context,
+    access: Dsp,
+    request: QueryRequest,
+    descriptions: Option<Vec<String>>,
+) -> Result<QueryAnswer> {
+    let QueryRequest {
+        scope,
+        snapshot,
+        page,
+        size,
+        manifest_since,
+        since,
+    } = request;
+    let scope = normalized(scope);
+    ensure((1..=100).contains(&size), "invalid_input", 400)?;
+    if let Some(ids) = &descriptions {
+        let unique: std::collections::HashSet<&String> = ids.iter().collect();
+        ensure(
+            !ids.is_empty() && ids.len() <= 100 && unique.len() == ids.len(),
+            "invalid_input",
+            400,
+        )?;
+    }
+    let captured = grant::capture_member(state, c.clone(), access, None).await?;
+    access::tree_for(state, &captured).await?;
+    let owner = Arc::clone(&captured.mirror);
+    let connection = captured.connection.clone();
+    // Serialize openings before database admission; a cancelled caller's worker keeps its
+    // turn until the calculation ends. Continuations have no builder and need no keyed turn.
+    let turn = if snapshot.is_none() {
+        Some(
+            state
+                .read_turns
+                .enter(digest(&(
+                    "documents-query-turn-v1",
+                    &c.dsp.id,
+                    owner.incarnation(),
+                    &connection.folder_id,
+                    &scope.id,
+                    &scope.q,
+                ))?)
+                .await?,
+        )
+    } else {
+        None
+    };
+    let shared = Arc::clone(state);
+    state
+        .read(move |db| {
+            let _turn = turn;
+            captured.check(db)?;
+            let reset = |reason| match descriptions.as_ref() {
+                Some(_) => QueryAnswer::Descriptions(DocumentsDescriptionRead::Reset { reason }),
+                None => QueryAnswer::Page(DocumentsQueryRead::Reset { reason }),
+            };
+            let Some((tree, semantic)) = owner.snapshot(&connection.folder_id) else {
+                return Ok(reset(DocumentsResetReason::Changed));
+            };
+            if !mirror::current(&captured.key, &owner) || !owner.matches(tree.root(), semantic) {
+                return Ok(reset(DocumentsResetReason::Changed));
+            }
+            let at = scope.id.as_deref().unwrap_or(tree.root());
+            if !tree.is_folder(at) {
+                if snapshot.is_some() {
+                    return Ok(reset(DocumentsResetReason::Changed));
+                }
+                return Err(not_found());
+            }
+            // Persisted grant identity, mirror incarnation, and semantic sequence have separate
+            // lifetimes. Process identity still prevents ephemeral continuations across restart.
+            let key = digest(&(
+                "documents-query-index-v1",
+                process()?,
+                shared.config.environment_root(),
+                &c.dsp.id,
+                owner.incarnation(),
+                semantic,
+                &connection.folder_id,
+                (
+                    &connection.generation,
+                    connection.broken,
+                    connection.full,
+                    &connection.account.email,
+                    connection.account.workspace,
+                    &connection.folder_name,
+                    &connection.connected_by,
+                    &connection.connected_at,
+                ),
+                &scope.id,
+                &scope.q,
+            ))?;
+            let expected = digest(&("documents-query-snapshot-v1", &key, scope.filter))?;
+            if snapshot
+                .as_ref()
+                .is_some_and(|snapshot| *snapshot != expected)
+            {
+                return Ok(reset(DocumentsResetReason::Changed));
+            }
+            // Global revision, never the mirror sequence: core prunes unequal revisions globally.
+            let global = shared.data_revision.load(Ordering::Relaxed);
+            let Some(index) = index(
+                &shared.read_cache,
+                Scope::tenant(CACHED, &c.dsp.id),
+                key,
+                global,
+                &tree,
+                (at, scope.q.as_deref()),
+                snapshot.is_none(),
+            )?
+            else {
+                return Ok(reset(DocumentsResetReason::Missing));
+            };
+            let answer = if let Some(ids) = &descriptions {
+                ensure(
+                    ids.iter().all(|id| index.contains(scope.filter, id)),
+                    "documents_item_not_found",
+                    404,
+                )?;
+                QueryAnswer::Descriptions(DocumentsDescriptionRead::Full {
+                    snapshot: expected,
+                    items: items(
+                        db,
+                        &captured.key,
+                        &connection.account.email,
+                        &tree,
+                        ids,
+                        scope.q.is_some(),
+                    )?,
+                })
+            } else {
+                let (page, ids) = index.page(scope.filter, page, size);
+                let reading = DocumentsQueryPage {
+                    grant_generation: connection.generation.clone(),
+                    snapshot: expected,
+                    manifest_revision: index.manifest_revision.clone(),
+                    page,
+                    page_size: size,
+                    total: index.total(scope.filter),
+                    unfiltered_total: index.counts().all,
+                    counts: index.counts(),
+                    folder: header(&tree, at, &scope, &connection.folder_name),
+                    items: items(
+                        db,
+                        &captured.key,
+                        &connection.account.email,
+                        &tree,
+                        &ids,
+                        scope.q.is_some(),
+                    )?,
+                };
+                let content_revision = digest(&("documents-query-page-v1", &reading))?;
+                let same_manifest =
+                    manifest_since.as_deref() == Some(index.manifest_revision.as_str());
+                QueryAnswer::Page(
+                    if same_manifest && since.as_deref() == Some(content_revision.as_str()) {
+                        DocumentsQueryRead::Unchanged {
+                            snapshot: reading.snapshot,
+                            manifest_revision: reading.manifest_revision,
+                            content_revision,
+                        }
+                    } else {
+                        DocumentsQueryRead::Full {
+                            reading: Box::new(reading),
+                            manifest: (!same_manifest).then(|| index.manifest.clone()),
+                            content_revision,
+                        }
+                    },
+                )
+            };
+            // Synchronous publications may run while this worker projects. No awaits follow this
+            // check, and no mixed old manifest/current tree answer is allowed out.
+            if !mirror::current(&captured.key, &owner) || !owner.matches(tree.root(), semantic) {
+                return Ok(reset(DocumentsResetReason::Changed));
+            }
+            Ok(answer)
+        })
+        .await
+}
+
+enum QueryAnswer {
+    Page(DocumentsQueryRead),
+    Descriptions(DocumentsDescriptionRead),
+}
+pub async fn query(
+    state: &Arc<State>,
+    c: Context,
+    access: Dsp,
+    request: QueryRequest,
+) -> Result<DocumentsQueryRead> {
+    match query_read(state, c, access, request, None).await? {
+        QueryAnswer::Page(answer) => Ok(answer),
+        QueryAnswer::Descriptions(_) => unreachable!("page request"),
+    }
+}
+pub async fn describe(
+    state: &Arc<State>,
+    c: Context,
+    access: Dsp,
+    scope: DocumentsQueryScope,
+    snapshot: String,
+    ids: Vec<String>,
+) -> Result<DocumentsDescriptionRead> {
+    let request = QueryRequest {
+        scope,
+        snapshot: Some(snapshot),
+        page: 0,
+        size: 100,
+        manifest_since: None,
+        since: None,
+    };
+    match query_read(state, c, access, request, Some(ids)).await? {
+        QueryAnswer::Descriptions(answer) => Ok(answer),
+        QueryAnswer::Page(_) => unreachable!("description request"),
     }
 }
 

@@ -4,9 +4,7 @@ use crate::api::types::{
     DocumentsDescriptionRead, DocumentsQueryPage, DocumentsQueryRead, DocumentsResetReason,
 };
 use crate::backend::{
-    cache, drive,
-    files::{self, QueryRequest},
-    mirror,
+    cache, drive, files, mirror,
     storage::DocumentsStore,
     support::{connect, context, platform},
     tree::tests::item,
@@ -174,7 +172,7 @@ async fn full_order_search_filters_and_counts_survive_page_boundaries_and_shortc
     let (tree, _) = owner.snapshot(root).unwrap();
     let before = Arc::strong_count(&tree);
     let (first, manifest, _) = full(
-        files::query(
+        query(
             &state,
             c.clone(),
             Dsp("documents.use"),
@@ -225,7 +223,7 @@ async fn full_order_search_filters_and_counts_survive_page_boundaries_and_shortc
         let mut req = request(DocumentsFilter::All, page);
         req.snapshot = Some(first.snapshot.clone());
         req.manifest_since = Some(first.manifest_revision.clone());
-        match files::query(&state, c.clone(), Dsp("documents.use"), req)
+        match query(&state, c.clone(), Dsp("documents.use"), req)
             .await
             .unwrap()
         {
@@ -241,7 +239,7 @@ async fn full_order_search_filters_and_counts_survive_page_boundaries_and_shortc
     }
     assert_eq!(joined, expected);
     let (docs, compact, _) = full(
-        files::query(
+        query(
             &state,
             c.clone(),
             Dsp("documents.use"),
@@ -270,7 +268,7 @@ async fn full_order_search_filters_and_counts_survive_page_boundaries_and_shortc
     req.scope.id = Some("a".into());
     req.scope.q = Some(" PLAN  needle ".into());
     let (nested, _, _) = full(
-        files::query(&state, c.clone(), Dsp("documents.use"), req)
+        query(&state, c.clone(), Dsp("documents.use"), req)
             .await
             .unwrap(),
     );
@@ -289,7 +287,7 @@ async fn full_order_search_filters_and_counts_survive_page_boundaries_and_shortc
     req.scope.id = Some("a".into());
     assert!(
         full(
-            files::query(&state, c.clone(), Dsp("documents.use"), req)
+            query(&state, c.clone(), Dsp("documents.use"), req)
                 .await
                 .unwrap()
         )
@@ -322,7 +320,7 @@ async fn full_order_search_filters_and_counts_survive_page_boundaries_and_shortc
         let mut req = request(DocumentsFilter::All, 0);
         req.scope.q = q.map(str::to_owned);
         assert!(matches!(
-            files::query(&state, c.clone(), Dsp("documents.use"), req)
+            query(&state, c.clone(), Dsp("documents.use"), req)
                 .await
                 .unwrap(),
             DocumentsQueryRead::Reset {
@@ -377,7 +375,7 @@ async fn continuations_project_only_the_page_and_current_authors_then_reset_with
     let owner = mirror::of(&key);
     owner.replace(&connection.folder_id, rows.clone(), "cursor".into());
     let (first, _, revision) = full(
-        files::query(
+        query(
             &state,
             c.clone(),
             Dsp("documents.use"),
@@ -398,7 +396,7 @@ async fn continuations_project_only_the_page_and_current_authors_then_reset_with
     req.manifest_since = Some(first.manifest_revision.clone());
     req.since = Some(revision.clone());
     assert!(matches!(
-        files::query(&state, c.clone(), Dsp("documents.use"), req)
+        query(&state, c.clone(), Dsp("documents.use"), req)
             .await
             .unwrap(),
         DocumentsQueryRead::Unchanged { .. }
@@ -413,7 +411,7 @@ async fn continuations_project_only_the_page_and_current_authors_then_reset_with
     req.snapshot = Some(first.snapshot.clone());
     req.manifest_since = Some(first.manifest_revision.clone());
     req.since = Some(revision.clone());
-    match files::query(&state, c.clone(), Dsp("documents.use"), req)
+    match query(&state, c.clone(), Dsp("documents.use"), req)
         .await
         .unwrap()
     {
@@ -430,7 +428,7 @@ async fn continuations_project_only_the_page_and_current_authors_then_reset_with
         other => panic!("current author must change the page: {other:?}"),
     }
     let ids = vec!["f100".into(), "f000".into()];
-    match files::describe(
+    match describe(
         &state,
         c.clone(),
         Dsp("documents.use"),
@@ -455,7 +453,7 @@ async fn continuations_project_only_the_page_and_current_authors_then_reset_with
     let mut req = request(DocumentsFilter::All, 1);
     req.snapshot = Some(first.snapshot.clone());
     assert!(matches!(
-        files::query(&state, c.clone(), Dsp("documents.use"), req)
+        query(&state, c.clone(), Dsp("documents.use"), req)
             .await
             .unwrap(),
         DocumentsQueryRead::Reset {
@@ -463,7 +461,7 @@ async fn continuations_project_only_the_page_and_current_authors_then_reset_with
         }
     ));
     assert!(matches!(
-        files::describe(
+        describe(
             &state,
             c.clone(),
             Dsp("documents.use"),
@@ -478,7 +476,7 @@ async fn continuations_project_only_the_page_and_current_authors_then_reset_with
         }
     ));
     let (opened, _, _) = full(
-        files::query(
+        query(
             &state,
             c.clone(),
             Dsp("documents.use"),
@@ -499,7 +497,7 @@ async fn continuations_project_only_the_page_and_current_authors_then_reset_with
     let mut req = request(DocumentsFilter::All, 1);
     req.snapshot = Some(opened.snapshot.clone());
     assert!(matches!(
-        files::query(&state, c.clone(), Dsp("documents.use"), req)
+        query(&state, c.clone(), Dsp("documents.use"), req)
             .await
             .unwrap(),
         DocumentsQueryRead::Reset {
@@ -507,7 +505,7 @@ async fn continuations_project_only_the_page_and_current_authors_then_reset_with
         }
     ));
     let (latest, _, _) = full(
-        files::query(
+        query(
             &state,
             c.clone(),
             Dsp("documents.use"),
@@ -526,7 +524,7 @@ async fn continuations_project_only_the_page_and_current_authors_then_reset_with
         "same semantic sequence/data/root still requires a different incarnation"
     );
     assert!(matches!(
-        files::describe(
+        describe(
             &state,
             c.clone(),
             Dsp("documents.use"),
@@ -560,7 +558,7 @@ async fn continuations_project_only_the_page_and_current_authors_then_reset_with
         "external".into(),
     );
     let (external, manifest, revision) = full(
-        files::query(
+        query(
             &state,
             c.clone(),
             Dsp("documents.use"),
@@ -595,7 +593,7 @@ async fn continuations_project_only_the_page_and_current_authors_then_reset_with
     req.manifest_since = Some(external.manifest_revision.clone());
     req.since = Some(revision);
     assert!(matches!(
-        files::query(&state, c.clone(), Dsp("documents.use"), req)
+        query(&state, c.clone(), Dsp("documents.use"), req)
             .await
             .unwrap(),
         DocumentsQueryRead::Unchanged { .. }
@@ -604,7 +602,7 @@ async fn continuations_project_only_the_page_and_current_authors_then_reset_with
         cache::shown(&key, "external-target").unwrap().given,
         target.seen
     );
-    match files::describe(
+    match describe(
         &state,
         c.clone(),
         Dsp("documents.use"),
@@ -631,7 +629,7 @@ async fn continuations_project_only_the_page_and_current_authors_then_reset_with
     req.snapshot = Some(external.snapshot.clone());
     req.manifest_since = Some(external.manifest_revision);
     assert!(matches!(
-        files::query(&state, c.clone(), Dsp("documents.use"), req)
+        query(&state, c.clone(), Dsp("documents.use"), req)
             .await
             .unwrap(),
         DocumentsQueryRead::Reset {
@@ -639,7 +637,7 @@ async fn continuations_project_only_the_page_and_current_authors_then_reset_with
         }
     ));
     assert!(matches!(
-        files::describe(
+        describe(
             &state,
             c.clone(),
             Dsp("documents.use"),
@@ -654,7 +652,7 @@ async fn continuations_project_only_the_page_and_current_authors_then_reset_with
         }
     ));
     let (pictured, _, _) = full(
-        files::query(
+        query(
             &state,
             c.clone(),
             Dsp("documents.use"),
@@ -677,7 +675,7 @@ async fn continuations_project_only_the_page_and_current_authors_then_reset_with
     let mut req = request(DocumentsFilter::All, 0);
     req.snapshot = Some(pictured.snapshot);
     assert!(matches!(
-        files::query(&state, c.clone(), Dsp("documents.use"), req)
+        query(&state, c.clone(), Dsp("documents.use"), req)
             .await
             .unwrap(),
         DocumentsQueryRead::Reset {
@@ -685,7 +683,7 @@ async fn continuations_project_only_the_page_and_current_authors_then_reset_with
         }
     ));
     let (unavailable, _, _) = full(
-        files::query(
+        query(
             &state,
             c,
             Dsp("documents.use"),
