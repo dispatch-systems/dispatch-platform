@@ -167,17 +167,54 @@ pub(super) fn neighbor(
     row: &Topology,
     after: bool,
 ) -> Result<Option<Topology>> {
+    let place = Place {
+        ts: &row.ts,
+        at: row.at,
+        id: &row.id,
+    };
+    adjacent(
+        db,
+        transport,
+        conversation,
+        &place,
+        after,
+        false,
+        transport.columns(),
+    )
+}
+/// A place in a conversation's order to seek from: the row `id` written at `at`, at `ts`.
+pub(crate) struct Place<'a> {
+    pub ts: &'a str,
+    pub at: i64,
+    pub id: &'a str,
+}
+/// The nearest source row before or after `place` in its conversation, of what the DSP sent
+/// alone when `outgoing`, read as `columns`: one indexed seek, whoever asks.
+pub(super) fn adjacent<T: FromRow>(
+    db: &Db,
+    transport: Transport,
+    conversation: &str,
+    place: &Place<'_>,
+    after: bool,
+    outgoing: bool,
+    columns: &str,
+) -> Result<Option<T>> {
     let bound = transport.bound("m", if after { ">" } else { "<" }, 2, 3, 4);
+    // These fragments are fixed product query choices, never caller-provided SQL.
+    let outgoing = if outgoing {
+        " AND m.direction='out'"
+    } else {
+        ""
+    };
     // Fixed non-null bind guards preserve one numbered bind shape for both transports.
     db.one_as(
         &format!(
-            "SELECT {} FROM {} m {} WHERE m.conversation_id=?1 AND {bound} \
+            "SELECT {columns} FROM {} m {} WHERE m.conversation_id=?1 AND {bound}{outgoing} \
         AND ?2 IS NOT NULL AND ?4 IS NOT NULL ORDER BY {} LIMIT 1",
-            transport.columns(),
             transport.source(),
             transport.join(),
             transport.order(!after)
         ),
-        params![conversation, row.ts, row.at, row.id],
+        params![conversation, place.ts, place.at, place.id],
     )
 }

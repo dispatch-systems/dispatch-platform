@@ -3,7 +3,8 @@
 //!
 //! `source` is each transport's SQL dialect and a source row's topology, `repair` keeps a ready
 //! generation exact through each known write, `backfill` builds one in upkeep, and `read` answers
-//! a window from it.
+//! a window from it. `read` also names the rows beside any window's selection, ready or not, so
+//! one projection of a source row says who sent it.
 use dispatch_core::{
     Error, Result,
     db::{Db, FromRow, Row},
@@ -15,9 +16,9 @@ mod read;
 mod repair;
 mod source;
 
-pub(crate) use read::read;
+pub(crate) use read::{beside, read};
 pub(crate) use repair::{change, place};
-pub(crate) use source::Transport;
+pub(crate) use source::{Place, Transport};
 
 /// Bump the prefix when writer/day semantics change. A tzdata update changes this key too.
 pub(crate) fn algorithm() -> String {

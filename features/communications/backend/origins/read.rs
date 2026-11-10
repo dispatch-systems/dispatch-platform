@@ -1,9 +1,10 @@
 //! The read side: a window's exact origins, from sparse boundary seeks and source rows read by
-//! their exact place.
+//! their exact place, and the rows beside any window's selection, each as the one projection of
+//! a source row names who sent it.
 use super::{
     super::{model::Reference, people::People, texts::numbers::Numbers},
     algorithm, invariant,
-    source::{Topology, Transport, by_id, neighbor},
+    source::{Place, Topology, Transport, adjacent, by_id, neighbor},
     state,
 };
 use crate::api::types::{
@@ -20,8 +21,9 @@ use dispatch_core::{
 use rusqlite::params;
 use serde_json::json;
 
-/// A source projection for an origin, obtained by exact source PK/place only. The group JOIN
-/// and People/Numbers calls are the same projection owners as body hydration.
+/// A source row's render identity, for an origin or a selection's neighbour, obtained by exact
+/// source PK/place or one neighbour seek only. The group JOIN and People/Numbers calls are the
+/// same projection owners as body hydration.
 struct Projection {
     topology: Topology,
     name: Option<String>,
@@ -37,24 +39,69 @@ impl FromRow for Projection {
     }
 }
 impl Projection {
-    fn shown(self, people: &People, numbers: Option<&Numbers>) -> RunOrigin {
-        let row = self.topology;
-        let sender = row
-            .sent_by
+    /// What a projection reads of a source row: its topology, the name it keeps for its sender
+    /// and its group's name.
+    fn columns(transport: Transport) -> String {
+        let group_name = if transport == Transport::Slack {
+            "g.name"
+        } else {
+            "NULL"
+        };
+        format!(
+            "{},m.sender_name,{group_name} AS group_name",
+            transport.columns()
+        )
+    }
+    /// Who sent the row, exactly as conversations::messages / texts::reading::messages name a
+    /// message's sender, without hydrating a Message: the member, under the name the row keeps,
+    /// else the phone, under its current name. `Transport::columns` decides which a row has:
+    /// Slack's sender is sent_by when present; a text has a member or a phone only when outgoing.
+    fn sender(&self, numbers: Option<&Numbers>) -> Option<MessageSenderIdentity> {
+        let row = &self.topology;
+        row.sent_by
             .as_ref()
-            .map(|id| people.sent_by(id, self.name.as_deref().unwrap_or_default()))
+            .map(|id| MessageSenderIdentity {
+                user_id: Some(id.clone()),
+                phone_id: None,
+                name: self.name.clone().unwrap_or_default(),
+            })
             .or_else(|| {
-                row.phone_id.as_ref().map(|id| Sender {
+                row.phone_id.as_ref().map(|id| MessageSenderIdentity {
                     user_id: None,
                     phone_id: Some(id.clone()),
                     name: numbers
                         .and_then(|numbers| numbers.phone(id))
                         .unwrap_or("Phone")
                         .to_owned(),
-                    code: None,
-                    photo: None,
                 })
-            });
+            })
+    }
+    /// The row as a selection's neighbour: its place and writer, nothing of its body.
+    fn beside(self, numbers: Option<&Numbers>) -> MessageNeighbor {
+        let sender = self.sender(numbers);
+        let row = self.topology;
+        MessageNeighbor {
+            id: row.id,
+            ts: row.ts,
+            at: row.at,
+            direction: row.direction,
+            sender,
+            group_id: row.group_id,
+            number: row.number,
+        }
+    }
+    fn shown(self, people: &People, numbers: Option<&Numbers>) -> RunOrigin {
+        let sender = self.sender(numbers).map(|sender| match &sender.user_id {
+            Some(user) => people.sent_by(user, &sender.name),
+            None => Sender {
+                user_id: None,
+                phone_id: sender.phone_id,
+                name: sender.name,
+                code: None,
+                photo: None,
+            },
+        });
+        let row = self.topology;
         RunOrigin {
             id: row.id,
             ts: row.ts,
@@ -95,17 +142,11 @@ fn project(
     people: &People,
     numbers: Option<&Numbers>,
 ) -> Result<RunOrigin> {
-    let group_name = if transport == Transport::Slack {
-        "g.name"
-    } else {
-        "NULL"
-    };
     let row: Projection = db
         .one_as(
             &format!(
-                "SELECT {},m.sender_name,{group_name} AS group_name \
-        FROM {} m {} WHERE m.id=? AND m.conversation_id=?",
-                transport.columns(),
+                "SELECT {} FROM {} m {} WHERE m.id=? AND m.conversation_id=?",
+                Projection::columns(transport),
                 transport.source(),
                 transport.join()
             ),
@@ -118,6 +159,30 @@ fn project(
         500,
     )?;
     Ok(row.shown(people, numbers))
+}
+/// The source row just before or after `place` in `reference`'s conversation, of what the DSP
+/// sent alone when `outgoing`, as a window's render context names a selection's neighbour. One
+/// indexed seek of the source table: it reads no origin state, so it needs no ready generation
+/// and answers no origin invariant.
+pub(crate) fn beside(
+    db: &Db,
+    reference: &Reference,
+    place: Place<'_>,
+    after: bool,
+    outgoing: bool,
+    numbers: Option<&Numbers>,
+) -> Result<Option<MessageNeighbor>> {
+    let transport = Transport::of(reference);
+    let row: Option<Projection> = adjacent(
+        db,
+        transport,
+        reference.id(),
+        &place,
+        after,
+        outgoing,
+        &Projection::columns(transport),
+    )?;
+    Ok(row.map(|row| row.beside(numbers)))
 }
 /// Sparse boundary seeks. Joins happen AFTER the one-row seek, so no SQL filter can turn a
 /// missing source/group into a backward history walk.
