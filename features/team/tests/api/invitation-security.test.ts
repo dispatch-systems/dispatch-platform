@@ -9,10 +9,25 @@ test('removal revokes legacy inbound and authored invitations without transferri
   t.after(f.close);
   const owner = await f.client();
   const member = await f.client('member@dispatch.test');
-  const dsp = member.session.dsps[0].id;
+  const { id: dsp, code } = member.session.dsps[0];
   await owner.select(dsp);
   const members = (await owner.get('/api/dsp/members')).value;
   const person = members.find((m: { email: string }) => m.email === 'member@dispatch.test');
+  // The member may invite to their own role, so the invitation they sent is open until they go.
+  const role = (await owner.get('/api/dsp/roles')).value.find(
+    (r: { id: string }) => r.id === person.roleId,
+  );
+  assert.equal(
+    (
+      await owner.post(`/api/dsp/roles/${role.id}`, {
+        name: role.name,
+        permissions: [...role.permissions, 'members.invite'],
+      })
+    ).status,
+    200,
+  );
+  // A change to the DSP's roles or members expires the owner's view of it.
+  await owner.select(dsp);
   const tokens = ['a'.repeat(43), 'b'.repeat(43)];
   const hashes = tokens.map((token) => createHash('sha256').update(token).digest('hex'));
   f.database('data/platform/accounts.sqlite', (db) => {
@@ -45,17 +60,31 @@ test('removal revokes legacy inbound and authored invitations without transferri
       .status,
     409,
   );
+  // Both are open at the DSP's address, and listed, until the removal.
+  const at = f.at(code);
+  const emails = ['colleague@dispatch.test', person.email];
+  const open = async () =>
+    (await owner.read('/api/dsp/invitations'))
+      .map((i: { email: string }) => i.email)
+      .filter((email: string) => emails.includes(email))
+      .sort();
+  for (const token of tokens)
+    assert.equal((await f.request(`/api/invitations/${token}`, undefined, at)).status, 200);
+  assert.deepEqual(await open(), emails);
   assert.equal((await owner.post(`/api/dsp/members/${person.id}`, { role: null })).status, 200);
   assert.equal((await member.get('/api/session')).status, 401);
+  await owner.select(dsp);
+  // Revoked, not only refused: the one they sent is gone, not left without its sender.
+  assert.deepEqual(await open(), []);
   for (const token of tokens) {
-    assert.equal((await f.request(`/api/invitations/${token}`)).status, 404);
+    assert.equal((await f.request(`/api/invitations/${token}`, undefined, at)).status, 404);
     assert.equal(
       (
-        await f.request(`/api/invitations/${token}/accept`, {
-          firstName: 'Removed',
-          lastName: 'Member',
-          password: demo.password,
-        })
+        await f.request(
+          `/api/invitations/${token}/accept`,
+          { firstName: 'Removed', lastName: 'Member', password: demo.password },
+          at,
+        )
       ).status,
       404,
     );
