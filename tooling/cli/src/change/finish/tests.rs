@@ -4,20 +4,33 @@ use std::sync::Mutex;
 
 #[test]
 fn repository_transports_keep_the_same_identity_and_refuse_other_authorities() {
-    let (user, host, project) = ("git", "github.com", REPOSITORY);
-    for url in [
-        format!("https://{host}/{project}.git"),
-        format!("ssh://{user}@{host}/{project}.git"),
-        format!("{user}@{host}:{project}.git"),
-    ] {
-        assert_eq!(repository(&url), Some(project));
+    let (user, host) = ("git", "github.com");
+    for repository in [Repository::Platform, Repository::AgentDocs] {
+        let project = repository.name();
+        for url in [
+            format!("https://{host}/{project}"),
+            format!("https://{host}/{project}.git"),
+            format!("ssh://{user}@{host}/{project}.git"),
+            format!("{user}@{host}:{project}.git"),
+        ] {
+            assert_eq!(Repository::at(&url), Some(repository), "{url}");
+        }
+        for url in [
+            format!("https://{host}.example.test/{project}"),
+            format!("ssh://someone@{host}/{project}"),
+            format!("someone@{host}:{project}.git"),
+            format!("https://{host}/{project}-fork"),
+            "/tmp/another-repository".into(),
+        ] {
+            assert_eq!(Repository::at(&url), None, "{url}");
+        }
     }
-    for url in [
-        format!("https://{host}.example.test/{project}"),
-        format!("ssh://someone@{host}/{project}"),
-        "/tmp/another-repository".into(),
-    ] {
-        assert_eq!(repository(&url), None);
+    // Every name the platform answers to names it.
+    for name in dispatch_shared::REPOSITORIES {
+        assert_eq!(
+            Repository::at(&format!("https://{host}/{name}")),
+            Some(Repository::Platform)
+        );
     }
 }
 
