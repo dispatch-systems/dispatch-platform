@@ -1143,6 +1143,29 @@ fn a_pass_never_taken_leaves_no_checkout_behind() {
     );
     discard(root, &fixture.scratch, &Native).unwrap();
     assert_eq!(worktrees(), 1);
+    // A prepare that failed before it pinned the pass left a checkout of the head it had: the
+    // next, at another head, replaces it.
+    fs::remove_dir_all(fixture.dir(1)).unwrap();
+    let decisions = fixture.scratch.join("decisions.md");
+    let approved = fs::read_to_string(&decisions).unwrap();
+    fs::remove_file(&decisions).unwrap();
+    assert!(error(fixture.prepare(1)).contains("decisions.md is missing"));
+    assert!(!fixture.dir(1).join("pass.json").exists());
+    write(
+        root,
+        "features/dvic/backend/week.rs",
+        "fn week() { page(); }\n",
+    );
+    commit(root, "a later push");
+    git(root, &["push", "-q", "origin", "keep-week"]);
+    fs::write(&decisions, approved).unwrap();
+    fixture.prepare(1).unwrap();
+    let read = Checkout {
+        root: &fixture.dir(1).join("checkout"),
+        runner: &Native,
+    };
+    assert_eq!(read.head().unwrap(), fixture.head());
+    assert_eq!(worktrees(), 2);
 }
 
 #[test]

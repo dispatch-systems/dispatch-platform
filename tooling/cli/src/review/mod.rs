@@ -499,8 +499,14 @@ pub fn prepare(root: &Path, ask: &Prepare, runner: &dyn Runner) -> Result<()> {
     };
     fs::create_dir_all(&dir)?;
     // The reviewers' own checkout of the head they are pinned to: the change's worktree is free
-    // to fix what its checks find while they read. A pass prepared again keeps the one it has.
-    if !fill.reading.exists() {
+    // to fix what its checks find while they read. A pass prepared again keeps the one it has,
+    // unless that is of another head: one a prepare left that failed before it pinned the pass.
+    let read = Checkout {
+        root: fill.reading,
+        runner,
+    };
+    if read.head().ok().as_ref() != Some(&head) {
+        git.unread(fill.reading)?;
         let path = fill
             .reading
             .to_str()
