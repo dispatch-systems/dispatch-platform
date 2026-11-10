@@ -332,7 +332,7 @@ impl Driver {
         };
         let job = run.job.to_owned();
         let station = request.station.clone();
-        let company = api.company_id.clone();
+        let company = scope.provider.clone();
         // DVIC keeps the reports; only those it lacks or that changed are downloaded.
         let known = run
             .state
@@ -428,7 +428,7 @@ impl Driver {
             version: 1,
             collection: Collection::Dvic,
             station: request.station.clone(),
-            company_id: api.company_id,
+            company_id: scope.provider.clone(),
             dsp_code: api.dsp,
             weeks: request.weeks.clone(),
             started_at,

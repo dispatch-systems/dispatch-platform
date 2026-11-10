@@ -39,8 +39,7 @@ impl Request {
         if !Self::is(value) {
             return Ok(None);
         }
-        let request: Self =
-            serde_json::from_value(value.clone()).map_err(|_| Error::new("invalid_input", 400))?;
+        let request: Self = dispatch_core::foundation::wire::request(value)?;
         request.validate()?;
         Ok(Some(request))
     }

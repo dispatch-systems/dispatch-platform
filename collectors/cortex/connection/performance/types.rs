@@ -36,6 +36,15 @@ pub struct DatasetCapture {
     pub rows: Vec<Value>,
 }
 
+/// Whether `row` names no other station, company or DSP than these, where it names one.
+pub(crate) fn names_only(row: &Value, station: &str, company_id: &str, dsp_code: &str) -> bool {
+    let named = |field: &str| row[field].as_str().filter(|value| !value.is_empty());
+    named("station_code").is_none_or(|value| value == station)
+        && named("station").is_none_or(|value| value == station)
+        && named("company_id").is_none_or(|value| value == company_id)
+        && named("dsp_code").is_none_or(|value| value.eq_ignore_ascii_case(dsp_code))
+}
+
 /// A dataset and the exact period a collection asks for.
 pub struct Read {
     pub dataset: &'static Dataset,

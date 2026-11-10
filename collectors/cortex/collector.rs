@@ -311,36 +311,27 @@ impl Collector for Cortex {
             });
         }
         if let Some(request) = dvic::Request::parse(request)? {
-            let scope = match request.scope_request() {
-                CollectionRequest::Discover(discovery) => {
-                    discovery.scope("area-fixture", "company-fixture")?
-                }
-                CollectionRequest::Scoped(scope) => scope,
-            };
+            let scope = request
+                .scope_request()
+                .scope("area-fixture", "company-fixture")?;
             return Ok(Collected {
                 data: serde_json::to_value(dvic::fixture(&request)?)?,
                 scope: Some(serde_json::to_value(scope)?),
             });
         }
         if let Some(request) = weekly_scorecard::Request::parse(request)? {
-            let scope = match request.scope_request() {
-                CollectionRequest::Discover(discovery) => {
-                    discovery.scope("area-fixture", "company-fixture")?
-                }
-                CollectionRequest::Scoped(scope) => scope,
-            };
+            let scope = request
+                .scope_request()
+                .scope("area-fixture", "company-fixture")?;
             return Ok(Collected {
                 data: serde_json::to_value(weekly_scorecard::fixture(&request)?)?,
                 scope: Some(serde_json::to_value(scope)?),
             });
         }
         if let Some(request) = daily_performance::Request::parse(request)? {
-            let scope = match request.scope_request() {
-                CollectionRequest::Discover(discovery) => {
-                    discovery.scope("area-fixture", "company-fixture")?
-                }
-                CollectionRequest::Scoped(scope) => scope,
-            };
+            let scope = request
+                .scope_request()
+                .scope("area-fixture", "company-fixture")?;
             return Ok(Collected {
                 data: serde_json::to_value(daily_performance::fixture(&request)?)?,
                 scope: Some(serde_json::to_value(scope)?),
@@ -360,32 +351,22 @@ impl Collector for Cortex {
                 scope: None,
             });
         }
-        let scope = match serde_json::from_value(request.clone())? {
-            CollectionRequest::Scoped(scope) => scope,
-            CollectionRequest::Discover(discovery) => {
-                discovery.scope("area-demo", "provider-demo")?
-            }
-        };
+        let scope = serde_json::from_value::<CollectionRequest>(request.clone())?
+            .scope("area-demo", "provider-demo")?;
         Ok(Collected {
             data: serde_json::to_value(meals::fixture(&scope))?,
             scope: Some(serde_json::to_value(scope)?),
         })
     }
     fn progress(&self, request: &Value) -> &'static str {
-        if associates::Request::is(request) {
-            "Collecting the roster"
-        } else if vans::Request::is(request) {
-            "Collecting vans"
-        } else if dvic::Request::is(request) {
-            "Collecting DVIC"
-        } else if daily_performance::Request::is(request) {
-            "Collecting daily performance"
-        } else if weekly_scorecard::Request::is(request) {
-            "Collecting weekly scorecard"
-        } else if routes::Request::is(request) {
-            "Collecting routes"
-        } else {
-            "Collecting meal breaks"
+        match self.job_kind_for(request) {
+            associates::JOB_KIND => "Collecting the roster",
+            vans::JOB_KIND => "Collecting vans",
+            dvic::JOB_KIND => "Collecting DVIC",
+            daily_performance::JOB_KIND => "Collecting daily performance",
+            weekly_scorecard::JOB_KIND => "Collecting weekly scorecard",
+            routes::JOB_KIND => "Collecting routes",
+            _ => "Collecting meal breaks",
         }
     }
     fn counts(&self, data: &Value) -> Counts {

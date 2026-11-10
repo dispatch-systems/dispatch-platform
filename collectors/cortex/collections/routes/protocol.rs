@@ -1,7 +1,9 @@
 //! Request paths, response ownership and the shared budget for a day's route reads.
-use super::capture::{MAX_CAPTURE_BYTES, add_capture_bytes};
-use dispatch_core::{Error, Result};
+use super::capture::{MAX_CAPTURE_BYTES, MAX_ITINERARIES, add_capture_bytes, listed, token};
+use crate::discovery::Scope;
+use dispatch_core::{Error, Result, ensure};
 use serde::Deserialize;
+use serde_json::Value;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub(super) const SUMMARIES: &str = "/operations/execution/api/summaries";
@@ -13,6 +15,31 @@ pub(crate) fn itinerary_path(id: &str) -> String {
         "{ITINERARY}{}",
         url::form_urlencoded::byte_serialize(id.as_bytes()).collect::<String>()
     )
+}
+/// A list's text, as JSON.
+pub(super) fn parsed(text: &str) -> Result<Value> {
+    serde_json::from_str(text).map_err(|_| Error::new("cortex_content_incomplete", 502))
+}
+/// The itineraries the day's list names for `scope`, each by its id and driver, checked as
+/// the capture is at the end: every read asks by these.
+pub(super) fn itineraries_listed(
+    summaries: &Value,
+    scope: &Scope,
+) -> Result<Vec<(String, String)>> {
+    let listed = listed(summaries, scope);
+    ensure(
+        listed.len() <= MAX_ITINERARIES,
+        "routes_source_too_large",
+        502,
+    )?;
+    ensure(
+        listed
+            .iter()
+            .all(|(id, transporter)| token(id, 128) && token(transporter, 64)),
+        "routes_scope_mismatch",
+        502,
+    )?;
+    Ok(listed)
 }
 /// Only the owner of an itinerary response, read without building the whole tree.
 #[derive(Deserialize)]

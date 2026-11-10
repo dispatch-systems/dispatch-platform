@@ -41,8 +41,6 @@ pub(crate) struct Api {
     pub(crate) base: String,
     /// The `dsp` parameter, the DSP's code.
     pub(crate) dsp: String,
-    /// The `companyId` the page settled on.
-    pub(crate) company_id: String,
 }
 impl Api {
     fn address(&self, dataset: &Dataset, station: &str, from: &str, to: &str) -> String {
@@ -274,11 +272,7 @@ impl Driver {
             ensure(Instant::now() < settled, "cortex_content_incomplete", 502)?;
             sleep(Duration::from_millis(300)).await;
         }
-        Ok(Api {
-            base,
-            dsp,
-            company_id: scope.provider.clone(),
-        })
+        Ok(Api { base, dsp })
     }
     /// The API where the station's last publication read it, if that still names this
     /// origin and station.
@@ -305,11 +299,7 @@ impl Driver {
             (named == scope.station
                 && company_id == scope.provider
                 && dsp.eq_ignore_ascii_case(expected_dsp))
-            .then_some(Api {
-                base,
-                dsp,
-                company_id,
-            })
+            .then_some(Api { base, dsp })
         }))
     }
     /// Bounded parallel reads, `lanes` at once, preserving the requested order.
@@ -414,11 +404,7 @@ impl Driver {
             &self.origin,
         )
         .ok()?;
-        (base == kept.base && dsp.eq_ignore_ascii_case(expected_dsp)).then(|| Api {
-            base,
-            dsp,
-            company_id: scope.provider.clone(),
-        })
+        (base == kept.base && dsp.eq_ignore_ascii_case(expected_dsp)).then_some(Api { base, dsp })
     }
     /// Keeps where the API answered for `scope`, for the next collections.
     pub(crate) fn keep_api(&self, scope: &Scope, api: &Api, run: &Run<'_>) {
@@ -499,7 +485,7 @@ impl Driver {
                 rows,
             })
             .collect();
-        Ok((api.company_id, api.dsp, datasets))
+        Ok((scope.provider, api.dsp, datasets))
     }
 }
 

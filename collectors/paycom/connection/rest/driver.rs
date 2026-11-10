@@ -50,25 +50,13 @@ pub(crate) fn driver(store: &Store, dsp: &str, credentials: &Value) -> Result<Bo
                 .map_err(|_| Error::new("invalid_period", 502))?,
         ),
     };
-    let (site, data_centers) = match &store.config.fixture_url {
+    Ok(Box::new(match &store.config.fixture_url {
         Some(stand_in) => {
             let stand_in = stand_in.trim_end_matches('/').to_owned();
-            (stand_in.clone(), vec![stand_in])
+            Driver::new(credentials, stand_in.clone(), vec![stand_in], anchor)
         }
-        None => (
-            SITE.to_owned(),
-            DATA_CENTERS
-                .iter()
-                .map(|&center| center.to_owned())
-                .collect(),
-        ),
-    };
-    Ok(Box::new(Driver::new(
-        credentials,
-        site,
-        data_centers,
-        anchor,
-    )))
+        None => Driver::paycom(credentials, anchor),
+    }))
 }
 
 pub(crate) struct Driver {
@@ -112,19 +100,16 @@ impl Driver {
             connected: None,
         }
     }
+    /// A driver that reaches Paycom itself, its pay periods counted from `anchor`.
+    fn paycom(credentials: Credentials, anchor: Option<NaiveDate>) -> Self {
+        let data_centers = DATA_CENTERS.iter().map(|&center| center.to_owned());
+        Self::new(credentials, SITE.to_owned(), data_centers.collect(), anchor)
+    }
     /// A driver for Paycom itself, as an operator's probe connects: with an SID and Token
     /// given to it, and the period it measures to count from.
     #[cfg(feature = "operator-probes")]
     pub(crate) fn live(credentials: Credentials, anchor: NaiveDate) -> Self {
-        Self::new(
-            credentials,
-            SITE.to_owned(),
-            DATA_CENTERS
-                .iter()
-                .map(|&center| center.to_owned())
-                .collect(),
-            Some(anchor),
-        )
+        Self::paycom(credentials, Some(anchor))
     }
     /// How each check went, the last time it connected.
     pub(crate) fn asked(&self) -> Vec<ConnectionCheck> {

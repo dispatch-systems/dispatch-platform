@@ -1,8 +1,11 @@
 //! What a scorecard collection reads from Cortex's performance API: the datasets behind
 //! each scorecard page, one week at a time, every row as Amazon sent it.
-use crate::discovery::{CollectionRequest as ScopeRequest, Discovery, Scope};
+use crate::{
+    discovery::{CollectionRequest as ScopeRequest, Discovery, Scope},
+    performance::names_only,
+};
 use dispatch_core::{
-    Error, Result,
+    Result,
     db::now,
     ensure,
     foundation::{
@@ -16,121 +19,68 @@ use serde_json::{Value, json};
 pub const JOB_KIND: &str = "cortex.weekly_scorecard.collect";
 pub use crate::performance::{Dataset, DatasetCapture, MAX_ROWS, TimeFrame};
 
+/// One of the station's weekly datasets.
+const fn weekly(id: &'static str, table: &'static str, impact: Option<&'static str>) -> Dataset {
+    Dataset {
+        id,
+        table,
+        station: true,
+        time_frame: TimeFrame::Weekly,
+        program: None,
+        impact,
+    }
+}
+/// One of the station's daily datasets, read for each day of the week.
+const fn daily(id: &'static str, table: &'static str, impact: Option<&'static str>) -> Dataset {
+    Dataset {
+        time_frame: TimeFrame::Daily,
+        ..weekly(id, table, impact)
+    }
+}
 /// Every dataset a week's collection reads. The first six are the scorecard pages'
 /// tables; the rest are the DSP's own weekly numbers.
 pub const DATASETS: &[Dataset] = &[
     Dataset {
-        id: "da_dsp_station_weekly_performance",
-        table: "driver_weekly_scorecards",
-        station: true,
-        time_frame: TimeFrame::Weekly,
         program: Some("AMZL"),
-        impact: None,
+        ..weekly(
+            "da_dsp_station_weekly_performance",
+            "driver_weekly_scorecards",
+            None,
+        )
     },
-    Dataset {
-        id: "da_dsp_weekly_rts_deep_dive",
-        table: "returns_to_station",
-        station: true,
-        time_frame: TimeFrame::Weekly,
-        program: None,
-        impact: Some("impacting_dcr"),
-    },
-    Dataset {
-        id: "da_dsp_station_daily_dsb_dnr_tba",
-        table: "delivery_concessions",
-        station: true,
-        time_frame: TimeFrame::Daily,
-        program: None,
-        impact: Some("dsb_flag"),
-    },
-    Dataset {
-        id: "da_dsp_weekly_cdf_deep_dive",
-        table: "customer_feedback",
-        station: true,
-        time_frame: TimeFrame::Weekly,
-        program: None,
-        impact: Some("cdf_impact_flag"),
-    },
-    Dataset {
-        id: "da_dsp_daily_psb_stop",
-        table: "pickup_failures",
-        station: true,
-        time_frame: TimeFrame::Daily,
-        program: None,
-        impact: None,
-    },
-    Dataset {
-        id: "da_dsp_station_daily_safety_oss_events_intraday",
-        table: "safety_events",
-        station: true,
-        time_frame: TimeFrame::Daily,
-        program: None,
-        impact: Some("oss_impact_flag"),
-    },
-    Dataset {
-        id: "da_dsp_station_weekly_safety_oss_v2",
-        table: "driver_safety",
-        station: true,
-        time_frame: TimeFrame::Weekly,
-        program: None,
-        impact: None,
-    },
-    Dataset {
-        id: "dsp_station_weekly_quality",
-        table: "dsp_quality",
-        station: true,
-        time_frame: TimeFrame::Weekly,
-        program: None,
-        impact: None,
-    },
-    Dataset {
-        id: "dsp_station_weekly_team",
-        table: "dsp_team",
-        station: true,
-        time_frame: TimeFrame::Weekly,
-        program: None,
-        impact: None,
-    },
-    Dataset {
-        id: "dsp_station_weekly_compliance",
-        table: "dsp_compliance",
-        station: true,
-        time_frame: TimeFrame::Weekly,
-        program: None,
-        impact: None,
-    },
-    Dataset {
-        id: "dsp_station_weekly_safety_oss_v2",
-        table: "dsp_safety",
-        station: true,
-        time_frame: TimeFrame::Weekly,
-        program: None,
-        impact: None,
-    },
-    Dataset {
-        id: "dsp_station_weekly_working_device",
-        table: "dsp_working_device",
-        station: true,
-        time_frame: TimeFrame::Weekly,
-        program: None,
-        impact: None,
-    },
-    Dataset {
-        id: "dsp_weekly_cdf",
-        table: "dsp_feedback",
-        station: true,
-        time_frame: TimeFrame::Weekly,
-        program: None,
-        impact: None,
-    },
-    Dataset {
-        id: "dsp_weekly_psb",
-        table: "dsp_pickups",
-        station: true,
-        time_frame: TimeFrame::Weekly,
-        program: None,
-        impact: None,
-    },
+    weekly(
+        "da_dsp_weekly_rts_deep_dive",
+        "returns_to_station",
+        Some("impacting_dcr"),
+    ),
+    daily(
+        "da_dsp_station_daily_dsb_dnr_tba",
+        "delivery_concessions",
+        Some("dsb_flag"),
+    ),
+    weekly(
+        "da_dsp_weekly_cdf_deep_dive",
+        "customer_feedback",
+        Some("cdf_impact_flag"),
+    ),
+    daily("da_dsp_daily_psb_stop", "pickup_failures", None),
+    daily(
+        "da_dsp_station_daily_safety_oss_events_intraday",
+        "safety_events",
+        Some("oss_impact_flag"),
+    ),
+    weekly("da_dsp_station_weekly_safety_oss_v2", "driver_safety", None),
+    weekly("dsp_station_weekly_quality", "dsp_quality", None),
+    weekly("dsp_station_weekly_team", "dsp_team", None),
+    weekly("dsp_station_weekly_compliance", "dsp_compliance", None),
+    weekly("dsp_station_weekly_safety_oss_v2", "dsp_safety", None),
+    weekly(
+        "dsp_station_weekly_working_device",
+        "dsp_working_device",
+        None,
+    ),
+    weekly("dsp_weekly_cdf", "dsp_feedback", None),
+    weekly("dsp_weekly_psb", "dsp_pickups", None),
 ];
 /// The DSP's own scorecard row: a week without one is not posted yet.
 pub const POSTED_SIGNAL: &str = "dsp_station_weekly_quality";
@@ -166,8 +116,7 @@ impl Request {
         if !Self::is(value) {
             return Ok(None);
         }
-        let request: Self =
-            serde_json::from_value(value.clone()).map_err(|_| Error::new("invalid_input", 400))?;
+        let request: Self = dispatch_core::foundation::wire::request(value)?;
         request.validate()?;
         Ok(Some(request))
     }
@@ -286,32 +235,14 @@ impl Capture {
                 502,
             )?;
             // A row that names its station, company or DSP names this one.
-            for row in &captured.rows {
-                for field in ["station_code", "station"] {
-                    if let Some(station) = row[field].as_str().filter(|value| !value.is_empty()) {
-                        ensure(
-                            station == self.station,
-                            "weekly_scorecard_scope_mismatch",
-                            502,
-                        )?;
-                    }
-                }
-                if let Some(company) = row["company_id"].as_str().filter(|value| !value.is_empty())
-                {
-                    ensure(
-                        company == self.company_id,
-                        "weekly_scorecard_scope_mismatch",
-                        502,
-                    )?;
-                }
-                if let Some(code) = row["dsp_code"].as_str().filter(|value| !value.is_empty()) {
-                    ensure(
-                        code.eq_ignore_ascii_case(&self.dsp_code),
-                        "weekly_scorecard_scope_mismatch",
-                        502,
-                    )?;
-                }
-            }
+            ensure(
+                captured
+                    .rows
+                    .iter()
+                    .all(|row| names_only(row, &self.station, &self.company_id, &self.dsp_code)),
+                "weekly_scorecard_scope_mismatch",
+                502,
+            )?;
         }
         let posted = self
             .datasets

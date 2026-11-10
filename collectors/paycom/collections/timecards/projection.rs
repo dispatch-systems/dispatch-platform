@@ -2,6 +2,7 @@
 //! then pair each day's punches without crossing pay-code rows.
 use dispatch_core::{Error, Result, db::s, ensure};
 use serde_json::{Value, json};
+use std::mem::take;
 
 pub(crate) fn project(record: &Value, employee: &str) -> Result<Vec<Value>> {
     let error = || Error::new("invalid_timecard_hours", 409);
@@ -128,25 +129,30 @@ fn matches_totals(record: &Value, values: &[f64]) -> bool {
         .is_some_and(|total| (values.iter().sum::<f64>() - total).abs() < 0.011)
 }
 
+/// One pair of punches as a card holds it, each time with its kind: an in without its out
+/// has none.
+fn pair((r#in, in_kind): (Value, Value), (out, out_kind): (Value, Value)) -> Value {
+    json!({
+        "in": r#in,
+        "out": out,
+        "hours": null,
+        "inKind": in_kind,
+        "outKind": out_kind,
+    })
+}
+
 fn paired_punches(day: &Value) -> Result<Vec<Value>> {
     let source = day["punches"]
         .as_array()
         .ok_or_else(|| Error::new("invalid_timecard_hours", 409))?;
+    let none = || (Value::Null, Value::Null);
     let mut punches = Vec::new();
-    let mut pending = Value::Null;
-    let mut pending_kind = Value::Null;
+    // An in waiting for its out, with its kind.
+    let mut pending = none();
     let mut row = Value::Null;
     for punch in source {
-        if row != punch["rowIndex"] && !pending.is_null() {
-            punches.push(json!({
-                "in": pending,
-                "out": null,
-                "hours": null,
-                "inKind": pending_kind,
-                "outKind": null,
-            }));
-            pending = Value::Null;
-            pending_kind = Value::Null;
+        if row != punch["rowIndex"] && !pending.0.is_null() {
+            punches.push(pair(take(&mut pending), none()));
         }
         row = punch["rowIndex"].clone();
         let kind = if s(punch, "kind").is_empty() {
@@ -155,37 +161,19 @@ fn paired_punches(day: &Value) -> Result<Vec<Value>> {
             punch["kind"].clone()
         };
         if s(punch, "slot").starts_with('i') {
-            if !pending.is_null() {
-                punches.push(json!({
-                    "in": pending,
-                    "out": null,
-                    "hours": null,
-                    "inKind": pending_kind,
-                    "outKind": null,
-                }));
+            if !pending.0.is_null() {
+                punches.push(pair(take(&mut pending), none()));
             }
-            pending = punch["displayTime"].clone();
-            pending_kind = kind;
+            pending = (punch["displayTime"].clone(), kind);
         } else {
-            punches.push(json!({
-                "in": pending,
-                "out": punch["displayTime"],
-                "hours": null,
-                "inKind": pending_kind,
-                "outKind": kind,
-            }));
-            pending = Value::Null;
-            pending_kind = Value::Null;
+            punches.push(pair(
+                take(&mut pending),
+                (punch["displayTime"].clone(), kind),
+            ));
         }
     }
-    if !pending.is_null() {
-        punches.push(json!({
-            "in": pending,
-            "out": null,
-            "hours": null,
-            "inKind": pending_kind,
-            "outKind": null,
-        }));
+    if !pending.0.is_null() {
+        punches.push(pair(pending, none()));
     }
     Ok(punches)
 }

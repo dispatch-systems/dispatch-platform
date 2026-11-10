@@ -23,6 +23,14 @@ pub enum CollectionRequest {
     Discover(Discovery),
 }
 impl CollectionRequest {
+    /// The scope it names, or, to be discovered, its scope at `service_area_id` for
+    /// `provider`.
+    pub fn scope(&self, service_area_id: &str, provider: &str) -> Result<Scope> {
+        match self {
+            Self::Scoped(scope) => Ok(scope.clone()),
+            Self::Discover(discovery) => discovery.scope(service_area_id, provider),
+        }
+    }
     pub fn validate_scope(&self, scope: &Scope) -> Result<()> {
         scope.validate()?;
         let matches = match self {

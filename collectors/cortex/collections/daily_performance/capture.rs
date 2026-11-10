@@ -3,7 +3,7 @@
 use super::DATASETS;
 use crate::{
     discovery::{CollectionRequest, Discovery, Scope},
-    performance::{DatasetCapture, MAX_ROWS},
+    performance::{DatasetCapture, MAX_ROWS, names_only},
 };
 use dispatch_core::{Error, Result, db::now, ensure, foundation::validate::token};
 use serde::{Deserialize, Serialize};
@@ -35,8 +35,7 @@ impl Request {
         if !Self::is(value) {
             return Ok(None);
         }
-        let request: Self =
-            serde_json::from_value(value.clone()).map_err(|_| Error::new("invalid_input", 400))?;
+        let request: Self = dispatch_core::foundation::wire::request(value)?;
         request.validate()?;
         Ok(Some(request))
     }
@@ -152,41 +151,19 @@ impl Capture {
                 "daily_performance_capture_invalid",
                 502,
             )?;
-            for row in &captured.rows {
-                for field in ["station_code", "station"] {
-                    if let Some(station) = row[field].as_str().filter(|value| !value.is_empty()) {
-                        ensure(
-                            station == self.station,
-                            "daily_performance_scope_mismatch",
-                            502,
-                        )?;
-                    }
-                }
-                if let Some(company) = row["company_id"].as_str().filter(|value| !value.is_empty())
-                {
-                    ensure(
-                        company == self.company_id,
-                        "daily_performance_scope_mismatch",
-                        502,
-                    )?;
-                }
-                if let Some(code) = row["dsp_code"].as_str().filter(|value| !value.is_empty()) {
-                    ensure(
-                        code.eq_ignore_ascii_case(&self.dsp_code),
-                        "daily_performance_scope_mismatch",
-                        502,
-                    )?;
-                }
-                if dataset.station
-                    && let Some(date) = row["data_date"].as_str()
-                {
-                    ensure(
-                        date.get(..10) == Some(self.date.as_str()),
-                        "daily_performance_scope_mismatch",
-                        502,
-                    )?;
-                }
-            }
+            // A row that names its station, company, DSP or a station dataset's day names
+            // this one.
+            ensure(
+                captured.rows.iter().all(|row| {
+                    names_only(row, &self.station, &self.company_id, &self.dsp_code)
+                        && (!dataset.station
+                            || row["data_date"]
+                                .as_str()
+                                .is_none_or(|date| date.get(..10) == Some(self.date.as_str())))
+                }),
+                "daily_performance_scope_mismatch",
+                502,
+            )?;
         }
         Ok(())
     }

@@ -26,12 +26,7 @@ impl DayRequest {
         ensure(!self.scope_requests.is_empty(), "invalid_cortex_scope", 400)?;
         let mut seen = HashSet::new();
         for request in &self.scope_requests {
-            let scope = match request {
-                CollectionRequest::Scoped(scope) => scope.clone(),
-                CollectionRequest::Discover(discovery) => {
-                    discovery.scope("discovery", "discovery")?
-                }
-            };
+            let scope = request.scope("discovery", "discovery")?;
             scope.validate()?;
             ensure(
                 scope.date == self.date
@@ -60,12 +55,7 @@ impl DayRequest {
             .scope_requests
             .iter()
             .map(|request| {
-                let scope = match request {
-                    CollectionRequest::Scoped(scope) => scope.clone(),
-                    CollectionRequest::Discover(discovery) => {
-                        discovery.scope("area-demo", "provider-demo")?
-                    }
-                };
+                let scope = request.scope("area-demo", "provider-demo")?;
                 Ok(super::fixture(&scope))
             })
             .collect::<Result<_>>()?;

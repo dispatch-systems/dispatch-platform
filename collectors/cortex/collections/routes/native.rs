@@ -10,10 +10,10 @@
 //! decoded and checked for its driver once, away from the threads serving requests.
 //! Whatever failed is asked once more. A day is read whole, both lists and every
 //! itinerary, or not at all.
-use super::capture::{
-    Capture, Collection, ItineraryCapture, MAX_BODY, MAX_ITINERARIES, Mode, listed, token,
+use super::capture::{Capture, Collection, ItineraryCapture, MAX_BODY, Mode};
+use super::protocol::{
+    CaptureBudget, ROUTE_SUMMARIES, SUMMARIES, itineraries_listed, itinerary_path, owned_by, parsed,
 };
-use super::protocol::{CaptureBudget, ROUTE_SUMMARIES, SUMMARIES, itinerary_path, owned_by};
 use crate as cortex;
 use crate::discovery::Scope;
 use base64::{Engine, engine::general_purpose::STANDARD};
@@ -194,9 +194,6 @@ fn passing(refusal: &Refusal) -> bool {
         Refusal::Unavailable | Refusal::Unreadable("http_redirected")
     )
 }
-fn parsed(text: &str) -> Result<Value> {
-    serde_json::from_str(text).map_err(|_| Error::new("cortex_content_incomplete", 502))
-}
 
 /// A DSP's routes read over plain HTTP with its session, keeping the key between reads.
 pub struct Native {
@@ -322,20 +319,7 @@ impl Reading<'_> {
             "cortex_content_incomplete",
             502,
         )?;
-        let listed = listed(&summaries, scope);
-        ensure(
-            listed.len() <= MAX_ITINERARIES,
-            "routes_source_too_large",
-            502,
-        )?;
-        // As the capture is checked at the end; every itinerary is asked for by these.
-        ensure(
-            listed
-                .iter()
-                .all(|(id, transporter)| token(id, 128) && token(transporter, 64)),
-            "routes_scope_mismatch",
-            502,
-        )?;
+        let listed = itineraries_listed(&summaries, scope)?;
         let itineraries = self.itineraries(&listed, &bytes).await?;
         Ok(Capture {
             version: 1,

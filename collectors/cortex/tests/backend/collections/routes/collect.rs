@@ -32,7 +32,7 @@ fn an_itinerary_is_owned_by_its_driver_without_reading_the_rest() {
 }
 #[test]
 fn a_tab_pauses_only_its_data_responses() {
-    let value = patterns(&[ITINERARY]);
+    let value = patterns(&[ITINERARY], "Response");
     let pattern = |kind: &str| {
         json!({"urlPattern": format!("*{ITINERARY}*"), "resourceType": kind,
             "requestStage": "Response"})

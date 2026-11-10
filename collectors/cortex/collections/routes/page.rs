@@ -38,21 +38,19 @@ pub(crate) const MOVE: &str = r#"(url)=>{const next=new URL(url);if(next.origin!
 
 /// The newer routes page for the scope.
 pub(super) fn routes_page(origin: &str, scope: &Scope) -> String {
-    let mut query = url::form_urlencoded::Serializer::new(String::new());
-    query
-        .append_pair("navMenuVariant", "external")
-        .append_pair("provider", &scope.provider)
-        .append_pair("selectedDay", &scope.date)
-        .append_pair("serviceAreaId", &scope.service_area_id);
-    format!("{origin}/operations/execution/dv/routes?{}", query.finish())
+    let routes = scope
+        .list_path()
+        .replacen("/itineraries?", "/dv/routes?", 1);
+    format!("{origin}{routes}")
 }
-/// What a tab pauses: data responses under `paths`.
-pub(super) fn patterns(paths: &[&str]) -> Value {
+/// What a tab pauses: data requests under `paths`, at `stage`: `Request`, before they are
+/// sent, or `Response`.
+pub(super) fn patterns(paths: &[&str], stage: &str) -> Value {
     let patterns: Vec<Value> = paths
         .iter()
         .flat_map(|path| {
             ["XHR", "Fetch"].map(|kind| {
-                json!({"urlPattern":format!("*{path}*"),"resourceType":kind,"requestStage":"Response"})
+                json!({"urlPattern":format!("*{path}*"),"resourceType":kind,"requestStage":stage})
             })
         })
         .collect();
@@ -172,7 +170,8 @@ impl Tab<'_> {
         withhold: bool,
         metrics: &Recorder,
     ) -> Result<String> {
-        page.command("Fetch.enable", patterns(&[path])).await?;
+        page.command("Fetch.enable", patterns(&[path], "Response"))
+            .await?;
         let result = async {
             page.start_navigation(url).await?;
             let event = self
@@ -250,7 +249,7 @@ impl Tab<'_> {
     ) -> Result<String> {
         let url = routes_page(self.origin, scope);
         self.page
-            .command("Fetch.enable", patterns(&[ROUTE_SUMMARIES]))
+            .command("Fetch.enable", patterns(&[ROUTE_SUMMARIES], "Response"))
             .await?;
         let moved = self
             .move_to(self.page, &url, ROUTE_SUMMARIES, method, metrics, |_| true)
