@@ -3,7 +3,7 @@
 //! being refused waits out the minute. A flood of made-up keys then costs no database turn,
 //! which the dashboard's own requests need. The keys themselves are never at risk: one is 32
 //! random characters, so none is guessed.
-use crate::minute::Minute;
+use crate::{locked, minute::Minute};
 use dispatch_core::{Result, db::now, ensure};
 use std::{
     collections::HashMap,
@@ -46,7 +46,7 @@ impl Gate {
         sources.entry(ip.to_owned()).or_default().record(at);
     }
     fn sources(&self) -> MutexGuard<'_, HashMap<String, Minute>> {
-        self.0.lock().unwrap_or_else(|poison| poison.into_inner())
+        locked(&self.0)
     }
 }
 

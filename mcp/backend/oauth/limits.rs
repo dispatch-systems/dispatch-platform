@@ -1,7 +1,10 @@
 //! A small, process-wide first gate for the public OAuth endpoints. It is deliberately
 //! independent of the database: an unauthenticated flood must not acquire a database slot or
 //! the exclusive transition lock merely to learn that it has made too many requests.
-use crate::minute::{Minute, WINDOW};
+use crate::{
+    locked,
+    minute::{Minute, WINDOW},
+};
 use dispatch_core::{Error, Result, db::now};
 use std::{collections::HashMap, sync::Mutex};
 
@@ -62,7 +65,7 @@ impl Limits {
 
     fn admit_at(&self, endpoint: Endpoint, source: &str, at: i64) -> Result<()> {
         let (per_source, global) = endpoint.limits();
-        let mut counts = self.0.lock().unwrap_or_else(|poison| poison.into_inner());
+        let mut counts = locked(&self.0);
         {
             let total = counts.global.entry(endpoint).or_default();
             if total.count(at) >= global as usize {
@@ -99,7 +102,7 @@ impl Limits {
     }
 
     fn sample_refusal_at(&self, endpoint: &str, error: &str, at: i64) -> Option<u32> {
-        let mut counts = self.0.lock().unwrap_or_else(|poison| poison.into_inner());
+        let mut counts = locked(&self.0);
         let entry = counts
             .refusals
             .entry((endpoint.to_owned(), error.to_owned()))

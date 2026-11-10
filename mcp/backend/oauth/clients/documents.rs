@@ -4,6 +4,7 @@ use super::{
     Client, KNOWN, KnownApp,
     redirects::{allowed, loopback},
 };
+use crate::locked;
 use dispatch_core::{
     Error, Result,
     db::now,
@@ -122,18 +123,13 @@ impl Documents {
             ..
         } = KNOWN[index];
         let entry = || {
-            self.fetched
-                .lock()
-                .unwrap_or_else(|poison| poison.into_inner())
+            locked(&self.fetched)
                 .get(known)
                 .cloned()
                 .unwrap_or_default()
         };
         let keep = |entry| {
-            self.fetched
-                .lock()
-                .unwrap_or_else(|poison| poison.into_inner())
-                .insert(known, entry);
+            locked(&self.fetched).insert(known, entry);
         };
         // A fetched known document may remove redirects, but it may not silently widen the
         // reviewed embedded redirect boundary. A legitimate addition is picked up only after
@@ -172,11 +168,7 @@ impl Documents {
         url: &str,
         fetch: impl FnOnce() -> F,
     ) -> Found {
-        let websites = || {
-            self.websites
-                .lock()
-                .unwrap_or_else(|poison| poison.into_inner())
-        };
+        let websites = || locked(&self.websites);
         let fetching = {
             let mut websites = websites();
             if !websites.contains_key(url) && websites.len() >= MOST_WEBSITES {
@@ -225,11 +217,7 @@ impl Documents {
             .unwrap_or_else(|poison| poison.into_inner()) = Some(network);
     }
     fn network(&self, config: &Config) -> Arc<dyn Network> {
-        let chosen = self
-            .network
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner())
-            .clone();
+        let chosen = locked(&self.network).clone();
         chosen.unwrap_or_else(|| {
             if config.fixture {
                 Arc::new(network::Fixture)

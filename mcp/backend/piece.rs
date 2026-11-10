@@ -8,7 +8,7 @@ use super::{
         routes::{agent_api, oauth as oauth_routes},
         types::{AgentAccess, AgentActivityKey, AgentKeyKind},
     },
-    client_label, gate, keys, migrations, oauth, token,
+    client_label, gate, keys, locked, migrations, oauth, token,
     toolbox::{self, AnyTool, Toolbox},
     usage::Usage,
 };
@@ -215,10 +215,7 @@ impl Grant for Agent {
             db.authenticate_agent(token, &client)?
         };
         {
-            let mut trace = input
-                .trace
-                .lock()
-                .unwrap_or_else(|poison| poison.into_inner());
+            let mut trace = locked(&input.trace);
             trace.actor = Some(format!("agent:{}", caller.key));
             activity::noted(&mut trace).key = Some(AgentActivityKey {
                 id: caller.key.clone(),
@@ -302,7 +299,7 @@ fn challenge(config: &Config, code: Option<&str>) -> String {
 /// counted: a call refused for its rate is still that tool's.
 fn called(trace: &RequestTrace, body: &[u8]) {
     if let Some(tool) = activity::tool_call(body) {
-        let mut trace = trace.lock().unwrap_or_else(|poison| poison.into_inner());
+        let mut trace = locked(trace);
         activity::noted(&mut trace).surface = Some(tool);
     }
 }

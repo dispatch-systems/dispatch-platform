@@ -41,6 +41,12 @@ pub use oauth::{OAuthStore, clients::ClientStore, guard::GuardStore};
 pub use piece::{AGENTS, Agent};
 pub use usage::{LastUse, PER_MINUTE, Usage};
 
+/// A lock's guard, even after a holder panicked: one call that panicked must not stop every
+/// later one from using what the lock guards.
+fn locked<T>(mutex: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(|poison| poison.into_inner())
+}
+
 /// Its API types, which the app's export writes to TypeScript in its `api/generated/`.
 #[cfg(feature = "ts")]
 pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
