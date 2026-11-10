@@ -422,26 +422,43 @@ async fn inspect_responses(driver: &Driver, data: &Value, samples: usize) -> Res
 #[path = "../tests/backend/probes.rs"]
 mod tests;
 
+/// A field's name as a report may print it: a word of letters, with at most a short number
+/// after it, that isn't the four characters of an employee's code. An answer keyed by
+/// anything else, as by its records' ids, has its keys hidden as `pattern` hides a value.
+fn field(name: &str) -> String {
+    let word = name.trim_end_matches(|c: char| c.is_ascii_digit());
+    let named = !word.is_empty()
+        && name.len() <= 48
+        && name.len() - word.len() <= 3
+        && word.chars().all(|c| c.is_ascii_alphabetic() || c == '_')
+        && !(name.len() == 4 && word.len() < 4);
+    if named {
+        name.to_owned()
+    } else {
+        pattern(&json!(name))
+    }
+}
+/// What kind of value this is.
+fn kind(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "null",
+        Value::Bool(_) => "bool",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+    }
+}
 /// The names of a record's fields and the kind of value each holds, never a value.
 fn shape(record: &Value) -> Value {
     match record {
         Value::Object(fields) => Value::Object(
             fields
                 .iter()
-                .map(|(name, value)| {
-                    let kind = match value {
-                        Value::Null => "null",
-                        Value::Bool(_) => "bool",
-                        Value::Number(_) => "number",
-                        Value::String(_) => "string",
-                        Value::Array(_) => "array",
-                        Value::Object(_) => "object",
-                    };
-                    (name.clone(), json!(kind))
-                })
+                .map(|(name, value)| (field(name), json!(kind(value))))
                 .collect(),
         ),
-        other => shape(&json!({"value": other}))["value"].clone(),
+        other => json!(kind(other)),
     }
 }
 /// How a value is written, its digits and letters hidden: `9999-99-99 99:99:99` for a time.
@@ -474,9 +491,21 @@ async fn answer_shape(client: &rest::Client, function: &str, path: &str) -> Resu
                 .map(|row| written(&row[field]))
                 .collect::<std::collections::BTreeSet<_>>()
         };
+        // A kind's code as Paycom writes one, one to three capital letters, a flag or a
+        // single digit: anything else is named by what it is, never printed.
         let plain = |value: &Value| match value {
-            Value::String(text) => text.chars().take(16).collect(),
-            other => other.to_string(),
+            Value::String(text)
+                if (1..=3).contains(&text.len())
+                    && text.bytes().all(|b| b.is_ascii_uppercase())
+                    || text.len() == 1 && text.as_bytes()[0].is_ascii_digit() =>
+            {
+                text.clone()
+            }
+            Value::Number(number) if number.as_u64().is_some_and(|digit| digit <= 9) => {
+                number.to_string()
+            }
+            Value::Bool(flag) => flag.to_string(),
+            other => format!("another {}", kind(other)),
         };
         report["punchtime"] = json!(distinct("punchtime", pattern));
         report["timeadded"] = json!(distinct("timeadded", pattern));
@@ -580,18 +609,36 @@ pub async fn compare_api_collection() -> Result<()> {
     let source = driver
         .source()
         .ok_or_else(|| Error::new("verification_required", 409))?;
+    // The publication holds people the active directory may leave out by now, as a
+    // collection by sign-in reads everyone known: they are read here too, by their code alone.
+    let known = published
+        .keys()
+        .map(|(code, _)| code.as_str())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .map(|code| {
+            json!({"code":code,"name":code,"department":"","position":"","station":"",
+                "active":false})
+        })
+        .collect::<Vec<_>>();
     let started = Instant::now();
-    let data = api::everyone(&source, zone, &period, None, |done, total| async move {
-        if done % 20 == 0 || done == total {
-            eprintln!("BENCH {}", json!({"read":done,"of":total}));
-        }
-        Ok(())
-    })
+    let data = api::everyone(
+        &source,
+        zone,
+        &period,
+        Some(&known),
+        |done, total| async move {
+            if done % 20 == 0 || done == total {
+                eprintln!("BENCH {}", json!({"read":done,"of":total}));
+            }
+            Ok(())
+        },
+    )
     .await?;
     let cards = data["timecards"].as_array().unwrap();
 
     // How the two differ, counted: a card's hours, its status, its punches' times, or only
-    // their kinds; and by how much the hours differ, to the nearest quarter of an hour.
+    // their kinds; and by how much the hours differ, in the hundredths both are kept to.
     let mut tally: BTreeMap<&str, usize> = BTreeMap::new();
     let mut by: BTreeMap<String, usize> = BTreeMap::new();
     let times = |card: &Value| {
@@ -616,15 +663,16 @@ pub async fn compare_api_collection() -> Result<()> {
             continue;
         };
         read.insert(key);
-        let difference =
-            card["hours"].as_f64().unwrap_or(0.) - pages["hours"].as_f64().unwrap_or(0.);
-        let same_hours = difference.abs() < 0.011;
+        let hundredths =
+            |card: &Value| (card["hours"].as_f64().unwrap_or(f64::NAN) * 100.).round() as i64;
+        let difference = hundredths(card) - hundredths(pages);
+        let same_hours = difference == 0;
         let same_status = card["status"] == pages["status"];
         let same_times = times(card) == times(pages);
         let same_punches = card["punches"] == pages["punches"];
         if !same_hours {
             *tally.entry("hoursDiffer").or_default() += 1;
-            *by.entry(format!("{:+.2}", (difference * 4.).round() / 4.))
+            *by.entry(format!("{:+.2}", difference as f64 / 100.))
                 .or_default() += 1;
         }
         if !same_status {
