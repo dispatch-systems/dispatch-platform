@@ -74,7 +74,7 @@ fn a_change_is_light_standard_or_sensitive_by_the_paths_it_changes() {
             vec![
                 ("mcp/backend/toolbox/grants.rs", 3),
                 ("core/collection/backend/connections.rs", 3),
-                ("ops/scripts/backup.py", 3),
+                ("ops/scripts/production-reader.py", 3),
             ],
             Tier::Sensitive,
             vec![

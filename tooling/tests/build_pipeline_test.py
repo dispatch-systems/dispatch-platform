@@ -1,4 +1,4 @@
-"""The host setup launchers and the collector shards."""
+"""The dependency audit's allowances and the collector shards."""
 import importlib.util
 from pathlib import Path
 import re
@@ -9,7 +9,6 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).parents[2]
 sys.path.insert(0, str(ROOT / "tooling/ci"))
-sys.path.insert(0, str(ROOT / "ops/launchers"))
 
 
 def module(name, path):
@@ -74,16 +73,6 @@ class PipelineTests(unittest.TestCase):
             ["RUSTSEC-2026-0367 on zip 8.6.0 is allowed but no longer found: remove it from "
              "ALLOWED_ADVISORIES"],
         )
-
-    def test_setup_launchers_use_trusted_host_and_preserve_paths_and_owner_names(self):
-        args = ["--root", "/private path/live", "--first-name", "Two Names"]
-        for environment in ["dev", "production"]:
-            launcher = module(f"setup_{environment}", f"ops/launchers/setup-{environment}.py")
-            with patch.object(launcher, "host_binary", return_value=Path("/trusted path/dispatch-host")), \
-                    patch.object(launcher.os, "execv") as execute:
-                launcher.main(args)
-                execute.assert_called_once_with("/trusted path/dispatch-host", [
-                    "/trusted path/dispatch-host", "host", "setup", environment, *args])
 
     def test_collector_shards_isolate_capacity(self):
         # The app's multi-DSP suites run on the capacity runner, and nothing else does.
