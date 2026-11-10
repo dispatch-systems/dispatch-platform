@@ -46,7 +46,7 @@ with a photo of the paper if they like.
   - `conduct_copies`: the photo of a writeup's signed paper, which the page shrinks to 2000
     pixels before sending. A signed writeup's photo, once kept, stays.
   - `conduct_backups`: each signed copy as it's backed up: where it was saved, or how many tries
-    failed, why the last did, by its error code, and when the next is due.
+    failed, when the last did and why, by its error code, and when the next is due.
     `conduct_backup_folders`: the folders the copies go in, each by its ID where the DSP keeps
     its files (migration 2).
 - **Settings** (`backend/settings.rs`), on its own page of Settings (`?tab=conduct`), behind

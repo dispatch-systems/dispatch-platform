@@ -16,7 +16,7 @@ use dispatch_documents_contract::{
 };
 use futures_util::TryStreamExt;
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     sync::{Arc, Mutex},
 };
 
@@ -82,7 +82,7 @@ struct Kept {
     folders: Vec<KeptFolder>,
     files: Vec<KeptFile>,
     unready: BTreeSet<String>,
-    refusing: BTreeSet<String>,
+    refusing: BTreeMap<String, &'static str>,
     switching_off: BTreeSet<String>,
 }
 impl Kept {
@@ -104,7 +104,7 @@ static KEPT: Mutex<Kept> = Mutex::new(Kept {
     folders: Vec::new(),
     files: Vec::new(),
     unready: BTreeSet::new(),
-    refusing: BTreeSet::new(),
+    refusing: BTreeMap::new(),
     switching_off: BTreeSet::new(),
 });
 fn kept() -> std::sync::MutexGuard<'static, Kept> {
@@ -165,14 +165,14 @@ pub fn ready_to_keep(dsp: &str, ready: bool) {
         kept.unready.insert(dsp.to_owned());
     }
 }
-/// Has the stand-in refuse what's saved for the DSP, or keep it again.
-pub fn refuse(dsp: &str, refusing: bool) {
+/// Has the stand-in refuse what's saved for the DSP, as `FULL` or `BUSY`, or with none keep it
+/// again.
+pub fn refuse(dsp: &str, with: Option<&'static str>) {
     let mut kept = kept();
-    if refusing {
-        kept.refusing.insert(dsp.to_owned());
-    } else {
-        kept.refusing.remove(dsp);
-    }
+    match with {
+        Some(code) => kept.refusing.insert(dsp.to_owned(), code),
+        None => kept.refusing.remove(dsp),
+    };
 }
 
 /// Has the stand-in switch Conduct off for the DSP once it keeps the next file of theirs, as
@@ -203,8 +203,9 @@ impl Shown for Keeping {
         "keeping.use"
     }
 }
-/// How the stand-in refuses what's saved, which it has words for.
-const REFUSED: &str = "keeping_refused";
+/// How the stand-in refuses what's saved, each of which it has words for.
+pub const FULL: &str = "keeping_full";
+pub const BUSY: &str = "keeping_busy";
 fn not_found() -> Error {
     Error::new("files_folder_not_found", 404)
 }
@@ -216,7 +217,11 @@ impl Files for Keeping {
         "Kept Drive"
     }
     fn refusal(&self, code: &str) -> Option<&'static str> {
-        (code == REFUSED).then_some("Kept Drive is full")
+        match code {
+            FULL => Some("Kept Drive is full"),
+            BUSY => Some("Kept Drive is busy"),
+            _ => None,
+        }
     }
     fn unready<'a>(&'a self, _: &'a Arc<State>, dsp: &'a str) -> Answer<'a, Option<String>> {
         let unready = kept().unready.contains(dsp);
@@ -294,8 +299,8 @@ impl Files for Keeping {
                 .await?;
             let (id, switching_off) = {
                 let mut kept = kept();
-                if kept.refusing.contains(dsp) {
-                    return Err(Error::new(REFUSED, 502));
+                if let Some(code) = kept.refusing.get(dsp) {
+                    return Err(Error::new(*code, 502));
                 }
                 if !kept.folders.iter().any(|f| f.dsp == dsp && f.id == folder) {
                     return Err(not_found());

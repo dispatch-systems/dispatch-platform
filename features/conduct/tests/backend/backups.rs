@@ -140,13 +140,13 @@ async fn a_copy_that_isnt_saved_is_tried_again_later_and_the_backup_says_its_fai
     // minute for its next try.
     support::ready_to_keep(&dsp, true);
     assert_eq!(status(&state, &dsp).await.unwrap(), going(false, None, 1));
-    support::refuse(&dsp, true);
+    support::refuse(&dsp, Some(support::FULL));
     back_up(&state, &dsp, 1000).await.unwrap();
     assert_eq!(
         status(&state, &dsp).await.unwrap(),
         going(true, Some("Kept Drive is full"), 1)
     );
-    support::refuse(&dsp, false);
+    support::refuse(&dsp, None);
     back_up(&state, &dsp, 1000 + 59 * 1000).await.unwrap();
     assert_eq!(support::files(&dsp), []);
     back_up(&state, &dsp, 1000 + 60 * 1000).await.unwrap();
@@ -165,4 +165,24 @@ async fn once_conduct_is_switched_off_no_more_copies_are_sent_in_the_pass_under_
     support::switch_off_on_save(&dsp);
     back_up(&state, &dsp, 1000).await.unwrap();
     assert_eq!(support::files(&dsp).len(), 1);
+}
+
+#[tokio::test]
+async fn the_backup_says_why_the_copy_tried_latest_wasnt_saved() {
+    let (_root, state, c) = platform();
+    let dsp = c.dsp.id.clone();
+    choose(&state, &c).await;
+
+    // One copy refused twice waits five minutes for its third try.
+    written(&state, &c, ConductTier::Verbal, true, true).await;
+    support::refuse(&dsp, Some(support::FULL));
+    back_up(&state, &dsp, 0).await.unwrap();
+    back_up(&state, &dsp, 60 * 1000).await.unwrap();
+    // The next, refused once since and for another reason, is due before it, and tried later.
+    written(&state, &c, ConductTier::Written, true, true).await;
+    support::refuse(&dsp, Some(support::BUSY));
+    back_up(&state, &dsp, 61 * 1000).await.unwrap();
+    let going = status(&state, &dsp).await.unwrap();
+    assert_eq!(going.why.as_deref(), Some("Kept Drive is busy"));
+    assert_eq!(going.waiting, 2);
 }

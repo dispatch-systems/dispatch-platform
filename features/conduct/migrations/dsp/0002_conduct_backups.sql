@@ -2,13 +2,14 @@
 -- migrations never change: add the next one instead.
 
 -- A signed writeup's photo as it's backed up: where it was saved, once it is, or how its tries
--- went until then, the next one due at `due_at`, in milliseconds. A photo without a row hasn't
--- been tried.
+-- went until then: how many failed, when the last did and why, by its error's code, and when
+-- the next is due, each instant in milliseconds. A photo without a row hasn't been tried.
 CREATE TABLE IF NOT EXISTS conduct_backups (
     writeup_id TEXT PRIMARY KEY REFERENCES conduct_writeups(id),
     saved_id TEXT,
     saved_at INTEGER,
     attempts INTEGER NOT NULL DEFAULT 0,
+    tried_at INTEGER,
     due_at INTEGER NOT NULL DEFAULT 0,
     reason TEXT
 );

@@ -9,7 +9,7 @@
 use super::{DOMAIN, copies, settings};
 use crate::api::types::{ConductBackup, ConductTier};
 use dispatch_core::{
-    Result, State,
+    Code, Result, State,
     db::{FromRow, Row, Store, now},
     ensure,
     foundation::observability,
@@ -49,7 +49,7 @@ const EVERYONE: &str = "Writeups";
 const THEIRS: &str = "a driver's folder";
 /// How a try ends once the DSP no longer backs its copies up: nothing more is sent, and the
 /// photo waits as it was.
-const STOPPED: &str = "conduct_backup_stopped";
+const STOPPED: Code = Code::new("conduct_backup_stopped");
 
 fn pass(state: Arc<State>, _: bool) -> Upkeep {
     Box::pin(async move {
@@ -110,10 +110,9 @@ fn chosen(db: &Store, dsp: &str) -> Result<bool> {
     Ok(db.serves_dsp(dsp)? && db.feature_enabled(dsp, "conduct")? && settings::backs_up(db, dsp)?)
 }
 
-/// Refuses, as `STOPPED`, once Conduct no longer backs the DSP's signed copies up: checked in
-/// the read before each thing sent where the DSP keeps its files.
+/// Refuses, as `STOPPED`, once Conduct no longer backs the DSP's signed copies up.
 fn still_chosen(db: &Store, dsp: &str) -> Result<()> {
-    ensure(chosen(db, dsp)?, STOPPED, 409)
+    ensure(chosen(db, dsp)?, STOPPED.as_str(), 409)
 }
 
 /// The DSP's photos due a try by `at`, the longest waiting first, `most` at most, each person
@@ -162,7 +161,7 @@ pub(crate) async fn back_up(state: &Arc<State>, dsp: &str, at: i64) -> Result<()
     }
     for photo in due {
         let outcome = match save(state, files, dsp, &photo).await {
-            Err(error) if error.code == STOPPED => return Ok(()),
+            Err(error) if error.is(STOPPED) => return Ok(()),
             outcome => outcome.map_err(|error| error.code),
         };
         let stopped = outcome.is_err();
@@ -212,12 +211,7 @@ async fn save(
         )
         .await?;
     let (at, id) = (dsp.to_owned(), photo.writeup.clone());
-    let (mime, bytes) = state
-        .read(move |db| {
-            still_chosen(db, &at)?;
-            copies::read(db, &at, &id)
-        })
-        .await?;
+    let (mime, bytes) = state.read(move |db| copies::read(db, &at, &id)).await?;
     let name = format!(
         "{} {}.{}",
         photo.written_on,
@@ -230,9 +224,10 @@ async fn save(
         name,
         mime,
         bytes: Upload::streamed(length, files.largest(), sent).await?,
-        by,
+        by: by.clone(),
         from: FROM,
     };
+    place.proceed().await?;
     Ok(files.save(state, dsp, &into, incoming).await?.id)
 }
 
@@ -244,6 +239,13 @@ struct Place<'a> {
     by: &'a Author,
 }
 impl Place<'_> {
+    /// Refuses, as `STOPPED`, once the DSP's copies are no longer backed up: asked last before
+    /// each thing sent where the DSP keeps its files, after whatever it waited on, so nothing
+    /// is sent once the backup is off.
+    async fn proceed(&self) -> Result<()> {
+        let at = self.dsp.to_owned();
+        self.state.read(move |db| still_chosen(db, &at)).await
+    }
     /// The folder kept for the person and category `of`, while it's still among the DSP's
     /// files; else one made in `parent`, named `name`, which the activity log calls
     /// `logged_as` instead when given, and kept in its place.
@@ -259,7 +261,6 @@ impl Place<'_> {
         let kept = self
             .state
             .read(move |db| {
-                still_chosen(db, &at)?;
                 db.dsp(&at)?.one_as::<(String,)>(
                     "SELECT folder_id FROM conduct_backup_folders WHERE person=? AND category_id=?",
                     [&whose, &which],
@@ -281,6 +282,7 @@ impl Place<'_> {
             by: self.by,
             logged_as,
         };
+        self.proceed().await?;
         let made = self
             .files
             .create_folder(self.state, self.dsp, folder)
@@ -327,10 +329,10 @@ fn finish(
         Err(code) => {
             let wait = RETRIES_MS[(photo.attempts.max(0) as usize).min(RETRIES_MS.len() - 1)];
             db.exec(
-                "INSERT INTO conduct_backups (writeup_id,attempts,due_at,reason) VALUES (?,1,?,?) \
-                 ON CONFLICT(writeup_id) DO UPDATE SET attempts=attempts+1,\
-                 due_at=excluded.due_at,reason=excluded.reason",
-                params![photo.writeup, at + wait, code],
+                "INSERT INTO conduct_backups (writeup_id,attempts,tried_at,due_at,reason) \
+                 VALUES (?,1,?,?,?) ON CONFLICT(writeup_id) DO UPDATE SET attempts=attempts+1,\
+                 tried_at=excluded.tried_at,due_at=excluded.due_at,reason=excluded.reason",
+                params![photo.writeup, at, at + wait, code],
             )
         }
     }
@@ -359,7 +361,7 @@ pub(crate) async fn status(state: &Arc<State>, dsp: &str) -> Result<ConductBacku
             // Why the photo tried latest wasn't saved, by its error's code.
             let refused = db.one_as::<(String,)>(
                 &format!(
-                    "SELECT b.reason {UNSAVED} AND b.attempts>0 ORDER BY b.due_at DESC LIMIT 1"
+                    "SELECT b.reason {UNSAVED} AND b.attempts>0 ORDER BY b.tried_at DESC LIMIT 1"
                 ),
                 [],
             )?;

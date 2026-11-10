@@ -47,7 +47,7 @@ impl Files for DocumentsFiles {
     fn refusal(&self, code: &str) -> Option<&'static str> {
         match code {
             "documents_storage_full" => Some("Google Drive is out of storage"),
-            "google_unavailable" => Some("Google Drive isn't responding"),
+            "google_unreachable" => Some("Google Drive isn't responding"),
             _ => None,
         }
     }
