@@ -1,4 +1,11 @@
-import type { Message } from '../../api/index.js';
+import type { SelectionOrigins } from '../../api/generated/SelectionOrigins.js';
+import type { RunOrigin } from '../../api/generated/RunOrigin.js';
+import type {
+  MessageRenderContext,
+  MessageNeighbor,
+  MessageSenderIdentity,
+  Message,
+} from '../../api/index.js';
 import { dayOf } from '../shared/format.js';
 
 // A conversation's messages as the page holds and shows them: kept in the order written as they're
@@ -20,7 +27,10 @@ type Run = {
   writer: string;
   messages: Message[];
   /** The previous outgoing sender that day, across incoming runs. */
-  sentBefore: Message['sender'] | undefined;
+  sentBefore: MessageSenderIdentity | null | undefined;
+  origin: Message | RunOrigin;
+  before?: Message | MessageNeighbor | null;
+  continued: boolean;
 };
 
 /** Messages by their place, `ts`, in the order written: Slack's IDs, `<seconds>.<microseconds>`,
@@ -59,18 +69,33 @@ export function fresh(
 /** Who wrote a message, to tell runs apart: whom it's with; or someone at the DSP, by their
  * account, or the phone a text was sent from on its own messaging app, and the group it went to;
  * and for a text, the other party's number, as a driver's work phone changes. */
-const writer = (message: Message) =>
+const writer = (
+  message: Pick<Message, 'direction' | 'number'> & {
+    sender?: MessageSenderIdentity | null;
+    group?: { id: string } | null;
+  },
+) =>
   (message.direction === 'in'
     ? 'in'
     : `out:${message.sender?.userId ?? ''}:${message.sender?.phoneId ?? ''}:${message.group?.id ?? ''}`) +
   `:${message.number ?? ''}`;
 
 /** The messages under each day they were written, in runs by writer. */
-export function runs(messages: readonly Message[], timeZone: string) {
+export function runs(
+  messages: readonly Message[],
+  timeZone: string,
+  origins?: SelectionOrigins | null,
+  context?: MessageRenderContext,
+) {
   const days: { day: string; at: number; runs: Run[] }[] = [];
   for (const message of messages) {
     const day = dayOf(message.at, timeZone);
-    if (days.at(-1)?.day !== day) days.push({ day, at: message.at, runs: [] });
+    if (days.at(-1)?.day !== day)
+      days.push({
+        day,
+        at: days.length === 0 && origins ? origins.firstDay.at : message.at,
+        runs: [],
+      });
     const current = days.at(-1)!;
     const by = writer(message);
     const run = current.runs.at(-1);
@@ -78,11 +103,28 @@ export function runs(messages: readonly Message[], timeZone: string) {
       run.messages.push(message);
     else
       current.runs.push({
-        key: message.id,
+        key:
+          days.length === 1 && current.runs.length === 0 && origins
+            ? origins.origin.id
+            : message.id,
+        origin:
+          days.length === 1 && current.runs.length === 0 && origins ? origins.origin : message,
+        before: run?.messages.at(-1) ?? (days.length === 1 ? origins?.beforeOrigin : undefined),
+        continued: false,
         writer: by,
         messages: [message],
-        sentBefore: run?.messages[0]?.sender ?? run?.sentBefore,
+        sentBefore:
+          run?.origin.sender ??
+          run?.sentBefore ??
+          (days.length === 1 && !current.runs.length ? origins?.sentBeforeOrigin : undefined),
       });
   }
+  const last = days.at(-1)?.runs.at(-1);
+  const next = context?.next;
+  if (last && next)
+    last.continued =
+      dayOf(next.at, timeZone) === days.at(-1)!.day &&
+      writer({ ...next, group: next.groupId ? { id: next.groupId } : null }) === last.writer &&
+      next.at - last.messages.at(-1)!.at < PAUSE_MS;
   return days;
 }

@@ -148,3 +148,46 @@ test('a text that failed says why in a few words: the server’s codes worded, t
   assert.equal(whyNotSent(null), '');
   assert.equal(whyNotSent('phones_something_new'), '');
 });
+
+test('a clipped run uses its actual origin sender, prior run and day, and keeps a continuing tail open', () => {
+  const original = text('origin', 0, phone('dispatch', 'Original name'));
+  const visible = [
+    text('middle', 1, phone('dispatch', 'Later name')),
+    text('last visible', 2, phone('dispatch', 'Later name')),
+  ];
+  const before = text('before origin', -1, phone('station', 'Station'));
+  const next = text('after selection', 3, phone('dispatch', 'Later name'));
+  const [day] = runs(
+    visible,
+    'America/Los_Angeles',
+    {
+      origin: original,
+      beforeOrigin: { ...before, groupId: null },
+      sentBeforeOrigin: before.sender,
+      firstDay: before,
+    },
+    {
+      previous: { ...original, groupId: null },
+      next: { ...next, groupId: null },
+      sentBefore: original.sender,
+    },
+  );
+  assert.equal(day!.at, before.at);
+  const run = day!.runs[0]!;
+  assert.equal(run.key, 'origin');
+  assert.equal(run.origin.sender!.name, 'Original name');
+  assert.equal(run.origin.at, original.at);
+  assert.equal(run.before!.id, 'before origin');
+  assert.equal(run.sentBefore!.phoneId, 'station');
+  assert.equal(run.continued, true);
+  assert.deepEqual(ids(run.messages), ['middle', 'last visible']);
+  // Full projected sender labels are origin-owned, while writer identity still groups by account/phone.
+  const laterRun = text('new run', 20, phone('dispatch', 'Later name'));
+  const [extended] = runs([...visible, laterRun], 'America/Los_Angeles', {
+    origin: original,
+    beforeOrigin: { ...before, groupId: null },
+    sentBeforeOrigin: before.sender,
+    firstDay: before,
+  });
+  assert.equal(extended!.runs[1]!.sentBefore!.name, 'Original name');
+});

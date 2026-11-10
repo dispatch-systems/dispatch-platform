@@ -118,8 +118,15 @@ export function GroupThread({
                       )
                     }
                   >
-                    <MessageBody message={first} attachments={slackAttachments} />
-                    <MessageMeta time={!plain && !pauses && clock(first.at, timeZone)}>
+                    <MessageBody
+                      identity={first.id}
+                      message={first}
+                      attachments={slackAttachments}
+                    />
+                    <MessageMeta
+                      identity={first.id}
+                      time={!plain && !pauses && clock(first.at, timeZone)}
+                    >
                       {gone && (
                         <span className={gone.sending ? 'sending' : undefined}>{gone.text}</span>
                       )}
@@ -162,13 +169,19 @@ export function GroupThread({
                 >
                   {written.map((entry) => (
                     <Fragment key={entry.id}>
-                      <MessageBody message={entry} attachments={slackAttachments} />
+                      <MessageBody
+                        identity={entry.id}
+                        message={entry}
+                        attachments={slackAttachments}
+                      />
                       <MessageMeta
+                        identity={entry.id}
                         time={!plain && times === 'each_message' && clock(entry.at, timeZone)}
                       />
                     </Fragment>
                   ))}
                   <MessageMeta
+                    identity={last.id}
                     time={!plain && !pauses && times !== 'each_message' && clock(last.at, timeZone)}
                   />
                 </MessageRun>

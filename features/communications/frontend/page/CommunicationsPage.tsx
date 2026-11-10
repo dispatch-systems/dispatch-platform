@@ -73,7 +73,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const { inbox, team, changed, error, refresh, show, showGroup, readOlder, olderFailed } =
     useInbox(ofWorkspace ? chosen : undefined);
   // The conversations read, kept so each opens at once once read, and read before they're opened.
-  const reads = useConversationReads(view.dsp.id, changed);
+  const reads = useConversationReads(view.dsp.id, changed, timeZone);
   const warm = useCallback((id: string) => reads.warm(id), [reads]);
   // The sections the DSP has, the one chosen shown, else the one the page opened on; with none,
   // Slack's, empty until it's connected.

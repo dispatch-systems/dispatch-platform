@@ -1,6 +1,7 @@
 import { Fragment, useContext } from 'react';
 import { CircleAlert, RotateCw, Users } from 'lucide-react';
-import type { Conversation, Message, Workday } from '../../api/index.js';
+import type { SelectionOrigins } from '../../api/generated/SelectionOrigins.js';
+import type { Conversation, Message, Workday, MessageRenderContext } from '../../api/index.js';
 import { clock, dayLabel, dayOf, textStatus, whyNotSent, workdayLabel } from '../shared/format.js';
 import { paused, runs } from './messages.js';
 import { Shown } from '../display/display.js';
@@ -15,7 +16,7 @@ import {
   sameSender,
   SenderLine,
 } from '../shared/MessageRun.js';
-import { DayLabel, PauseLabel, ThreadFrame } from '../shared/ThreadFrame.js';
+import { DayLabel, PauseLabel, ThreadFrame, type WindowThread } from '../shared/ThreadFrame.js';
 import type { OpensProfile } from '../shared/usePanel.js';
 import { Switched, WorkdayLine } from '../todays-routes/Workday.js';
 import './thread.css';
@@ -44,7 +45,17 @@ export function Thread({
   openGroup,
   retry,
   workdays,
+  window,
+  viewport,
+  resume,
+  origins,
+  context,
 }: {
+  window?: WindowThread;
+  viewport?: WindowThread['viewport'];
+  resume?: () => void;
+  origins?: SelectionOrigins | null;
+  context?: MessageRenderContext;
   conversation: Conversation;
   messages: readonly Message[];
   more: boolean;
@@ -73,86 +84,107 @@ export function Thread({
   return (
     <ThreadFrame
       items={messages}
+      window={window}
+      viewport={viewport}
+      resume={resume}
       latest={latest}
       more={more}
       readOlder={readOlder}
       olderFailed={olderFailed}
     >
-      {runs(messages, timeZone).map(({ day, at, runs }) => (
+      {runs(messages, timeZone, origins, context).map(({ day, at, runs }) => (
         <div key={day} className={workdays && day !== today ? 'day-messages past' : 'day-messages'}>
           {workdays ? (
             <WorkdayLine
               label={workdayLabel(day, timeZone, now)}
               workday={workdays.find((each) => each.day === day)}
-              phone={runs[0]?.messages[0]?.number ?? null}
+              phone={
+                origins?.firstDay.at === at
+                  ? origins.firstDay.number
+                  : (runs[0]?.messages[0]?.number ?? null)
+              }
               today={day === today}
             />
           ) : (
             <DayLabel>{dayLabel(at, timeZone, now)}</DayLabel>
           )}
-          {runs.map(({ key, messages: written, sentBefore }, at) => {
-            const first = written[0]!;
-            const sender = first.sender;
-            const previous = runs[at - 1]?.messages;
-            const before = previous?.[0]?.number;
-            const switched = workdays && before && first.number && first.number !== before;
-            // The DSP's sender is named once another sent the DSP's before them that day.
-            const named = plain || (sender && (!sameSender(sentBefore, sender) || first.group));
-            return (
-              <Fragment key={key}>
-                {switched && <Switched number={first.number!} />}
-                {pauses && paused(previous?.at(-1)?.at, first.at) && (
-                  <PauseLabel>{clock(first.at, timeZone)}</PauseLabel>
-                )}
-                <MessageRun
-                  direction={first.direction}
-                  face={
-                    sender ? (
-                      <SenderFace sender={sender} size="message" />
-                    ) : profile ? (
-                      // Who it's with, above, opens it from the keyboard.
-                      <FaceButton label={person.name} {...profile}>
-                        <Face {...person} size="message" />
-                      </FaceButton>
-                    ) : (
-                      <PartyFace conversation={conversation} size="message" />
-                    )
-                  }
-                  sender={
-                    named && (
-                      <SenderLine
-                        name={sender?.name ?? person.name}
-                        at={plain && clock(first.at, timeZone)}
-                      >
-                        {first.group && (
-                          <button className="to-group" onClick={() => openGroup(first.group!.id)}>
-                            <Users size={11} aria-hidden="true" />
-                            {first.group.name}
-                          </button>
-                        )}
-                      </SenderLine>
-                    )
-                  }
-                >
-                  {written.map((message, at) => {
-                    const last = at === written.length - 1;
-                    return (
-                      <Fragment key={message.id}>
-                        <MessageBody message={message} attachments={attachments} />
-                        <Meta
-                          message={message}
-                          time={!plain && !pauses && (last || times === 'each_message')}
-                          status={last || message.status === 'failed'}
-                          timeZone={timeZone}
-                          retry={retry}
-                        />
-                      </Fragment>
-                    );
-                  })}
-                </MessageRun>
-              </Fragment>
-            );
-          })}
+          {runs.map(
+            ({
+              key,
+              messages: written,
+              sentBefore,
+              origin: first,
+              before: preceding,
+              continued,
+            }) => {
+              const sender = first.sender;
+              const previous =
+                preceding && dayOf(preceding.at, timeZone) === day ? preceding : undefined;
+              const before = previous?.number;
+              const switched = workdays && before && first.number && first.number !== before;
+              // The DSP's sender is named once another sent the DSP's before them that day.
+              const named = plain || (sender && (!sameSender(sentBefore, sender) || first.group));
+              return (
+                <Fragment key={key}>
+                  {switched && <Switched number={first.number!} />}
+                  {pauses && paused(previous?.at, first.at) && (
+                    <PauseLabel>{clock(first.at, timeZone)}</PauseLabel>
+                  )}
+                  <MessageRun
+                    direction={first.direction}
+                    continues={continued}
+                    face={
+                      sender ? (
+                        <SenderFace sender={sender} size="message" />
+                      ) : profile ? (
+                        // Who it's with, above, opens it from the keyboard.
+                        <FaceButton label={person.name} {...profile}>
+                          <Face {...person} size="message" />
+                        </FaceButton>
+                      ) : (
+                        <PartyFace conversation={conversation} size="message" />
+                      )
+                    }
+                    sender={
+                      named && (
+                        <SenderLine
+                          name={sender?.name ?? person.name}
+                          at={plain && clock(first.at, timeZone)}
+                        >
+                          {first.group && (
+                            <button className="to-group" onClick={() => openGroup(first.group!.id)}>
+                              <Users size={11} aria-hidden="true" />
+                              {first.group.name}
+                            </button>
+                          )}
+                        </SenderLine>
+                      )
+                    }
+                  >
+                    {written.map((message, at) => {
+                      const last = at === written.length - 1 && !continued;
+                      return (
+                        <Fragment key={message.id}>
+                          <MessageBody
+                            identity={message.id}
+                            message={message}
+                            attachments={attachments}
+                          />
+                          <Meta
+                            message={message}
+                            time={!plain && !pauses && (last || times === 'each_message')}
+                            status={last || message.status === 'failed'}
+                            timeZone={timeZone}
+                            retry={retry}
+                          />
+                        </Fragment>
+                      );
+                    })}
+                  </MessageRun>
+                </Fragment>
+              );
+            },
+          )}
         </div>
       ))}
     </ThreadFrame>
@@ -180,7 +212,7 @@ function Meta({
   const gone = status ? message.status : null;
   const why = whyNotSent(message.error);
   return (
-    <MessageMeta time={time && clock(message.at, timeZone)}>
+    <MessageMeta identity={message.id} time={time && clock(message.at, timeZone)}>
       {gone === 'failed' ? (
         <>
           <span className="failed">

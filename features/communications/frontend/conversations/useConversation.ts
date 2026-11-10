@@ -1,15 +1,28 @@
-import { useCallback, useEffect, useLayoutEffect, useState, useSyncExternalStore } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import type { Conversation, Message } from '../../api/index.js';
 import type { Changed } from '../inbox/useInbox.js';
+import type { ConversationViewport, WriteVersion } from './reads.js';
 import { ConversationReads } from './reads.js';
 
 /**
  * The conversations the page reads, at the DSP `dsp`, told of each update, `changed`: before the
  * conversation open's own effects, so one opened as the page reads afresh is read once.
  */
-export function useConversationReads(dsp: string, changed: Changed) {
-  const [reads, setReads] = useState(() => ({ dsp, reads: new ConversationReads() }));
-  if (reads.dsp !== dsp) setReads({ dsp, reads: new ConversationReads() });
+export function useConversationReads(dsp: string, changed: Changed, timeZone: string) {
+  const [reads, setReads] = useState(() => ({
+    dsp,
+    timeZone,
+    reads: new ConversationReads(timeZone),
+  }));
+  if (reads.dsp !== dsp || reads.timeZone !== timeZone)
+    setReads({ dsp, timeZone, reads: new ConversationReads(timeZone) });
   useLayoutEffect(() => reads.reads.change(changed), [reads, changed]);
   useEffect(() => () => reads.reads.dispose(), [reads]);
   return reads.reads;
@@ -34,9 +47,38 @@ export function useConversation(reads: ConversationReads, id: string) {
     if (!older) void reads.readOlder(id);
   }, [reads, id, older]);
   const retry = useCallback(() => reads.open(id), [reads, id]);
+  const version = useCallback(() => reads.version(id), [reads, id]);
+  const viewport = useCallback(
+    (read: () => ConversationViewport) => reads.viewport(id, read),
+    [reads, id],
+  );
+  const resume = useCallback(() => reads.resume(id), [reads, id]);
+  const readNewer = useCallback(() => {
+    void reads.readNewer(id);
+  }, [reads, id]);
+  const readLatest = useCallback(() => {
+    void reads.readLatest(id);
+  }, [reads, id]);
+  const bounded = held.opened?.window;
+  const provisional = held.opened?.provisional;
+  const window = useMemo(
+    () =>
+      bounded
+        ? {
+            hasAfter: !provisional && bounded.range.hasAfter,
+            busy: older,
+            viewport,
+            resume,
+            readNewer,
+            readLatest,
+          }
+        : undefined,
+    [bounded, provisional, older, viewport, resume, readNewer, readLatest],
+  );
   const show = useCallback(
-    (conversation: Conversation, message?: Message) => reads.show(conversation, message),
+    (conversation: Conversation, message?: Message, observed?: WriteVersion) =>
+      reads.show(conversation, message, observed),
     [reads],
   );
-  return { ...held, readOlder, retry, show };
+  return { ...held, readOlder, retry, show, version, window, viewport, resume };
 }
