@@ -1,6 +1,6 @@
 //! How deep a change's review goes, from the paths it changes: none for documentation and tests
-//! alone, one pass for the rest, and a security review beside each pass for what a missed bug
-//! costs most in.
+//! alone, one pass for the rest, and a security review beside it for what a missed bug costs
+//! most in; and what commits after a pass still need.
 use std::fmt;
 
 /// Ordered from the least review to the most.
@@ -13,7 +13,8 @@ pub enum Tier {
     Light,
     /// One pass, and another only for what fixing an Important finding changed.
     Standard,
-    /// Each pass with a security review beside it.
+    /// A security review beside the first pass, and beside a later one that reads something
+    /// sensitive or follows a security finding's fix.
     Sensitive,
 }
 impl Tier {
@@ -154,6 +155,33 @@ pub fn judge(changed: &[Changed]) -> Judged {
         Tier::Standard
     };
     Judged { tier, reasons }
+}
+
+/// What commits after a pass still need of a review, when no answer to it accounts for them.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Later {
+    /// Nothing of the change's own, or documentation alone: no pass.
+    Nothing,
+    /// Tests alone, documentation aside: a pass that reads them alone.
+    Tests,
+    /// A pass, as the change's tier has it.
+    Pass,
+}
+
+/// What a pass's reviewers haven't read needs, from the files `changed` since, whatever their
+/// size: a change's size sets its tier once, at its first pass. A test or a README on a
+/// sensitive path is read as part of the change.
+pub fn later(changed: &[Changed]) -> Later {
+    let all = |light: fn(&str) -> bool| changed.iter().all(|file| light(&file.path));
+    if changed.iter().any(|file| sensitive(&file.path).is_some()) {
+        Later::Pass
+    } else if all(documentation) {
+        Later::Nothing
+    } else if all(|path| documentation(path) || test(path)) {
+        Later::Tests
+    } else {
+        Later::Pass
+    }
 }
 
 /// Reads `git diff --numstat --no-renames -z` into changed files, each path as it is; a
