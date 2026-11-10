@@ -13,6 +13,8 @@ mod gate;
 mod keys;
 #[path = "backend/migrations.rs"]
 mod migrations;
+#[path = "backend/minute.rs"]
+mod minute;
 #[path = "backend/names.rs"]
 mod names;
 #[path = "backend/oauth/mod.rs"]

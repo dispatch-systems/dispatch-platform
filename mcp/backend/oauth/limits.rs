@@ -1,13 +1,10 @@
 //! A small, process-wide first gate for the public OAuth endpoints. It is deliberately
 //! independent of the database: an unauthenticated flood must not acquire a database slot or
 //! the exclusive transition lock merely to learn that it has made too many requests.
+use crate::minute::{Minute, WINDOW};
 use dispatch_core::{Error, Result, db::now};
-use std::{
-    collections::{HashMap, VecDeque},
-    sync::Mutex,
-};
+use std::{collections::HashMap, sync::Mutex};
 
-const WINDOW: i64 = 60_000;
 const MOST_SOURCES: usize = 2_000;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -33,27 +30,9 @@ impl Endpoint {
 pub struct Limits(Mutex<Counts>);
 #[derive(Default)]
 struct Counts {
-    sources: HashMap<(Endpoint, String), TrafficWindow>,
-    global: HashMap<Endpoint, TrafficWindow>,
+    sources: HashMap<(Endpoint, String), Minute>,
+    global: HashMap<Endpoint, Minute>,
     refusals: HashMap<(String, String), CountWindow>,
-}
-#[derive(Default)]
-struct TrafficWindow(VecDeque<i64>);
-impl TrafficWindow {
-    fn prune(&mut self, at: i64) {
-        while self.0.front().is_some_and(|seen| *seen <= at - WINDOW) {
-            self.0.pop_front();
-        }
-    }
-    fn full(&self, limit: u32) -> bool {
-        self.0.len() >= limit as usize
-    }
-    fn record(&mut self, at: i64) {
-        self.0.push_back(at);
-    }
-    fn active(&self, at: i64) -> bool {
-        self.0.back().is_some_and(|seen| *seen > at - WINDOW)
-    }
 }
 #[derive(Clone, Copy)]
 struct CountWindow {
@@ -86,8 +65,7 @@ impl Limits {
         let mut counts = self.0.lock().unwrap_or_else(|poison| poison.into_inner());
         {
             let total = counts.global.entry(endpoint).or_default();
-            total.prune(at);
-            if total.full(global) {
+            if total.count(at) >= global as usize {
                 return Err(Error::new("rate_limited", 429));
             }
         }
@@ -105,8 +83,7 @@ impl Limits {
             .sources
             .entry((endpoint, source.to_owned()))
             .or_default();
-        source.prune(at);
-        if source.full(per_source) {
+        if source.count(at) >= per_source as usize {
             return Err(Error::new("rate_limited", 429));
         }
         source.record(at);
