@@ -11,7 +11,7 @@ mod grant;
 pub(crate) mod maintenance;
 pub(crate) mod mirror;
 pub(crate) mod picker;
-mod query;
+pub(crate) mod query;
 pub(crate) mod service;
 pub(crate) mod storage;
 pub(crate) mod team;

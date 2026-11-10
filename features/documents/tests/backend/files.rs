@@ -266,7 +266,7 @@ async fn an_unchanged_folder_renews_thumbnail_admission_without_renewing_its_pro
     assert_eq!(renewed.given, given);
     assert!(shown(&key, "shortcut").is_none());
     use crate::api::types::{DocumentsFilter, DocumentsQueryRead, DocumentsQueryScope};
-    use crate::backend::files::{QueryRequest, query};
+    use crate::backend::query::{QueryRequest, query};
     let query_context = context(&state, &dsp).await;
     let scope = DocumentsQueryScope {
         id: None,

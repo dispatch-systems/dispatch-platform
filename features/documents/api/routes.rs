@@ -8,7 +8,7 @@ use crate::{
         drive::PICTURE_SIZES,
         files,
         google::{self, RETURN_PATH},
-        picker, team,
+        picker, query, team,
     },
 };
 use axum::{
@@ -445,7 +445,7 @@ async fn query(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let snapshot = optional(&input.query, "snapshot", revision)?;
     let manifest_since = optional(&input.query, "manifestSince", revision)?;
     let since = optional(&input.query, "since", revision)?;
-    let request = files::QueryRequest {
+    let request = query::QueryRequest {
         scope,
         page,
         size,
@@ -453,7 +453,7 @@ async fn query(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
         manifest_since,
         since,
     };
-    Reply::of(&files::query(&state, c, access, request).await?)
+    Reply::of(&query::query(&state, c, access, request).await?)
 }
 async fn describe(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
@@ -471,5 +471,5 @@ async fn describe(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply>
         "invalid_input",
         400,
     )?;
-    Reply::of(&files::describe(&state, c, access, scope, snapshot, ids).await?)
+    Reply::of(&query::describe(&state, c, access, scope, snapshot, ids).await?)
 }

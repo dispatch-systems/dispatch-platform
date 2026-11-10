@@ -3,7 +3,8 @@ use super::*;
 use crate::{
     api::types::ItemKind,
     backend::{
-        cache, google,
+        cache, google, mirror,
+        query::{QueryRequest, describe, query},
         support::{connect, context, platform},
         tree::tests::item,
     },

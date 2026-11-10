@@ -2,8 +2,9 @@
 //! them, else as their Slack profile last named them; each message with who at the DSP sent it, its
 //! files and the group it went to; and the workspaces they're in. The latest answered and the
 //! groups among them, of every workspace or one, fifty at a time, and those found by a name typed;
-//! a conversation's messages the latest fifty at a time, in the order written. The list of every
-//! kind, with those waiting, is `inbox`'s.
+//! a conversation's messages the latest fifty at a time, in the order written, or for `windows`
+//! a bounded window of them around a place. The list of every kind, with those waiting, is
+//! `inbox`'s.
 use super::{
     bytes, compose, elsewhere,
     files::{File, FileStore},
@@ -19,6 +20,7 @@ use super::{
         messages::{Message as StoredMessage, MessageStore},
     },
     today,
+    windows::Window,
 };
 use crate::{
     api::types::{
@@ -282,23 +284,38 @@ pub fn opened(
     if more {
         read.remove(0);
     }
-    assembled(db, state, dsp, id, read, more)
+    let people = People::read(db, state, dsp)?;
+    assembled(db, &people, dsp, id, read, more)
+}
+/// The window of the conversation `id` around `anchor`, a message's `ts` and how many come
+/// before it, else its latest, with its latest messages apart from it.
+pub(crate) fn window(
+    db: &Store,
+    people: &People,
+    dsp: &str,
+    id: &str,
+    anchor: Option<(&str, usize)>,
+) -> Result<Window> {
+    let rows = db.communications_message_window(dsp, id, anchor)?;
+    let page = assembled(db, people, dsp, id, rows.messages, rows.has_before)?;
+    let latest = messages(
+        db,
+        people,
+        dsp,
+        db.communications_messages(dsp, id, None, PAGE)?,
+    )?;
+    Ok(Window {
+        page,
+        latest,
+        latest_workdays: Vec::new(),
+        has_before: rows.has_before,
+        has_after: rows.has_after,
+    })
 }
 
 /// The conversation `id` with `read`, the messages selected of it, a page's or a window's, and
 /// what `opened` says of whom it's with.
-pub(crate) fn assembled(
-    db: &Store,
-    state: &State,
-    dsp: &str,
-    id: &str,
-    read: Vec<StoredMessage>,
-    more: bool,
-) -> Result<ConversationMessages> {
-    let people = People::read(db, state, dsp)?;
-    assembled_with(db, &people, dsp, id, read, more)
-}
-pub(crate) fn assembled_with(
+fn assembled(
     db: &Store,
     people: &People,
     dsp: &str,

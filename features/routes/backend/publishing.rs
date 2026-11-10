@@ -244,10 +244,6 @@ const DRIVER_COLUMNS: &[&str] = &[
     "person_type",
     "company_id",
 ];
-/// What the route list sends of a driver it assigns: their phone and company come with their
-/// itinerary.
-const ASSIGNED_COLUMNS: &[&str] = &["first_name", "last_name", "initials", "person_type"];
-
 fn list(items: impl IntoIterator<Item = String>) -> String {
     items.into_iter().collect::<Vec<_>>().join(",")
 }
@@ -276,7 +272,7 @@ fn statement(write: Writes, insert: &str, table: &str, key: &[&str], columns: &[
 /// The statement writing a row the days share over the one there, in place, as `share` does from
 /// staging: inserted when its `key` is new, and otherwise its `columns` written and the days it
 /// was seen widened, only where that changes something.
-fn shared(table: &str, key: &str, columns: &[&str]) -> String {
+pub(super) fn shared(table: &str, key: &str, columns: &[&str]) -> String {
     let all: Vec<&str> = std::iter::once(key)
         .chain(columns.iter().copied())
         .chain(["first_seen_day", "last_seen_day"])
@@ -318,7 +314,7 @@ pub(super) fn widened_seen(table: &str, first: &str, last: &str) -> [String; 2] 
 }
 
 /// A driver's kinds of person, as their row keeps them.
-fn person_type(person: &Value) -> String {
+pub(super) fn person_type(person: &Value) -> String {
     person["personType"]
         .as_array()
         .map(|v| Value::Array(v.clone()).to_string())
@@ -327,7 +323,7 @@ fn person_type(person: &Value) -> String {
 
 /// What a read sends of a row the days share, as its statement takes it: staged under
 /// `publication`, or in place with `day`, the day it was seen.
-fn shared_row(
+pub(super) fn shared_row(
     write: Writes,
     publication: &str,
     day: &str,
@@ -344,7 +340,7 @@ fn shared_row(
     rusqlite::params_from_iter(row)
 }
 /// The key a planned route's row is stored under.
-fn route_id(route: &Value) -> String {
+pub(super) fn route_id(route: &Value) -> String {
     text(&route["routeId"]).unwrap_or_else(|| text(&route["rmsRouteId"]).unwrap_or_default())
 }
 /// The day's planned routes, inside the caller's transaction. Answers the rows written.
@@ -396,35 +392,6 @@ pub(super) fn write_routes(
     }
     Ok(written)
 }
-/// Deletes the planned routes live route data's day holds that `routes` no longer lists. Answers
-/// the rows deleted.
-pub(super) fn prune_routes(db: &Db, publication: &str, routes: &[Value]) -> Result<usize> {
-    let kept: Vec<String> = routes.iter().map(route_id).collect();
-    db.exec(
-        "DELETE FROM routes WHERE publication_id=?1 AND route_id NOT IN (SELECT value FROM json_each(?2))",
-        params![publication, serde_json::to_string(&kept)?],
-    )
-}
-/// The drivers the provider's routes on the day's route list assign who have none of
-/// `itineraries`, the read's, written over the rows of the drivers live route data names where
-/// they changed, inside the caller's transaction: a driver assigned to a route is known before
-/// their itinerary is read, which names them from then on. Their work phone is left as it was:
-/// before a driver signs in, the list shows the last phone they had. Answers the rows written.
-pub(super) fn write_assigned(
-    db: &Db,
-    day: &str,
-    provider: &str,
-    route_summaries: &Value,
-    itineraries: &[PreparedItinerary],
-) -> Result<usize> {
-    let mut upsert =
-        db.0.prepare_cached(&shared("drivers", "transporter_id", ASSIGNED_COLUMNS))?;
-    let mut written = 0;
-    for driver in assigned_drivers(provider, route_summaries, itineraries) {
-        written += upsert.execute(shared_row(Writes::InPlace, "", day, driver.sent()))?;
-    }
-    Ok(written)
-}
 
 /// The exact upsert values used by both the writer and the live no-change proof. Assignment
 /// rows omit phone/company; itinerary rows include them. Nullable names always overwrite.
@@ -435,7 +402,7 @@ pub(super) struct DriverWrite {
     rest: Vec<SqlValue>,
 }
 impl DriverWrite {
-    fn new(id: String, person: &Value, rest: Vec<SqlValue>) -> Self {
+    pub(super) fn new(id: String, person: &Value, rest: Vec<SqlValue>) -> Self {
         Self {
             id,
             first: text(&person["firstName"]),
@@ -443,7 +410,7 @@ impl DriverWrite {
             rest,
         }
     }
-    fn sent(self) -> Vec<SqlValue> {
+    pub(super) fn sent(self) -> Vec<SqlValue> {
         let mut sent = vec![self.id.into(), self.first.into(), self.last.into()];
         sent.extend(self.rest);
         sent
@@ -471,43 +438,6 @@ impl DriverWrite {
     }
 }
 
-/// In the same order as the route-list writer, including duplicate transporter records.
-/// The set avoids scanning every itinerary for every assigned driver.
-pub(super) fn assigned_drivers(
-    provider: &str,
-    route_summaries: &Value,
-    itineraries: &[PreparedItinerary],
-) -> Vec<DriverWrite> {
-    let present: std::collections::BTreeSet<&str> = itineraries
-        .iter()
-        .map(|i| i.transporter_id.as_str())
-        .collect();
-    let routes = route_summaries["rmsRouteSummaries"].as_array();
-    let assigned: std::collections::BTreeSet<String> = routes
-        .into_iter()
-        .flatten()
-        .filter(|route| text(&route["companyId"]).as_deref() == Some(provider))
-        .flat_map(|route| route["transporters"].as_array().into_iter().flatten())
-        .filter_map(|transporter| text(&transporter["transporterId"]))
-        .filter(|id| !present.contains(id.as_str()))
-        .collect();
-    let mut drivers = Vec::new();
-    for person in route_summaries["transporters"]
-        .as_array()
-        .into_iter()
-        .flatten()
-    {
-        let Some(id) = text(&person["transporterId"]).filter(|id| assigned.contains(id)) else {
-            continue;
-        };
-        drivers.push(DriverWrite::new(
-            id,
-            person,
-            vec![text(&person["initials"]).into(), person_type(person).into()],
-        ));
-    }
-    drivers
-}
 /// A stored response, compressed, inside the caller's transaction. Answers the rows written.
 pub(super) fn write_raw(
     db: &Db,
@@ -717,7 +647,7 @@ pub(super) fn write_shared(
 }
 /// An itinerary's tasks with whether each is active: its active ones, then those removed from it
 /// that it doesn't also hold active, since within one itinerary the active row wins.
-fn tasks(itinerary: &PreparedItinerary) -> impl Iterator<Item = (&TaskRow, i64)> {
+pub(super) fn tasks(itinerary: &PreparedItinerary) -> impl Iterator<Item = (&TaskRow, i64)> {
     let active: std::collections::HashSet<&str> =
         itinerary.tasks.iter().map(|t| t.id.as_str()).collect();
     let removed = itinerary.inactive.iter();
@@ -727,64 +657,6 @@ fn tasks(itinerary: &PreparedItinerary) -> impl Iterator<Item = (&TaskRow, i64)>
         .iter()
         .map(|t| (t, 1))
         .chain(removed.map(|t| (t, 0)))
-}
-/// Deletes what live route data's day holds of an itinerary that its read no longer does: stops
-/// and tasks gone from it, and breaks and unknown stops past their count. Answers the rows
-/// deleted.
-pub(super) fn prune_itinerary(
-    db: &Db,
-    publication: &str,
-    itinerary: &PreparedItinerary,
-) -> Result<usize> {
-    let stops: Vec<&str> = itinerary.stops.iter().map(|s| s.id.as_str()).collect();
-    let tasks: Vec<&str> = tasks(itinerary).map(|(t, _)| t.id.as_str()).collect();
-    let planned = itinerary.breaks.iter().filter(|b| b.planned).count();
-    let taken = itinerary.breaks.len() - planned;
-    let id = &itinerary.id;
-    Ok(db.exec(
-        "DELETE FROM stops WHERE publication_id=?1 AND itinerary_id=?2 \
-         AND stop_id NOT IN (SELECT value FROM json_each(?3))",
-        params![publication, id, serde_json::to_string(&stops)?],
-    )? + db.exec(
-        "DELETE FROM tasks WHERE publication_id=?1 AND itinerary_id=?2 \
-         AND task_id NOT IN (SELECT value FROM json_each(?3))",
-        params![publication, id, serde_json::to_string(&tasks)?],
-    )? + db.exec(
-        "DELETE FROM breaks WHERE publication_id=?1 AND itinerary_id=?2 \
-         AND ordinal>=CASE planned WHEN 1 THEN ?4 ELSE ?3 END",
-        params![publication, id, taken as i64, planned as i64],
-    )? + db.exec(
-        "DELETE FROM unknown_stops WHERE publication_id=?1 AND itinerary_id=?2 AND ordinal>=?3",
-        params![publication, id, itinerary.unknown_stops.len() as i64],
-    )?)
-}
-/// Deletes the itineraries live route data's day holds that its read no longer lists, with every
-/// row and response of theirs. Answers the rows deleted.
-pub(super) fn prune_itineraries(db: &Db, publication: &str, listed: &[String]) -> Result<usize> {
-    let listed = serde_json::to_string(listed)?;
-    let mut deleted = 0;
-    for table in [
-        "itineraries",
-        "stops",
-        "tasks",
-        "driver_days",
-        "breaks",
-        "unknown_stops",
-    ] {
-        deleted += db.exec(
-            &format!(
-                "DELETE FROM {table} WHERE publication_id=?1 \
-                 AND itinerary_id NOT IN (SELECT value FROM json_each(?2))"
-            ),
-            params![publication, listed],
-        )?;
-    }
-    deleted += db.exec(
-        "DELETE FROM route_raw WHERE publication_id=?1 AND name LIKE 'itinerary:%' \
-         AND substr(name,11) NOT IN (SELECT value FROM json_each(?2))",
-        params![publication, listed],
-    )?;
-    Ok(deleted)
 }
 /// Writes what `publication`'s read sent of the drivers and addresses the days share over
 /// them, as its day's read, `day`, now is, widening the days each was seen; then drops it from

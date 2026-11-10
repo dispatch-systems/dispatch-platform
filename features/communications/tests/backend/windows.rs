@@ -6,13 +6,16 @@ use crate::backend::{
     changes::changed_conversation,
     origins,
     phone::{storage::TextStore as PhoneTextStore, support::paired},
-    storage::messages::Written,
+    storage::messages::{MessageStore, Written},
     support::{
         self, ReadBudget,
         windows::{AT, bounded, build_origins, fixture, ready, row_100},
         written,
     },
-    texts::model::{Filed, TextStatus},
+    texts::{
+        model::{Filed, TextStatus},
+        storage::TextStore,
+    },
 };
 use dispatch_core::{
     db::{Db, Kind},
@@ -1164,7 +1167,7 @@ async fn window_seeks_bound_work_at_both_ends_and_inside_a_long_tied_history() {
         ),
     ] {
         let budget = ReadBudget::new(&db.0);
-        let context = context::read(&store, &dsp, &reference, messages, numbers).unwrap();
+        let context = context::read(&store, &dsp, &reference, messages, numbers, None).unwrap();
         drop(budget);
         assert_eq!(context.previous.unwrap().ts, previous);
         assert_eq!(context.next.map(|row| row.ts).as_deref(), next);
@@ -1196,8 +1199,8 @@ async fn window_seeks_bound_work_at_both_ends_and_inside_a_long_tied_history() {
         ),
     ] {
         let budget = ReadBudget::new(&db.0);
-        let _ = context::read_in_zone(&store, &dsp, &reference, selected, numbers, zone).unwrap();
-        let _ = context::read_in_zone(&store, &dsp, &reference, latest, numbers, zone).unwrap();
+        let _ = context::read(&store, &dsp, &reference, selected, numbers, Some(zone)).unwrap();
+        let _ = context::read(&store, &dsp, &reference, latest, numbers, Some(zone)).unwrap();
         let exact =
             origins::read(&db, &reference, zone, selected, latest, &people, numbers).unwrap();
         drop(budget);
@@ -1224,7 +1227,7 @@ async fn window_seeks_bound_work_at_both_ends_and_inside_a_long_tied_history() {
         ),
     ] {
         let budget = ReadBudget::new(&db.0);
-        let context = context::read(&store, &dsp, &reference, messages, numbers).unwrap();
+        let context = context::read(&store, &dsp, &reference, messages, numbers, None).unwrap();
         drop(budget);
         assert!(context.sent_before.is_none());
     }
@@ -1278,7 +1281,7 @@ async fn window_seeks_bound_work_at_both_ends_and_inside_a_long_tied_history() {
         ),
     ] {
         let budget = ReadBudget::new(&db.0);
-        let _ = context::read_in_zone(&store, &dsp, &reference, latest, numbers, zone).unwrap();
+        let _ = context::read(&store, &dsp, &reference, latest, numbers, Some(zone)).unwrap();
         let exact = origins::read(&db, &reference, zone, latest, latest, &people, numbers).unwrap();
         drop(budget);
         assert!(exact.ready);

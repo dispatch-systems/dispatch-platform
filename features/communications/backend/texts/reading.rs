@@ -1,8 +1,9 @@
 //! Reading the DSP's conversations by text as the page reads them, beside the Slack ones: those
 //! waiting, the answered a page at a time, those found by a name or a number's digits, and a
-//! conversation with its texts, each under whoever wrote it. A work conversation waits only on
-//! the live day (`live_day`); a driver's comes with their route today, each workday's route, and
-//! their conversations of other kinds.
+//! conversation with its texts, each under whoever wrote it, or for `windows` a bounded window
+//! of them around a place. A work conversation waits only on the live day (`live_day`); a
+//! driver's comes with their route today, each workday's route, and their conversations of
+//! other kinds.
 use super::{
     live_day::{self, LiveDay, Stopped},
     model::{Text, TextConversation, TextStatus},
@@ -19,6 +20,7 @@ use crate::backend::{
     people::People,
     phone::files,
     search, today,
+    windows::Window,
 };
 use dispatch_core::manifest::people::Person;
 use dispatch_core::{
@@ -328,25 +330,46 @@ pub fn opened(
     if more {
         read.remove(0);
     }
-    assembled(db, state, dsp, id, read, more)
+    let people = People::read(db, state, dsp)?;
+    let numbers = Numbers::read(db, dsp)?;
+    assembled(db, &people, &numbers, dsp, id, read, more)
+}
+/// The window of the conversation `id` around `anchor`, a text's place and how many come before
+/// it, else its latest, with its latest texts apart from it and, a driver's, their workdays.
+pub(crate) fn window(
+    db: &Store,
+    people: &People,
+    numbers: &Numbers,
+    dsp: &str,
+    id: &str,
+    anchor: Option<(&str, usize)>,
+) -> Result<Window> {
+    let parsed = anchor
+        .map(|(place, leading)| before(place).map(|(at, id)| (at, id, leading)))
+        .transpose()?;
+    let anchor = parsed
+        .as_ref()
+        .map(|(at, id, leading)| (*at, id.as_str(), *leading));
+    let rows = db.communications_text_window(dsp, id, anchor)?;
+    let page = assembled(db, people, numbers, dsp, id, rows.messages, rows.has_before)?;
+    let latest = db.communications_texts(dsp, id, None, PAGE)?;
+    let latest_workdays = match found(db, dsp, id)?.driver {
+        Some((source, driver)) => workdays::of(db, dsp, &source, &driver, &latest)?,
+        None => Vec::new(),
+    };
+    Ok(Window {
+        page,
+        latest: messages(people, numbers, latest),
+        latest_workdays,
+        has_before: rows.has_before,
+        has_after: rows.has_after,
+    })
 }
 
 /// The conversation `id` with `read`, the texts selected of it, a page's or a window's, and what
 /// `opened` says of whom it's with: its workdays are those of the texts selected, not of its
 /// latest.
-pub(crate) fn assembled(
-    db: &Store,
-    state: &State,
-    dsp: &str,
-    id: &str,
-    read: Vec<Text>,
-    more: bool,
-) -> Result<ConversationMessages> {
-    let people = People::read(db, state, dsp)?;
-    let numbers = Numbers::read(db, dsp)?;
-    assembled_with(db, &people, &numbers, dsp, id, read, more)
-}
-pub(crate) fn assembled_with(
+fn assembled(
     db: &Store,
     people: &People,
     numbers: &Numbers,
