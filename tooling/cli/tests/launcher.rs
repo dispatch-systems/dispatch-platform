@@ -136,16 +136,21 @@ fn each_version_of_the_source_is_built_once() {
     assert_eq!(said(&launch(temp.path(), &root, &[])), "built 2 check");
     change("tooling/shared/src/lib.rs", "changed");
     assert_eq!(said(&launch(temp.path(), &root, &[])), "built 3 check");
-    // The three newest versions are kept, so going back to one costs no build.
+    // The ten newest versions are kept, so going back to one costs no build.
     change("tooling/shared/src/lib.rs", "shared");
     change("tooling/cli/src/main.rs", "first");
     assert_eq!(said(&launch(temp.path(), &root, &[])), "built 1 check");
-    // A fourth drops the oldest, which is built again if its source comes back.
-    std::thread::sleep(std::time::Duration::from_millis(20));
-    change("Cargo.lock", "bumped");
-    assert_eq!(said(&launch(temp.path(), &root, &[])), "built 4 check");
+    // An eleventh drops the oldest, which is built again if its source comes back.
+    for build in 4..=11 {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        change("Cargo.lock", &format!("bumped {build}"));
+        assert_eq!(
+            said(&launch(temp.path(), &root, &[])),
+            format!("built {build} check")
+        );
+    }
     change("Cargo.lock", "lock");
-    assert_eq!(said(&launch(temp.path(), &root, &[])), "built 5 check");
+    assert_eq!(said(&launch(temp.path(), &root, &[])), "built 12 check");
     // Run through a link, it is still this checkout's.
     let link = temp.path().join("bin/dispatchdev");
     symlink(root.join("tooling/cli/dispatchdev"), &link).unwrap();
@@ -159,7 +164,7 @@ fn each_version_of_the_source_is_built_once() {
         .env("BUILDS", temp.path().join("builds"))
         .output()
         .unwrap();
-    assert_eq!(said(&output), "built 5 status");
+    assert_eq!(said(&output), "built 12 status");
 }
 
 #[test]
@@ -263,8 +268,9 @@ fn a_running_cached_cli_survives_publication_and_eviction_until_it_dies() {
         path
     };
     let unused = build(1);
-    build(2);
-    build(3);
+    for number in 2..=10 {
+        build(number);
+    }
     assert!(
         active.is_file(),
         "a newer source evicted the running executable"
@@ -277,7 +283,7 @@ fn a_running_cached_cli_survives_publication_and_eviction_until_it_dies() {
         .write_all(b"check\n")
         .unwrap();
     assert_eq!(answer(running.0.stdout.as_mut().unwrap()), "child");
-    build(4);
+    build(11);
     assert!(
         !unused.parent().unwrap().exists(),
         "an unused old entry was retained"
@@ -290,14 +296,14 @@ fn a_running_cached_cli_survives_publication_and_eviction_until_it_dies() {
     assert!(said(&process).contains(active.to_str().unwrap()));
     running.0.kill().unwrap();
     running.0.wait().unwrap();
-    build(5);
+    build(12);
     assert!(
         !active.parent().unwrap().exists(),
         "a dead run retained its cache entry"
     );
     assert_eq!(
         fs::read_dir(root.join(".git/dispatchdev")).unwrap().count(),
-        3
+        10
     );
     // Two misses of the same inputs: one waits in Cargo while the other publishes
     // and starts using its executable. Finishing the first must not replace it.

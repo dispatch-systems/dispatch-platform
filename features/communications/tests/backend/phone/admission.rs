@@ -258,19 +258,20 @@ async fn an_admitted_poll_reads_queued_work(fixture: &Fixture, served: &Served) 
         phone_b,
         ..
     } = fixture;
-    // Queue via the real send/filing owner, explicitly from B; no stand-in auto-delivery.
+    // Queue via the real send/filing owner, from B, the phone that last texted the number; no
+    // stand-in auto-delivery.
     let at = now();
     let (of, device, author) = (b.clone(), phone_b.id.clone(), owner.clone());
     let (id, attempt) = testing::requested(filing::changing(state, b, move |db| {
-        let mut outgoing = outgoing("4255550199", vec![], &author);
-        outgoing.phone = Some(device.clone());
-        let sent = phone::outbox::send(db, &of, &outgoing, at)?;
+        let heard = reported("heard", "+14255550199", at, 0);
+        let heard = db.phones_report(&of, &device, vec![heard])?.remove(0).id;
+        let sent = phone::outbox::send(db, &of, &outgoing("4255550199", vec![], &author), at)?;
         assert_eq!(sent.phone, device);
         assert_eq!(sent.status, Some(Status::Waiting));
         let pending = db.phones_outbox(&of, &device)?;
         assert_eq!(pending.len(), 1);
         assert_eq!(pending[0].0.id, sent.id);
-        Ok(((sent.id.clone(), pending[0].1), vec![sent.id]))
+        Ok(((sent.id.clone(), pending[0].1), vec![heard, sent.id]))
     }))
     .await
     .unwrap();
@@ -715,12 +716,11 @@ async fn ready_work_skips_the_queue_and_wakes_only_its_phone(
     let _ = quiet.wake.0.notified().now_or_never();
     let mut ready = Waiting::new(state.clone(), input.clone());
     ready.drive_to(126).await;
+    // B's phone texted the number last, so the text goes from it.
     let later = now();
     let (of, device, author) = (b.clone(), phone_b.id.clone(), owner.clone());
     let (late_id, late_attempt) = testing::requested(filing::changing(state, b, move |db| {
-        let mut outgoing = outgoing("4255550199", vec![], &author);
-        outgoing.phone = Some(device.clone());
-        let text = phone::outbox::send(db, &of, &outgoing, later)?;
+        let text = phone::outbox::send(db, &of, &outgoing("4255550199", vec![], &author), later)?;
         let pending = db.phones_outbox(&of, &device)?;
         let attempt = pending.iter().find(|(row, _)| row.id == text.id).unwrap().1;
         Ok(((text.id.clone(), attempt), vec![text.id]))

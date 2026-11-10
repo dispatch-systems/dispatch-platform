@@ -1,7 +1,10 @@
 use super::{Release, all_releases, latest_version, say};
 use crate::{REPOSITORY, Result, artifact, io, releases, require};
 use serde_json::Value;
-use std::{fs, path::Path};
+use std::{fs, path::Path, time::Duration};
+
+/// How long a release waits for main's run of its commit to end.
+const MAIN_RUN_ENDS: u64 = 1800;
 
 impl Release<'_> {
     pub(super) fn git(&self, args: &[&str], cwd: Option<&Path>, timeout: u64) -> Result<String> {
@@ -106,17 +109,37 @@ impl Release<'_> {
                 || (ended("core", "skipped") && self.tested(commit)?.is_some())))
     }
     /// Main's push run of the checks on exactly `commit`, if its newest passed: every suite ran
-    /// on the commit there, so the release's own run skips those that test its source.
+    /// on the commit there, so the release's own run skips those that test its source. One still
+    /// going is awaited: Dev serves a commit once that run published its build, before its
+    /// browser suite ends, and a release that follows at once would run every suite again.
     fn tested(&self, commit: &str) -> Result<Option<Value>> {
-        let runs = io::github(
-            self.system,
-            &format!("actions/workflows/checks.yml/runs?event=push&head_sha={commit}&per_page=100"),
-        )?;
-        Ok(
-            releases::latest_run(&runs["workflow_runs"], commit, "push", Some("main"), false)
-                .filter(|run| releases::passed(run))
-                .cloned(),
-        )
+        let deadline = self.system.monotonic() + Duration::from_secs(MAIN_RUN_ENDS);
+        let mut announced = false;
+        loop {
+            let runs = io::github(
+                self.system,
+                &format!(
+                    "actions/workflows/checks.yml/runs?event=push&head_sha={commit}&per_page=100"
+                ),
+            )?;
+            let run =
+                releases::latest_run(&runs["workflow_runs"], commit, "push", Some("main"), false);
+            match run {
+                Some(going)
+                    if going["status"] != "completed" && self.system.monotonic() < deadline =>
+                {
+                    if !announced {
+                        say(format!(
+                            "Waiting for main's checks on the commit to end: {}",
+                            io::text(going, "html_url")
+                        ));
+                        announced = true;
+                    }
+                    self.system.sleep(Duration::from_secs(10));
+                }
+                _ => return Ok(run.filter(|run| releases::passed(run)).cloned()),
+            }
+        }
     }
     /// The release's own run of the checks on exactly `commit`, dispatched on its temporary
     /// branch, if its newest passed the full suite, or the package's checks on main's passed

@@ -2,8 +2,8 @@
 //! rules: they become the squash commit on `main`, and the release notes take its Summary. Both
 //! come from `pr-body.md` in the checkout's scratch folder, whose first line is `# <title>`;
 //! `--skeleton --title` starts that file with the title and the sections its type needs, and
-//! `--check` checks all of it, and that `dispatchdev check` passed on the committed tree,
-//! without pushing.
+//! `--check` checks all of it, running `dispatchdev check` when it hasn't passed on the committed
+//! tree, without pushing.
 use crate::{REPOSITORY, Result, Runner, build::Environment, check, preview, require, workspace};
 use std::{io::Write, os::unix::fs::OpenOptionsExt, path::Path};
 
@@ -242,10 +242,42 @@ pub fn start_body(root: &Path, title: &str) -> Result<()> {
     Ok(())
 }
 
-/// Opens the checkout's PR, or updates the one open, from its scratch folder's `pr-body.md`,
-/// once its title and body follow the rules and `dispatchdev check` passed on the committed
-/// tree; with `only_check`, says whether they do and pushes nothing.
+/// `dispatchdev pr`: publishes the checkout's PR, then says what's next.
 pub fn run(root: &Path, only_check: bool, env: &Environment, runner: &dyn Runner) -> Result<()> {
+    let Some(published) = publish(root, only_check, env, runner)? else {
+        return Ok(());
+    };
+    let mut next = vec![format!(
+        "Its checks run on GitHub ({}/checks): fix what they find and run `dispatchdev pr` again",
+        published.url
+    )];
+    if published.pending {
+        next.push(
+            "`dispatchdev review prepare --pass 1` judges how deep its review goes".to_owned(),
+        );
+    }
+    next.push("Once they pass and its review is done, `dispatchdev merge` merges it".to_owned());
+    println!("{}", workspace::next(&next));
+    Ok(())
+}
+
+/// A PR as `publish` left it.
+pub struct Published {
+    pub url: String,
+    /// Whether its review is still to come: only then does it need starting.
+    pending: bool,
+}
+
+/// Opens the checkout's PR, or updates the one open, from its scratch folder's `pr-body.md`,
+/// once its title and body follow the rules and `dispatchdev check` passes on the committed
+/// tree, which it runs unless it passed there already; with `only_check`, says whether they do
+/// and pushes nothing.
+pub fn publish(
+    root: &Path,
+    only_check: bool,
+    env: &Environment,
+    runner: &dyn Runner,
+) -> Result<Option<Published>> {
     let body = workspace::checkout_scratch(root)?.join("pr-body.md");
     let text = std::fs::read_to_string(&body).map_err(|_| {
         format!(
@@ -273,9 +305,18 @@ pub fn run(root: &Path, only_check: bool, env: &Environment, runner: &dyn Runner
     match check::passed(root, env, runner)? {
         Some(true) => {}
         Some(false) => {
-            return Err(
-                "`dispatchdev check` hasn't passed on this commit's tree: run it first.".into(),
-            );
+            check::here(root, "pr", runner)?;
+            let plan = check::plan(root, runner)?;
+            require(
+                check::execute(root, &plan, env, runner)?,
+                "A check failed: the PR waits for `dispatchdev check` to pass.",
+            )?;
+            // It passed on the tree it started with: a commit made while it ran isn't that one.
+            require(
+                check::passed(root, env, runner)? == Some(true),
+                "The checkout changed while `dispatchdev check` ran: `dispatchdev pr` checks it \
+                 as it is now.",
+            )?;
         }
         None => {
             return Err(
@@ -328,7 +369,7 @@ pub fn run(root: &Path, only_check: bool, env: &Environment, runner: &dyn Runner
     }
     if only_check {
         println!("The title, the body and `dispatchdev check` pass: `dispatchdev pr` pushes it.");
-        return Ok(());
+        return Ok(None);
     }
     git(&["push", "-q", "--force-with-lease", "-u", "origin", &branch])?;
     let url = match open.split_once(' ') {
@@ -348,19 +389,9 @@ pub fn run(root: &Path, only_check: bool, env: &Environment, runner: &dyn Runner
             url
         }
     };
-    // Only a review still to come needs starting; a recorded or skipped one is done.
+    // A recorded or skipped review is done.
     let pending = section(text, "Review").and_then(|review| review.lines().next()) == Some(PENDING);
-    let mut next = vec![format!(
-        "Its checks run on GitHub ({url}/checks): fix what they find and run `dispatchdev pr` again"
-    )];
-    if pending {
-        next.push(
-            "`dispatchdev review prepare --pass 1` judges how deep its review goes".to_owned(),
-        );
-    }
-    next.push("Once they pass and its review is done, `dispatchdev merge` merges it".to_owned());
-    println!("{}", workspace::next(&next));
-    Ok(())
+    Ok(Some(Published { url, pending }))
 }
 
 #[cfg(test)]

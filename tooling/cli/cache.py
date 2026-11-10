@@ -20,7 +20,8 @@ def locked_directory(path: Path, operation: int):
 
 
 def prune(cache: Path):
-    """Keep the three newest entries and any older entry a command still holds.
+    """Keep the ten newest entries, enough for each of a clone's worktrees to run its
+    own, and any older entry a command still holds.
 
     The caller holds the cache directory, so opening an entry and holding it
     cannot race with its removal. No lock files survive an entry's removal.
@@ -30,7 +31,7 @@ def prune(cache: Path):
         key=lambda entry: (entry.stat().st_mtime_ns, entry.name),
         reverse=True,
     )
-    for entry in entries[3:]:
+    for entry in entries[10:]:
         try:
             with locked_directory(entry, fcntl.LOCK_EX | fcntl.LOCK_NB):
                 shutil.rmtree(entry)

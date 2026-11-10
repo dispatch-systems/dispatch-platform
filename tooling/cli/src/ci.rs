@@ -1,6 +1,7 @@
 //! `dispatchdev ci`: why the checks on the checkout's PR head failed. Each failed job with the
-//! end of its failing step's log, and whether `main`'s latest run fails the same job: then the
-//! fix is `main`'s, in its own PR, and the change's job runs again once it merged.
+//! end of its failing step's log, as soon as the job ended, and whether `main`'s latest finished
+//! run fails the same job: then the fix is `main`'s, in its own PR, and the change's job runs
+//! again once it merged.
 use crate::{REPOSITORY, Result, Runner, merge::short, review, workspace};
 use serde_json::Value;
 use std::path::Path;
@@ -22,6 +23,8 @@ struct Failed {
     name: String,
     id: u64,
     conclusion: String,
+    /// When its first step that didn't pass started and ended, as GitHub tells the second.
+    step: Option<(String, String)>,
 }
 fn gh(root: &Path, args: &[&str], runner: &dyn Runner) -> Result<String> {
     let mut command = vec!["gh"];
@@ -29,26 +32,32 @@ fn gh(root: &Path, args: &[&str], runner: &dyn Runner) -> Result<String> {
     command.extend_from_slice(&["--repo", REPOSITORY]);
     workspace::text(runner, &command, Some(root))
 }
-/// The newest run of the checks on `branch` for `event`.
-fn latest(root: &Path, branch: &str, event: &str, runner: &dyn Runner) -> Result<Option<Run>> {
-    let runs: Vec<Value> = serde_json::from_str(&gh(
-        root,
-        &[
-            "run",
-            "list",
-            "--workflow",
-            WORKFLOW,
-            "--branch",
-            branch,
-            "--event",
-            event,
-            "--limit",
-            "1",
-            "--json",
-            "databaseId,headSha,status",
-        ],
-        runner,
-    )?)?;
+/// The newest run of the checks on `branch` for `event`, or the newest `finished` one.
+fn latest(
+    root: &Path,
+    branch: &str,
+    event: &str,
+    finished: bool,
+    runner: &dyn Runner,
+) -> Result<Option<Run>> {
+    let mut list = vec![
+        "run",
+        "list",
+        "--workflow",
+        WORKFLOW,
+        "--branch",
+        branch,
+        "--event",
+        event,
+        "--limit",
+        "1",
+        "--json",
+        "databaseId,headSha,status",
+    ];
+    if finished {
+        list.extend(["--status", "completed"]);
+    }
+    let runs: Vec<Value> = serde_json::from_str(&gh(root, &list, runner)?)?;
     let Some(run) = runs.first() else {
         return Ok(None);
     };
@@ -69,10 +78,22 @@ fn latest(root: &Path, branch: &str, event: &str, runner: &dyn Runner) -> Result
             )
         })
         .filter_map(|job| {
+            let step = job["steps"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|step| !matches!(step["conclusion"].as_str(), Some("success" | "skipped")))
+                .find_map(|step| {
+                    Some((
+                        step["startedAt"].as_str()?.to_owned(),
+                        step["completedAt"].as_str()?.to_owned(),
+                    ))
+                });
             Some(Failed {
                 name: job["name"].as_str()?.to_owned(),
                 id: job["databaseId"].as_u64()?,
                 conclusion: job["conclusion"].as_str()?.to_owned(),
+                step,
             })
         })
         .collect();
@@ -90,7 +111,8 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
         return main(root, runner);
     }
     let (branch, head) = review::pushed(root, runner)?;
-    let Some(run) = latest(root, &branch, "pull_request", runner)?.filter(|run| run.head == head)
+    let Some(run) =
+        latest(root, &branch, "pull_request", false, runner)?.filter(|run| run.head == head)
     else {
         println!("No checks have started on {} yet.", short(&head));
         return Ok(());
@@ -107,15 +129,8 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
         );
         return Ok(());
     }
-    let main = latest(root, "main", "push", runner)?.filter(|main| main.done);
-    let log = |job: u64| {
-        gh(
-            root,
-            &["run", "view", "--job", &job.to_string(), "--log-failed"],
-            runner,
-        )
-        .unwrap_or_default()
-    };
+    let main = latest(root, "main", "push", true, runner)?;
+    let log = |job: u64| log(root, job, runner);
     let others = run
         .failed
         .iter()
@@ -127,8 +142,7 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
             println!("FAIL {}: it fails because the jobs above did", job.name);
             continue;
         }
-        let text = log(job.id);
-        let failed = lines(&text);
+        let failed = lines(&log(job.id), job.step.as_ref());
         let verdict = match main
             .as_ref()
             .and_then(|main| main.failed.iter().find(|failed| failed.name == job.name))
@@ -142,7 +156,7 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
                 "the change's own: main's latest run passes it"
             }
             Some(theirs) => {
-                let theirs = failing(&lines(&log(theirs.id)));
+                let theirs = failing(&lines(&log(theirs.id), theirs.step.as_ref()));
                 let ours = failing(&failed);
                 // Main's only when everything that fails here fails there too.
                 if ours.is_empty() || theirs.is_empty() {
@@ -191,7 +205,7 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
 /// `dispatchdev ci` on `main`: why main's latest run of the checks failed, which is main's to
 /// fix at once.
 fn main(root: &Path, runner: &dyn Runner) -> Result<()> {
-    let Some(run) = latest(root, "main", "push", runner)? else {
+    let Some(run) = latest(root, "main", "push", false, runner)? else {
         println!("main has no run of the checks yet.");
         return Ok(());
     };
@@ -222,13 +236,7 @@ fn main(root: &Path, runner: &dyn Runner) -> Result<()> {
             job.conclusion,
             short(&run.head)
         );
-        let text = gh(
-            root,
-            &["run", "view", "--job", &job.id.to_string(), "--log-failed"],
-            runner,
-        )
-        .unwrap_or_default();
-        let failed = lines(&text);
+        let failed = lines(&log(root, job.id, runner), job.step.as_ref());
         for line in &failed[failed.len().saturating_sub(LINES)..] {
             println!("    {line}");
         }
@@ -244,23 +252,66 @@ fn main(root: &Path, runner: &dyn Runner) -> Result<()> {
     Ok(())
 }
 
-/// A failed step's log as lines, without the job's and step's names and the timestamp each
-/// line starts with.
-fn lines(log: &str) -> Vec<&str> {
-    log.lines()
-        .map(|line| {
-            let text = line.splitn(3, '\t').nth(2).unwrap_or(line);
-            text.split_once(' ')
-                .map_or(text, |(_, rest)| rest)
-                .trim_end()
+/// A job's whole log, which GitHub hands out once the job ended: `gh run view --log-failed`
+/// has none until every job of the run did. Empty when it can't be had.
+fn log(root: &Path, job: u64, runner: &dyn Runner) -> String {
+    workspace::text(
+        runner,
+        &[
+            "gh",
+            "api",
+            "--allow-escape-sequences",
+            &format!("repos/{REPOSITORY}/actions/jobs/{job}/logs"),
+        ],
+        Some(root),
+    )
+    .unwrap_or_default()
+}
+/// The lines of a job's log its failed `step` wrote: the log is the whole job's, and what
+/// follows a failed step is the job going on and cleaning up. They are those stamped within the
+/// step's seconds, up to where the next step starts once it said what failed, since a second
+/// may hold two steps. All of them where GitHub names no such step. Each without its time and
+/// the colours within it.
+fn lines(log: &str, step: Option<&(String, String)>) -> Vec<String> {
+    // To the second, as a step's times are.
+    let second = |time: &str| time.get(..19).unwrap_or(time).to_owned();
+    let step = step.map(|(started, ended)| second(started)..=second(ended));
+    let mut lines: Vec<String> = log
+        .trim_start_matches('\u{feff}')
+        .lines()
+        .filter_map(|line| {
+            let (time, text) = line.split_once(' ').unwrap_or((line, ""));
+            step.as_ref()
+                .is_none_or(|step| step.contains(&second(time)))
+                .then(|| plain(text).trim_end().to_owned())
         })
-        .collect()
+        .collect();
+    let starts = |line: &String| line.starts_with("##[group]Run ") || line == "Post job cleanup.";
+    if let Some(failed) = lines.iter().position(|line| line.starts_with("##[error]"))
+        && let Some(next) = lines[failed..].iter().position(starts)
+    {
+        lines.truncate(failed + next);
+    }
+    lines
+}
+/// `text` without its terminal colours: each escape sequence up to the letter that ends it.
+fn plain(text: &str) -> String {
+    let mut plain = String::new();
+    let mut characters = text.chars();
+    while let Some(character) = characters.next() {
+        if character != '\u{1b}' {
+            plain.push(character);
+        } else if characters.next() == Some('[') {
+            characters.find(|character| character.is_ascii_alphabetic());
+        }
+    }
+    plain
 }
 /// What a failed log says failed, each as its own line without what differs between runs (the
 /// worker's number, the duration, the thread's id): failing tests, compiler and lint errors by
 /// their code, and what `cargo audit` denies. A summary such as `[fail] test:ui`, or a bare
 /// error, names nothing that failed, so it isn't one.
-fn failing(lines: &[&str]) -> Vec<String> {
+fn failing<Line: AsRef<str>>(lines: &[Line]) -> Vec<String> {
     // A worker's number, a duration, a thread's id: a bare count, or a number with a unit or in
     // brackets. A version such as 0.3.41 stays.
     let varies = |token: &str| {
@@ -276,7 +327,7 @@ fn failing(lines: &[&str]) -> Vec<String> {
     let mut denied = false;
     let mut failing: Vec<String> = lines
         .iter()
-        .map(|line| line.trim())
+        .map(|line| line.as_ref().trim())
         .filter(|line| {
             denied = (denied && line.starts_with("- ")) || line.starts_with("cargo audit denies:");
             (denied && line.starts_with("- "))
@@ -309,19 +360,19 @@ mod tests {
                 .iter()
                 .map(|(worker, test)| {
                     format!(
-                        "browser (2)\tRun\t2026-11-07T04:45:05.9Z   ✘  {worker} {test} (7.8s)\n\
-                         browser (2)\tRun\t2026-11-07T04:45:06.6Z     Error: disposed\n\
-                         browser (2)\tRun\t2026-11-07T04:45:07.0Z [fail] test:ui (41.6s)\n"
+                        "2026-11-07T04:45:05.9Z   ✘  {worker} {test} (7.8s)\n\
+                         2026-11-07T04:45:06.6Z     Error: disposed\n\
+                         2026-11-07T04:45:07.0Z [fail] test:ui (41.6s)\n"
                     )
                 })
                 .collect::<String>()
         };
         let reload = "meal-breaks.spec.ts:594:1 › survives a reload";
         let home = "home.spec.ts:3:1 › opens";
-        let ours = failing(&lines(&log(&[("22", reload)])));
+        let ours = failing(&lines(&log(&[("22", reload)]), None));
         assert_eq!(ours, [format!("✘ {reload}")]);
         let shared = |theirs: &[(&str, &str)]| {
-            let theirs = failing(&lines(&log(theirs)));
+            let theirs = failing(&lines(&log(theirs), None));
             ours.iter().all(|test| theirs.contains(test))
         };
         assert!(
@@ -352,9 +403,34 @@ mod tests {
         );
         assert!(
             failing(&lines(
-                "x\ty\t2026-11-07T04:45:07.0Z [fail] test:ui (41.6s)\n"
+                "2026-11-07T04:45:07.0Z [fail] test:ui (41.6s)\n",
+                None
             ))
             .is_empty()
+        );
+        // Of a job's whole log, only what its failed step wrote is read, without its colours:
+        // an action that fails says so in words of its own, and the steps after it, which may
+        // start in the second it ended, aren't its own.
+        let step = (
+            "2026-11-10T20:22:39Z".to_owned(),
+            "2026-11-10T20:22:40Z".to_owned(),
+        );
+        assert_eq!(
+            lines(
+                "\u{feff}2026-11-10T20:22:38.9Z Set up job\n\
+                 2026-11-10T20:22:39.2Z ##[group]Run actions/cache/restore@55cc834\n\
+                 2026-11-10T20:22:39.3Z \u{1b}[31;1mFAIL\u{1b}[0m [ 1.256s] review::tests::x\n\
+                 2026-11-10T20:22:40.1Z ##[error]Cache restore failed\n\
+                 2026-11-10T20:22:40.2Z ##[group]Run sccache --show-stats\n\
+                 2026-11-10T20:22:40.3Z Compile requests 0\n\
+                 2026-11-10T20:22:41.0Z Post job cleanup.\n",
+                Some(&step)
+            ),
+            [
+                "##[group]Run actions/cache/restore@55cc834",
+                "FAIL [ 1.256s] review::tests::x",
+                "##[error]Cache restore failed"
+            ]
         );
         assert_eq!(
             failing(&["thread 'week' (18381410) panicked at a.rs:3:5:"]),

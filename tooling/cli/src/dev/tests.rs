@@ -70,6 +70,27 @@ fn status_preserves_startup_provenance_and_never_serializes_credentials() {
     ] {
         assert!(!public.contains(secret), "{public}");
     }
+    // Its pages' code is served as it is saved, and a commit changes no file: neither makes
+    // the server another's.
+    fs::create_dir_all(root.join("features/dvic/frontend")).unwrap();
+    fs::write(root.join("features/dvic/frontend/Week.tsx"), "page").unwrap();
+    assert_eq!(status(root, &Native).unwrap().source_matches, Some(true));
+    for args in [
+        vec!["git", "add", "."],
+        vec![
+            "git",
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "-qm",
+            "a page",
+        ],
+    ] {
+        Native.command(&args, Some(root), 30).unwrap();
+    }
+    assert_eq!(status(root, &Native).unwrap().source_matches, Some(true));
     fs::write(root.join("source.rs"), "second").unwrap();
     let changed = status(root, &Native).unwrap();
     assert!(changed.running);

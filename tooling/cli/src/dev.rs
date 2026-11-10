@@ -89,6 +89,13 @@ impl Status {
     }
 }
 
+/// Whether the dev server serves `file` as it is on disk: a page's code, in an owner's `frontend`
+/// folder, which Vite reads as it is saved. A change to it needs no new server.
+fn live(file: &str) -> bool {
+    file.split('/').any(|part| part == "frontend")
+}
+/// The checkout's commit, and the fingerprint of every file a server holds from its start: all
+/// of them but the pages' code.
 fn source(root: &Path, runner: &dyn Runner) -> Result<Source> {
     let git = |args: &[&str]| workspace::text(runner, &[&["git"][..], args].concat(), Some(root));
     let commit = git(&["rev-parse", "HEAD"])?;
@@ -101,7 +108,10 @@ fn source(root: &Path, runner: &dyn Runner) -> Result<Source> {
         "--exclude-standard",
         "-z",
     ])?;
-    let mut files: Vec<_> = listed.split('\0').filter(|file| !file.is_empty()).collect();
+    let mut files: Vec<_> = listed
+        .split('\0')
+        .filter(|file| !file.is_empty() && !live(file))
+        .collect();
     files.sort_unstable();
     files.dedup();
     let mut hash = Sha256::new();
@@ -262,10 +272,12 @@ pub fn status(root: &Path, runner: &dyn Runner) -> Result<Status> {
     status.origin = Some(record.origin);
     status.link = Some(record.link);
     status.process = Some(process);
+    // The same files serve the same, whichever commit holds them: committing what a server
+    // was started from changes nothing it serves.
     status.source_matches = record
         .source
         .as_ref()
-        .map(|source| source == &status.checkout);
+        .map(|source| source.fingerprint == status.checkout.fingerprint);
     status.source = record.source;
     if status.source.is_none() {
         status.reason = Some("The running fixture has no verified served-source identity.".into());

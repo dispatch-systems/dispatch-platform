@@ -6,6 +6,7 @@ use axum::{
     http::{HeaderMap, Response},
     routing::get,
 };
+use dispatch_core::collection::browser::http::{Cookie, SignedIn};
 
 #[test]
 fn the_dsp_code_picks_its_one_company() {
@@ -93,6 +94,7 @@ async fn a_photo_comes_from_where_its_address_redirects_without_amazons_cookies_
         .route(
             "/workforce/photo",
             get(move |headers: HeaderMap| async move {
+                assert_eq!(headers["cookie"], "session-token=fixture");
                 assert!(headers.get("referer").is_some());
                 Response::builder()
                     .status(302)
@@ -136,7 +138,18 @@ async fn a_photo_comes_from_where_its_address_redirects_without_amazons_cookies_
             }),
         );
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let http = Http::detached(&origin, &cortex::HOSTS).unwrap();
+    let session = SignedIn {
+        origin: origin.clone(),
+        cookies: vec![Cookie {
+            name: "session-token".into(),
+            value: "fixture".into(),
+            domain: FIXTURE.into(),
+            path: "/".into(),
+            secure: false,
+        }],
+        user_agent: "Fixture".into(),
+    };
+    let http = Http::with_session(&session, &cortex::HOSTS).unwrap();
     let downloads = Http::detached(&origin, &cortex::PHOTO_HOSTS).unwrap();
     let fetch = |address: &'static str, etag: Option<&'static str>| {
         photo(&http, &downloads, &origin, "/workforce", address, etag)

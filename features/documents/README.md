@@ -118,7 +118,7 @@ and weeks, so it's best submitted well before the limit.
   Sheets and Slides as Word, Excel and PowerPoint files (Google exports those up to 10 MB), so
   someone with no Google account has them too.
 - **Pictures:** in the grid, each file's card shows Google's picture of what it holds (a
-  Doc's first page, an image, a PDF's cover) once the card nears the screen, and a drawing of
+  Doc's first page, an image whole, a PDF's cover) once the card nears the screen, and a drawing of
   its kind until then, or when Google made none. Google's link to a picture lasts hours and
   opens only for the account, so Dispatch fetches it with the account's token and hands the
   picture on: members needn't be signed in to Google, and the token never reaches a browser.

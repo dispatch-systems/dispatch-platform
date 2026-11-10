@@ -455,7 +455,6 @@ async fn a_text_dispatch_sent_filed_by_the_upkeep_is_under_whoever_at_the_dsp_se
         .id;
     // Queued at the phone side alone, waiting to be filed, then filed by the upkeep.
     let outgoing = Outgoing {
-        phone: None,
         to: "+12535550177".into(),
         body: "Your shift moved to 9".into(),
         files: Vec::new(),

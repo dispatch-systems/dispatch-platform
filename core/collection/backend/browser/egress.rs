@@ -78,14 +78,6 @@ impl Drop for Egress {
     }
 }
 impl Egress {
-    /// A proxy to the local stand-in at `fixture`'s host and port.
-    pub fn start(run: &Path, (host, port): (String, u16)) -> Result<Self> {
-        ensure(host == "fixture.dispatch.invalid", "egress_denied", 403)?;
-        let policy = NetworkPolicy::Fixture(
-            std::num::NonZeroU16::new(port).ok_or_else(|| Error::new("egress_denied", 403))?,
-        );
-        Self::start_with_policy(run, policy)
-    }
     pub fn start_with_policy(run: &Path, policy: NetworkPolicy) -> Result<Self> {
         let delegated =
             std::env::var_os("SUPPORT_VERIFICATION_EGRESS").map(std::path::PathBuf::from);

@@ -190,7 +190,6 @@ async fn texts_filed_before_migration_9_read_as_they_did_their_done_block_and_se
                 0,
             );
             let outgoing = Outgoing {
-                phone: None,
                 to: "+14255550134".into(),
                 body: "Van 214 instead".into(),
                 files: Vec::new(),
@@ -331,7 +330,6 @@ async fn texts_the_copy_never_read_before_migration_9_are_filed_by_the_next_upke
                 0,
             );
             let outgoing = Outgoing {
-                phone: None,
                 to: "+14255550188".into(),
                 body: "4410".into(),
                 files: Vec::new(),

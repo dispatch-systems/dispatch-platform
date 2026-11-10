@@ -152,18 +152,20 @@ pub fn logged(
         .status()?;
     Ok((status.success(), started.elapsed()))
 }
-/// The size of everything under `path`, or none if it doesn't exist.
+/// The disk everything under `path` takes, or none if it doesn't exist: in the kilobytes every
+/// `du` counts, where only GNU's counts bytes.
 pub fn size(runner: &dyn Runner, path: &Path) -> Option<u64> {
     if !path.exists() {
         return None;
     }
     let path = path.to_str()?;
-    text(runner, &["du", "-sb", path], None)
+    let kilobytes: u64 = text(runner, &["du", "-sk", path], None)
         .ok()?
         .split_whitespace()
         .next()?
         .parse()
-        .ok()
+        .ok()?;
+    Some(kilobytes * 1024)
 }
 /// Bytes as people read them: 13.2 GB, 830 MB.
 pub fn human(bytes: u64) -> String {
@@ -221,5 +223,13 @@ mod tests {
         assert_eq!(human(830_000_000), "830 MB");
         assert_eq!(duration(Duration::from_secs(45)), "45s");
         assert_eq!(duration(Duration::from_secs(185)), "3m 05s");
+    }
+    #[test]
+    fn a_folders_size_is_measured_wherever_du_is() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("built"), vec![1u8; 8192]).unwrap();
+        let measured = size(&crate::Native, temp.path());
+        assert!(measured.is_some_and(|bytes| bytes >= 8192), "{measured:?}");
+        assert_eq!(size(&crate::Native, &temp.path().join("gone")), None);
     }
 }

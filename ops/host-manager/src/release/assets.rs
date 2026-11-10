@@ -139,27 +139,6 @@ impl Release<'_> {
             &[
                 "gh",
                 "attestation",
-                "verify",
-                download
-                    .path()
-                    .join("build.tar.gz")
-                    .to_str()
-                    .ok_or("Invalid downloaded package path")?,
-                "--repo",
-                REPOSITORY,
-                "--signer-workflow",
-                &format!("{REPOSITORY}/.github/workflows/checks.yml"),
-                "--source-digest",
-                commit,
-                "--deny-self-hosted-runners",
-            ],
-            None,
-            120,
-        )?;
-        self.command(
-            &[
-                "gh",
-                "attestation",
                 "download",
                 download
                     .path()

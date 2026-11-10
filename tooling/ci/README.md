@@ -24,6 +24,7 @@ locally the whole suite in sequence:
 | relay-dev        |                                            | Outside a PR, Dev's relay app, signed, for the build to pack (`relay.py`).                |
 | relay-production |                                            | In a release's run that names its app version, Production's relay app, signed.            |
 | changes          |                                            | Which suites the change can reach (`changes.py`).                                         |
+| publish          |                                            | The package carries the run's commit and a whole inventory; outside a PR, publishes it.   |
 | platform         |                                            | The gate: the one required check.                                                         |
 
 On a PR, `changes.py` skips a suite when every file the change touches is of a kind it never
@@ -55,10 +56,13 @@ otherwise compiles them itself, beside the `debug` job rather than after it, so 
 suite starts sooner. Only `main`'s runs, a dispatched run and a release's compile the release
 executables.
 
-The gate passes only when every job passed, the relay apps' builds wherever they ran, and the
-package carries the run's own commit and a complete inventory (`ci-verify.py`, which runs
-`dispatch-host ci verify`). Outside a PR it then attests the package and publishes it as `dispatch-main-<sha>` for 90 days: the Dev updater
-installs `main`'s, which carries Dev's app. A release dispatches its own run on a temporary branch
+The gate passes only when every job passed, the relay apps' builds wherever they ran. `publish`
+is the one that finds the package to carry the run's own commit and a complete inventory
+(`ci-verify.py`, which runs `dispatch-host ci verify`), once every suite but the browser one
+passed. Outside a PR, where `build` attests the package, it then publishes it as
+`dispatch-main-<sha>` for 90 days: the Dev updater installs `main`'s, which carries Dev's app,
+without waiting for the browser suite, the last to end, so Dev can serve a commit whose browser
+tests then fail. A release takes its own run's only once that whole run passed. A release dispatches its own run on a temporary branch
 at its commit, which builds or carries Production's app beside Dev's, and stamps its version into
 that run's package ([Android apps](../../android/README.md#releases)). Once `main`'s push run of
 the commit passed, the release names it (`tested-run`), and its run skips checks, core-lint,
