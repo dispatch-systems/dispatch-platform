@@ -311,6 +311,12 @@ pub fn publish(
                 check::execute(root, &plan, env, runner)?,
                 "A check failed: the PR waits for `dispatchdev check` to pass.",
             )?;
+            // It passed on the tree it started with: a commit made while it ran isn't that one.
+            require(
+                check::passed(root, env, runner)? == Some(true),
+                "The checkout changed while `dispatchdev check` ran: `dispatchdev pr` checks it \
+                 as it is now.",
+            )?;
         }
         None => {
             return Err(

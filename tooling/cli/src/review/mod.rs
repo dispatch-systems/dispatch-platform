@@ -111,8 +111,8 @@ impl Checkout<'_> {
     fn head(&self) -> Result<String> {
         self.git(&["rev-parse", "HEAD"])
     }
-    /// The branch, committed and pushed as it is: what a reviewer is pinned to.
-    fn pushed(&self) -> Result<(String, String)> {
+    /// The branch and its head, with nothing uncommitted.
+    fn committed(&self) -> Result<(String, String)> {
         let branch = self.git(&["branch", "--show-current"])?;
         require(
             !branch.is_empty() && branch != "main",
@@ -122,7 +122,11 @@ impl Checkout<'_> {
             self.git(&["status", "--porcelain"])?.is_empty(),
             "Commit the change first: a review reads what is committed.",
         )?;
-        let head = self.head()?;
+        Ok((branch, self.head()?))
+    }
+    /// The branch, committed and pushed as it is: what a reviewer is pinned to.
+    fn pushed(&self) -> Result<(String, String)> {
+        let (branch, head) = self.committed()?;
         let remote = self
             .git(&[
                 "rev-parse",
@@ -809,12 +813,11 @@ pub fn record(
     }
     let git = Checkout { root, runner };
     let how = publishing(root);
-    // The fixes go up before the pass is recorded, held to what `dispatchdev pr` holds them to:
-    // a check that fails then is fixed in the same pass.
-    if how.by_record && git.pushed().is_err() {
-        pr::publish(root, false, env, runner)?;
-    }
-    let (_, head) = git.pushed()?;
+    // The head the pass is recorded at: pushed already, or the one `pr::publish` pushes below.
+    let (_, head) = match how.by_record {
+        true => git.committed()?,
+        false => git.pushed()?,
+    };
     // A pass is recorded at one head: recording it again later would vouch for what came after.
     if let Some(earlier) =
         read_json::<Recorded>(&dir.join("record.json"))?.filter(|earlier| !earlier.head.is_empty())
@@ -852,16 +855,13 @@ pub fn record(
         done: !unreviewed && (!important_fixed || n >= CAP),
         head: head.clone(),
     };
-    workspace::write_private(
-        &dir.join("record.json"),
-        &serde_json::to_string_pretty(&recorded)?,
-    )?;
     let mut passes = vec![];
-    for k in 1..=n {
-        let recorded: Recorded = read_json(&folder(root, k)?.join("record.json"))?
+    for k in 1..n {
+        let earlier: Recorded = read_json(&folder(root, k)?.join("record.json"))?
             .ok_or_else(|| format!("Pass {k} has no record: record it first."))?;
-        passes.push(recorded);
+        passes.push(earlier);
     }
+    passes.push(recorded);
     let mut line = summary(pass.tier, &passes);
     if let preview::Approval::Changed(paths) = preview::approval(root, runner)? {
         line.push_str(&format!(
@@ -872,6 +872,17 @@ pub fn record(
     let body = workspace::checkout_scratch(root)?.join("pr-body.md");
     let text = fs::read_to_string(&body)?;
     workspace::write_private(&body, &pr::with_review_line(&text, &line)?)?;
+    // The fixes and the body go up before the pass is kept, held to what `dispatchdev pr` holds
+    // them to: a check that fails here is fixed within the pass, which isn't recorded yet.
+    if how.by_record {
+        pr::publish(root, false, env, runner)?;
+        git.pushed()?;
+    }
+    let recorded = &passes[passes.len() - 1];
+    workspace::write_private(
+        &dir.join("record.json"),
+        &serde_json::to_string_pretty(recorded)?,
+    )?;
     println!("{line}");
     for outcome in recorded
         .answers
@@ -879,9 +890,6 @@ pub fn record(
         .filter(|outcome| matches!(outcome.tag.as_str(), "Pre-existing" | "Out of scope"))
     {
         println!("  {}: {}", outcome.tag, outcome.what);
-    }
-    if how.by_record {
-        pr::publish(root, false, env, runner)?;
     }
     let (update, merge) = (how.body, how.merge);
     let next = match (important_fixed || unreviewed, n < CAP) {
