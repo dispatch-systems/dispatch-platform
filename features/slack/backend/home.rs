@@ -1,6 +1,6 @@
 //! The app's Home tab in Slack: the DSP the workspace belongs to. It's drawn each time someone
 //! opens the tab, so it shows the DSP as it is now.
-use super::bot::Bot;
+use super::{bot::Bot, slack};
 use dispatch_core::{Result, ensure};
 use serde_json::{Value, json};
 
@@ -37,9 +37,5 @@ fn view(name: &str) -> Value {
 
 /// Whether `user` is a Slack user ID as Slack writes them.
 fn slack_user(user: &str) -> bool {
-    (2..=32).contains(&user.len())
-        && user.starts_with(['U', 'W'])
-        && user
-            .bytes()
-            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+    slack::id(user, &['U', 'W'])
 }

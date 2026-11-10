@@ -1,5 +1,8 @@
 //! Workspace ownership across the platform registry, DSP rows and encrypted token files.
-use crate::backend::{integrations, slack::Tokens};
+use crate::backend::{
+    integrations,
+    slack::{self, Tokens},
+};
 use dispatch_core::{
     Result,
     db::{self, Db, FromRow, Row, Store, iso},
@@ -273,11 +276,7 @@ fn secret(team: &str) -> Result<String> {
 }
 /// Whether `team` is a Slack workspace ID as Slack writes them.
 pub fn team_id(team: &str) -> bool {
-    (2..=32).contains(&team.len())
-        && team.starts_with('T')
-        && team
-            .bytes()
-            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+    slack::id(team, &['T'])
 }
 /// What the tokens' encryption is bound to: this DSP's tokens for this workspace, in their
 /// first format.
