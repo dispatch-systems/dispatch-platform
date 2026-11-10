@@ -1482,7 +1482,7 @@ async fn candidate_progress_requires_audited_suffix_and_never_acknowledges_an_un
         // Unknown topology changes cannot be hidden by a later legitimate suffix.
         match reference {
             Reference::Slack(_) => connection.exec(
-                "UPDATE communications_messages SET at=at+1 WHERE conversation_id=? AND ts='1700000000.000050'",
+                "UPDATE communications_messages SET at=at+86400000 WHERE conversation_id=? AND ts='1700000000.000050'",
                 [reference.id()],
             ).unwrap(),
             Reference::Text(_) => connection.exec(
@@ -1538,14 +1538,47 @@ async fn candidate_progress_requires_audited_suffix_and_never_acknowledges_an_un
             (current.0, current.1, current.2, current.3 + 1)
         );
         assert!(!backfill::chunk(&connection, transport, reference.id(), zone).unwrap());
+        // An additional trigger write inside a legitimate placement is still unaccounted.
+        let counted = candidate_checkpoint(&connection, reference);
+        let trigger = match reference {
+            Reference::Slack(_) => {
+                "CREATE TRIGGER fixture_extra_slack AFTER INSERT ON communications_messages \
+                WHEN NEW.ts='1700000000.100006' BEGIN \
+                UPDATE communications_messages SET at=at+86400000 \
+                WHERE conversation_id=NEW.conversation_id AND ts='1700000000.000060'; END"
+            }
+            Reference::Text(_) => {
+                "CREATE TRIGGER fixture_extra_text AFTER UPDATE OF conversation_id ON phones_texts \
+                WHEN OLD.conversation_id IS NULL AND NEW.client_id='1700000000.100006' BEGIN \
+                UPDATE phones_texts SET number='+12065550888' \
+                WHERE conversation_id=NEW.conversation_id AND id='text-000060'; END"
+            }
+        };
+        connection.exec(trigger, []).unwrap();
+        place_for_candidate(&db, &dsp, reference, "1700000000.100006", AT + 6);
+        connection
+            .exec(
+                match reference {
+                    Reference::Slack(_) => "DROP TRIGGER fixture_extra_slack",
+                    Reference::Text(_) => "DROP TRIGGER fixture_extra_text",
+                },
+                [],
+            )
+            .unwrap();
+        assert_eq!(
+            candidate_checkpoint(&connection, reference),
+            (counted.0, counted.1, counted.2, counted.3 + 2)
+        );
+        assert!(!backfill::chunk(&connection, transport, reference.id(), zone).unwrap());
+
         let sql = match reference {
             Reference::Slack(_) => {
                 "SELECT count(*) FROM communications_messages WHERE conversation_id=?"
             }
             Reference::Text(_) => "SELECT count(*) FROM phones_texts WHERE conversation_id=?",
         };
-        assert_eq!(connection.count(sql, [reference.id()]).unwrap(), 706);
-        build_origins(&db, &dsp, reference, 706);
+        assert_eq!(connection.count(sql, [reference.id()]).unwrap(), 707);
+        build_origins(&db, &dsp, reference, 707);
         assert!(
             read_origins(&db, &state, &dsp, reference, Request::Latest)
                 .unwrap()

@@ -396,10 +396,9 @@ fn mutate<T>(
                 && before.as_ref().is_none_or(|row| row.conversation_id.is_none())
                 && to_here
                 && entry.epoch.checked_add(1) == Some(current.epoch)
+                && let (Some(candidate), Some(row)) = (candidate, after.as_ref())
             {
-                if let (Some(candidate), Some(row)) = (candidate, after.as_ref()) {
-                    advance_candidate(db, transport, &conversation, &entry, &current, &candidate, row)?;
-                }
+                advance_candidate(db, transport, &conversation, &entry, &current, &candidate, row)?;
             }
             let Some(zone) = entry.zone.as_deref().filter(|zone| entry.ready(zone)) else {
                 continue;
