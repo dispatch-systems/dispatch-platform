@@ -722,8 +722,8 @@ mod tests {
         fs::create_dir_all(&first).unwrap();
         fs::write(first.join("active"), "keep").unwrap();
         let other = hold(&first).expect("no run holds it yet");
-        let wrote = "echo \"$CARGO_TARGET_DIR\" > seen".to_owned();
-        assert!(run_commands(&root, &[wrote.clone()], false).unwrap());
+        let wrote = ["echo \"$CARGO_TARGET_DIR\" > seen".to_owned()];
+        assert!(run_commands(&root, &wrote, false).unwrap());
         assert_eq!(
             fs::read_to_string(root.join("seen")).unwrap().trim(),
             root.join(BUILDS).join("2").to_str().unwrap()
@@ -739,7 +739,7 @@ mod tests {
         fs::write(outside.join("1/mine"), "keep").unwrap();
         fs::create_dir_all(root.join(BUILDS)).unwrap();
         std::os::unix::fs::symlink(outside.join("1"), &first).unwrap();
-        assert!(run_commands(&root, &[wrote], false).unwrap());
+        assert!(run_commands(&root, &wrote, false).unwrap());
         assert_eq!(
             fs::read_to_string(root.join("seen")).unwrap().trim(),
             root.join(BUILDS).join("2").to_str().unwrap()
