@@ -269,6 +269,12 @@ impl<'a> Release<'a> {
         command.extend_from_slice(args);
         Ok(serde_json::from_str(&self.command(&command, None, 120)?)?)
     }
+    /// Deletes `endpoint`, which answers with no body for `api` to read.
+    fn delete(&self, endpoint: &str) -> Result<()> {
+        let endpoint = format!("repos/{REPOSITORY}/{endpoint}");
+        self.command(&["gh", "api", &endpoint, "--method", "DELETE"], None, 120)?;
+        Ok(())
+    }
     fn journal_path(&self) -> PathBuf {
         self.directory.join(format!(".{}-state.json", self.tag))
     }

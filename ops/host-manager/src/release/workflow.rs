@@ -274,17 +274,7 @@ impl Release<'_> {
     }
     pub(super) fn remove_checks_branch(&self) -> Result<()> {
         if self.checks_ref()?.is_some() {
-            self.command(
-                &[
-                    "gh",
-                    "api",
-                    &format!("repos/{REPOSITORY}/git/refs/heads/{}", self.checks_branch),
-                    "--method",
-                    "DELETE",
-                ],
-                None,
-                120,
-            )?;
+            self.delete(&format!("git/refs/heads/{}", self.checks_branch))?;
         }
         Ok(())
     }
@@ -309,17 +299,7 @@ impl Release<'_> {
                 release["draft"] == true,
                 "A published release is never superseded",
             )?;
-            self.command(
-                &[
-                    "gh",
-                    "api",
-                    &format!("repos/{REPOSITORY}/releases/{}", release["id"]),
-                    "--method",
-                    "DELETE",
-                ],
-                None,
-                120,
-            )?;
+            self.delete(&format!("releases/{}", release["id"]))?;
         }
         self.remove_checks_branch()?;
         let pinned = self

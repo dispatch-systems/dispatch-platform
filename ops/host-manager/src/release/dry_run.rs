@@ -124,17 +124,7 @@ impl Release<'_> {
                     self.tag
                 ),
             )?;
-            self.command(
-                &[
-                    "gh",
-                    "api",
-                    &format!("repos/{REPOSITORY}/releases/{}", release["id"]),
-                    "--method",
-                    "DELETE",
-                ],
-                None,
-                120,
-            )?;
+            self.delete(&format!("releases/{}", release["id"]))?;
         }
         Ok(())
     }
