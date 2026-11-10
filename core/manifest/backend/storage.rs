@@ -17,9 +17,7 @@ impl Registry {
     pub fn databases(&self) -> impl Iterator<Item = Kind> {
         let collectors = self.collectors.iter().map(|collector| collector.database());
         let added = self
-            .collectors
-            .iter()
-            .flat_map(|collector| collector.collections())
+            .collections()
             .flat_map(|collection| self.keepers().filter(|k| k.keeps() == collection.job_kind))
             .flat_map(|keeper| keeper.storages().iter().map(|storage| storage.kind));
         db::CORE_DATABASES

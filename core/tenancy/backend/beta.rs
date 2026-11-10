@@ -111,10 +111,8 @@ impl Store {
                 )?;
                 changed = true;
             }
-            // Open views sign the DSP revision, so a tester gains or loses it at once.
             if changed {
-                self.platform
-                    .exec("UPDATE dsps SET revision=revision+1 WHERE id=?", [dsp])?;
+                self.expire_views(dsp)?;
             }
             Ok(())
         })?;
