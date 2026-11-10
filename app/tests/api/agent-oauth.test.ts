@@ -405,6 +405,17 @@ test('refresh tokens rotate once, and replay ends the entire connection immediat
   const callback = `http://127.0.0.1:${await freePort()}/callback`;
   const first = await c.connect(claudeCode, callback, everything('Desktop – Claude Code'));
 
+  // Only by the client it was issued to, only as a refresh token, and only for Dispatch's MCP
+  // endpoint; none of these refusals uses it up.
+  const wrong = await c.refresh(chatgpt, first.refresh_token);
+  assert.deepEqual([wrong.status, wrong.body.error], [400, 'invalid_grant']);
+  const access = await c.refresh(claudeCode, first.access_token);
+  assert.deepEqual([access.status, access.body.error], [400, 'invalid_grant']);
+  const unknown = await c.refresh('https://evil.example/c.json', first.refresh_token);
+  assert.deepEqual([unknown.status, unknown.body.error], [401, 'invalid_client']);
+  const target = await c.refresh(claudeCode, first.refresh_token, { resource: c.issuer });
+  assert.deepEqual([target.status, target.body.error], [400, 'invalid_target']);
+
   // Rotated: a new pair in the same shape, with any extra scope asked for ignored.
   const second = await c.refresh(claudeCode, first.refresh_token, {
     scope: 'dispatch offline_access',

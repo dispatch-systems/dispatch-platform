@@ -498,66 +498,6 @@ async fn a_replay_with_the_wrong_verifier_ends_nothing() {
 }
 
 #[tokio::test]
-async fn refresh_tokens_are_single_use_and_replay_ends_the_family() {
-    let server = Server::paired().await;
-    let owner = server.owner().await;
-    let local = "http://127.0.0.1:61001/callback";
-    let first = server
-        .connect(&owner, CLAUDE_CODE, local, everything("Claude Code"))
-        .await;
-    let refresh = s(&first, "refresh_token");
-    // Only by the client it was issued to, and only as a refresh token.
-    let wrong = server.refresh(CHATGPT, refresh).await;
-    assert_eq!(s(&wrong.body, "error"), "invalid_grant");
-    let access = server.refresh(CLAUDE_CODE, s(&first, "access_token")).await;
-    assert_eq!(s(&access.body, "error"), "invalid_grant");
-    let unknown = server.refresh("https://evil.example/c.json", refresh).await;
-    assert_eq!(
-        (unknown.status, s(&unknown.body, "error")),
-        (401, "invalid_client")
-    );
-    let target = server
-        .form(
-            "/oauth/token",
-            &[
-                ("grant_type", "refresh_token"),
-                ("refresh_token", refresh),
-                ("client_id", CLAUDE_CODE),
-                ("resource", &server.origin),
-            ],
-        )
-        .await;
-    assert_eq!(s(&target.body, "error"), "invalid_target");
-    // Rotated: a new pair, and the old access token still works until it expires.
-    let second = server.refresh(CLAUDE_CODE, refresh).await;
-    assert_eq!(second.status, 200, "{}", second.body);
-    assert_ne!(s(&second.body, "refresh_token"), refresh);
-    assert_eq!(second.body["scope"], "dispatch");
-    assert_eq!(
-        server
-            .bearer("/api/v1/whoami", s(&second.body, "access_token"))
-            .await
-            .status,
-        200
-    );
-    // Reuse is a compromise signal even immediately after rotation: it revokes the connected
-    // app and the successor pair instead of minting an independent branch.
-    let replay = server.refresh(CLAUDE_CODE, refresh).await;
-    assert_eq!(s(&replay.body, "error"), "invalid_grant");
-    assert_eq!(
-        server
-            .bearer("/api/v1/whoami", s(&second.body, "access_token"))
-            .await
-            .status,
-        401
-    );
-    let gone = server
-        .refresh(CLAUDE_CODE, s(&second.body, "refresh_token"))
-        .await;
-    assert_eq!(s(&gone.body, "error"), "invalid_grant");
-}
-
-#[tokio::test]
 async fn simultaneous_refreshes_mint_once_and_then_end_the_compromised_family() {
     let server = Server::paired().await;
     let owner = server.owner().await;
