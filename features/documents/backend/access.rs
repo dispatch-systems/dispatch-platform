@@ -1,12 +1,7 @@
 //! Captured-generation Drive access and RAM refresh. Provider awaits happen outside State
 //! turns; each provider operation and every publication uses the captured owner only.
 use super::{
-    cache, connection,
-    google::{Connected, Google},
-    grant::Grant,
-    mirror,
-    storage::DocumentsStore,
-    team,
+    cache, connection, google::Connected, grant::Grant, mirror, storage::DocumentsStore, team,
     tree::Tree,
 };
 use dispatch_core::{Result, State, foundation::observability};
@@ -230,7 +225,7 @@ async fn follow(state: &Arc<State>, owner: &Grant) -> Result<()> {
         .await
 }
 /// Hourly grant checking has the same captured-generation failure fence as foreground access.
-pub(super) async fn check(state: Arc<State>, _google: &Google, dsp: String) -> Result<()> {
+pub(super) async fn check(state: Arc<State>, dsp: String) -> Result<()> {
     let at = dsp.clone();
     let owner = state
         .read(move |db| {
