@@ -52,8 +52,9 @@ pub struct Session {
     worker: AsyncMutex<Option<Box<dyn Driver>>>,
     commands: tokio::sync::Semaphore,
     cancel: watch::Sender<bool>,
-    // No browser runs in fixture mode: nothing to take over, no memory to admit.
-    fixture: bool,
+    // No browser runs in fixture mode, nor for a driver that needs none: nothing to take
+    // over, no memory to admit.
+    browserless: bool,
     started: std::time::Instant,
     last_used: Mutex<std::time::Instant>,
     collecting: std::sync::atomic::AtomicBool,
@@ -265,7 +266,7 @@ impl Session {
     }
     /// What its browser last used, while it has one.
     fn resident(&self) -> Option<u64> {
-        (!self.browser_exited.load(Ordering::Acquire))
+        (!self.browserless && !self.browser_exited.load(Ordering::Acquire))
             .then(|| self.observed_pss.load(Ordering::Acquire))
     }
     pub fn process_id(&self) -> Option<u32> {
@@ -283,7 +284,7 @@ impl Session {
         self.status.load(Ordering::SeqCst) == 3
     }
     pub fn interactive(&self) -> bool {
-        self.challenge() && !self.fixture
+        self.challenge() && !self.browserless
     }
     pub fn busy(&self) -> bool {
         self.status.load(Ordering::SeqCst) == 0
@@ -580,7 +581,7 @@ impl State {
     ) -> Result<Arc<Session>> {
         let dsp = id.to_owned();
         let initial_authority = authority.clone();
-        let (dsp, credentials, revision, run, profile) = self
+        let (dsp, credentials, revision, run, profile, direct) = self
             .run_bookkeeping(move |db| {
                 initial_authority.check(db, &dsp, provider)?;
                 let value = db.ensure_dsp_active(&dsp)?;
@@ -592,12 +593,16 @@ impl State {
                 let run = runs.join(crypto::id("run")?);
                 let profile = db::private_dir(&db.area(&dsp, "state")?.join("browsers"))?
                     .join(format!("{}-browseros", provider.id()));
+                let credentials = db.credentials(&dsp, provider)?;
+                // The collector's own driver, when these credentials need no browser.
+                let direct = provider.collector().direct(db, &dsp, &credentials)?;
                 Ok((
                     value,
-                    db.credentials(&dsp, provider)?,
+                    credentials,
                     connection.revision,
                     run,
                     profile,
+                    direct,
                 ))
             })
             .await?;
@@ -656,7 +661,8 @@ impl State {
             worker: AsyncMutex::new(None),
             commands: tokio::sync::Semaphore::new(32),
             cancel,
-            fixture: self.config.fixture && self.config.fixture_url.is_none(),
+            browserless: direct.is_some()
+                || (self.config.fixture && self.config.fixture_url.is_none()),
             started: std::time::Instant::now(),
             last_used: Mutex::new(std::time::Instant::now()),
             collecting: std::sync::atomic::AtomicBool::new(authority.reader().is_some()),
@@ -679,7 +685,7 @@ impl State {
                 "browser_capacity_busy",
                 429,
             )?;
-            if !session.fixture {
+            if !session.browserless {
                 let admission = admission::Admission::new(
                     admission::available(),
                     sessions.values().filter_map(|s| s.resident()),
@@ -691,6 +697,8 @@ impl State {
         // Registered, it closes unless the start ends with it ready to use: a start dropped
         // partway, as a read cut off or switched off, leaves nothing behind.
         let mut starting = Closing::new(self, session.clone());
+        // What a driver without a browser is about to ask, each still waiting.
+        let asking = direct.as_ref().map(|driver| driver.checks());
         let start = async {
             let mut worker = session.worker.lock().await;
             ensure(!session.closed(), "verification_expired", 409)?;
@@ -705,15 +713,22 @@ impl State {
                     .ok_or_else(|| Error::new("connection_required", 409))?;
                 let current = connection.enabled && connection.revision == revision;
                 ensure(current, "connection_changed", 409)?;
-                db.connection_state(&dsp, provider, revision, "signing_in", None)
+                db.connection_state(&dsp, provider, revision, "signing_in", None)?;
+                match &asking {
+                    Some(checks) => db.connection_checks(&dsp, provider, revision, checks),
+                    None => Ok(()),
+                }
             })
             .await?;
             ensure(!session.closed(), "verification_expired", 409)?;
             db::private_dir(&run)?;
-            db::private_dir(&profile)?;
-            if session.fixture {
+            if let Some(driver) = direct {
+                *worker = Some(driver);
+            } else if session.browserless {
+                db::private_dir(&profile)?;
                 *worker = Some(Box::new(fixture::Driver::new(provider)));
             } else {
+                db::private_dir(&profile)?;
                 attempt::preflight(&profile, provider.id(), retry)?;
                 let policy = if let Some(value) = &self.config.fixture_url {
                     browseros::NetworkPolicy::Fixture(
@@ -798,13 +813,24 @@ impl State {
         } else {
             result.as_ref().err().map(|e| e.code.clone())
         };
+        // What a driver without a browser found, line by line. One busy collecting is not
+        // waited for: its connection was checked before it began.
+        let checks = match session.worker.try_lock() {
+            Ok(worker) => worker.as_ref().map(|driver| driver.checks()),
+            Err(_) => None,
+        }
+        .filter(|checks| !checks.is_empty());
         let authority = authority.clone();
         self.run_scoped(
             dsp.clone(),
             crate::server::cache::DataDomain::TENANT,
             move |db| {
                 authority.check(db, &dsp, provider)?;
-                db.connection_state(&dsp, provider, revision, status, error.as_deref())
+                db.connection_state(&dsp, provider, revision, status, error.as_deref())?;
+                match &checks {
+                    Some(checks) => db.connection_checks(&dsp, provider, revision, checks),
+                    None => Ok(()),
+                }
             },
         )
         .await

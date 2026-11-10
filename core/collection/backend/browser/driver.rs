@@ -1,9 +1,12 @@
-//! What a session asks of a provider's browser. `paycom`, `cortex` and `fixture`
-//! implement it; nothing outside this directory knows which one it is driving.
+//! What a session asks of a provider's driver: its browser's, or one that needs none
+//! (`Collector::direct`). Nothing outside this directory knows which one it is driving.
 use super::browseros;
 use crate::{
     Result, State,
-    collection::{api::jobs::ActiveJobStatus, metrics::Recorder},
+    collection::{
+        api::{jobs::ActiveJobStatus, types::ConnectionCheck},
+        metrics::Recorder,
+    },
 };
 use serde_json::Value;
 use std::{future::Future, pin::Pin, sync::Arc};
@@ -50,4 +53,9 @@ pub trait Driver: Send {
     fn collect<'a>(&'a mut self, run: &'a Run<'a>) -> Pending<'a, Collected>;
     /// The browser to close with the session. A driver without one has nothing to close.
     fn browser(&self) -> Option<&browseros::Session>;
+    /// What a driver without a browser asks of its provider as it connects, and how each
+    /// went the last time it did: each waiting before then. One with a browser has none.
+    fn checks(&self) -> Vec<ConnectionCheck> {
+        Vec::new()
+    }
 }

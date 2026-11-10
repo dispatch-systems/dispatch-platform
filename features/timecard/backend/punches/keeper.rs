@@ -30,8 +30,13 @@ impl Keeper for Timecards {
     fn domain(&self) -> DataDomain {
         super::DOMAIN
     }
-    /// The employee a single-employee sync reads, as the latest publication holds them.
+    /// The employee a single-employee sync reads, as the latest publication holds them;
+    /// everyone known, for a collection of them all; or the newest pay period collected, which
+    /// a collection that isn't told its period counts from.
     fn kept(&self, store: &Store, dsp: &str, question: &Value) -> Result<Value> {
+        if question["latestPeriod"] == true {
+            return super::timecards::latest_period(store, dsp);
+        }
         if question["allEmployees"] == true {
             return Ok(json!(super::timecards::known_paycom_employees(store, dsp)?));
         }

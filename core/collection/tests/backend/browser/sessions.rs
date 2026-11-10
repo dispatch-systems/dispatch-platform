@@ -28,7 +28,7 @@ fn opened(state: &State, dsp: &str) -> Arc<Session> {
         worker: AsyncMutex::new(None),
         commands: tokio::sync::Semaphore::new(32),
         cancel,
-        fixture: true,
+        browserless: true,
         started: std::time::Instant::now(),
         last_used: Mutex::new(std::time::Instant::now()),
         collecting: std::sync::atomic::AtomicBool::new(true),
