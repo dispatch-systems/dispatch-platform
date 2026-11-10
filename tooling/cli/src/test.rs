@@ -290,7 +290,8 @@ fn hold(folder: &Path) -> Option<fs::File> {
 /// The run's build folder in `builds`, held: the lowest-numbered no run holds, emptied of what a
 /// killed or kept run left in it, with the other numbered ones no run holds removed. Numbered, a
 /// run builds where the one before it did: the compiler cache keys a compile by the paths it
-/// names, and serves a run what an earlier one compiled only at the same ones.
+/// names, and serves a run what an earlier one compiled only at the same ones. `builds` itself
+/// stays once made, so no run ending takes it from under one starting.
 fn claim(builds: &Path) -> Result<(PathBuf, fs::File)> {
     fs::create_dir_all(builds)?;
     require(
@@ -304,8 +305,6 @@ fn claim(builds: &Path) -> Result<(PathBuf, fs::File)> {
     let (build, lock) = loop {
         number += 1;
         let folder = builds.join(number.to_string());
-        // A run ending now removes `builds` once it is empty.
-        fs::create_dir_all(builds)?;
         match fs::create_dir(&folder) {
             Err(error) if error.kind() != std::io::ErrorKind::AlreadyExists => {
                 return Err(error.into());
@@ -342,7 +341,6 @@ fn claim(builds: &Path) -> Result<(PathBuf, fs::File)> {
 /// deleted when the run ends.
 pub struct Run {
     root: PathBuf,
-    builds: PathBuf,
     pub build: PathBuf,
     /// Holds the build folder until the run ends.
     _held: fs::File,
@@ -357,8 +355,7 @@ pub struct Run {
 impl Run {
     /// A run in `root`, its temporary files in `tmp`.
     pub fn start(root: &Path, tmp: &Path) -> Result<Self> {
-        let builds = root.join(BUILDS);
-        let (build, held) = claim(&builds)?;
+        let (build, held) = claim(&root.join(BUILDS))?;
         Ok(Self {
             root: root.to_owned(),
             // What the browser tests' packaging makes in the checkout, if it isn't there already.
@@ -368,7 +365,6 @@ impl Run {
                 .filter(|path| !path.exists())
                 .collect(),
             binary: build.join("debug/dispatch-backend"),
-            builds,
             build,
             _held: held,
             tmp: tmp.to_owned(),
@@ -436,7 +432,6 @@ impl Run {
             freed += workspace::size(&crate::Native, &path).unwrap_or(0);
             fs::remove_dir_all(&path)?;
         }
-        let _ = fs::remove_dir(&self.builds);
         Ok(freed)
     }
 }
@@ -686,7 +681,7 @@ mod tests {
         assert!(run_commands(&root, &command(wrote), false).unwrap());
         let seen = fs::read_to_string(root.join("seen")).unwrap();
         assert_eq!(seen.trim(), format!("{} 0", first.display()));
-        assert!(!root.join(BUILDS).exists(), "the run's build is deleted");
+        assert!(!first.exists(), "the run's build is deleted");
         // A failure stops the run, and still deletes what it built.
         assert!(
             !run_commands(
@@ -696,7 +691,7 @@ mod tests {
             )
             .unwrap()
         );
-        assert!(!root.join("never").exists() && !root.join(BUILDS).exists());
+        assert!(!root.join("never").exists() && !first.exists());
         // Kept, it stays until the next run, which builds there again from nothing; a folder a
         // killed run left goes then too.
         assert!(run_commands(&root, &command(wrote), true).unwrap());
@@ -711,7 +706,7 @@ mod tests {
         );
         assert!(!dead.exists());
         assert!(run_commands(&root, &command("true"), false).unwrap());
-        assert!(!root.join(BUILDS).exists());
+        assert!(!first.exists());
         let _ = fs::remove_dir_all(workspace::scratch("run-test-checkout"));
     }
     #[test]
@@ -732,12 +727,11 @@ mod tests {
         // Once that run ended without deleting it, the next takes it, emptied.
         drop(other);
         assert!(run_commands(&root, &["true".into()], false).unwrap());
-        assert!(!root.join(BUILDS).exists());
+        assert!(!first.exists());
         // A link a commit carried there is never followed: not the folder's, nor the folders'.
         let outside = temp.path().join("outside");
         fs::create_dir_all(outside.join("1")).unwrap();
         fs::write(outside.join("1/mine"), "keep").unwrap();
-        fs::create_dir_all(root.join(BUILDS)).unwrap();
         std::os::unix::fs::symlink(outside.join("1"), &first).unwrap();
         assert!(run_commands(&root, &wrote, false).unwrap());
         assert_eq!(
