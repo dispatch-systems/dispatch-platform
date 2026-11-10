@@ -141,6 +141,27 @@ pub struct Client {
     secret: String,
     picker: Option<(String, String)>,
 }
+impl Client {
+    /// Trades the code Google sent the browser back to `origin` with for the account's tokens.
+    async fn tokens(&self, origin: &str, code: &str, verifier: &str) -> Result<Tokens> {
+        let back = format!("{origin}{RETURN_PATH}");
+        let fields = [
+            ("client_id", self.id.as_str()),
+            ("client_secret", self.secret.as_str()),
+            ("code", code),
+            ("code_verifier", verifier),
+            ("grant_type", "authorization_code"),
+            ("redirect_uri", back.as_str()),
+        ];
+        // A code Google no longer honors was used already, or waited too long.
+        send(HTTP.post(TOKEN).form(&fields))
+            .await
+            .map_err(|error| match error.code.as_str() {
+                "google_connection_broken" => Error::new("documents_connect_expired", 409),
+                _ => error,
+            })
+    }
+}
 static CLIENT: OnceLock<Option<Client>> = OnceLock::new();
 /// This server's Google sign-in client, read once from the settings Documents declares:
 /// `DISPATCH_DEV_GOOGLE_CLIENT_ID` and `…_SECRET` on Dev and its previews,
@@ -274,23 +295,7 @@ impl Google {
             Self::Fixture => return fixture_grant(code).map(|granted| granted.account.email),
             Self::Live(client) => client,
         };
-        let back = format!("{origin}{RETURN_PATH}");
-        let tokens: Tokens = form(
-            TOKEN,
-            &[
-                ("client_id", client.id.as_str()),
-                ("client_secret", client.secret.as_str()),
-                ("code", code),
-                ("code_verifier", verifier),
-                ("grant_type", "authorization_code"),
-                ("redirect_uri", back.as_str()),
-            ],
-        )
-        .await
-        .map_err(|error| match error.code.as_str() {
-            "google_connection_broken" => Error::new("documents_connect_expired", 409),
-            _ => error,
-        })?;
+        let tokens = client.tokens(origin, code, verifier).await?;
         let profile: Result<Profile> =
             send(HTTP.get(USERINFO).bearer_auth(&tokens.access_token)).await;
         let _ = HTTP
@@ -316,24 +321,7 @@ impl Google {
             }
             Self::Live(client) => client,
         };
-        let back = format!("{origin}{RETURN_PATH}");
-        // A code Google no longer honors was used already, or waited too long.
-        let tokens: Tokens = form(
-            TOKEN,
-            &[
-                ("client_id", client.id.as_str()),
-                ("client_secret", client.secret.as_str()),
-                ("code", code),
-                ("code_verifier", verifier),
-                ("grant_type", "authorization_code"),
-                ("redirect_uri", back.as_str()),
-            ],
-        )
-        .await
-        .map_err(|error| match error.code.as_str() {
-            "google_connection_broken" => Error::new("documents_connect_expired", 409),
-            _ => error,
-        })?;
+        let tokens = client.tokens(origin, code, verifier).await?;
         let access = tokens.access_token;
         let Some(refresh) = tokens.refresh_token else {
             return Err(Error::new("google_sign_in_failed", 502));
@@ -555,9 +543,6 @@ impl Refusal {
 
 pub(super) fn unreachable(_: reqwest::Error) -> Error {
     Error::new("google_unreachable", 502)
-}
-async fn form<T: for<'de> Deserialize<'de>>(url: &str, fields: &[(&str, &str)]) -> Result<T> {
-    send(HTTP.post(url).form(fields)).await
 }
 pub(super) async fn send<T: for<'de> Deserialize<'de>>(
     request: reqwest::RequestBuilder,
