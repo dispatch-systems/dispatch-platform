@@ -772,6 +772,58 @@ fn a_pending_or_failed_push_run_keeps_the_old_runtime() {
     }
 }
 #[test]
+fn a_passed_commit_installs_while_a_later_one_is_pending_or_failed() {
+    for failed in [false, true] {
+        let f = Fixture::new(Environment::Dev);
+        // Another merge lands on main, and its checks have yet to pass.
+        let later = git(
+            &f.root,
+            &[
+                "commit-tree",
+                &format!("{}^{{tree}}", f.new),
+                "-p",
+                &f.new,
+                "-m",
+                "later",
+            ],
+        );
+        git(&f.root, &["update-ref", "refs/remotes/origin/main", &later]);
+        let mut run = f.run();
+        run["id"] = json!(18);
+        run["head_sha"] = json!(later);
+        if failed {
+            run["conclusion"] = json!("failure");
+        } else {
+            run["status"] = json!("in_progress");
+            run["conclusion"] = Value::Null;
+        }
+        f.system
+            .reply(&runs_url(&later), vec![json!({"workflow_runs":[run]})]);
+        f.dev_download();
+        f.system
+            .reply(&f.run_url(), vec![json!({"workflow_runs":[f.run()]})]);
+        let u = f.updater();
+        u.run_locked().unwrap();
+        assert_eq!(git(&f.root, &["rev-parse", "HEAD"]), f.new);
+        assert_eq!(
+            artifact::verify(&u.active, Some(&f.new)).unwrap(),
+            f.new_manifest
+        );
+        // The next check has only the later commit to ask about, and waits on it.
+        let installed = f.system.actions();
+        u.run_locked().unwrap();
+        assert_eq!(f.system.actions(), installed);
+        assert_eq!(
+            io::read_json(&u.status_file).unwrap()["status"],
+            if failed {
+                "checks_failed"
+            } else {
+                "waiting_for_checks"
+            }
+        );
+    }
+}
+#[test]
 fn only_a_push_run_on_main_with_its_build_installs() {
     // A push to another branch is not main's: the commit waits.
     let f = Fixture::new(Environment::Dev);
