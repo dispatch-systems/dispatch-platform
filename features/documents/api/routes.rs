@@ -8,7 +8,7 @@ use crate::{
         drive::PICTURE_SIZES,
         files,
         google::{self, RETURN_PATH},
-        picker, query, team,
+        picker, team,
     },
 };
 use axum::{
@@ -43,8 +43,6 @@ pub fn routes() -> Vec<Route> {
         async_post("/api/dsp/documents/disconnect", CONNECTIONS, disconnect),
         async_get("/api/dsp/documents/folder", USE, folder),
         async_get("/api/dsp/documents/folder/read", USE, folder_read),
-        async_get("/api/dsp/documents/query", USE, query),
-        async_get("/api/dsp/documents/query/describe", USE, describe),
         async_post("/api/dsp/documents/new", USE, create),
         upload("/api/dsp/documents/upload", USE, UPLOAD_LIMIT, upload_file),
         async_get("/api/dsp/documents/items/{id}/download", USE, download),
@@ -386,21 +384,6 @@ async fn returned(state: Arc<State>, request: Request) -> Response {
     .into_response()
 }
 
-fn query_scope(input: &Input) -> Result<crate::api::types::DocumentsQueryScope> {
-    use crate::api::types::{DocumentsFilter, DocumentsQueryScope};
-    let id = optional(&input.query, "id", |q, key| {
-        file_id(v::text(q, key, 1, 128)?)
-    })?;
-    let q = optional(&input.query, "q", |q, key| {
-        Ok(v::text(q, key, 0, 100)?.to_owned())
-    })?;
-    let filter = optional(&input.query, "filter", |q, key| {
-        DocumentsFilter::parse(v::text(q, key, 1, 10)?)
-            .ok_or_else(|| dispatch_core::Error::new("invalid_input", 400))
-    })?
-    .unwrap_or(DocumentsFilter::All);
-    Ok(DocumentsQueryScope { id, q, filter })
-}
 fn revision(q: &serde_json::Value, key: &str) -> Result<String> {
     let value = v::text(q, key, 64, 64)?;
     ensure(
@@ -411,65 +394,4 @@ fn revision(q: &serde_json::Value, key: &str) -> Result<String> {
         400,
     )?;
     Ok(value.to_owned())
-}
-fn page_number(q: &serde_json::Value, key: &str) -> Result<u32> {
-    let text = v::text(q, key, 1, 10)?;
-    ensure(
-        text.bytes().all(|b| b.is_ascii_digit()),
-        "invalid_input",
-        400,
-    )?;
-    text.parse()
-        .map_err(|_| dispatch_core::Error::new("invalid_input", 400))
-}
-async fn query(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
-    let asked = input.clone();
-    let c = state.read(move |db| access.authorize(db, &asked)).await?;
-    v::fields(
-        &input.query,
-        &[
-            "id",
-            "q",
-            "filter",
-            "page",
-            "size",
-            "snapshot",
-            "manifestSince",
-            "since",
-        ],
-    )?;
-    let scope = query_scope(&input)?;
-    let page = optional(&input.query, "page", page_number)?.unwrap_or(0);
-    let size = optional(&input.query, "size", page_number)?.unwrap_or(100);
-    ensure((1..=100).contains(&size), "invalid_input", 400)?;
-    let snapshot = optional(&input.query, "snapshot", revision)?;
-    let manifest_since = optional(&input.query, "manifestSince", revision)?;
-    let since = optional(&input.query, "since", revision)?;
-    let request = query::QueryRequest {
-        scope,
-        page,
-        size,
-        snapshot,
-        manifest_since,
-        since,
-    };
-    Reply::of(&query::query(&state, c, access, request).await?)
-}
-async fn describe(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
-    let asked = input.clone();
-    let c = state.read(move |db| access.authorize(db, &asked)).await?;
-    v::fields(&input.query, &["id", "q", "filter", "snapshot", "ids"])?;
-    let scope = query_scope(&input)?;
-    let snapshot = revision(&input.query, "snapshot")?;
-    let ids = v::text(&input.query, "ids", 1, 12_899)?
-        .split(',')
-        .map(file_id)
-        .collect::<Result<Vec<_>>>()?;
-    let unique: std::collections::HashSet<&String> = ids.iter().collect();
-    ensure(
-        ids.len() <= 100 && unique.len() == ids.len(),
-        "invalid_input",
-        400,
-    )?;
-    Reply::of(&query::describe(&state, c, access, scope, snapshot, ids).await?)
 }
