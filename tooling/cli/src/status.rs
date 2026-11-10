@@ -3,6 +3,7 @@
 //! and whether what it shows was approved.
 use crate::{
     Result, Runner,
+    change::Repository,
     merge::{self, Check, short},
     preview::{self, Approval},
     review::{self, Progress},
@@ -70,20 +71,27 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
             Approval::Changed(paths) => format!("changed since approved: {}", paths.join(", ")),
         }
     );
-    let pull = merge::pull(root, &branch, runner)?;
+    let repository = Repository::of(root, runner)?;
+    let pull = merge::pull(root, repository, &branch, runner)?;
     match &pull {
         None => println!("PR: none open"),
         Some(pull) => println!(
-            "PR: #{} {}, {}: {}",
+            "PR: #{} {}{}",
             pull.number,
             pull.url,
-            merge::REQUIRED,
             match (&pull.required, pull.head == head) {
-                (_, false) => "not on this commit yet",
-                (Check::Passed, true) => "passed",
-                (Check::Running, true) => "running",
-                (Check::Failed, true) => "failed",
-                (Check::Missing, true) => "not started",
+                (_, false) => ", not on this commit yet".to_owned(),
+                (None, true) => String::new(),
+                (Some(check), true) => format!(
+                    ", {}: {}",
+                    merge::REQUIRED,
+                    match check {
+                        Check::Passed => "passed",
+                        Check::Running => "running",
+                        Check::Failed => "failed",
+                        Check::Missing => "not started",
+                    }
+                ),
             }
         ),
     }
@@ -100,20 +108,29 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
             Progress::Recorded { pass, .. } => format!("pass {pass} recorded; it asks for another"),
         }
     );
+    // Nothing checks the agent docs before their PR, nor on it.
+    let checked = repository == Repository::Platform;
     let next = match (&pull, dirty, pushed) {
-        (_, true, _) => "Commit it, then `dispatchdev check`".to_owned(),
+        (_, true, _) if checked => "Commit it, then `dispatchdev check`".to_owned(),
+        (_, true, _) => "Commit it, then `dispatchdev pr`".to_owned(),
         (None, _, _) if matches!(approval, Approval::Missing | Approval::Changed(_)) => {
             "Show the user what it looks like with `dispatchdev preview`; once they approve, \
              `dispatchdev preview approve`"
                 .to_owned()
         }
-        (None, _, _) | (_, _, false) => "`dispatchdev check`, then `dispatchdev pr`".to_owned(),
+        (None, _, _) | (_, _, false) if checked => {
+            "`dispatchdev check`, then `dispatchdev pr`".to_owned()
+        }
+        (None, _, _) | (_, _, false) => "`dispatchdev pr`".to_owned(),
         (Some(pull), _, true) => match merge::unreviewed(root, &pull.body, &head, runner)? {
             Some(why) => why,
             None => match (&pull.required, pull.head == head) {
-                (Check::Failed, true) => "`dispatchdev ci` says why its checks failed".to_owned(),
-                (Check::Passed, true) => "`dispatchdev merge`".to_owned(),
-                _ => format!("Its checks are running: {}/checks", pull.url),
+                (Some(Check::Failed), true) => {
+                    "`dispatchdev ci` says why its checks failed".to_owned()
+                }
+                (None | Some(Check::Passed), true) => "`dispatchdev merge`".to_owned(),
+                (None, false) => "GitHub's PR head isn't this commit yet: wait a moment".to_owned(),
+                (Some(_), _) => format!("Its checks are running: {}/checks", pull.url),
             },
         },
     };

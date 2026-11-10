@@ -1,6 +1,12 @@
 use super::*;
 use crate::Native;
-use std::process::Command;
+use std::{
+    process::Command,
+    sync::{
+        Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 use tier::Changed;
 
 #[test]
@@ -276,6 +282,62 @@ struct Fixture {
     _temp: tempfile::TempDir,
     root: PathBuf,
     scratch: PathBuf,
+    github: Github,
+}
+/// GitHub with the checkout's PR open, as the agent docs' origin, whose PRs nothing checks:
+/// `gh` answers from what it was last told, and every other command runs as it is.
+#[derive(Default)]
+struct Github {
+    /// The PR's title and body, once `gh pr edit` wrote them.
+    edited: Mutex<Option<(String, String)>>,
+    /// Every `gh` command asked of it.
+    asked: Mutex<Vec<Vec<String>>>,
+    down: AtomicBool,
+}
+impl Github {
+    const PULL: &str = "https://github.com/dispatch-systems/dispatch-agents/pull/7";
+    /// The last `gh` command asked of it.
+    fn last(&self) -> Vec<String> {
+        self.asked.lock().unwrap().last().cloned().unwrap()
+    }
+}
+impl Runner for Github {
+    fn command(&self, args: &[&str], cwd: Option<&Path>, timeout: u64) -> Result<Vec<u8>> {
+        if args == ["git", "remote", "get-url", "origin"] {
+            return Ok(format!("https://github.com/{}.git\n", Repository::AgentDocs.name()).into());
+        }
+        if args.first() != Some(&"gh") {
+            return Native.command(args, cwd, timeout);
+        }
+        let asked: Vec<String> = args.iter().map(|arg| (*arg).to_owned()).collect();
+        let option = |name: &str| {
+            let at = asked.iter().position(|arg| arg == name)?;
+            asked.get(at + 1).cloned()
+        };
+        self.asked.lock().unwrap().push(asked.clone());
+        require(!self.down.load(Ordering::Relaxed), "GitHub is down.")?;
+        let mut edited = self.edited.lock().unwrap();
+        Ok(match (args[2], option("--jq")) {
+            ("edit", _) => {
+                *edited = Some((option("--title").unwrap(), option("--body").unwrap()));
+                vec![]
+            }
+            ("list", Some(_)) => format!("7 {}\n", Self::PULL).into(),
+            ("list", None) => {
+                let (title, body) = edited.clone().unwrap_or_default();
+                let head = Native.command(&["git", "rev-parse", "@{upstream}"], cwd, 30)?;
+                serde_json::to_vec(&serde_json::json!([{
+                    "number": 7,
+                    "url": Self::PULL,
+                    "title": title,
+                    "body": body,
+                    "headRefOid": String::from_utf8(head)?.trim(),
+                    "statusCheckRollup": [],
+                }]))?
+            }
+            _ => vec![],
+        })
+    }
 }
 impl Drop for Fixture {
     fn drop(&mut self) {
@@ -332,6 +394,7 @@ impl Fixture {
             _temp: temp,
             root,
             scratch,
+            github: Github::default(),
         };
         write(
             &fixture.scratch,
@@ -479,7 +542,7 @@ fn each_pass_is_pinned_to_the_pushed_head_and_later_ones_read_only_what_changed(
         model: "gpt-6.1-sol",
         security: Some("gpt-daybreak-blue-latest"),
     };
-    let recorded = || record(root, 1, &models, &Native);
+    let recorded = || record(root, 1, &models, &fixture.github);
     assert!(error(recorded()).contains("No answer to"));
     let answers = fixture.dir(1).join("answers.md");
     let text = fs::read_to_string(&answers)
@@ -494,7 +557,7 @@ fn each_pass_is_pinned_to_the_pushed_head_and_later_ones_read_only_what_changed(
                 security: None,
                 ..models
             },
-            &Native
+            &fixture.github
         ))
         .contains("--security-model")
     );
@@ -505,8 +568,12 @@ fn each_pass_is_pinned_to_the_pushed_head_and_later_ones_read_only_what_changed(
         "fn week(dsp: Dsp) { page(dsp) }\n",
     );
     commit(root, "keep the DSP");
-    assert!(error(recorded()).contains("Push it first"));
-    git(root, &["push", "-q", "origin", "keep-week"]);
+    // Recording publishes the pass, the fix pushed and the PR's body with its Review line, and
+    // keeps no pass it couldn't publish.
+    fixture.github.down.store(true, Ordering::Relaxed);
+    assert!(error(recorded()).contains("GitHub is down"));
+    assert!(!fixture.dir(1).join("record.json").exists());
+    fixture.github.down.store(false, Ordering::Relaxed);
     recorded().unwrap();
     let body = fs::read_to_string(fixture.scratch.join("pr-body.md")).unwrap();
     assert!(
@@ -516,6 +583,16 @@ fn each_pass_is_pinned_to_the_pushed_head_and_later_ones_read_only_what_changed(
         ),
         "{body}"
     );
+    let pushed = Checkout {
+        root,
+        runner: &Native,
+    }
+    .git(&["rev-parse", "origin/keep-week"])
+    .unwrap();
+    assert_eq!(pushed, fixture.head());
+    let edit = fixture.github.last();
+    assert_eq!(edit[..3], ["gh", "pr", "edit"], "{edit:?}");
+    assert_eq!(edit.last().unwrap(), pr::titled(&body).1, "{edit:?}");
 
     // A later pass of a sensitive change has no security review beside it when nothing
     // sensitive changed since and the security review asked for no fix.
@@ -543,12 +620,12 @@ fn each_pass_is_pinned_to_the_pushed_head_and_later_ones_read_only_what_changed(
     write(&fixture.dir(2), "findings.md", "No findings.\n");
     assert!(error(fixture.prepare(2)).contains("reviewed already"));
     take(root, 2, &Native).unwrap();
-    assert!(error(record(root, 2, &models, &Native)).contains("drop --security-model"));
+    assert!(error(record(root, 2, &models, &fixture.github)).contains("drop --security-model"));
     let alone = Models {
         security: None,
         ..models
     };
-    record(root, 2, &alone, &Native).unwrap();
+    record(root, 2, &alone, &fixture.github).unwrap();
 
     // The review stays done through merging main in as git does unaided, but not through a merge
     // edited by hand or a commit after it.
@@ -671,7 +748,7 @@ fn commits_no_answer_accounts_for_get_the_review_their_paths_need() {
     );
     commit(root, "members alone");
     push();
-    record(root, 1, &both, &Native).unwrap();
+    record(root, 1, &both, &fixture.github).unwrap();
 
     // The security review reads the fix it asked for, on a path that isn't sensitive itself.
     fixture.prepare(2).unwrap();
@@ -689,7 +766,7 @@ fn commits_no_answer_accounts_for_get_the_review_their_paths_need() {
     commit(root, "test the week");
     take(root, 2, &Native).unwrap();
     push();
-    record(root, 2, &both, &Native).unwrap();
+    record(root, 2, &both, &fixture.github).unwrap();
     assert!(unreviewed().unwrap().contains("Pass 2 asks for another"));
     fixture.prepare(3).unwrap();
     assert!(!pass(3).security);
@@ -712,7 +789,7 @@ fn commits_no_answer_accounts_for_get_the_review_their_paths_need() {
     write(root, "features/dvic/README.md", "# DVIC\n");
     commit(root, "say what it does");
     push();
-    record(root, 3, &alone, &Native).unwrap();
+    record(root, 3, &alone, &fixture.github).unwrap();
     assert_eq!(unreviewed(), None);
     write(root, "features/dvic/README.md", "# DVIC\n\nIts week.\n");
     commit(root, "say more");
@@ -744,7 +821,7 @@ fn a_merge_of_more_than_two_parents_gets_a_pass_of_the_whole_change() {
         model: "gpt-6.1-sol",
         security: None,
     };
-    record(root, 1, &alone, &Native).unwrap();
+    record(root, 1, &alone, &fixture.github).unwrap();
 
     // Git shows nothing of what such a merge holds of its own, here a fix beside `main` and a
     // branch of notes: nothing can be told from the commits, nor from what differs since the
@@ -836,7 +913,7 @@ fn a_change_of_documentation_and_tests_alone_needs_no_review_unless_asked() {
     let reviewed: Pass = read_json(&fixture.dir(1).join("pass.json"))
         .unwrap()
         .unwrap();
-    record(root, 1, &models, &Native).unwrap();
+    record(root, 1, &models, &fixture.github).unwrap();
     fixture.prepare(2).unwrap();
     let pass: Pass = read_json(&fixture.dir(2).join("pass.json"))
         .unwrap()
@@ -920,7 +997,7 @@ fn a_change_to_what_a_page_shows_is_held_to_what_the_user_approved() {
         model: "gpt-6.1-sol",
         security: None,
     };
-    record(root, 1, &models, &Native).unwrap();
+    record(root, 1, &models, &fixture.github).unwrap();
     assert_eq!(
         approval(),
         Approval::Changed(vec!["features/dvic/frontend/Week.tsx".to_owned()])
@@ -951,7 +1028,7 @@ fn a_change_to_what_a_page_shows_is_held_to_what_the_user_approved() {
     let later = unreviewed(body).unwrap();
     assert!(later.contains("before the latest commits"), "{later}");
     // Recording the pass again doesn't vouch for what came after it.
-    let again = error(record(root, 1, &models, &Native));
+    let again = error(record(root, 1, &models, &fixture.github));
     assert!(again.contains("was recorded at"), "{again}");
 }
 
@@ -981,5 +1058,54 @@ fn a_checkout_without_review_instructions_is_reviewed_by_the_clis_own() {
     assert!(
         brief.contains(&source.join("tooling/review/rules.md").display().to_string()),
         "{brief}"
+    );
+}
+
+#[test]
+fn the_agent_docs_pr_is_published_reviewed_and_merged_with_no_check() {
+    let fixture = Fixture::new();
+    let (root, github) = (&fixture.root, &fixture.github);
+    write(
+        root,
+        "skills/dispatch-development/SKILL.md",
+        "Review by tier.\n",
+    );
+    commit(root, "a skill");
+    // Nothing checks the docs, here or on GitHub: the PR is pushed as it is committed.
+    let body = fixture.scratch.join("pr-body.md");
+    let written = fs::read_to_string(&body).unwrap();
+    fs::write(&body, written.replace("Not reviewed: yet", pr::PENDING)).unwrap();
+    let published = pr::publish(root, false, &Environment::default(), github)
+        .unwrap()
+        .unwrap();
+    assert_eq!(published.url, Github::PULL);
+    let repository = ["--repo", Repository::AgentDocs.name()];
+    assert_eq!(github.last()[3..6], ["7", repository[0], repository[1]]);
+    crate::status::run(root, github).unwrap();
+    let waits = error(crate::merge::run(root, github));
+    assert!(waits.contains("It isn't reviewed"), "{waits}");
+
+    fixture.prepare(1).unwrap();
+    write(&fixture.dir(1), "findings.md", "No findings.\n");
+    take(root, 1, &Native).unwrap();
+    let models = Models {
+        model: "gpt-6.1-sol",
+        security: None,
+    };
+    record(root, 1, &models, github).unwrap();
+    crate::merge::run(root, github).unwrap();
+    assert_eq!(
+        github.last(),
+        [
+            "gh",
+            "pr",
+            "merge",
+            "7",
+            repository[0],
+            repository[1],
+            "--squash",
+            "--match-head-commit",
+            &fixture.head(),
+        ]
     );
 }

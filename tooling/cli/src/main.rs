@@ -95,8 +95,9 @@ const COMMANDS: &[Spec] = &[
     spec(
         "start",
         &["start <name> [--from <ref>]"],
-        "A worktree for the change beside the clone, in worktrees/<name>, on a branch of its \
-         name off origin/main or --from, with its packages installed and its scratch folder, \
+        "A worktree for the change beside the clone, in worktrees/<name>, or in \
+         <clone>-worktrees/<name> for the agent docs' clone, on a branch of its name off \
+         origin/main or --from, with its packages installed and its scratch folder, \
          /tmp/dispatch-<name>, made for its decisions and its PR's body.",
     )
     .options(&["--from"])
@@ -107,7 +108,8 @@ const COMMANDS: &[Spec] = &[
         "Check the PR's title and body against the sections its type needs: the scratch \
          folder's pr-body.md, whose first line is # <title>. Once they follow them and check \
          passes on the committed tree, run here unless it passed there already, push the \
-         branch and open its PR, or update the one open; --check stops before pushing. --skeleton --title instead starts pr-body.md with the \
+         branch and open its PR, or update the one open; --check stops before pushing. The \
+         agent docs' PR needs no check. --skeleton --title instead starts pr-body.md with the \
          title and those sections, unless it's there already.",
     )
     .flags(&["--skeleton", "--check"])
@@ -140,9 +142,9 @@ const COMMANDS: &[Spec] = &[
         "merge",
         &["merge"],
         "Squash-merge the branch's PR once nothing stops it: its required check passed on the \
-         pushed head, its title and body on GitHub are pr-body.md's, and its review is done at \
-         that head, or its Review line says why it had none. Then what to tell the user: the \
-         review, and what it left for later.",
+         pushed head, which the agent docs have none of, its title and body on GitHub are \
+         pr-body.md's, and its review is done at that head, or its Review line says why it had \
+         none. Then what to tell the user: the review, and what it left for later.",
     ),
     spec(
         "ci",
