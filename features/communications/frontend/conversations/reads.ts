@@ -1,5 +1,10 @@
 import type { Conversation, ConversationMessages, Message, Workday } from '../../api/index.js';
-import { getConversation } from '../../api/client.js';
+import type { ConversationWindow } from '../../api/index.js';
+import {
+  getConversation,
+  getConversationWindow,
+  type ConversationWindowRequest,
+} from '../../api/client.js';
 import { ApiError } from '../../../../core/shell/frontend/runtime/api.js';
 import { canPrefetch } from '../../../../core/shell/frontend/runtime/prefetch.js';
 import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
@@ -20,6 +25,8 @@ export type Opened = Omit<ConversationMessages, 'messages'> & {
   messages: Message[];
   lastRead: readonly Message[];
   readAt: number;
+  window?: ConversationWindow;
+  provisional?: boolean;
 };
 /** A conversation as the page holds it: as read, why it couldn't be, or that it's no longer there;
  * and whether a read of older ones is under way, or the latest failed. */
@@ -47,18 +54,34 @@ const nothing: Held = {
   olderFailed: false,
 };
 
+export type ConversationViewport = {
+  anchor?: string;
+  visible: readonly string[];
+  latest: boolean;
+  blocked: boolean;
+  serial?: number;
+};
+export type WriteVersion = { entry: object | undefined; turn: number };
+type Move = 'older' | 'newer' | 'latest';
+type ReadOwner = { controller: AbortController; move?: Move };
+
 type Entry = {
+  viewport?: () => ConversationViewport;
+  failed?: Move;
+  current?: ReadOwner;
+  pendingMove?: Move;
   held: Held;
   /** The latest update the page had as its latest read was asked: one since that names it, or
    * every one, changed it. */
   asked: number;
   /** Its reads in turn, and the latest whose answer shows. */
   turns: { asked: number; shown: number };
-  /** Whether a read of its latest is under way. */
-  reading: boolean;
+  /** Dispatch epochs distinguish reads issued before a write from later authoritative reads. */
+  epoch: number;
+  observed: Map<string, { turn: number; message: Message }>;
   /** Each message the page sent, by the read asked last as it showed: one asked before then may
    * not hold it yet. */
-  sent: Map<string, { turn: number; message: Message }>;
+  sent: Map<string, { turn: number; started?: number; message: Message }>;
   requests: Set<AbortController>;
   olderRead?: AbortController;
 };
@@ -69,14 +92,32 @@ function withSends(
   entry: Entry,
   window: { messages: Message[]; more: boolean },
   read: readonly Message[] = [],
+  bounded: ConversationWindow | null | undefined = entry.held.opened?.window,
+  observed?: number,
 ) {
   // A returned row is authoritative, as fresh() has always treated it. Keep its version in
   // the separate record too, so an old send response cannot replay waiting over failed/sent.
   for (const message of read) {
     const pending = entry.sent.get(message.id);
-    if (pending) entry.sent.set(message.id, { ...pending, message });
+    if (
+      pending &&
+      (pending.started === undefined || (observed !== undefined && observed > pending.started))
+    )
+      entry.sent.set(message.id, { ...pending, message });
   }
   if (!entry.sent.size) return window.messages;
+  if (bounded) {
+    const ids = new Set(window.messages.map((message) => message.id));
+    const last = bounded.messages.at(-1);
+    const sent = [...entry.sent.values()]
+      .map(({ message }) => message)
+      .filter(
+        (message) =>
+          ids.has(message.id) || (!bounded.range.hasAfter && (!last || byTs(message, last) > 0)),
+      );
+    // Pending receipts are never range endpoints and never bridge a historical gap.
+    return joined(window.messages, sent);
+  }
   const first = window.more ? window.messages[0] : undefined;
   const sent = [...entry.sent.values()]
     .map(({ message }) => message)
@@ -94,6 +135,38 @@ const withDays = (kept: readonly Workday[], read: readonly Workday[]) => [
 ];
 
 export class ConversationReads {
+  constructor(private readonly timeZone: string) {}
+
+  /** The mounted thread supplies current geometry, including interactions begun during a read. */
+  viewport(id: string, read: () => ConversationViewport) {
+    if (this.disposed) return () => undefined;
+    const entry = this.touch(id);
+    entry.viewport = read;
+    return () => {
+      if (entry.viewport === read) entry.viewport = undefined;
+    };
+  }
+  resume(id: string) {
+    const entry = this.entries.get(id);
+    if (entry?.held.error && !entry.pendingMove) return;
+    if (!this.watchers.has(id)) return;
+    if (entry?.pendingMove === 'older' && !entry.held.opened?.window) void this.readOlder(id);
+    else if (entry?.pendingMove || this.stale(id))
+      void this.read(id, undefined, entry?.pendingMove);
+  }
+  /** Captured before a write, so a delayed receipt cannot overwrite a newer server row. */
+  version(id: string): WriteVersion {
+    const entry = this.entries.get(id);
+    return { entry, turn: entry?.epoch ?? 0 };
+  }
+  readNewer(id: string) {
+    return this.read(id, undefined, this.entries.get(id)?.failed ?? 'newer');
+  }
+  readLatest(id: string) {
+    return this.read(id, undefined, 'latest');
+  }
+
+  private disposed = false;
   private readonly entries = new Map<string, Entry>();
   private readonly watchers = new Map<string, Set<() => void>>();
   /** The latest update the page has had, and when each conversation, or every one, last changed. */
@@ -119,7 +192,16 @@ export class ConversationReads {
       if (!watching.size) {
         this.watchers.delete(id);
         const entry = this.entries.get(id);
-        entry?.olderRead?.abort();
+        if (entry) {
+          // Detach owners before abort: their obsolete finalizers cannot clear a later owner.
+          entry.current = undefined;
+          entry.olderRead = undefined;
+          for (const request of entry.requests) request.abort();
+          if (entry.requests.size) entry.asked = -1;
+          entry.pendingMove = undefined;
+          entry.viewport = undefined;
+          entry.held = { ...entry.held, older: false };
+        }
         this.trim(id);
       }
     };
@@ -166,18 +248,35 @@ export class ConversationReads {
   async readOlder(id: string) {
     const entry = this.entries.get(id);
     const shown = entry?.held.opened;
+    if (shown?.window) return this.read(id, undefined, entry?.failed ?? 'older');
     if (!entry || !shown?.more || entry.held.older || !shown.messages[0]) return;
-    this.hold(id, { ...entry.held, older: true, olderFailed: false });
+    if (entry.viewport?.().blocked) {
+      entry.pendingMove = 'older';
+      return;
+    }
+    entry.pendingMove = undefined;
     // A read of the latest shown before the page comes may have filed some of its messages in
     // another conversation: the page is then from before, and is read again while it's in view.
     const since = entry.turns.shown;
+    const observed = ++entry.epoch;
     const controller = new AbortController();
     entry.requests.add(controller);
     entry.olderRead = controller;
+    this.hold(id, { ...entry.held, older: true, olderFailed: false });
+    const owns = () =>
+      this.entries.get(id) === entry &&
+      entry.olderRead === controller &&
+      !controller.signal.aborted;
+    let succeeded = false;
     try {
       const page = await getConversation(id, shown.messages[0], undefined, controller.signal);
       const now = this.entries.get(id) === entry ? entry.held.opened : undefined;
-      if (now && !controller.signal.aborted && entry.turns.shown === since) {
+      if (now && owns() && entry.turns.shown === since) {
+        if (entry.viewport?.().blocked) {
+          entry.pendingMove = 'older';
+          return;
+        }
+        this.observe(entry, page.messages, observed);
         const opened = {
           ...now,
           messages: joined(now.messages, page.messages),
@@ -186,28 +285,40 @@ export class ConversationReads {
         };
         this.hold(id, {
           ...this.held(id),
-          opened: { ...opened, messages: withSends(entry, opened, page.messages) },
+          opened: { ...opened, messages: withSends(entry, opened, page.messages, null, observed) },
         });
+        succeeded = true;
       }
     } catch (cause) {
       // Read again only as asked again, never at once.
-      if (this.entries.get(id) === entry && !controller.signal.aborted)
-        this.hold(id, { ...entry.held, error: messageOf(cause), olderFailed: true });
+      if (owns()) this.hold(id, { ...entry.held, error: messageOf(cause), olderFailed: true });
     } finally {
       entry.requests.delete(controller);
-      if (entry.olderRead === controller) entry.olderRead = undefined;
-      if (this.entries.get(id) === entry) {
-        this.hold(id, { ...this.held(id), older: false });
+      const owned = entry.olderRead === controller;
+      if (owned) entry.olderRead = undefined;
+      if (this.entries.get(id) === entry && owned) {
+        this.busy(id, entry);
         this.trim(id);
+        if (succeeded && this.watchers.has(id) && this.stale(id)) void this.read(id);
       }
     }
   }
   /** Shows the conversation as one of the page's own writes left it, and a message it sent. */
-  show(conversation: Conversation, message?: Message) {
+  show(conversation: Conversation, message?: Message, observed?: WriteVersion) {
     const entry = this.entries.get(conversation.id);
     const now = entry?.held.opened;
-    if (!entry || !now) return;
-    if (message) entry.sent.set(message.id, { turn: entry.turns.asked, message });
+    if (!entry || !now || (observed && observed.entry !== entry)) return;
+    if (message) {
+      const authoritative = entry.observed.get(message.id);
+      entry.sent.set(message.id, {
+        turn: entry.turns.asked,
+        started: observed?.turn,
+        message:
+          observed && authoritative && authoritative.turn > observed.turn
+            ? authoritative.message
+            : message,
+      });
+    }
     this.hold(conversation.id, {
       ...entry.held,
       opened: {
@@ -216,6 +327,11 @@ export class ConversationReads {
         messages: message ? withSends(entry, now) : now.messages,
       },
     });
+    // A snapshot issued after acknowledgement settles receipt protection, even off-window retries.
+    if (message && now.window) {
+      entry.asked = -1;
+      if (this.watchers.has(conversation.id)) void this.read(conversation.id);
+    }
   }
 
   /** Whether the conversation `id` needs reading: not held, or changed by an update since its
@@ -223,7 +339,7 @@ export class ConversationReads {
   private stale(id: string) {
     const entry = this.entries.get(id);
     if (!entry) return true;
-    if (entry.reading) return false;
+    if (entry.current) return false;
     if (!entry.held.opened) return true;
     return entry.asked < Math.max(this.everyAt, this.changedAt.get(id) ?? 0);
   }
@@ -243,63 +359,239 @@ export class ConversationReads {
       });
     }
   }
-  private async read(id: string, priority?: 'low') {
+  private origins(window: ConversationWindow): boolean {
+    const origins = window.origins;
+    return Boolean(
+      origins?.ready &&
+      origins.version === 1 &&
+      origins.algorithm.startsWith('conversation-origins-1:') &&
+      origins.timeZone === this.timeZone &&
+      (!window.messages.length || origins.selected) &&
+      (!window.latest.length || origins.latest),
+    );
+  }
+  /** Paging busy belongs to the currently attached owners, never to a request's finalizer. */
+  private busy(id: string, entry: Entry) {
+    const older = Boolean(entry.olderRead || entry.current?.move);
+    if (entry.held.older !== older) this.hold(id, { ...entry.held, older });
+  }
+  private cancelOlder(entry: Entry) {
+    const controller = entry.olderRead;
+    entry.olderRead = undefined;
+    controller?.abort();
+  }
+  private observe(entry: Entry, rows: readonly Message[], turn: number) {
+    for (const message of rows) entry.observed.set(message.id, { turn, message });
+  }
+  private async read(id: string, priority?: 'low', move?: Move) {
+    if (this.disposed) return;
     const entry = this.touch(id);
-    const turn = ++entry.turns.asked;
-    entry.reading = true;
-    entry.asked = this.at;
-    let latest: ConversationMessages;
-    const controller = new AbortController();
-    entry.requests.add(controller);
-    try {
-      latest = await getConversation(id, undefined, priority, controller.signal);
-    } catch (cause) {
-      if (this.entries.get(id) !== entry || controller.signal.aborted) return;
-      entry.reading = false;
-      // Not read as it is: read again as it opens or the next update comes, never at once.
+    const before = entry.held.opened;
+    const view = entry.viewport?.();
+    if (view?.blocked) {
       entry.asked = -1;
-      if (cause instanceof ApiError && cause.status === 404)
-        this.hold(id, { ...nothing, gone: true });
-      else this.hold(id, { ...entry.held, error: messageOf(cause) });
+      if (move) entry.pendingMove = move;
       return;
+    }
+    if (move && move !== 'latest' && (!before?.window || before.provisional)) return;
+    if (move === 'older' && !before?.window?.range.hasBefore) return;
+    if (move === 'newer' && !before?.window?.range.hasAfter) return;
+    if (entry.current && !move) return;
+    entry.pendingMove = undefined;
+    const rows = before?.window?.messages ?? before?.messages ?? [];
+    const anchor =
+      rows.find((row) => row.id === view?.anchor) ?? (move === 'newer' ? rows.at(-1) : rows[0]);
+    const following =
+      move === 'latest' || (!move && (!before || before.provisional || (view?.latest ?? true)));
+    const index = anchor ? rows.findIndex((row) => row.id === anchor.id) : 0;
+    const visible = rows.filter((row) => view?.visible.includes(row.id));
+    const lastVisible = visible.at(-1);
+    const span = lastVisible ? Math.max(0, rows.indexOf(lastVisible) - index) : 0;
+    // A legacy index is not a position within a 150-row selection. Leave room for its
+    // visible suffix; a viewport spanning more than the contract stays on the legacy path.
+    const placement = !before?.window ? Math.min(index, 50) : index;
+    const leading = Math.max(
+      0,
+      Math.min(
+        149 - Math.min(149, span),
+        placement + (move === 'older' ? 50 : move === 'newer' ? -50 : 0),
+      ),
+    );
+    const intent: ConversationWindowRequest =
+      !following && anchor ? { anchor: anchor.ts, leading, origins: 1 } : { origins: 1 };
+    const turn = ++entry.turns.asked;
+    const observed = ++entry.epoch;
+    const controller = new AbortController();
+    const owner: ReadOwner = { controller, move };
+    const previous = entry.current;
+    entry.current = owner;
+    previous?.controller.abort();
+    this.cancelOlder(entry);
+    entry.asked = this.at;
+    entry.requests.add(controller);
+    this.hold(id, {
+      ...entry.held,
+      older: Boolean(move),
+      olderFailed: move ? false : entry.held.olderFailed,
+    });
+    const owns = () =>
+      this.entries.get(id) === entry && entry.current === owner && !controller.signal.aborted;
+    let succeeded = false;
+    // Called after every transport await, before another request or publication.
+    const available = () => {
+      if (!owns()) return false;
+      const current = entry.viewport?.();
+      if (current?.blocked) {
+        entry.asked = -1;
+        if (move) entry.pendingMove = move;
+        return false;
+      }
+      if (move === 'latest' && current?.serial !== view?.serial) {
+        entry.asked = -1;
+        succeeded = true;
+        return false;
+      }
+      return true;
+    };
+    try {
+      const window = await getConversationWindow(id, intent, priority, controller.signal);
+      if (!available()) return;
+      const currentView = entry.viewport?.();
+      const moved =
+        currentView?.anchor !== view?.anchor ||
+        currentView?.serial !== view?.serial ||
+        (!move && following && currentView && !currentView.latest);
+      const currentRows = entry.held.opened?.messages ?? [];
+      const currentVisible = currentRows.filter((row) => currentView?.visible.includes(row.id));
+      const firstVisible = currentVisible[0];
+      const finalVisible = currentVisible.at(-1);
+      const first = window.messages[0];
+      const last = window.messages.at(-1);
+      // Test positions, not presence: authoritative removal must still be allowed to publish.
+      const clipped = Boolean(
+        first &&
+        last &&
+        ((window.range.hasBefore && firstVisible && byTs(firstVisible, first) < 0) ||
+          (window.range.hasAfter && finalVisible && byTs(finalVisible, last) > 0)),
+      );
+      if (moved && clipped) {
+        entry.asked = -1;
+        succeeded = true; // Reacquire once around the user's current viewport.
+        return;
+      }
+      // Following latest intentionally leaves the old viewport; preserved spans must fit.
+      if (this.origins(window) && (following || (span < 150 && !clipped))) {
+        // Selected rows, origins, days and independent latest evidence have one publication owner.
+        this.cancelOlder(entry);
+        for (const [key, sent] of entry.sent) if (sent.turn < turn) entry.sent.delete(key);
+        this.observe(entry, [...window.messages, ...window.latest], observed);
+        entry.turns.shown = turn;
+        const opened: Opened = {
+          ...window,
+          id,
+          window,
+          messages: window.messages,
+          more: window.range.hasBefore,
+          lastRead: window.latest,
+          readAt: performance.now(),
+        };
+        this.hold(id, {
+          ...entry.held,
+          older: Boolean(move),
+          error: '',
+          olderFailed: move ? false : entry.held.olderFailed,
+          opened: {
+            ...opened,
+            messages: withSends(
+              entry,
+              opened,
+              [...window.messages, ...window.latest],
+              window,
+              observed,
+            ),
+          },
+        });
+      } else {
+        // Capability fallback retains the legacy consumer. Rebuild ready history through the
+        // CURRENT viewport; a scroll or a completed older page during these awaits belongs to it.
+        let latest: ConversationMessages =
+          before?.window || !following
+            ? await getConversation(id, undefined, priority, controller.signal)
+            : { ...window, more: window.range.hasBefore };
+        if (!available()) return;
+        const lastRead = latest.messages;
+        while (latest.more && latest.messages[0]) {
+          const current = entry.held.opened;
+          const viewport = entry.viewport?.();
+          const target = current?.messages.find((row) => row.id === viewport?.anchor) ?? anchor;
+          // Existing eligible legacy history is merged below; it needs no second traversal.
+          if (!current?.window || !target || byTs(latest.messages[0], target) <= 0) break;
+          const first = latest.messages[0];
+          const page = await getConversation(id, first, priority, controller.signal);
+          if (!available()) return;
+          if (!page.messages.length || byTs(page.messages[0]!, first) >= 0) break;
+          latest = {
+            ...latest,
+            messages: joined(latest.messages, page.messages),
+            more: page.more,
+            workdays: withDays(latest.workdays, page.workdays),
+          };
+        }
+        if (!available()) return;
+        // No await between this current snapshot, its viewport validation and publication.
+        const current = entry.held.opened;
+        const kept = current?.window ? undefined : current;
+        this.cancelOlder(entry);
+        for (const [key, sent] of entry.sent) if (sent.turn < turn) entry.sent.delete(key);
+        this.observe(entry, latest.messages, observed);
+        entry.turns.shown = turn;
+        const opened: Opened = {
+          ...latest,
+          id,
+          lastRead,
+          readAt: performance.now(),
+          workdays: withDays(kept?.workdays ?? [], latest.workdays),
+          ...fresh(kept, latest, (message) => entry.sent.has(message.id)),
+        };
+        this.hold(id, {
+          ...entry.held,
+          older: Boolean(move),
+          error: '',
+          opened: {
+            ...opened,
+            messages: withSends(entry, opened, latest.messages, null, observed),
+          },
+        });
+      }
+      if (move) entry.failed = undefined;
+      succeeded = true;
+    } catch (cause) {
+      if (!owns()) return;
+      entry.asked = -1;
+      entry.failed = move;
+      if (cause instanceof ApiError && cause.code === 'communications_conversation_not_found')
+        this.hold(id, { ...nothing, gone: true });
+      else this.hold(id, { ...entry.held, error: messageOf(cause), olderFailed: Boolean(move) });
     } finally {
       entry.requests.delete(controller);
+      if (owns()) {
+        entry.current = undefined;
+        this.busy(id, entry);
+        this.trim(id);
+        if (succeeded && this.watchers.has(id) && this.stale(id)) void this.read(id);
+      }
     }
-    if (this.entries.get(id) !== entry || controller.signal.aborted) return;
-    entry.reading = false;
-    if (turn >= entry.turns.shown) {
-      entry.turns.shown = turn;
-      const before = entry.held.opened;
-      // A read asked after a send no longer needs protection against an earlier snapshot.
-      for (const [id, sent] of entry.sent) if (sent.turn < turn) entry.sent.delete(id);
-      const unread = (message: Message) => entry.sent.has(message.id);
-      const opened = {
-        ...latest,
-        id,
-        lastRead: latest.messages,
-        readAt: performance.now(),
-        workdays: withDays(before?.workdays ?? [], latest.workdays),
-        ...fresh(before, latest, unread),
-      };
-      this.hold(id, {
-        ...entry.held,
-        error: '',
-        opened: { ...opened, messages: withSends(entry, opened, latest.messages) },
-      });
-    }
-    this.trim(id);
-    // Changed while it was read, and open: read again.
-    if (this.watchers.has(id) && this.stale(id)) void this.read(id);
   }
   /** The conversation `id`'s entry, as the latest used, made if it isn't held, and those used
    * longest ago that aren't open let go, past as many as it keeps. */
   private touch(id: string) {
-    const entry = this.entries.get(id) ?? {
+    const entry: Entry = this.entries.get(id) ?? {
       held: nothing,
       asked: 0,
       turns: { asked: 0, shown: 0 },
-      reading: false,
-      sent: new Map<string, { turn: number; message: Message }>(),
+      epoch: 0,
+      observed: new Map(),
+      sent: new Map<string, { turn: number; started?: number; message: Message }>(),
       requests: new Set<AbortController>(),
     };
     this.entries.delete(id);
@@ -312,6 +604,8 @@ export class ConversationReads {
   }
   /** Releases reads and queued warming when this DSP or page is left. Late answers are ignored. */
   dispose() {
+    this.disposed = true;
+    this.watchers.clear();
     this.warming.clear();
     for (const id of this.entries.keys()) this.forget(id);
   }
@@ -325,8 +619,36 @@ export class ConversationReads {
   private trim(id: string) {
     const entry = this.entries.get(id);
     const opened = entry?.held.opened;
-    if (!entry || !opened || this.watchers.has(id) || opened.messages.length <= CLOSED_MESSAGES)
+    if (!entry || !opened || this.watchers.has(id)) return;
+    if (opened.window) {
+      if (!opened.window.range.hasAfter && !opened.provisional) return;
+      const window = opened.window;
+      // The recent seed is explicitly provisional: its old range is never used for navigation.
+      const seed = {
+        ...window,
+        messages: window.latest,
+        context: window.latestContext,
+        workdays: window.latestWorkdays,
+        origins: window.origins && {
+          ...window.origins,
+          selected: window.origins.latest,
+        },
+      };
+      entry.asked = -1;
+      this.hold(id, {
+        ...entry.held,
+        opened: {
+          ...opened,
+          window: seed,
+          provisional: true,
+          messages: seed.messages,
+          more: false,
+          workdays: seed.workdays,
+        },
+      });
       return;
+    }
+    if (opened.messages.length <= CLOSED_MESSAGES) return;
     const messages = opened.messages.slice(-CLOSED_MESSAGES);
     // A workday is local to its DSP. UTC and its neighbouring days cover every time zone while
     // retaining only context for the messages still held.
@@ -351,6 +673,11 @@ export class ConversationReads {
     const entry = this.entries.get(id);
     if (!entry) return;
     entry.held = held;
+    const retained = new Set(
+      [...(held.opened?.messages ?? []), ...(held.opened?.lastRead ?? [])].map((row) => row.id),
+    );
+    for (const key of entry.observed.keys())
+      if (!retained.has(key) && !entry.sent.has(key)) entry.observed.delete(key);
     for (const watch of this.watchers.get(id) ?? []) watch();
   }
 }

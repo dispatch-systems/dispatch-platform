@@ -21,7 +21,7 @@ import { connect, event, fromSlack, install } from '../../../slack/tests/support
  * Slack's section. */
 async function working(page: Page, ...named: string[]) {
   await page.route(
-    (url) => /\/api\/dsp\/communications\/conversations\/[^/]+$/.test(url.pathname),
+    (url) => /\/api\/dsp\/communications\/conversations\/[^/]+(?:\/window)?$/.test(url.pathname),
     async (route) => {
       if (route.request().method() !== 'GET') return route.fallback();
       const response = await route.fetch();
@@ -224,7 +224,7 @@ test('an owner connects Slack from Communications, answers a member as they writ
   // The first reading of the list, and of the conversation, fails.
   const reading = (url: URL) =>
     url.pathname === '/api/dsp/communications' ||
-    /^\/api\/dsp\/communications\/conversations\/[^/]+$/.test(url.pathname);
+    /^\/api\/dsp\/communications\/conversations\/[^/]+(?:\/window)?$/.test(url.pathname);
   const failed = new Set<string>();
   await page.route(reading, (route) => {
     const path = new URL(route.request().url()).pathname;

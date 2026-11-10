@@ -27,7 +27,7 @@ import type { Target } from './target.js';
 import { Thread } from './Thread.js';
 import { TypingLine } from './TypingLine.js';
 import { useReplied } from './replied.js';
-import type { ConversationReads } from './reads.js';
+import type { ConversationReads, WriteVersion } from './reads.js';
 import type { Drafts } from './drafts.js';
 import { useConversation } from './useConversation.js';
 
@@ -115,6 +115,7 @@ export function ConversationPane({
     gone,
     readOlder,
     olderFailed,
+    window,
     retry: readAgain,
     ...read
   } = useConversation(reads, id);
@@ -171,19 +172,20 @@ export function ConversationPane({
   const done = () => {
     if (!conversation) return;
     show({ ...conversation, state: 'done', waitingSince: null });
-    void marking.run(opened?.messages.at(-1) ?? conversation.last).then((saved) => {
+    void marking.run(opened?.lastRead.at(-1) ?? conversation.last).then((saved) => {
       if (!saved) readAfresh();
     });
   };
-  const sent = ({ conversation: theirs, message }: SentMessage) => {
+  const sent = ({ conversation: theirs, message }: SentMessage, observed: WriteVersion) => {
     // Filed in another conversation, as its number changed hands as it went: follow it there.
     if (theirs.id !== id) return follow(theirs);
     // As the server had it once sent; the next update says so for everyone.
-    read.show(theirs, message);
+    read.show(theirs, message, observed);
     show(theirs);
   };
   const retry = useAction(async (failed: Message) => {
-    if (conversation) read.show(conversation, await retryText(id, failed.id));
+    const observed = read.version();
+    if (conversation) read.show(conversation, await retryText(id, failed.id), observed);
   });
   const writing = typing.filter((writer) => writer.conversationId === id);
   // Its latest read's messages, and its last as the latest update brings it, which may be newer:
@@ -248,6 +250,11 @@ export function ConversationPane({
         <Thread
           conversation={conversation}
           messages={opened.messages}
+          window={window}
+          viewport={read.viewport}
+          resume={read.resume}
+          origins={opened.window?.origins?.selected}
+          context={opened.window?.context}
           more={opened.more}
           readOlder={readOlder}
           olderFailed={olderFailed}
@@ -272,7 +279,10 @@ export function ConversationPane({
           limits={opened?.limits}
           attachments={KINDS[shown.conversation.kind].attachments}
           to={about && number ? lastFour(number) : undefined}
-          send={async (text, photos, gif) => sent(await sendMessage(id, text, photos, gif))}
+          send={async (text, photos, gif) => {
+            const observed = read.version();
+            sent(await sendMessage(id, text, photos, gif), observed);
+          }}
           gifs={gifs}
           typing={() => void sayTyping(id).catch(() => undefined)}
           above={<TypingLine writing={writing} />}

@@ -31,3 +31,8 @@
 .thread .day + .day.pause {
   margin-top: 2px;
 }
+
+/* The bounded conversation owns its visible-part anchor, including attachment resizes. */
+.thread.windowed {
+  overflow-anchor: none;
+}

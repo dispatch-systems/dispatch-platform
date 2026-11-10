@@ -6,7 +6,7 @@ import { download, picture } from '../../../../core/shell/frontend/runtime/trans
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { usePicture } from '../../../../core/shell/frontend/runtime/usePicture.js';
 import { fileStatus, isPhoto, isVideo, size } from './format.js';
-import { useViewPhoto } from './PhotoViewer.js';
+import { useViewPhoto, useThreadActivity } from './PhotoViewer.js';
 import { shownAt } from '../gifs/klipy.js';
 import './message-body.css';
 
@@ -20,7 +20,9 @@ const PLAYS_MOST = 25 * 1024 ** 2;
 export function MessageBody({
   message,
   attachments,
+  identity,
 }: {
+  identity?: string;
   message: Pick<Message, 'text' | 'editedAt' | 'files'> & Partial<Pick<Message, 'status' | 'gif'>>;
   /** Where a photo, video or file of it is read from, by the way it went. */
   attachments: Pick<Attachments, 'address' | 'preview' | 'fetch'>;
@@ -38,6 +40,8 @@ export function MessageBody({
     <>
       {message.gif && gif && (
         <img
+          data-message-id={identity}
+          data-message-part="gif"
           className="gif"
           src={gif.url}
           alt={message.gif.title || 'GIF'}
@@ -45,19 +49,23 @@ export function MessageBody({
         />
       )}
       {message.text && (
-        <div className={message.status === 'failed' ? 'bubble failed' : 'bubble'}>
+        <div
+          data-message-id={identity}
+          data-message-part="text"
+          className={message.status === 'failed' ? 'bubble failed' : 'bubble'}
+        >
           {message.text}
           {message.editedAt !== null && <span className="edited">Edited</span>}
         </div>
       )}
       {photos.map((photo) => (
-        <Photo key={photo.id} photo={photo} address={attachments.address} />
+        <Photo identity={identity} key={photo.id} photo={photo} address={attachments.address} />
       ))}
       {videos.map((video) => (
-        <Video key={video.id} video={video} attachments={attachments} />
+        <Video identity={identity} key={video.id} video={video} attachments={attachments} />
       ))}
       {files.map((file) => (
-        <Attached key={file.id} file={file} address={attachments.address} />
+        <Attached identity={identity} key={file.id} file={file} address={attachments.address} />
       ))}
     </>
   );
@@ -67,7 +75,15 @@ export function MessageBody({
  * A photo, its preview fetched as it nears view, as the page's own calls are, with the DSP's
  * view; pressed, it opens over the page at full size.
  */
-function Photo({ photo, address }: { photo: MessageFile; address: (id: string) => string }) {
+function Photo({
+  identity,
+  photo,
+  address,
+}: {
+  identity?: string;
+  photo: MessageFile;
+  address: (id: string) => string;
+}) {
   const url = versioned(photo, address);
   const [box, src, lost] = usePicture<HTMLButtonElement>(
     versioned(photo, (id) => `${address(id)}/preview`),
@@ -76,6 +92,8 @@ function Photo({ photo, address }: { photo: MessageFile; address: (id: string) =
   return (
     <button
       ref={box}
+      data-message-id={identity}
+      data-message-part={`file:${photo.id}`}
       className="photo"
       disabled={!src}
       onClick={() => src && view({ name: photo.name, src, url })}
@@ -98,7 +116,9 @@ const versioned = (file: MessageFile, address: (id: string) => string) =>
 function Video({
   video,
   attachments,
+  identity,
 }: {
+  identity?: string;
   video: MessageFile;
   attachments: Pick<Attachments, 'address' | 'preview' | 'fetch'>;
 }) {
@@ -107,9 +127,11 @@ function Video({
   const [box, still, lost] = usePicture<HTMLButtonElement>(
     video.preview ? attachments.preview?.(video.id) : undefined,
   );
+  const active = useThreadActivity();
   const playing = useRef<AbortController>(undefined);
   useEffect(() => () => playing.current?.abort(), []);
   const play = useAction(async () => {
+    const release = active();
     const stop = new AbortController();
     playing.current = stop;
     try {
@@ -123,11 +145,15 @@ function Video({
         view({ name: video.name, src: URL.createObjectURL(bytes), video: true });
     } catch (error) {
       if (!stop.signal.aborted) throw error;
+    } finally {
+      release();
     }
   });
   return (
     <button
       ref={box}
+      data-message-id={identity}
+      data-message-part={`file:${video.id}`}
       className="photo video"
       aria-label={`Play ${video.name}`}
       aria-busy={play.busy}
@@ -147,8 +173,24 @@ function Video({
 }
 
 /** A file that isn't a photo, or one Dispatch doesn't keep: its name, and its size or why. */
-function Attached({ file, address }: { file: MessageFile; address: (id: string) => string }) {
-  const save = useAction(() => download(versioned(file, address)));
+function Attached({
+  identity,
+  file,
+  address,
+}: {
+  identity?: string;
+  file: MessageFile;
+  address: (id: string) => string;
+}) {
+  const active = useThreadActivity();
+  const save = useAction(async () => {
+    const release = active();
+    try {
+      await download(versioned(file, address));
+    } finally {
+      release();
+    }
+  });
   const about = (
     <>
       <FileText size={18} aria-hidden="true" />
@@ -157,10 +199,18 @@ function Attached({ file, address }: { file: MessageFile; address: (id: string) 
     </>
   );
   return file.status === 'kept' ? (
-    <button className="file" disabled={save.busy} onClick={() => void save.run()}>
+    <button
+      data-message-id={identity}
+      data-message-part={`file:${file.id}`}
+      className="file"
+      disabled={save.busy}
+      onClick={() => void save.run()}
+    >
       {about}
     </button>
   ) : (
-    <span className="file unkept">{about}</span>
+    <span data-message-id={identity} data-message-part={`file:${file.id}`} className="file unkept">
+      {about}
+    </span>
   );
 }
