@@ -2,6 +2,7 @@ import type { DvicSummary } from '../../../api/index.js';
 import { useEffect } from 'react';
 import {
   bandLabel,
+  fleetLabel,
   inspectionBand,
   inspectionDate,
   inspectionDuration as duration,
@@ -79,7 +80,7 @@ export function WeekGrid({
                     <th scope="row" className="dvic-grid-name">
                       <strong>{driver.driverName}</strong>
                       <small>
-                        {driver.fleets.join(' · ')} · min{' '}
+                        {driver.fleets.map(fleetLabel).join(' · ')} · min{' '}
                         {driver.minimums.map(duration).join(' / ')}
                       </small>
                     </th>
