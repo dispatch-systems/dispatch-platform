@@ -1,5 +1,5 @@
 use crate::{Result, config::Config, require, worktrees::Worktree};
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::{fs, path::PathBuf, process::Stdio};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
@@ -24,7 +24,9 @@ impl Drop for NativePreview {
 }
 
 impl NativePreview {
-    pub async fn start(_config: &Config, tree: &Worktree, state: Option<&PathBuf>) -> Result<Self> {
+    /// Builds the worktree, then serves the build in a sandbox of its own.
+    pub async fn start(config: &Config, tree: &Worktree, state: Option<&PathBuf>) -> Result<Self> {
+        tree.build(config).await?;
         let scratch = PathBuf::from(format!("/tmp/dispatch-{}", tree.name));
         if scratch.is_dir() {
             for entry in fs::read_dir(&scratch)? {
@@ -85,5 +87,10 @@ impl NativePreview {
             state,
             bridge,
         })
+    }
+
+    /// The browser target an agent drives this preview through, signed in as a fixture user.
+    pub fn browser(&self) -> Value {
+        json!({"url":self.origin,"readOnly":false,"fixtureLogin":true})
     }
 }

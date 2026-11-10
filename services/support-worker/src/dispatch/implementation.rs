@@ -52,12 +52,7 @@ pub(super) async fn run(
             let summary;
             let checks;
             loop {
-                let initial = async {
-                    tree.build(config).await?;
-                    NativePreview::start(config, &tree, None).await
-                }
-                .await;
-                let initial = match initial {
+                let initial = match NativePreview::start(config, &tree, None).await {
                     Ok(preview) => Some(preview),
                     Err(error) => {
                         failure = format!(
@@ -68,8 +63,7 @@ pub(super) async fn run(
                 };
                 let mut context = json!({"rules":rules(config)?,"proposal":proposal,"approvedVersion":job.version,"failure":failure,"headSha":tree.head().await?});
                 if let Some(initial) = &initial {
-                    context["browser"] =
-                        json!({"url":initial.origin,"readOnly":false,"fixtureLogin":true});
+                    context["browser"] = initial.browser();
                 }
                 let built = hermes::run(config, job, &tree, "builder", "Implement the approved proposal completely or fix the supplied failure. Return the approved-implementation JSON contract. Do not change approval scope. The host runs checks, commits, then independent browser verification.", context).await?;
                 drop(initial);
@@ -117,11 +111,9 @@ pub(super) async fn run(
                         .await?;
                 }
                 // Every preview executes the committed artifact with no host network or secrets.
-                tree.build(config).await?;
                 let native =
                     NativePreview::start(config, &tree, collections.state.as_ref()).await?;
-                let target = json!({"url":native.origin,"readOnly":false,"fixtureLogin":true});
-                let context = json!({"rules":rules(config)?,"proposal":proposal,"acceptanceCriteria":proposal.acceptance_criteria,"headSha":head,"collectionResults":collections.summaries,"browser":target});
+                let context = json!({"rules":rules(config)?,"proposal":proposal,"acceptanceCriteria":proposal.acceptance_criteria,"headSha":head,"collectionResults":collections.summaries,"browser":native.browser()});
                 let reviewed = hermes::run(config, job, &tree, "reviewer", "Independently verify every criterion in the actual changed application. Use real browser interactions and dispatch_browser assert for each exact criterion. Inspect persisted outcomes after refresh and relevant roles/layouts. Return the independent-verification JSON contract.", context).await?;
                 if reviewed["passed"] != true {
                     failure = format!(

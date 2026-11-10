@@ -88,9 +88,8 @@ pub(super) async fn run(
             "release",
         )
         .await?;
-        tree.build(config).await?;
         let preview = NativePreview::start(config, &tree, None).await?;
-        target = json!({"url":preview.origin,"readOnly":false,"fixtureLogin":true});
+        target = preview.browser();
         counterpart = Some(preview);
     }
     let context = json!({"rules":rules(config)?,"proposal":proposal,"acceptanceCriteria":proposal.production_verification,"priorImplementationEvidence":job.detail.evidence,"deploymentMetadata":metadata,"headSha":source,"browser":target,"originEnvironment":job.environment,"verificationBasis":if counterpart.is_some() {"Isolated counterpart built from actual deployed production source; public production identity and ancestry were separately verified. Authenticated production behavior is unobserved."} else {"Actual production readonly browser session with the reporter's current access"}});
