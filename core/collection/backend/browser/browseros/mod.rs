@@ -9,6 +9,8 @@ mod protocol;
 mod sandbox;
 mod worker;
 pub use projection::VerificationAuthority;
+/// Hidden process entrypoint. Must run before Config::load or any database access.
+pub use worker::run as worker_main;
 
 use super::egress::Egress;
 use crate::{
@@ -477,10 +479,6 @@ async fn stop_child(child: &mut Child) -> Exit {
     }
 }
 
-/// Hidden process entrypoint. Must run before Config::load or any database access.
-pub async fn worker_main(mode: &str) -> Result<()> {
-    worker::run(mode).await
-}
 #[cfg(test)]
 #[path = "../../../tests/backend/browser/browseros/mod.rs"]
 mod tests;
