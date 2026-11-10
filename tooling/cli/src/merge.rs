@@ -2,11 +2,7 @@
 //! check passed on the pushed head, where its repository has one, the body on GitHub is the
 //! one written, and its review is done at that head, or at one that head only merges `main`
 //! into, or says why it had none. Then it prints what to tell the user.
-use crate::{
-    Result, Runner,
-    change::{Clone, Repository},
-    pr, require, review, workspace,
-};
+use crate::{Result, Runner, change::Repository, pr, require, review, workspace};
 use serde_json::Value;
 use std::path::Path;
 
@@ -223,15 +219,14 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
                 .to_owned(),
             format!("Once it passed, from outside the worktree, {finish}"),
         ],
-        // Nothing runs on the docs' `main`; every session reads them from the clone, which a
-        // merge on GitHub doesn't move.
+        // Nothing runs on the docs' `main`: `finish` brings the clone, where every session reads
+        // them, up to it.
         Repository::AgentDocs => vec![
+            "Tell the user what merged".to_owned(),
             format!(
-                "Tell the user what merged; `git -C {} pull --ff-only` puts it where every \
-                 session reads the docs",
-                workspace::quote(&Clone::of(root, runner)?.root.to_string_lossy())
+                "From outside the worktree, {finish}, which brings the clone every session \
+                 reads the docs from up to it"
             ),
-            format!("From outside the worktree, {finish}"),
         ],
     };
     println!("{}", workspace::next(&next));

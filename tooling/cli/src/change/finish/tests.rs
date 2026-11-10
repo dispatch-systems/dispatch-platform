@@ -340,3 +340,52 @@ fn cleanup_uses_a_remote_lease_and_allows_explicit_closed_abandonment() {
             .is_empty()
     );
 }
+
+#[test]
+fn finishing_brings_a_clone_on_main_up_to_origins_and_leaves_any_other() {
+    /// What merged since the clone last looked: a commit on origin's `main` alone.
+    fn merged(fixture: &Fixture) -> String {
+        let tree = fixture.git(&["rev-parse", "HEAD^{tree}"]);
+        let merged = fixture.git(&[
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit-tree",
+            &tree,
+            "-p",
+            &fixture.head,
+            "-m",
+            "merged",
+        ]);
+        fixture.git(&["push", "-q", "origin", &format!("{merged}:refs/heads/main")]);
+        merged
+    }
+    let finished = |fixture: &Fixture| {
+        finish(
+            &fixture.root,
+            &fixture.name,
+            false,
+            &fixture.reviewer("MERGED"),
+        )
+        .unwrap();
+        assert!(!fixture.worktree.exists());
+        fixture.git(&["rev-parse", "HEAD"])
+    };
+    let fixture = Fixture::new();
+    let on_main = merged(&fixture);
+    assert_eq!(finished(&fixture), on_main);
+    // A clone with something uncommitted, or on another branch, stays where it is, and the
+    // change is finished all the same.
+    let fixture = Fixture::new();
+    merged(&fixture);
+    fs::write(fixture.root.join("begun"), "keep").unwrap();
+    fixture.git(&["add", "begun"]);
+    assert_eq!(finished(&fixture), fixture.head);
+    assert!(fixture.root.join("begun").exists());
+    let fixture = Fixture::new();
+    merged(&fixture);
+    fixture.git(&["switch", "-qc", "elsewhere"]);
+    assert_eq!(finished(&fixture), fixture.head);
+    assert_eq!(fixture.git(&["rev-parse", "main"]), fixture.head);
+}
