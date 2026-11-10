@@ -2,7 +2,7 @@
 //! are let go, and those sent stay; and a video its phone keeps comes only once someone plays it.
 use super::*;
 use crate::backend::phone::{
-    model::{FETCH_WAIT_MS, Outgoing},
+    model::FETCH_WAIT_MS,
     storage::{DeviceStore, TextStore, devices::ONLINE_MS},
     support::{outgoing, paired, reported, store},
 };
@@ -12,7 +12,7 @@ use dispatch_core::testing;
 fn pictures_never_sent_are_let_go() {
     let (_root, db, dsp) = store();
     let owner = testing::a_user(&db);
-    let phone = paired(&db, &dsp, "key", "2065550100");
+    paired(&db, &dsp, "key", "2065550100");
     let file = |name: &str| ReportedFile {
         name: name.into(),
         mime: "image/png".into(),
@@ -24,10 +24,7 @@ fn pictures_never_sent_are_let_go() {
         .unwrap();
     db.phones_send(
         &dsp,
-        &Outgoing {
-            phone: Some(phone.id),
-            ..outgoing("4255550199", vec![sent.id.clone()], &owner)
-        },
+        &outgoing("4255550199", vec![sent.id.clone()], &owner),
         1_000,
     )
     .unwrap();

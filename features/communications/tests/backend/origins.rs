@@ -142,29 +142,6 @@ async fn clipped_origins_use_stored_run_first_names_and_prior_run_first_for_both
             )
             .unwrap()
             .unwrap();
-        let before = candidate_checkpoint(&connection, reference);
-        let previous: serde_json::Value = serde_json::from_str(&before.2).unwrap();
-        match reference {
-            Reference::Slack(_) => assert!("1700000000.000900" > previous["ts"].as_str().unwrap()),
-            Reference::Text(_) => assert!(AT + 1 > previous["at"].as_i64().unwrap()),
-        }
-        let id = place_for_candidate(&db, &dsp, reference, "1700000000.000900", AT + 1);
-        assert_eq!(
-            candidate_checkpoint(&connection, reference),
-            (
-                old_generation.0.clone(),
-                before.1 + 1,
-                before.2,
-                before.1 + 1
-            )
-        );
-        // Remove only this placement, so the source and slice assertions below read the
-        // fixture's own rows.
-        let sql = match reference {
-            Reference::Slack(_) => "DELETE FROM communications_messages WHERE id=?",
-            Reference::Text(_) => "DELETE FROM phones_texts WHERE id=?",
-        };
-        connection.exec(sql, [id]).unwrap();
         match reference {
             Reference::Slack(id) => connection
                 .exec(

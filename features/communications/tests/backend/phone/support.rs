@@ -51,7 +51,6 @@ pub fn reported(id: &str, number: &str, at: i64, files: usize) -> Reported {
 /// A text `by` sends to `to`, from whichever phone it goes from, with the pictures `files`.
 pub fn outgoing(to: &str, files: Vec<String>, by: &str) -> Outgoing {
     Outgoing {
-        phone: None,
         to: to.into(),
         body: "On my way".into(),
         files,
