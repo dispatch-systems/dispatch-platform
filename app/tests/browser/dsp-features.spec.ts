@@ -417,7 +417,9 @@ test('Conduct offers to back signed copies up only while something keeps the DSP
   const settings = page.getByRole('navigation', { name: 'Settings', exact: true });
   await settings.getByRole('link', { name: 'Conduct', exact: true }).click();
   const backup = page.getByRole('region', { name: 'Backup', exact: true });
-  const copies = backup.getByRole('switch', { name: 'Back up signed copies to Documents' });
+  const copies = backup.getByRole('switch', {
+    name: 'Back up signed copies to Documents in Google Drive',
+  });
   // Switched on, it's saved, and says the backup is failing: Documents has no account yet.
   await expect(copies).not.toBeChecked();
   await copies.click();

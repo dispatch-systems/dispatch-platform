@@ -28,8 +28,9 @@ with a photo of the paper if they like.
   write answers with it again, so the page shows a change at once. Writeups under
   `/api/dsp/conduct/writeups[/{id}[/sign|/delete|/copy]]`, behind `conduct.use`; categories under
   `/api/dsp/conduct/categories[/{id}[/retire|/restore]]`, behind `conduct.manage`, as is
-  `GET /api/dsp/conduct/backup`: whether the backup is failing, why where the DSP keeps its files
-  can't keep them now, in its words, and how many signed copies aren't backed up yet.
+  `GET /api/dsp/conduct/backup`: where the DSP's files are kept, by the name members know that
+  by; whether the backup is failing; why where they're kept can't keep them now, in its words;
+  and how many signed copies aren't backed up yet.
 - **Data**, in each DSP's own database:
   - `conduct_categories`: each category's name, starting tier, step down (reduce or reset, and
     after how long, or none) and the wording of the three sections a new writeup starts with,
@@ -52,8 +53,8 @@ with a photo of the paper if they like.
   `frontend/settings/CategoriesSection.tsx` and saved through Conduct's own routes; and
   `conduct.backup`, whose one field, `signed_copies`, off until someone turns it on, backs signed
   copies up. `frontend/settings/BackupSection.tsx` draws it only while something keeps the
-  DSP's files: a switch that saves as Settings' own do, and, while the backup is failing, why
-  and how many copies wait.
+  DSP's files: a switch that names what keeps them and where, as `files` says, and saves once
+  it's flipped; and, while the backup is failing, why and how many copies wait.
 - **Backup** (`backend/backups.rs`): while the DSP chose it, every minute the photos of signed
   writeups not yet saved go where the DSP keeps its files, 20 a pass for each DSP, those signed
   before it chose to as well: into `Writeups`, the person's folder inside it, named as the

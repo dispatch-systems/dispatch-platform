@@ -102,14 +102,11 @@ async fn signed_copies_go_in_their_persons_and_categorys_folder_once_the_dsp_bac
     assert_eq!(support::files(&dsp), both);
     assert_eq!(support::folders(&dsp), 3);
 
-    // A folder no longer there is made again, with those inside it.
+    // A folder no longer there is made again, with the one inside it, for the next copy.
     support::trash(&dsp, "Writeups/Jordan Gray");
     written(&state, &c, ConductTier::Final, true, true).await;
     back_up(&state, &dsp, 4000).await.unwrap();
-    assert_eq!(
-        support::files(&dsp).last(),
-        Some(&saving("2026-11-02 Final.jpg"))
-    );
+    assert_eq!(support::files(&dsp), [saving("2026-11-02 Final.jpg")]);
     assert_eq!(support::folders(&dsp), 3);
 }
 
@@ -118,6 +115,7 @@ async fn a_copy_that_isnt_saved_is_tried_again_later_and_the_backup_says_its_fai
     let (_root, state, c) = platform();
     let dsp = c.dsp.id.clone();
     let going = |failing, why: Option<&str>, waiting| ConductBackup {
+        place: Some("Kept Drive".into()),
         failing,
         why: why.map(str::to_owned),
         waiting,

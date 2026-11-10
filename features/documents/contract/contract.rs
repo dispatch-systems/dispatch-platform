@@ -16,6 +16,9 @@ pub type Answer<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 pub trait Files: Shown + Send + Sync {
     /// The most one file may be, in bytes.
     fn largest(&self) -> u64;
+    /// Where it keeps the files, by the name members know that by, as a page says where what
+    /// it saves goes.
+    fn place(&self) -> &'static str;
     /// Why it can't keep the DSP's files now, in words a member reads, as what it keeps them in
     /// isn't connected; none once it can.
     fn unready<'a>(&'a self, state: &'a Arc<State>, dsp: &'a str) -> Answer<'a, Option<String>>;

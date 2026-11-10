@@ -1,5 +1,5 @@
 import { wordedApi } from '../../../core/shell/frontend/runtime/api.js';
-import { useData } from '../../../core/shell/frontend/runtime/data-reads.js';
+import { useCachedData, useData } from '../../../core/shell/frontend/runtime/data-reads.js';
 import { upload } from '../../../core/shell/frontend/runtime/transfer.js';
 import type {
   CategoryInput,
@@ -57,7 +57,7 @@ export const keepCopy = (id: string, revision: number, photo: Blob) =>
 export const backupUrl = `${conductUrl}/backup`;
 /** How backing signed copies up is going, read again whenever `refreshKey` changes. */
 export const useConductBackup = (refreshKey: string) =>
-  useData<ConductBackup>(backupUrl, 0, refreshKey);
+  useCachedData<ConductBackup>(backupUrl, 0, refreshKey);
 
 const categoryUrl = (id: string) => `${conductUrl}/categories/${encodeURIComponent(id)}`;
 export const addCategory = (input: CategoryInput) =>

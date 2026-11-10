@@ -13,8 +13,9 @@ const FIELD = 'signed_copies';
 
 /**
  * Whether signed copies are backed up where the DSP keeps its files, on Conduct's page of
- * Settings, only while something keeps them. The switch shows the choice at once and saves it;
- * while the backup is failing, the section says so, and how many copies wait.
+ * Settings, only while something keeps them, named with where it keeps them. The switch shows
+ * the choice at once and saves it; while the backup is failing, the section says so, and how
+ * many copies wait.
  */
 export function BackupSection({ view, refresh }: { view: DspView; refresh: () => void }) {
   const kept = offered('files', view);
@@ -37,13 +38,17 @@ export function BackupSection({ view, refresh }: { view: DspView; refresh: () =>
       throw cause;
     }
   });
-  if (!kept || !section) return null;
+  // Drawn once it can say where the copies go, so its wording never changes under the reader.
+  const place = backup.data?.place;
+  if (!kept || !section || !place) return null;
   const failing = on && backup.data?.failing ? backup.data : undefined;
   return (
     <section className="settings-section" aria-labelledby="conduct-backup">
       <h2 id="conduct-backup">Backup</h2>
       <label className="settings-field settings-toggle" htmlFor="conduct-backup-signed-copies">
-        <span>Back up signed copies to {kept.name}</span>
+        <span>
+          Back up signed copies to {kept.name} in {place}
+        </span>
         <input
           id="conduct-backup-signed-copies"
           type="checkbox"

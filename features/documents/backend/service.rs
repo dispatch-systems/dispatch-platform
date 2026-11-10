@@ -39,6 +39,9 @@ impl Files for DocumentsFiles {
     fn largest(&self) -> u64 {
         UPLOAD_LIMIT
     }
+    fn place(&self) -> &'static str {
+        "Google Drive"
+    }
     fn unready<'a>(&'a self, state: &'a Arc<State>, dsp: &'a str) -> Answer<'a, Option<String>> {
         Box::pin(async move {
             let at = dsp.to_owned();

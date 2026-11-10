@@ -303,27 +303,38 @@ fn finish(
     .map(drop)
 }
 
-/// How the DSP's backup is going, for Conduct's page of Settings: nothing to say while it isn't
-/// chosen or nothing keeps the DSP's files.
+/// Where the DSP's signed copies are backed up and how that's going, for Conduct's page of
+/// Settings: nowhere while nothing keeps the DSP's files, and nothing failing or waiting while
+/// the DSP doesn't back them up.
 pub(crate) async fn status(state: &Arc<State>, dsp: &str) -> Result<ConductBackup> {
     let at = dsp.to_owned();
     let found = state
         .read(move |db| {
-            if !chosen(db, &at)? {
-                return Ok(None);
-            }
             let Some(files) = files::for_dsp(db, &at)? else {
                 return Ok(None);
             };
+            if !chosen(db, &at)? {
+                return Ok(Some((files, None)));
+            }
             let counted = db.dsp(&at)?.one_as::<(i64, i64)>(
                 &format!("SELECT COUNT(*),COALESCE(SUM(COALESCE(b.attempts,0)>0),0) {UNSAVED}"),
                 [],
             )?;
-            Ok(Some((files, counted.unwrap_or_default())))
+            Ok(Some((files, counted)))
         })
         .await?;
-    let Some((files, (waiting, tried))) = found else {
+    let Some((files, counted)) = found else {
         return Ok(ConductBackup {
+            place: None,
+            failing: false,
+            why: None,
+            waiting: 0,
+        });
+    };
+    let place = Some(files.place().to_owned());
+    let Some((waiting, tried)) = counted else {
+        return Ok(ConductBackup {
+            place,
             failing: false,
             why: None,
             waiting: 0,
@@ -331,6 +342,7 @@ pub(crate) async fn status(state: &Arc<State>, dsp: &str) -> Result<ConductBacku
     };
     let why = files.unready(state, dsp).await?;
     Ok(ConductBackup {
+        place,
         failing: why.is_some() || tried > 0,
         why,
         waiting,

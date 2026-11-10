@@ -221,7 +221,8 @@ and weeks, so it's best submitted well before the limit.
   sends with each change the one it held when the member began it, never whichever is latest as
   it's sent.
 - **Files for other features:** Documents exposes `files` (its contract, in `contract/`), somewhere for a
-  feature bringing files in, as Slack does, to keep them. It says why it can't yet, in words a member
+  feature bringing files in, as Slack does, to keep them. It says where it keeps them, Google
+  Drive, for a page to say so. It says why it can't yet, in words a member
   reads: Google Drive isn't connected, or needs reconnecting. It browses the folders, from the main folder down, and finds a
   folder by its ID, the main folder or one inside it;
   makes a folder at the top of the main folder or inside a folder there, as a member; and streams a file of up to

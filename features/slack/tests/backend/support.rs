@@ -143,6 +143,9 @@ impl Files for Keeping {
     fn largest(&self) -> u64 {
         UPLOAD_LIMIT
     }
+    fn place(&self) -> &'static str {
+        "Kept Drive"
+    }
     fn unready<'a>(&'a self, _: &'a Arc<State>, dsp: &'a str) -> Answer<'a, Option<String>> {
         let unready = UNREADY.lock().unwrap().contains(dsp);
         Box::pin(async move { Ok(unready.then(|| "Not ready".to_owned())) })

@@ -73,6 +73,8 @@ struct KeptFile {
 pub type Saving = (String, String, usize, Author);
 /// What the stand-in keeps, in every test, each DSP's apart.
 struct Kept {
+    /// How many folders it ever made: each one's ID is its own.
+    made: usize,
     folders: Vec<KeptFolder>,
     files: Vec<KeptFile>,
     unready: BTreeSet<String>,
@@ -93,6 +95,7 @@ impl Kept {
     }
 }
 static KEPT: Mutex<Kept> = Mutex::new(Kept {
+    made: 0,
     folders: Vec::new(),
     files: Vec::new(),
     unready: BTreeSet::new(),
@@ -122,7 +125,8 @@ pub fn files(dsp: &str) -> Vec<Saving> {
 pub fn folders(dsp: &str) -> usize {
     kept().folders.iter().filter(|f| f.dsp == dsp).count()
 }
-/// Takes the DSP's folder at `path` away, with every folder in it, as a member trashing it.
+/// Takes the DSP's folder at `path` away, with every folder and file in it, as a member
+/// trashing it.
 pub fn trash(dsp: &str, path: &str) {
     let mut kept = kept();
     let gone: BTreeSet<String> = kept
@@ -137,6 +141,8 @@ pub fn trash(dsp: &str, path: &str) {
         .collect();
     kept.folders
         .retain(|folder| !(folder.dsp == dsp && gone.contains(&folder.id)));
+    kept.files
+        .retain(|file| !(file.dsp == dsp && gone.contains(&file.folder)));
 }
 /// Has the stand-in keep the DSP's files, or not for now.
 pub fn ready_to_keep(dsp: &str, ready: bool) {
@@ -186,6 +192,9 @@ impl Files for Keeping {
     fn largest(&self) -> u64 {
         UPLOAD_LIMIT
     }
+    fn place(&self) -> &'static str {
+        "Kept Drive"
+    }
     fn unready<'a>(&'a self, _: &'a Arc<State>, dsp: &'a str) -> Answer<'a, Option<String>> {
         let unready = kept().unready.contains(dsp);
         Box::pin(async move { Ok(unready.then(|| "Not ready".to_owned())) })
@@ -233,7 +242,8 @@ impl Files for Keeping {
             if parent.is_some_and(|id| !inside(id)) {
                 return Err(not_found());
             }
-            let id = format!("folder-{}", kept.folders.len() + 1);
+            kept.made += 1;
+            let id = format!("folder-{}", kept.made);
             kept.folders.push(KeptFolder {
                 dsp: dsp.to_owned(),
                 id: id.clone(),
