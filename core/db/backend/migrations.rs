@@ -179,12 +179,7 @@ pub fn add_column(db: &Db, table: &str, column: &str, definition: &str) -> Resul
 }
 
 fn applied(db: &Db) -> Result<BTreeSet<u32>> {
-    let exists = db.0.query_row(
-        "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='schema_migrations'",
-        [],
-        |row| row.get::<_, i64>(0),
-    )?;
-    if exists == 0 {
+    if !db.has_table("schema_migrations")? {
         return Ok(BTreeSet::new());
     }
     let mut statement = db.0.prepare("SELECT id FROM schema_migrations")?;
@@ -196,12 +191,7 @@ fn applied(db: &Db) -> Result<BTreeSet<u32>> {
 
 /// The migrations features numbered themselves that the database records, by feature.
 fn applied_owned(db: &Db) -> Result<BTreeSet<(String, u32)>> {
-    let exists = db.0.query_row(
-        "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='owner_migrations'",
-        [],
-        |row| row.get::<_, i64>(0),
-    )?;
-    if exists == 0 {
+    if !db.has_table("owner_migrations")? {
         return Ok(BTreeSet::new());
     }
     let mut statement = db.0.prepare("SELECT owner,id FROM owner_migrations")?;
@@ -335,10 +325,7 @@ pub fn migrate(db: &Db, kind: Kind) -> Result<()> {
 /// while migration 5 is first applied.
 pub(crate) fn verify_dsp_identity(db: &Db, id: &str) -> Result<()> {
     crate::ensure(
-        db.count(
-            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='storage_identity'",
-            [],
-        )? == 1,
+        db.has_table("storage_identity")?,
         "dsp_storage_identity_mismatch",
         503,
     )?;
@@ -374,10 +361,7 @@ fn migrate_dsp_after_probe<F: FnOnce()>(db: &Db, id: &str, after_probe: F) -> Re
     let bind = !done.contains(&5);
     if bind {
         crate::ensure(
-            db.count(
-                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='storage_identity'",
-                [],
-            )? == 0,
+            !db.has_table("storage_identity")?,
             "dsp_storage_identity_mismatch",
             503,
         )?;

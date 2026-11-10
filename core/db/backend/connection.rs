@@ -160,6 +160,11 @@ impl Db {
     pub fn count(&self, sql: &str, p: impl Params) -> Result<i64> {
         Ok(self.0.prepare_cached(sql)?.query_row(p, |row| row.get(0))?)
     }
+    /// Whether the database has a table called `name`.
+    pub fn has_table(&self, name: &str) -> Result<bool> {
+        let sql = "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?";
+        Ok(self.count(sql, [name])? > 0)
+    }
     /// Runs `f` in a transaction, or inside one already open on this connection, as when a
     /// DSP's database is reached twice within one change, as a savepoint of it.
     pub fn transaction<T>(&self, f: impl FnOnce() -> Result<T>) -> Result<T> {
