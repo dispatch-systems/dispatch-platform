@@ -80,10 +80,6 @@ pub fn changed(root: &Path, runner: &dyn Runner) -> Result<Vec<String>> {
     files.dedup();
     Ok(files)
 }
-/// The tests the change touches: those it changes and those watching a source it changes.
-pub fn affected(root: &Path, runner: &dyn Runner) -> Result<Vec<String>> {
-    Ok(selected(root, &changed(root, runner)?).0)
-}
 /// The commands for the tests `changed` touches, and a note naming the changed tests
 /// `dispatchdev check` runs instead.
 fn selected(root: &Path, changed: &[String]) -> (Vec<String>, Vec<String>) {

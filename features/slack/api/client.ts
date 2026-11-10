@@ -60,7 +60,7 @@ const wording: Record<string, string> = {
 export const call = wordedApi(wording);
 
 /** The DSP's workspaces and install link, as those who manage its connections see them. */
-export const slackAccountUrl = '/api/dsp/slack/account';
+const slackAccountUrl = '/api/dsp/slack/account';
 /** How each reading of the account reads it again, when another changed it. */
 const readers = new Set<() => void>();
 // Integrations switched here, by workspace and integration: the latest asked, how many of its

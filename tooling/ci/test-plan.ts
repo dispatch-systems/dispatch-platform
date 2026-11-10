@@ -46,7 +46,7 @@ export const ruleTests = [
 ];
 /** Native collector shards, run with a real browser by `npm run test:browseros`. */
 export const nativeShards = plan.native;
-export const nativeTests = Object.values(nativeShards).flat();
+const nativeTests = Object.values(nativeShards).flat();
 /** Real compiler/installed-manager checks; source-only rules do not build Rust. */
 export const pythonIntegrationTests = plan.pythonIntegration;
 /** Where the Python tests live: the tooling's own and the host scripts'. */

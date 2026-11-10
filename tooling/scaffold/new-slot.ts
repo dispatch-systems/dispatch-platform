@@ -34,7 +34,7 @@ const SLOTS = 'core/shell/frontend/runtime/slots.ts';
 const CATALOGUE = 'core/manifest/README.md';
 
 /** The slot's names: the field, one of them, and how each reads in Rust and TypeScript. */
-export function slotNames(root: string, argv: string[]) {
+function slotNames(root: string, argv: string[]) {
   const args = parseArguments(argv, FLAGS, OPTIONS);
   if (args.positional.length !== 1) throw new UsageError('Name the slot, and only the slot');
   const [name] = args.positional as [string];

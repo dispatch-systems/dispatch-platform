@@ -242,7 +242,6 @@ impl Store {
             for provider in Provider::all() {
                 provider.collector().provision(self, id, &dsp.timezone)?;
             }
-            self.initialize_schedules(id)?;
             self.platform
                 .exec("UPDATE dsps SET status='active' WHERE id=?", [id])?;
             Ok(())

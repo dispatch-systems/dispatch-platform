@@ -83,7 +83,7 @@ async function moving<T>(work: Promise<T>) {
 export const useDocumentsOverview = () =>
   useData<DocumentsOverview>('/api/dsp/documents', 0, undefined, undefined, true);
 /** The DSP's Google account, as those who manage its connections see it. */
-export const documentsAccountUrl = '/api/dsp/documents/account';
+const documentsAccountUrl = '/api/dsp/documents/account';
 // A reader stays the same function from one render to the next: a new one reads again.
 const readAccount = (signal: AbortSignal) =>
   call<DocumentsAccount>(documentsAccountUrl, undefined, signal);

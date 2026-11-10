@@ -88,7 +88,7 @@ function worded(error: unknown) {
 /** One of its calls, a refusal worded as Communications words it. */
 const api = wordedApi(wording);
 
-export const communicationsUrl = '/api/dsp/communications';
+const communicationsUrl = '/api/dsp/communications';
 /** `path` asking `asked`, what's left empty left out: as `team`, for one workspace's alone. */
 function address(path: string, asked: Record<string, string | undefined>) {
   const query = new URLSearchParams(
@@ -333,7 +333,7 @@ export const markGroupDone = (id: string, seen?: GroupEntry | null) =>
     seen ? { seen: `${seen.at}:${seen.id}` } : {},
   );
 /** The DSP's phones, as those who manage them or all its connections see them. */
-export const phonesUrl = `${communicationsUrl}/phones`;
+const phonesUrl = `${communicationsUrl}/phones`;
 /** The DSP's phones, read again every `poll` milliseconds, as they check in. */
 export const usePhones = (poll: number) => useData<Phones>(phonesUrl, poll);
 /** A new code that pairs the next phone, in place of any shown before. */

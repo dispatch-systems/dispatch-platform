@@ -9,7 +9,7 @@ import {
 } from '../../foundation/api/runtime.js';
 import { auditSubjects } from '../../tenancy/api/generated/audit-subjects.js';
 
-export const platformHealthSchema = z.object({
+const platformHealthSchema = z.object({
   environment,
   release: text,
   jobs: z.partialRecord(

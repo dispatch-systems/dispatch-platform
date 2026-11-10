@@ -19,8 +19,6 @@ export const employeeTimecardUrl = (
   `${employeesPath}/${encodeURIComponent(code)}${period ? `?from=${period.from}&to=${period.to}` : date ? `?date=${date}` : ''}`;
 export const dailyTimecardsUrl = (date: string, sort = 'name', desc = false) =>
   `/api/dsp/timecards?date=${date}&sort=${sort}&direction=${desc ? 'desc' : 'asc'}`;
-export const mealComparisonUrl = (date: string) =>
-  `${mealBreaksPath}?date=${encodeURIComponent(date)}`;
 export const mealPeriodGapsUrl = (date: string) =>
   `${mealPeriodGapsPath}?date=${encodeURIComponent(date)}`;
 export const mealPeriodUrl = (source: string, period: EmployeeTimecardPeriod | string) =>
