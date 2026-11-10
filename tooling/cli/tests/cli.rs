@@ -198,6 +198,159 @@ fn checkout(branch: &str) -> tempfile::TempDir {
 }
 
 #[test]
+fn a_signalled_cli_names_its_sender_once_and_keeps_its_signal_exit_status() {
+    use fs2::FileExt;
+    use std::{
+        fs,
+        io::{BufRead, BufReader},
+        os::unix::process::ExitStatusExt,
+        process::Stdio,
+    };
+    let fixture = checkout("signal-sender");
+    let root = fixture.path();
+    fs::create_dir_all(root.join("tooling/ci")).unwrap();
+    fs::create_dir_all(root.join("tooling/cli/src")).unwrap();
+    fs::write(root.join("tooling/ci/python.py"), "").unwrap();
+    fs::write(
+        root.join("Cargo.toml"),
+        "[workspace]\nmembers = ['tooling/cli']\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("tooling/cli/Cargo.toml"),
+        "[package]\nname = 'dispatchdev-cli'\n",
+    )
+    .unwrap();
+    fs::write(root.join("tooling/cli/src/lib.rs"), "").unwrap();
+    let git = |args: &[&str]| {
+        let result = Command::new("git")
+            .args(args)
+            .current_dir(root)
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+    };
+    git(&["add", "."]);
+    git(&[
+        "-c",
+        "user.name=T",
+        "-c",
+        "user.email=t@example.com",
+        "commit",
+        "-qm",
+        "fixture",
+    ]);
+    git(&["update-ref", "refs/remotes/origin/main", "HEAD"]);
+    fs::write(root.join("tooling/cli/src/lib.rs"), "// Changed input\n").unwrap();
+    git(&["add", "."]);
+    git(&[
+        "-c",
+        "user.name=T",
+        "-c",
+        "user.email=t@example.com",
+        "commit",
+        "-qm",
+        "change",
+    ]);
+    // Only the fixture's slots are held. The real CLI announces when it reaches the wait;
+    // no build or long-lived step is started, and no timer chooses when to send the signal.
+    let slots = root.join(".git/dispatch-build-slots");
+    fs::create_dir(&slots).unwrap();
+    let held: Vec<_> = (0..2)
+        .map(|slot| {
+            let file = fs::File::create(slots.join(slot.to_string())).unwrap();
+            file.lock_exclusive().unwrap();
+            file
+        })
+        .collect();
+    let scratch = dispatchdev_cli::workspace::checkout_scratch(root).unwrap();
+    for (signal, name, stderr_open) in [
+        (libc::SIGTERM, "SIGTERM", true),
+        (libc::SIGINT, "SIGINT", true),
+        (libc::SIGHUP, "SIGHUP", true),
+        (libc::SIGTERM, "SIGTERM", false),
+    ] {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_dispatchdev"))
+            .args(["test", "--root", root.to_str().unwrap()])
+            .env_remove("CI")
+            .env_remove("DISPATCH_BUILD_SLOT")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        if !stderr_open {
+            drop(child.stderr.take());
+        }
+        let stdout = BufReader::new(child.stdout.take().unwrap());
+        for line in stdout.lines() {
+            if line.unwrap().starts_with(dispatchdev_cli::slot::WAITING) {
+                break;
+            }
+        }
+        // Inspect the exact process we started before signalling it.
+        let process = Command::new("ps")
+            .args(["-p", &pid.to_string(), "-o", "command="])
+            .output()
+            .unwrap();
+        assert!(String::from_utf8_lossy(&process.stdout).contains("dispatchdev"));
+        assert_eq!(unsafe { libc::kill(pid as i32, signal) }, 0);
+        let output = child.wait_with_output().unwrap();
+        assert_eq!(output.status.signal(), Some(signal), "{name}");
+        assert_eq!(128 + output.status.signal().unwrap(), 128 + signal);
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        let lines: Vec<_> = stderr
+            .lines()
+            .filter(|line| line.starts_with("dispatchdev: received "))
+            .collect();
+        if stderr_open {
+            assert_eq!(lines.len(), 1, "one sender diagnostic for {name}: {stderr}");
+        }
+        let log =
+            fs::read_to_string(scratch.join("test").join(pid.to_string()).join("1.log")).unwrap();
+        let logged: Vec<_> = log.lines().collect();
+        assert_eq!(
+            logged.len(),
+            1,
+            "one sender diagnostic in the run log: {log}"
+        );
+        let line = logged[0];
+        if stderr_open {
+            assert_eq!(lines, [line]);
+        }
+        assert!(line.contains(&format!("received {name} ({signal})")));
+        assert!(
+            line.contains(&format!("sender pid={} ", std::process::id())),
+            "{line}"
+        );
+        assert!(
+            line.contains(&format!("uid={} ", unsafe { libc::getuid() })),
+            "{line}"
+        );
+        assert!(
+            line.contains(&format!("ppid={} ", unsafe { libc::getppid() })),
+            "{line}"
+        );
+        #[cfg(target_os = "linux")]
+        assert!(
+            line.contains(std::env::current_exe().unwrap().to_str().unwrap()),
+            "{line}"
+        );
+    }
+    drop(held);
+    let contents: Vec<_> = fs::read_dir(&scratch)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect();
+    assert_eq!(contents, ["test"]);
+    fs::remove_dir_all(scratch).unwrap();
+}
+
+#[test]
 fn new_and_generate_write_nothing_on_main() {
     let main = checkout("main");
     for args in [&["new", "feature", "fleet_log"][..], &["generate"]] {

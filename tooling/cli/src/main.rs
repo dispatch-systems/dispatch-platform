@@ -839,7 +839,9 @@ fn unknown(name: &str) -> Box<dyn std::error::Error + Send + Sync> {
 fn main() {
     // A reader that stops early, as `| head` does, ends it quietly, as other commands end.
     unsafe { libc::signal(libc::SIGPIPE, libc::SIG_DFL) };
-    if let Err(error) = run() {
+    let result = dispatchdev_cli::signals::install().and_then(|()| run());
+    dispatchdev_cli::signals::finish();
+    if let Err(error) = result {
         let message = error.to_string();
         if !message.is_empty() {
             eprintln!("{message}");
