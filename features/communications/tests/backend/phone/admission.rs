@@ -1,17 +1,17 @@
 //! Exhaust the actual admission resource, without pretending these guards are network waiters.
-use super::{WAITING, outbox};
+use super::{QUEUED, WAITING, outbox};
 use crate::api::phone::access::Phone;
 use crate::backend::{
     phone::{
         self,
         model::Status,
-        storage::{DeviceStore, FileStore, ReportedFile, TextStore, Wanting},
+        storage::{DeviceStore, FileStore, Pairing, ReportedFile, TextStore, Wanting},
         support::{outgoing, paired, reported},
     },
     support::install,
     texts::filing,
 };
-use axum::{body::Body, extract::ConnectInfo, http::Request};
+use axum::{body::Body, extract::ConnectInfo, http::Request, response::IntoResponse};
 use dispatch_core::{
     State,
     db::now,
@@ -74,9 +74,26 @@ async fn pending_work_survives_phone_admission_exhaustion() {
     db.set_code(&b, "bbb").unwrap();
     let key_a = "a".repeat(64);
     let key_b = "b".repeat(64);
+    let key_c = "c".repeat(64);
     let phone_a = paired(&db, &a, &crypto::sha(&key_a), "2065550100");
     let phone_b = paired(&db, &b, &crypto::sha(&key_b), "2065550177");
-    assert!(!phone_a.stand_in && !phone_b.stand_in);
+    // The shared pairing helper uses one fixed code per DSP; this third device needs its own.
+    let code_c = crypto::sha("idle-admission-third-phone");
+    db.phones_new_pairing(&a, &owner, &code_c, 1_000).unwrap();
+    let phone_c = db
+        .phones_pair(
+            &a,
+            &code_c,
+            &crypto::sha(&key_c),
+            &Pairing {
+                number: "2065550188",
+                model: "Pixel 8a",
+                app_version: "1.0.0",
+            },
+            2_000,
+        )
+        .unwrap();
+    assert!(!phone_a.stand_in && !phone_b.stand_in && !phone_c.stand_in);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -131,9 +148,9 @@ async fn pending_work_survives_phone_admission_exhaustion() {
 
     // Queue via the real send/filing owner, explicitly from B; no stand-in auto-delivery.
     let at = now();
-    let (of, device) = (b.clone(), phone_b.id.clone());
+    let (of, device, author) = (b.clone(), phone_b.id.clone(), owner.clone());
     let (id, attempt) = testing::requested(filing::changing(&state, &b, move |db| {
-        let mut outgoing = outgoing("4255550199", vec![], &owner);
+        let mut outgoing = outgoing("4255550199", vec![], &author);
         outgoing.phone = Some(device.clone());
         let sent = phone::outbox::send(db, &of, &outgoing, at)?;
         assert_eq!(sent.phone, device);
@@ -159,6 +176,8 @@ async fn pending_work_survives_phone_admission_exhaustion() {
     let capacity = WAITING.available_permits();
     assert_eq!(capacity, 128);
     let held = WAITING.try_acquire_many(capacity as u32).unwrap();
+    assert_eq!(QUEUED.available_permits(), 128);
+    let queued_held = QUEUED.try_acquire_many(128).unwrap();
     let ordinary = state.topics.slots.clone();
     let ordinary_capacity = ordinary.available_permits();
     let ordinary_held = ordinary.try_acquire_many(ordinary_capacity as u32).unwrap();
@@ -320,6 +339,8 @@ async fn pending_work_survives_phone_admission_exhaustion() {
     assert_eq!(WAITING.available_permits(), 0);
     assert_eq!(ordinary.available_permits(), 0);
     drop(held);
+    drop(queued_held);
+    assert_eq!(QUEUED.available_permits(), 128);
     drop(ordinary_held);
     assert_eq!(WAITING.available_permits(), capacity);
     assert_eq!(ordinary.available_permits(), ordinary_capacity);
@@ -328,19 +349,12 @@ async fn pending_work_survives_phone_admission_exhaustion() {
     tokio::time::pause();
 
     // Use the public parser, then a real request trace, when polling the actual handler.
-    let request = Request::builder()
-        .uri(OUTBOX)
-        .header("host", &host_b)
-        .header("authorization", format!("Bearer {key_b}"))
-        .extension(state.config.site(&host_b).unwrap())
-        .extension(ConnectInfo(
-            "127.0.0.1:12345".parse::<SocketAddr>().unwrap(),
-        ))
-        .body(Body::empty())
-        .unwrap();
-    let (parts, _) = request.into_parts();
-    let input = middleware::head(&state, &parts, OUTBOX).unwrap();
-    let mut waiting = Box::pin(testing::requested(outbox(state.clone(), input, Phone)));
+    let input = outbox_input(&state, &host_b, &key_b);
+    let mut waiting = Box::pin(testing::requested(outbox(
+        state.clone(),
+        input.clone(),
+        Phone,
+    )));
     let wake = Arc::new(Awoken(Notify::new()));
     let waker = Waker::from(wake.clone());
     let mut cx = Context::from_waker(&waker);
@@ -357,6 +371,127 @@ async fn pending_work_survives_phone_admission_exhaustion() {
     }
     drop(waiting);
     assert_eq!(WAITING.available_permits(), capacity);
+
+    // A bounded queued caller expires at the original deadline without an empty success.
+    let mut held = WAITING.try_acquire_many(capacity as u32).unwrap();
+    let mut expired = Waiting::new(state.clone(), input.clone());
+    expired.drive_to(127).await;
+    tokio::time::advance(super::WAIT).await;
+    let Err(error) = expired.call.await else {
+        panic!("timeout without an idle permit returned an empty success");
+    };
+    assert_eq!(
+        error.admission_origin(),
+        Some("phone_outbox_idle_unavailable")
+    );
+    assert_eq!(QUEUED.available_permits(), 128);
+    assert_eq!(WAITING.available_permits(), 0);
+
+    // Cancelling the FIFO head removes it; cancellation after assignment but before the
+    // handler observes its grant also returns the grant to the semaphore.
+    let mut cancelled = Waiting::new(state.clone(), input.clone());
+    cancelled.drive_to(127).await;
+    let mut successor = Waiting::new(state.clone(), input.clone());
+    successor.drive_to(126).await;
+    drop(cancelled);
+    assert_eq!(QUEUED.available_permits(), 127);
+    drop(held.split(1).unwrap());
+    assert_eq!(WAITING.available_permits(), 0);
+    drop(successor);
+    assert_eq!(WAITING.available_permits(), 1);
+    assert_eq!(QUEUED.available_permits(), 128);
+    drop(held);
+
+    let mut held = WAITING.try_acquire_many(capacity as u32).unwrap();
+    let mut first = Waiting::new(state.clone(), input.clone());
+    first.drive_to(127).await;
+    let mut second = Waiting::new(state.clone(), input.clone());
+    second.drive_to(126).await;
+    // An unrelated same-DSP wake starts the head's fresh probe. Its pending acquisition
+    // must retain its place even while the database answer has not been observed.
+    phone::live::queued(&state, &b);
+    assert!(first.poll().is_pending());
+    let mut third = Waiting::new(state.clone(), input.clone());
+    third.drive_to(125).await;
+    let mut tail = Waiting::new(state.clone(), input.clone());
+    tail.drive_to(124).await;
+    drop(tail);
+    assert_eq!(QUEUED.available_permits(), 125);
+    drop(held.split(1).unwrap());
+    assert!(second.poll().is_pending());
+    assert_eq!(
+        QUEUED.available_permits(),
+        125,
+        "a later caller received the FIFO head's grant after a wake"
+    );
+    first.drive_to(126).await;
+    drop(first);
+    assert!(third.poll().is_pending());
+    assert_eq!(QUEUED.available_permits(), 126);
+    second.drive_to(127).await;
+    drop(second);
+    third.drive_to(128).await;
+    drop(third);
+    assert_eq!(WAITING.available_permits(), 1);
+    drop(held);
+    assert_eq!(WAITING.available_permits(), capacity);
+
+    // Ready work arriving after registration does not wait for an idle permit.
+    let held = WAITING.try_acquire_many(capacity as u32).unwrap();
+    let mut ready = Waiting::new(state.clone(), input.clone());
+    ready.drive_to(127).await;
+    let later = now();
+    let (of, device, author) = (b.clone(), phone_b.id.clone(), owner.clone());
+    let (late_id, late_attempt) = testing::requested(filing::changing(&state, &b, move |db| {
+        let mut outgoing = outgoing("4255550199", vec![], &author);
+        outgoing.phone = Some(device.clone());
+        let text = phone::outbox::send(db, &of, &outgoing, later)?;
+        let pending = db.phones_outbox(&of, &device)?;
+        let attempt = pending.iter().find(|(row, _)| row.id == text.id).unwrap().1;
+        Ok(((text.id.clone(), attempt), vec![text.id]))
+    }))
+    .await
+    .unwrap();
+    phone::live::queued(&state, &b);
+    let response = ready.call.await.unwrap().into_response();
+    let body = axum::body::to_bytes(response.into_body(), 65_536)
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::from_slice::<Value>(&body).unwrap(),
+        json!({
+            "texts":[{"id":late_id, "number":"+14255550199", "body":"On my way",
+                "files":[], "attempt":late_attempt, "expires":later + 600_000}],
+            "app":{"version":"2.0.0", "versionCode":2000}
+        })
+    );
+    assert_eq!(WAITING.available_permits(), 0);
+    assert_eq!(QUEUED.available_permits(), 128);
+    drop(held);
+
+    // A grant cannot turn authorization captured before the queue into an empty heartbeat.
+    // Removal intentionally sends no phone-topic hint: the grant itself must reauthorize.
+    let mut held = WAITING.try_acquire_many(capacity as u32).unwrap();
+    let input_c = outbox_input(&state, &host_a, &key_c);
+    let mut removed = Waiting::new(state.clone(), input_c);
+    removed.drive_to(127).await;
+    let (of, device) = (a.clone(), phone_c.id.clone());
+    testing::requested(filing::changing(&state, &a, move |db| {
+        let (_, failed) = db.phones_remove(&of, &device, now())?;
+        Ok(((), failed))
+    }))
+    .await
+    .unwrap();
+    drop(held.split(1).unwrap());
+    let Err(error) = removed.call.await else {
+        panic!("a removed phone was authorized by its former queue position");
+    };
+    assert_eq!(error.code, "phones_removed");
+    assert_eq!(WAITING.available_permits(), 1);
+    assert_eq!(QUEUED.available_permits(), 128);
+    drop(held);
+    assert_eq!(WAITING.available_permits(), capacity);
+
     // Running blocking work retains its own permits; wait for that work to release them.
     let queued = state.db_queue.acquire_many(64).await.unwrap();
     let slots = state.db_slots.acquire_many(4).await.unwrap();
@@ -381,4 +516,49 @@ impl Wake for Awoken {
     fn wake(self: Arc<Self>) {
         self.0.notify_one();
     }
+}
+
+/// A real handler driven only by its DB/watch dependencies, never a periodic sampler.
+struct Waiting {
+    call: std::pin::Pin<Box<dyn Future<Output = dispatch_core::Result<http::input::Reply>> + Send>>,
+    wake: Arc<Awoken>,
+}
+impl Waiting {
+    fn new(state: Arc<State>, input: http::input::Input) -> Self {
+        Self {
+            call: Box::pin(testing::requested(outbox(state, input, Phone))),
+            wake: Arc::new(Awoken(Notify::new())),
+        }
+    }
+    fn poll(&mut self) -> std::task::Poll<dispatch_core::Result<http::input::Reply>> {
+        let waker = Waker::from(self.wake.clone());
+        self.call.as_mut().poll(&mut Context::from_waker(&waker))
+    }
+    async fn drive_to(&mut self, queue_available: usize) {
+        loop {
+            match self.poll() {
+                std::task::Poll::Pending => {}
+                std::task::Poll::Ready(Err(error)) => panic!("outbox left admission: {error:?}"),
+                std::task::Poll::Ready(Ok(_)) => panic!("empty outbox completed before admission"),
+            }
+            if QUEUED.available_permits() == queue_available {
+                return;
+            }
+            self.wake.0.notified().await;
+        }
+    }
+}
+fn outbox_input(state: &State, host: &str, key: &str) -> http::input::Input {
+    let request = Request::builder()
+        .uri(OUTBOX)
+        .header("host", host)
+        .header("authorization", format!("Bearer {key}"))
+        .extension(state.config.site(host).unwrap())
+        .extension(ConnectInfo(
+            "127.0.0.1:12345".parse::<SocketAddr>().unwrap(),
+        ))
+        .body(Body::empty())
+        .unwrap();
+    let (parts, _) = request.into_parts();
+    middleware::head(state, &parts, OUTBOX).unwrap()
 }
