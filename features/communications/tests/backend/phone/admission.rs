@@ -349,7 +349,7 @@ async fn a_known_attempt_stays_waiting(fixture: &Fixture, served: &Served, queue
     } = fixture;
     // A real foreground DB turn succeeds with both wait resources exhausted.
     testing::requested(state.read(|_| Ok(()))).await.unwrap();
-    // On the pin this answers 503, while the same known B attempt remains waiting.
+    // Ready work needs no idle permit: the same known B attempt is answered, still waiting.
     assert_eq!(
         answer(served.call(Method::GET, OUTBOX, host_b, key_b), 200).await,
         queued.expected
@@ -589,7 +589,8 @@ async fn an_unchanged_poll_idles_on_its_first_answer(
     }
     // Taking every permit waits for that turn to finish, without resuming the handler. An
     // unchanged poll must be able to enter its idle wait using that answer alone, even when
-    // another request occupies the queue. A restored checked_in + probe fails db_queue_full.
+    // another request occupies the queue. A second database turn, to check in or to probe
+    // again, would fail db_queue_full here.
     let queued = state.db_queue.acquire_many(64).await.unwrap();
     loop {
         assert!(

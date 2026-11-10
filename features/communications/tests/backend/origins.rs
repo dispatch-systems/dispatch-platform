@@ -158,7 +158,8 @@ async fn clipped_origins_use_stored_run_first_names_and_prior_run_first_for_both
                 before.1 + 1
             )
         );
-        // Remove only this placement before the original source and slice assertions.
+        // Remove only this placement, so the source and slice assertions below read the
+        // fixture's own rows.
         let sql = match reference {
             Reference::Slack(_) => "DELETE FROM communications_messages WHERE id=?",
             Reference::Text(_) => "DELETE FROM phones_texts WHERE id=?",

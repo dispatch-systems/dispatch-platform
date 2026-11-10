@@ -211,8 +211,8 @@ async fn waiting(state: Arc<State>, input: Input, access: Phone) -> Result<Reply
     let admission = WAITING.acquire();
     tokio::pin!(admission);
     let unavailable = || Error::busy("phone_outbox_idle_unavailable");
-    // Count the initial snapshot's work toward the wait. After check-in/metadata writes,
-    // start where the fresh probe does, as before consolidation.
+    // Count the initial snapshot's work toward the wait. After check-in/metadata writes, the
+    // wait starts where the fresh probe does.
     let until = if first.is_some() {
         until
     } else {

@@ -285,7 +285,8 @@ pub fn opened(
     assembled(db, state, dsp, id, read, more)
 }
 
-/// Existing composition context, for the selected rows rather than an unrelated tail.
+/// The conversation `id` with `read`, the messages selected of it, a page's or a window's, and
+/// what `opened` says of whom it's with.
 pub(crate) fn assembled(
     db: &Store,
     state: &State,

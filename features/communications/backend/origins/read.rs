@@ -21,8 +21,8 @@ use dispatch_core::{
 use rusqlite::params;
 use serde_json::json;
 
-/// A source row's render identity, for an origin or a selection's neighbour, obtained by exact
-/// source PK/place or one neighbour seek only. The group JOIN and People/Numbers calls are the
+/// A source row's render identity, for an origin or a selection's neighbor, obtained by exact
+/// source PK/place or one neighbor seek only. The group JOIN and People/Numbers calls are the
 /// same projection owners as body hydration.
 struct Projection {
     topology: Topology,
@@ -76,7 +76,7 @@ impl Projection {
                 })
             })
     }
-    /// The row as a selection's neighbour: its place and writer, nothing of its body.
+    /// The row as a selection's neighbor: its place and writer, nothing of its body.
     fn beside(self, numbers: Option<&Numbers>) -> MessageNeighbor {
         let sender = self.sender(numbers);
         let row = self.topology;
@@ -161,7 +161,7 @@ fn project(
     Ok(row.shown(people, numbers))
 }
 /// The source row just before or after `place` in `reference`'s conversation, of what the DSP
-/// sent alone when `outgoing`, as a window's render context names a selection's neighbour. One
+/// sent alone when `outgoing`, as a window's render context names a selection's neighbor. One
 /// indexed seek of the source table: it reads no origin state, so it needs no ready generation
 /// and answers no origin invariant.
 pub(crate) fn beside(

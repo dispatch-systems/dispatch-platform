@@ -1005,8 +1005,8 @@ async fn window_seeks_bound_work_at_both_ends_and_inside_a_long_tied_history() {
         for leading in [0, 75, 149] {
             let place = format!("1700000000.{n:06}");
             let id = format!("text-{n:06}");
-            // Retain the existing 20,000 SQLite instruction guard unchanged, separately for
-            // each complete window selector. This is a work bound, never an elapsed-time test.
+            // Each complete window selector has 20,000 SQLite instructions of its own. This
+            // is a work bound, never an elapsed-time test.
             let budget = ReadBudget::new(&db.0);
             let page = store
                 .communications_message_window(&dsp, &slack, Some((&place, leading)))
@@ -1067,7 +1067,7 @@ async fn window_seeks_bound_work_at_both_ends_and_inside_a_long_tied_history() {
             .name,
         "Selected"
     );
-    // Sparse-outgoing cases reuse these same 10,001-row histories and the unchanged guard.
+    // Sparse outgoing rows, in these same 10,001-row histories, under the same guard.
     db.exec(
         "UPDATE communications_messages SET direction='out',sent_by='user_1', \
         sender_name='Earlier sender' WHERE conversation_id=? AND ts='1700000000.000001'",

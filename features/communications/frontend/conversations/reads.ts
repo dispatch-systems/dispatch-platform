@@ -70,8 +70,8 @@ function withSends(
   window: { messages: Message[]; more: boolean },
   read: readonly Message[] = [],
 ) {
-  // A returned row is authoritative, as fresh() has always treated it. Keep its version in
-  // the separate record too, so an old send response cannot replay waiting over failed/sent.
+  // A returned row is authoritative, as fresh() treats it. Keep its version in the separate
+  // record too, so an old send response cannot replay waiting over failed/sent.
   for (const message of read) {
     const pending = entry.sent.get(message.id);
     if (pending) entry.sent.set(message.id, { ...pending, message });
