@@ -830,6 +830,8 @@ fn a_passed_commit_installs_while_a_later_one_is_pending_or_failed() {
                 "waiting_for_checks"
             }
         );
+        // Waiting on the later one, Dev still serves the commit it installed.
+        assert_eq!(u.wait(&f.new, 20).unwrap()["commit"], json!(f.new));
     }
 }
 #[test]
