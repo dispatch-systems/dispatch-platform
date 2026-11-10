@@ -37,7 +37,7 @@ export const collected: Record<string, Collected> = {
         ],
       },
     ],
-    period: [{ label: 'This week and last', detail: 'And up to 2 older weeks not yet read' }],
+    period: [{ label: 'This week and last' }],
     each: 'Adds to its history',
     skips: ['Reports unchanged since the last read'],
   },

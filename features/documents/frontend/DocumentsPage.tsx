@@ -5,7 +5,6 @@ import {
   FolderOpen,
   Info,
   LoaderCircle,
-  ShieldCheck,
   TriangleAlert,
 } from 'lucide-react';
 import type { DspView } from '../../../core/accounts/api/index.js';
@@ -150,11 +149,6 @@ function Connect({ view }: { view: DspView }) {
           </li>
         </ol>
         <div className="documents-fine">
-          <p>
-            <ShieldCheck size={16} />
-            Dispatch can only open the files it makes or that someone adds to it. It can't see
-            anything else in your Drive.
-          </p>
           <p>
             <Info size={16} />
             Use a Google account the business keeps: your company Google Workspace account, or a
