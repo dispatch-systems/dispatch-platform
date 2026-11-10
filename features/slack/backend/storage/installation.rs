@@ -102,11 +102,10 @@ pub trait InstallationStore {
     ) -> Result<Link>;
     /// The DSP's link with this hash, while it works.
     fn working_slack_link(&self, dsp: &str, hash: &str) -> Result<Option<Link>>;
-    /// Ends the DSP's install link for adding a workspace, or for the workspace `team`:
-    /// whether there was one.
-    fn end_slack_link(&self, dsp: &str, team: Option<&str>) -> Result<bool>;
-    /// Ends the link with this hash, used: whether there was one.
-    fn use_slack_link(&self, dsp: &str, hash: &str) -> Result<bool>;
+    /// Ends the DSP's install link for adding a workspace: whether there was one.
+    fn end_slack_link(&self, dsp: &str) -> Result<bool>;
+    /// Ends the link with this hash, used.
+    fn use_slack_link(&self, dsp: &str, hash: &str) -> Result<()>;
 }
 
 impl InstallationStore for Store {
@@ -209,16 +208,15 @@ impl InstallationStore for Store {
             params![hash, now()],
         )
     }
-    fn end_slack_link(&self, dsp: &str, team: Option<&str>) -> Result<bool> {
+    fn end_slack_link(&self, dsp: &str) -> Result<bool> {
         let ended = self
             .dsp(dsp)?
-            .exec("DELETE FROM slack_install_links WHERE team_id IS ?", [team])?;
+            .exec("DELETE FROM slack_install_links WHERE team_id IS NULL", [])?;
         Ok(ended > 0)
     }
-    fn use_slack_link(&self, dsp: &str, hash: &str) -> Result<bool> {
-        let ended = self
-            .dsp(dsp)?
+    fn use_slack_link(&self, dsp: &str, hash: &str) -> Result<()> {
+        self.dsp(dsp)?
             .exec("DELETE FROM slack_install_links WHERE link_hash=?", [hash])?;
-        Ok(ended > 0)
+        Ok(())
     }
 }

@@ -58,7 +58,7 @@ pub fn create(
 }
 /// Ends the DSP's install link for adding a workspace, so it no longer works.
 pub fn cancel(db: &Store, c: &Context) -> Result<SlackAccount> {
-    if db.end_slack_link(&c.dsp.id, None)? {
+    if db.end_slack_link(&c.dsp.id)? {
         c.audit(db, "slack.link_cancelled", "")?;
     }
     connection::account(db, &c.dsp.id)

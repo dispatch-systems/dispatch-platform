@@ -132,8 +132,8 @@ pub trait CanvasStore {
     fn slack_canvas_pick(&self, dsp: &str, team: &str, canvas: &str) -> Result<Option<Pick>>;
     /// Keeps the choice, in place of any the canvas had.
     fn save_slack_canvas_pick(&self, dsp: &str, pick: &Pick) -> Result<()>;
-    /// Takes the choice away: whether there was one.
-    fn remove_slack_canvas_pick(&self, dsp: &str, team: &str, canvas: &str) -> Result<bool>;
+    /// Takes the choice away.
+    fn remove_slack_canvas_pick(&self, dsp: &str, team: &str, canvas: &str) -> Result<()>;
     /// Notes that Slack has the canvas `canvas`, found in `channel`, titled `title` and last
     /// edited at `edited`, in milliseconds, at `at`: one new to it, edited since its document
     /// was written or it was last left, or left as gone, is synced at `due`. Whether it's to be
@@ -228,12 +228,12 @@ impl CanvasStore for Store {
         )?;
         Ok(())
     }
-    fn remove_slack_canvas_pick(&self, dsp: &str, team: &str, canvas: &str) -> Result<bool> {
-        let removed = self.dsp(dsp)?.exec(
+    fn remove_slack_canvas_pick(&self, dsp: &str, team: &str, canvas: &str) -> Result<()> {
+        self.dsp(dsp)?.exec(
             "DELETE FROM slack_canvas_picks WHERE team_id=? AND canvas_id=?",
             [team, canvas],
         )?;
-        Ok(removed > 0)
+        Ok(())
     }
     fn note_slack_canvas(
         &self,
