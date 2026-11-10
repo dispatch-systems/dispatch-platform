@@ -71,7 +71,8 @@ Installed hosts run their installed copies of `ops/launchers/` and the built art
 repository paths. Building the backend and checking a branch before its PR run through
 `dispatchdev` (`tooling/cli/`), and artifact verification, releases, fresh setup and the
 updaters through the Rust host manager (`ops/host-manager/`); what both use is in
-`tooling/shared/`. See [tooling/ci/README.md](tooling/ci/README.md) for the pipeline.
+`tooling/shared/`. See [tooling/ci/README.md](tooling/ci/README.md) for the pipeline and
+[ops/releasing.md](ops/releasing.md) for Dev-only backup and upgrade verification.
 
 ## License
 

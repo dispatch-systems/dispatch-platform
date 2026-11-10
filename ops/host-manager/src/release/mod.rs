@@ -4,6 +4,7 @@
 mod assets;
 mod backup;
 mod dry_run;
+mod local;
 mod notes;
 mod origins;
 mod production;
@@ -34,7 +35,7 @@ const HELP: &str = "Dispatch release [publish|status|backup|dry-run] [X.Y.Z] --r
             Production installs it and report what its log shows (the default). A release
             that brings migrations publishes only after a backup made for it in the last six
             hours, and once a copy of that backup starts under the release's backend on
-            Production.
+            Dev in an isolated sandbox.
             --backup takes that backup when it's missing, as backup does, once Production
             passes its checks, then publishes. It stops Production for about a second, so pass
             it only with the owner's approval.
@@ -42,7 +43,7 @@ const HELP: &str = "Dispatch release [publish|status|backup|dry-run] [X.Y.Z] --r
             host tool Dev installed with it, when that isn't the one running.
   status    Inspect GitHub, saved assets and public health without changing release state.
   backup    Back Production up for the release over ssh, stopping it for about a second,
-            restore the copy elsewhere and check every database, and record it.
+            restore and check it on Dev with the prepared candidate, and record it.
   dry-run   Rehearse what only a release runs, for the commit publish would release: its own
             checks, the package, the smoke check and a verified GitHub draft, then delete the
             draft, its checks branch and its files. It never publishes or touches Production.
