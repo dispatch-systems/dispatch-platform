@@ -119,7 +119,7 @@ fn a_punch_it_cannot_place_fails_the_read_rather_than_becoming_a_wrong_card() {
         json!({"entrytype":1,"punchtime":"yesterday","punchtype":"ID"}),
         json!({"punchtime":"2026-09-07 08:00:00","punchtype":"ID"}),
     ] {
-        let refused = cards(&[row.clone()], "A0B1", &period(), Chicago).unwrap_err();
+        let refused = cards(std::slice::from_ref(&row), "A0B1", &period(), Chicago).unwrap_err();
         assert!(refused.is(codes::API_UNREADABLE), "{row}");
     }
 }

@@ -6,7 +6,7 @@ they agree, the rest are read over HTTP, else the whole job goes back to the bro
 `collections/timecards/extract.rs` and `scripts/timecard.js` read the same pages and change
 together; prove them against real Paycom with the `http_extraction_parity` probe.
 
-A DSP may connect through Paycom's own REST API instead (`rest/`), with the SID and Token
+A DSP may connect through Paycom's own REST API instead (`connection/rest/`), with the SID and Token
 Paycom issues, in place of signing in: no browser runs, and nothing waits for a member's
 verification. Paycom answers only the addresses the client allowed, at the one of its three
 data centers that holds the client, and only the functions the client switched on, so
@@ -25,5 +25,5 @@ offers the punches alone, not the hours Paycom's timecard totals, so a day's hou
 time between each in and its out, plus hours entered without a punch; an answer in a shape it
 can't place fails the read (`paycom_api_unreadable`) rather than becoming a wrong card. It
 isn't offered in Production (`paycom_api_unavailable`) until those hours are proven against
-Paycom's own totals. In fixture mode the Token chooses how connecting goes (`rest/fixture.rs`):
+Paycom's own totals. In fixture mode the Token chooses how connecting goes (`connection/rest/fixture.rs`):
 `refused-token` is refused and `punch-history-off` finds that function off.

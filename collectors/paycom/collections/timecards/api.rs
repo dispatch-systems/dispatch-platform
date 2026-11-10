@@ -7,7 +7,7 @@ use super::{
 };
 use crate::{
     codes,
-    rest::{Client, unreadable},
+    connection::rest::{Client, unreadable},
 };
 use chrono::{Duration, NaiveDate, TimeZone};
 use chrono_tz::Tz;

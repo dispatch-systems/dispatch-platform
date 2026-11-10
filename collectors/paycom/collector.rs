@@ -4,7 +4,6 @@ mod connection;
 pub mod fixtures;
 #[cfg(feature = "operator-probes")]
 mod probes;
-mod rest;
 
 pub use collections::timecards::{self, PaycomStore};
 /// Measures a live collection against what the feature keeping timecards last published,
@@ -12,6 +11,7 @@ pub use collections::timecards::{self, PaycomStore};
 #[cfg(feature = "operator-probes")]
 pub use probes::measure_live_collection;
 
+use connection::rest;
 use dispatch_core::collection::registry::Provider;
 use dispatch_core::{
     Error, Result,

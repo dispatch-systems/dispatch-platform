@@ -312,5 +312,5 @@ impl Checks {
 }
 
 #[cfg(test)]
-#[path = "../tests/backend/rest.rs"]
+#[path = "../../tests/backend/rest.rs"]
 mod tests;

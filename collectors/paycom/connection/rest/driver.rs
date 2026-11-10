@@ -16,7 +16,7 @@ use dispatch_core::{
         api::types::ConnectionCheck,
         browser::{Collected, Driver as Drives, Pending, Run, browseros},
     },
-    db::{Store, s},
+    db::{self, Store, s},
     ensure,
     manifest::registry,
 };
@@ -127,7 +127,7 @@ impl Driver {
         if let Some(code) = sample {
             let employee = client.get(&format!("api/v1/employee/{code}")).await?;
             self.checks.answered(EMPLOYEE, &employee);
-            let day = chrono::Utc::now().timestamp();
+            let day = db::now() / 1000;
             let punches = client
                 .get(&api::punch_history(&code, day - 86400, day))
                 .await?;

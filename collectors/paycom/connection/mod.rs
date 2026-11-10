@@ -1,5 +1,8 @@
 //! Deterministic Paycom driver. Credentials, attempt limits and orchestration
-//! belong to Rust; JavaScript is restricted to provider page operations.
+//! belong to Rust; JavaScript is restricted to provider page operations. A DSP that connects
+//! through Paycom's API instead has the driver in `rest`, which needs no browser.
+pub(crate) mod rest;
+
 use dispatch_core::collection::browser::browseros;
 use dispatch_core::collection::browser::{
     Collected, Driver as Drives, Pending, Run, attempt,
