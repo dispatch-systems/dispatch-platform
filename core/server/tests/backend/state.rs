@@ -149,63 +149,217 @@ async fn polling_saturation_leaves_foreground_admission_and_execution() {
         atomic::{AtomicUsize, Ordering},
         mpsc,
     };
-    let (_root, state) = started();
-    let (entered, mut starts) = tokio::sync::mpsc::unbounded_channel();
-    let (release, wait) = mpsc::channel();
-    let wait = Arc::new(Mutex::new(wait));
-    let ran = Arc::new(AtomicUsize::new(0));
-    let mut pending = Vec::new();
-    let mut refused = Vec::new();
-    // Drive real traced database futures into admission. No test takes the queue permits
-    // themselves: the witness must survive actual polling work queued ahead of it.
-    for _ in 0..64 {
-        let (entered, wait, ran) = (entered.clone(), wait.clone(), ran.clone());
-        let mut call = Box::pin(requested(crate::State::polling(state.read(move |_| {
-            let _ = entered.send(());
-            let _ = wait.lock().unwrap().recv();
-            ran.fetch_add(1, Ordering::SeqCst);
+    for patient in [false, true] {
+        let (_root, state) = started();
+        let (entered, mut starts) = tokio::sync::mpsc::unbounded_channel();
+        let (release, wait) = mpsc::channel();
+        let wait = Arc::new(Mutex::new(wait));
+        let ran = Arc::new(AtomicUsize::new(0));
+        let mut pending = Vec::new();
+        let mut refused = Vec::new();
+        // Drive real traced database futures into admission. The first 56 may wait as a
+        // claimed job does; excess ordinary polls still exercise the bounded class queue.
+        for ordinal in 0..64 {
+            let (entered, wait, ran) = (entered.clone(), wait.clone(), ran.clone());
+            let work = crate::State::polling(state.read(move |_| {
+                let _ = entered.send(());
+                let _ = wait.lock().unwrap().recv();
+                ran.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }));
+            let mut call = Box::pin(requested(async move {
+                if patient && ordinal < 56 {
+                    crate::State::patiently(work).await
+                } else {
+                    work.await
+                }
+            }));
+            match std::future::poll_fn(|cx| std::task::Poll::Ready(call.as_mut().poll(cx))).await {
+                std::task::Poll::Pending => pending.push(call),
+                std::task::Poll::Ready(result) => refused.push(result),
+            }
+        }
+        for _ in 0..3 {
+            starts.recv().await.unwrap();
+        }
+        let admitted = pending.len();
+        let queued_capacity = state.db_queue.available_permits();
+        let worker_capacity = state.db_slots.available_permits();
+        // A routine caller waiting for its worker has not entered the global queue.
+        drop(pending.pop());
+        let after_cancel = (
+            state.db_queue.available_permits(),
+            state.routine_queue.available_permits(),
+        );
+        let foreground = requested(state.read(ready)).await;
+        // A burst of dashboard work queues behind its own active request while the three
+        // routine workers stay occupied. It must not lose admission to routine waiters.
+        let (began, started) = tokio::sync::oneshot::channel();
+        let (resume, paused) = mpsc::channel();
+        let mut holding = Box::pin(requested(state.read(move |_| {
+            let _ = began.send(());
+            let _ = paused.recv();
             Ok(())
-        }))));
-        match std::future::poll_fn(|cx| std::task::Poll::Ready(call.as_mut().poll(cx))).await {
-            std::task::Poll::Pending => pending.push(call),
-            std::task::Poll::Ready(result) => refused.push(result),
+        })));
+        assert!(
+            std::future::poll_fn(|cx| {
+                std::task::Poll::Ready(holding.as_mut().poll(cx).is_pending())
+            })
+            .await
+        );
+        started.await.unwrap();
+        let mut ordinary = Vec::new();
+        let mut answers = Vec::new();
+        for _ in 0..40 {
+            let mut call = Box::pin(requested(state.read(ready)));
+            match std::future::poll_fn(|cx| std::task::Poll::Ready(call.as_mut().poll(cx))).await {
+                std::task::Poll::Pending => ordinary.push(call),
+                std::task::Poll::Ready(result) => answers.push(result),
+            }
+        }
+        // Release before asserting, including on the original ordering where ordinary
+        // calls fail at the full queue. Every started blocking callback must finish.
+        resume.send(()).unwrap();
+        for _ in 0..64 {
+            release.send(()).unwrap();
+        }
+        holding.await.unwrap();
+        for call in ordinary {
+            answers.push(call.await);
+        }
+        let mut finished = Vec::new();
+        for call in pending {
+            finished.push(call.await);
+        }
+        assert_eq!(foreground.unwrap().unwrap()["ready"], 1);
+        assert_eq!(answers.len(), 40);
+        for answer in answers {
+            assert_eq!(answer.unwrap().unwrap()["ready"], 1);
+        }
+        for result in finished {
+            result.unwrap();
+        }
+        assert_eq!(admitted, 56);
+        assert_eq!((queued_capacity, worker_capacity), (61, 1));
+        assert_eq!(after_cancel, (queued_capacity, 1));
+        assert_eq!(refused.len(), 8);
+        for result in refused {
+            let error = result.unwrap_err();
+            assert_eq!((error.code.as_str(), error.status), ("platform_busy", 503));
+            assert_eq!(error.admission_origin(), Some("db_routine_queue_full"));
+        }
+        assert_eq!(ran.load(Ordering::SeqCst), 55);
+        assert_eq!(state.db_queue.available_permits(), 64);
+        assert_eq!(state.db_slots.available_permits(), 4);
+        assert_eq!(state.routine_queue.available_permits(), 56);
+        assert_eq!(state.routine_slots.available_permits(), 3);
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn polling_worker_waits_share_one_deadline_and_release_cancelled_admission() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let (_root, state) = started();
+    let mut held = Vec::new();
+    for _ in 0..3 {
+        held.push(state.routine_slots.clone().acquire_owned().await.unwrap());
+    }
+    let global = state.db_slots.clone().acquire_many_owned(4).await.unwrap();
+    let called = Arc::new(AtomicBool::new(false));
+    let seen = called.clone();
+    let mut waiting = Box::pin(requested(crate::State::polling(state.read(move |_| {
+        seen.store(true, Ordering::SeqCst);
+        Ok(())
+    }))));
+    assert!(
+        std::future::poll_fn(|cx| {
+            std::task::Poll::Ready(waiting.as_mut().poll(cx).is_pending())
+        })
+        .await
+    );
+    assert_eq!(state.db_queue.available_permits(), 64);
+    tokio::time::advance(Duration::from_millis(1500)).await;
+    drop(held.pop());
+    assert!(
+        std::future::poll_fn(|cx| {
+            std::task::Poll::Ready(waiting.as_mut().poll(cx).is_pending())
+        })
+        .await
+    );
+    assert_eq!(state.db_queue.available_permits(), 63);
+    tokio::time::advance(Duration::from_millis(500)).await;
+    let answer = std::future::poll_fn(|cx| std::task::Poll::Ready(waiting.as_mut().poll(cx))).await;
+    let std::task::Poll::Ready(answer) = answer else {
+        panic!("the second worker wait restarted the original deadline");
+    };
+    let error = answer.unwrap_err();
+    assert_eq!(error.admission_origin(), Some("db_slots_timeout"));
+    assert!(!called.load(Ordering::SeqCst));
+    assert_eq!(state.db_queue.available_permits(), 64);
+    assert_eq!(state.routine_queue.available_permits(), 56);
+    assert_eq!(state.routine_slots.available_permits(), 1);
+    drop(global);
+    drop(held);
+
+    // Cancellation while waiting at either gate returns all the caller's admission.
+    for patient in [false, true] {
+        for at_global_queue in [false, true] {
+            let class = if at_global_queue {
+                None
+            } else {
+                Some(
+                    state
+                        .routine_slots
+                        .clone()
+                        .acquire_many_owned(3)
+                        .await
+                        .unwrap(),
+                )
+            };
+            let queue = if at_global_queue {
+                Some(state.db_queue.clone().acquire_many_owned(64).await.unwrap())
+            } else {
+                None
+            };
+            let work = crate::State::polling(state.read(ready));
+            let mut waiting = Box::pin(requested(async move {
+                if patient {
+                    crate::State::patiently(work).await
+                } else {
+                    work.await
+                }
+            }));
+            let answer =
+                std::future::poll_fn(|cx| std::task::Poll::Ready(waiting.as_mut().poll(cx))).await;
+            if at_global_queue && !patient {
+                let std::task::Poll::Ready(answer) = answer else {
+                    panic!("a full global queue must refuse an ordinary poll");
+                };
+                assert_eq!(
+                    answer.unwrap_err().admission_origin(),
+                    Some("db_queue_full")
+                );
+            } else {
+                assert!(answer.is_pending());
+            }
+            drop(waiting);
+            assert_eq!(state.routine_queue.available_permits(), 56);
+            assert_eq!(
+                state.routine_slots.available_permits(),
+                if class.is_some() { 0 } else { 3 }
+            );
+            assert_eq!(
+                state.db_queue.available_permits(),
+                if queue.is_some() { 0 } else { 64 }
+            );
+            drop(queue);
+            drop(class);
         }
     }
-    for _ in 0..3 {
-        starts.recv().await.unwrap();
-    }
-    let admitted = pending.len();
-    let queued_capacity = state.db_queue.available_permits();
-    let worker_capacity = state.db_slots.available_permits();
-    // The last queued caller disconnects before any worker can start it.
-    drop(pending.pop());
-    let after_cancel = state.db_queue.available_permits();
-    let foreground = requested(state.read(ready)).await;
-    // Release every possible started callback before asserting, including counterfactuals
-    // that accidentally admit more than the intended share.
-    for _ in 0..64 {
-        release.send(()).unwrap();
-    }
-    let mut finished = Vec::new();
-    for call in pending {
-        finished.push(call.await);
-    }
-    assert_eq!(foreground.unwrap().unwrap()["ready"], 1);
-    for result in finished {
-        result.unwrap();
-    }
-    assert_eq!(admitted, 56);
-    assert_eq!((queued_capacity, worker_capacity), (8, 1));
-    assert_eq!(after_cancel, queued_capacity + 1);
-    assert_eq!(refused.len(), 8);
-    for result in refused {
-        let error = result.unwrap_err();
-        assert_eq!((error.code.as_str(), error.status), ("platform_busy", 503));
-        assert_eq!(error.admission_origin(), Some("db_routine_queue_full"));
-    }
-    assert_eq!(ran.load(Ordering::SeqCst), 55);
-    assert_eq!(state.db_queue.available_permits(), 64);
-    assert_eq!(state.db_slots.available_permits(), 4);
+    assert_eq!(
+        requested(state.read(ready)).await.unwrap().unwrap()["ready"],
+        1
+    );
 }
 
 #[tokio::test]

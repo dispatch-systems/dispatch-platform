@@ -29,3 +29,10 @@ under `localhost`'s names, `invite.localhost` and `<code>.localhost` at its port
 `Host` decides which it came to, and its `Input` carries that `Site`; any other host is
 refused, and a write must come from the pages of the address it came to. The agent API, its
 sign-in and the pages outside services send the browser back to are the admin's alone.
+
+Database work uses four shared workers and a 64-entry queue. Routine polling and background
+work first wait in a separate bounded queue of 56 callers for their three-worker share, so
+waiting for that share does not occupy the shared queue. Both queues together retain at most
+120 callers; this does not bound idle HTTP waits or every task the server retains. Normal
+worker waits share one two-second deadline; patient work waits up to a minute. Started
+blocking work retains its admission until it finishes, including after its caller disconnects.
