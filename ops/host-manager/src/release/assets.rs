@@ -134,7 +134,7 @@ impl Release<'_> {
             .permissions(fs::Permissions::from_mode(0o700))
             .tempdir_in(&self.directory)?;
         let download = tempfile::tempdir_in(staging.path())?;
-        releases::download_run(self.system, artifacts[0], download.path(), commit, None)?;
+        releases::download_run(self.system, artifacts[0], download.path(), commit)?;
         self.command(
             &[
                 "gh",

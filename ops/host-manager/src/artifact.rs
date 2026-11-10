@@ -332,18 +332,6 @@ pub fn unpack(archive: &Path, destination: &Path) -> Result<()> {
     }
     Ok(())
 }
-pub fn unpack_actions(
-    download: &Path,
-    expected_size: u64,
-    expected_digest: &str,
-    directory: &Path,
-    package: &Path,
-    commit: &str,
-) -> Result<Manifest> {
-    extract_actions(download, expected_size, expected_digest, package)?;
-    unpack(package, &directory.join("candidate"))?;
-    verify(&directory.join("candidate"), Some(commit))
-}
 /// Takes the one package out of `download`, the zip GitHub serves an artifact as, into
 /// `package`, unopened: the download must be the size and digest GitHub records for it.
 pub fn extract_actions(

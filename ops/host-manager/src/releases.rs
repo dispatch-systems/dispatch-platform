@@ -30,15 +30,14 @@ pub(crate) struct Provenance {
 }
 
 pub use dispatch_shared::runs::{latest_run, passed};
-/// Downloads the build `record` names into `directory`, its package as `package` or
-/// `build.tar.gz` there, and unpacks it as `candidate` once GitHub attests to the package: the
-/// build of `commit`, whole by its own inventory.
+/// Downloads the build `record` names into `directory`, its package as `build.tar.gz` there,
+/// and unpacks it as `candidate` once GitHub attests to the package: the build of `commit`,
+/// whole by its own inventory.
 pub fn download_run(
     system: &dyn System,
     record: &Value,
     directory: &Path,
     commit: &str,
-    package: Option<&Path>,
 ) -> Result<artifact::Manifest> {
     let size = record["size_in_bytes"].as_u64().unwrap_or(0);
     require(size > 0 && size <= MAX_BYTES, "Invalid artifact size")?;
@@ -54,7 +53,7 @@ pub fn download_run(
         180,
         Some(&download),
     )?;
-    let package = package.map_or_else(|| directory.join("build.tar.gz"), Path::to_path_buf);
+    let package = directory.join("build.tar.gz");
     artifact::extract_actions(
         &download,
         size,
