@@ -365,12 +365,12 @@ pub async fn add(
     let drive = access::open_for(state, &owner, false).await?;
     drive.google.grant(&drive.access, &ids).await?;
     let mut added = Vec::new();
-    // Keep this connection's mirror: a disconnect must not repopulate its replacement.
-    // The captured owner is retained across every pick and callback.
     // Whether it made a shortcut to a file someone else owns, to share with the team, and
     // those the account may not share on.
     let mut shortcuts = false;
     let mut unshared = Vec::new();
+    // Every pick goes in the copy of the connection captured above, and the sharing after
+    // them asks as it: a disconnect meanwhile never fills its replacement's copy.
     for id in &ids {
         // One the account that holds Documents doesn't reach: the member couldn't bring it.
         let item = match drive.google.get(&drive.access, id).await {
@@ -710,8 +710,9 @@ pub async fn trash(
 #[path = "../tests/backend/folder_reads.rs"]
 mod tests;
 
-/// Shared preparation for the additive, ephemeral query protocol. Legacy callers retain
-/// access::tree_for and the complete reader. Captured grant ownership is independent of semantic snapshots.
+/// Shared preparation for the ephemeral query protocol, its pages and its descriptions.
+/// `folder` and `folder_read` read through access::tree_for and the complete reader.
+/// Captured grant ownership is independent of semantic snapshots.
 pub(crate) struct QueryRequest {
     pub scope: crate::api::types::DocumentsQueryScope,
     pub page: u32,

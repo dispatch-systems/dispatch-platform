@@ -183,7 +183,8 @@ fn redirected(
         return Ok(None);
     };
     if matches!(policy, Policy::Picture) {
-        // The old custom policy followed only while previous().len() < 5.
+        // A picture follows four redirects at most, each to one of Google's own hosts: any
+        // other is handed back as the answer.
         if followed + 1 >= 5 || !picture_host(&url) {
             return Ok(None);
         }

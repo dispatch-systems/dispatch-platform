@@ -105,8 +105,8 @@ impl Grant {
         )?;
         Ok(member)
     }
-    /// Already completed sharing bookkeeping is kept through suspension, as before, but
-    /// never under a replacement/deleted/broken generation. No provider work is admitted here.
+    /// Already completed sharing bookkeeping is kept through suspension, but never under a
+    /// replacement/deleted/broken generation. No provider work is admitted here.
     pub async fn run_finished<T: Send + 'static>(
         &self,
         state: &Arc<State>,

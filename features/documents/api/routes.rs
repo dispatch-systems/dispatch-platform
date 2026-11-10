@@ -165,7 +165,7 @@ async fn folder_read(state: Arc<State>, input: Input, access: Dsp) -> Result<Rep
     Reply::of(&files::folder_read(&state, c, access, id, query, since).await?)
 }
 /// An optional equality precondition, not permission. Explicit null/empty/malformed values
-/// fail validation; omission preserves the legacy body and captures current ownership once.
+/// fail validation; a request without it is accepted and captures current ownership once.
 fn expected_generation(value: &serde_json::Value) -> Result<Option<String>> {
     optional(value, "grantGeneration", revision)
 }

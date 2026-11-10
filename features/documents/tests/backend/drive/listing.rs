@@ -46,8 +46,8 @@ fn a_change_feed_page_reads_as_files_kept_and_files_gone() {
     assert!(matches!(&changed[0], Changed::Kept(item) if item.parents == ["folder"]));
 }
 
-/// The existing Drive fixture now uses the real traversal/continuation loops. Hold the
-/// second physical page before admission; a final publication check cannot make this pass.
+/// The Drive fixture runs the real traversal/continuation loops. Hold the second physical
+/// page before admission; a final publication check cannot make this pass.
 #[tokio::test]
 async fn every_listing_and_change_page_rechecks_the_captured_member_and_connection_after_waiting() {
     use super::super::fixture::fixture;

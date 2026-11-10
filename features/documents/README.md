@@ -29,8 +29,11 @@ and weeks, so it's best submitted well before the limit.
   its files', pictures' and copies' memory goes (`deleting.forgotten`), with none kept of
   what was under way. Behind `documents.use` too:
   `GET /api/dsp/documents/folder` (a folder and what it holds, or with `q`, what a search inside
-  it found), `POST …/new` (a folder, Doc, Sheet or Slides), `POST …/upload` (a file, up to
-  100 MB), `GET …/items/{id}/download` and `…/items/{id}/thumbnail`, and `POST …/items/{id}/rename`, `…/move` and `…/trash`. Behind `documents.use` as well, for a member's own Google account:
+  it found), `GET …/folder/read` (the same, or that it hasn't changed), `GET …/query` and
+  `…/query/describe` (the same, a page at a time), `POST …/new` (a folder, Doc, Sheet or
+  Slides), `POST …/upload` (a file, up to 100 MB), `GET …/items/{id}/download` and
+  `…/items/{id}/thumbnail`, and `POST …/items/{id}/rename`, `…/move` and `…/trash`. Behind
+  `documents.use` as well, for a member's own Google account:
   `POST /api/dsp/documents/link` and `…/link/finish`, and `POST /api/dsp/documents/add`, for
   files and folders from Google Drive. Public, the picker's page:
   `GET /api/documents/google/picker`.
@@ -56,18 +59,42 @@ and weeks, so it's best submitted well before the limit.
   of Documents in Drive. Every call to Google is logged with how long it took
   (`documents.google`), and each refusal with Google's reason and its words, without the IDs
   and addresses in them (`documents.google_refused`).
-- **Conditional reads:** `GET /api/dsp/documents/folder/read` has the same permission,
-  folder and search rules as `…/folder`, plus optional `since` (64 lowercase SHA-256 hex
-  characters). It returns `{ revision, folder }`; a null folder permits reuse of exactly that
-  revision's complete response. Every read still projects the full current mirror result,
-  resolves current provenance names and registers thumbnails before hashing the scoped response.
-  Permission and the current connection are checked again after async work, for both answers.
-  This reduces unchanged response bytes and browser JSON parsing, not server work: full Tree
-  selection, provenance reads, projection, hashing and client cache comparison remain. A changed
-  response also serializes the full folder again for the envelope. An unchanged read does not
-  advance mirror freshness or mean Google was contacted; the existing five/sixty-second rules
-  still apply. The client keeps one bounded session cache under the existing folder URL, and
-  assigns each full or unchanged answer its own request-start moment for optimistic confirmation.
+- **Reading a folder again:** the page reads a folder or a search with
+  `GET /api/dsp/documents/folder/read`, which takes what `…/folder` takes, under the same
+  permission and the same rules, and optionally `since`: the `revision` of the answer the page
+  already has, 64 lowercase hex characters, a SHA-256 of that answer and of what was asked. It
+  answers `{ revision, folder }`, and a null `folder` says the answer is exactly the one `since`
+  names, which the page goes on using. The server does a full read's work either way: it picks
+  the folder out of the whole copy, names who added and last changed each file as they're named
+  now, and keeps each picture's link as shown, before it hashes the answer; and it checks the
+  member's permission and the connection again after any wait, for both answers. So an
+  unchanged answer saves the bytes sent and the browser reading them, not the server's work or
+  the page's comparing it with what it holds, and a changed one is written out twice, to hash
+  and to send. An unchanged answer doesn't make the copy any newer, or mean Google was asked:
+  the copy follows Google by its own five seconds and minute. The page keeps what it read under
+  `…/folder`'s address, in its session's bounded cache, and gives each answer, an unchanged one
+  too, the moment it asked for it, which a change Google confirmed waits on.
+- **Reading a page at a time:** `GET /api/dsp/documents/query` reads a folder or a search in
+  pages, and `GET …/query/describe` describes files such a read lists. No page of Dispatch calls
+  either yet: Documents reads whole folders, as above. `…/query` takes `id`, `q`, `filter`
+  (`all`, `folders`, `docs`, `sheets`, `slides` or `uploads`), `page`, from zero, and `size` (1
+  to 100, 100 unless it says), and to go on from an earlier answer, `snapshot`, `manifestSince`
+  and `since`. A read without `snapshot` opens: the server builds a compact manifest of
+  everything the folder or search holds, unfiltered, and each filter's order over it, in core's
+  bounded read cache. That takes memory in proportion to the files, and nothing of it is stored:
+  a restart or a restore loses it, as it does the copy. A read with `snapshot` continues: it
+  only looks its index up, never builds one, and answers `reset` (`missing` or `changed`) when
+  the index is missing, expired or evicted, or no longer current. A snapshot holds for one
+  connection generation, one run of the server, one copy and one state of that copy. A `full`
+  answer describes at most 100 files; `unchanged` says the page is exactly the one `since` names
+  under the manifest `manifestSince` names, and nothing wider. A `full` answer with a null
+  manifest keeps the manifest `manifestSince` names: it never means the folder is empty. Who
+  added and last changed each file, as named now, and each picture's link as shown go into every
+  page before it's hashed, an unchanged one too. `…/query/describe` describes up to 100 files of
+  a snapshot by ID, none twice and each one the snapshot holds, in the order asked, under that
+  snapshot and the member's access as it is now. Whatever calls these keeps a describe address
+  to 4 KiB, or less where its host takes less, drops what it gathered when one answers `reset`,
+  and after repeated resets reads the whole folder once instead.
 - **Google sign-in:** the platform's Google client, which this feature reads from the server's
   environment: `DISPATCH_DEV_GOOGLE_CLIENT_ID` and `…_SECRET` on Dev and its previews
   (`DISPATCH_PRODUCTION_…` on Production), declared in its `env`. Without both, no DSP can
@@ -178,6 +205,21 @@ and weeks, so it's best submitted well before the limit.
   in, so Undo, on the toast that says where it went, takes each back.
 - **Reconnecting** takes the same Google account only: the folder and its files are that
   account's.
+- **A connection replaced meanwhile:** every connection has a generation, an opaque value new
+  each time the DSP connects or reconnects (`grantGeneration`: a name for the connection, never
+  a token of Google's). The account's access token, the copy and the picture links shown are
+  each kept for one environment's storage, one DSP and one generation. Whatever waits on Google
+  goes on with the connection it began with, and before each request to Google and before
+  keeping anything it checks that the member who asked may still do it, that the DSP is active
+  with Documents on, and that the connection is still that one, unbroken. A request Google
+  already has may finish, but what it brings is never kept for the connection that replaced it.
+  Reconnecting, disconnecting and deleting a DSP forget only what's kept for that environment
+  and that DSP. `…/new`, `…/upload`, `…/add` and `…/items/{id}/rename`, `…/move` and `…/trash`
+  take `grantGeneration` and refuse (`documents_not_connected`) unless it names the connection
+  as it is now; without it, each goes on with the connection it finds. The overview, the
+  account, every folder and page read and the picker's setup name the generation, and the page
+  sends with each change the one it held when the member began it, never whichever is latest as
+  it's sent.
 - **Files for other features:** Documents exposes `files` (its contract, in `contract/`), somewhere for a
   feature bringing files in, as Slack does, to keep them. It says why it can't yet, in words a member
   reads: Google Drive isn't connected, or needs reconnecting. It browses the folders, from the main folder down, and finds a
@@ -198,21 +240,13 @@ and weeks, so it's best submitted well before the limit.
   `documents_people` (who the folder is shared with, and at what address) and
   `documents_shared_files` (the shares Dispatch made of files someone else owns), in each
   DSP's own database; the account's refresh token, encrypted in the DSP's secrets as
-  `google.enc`. Migration 4 gives every replacement connection an opaque `grant_generation`.
-  It survives reopening storage; a successful older writer's replacement also changes it.
-  The current writer marks the replacement broken before changing its encrypted token,
-  then connects it after that write succeeds. An interrupted older binary's secret-first
-  replacement is outside that ordering guarantee.
-- **Captured connection ownership:** access tokens, mirrors and shown-thumbnail provenance
-  are keyed by environment storage, DSP and connection generation. Async work retains the
-  connection it began with and checks current member access, lifecycle and generation before
-  admitting another provider operation or publishing a result. An already admitted Google
-  operation may finish; its obsolete result cannot repopulate the replacement's caches.
-  Reconnect and deletion forget only the matching environment and DSP. Mutation clients can
-  send the captured `grantGeneration` as an equality precondition; omitted preconditions
-  preserve legacy requests, which capture the current connection once. Query/page/folder
-  replies and picker setup expose that identity without OAuth material. Prepared browser
-  actions must retain their original identity rather than taking the latest one at submission.
+  `google.enc`. The connection's row holds its generation (`grant_generation`, migration 4), an
+  opaque value that outlasts a restart and is new with every connection saved, one a server
+  from before migration 4 saves too. Saving a connection writes its row as broken under the
+  new generation, then the encrypted token, then marks the row connected: a save cut short
+  leaves the connection broken, never the earlier one still connected over the new one's
+  token. A server from before migration 4 writes the token first, so a save of its own cut
+  short isn't held to that order.
 - **Upkeep:** every minute, the folder is shared anew for each connected DSP whose team
   changed, read from Dispatch alone. Hourly, a connection Google stopped accepting is marked
   broken, and each connected DSP's sharing is checked against Google's own list.
@@ -230,22 +264,3 @@ and weeks, so it's best submitted well before the limit.
   open; it asks for a folder as the pointer rests on it. A folder opening for the first time,
   or a search, leaves what was shown until it comes. Making, renaming, moving and trashing show
   at once, and go back with the reason if Google refuses; an upload shows its file as it lands.
-
-- **Additive query reads:** `GET /api/dsp/documents/query` accepts `id`, `q`,
-  `filter` (`all`, `folders`, `docs`, `sheets`, `slides`, `uploads`), zero-based `page`
-  and `size` (1–100, default 100), plus `snapshot`, `manifestSince` and `since`.
-  Opening builds a compact complete unfiltered manifest and per-filter ordinal indices in
-  core's existing bounded read cache. A continuation only looks up an admitted index and
-  returns typed `reset` when it is missing, expired, evicted or no longer current. It never
-  rebuilds the full index. A full answer includes at most 100 descriptions; `unchanged`
-  permits reuse only of the exact scoped page and matching manifest supplied. A null
-  manifest means reuse that matching manifest, never an empty universe. Current author
-  names and shown-thumbnail admission are projected before every page digest, including
-  unchanged answers. `GET …/query/describe` resolves at most 100 unique query-member IDs
-  in request order under the same snapshot and current authorization. Future clients must
-  chunk description URLs to at most 4 KiB (or a smaller host HTTP limit), discard partial
-  results on reset, and fall back once to the complete reader after repeated cache resets.
-  This protocol is unused by the current browser. It retains O(N) compact metadata on
-  opening; the query index remains ephemeral. Its scope includes the persisted connection
-  generation as well as the process, mirror incarnation and semantic revision. This does not
-  make the mirror or its continuation state persistent across restart or restore.
