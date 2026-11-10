@@ -64,6 +64,9 @@ try {
     const tab = page.locator(`[role="tab"][data-tab=${JSON.stringify(values.tab)}]`);
     if (await tab.count()) {
       if ((await tab.getAttribute('aria-selected')) !== 'true') {
+        console.log(
+          `The address doesn't open the tab ${values.tab}: a link lands a click from it.`,
+        );
         await tab.click();
         await ready();
       }

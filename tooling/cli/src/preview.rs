@@ -1,6 +1,6 @@
 //! What a change shows, approved before its PR opens. `preview` serves the checkout as it is and
 //! saves a screenshot of each page the change touches, on the tab or Settings section it touches,
-//! with a link to click through it;
+//! each with a link that opens on that page;
 //! `preview approve` keeps the UI files the user was shown, by their contents, once they
 //! approved them, and `pr` opens no PR for a change to what a page shows until those are the
 //! files it would push.
@@ -586,7 +586,7 @@ fn serving(root: &Path, runner: &dyn Runner) -> Result<dev::Status> {
 }
 
 /// `dispatchdev preview`: the checkout's change as it is, served, with a screenshot of each page
-/// it touches, or `pages`, wide and on a phone, and the link to click through it.
+/// it touches, or `pages`, wide and on a phone, each with a link that opens on it.
 pub fn run(root: &Path, named: &[&str], runner: &dyn Runner) -> Result<()> {
     let files = files(root, true, runner)?;
     require(
@@ -625,7 +625,7 @@ pub fn run(root: &Path, named: &[&str], runner: &dyn Runner) -> Result<()> {
                 Some(Tab::Id(tab)) => (page.id.clone(), Some(tab.clone())),
                 None => (page.id.clone(), None),
             };
-            for size in [shot::DESKTOP, shot::PHONE] {
+            let shoot = |size| {
                 shot::run(
                     root,
                     &shot::Shot {
@@ -640,11 +640,14 @@ pub fn run(root: &Path, named: &[&str], runner: &dyn Runner) -> Result<()> {
                         theme: "light",
                     },
                     runner,
-                )?;
+                )
+            };
+            let opened = shoot(shot::DESKTOP)?;
+            shoot(shot::PHONE)?;
+            // The link signs in and the browser keeps its fragment, so it opens on the page.
+            if let Some(link) = &status.link {
+                println!("Its link, for the chat alone:\n{link}{opened}");
             }
-        }
-        if let Some(link) = &status.link {
-            println!("Link, for the chat alone:\n{link}");
         }
     }
     let mut next = vec![];
@@ -652,8 +655,8 @@ pub fn run(root: &Path, named: &[&str], runner: &dyn Runner) -> Result<()> {
         next.push("It changes an app's screens too: show them from the emulator".to_owned());
     }
     next.push(
-        "Show the user the screenshots and the link; make what they ask and run this again. Once \
-         they approve, `dispatchdev preview approve`"
+        "Show the user each page's screenshots with its link under them; make what they ask and \
+         run this again. Once they approve, `dispatchdev preview approve`"
             .to_owned(),
     );
     println!("{}", workspace::next(&next));
