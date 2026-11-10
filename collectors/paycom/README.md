@@ -25,5 +25,7 @@ offers the punches alone, not the hours Paycom's timecard totals, so a day's hou
 time between each in and its out, plus hours entered without a punch; an answer in a shape it
 can't place fails the read (`paycom_api_unreadable`) rather than becoming a wrong card. It
 isn't offered in Production (`paycom_api_unavailable`) until those hours are proven against
-Paycom's own totals. In fixture mode the Token chooses how connecting goes (`connection/rest/fixture.rs`):
+Paycom's own totals: the `compare_api_collection` probe collects the period last published
+through the API, with an SID and Token given to it, and counts how its cards differ from the
+publication's, printing each function's answer by its shape and never a record. In fixture mode the Token chooses how connecting goes (`connection/rest/fixture.rs`):
 `refused-token` is refused and `punch-history-off` finds that function off.

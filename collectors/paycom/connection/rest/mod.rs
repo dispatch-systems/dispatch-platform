@@ -6,6 +6,9 @@ mod driver;
 mod fixture;
 
 pub(crate) use driver::driver;
+// An operator's probe connects as a DSP's driver does, with an SID and Token given to it.
+#[cfg(feature = "operator-probes")]
+pub(crate) use driver::Driver;
 
 use crate::codes;
 use chrono::{Datelike, NaiveDate, Weekday};
@@ -13,7 +16,7 @@ use dispatch_core::{
     Code, Error, Result,
     collection::{
         api::types::{CheckState, ConnectionCheck},
-        browser::http::{Http, Refusal, RequestHosts},
+        browser::http::{Answer, Http, Refusal, RequestHosts},
     },
     ensure,
     foundation::validate as v,
@@ -26,7 +29,7 @@ use tokio::{
 };
 
 /// Paycom's data centers, in the order its guide lists them. A client's data is at one.
-const DATA_CENTERS: [&str; 3] = [
+pub(crate) const DATA_CENTERS: [&str; 3] = [
     "https://api.paycomonline.net",
     "https://api.phx.us-west.paycomonline.net",
     "https://api.paycomdfw.net",
@@ -132,7 +135,7 @@ pub(crate) fn unreadable() -> Error {
 }
 
 /// The rows of an answer: a list, or one under `data`, or a single record.
-fn rows(text: &str) -> Result<Vec<Value>> {
+pub(crate) fn rows(text: &str) -> Result<Vec<Value>> {
     match serde_json::from_str(text).map_err(|_| unreadable())? {
         Value::Array(rows) => Ok(rows),
         Value::Object(mut answer) => {
@@ -163,7 +166,7 @@ pub(crate) struct Client {
 }
 impl Client {
     /// The client of `origin`, one of Paycom's data centers or the local stand-in for one.
-    fn new(origin: &str, credentials: &Credentials) -> Result<Self> {
+    pub(crate) fn new(origin: &str, credentials: &Credentials) -> Result<Self> {
         Ok(Self {
             http: Http::detached(origin, &HOSTS)?,
             base: format!("{}{ROOT}", origin.trim_end_matches('/')),
@@ -171,20 +174,21 @@ impl Client {
             pace: Mutex::new(Instant::now()),
         })
     }
-    /// What Paycom answers a GET of `path`, under the API's root. A request it throttled or
-    /// failed is sent once more.
-    pub async fn get(&self, path: &str) -> Result<Answered> {
+    /// Paycom's answer to a GET of `path`, under the API's root, as it came: its status and
+    /// its text. Requests keep their pace, and one Paycom throttled or failed is sent once
+    /// more.
+    pub async fn answer(&self, path: &str) -> Result<Answer> {
         let url = format!("{}{path}", self.base);
         let headers = std::slice::from_ref(&self.authorization);
         let mut again = true;
-        let answer = loop {
+        loop {
             {
                 let mut next = self.pace.lock().await;
                 sleep_until(*next).await;
                 *next = Instant::now() + SPACING;
             }
             match self.http.answer(&url, headers, LIMIT).await {
-                Ok(answer) => break answer,
+                Ok(answer) => return Ok(answer),
                 Err(Refusal::Unavailable) if again => {
                     again = false;
                     sleep(Duration::from_secs(2)).await;
@@ -194,7 +198,11 @@ impl Client {
                 }
                 Err(Refusal::Unreadable(_)) => return Err(unreadable()),
             }
-        };
+        }
+    }
+    /// What Paycom answers a GET of `path`: its rows, or how it refused.
+    pub async fn get(&self, path: &str) -> Result<Answered> {
+        let answer = self.answer(path).await?;
         match answer.status {
             200 | 206 => Ok(Answered::Rows(Page {
                 rows: rows(&answer.body)?,

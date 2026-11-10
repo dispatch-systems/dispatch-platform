@@ -4,7 +4,7 @@
 //! its ignored tests.
 use crate::{
     collections::timecards::{collect as collection, projection},
-    connection::Driver,
+    connection::{Driver, rest},
 };
 use dispatch_core::{
     Error, Result,
@@ -421,3 +421,234 @@ async fn inspect_responses(driver: &Driver, data: &Value, samples: usize) -> Res
 #[cfg(test)]
 #[path = "../tests/backend/probes.rs"]
 mod tests;
+
+/// The names of a record's fields and the kind of value each holds, never a value.
+fn shape(record: &Value) -> Value {
+    match record {
+        Value::Object(fields) => Value::Object(
+            fields
+                .iter()
+                .map(|(name, value)| {
+                    let kind = match value {
+                        Value::Null => "null",
+                        Value::Bool(_) => "bool",
+                        Value::Number(_) => "number",
+                        Value::String(_) => "string",
+                        Value::Array(_) => "array",
+                        Value::Object(_) => "object",
+                    };
+                    (name.clone(), json!(kind))
+                })
+                .collect(),
+        ),
+        other => shape(&json!({"value": other}))["value"].clone(),
+    }
+}
+/// How a value is written, its digits and letters hidden: `9999-99-99 99:99:99` for a time.
+fn pattern(value: &Value) -> String {
+    let text = match value {
+        Value::String(text) => text.clone(),
+        other => other.to_string(),
+    };
+    text.chars()
+        .take(40)
+        .map(|c| match c {
+            c if c.is_ascii_digit() => '9',
+            c if c.is_alphabetic() => 'A',
+            c => c,
+        })
+        .collect()
+}
+/// What one function of Paycom's API answers, by its shape alone: its status, how its answer
+/// is wrapped, and its first record's fields. For punches, how their times are written and
+/// which kinds they come in, as the cards are made from those.
+async fn answer_shape(client: &rest::Client, function: &str, path: &str) -> Result<Vec<Value>> {
+    let answer = client.answer(path).await?;
+    let parsed: Value = serde_json::from_str(&answer.body).unwrap_or(Value::Null);
+    let rows = rest::rows(&answer.body).unwrap_or_default();
+    let mut report = json!({"function":function,"status":answer.status,"bytes":answer.body.len(),
+        "wrapper":shape(&parsed),"rows":rows.len(),"record":rows.first().map(shape)});
+    if function == "punch_history" {
+        let distinct = |field: &str, written: fn(&Value) -> String| {
+            rows.iter()
+                .map(|row| written(&row[field]))
+                .collect::<std::collections::BTreeSet<_>>()
+        };
+        let plain = |value: &Value| match value {
+            Value::String(text) => text.chars().take(16).collect(),
+            other => other.to_string(),
+        };
+        report["punchtime"] = json!(distinct("punchtime", pattern));
+        report["timeadded"] = json!(distinct("timeadded", pattern));
+        report["punchtype"] = json!(distinct("punchtype", plain));
+        report["entrytype"] = json!(distinct("entrytype", plain));
+        report["isdeleted"] = json!(distinct("isdeleted", plain));
+    }
+    eprintln!("SHAPE {report}");
+    Ok(rows)
+}
+
+/// A collection through Paycom's API of the period the feature keeping timecards last
+/// published, compared with that publication card by card: what shows whether hours worked
+/// out from the API's punches are the hours Paycom's own pages total. Run it straight after
+/// a collection by sign-in, so the two read the same punches. It needs the DSP's folder
+/// (`DISPATCH_BENCHMARK_DSP`), where the DSP is (`DISPATCH_BENCHMARK_TIMEZONE`), and the SID
+/// and Token (`DISPATCH_BENCHMARK_PAYCOM_SID`, `DISPATCH_BENCHMARK_PAYCOM_TOKEN`), which
+/// it keeps nowhere. It prints each check, each function's answer by its shape, and counts:
+/// never a name, a code, a time or an hour of anyone's.
+pub async fn compare_api_collection() -> Result<()> {
+    use crate::timecards::{EmployeeTimecardPeriod, PERIOD_DAYS, api};
+    use std::collections::{BTreeMap, BTreeSet};
+    let dsp = env_path("DISPATCH_BENCHMARK_DSP")?;
+    let variable = |name: &str| {
+        std::env::var(name).map_err(|_| Error::new("benchmark_configuration_required", 400))
+    };
+    let zone: chrono_tz::Tz = variable("DISPATCH_BENCHMARK_TIMEZONE")?
+        .parse()
+        .map_err(|_| Error::new("invalid_timezone", 400))?;
+    let credentials = json!({"sid":variable("DISPATCH_BENCHMARK_PAYCOM_SID")?,
+        "token":variable("DISPATCH_BENCHMARK_PAYCOM_TOKEN")?});
+    let database = db::Db(rusqlite::Connection::open_with_flags(
+        dispatch_core::collection::registry::database_path(&dsp, crate::PROVIDER)?,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )?);
+    // Timecard keeps what the last collection published.
+    let mut published = BTreeMap::new();
+    for card in dispatch_core::manifest::registry()
+        .keeper(crate::timecards::JOB_KIND)
+        .published(&database)?
+    {
+        published.insert(
+            (
+                s(&card, "employeeCode").to_owned(),
+                s(&card, "date").to_owned(),
+            ),
+            card,
+        );
+    }
+    let from: chrono::NaiveDate = published
+        .keys()
+        .map(|(_, date)| date.as_str())
+        .min()
+        .ok_or_else(|| Error::new("benchmark_publication_required", 409))?
+        .parse()
+        .map_err(|_| Error::new("invalid_period", 409))?;
+    let period = EmployeeTimecardPeriod {
+        from: from.to_string(),
+        to: (from + chrono::Duration::days(PERIOD_DAYS - 1)).to_string(),
+    };
+
+    // Each function's answer by its shape, from whichever data center takes the SID and
+    // Token, whether or not a collection can read it yet.
+    let parsed = rest::Credentials::parse(&credentials)?;
+    for center in rest::DATA_CENTERS {
+        let client = rest::Client::new(center, &parsed)?;
+        let listed = answer_shape(
+            &client,
+            "employee_directory",
+            "api/v1/employeedirectory?pagesize=1",
+        )
+        .await?;
+        let Some(code) = listed
+            .first()
+            .map(|row| s(row, "eecode"))
+            .filter(|code| api::path_code(code))
+        else {
+            continue;
+        };
+        let (start, end) = api::window(zone, &period)?;
+        answer_shape(&client, "employee", &format!("api/v1/employee/{code}")).await?;
+        answer_shape(
+            &client,
+            "punch_history",
+            &api::punch_history(code, start, end),
+        )
+        .await?;
+        answer_shape(&client, "labor_allocation_categories", "api/v1/cl/category").await?;
+        break;
+    }
+
+    let mut driver = rest::Driver::live(rest::Credentials::parse(&credentials)?, from);
+    let connected = driver.connect().await;
+    for check in driver.asked() {
+        eprintln!(
+            "CHECK {}",
+            json!({"id":check.id,"state":check.state.as_str(),"error":check.error})
+        );
+    }
+    connected?;
+    let source = driver
+        .source()
+        .ok_or_else(|| Error::new("verification_required", 409))?;
+    let started = Instant::now();
+    let data = api::everyone(&source, zone, &period, None, |done, total| async move {
+        if done % 20 == 0 || done == total {
+            eprintln!("BENCH {}", json!({"read":done,"of":total}));
+        }
+        Ok(())
+    })
+    .await?;
+    let cards = data["timecards"].as_array().unwrap();
+
+    // How the two differ, counted: a card's hours, its status, its punches' times, or only
+    // their kinds; and by how much the hours differ, to the nearest quarter of an hour.
+    let mut tally: BTreeMap<&str, usize> = BTreeMap::new();
+    let mut by: BTreeMap<String, usize> = BTreeMap::new();
+    let times = |card: &Value| {
+        card["punches"]
+            .as_array()
+            .map(|punches| {
+                punches
+                    .iter()
+                    .map(|punch| (punch["in"].clone(), punch["out"].clone()))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    };
+    let mut read = BTreeSet::new();
+    for card in cards {
+        let key = (
+            s(card, "employeeCode").to_owned(),
+            s(card, "date").to_owned(),
+        );
+        let Some(pages) = published.get(&key) else {
+            *tally.entry("cardsOnlyFromApi").or_default() += 1;
+            continue;
+        };
+        read.insert(key);
+        let difference =
+            card["hours"].as_f64().unwrap_or(0.) - pages["hours"].as_f64().unwrap_or(0.);
+        let same_hours = difference.abs() < 0.011;
+        let same_status = card["status"] == pages["status"];
+        let same_times = times(card) == times(pages);
+        let same_punches = card["punches"] == pages["punches"];
+        if !same_hours {
+            *tally.entry("hoursDiffer").or_default() += 1;
+            *by.entry(format!("{:+.2}", (difference * 4.).round() / 4.))
+                .or_default() += 1;
+        }
+        if !same_status {
+            *tally.entry("statusDiffers").or_default() += 1;
+        }
+        if !same_times {
+            *tally.entry("punchTimesDiffer").or_default() += 1;
+        } else if !same_punches {
+            *tally.entry("punchKindsDiffer").or_default() += 1;
+        }
+        if same_hours && same_status && same_punches {
+            *tally.entry("cardsEqual").or_default() += 1;
+        }
+    }
+    let listed: BTreeSet<&str> = cards.iter().map(|card| s(card, "employeeCode")).collect();
+    let known: BTreeSet<&str> = published.keys().map(|(code, _)| code.as_str()).collect();
+    eprintln!(
+        "BENCH {}",
+        json!({"collectionMs":started.elapsed().as_millis(),"from":period.from,"to":period.to,
+            "cardsFromApi":cards.len(),"cardsPublished":published.len(),
+            "cardsOnlyPublished":published.len() - read.len(),"compared":tally,
+            "hoursApiMinusPages":by,"employeesFromApi":listed.len(),"employeesPublished":known.len(),
+            "employeesOnlyFromApi":listed.difference(&known).count(),
+            "employeesOnlyPublished":known.difference(&listed).count()})
+    );
+    Ok(())
+}
