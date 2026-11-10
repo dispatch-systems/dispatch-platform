@@ -590,24 +590,20 @@ fn each_pass_is_pinned_to_the_pushed_head_and_later_ones_read_only_what_changed(
     );
     commit(root, "merge main, and a fix");
 
-    // Once main is merged in, a pass reads only the branch's own files of what changed: those it
-    // changes, and those it changed before, such as a migration a fix took back out.
+    // Once main is merged in, a pass reads the branch's own commits since the last, each with
+    // what it changed itself, where the difference between the two heads would show main's
+    // changes and hide the undoing of one.
     fs::remove_file(root.join("features/dvic/migrations/0004_week.sql")).unwrap();
-    write(root, "features/dvic/backend/week notes.rs", "// x\n");
     commit(root, "no migration after all");
     git(root, &["push", "-q", "origin", "keep-week"]);
     fixture.prepare(3).unwrap();
     let brief = fs::read_to_string(fixture.dir(3).join("brief.md")).unwrap();
     assert!(
-        brief.contains(" -- features/dvic/backend/week.rs"),
-        "{brief}"
-    );
-    assert!(
-        brief.contains("features/dvic/migrations/0004_week.sql"),
-        "{brief}"
-    );
-    assert!(
-        brief.contains("'features/dvic/backend/week notes.rs'"),
+        brief.contains(&format!(
+            "`git log --reverse --remerge-diff -p {}..{} ^origin/main`",
+            pass.head,
+            fixture.head()
+        )),
         "{brief}"
     );
     // Without its migration the change is standard, but a later pass reviews no less, and this
@@ -616,7 +612,6 @@ fn each_pass_is_pinned_to_the_pushed_head_and_later_ones_read_only_what_changed(
         .unwrap()
         .unwrap();
     assert_eq!((pass.tier, pass.security), (Tier::Sensitive, true));
-    assert!(!brief.contains("features/vans"), "{brief}");
 }
 
 #[test]
