@@ -468,6 +468,7 @@ async fn a_reprocess_rebuilds_shared_staging_without_replaying_omitted_keys() {
         .unwrap()
         .id;
     station(&db, &other);
+    db.set_feature(&other, "routes", true, &owner).unwrap();
     let other_storage = db.routes_db(&other).unwrap();
     let jobs = db
         .enqueue_routes(&other, None, "other", Some(day), Mode::Final, 1)
