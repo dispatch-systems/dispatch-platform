@@ -13,7 +13,7 @@ use serde_json::Value;
 use std::{
     ffi::OsStr,
     fs,
-    os::unix::fs::MetadataExt,
+    os::unix::fs::{MetadataExt, OpenOptionsExt},
     path::{Path, PathBuf},
 };
 
@@ -272,26 +272,46 @@ pub fn label(command: &str) -> String {
         .collect();
     format!("{} ({tests} test files)", kept.join(" "))
 }
-/// Holds the build folder `folder`, unless another run does: by a lock on it, which the system
-/// lets go of however its run ends.
+/// Holds the build folder `folder`, unless another run does or it isn't a folder: by a lock on
+/// it, which the system lets go of however its run ends. A symbolic link is never followed: a
+/// commit can carry one there that leads out of the checkout.
 fn hold(folder: &Path) -> Option<fs::File> {
-    let lock = fs::File::open(folder).ok()?;
+    let lock = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_DIRECTORY)
+        .open(folder)
+        .ok()?;
     lock.try_lock_exclusive().ok()?;
     // The run that held it may have deleted it since it was opened: the path is another folder
     // then, or none.
-    let same = fs::metadata(folder).ok()?.ino() == lock.metadata().ok()?.ino();
+    let same = fs::symlink_metadata(folder).ok()?.ino() == lock.metadata().ok()?.ino();
     same.then_some(lock)
 }
 /// The run's build folder in `builds`, held: the lowest-numbered no run holds, emptied of what a
-/// killed or kept run left in it, with the others no run holds removed. Numbered, a run builds
-/// where the one before it did: the compiler cache keys a compile by the paths it names, and
-/// serves a run what an earlier one compiled only at the same ones.
+/// killed or kept run left in it, with the other numbered ones no run holds removed. Numbered, a
+/// run builds where the one before it did: the compiler cache keys a compile by the paths it
+/// names, and serves a run what an earlier one compiled only at the same ones.
 fn claim(builds: &Path) -> Result<(PathBuf, fs::File)> {
+    fs::create_dir_all(builds)?;
+    require(
+        fs::symlink_metadata(builds)?.is_dir(),
+        &format!(
+            "{} is a link, not the checkout's own folder: remove it.",
+            builds.display()
+        ),
+    )?;
     let mut number = 0;
     let (build, lock) = loop {
         number += 1;
         let folder = builds.join(number.to_string());
-        fs::create_dir_all(&folder)?;
+        // A run ending now removes `builds` once it is empty.
+        fs::create_dir_all(builds)?;
+        match fs::create_dir(&folder) {
+            Err(error) if error.kind() != std::io::ErrorKind::AlreadyExists => {
+                return Err(error.into());
+            }
+            _ => {}
+        }
         if let Some(lock) = hold(&folder) {
             break (folder, lock);
         }
@@ -304,7 +324,15 @@ fn claim(builds: &Path) -> Result<(PathBuf, fs::File)> {
         }
     }
     for entry in fs::read_dir(builds)?.filter_map(|entry| entry.ok()) {
-        if entry.path() != build && hold(&entry.path()).is_some() {
+        let numbered = entry
+            .file_name()
+            .to_str()
+            .is_some_and(|name| name.parse::<u32>().is_ok());
+        // Held while it goes, so no run starting now takes it.
+        if numbered
+            && entry.path() != build
+            && let Some(_held) = hold(&entry.path())
+        {
             let _ = fs::remove_dir_all(entry.path());
         }
     }
@@ -687,7 +715,7 @@ mod tests {
         let _ = fs::remove_dir_all(workspace::scratch("run-test-checkout"));
     }
     #[test]
-    fn a_run_leaves_the_folder_another_holds_and_builds_in_the_next() {
+    fn a_run_leaves_a_folder_it_cannot_hold_and_builds_in_the_next() {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("held-test-checkout");
         let first = root.join(BUILDS).join("1");
@@ -695,7 +723,7 @@ mod tests {
         fs::write(first.join("active"), "keep").unwrap();
         let other = hold(&first).expect("no run holds it yet");
         let wrote = "echo \"$CARGO_TARGET_DIR\" > seen".to_owned();
-        assert!(run_commands(&root, &[wrote], false).unwrap());
+        assert!(run_commands(&root, &[wrote.clone()], false).unwrap());
         assert_eq!(
             fs::read_to_string(root.join("seen")).unwrap().trim(),
             root.join(BUILDS).join("2").to_str().unwrap()
@@ -705,6 +733,22 @@ mod tests {
         drop(other);
         assert!(run_commands(&root, &["true".into()], false).unwrap());
         assert!(!root.join(BUILDS).exists());
+        // A link a commit carried there is never followed: not the folder's, nor the folders'.
+        let outside = temp.path().join("outside");
+        fs::create_dir_all(outside.join("1")).unwrap();
+        fs::write(outside.join("1/mine"), "keep").unwrap();
+        fs::create_dir_all(root.join(BUILDS)).unwrap();
+        std::os::unix::fs::symlink(outside.join("1"), &first).unwrap();
+        assert!(run_commands(&root, &[wrote], false).unwrap());
+        assert_eq!(
+            fs::read_to_string(root.join("seen")).unwrap().trim(),
+            root.join(BUILDS).join("2").to_str().unwrap()
+        );
+        fs::remove_dir_all(root.join(BUILDS)).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join(BUILDS)).unwrap();
+        let refused = run_commands(&root, &["true".into()], false).unwrap_err();
+        assert!(refused.to_string().contains("is a link"), "{refused}");
+        assert!(outside.join("1/mine").exists());
         let _ = fs::remove_dir_all(workspace::scratch("held-test-checkout"));
     }
     #[test]
