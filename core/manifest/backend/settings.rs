@@ -414,151 +414,52 @@ pub const fn timezone(id: &'static str, label: &'static str, default: &'static s
 }
 impl Field {
     /// A number's unit: "days".
-    pub const fn unit(self, unit: &'static str) -> Self {
-        match self.kind {
-            Kind::Number {
-                min,
-                max,
-                default,
-                presets,
-                none,
-                ..
-            } => {
-                let unit = Some(unit);
-                let kind = Kind::Number {
-                    min,
-                    max,
-                    default,
-                    unit,
-                    presets,
-                    none,
-                };
-                Self { kind, ..self }
-            }
+    pub const fn unit(mut self, unit: &'static str) -> Self {
+        match &mut self.kind {
+            Kind::Number { unit: u, .. } => *u = Some(unit),
             _ => panic!("only a number has a unit"),
         }
+        self
     }
     /// The values a number offers, each with its label: `&[(30, "30 days")]`.
-    pub const fn presets(self, presets: &'static [(i64, &'static str)]) -> Self {
-        match self.kind {
-            Kind::Number {
-                min,
-                max,
-                default,
-                unit,
-                none,
-                ..
-            } => {
-                let kind = Kind::Number {
-                    min,
-                    max,
-                    default,
-                    unit,
-                    presets,
-                    none,
-                };
-                Self { kind, ..self }
-            }
+    pub const fn presets(mut self, presets: &'static [(i64, &'static str)]) -> Self {
+        match &mut self.kind {
+            Kind::Number { presets: p, .. } => *p = presets,
             _ => panic!("only a number has presets"),
         }
+        self
     }
     /// A number or a pick may be none, which reads as `label`: "Every day".
-    pub const fn none(self, label: &'static str) -> Self {
-        let none = Some(label);
-        match self.kind {
-            Kind::Number {
-                min,
-                max,
-                default,
-                unit,
-                presets,
-                ..
-            } => {
-                let kind = Kind::Number {
-                    min,
-                    max,
-                    default,
-                    unit,
-                    presets,
-                    none,
-                };
-                Self { kind, ..self }
-            }
-            Kind::Pick {
-                options, default, ..
-            } => {
-                let kind = Kind::Pick {
-                    options,
-                    default,
-                    none,
-                };
-                Self { kind, ..self }
-            }
+    pub const fn none(mut self, label: &'static str) -> Self {
+        match &mut self.kind {
+            Kind::Number { none, .. } | Kind::Pick { none, .. } => *none = Some(label),
             _ => panic!("only a number or a pick may be none"),
         }
+        self
     }
     /// A `many` whose order is the member's.
-    pub const fn ordered(self) -> Self {
-        match self.kind {
-            Kind::Many {
-                options, default, ..
-            } => {
-                let ordered = true;
-                let kind = Kind::Many {
-                    options,
-                    default,
-                    ordered,
-                };
-                Self { kind, ..self }
-            }
+    pub const fn ordered(mut self) -> Self {
+        match &mut self.kind {
+            Kind::Many { ordered, .. } => *ordered = true,
             _ => panic!("only a many is ordered"),
         }
+        self
     }
     /// A text of uppercase letters and digits, as a short code.
-    pub const fn code(self) -> Self {
-        match self.kind {
-            Kind::Text {
-                min,
-                max,
-                default,
-                locked,
-                ..
-            } => {
-                let code = true;
-                let kind = Kind::Text {
-                    min,
-                    max,
-                    default,
-                    code,
-                    locked,
-                };
-                Self { kind, ..self }
-            }
+    pub const fn code(mut self) -> Self {
+        match &mut self.kind {
+            Kind::Text { code, .. } => *code = true,
             _ => panic!("only a text is a code"),
         }
+        self
     }
     /// A text that can't change once set.
-    pub const fn locked(self) -> Self {
-        match self.kind {
-            Kind::Text {
-                min,
-                max,
-                default,
-                code,
-                ..
-            } => {
-                let locked = true;
-                let kind = Kind::Text {
-                    min,
-                    max,
-                    default,
-                    code,
-                    locked,
-                };
-                Self { kind, ..self }
-            }
+    pub const fn locked(mut self) -> Self {
+        match &mut self.kind {
+            Kind::Text { locked, .. } => *locked = true,
             _ => panic!("only a text is locked"),
         }
+        self
     }
 }
 
