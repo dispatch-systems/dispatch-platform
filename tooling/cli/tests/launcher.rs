@@ -128,16 +128,21 @@ fn each_version_of_the_source_is_built_once() {
     assert_eq!(said(&launch(temp.path(), &root, &[])), "built 2 check");
     change("tooling/shared/src/lib.rs", "changed");
     assert_eq!(said(&launch(temp.path(), &root, &[])), "built 3 check");
-    // The three newest versions are kept, so going back to one costs no build.
+    // The ten newest versions are kept, so going back to one costs no build.
     change("tooling/shared/src/lib.rs", "shared");
     change("tooling/cli/src/main.rs", "first");
     assert_eq!(said(&launch(temp.path(), &root, &[])), "built 1 check");
-    // A fourth drops the oldest, which is built again if its source comes back.
-    std::thread::sleep(std::time::Duration::from_millis(20));
-    change("Cargo.lock", "bumped");
-    assert_eq!(said(&launch(temp.path(), &root, &[])), "built 4 check");
+    // An eleventh drops the oldest, which is built again if its source comes back.
+    for build in 4..=11 {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        change("Cargo.lock", &format!("bumped {build}"));
+        assert_eq!(
+            said(&launch(temp.path(), &root, &[])),
+            format!("built {build} check")
+        );
+    }
     change("Cargo.lock", "lock");
-    assert_eq!(said(&launch(temp.path(), &root, &[])), "built 5 check");
+    assert_eq!(said(&launch(temp.path(), &root, &[])), "built 12 check");
     // Run through a link, it is still this checkout's.
     let link = temp.path().join("bin/dispatchdev");
     symlink(root.join("tooling/cli/dispatchdev"), &link).unwrap();
