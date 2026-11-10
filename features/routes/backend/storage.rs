@@ -121,14 +121,6 @@ pub trait RoutesStore {
     ) -> Result<Value>;
     fn routes_schedule_ready(&self, id: &str) -> Result<()>;
     fn routes_jobs(&self, id: &str, mode: Mode) -> Result<Vec<(String, Value)>>;
-    fn stage_routes_start(
-        &self,
-        id: &str,
-        job: &str,
-        lists: &Capture,
-        itineraries: usize,
-    ) -> Result<Staged>;
-    fn stage_routes(&self, id: &str, job: &str, capture: Capture) -> Result<Staged>;
     fn stage_routes_itinerary(
         &self,
         id: &str,
@@ -175,18 +167,6 @@ impl RoutesStore for Store {
     }
     fn routes_jobs(&self, id: &str, mode: Mode) -> Result<Vec<(String, Value)>> {
         commands::routes_jobs(self, id, mode)
-    }
-    fn stage_routes_start(
-        &self,
-        id: &str,
-        job: &str,
-        lists: &Capture,
-        itineraries: usize,
-    ) -> Result<Staged> {
-        commands::stage_routes_start(self, id, job, lists, itineraries)
-    }
-    fn stage_routes(&self, id: &str, job: &str, capture: Capture) -> Result<Staged> {
-        commands::stage_routes(self, id, job, capture)
     }
     fn stage_routes_itinerary(
         &self,

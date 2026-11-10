@@ -4,10 +4,13 @@ use crate::backend::{
     saving,
     scope::{day_allowed, default_day},
     shaping::{Shaper, gunzip, gzip, stamp},
+    stage,
+    staging::stage_capture,
 };
 use crate::testing;
 use chrono::NaiveDate;
 use dispatch_core::{
+    State,
     db::{Store, s},
     foundation::config::Environment,
     server::startup,
@@ -20,8 +23,9 @@ use dispatch_cortex::{
     routes::{MAX_ITINERARIES, fixture},
 };
 use serde_json::json;
-#[test]
-fn retained_sweep_selection_rechecks_running_jobs_and_publication_activity() {
+use std::sync::Arc;
+#[tokio::test]
+async fn retained_sweep_selection_rechecks_running_jobs_and_publication_activity() {
     crate::testing::install(&[&dispatch_cortex::COLLECTOR], &[&crate::FEATURE]);
     use std::os::unix::fs::PermissionsExt;
     let root = tempfile::tempdir().unwrap();
@@ -33,6 +37,7 @@ fn retained_sweep_selection_rechecks_running_jobs_and_publication_activity() {
     config.development = true;
     config.environment = Environment::Preview;
     let db = startup::prepare_storage(config).unwrap();
+    let state = State::new(db.config.clone()).unwrap();
     let bootstrap = dispatch_core::server::operations::bootstrap(
         &db,
         "sweep@example.test",
@@ -59,9 +64,9 @@ fn retained_sweep_selection_rechecks_running_jobs_and_publication_activity() {
         )
         .unwrap();
     let job = s(&queued[0], "id");
-    let staged = db
-        .stage_routes(dsp, job, fixture(&request(Mode::Final)).unwrap())
-        .unwrap();
+    lease(&db, dsp, job);
+    let capture = fixture(&request(Mode::Final)).unwrap();
+    let staged = stage(&state, dsp, job, WORKER, capture).await.unwrap();
     testing::set_job_status(&db, job, "failed").unwrap();
     let mut selected = None;
     assert!(sweep_routes_step(&db, dsp, &mut selected).unwrap());
@@ -108,15 +113,17 @@ fn retained_sweep_selection_rechecks_running_jobs_and_publication_activity() {
         0
     );
 }
-#[test]
-fn a_save_still_staging_is_kept_from_the_sweep() {
+#[tokio::test]
+async fn a_save_still_staging_is_kept_from_the_sweep() {
     testing::install(&[&dispatch_cortex::COLLECTOR], &[&crate::FEATURE]);
     let (_root, db, dsp) = testing::bootstrapped();
-    let mut lists = fixture(&request(Mode::Final)).unwrap();
-    let itineraries = std::mem::take(&mut lists.itineraries).len();
+    let state = State::new(db.config.clone()).unwrap();
+    let asked = request(Mode::Final);
+    let capture = fixture(&asked).unwrap();
     // A save's publication is no job's: only its place among the saves staging keeps it.
     let saving = saving::Saving::start(&dsp, "save-1").unwrap();
-    db.stage_routes_start(&dsp, "save-1", &lists, itineraries)
+    stage_capture(&state, &dsp, "save-1", asked, capture, |_| Ok(()))
+        .await
         .unwrap();
     assert_eq!(
         saving::Saving::start(&dsp, "save-1").unwrap_err().code,
@@ -132,13 +139,28 @@ fn a_save_still_staging_is_kept_from_the_sweep() {
         .unwrap();
     assert_eq!(publications, 0);
 }
+/// The worker the tests' jobs are leased to.
+const WORKER: &str = "worker";
+/// Leases `job`, the DSP's next, to the worker, as the executor does before it stages the job's
+/// capture.
+fn lease(db: &Store, dsp: &str, job: &str) {
+    let leased = db.claim_job(WORKER, |at, _| at == dsp).unwrap();
+    assert_eq!(leased.map(|leased| leased.id).as_deref(), Some(job));
+}
 /// Queues `day`, stages the fixture's day for that job and publishes it, as the executor does.
 /// Answers the job's ID.
-pub(super) fn publish(db: &Store, dsp: &str, day: &str, mode: Mode) -> String {
-    publish_edited(db, dsp, day, mode, |_| {})
+pub(super) async fn publish(
+    state: &Arc<State>,
+    db: &Store,
+    dsp: &str,
+    day: &str,
+    mode: Mode,
+) -> String {
+    publish_edited(state, db, dsp, day, mode, |_| {}).await
 }
 /// Publishes `day` as `publish` does, the fixture's day as `edit` changes it.
-pub(super) fn publish_edited(
+pub(super) async fn publish_edited(
+    state: &Arc<State>,
     db: &Store,
     dsp: &str,
     day: &str,
@@ -152,8 +174,11 @@ pub(super) fn publish_edited(
     let request = serde_json::from_str(&db.job_row(&job, Some(dsp)).unwrap().request).unwrap();
     let mut capture = fixture(&Request::parse(&request).unwrap().unwrap()).unwrap();
     edit(&mut capture);
-    let staged = db.stage_routes(dsp, &job, capture).unwrap();
+    lease(db, dsp, &job);
+    let staged = stage(state, dsp, &job, WORKER, capture).await.unwrap();
     db.publish_routes(dsp, &job, &staged).unwrap();
+    // The executor publishes in the same transaction that finishes the job.
+    testing::set_job_status(db, &job, "succeeded").unwrap();
     job
 }
 pub(super) fn request(mode: Mode) -> Request {

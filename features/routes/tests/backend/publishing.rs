@@ -1,22 +1,18 @@
 use super::*;
-use crate::backend::{RoutesStore, shaping::Shaper, tests::request};
+use crate::backend::{RoutesStore, staging::stage_capture, tests::request};
+use dispatch_core::State;
 use dispatch_cortex::routes::{Mode, fixture};
 
-#[test]
-fn publication_merges_skip_identical_shared_rows_but_keep_changes_and_seen_day_bounds() {
+#[tokio::test]
+async fn publication_merges_skip_identical_shared_rows_but_keep_changes_and_seen_day_bounds() {
     crate::testing::install(&[&dispatch_cortex::COLLECTOR], &[&crate::FEATURE]);
     let (_root, store, dsp) = crate::testing::bootstrapped();
-    let mut capture = fixture(&request(Mode::Final)).unwrap();
-    let shaper = Shaper::new(&capture);
-    let itineraries = std::mem::take(&mut capture.itineraries);
-    let staged = store
-        .stage_routes_start(&dsp, "shared-merge", &capture, itineraries.len())
+    let state = State::new(store.config.clone()).unwrap();
+    let asked = request(Mode::Final);
+    let capture = fixture(&asked).unwrap();
+    let staged = stage_capture(&state, &dsp, "shared-merge", asked, capture, |_| Ok(()))
+        .await
         .unwrap();
-    for itinerary in itineraries {
-        store
-            .stage_routes_itinerary(&dsp, &staged, &shaper.shape(&itinerary).unwrap())
-            .unwrap();
-    }
     let db = store.routes_db(&dsp).unwrap();
     db.transaction(|| share(&db, &staged.publication, &staged.day))
         .unwrap();

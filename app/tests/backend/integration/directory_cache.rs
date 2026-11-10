@@ -5,12 +5,14 @@
 mod support;
 use dispatch_core::{
     Error, State,
+    collection::browser::Collected,
     db::s,
     manifest::{
         Feature, Upkeep,
         events::{CollectionSucceeded, PeopleChanged},
         feature, optional,
         people::{self, Everyone},
+        registry,
     },
     server::cache::{DataDomain, PeopleImpact, Scope},
     testing as common,
@@ -541,16 +543,31 @@ async fn fallback_refusal_and_errors_keep_existing_coherence() {
 async fn acknowledging_a_delivered_note_keeps_people_and_cached_counts() {
     let (server, a, _b, who, read) = ready().await;
     let state = &server.state;
-    // This is the actual publisher that creates changed-day notes, not a fixture answer.
+    // This is the actual publisher that creates changed-day notes, not a fixture answer: the
+    // day's job leased, staged and published as the executor runs it.
+    let (at, day, mode) = (a.clone(), read.scope.date.clone(), read.mode);
+    let job = state
+        .run_scoped(a.clone(), DataDomain::new("routes"), move |db| {
+            let queued = db.enqueue_routes(&at, None, "directory-note", Some(&day), mode, 1)?;
+            let job = db.claim_job("worker", |id, _| id == at)?.unwrap();
+            assert_eq!(job.id, s(&queued[0], "id"));
+            Ok(job.id)
+        })
+        .await
+        .unwrap();
+    let collected = Collected {
+        data: serde_json::to_value(read).unwrap(),
+        scope: None,
+    };
+    let staged = registry()
+        .keeper(routes::JOB_KIND)
+        .stage(state, &a, &job, "worker", collected)
+        .await
+        .unwrap();
     let at = a.clone();
     state
         .run_scoped(a.clone(), DataDomain::new("routes"), move |db| {
-            let shaped = dispatch_routes::prepare(&read)?;
-            let staged = db.stage_routes_start(&at, "directory-note", &read, shaped.len())?;
-            for itinerary in &shaped {
-                db.stage_routes_itinerary(&at, &staged, itinerary)?;
-            }
-            db.publish_routes(&at, "directory-note", &staged)
+            db.publish_routes(&at, &job, &serde_json::from_value(staged.data)?)
         })
         .await
         .map(|published| assert!(published))

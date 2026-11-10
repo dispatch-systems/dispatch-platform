@@ -20,9 +20,9 @@ pub use backend::{DATABASE, RoutesStore, prepare};
 pub use backend::{
     LiveKept, clear_live, keep_live, live_request, save_and_clear_live, save_live_day,
 };
-/// What its integration tests check beside the storage: the most jobs a scheduled run queues,
-/// how a capture is shaped and how kept responses are read back.
-pub use backend::{MAX_JOBS_PER_RUN, Shaper, gunzip};
+/// What its integration tests check beside the storage: the most jobs a scheduled run queues
+/// and how kept responses are read back.
+pub use backend::{MAX_JOBS_PER_RUN, gunzip};
 
 /// Core's test support, for this crate's module tests.
 #[cfg(test)]
