@@ -200,9 +200,12 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
         workspace::next(&[
             "Tell the user what merged; Dev installs it once main's run publishes its build"
                 .to_owned(),
+            "`dispatchdev landed`, in the background, waits for main's run of the merge: it is \
+             yours until that run passes"
+                .to_owned(),
             format!(
-                "From outside the worktree, `dispatchdev finish {branch} --plan`, then \
-                 `dispatchdev finish {branch}`"
+                "Once it passed, from outside the worktree, `dispatchdev finish {branch} \
+                 --plan`, then `dispatchdev finish {branch}`"
             ),
         ])
     );
