@@ -21,6 +21,8 @@ pub(super) struct Drive {
     pub access: String,
     pub owner: Grant,
 }
+/// Every Drive it answers follows a read that checked the grant, with nothing awaited in
+/// between: `on_drive!` makes its call on that check.
 pub(super) async fn open_for(state: &Arc<State>, owner: &Grant, fresh: bool) -> Result<Drive> {
     let google = Connected::new(state, owner)?;
     let found = owner
@@ -85,12 +87,12 @@ pub(super) async fn current(state: &Arc<State>, owner: &Grant) -> Result<()> {
     owner.admit(state).await
 }
 /// One retry after a refused cached access token, strictly under the original generation.
-/// The grant is admitted before each call, whatever the call does before its first request.
+/// The grant is checked before each call, whatever the call does before its first request:
+/// `open_for` answers a Drive only from a read that checked it, with nothing awaited since.
 macro_rules! on_drive {
     ($state:expr, $owner:expr, |$google:ident, $token:ident| $call:expr) => {{
         let owner = $owner;
         let drive = $crate::backend::access::open_for($state, owner, false).await?;
-        owner.admit($state).await?;
         let ($google, $token) = (&drive.google, drive.access.as_str());
         match $call.await {
             Err(error) if error.code == "google_connection_broken" => {
@@ -102,7 +104,6 @@ macro_rules! on_drive {
                     })
                     .await?;
                 let drive = $crate::backend::access::open_for($state, owner, false).await?;
-                owner.admit($state).await?;
                 let ($google, $token) = (&drive.google, drive.access.as_str());
                 $call.await
             }
@@ -112,7 +113,6 @@ macro_rules! on_drive {
     ($state:expr, $owner:expr, $drive:ident, $call:expr) => {{
         let owner = $owner;
         let mut $drive = $crate::backend::access::open_for($state, owner, false).await?;
-        owner.admit($state).await?;
         match $call.await {
             Err(error) if error.code == "google_connection_broken" => {
                 let refused = $drive.access.clone();
@@ -123,7 +123,6 @@ macro_rules! on_drive {
                     })
                     .await?;
                 $drive = $crate::backend::access::open_for($state, owner, false).await?;
-                owner.admit($state).await?;
                 $call.await.map(|value| ($drive, value))
             }
             answer => answer.map(|value| ($drive, value)),
