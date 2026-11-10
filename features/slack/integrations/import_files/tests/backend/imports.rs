@@ -133,7 +133,11 @@ async fn noticed(state: &Arc<State>, dsp: &str) -> Vec<(String, Status)> {
 async fn a_file_shared_in_a_linked_channel_is_saved_once_to_its_folder_as_who_posted_it() {
     let (_root, state, dsp, owner) = importing().await;
 
-    // The van's photo, shared in #photos, goes to its folder, as the member Morgan is.
+    // The van's photo, told of from before #photos was linked, isn't noticed.
+    shared(&state, &dsp, "F0FIXVAN", PHOTOS, 60 * 60_000).await;
+    assert!(noticed(&state, &dsp).await.is_empty());
+    assert!(support::kept(&dsp).is_empty());
+    // Shared in #photos since, it goes to its folder, as the member Morgan is.
     shared(&state, &dsp, "F0FIXVAN", PHOTOS, 0).await;
     let van = (
         dsp.clone(),
@@ -147,9 +151,8 @@ async fn a_file_shared_in_a_linked_channel_is_saved_once_to_its_folder_as_who_po
     shared(&state, &dsp, "F0FIXVAN", PHOTOS, 0).await;
     assert_eq!(support::kept(&dsp), std::slice::from_ref(&van));
 
-    // Nothing from a channel that isn't linked, or from before #photos was.
+    // Nothing from a channel that isn't linked.
     shared(&state, &dsp, "F0FIXROUTE", DISPATCH, 0).await;
-    shared(&state, &dsp, "F0FIXCANVAS", PHOTOS, 60 * 60_000).await;
     // A video too large to keep, and a canvas, which Slack doesn't host as a file, are left.
     shared(&state, &dsp, "F0FIXDASHCAM", PHOTOS, 0).await;
     shared(&state, &dsp, "F0FIXCANVAS", PHOTOS, 0).await;
