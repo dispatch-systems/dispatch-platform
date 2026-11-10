@@ -24,15 +24,4 @@ version=$(
     "${sha256[@]}" Cargo.toml Cargo.lock rust-toolchain.toml
   } | "${sha256[@]}" | cut -c1-16
 )
-binary="$cache/$version/dispatchdev"
-if [[ ! -x $binary ]]; then
-  (cd "$source" && cargo build --quiet --locked -p dispatchdev-cli --bin dispatchdev --target-dir "$source/target") >&2
-  mkdir -p "$cache/$version"
-  install -m 755 "$source/target/debug/dispatchdev" "$binary.$$"
-  mv -f "$binary.$$" "$binary"
-  # The ten newest versions stay, enough for each of a clone's worktrees to run its own; an
-  # older one is rebuilt if its source comes back.
-  find "$cache" -mindepth 1 -maxdepth 1 -type d -exec ls -dt {} + |
-    tail -n +11 | xargs -r rm -rf
-fi
-exec "$binary" "$@"
+exec python3 "$source/tooling/cli/cache.py" "$source" "$cache" "$version" "$@"

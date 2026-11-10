@@ -2,9 +2,11 @@
 //! own `.ci-tools`, and anywhere else one build for each version of the source.
 use std::{
     fs,
+    io::{BufRead, BufReader, Write},
     os::unix::fs::{PermissionsExt, symlink},
     path::{Path, PathBuf},
-    process::{Command, Output},
+    process::{Child, Command, Output, Stdio},
+    time::{Duration, UNIX_EPOCH},
 };
 
 const LAUNCHER: &str = include_str!("../dispatchdev");
@@ -32,6 +34,10 @@ fn checkout() -> (tempfile::TempDir, PathBuf) {
     let temp = tempfile::tempdir().unwrap();
     let root = fs::canonicalize(temp.path()).unwrap().join("checkout");
     executable(&root.join("tooling/cli/dispatchdev"), LAUNCHER);
+    let cache = Path::new(env!("CARGO_MANIFEST_DIR")).join("cache.py");
+    if cache.exists() {
+        fs::copy(cache, root.join("tooling/cli/cache.py")).unwrap();
+    }
     for (file, text) in [
         ("tooling/cli/src/main.rs", "first"),
         ("tooling/shared/src/lib.rs", "shared"),
@@ -51,18 +57,20 @@ fn checkout() -> (tempfile::TempDir, PathBuf) {
     );
     (temp, root)
 }
-fn launch(temp: &Path, root: &Path, env: &[(&str, &str)]) -> Output {
-    Command::new(root.join("tooling/cli/dispatchdev"))
-        .arg("check")
+fn command(temp: &Path, root: &Path, env: &[(&str, &str)]) -> Command {
+    let mut command = Command::new(root.join("tooling/cli/dispatchdev"));
+    command
         .env_clear()
         .env(
             "PATH",
             format!("{}:/usr/bin:/bin", temp.join("bin").display()),
         )
         .env("BUILDS", temp.join("builds"))
-        .envs(env.iter().copied())
-        .output()
-        .unwrap()
+        .envs(env.iter().copied());
+    command
+}
+fn launch(temp: &Path, root: &Path, env: &[(&str, &str)]) -> Output {
+    command(temp, root, env).arg("check").output().unwrap()
 }
 fn said(output: &Output) -> String {
     assert!(
@@ -164,9 +172,19 @@ fn each_checkout_builds_in_its_own_target() {
     // Cargo copies out only a binary it rebuilt, so a target shared by checkouts of different
     // sources would hand one of them the other's binary.
     let (temp, root) = checkout();
-    git(&root, &["add", "-A"]);
+    let tree = worktree(temp.path(), &root);
+    fs::write(tree.join("tooling/cli/src/main.rs"), "second").unwrap();
+    assert_eq!(said(&launch(temp.path(), &root, &[])), "built 1 check");
+    assert_eq!(said(&launch(temp.path(), &tree, &[])), "built 2 check");
+    for checkout in [&root, &tree] {
+        assert!(checkout.join("target/debug/dispatchdev").is_file());
+    }
+}
+
+fn worktree(temp: &Path, root: &Path) -> PathBuf {
+    git(root, &["add", "-A"]);
     git(
-        &root,
+        root,
         &[
             "-c",
             "user.name=t",
@@ -177,12 +195,134 @@ fn each_checkout_builds_in_its_own_target() {
             "first",
         ],
     );
-    let tree = temp.path().join("tree");
-    git(&root, &["worktree", "add", "-q", tree.to_str().unwrap()]);
-    fs::write(tree.join("tooling/cli/src/main.rs"), "second").unwrap();
-    assert_eq!(said(&launch(temp.path(), &root, &[])), "built 1 check");
-    assert_eq!(said(&launch(temp.path(), &tree, &[])), "built 2 check");
-    for checkout in [&root, &tree] {
-        assert!(checkout.join("target/debug/dispatchdev").is_file());
+    let tree = temp.join("tree");
+    git(root, &["worktree", "add", "-q", tree.to_str().unwrap()]);
+    tree
+}
+
+/// EOF releases the fixture, including when an assertion fails while it is waiting.
+struct Running(Child);
+impl Drop for Running {
+    fn drop(&mut self) {
+        drop(self.0.stdin.take());
+        self.0.wait().unwrap();
     }
+}
+
+#[test]
+fn a_running_cached_cli_survives_publication_and_eviction_until_it_dies() {
+    use std::os::unix::fs::MetadataExt;
+    let (temp, root) = checkout();
+    let tree = worktree(temp.path(), &root);
+    let binary = temp.path().join("executable");
+    executable(
+        &binary,
+        "#!/bin/sh\nset -eu\nif [ \"${1:-}\" = child ]; then echo child; exit; fi\n\
+         echo \"$0\"\nwhile read -r line; do \"$0\" child; done\n",
+    );
+    executable(
+        &temp.path().join("bin/cargo"),
+        "#!/bin/sh\nset -eu\nif [ \"${GATE:-}\" = yes ]; then echo building >&2; read -r line; fi\n\
+         target=$(printf '%s\\n' \"$@\" | sed -n '/--target-dir/{n;p;}')\n\
+         mkdir -p \"$target/debug\"\ncp \"$BINARY\" \"$target/debug/dispatchdev\"\n",
+    );
+    let env = [("BINARY", binary.to_str().unwrap())];
+    let start = |gate| {
+        Running(
+            command(temp.path(), &root, &env)
+                .env("GATE", gate)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap(),
+        )
+    };
+    let answer = |stream: &mut dyn std::io::Read| {
+        let mut line = String::new();
+        BufReader::new(stream).read_line(&mut line).unwrap();
+        assert!(!line.is_empty(), "the fixture ended without answering");
+        line.trim().to_owned()
+    };
+    let mut running = start("no");
+    let active = PathBuf::from(answer(running.0.stdout.as_mut().unwrap()));
+    // Move recency explicitly; no wall-clock wait decides which entries are old.
+    let stamp = |entry: &Path, seconds| {
+        fs::File::open(entry)
+            .unwrap()
+            .set_times(fs::FileTimes::new().set_modified(UNIX_EPOCH + Duration::from_secs(seconds)))
+            .unwrap();
+    };
+    stamp(active.parent().unwrap(), 1);
+    let build = |number: u64| {
+        fs::write(
+            tree.join("tooling/cli/src/main.rs"),
+            format!("version {number}"),
+        )
+        .unwrap();
+        let output = command(temp.path(), &tree, &env).output().unwrap();
+        let path = PathBuf::from(said(&output));
+        assert!(path.is_file());
+        assert_ne!(path, active);
+        stamp(path.parent().unwrap(), number + 1);
+        path
+    };
+    let unused = build(1);
+    for number in 2..=10 {
+        build(number);
+    }
+    assert!(
+        active.is_file(),
+        "a newer source evicted the running executable"
+    );
+    running
+        .0
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(b"check\n")
+        .unwrap();
+    assert_eq!(answer(running.0.stdout.as_mut().unwrap()), "child");
+    build(11);
+    assert!(
+        !unused.parent().unwrap().exists(),
+        "an unused old entry was retained"
+    );
+    // Inspect only our fixture before killing it. SIGKILL cannot run cleanup.
+    let process = Command::new("ps")
+        .args(["-ww", "-p", &running.0.id().to_string(), "-o", "args="])
+        .output()
+        .unwrap();
+    assert!(said(&process).contains(active.to_str().unwrap()));
+    running.0.kill().unwrap();
+    running.0.wait().unwrap();
+    build(12);
+    assert!(
+        !active.parent().unwrap().exists(),
+        "a dead run retained its cache entry"
+    );
+    assert_eq!(
+        fs::read_dir(root.join(".git/dispatchdev")).unwrap().count(),
+        10
+    );
+    // Two misses of the same inputs: one waits in Cargo while the other publishes
+    // and starts using its executable. Finishing the first must not replace it.
+    let mut delayed = start("yes");
+    assert_eq!(answer(delayed.0.stderr.as_mut().unwrap()), "building");
+    let mut competing = start("no");
+    let active = PathBuf::from(answer(competing.0.stdout.as_mut().unwrap()));
+    let identity = fs::metadata(&active).unwrap().ino();
+    delayed
+        .0
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(b"continue\n")
+        .unwrap();
+    assert!(delayed.0.wait().unwrap().success());
+    assert_eq!(
+        fs::metadata(&active).unwrap().ino(),
+        identity,
+        "a concurrent publication replaced the running executable",
+    );
 }
