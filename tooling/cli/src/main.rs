@@ -128,9 +128,9 @@ const COMMANDS: &[Spec] = &[
          changes, light needing no review, and writes the pass's brief: the whole change first, \
          with a security brief beside it for a sensitive change, then what changed since the \
          pass before, up to three passes, with a security brief only for something sensitive in \
-         it or a fix the security review asked for. take checks the reviewers left nothing \
-         uncommitted, names the commits since the pass and starts the answers to their \
-         findings; record checks each is answered, pushes the fixes as pr does and writes the \
+         it or a fix the security review asked for. The reviewers read a checkout of the pinned \
+         head made for them in the pass's folder, so the worktree is free meanwhile; take \
+         removes it and starts the answers to their findings; record checks each is answered, pushes the fixes as pr does and writes the \
          Review line into the PR's body. Commits after a pass that no answer accounts for \
          need another, unless they hold documentation alone or main merged in as git merges \
          it.",

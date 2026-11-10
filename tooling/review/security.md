@@ -1,6 +1,8 @@
-Review a change to Dispatch for security, read-only: branch {{branch}} at {{head}} in
-{{worktree}}. This pass reviews {{scope}}: `{{diff}}`. Change nothing in the
-worktree and write nothing to GitHub; the one file you write is {{findings}}.
+Review a change to Dispatch for security, read-only: branch {{branch}} at {{head}}, checked out for you
+in {{checkout}}. Read it there, not in the change's own worktree, which moves on while you
+read. Nothing is installed or built there, so build and run nothing: show a finding from the
+code. This pass reviews {{scope}}: `{{diff}}`. Change nothing and write nothing to GitHub; the
+one file you write is {{findings}}.
 
 What the change is for:
 
