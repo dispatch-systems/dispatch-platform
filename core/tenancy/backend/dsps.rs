@@ -312,7 +312,7 @@ impl Store {
             let mut summary = DspSummary {
                 features,
                 members,
-                profile: profile_default(),
+                profile: DspProfile::default(),
                 owner_email: owner.or(invite).map(str::to_owned),
                 owner_status,
                 connections: std::collections::BTreeMap::new(),
@@ -325,7 +325,7 @@ impl Store {
                 },
                 dsp,
             };
-            if [DspStatus::Active, DspStatus::Suspended].contains(&summary.dsp.status) {
+            if opened {
                 let id = &summary.dsp.id;
                 summary.profile = self.profile(id)?;
                 for provider in Provider::all() {
@@ -652,7 +652,7 @@ impl Store {
                 Some(&name.0),
                 &[(
                     "role",
-                    Some(self.role(dsp, &current.id)?.name),
+                    Some(current.name),
                     next.as_ref().map(|next| next.name.clone()),
                 )],
                 Some(("member", user)),
@@ -680,10 +680,6 @@ impl Store {
         Ok(())
     }
 }
-pub fn profile_default() -> DspProfile {
-    DspProfile::default()
-}
-
 /// Fails unless the platform lists the DSP, for an operator command run beside the
 /// server: it reads the platform's database read-only and changes nothing.
 pub fn ensure_listed(config: &Config, id: &str) -> Result<()> {
