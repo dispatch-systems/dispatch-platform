@@ -12,8 +12,6 @@ use std::collections::HashMap;
 // reaches a job of a kind this release doesn't run.
 const RECENT: &str = "SELECT * FROM jobs WHERE kind IN (SELECT value FROM json_each(?)) \
     ORDER BY created_at DESC LIMIT 200";
-const RECENT_FOR_DSP: &str = "SELECT * FROM jobs WHERE dsp_id=? \
-    AND kind IN (SELECT value FROM json_each(?)) ORDER BY created_at DESC LIMIT 200";
 const RECENT_OF_KIND: &str =
     "SELECT * FROM jobs WHERE dsp_id=? AND kind=? ORDER BY created_at DESC LIMIT 200";
 const RECENT_IN: &str = "SELECT * FROM jobs WHERE dsp_id=? \
@@ -38,7 +36,7 @@ impl Store {
     pub fn recent_jobs(&self, id: Option<&str>) -> Result<Vec<PublicJob>> {
         let known = JobKind::known()?;
         let rows: Vec<JobRow> = match id {
-            Some(id) => self.jobs.query_as(RECENT_FOR_DSP, [id, &known])?,
+            Some(id) => self.jobs.query_as(RECENT_IN, [id, &known])?,
             None => self.jobs.query_as(RECENT, [known])?,
         };
         self.public_jobs(rows)

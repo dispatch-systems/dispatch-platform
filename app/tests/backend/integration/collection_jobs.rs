@@ -154,7 +154,7 @@ fn collection_outcomes_record_their_schedule_provider_collection_date_and_durati
     let started = db::at(db::now() - 108_000);
     let job = JobFacts {
         idempotency_key: "manual",
-        provider: Some(paycom::PROVIDER),
+        provider: paycom::PROVIDER,
         kind: "paycom.collect",
         attempt: 1,
         max_attempts: 1,
@@ -174,7 +174,7 @@ fn collection_outcomes_record_their_schedule_provider_collection_date_and_durati
     );
     let job = JobFacts {
         idempotency_key: "schedule:gone:2026:flex:0",
-        provider: Some(cortex::PROVIDER),
+        provider: cortex::PROVIDER,
         kind: "cortex.dvic.collect",
         request: "{}",
         started_at: None,
