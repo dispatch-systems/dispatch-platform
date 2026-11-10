@@ -7,24 +7,12 @@ use super::{
     LINKING,
     storage::{Described, Import, ImportStore, Outcome, Status},
 };
-use crate::backend::{author, bot::Bot, channel_links::storage::LinkStore};
-use dispatch_core::{Code, Error, Result, State, db::now, server::http::upload::Upload};
+use crate::backend::{author, bot::Bot, channel_links::storage::LinkStore, slack::text, work};
+use dispatch_core::{Error, Result, State, server::http::upload::Upload};
 use dispatch_documents_contract::{self as files, Incoming};
 use serde_json::json;
 use std::sync::Arc;
 
-/// How long a file waits while it can't be saved yet, in milliseconds.
-const WAIT_MS: i64 = 15 * 60 * 1000;
-/// How long a file waits after each failure, in milliseconds: given up after the last.
-const RETRIES_MS: &[i64] = &[
-    60 * 1000,
-    5 * 60 * 1000,
-    15 * 60 * 1000,
-    60 * 60 * 1000,
-    3 * 60 * 60 * 1000,
-    6 * 60 * 60 * 1000,
-    12 * 60 * 60 * 1000,
-];
 /// Where a file came from, as where it's saved says.
 const FROM: &str = "Slack";
 
@@ -110,7 +98,7 @@ async fn attempt(state: &Arc<State>, dsp: &str, import: &Import) -> Result<Outco
 fn wait(reason: &str) -> Outcome {
     Outcome::Later {
         reason: reason.to_owned(),
-        at: now() + WAIT_MS,
+        at: work::waited(),
         counted: false,
     }
 }
@@ -124,30 +112,12 @@ fn left(status: Status, reason: &str) -> Outcome {
 /// to work again, or for the DSP disabled meanwhile to be enabled, is tried again later each
 /// time, or is given up.
 fn failure(import: &Import, error: &Error) -> Outcome {
-    if ["slack_needs_update", "slack_connection_broken"].contains(&error.code.as_str()) {
-        return wait(&error.code);
-    }
-    if error.is(Code::DspUnavailable) {
-        return Outcome::Later {
+    match work::again(error, import.attempts) {
+        Some((at, counted)) => Outcome::Later {
             reason: error.code.clone(),
-            at: now(),
-            counted: false,
-        };
-    }
-    match RETRIES_MS.get(import.attempts.max(0) as usize) {
-        Some(after) => Outcome::Later {
-            reason: error.code.clone(),
-            at: now() + after,
-            counted: true,
+            at,
+            counted,
         },
         None => left(Status::Failed, &error.code),
     }
-}
-
-fn text(value: &serde_json::Value) -> Option<String> {
-    value
-        .as_str()
-        .map(str::trim)
-        .filter(|text| !text.is_empty())
-        .map(str::to_owned)
 }

@@ -9,7 +9,7 @@ use super::{
     storage::{integrations::IntegrationStore, workspaces::WorkspaceStore},
 };
 use dispatch_core::{
-    Error, Result, State,
+    Code, Error, Result, State,
     db::{Store, now},
     foundation::observability,
     manifest::Upkeep,
@@ -25,11 +25,43 @@ const AGAIN: [Duration; 3] = [
     Duration::from_secs(5),
     Duration::from_secs(30),
 ];
+/// How long an item an integration keeps waits while it can't be tried yet, in milliseconds.
+const WAIT_MS: i64 = 15 * 60 * 1000;
+/// How long an item waits after each failure, in milliseconds: given up after the last.
+const RETRIES_MS: &[i64] = &[
+    60 * 1000,
+    5 * 60 * 1000,
+    15 * 60 * 1000,
+    60 * 60 * 1000,
+    3 * 60 * 60 * 1000,
+    6 * 60 * 60 * 1000,
+    12 * 60 * 60 * 1000,
+];
 
 /// Reports a pass's failure, as `event`, with the error's code and the DSP it was working for, if
 /// it was working for one.
 pub fn failed(event: &'static str, dsp: Option<&str>, error: &Error) {
     observability::event("error", event, json!({"dspId": dsp, "error": error.code}));
+}
+
+/// When an item that can't be tried yet is tried again: a while from now.
+pub(crate) fn waited() -> i64 {
+    now() + WAIT_MS
+}
+/// When an item whose try failed with `error`, after `attempts` counted failures, is tried
+/// again, and whether this failure counts towards giving up: uncounted, a while from now, for an
+/// approval or the workspace to work again, or now, for the DSP disabled meanwhile to be
+/// enabled; counted, later each time; none once it's given up.
+pub(crate) fn again(error: &Error, attempts: i64) -> Option<(i64, bool)> {
+    if ["slack_needs_update", "slack_connection_broken"].contains(&error.code.as_str()) {
+        return Some((waited(), false));
+    }
+    if error.is(Code::DspUnavailable) {
+        return Some((now(), false));
+    }
+    RETRIES_MS
+        .get(attempts.max(0) as usize)
+        .map(|after| (now() + after, true))
 }
 
 /// Does work Slack told of, `work`, until it succeeds: tried again after a second, five and thirty

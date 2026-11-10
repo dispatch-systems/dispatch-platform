@@ -154,6 +154,15 @@ impl Slack {
     }
 }
 
+/// The text Slack sent as `value`, trimmed: none when it sent none.
+pub(crate) fn text(value: &Value) -> Option<String> {
+    value
+        .as_str()
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(str::to_owned)
+}
+
 fn unreachable(_: reqwest::Error) -> Error {
     Error::new("slack_unreachable", 502)
 }
