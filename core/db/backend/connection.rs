@@ -33,6 +33,21 @@ impl Db {
     /// applies the migrations it lacks. `seed` holds the rows a new database needs
     /// and commits together with its schema, so no reader sees one without them.
     pub fn create(file: &Path, kind: Kind, seed: &str) -> Result<Self> {
+        let db = Self::created(file, kind, |db| Ok(db.0.execute_batch(seed)?))?;
+        migrations::migrate(&db, kind)?;
+        Ok(db)
+    }
+    /// Creates new core DSP storage with its identity in the schema transaction,
+    /// or adopts a legacy database only while its identity migration is first applied.
+    pub(crate) fn create_dsp(file: &Path, id: &str) -> Result<Self> {
+        ensure(super::identifier(id, "dsp_"), "invalid_dsp_id", 400)?;
+        let db = Self::created(file, Kind::DSP, |db| migrations::bind_identity(db, id))?;
+        migrations::migrate_dsp(&db, id)?;
+        Ok(db)
+    }
+    /// Opens the database, creating it when it is missing with `kind`'s schema and what `seed`
+    /// writes, in one transaction.
+    fn created(file: &Path, kind: Kind, seed: impl FnOnce(&Self) -> Result<()>) -> Result<Self> {
         let db = Self::connect(file, kind, true)?;
         if db.version()? == 0 {
             let tx = migrations::immediate(&db)?;
@@ -44,38 +59,11 @@ impl Db {
                     &kind.migrations(),
                     &kind.owned_migrations(),
                 )?;
-                tx.execute_batch(seed)?;
+                seed(&db)?;
                 tx.pragma_update(None, "user_version", kind.version())?;
             }
             tx.commit()?;
         }
-        migrations::migrate(&db, kind)?;
-        Ok(db)
-    }
-    /// Creates new core DSP storage with its identity in the schema transaction,
-    /// or adopts a legacy database only while its identity migration is first applied.
-    pub(crate) fn create_dsp(file: &Path, id: &str) -> Result<Self> {
-        ensure(super::identifier(id, "dsp_"), "invalid_dsp_id", 400)?;
-        let db = Self::connect(file, Kind::DSP, true)?;
-        if db.version()? == 0 {
-            let tx = migrations::immediate(&db)?;
-            if db.version()? == 0 {
-                migrations::apply(
-                    &db,
-                    Kind::DSP.name(),
-                    &Kind::DSP.migrations(),
-                    &Kind::DSP.owned_migrations(),
-                )?;
-                db.0.execute(
-                    "INSERT INTO storage_identity(dsp_id,provider,source) \
-                     VALUES (?,'dispatch','dispatch-v1')",
-                    [id],
-                )?;
-                tx.pragma_update(None, "user_version", Kind::DSP.version())?;
-            }
-            tx.commit()?;
-        }
-        migrations::migrate_dsp(&db, id)?;
         Ok(db)
     }
     fn version(&self) -> Result<i64> {
@@ -171,6 +159,11 @@ impl Db {
     /// The single number a `SELECT count(*) ...` answers with.
     pub fn count(&self, sql: &str, p: impl Params) -> Result<i64> {
         Ok(self.0.prepare_cached(sql)?.query_row(p, |row| row.get(0))?)
+    }
+    /// Whether the database has a table called `name`.
+    pub fn has_table(&self, name: &str) -> Result<bool> {
+        let sql = "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?";
+        Ok(self.count(sql, [name])? > 0)
     }
     /// Runs `f` in a transaction, or inside one already open on this connection, as when a
     /// DSP's database is reached twice within one change, as a savepoint of it.
