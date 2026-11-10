@@ -24,12 +24,7 @@ pub(super) async fn run(
         job.detail.ticket.approved_version == Some(job.version),
         "Implementation requires the exact approved proposal",
     )?;
-    let proposal = job
-        .detail
-        .proposals
-        .iter()
-        .find(|proposal| proposal.version == job.version)
-        .ok_or("Approved proposal not found")?;
+    let proposal = super::approved_proposal(job)?;
     let tree = Worktree::prepare(config, job, None).await?;
     let mut failure = checkpoint.failure();
     'correction: loop {
@@ -181,9 +176,7 @@ pub(super) async fn run(
             }
             let head = tree.head().await?;
             // Recheck lease/approval before the trusted publisher can mutate GitHub.
-            platform
-                .update(job, "heartbeat", json!({"checkpoint":checkpoint.saved()}))
-                .await?;
+            checkpoint.heartbeat(platform, job).await?;
             let (number, url) = github::publish(config, job, &tree, &summary, &checks).await?;
             platform
                 .update(job, "github", json!({"prUrl":url,"headSha":head}))
@@ -226,7 +219,8 @@ pub(super) async fn run(
                     .update(job, "github", json!({"prUrl":pr_url,"headSha":head}))
                     .await?;
                 github::ready(config, &tree, number).await?;
-                platform.update(job, "wait", json!({"reason":"Waiting for GitHub to admit the verified head","checkpoint":checkpoint.saved(),"retryAfterMs":15_000})).await?;
+                let reason = "Waiting for GitHub to admit the verified head";
+                checkpoint.wait(platform, job, reason, 15_000).await?;
                 return Ok(());
             }
             if status["mergeable"] == "CONFLICTING" {
@@ -260,9 +254,7 @@ pub(super) async fn run(
                     continue 'correction;
                 }
                 github::Checks::Passed if status["mergeable"] == "MERGEABLE" => {
-                    platform
-                        .update(job, "heartbeat", json!({"checkpoint":checkpoint.saved()}))
-                        .await?;
+                    checkpoint.heartbeat(platform, job).await?;
                     github::merge(&tree, &status, &head).await?;
                 }
                 _ => {}
@@ -270,7 +262,9 @@ pub(super) async fn run(
             // Remote CI does not monopolize the local supervisor. The exact verified head
             // and PR remain checkpointed while other tickets can be investigated/answered.
             tree.relieve_disk_pressure(config).await?;
-            platform.update(job, "wait", json!({"reason":"Waiting for the PR's checks","checkpoint":checkpoint.saved(),"retryAfterMs":15_000})).await?;
+            checkpoint
+                .wait(platform, job, "Waiting for the PR's checks", 15_000)
+                .await?;
             return Ok(());
         }
     }

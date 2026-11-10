@@ -58,15 +58,11 @@ pub(super) async fn run(
         .await
         .is_err()
     {
-        platform.update(job, "wait", json!({"reason":"The merged change is awaiting a production release","checkpoint":checkpoint.saved(),"retryAfterMs":60_000})).await?;
+        let reason = "The merged change is awaiting a production release";
+        checkpoint.wait(platform, job, reason, 60_000).await?;
         return Ok(());
     }
-    let proposal = job
-        .detail
-        .proposals
-        .iter()
-        .find(|proposal| proposal.version == job.version)
-        .ok_or("Approved proposal not found")?;
+    let proposal = super::approved_proposal(job)?;
     let tree = Worktree::prepare(config, job, Some(source)).await?;
     let mut target = if let Some(grant) = &grant {
         browser(grant)?
