@@ -140,11 +140,7 @@ fn stored(system: bool, permissions: &str) -> Vec<String> {
         return all();
     }
     let saved: Vec<String> = serde_json::from_str(permissions).unwrap_or_default();
-    PERMISSIONS
-        .iter()
-        .filter(|p| saved.iter().any(|v| v == *p))
-        .map(|p| (*p).to_owned())
-        .collect()
+    with(&saved, &[])
 }
 /// A row of `roles`. `system` marks the owner role, which holds every permission.
 #[derive(Clone)]
@@ -367,12 +363,7 @@ impl Store {
             "role_exceeds_permissions",
             403,
         )?;
-        let ordered = PERMISSIONS
-            .iter()
-            .filter(|p| wanted.iter().any(|v| v == *p))
-            .map(|p| (*p).to_owned())
-            .collect();
-        Ok((name.to_owned(), ordered))
+        Ok((name.to_owned(), with(&wanted, &[])))
     }
     fn ensure_name_free(&self, dsp: &str, name: &str, except: &str) -> Result<()> {
         ensure(
@@ -428,16 +419,13 @@ impl Store {
             self.ensure_name_free(dsp, &name, id)?;
             // A permission of a feature the DSP lacks was never shown, so it stays as
             // it was; switching the feature back on finds the role unchanged.
-            let hidden: Vec<&String> = role
+            let hidden: Vec<String> = role
                 .permissions
                 .iter()
                 .filter(|p| !crate::tenancy::catalog::grants(&c.features, p))
+                .cloned()
                 .collect();
-            let permissions: Vec<String> = PERMISSIONS
-                .iter()
-                .filter(|p| permissions.iter().any(|v| v == *p) || hidden.iter().any(|v| v == p))
-                .map(|p| (*p).to_owned())
-                .collect();
+            let permissions = with(&permissions, &hidden);
             people.exec(
                 "UPDATE roles SET name=?,permissions=? WHERE id=?",
                 params![name, json!(permissions).to_string(), id],
