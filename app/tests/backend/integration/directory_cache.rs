@@ -5,12 +5,14 @@
 mod support;
 use dispatch_core::{
     Error, State,
+    collection::browser::Collected,
     db::s,
     manifest::{
         Feature, Upkeep,
         events::{CollectionSucceeded, PeopleChanged},
         feature, optional,
         people::{self, Everyone},
+        registry,
     },
     server::cache::{DataDomain, PeopleImpact, Scope},
     testing as common,
@@ -553,13 +555,19 @@ async fn acknowledging_a_delivered_note_keeps_people_and_cached_counts() {
         })
         .await
         .unwrap();
-    let staged = dispatch_routes::stage(state, &a, &job, "worker", read)
+    let collected = Collected {
+        data: serde_json::to_value(read).unwrap(),
+        scope: None,
+    };
+    let staged = registry()
+        .keeper(routes::JOB_KIND)
+        .stage(state, &a, &job, "worker", collected)
         .await
         .unwrap();
     let at = a.clone();
     state
         .run_scoped(a.clone(), DataDomain::new("routes"), move |db| {
-            db.publish_routes(&at, &job, &staged)
+            db.publish_routes(&at, &job, &serde_json::from_value(staged.data)?)
         })
         .await
         .map(|published| assert!(published))

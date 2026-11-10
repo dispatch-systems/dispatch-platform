@@ -1,9 +1,10 @@
 //! Routes storage: publication, supersession, the days a schedule queues and what the
 //! views read.
 use dispatch_core::State;
+use dispatch_core::collection::browser::Collected;
 use dispatch_core::db::{Store, s};
 use dispatch_core::foundation::config::Environment;
-use dispatch_core::manifest::Section;
+use dispatch_core::manifest::{Section, registry};
 use dispatch_core::server::startup;
 use dispatch_core::settings::{self, Saved};
 use dispatch_core::testing as common;
@@ -11,7 +12,7 @@ use dispatch_cortex::{
     self as cortex,
     routes::{self, Capture, Mode, Request},
 };
-use dispatch_routes::{RoutesStore, save_day, stage};
+use dispatch_routes::{RoutesStore, save_day};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
@@ -43,13 +44,29 @@ fn station(db: &Store, id: &str) {
     .unwrap();
     common::ready_connection(db, id, cortex::PROVIDER).unwrap();
 }
-/// The worker the tests' jobs are leased to.
-const WORKER: &str = "worker";
-/// Leases `job`, the DSP's next, to the worker, as the executor does before it stages the job's
-/// capture.
-fn lease(db: &Store, id: &str, job: &str) {
-    let leased = db.claim_job(WORKER, |dsp, _| dsp == id).unwrap();
+/// Leases `job`, the DSP's next, to a worker and stages `capture` for it by Routes' keeper, as the
+/// executor does. Answers what the keeper staged: the day's inactive publication.
+async fn stage(
+    state: &Arc<State>,
+    db: &Store,
+    id: &str,
+    job: &str,
+    capture: Capture,
+) -> dispatch_core::Result<Collected> {
+    let leased = db.claim_job("worker", |dsp, _| dsp == id).unwrap();
     assert_eq!(leased.map(|leased| leased.id).as_deref(), Some(job));
+    let collected = Collected {
+        data: serde_json::to_value(capture).unwrap(),
+        scope: None,
+    };
+    let keeper = registry().keeper(routes::JOB_KIND);
+    keeper.stage(state, id, job, "worker", collected).await
+}
+/// Publishes what `stage` staged for `job` by Routes' keeper, as the executor does.
+fn publish_staged(db: &Store, id: &str, job: &str, staged: Collected) -> dispatch_core::Result<()> {
+    registry()
+        .keeper(routes::JOB_KIND)
+        .publish(db, id, job, staged)
 }
 /// Queues `day`, stages `capture` for that job and publishes it, as the executor does.
 async fn publish(
@@ -69,11 +86,8 @@ async fn publish(
 }
 /// Stages `capture` for `job` and publishes it, as the executor does.
 async fn finish(state: &Arc<State>, db: &Store, id: &str, job: &str, capture: &Capture) {
-    lease(db, id, job);
-    let staged = stage(state, id, job, WORKER, capture.clone())
-        .await
-        .unwrap();
-    db.publish_routes(id, job, &staged).unwrap();
+    let staged = stage(state, db, id, job, capture.clone()).await.unwrap();
+    publish_staged(db, id, job, staged).unwrap();
     // The executor publishes in the same transaction that finishes the job.
     common::set_job_status(db, job, "succeeded").unwrap();
 }
@@ -421,12 +435,11 @@ async fn a_reprocess_rebuilds_shared_staging_without_replaying_omitted_keys() {
         .enqueue_routes(&id, None, "cancelled", Some(day), Mode::Final, 1)
         .unwrap();
     let job = s(&jobs[0], "id");
-    lease(&db, &id, job);
     let cancelled = stage(
         &state,
+        &db,
         &id,
         job,
-        WORKER,
         renamed(
             &routes::fixture(&request(day, Mode::Final)).unwrap(),
             "Cancelled",
@@ -440,7 +453,7 @@ async fn a_reprocess_rebuilds_shared_staging_without_replaying_omitted_keys() {
         storage
             .all(
                 &format!("SELECT * FROM {table} WHERE publication_id=? ORDER BY rowid"),
-                [&cancelled.publication],
+                [s(&cancelled.data, "publication")],
             )
             .unwrap()
     };
@@ -460,11 +473,10 @@ async fn a_reprocess_rebuilds_shared_staging_without_replaying_omitted_keys() {
         .enqueue_routes(&other, None, "other", Some(day), Mode::Final, 1)
         .unwrap();
     let job = s(&jobs[0], "id");
-    lease(&db, &other, job);
-    let other_staged = stage(&state, &other, job, WORKER, capture.clone())
+    let other_staged = stage(&state, &db, &other, job, capture.clone())
         .await
         .unwrap();
-    omitted_shared_staging(&other_storage, &other_staged.publication);
+    omitted_shared_staging(&other_storage, s(&other_staged.data, "publication"));
     let other_before = replay_storage_rows(&other_storage);
     let raw_before = storage
         .all(
@@ -514,7 +526,7 @@ async fn a_reprocess_rebuilds_shared_staging_without_replaying_omitted_keys() {
         storage
             .count(
                 "SELECT count(*) FROM route_publications WHERE id=? AND active=0",
-                [&cancelled.publication]
+                [s(&cancelled.data, "publication")]
             )
             .unwrap(),
         1
@@ -641,8 +653,7 @@ async fn mismatched_incomplete_and_oversized_captures_fail_before_changing_publi
         .enqueue_routes(&id, None, "swapped", Some("2026-09-25"), Mode::Final, 1)
         .unwrap();
     let job = s(&jobs[0], "id");
-    lease(&db, &id, job);
-    let error = stage(&state, &id, job, WORKER, swapped).await.unwrap_err();
+    let error = stage(&state, &db, &id, job, swapped).await.unwrap_err();
     assert_eq!(error.code, "routes_scope_mismatch");
     common::set_job_status(&db, job, "failed").unwrap();
     assert_eq!(
@@ -654,10 +665,7 @@ async fn mismatched_incomplete_and_oversized_captures_fail_before_changing_publi
         .enqueue_routes(&id, None, "partial", Some("2026-09-25"), Mode::Final, 1)
         .unwrap();
     let job = s(&jobs[0], "id");
-    lease(&db, &id, job);
-    let staged = stage(&state, &id, job, WORKER, capture.clone())
-        .await
-        .unwrap();
+    let staged = stage(&state, &db, &id, job, capture.clone()).await.unwrap();
     db.routes_db(&id)
         .unwrap()
         .exec(
@@ -665,7 +673,7 @@ async fn mismatched_incomplete_and_oversized_captures_fail_before_changing_publi
             [],
         )
         .unwrap();
-    let error = db.publish_routes(&id, job, &staged).unwrap_err();
+    let error = publish_staged(&db, &id, job, staged).unwrap_err();
     assert_eq!(error.code, "routes_capture_invalid");
     common::set_job_status(&db, job, "failed").unwrap();
     assert_eq!(
@@ -786,8 +794,7 @@ async fn a_later_read_of_a_day_replaces_an_earlier_one_in_either_order_and_keeps
         .enqueue_routes(&id, None, "unfinished", Some("2026-09-25"), Mode::Final, 1)
         .unwrap();
     let job = s(&jobs[0], "id");
-    lease(&db, &id, job);
-    stage(&state, &id, job, WORKER, unfinished).await.unwrap();
+    stage(&state, &db, &id, job, unfinished).await.unwrap();
     common::set_job_status(&db, job, "failed").unwrap();
     let storage = db.routes_db(&id).unwrap();
     let shared = storage
@@ -850,8 +857,7 @@ async fn a_later_read_of_a_day_replaces_an_earlier_one_in_either_order_and_keeps
         .enqueue_routes(&id, None, "third", Some("2026-09-25"), Mode::Final, 1)
         .unwrap();
     let job = s(&jobs[0], "id");
-    lease(&db, &id, job);
-    let refused = stage(&state, &id, job, WORKER, other).await.unwrap_err();
+    let refused = stage(&state, &db, &id, job, other).await.unwrap_err();
     assert_eq!(refused.code, "routes_scope_mismatch");
 }
 
@@ -1082,8 +1088,7 @@ async fn the_sweep_keeps_a_running_jobs_day_and_deletes_what_no_reader_sees() {
         .enqueue_routes(&id, None, "staging", Some("2026-09-25"), Mode::Final, 1)
         .unwrap();
     let job = s(&jobs[0], "id").to_owned();
-    lease(&db, &id, &job);
-    stage(&state, &id, &job, WORKER, capture.clone())
+    stage(&state, &db, &id, &job, capture.clone())
         .await
         .unwrap();
     // Its job still runs: the staged day is being written, not abandoned.
@@ -1096,8 +1101,7 @@ async fn the_sweep_keeps_a_running_jobs_day_and_deletes_what_no_reader_sees() {
     // A retry starts over: the first attempt's staged day is detached from the job and
     // swept in steps, while the new one, its job running again, stays.
     common::set_job_status(&db, &job, "queued").unwrap();
-    lease(&db, &id, &job);
-    stage(&state, &id, &job, WORKER, capture.clone())
+    stage(&state, &db, &id, &job, capture.clone())
         .await
         .unwrap();
     assert_eq!(
@@ -1476,12 +1480,12 @@ async fn a_stored_day_goes_through_storage_at_full_size() {
         })
         .collect();
     let before = resident("VmRSS:");
-    lease(&db, &id, &job);
     let started = std::time::Instant::now();
-    let staged = stage(&state, &id, &job, WORKER, capture).await.unwrap();
+    let staged = stage(&state, &db, &id, &job, capture).await.unwrap();
     let stage_ms = started.elapsed().as_millis();
+    let staged_publication = s(&staged.data, "publication").to_owned();
     let started = std::time::Instant::now();
-    db.publish_routes(&id, &job, &staged).unwrap();
+    publish_staged(&db, &id, &job, staged).unwrap();
     let publish_ms = started.elapsed().as_millis();
     common::set_job_status(&db, &job, "succeeded").unwrap();
     let mut sweeps = Vec::new();
@@ -1498,7 +1502,7 @@ async fn a_stored_day_goes_through_storage_at_full_size() {
         &id,
         &format!(
             "SELECT count(*) FROM tasks WHERE publication_id='{}' AND active=1",
-            staged.publication
+            staged_publication
         ),
     );
     assert_eq!(new_active as usize, raw_active);
