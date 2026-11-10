@@ -13,6 +13,8 @@ use tokio::sync::Semaphore;
 tokio::task_local! {
     /// Set while a claimed job runs: see `State::patiently`.
     static PATIENT: ();
+    /// Repeated server-owned polls share bounded capacity with background work.
+    static POLLING: ();
 }
 /// How long a running job's database call waits for its turn: past the longest write it may
 /// queue behind, such as another DSP's publication, where a request gives up after two seconds.
@@ -20,6 +22,10 @@ const PATIENCE: std::time::Duration = std::time::Duration::from_secs(60);
 /// How many of the database's slots work outside a request holds at once. The rest are left to
 /// requests, so every DSP's upkeep starting together keeps no page waiting behind it.
 const BACKGROUND_SLOTS: usize = 2;
+// Reserve eight of the existing 64 entries and one of the four workers for foreground
+// requests. These gates reduce automatic work's share; they never add pool capacity.
+const ROUTINE_QUEUE: usize = 56;
+const ROUTINE_SLOTS: usize = 3;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Access {
@@ -42,6 +48,8 @@ pub struct State {
     /// The turns at `db_slots` work outside a request takes: `BACKGROUND_SLOTS` at once.
     pub background_slots: Arc<Semaphore>,
     pub db_queue: Arc<Semaphore>,
+    routine_queue: Arc<Semaphore>,
+    routine_slots: Arc<Semaphore>,
     // Serializes short state transitions across the platform, jobs and tenant databases.
     pub transition: RwLock<()>,
     pub pool: Mutex<Vec<db::Store>>,
@@ -111,6 +119,8 @@ impl State {
             db_slots: Arc::new(Semaphore::new(4)),
             background_slots: Arc::new(Semaphore::new(BACKGROUND_SLOTS)),
             db_queue: Arc::new(Semaphore::new(64)),
+            routine_queue: Arc::new(Semaphore::new(ROUTINE_QUEUE)),
+            routine_slots: Arc::new(Semaphore::new(ROUTINE_SLOTS)),
             transition: RwLock::new(()),
             pool: Mutex::new(vec![store]),
             read_cache: cache::ReadCache::default(),
@@ -289,6 +299,12 @@ impl State {
     pub async fn patiently<F: std::future::Future>(work: F) -> F::Output {
         PATIENT.scope((), work).await
     }
+    /// Repeated polling leaves part of the existing database capacity for foreground
+    /// requests. The server selects this scope; callers supply no priority or authority.
+    /// Idle network waits hold no database permits. Each new turn still authorizes afresh.
+    pub async fn polling<F: std::future::Future>(work: F) -> F::Output {
+        POLLING.scope((), work).await
+    }
     #[track_caller]
     pub fn read<T: Send + 'static>(
         self: &Arc<Self>,
@@ -322,40 +338,79 @@ impl State {
         // Work outside a request has no one to try it again, so it waits as a job's does, and
         // takes one of the background turns first, so it never holds every slot.
         let background = trace.is_none();
-        let (turn, queued, permit) = if background || PATIENT.try_with(|_| ()).is_ok() {
-            tokio::time::timeout(PATIENCE, async {
-                let turn = match background {
-                    true => Some(self.background_slots.clone().acquire_owned().await?),
-                    false => None,
+        let routine = background || POLLING.try_with(|_| ()).is_ok();
+        let (turn, routine_queued, queued, routine_permit, permit) =
+            if background || PATIENT.try_with(|_| ()).is_ok() {
+                tokio::time::timeout(PATIENCE, async {
+                    let turn = match background {
+                        true => Some(self.background_slots.clone().acquire_owned().await?),
+                        false => None,
+                    };
+                    // Never hold global admission while waiting for the class's queue.
+                    let routine_queued = if routine {
+                        Some(self.routine_queue.clone().acquire_owned().await?)
+                    } else {
+                        None
+                    };
+                    let queued = self.db_queue.clone().acquire_owned().await?;
+                    let routine_permit = if routine {
+                        Some(self.routine_slots.clone().acquire_owned().await?)
+                    } else {
+                        None
+                    };
+                    let permit = self.db_slots.clone().acquire_owned().await?;
+                    Ok((turn, routine_queued, queued, routine_permit, permit))
+                })
+                .await
+                .map_err(|_| Error::busy("db_patient_timeout"))?
+                .map_err(unavailable)?
+            } else {
+                let routine_queued = if routine {
+                    Some(self.routine_queue.clone().try_acquire_owned().map_err(
+                        |error| match error {
+                            tokio::sync::TryAcquireError::NoPermits => {
+                                Error::busy("db_routine_queue_full")
+                            }
+                            tokio::sync::TryAcquireError::Closed => {
+                                Error::busy("db_routine_queue_closed")
+                            }
+                        },
+                    )?)
+                } else {
+                    None
                 };
-                let queued = self.db_queue.clone().acquire_owned().await?;
-                Ok((turn, queued, self.db_slots.clone().acquire_owned().await?))
-            })
-            .await
-            .map_err(|_| Error::busy("db_patient_timeout"))?
-            .map_err(unavailable)?
-        } else {
-            let queued =
-                self.db_queue
-                    .clone()
-                    .try_acquire_owned()
-                    .map_err(|error| match error {
-                        tokio::sync::TryAcquireError::NoPermits => Error::busy("db_queue_full"),
-                        tokio::sync::TryAcquireError::Closed => Error::busy("db_queue_closed"),
-                    })?;
-            let permit = tokio::time::timeout(
-                std::time::Duration::from_secs(2),
-                self.db_slots.clone().acquire_owned(),
-            )
-            .await
-            .map_err(|_| Error::busy("db_slots_timeout"))?
-            .map_err(unavailable)?;
-            (None, queued, permit)
-        };
+                let queued =
+                    self.db_queue
+                        .clone()
+                        .try_acquire_owned()
+                        .map_err(|error| match error {
+                            tokio::sync::TryAcquireError::NoPermits => Error::busy("db_queue_full"),
+                            tokio::sync::TryAcquireError::Closed => Error::busy("db_queue_closed"),
+                        })?;
+                // Both worker waits share the original two-second budget.
+                let until = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+                let routine_permit = if routine {
+                    Some(
+                        tokio::time::timeout_at(until, self.routine_slots.clone().acquire_owned())
+                            .await
+                            .map_err(|_| Error::busy("db_routine_slots_timeout"))?
+                            .map_err(unavailable)?,
+                    )
+                } else {
+                    None
+                };
+                let permit = tokio::time::timeout_at(until, self.db_slots.clone().acquire_owned())
+                    .await
+                    .map_err(|_| Error::busy("db_slots_timeout"))?
+                    .map_err(unavailable)?;
+                (None, routine_queued, queued, routine_permit, permit)
+            };
         let queued_ms = started.elapsed().as_secs_f64() * 1000.0;
         let state = self.clone();
         tokio::task::spawn_blocking(move || {
             let _permit = permit;
+            let _routine_permit = routine_permit;
+            let _routine_queued = routine_queued;
             let _queued = queued;
             let _turn = turn;
             let pooled = state

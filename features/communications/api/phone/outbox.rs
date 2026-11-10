@@ -132,6 +132,10 @@ impl Outgoing {
 /// is playing, each handed out once each time it's asked for: checking in, as it does, and noting
 /// the app it runs and how it says it stands once either changed.
 pub(super) async fn outbox(state: Arc<State>, input: Input, access: Phone) -> Result<Reply> {
+    State::polling(waiting(state, input, access)).await
+}
+
+async fn waiting(state: Arc<State>, input: Input, access: Phone) -> Result<Reply> {
     v::fields(&input.query, &["version", "versionCode"])?;
     let running = running(&input.query)?;
     let health = health::reported(&input)?;

@@ -142,6 +142,132 @@ async fn a_request_takes_a_slot_while_work_outside_requests_waits_for_every_slot
     }
 }
 
+#[tokio::test]
+async fn polling_saturation_leaves_foreground_admission_and_execution() {
+    use std::sync::{
+        Mutex,
+        atomic::{AtomicUsize, Ordering},
+        mpsc,
+    };
+    let (_root, state) = started();
+    let (entered, mut starts) = tokio::sync::mpsc::unbounded_channel();
+    let (release, wait) = mpsc::channel();
+    let wait = Arc::new(Mutex::new(wait));
+    let ran = Arc::new(AtomicUsize::new(0));
+    let mut pending = Vec::new();
+    let mut refused = Vec::new();
+    // Drive real traced database futures into admission. No test takes the queue permits
+    // themselves: the witness must survive actual polling work queued ahead of it.
+    for _ in 0..64 {
+        let (entered, wait, ran) = (entered.clone(), wait.clone(), ran.clone());
+        let mut call = Box::pin(requested(crate::State::polling(state.read(move |_| {
+            let _ = entered.send(());
+            let _ = wait.lock().unwrap().recv();
+            ran.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }))));
+        match std::future::poll_fn(|cx| std::task::Poll::Ready(call.as_mut().poll(cx))).await {
+            std::task::Poll::Pending => pending.push(call),
+            std::task::Poll::Ready(result) => refused.push(result),
+        }
+    }
+    for _ in 0..3 {
+        starts.recv().await.unwrap();
+    }
+    let admitted = pending.len();
+    let queued_capacity = state.db_queue.available_permits();
+    let worker_capacity = state.db_slots.available_permits();
+    // The last queued caller disconnects before any worker can start it.
+    drop(pending.pop());
+    let after_cancel = state.db_queue.available_permits();
+    let foreground = requested(state.read(ready)).await;
+    // Release every possible started callback before asserting, including counterfactuals
+    // that accidentally admit more than the intended share.
+    for _ in 0..64 {
+        release.send(()).unwrap();
+    }
+    let mut finished = Vec::new();
+    for call in pending {
+        finished.push(call.await);
+    }
+    assert_eq!(foreground.unwrap().unwrap()["ready"], 1);
+    for result in finished {
+        result.unwrap();
+    }
+    assert_eq!(admitted, 56);
+    assert_eq!((queued_capacity, worker_capacity), (8, 1));
+    assert_eq!(after_cancel, queued_capacity + 1);
+    assert_eq!(refused.len(), 8);
+    for result in refused {
+        let error = result.unwrap_err();
+        assert_eq!((error.code.as_str(), error.status), ("platform_busy", 503));
+        assert_eq!(error.admission_origin(), Some("db_routine_queue_full"));
+    }
+    assert_eq!(ran.load(Ordering::SeqCst), 55);
+    assert_eq!(state.db_queue.available_permits(), 64);
+    assert_eq!(state.db_slots.available_permits(), 4);
+}
+
+#[tokio::test]
+async fn a_cancelled_started_poll_keeps_its_permits_until_its_write_finishes() {
+    let (_root, state) = started();
+    requested(state.run_bookkeeping(|db| {
+        db.platform.exec(
+            "CREATE TABLE cancelled_poll_probe(id INTEGER PRIMARY KEY)",
+            [],
+        )?;
+        Ok(())
+    }))
+    .await
+    .unwrap();
+    let (began, began_work) = tokio::sync::oneshot::channel();
+    let (release, wait) = std::sync::mpsc::channel();
+    let caller = tokio::spawn({
+        let state = state.clone();
+        async move {
+            requested(crate::State::polling(state.run_bookkeeping(move |db| {
+                let _ = began.send(());
+                let _ = wait.recv();
+                db.platform
+                    .exec("INSERT INTO cancelled_poll_probe VALUES(1)", [])?;
+                Ok(())
+            })))
+            .await
+        }
+    });
+    began_work.await.unwrap();
+    caller.abort();
+    assert!(caller.await.unwrap_err().is_cancelled());
+    let held = (
+        state.db_queue.available_permits(),
+        state.db_slots.available_permits(),
+        state.routine_queue.available_permits(),
+        state.routine_slots.available_permits(),
+    );
+    release.send(()).unwrap();
+    // Acquiring the entire class's execution share joins its started callback rather than
+    // mistaking the dropped request future for completion.
+    let joined = state
+        .routine_slots
+        .clone()
+        .acquire_many_owned(3)
+        .await
+        .unwrap();
+    drop(joined);
+    let count = requested(state.read(|db| {
+        db.platform
+            .count("SELECT count(*) FROM cancelled_poll_probe", [])
+    }))
+    .await
+    .unwrap();
+    assert_eq!(held, (63, 3, 55, 2));
+    assert_eq!(count, 1);
+    assert_eq!(state.db_queue.available_permits(), 64);
+    assert_eq!(state.db_slots.available_permits(), 4);
+    assert_eq!(state.routine_queue.available_permits(), 56);
+    assert_eq!(state.routine_slots.available_permits(), 3);
+}
+
 fn tenant_started() -> (tempfile::TempDir, Arc<crate::State>, String) {
     crate::testing::install(&[], &[]);
     let (root, store, dsp) = crate::testing::bootstrapped();
