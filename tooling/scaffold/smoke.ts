@@ -1,3 +1,4 @@
+import { featureLocations } from '../shared/features.js';
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -71,6 +72,7 @@ const MADE: [string, ...string[]][] = [
   ['slot', 'smoke_shortcuts', '--description', 'Its shortcuts on a page.'],
   // A feature the pieces below are added to, with a table.
   ['feature', 'smoke_rows', '--tables', 'dsp'],
+  ['feature', 'smoke_custom', '--custom', 'nll', '--api', '--tables', 'dsp', '--settings'],
 ];
 
 /**
@@ -173,12 +175,20 @@ async function check(copied: string, logs: string) {
       .map((name) => `app/tests/rules/${name}`),
     ...plan.rules.filter((file) => !file.startsWith('tooling/tests/scaffold/')),
   ];
-  const owners = ['features', 'collectors', 'mcp/tools']
-    .flatMap((dir) => fs.readdirSync(path.join(copied, dir)).map((name) => `${dir}/${name}`))
-    .filter((dir) => /\/smoke/.test(dir));
+  const owners = [
+    ...featureLocations(copied).map((feature) => feature.dir),
+    ...['collectors', 'mcp/tools'].flatMap((dir) =>
+      fs.readdirSync(path.join(copied, dir)).map((name) => `${dir}/${name}`),
+    ),
+  ].filter((dir) => /\/smoke/.test(dir));
   const crates = owners
     .filter((dir) => fs.existsSync(path.join(copied, dir, 'Cargo.toml')))
-    .map((dir) => `dispatch-${path.basename(dir).replace(/_/g, '-')}`);
+    .map(
+      (dir) =>
+        /^name\s*=\s*"([^"]+)"/m.exec(
+          fs.readFileSync(path.join(copied, dir, 'Cargo.toml'), 'utf8'),
+        )![1]!,
+    );
   const lint: [string, string[]][] = [
     [
       'clippy',

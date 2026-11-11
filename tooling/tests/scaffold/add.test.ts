@@ -377,3 +377,18 @@ test('--shown writes a contract a page shows, by its name and permission, and th
     /--shown is what a page shows of a contract/,
   );
 });
+
+test('add resolves a custom stable id into its owner folder and refuses an exposed contract', async () => {
+  const created = (await planFeature(copy, ['fuel_log', '--custom', 'dsp42'])).plan;
+  for (const [file, text] of [...created.files, ...created.changes]) {
+    fs.mkdirSync(path.dirname(path.join(copy, file)), { recursive: true });
+    fs.writeFileSync(path.join(copy, file), text);
+  }
+  const added = (await planAdd(copy, ['api', '--to', 'dsp42_fuel_log'])).plan;
+  assert(added.files.has('features/custom/dsp42/fuel_log/api/routes.rs'));
+  assert.match(file(added, 'features/custom/dsp42/fuel_log/api/routes.rs'), /dsp42-fuel-log/);
+  await assert.rejects(
+    planAdd(copy, ['contract', 'fuel', '--to', 'dsp42_fuel_log']),
+    /cannot expose contracts/,
+  );
+});

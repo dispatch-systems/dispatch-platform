@@ -406,7 +406,14 @@ async fn custom_storage_switches_events_and_routes_belong_only_to_the_owner_code
         assert!(!db.dsp(&other)?.has_table("nll_probe")?);
         assert!(!db.feature_enabled(&own, "nll_probe")?);
         let fresh = db.new_dsp("Onboarding probe", "UTC", &actor, false)?.id;
-        db.dsp(&fresh)?.transaction(|| { db.set_code(&fresh, "nll2")?; Ok(()) })?;
+        db.set_code(&own, "oldnll")?;
+        db.dsp(&fresh)?.transaction(|| {
+            db.set_code(&fresh, "nll")?;
+            assert!(db.dsp(&fresh)?.has_table("nll_probe")?);
+            Ok(())
+        })?;
+        db.set_code(&fresh, "nll2")?;
+        db.set_code(&own, "nll")?;
         assert_eq!(db.set_feature(&other, "nll_probe", true, &actor).unwrap_err().status, 404);
         assert_eq!(db.set_visibility(&other, "nll_probe", dispatch_core::tenancy::visibility::Visibility::Shown, &actor).unwrap_err().status, 404);
         // A stale or imported switch row cannot bypass runtime ownership.

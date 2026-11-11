@@ -664,6 +664,31 @@ mod tests {
         );
     }
     #[test]
+    fn custom_owners_with_equal_leaf_names_select_only_their_own_crates() {
+        let (_root, workspace) = workspace(
+            r#""core", "features/custom/east/fuel", "features/custom/west/fuel", "app/backend""#,
+            &[
+                ("core", "dispatch-core", &[]),
+                ("features/custom/east/fuel", "dispatch-east-fuel", &["core"]),
+                ("features/custom/west/fuel", "dispatch-west-fuel", &["core"]),
+                (
+                    "app/backend",
+                    "dispatch-backend",
+                    &["features/custom/east/fuel", "features/custom/west/fuel"],
+                ),
+            ],
+        );
+        let commands = affected(
+            &["features/custom/east/fuel/backend/store.rs".to_owned()],
+            &Value::Null,
+            &workspace,
+        );
+        assert_eq!(
+            commands[1],
+            "cargo test --locked -p dispatch-backend -p dispatch-east-fuel"
+        );
+    }
+    #[test]
     fn a_crate_depends_on_another_however_its_manifest_names_it() {
         let root = tempfile::tempdir().unwrap();
         let write = |file: &str, text: &str| write(root.path(), file, text);

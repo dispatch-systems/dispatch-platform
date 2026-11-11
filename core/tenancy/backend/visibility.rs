@@ -89,8 +89,10 @@ impl Store {
             "SELECT feature,beta FROM dsp_features WHERE dsp_id=? AND shown=0",
             [dsp],
         )?;
+        let code = self.feature_code(dsp)?;
         Ok(catalog()
             .iter()
+            .filter(|f| f.owner.is_none_or(|owner| Some(owner) == code.as_deref()))
             .filter(|f| !f.mandatory && f.kind != Kind::Connection)
             .filter_map(|f| {
                 rows.iter()
