@@ -20,6 +20,13 @@ if command == "restore":
     assert os.stat("/work").st_dev == os.stat("/input").st_dev
     if target.name == "upgrade":
         assert not Path("/work/restore").exists()
+        # Unlinked databases still occupy disk while the checker holds them open.
+        for descriptor in Path(f"/proc/{os.getppid()}/fd").iterdir():
+            try:
+                held = os.readlink(descriptor)
+            except FileNotFoundError:
+                continue
+            assert not held.startswith("/work/restore/"), held
     assert os.statvfs("/tmp").f_blocks * os.statvfs("/tmp").f_frsize <= 64 * 1024 ** 2
     if control.get("largeFile"):
         with open("/work/above-old-limit", "wb") as output:

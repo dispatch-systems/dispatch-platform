@@ -1,4 +1,5 @@
 """Runs only inside the Dev sandbox. Keep backend/config output away from release logs."""
+from contextlib import closing
 import json
 import os
 from pathlib import Path
@@ -38,7 +39,7 @@ def main():
     integrity = True
     for database in databases:
         try:
-            with sqlite3.connect(database.as_uri() + "?mode=ro", uri=True) as db:
+            with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)) as db:
                 checked = db.execute("PRAGMA integrity_check").fetchall() == [("ok",)]
                 integrity = checked and integrity
         except sqlite3.DatabaseError:
