@@ -67,7 +67,7 @@ test("a feature's list names its Rust, API, frontend and browser tests, each whe
     'cargo test --locked -p dispatch-dvic',
     'tooling/cli/dispatchdev build',
     `node node_modules/tsx/dist/cli.mjs --test ${node.join(' ')}`,
-    'npm run build',
+    'npm run build -- --debug',
     `npm run test:ui -- ${browser.join(' ')}`,
   ]);
 });
@@ -158,7 +158,7 @@ test("an integration's list, found in the feature holding it, is its modules' te
   ]);
 });
 
-test('--only keeps one kind of tests and the build it needs, --file one test, --debug the debug package', () => {
+test('--only keeps one kind of tests and the build it needs, --file one test, --release the release package', () => {
   const api = owned('features/dvic/tests/api', /\.test\.ts$/);
   assert.deepEqual(list('feature', 'dvic', '--only', 'api').commands, [
     'tooling/cli/dispatchdev build',
@@ -169,8 +169,14 @@ test('--only keeps one kind of tests and the build it needs, --file one test, --
     `node node_modules/tsx/dist/cli.mjs --test ${owned('features/dvic/tests/frontend', /\.test\.ts$/).join(' ')}`,
   ]);
   const spec = 'features/dvic/tests/browser/dvic.spec.ts';
-  assert.deepEqual(list('feature', 'dvic', '--file', spec, '--debug').commands, [
-    'npm run build -- --debug',
+  // The debug package, by default and as `dispatchdev test --owner` asks for it by name.
+  for (const debug of [[], ['--debug']])
+    assert.deepEqual(list('feature', 'dvic', '--file', spec, ...debug).commands, [
+      'npm run build -- --debug',
+      `npm run test:ui -- ${spec}`,
+    ]);
+  assert.deepEqual(list('feature', 'dvic', '--file', spec, '--release').commands, [
+    'npm run build',
     `npm run test:ui -- ${spec}`,
   ]);
   assert.deepEqual(list('feature', 'dvic', '--file', path.join(root, api[0]!)).commands.slice(1), [
