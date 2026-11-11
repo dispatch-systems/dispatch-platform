@@ -8,8 +8,9 @@ import { integrations } from '../scaffold/todo.js';
 // `test:integration <name>`, `test:mcp` and `test:app`: one owner's tests of every kind, found by
 // the folder they sit in, and run as CI runs them. Each command is printed before it runs;
 // `--list` prints them and runs nothing, `--no-build` skips the builds. `--only` keeps one kind of
-// them, `--file` one test file; `--debug` packages the browser tests' runtime with the debug
-// backend, as `dispatchdev test --owner` runs them.
+// them, `--file` one test file. The browser tests' runtime is packaged with the debug backend, as
+// a PR's checks and `dispatchdev test --owner` package it; `--release` packages the release one,
+// as main's checks do, which only Linux builds free of local paths.
 //
 //   Rust      its crate's tests, `cargo test -p <crate>`, the app's its backend's. A core part's
 //             are the core crate's, filtered to the part, and a feature's integration's its
@@ -28,7 +29,7 @@ const usage = `Usage: npm run test:feature -- <name> [options]
 
   --only <kind>    only its rust, api, frontend, browser or native tests
   --file <path>    only one of its test files
-  --debug          package the browser tests' runtime with the debug backend
+  --release        package the browser tests' runtime with the release backend
   --list           print the commands and run nothing
   --no-build       skip the builds`;
 const homes = {
@@ -69,7 +70,7 @@ const LAYERS = {
   native: 'native',
 };
 export type Layer = keyof typeof LAYERS;
-/** Packages the browser tests' runtime with the debug backend, as `dispatchdev test` does. */
+/** Packages the browser tests' runtime with the debug backend, as a PR's checks do. */
 const DEBUG_PACKAGE = ['run', 'build', '--', '--debug'];
 
 const read = (root: string, file: string) => fs.readFileSync(path.join(root, file), 'utf8');
@@ -244,8 +245,8 @@ function rust(
 export type Options = {
   /** Whether the builds the tests need run before them. */
   build?: boolean;
-  /** The browser tests' runtime packaged with the debug backend, rather than the release one. */
-  debug?: boolean;
+  /** The browser tests' runtime packaged with the release backend, rather than the debug one. */
+  release?: boolean;
   /** Only the tests of one kind. */
   only?: Layer;
   /** Only one test file, by its path from the root. */
@@ -290,7 +291,7 @@ export function ownerTests(
   root: string,
   kind: Kind,
   name: string,
-  { build = true, debug = false, only, file }: Options = {},
+  { build = true, release = false, only, file }: Options = {},
 ) {
   const found = folders(root, kind, name);
   if (found.length > 1)
@@ -344,7 +345,7 @@ export function ownerTests(
       commands.push({
         name: 'build',
         command: 'npm',
-        args: debug ? DEBUG_PACKAGE : ['run', 'build'],
+        args: release ? ['run', 'build'] : DEBUG_PACKAGE,
       });
     commands.push({
       name: 'browser tests',
@@ -382,7 +383,8 @@ function parse(rest: string[]) {
   const options = new Map<string, string>();
   for (let index = 0; index < rest.length; index++) {
     const [flag, inline] = rest[index]!.split(/=(.*)/s, 2) as [string, string | undefined];
-    if (['--list', '--no-build', '--debug'].includes(flag) && inline === undefined) flags.add(flag);
+    if (['--list', '--no-build', '--release'].includes(flag) && inline === undefined)
+      flags.add(flag);
     else if (['--only', '--file'].includes(flag)) {
       const value = inline ?? rest[++index];
       if (!value || value.startsWith('--')) throw new Error(`${flag} needs a value.`);
@@ -407,7 +409,7 @@ function main(argv: string[]) {
     }
     plan = ownerTests(root, kind as Kind, name ?? '', {
       build: !line.flags.has('--no-build'),
-      debug: line.flags.has('--debug'),
+      release: line.flags.has('--release'),
       only: line.options.get('--only') as Layer | undefined,
       file: line.options.get('--file'),
     });
