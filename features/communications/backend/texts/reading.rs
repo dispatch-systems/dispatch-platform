@@ -511,7 +511,7 @@ pub async fn fetch(state: &Arc<State>, c: &Context, access: Dsp, id: &str) -> Re
     Reply::of(&json!({ "kept": kept }))
 }
 /// The DSP's conversation by text `id`.
-fn found(db: &Store, dsp: &str, id: &str) -> Result<TextConversation> {
+pub(crate) fn found(db: &Store, dsp: &str, id: &str) -> Result<TextConversation> {
     db.communications_text_conversation(dsp, id)?
         .ok_or_else(|| Error::new("communications_conversation_not_found", 404))
 }
