@@ -9,7 +9,7 @@ use std::{
     collections::{BTreeMap, HashSet},
     fs,
     os::unix::process::CommandExt,
-    path::{Component, Path, PathBuf},
+    path::{Path, PathBuf},
     process::{Command, Stdio},
     time::{Duration, Instant},
 };
@@ -333,7 +333,7 @@ fn imports(file: &Path, text: &str, keywords: &[&str]) -> Vec<PathBuf> {
 /// The file a relative import names from `folder`: as written, or for a `.js`, the TypeScript
 /// it's built from.
 fn resolve(folder: &Path, spec: &str) -> Option<PathBuf> {
-    let path = normal(&folder.join(spec));
+    let path = workspace::normal(&folder.join(spec));
     let bare = path.with_extension("");
     [
         path.clone(),
@@ -342,20 +342,6 @@ fn resolve(folder: &Path, spec: &str) -> Option<PathBuf> {
     ]
     .into_iter()
     .find(|path| path.is_file())
-}
-/// A path with its `.` and `..` worked out, so a file reached two ways is named one way.
-fn normal(path: &Path) -> PathBuf {
-    let mut normal = PathBuf::new();
-    for part in path.components() {
-        match part {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                normal.pop();
-            }
-            part => normal.push(part),
-        }
-    }
-    normal
 }
 /// Every file in `owner`'s folder that `modules` reach by their imports, themselves too.
 fn reach(owner: &Path, modules: &[PathBuf]) -> HashSet<PathBuf> {
@@ -435,7 +421,10 @@ fn page(root: &Path, path: &str) -> Page {
     };
     let routes = routes(&text);
     let sections = sections(&manifest, &text);
-    let (owner, file) = (normal(&root.join(owner)), normal(&root.join(path)));
+    let (owner, file) = (
+        workspace::normal(&root.join(owner)),
+        workspace::normal(&root.join(path)),
+    );
     let drawn: Vec<&PathBuf> = sections.iter().flat_map(|s| &s.modules).collect();
     let others: Vec<PathBuf> = loaded(&manifest, &text)
         .into_iter()

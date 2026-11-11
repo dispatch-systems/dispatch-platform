@@ -5,7 +5,7 @@ use std::{
     fs,
     io::Write,
     os::unix::fs::{DirBuilderExt, OpenOptionsExt},
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     process::{Command, Stdio},
     time::{Duration, Instant},
 };
@@ -72,6 +72,20 @@ pub fn text(runner: &dyn Runner, args: &[&str], cwd: Option<&Path>) -> Result<St
 /// What `git` with `args` prints in `root`, trimmed.
 pub fn git(runner: &dyn Runner, root: &Path, args: &[&str]) -> Result<String> {
     text(runner, &[&["git"][..], args].concat(), Some(root))
+}
+/// A path with its `.` and `..` worked out, so a file reached two ways is named one way.
+pub fn normal(path: &Path) -> PathBuf {
+    let mut normal = PathBuf::new();
+    for part in path.components() {
+        match part {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normal.pop();
+            }
+            part => normal.push(part),
+        }
+    }
+    normal
 }
 /// The repository's Git folder that every worktree shares, by its absolute path.
 pub fn shared_git(root: &Path, runner: &dyn Runner) -> Result<PathBuf> {

@@ -1,9 +1,9 @@
-use crate::{Result, Runner, machine::Machine};
+use crate::{Result, Runner, machine::Machine, workspace};
 use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
-    path::{Component, Path, PathBuf},
+    path::{Path, PathBuf},
 };
 pub type Environment = BTreeMap<String, String>;
 // The workspace, the toolchain and the compiler wrapper, and the launchers the host manager
@@ -157,26 +157,15 @@ pub fn fingerprint(
     }
     Ok(crate::to_hex(&digest.finalize()))
 }
-fn normalized(path: &Path) -> PathBuf {
-    let mut result = PathBuf::new();
-    for component in path.components() {
-        match component {
-            Component::ParentDir => {
-                result.pop();
-            }
-            Component::CurDir => {}
-            other => result.push(other.as_os_str()),
-        }
-    }
-    result
-}
 fn external(value: &toml::Value, manifest: &Path, sources: &[PathBuf]) -> bool {
     match value {
         toml::Value::Table(values) => values.iter().any(|(key, value)| {
             (key == "path"
                 && value.as_str().is_some_and(|path| {
                     let path = manifest.parent().unwrap().join(path);
-                    let path = path.canonicalize().unwrap_or_else(|_| normalized(&path));
+                    let path = path
+                        .canonicalize()
+                        .unwrap_or_else(|_| workspace::normal(&path));
                     !sources.iter().any(|source| path.starts_with(source))
                 }))
                 || external(value, manifest, sources)
