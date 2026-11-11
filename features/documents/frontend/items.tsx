@@ -9,8 +9,8 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { dateFormatter } from '../../../core/shell/frontend/lib/date-format.js';
-import { useEffect, useRef, useState } from 'react';
-import { thumbnail, type DocumentsItem, type ItemKind } from '../api/client.js';
+import { usePicture } from '../../../core/shell/frontend/runtime/usePicture.js';
+import { thumbnailUrl, type DocumentsItem, type ItemKind } from '../api/client.js';
 
 // What every view of Documents draws a file with: its kind's name, tile and first page, or
 // Google's picture of it.
@@ -41,7 +41,9 @@ export function Tile({ kind, size = 16 }: { kind: ItemKind; size?: number }) {
  * a drawing of its first page until then, or when Google has none.
  */
 export function Thumb({ kind, picture }: { kind: ItemKind; picture?: string | null }) {
-  const [box, shown, lost] = usePicture(picture);
+  const [box, shown, lost] = usePicture<HTMLDivElement>(
+    picture ? thumbnailUrl(picture) : undefined,
+  );
   if (shown)
     return (
       <div
@@ -95,48 +97,6 @@ function Drawing({ kind }: { kind: ItemKind }) {
       <i className="short" />
     </div>
   );
-}
-
-/**
- * The picture at `url`, fetched once its box nears the screen, as an address the page shows;
- * none until it comes, and none if it can't be fetched or shown, so the card keeps its
- * drawing. `lost` gives up on one the browser couldn't show.
- */
-function usePicture(url: string | null | undefined) {
-  const box = useRef<HTMLDivElement>(null);
-  const [shown, setShown] = useState<{ url: string; src?: string }>();
-  useEffect(() => {
-    const at = box.current;
-    if (!url || !at) return;
-    const stop = new AbortController();
-    let src: string | undefined;
-    const near = new IntersectionObserver(
-      (entries) => {
-        if (!entries.some((entry) => entry.isIntersecting)) return;
-        near.disconnect();
-        thumbnail(url, stop.signal).then(
-          (blob) => {
-            if (stop.signal.aborted) return;
-            src = URL.createObjectURL(blob);
-            setShown({ url, src });
-          },
-          () => {},
-        );
-      },
-      { rootMargin: '200px' },
-    );
-    near.observe(at);
-    return () => {
-      near.disconnect();
-      stop.abort();
-      if (src) URL.revokeObjectURL(src);
-    };
-  }, [url]);
-  const lost = () => {
-    if (shown?.src) URL.revokeObjectURL(shown.src);
-    setShown(shown && { url: shown.url });
-  };
-  return [box, shown && shown.url === url ? shown.src : undefined, lost] as const;
 }
 
 /** A file's size, for one anyone uploaded. */

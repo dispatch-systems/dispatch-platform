@@ -3,7 +3,7 @@ import { ApiError, wordedApi } from '../../../core/shell/frontend/runtime/api.js
 import { useData } from '../../../core/shell/frontend/runtime/data-reads.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { canPrefetch } from '../../../core/shell/frontend/runtime/prefetch.js';
-import { download, picture, upload } from '../../../core/shell/frontend/runtime/transfer.js';
+import { download, upload } from '../../../core/shell/frontend/runtime/transfer.js';
 import type { DocumentsAccount } from './generated/DocumentsAccount.js';
 import type { DocumentsOverview } from './generated/DocumentsOverview.js';
 import type { GoogleConnected } from './generated/GoogleConnected.js';
@@ -214,12 +214,12 @@ export const addFiles = (files: string[], folder: string | undefined, grantGener
     ...precondition(grantGeneration),
   });
 /**
- * Google's picture of a file, at the address its item names, as large as the screen shows it
- * sharply: 600 pixels on a high-density screen, 300 on an ordinary one, which holds a quarter
- * of the memory once shown.
+ * The address of Google's picture of a file, from the one its item names, as large as the screen
+ * shows it sharply: 600 pixels on a high-density screen, 300 on an ordinary one, which holds a
+ * quarter of the memory once shown.
  */
-export const thumbnail = (url: string, signal: AbortSignal) =>
-  picture(`${url}&s=${window.devicePixelRatio > 1.25 ? 600 : 300}`, signal);
+export const thumbnailUrl = (url: string) =>
+  `${url}&s=${window.devicePixelRatio > 1.25 ? 600 : 300}`;
 /** Saves the file `id`: Google's own Docs, Sheets and Slides as Word, Excel and PowerPoint. */
 export const downloadItem = (id: string) =>
   moving(download(`/api/dsp/documents/items/${encodeURIComponent(id)}/download`));
