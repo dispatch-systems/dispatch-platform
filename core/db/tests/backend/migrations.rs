@@ -652,7 +652,7 @@ fn connections_racing_to_open_first_apply_each_migration_once() {
                     barrier.wait();
                     // The seed would fail on its primary key if two connections ran it.
                     let db = Db::create(
-                        &file,
+                        file,
                         Kind::DSP,
                         "INSERT INTO settings VALUES ('seeded','1');",
                     )
