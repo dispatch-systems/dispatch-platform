@@ -151,10 +151,10 @@ export function ReportForm({
       </div>
       {step === 'type' ? (
         <fieldset className="support-kind" ref={kindChoices} disabled={busy}>
-          <legend className="support-sr-only">Report type</legend>
+          <legend className="sr-only">Report type</legend>
           <label className={kind === 'bug' ? 'selected' : ''}>
             <input
-              className="support-sr-only"
+              className="sr-only"
               type="radio"
               name="kind"
               value="bug"
@@ -169,7 +169,7 @@ export function ReportForm({
           </label>
           <label className={kind === 'feature' ? 'selected' : ''}>
             <input
-              className="support-sr-only"
+              className="sr-only"
               type="radio"
               name="kind"
               value="feature"
@@ -226,7 +226,7 @@ export function ReportForm({
             <span className="muted">or paste an image</span>
             <input
               ref={fileInput}
-              className="support-sr-only"
+              className="sr-only"
               type="file"
               aria-label="Upload screenshots"
               accept="image/png,image/jpeg,image/webp"

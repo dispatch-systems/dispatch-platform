@@ -40,7 +40,7 @@ export function SupportPage() {
         <section className="support-owner-inbox" aria-label="Support inbox">
           <div className="support-inbox-toolbar">
             <label className="support-search">
-              <span className="support-sr-only">Search support tickets</span>
+              <span className="sr-only">Search support tickets</span>
               <Search size={17} />
               <input
                 type="search"
@@ -51,7 +51,7 @@ export function SupportPage() {
               />
             </label>
             <label>
-              <span className="support-sr-only">Filter ticket status</span>
+              <span className="sr-only">Filter ticket status</span>
               <select value={status} onChange={(event) => setStatus(event.target.value)}>
                 <option value="">All tickets</option>
                 {Object.entries(statusLabels).map(([value, label]) => (
