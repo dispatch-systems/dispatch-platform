@@ -529,6 +529,7 @@ impl Route {
     /// invalidation policy. Both registrations retain their own request path and parameters.
     pub fn also_at(self, path: &'static str) -> [Self; 2] {
         let alias = Self {
+            owner: self.owner,
             method: self.method.clone(),
             path,
             access: self.access,
