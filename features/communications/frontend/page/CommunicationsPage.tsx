@@ -25,7 +25,7 @@ import { CopyChatLink } from '../slack/CopyChatLink.js';
 import { GroupDraft } from '../slack/groups/GroupDraft.js';
 import { GroupPane } from '../slack/groups/GroupPane.js';
 import { ListPane } from './ListPane.js';
-import { NewMessage } from '../slack/NewMessage.js';
+import { NewMessage } from './NewMessage.js';
 import { PhonesOffline } from '../texting/PhonesOffline.js';
 import { VIEWS, type RoutesShown } from './section-views.js';
 import { Sections } from './Sections.js';
@@ -247,18 +247,16 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
                 <span>Display</span>
               </button>
             )}
-            {working.length > 0 && (
-              <>
-                <CopyChatLink workspaces={working} />
-                <button
-                  className="primary"
-                  aria-label="New message"
-                  onClick={() => setComposing(true)}
-                >
-                  <SquarePen size={16} />
-                  <span>New message</span>
-                </button>
-              </>
+            {working.length > 0 && <CopyChatLink workspaces={working} />}
+            {(working.length > 0 || texting) && (
+              <button
+                className="primary"
+                aria-label="New message"
+                onClick={() => setComposing(true)}
+              >
+                <SquarePen size={16} />
+                <span>New message</span>
+              </button>
             )}
           </Header>
           {layout === 'phone' && offline}
@@ -396,6 +394,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
         {composing && (
           <NewMessage
             workspaces={working}
+            texting={texting}
             reach={reach}
             group={startGroup}
             close={() => setComposing(false)}

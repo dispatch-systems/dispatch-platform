@@ -1,4 +1,4 @@
-/* New message: whom to write to. */
+/* New message: a number to text or someone in Slack. */
 .modal:has(.new-message) {
   width: calc(var(--list-width) + 240px);
 }

@@ -19,6 +19,33 @@ const PIXEL = Buffer.from(
   'base64',
 );
 
+test('without Slack, a number not saved as a contact can be texted first and opened again in another format', async ({
+  page,
+}) => {
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await page.getByRole('link', { name: 'Dispatch Phone' }).click();
+  await page.getByRole('button', { name: 'New message' }).click();
+  const dialog = page.getByRole('dialog', { name: 'New message' });
+  const number = dialog.getByRole('combobox', { name: 'Phone number', exact: true });
+  await expect(dialog.getByRole('option', { name: 'Message a group' })).toHaveCount(0);
+  await number.fill('2025550177');
+  await expect(dialog.getByRole('option', { name: 'Text (202) 555-0177' })).toBeVisible();
+  await number.press('Enter');
+  const conversation = page.getByRole('region', { name: '(202) 555-0177', exact: true });
+  await expect(conversation.getByRole('button', { name: 'Save contact' })).toBeVisible();
+  await conversation.getByLabel('Message', { exact: true }).fill('Hello from dispatch');
+  await conversation.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(conversation.getByText('Delivered', { exact: true })).toBeVisible();
+  const address = page.url();
+  await page.getByRole('button', { name: 'New message' }).click();
+  await number.fill('+1 (202) 555-0177');
+  await dialog.getByRole('option', { name: 'Text (202) 555-0177' }).click();
+  await expect(page).toHaveURL(address);
+  await expect(conversation.getByText('Hello from dispatch', { exact: true })).toBeVisible();
+  await expect(conversation.getByRole('button', { name: 'Save contact' })).toBeVisible();
+});
+
 test('with its phone and no Slack, Communications opens on Recents, where its texts wait, beside Today’s Routes, with no routes before live route data reads today: a number saved as a contact, asked before a name is left unsaved, added to a driver and taken off them, answered by text with a picture, blocked into Contacts and unblocked', async ({
   page,
 }) => {
