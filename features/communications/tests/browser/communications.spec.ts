@@ -252,7 +252,10 @@ test('an owner connects Slack from Communications, answers a member as they writ
   // the list until it holds a message.
   await page.getByRole('button', { name: 'New message' }).click();
   const dialog = page.getByRole('dialog', { name: 'New message' });
-  await dialog.getByLabel('Name').fill('morgn lane');
+  const name = dialog.getByLabel('Name', { exact: true });
+  await name.fill('2025550177');
+  await expect(dialog.getByRole('option', { name: /^Text / })).toHaveCount(0);
+  await name.fill('morgn lane');
   await dialog.getByRole('option', { name: /Morgan Lane/ }).click();
   const morgan = list.getByRole('listitem').filter({ hasText: 'Morgan Lane' });
   await expect(morgan).toContainText('New message');

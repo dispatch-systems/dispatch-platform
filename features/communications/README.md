@@ -183,9 +183,11 @@ and every other number's in Recents.
   which Call calls, email address and the workspace the conversation is in. Each is
   left out when nothing knows it, and Today when they have no route today. No feature has a page
   of a person to open, so it has no Full profile.
-- **New message** finds whom to write to by name, misspelt or not, and opens their
-  conversation, or opens a direct message with them, kept at the top of the list until it holds
-  a message. With nothing typed, Message a group comes first.
+- **New message** accepts a phone number while the DSP texts, including one neither the DSP
+  nor the phone saved as a contact. Text followed by the number opens its existing conversation
+  or starts one, using the normal composer and sender selection, without saving a contact.
+  With Slack connected, it also finds members by name, misspelt or not; with nothing typed,
+  Message a group comes first. A new conversation stays at the top until it holds a message.
 - **Keys,** on a desktop, but while a field is written in, or with Ctrl, Alt or ⌘ held: J and K
   open the next and the previous row of the list, or its first with none open; N presses Next
   waiting and E Done, in the head of what's open, each naming its key (`aria-keyshortcuts`, and
@@ -195,7 +197,7 @@ and every other number's in Recents.
   either section.
 - **Copy chat link** copies the address that opens the app's Messages tab in a workspace where
   Dispatch Phone works, chosen from a menu with several, for employees to write to the DSP.
-  It and New message show only with such a workspace.
+  It shows only with such a workspace; New message also shows with a paired phone alone.
 - **Setting Slack up**, for those who also hold `connections.manage`, which connects and updates
   the DSP's workspaces: while the DSP has none, and no phone paired, Connect Slack takes the
   inbox's place; while a workspace where Dispatch Phone is on hasn't approved all it uses
@@ -791,7 +793,7 @@ not; and with it closed, or on a phone, as a push (**Pushed**, below).
 `frontend/`, by concern, each part's styles in a stylesheet beside it; `communications.css` holds
 the page's layout and the variables its parts draw by.
 
-- `page/`: the page, which section shows, what's open (in the address) and the layout; the
+- `page/`: the page, New message, which section shows, what's open (in the address) and the layout; the
   section switch and the list's frame; how each section shows (`section-views.tsx`); and its keys
   (`useShortcuts.ts`).
 - `inbox/`: the conversations and groups as they change (`inbox.ts`, `useInbox.ts`), the list of
@@ -801,7 +803,7 @@ the page's layout and the variables its parts draw by.
   started), whom it's with (`party.tsx`, `parties.tsx`: their face, profile, head, actions and
   whom a message goes to), what opens one (`target.ts`), and what's written in each and not sent
   (`drafts.ts`).
-- `slack/`, with `groups/`: Slack's contacts and workspaces, New message, Copy chat link and
+- `slack/`, with `groups/`: Slack's contacts and workspaces, Copy chat link and
   setting Slack up; messaging a group.
 - `texting/`: Recents' text contacts, a number's actions and Save contact (Add to driver or a
   name), phones offline, and the banner of phones down on every page (`PhonesDown.tsx`);
