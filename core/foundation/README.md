@@ -1,8 +1,8 @@
 # Foundation
 
 What the other parts build on: errors and their codes, configuration, cryptography,
-validation and the wire types every API shares, logging, ISO weeks and how names are shown
-and sorted.
+validation and the wire types every API shares, logging, ISO weeks, the times of day a
+schedule's rules run at, and how names are shown and sorted.
 A logged event carries only the fields it selects, never a raw request.
 
 Today's date where a DSP is comes from `clock::today(zone)`, never the system clock. A test

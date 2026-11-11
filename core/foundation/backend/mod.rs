@@ -5,6 +5,7 @@ pub mod crypto;
 pub mod error;
 pub mod names;
 pub mod observability;
+pub mod timing;
 pub mod validate;
 pub mod weeks;
 pub mod wire;
