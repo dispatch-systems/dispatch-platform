@@ -35,6 +35,15 @@ test('standalone Vite protects custom source aliases and raw files with the real
       `export const feature = { name: '${code}_probe', label: '${code} private label' };`,
     );
   write('app/generated/features.json', '{"private":"all DSP identifiers"}');
+  const outputs = [
+    'Cargo.lock',
+    '.build/dashboard/private-assets.json',
+    '.build/dashboard/assets/private-entry.js',
+    '.build-staging-probe/dashboard/private-assets.json',
+    'target/debug/dispatch-backend',
+    '.test-build/probe/private-input.json',
+  ];
+  for (const file of outputs) write(file, 'private build metadata');
   fs.symlinkSync(
     path.join(root, 'features/custom/sum/probe/frontend/feature.ts'),
     path.join(root, 'app/frontend/shortcut.ts'),
@@ -92,7 +101,10 @@ test('standalone Vite protects custom source aliases and raw files with the real
     '/custom/sum_probe.js',
     '/@id/__x00__dispatch-custom:sum_probe',
     `/@fs${fs.realpathSync(root)}/app/generated/features.json`,
+    ...outputs.map((file) => `/@fs${fs.realpathSync(root)}/${file}`),
   ]) {
+    for (const method of ['GET', 'HEAD'])
+      assert.equal((await send(origin + url, { method, headers: anonymous })).status, 404, url);
     const refused = await send(origin + url, { headers: member.headers });
     assert.equal(refused.status, 404, url);
     assert.equal(refused.cache, 'private, no-store');
