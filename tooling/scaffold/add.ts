@@ -158,11 +158,7 @@ export async function planAdd(root: string, argv: string[]) {
   const left: string[] = [];
   // A new feature's own storage and first migration, which a piece added to one never needs.
   const own = /\/(backend\/storage\.rs|tests\/backend\/storage\.rs|migrations\/.*)$/;
-  // A browser test only for a piece with a screen of its own.
-  const screen = ['page', 'sidebar', 'tab-of'].includes(piece!);
-  const wanted = [...rendered.files].filter(
-    ([file]) => !own.test(file) && (screen || !file.includes('/tests/browser/')),
-  );
+  const wanted = [...rendered.files].filter(([file]) => !own.test(file));
   const wrote = (file: string) => exists(root, file) || wanted.some(([each]) => each === file);
   const fresh = new Set(wanted.map(([file]) => file).filter((file) => !exists(root, file)));
   // What only the piece writes, as its screen or its people, is new: one there is the

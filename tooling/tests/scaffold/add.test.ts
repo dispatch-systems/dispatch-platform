@@ -138,11 +138,14 @@ test('add merges a piece into a feature that exists: its slot entries, fields an
       'features/weekly_scorecard/feature.rs',
     ),
   );
-  // An added permission's order is one no other feature holds.
-  const profiles = changed(
-    await add('page', '--to', 'driver_profiles'),
-    'features/driver_profiles/feature.rs',
+  // An added permission's order is one no other feature holds. Its page is its first screen,
+  // which brings the browser test a feature with a screen has.
+  const paged = await add('page', '--to', 'driver_profiles');
+  assert.match(
+    file(paged, 'features/driver_profiles/tests/browser/driver-profiles.spec.ts'),
+    /test\('Driver Profiles opens from the sidebar of a DSP that has it'/,
   );
+  const profiles = changed(paged, 'features/driver_profiles/feature.rs');
   const order = /perm\("driver_profiles\.view", "[^"]+", (\d+)\)/.exec(profiles)![1];
   const others = fs
     .readdirSync(path.join(root, 'features'))

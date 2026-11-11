@@ -26,7 +26,7 @@ test('templates fill values and keep or drop sections, and refuse a name without
   assert.throws(() => render('{{#on}}x{{/off}}', { on: true, off: true }), /closes on/);
 });
 
-test('with no flags, a feature is a crate with a switch, a view permission and a browser test', async () => {
+test('with no flags, a feature is a crate with a switch and a view permission, and no screen to test', async () => {
   const plan = await feature('parking');
   assert.deepEqual(writes(plan, 'features/parking'), [
     'Cargo.toml',
@@ -34,7 +34,6 @@ test('with no flags, a feature is a crate with a switch, a view permission and a
     'feature.rs',
     'frontend/feature.ts',
     'frontend/platform-slots.ts',
-    'tests/browser/parking.spec.ts',
   ]);
   const cargo = file(plan, 'features/parking/Cargo.toml');
   assert.match(cargo, /^name = "dispatch-parking"$/m);
@@ -74,7 +73,7 @@ test('with no flags, a feature is a crate with a switch, a view permission and a
     ])
     .map((match) => Number(match[1]));
   assert(place % 10 === 0 && places.every((other) => other < place), `${place} follows ${places}`);
-  // The DSPs page shows its switch with the icon its frontend gives, which a browser test sees.
+  // The DSPs page shows its switch with the icon its frontend gives.
   assert.match(
     file(plan, 'features/parking/frontend/feature.ts'),
     /platformSlots: \(\) => import\('.\/platform-slots.js'\),/,
@@ -83,10 +82,6 @@ test('with no flags, a feature is a crate with a switch, a view permission and a
   assert.match(
     file(plan, 'features/parking/frontend/platform-slots.ts'),
     /switch: \{ id: 'parking', icon: LayoutGrid \},/,
-  );
-  assert.match(
-    file(plan, 'features/parking/tests/browser/parking.spec.ts'),
-    /getByRole\('switch', \{ name: 'Parking', exact: true \}\)\)\.toBeChecked\(\)/,
   );
 
   // The workspace's members cover it already, so Cargo.toml is no change, and the frontend's
@@ -483,7 +478,7 @@ test('--page and --tab-of write frontend/feature.ts, the screen and a browser te
 
 test('--settings declares a section its backend reads, which Settings draws: no screen of its own', async () => {
   const plan = await feature('notes', '--settings', '--icon', 'Truck');
-  // Its frontend is its switch's alone, and so is its browser test.
+  // Its frontend is its switch's alone, with no screen for a browser test.
   assert.deepEqual(
     writes(plan, 'features/notes').filter((name) => /^(backend|frontend|tests)\//.test(name)),
     [
@@ -492,12 +487,10 @@ test('--settings declares a section its backend reads, which Settings draws: no 
       'frontend/feature.ts',
       'frontend/platform-slots.ts',
       'tests/backend/settings.rs',
-      'tests/browser/notes.spec.ts',
     ],
   );
   const frontend = file(plan, 'features/notes/frontend/feature.ts');
   assert.doesNotMatch(frontend, /settingsSections/);
-  assert.doesNotMatch(file(plan, 'features/notes/tests/browser/notes.spec.ts'), /'Settings'/);
   assert.match(file(plan, 'features/notes/frontend/platform-slots.ts'), /icon: Truck \}/);
   // With no page of its own, its manifest gives the icon its page of Settings shows.
   assert.match(frontend, /^import \{ Truck \} from 'lucide-react';$/m);

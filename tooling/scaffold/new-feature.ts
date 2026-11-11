@@ -41,9 +41,8 @@ import {
 } from './wire.js';
 
 // `dispatchdev new feature <name> [options]`: a feature that works as written. It is a crate of its
-// own, listed in app/, optional, with a switch that starts off for every DSP, which a browser test finds on
-// the DSPs page, and a view permission on the role sheet. Each flag adds a piece with its starter
-// code and its test.
+// own, listed in app/, optional, with a switch that starts off for every DSP on the DSPs page, and a
+// view permission on the role sheet. Each flag adds a piece with its starter code and its test.
 
 export const usage = `Usage: dispatchdev new feature <name> [options]
 
@@ -417,7 +416,7 @@ function featureValues(root: string, argv: string[], adding = false) {
     throw new UsageError(
       '--mandatory alone makes a feature with nothing in it: add a piece, as --page, --api or --settings',
     );
-  // What a keeper's collection collects is said in its frontend, which a browser test holds.
+  // What a keeper's collection collects is said in its frontend.
   if (keeps && !frontend)
     throw new UsageError(
       '--keeps says what its collection collects in frontend/, which needs a switch or a ' +
@@ -506,7 +505,6 @@ function featureValues(root: string, argv: string[], adding = false) {
     settingsIcon,
     iconImport: page || settingsIcon || sidebar,
     canImport: permission && (page || sidebar),
-    labelPattern: names.label.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&'),
     page,
     tab: Boolean(host),
     settings,
@@ -613,7 +611,8 @@ function pieces(values: Values): [boolean, string, string][] {
     [values.tab as boolean, 'frontend/Tab.tsx', `frontend/${pascal}Tab.tsx`],
     [values.connection as boolean, 'frontend/Card.tsx', `frontend/connection/${pascal}Card.tsx`],
     [values.platformSlots as boolean, 'frontend/platform-slots.ts', 'frontend/platform-slots.ts'],
-    [values.frontend as boolean, 'tests/browser/browser.spec.ts', `tests/browser/${slug}.spec.ts`],
+    // A browser test only for a screen of its own.
+    [values.screens as boolean, 'tests/browser/browser.spec.ts', `tests/browser/${slug}.spec.ts`],
   ];
 }
 
