@@ -32,6 +32,7 @@ export function installWording(wording: readonly AuditWording[]) {
 // A sentence is built from parts so the feed and the export share one wording.
 type Part = AuditPart;
 const strong = (value: string): Part => ({ strong: value });
+const dsp = (e: AuditEvent) => strong(e.dspName ?? 'a DSP');
 const day = (value: string) =>
   /^\d{4}-\d{2}-\d{2}$/.test(value) ? calendarMonthDay(value) : value;
 // Earlier schedule events stored the schedule's id where its name belongs.
@@ -90,54 +91,29 @@ const phrases: AuditPhrases = {
   'dsp.view_opened': () => ['opened this DSP'],
   'dsp.owner_view_opened': (e) => [
     'opened ',
-    ...(support(e) ? ['this DSP'] : [strong(e.dspName ?? 'a DSP')]),
+    ...(support(e) ? ['this DSP'] : [dsp(e)]),
     ...(e.detail ? [' as ', strong(e.detail)] : []),
   ],
   'dsp.support_visibility_changed': (e) => [
     e.detail === 'shown' ? 'showed Platform support to ' : 'hid Platform support from ',
-    strong(e.dspName ?? 'a DSP'),
+    dsp(e),
   ],
-  'dsp.feature_enabled': (e) => [
-    'enabled ',
-    strong(featureLabel(e.detail)),
-    ' for ',
-    strong(e.dspName ?? 'a DSP'),
-  ],
-  'dsp.feature_disabled': (e) => [
-    'disabled ',
-    strong(featureLabel(e.detail)),
-    ' for ',
-    strong(e.dspName ?? 'a DSP'),
-  ],
-  'dsp.feature_hidden': (e) => [
-    'hid ',
-    strong(featureLabel(e.detail)),
-    ' from ',
-    strong(e.dspName ?? 'a DSP'),
-  ],
-  'dsp.feature_shown': (e) => [
-    'showed ',
-    strong(featureLabel(e.detail)),
-    ' to ',
-    strong(e.dspName ?? 'a DSP'),
-  ],
-  'dsp.feature_beta': (e) => [
-    'put ',
-    strong(featureLabel(e.detail)),
-    ' in beta at ',
-    strong(e.dspName ?? 'a DSP'),
-  ],
+  'dsp.feature_enabled': (e) => ['enabled ', strong(featureLabel(e.detail)), ' for ', dsp(e)],
+  'dsp.feature_disabled': (e) => ['disabled ', strong(featureLabel(e.detail)), ' for ', dsp(e)],
+  'dsp.feature_hidden': (e) => ['hid ', strong(featureLabel(e.detail)), ' from ', dsp(e)],
+  'dsp.feature_shown': (e) => ['showed ', strong(featureLabel(e.detail)), ' to ', dsp(e)],
+  'dsp.feature_beta': (e) => ['put ', strong(featureLabel(e.detail)), ' in beta at ', dsp(e)],
   'dsp.beta_tester_added': (e) => [
     'added ',
     strong(e.target ?? 'a member'),
     ' as a beta tester at ',
-    strong(e.dspName ?? 'a DSP'),
+    dsp(e),
   ],
   'dsp.beta_tester_removed': (e) => [
     'removed ',
     strong(e.target ?? 'a member'),
     ' as a beta tester at ',
-    strong(e.dspName ?? 'a DSP'),
+    dsp(e),
   ],
   'dsp.backup_schedule_changed': (e) => [
     e.detail === 'on'
@@ -145,12 +121,12 @@ const phrases: AuditPhrases = {
       : e.detail === 'off'
         ? 'turned off backups for '
         : 'changed the backup schedule of ',
-    strong(e.dspName ?? 'a DSP'),
+    dsp(e),
   ],
-  'dsp.backup_requested': (e) => ['backed up ', strong(e.dspName ?? 'a DSP')],
-  'dsp.backup_downloaded': (e) => ['downloaded a backup of ', strong(e.dspName ?? 'a DSP')],
-  'dsp.ai_support_hidden': (e) => ['hid AI Support from ', strong(e.dspName ?? 'a DSP')],
-  'dsp.ai_support_shown': (e) => ['showed AI Support to ', strong(e.dspName ?? 'a DSP')],
+  'dsp.backup_requested': (e) => ['backed up ', dsp(e)],
+  'dsp.backup_downloaded': (e) => ['downloaded a backup of ', dsp(e)],
+  'dsp.ai_support_hidden': (e) => ['hid AI Support from ', dsp(e)],
+  'dsp.ai_support_shown': (e) => ['showed AI Support to ', dsp(e)],
   'support.change_approved': (e) => [
     'approved the change for AI Support ticket ',
     strong(e.target ?? 'a ticket'),
@@ -167,28 +143,23 @@ const phrases: AuditPhrases = {
     ' for ',
     strong(e.target ?? 'a ticket'),
   ],
-  'dsp.code_changed': (e) => [
-    'gave ',
-    strong(e.dspName ?? 'a DSP'),
-    ' the short code ',
-    strong(e.detail.toUpperCase()),
-  ],
+  'dsp.code_changed': (e) => ['gave ', dsp(e), ' the short code ', strong(e.detail.toUpperCase())],
   'dsp.settings_updated': () => ['updated DSP settings'],
   // A section of a DSP's Settings, by its label; its changes say what each field became.
   'settings.changed': (e) => ['changed ', strong(e.target ?? (e.detail || 'settings'))],
   'dsp.profile_completed': () => ['completed the DSP profile'],
   'mail.retried': (e) => ['retried an email', ...(e.target ? [' to ', strong(e.target)] : [])],
   'mail.discarded': (e) => ['discarded an email', ...(e.target ? [' to ', strong(e.target)] : [])],
-  'dsp.created': (e) => ['created ', strong(e.dspName ?? 'a DSP')],
+  'dsp.created': (e) => ['created ', dsp(e)],
   'dsp.setup_retried': (e) => [
     'retried setting up ',
-    strong(e.dspName ?? 'a DSP'),
+    dsp(e),
     ...(e.changes.some((change) => change.field === 'error') ? [', which failed again'] : []),
   ],
-  'dsp.removed': (e) => ['removed ', strong(e.dspName ?? 'a DSP')],
-  'dsp.restored': (e) => ['restored ', strong(e.dspName ?? 'a DSP')],
-  'dsp.suspended': (e) => ['disabled ', strong(e.dspName ?? 'a DSP')],
-  'dsp.resumed': (e) => ['enabled ', strong(e.dspName ?? 'a DSP')],
+  'dsp.removed': (e) => ['removed ', dsp(e)],
+  'dsp.restored': (e) => ['restored ', dsp(e)],
+  'dsp.suspended': (e) => ['disabled ', dsp(e)],
+  'dsp.resumed': (e) => ['enabled ', dsp(e)],
   'dsp.deleted': (e) => ['deleted ', strong(e.detail || 'a DSP')],
   'audit.exported': () => ['exported the audit log'],
   'account.signed_in': () => ['signed in'],

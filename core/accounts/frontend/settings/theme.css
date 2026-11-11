@@ -1,9 +1,3 @@
-.theme-option {
-  transition:
-    background-color var(--motion-duration),
-    border-color var(--motion-duration),
-    color var(--motion-duration);
-}
 .theme-section {
   max-width: 960px;
   padding: 8px 0 32px;
@@ -29,6 +23,10 @@
   display: grid;
 }
 .theme-option {
+  transition:
+    background-color var(--motion-duration),
+    border-color var(--motion-duration),
+    color var(--motion-duration);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--card);

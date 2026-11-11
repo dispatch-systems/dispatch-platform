@@ -3,12 +3,6 @@ import { navigate, signInHash } from '../../shell/frontend/runtime/navigation.js
 type SignInHandoff = { email: string; animate: boolean };
 let pending: SignInHandoff | undefined;
 
-/** Ephemeral navigation data only; creating a profile never establishes a session. */
-function signInAfterProfile(email: string, animate = false) {
-  pending = { email, animate };
-  navigate(signInHash);
-}
-
 // Read without consuming during render, including React's repeated initial renders.
 export const getSignInHandoff = () => pending;
 export function clearSignInHandoff() {
@@ -21,5 +15,9 @@ export function clearSignInHandoff() {
  */
 export function signInAt(email: string, signIn: string | null | undefined, animate = false) {
   if (signIn && new URL(signIn).origin !== location.origin) location.assign(signIn);
-  else signInAfterProfile(email, animate);
+  else {
+    // Ephemeral navigation data only; creating a profile never establishes a session.
+    pending = { email, animate };
+    navigate(signInHash);
+  }
 }

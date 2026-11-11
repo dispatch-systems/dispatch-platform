@@ -13,6 +13,5 @@ reference photograph is embedded. Three.js is MIT licensed.
 - `login-van-poster.png` is the transparent render used while loading or without WebGL.
 - Model and renderer load only above 700px. Keep the JS and CSS breakpoints together.
   Both are fingerprinted and compressed at build time, with immutable caching.
-- Autoplay is intentional for every desktop motion preference, per the approved design.
-  Rendering is capped at 30 fps / 1.5× DPR / 1.5 million pixels, suspended offscreen or in
+- Rendering is capped at 30 fps / 1.5× DPR / 1.5 million pixels, suspended offscreen or in
   hidden tabs, and fully disposed on sign-in or switching to mobile. No server rendering.
