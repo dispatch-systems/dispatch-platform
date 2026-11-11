@@ -173,6 +173,38 @@ impl Server {
         let dashboard = root.path().join("dashboard");
         std::fs::create_dir_all(&dashboard).unwrap();
         std::fs::write(dashboard.join("index.html"), "<html><head></head></html>").unwrap();
+        std::fs::create_dir(dashboard.join("assets")).unwrap();
+        let mut private = serde_json::Map::new();
+        for (name, body) in [
+            ("custom-nll-entry.js", "export const label = 'Owner probe';"),
+            ("custom-nll-lazy.js", "export const page = 'owner page';"),
+            ("custom-nll-style.css", ".owner-probe { color: red; }"),
+            ("custom-nll-image.svg", "<svg>owner image</svg>"),
+        ] {
+            std::fs::write(dashboard.join("assets").join(name), body).unwrap();
+            let mut entry = json!({"owner":"nll"});
+            if name == "custom-nll-entry.js" {
+                entry["feature"] = json!("nll_probe");
+                entry["styles"] = json!(["/assets/custom-nll-style.css"]);
+            }
+            private.insert(format!("/assets/{name}"), entry);
+        }
+        std::fs::write(
+            dashboard.join("assets/shared.js"),
+            "export const shared = true;",
+        )
+        .unwrap();
+        std::fs::write(
+            dashboard.join("assets/owner-runtime.js"),
+            "export const admin = true;",
+        )
+        .unwrap();
+        private.insert("/assets/owner-runtime.js".into(), json!({"platform":true}));
+        std::fs::write(
+            dashboard.join("private-assets.json"),
+            serde_json::to_vec(&private).unwrap(),
+        )
+        .unwrap();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let mut config = Config::load().unwrap();
@@ -189,6 +221,12 @@ impl Server {
         config.dsp_origin = format!("http://{{code}}.localhost:{port}");
         let store = startup::prepare_storage(config.clone()).unwrap();
         operations::seed(&store).unwrap();
+        let summit = store
+            .platform
+            .one("SELECT id FROM dsps WHERE code='sum'", [])
+            .unwrap()
+            .unwrap();
+        testing::owner_of(&store, s(&summit, "id"), "summit@dispatch.test", "Summit").unwrap();
         // A second member of Northline's, beside the one the fixtures have.
         let north = s(
             &store
@@ -334,6 +372,139 @@ impl Server {
     async fn save(&self, who: &Who, path: &str, body: Value) -> Answer {
         self.send("POST", path, who, Some(body)).await
     }
+}
+
+#[tokio::test]
+async fn custom_assets_require_the_owner_session_before_head_or_etag_handling() {
+    let server = Server::start().await;
+    let north = server.dsp("nll").await;
+    let summit = server.dsp("sum").await;
+    let owner = server.signed_in("member@dispatch.test", &north).await;
+    let foreign = server.signed_in("summit@dispatch.test", &summit).await;
+    let platform = server.signed_in("owner@dispatch.test", &summit).await;
+    let anonymous = Who {
+        cookie: String::new(),
+        csrf: String::new(),
+        view: String::new(),
+        host: owner.host.clone(),
+    };
+    // Both DSP sessions are valid at their own host; the second owns no custom metadata.
+    let own_view = server.open(&owner, &north).await;
+    assert_eq!(
+        own_view.body["custom"]["frontends"][0]["url"],
+        "/assets/custom-nll-entry.js"
+    );
+    let other_view = server.open(&foreign, &summit).await;
+    assert_eq!(other_view.status, 200);
+    assert!(!other_view.body.to_string().contains("nll_probe"));
+    assert!(!other_view.body.to_string().contains("Owner probe"));
+    let origin = format!("http://127.0.0.1:{}", server.port);
+    let request = |method, path: &str, who: &Who| {
+        server
+            .client
+            .request(method, format!("{origin}{path}"))
+            .header(
+                "host",
+                who.host
+                    .clone()
+                    .unwrap_or_else(|| format!("127.0.0.1:{}", server.port)),
+            )
+            .header("cookie", &who.cookie)
+    };
+    for path in [
+        "/assets/custom-nll-entry.js",
+        "/assets/custom-nll-lazy.js",
+        "/assets/custom-nll-style.css",
+        "/assets/custom-nll-image.svg",
+    ] {
+        let allowed = request(reqwest::Method::GET, path, &owner)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(allowed.status(), 200, "{path}");
+        assert_eq!(allowed.headers()["cache-control"], "private, no-store");
+        let tag = allowed.headers()["etag"].clone();
+        assert!(!allowed.bytes().await.unwrap().is_empty());
+        for method in [reqwest::Method::GET, reqwest::Method::HEAD] {
+            for who in [&foreign, &anonymous] {
+                let refused = request(method.clone(), path, who)
+                    .header("if-none-match", &tag)
+                    .send()
+                    .await
+                    .unwrap();
+                assert_eq!(refused.status(), 404, "{path}");
+                assert!(refused.headers().get("etag").is_none());
+            }
+            for who in [&owner, &platform] {
+                assert_eq!(
+                    request(method.clone(), path, who)
+                        .send()
+                        .await
+                        .unwrap()
+                        .status(),
+                    200,
+                    "{path}"
+                );
+                assert_eq!(
+                    request(method.clone(), path, who)
+                        .header("if-none-match", &tag)
+                        .send()
+                        .await
+                        .unwrap()
+                        .status(),
+                    304,
+                    "{path}"
+                );
+            }
+        }
+    }
+    for who in [&owner, &foreign, &anonymous] {
+        assert_eq!(
+            request(reqwest::Method::GET, "/assets/owner-runtime.js", who)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            404
+        );
+        assert_eq!(
+            request(reqwest::Method::GET, "/assets/shared.js", who)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            200
+        );
+        assert_eq!(
+            request(reqwest::Method::GET, "/private-assets.json", who)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            404
+        );
+    }
+    assert_eq!(
+        request(reqwest::Method::GET, "/assets/owner-runtime.js", &platform)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        200
+    );
+    server
+        .state
+        .run(move |db| testing::set_dsp_status(db, &north, "suspended"))
+        .await
+        .unwrap();
+    assert_eq!(
+        request(reqwest::Method::GET, "/assets/custom-nll-entry.js", &owner)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        404
+    );
 }
 fn days(days: i64, revision: i64) -> Value {
     json!({"values": {"days": days}, "revision": revision})
