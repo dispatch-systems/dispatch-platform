@@ -1,17 +1,15 @@
-//! Routes' settings: how long the DSP keeps its route data, on Settings' Data page; and the
-//! window a DSP chose before Settings kept it, moved in once.
+//! Routes' settings: how long the DSP keeps its route data, on Settings' Data page.
 use super::{
     MAX_RETENTION_DAYS, MIN_RETENTION_DAYS, RoutesStore, maintenance::MAINTENANCE,
-    scope::first_kept, storage::STORAGE,
+    scope::first_kept,
 };
 use dispatch_core::{
     Result,
     db::Store,
     manifest::{Section, number, section},
-    settings,
 };
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 /// How many days of route data the DSP keeps, counted back from today where it is; none keeps
 /// every day. Hourly, the days past it are deleted, so a window that passes a stored day asks
@@ -77,33 +75,6 @@ fn deleted(db: &Store, dsp: &str, after: &Value, at: i64) -> Result<Option<Strin
             start.format("%b %-d, %Y")
         )
     }))
-}
-
-/// Moves the window a DSP chose before Settings kept it, its route data's `route_retention`
-/// row, into `RETENTION` as the DSP's first value, at startup (`settings::carry_over`). The
-/// table is read as the DSP first opens since, whatever it holds, and not again; it stays as it
-/// was, read only here.
-pub(crate) fn upgrade(store: &Store, id: &str) -> Result<()> {
-    settings::carry_over(store, id, &RETENTION, || {
-        // A DSP whose route data isn't made yet chose no window.
-        if store.dsp(id)?.setting(STORAGE.marker, Value::Null)? != json!(1) {
-            return Ok(None);
-        }
-        let db = store.routes_db(id)?;
-        // Route data from before the table existed chose none either.
-        let kept = db.one(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='route_retention'",
-            [],
-        )?;
-        let days = match kept {
-            Some(_) => db
-                .one("SELECT days FROM route_retention WHERE id=1", [])?
-                .and_then(|row| row["days"].as_i64()),
-            None => None,
-        };
-        Ok(days.map(|days| json!({ "days": days })))
-    });
-    Ok(())
 }
 
 #[cfg(test)]

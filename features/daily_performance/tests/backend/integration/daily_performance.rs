@@ -295,57 +295,6 @@ fn schedules_refresh_configured_dates_and_manual_backfills_are_bounded_and_idemp
             .is_err()
     );
 }
-#[test]
-fn a_policy_chosen_before_settings_kept_it_moves_in_once_for_its_own_dsp() {
-    let (_root, store, dsp) = ready();
-    let actor = testing::a_user(&store);
-    let other = store.new_dsp("Other DSP", "UTC", &actor, false).unwrap().id;
-    // Each DSP's policy as the release before kept it, in its own database, and its settings
-    // as they were then.
-    for (id, lookback) in [(&dsp, 3), (&other, 14)] {
-        store
-            .daily_performance_db(id)
-            .unwrap()
-            .set(
-                "collection_policy",
-                &json!({"lookbackDays": lookback, "refreshHours": 12}),
-            )
-            .unwrap();
-        testing::before_settings(&store, id).unwrap();
-    }
-    let upgrade = dispatch_daily_performance::FEATURE.upgrade_storage.unwrap();
-    let policy = |id: &str| settings::read::<Value>(&store, id, collection()).unwrap();
-    upgrade(&store, &dsp).unwrap();
-    assert_eq!(
-        policy(&dsp),
-        json!({"lookback_days": 3, "refresh_hours": 12})
-    );
-    assert_eq!(
-        policy(&other),
-        json!({"lookback_days": 7, "refresh_hours": 20})
-    );
-    upgrade(&store, &other).unwrap();
-    assert_eq!(
-        policy(&other),
-        json!({"lookback_days": 14, "refresh_hours": 12})
-    );
-    assert_eq!(
-        store.daily_performance_jobs(&dsp).unwrap()[0].1["dates"]
-            .as_array()
-            .unwrap()
-            .len(),
-        3
-    );
-    // Changed in Settings since, it isn't moved again; and the move itself recorded nothing.
-    let changed = json!({"lookback_days": 5});
-    settings::save(&store, &dsp, &actor, collection(), &changed, 1, false).unwrap();
-    upgrade(&store, &dsp).unwrap();
-    assert_eq!(
-        policy(&dsp),
-        json!({"lookback_days": 5, "refresh_hours": 12})
-    );
-    assert!(testing::audit_actions(&store, &other, "settings.").is_empty());
-}
 // The rebuild that lets one job publish several days keeps every publication, dataset and
 // row, the children still reference their publication, and a job may publish another day
 // but not the same day twice.

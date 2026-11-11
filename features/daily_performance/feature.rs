@@ -32,7 +32,6 @@ pub const FEATURE: Feature = Feature {
     routes: api::routes::routes,
     // Which dates its collection rechecks, drawn with it on Settings' Collectors page.
     settings: &[backend::settings::COLLECTION],
-    upgrade_storage: Some(backend::settings::upgrade),
     keeps: &[&backend::keeper::DailyPerformanceKeeper],
     tables: &[(
         "daily_performance",

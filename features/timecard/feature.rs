@@ -78,7 +78,6 @@ pub const FEATURE: Feature = Feature {
         backend::settings::DRIVERS,
         backend::settings::LATE_DAS,
     ],
-    upgrade_storage: Some(backend::settings::upgrade),
     // Collection progress refreshes both the timecard pages and the collections page.
     live: &["timecard.view", "collections.run"],
     keeps: &[&punches::keeper::Timecards, &meals::keeper::MealBreaks],

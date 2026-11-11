@@ -7,7 +7,6 @@ use dispatch_core::{
     testing,
 };
 use dispatch_paycom::PROVIDER as PAYCOM;
-use dispatch_routes::RoutesStore;
 use serde_json::{Value, json};
 
 /// Whether `db` holds the index Timecard's third Paycom migration adds to `dsp`'s Paycom data.
@@ -23,26 +22,16 @@ fn indexed(db: &Store, dsp: &str) -> bool {
 }
 
 #[test]
-fn a_restored_copy_starts_as_serve_would_reporting_its_migrations_and_failed_carry_overs() {
+fn a_restored_copy_starts_as_serve_would_reporting_its_migrations() {
     crate::install();
     let (root, store, dsp) = testing::bootstrapped();
-    // The platform as a release before left it: without Timecard's Paycom index, and with a
-    // Route Data window for Settings to carry over, in a table that can't be read.
+    // The platform as a release before left it: without Timecard's Paycom index.
     store
         .collector(&dsp, PAYCOM)
         .unwrap()
         .0
         .execute_batch("DROP INDEX employees_by_code; DELETE FROM schema_migrations WHERE id=3")
         .unwrap();
-    store
-        .routes_db(&dsp)
-        .unwrap()
-        .0
-        .execute_batch(
-            "DROP TABLE route_retention; CREATE TABLE route_retention(id INTEGER PRIMARY KEY)",
-        )
-        .unwrap();
-    testing::before_settings(&store, &dsp).unwrap();
     // A server ran on it, as one runs on Production.
     drop(Lock::acquire(root.path()).unwrap());
     let external = tempfile::tempdir().unwrap();
@@ -60,12 +49,6 @@ fn a_restored_copy_starts_as_serve_would_reporting_its_migrations_and_failed_car
             &report["stopped"]
         ),
         (&json!(1), &json!({"paycom": 1}), &Value::Null)
-    );
-    let failed = report["carryOverFailures"].as_array().unwrap();
-    assert_eq!(failed.len(), 1, "{failed:?}");
-    assert_eq!(
-        (&failed[0]["dspId"], &failed[0]["section"]),
-        (&json!(dsp), &json!("routes.retention"))
     );
     let mut config = store.config.clone();
     config.root = copy;

@@ -53,7 +53,6 @@ pub const FEATURE: Feature = Feature {
     routes: api::routes::routes,
     // How long its data is kept, on Settings' Data page.
     settings: &[backend::settings::RETENTION],
-    upgrade_storage: Some(backend::settings::upgrade),
     keeps: &[&backend::keeper::Routes],
     tables: &[
         (

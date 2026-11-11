@@ -1,13 +1,12 @@
-//! Section saves and one-time carry-over. Full policy: `core/settings/README.md`.
+//! Section saves. Full policy: `core/settings/README.md`.
 use super::{kinds, store};
 use crate::{
     Error, Result,
     db::{AuditChange, Store},
     ensure,
-    foundation::observability,
     manifest::settings::{Scope, Section},
 };
-use serde_json::{Map, Value, json};
+use serde_json::{Map, Value};
 
 /// What a save did.
 #[derive(Debug, PartialEq)]
@@ -59,7 +58,7 @@ pub(crate) fn save_listing<'a>(
         409,
     )?;
     let mut lists = kinds::Lists::new(db, dsp);
-    let after = merged(section, &now.values, given, Some(&mut lists))?;
+    let after = merged(section, &now.values, given, &mut lists)?;
     let changes = (section.fields.iter())
         .filter(|field| after.get(field.id) != now.values.get(field.id))
         .map(|field| {
@@ -83,7 +82,7 @@ pub(crate) fn save_listing<'a>(
     let revision = revision + 1;
     let people = db.dsp(dsp)?;
     db.across(&people, || {
-        store::write(&people, section, member, revision, &after, Some(actor))?;
+        store::write(&people, section, member, revision, &after, actor)?;
         if let Some(kept) = section.kept {
             kept.keep(db, dsp, actor, &after)?;
         }
@@ -116,65 +115,6 @@ pub(crate) fn save_listing<'a>(
     ))
 }
 
-/// Called by `upgrade_storage` on DSP open, once while `section` has no record.
-/// An existing record skips `old`; otherwise each valid field moves and refused fields use
-/// defaults. Dynamic option lists are deliberately ignored: old choices may no longer appear.
-/// Real moved values use revision 1; nothing beyond defaults writes an empty revision-0 marker
-/// so future defaults still apply. Only `dsp`'s database is used, without audit.
-/// Failure is nonfatal: log DSP, section and error code without values, then retry next open.
-pub fn carry_over(
-    db: &Store,
-    dsp: &str,
-    section: &Section,
-    old: impl FnOnce() -> Result<Option<Value>>,
-) {
-    if let Err(error) = adopt(db, dsp, section, old) {
-        observability::event(
-            "error",
-            "settings.carry_over_failed",
-            json!({"dspId": dsp, "section": section.id, "error": error.code}),
-        );
-    }
-}
-/// What `carry_over` does, failing as it may.
-fn adopt(
-    db: &Store,
-    dsp: &str,
-    section: &Section,
-    old: impl FnOnce() -> Result<Option<Value>>,
-) -> Result<()> {
-    ensure(
-        section.scope == Scope::Dsp && section.kept.is_none(),
-        "settings_scope",
-        500,
-    )?;
-    let record = store::record(db, dsp, section, None)?;
-    if !record.is_null() {
-        return Ok(());
-    }
-    let defaults = store::current(db, dsp, section, &record)?.values;
-    let mut moved = defaults.clone();
-    if let Some(Value::Object(given)) = old()? {
-        for (id, value) in &given {
-            match checked(section, &defaults, id, value, None) {
-                Ok((id, value)) => {
-                    moved.insert(id.to_owned(), value);
-                }
-                // What its field refuses now it would refuse each time: it stays behind.
-                Err(refused) if refused.code == "invalid_input" => {}
-                Err(error) => return Err(error),
-            }
-        }
-    }
-    let (revision, values) = if moved == defaults {
-        (0, json!({}))
-    } else {
-        (1, Value::Object(moved))
-    };
-    let people = db.dsp(dsp)?;
-    store::write(&people, section, None, revision, &values, None)
-}
-
 /// `now` with each of the `given` fields' values, each `checked`. It reads every list the
 /// section offers first, so a section Settings leaves out, as one of them fails, isn't saved
 /// either.
@@ -182,16 +122,14 @@ fn merged(
     section: &Section,
     now: &Map<String, Value>,
     given: &Map<String, Value>,
-    mut lists: Option<&mut kinds::Lists>,
+    lists: &mut kinds::Lists,
 ) -> Result<Map<String, Value>> {
     let mut after = now.clone();
-    if let Some(lists) = lists.as_deref_mut() {
-        for field in section.fields {
-            lists.options(field)?;
-        }
+    for field in section.fields {
+        lists.options(field)?;
     }
     for (id, value) in given {
-        let (id, value) = checked(section, now, id, value, lists.as_deref_mut())?;
+        let (id, value) = checked(section, now, id, value, lists)?;
         after.insert(id.to_owned(), value);
     }
     Ok(after)
@@ -199,25 +137,20 @@ fn merged(
 
 /// The section's field `id` and `value` as it keeps it, checked as its kind says, against what
 /// it holds `now` and the options it offers from `lists`: refused as `invalid_input` for a
-/// field the section hasn't. With no lists, as for
-/// values a feature carries over, a field whose options are listed as it's read takes any
-/// value that fits it.
+/// field the section hasn't.
 fn checked(
     section: &Section,
     now: &Map<String, Value>,
     id: &str,
     value: &Value,
-    lists: Option<&mut kinds::Lists>,
+    lists: &mut kinds::Lists,
 ) -> Result<(&'static str, Value)> {
     let field = section
         .fields
         .iter()
         .find(|field| field.id == id)
         .ok_or_else(|| Error::new("invalid_input", 400))?;
-    let options = match lists {
-        Some(lists) => lists.options(field)?,
-        None => None,
-    };
+    let options = lists.options(field)?;
     let value = kinds::checked(field, value, &now[field.id], options.as_deref())?;
     Ok((field.id, value))
 }

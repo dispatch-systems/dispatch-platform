@@ -1,5 +1,5 @@
-//! Weekly Scorecard's database registration, startup compatibility and Store boundary.
-use super::{keeper, publication, reads, retirement, settings};
+//! Weekly Scorecard's database registration and Store boundary.
+use super::{keeper, publication, reads};
 use crate::api::types::WeeklyScorecardWeeks;
 use dispatch_core::{
     Result,
@@ -19,7 +19,7 @@ use serde_json::{Value, json};
 /// The scorecard weeks it keeps.
 pub const DOMAIN: DataDomain = DataDomain::new("weekly_scorecard");
 /// The weekly scorecard database beside `cortex.sqlite`. Its durable identity stays
-/// `weekly_scorecard`; the startup import preserves prior publications.
+/// `weekly_scorecard`.
 pub const DATABASE: Kind = Kind::new("weekly_scorecard", 1);
 pub static STORAGE: AddedStorage = AddedStorage {
     id: "weekly_scorecard",
@@ -28,12 +28,6 @@ pub static STORAGE: AddedStorage = AddedStorage {
     source: "weekly-scorecard-v1",
     verify,
 };
-/// What starting the server does to storage kept before: imports the retired scorecard
-/// database, then moves the policy its own database kept into Settings.
-pub(crate) fn upgrade(store: &Store, id: &str) -> Result<()> {
-    retirement::upgrade(store, id)?;
-    settings::upgrade(store, id)
-}
 fn verify(db: &Db) -> Result<()> {
     ensure(
         db.all("SELECT version FROM weekly_scorecard_schema", [])? == vec![json!({"version":1})],

@@ -1,6 +1,5 @@
 //! Timecard's settings, on its page of Settings: which employees it lists and how Meal Breaks
-//! names them, the departments that drive, and when a DA is late; and the preferences a DSP
-//! kept in Paycom's database before Settings kept them, moved in once.
+//! names them, the departments that drive, and when a DA is late.
 use crate::api::{
     assessment::LateRule,
     settings::{NameOrder, PaycomSettings},
@@ -9,11 +8,9 @@ use dispatch_core::{
     Result,
     db::Store,
     manifest::{Options, Section, choice, many, pick, section, time, toggle},
-    settings::{carry_over, read},
+    settings::read,
 };
-use dispatch_paycom as paycom;
 use serde::Deserialize;
-use serde_json::{Map, Value, json};
 
 const MANAGE: &str = "timecard.manage";
 
@@ -154,60 +151,4 @@ mod filters {
             .map(|value| (value.clone(), value))
             .collect())
     }
-}
-
-/// Moves the preferences a DSP kept in Paycom's database before Settings kept them,
-/// `paycom.preferences`, into its sections as their first values, at startup
-/// (`settings::carry_over`), read for each as the DSP first opens since, and not again. A
-/// section that holds values, saved or moved, keeps them; a value its field refuses now stays
-/// behind and reads as the default, the others moving still. What the page no longer reads (its
-/// opening tab, rows per page, sort and columns) stays behind; the record stays as it was, read
-/// only here.
-pub(crate) fn upgrade(store: &Store, dsp: &str) -> Result<()> {
-    let moved = |section: &Section, values: fn(&Map<String, Value>) -> Option<Value>| {
-        carry_over(store, dsp, section, || {
-            let kept = store
-                .collector(dsp, paycom::PROVIDER)?
-                .setting("paycom.preferences", Value::Null)?;
-            Ok(kept
-                .get("values")
-                .and_then(Value::as_object)
-                .and_then(values))
-        });
-    };
-    moved(&ROSTER, |kept| {
-        let mut roster = Map::new();
-        // An empty filter listed everyone, as none does now.
-        for key in ["department", "station"] {
-            if let Some(value) = kept
-                .get(key)
-                .and_then(Value::as_str)
-                .filter(|v| !v.is_empty())
-            {
-                roster.insert(key.to_owned(), json!(value));
-            }
-        }
-        if let Some(order) = kept.get("name_order") {
-            roster.insert("name_order".to_owned(), order.clone());
-        }
-        Some(Value::Object(roster))
-    });
-    // None drove every department; a list, only those, an empty one none.
-    moved(&DRIVERS, |kept| {
-        let departments = kept.get("driver_departments").filter(|v| v.is_array())?;
-        Some(json!({"all_departments": false, "departments": departments}))
-    });
-    moved(&LATE_DAS, |kept| {
-        let mut late = Map::new();
-        for (from, to) in [
-            ("late_da_time", "time"),
-            ("late_da_departments", "departments"),
-        ] {
-            if let Some(value) = kept.get(from) {
-                late.insert(to.to_owned(), value.clone());
-            }
-        }
-        Some(Value::Object(late))
-    });
-    Ok(())
 }

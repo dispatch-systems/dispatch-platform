@@ -156,9 +156,7 @@ pub(crate) fn described(
 /// `given` as `field` keeps it, given what it holds now and the options it offers: made the
 /// one way it's kept, and refused as `invalid_input` unless it fits, is one of the options
 /// listed now or one it holds already, which its list may have dropped since, and neither
-/// empties a text once set nor changes a locked one. Given no options,
-/// what a field lists as it's read is checked only as `fits` checks it, as for values a
-/// feature adopts, which its list may have dropped since they were kept.
+/// empties a text once set nor changes a locked one.
 pub(crate) fn checked(
     field: &Field,
     given: &Value,
