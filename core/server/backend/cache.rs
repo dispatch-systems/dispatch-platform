@@ -238,7 +238,8 @@ impl ReadCache {
             }
         }
     }
-    /// Call under the transition write lock, before the first mutation. Evict on
+    /// Call under the exclusive transition: before an ordinary write, or after a live
+    /// staging commit has drained concurrent readers, before its notification. Evict on
     /// errors too: a later database may fail after an earlier one committed.
     pub fn invalidate_tenant(&self, dsp: &str, domain: DataDomain) {
         self.invalidate_prepared(dsp, domain, PeopleImpact::MayChange);

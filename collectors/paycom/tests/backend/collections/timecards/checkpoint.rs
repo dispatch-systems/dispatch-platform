@@ -250,7 +250,7 @@ async fn a_checkpoint_transaction_does_not_block_foreground_reads() -> Result<()
         Some(
             dispatch_core::testing::requested(state.read(move |db| {
                 db.collector(&at, PROVIDER)?
-                    .count("SELECT count(*) FROM collection_live_items", [])
+                    .count("SELECT count(*) FROM collection_checkpoint_pages", [])
             }))
             .await,
         )
@@ -272,9 +272,9 @@ async fn a_checkpoint_transaction_does_not_block_foreground_reads() -> Result<()
     let count = state
         .read(move |db| {
             db.collector(&dsp, PROVIDER)?
-                .count("SELECT count(*) FROM collection_live_items", [])
+                .count("SELECT count(*) FROM collection_checkpoint_pages", [])
         })
         .await?;
-    assert_eq!(count, 14);
+    assert_eq!(count, 1);
     Ok(())
 }
