@@ -165,11 +165,7 @@ export function Thread({
                       const last = at === written.length - 1 && !continued;
                       return (
                         <Fragment key={message.id}>
-                          <MessageBody
-                            identity={message.id}
-                            message={message}
-                            attachments={attachments}
-                          />
+                          <MessageBody message={message} attachments={attachments} />
                           <Meta
                             message={message}
                             time={!plain && !pauses && (last || times === 'each_message')}

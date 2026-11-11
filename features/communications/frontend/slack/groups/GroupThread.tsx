@@ -118,11 +118,7 @@ export function GroupThread({
                       )
                     }
                   >
-                    <MessageBody
-                      identity={first.id}
-                      message={first}
-                      attachments={slackAttachments}
-                    />
+                    <MessageBody message={first} attachments={slackAttachments} />
                     <MessageMeta
                       identity={first.id}
                       time={!plain && !pauses && clock(first.at, timeZone)}
@@ -169,11 +165,7 @@ export function GroupThread({
                 >
                   {written.map((entry) => (
                     <Fragment key={entry.id}>
-                      <MessageBody
-                        identity={entry.id}
-                        message={entry}
-                        attachments={slackAttachments}
-                      />
+                      <MessageBody message={entry} attachments={slackAttachments} />
                       <MessageMeta
                         identity={entry.id}
                         time={!plain && times === 'each_message' && clock(entry.at, timeZone)}

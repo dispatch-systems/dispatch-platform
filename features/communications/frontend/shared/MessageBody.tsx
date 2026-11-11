@@ -20,13 +20,12 @@ const PLAYS_MOST = 25 * 1024 ** 2;
 export function MessageBody({
   message,
   attachments,
-  identity,
 }: {
-  identity?: string;
-  message: Pick<Message, 'text' | 'editedAt' | 'files'> & Partial<Pick<Message, 'status' | 'gif'>>;
+  message: Pick<Message, 'id' | 'text' | 'editedAt' | 'files'> & Partial<Pick<Message, 'status' | 'gif'>>;
   /** Where a photo, video or file of it is read from, by the way it went. */
   attachments: Pick<Attachments, 'address' | 'preview' | 'fetch'>;
 }) {
+  const identity = message.id;
   const photos = message.files.filter((file) => file.status === 'kept' && isPhoto(file.mime));
   const videos = message.files.filter(
     (file) =>
