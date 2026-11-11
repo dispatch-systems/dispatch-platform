@@ -16,11 +16,33 @@ type Loaded = PeopleDescriptors & {
 };
 let pending = new AbortController();
 const styles = new Set<HTMLLinkElement>();
+let activeSources = new Set<string>();
+let sourceObserver: MutationObserver | undefined;
+
+/** Vite keeps source CSS in style tags and caches its modules. Retain those tags for HMR
+ * and cached re-entry, but apply them only while their feature is admitted. */
+function sourceStyles() {
+  document.querySelectorAll<HTMLStyleElement>('style[data-vite-dev-id]').forEach((style) => {
+    const file = style.dataset.viteDevId?.replaceAll('\\', '/') ?? '';
+    const feature = /\/features\/custom\/([a-z0-9]+)\/([a-z][a-z0-9_]*)\//.exec(file);
+    if (feature) style.media = activeSources.has(`${feature[1]}_${feature[2]}`) ? 'all' : 'not all';
+  });
+}
+function watchSourceStyles() {
+  if (sourceObserver) return;
+  // A lazy page can finish importing CSS after its DSP was left. The observer also
+  // catches those late Vite tags before they paint in the next workspace.
+  sourceObserver = new MutationObserver(sourceStyles);
+  sourceObserver.observe(document.head, { childList: true });
+}
 
 /** A workspace boundary removes both admitted and still-loading private UI. */
 export function clearCustomFeatures() {
   pending.abort();
   pending = new AbortController();
+  activeSources = new Set();
+  watchSourceStyles();
+  sourceStyles();
   for (const style of styles) style.remove();
   styles.clear();
   // Vite may have loaded a private page's CSS along with its lazy component.
@@ -62,6 +84,7 @@ function prepareStyle(url: string, signal: AbortSignal): Promise<HTMLLinkElement
 export async function prepareCustomFeatures(view: DspView, current: () => boolean) {
   const signal = pending.signal;
   const entries = view.custom?.frontends ?? [];
+  watchSourceStyles();
   const modules = await Promise.all(
     entries.map(async (entry): Promise<Loaded> => {
       const loaded = (await import(/* @vite-ignore */ entry.url)) as Loaded;
@@ -69,8 +92,10 @@ export async function prepareCustomFeatures(view: DspView, current: () => boolea
       return loaded;
     }),
   ).catch(() => {
+    sourceStyles();
     throw new Error('Unable to open this DSP.');
   });
+  sourceStyles();
   if (!current() || signal.aborted) return;
   let css: HTMLLinkElement[];
   try {
@@ -92,6 +117,8 @@ export async function prepareCustomFeatures(view: DspView, current: () => boolea
     );
     installCustomPeople(modules);
     installCustomFeatures(modules.map((module) => module.feature));
+    activeSources = new Set(entries.map((entry) => entry.name));
+    sourceStyles();
     for (const style of css) style.media = 'all';
   };
 }
