@@ -53,7 +53,8 @@ Every field of `Feature`, as `feature.rs` fills it.
 | `tables`                   | `storage`      | The tables it keeps, by database, which no other owner's code runs SQL on.                                                                   |
 | `domains`                  | `caching`      | The kinds of data its reviewed writes change, for the read cache.                                                                            |
 | `cached`                   | `caching`      | What evicts the reads it caches, and any other owner's read its data feeds.                                                                  |
-| `maintenance`              | `upkeep`       | Work the scheduler runs for it, each task at its own interval.                                                                               |
+| `maintenance`              | `upkeep`       | Platform-wide upkeep, each task at its own interval; unavailable to custom features.                                                         |
+| `dsp_maintenance`          | `dsp_maintenance` | Upkeep run separately for each active DSP with the feature enabled, restricted to its owner for a custom feature.                          |
 | `audit`                    | `audit`        | How its actions read in the activity log: the areas they are listed under, the kinds of record they name, and today's names.                 |
 | `demo`                     | `commands`     | What fills a new DSP with its demo data, for the development seed and Diagnostics' test DSPs.                                                |
 | `commands`                 | `commands`     | Its operator commands of the binary, every one whose name begins with its prefix.                                                            |
@@ -239,6 +240,29 @@ pub fn collected(state: Arc<State>, dsp: String, event: CollectionSucceeded) -> 
 that feature is on for the DSP, and returns once each has done its work; a feature logs its own
 failures. The registry refuses two types under one name, and a feature hearing one twice.
 `dispatchdev list events` lists every event a feature hears, with who hears it.
+
+### Upkeep
+
+`maintenance` runs platform-wide work. Custom features instead declare `dsp_maintenance`:
+
+```rust
+dsp_maintenance: &[DspMaintenance {
+    every: Duration::from_secs(60 * 60),
+    run: backend::maintenance::catch_up,
+}],
+
+pub fn catch_up(state: Arc<State>, dsp: String, due: bool) -> Upkeep {
+    Box::pin(async move { /* work for this DSP */ })
+}
+```
+
+The scheduler offers each task every minute, with `due` true when its interval has passed.
+One pass per declaration runs at a time. It visits only active DSPs in this backend's
+environment with the feature enabled, and a custom feature only its owner. Each DSP is checked
+again before its callback starts. Visibility does not stop background work. A callback logs
+its own failures and uses `state.run_serving(dsp, domain, ...)` for writes, checking the feature
+again in that turn after awaiting outside work. Startup refuses a custom feature declaring
+platform-wide `maintenance`.
 
 ### Live readers
 

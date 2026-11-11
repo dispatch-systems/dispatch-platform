@@ -14,6 +14,7 @@ pub mod caching;
 pub mod collectors;
 pub mod commands;
 pub mod deleting;
+pub mod dsp_maintenance;
 pub mod env;
 pub mod events;
 pub mod exposes;
@@ -34,6 +35,7 @@ pub use audit::Audit;
 pub use collectors::{Capability, Collection, Collector};
 pub use commands::{Commands, Demo};
 pub use deleting::Deleting;
+pub use dsp_maintenance::DspMaintenance;
 pub use keeping::{
     Keeper, MAX_QUEUE_CAPACITY, MIN_QUEUE_CAPACITY, ScheduleAlias, Schedules, schedules,
 };
@@ -144,6 +146,7 @@ impl Registry {
         audit::check(self);
         deleting::check(self);
         page_sources::check(self);
+        dsp_maintenance::check(self);
         agents::check(self);
         settings::check(self);
     }
@@ -218,8 +221,10 @@ pub struct Feature {
     pub domains: &'static [DataDomain],
     /// What evicts the reads it caches, and any other owner's read its data feeds.
     pub cached: &'static [Cached],
-    /// Upkeep it needs the scheduler to run.
+    /// Platform-wide upkeep. A custom feature uses `dsp_maintenance` instead.
     pub maintenance: &'static [Maintenance],
+    /// Upkeep run separately for each active DSP with this feature enabled.
+    pub dsp_maintenance: &'static [DspMaintenance],
     /// How its actions read in the activity log.
     pub audit: Audit,
     /// Fills a new DSP with demo data: the development seed's DSPs and Diagnostics' test
@@ -275,6 +280,7 @@ pub const fn feature(name: &'static str) -> Feature {
         domains: &[],
         cached: &[],
         maintenance: &[],
+        dsp_maintenance: &[],
         audit: Audit::NONE,
         demo: None,
         commands: None,

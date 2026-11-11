@@ -15,7 +15,14 @@ use dispatch_core::{
     testing,
 };
 use serde_json::{Value, json};
-use std::{os::unix::fs::PermissionsExt, sync::Arc};
+use std::{
+    os::unix::fs::PermissionsExt,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
+
+type Maintained = (String, bool, dispatch_core::Result<usize>);
+static MAINTAINED: Mutex<Option<tokio::sync::mpsc::UnboundedSender<Maintained>>> = Mutex::new(None);
 
 /// Every DSP has it, with one section of the DSP's and one each member has.
 static PROBE: Feature = Feature {
@@ -66,8 +73,31 @@ static CUSTOM: Feature = Feature {
         |db, c, _| Ok(dispatch_core::server::http::input::Reply::json(json!({"count": db.dsp(c.dsp_id())?.count("SELECT count(*) FROM nll_probe", [])?})))
     )],
     on: &[dispatch_core::on!(dispatch_core::manifest::events::PeopleChanged, custom_event)],
+    dsp_maintenance: &[dispatch_core::manifest::DspMaintenance {
+        every: Duration::from_secs(60),
+        run: custom_upkeep,
+    }],
     ..feature("nll_probe")
 }.registered(Some("nll"), "nll_probe");
+fn custom_upkeep(state: Arc<State>, dsp: String, due: bool) -> dispatch_core::manifest::Upkeep {
+    Box::pin(async move {
+        let at = dsp.clone();
+        let result = state
+            .run_serving(
+                dsp.clone(),
+                dispatch_core::server::cache::DataDomain::TENANT,
+                move |db| db.dsp(&at)?.exec("INSERT INTO nll_probe VALUES (2)", []),
+            )
+            .await;
+        MAINTAINED
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .send((dsp, due, result))
+            .unwrap();
+    })
+}
 fn custom_event(
     state: Arc<State>,
     dsp: String,
@@ -463,6 +493,44 @@ async fn custom_storage_switches_events_and_routes_belong_only_to_the_owner_code
             .status,
         404
     );
+}
+
+#[tokio::test]
+async fn scheduled_custom_upkeep_receives_only_its_owner_even_with_foreign_switch_rows() {
+    let server = Server::start().await;
+    let north = server.dsp("nll").await;
+    let summit = server.dsp("sum").await;
+    let own = north.clone();
+    server.state.run(move |db| {
+        let actor = testing::platform_owner(db);
+        // The owner sorts last: receiving its callback means this declaration already
+        // passed every non-owner, including one with an imported enabled switch row.
+        db.platform.exec("UPDATE dsps SET name='ZZ owner' WHERE id=?", [&own])?;
+        db.platform.exec("INSERT INTO dsp_features(dsp_id,feature,enabled,changed_at) VALUES (?,'nll_probe',1,'')", [&summit])?;
+        db.set_feature(&own, "nll_probe", true, &actor)?;
+        Ok(())
+    }).await.unwrap();
+    let (sent, mut received) = tokio::sync::mpsc::unbounded_channel();
+    *MAINTAINED.lock().unwrap() = Some(sent);
+    let (stop, stopped) = tokio::sync::watch::channel(false);
+    let mut scheduler = tokio::spawn(dispatch_core::collection::jobs::start(
+        server.state.clone(),
+        stopped,
+    ));
+    let (dsp, due, wrote) = tokio::select! {
+        found = received.recv() => found.unwrap(),
+        ended = &mut scheduler => panic!("scheduler ended before upkeep: {ended:?}"),
+    };
+    assert_eq!(dsp, north);
+    assert!(due);
+    assert_eq!(wrote.unwrap(), 1);
+    stop.send_replace(true);
+    scheduler.await.unwrap().unwrap();
+    assert!(
+        received.try_recv().is_err(),
+        "no other DSP received custom upkeep"
+    );
+    *MAINTAINED.lock().unwrap() = None;
 }
 
 #[tokio::test]
