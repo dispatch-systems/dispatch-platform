@@ -82,27 +82,6 @@ export function WriteupForm({
   };
   const save = useAction(
     async (andPrint: boolean) => {
-      const why = missing(draft);
-      if (why) {
-        setProblem(why);
-        const invalid =
-          (!draft.person
-            ? fields.current?.querySelector<HTMLElement>('[role="combobox"]')
-            : !draft.category
-              ? fields.current?.querySelector<HTMLElement>('select')
-              : draft.tier === 'final' && draft.final === 'suspension' && !draft.suspension.trim()
-                ? fields.current?.querySelector<HTMLElement>('[aria-label="Suspension length"]')
-                : undefined) ??
-          fields.current?.querySelector<HTMLElement>('[data-conduct-blank][data-empty]') ??
-          [...(fields.current?.querySelectorAll<HTMLTextAreaElement>('textarea') ?? [])].find(
-            (field) => !field.value.trim() || [...field.value].length > 4000,
-          );
-        (
-          invalid ??
-          fields.current?.querySelector<HTMLElement>(!draft.person ? '[role="combobox"]' : 'select')
-        )?.focus();
-        return;
-      }
       if (!context.data) {
         return;
       }
@@ -113,6 +92,31 @@ export function WriteupForm({
     },
     { inline: true },
   );
+  const attempt = async (andPrint: boolean) => {
+    const why = missing(draft);
+    if (why) {
+      setProblem(why);
+      const invalid =
+        (!draft.person
+          ? fields.current?.querySelector<HTMLElement>('[role="combobox"]')
+          : !draft.category
+            ? fields.current?.querySelector<HTMLElement>('select')
+            : draft.tier === 'final' && draft.final === 'suspension' && !draft.suspension.trim()
+              ? fields.current?.querySelector<HTMLElement>('[aria-label="Suspension length"]')
+              : undefined) ??
+        fields.current?.querySelector<HTMLElement>('[data-conduct-blank][data-empty]') ??
+        [...(fields.current?.querySelectorAll<HTMLTextAreaElement>('textarea') ?? [])].find(
+          (field) => !field.value.trim() || [...field.value].length > 4000,
+        );
+      (
+        invalid ??
+        fields.current?.querySelector<HTMLElement>(!draft.person ? '[role="combobox"]' : 'select')
+      )?.focus();
+      return false;
+    }
+    if (!context.data) return false;
+    return save.run(andPrint);
+  };
   const { leave, asking } = useSaveChanges({
     what: 'This writeup',
     busy: save.busy,
@@ -120,7 +124,7 @@ export function WriteupForm({
     saveable: !save.busy && !missing(draft) && Boolean(context.data),
     // Saved, it opens the writeup, so leaving goes no further.
     save: async () => {
-      await save.run(false);
+      await attempt(false);
       return false;
     },
   });
@@ -161,7 +165,7 @@ export function WriteupForm({
           <button
             type="button"
             disabled={save.busy || (!missing(draft) && !context.data)}
-            onClick={() => void save.run(false)}
+            onClick={() => void attempt(false)}
           >
             Save
           </button>
@@ -169,7 +173,7 @@ export function WriteupForm({
             type="button"
             className="primary"
             disabled={save.busy || (!missing(draft) && !context.data)}
-            onClick={() => void save.run(true)}
+            onClick={() => void attempt(true)}
           >
             <Printer size={16} />
             Save and print

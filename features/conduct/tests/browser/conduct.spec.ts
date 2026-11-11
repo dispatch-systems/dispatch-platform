@@ -231,8 +231,33 @@ test('photo preparation cancels safely, then a rotated copy is signed', async ({
   await page.getByRole('button', { name: 'Mark signed', exact: true }).click();
   await page.getByLabel(/^Signed copy/).setInputFiles(photoFile);
   await page.getByRole('button', { name: 'Rotate', exact: true }).click();
+  let uploads = 0,
+    signatures = 0;
+  await page.route('**/api/dsp/conduct/writeups/*/copy?*', async (route) => {
+    if (route.request().method() !== 'POST') return route.continue();
+    uploads++;
+    if (uploads === 1) {
+      await route.fetch();
+      await route.abort('connectionreset');
+    } else await route.continue();
+  });
+  await page.route('**/api/dsp/conduct/writeups/*/sign', async (route) => {
+    signatures++;
+    if (signatures === 1) {
+      await route.fetch();
+      await route.abort('connectionreset');
+    } else await route.continue();
+  });
   await page.getByRole('dialog').getByRole('button', { name: 'Mark signed', exact: true }).click();
+  const retry = page.getByRole('dialog');
+  await expect(retry.getByRole('alert')).toBeVisible();
+  await expect(retry.getByRole('button', { name: 'Rotate', exact: true })).toBeDisabled();
+  await retry.getByRole('button', { name: 'Mark signed', exact: true }).click();
+  await expect(retry.getByRole('alert')).toBeVisible();
+  await retry.getByRole('button', { name: 'Mark signed', exact: true }).click();
   await expect(page.getByText(/^Signed \d+\/\d+\/\d{4}$/)).toBeVisible();
+  expect(uploads).toBe(2);
+  expect(signatures).toBe(2);
   const copy = page.getByRole('img', { name: 'Signed copy', exact: true });
   await expect(copy).toBeVisible();
   await expect

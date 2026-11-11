@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { ApiError, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
 import { useCachedData } from '../../../core/shell/frontend/runtime/data-reads.js';
+import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { upload } from '../../../core/shell/frontend/runtime/transfer.js';
 import type {
   CategoryInput,
@@ -57,12 +58,30 @@ export const addWriteup = (input: WriteupInput) =>
   api<ConductSaved>(`${conductUrl}/writeups`, input);
 export const changeWriteup = (id: string, input: WriteupInput) =>
   api<ConductSaved>(writeupUrl(id), input);
-export const signWriteup = (id: string, signedOn: string, revision: number, request?: string) =>
-  api<ConductSaved>(`${writeupUrl(id)}/sign`, {
-    signedOn,
-    revision,
-    ...(request ? { request } : {}),
-  });
+export async function signWriteup(
+  id: string,
+  signedOn: string,
+  revision: number,
+  request?: string,
+) {
+  try {
+    return await api<ConductSaved>(`${writeupUrl(id)}/sign`, {
+      signedOn,
+      revision,
+      ...(request ? { request } : {}),
+    });
+  } catch (cause) {
+    dataCache.invalidate((url) => url.startsWith(conductUrl));
+    throw cause;
+  }
+}
+/** An irreversible action starts from an explicitly revalidated notice. */
+export const readWriteup = (id: string) =>
+  dataCache.read(
+    writeupUrl(id),
+    (signal) => api<ConductWriteup>(writeupUrl(id), undefined, signal),
+    true,
+  );
 export const deleteWriteup = (id: string, revision: number) =>
   api<ConductOverview>(`${writeupUrl(id)}/delete`, { revision });
 /** Keeps `photo` as the signed paper of the writeup `id` as it reads at `revision`. */
@@ -73,6 +92,7 @@ export async function keepCopy(id: string, revision: number, photo: Blob, reques
       photo,
     );
   } catch (cause) {
+    dataCache.invalidate((url) => url.startsWith(conductUrl));
     const message = cause instanceof ApiError ? errors[cause.code] : undefined;
     if (cause instanceof ApiError && message)
       throw new ApiError(cause.code, message, cause.status, cause.requestId);

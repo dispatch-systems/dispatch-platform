@@ -70,16 +70,6 @@ export function PhotoPicker({
             <button type="button" disabled={disabled} onClick={() => input.current?.click()}>
               Retake
             </button>
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => {
-                change(undefined);
-                if (input.current) input.current.value = '';
-              }}
-            >
-              Remove
-            </button>
           </div>
         </>
       )}

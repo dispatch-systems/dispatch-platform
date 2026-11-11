@@ -9,6 +9,7 @@ import { finalNote, printedDay, tierShort } from '../tiers.js';
 import { randomId } from '../../../../core/shell/frontend/lib/random-id.js';
 import { useLeaveGuard } from '../../../../core/shell/frontend/runtime/leave.js';
 import { PhotoPicker, type PickedPhoto } from './PhotoPicker.js';
+import { SignedCopy } from './SignedCopy.js';
 import { shrunk } from './photo.js';
 
 /** Marks a writeup signed on the day its paper was, with a photo of the paper if there is one. */
@@ -49,6 +50,7 @@ export function SignDialog({
       close();
     }
   };
+  const [attempted, setAttempted] = useState(false);
   const [phase, setPhase] = useState<'idle' | 'preparing' | 'saving'>('idle');
   // The photo this dialog kept, and the revision keeping it moved the writeup to.
   const [kept, setKept] = useState<{ photo: PickedPhoto; revision: number }>();
@@ -67,6 +69,7 @@ export function SignDialog({
           };
         }
         stop.signal.throwIfAborted();
+        setAttempted(true);
         committing.current = true;
         setPhase('saving');
         if (photo && photo !== kept?.photo && prepared.current) {
@@ -94,7 +97,7 @@ export function SignDialog({
             {note && ` ${note}`} · {printedDay(notice.writtenOn)}
           </span>
         </div>
-        <fieldset className="conduct-field" disabled={sign.busy}>
+        <fieldset className="conduct-field" disabled={sign.busy || attempted}>
           <span className="conduct-label" aria-hidden="true">
             Signed on
           </span>
@@ -107,7 +110,8 @@ export function SignDialog({
             onChange={setDay}
           />
         </fieldset>
-        <PhotoPicker photo={photo} change={setPhoto} disabled={sign.busy} />
+        <PhotoPicker photo={photo} change={setPhoto} disabled={sign.busy || attempted} />
+        {!photo && notice.hasCopy && <SignedCopy id={notice.id} revision={notice.revision} />}
         <ErrorBox message={sign.error} />
         <div className="form-actions">
           <button type="button" disabled={phase === 'saving'} onClick={cancel}>

@@ -112,7 +112,7 @@ function HistoryRows({
                       </td>
                       <td className="conduct-nowrap">{w.supervisorName}</td>
                       <td>
-                        {w.signedOn ? (
+                        {w.signedOn || !markSigned ? (
                           <SignedState writeup={w} />
                         ) : (
                           <button

@@ -11,7 +11,7 @@ import type {
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import { LeaveGuards, type Guards } from '../../../core/shell/frontend/runtime/leave.js';
 import { usePrintNotice } from './notice/usePrintNotice.js';
-import { type HistoryFilters, useWriteup } from '../api/client.js';
+import { type HistoryFilters, readWriteup, useWriteup } from '../api/client.js';
 import { useConductAddress, type ConductAddress } from './address.js';
 import { WriteupForm } from './compose/WriteupForm.js';
 import { draftOf, emptyDraft } from './compose/draft.js';
@@ -54,6 +54,10 @@ function Lists({
   write: () => void;
 }) {
   const [signing, setSigning] = useState<ConductWriteupRow>();
+  const beginSign = useAction(async (row: ConductWriteupRow) => {
+    const fresh = await readWriteup(row.id);
+    if (!fresh.signedOn) setSigning(fresh);
+  });
   return (
     <>
       <Header title="Conduct">
@@ -89,7 +93,9 @@ function Lists({
           filters={filters}
           change={change}
           openWriteup={(id) => open({ view: 'writeup', id })}
-          markSigned={setSigning}
+          markSigned={(row) => {
+            if (!beginSign.busy) void beginSign.run(row);
+          }}
         />
       )}
       {signing && (

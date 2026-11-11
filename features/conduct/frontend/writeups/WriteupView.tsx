@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { ChevronLeft, PenLine, Pencil, Printer, Trash2 } from 'lucide-react';
 import { ConfirmDialog, DataState, ErrorBox } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
-import type { ConductOverview } from '../../api/index.js';
-import { deleteWriteup, useWriteup } from '../../api/client.js';
+import type { ConductOverview, ConductWriteup } from '../../api/index.js';
+import { deleteWriteup, readWriteup, useWriteup } from '../../api/client.js';
 import { NoticePaper } from '../notice/NoticePaper.js';
 import { SignedCopy } from './SignedCopy.js';
 import { usePrintNotice } from '../notice/usePrintNotice.js';
@@ -26,7 +26,11 @@ export function WriteupView({
 }) {
   const read = useWriteup(id);
   const { print, sheet, error: printError } = usePrintNotice();
-  const [signing, setSigning] = useState(false);
+  const [signing, setSigning] = useState<ConductWriteup>();
+  const beginSign = useAction(async () => {
+    const fresh = await readWriteup(id);
+    if (!fresh.signedOn) setSigning(fresh);
+  });
   const [deleting, setDeleting] = useState(false);
   const remove = useAction(
     async (revision: number) => {
@@ -72,7 +76,12 @@ export function WriteupView({
                     Print
                   </button>
                   {!writeup.signedOn && (
-                    <button type="button" className="primary" onClick={() => setSigning(true)}>
+                    <button
+                      type="button"
+                      className="primary"
+                      disabled={beginSign.busy}
+                      onClick={() => void beginSign.run()}
+                    >
                       <PenLine size={16} />
                       Mark signed
                     </button>
@@ -89,11 +98,11 @@ export function WriteupView({
               {signing && (
                 <SignDialog
                   overview={overview}
-                  writeup={writeup}
-                  close={() => setSigning(false)}
+                  writeup={signing}
+                  close={() => setSigning(undefined)}
                   signed={() => {
                     take();
-                    setSigning(false);
+                    setSigning(undefined);
                   }}
                 />
               )}
