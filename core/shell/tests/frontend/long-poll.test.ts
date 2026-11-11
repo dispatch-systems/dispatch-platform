@@ -18,13 +18,22 @@ function page(t: test.TestContext) {
   }
 }
 
+function deferred() {
+  let resolve!: () => void;
+  let reject!: (cause: unknown) => void;
+  const promise = new Promise<void>((yes, no) => {
+    resolve = yes;
+    reject = no;
+  });
+  return { promise, resolve, reject };
+}
+
 test('pausing a live read lets its replacement run and ignores the old failure', async (t) => {
   page(t);
-  const requests: { signal: AbortSignal; done: ReturnType<typeof Promise.withResolvers<void>> }[] =
-    [];
+  const requests: { signal: AbortSignal; done: ReturnType<typeof deferred> }[] = [];
   const poll = longPoll(
     (signal) => {
-      const done = Promise.withResolvers<void>();
+      const done = deferred();
       requests.push({ signal, done });
       return done.promise;
     },
@@ -35,15 +44,15 @@ test('pausing a live read lets its replacement run and ignores the old failure',
   await poll.listen();
   assert.equal(requests.length, 1);
   poll.pause();
-  assert.equal(requests[0].signal.aborted, true);
+  assert.equal(requests[0]!.signal.aborted, true);
   const second = poll.listen();
-  requests[0].done.reject(new Error('late failure'));
+  requests[0]!.done.reject(new Error('late failure'));
   await first;
   // The old request finishing must neither clear the replacement nor schedule another read.
   t.mock.timers.tick(30_000);
   await poll.listen();
   assert.equal(requests.length, 2);
-  requests[1].done.resolve();
+  requests[1]!.done.resolve();
   await second;
   poll.dispose();
   t.mock.timers.tick(30_000);
