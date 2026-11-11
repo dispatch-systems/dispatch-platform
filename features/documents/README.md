@@ -29,9 +29,8 @@ and weeks, so it's best submitted well before the limit.
   its files', pictures' and copies' memory goes (`deleting.forgotten`), with none kept of
   what was under way. Behind `documents.use` too:
   `GET /api/dsp/documents/folder` (a folder and what it holds, or with `q`, what a search inside
-  it found), `GET …/folder/read` (the same, or that it hasn't changed), `GET …/query` and
-  `…/query/describe` (the same, a page at a time), `POST …/new` (a folder, Doc, Sheet or
-  Slides), `POST …/upload` (a file, up to 100 MB), `GET …/items/{id}/download` and
+  it found), `GET …/folder/read` (the same, or that it hasn't changed), `POST …/new` (a folder,
+  Doc, Sheet or Slides), `POST …/upload` (a file, up to 100 MB), `GET …/items/{id}/download` and
   `…/items/{id}/thumbnail`, and `POST …/items/{id}/rename`, `…/move` and `…/trash`. Behind
   `documents.use` as well, for a member's own Google account:
   `POST /api/dsp/documents/link` and `…/link/finish`, and `POST /api/dsp/documents/add`, for
@@ -74,27 +73,6 @@ and weeks, so it's best submitted well before the limit.
   the copy follows Google by its own five seconds and minute. The page keeps what it read under
   `…/folder`'s address, in its session's bounded cache, and gives each answer, an unchanged one
   too, the moment it asked for it, which a change Google confirmed waits on.
-- **Reading a page at a time:** `GET /api/dsp/documents/query` reads a folder or a search in
-  pages, and `GET …/query/describe` describes files such a read lists. No page of Dispatch calls
-  either yet: Documents reads whole folders, as above. `…/query` takes `id`, `q`, `filter`
-  (`all`, `folders`, `docs`, `sheets`, `slides` or `uploads`), `page`, from zero, and `size` (1
-  to 100, 100 unless it says), and to go on from an earlier answer, `snapshot`, `manifestSince`
-  and `since`. A read without `snapshot` opens: the server builds a compact manifest of
-  everything the folder or search holds, unfiltered, and each filter's order over it, in core's
-  bounded read cache. That takes memory in proportion to the files, and nothing of it is stored:
-  a restart or a restore loses it, as it does the copy. A read with `snapshot` continues: it
-  only looks its index up, never builds one, and answers `reset` (`missing` or `changed`) when
-  the index is missing, expired or evicted, or no longer current. A snapshot holds for one
-  connection generation, one run of the server, one copy and one state of that copy. A `full`
-  answer describes at most 100 files; `unchanged` says the page is exactly the one `since` names
-  under the manifest `manifestSince` names, and nothing wider. A `full` answer with a null
-  manifest keeps the manifest `manifestSince` names: it never means the folder is empty. Who
-  added and last changed each file, as named now, and each picture's link as shown go into every
-  page before it's hashed, an unchanged one too. `…/query/describe` describes up to 100 files of
-  a snapshot by ID, none twice and each one the snapshot holds, in the order asked, under that
-  snapshot and the member's access as it is now. Whatever calls these keeps a describe address
-  to 4 KiB, or less where its host takes less, drops what it gathered when one answers `reset`,
-  and after repeated resets reads the whole folder once instead.
 - **Google sign-in:** the platform's Google client, which this feature reads from the server's
   environment: `DISPATCH_DEV_GOOGLE_CLIENT_ID` and `…_SECRET` on Dev and its previews
   (`DISPATCH_PRODUCTION_…` on Production), declared in its `env`. Without both, no DSP can

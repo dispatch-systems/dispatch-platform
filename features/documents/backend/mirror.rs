@@ -34,7 +34,6 @@ const PENDING: usize = 100;
 /// What the account's Drive held when Dispatch last asked.
 struct Copy {
     tree: Arc<Tree>,
-    semantic: u64,
     /// Local confirmations, including ones that leave the tree semantically unchanged.
     confirmed: u64,
     /// Where the account's change feed goes on from.
@@ -53,22 +52,10 @@ impl Copy {
             .checked_add(1)
             .expect("Documents confirmation epoch exhausted");
     }
-    fn publish<T>(&mut self, change: impl FnOnce(&mut Tree) -> T) -> T {
-        let tree = Arc::make_mut(&mut self.tree);
-        let before = tree.mutation();
-        let result = change(tree);
-        if before != tree.mutation() {
-            self.semantic = self
-                .semantic
-                .checked_add(1)
-                .expect("Documents revision exhausted");
-        }
-        result
-    }
     fn flush(&mut self) {
         if !self.pending.is_empty() {
             let pending = std::mem::take(&mut self.pending);
-            self.publish(|tree| tree.put_many(pending));
+            Arc::make_mut(&mut self.tree).put_many(pending);
         }
     }
 }
@@ -77,15 +64,12 @@ impl Copy {
 /// asked once at a time. When asking last failed, and why.
 pub struct Mirror {
     copy: Mutex<Option<Copy>>,
-    /// Unique within this process, even when a forgotten DSP reconnects to the same root.
-    incarnation: u64,
     viewed: Mutex<Instant>,
     turn: Arc<tokio::sync::Mutex<()>>,
     failed: Mutex<Option<(Instant, String, u16)>>,
     pub(super) renewal: Arc<tokio::sync::Mutex<()>>,
     pub(super) sharing: Arc<tokio::sync::Mutex<()>>,
 }
-static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 static MIRRORS: LazyLock<Mutex<HashMap<Key, Arc<Mirror>>>> = LazyLock::new(Default::default);
 
 fn mirrors() -> MutexGuard<'static, HashMap<Key, Arc<Mirror>>> {
@@ -115,7 +99,6 @@ impl Default for Mirror {
     fn default() -> Self {
         Self {
             copy: Mutex::new(None),
-            incarnation: NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             viewed: Mutex::new(Instant::now()),
             turn: Arc::default(),
             failed: Mutex::new(None),
@@ -155,22 +138,6 @@ impl Mirror {
         copy.flush();
         Some(Arc::clone(&copy.tree))
     }
-    pub(super) fn incarnation(&self) -> u64 {
-        self.incarnation
-    }
-    /// A transient tree and its semantic sequence. The bounded query cache retains neither
-    /// this Arc nor an old mirror. Pending confirmations publish before a reading is captured.
-    pub(super) fn snapshot(&self, root: &str) -> Option<(Arc<Tree>, u64)> {
-        *self.viewed() = Instant::now();
-        let mut copy = self.copy();
-        let copy = copy.as_mut().filter(|copy| copy.tree.root() == root)?;
-        copy.flush();
-        Some((Arc::clone(&copy.tree), copy.semantic))
-    }
-    pub(super) fn matches(&self, root: &str, semantic: u64) -> bool {
-        self.snapshot(root)
-            .is_some_and(|(_, current)| current == semantic)
-    }
     /// Captured before a provider read, then checked under the publication lock.
     pub fn confirmation(&self) -> Option<u64> {
         self.copy().as_ref().map(|copy| copy.confirmed)
@@ -190,14 +157,8 @@ impl Mirror {
         if current.as_ref().map(|copy| copy.confirmed) != confirmed {
             return;
         }
-        let semantic = current.as_ref().map_or(1, |copy| {
-            copy.semantic
-                .checked_add(u64::from(!copy.tree.same_semantics(&tree)))
-                .expect("Documents revision exhausted")
-        });
         *current = Some(Copy {
             tree,
-            semantic,
             confirmed: confirmed.unwrap_or(0),
             changes,
             relist: false,
@@ -218,7 +179,7 @@ impl Mirror {
             copy.changes = changes.next;
             copy.synced = Instant::now();
             if !changes.changed.is_empty() {
-                let relist = copy.publish(|tree| tree.follow(changes.changed));
+                let relist = Arc::make_mut(&mut copy.tree).follow(changes.changed);
                 copy.relist |= relist;
             }
             copy.relist
@@ -245,7 +206,7 @@ impl Mirror {
     pub fn remove(&self, root: &str, id: &str) {
         self.change(root, |copy| {
             copy.confirm();
-            copy.publish(|tree| tree.remove(id));
+            Arc::make_mut(&mut copy.tree).remove(id);
         });
     }
     /// The turn to ask Google about the DSP's Drive, once whoever has it is done.

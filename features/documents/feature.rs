@@ -6,12 +6,9 @@ mod backend;
 /// What its API answers with, which the app writes to TypeScript.
 pub use api::types::{
     AccountKind, AddedFiles, ConnectionStatus, DocumentsAccount, DocumentsConnection,
-    DocumentsCounts, DocumentsDescriptionRead, DocumentsFilter, DocumentsFolder,
-    DocumentsFolderRead, DocumentsItem, DocumentsManifest, DocumentsManifestEntry,
-    DocumentsOverview, DocumentsQueryFolder, DocumentsQueryPage, DocumentsQueryRead,
-    DocumentsQueryScope, DocumentsResetReason, DriveFile, DriveStorage, FolderStep,
-    GoogleConnected, GoogleSignIn, ItemKind, MovedItem, MySharing, NewKind, PickerKeys,
-    PickerSetup, SharingState,
+    DocumentsFolder, DocumentsFolderRead, DocumentsItem, DocumentsOverview, DriveFile,
+    DriveStorage, FolderStep, GoogleConnected, GoogleSignIn, ItemKind, MovedItem, MySharing,
+    NewKind, PickerKeys, PickerSetup, SharingState,
 };
 
 use dispatch_core::{
@@ -31,10 +28,6 @@ pub const FEATURE: Feature = Feature {
     permissions: &[perm("documents.use", "Use Documents", 110)],
     retired_identifiers: &[("documents.manage", "documents.use")],
     dsp_connection: true,
-    cached: &[dispatch_core::server::cache::Cached {
-        read: "documents-query",
-        evicted: dispatch_core::server::cache::Evicted::ByAllBut(&[]),
-    }],
     routes: api::routes::routes,
     tables: &[(
         "dsp",
@@ -145,16 +138,6 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         FolderStep,
         DocumentsFolder,
         DocumentsFolderRead,
-        DocumentsFilter,
-        DocumentsResetReason,
-        DocumentsManifestEntry,
-        DocumentsManifest,
-        DocumentsCounts,
-        DocumentsQueryScope,
-        DocumentsQueryFolder,
-        DocumentsQueryPage,
-        DocumentsQueryRead,
-        DocumentsDescriptionRead,
         SharingState,
         MySharing,
         DriveStorage,
