@@ -1,0 +1,199 @@
+import type { Page, Route } from '@playwright/test';
+import {
+  test,
+  expect,
+  login,
+  openDsp,
+  signIn,
+  demo,
+  dspAddress,
+  linkIn,
+  type Dispatch,
+} from '../../../core/shell/tests/support/fixtures.js';
+import { capturedMail } from '../../../core/shell/tests/support/mail-support.js';
+
+// The server's owner metadata and private-asset access have HTTP coverage; the build has a
+// real two-owner bundle test. This stand-in exercises their browser admission and slots
+// without adding a custom feature to the product build.
+async function custom(page: Page, dispatch: Dispatch, hold = false) {
+  const platform = await dispatch.client();
+  const own = platform.session.dsps.find((dsp: { code: string }) => dsp.code === demo.memberDsp);
+  const id = `${own.code}_fuel_log`;
+  const routeId = `${own.code}-fuel-log`;
+  const entry = `/assets/custom-${own.code}-fuel-log-12345678.js`;
+  const style = `/assets/custom-${own.code}-fuel-log-12345678.css`;
+  const lazy = `/assets/custom-${own.code}-fuel-page-12345678.js`;
+  const module = `export const feature = { name: '${id}', routes: [{
+    id: '${routeId}', scope: 'dsp', label: 'Fuel Log', nav: true, feature: '${id}',
+    permission: ({view}) => view.permissions.includes('${id}.view'),
+    preload: () => import('${lazy}'), render: () => 'Fuel entries'
+  }] }; export const peopleKinds = []; export const peopleSources = []; export const peopleFeatures = [];`;
+  await page.route('**/api/session/dsp', async (route) => {
+    const response = await route.fetch();
+    const view = await response.json();
+    if (response.ok() && view.dsp.id === own.id) {
+      view.features.push(id);
+      view.permissions.push(`${id}.view`);
+      view.custom = {
+        catalog: [
+          {
+            id,
+            label: 'Fuel Log',
+            place: 500,
+            kind: 'page',
+            permissions: [`${id}.view`],
+            requires: [],
+            page: null,
+            tab: false,
+            connects: false,
+          },
+        ],
+        permissions: [
+          { id: `${id}.view`, label: 'View Fuel Log', group: null, implied: [], under: null },
+        ],
+        frontends: [{ name: id, url: entry, styles: [style], place: 500 }],
+      };
+    }
+    await route.fulfill({ response, json: view });
+  });
+  let release!: (route: Route) => void;
+  const held = new Promise<Route>((resolve) => {
+    release = resolve;
+  });
+  await page.route(`**${entry}`, async (route) => {
+    if (hold) release(route);
+    else await route.fulfill({ contentType: 'text/javascript', body: module });
+  });
+  await page.route(`**${lazy}`, (route) =>
+    route.fulfill({ contentType: 'text/javascript', body: 'export const ready = true;' }),
+  );
+  await page.route(`**${style}`, (route) =>
+    route.fulfill({ contentType: 'text/css', body: ':root { --owner-fuel-style: 1; }' }),
+  );
+  return { own, id, entry, lazy, held, module, platform };
+}
+
+test('an owner sees the custom page and role choice while another DSP receives none of its code or names', async ({
+  page,
+  browser,
+  dispatch,
+}) => {
+  const feature = await custom(page, dispatch);
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  const link = page.getByRole('link', { name: 'Fuel Log', exact: true });
+  await expect(link).toBeVisible();
+  const loaded = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === feature.lazy,
+  );
+  await link.click();
+  await loaded;
+  await expect(page.getByText('Fuel entries', { exact: true })).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue('--owner-fuel-style').trim(),
+      ),
+    )
+    .toBe('1');
+  await page.getByRole('link', { name: 'Team & Roles', exact: true }).click();
+  await page.getByRole('tab', { name: 'Roles', exact: true }).click();
+  await page.getByRole('button', { name: 'Create role', exact: true }).click();
+  await expect(
+    page
+      .getByRole('dialog', { name: 'Create role' })
+      .getByRole('switch', { name: 'View Fuel Log', exact: true }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.getByRole('button', { name: 'Exit view', exact: true }).click();
+  await openDsp(page, 'Summit Delivery');
+  await expect(link).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue('--owner-fuel-style').trim(),
+      ),
+    )
+    .toBe('');
+
+  // A real, separate DSP account gives the foreign browser no platform-owner exception.
+  const created = await feature.platform.post('/api/platform/dsps', {
+    name: 'Other Logistics',
+    ownerEmail: 'other-owner@dispatch.test',
+  });
+  expect(created.status).toBe(201);
+  const dsp = created.value.dsp;
+  expect(
+    (await feature.platform.post(`/api/platform/dsps/${dsp.id}/code`, { code: 'other' })).status,
+  ).toBe(200);
+  const mail = await capturedMail(dispatch.root, 'other-owner@dispatch.test');
+  const token = /token=([A-Za-z0-9_-]{43})/.exec(linkIn(mail.text))![1];
+  expect(
+    (
+      await dispatch.request(
+        `/api/invitations/${token}/accept`,
+        { firstName: 'Other', lastName: 'Owner', password: demo.password },
+        dispatch.at('other'),
+      )
+    ).status,
+  ).toBe(200);
+  const context = await browser.newContext();
+  try {
+    const other = await context.newPage();
+    const urls: string[] = [];
+    const bodies: Promise<string>[] = [];
+    other.on('response', (response) => {
+      urls.push(response.url());
+      if (/javascript|json|css|html/.test(response.headers()['content-type'] ?? ''))
+        bodies.push(response.text());
+    });
+    await other.goto(dspAddress(page, 'other'));
+    await signIn(other, 'other-owner@dispatch.test');
+    await expect(other.getByRole('link', { name: 'Team & Roles', exact: true })).toBeVisible();
+    await other.getByRole('link', { name: 'Team & Roles', exact: true }).click();
+    await other.getByRole('tab', { name: 'Roles', exact: true }).click();
+    await other.getByRole('button', { name: 'Create role', exact: true }).click();
+    await expect(other.getByRole('dialog', { name: 'Create role' })).toBeVisible();
+    await expect(other.getByRole('switch', { name: 'View Fuel Log', exact: true })).toHaveCount(0);
+    const session = await dispatch.client('other-owner@dispatch.test', demo.password, 'other');
+    expect(session.session.user.platformOwner).toBe(false);
+    expect(session.session.dsps.map((item: { id: string }) => item.id)).toEqual([dsp.id]);
+    for (const value of [...urls, ...(await Promise.all(bodies))]) {
+      expect(value).not.toContain(feature.id);
+      expect(value).not.toContain('Fuel Log');
+      expect(value).not.toContain(feature.entry);
+    }
+  } finally {
+    await context.close();
+  }
+});
+
+test('a delayed custom import cannot install its page or styles into the next DSP', async ({
+  page,
+  dispatch,
+}) => {
+  const feature = await custom(page, dispatch, true);
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  const held = await feature.held;
+  await page.goBack();
+  await expect(page.getByRole('heading', { name: 'DSPs', exact: true })).toBeVisible();
+  await openDsp(page, 'Summit Delivery');
+  await expect(page.getByRole('region', { name: 'DSP viewing mode', exact: true })).toContainText(
+    'Summit Delivery',
+  );
+  const finished = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === feature.entry,
+  );
+  await held.fulfill({ contentType: 'text/javascript', body: feature.module });
+  await finished;
+  await expect(page.getByRole('link', { name: 'Fuel Log', exact: true })).toHaveCount(0);
+  await expect(page.getByText('Fuel entries', { exact: true })).toHaveCount(0);
+  expect(
+    await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')].some((link) =>
+        new URL(link.href).pathname.startsWith('/assets/custom-'),
+      ),
+    ),
+  ).toBe(false);
+});
