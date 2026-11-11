@@ -6,8 +6,25 @@ runs:
     - name: Install the support execution sandbox
       shell: bash
       run: |
-        sudo apt-get update -qq
-        sudo apt-get install -y --no-install-recommends apparmor bubblewrap
+        # Use Ubuntu directly: the runner's mirror-list transport can fail on its Azure mirror.
+        . /etc/os-release
+        sources="$RUNNER_TEMP/support-ubuntu.sources"
+        cat > "$sources" <<SOURCES
+        Types: deb
+        URIs: https://archive.ubuntu.com/ubuntu
+        Suites: $VERSION_CODENAME $VERSION_CODENAME-updates
+        Components: main universe
+        Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+
+        Types: deb
+        URIs: https://security.ubuntu.com/ubuntu
+        Suites: $VERSION_CODENAME-security
+        Components: main universe
+        Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+        SOURCES
+        apt_options=(-o "Dir::Etc::sourcelist=$sources" -o 'Dir::Etc::sourceparts=-' -o Acquire::Retries=2)
+        sudo apt-get "${apt_options[@]}" update --error-on=any -qq
+        sudo apt-get "${apt_options[@]}" install -y --no-install-recommends apparmor bubblewrap
         # Allow namespaces for Bubblewrap while retaining its mount/network isolation.
         sudo apparmor_parser -r <<'PROFILE'
         abi <abi/4.0>,
