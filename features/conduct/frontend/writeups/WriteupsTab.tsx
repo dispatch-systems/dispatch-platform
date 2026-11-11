@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import { PenLine } from 'lucide-react';
-import { Empty, SearchInput } from '../../../../core/shell/frontend/ui/index.js';
-import type { ConductOverview, ConductTier, ConductWriteupRow } from '../../api/index.js';
+import { Empty } from '../../../../core/shell/frontend/ui/index.js';
+import type { ConductOverview, ConductWriteupRow } from '../../api/index.js';
 import { Person, RowLink, SignedState, WriteupTier, categoryName, personOf } from '../parts.js';
-import { printedDay, tierShort, tiers } from '../tiers.js';
+import { printedDay } from '../tiers.js';
+import { useConductFilters } from '../useConductFilters.js';
 
 type Status = '' | 'waiting' | 'signed';
 
@@ -17,9 +18,7 @@ export function WriteupsTab({
   openWriteup: (id: string) => void;
   markSigned: (writeup: ConductWriteupRow) => void;
 }) {
-  const [search, setSearch] = useState('');
-  const [category, setCategory] = useState('');
-  const [tier, setTier] = useState<ConductTier | ''>('');
+  const { search, category, tier, controls } = useConductFilters(overview.categories);
   const [status, setStatus] = useState<Status>('');
   const rows = useMemo(() => {
     const words = search.trim().toLocaleLowerCase();
@@ -34,36 +33,7 @@ export function WriteupsTab({
   return (
     <>
       <div className="table-toolbar conduct-toolbar">
-        <SearchInput
-          label="Search drivers"
-          placeholder="Search drivers"
-          value={search}
-          onChange={setSearch}
-        />
-        <select
-          aria-label="Category"
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-        >
-          <option value="">All categories</option>
-          {overview.categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-        <select
-          aria-label="Tier"
-          value={tier}
-          onChange={(e) => setTier(e.target.value as ConductTier | '')}
-        >
-          <option value="">All tiers</option>
-          {tiers.map((t) => (
-            <option key={t} value={t}>
-              {tierShort[t]}
-            </option>
-          ))}
-        </select>
+        {controls}
         <select
           aria-label="Status"
           value={status}

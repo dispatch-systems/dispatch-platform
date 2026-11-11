@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
-import { Empty, SearchInput } from '../../../../core/shell/frontend/ui/index.js';
-import type { ConductOverview, ConductTier } from '../../api/index.js';
+import { useMemo } from 'react';
+import { Empty } from '../../../../core/shell/frontend/ui/index.js';
+import type { ConductOverview } from '../../api/index.js';
 import { Person, RowLink, TierBadge, categoryName, personOf } from '../parts.js';
-import { printedDay, tierShort, tiers } from '../tiers.js';
+import { printedDay, tiers } from '../tiers.js';
+import { useConductFilters } from '../useConductFilters.js';
 
 /**
  * Everyone who stands at a tier in some category, or has a writeup awaiting signature: their
@@ -15,9 +16,7 @@ export function DriversTab({
   overview: ConductOverview;
   openDriver: (code: string) => void;
 }) {
-  const [search, setSearch] = useState('');
-  const [category, setCategory] = useState('');
-  const [tier, setTier] = useState<ConductTier | ''>('');
+  const { search, category, tier, controls } = useConductFilters(overview.categories);
   const rows = useMemo(() => {
     const codes = new Set([
       ...overview.standings.map((s) => s.person),
@@ -53,38 +52,7 @@ export function DriversTab({
   }, [overview, search, category, tier]);
   return (
     <>
-      <div className="table-toolbar conduct-toolbar">
-        <SearchInput
-          label="Search drivers"
-          placeholder="Search drivers"
-          value={search}
-          onChange={setSearch}
-        />
-        <select
-          aria-label="Category"
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-        >
-          <option value="">All categories</option>
-          {overview.categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-        <select
-          aria-label="Tier"
-          value={tier}
-          onChange={(e) => setTier(e.target.value as ConductTier | '')}
-        >
-          <option value="">All tiers</option>
-          {tiers.map((t) => (
-            <option key={t} value={t}>
-              {tierShort[t]}
-            </option>
-          ))}
-        </select>
-      </div>
+      <div className="table-toolbar conduct-toolbar">{controls}</div>
       {rows.length === 0 ? (
         <Empty title="No drivers" />
       ) : (
