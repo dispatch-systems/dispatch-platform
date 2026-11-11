@@ -924,7 +924,7 @@ async fn cancelled_live_staging_evicts_a_read_started_during_its_commit()
     let scope = Scope::tenant(read, dsp.clone());
     let at = dsp.clone();
     state
-        .run_bookkeeping(move |db| db.dsp(&at)?.set("live-staging-probe", json!(0)))
+        .run_bookkeeping(move |db| db.dsp(&at)?.set("live-staging-probe", &json!(0)))
         .await?;
     let (began, writing) = tokio::sync::oneshot::channel();
     let (commit, wait_commit) = mpsc::channel();
@@ -936,7 +936,7 @@ async fn cancelled_live_staging_evicts_a_read_started_during_its_commit()
                 .run_live_staging(at.clone(), move |db| {
                     let data = db.dsp(&at)?;
                     data.transaction(|| {
-                        data.set("live-staging-probe", json!(1))?;
+                        data.set("live-staging-probe", &json!(1))?;
                         let _ = began.send(());
                         let _ = wait_commit.recv();
                         Ok(())

@@ -32,6 +32,7 @@ url = { workspace = true }
 dispatch-timecard-contract = { path = "contract" }
 
 [dev-dependencies]
+tokio = { workspace = true }
 dispatch-core = { path = "../../core", features = ["testing"] }
 tempfile = { workspace = true }
 
