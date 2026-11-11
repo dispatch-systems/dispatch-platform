@@ -267,7 +267,7 @@ impl LiveReader for Routes {
                     Ok((request, db.connection_revision(&dsp, cortex::PROVIDER)?))
                 })
                 .await?;
-            let check = authorize(reading, &request, revision);
+            let check = authorize(&reading.state, &reading.dsp, &request, revision);
             let fallback = match held.read_native(&request, revision, &check).await? {
                 Ok(read) => return Ok(read),
                 Err(fallback) => fallback,
@@ -332,11 +332,12 @@ impl LiveReader for Routes {
 /// Recheck the current connection and scope after a provider wait, before its copied
 /// session can admit another request. Publication's guard remains a separate check.
 fn authorize(
-    reading: &Reading,
+    state: &std::sync::Arc<dispatch_core::State>,
+    dsp: &str,
     request: &Request,
     revision: Option<i64>,
 ) -> impl Fn() -> Pending<'static, ()> + Send + Sync {
-    let (state, dsp, request) = (reading.state.clone(), reading.dsp.clone(), request.clone());
+    let (state, dsp, request) = (state.clone(), dsp.to_owned(), request.clone());
     move || {
         let (state, dsp, request) = (state.clone(), dsp.clone(), request.clone());
         Box::pin(async move {

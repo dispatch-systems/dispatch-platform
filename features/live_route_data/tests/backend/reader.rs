@@ -227,3 +227,68 @@ async fn cancelling_a_first_native_read_retains_its_cooldown_before_the_browser_
     );
     assert!(held.native.is_none());
 }
+
+#[tokio::test]
+async fn replacing_credentials_during_a_cooldown_stops_the_old_session_before_its_retry() {
+    use dispatch_core::{State, testing};
+    use std::{sync::Arc, time::Duration};
+    testing::install(
+        &[&cortex::COLLECTOR],
+        &[&dispatch_routes::FEATURE, &crate::FEATURE],
+    );
+    let (_root, store, dsp) = testing::bootstrapped();
+    let owner = testing::platform_owner(&store);
+    store
+        .set_profile(
+            &dsp,
+            json!({"stationCode":"TST1","abbreviation":"FXTR","setupRequired":false}),
+        )
+        .unwrap();
+    for feature in ["routes", "live_route_data"] {
+        store.set_feature(&dsp, feature, true, &owner).unwrap();
+    }
+    let credentials = json!({"username":"fixture@example.test","password":"fixture-password"});
+    testing::connect(&store, &dsp, cortex::PROVIDER, &credentials).unwrap();
+    let revision = store
+        .connection_revision(&dsp, cortex::PROVIDER)
+        .unwrap()
+        .unwrap();
+    let request = dispatch_routes::live_request(&store, &dsp).unwrap();
+    let scope = routes::fixture(&request).unwrap().scope;
+    let state = Arc::new(State::new(store.config.clone()).unwrap());
+    let check = authorize(&state, &dsp, &request, Some(revision));
+    let page = r#"<title>DSP Console</title>{"hmacSession":{"sessionKey":"fixture-key","sessionId":"fixture-session"}}"#;
+    let (native, server) =
+        native(vec![response(200, None, page), response(429, Some(20), "")]).await;
+    let mut held = Held::default();
+    let mut reading = Box::pin(held.read_fresh(native, scope, revision, &request, &check));
+    std::future::poll_fn(|cx| {
+        let (result, events) = observability::recorded(|| reading.as_mut().poll(cx));
+        assert!(result.is_pending());
+        if events
+            .iter()
+            .any(|e| e["event"] == "cortex.routes_read_failed" && e["fields"]["status"] == 429)
+        {
+            Poll::Ready(())
+        } else {
+            Poll::Pending
+        }
+    })
+    .await;
+    server.await.unwrap();
+    tokio::time::pause();
+    testing::connect(
+        &store,
+        &dsp,
+        cortex::PROVIDER,
+        &json!({"username":"replacement@example.test","password":"replacement-password"}),
+    )
+    .unwrap();
+    tokio::time::advance(Duration::from_secs(20)).await;
+    let result = reading.await;
+    assert_eq!(
+        result.err().map(|e| e.code).as_deref(),
+        Some("connection_changed")
+    );
+    assert!(held.native.is_none());
+}
