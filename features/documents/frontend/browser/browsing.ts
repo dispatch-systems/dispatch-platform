@@ -105,7 +105,8 @@ function arranged(items: DocumentsItem[]) {
       Number(b.kind === 'folder') - Number(a.kind === 'folder') ||
       (a.kind === 'folder'
         ? order(a.name.toLowerCase(), b.name.toLowerCase())
-        : order(b.modifiedAt, a.modifiedAt)),
+        : order(b.modifiedAt, a.modifiedAt)) ||
+      order(a.id, b.id),
   );
 }
 /** What a reading of a folder or a search answers with, and the `moment` it was asked for. */
