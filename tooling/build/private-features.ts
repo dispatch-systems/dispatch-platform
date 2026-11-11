@@ -9,12 +9,16 @@ const VIRTUAL = '\0dispatch-custom:';
 const normalized = (file: string) => file.replaceAll('\\', '/').split('?')[0]!;
 
 /** Custom entries are independent build inputs, never an import map in the public app. */
-export function privateFeatures(root: string): Plugin {
+export function privateFeatures(directory: string): Plugin {
+  const root = fs.realpathSync(directory);
   const features = featureLocations(root).filter((feature) => feature.owner);
   const byName = new Map(features.map((feature) => [feature.name, feature]));
   const featureOf = (id: string) => {
     if (id.startsWith(VIRTUAL)) return byName.get(id.slice(VIRTUAL.length));
-    const relative = path.posix.relative(normalized(root), normalized(id));
+    const file = normalized(id);
+    // Vite's emitted assets name their sources relative to its app/frontend root.
+    const absolute = path.isAbsolute(file) ? file : path.resolve(root, 'app/frontend', file);
+    const relative = path.posix.relative(normalized(root), normalized(absolute));
     return featureAt(relative)?.owner ? featureAt(relative) : undefined;
   };
   const platform = (id: string) =>
@@ -35,6 +39,9 @@ export function privateFeatures(root: string): Plugin {
       return {
         build: {
           rolldownOptions: {
+            // These entries are imported by server-supplied URLs, so the public graph does
+            // not reference their exports. Keep the manifests and catalogs they expose.
+            preserveEntrySignatures: 'exports-only',
             ...(features.length
               ? {
                   input: {
@@ -66,12 +73,15 @@ export function privateFeatures(root: string): Plugin {
                 ],
               },
               chunkFileNames(chunk) {
-                const audience = audienceOf(chunk.moduleIds);
+                const audience = audienceOf([...chunk.moduleIds, chunk.facadeModuleId ?? '']);
                 if (audience?.owner) return `assets/custom-${audience.owner}-[name]-[hash].js`;
                 if (audience?.platform) return 'assets/owner-[name]-[hash].js';
                 const owner = /[\\/]([^\\/]+)[\\/]frontend[\\/]index\.tsx?$/.exec(
                   chunk.facadeModuleId ?? '',
                 )?.[1];
+                // Rolldown can name shared public dependencies after their private entry
+                // importers. Those importer names must not escape through public URLs.
+                if (chunk.name.includes('custom-')) return 'assets/shared-[hash].js';
                 return `assets/${chunk.name === 'frontend' && owner ? owner : '[name]'}-[hash].js`;
               },
               assetFileNames(asset) {
@@ -118,7 +128,9 @@ export function privateFeatures(root: string): Plugin {
       };
       for (const file of Object.values(bundle)) {
         const audience =
-          file.type === 'chunk' ? audienceOf(file.moduleIds) : audienceOf(file.originalFileNames);
+          file.type === 'chunk'
+            ? audienceOf([...file.moduleIds, file.facadeModuleId ?? ''])
+            : audienceOf(file.originalFileNames);
         if (!audience) continue;
         if (file.type === 'chunk') {
           const entry = file.facadeModuleId?.startsWith(VIRTUAL)
