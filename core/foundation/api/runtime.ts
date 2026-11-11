@@ -10,8 +10,14 @@ export const environment = z.enum(['preview', 'production']);
 export const providerMode = z.enum(['fixture', 'native']);
 
 export type Method = 'GET' | 'POST';
+/** The immutable tenant scope captured when the request was admitted. */
+export type ReplyContext = { dsp?: Readonly<{ id: string; code: string | null }> };
 /** An owner's reply validators: the one for a route's reply to a method, if it checks that. */
-export type Replies = (route: string, method: Method) => z.ZodMiniType | undefined;
+export type Replies = (
+  route: string,
+  method: Method,
+  context?: ReplyContext,
+) => z.ZodMiniType | undefined;
 
 /**
  * A reply, checked by the first of `owners` that has a validator for its route. A reply none
@@ -22,10 +28,11 @@ export function checkReply(
   path: string,
   method: Method,
   value: unknown,
+  context?: ReplyContext,
 ): unknown {
   const route = path.split('?')[0]!;
   let schema: z.ZodMiniType | undefined;
-  for (const replies of owners) if ((schema = replies(route, method))) break;
+  for (const replies of owners) if ((schema = replies(route, method, context))) break;
   if (!schema) return value;
   const result = schema.safeParse(value);
   // Never expose a server payload, session token or employee data in an error.

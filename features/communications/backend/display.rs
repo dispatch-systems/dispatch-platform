@@ -246,6 +246,7 @@ pub const DISPLAY: Section = section(
     ],
 )
 .on("display")
+.aliases(&["dispatch_phone.display"])
 .member()
 .custom()
 .keywords(&[

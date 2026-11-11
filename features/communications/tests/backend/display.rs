@@ -119,4 +119,28 @@ fn each_members_display_reads_as_they_saved_it_each_field_by_its_id() {
     assert_eq!(read(&member), chosen);
     // Another member still has the defaults.
     assert_eq!(read(&other), defaults);
+
+    let data = db.dsp(&dsp).unwrap();
+    let old = format!("section:communications.display:{member}");
+    let future = format!("section:dispatch_phone.display:{member}");
+    data.exec("UPDATE settings SET key=? WHERE key=?", [&future, &old])
+        .unwrap();
+    assert_eq!(read(&member), chosen);
+    settings::save(
+        &db,
+        &dsp,
+        &member,
+        &DISPLAY,
+        &serde_json::json!({"sound":true}),
+        1,
+        false,
+    )
+    .unwrap();
+    assert!(read(&member).sound);
+    assert_eq!(read(&other), defaults);
+    assert!(
+        data.one("SELECT key FROM settings WHERE key=?", [&future])
+            .unwrap()
+            .is_none()
+    );
 }

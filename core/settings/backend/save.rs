@@ -70,6 +70,7 @@ pub(crate) fn save_listing<'a>(
         })
         .collect::<Result<Vec<AuditChange>>>()?;
     if changes.is_empty() {
+        store::normalize(db, dsp, section, member)?;
         let values = Value::Object(now.values);
         return Ok((Saved::Saved { revision, values }, lists));
     }
@@ -82,7 +83,7 @@ pub(crate) fn save_listing<'a>(
     let revision = revision + 1;
     let people = db.dsp(dsp)?;
     db.across(&people, || {
-        store::write(&people, section, member, revision, &after, actor)?;
+        store::write(db, dsp, section, member, revision, &after, actor)?;
         if let Some(kept) = section.kept {
             kept.keep(db, dsp, actor, &after)?;
         }

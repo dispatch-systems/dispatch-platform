@@ -52,7 +52,8 @@ const FIELDS: &[Field] = &[
     time("at", "Collects at", "18:00"),
     timezone("zone", "Timezone", "America/Chicago"),
 ];
-const POLICY: Section = section("stand_in.policy", "Policy", "stand_in.manage", FIELDS);
+const POLICY: Section = section("stand_in.policy", "Policy", "stand_in.manage", FIELDS)
+    .aliases(&["next_stand_in.policy"]);
 
 #[derive(Debug, Deserialize, PartialEq)]
 struct Policy {
@@ -127,6 +128,115 @@ fn defaults_fill_what_is_unsaved_and_a_save_changes_only_what_it_sends() {
     assert_eq!(
         (now.days, now.mode, now.zone),
         (None, "final".into(), "UTC".into())
+    );
+}
+
+#[test]
+fn section_aliases_preserve_revisions_members_and_one_record_in_both_directions() {
+    let (_root, db, dsp, owner) = northline();
+    let data = db.dsp(&dsp).unwrap();
+    // An envelope from the future spelling: even its original JSON bytes survive a no-op.
+    let bytes = r#"{ "revision":7, "values":{"days":120,"mode":"snapshot"}, "at":"old-time", "by":"original" }"#;
+    data.exec(
+        "INSERT INTO settings(key,value) VALUES (?,?)",
+        ["section:next_stand_in.policy", bytes],
+    )
+    .unwrap();
+    assert_eq!(read::<Policy>(&db, &dsp, &POLICY).unwrap().days, Some(120));
+    let records = store::Records::load(&db, &dsp, None).unwrap();
+    assert_eq!(records.of(&POLICY, None).unwrap()["revision"], 7);
+    assert_eq!(
+        saved(&db, &dsp, &owner, json!({"days":120}), 6)
+            .unwrap_err()
+            .status,
+        409
+    );
+    saved(&db, &dsp, &owner, json!({"days":120}), 7).unwrap();
+    let (stored,): (String,) = data
+        .one_as(
+            "SELECT value FROM settings WHERE key='section:stand_in.policy'",
+            [],
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored, bytes);
+    assert!(
+        data.one(
+            "SELECT key FROM settings WHERE key='section:next_stand_in.policy'",
+            []
+        )
+        .unwrap()
+        .is_none()
+    );
+    saved(&db, &dsp, &owner, json!({"days":180}), 7).unwrap();
+
+    const NEXT: Section = section("next_stand_in.policy", "Policy", "stand_in.manage", FIELDS)
+        .aliases(&["stand_in.policy"]);
+    assert_eq!(read::<Policy>(&db, &dsp, &NEXT).unwrap().days, Some(180));
+    save(&db, &dsp, &owner, &NEXT, &json!({"days":240}), 8, false).unwrap();
+    assert_eq!(read::<Policy>(&db, &dsp, &POLICY).unwrap().days, Some(240));
+    saved(&db, &dsp, &owner, json!({"mode":"final"}), 9).unwrap();
+    assert_eq!(data.count("SELECT count(*) FROM settings WHERE key IN ('section:stand_in.policy','section:next_stand_in.policy')", []).unwrap(), 1);
+
+    const MINE: Section = section("stand_in.mine", "Mine", "access", FIELDS)
+        .aliases(&["next_stand_in.mine"])
+        .member();
+    let key = format!("section:next_stand_in.mine:{owner}");
+    data.set(
+        &key,
+        &json!({"revision":12,"values":{"days":60},"at":"then","by":"original"}),
+    )
+    .unwrap();
+    assert_eq!(
+        read_member::<Policy>(&db, &dsp, &owner, &MINE)
+            .unwrap()
+            .days,
+        Some(60)
+    );
+    assert_eq!(
+        read_member::<Policy>(&db, &dsp, "someone_else", &MINE)
+            .unwrap()
+            .days,
+        None
+    );
+    save(&db, &dsp, &owner, &MINE, &json!({"days":90}), 12, false).unwrap();
+    assert_eq!(
+        store::Records::load(&db, &dsp, Some(&owner))
+            .unwrap()
+            .of(&MINE, Some(&owner))
+            .unwrap()["revision"],
+        13
+    );
+
+    // Two records cannot be reconciled from revisions alone; neither is discarded.
+    data.set(
+        "section:next_stand_in.policy",
+        &json!({"revision":10,"values":{"days":365}}),
+    )
+    .unwrap();
+    let before = data
+        .all("SELECT key,value FROM settings ORDER BY key", [])
+        .unwrap();
+    assert_eq!(
+        read::<Policy>(&db, &dsp, &POLICY).unwrap_err().code,
+        "settings_identity_conflict"
+    );
+    assert_eq!(
+        saved(&db, &dsp, &owner, json!({"days":90}), 10)
+            .unwrap_err()
+            .code,
+        "settings_identity_conflict"
+    );
+    assert!(
+        store::Records::load(&db, &dsp, None)
+            .unwrap()
+            .of(&POLICY, None)
+            .is_err()
+    );
+    assert_eq!(
+        data.all("SELECT key,value FROM settings ORDER BY key", [])
+            .unwrap(),
+        before
     );
 }
 
@@ -350,7 +460,7 @@ fn a_listed_many_keeps_what_its_list_dropped_until_removed_and_refuses_a_new_one
     let (_root, db, dsp, owner) = northline();
     // Saved while its list still had "gone".
     let chosen = json!({"departments": ["gone", "ops"]});
-    store::write(&db.dsp(&dsp).unwrap(), &LISTED, None, 1, &chosen, &owner).unwrap();
+    store::write(&db, &dsp, &LISTED, None, 1, &chosen, &owner).unwrap();
     let save = |departments: Value, revision| {
         let values = json!({ "departments": departments });
         super::save(&db, &dsp, &owner, &LISTED, &values, revision, false)

@@ -41,6 +41,8 @@ pub struct Section {
     /// Permanent: `<feature>.<what>` (a core part's name for core's). Its values are kept
     /// under it.
     pub id: &'static str,
+    /// Equivalent section identities accepted on reads and saves. Only `id` is emitted.
+    pub aliases: &'static [&'static str],
     pub label: &'static str,
     /// The page it's on: its feature's own (`Page::Own`), or one of the shared pages.
     pub page: Page,
@@ -88,6 +90,7 @@ pub const fn section(
 ) -> Section {
     Section {
         id,
+        aliases: &[],
         label,
         page: Page::Own,
         permission,
@@ -106,6 +109,12 @@ pub const fn section(
     }
 }
 impl Section {
+    pub const fn aliases(self, aliases: &'static [&'static str]) -> Self {
+        Self { aliases, ..self }
+    }
+    pub fn accepts(&self, id: &str) -> bool {
+        self.id == id || self.aliases.contains(&id)
+    }
     /// On the shared page `page`, rather than its feature's own.
     pub const fn on(self, page: &'static str) -> Self {
         Self {
@@ -178,6 +187,18 @@ impl Section {
     }
     pub const fn order(self, order: u16) -> Self {
         Self { order, ..self }
+    }
+}
+
+/// A feature's raw DSP setting, separate from a section's revision envelope.
+#[derive(Clone, Copy)]
+pub struct StoredKey {
+    pub id: &'static str,
+    pub aliases: &'static [&'static str],
+}
+impl StoredKey {
+    pub const fn new(id: &'static str, aliases: &'static [&'static str]) -> Self {
+        Self { id, aliases }
     }
 }
 
@@ -554,6 +575,67 @@ pub(crate) fn check(registry: &Registry) {
             if let Err(why) = check_field(field) {
                 panic!("{id}'s field {}: {why}", field.id);
             }
+        }
+    }
+    let sections: Vec<_> = registry.sections().collect();
+    check_aliases(
+        registry,
+        sections
+            .iter()
+            .map(|(owner, section)| (*owner, section.id, section.aliases)),
+    );
+    check_aliases(
+        registry,
+        registry.features.iter().flat_map(|feature| {
+            feature.settings_keys.iter().map(move |key| {
+                assert!(
+                    key.id
+                        .strip_prefix(feature.name)
+                        .and_then(|s| s.strip_prefix('.'))
+                        .is_some_and(snake_case),
+                    "{} declares a stored setting outside its namespace",
+                    feature.name
+                );
+                (Some(*feature), key.id, key.aliases)
+            })
+        }),
+    );
+}
+
+fn check_aliases<'a>(
+    registry: &Registry,
+    declarations: impl IntoIterator<Item = (Option<&'a Feature>, &'static str, &'static [&'static str])>,
+) {
+    let declarations: Vec<_> = declarations.into_iter().collect();
+    let mut ids = BTreeSet::new();
+    for (_, id, _) in &declarations {
+        assert!(ids.insert(*id), "setting identity {id} is declared twice");
+    }
+    for (feature, id, aliases) in declarations {
+        for alias in aliases {
+            let (owner, what) = alias.split_once('.').unwrap_or(("", ""));
+            assert!(
+                snake_case(owner) && snake_case(what),
+                "setting alias {alias} isn't named <owner>.<what>"
+            );
+            assert!(
+                ids.insert(*alias),
+                "setting alias {alias} is already claimed"
+            );
+            assert!(
+                registry.features.iter().all(|other| {
+                    other.name != owner || feature.is_some_and(|feature| feature.name == owner)
+                }) && CORE_SECTIONS.iter().all(|section| {
+                    section.id.split_once('.').unwrap().0 != owner || feature.is_none()
+                }),
+                "setting alias {alias} claims another owner's namespace"
+            );
+            assert!(
+                feature
+                    .and_then(|f| f.owner)
+                    .is_none_or(|code| owner.starts_with(&format!("{code}_"))),
+                "setting alias {alias} is outside {id}'s DSP namespace"
+            );
         }
     }
 }

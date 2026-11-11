@@ -6,9 +6,10 @@
 use crate::{api::types::QuickReplies, backend::logged::together};
 use dispatch_core::{
     Result,
-    db::{AuditChange, Db, Store},
+    db::{AuditChange, Store},
     ensure,
-    manifest::{Section, section},
+    manifest::{Section, StoredKey, section},
+    settings,
 };
 use serde_json::json;
 
@@ -20,6 +21,7 @@ pub const QUICK_REPLIES: Section = section(
     &[],
 )
 .custom()
+.aliases(&["dispatch_phone.quick_replies"])
 .keywords(&["saved replies", "canned", "templates"]);
 
 /// The most a DSP keeps.
@@ -27,14 +29,19 @@ pub const MOST: usize = 30;
 /// The most characters one holds.
 pub const LONGEST: usize = 500;
 /// Where the DSP's settings keep them, with their revision: none saved yet is revision 0.
-const KEPT: &str = "communications.quick_replies";
+pub(crate) const KEPT: StoredKey = StoredKey::new(
+    "communications.quick_replies",
+    &["dispatch_phone.quick_replies"],
+);
 
 /// The DSP's quick replies, in their order, and their revision.
 pub fn quick_replies(db: &Store, dsp: &str) -> Result<QuickReplies> {
-    kept(&*db.dsp(dsp)?)
-}
-fn kept(db: &Db) -> Result<QuickReplies> {
-    Ok(serde_json::from_value(db.setting(KEPT, json!({}))?)?)
+    Ok(serde_json::from_value(settings::read_key(
+        db,
+        dsp,
+        &KEPT,
+        json!({}),
+    )?)?)
 }
 
 /// Keeps `replies` as the DSP's, in their order, each trimmed, as the member `by`: refused past
@@ -60,8 +67,7 @@ pub fn save_quick_replies(
         400,
     )?;
     together(db, dsp, || {
-        let people = db.dsp(dsp)?;
-        let before = kept(&people)?;
+        let before = quick_replies(db, dsp)?;
         ensure(
             before.revision == revision,
             "settings_changed_reload_before_saving",
@@ -71,7 +77,7 @@ pub fn save_quick_replies(
             replies,
             revision: revision + 1,
         };
-        people.set(KEPT, &serde_json::to_value(&saved)?)?;
+        settings::write_key(db, dsp, &KEPT, &serde_json::to_value(&saved)?)?;
         if saved.replies != before.replies {
             // How many were added and removed, never what they say: a reply holds whatever
             // someone at the DSP wrote, which the platform's log has no need to keep.

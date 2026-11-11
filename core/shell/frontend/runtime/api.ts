@@ -7,18 +7,27 @@ import { dataCache } from './data-cache.js';
 import { clearDestinations } from './navigation.js';
 import { mutationAffects } from './data-policy.js';
 import { errorLabelOf, isLongPoll } from './slots.js';
+import type { ReplyContext } from '../../../foundation/api/runtime.js';
+let replyContext: ReplyContext = {};
 export let csrf = '',
   view = '';
 /** Whose view a view token is: its DSP, and the role viewed as, without its signature. */
 export const viewing = (token: string) => token.slice(0, token.lastIndexOf('.') + 1);
-export function credentials(nextCsrf: string, nextView = '') {
+export function credentials(nextCsrf: string, nextView = '', dsp?: ReplyContext['dsp']) {
   if (csrf && csrf !== nextCsrf) {
     clearNavigationState();
     clearDestinations();
   }
-  if (csrf !== nextCsrf || view !== nextView) dataCache.clear();
+  if (
+    csrf !== nextCsrf ||
+    view !== nextView ||
+    replyContext.dsp?.id !== dsp?.id ||
+    replyContext.dsp?.code !== dsp?.code
+  )
+    dataCache.clear();
   csrf = nextCsrf;
   view = nextView;
+  replyContext = nextView && dsp ? { dsp: { id: dsp.id, code: dsp.code } } : {};
 }
 export class ApiError extends Error {
   constructor(
@@ -150,6 +159,7 @@ async function request<T>(
 ): Promise<T> {
   const finish = body === undefined ? undefined : beginBrowserWrite();
   const requestView = view;
+  const requestContext = replyContext;
   try {
     const response = await fetch(url, {
       method: body === undefined ? 'GET' : 'POST',
@@ -187,7 +197,12 @@ async function request<T>(
       );
     }
     try {
-      const parsed = (await parseApiResponse(url, body === undefined ? 'GET' : 'POST', value)) as T;
+      const parsed = (await parseApiResponse(
+        url,
+        body === undefined ? 'GET' : 'POST',
+        value,
+        requestContext,
+      )) as T;
       if (body !== undefined && requestView === view)
         dataCache.invalidate((key) => mutationAffects(url, key));
       return parsed;

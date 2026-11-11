@@ -83,6 +83,7 @@ pub(crate) fn platform(store: &Store) -> Result<()> {
     })
 }
 pub(crate) fn dsp(store: &Store, id: &str) -> Result<()> {
+    crate::settings::prepare(store, id)?;
     let code = store.feature_code(id)?;
     let data = store.dsp(id)?;
     data.transaction(|| {

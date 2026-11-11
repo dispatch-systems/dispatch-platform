@@ -65,6 +65,24 @@ had nothing to move from before Settings: its defaults hold, as for one with no 
 `settings::read` is one keyed lookup; Settings reads all of a member's records of a DSP in one
 query.
 
+A section may declare `.aliases(&[...])` for an identity-only transition. Typed reads, the
+bulk listing and saves accept one record at either spelling. A save uses the running
+declaration's key; even a no-op may move that key, preserving the original JSON and revision.
+Two records in a family fail with `settings_identity_conflict` without choosing or merging
+their values. Startup normalizes all members' records, including disabled features, in one
+DSP transaction before owner carry-over. Custom feature aliases apply only to their owning DSP.
+
+A feature's raw DSP setting uses `StoredKey::new(id, aliases)`, declared in `settings_keys`,
+with `settings::read_key` and `write_key`. This is a separate namespace from section revision
+envelopes. Startup and writes move keys with their payload intact; callers retain their own
+revision and audit contracts. An absent row remains absent until an actual save.
+
+The generated section identity families also normalize known reply IDs to the receiving
+browser bundle's spelling before validation results enter any cache. Request scope is captured
+at admission, so a response completing after a DSP change never resolves against the new
+DSP's custom aliases. This compatibility does not rename feature IDs, Settings page addresses,
+physical tables or browser storage, and does not retrofit untouched pre-bridge browser tabs.
+
 `settings::save` takes any of a section's fields, refuses one it hasn't or a value its kind
 doesn't hold (`invalid_input`) and a revision another save passed
 (`settings_changed_reload_before_saving`, 409), asks its `warn` unless confirmed, then in one

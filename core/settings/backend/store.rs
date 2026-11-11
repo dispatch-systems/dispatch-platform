@@ -4,7 +4,7 @@
 //! where it had nothing to move from before Settings, whose defaults hold as for one with no
 //! record. Only the DSP's own database is read or written, so one DSP's values never reach
 //! another's.
-use super::kinds;
+use super::{aliases, kinds};
 use crate::{
     Result,
     db::{Db, Store, iso},
@@ -21,7 +21,10 @@ pub(crate) struct Current {
 }
 
 /// Every record of a DSP one member reads: the DSP's, and that member's own, each by its key.
-pub(crate) struct Records(HashMap<String, Value>);
+pub(crate) struct Records {
+    records: HashMap<String, Value>,
+    code: Option<String>,
+}
 impl Records {
     /// In one query of the DSP's database, whatever number of sections it has: the DSP's, and
     /// `member`'s own unless none is asked for.
@@ -39,11 +42,27 @@ impl Records {
             .into_iter()
             .map(|(key, value)| Ok((key, serde_json::from_str(&value)?)))
             .collect::<Result<_>>()?;
-        Ok(Self(records))
+        Ok(Self {
+            records,
+            code: db.feature_code(dsp)?,
+        })
     }
     /// The record of `section`, the DSP's or the member's own as its scope says.
-    pub(crate) fn of(&self, section: &Section, member: Option<&str>) -> &Value {
-        self.0.get(&key(section, member)).unwrap_or(&Value::Null)
+    pub(crate) fn of(&self, section: &Section, member: Option<&str>) -> Result<&Value> {
+        let applicable = aliases::in_scope(section.id, self.code.as_deref());
+        let keys = record_keys(
+            section,
+            member,
+            if applicable { section.aliases } else { &[] },
+        );
+        let mut found = None;
+        for key in keys {
+            if let Some(value) = self.records.get(&key) {
+                crate::ensure(found.is_none(), "settings_identity_conflict", 503)?;
+                found = Some(value);
+            }
+        }
+        Ok(found.unwrap_or(&Value::Null))
     }
 }
 
@@ -54,7 +73,12 @@ pub(crate) fn record(
     section: &Section,
     member: Option<&str>,
 ) -> Result<Value> {
-    db.dsp(dsp)?.setting(&key(section, member), Value::Null)
+    let aliases = aliases::applicable(db, dsp, section.id, section.aliases)?;
+    let data = db.dsp(dsp)?;
+    match aliases::record(&data, &record_keys(section, member, aliases))? {
+        Some((_, value)) => Ok(serde_json::from_str(&value)?),
+        None => Ok(Value::Null),
+    }
 }
 
 /// What `section` holds by its `record`: the values the record keeps, or for a section kept
@@ -90,7 +114,8 @@ pub(crate) fn current(db: &Store, dsp: &str, section: &Section, record: &Value) 
 /// Records a save of `section` at `revision` by `actor`, with its values unless they're kept
 /// elsewhere.
 pub(crate) fn write(
-    people: &Db,
+    db: &Store,
+    dsp: &str,
     section: &Section,
     member: Option<&str>,
     revision: i64,
@@ -101,7 +126,24 @@ pub(crate) fn write(
     if section.kept.is_none() {
         record["values"] = values.clone();
     }
-    people.set(&key(section, member), &record)
+    let aliases = aliases::applicable(db, dsp, section.id, section.aliases)?;
+    let people = db.dsp(dsp)?;
+    people.transaction(|| {
+        aliases::normalize(&people, &record_keys(section, member, aliases))?;
+        people.set(&key(section.id, member), &record)
+    })
+}
+
+/// A valid no-op save may relocate its record, keeping its original bytes and metadata.
+pub(crate) fn normalize(
+    db: &Store,
+    dsp: &str,
+    section: &Section,
+    member: Option<&str>,
+) -> Result<()> {
+    let aliases = aliases::applicable(db, dsp, section.id, section.aliases)?;
+    let data = db.dsp(dsp)?;
+    data.transaction(|| aliases::normalize(&data, &record_keys(section, member, aliases)))
 }
 
 /// Deletes `member`'s own records, as their account goes: each of theirs, matched as `Records`
@@ -116,9 +158,16 @@ pub(crate) fn forget_member(people: &Db, member: &str) -> Result<()> {
 }
 
 /// Where a section's record is kept: `section:<id>`, or a member's own `section:<id>:<user>`.
-fn key(section: &Section, member: Option<&str>) -> String {
+fn key(id: &str, member: Option<&str>) -> String {
     match member {
-        Some(member) => format!("section:{}:{member}", section.id),
-        None => format!("section:{}", section.id),
+        Some(member) => format!("section:{id}:{member}"),
+        None => format!("section:{id}"),
     }
+}
+
+fn record_keys(section: &Section, member: Option<&str>, aliases: &[&str]) -> Vec<String> {
+    std::iter::once(section.id)
+        .chain(aliases.iter().copied())
+        .map(|id| key(id, member))
+        .collect()
 }

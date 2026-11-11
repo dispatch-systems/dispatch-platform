@@ -59,6 +59,9 @@ static PROBE: Feature = Feature {
 static CUSTOM: Feature = Feature {
     switch: dispatch_core::manifest::custom("nll_probe", "Owner probe", &[]),
     permissions: &[dispatch_core::manifest::perm("nll_probe.view", "View probe", 1).group("Probe")],
+    settings: &[section("nll_probe.limits", "Limits", "nll_probe.view", &[number("days", "Keep", 30, 3650, Some(90))])
+        .aliases(&["nll_next_probe.limits"]).on("data")],
+    settings_keys: &[dispatch_core::manifest::StoredKey::new("nll_probe.kept", &["nll_next_probe.kept"])],
     own_migrations: &[dispatch_core::db::OwnMigrations {
         kind: dispatch_core::db::Kind::DSP,
         list: &[dispatch_core::db::Migration {
@@ -217,6 +220,29 @@ impl Server {
             )
             .unwrap();
         drop(people);
+        // Startup must normalize this owner's off feature, but leave matching foreign
+        // records alone, including a conflicting pair that would otherwise stop startup.
+        for code in ["nll", "sum"] {
+            let (id,): (String,) = store
+                .platform
+                .one_as("SELECT id FROM dsps WHERE code=?", [code])
+                .unwrap()
+                .unwrap();
+            let data = store.dsp(&id).unwrap();
+            data.set(
+                "section:nll_next_probe.limits",
+                &json!({"revision":7,"values":{"days":120},"at":"original","by":"original"}),
+            )
+            .unwrap();
+            data.set("nll_next_probe.kept", &json!({"marker":code,"revision":4}))
+                .unwrap();
+            if code == "sum" {
+                data.set("section:nll_probe.limits", &json!({"foreign":true}))
+                    .unwrap();
+                data.set("nll_probe.kept", &json!({"foreign":true}))
+                    .unwrap();
+            }
+        }
         drop(store);
         let state = State::new(config).unwrap();
         let app = dispatch_core::server::http::router(state.clone())
@@ -471,6 +497,11 @@ async fn custom_storage_switches_events_and_routes_belong_only_to_the_owner_code
         assert!(db.dsp(&own)?.has_table("nll_probe")?);
         assert!(!db.dsp(&other)?.has_table("nll_probe")?);
         assert!(!db.feature_enabled(&own, "nll_probe")?);
+        assert_eq!(db.dsp(&own)?.setting("section:nll_probe.limits", Value::Null)?["at"], "original");
+        assert_eq!(dispatch_core::settings::read_key(db, &own, &CUSTOM.settings_keys[0], Value::Null)?["marker"], "nll");
+        assert_eq!(db.dsp(&other)?.setting("section:nll_probe.limits", Value::Null)?, json!({"foreign":true}));
+        assert_eq!(db.dsp(&other)?.setting("section:nll_next_probe.limits", Value::Null)?["revision"], 7);
+        assert_eq!(db.dsp(&other)?.setting("nll_next_probe.kept", Value::Null)?["marker"], "sum");
         let directory = db.dsp(&own)?;
         directory.exec("DELETE FROM owner_migrations WHERE owner='nll_probe'", [])?;
         directory.exec("DROP TABLE nll_probe", [])?;
@@ -505,6 +536,34 @@ async fn custom_storage_switches_events_and_routes_belong_only_to_the_owner_code
     .await;
     let owner = server.signed_in("owner@dispatch.test", &north).await;
     let other = server.signed_in("owner@dispatch.test", &summit).await;
+    assert_eq!(
+        server.days(&owner, "nll_probe.limits").await,
+        Some((json!(120), 7))
+    );
+    let body = json!({"values":{"days":180},"revision":7});
+    let saved = server
+        .send(
+            "POST",
+            "/api/dsp/settings/nll_next_probe.limits",
+            &owner,
+            Some(body.clone()),
+        )
+        .await;
+    assert_eq!(saved.status, 200, "{}", saved.body);
+    assert_eq!(saved.body["section"]["id"], "nll_probe.limits");
+    assert_eq!(saved.body["section"]["revision"], 8);
+    assert_eq!(
+        server
+            .send(
+                "POST",
+                "/api/dsp/settings/nll_next_probe.limits",
+                &other,
+                Some(body)
+            )
+            .await
+            .status,
+        404
+    );
     let answer = server.send("GET", "/api/dsp/nll-probe", &owner, None).await;
     assert_eq!(answer.status, 200, "{}", answer.body);
     assert_eq!(answer.body["count"], 1);

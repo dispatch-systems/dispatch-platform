@@ -22,7 +22,9 @@ static ON: Feature = Feature {
     switch: mandatory("stand_in", "Stand-in"),
     permissions: &[perm("stand_in.manage", "Manage Stand-in", 1)],
     settings: &[
-        section("stand_in.policy", "Policy", "stand_in.manage", DAYS).order(20),
+        section("stand_in.policy", "Policy", "stand_in.manage", DAYS)
+            .order(20)
+            .aliases(&["next_stand_in.policy"]),
         section("stand_in.part", "Part", "stand_in.manage", DAYS).part("stand_in.extra"),
         section("stand_in.mine", "Mine", roles::ACCESS, DAYS)
             .member()
@@ -177,6 +179,28 @@ fn a_member_sees_the_sections_of_features_on_whose_permissions_they_hold() {
     assert_eq!(
         refused(at.save(&member, "stand_in.policy", body.clone())),
         ("permission_denied".into(), 403)
+    );
+    assert_eq!(
+        refused(at.save(&member, "next_stand_in.policy", body.clone())),
+        ("permission_denied".into(), 403)
+    );
+    let owner = at.owner(&at.northline);
+    let aliased = at
+        .save(&owner, "next_stand_in.policy", body.clone())
+        .unwrap();
+    let SettingsSaved::Section {
+        section: aliased, ..
+    } = aliased
+    else {
+        panic!("saved")
+    };
+    assert_eq!(
+        (aliased.id.as_str(), aliased.revision),
+        ("stand_in.policy", 1)
+    );
+    assert_eq!(
+        refused(at.save(&owner, "stand_in.policy", body.clone())),
+        ("settings_changed_reload_before_saving".into(), 409)
     );
     for hidden in ["switched_off.policy", "stand_in.part", "stand_in.nothing"] {
         assert_eq!(

@@ -35,6 +35,7 @@ const PEOPLE_FEATURES: &str = "core/manifest/api/generated/people-features.ts";
 /// What features expose that a page shows, each with the feature offering it, for a page using
 /// one to ask whether a DSP has it.
 const EXPOSES: &str = "core/manifest/api/generated/exposes.ts";
+const SETTINGS_IDENTITIES: &str = "core/settings/api/generated/identities.ts";
 
 fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
     let cfg = ts_rs::Config::new().with_out_dir(root);
@@ -51,7 +52,26 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
     bindings.insert(PEOPLE_DATA.into(), people_data());
     bindings.insert(PEOPLE_FEATURES.into(), people_features());
     bindings.insert(EXPOSES.into(), exposes());
+    bindings.insert(SETTINGS_IDENTITIES.into(), settings_identities());
     bindings
+}
+
+fn settings_identities() -> String {
+    let identities: Vec<_> = dispatch_core::manifest::registry()
+        .sections()
+        .filter(|(_, section)| !section.aliases.is_empty())
+        .map(|(feature, section)| {
+            serde_json::json!({
+                "id": section.id,
+                "aliases": section.aliases,
+                "owner": feature.and_then(|f| f.owner),
+            })
+        })
+        .collect();
+    generated(
+        "settings section declarations",
+        &[("sectionIdentities", identities.into())],
+    )
 }
 
 /// A generated file of constants, each `as const`, under a header naming what they are

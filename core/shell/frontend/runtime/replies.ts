@@ -1,10 +1,11 @@
-import { checkReply, type Method } from '../../../foundation/api/runtime.js';
+import { checkReply, type Method, type ReplyContext } from '../../../foundation/api/runtime.js';
 import { replies as accounts } from '../../../accounts/api/runtime.js';
 import { replies as collection } from '../../../collection/api/runtime.js';
 import { replies as platformOwner } from '../../../platform_owner/api/runtime.js';
+import { replies as settings } from '../../../settings/api/runtime.js';
 import { loadReplyChecks } from './slots.js';
 
-const core = [accounts, collection, platformOwner];
+const core = [accounts, collection, platformOwner, settings];
 
 /**
  * A reply, checked by core's validators for its route or else by those an installed owner gives
@@ -15,8 +16,9 @@ export async function parseApiResponse(
   path: string,
   method: Method,
   value: unknown,
+  context?: ReplyContext,
 ): Promise<unknown> {
   const route = path.split('?')[0]!;
   const owners = core.some((replies) => replies(route, method)) ? core : await loadReplyChecks();
-  return checkReply(owners, path, method, value);
+  return checkReply(owners, path, method, value, context);
 }

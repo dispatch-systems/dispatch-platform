@@ -43,8 +43,8 @@ pub use live_readers::{Counts, LiveReader, Reads, Schedule};
 pub use page_sources::{Loads, PageSource, page_source};
 pub use permissions::{DefaultRole, Permission, perm};
 pub use settings::{
-    Field, Group, Kept, Kind, Options, Page, Scope, Section, SharedPage, choice, days, many,
-    number, pick, section, text, time, timezone, toggle,
+    Field, Group, Kept, Kind, Options, Page, Scope, Section, SharedPage, StoredKey, choice, days,
+    many, number, pick, section, text, time, timezone, toggle,
 };
 pub use storage::Tables;
 pub use switches::{Sub, Switch, custom, mandatory, optional, sub, tab};
@@ -203,6 +203,8 @@ pub struct Feature {
     /// Its sections of a DSP's Settings: what its members set, each section's fields saved
     /// together, which Settings draws and core keeps (`settings::Section`).
     pub settings: &'static [Section],
+    /// Raw DSP settings whose key identities need compatible readers and writers.
+    pub settings_keys: &'static [StoredKey],
     /// The collections it keeps.
     pub keeps: &'static [&'static dyn Keeper],
     /// What it adds to databases: its own, kept beside a collector's, or another owner's.
@@ -278,6 +280,7 @@ pub const fn feature(name: &'static str) -> Feature {
         live_readers: &[],
         env: &[],
         settings: &[],
+        settings_keys: &[],
         keeps: &[],
         migrations: &[],
         own_migrations: &[],
