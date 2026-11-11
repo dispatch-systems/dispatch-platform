@@ -136,7 +136,7 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
   const [filter, setFilter] = useUpdateState<Filter>('dsp-feature-filter', 'all');
   const [chosen, setChosen] = useState(() => hashQuery().get('feature') ?? '');
   // A switch that takes other features with it, asked about before it is made.
-  const [asking, setAsking] = useState<{ feature: FeatureEntry; on: boolean }>();
+  const [asking, setAsking] = useState<{ dsp: string; feature: FeatureEntry; on: boolean }>();
   // As read, with what was changed here over it: each change shows at once and saves behind the
   // ones before it, and once the last is saved the DSP's features are read again and the list's
   // counts follow. Before the features are read, what the DSP's summary says is on.
@@ -232,7 +232,7 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
       if (preview.length) switchTo(feature, on, preview);
       return;
     }
-    setAsking({ feature, on });
+    setAsking({ dsp: dsp.id, feature, on });
   };
   const see = (feature: FeatureEntry, to: Visibility) =>
     change(
@@ -463,7 +463,7 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
           </section>
         )}
       </div>
-      {asking && data && (
+      {asking?.dsp === dsp.id && data && (
         <FeatureSwitchDialog
           feature={asking.feature}
           on={asking.on}
