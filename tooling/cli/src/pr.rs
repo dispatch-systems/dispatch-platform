@@ -75,6 +75,10 @@ pub fn sections(title: &str) -> Result<&'static [&'static str]> {
         _ => &["Summary", "Why", "Change", "Risk", "Verification", "Review"],
     })
 }
+/// The body of the PR of the checkout at `root`: `pr-body.md` in its scratch folder.
+pub fn body_path(root: &Path) -> Result<std::path::PathBuf> {
+    Ok(workspace::checkout_scratch(root)?.join("pr-body.md"))
+}
 /// The text of the body's section `name`, trimmed, if it has one.
 pub fn section<'a>(body: &'a str, name: &str) -> Option<&'a str> {
     let heading = format!("## {name}");
@@ -239,7 +243,7 @@ pub fn titled(text: &str) -> (Option<&str>, &str) {
 /// `dispatchdev pr --skeleton --title <title>`: the body's title and sections, in the checkout's
 /// scratch folder, where `pr` reads it from.
 pub fn start_body(root: &Path, title: &str) -> Result<()> {
-    let body = workspace::checkout_scratch(root)?.join("pr-body.md");
+    let body = body_path(root)?;
     let wanted = skeleton(title, &body)?;
     println!("Wrote {}: {}.", body.display(), wanted.join(", "));
     println!(
@@ -297,7 +301,7 @@ pub fn publish(
     env: &Environment,
     runner: &dyn Runner,
 ) -> Result<Option<Published>> {
-    let body = workspace::checkout_scratch(root)?.join("pr-body.md");
+    let body = body_path(root)?;
     let text = std::fs::read_to_string(&body).map_err(|_| {
         format!(
             "{} is missing: `dispatchdev pr --skeleton --title \"<title>\"` starts it.",

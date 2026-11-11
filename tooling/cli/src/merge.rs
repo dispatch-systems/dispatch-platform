@@ -158,7 +158,7 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
         pull.head == head,
         "GitHub's PR head isn't this commit yet: wait a moment, or `dispatchdev pr`.",
     )?;
-    let written = std::fs::read_to_string(workspace::checkout_scratch(root)?.join("pr-body.md"))?;
+    let written = std::fs::read_to_string(pr::body_path(root)?)?;
     let (title, body) = pr::titled(&written);
     require(
         title == Some(pull.title.as_str()) && body.trim() == pull.body.trim(),

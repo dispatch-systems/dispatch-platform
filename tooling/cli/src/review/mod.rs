@@ -715,7 +715,7 @@ pub fn ui(path: &str) -> bool {
 /// What the change is for, from its PR body: the title, its Summary, and its Problem, Symptom
 /// or Why.
 fn purpose(root: &Path) -> Result<String> {
-    let path = workspace::checkout_scratch(root)?.join("pr-body.md");
+    let path = pr::body_path(root)?;
     let text = fs::read_to_string(&path).map_err(|_| {
         format!(
             "{} is missing: the brief takes the change's purpose from it.",
@@ -906,7 +906,7 @@ pub fn record(
             paths.join(", ")
         ));
     }
-    let body = workspace::checkout_scratch(root)?.join("pr-body.md");
+    let body = pr::body_path(root)?;
     let text = fs::read_to_string(&body)?;
     workspace::write_private(&body, &pr::with_review_line(&text, &line)?)?;
     // The fixes and the body go up before the pass is kept, held to what `dispatchdev pr` holds
