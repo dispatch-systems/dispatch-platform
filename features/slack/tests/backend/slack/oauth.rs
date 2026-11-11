@@ -29,6 +29,12 @@ async fn custom_oauth_scopes_and_workspace_updates_belong_only_to_the_owner_dsp(
     })));
     state
         .read(move |db| {
+            let manifest = app::run(&db.config, &["slack-manifest".into()])?;
+            let optional = manifest["oauth_config"]["scopes"]["bot_optional"]
+                .as_array()
+                .unwrap();
+            assert!(optional.iter().any(|scope| scope == "reactions:write"));
+            assert!(!optional.iter().any(|scope| scope == "files:read"));
             for (dsp, team, extra) in [(&owner, "T0CUSTOM1", true), (&other, "T0CUSTOM2", false)] {
                 let install = connection::new_state(dsp, connection::Started::Own)?;
                 let url = connection::install_url(db, &slack, &install, Some(team.into()))?;

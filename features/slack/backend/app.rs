@@ -114,6 +114,25 @@ pub fn run(config: &Config, args: &[String]) -> Result<Value> {
 /// each other in a workspace.
 fn manifest(config: &Config) -> Value {
     let origin = &config.origin;
+    let shared = with_integrations(
+        SCOPES,
+        integrations::declared()
+            .filter(|(feature, _)| feature.owner.is_none())
+            .map(|(_, integration)| integration),
+        |integration| integration.needs,
+    );
+    let all = scopes();
+    let custom: Vec<_> = all
+        .iter()
+        .filter(|scope| !shared.contains(scope))
+        .copied()
+        .collect();
+    let mut scopes = json!({"bot": all});
+    if !custom.is_empty() {
+        // Register custom capabilities without making them mandatory for every installer.
+        // Dispatch's install URL requests only the scopes_for that DSP.
+        scopes["bot_optional"] = json!(custom);
+    }
     let (name, handle) = if config.environment.is_production() {
         ("Dispatch", "dispatch")
     } else {
@@ -134,7 +153,7 @@ fn manifest(config: &Config) -> Value {
         },
         "oauth_config": {
             "redirect_urls": [format!("{origin}{RETURN_PATH}")],
-            "scopes": {"bot": scopes()},
+            "scopes": scopes,
         },
         "settings": {
             "event_subscriptions": {
