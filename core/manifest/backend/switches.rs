@@ -13,6 +13,8 @@ pub struct Switch {
     pub requires: &'static [&'static str],
     /// Whether every DSP has it, with no switch to turn it off.
     pub mandatory: bool,
+    /// Available only to the DSP assigned by its feature folder.
+    pub custom: bool,
     /// The features it grew from: new to a platform that ran before, it starts on, once, for
     /// each DSP with one of them on.
     pub starts_on_with: &'static [&'static str],
@@ -29,6 +31,7 @@ pub const fn optional(
         label,
         requires,
         mandatory: false,
+        custom: false,
         starts_on_with: &[],
     }
 }
@@ -40,7 +43,19 @@ pub const fn mandatory(id: &'static str, label: &'static str) -> Switch {
         label,
         requires: &[],
         mandatory: true,
+        custom: false,
         starts_on_with: &[],
+    }
+}
+/// An optional feature available to exactly one DSP, selected by its folder.
+pub const fn custom(
+    id: &'static str,
+    label: &'static str,
+    requires: &'static [&'static str],
+) -> Switch {
+    Switch {
+        custom: true,
+        ..optional(id, label, requires)
     }
 }
 impl Switch {
@@ -59,6 +74,7 @@ pub(crate) const UNDECLARED: Switch = Switch {
     label: "",
     requires: &[],
     mandatory: false,
+    custom: false,
     starts_on_with: &[],
 };
 /// A part of a feature's page, switched on its own inside the page: one of its tabs, or any
@@ -122,6 +138,32 @@ impl Sub {
 pub(crate) fn check(registry: &Registry) {
     for feature in registry.features {
         let switch = feature.switch;
+        assert_eq!(
+            switch.custom,
+            feature.owner.is_some(),
+            "{} custom switch and folder ownership disagree",
+            feature.name
+        );
+        if let Some(code) = feature.owner {
+            assert!(
+                (2..=16).contains(&code.len())
+                    && code
+                        .bytes()
+                        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit()),
+                "invalid custom owner code"
+            );
+            assert!(
+                feature
+                    .name
+                    .strip_prefix(code)
+                    .is_some_and(|name| name.starts_with('_') && name.len() > 1),
+                "custom feature id must start with its owner code"
+            );
+            assert!(
+                !switch.mandatory && feature.exposes.is_empty(),
+                "custom features must be optional and cannot expose contracts"
+            );
+        }
         assert!(
             !switch.id.is_empty() && !switch.label.is_empty(),
             "{} says neither whether it is mandatory nor optional: give it \

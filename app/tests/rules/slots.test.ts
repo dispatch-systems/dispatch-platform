@@ -206,7 +206,9 @@ async function frontendContributions() {
   const pages: DspPage[] = [];
   const pageTabs: (Contribution & { page: string })[] = [];
   const manifests = files.filter((file) =>
-    /^((core|features|collectors)\/[^/]+|mcp)\/frontend\/feature\.ts$/.test(file),
+    /^((core|collectors)\/[^/]+|features\/(?:custom\/[^/]+\/)?[^/]+|mcp)\/frontend\/feature\.ts$/.test(
+      file,
+    ),
   );
   for (const file of manifests) {
     const { feature } = (await import(pathToFileURL(path.join(root, file)).href)) as {

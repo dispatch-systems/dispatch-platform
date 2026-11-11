@@ -4,6 +4,7 @@ use super::*;
 
 fn feature(id: &'static str, kind: Kind, permissions: &'static [&'static str]) -> Feature {
     Feature {
+        owner: None,
         id,
         label: id,
         kind,

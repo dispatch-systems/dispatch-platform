@@ -45,7 +45,7 @@ pub use settings::{
     number, pick, section, text, time, timezone, toggle,
 };
 pub use storage::Tables;
-pub use switches::{Sub, Switch, mandatory, optional, sub, tab};
+pub use switches::{Sub, Switch, custom, mandatory, optional, sub, tab};
 pub use upkeep::{Maintenance, Upkeep};
 
 use crate::{
@@ -153,6 +153,8 @@ impl Registry {
 pub struct Feature {
     /// Its directory's name.
     pub name: &'static str,
+    /// The one DSP code that owns it, assigned by the generated feature list.
+    pub owner: Option<&'static str>,
     /// Where it sits among the features: its pages in the sidebar, its page on the DSPs page,
     /// its permissions' section on the role sheet. Lowest first; two at one place go by name,
     /// so a number need not be free.
@@ -249,6 +251,7 @@ pub struct Feature {
 pub const fn feature(name: &'static str) -> Feature {
     Feature {
         name,
+        owner: None,
         place: u16::MAX,
         retired_identifiers: &[],
         upgrade_storage: None,
@@ -282,4 +285,52 @@ pub const fn feature(name: &'static str) -> Feature {
         page_sources: &[],
         on: &[],
     }
+}
+
+impl Feature {
+    /// Binds a manifest to its folder's identity. Only the generated app list sets ownership.
+    pub const fn registered(mut self, owner: Option<&'static str>, name: &'static str) -> Self {
+        assert!(
+            same(self.name, name),
+            "feature name does not match its folder"
+        );
+        assert!(
+            self.owner.is_none(),
+            "feature ownership is assigned by its folder"
+        );
+        self.owner = owner;
+        self
+    }
+    /// Whether this declaration belongs to the DSP with this code.
+    pub fn belongs_to(&self, code: Option<&str>) -> bool {
+        self.owner.is_none_or(|owner| Some(owner) == code)
+    }
+    /// Its repository-relative directory, for generated inventories.
+    pub fn directory(&self) -> String {
+        match self.owner {
+            Some(code) => format!(
+                "features/custom/{code}/{}",
+                self.name
+                    .strip_prefix(code)
+                    .unwrap()
+                    .strip_prefix('_')
+                    .unwrap()
+            ),
+            None => format!("features/{}", self.name),
+        }
+    }
+}
+const fn same(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut i = 0;
+    while i < a.len() {
+        if a[i] != b[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
 }

@@ -1,3 +1,4 @@
+import { featureDirectory, featureLocations } from '../shared/features.js';
 import { renderFeature, settingsNote, showing } from './new-feature.js';
 import { UsageError, names, parseArguments } from './common.js';
 import { exists, features, collectors, files, pageOf, peopleSources, read } from './repository.js';
@@ -71,7 +72,10 @@ export async function planAdd(root: string, argv: string[]) {
     throw new UsageError('--shown is what a page shows of a contract: add contract <name> --shown');
   if (!features(root).includes(name))
     throw new UsageError(`--to names a feature, and ${name} is none`);
-  const dir = `features/${name}`;
+  const dir = featureDirectory(root, name);
+  const custom = featureLocations(root).find((feature) => feature.name === name)?.owner;
+  if (custom && piece === 'contract')
+    throw new UsageError('Custom features cannot expose contracts');
   if (piece === 'api' && exists(root, `${dir}/api`))
     throw new UsageError(`${name} has api/ already: add its endpoints there`);
   if (piece === 'page' && pageOf(root, name))
@@ -132,7 +136,7 @@ export async function planAdd(root: string, argv: string[]) {
         ? `${table} is in ${name}'s own database: connect its people by hand`
         : `--table names one of ${name}'s tables: ${Object.values(tables).flat().join(', ') || 'it has none'}`,
     );
-  const label = /\b(?:optional|mandatory)\(\s*"[^"]+",\s*"([^"]+)"/.exec(manifest)?.[1];
+  const label = /\b(?:optional|mandatory|custom)\(\s*"[^"]+",\s*"([^"]+)"/.exec(manifest)?.[1];
   const { pascal, slug } = names(name);
   // Its sidebar takes the feature's id, which its page of that id, with a parent, can't share.
   if (had && !joins && had.id === slug)
@@ -254,7 +258,7 @@ export async function planAdd(root: string, argv: string[]) {
     const kindOf = (each: string) =>
       exists(root, `collectors/${each}/collector.rs`)
         ? 'collector'
-        : each !== name && exists(root, `features/${each}/feature.rs`)
+        : each !== name && exists(root, `${featureDirectory(root, each)}/feature.rs`)
           ? 'feature'
           : undefined;
     const mapped = (

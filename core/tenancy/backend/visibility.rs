@@ -126,6 +126,11 @@ impl Store {
         actor: &str,
     ) -> Result<FeatureVisibility> {
         let feature = find(id).ok_or_else(|| crate::Error::new("feature_not_found", 404))?;
+        ensure(
+            self.owns_feature(dsp, feature.owner)?,
+            "feature_not_found",
+            404,
+        )?;
         ensure(!feature.mandatory, "feature_mandatory", 409)?;
         ensure(feature.kind != Kind::Connection, "invalid_input", 400)?;
         self.platform.transaction(|| {

@@ -103,10 +103,24 @@ fn new_databases_match_the_recorded_schema() {
     store.provision(&id).unwrap();
     // Core's databases, then each collector's, with those its collections' keepers add.
     let mut leases = vec![(Kind::DSP, store.dsp(&id).unwrap())];
+    let mut custom = Vec::new();
     for provider in Provider::all() {
         let collector = provider.collector().database();
         leases.push((collector, store.collector(&id, provider).unwrap()));
         for storage in provider.added_storages() {
+            if registry().features.iter().any(|feature| {
+                feature.owner.is_some()
+                    && feature.keeps.iter().any(|keeper| {
+                        keeper
+                            .storages()
+                            .iter()
+                            .any(|added| added.kind == storage.kind)
+                    })
+            }) {
+                let file = root.path().join(format!("{}.sqlite", storage.kind.name()));
+                custom.push((storage.kind, Db::create(&file, storage.kind, "").unwrap()));
+                continue;
+            }
             let added = store.added_storage(&id, provider, storage).unwrap();
             leases.push((storage.kind, added));
         }
@@ -115,6 +129,7 @@ fn new_databases_match_the_recorded_schema() {
         [(Kind::PLATFORM, &store.platform), (Kind::JOBS, &store.jobs)]
             .into_iter()
             .chain(leases.iter().map(|(kind, db)| (*kind, &**db)))
+            .chain(custom.iter().map(|(kind, db)| (*kind, db)))
             .collect();
     let mut opened: Vec<_> = databases.iter().map(|(kind, _)| kind.name()).collect();
     let mut declared: Vec<_> = registry().databases().map(|kind| kind.name()).collect();
@@ -132,6 +147,9 @@ fn new_databases_match_the_recorded_schema() {
         }
     }
     for (kind, db) in databases {
+        // The schema catalogue records the union of every owner's tables. Runtime DSP
+        // isolation is exercised by the custom-feature HTTP fixture.
+        migrate(db, kind).unwrap();
         snapshot::compare(&recording(kind), &dump(db));
         let expected: Vec<i64> = kind.migrations().iter().map(|m| m.id.into()).collect();
         assert_eq!(ids(db), expected);

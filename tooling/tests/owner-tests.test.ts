@@ -389,3 +389,27 @@ test("a core part's integration tests in core's one program run by their modules
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('a custom stable id selects only its nested owner even when leaf names match', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-custom-owner-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const write = (file: string, text: string) => {
+    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+    fs.writeFileSync(path.join(root, file), text);
+  };
+  write('tooling/ci/test-plan.json', '{"native":{}}');
+  for (const code of ['fscl', '12']) {
+    const dir = `features/custom/${code}/fuel_log`;
+    write(`${dir}/feature.rs`, '');
+    write(
+      `${dir}/Cargo.toml`,
+      `[package]\nname = "dispatch-${code}-fuel-log"\n[lib]\npath = "feature.rs"\n`,
+    );
+    write(`${dir}/tests/api/log.test.ts`, '');
+  }
+  const selected = ownerTests(root, 'feature', '12_fuel_log', { build: false }).commands.map(shell);
+  assert.deepEqual(selected, [
+    'cargo test --locked -p dispatch-12-fuel-log',
+    'node node_modules/tsx/dist/cli.mjs --test features/custom/12/fuel_log/tests/api/log.test.ts',
+  ]);
+});

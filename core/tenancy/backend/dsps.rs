@@ -120,6 +120,14 @@ impl Store {
             "UPDATE dsps SET code=?,revision=revision+1 WHERE id=?",
             [code.as_str(), id],
         )?;
+        if crate::manifest::registry()
+            .features
+            .iter()
+            .any(|f| f.owner == Some(code.as_str()))
+        {
+            self.migrate_dsp(id)?;
+            self.open_collectors(id)?;
+        }
         self.set_profile(id, json!({"abbreviation": code.to_ascii_uppercase()}))?;
         Ok(code)
     }

@@ -557,8 +557,10 @@ fn feature_map(root: &Path) -> String {
             "env": feature.env,
             "settings": feature.settings.iter().map(|section| section.id).collect::<Vec<_>>(),
         });
-        let dir = format!("features/{}", feature.name);
+        let dir = feature.directory();
         let entry = json!({
+            "directory": dir,
+            "owner": feature.owner,
             "collectors": collectors,
             "depends_on": feature.depends_on.iter().collect::<BTreeSet<_>>(),
             "frontend": root.join(&dir).join("frontend/feature.ts").is_file(),
@@ -607,7 +609,7 @@ fn frontend_list(root: &Path) -> String {
     let owners: Vec<String> = registry
         .features
         .iter()
-        .map(|feature| format!("features/{}", feature.name))
+        .map(|feature| feature.directory())
         .chain(
             registry
                 .collectors
@@ -621,7 +623,13 @@ fn frontend_list(root: &Path) -> String {
     let mut imports = String::new();
     let mut list = String::new();
     for dir in &owners {
-        let name = dir.rsplit('/').next().unwrap();
+        let identity;
+        let name = if let Some(custom) = dir.strip_prefix("features/custom/") {
+            identity = format!("custom_{}", custom.replace('/', "_"));
+            identity.as_str()
+        } else {
+            dir.rsplit('/').next().unwrap()
+        };
         let local: String = name
             .split('_')
             .enumerate()

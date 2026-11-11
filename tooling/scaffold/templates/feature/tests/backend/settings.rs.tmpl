@@ -8,6 +8,10 @@ use serde_json::json;
 fn reads_what_settings_saves() {
     testing::install(&[{{testCollectors}}], &[&crate::FEATURE]);
     let (_root, store, dsp) = testing::bootstrapped();
+{{#owner}}
+    store.set_code(&dsp, "{{owner}}").unwrap();
+    store.set_feature(&dsp, "{{name}}", true, &testing::a_user(&store)).unwrap();
+{{/owner}}
     // Its default, until the DSP saves one.
     assert!(!general(&store, &dsp).unwrap().example);
     let owner = testing::a_user(&store);

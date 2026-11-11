@@ -13,11 +13,33 @@ use std::{
 /// Whether `feature` names one of the checkout's features at `root`: a folder of `features/`
 /// whose name is lowercase letters, digits and underscores.
 pub fn has_feature(root: &Path, feature: &str) -> bool {
-    !feature.is_empty()
-        && feature
+    feature_directory(root, feature).is_some()
+}
+/// Resolves the stable feature id to its ordinary or DSP-owned folder.
+pub fn feature_directory(root: &Path, feature: &str) -> Option<PathBuf> {
+    if feature.is_empty()
+        || !feature
             .bytes()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
-        && root.join("features").join(feature).is_dir()
+    {
+        return None;
+    }
+    let ordinary = root.join("features").join(feature);
+    if feature != "custom" && ordinary.is_dir() {
+        return Some(ordinary);
+    }
+    let custom = root.join("features/custom");
+    for owner in fs::read_dir(custom).ok()?.flatten() {
+        let code = owner.file_name();
+        let code = code.to_str()?;
+        if let Some(folder) = feature.strip_prefix(&format!("{code}_")) {
+            let dir = owner.path().join(folder);
+            if dir.join("feature.rs").is_file() {
+                return Some(dir);
+            }
+        }
+    }
+    None
 }
 
 /// Where the checkout named `name` keeps everything it makes outside itself.

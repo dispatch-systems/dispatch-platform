@@ -30,7 +30,8 @@ Every field of `Feature`, as `feature.rs` fills it.
 
 | Slot                       | Module         | What it adds                                                                                                                                 |
 | -------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`                     | `mod.rs`       | Its directory's name, which its switch, permissions and audit actions begin with.                                                            |
+| `name`                     | `mod.rs`       | Its directory's name, prefixed with its DSP code for a custom feature, which its switch, permissions and audit actions begin with.           |
+| `owner`                    | `mod.rs`       | The DSP code assigned by a custom feature's folder; none for a shared feature.                                                               |
 | `place`                    | `mod.rs`       | Where it sits among the features: its pages in the sidebar, its switch on the DSPs page, its section on the role sheet.                      |
 | `depends_on`               | `mod.rs`       | The features and collectors it uses beyond those whose collections it keeps; its code may reach only these, core and itself.                 |
 | `switch`                   | `switches`     | Whether every DSP has it (`mandatory`) or the platform owner switches it per DSP (`optional`), with the connections it requires.             |

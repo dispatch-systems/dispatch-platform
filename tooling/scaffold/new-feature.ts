@@ -1,3 +1,4 @@
+import { featureDirectory, featureLocations, validDspCode } from '../shared/features.js';
 import path from 'node:path';
 import {
   UsageError,
@@ -46,6 +47,7 @@ import {
 
 export const usage = `Usage: dispatchdev new feature <name> [options]
 
+  --custom <code>                   belongs only to the DSP with this address code
   --mandatory                       every DSP has it, with no switch to turn it off; needs
                                     a piece of its own, as --page, --api or --settings
   --api                             api/ with one endpoint behind the view permission
@@ -125,6 +127,7 @@ const FLAGS = [
   'dry-run',
 ];
 const OPTIONS = [
+  'custom',
   'tables',
   'keeps',
   'people',
@@ -154,18 +157,40 @@ type Database =
 function featureValues(root: string, argv: string[], adding = false) {
   const args = parseArguments(withPreset(argv), FLAGS, adding ? [...OPTIONS, 'table'] : OPTIONS);
   if (args.positional.length !== 1) throw new UsageError('Name one feature');
-  const names = namesOf(args.positional[0]!, args.options.get('label'));
+  const supplied = args.positional[0]!;
+  const existing = adding
+    ? featureLocations(root).find((feature) => feature.name === supplied)
+    : undefined;
+  const owner = args.options.get('custom') ?? existing?.owner;
+  if (owner && !validDspCode(owner))
+    throw new UsageError('--custom needs a DSP code: 2 to 16 lowercase letters or digits');
+  if (owner && (args.flags.has('mandatory') || args.options.has('contract')))
+    throw new UsageError('Custom features must be optional and cannot expose contracts');
+  const folder = existing ? existing.dir.split('/').at(-1)! : supplied;
+  const basic = namesOf(folder, args.options.get('label'));
+  const names = owner
+    ? {
+        ...namesOf(`dsp_${owner}_${folder}`, basic.label),
+        ident: `dispatch_${owner}_${folder}`,
+        constant: `${owner}_${folder}`.toUpperCase(),
+        name: `${owner}_${folder}`,
+        slug: `${owner}-${basic.slug}`,
+        pascal: namesOf(`dsp_${owner}_${folder}`).pascal,
+        crate: `dispatch-${owner}-${basic.slug}`,
+      }
+    : basic;
+  const dir = owner ? `features/custom/${owner}/${folder}` : `features/${names.name}`;
   const { name, slug, pascal } = names;
   const taken = [...features(root), ...collectors(root), ...coreParts(root)];
-  if (!adding && (taken.includes(name) || exists(root, `features/${name}`)))
+  if (!adding && (taken.includes(name) || exists(root, dir)))
     throw new UsageError(
       `${name} is taken: features, collectors and core's parts each own their name`,
     );
 
   // A piece added to a feature takes the icon it shows already, on a page or its switch.
-  const manifestFile = `features/${name}/frontend/feature.ts`;
+  const manifestFile = `${dir}/frontend/feature.ts`;
   const manifest = adding && exists(root, manifestFile) ? read(root, manifestFile) : '';
-  const slotsFile = `features/${name}/frontend/platform-slots.ts`;
+  const slotsFile = `${dir}/frontend/platform-slots.ts`;
   const shows = (text: string) => /\bicon: ([A-Z]\w*)\b/.exec(text)?.[1];
   const icon =
     args.options.get('icon') ??
@@ -217,8 +242,8 @@ function featureValues(root: string, argv: string[], adding = false) {
       );
   }
   const sidebarNames = (sidebarPages ?? []).map((id) => ({
-    id,
     ...namesOf(id.replace(/-/g, '_')),
+    id: owner ? `${owner}-${id}` : id,
   }));
   if (args.flags.has('no-backend')) {
     if (!page && !host && !sidebar)
@@ -321,7 +346,7 @@ function featureValues(root: string, argv: string[], adding = false) {
       )?.[0] ??
       features(root).find((owner) =>
         [
-          ...read(root, `features/${owner}/feature.rs`).matchAll(
+          ...read(root, `${featureDirectory(root, owner)}/feature.rs`).matchAll(
             /\bexpose!\(\s*[^,]+,\s*[^,]+,\s*"([^"]+)"/g,
           ),
         ].some((found) => found[1] === contract),
@@ -359,9 +384,10 @@ function featureValues(root: string, argv: string[], adding = false) {
   const migrationId = database ? 1 : 0;
   const migrationName = own ? 'baseline' : name;
   const dependencies = [
-    'dispatch-core = { path = "../../core" }',
+    `dispatch-core = { path = "${path.posix.relative(dir, 'core')}" }`,
     ...used.map(
-      (collector) => `${crateOf(collector)} = { path = "../../collectors/${collector}" }`,
+      (collector) =>
+        `${crateOf(collector)} = { path = "${path.posix.relative(dir, `collectors/${collector}`)}" }`,
     ),
     ...(database ? ['rusqlite = { workspace = true }'] : []),
     ...(api || database || settings ? ['serde = { workspace = true }'] : []),
@@ -370,7 +396,7 @@ function featureValues(root: string, argv: string[], adding = false) {
   ];
   const devDependencies = [
     ...(database || keeps || contract || settings
-      ? ['dispatch-core = { path = "../../core", features = ["testing"] }']
+      ? [`dispatch-core = { path = "${path.posix.relative(dir, 'core')}", features = ["testing"] }`]
       : []),
     ...(keeps || settings ? ['serde_json = { workspace = true }'] : []),
   ];
@@ -396,7 +422,7 @@ function featureValues(root: string, argv: string[], adding = false) {
   const manifestImports = [
     'Feature',
     'feature',
-    switched ? 'optional' : 'mandatory',
+    owner ? 'custom' : switched ? 'optional' : 'mandatory',
     ...(permission ? ['perm'] : []),
   ];
   const databaseLabel = !database
@@ -433,6 +459,9 @@ function featureValues(root: string, argv: string[], adding = false) {
   const key = (id: string) => (/^[A-Za-z_$][\w$]*$/.test(id) ? id : `'${id}'`);
   const values: Values = {
     ...names,
+    dir,
+    owner: owner ?? '',
+    switchConstructor: owner ? 'custom' : 'optional',
     backend: Boolean(database) || keeps || settings || Boolean(contract),
     switch: switched,
     permission,
@@ -620,12 +649,18 @@ function pieces(values: Values): [boolean, string, string][] {
 export async function renderFeature(root: string, argv: string[], adding = false) {
   const { args, names, values, sidebarNames } = featureValues(root, argv, adding);
   const { name } = names;
-  const dir = `features/${name}`;
+  const dir = values.dir as string;
   const plan: Plan = emptyPlan();
   const write = async (source: string, target: string, filled: Values) => {
     const file = `${dir}/${target}`;
     const toRoot = '../'.repeat(path.posix.dirname(file).split('/').length);
-    plan.files.set(file, await format(file, template(`feature/${source}`, { ...filled, toRoot })));
+    let text = template(`feature/${source}`, { ...filled, toRoot });
+    if (values.owner && target.startsWith('tests/'))
+      text = text.replaceAll(
+        '&crate::FEATURE',
+        `&crate::FEATURE.registered(Some("${values.owner}"), "${name}")`,
+      );
+    plan.files.set(file, await format(file, text));
   };
   for (const [wanted, source, target] of pieces(values))
     if (wanted) await write(source, target, values);
@@ -694,16 +729,22 @@ export async function showing(root: string, plan: Plan, contract: string) {
 export async function planFeature(root: string, argv: string[]) {
   const { plan, args, names, values } = await renderFeature(root, argv);
   const { name } = names;
-  const dir = `features/${name}`;
+  const dir = values.dir as string;
 
   // List it in app/, as `dispatchdev generate` does from its folder: its crate in the
   // app's Cargo manifest and its manifest in the registry's list. Its manifest brings its
   // routes, and lists its API types itself.
   const edit = (file: string, apply: (text: string) => string) => change(plan, root, file, apply);
   await edit('Cargo.toml', (text) => addWorkspaceMember(text, dir));
-  const wired = [...crates(root), crateOf(name, plan.files.get(`${dir}/Cargo.toml`)!)].sort(
-    (a, b) => (a.name < b.name ? -1 : 1),
-  );
+  const wired = [
+    ...crates(root),
+    crateOf(
+      name,
+      plan.files.get(`${dir}/Cargo.toml`)!,
+      { name, dir, ...(values.owner ? { owner: values.owner as string } : {}) },
+      featureLocations(root),
+    ),
+  ].sort((a, b) => (a.name < b.name ? -1 : 1));
   // The MCP's tools keep the features they need on, as the wiring has them.
   const mcp = needed(tools(root, wired));
   await edit(appManifest, (text) => wiredManifest(text, wired, mcp));

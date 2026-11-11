@@ -1,3 +1,4 @@
+import { featureLocations } from '../../../../tooling/shared/features.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { files, root } from './repo.js';
@@ -24,7 +25,8 @@ export const sourceFiles: readonly string[] = [...found].sort();
 // Directory discovery stays on disk too: an empty or ignored frontend is still a frontend.
 const owners = [
   'app',
-  ...['core', 'features', 'collectors'].flatMap((top) =>
+  ...featureLocations(root).map((feature) => feature.dir),
+  ...['core', 'collectors'].flatMap((top) =>
     fs.readdirSync(path.join(root, top)).map((name) => path.join(top, name)),
   ),
   'mcp',

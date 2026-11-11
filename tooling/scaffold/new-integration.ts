@@ -1,3 +1,4 @@
+import { featureDirectory } from '../shared/features.js';
 import path from 'node:path';
 import { mergeRust, mergeToml, mergeTypeScript, rustfmt } from './source-editing.js';
 import { installing } from './test-registry.js';
@@ -55,13 +56,13 @@ export async function planIntegration(root: string, argv: string[]) {
       'An integration through Slack needs Slack: this build has no features/slack',
     );
   const own = owner === 'slack';
-  const dir = `features/${owner}/integrations/${names.name}`;
+  const dir = `${featureDirectory(root, owner)}/integrations/${names.name}`;
   if (exists(root, dir)) throw new UsageError(`${dir} is there already`);
   const icon = args.options.get('icon') ?? 'Blocks';
   if (args.options.has('icon') && !isIcon(icon))
     throw new UsageError(`--icon names a lucide-react icon, as Truck: ${icon} is none`);
   const hears = listed(args.options.get('hears'), 'hears');
-  const ownerManifest = read(root, `features/${owner}/feature.rs`);
+  const ownerManifest = read(root, `${featureDirectory(root, owner)}/feature.rs`);
   const ownerLabel = /\b(?:optional|mandatory)\(\s*"[^"]+",\s*"([^"]+)"/.exec(ownerManifest)?.[1];
   // Its card and section follow those listed already: Slack's own sections in its manifest,
   // and each integration's card and section in its folder.
@@ -118,7 +119,7 @@ export async function planIntegration(root: string, argv: string[]) {
   const edit = (file: string, apply: (text: string) => string) => change(plan, root, file, apply);
   const left: string[] = [];
   // Its owner's list of its integrations, a module each.
-  const list = `features/${owner}/integrations/mod.rs`;
+  const list = `${featureDirectory(root, owner)}/integrations/mod.rs`;
   if (exists(root, list))
     await edit(list, (text) => {
       const modules = [...text.matchAll(/^pub\(crate\) mod \w+;$/gm)];
@@ -147,16 +148,16 @@ export async function planIntegration(root: string, argv: string[]) {
   // and works through Slack, which its feature then depends on, as the registry holds it to.
   const piece = `mod integrations;\n\nuse dispatch_core::manifest::{Feature, feature};\n\npub const FEATURE: Feature = Feature {\n${own ? '' : '    depends_on: &["slack"],\n'}    integrations: &[integrations::${names.name}::INTEGRATION],\n    ..feature("${owner}")\n};\n`;
   // Its feature's tests install it with Slack, as they install it with what else it uses.
-  if (!own) installing(root, plan, `features/${owner}`, { feature: 'slack' });
+  if (!own) installing(root, plan, featureDirectory(root, owner), { feature: 'slack' });
   if (!own)
-    await edit(`features/${owner}/Cargo.toml`, (text) =>
+    await edit(`${featureDirectory(root, owner)}/Cargo.toml`, (text) =>
       mergeToml(text, '[dependencies]\ndispatch-slack = { path = "../slack" }\n'),
     );
-  await edit(`features/${owner}/feature.rs`, (text) =>
+  await edit(`${featureDirectory(root, owner)}/feature.rs`, (text) =>
     mergeRust(text, piece, left, [], () => true),
   );
   // Its card, and one of Slack's own its section, in its owner's frontend manifest.
-  const frontend = `features/${owner}/frontend/feature.ts`;
+  const frontend = `${featureDirectory(root, owner)}/frontend/feature.ts`;
   if (!exists(root, frontend))
     left.push(`${frontend} is where its card goes: connectionIntegrations: [${names.camel}]`);
   else

@@ -6,16 +6,27 @@ use dispatch_core::testing;
 fn keeps_what_it_adds_for_each_dsp() {
     testing::install(&[{{testCollectors}}], &[&crate::FEATURE]);
     let (_root, store, dsp) = testing::bootstrapped();
+{{#owner}}
+    store.set_code(&dsp, "{{owner}}").unwrap();
+    store.set_feature(&dsp, "{{name}}", true, &testing::a_user(&store)).unwrap();
+{{/owner}}
     let owner = testing::a_user(&store);
     let other = store.new_dsp("Other DSP", "UTC", &owner, false).unwrap().id;
     assert!(store.{{name}}_items(&dsp).unwrap().is_empty());
     let added = store.add_{{name}}_item(&dsp, "First").unwrap();
+{{^owner}}
     store.add_{{name}}_item(&other, "Second").unwrap();
+{{/owner}}
     assert_eq!(added.name, "First");
     assert_eq!(store.{{name}}_items(&dsp).unwrap(), vec![added]);
+{{#owner}}
+    assert!(store.{{name}}_items(&other).is_err());
+{{/owner}}
+{{^owner}}
     let theirs = store.{{name}}_items(&other).unwrap();
     assert_eq!(
         theirs.iter().map(|item| item.name.as_str()).collect::<Vec<_>>(),
         ["Second"]
     );
+{{/owner}}
 }

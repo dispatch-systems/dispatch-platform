@@ -40,6 +40,47 @@ static PROBE: Feature = Feature {
     ..feature("probe")
 };
 
+// A test-only custom feature exercises the same generated registration and HTTP dispatch as
+// an app feature, without adding a product feature to any build.
+static CUSTOM: Feature = Feature {
+    switch: dispatch_core::manifest::custom("nll_probe", "Owner probe", &[]),
+    permissions: &[dispatch_core::manifest::perm("nll_probe.view", "View probe", 500).group("Probe")],
+    own_migrations: &[dispatch_core::db::OwnMigrations {
+        kind: dispatch_core::db::Kind::DSP,
+        list: &[dispatch_core::db::Migration {
+            id: 1,
+            name: "probe",
+            apply: dispatch_core::db::migrations::Apply::Sql("CREATE TABLE nll_probe (value INTEGER NOT NULL)"),
+        }],
+    }],
+    tables: &[("dsp", &["nll_probe"])],
+    audit: dispatch_core::manifest::Audit {
+        areas: &[("nll_probe.item2.", dispatch_core::tenancy::api::audit::AuditArea::Collections)],
+        ..dispatch_core::manifest::Audit::NONE
+    },
+    routes: || vec![dispatch_core::server::http::route::read(
+        "/api/dsp/nll-probe", dispatch_core::server::http::route::Dsp("nll_probe.view"),
+        |db, c, _| Ok(dispatch_core::server::http::input::Reply::json(json!({"count": db.dsp(c.dsp_id())?.count("SELECT count(*) FROM nll_probe", [])?})))
+    )],
+    on: &[dispatch_core::on!(dispatch_core::manifest::events::PeopleChanged, custom_event)],
+    ..feature("nll_probe")
+}.registered(Some("nll"), "nll_probe");
+fn custom_event(
+    state: Arc<State>,
+    dsp: String,
+    _: dispatch_core::manifest::events::PeopleChanged,
+) -> dispatch_core::manifest::Upkeep {
+    Box::pin(async move {
+        state
+            .run(move |db| {
+                db.dsp(&dsp)?.exec("INSERT INTO nll_probe VALUES (1)", [])?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+    })
+}
+
 struct Server {
     _root: tempfile::TempDir,
     port: u16,
@@ -60,7 +101,7 @@ struct Answer {
 }
 impl Server {
     async fn start() -> Self {
-        testing::install(&[], &[&PROBE]);
+        testing::install(&[], &[&PROBE, &CUSTOM]);
         let root = tempfile::tempdir().unwrap();
         std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
         let dashboard = root.path().join("dashboard");
@@ -349,5 +390,67 @@ async fn one_members_own_values_are_not_anothers() {
     assert_eq!(
         server.days(&second, "probe.limits").await,
         Some((json!(90), 0))
+    );
+}
+
+#[tokio::test]
+async fn custom_storage_switches_events_and_routes_belong_only_to_the_owner_code() {
+    let server = Server::start().await;
+    let north = server.dsp("nll").await;
+    let summit = server.dsp("sum").await;
+    let (own, other) = (north.clone(), summit.clone());
+    server.state.run(move |db| {
+        let actor = testing::platform_owner(db);
+        // Assigning the code after provisioning applies the custom migration immediately.
+        assert!(db.dsp(&own)?.has_table("nll_probe")?);
+        assert!(!db.dsp(&other)?.has_table("nll_probe")?);
+        assert!(!db.feature_enabled(&own, "nll_probe")?);
+        let fresh = db.new_dsp("Onboarding probe", "UTC", &actor, false)?.id;
+        db.dsp(&fresh)?.transaction(|| { db.set_code(&fresh, "nll2")?; Ok(()) })?;
+        assert_eq!(db.set_feature(&other, "nll_probe", true, &actor).unwrap_err().status, 404);
+        assert_eq!(db.set_visibility(&other, "nll_probe", dispatch_core::tenancy::visibility::Visibility::Shown, &actor).unwrap_err().status, 404);
+        // A stale or imported switch row cannot bypass runtime ownership.
+        db.platform.exec("INSERT INTO dsp_features(dsp_id,feature,enabled,changed_at) VALUES (?,'nll_probe',1,'')", [&other])?;
+        db.enable_all_features(&other)?;
+        db.keep_switches()?;
+        assert!(!db.feature_enabled(&other, "nll_probe")?);
+        assert!(!dispatch_core::tenancy::catalog::grants(&db.features(&other)?, "nll_probe.view"));
+        db.set_feature(&own, "nll_probe", true, &actor)?;
+        Ok(())
+    }).await.unwrap();
+    dispatch_core::manifest::events::publish(
+        &server.state,
+        &north,
+        dispatch_core::manifest::events::PeopleChanged,
+    )
+    .await;
+    dispatch_core::manifest::events::publish(
+        &server.state,
+        &summit,
+        dispatch_core::manifest::events::PeopleChanged,
+    )
+    .await;
+    let owner = server.signed_in("owner@dispatch.test", &north).await;
+    let other = server.signed_in("owner@dispatch.test", &summit).await;
+    let answer = server.send("GET", "/api/dsp/nll-probe", &owner, None).await;
+    assert_eq!(answer.status, 200, "{}", answer.body);
+    assert_eq!(answer.body["count"], 1);
+    assert_eq!(
+        server
+            .send("GET", "/api/dsp/nll-probe", &other, None)
+            .await
+            .status,
+        404
+    );
+    let at_other = Who {
+        host: Some(format!("sum.localhost:{}", server.port)),
+        ..owner
+    };
+    assert_eq!(
+        server
+            .send("GET", "/api/dsp/nll-probe", &at_other, None)
+            .await
+            .status,
+        404
     );
 }

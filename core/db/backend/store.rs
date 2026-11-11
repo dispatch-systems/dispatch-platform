@@ -139,7 +139,11 @@ impl Store {
     }
     /// Migrates existing DSP storage, adopting a legacy identity only with its migration.
     pub(crate) fn migrate_dsp(&self, id: &str) -> Result<()> {
-        migrations::migrate_dsp(&*self.dsp_unverified(id)?, id)
+        migrations::migrate_dsp(
+            &*self.dsp_unverified(id)?,
+            id,
+            self.feature_code(id)?.as_deref(),
+        )
     }
     pub(crate) fn cached_database(&self, path: &Path, kind: Kind) -> Result<DspLease<'_>> {
         private_file(path, false)?;
@@ -174,6 +178,10 @@ impl Store {
         for area in ["data", "config", "state", "secrets"] {
             self.area(id, area)?;
         }
-        Db::create_dsp(&self.area(id, "data")?.join("dispatch.sqlite"), id)
+        Db::create_dsp(
+            &self.area(id, "data")?.join("dispatch.sqlite"),
+            id,
+            self.feature_code(id)?.as_deref(),
+        )
     }
 }

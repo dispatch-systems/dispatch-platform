@@ -215,7 +215,10 @@ test("each tab sits in its feature's frontend/tabs/, and each folder there is a 
   }
   // Tabs are a feature's page's own.
   for (const file of files)
-    if (/(^|\/)tabs\//.test(file) && !/^features\/[a-z_]+\/frontend\/tabs\//.test(file))
+    if (
+      /(^|\/)tabs\//.test(file) &&
+      !/^features\/(?:custom\/[a-z0-9]+\/)?[a-z0-9_]+\/frontend\/tabs\//.test(file)
+    )
       misplaced.push(
         `${file.slice(0, file.indexOf('tabs/') + 4)} is outside a feature's frontend/`,
       );

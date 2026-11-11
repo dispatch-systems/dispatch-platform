@@ -83,6 +83,7 @@ pub(crate) fn platform(store: &Store) -> Result<()> {
     })
 }
 pub(crate) fn dsp(store: &Store, id: &str) -> Result<()> {
+    let code = store.feature_code(id)?;
     let data = store.dsp(id)?;
     data.transaction(|| {
         for (old, new) in retirements() {
@@ -94,13 +95,18 @@ pub(crate) fn dsp(store: &Store, id: &str) -> Result<()> {
         for (old, into) in registry()
             .features
             .iter()
+            .filter(|feature| feature.belongs_to(code.as_deref()))
             .flat_map(|feature| feature.retired_schedule_aliases)
         {
             split(&data, old, into)?;
         }
         Ok(())
     })?;
-    for feature in registry().features {
+    for feature in registry()
+        .features
+        .iter()
+        .filter(|f| f.belongs_to(code.as_deref()))
+    {
         if let Some(upgrade) = feature.upgrade_storage {
             upgrade(store, id)?;
         }

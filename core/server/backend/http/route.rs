@@ -280,6 +280,7 @@ impl LogLabel {
     }
 }
 pub struct Route {
+    pub(super) owner: Option<&'static str>,
     pub method: Method,
     pub path: &'static str,
     pub access: Access,
@@ -515,6 +516,7 @@ impl Route {
         handler: Handler,
     ) -> Self {
         Route {
+            owner: None,
             method,
             path,
             access: access.access(),
@@ -619,6 +621,32 @@ impl Route {
         response
     }
     async fn answer(&self, state: Arc<State>, request: Request) -> Result<Response> {
+        let request = if let Some(owner) = self.owner {
+            let (parts, body) = request.into_parts();
+            let input = middleware::head(&state, &parts, self.path)?;
+            if let Site::Dsp(code) = &input.site {
+                ensure(code == owner, "not_found", 404)?;
+            }
+            state
+                .read(move |db| {
+                    let auth = Session.authorize(db, &input)?;
+                    let context = db.from_view(
+                        &auth,
+                        input.header("x-dispatch-view"),
+                        crate::tenancy::roles::ACCESS,
+                    )?;
+                    ensure(
+                        db.owns_feature(&context.dsp.id, Some(owner))?,
+                        "not_found",
+                        404,
+                    )
+                })
+                .await?;
+            Request::from_parts(parts, body)
+        } else {
+            request
+        };
+
         // Even public routes and GET routes registered as writes cannot mutate through the
         // support browser. The one POST opens a signed view and skips its visit audit below.
         let support = input::cookies(

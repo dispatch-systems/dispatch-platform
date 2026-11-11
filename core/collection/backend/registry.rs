@@ -202,20 +202,38 @@ impl Store {
     fn initialize_added_storages(&self, id: &str) -> Result<()> {
         for provider in Provider::all() {
             for storage in provider.added_storages() {
+                let feature = registry().features.iter().find(|feature| {
+                    feature.keeps.iter().any(|keeper| {
+                        keeper
+                            .storages()
+                            .iter()
+                            .any(|declared| declared.kind == storage.kind)
+                    })
+                });
+                if let Some(feature) = feature
+                    && !self.owns_feature(id, feature.owner)?
+                {
+                    continue;
+                }
                 let core = self.dsp(id)?;
                 let marker = core.setting(storage.marker, Value::Null)?;
                 if marker == json!(1) {
-                    db::migrate(&*self.added_storage(id, provider, storage)?, storage.kind)?;
+                    db::migrate_for(
+                        &*self.added_storage(id, provider, storage)?,
+                        storage.kind,
+                        self.feature_code(id)?.as_deref(),
+                    )?;
                     (storage.verify)(&*self.added_storage(id, provider, storage)?)?;
                     continue;
                 }
                 ensure(marker.is_null(), "unsupported_storage_layout", 503)?;
                 let data = self.area(id, "data")?;
                 db::private_dir(&data.join(storage.id))?;
-                let target = Db::create(
+                let target = Db::create_for(
                     &data.join(storage.id).join(format!("{}.sqlite", storage.id)),
                     storage.kind,
                     &identity_seed(id, provider, storage.source),
+                    self.feature_code(id)?.as_deref(),
                 )?;
                 added_identity(&target, id, provider, storage)?;
                 drop(target);
@@ -237,7 +255,11 @@ impl Store {
             if provider.marker().is_some() {
                 self.initialize_added(id, provider)?;
             } else {
-                db::migrate(&*self.collector(id, provider)?, provider.database())?;
+                db::migrate_for(
+                    &*self.collector(id, provider)?,
+                    provider.database(),
+                    self.feature_code(id)?.as_deref(),
+                )?;
             }
         }
         crate::manifest::retirement::dsp(self, id)?;
@@ -260,10 +282,11 @@ impl Store {
     fn create_collector(&self, id: &str, provider: Provider) -> Result<Db> {
         let data = self.area(id, "data")?;
         db::private_dir(&data.join(provider.id()))?;
-        let target = Db::create(
+        let target = Db::create_for(
             &data.join(provider.relative_path()),
             provider.database(),
             &provider.collector().seed(id),
+            self.feature_code(id)?.as_deref(),
         )?;
         identity(&target, id, provider)?;
         Ok(target)
@@ -277,7 +300,11 @@ impl Store {
         let core = self.dsp(id)?;
         let marker = core.setting(key, Value::Null)?;
         if marker == json!(1) {
-            db::migrate(&*self.collector(id, provider)?, provider.database())?;
+            db::migrate_for(
+                &*self.collector(id, provider)?,
+                provider.database(),
+                self.feature_code(id)?.as_deref(),
+            )?;
             return self.verify_collector(id, provider);
         }
         ensure(marker.is_null(), "unsupported_storage_layout", 503)?;

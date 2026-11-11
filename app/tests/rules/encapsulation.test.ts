@@ -62,9 +62,14 @@ test('only the app lists the features and collectors', () => {
   };
   for (const file of scriptFiles())
     for (const { target } of imports(file))
-      if (/^(features|collectors)\/[^/]+\/frontend\/feature\.ts$/.test(target))
+      if (
+        /^(features\/(?:custom\/[^/]+\/)?[^/]+|collectors\/[^/]+)\/frontend\/feature\.ts$/.test(
+          target,
+        )
+      )
         list(file, target, isTestFile(file));
-  const manifest = /^(features\/[^/]+\/feature|collectors\/[^/]+\/collector)\.rs$/;
+  const manifest =
+    /^(features\/(?:custom\/[^/]+\/)?[^/]+\/feature|collectors\/[^/]+\/collector)\.rs$/;
   for (const file of rust().mounts.keys()) {
     // A manifest's file mounted as a module, or its `FEATURE` or `COLLECTOR` named.
     for (const reference of rust().references(file))

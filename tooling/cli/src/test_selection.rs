@@ -168,6 +168,14 @@ fn joined(dir: &str, relative: &str) -> String {
 /// The owner a file belongs to, by its directory: core, a collector, a feature, the MCP or
 /// the app.
 fn owner(file: &str) -> Option<String> {
+    if let Some(custom) = file.strip_prefix("features/custom/") {
+        let mut parts = custom.split('/');
+        return Some(format!(
+            "features/custom/{}/{}",
+            parts.next()?,
+            parts.next()?
+        ));
+    }
     let mut parts = file.split('/');
     match (parts.next()?, parts.next()?, parts.next()) {
         (top @ ("core" | "mcp" | "app"), _, _) => Some(top.to_owned()),

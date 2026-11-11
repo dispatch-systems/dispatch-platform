@@ -651,6 +651,10 @@ pub fn check(tools: &[&dyn AnyTool]) {
         );
         for switch in tool.features() {
             assert!(
+                dispatch_core::tenancy::catalog::find(switch).is_none_or(|f| f.owner.is_none()),
+                "{name} cannot require a custom feature"
+            );
+            assert!(
                 switches.contains(switch),
                 "{name} needs {switch}, which is no feature or part of one"
             );

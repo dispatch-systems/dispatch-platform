@@ -1,3 +1,4 @@
+import { featureLocations, featureDirectory, type FeatureLocation } from '../shared/features.js';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -23,6 +24,8 @@ export const marker =
 
 /** What the app needs of a feature's crate. */
 export type Crate = {
+  dir?: string;
+  owner?: string;
   /** Its folder's name, which is the app's Cargo feature for it. */
   name: string;
   /** Its crate: `dispatch-driver-match`. */
@@ -47,31 +50,44 @@ function section(manifest: string, name: string) {
 
 /** Every feature in `root`'s features/, by name: a folder with a manifest and a crate. */
 export function crates(root: string): Crate[] {
-  const dir = path.join(root, 'features');
-  return fs
-    .readdirSync(dir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .filter((name) =>
-      ['feature.rs', 'Cargo.toml'].every((file) => fs.existsSync(path.join(dir, name, file))),
-    )
-    .sort()
-    .map((name) => crateOf(name, read(root, `features/${name}/Cargo.toml`)));
+  const locations = featureLocations(root).filter(({ dir }) =>
+    ['feature.rs', 'Cargo.toml'].every((file) => fs.existsSync(path.join(root, dir, file))),
+  );
+  return locations.map((location) =>
+    crateOf(location.name, read(root, `${location.dir}/Cargo.toml`), location, locations),
+  );
 }
 /** What the app needs of the feature `name`, from its Cargo manifest. */
-export function crateOf(name: string, manifest: string): Crate {
+export function crateOf(
+  name: string,
+  manifest: string,
+  location: FeatureLocation = { name, dir: `features/${name}` },
+  locations: FeatureLocation[] = [],
+): Crate {
   const crate = /^name\s*=\s*"([^"]+)"/m.exec(section(manifest, 'package'))?.[1];
   if (!crate) throw new Error(`features/${name}/Cargo.toml names no package`);
   const dependencies = section(manifest, 'dependencies');
-  const uses = [...dependencies.matchAll(/path\s*=\s*"\.\.\/([a-z0-9_]+)"/g)]
-    .map((found) => found[1]!)
+  const paths = [...dependencies.matchAll(/path\s*=\s*"([^"]+)"/g)].map((match) =>
+    path.posix.normalize(path.posix.join(location.dir, match[1]!)),
+  );
+  const uses = paths
+    .flatMap((dir) => {
+      const feature = locations.find((feature) => feature.dir === dir);
+      if (feature) return [feature.name];
+      const ordinary = /^features\/([a-z0-9_]+)$/.exec(dir);
+      return ordinary ? [ordinary[1]!] : [];
+    })
     .sort();
-  const collectors = [
-    ...dependencies.matchAll(/path\s*=\s*"\.\.\/\.\.\/collectors\/([a-z0-9_]+)"/g),
-  ]
-    .map((found) => found[1]!)
+  const collectors = paths
+    .flatMap((dir) => /^collectors\/([a-z0-9_]+)$/.exec(dir)?.[1] ?? [])
     .sort();
-  return { name, crate, ts: /^ts\s*=/m.test(section(manifest, 'features')), uses, collectors };
+  return {
+    crate,
+    ts: /^ts\s*=/m.test(section(manifest, 'features')),
+    uses,
+    collectors,
+    ...location,
+  };
 }
 
 /**
@@ -94,12 +110,14 @@ export function wiredManifest(manifest: string, features: Crate[], mcp: string[]
       }),
     ],
     dependencies: features.map(
-      ({ name, crate }) => `${crate} = { path = "../../features/${name}", optional = true }`,
+      ({ name, crate, dir }) =>
+        `${crate} = { path = "../../${dir ?? `features/${name}`}", optional = true }`,
     ),
     'dev-dependencies': features
       .filter(({ ts }) => ts)
       .map(
-        ({ name, crate }) => `${crate} = { path = "../../features/${name}", features = ["ts"] }`,
+        ({ name, crate, dir }) =>
+          `${crate} = { path = "../../${dir ?? `features/${name}`}", features = ["ts"] }`,
       ),
   };
   return filled(manifest, appManifest, marker, lists);
@@ -135,7 +153,8 @@ function filled(manifest: string, file: string, marker: string, lists: Record<st
 export function wiredList(features: Crate[]) {
   const ident = (crate: string) => crate.replaceAll('-', '_');
   const entries = features.map(
-    ({ name, crate }) => `    #[cfg(feature = "${name}")]\n    &${ident(crate)}::FEATURE,\n`,
+    ({ name, crate, owner }) =>
+      `    #[cfg(feature = "${name}")]\n    &${ident(crate)}::FEATURE${`.registered(${owner ? `Some("${owner}")` : 'None'}, "${name}")`},\n`,
   );
   // Each feature that writes its API types to TypeScript lists them itself.
   const typescript = features
@@ -204,7 +223,7 @@ export function toolOf(module: string, source: string, features: Crate[]): Tool 
     ...new Set([...declared.matchAll(/"([^"]+)"/g)].map((found) => found[1]!.split('.')[0]!)),
   ].sort();
   for (const name of needs)
-    if (!features.some((feature) => feature.name === name))
+    if (!features.some((feature) => feature.name === name && !feature.owner))
       throw new Error(`mcp/tools/${module}.rs needs ${name}, which is no feature in features/`);
   const reads = [
     ...new Set(
@@ -212,7 +231,7 @@ export function toolOf(module: string, source: string, features: Crate[]): Tool 
     ),
   ].sort();
   for (const name of reads)
-    if (!features.some((feature) => feature.name === name))
+    if (!features.some((feature) => feature.name === name && !feature.owner))
       throw new Error(
         `mcp/tools/${module}.rs reads dispatch_${name}_contract, and ${name} is no feature in features/`,
       );
@@ -252,7 +271,7 @@ function installs(features: Crate[], list: Tool[]) {
 }
 /** A feature's contract crate, from its manifest. */
 const contractCrate = (root: string, name: string) => {
-  const manifest = `features/${name}/contract/Cargo.toml`;
+  const manifest = `${featureDirectory(root, name)}/contract/Cargo.toml`;
   if (!fs.existsSync(path.join(root, manifest)))
     throw new Error(`a tool reads ${name}'s contract, and ${manifest} isn't there`);
   const crate = /^name\s*=\s*"([^"]+)"/m.exec(section(read(root, manifest), 'package'))?.[1];
@@ -379,7 +398,25 @@ export function wiredProduct(root: string, features: Crate[], list: Tool[]) {
 export function wiring(root: string) {
   const features = crates(root);
   const list = tools(root, features);
+  const workspace = read(root, 'Cargo.toml');
+  const custom = features
+    .filter((feature) => feature.owner)
+    .flatMap((feature) => [
+      feature.dir!,
+      ...(fs.existsSync(path.join(root, feature.dir!, 'contract/Cargo.toml'))
+        ? [`${feature.dir}/contract`]
+        : []),
+    ]);
+  const members = /members\s*=\s*\[([^\]]*)\]/.exec(workspace)!;
+  const regular = [...members[1]!.matchAll(/"([^"]+)"/g)]
+    .map((match) => match[1]!)
+    .filter((dir) => !dir.startsWith('features/custom/'));
+  const cargo = workspace.replace(
+    members[0],
+    `members = [${[...regular, ...custom].map((dir) => JSON.stringify(dir)).join(', ')}]`,
+  );
   const files = new Map([
+    ['Cargo.toml', cargo],
     [appManifest, wiredManifest(read(root, appManifest), features, needed(list))],
     [featureList, wiredList(features)],
   ]);
@@ -409,7 +446,11 @@ export function wire(root: string) {
   const wired = wiring(root);
   const changed = unwired(root, wired);
   for (const file of changed) fs.writeFileSync(path.join(root, file), wired.get(file)!);
-  if (changed.includes(appManifest) || changed.includes(mcpManifest)) {
+  if (
+    changed.includes('Cargo.toml') ||
+    changed.includes(appManifest) ||
+    changed.includes(mcpManifest)
+  ) {
     const lock = spawnSync('cargo', ['update', '--workspace', '--offline', '--quiet'], {
       cwd: root,
       stdio: 'inherit',

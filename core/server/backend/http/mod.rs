@@ -48,7 +48,15 @@ pub fn table() -> Vec<Route> {
         support::api::routes(),
     ];
     let agents = registry().agents.map(|agents| (agents.routes)());
-    let features = registry().features.iter().map(|feature| (feature.routes)());
+    let features = registry().features.iter().map(|feature| {
+        (feature.routes)()
+            .into_iter()
+            .map(|mut route| {
+                route.owner = feature.owner;
+                route
+            })
+            .collect::<Vec<_>>()
+    });
     core.into_iter()
         .chain(agents)
         .chain(features)

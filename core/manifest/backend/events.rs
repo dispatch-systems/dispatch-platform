@@ -84,7 +84,7 @@ pub async fn publish<E: Event>(state: &Arc<State>, dsp: &str, event: E) {
 /// Whether `feature` is on for the DSP as the event `event` reaches it. A mandatory one is,
 /// with no switch to read; one whose switch can't be read isn't, logged as `events.unheard`.
 async fn on_for(state: &Arc<State>, dsp: &str, feature: &'static Feature, event: &str) -> bool {
-    if feature.switch.mandatory {
+    if feature.owner.is_none() && feature.switch.mandatory {
         return true;
     }
     let (switch, at) = (feature.switch.id, dsp.to_owned());
