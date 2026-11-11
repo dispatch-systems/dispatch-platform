@@ -47,7 +47,7 @@ const sortHeader = {
     </span>
   ),
 };
-// Format only clocks that are displayed, sorted or exported; a prepared line's date and zone never change.
+// Format only clocks that are displayed or exported; a prepared line's date and zone never change.
 const deliveryClocks = new WeakMap<
   MealLine,
   Partial<Record<'lastDelivery' | 'firstDelivery', ClockTime | null>>
@@ -82,20 +82,6 @@ const text = (clock?: ClockTime | null) =>
 // An export row is an employee, so a column with several meals lists them in order.
 const meals = (line: MealLine, value: (meal: MealLine) => string) =>
   [line, ...(line.more ?? [])].map(value).join('; ');
-const difference = (minutes: number | null | undefined) =>
-  minutes === null || minutes === undefined ? null : Math.abs(minutes);
-/** Statuses in the order a review reads them: attention first, agreement last. */
-const statusOrder = [
-  'Check Cortex punches',
-  'Different times',
-  'Missing Paycom lunch',
-  'Missing data',
-  'Review Paycom punches',
-  'Review meal pairing',
-  'No Flex meal',
-  'Flex only',
-  'Same times',
-];
 
 export const mealColumns: TableColumn<MealLine>[] = [
   {
@@ -155,7 +141,6 @@ export const mealColumns: TableColumn<MealLine>[] = [
     sortable: true,
     sortHeader,
     value: (line) => text(line.summary.paycom.inDay),
-    sortValue: (line) => line.summary.paycom.inDay?.minute ?? null,
     cell: (line) =>
       line.index === 0 ? (
         <Clock value={line.summary.paycom.inDay} link={paycomLink(line)} />
@@ -169,7 +154,6 @@ export const mealColumns: TableColumn<MealLine>[] = [
     scope: 'col',
     sortable: true,
     sortHeader,
-    sortValue: (line) => delivery(line, 'lastDelivery')?.minute ?? null,
     className: (line) => `meal-delivery${line.pair.gaps.before?.overLimit ? ' has-gap' : ''}`,
     exports: [
       ['Last delivery', (line) => meals(line, (meal) => text(delivery(meal, 'lastDelivery')))],
@@ -190,8 +174,6 @@ export const mealColumns: TableColumn<MealLine>[] = [
     scope: 'col',
     sortable: true,
     sortHeader,
-    // Orders by how far Flex strays from Paycom, so the largest differences meet at one end.
-    sortValue: (line) => difference(line.pair.outDifference),
     headerClassName: 'meal-lunch',
     className: 'meal-lunch',
     exports: [
@@ -214,7 +196,6 @@ export const mealColumns: TableColumn<MealLine>[] = [
     scope: 'col',
     sortable: true,
     sortHeader,
-    sortValue: (line) => difference(line.pair.inDifference),
     headerClassName: 'meal-lunch',
     className: 'meal-lunch',
     exports: [
@@ -237,7 +218,6 @@ export const mealColumns: TableColumn<MealLine>[] = [
     scope: 'col',
     sortable: true,
     sortHeader,
-    sortValue: (line) => delivery(line, 'firstDelivery')?.minute ?? null,
     className: (line) => `meal-delivery${line.pair.gaps.after?.overLimit ? ' has-gap' : ''}`,
     exports: [
       ['First delivery', (line) => meals(line, (meal) => text(delivery(meal, 'firstDelivery')))],
@@ -259,7 +239,6 @@ export const mealColumns: TableColumn<MealLine>[] = [
     sortable: true,
     sortHeader,
     value: (line) => text(line.summary.paycom.outDay),
-    sortValue: (line) => line.summary.paycom.outDay?.minute ?? null,
     cell: (line) =>
       line.index === 0 ? (
         <Clock value={line.summary.paycom.outDay} link={paycomLink(line)} />
@@ -274,7 +253,6 @@ export const mealColumns: TableColumn<MealLine>[] = [
     sortable: true,
     sortHeader,
     value: (line) => line.summary.status,
-    sortValue: (line) => statusOrder.indexOf(line.summary.status),
     cell: ({ index, summary }) =>
       index === 0 && (
         <span className={`meal-status ${summary.missing || summary.different ? 'attention' : ''}`}>

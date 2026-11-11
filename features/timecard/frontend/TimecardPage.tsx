@@ -152,14 +152,8 @@ export function PaycomPage({ view }: { view: DspView }) {
               name="Paycom"
               source={sourceState?.paycom}
               timezone={view.dsp.timezone}
-              compact
             />
-            <SourceSyncStatus
-              name="Flex"
-              source={sourceState?.flex}
-              timezone={view.dsp.timezone}
-              compact
-            />
+            <SourceSyncStatus name="Flex" source={sourceState?.flex} timezone={view.dsp.timezone} />
           </>
         )}
         {daily && syncButton()}

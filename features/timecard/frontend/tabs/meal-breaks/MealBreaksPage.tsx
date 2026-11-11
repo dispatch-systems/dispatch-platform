@@ -109,10 +109,9 @@ export function MealBreaksPage({
     [data, shownDate, nameOrder, onOpenEmployee, periodGaps],
   );
   const counts = data?.counts ?? { all: 0, late: 0, different: 0, missing: 0, gaps: 0 };
-  const filtered = rows;
   const table = useDataTable({
     columns: mealColumns,
-    rows: filtered,
+    rows,
     total: data?.total,
     sorting: 'server',
     rowId: (line) => line.id,
@@ -278,9 +277,6 @@ export function MealBreaksPage({
                   detailClassName="meal-detail"
                 />
               </div>
-              {!filtered.length && (
-                <Empty title="No matching employees">Try another name or filter.</Empty>
-              )}
               <TablePagination table={table} variant="pages" />
             </div>
           )
