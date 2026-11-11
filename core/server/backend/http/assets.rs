@@ -61,7 +61,10 @@ impl Audience {
 }
 
 pub(crate) async fn audience(state: &std::sync::Arc<State>, request: &axum::extract::Request) -> Audience {
-    if !crate::manifest::registry().features.iter().any(|feature| feature.owner.is_some()) { return Audience::default(); }
+    if !crate::manifest::registry().features.iter().any(|feature| feature.owner.is_some())
+        && !state.assets.get(request.uri().path()).is_some_and(|asset| asset.private.is_some()) {
+        return Audience::default();
+    }
     let mut probe = axum::http::Request::new(());
     *probe.method_mut() = request.method().clone();
     *probe.uri_mut() = request.uri().clone();

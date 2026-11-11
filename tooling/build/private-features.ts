@@ -97,6 +97,7 @@ export function privateFeatures(root: string): Plugin {
         const from = privateAssets[`/${file.fileName}`];
         for (const dependency of [...file.imports, ...file.dynamicImports, ...file.viteMetadata?.importedCss ?? [], ...file.viteMetadata?.importedAssets ?? []]) {
           const to = privateAssets[`/${dependency}`];
+          if (to?.platform && !from && file.dynamicImports.includes(dependency)) continue;
           if (to && (!from || (to.platform && !from.platform) || (to.owner && from.owner !== to.owner)))
             throw new Error(`${file.fileName} imports an asset outside its audience: ${dependency}`);
         }
