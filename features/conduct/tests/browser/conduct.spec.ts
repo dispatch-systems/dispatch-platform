@@ -63,7 +63,7 @@ test('a driver is written up from the page, then marked signed and locked', asyn
   await page.getByRole('button', { name: 'Print', exact: true }).click();
   await expect(page.locator('.conduct-print .conduct-notice-answer').first()).toHaveText(revised);
   await page.unroute(detail);
-  await page.getByRole('button', { name: 'Conduct', exact: true }).click();
+  await page.getByRole('link', { name: 'Conduct', exact: true }).click();
   await page.getByRole('tab', { name: 'Writeups', exact: true }).click();
   await page.getByRole('textbox', { name: 'Search drivers' }).fill(name);
   await page.getByRole('combobox', { name: 'Category', exact: true }).selectOption('uniform');
