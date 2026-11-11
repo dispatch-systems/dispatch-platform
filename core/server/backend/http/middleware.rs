@@ -161,8 +161,15 @@ pub async fn pipeline(
     let development = state.config.development;
     // What features' pages load from outside (`page_sources`), beside the dashboard's own.
     let outside = |loads| {
-        let origins: std::collections::BTreeSet<_> = registry().page_sources().filter(|(feature, each)| each.loads == loads && custom_audience.sees(feature.owner)).map(|(_, each)| each.origin).collect();
-        origins.iter().map(|origin| format!(" {origin}")).collect::<String>()
+        let origins: std::collections::BTreeSet<_> = registry()
+            .page_sources()
+            .filter(|(feature, each)| each.loads == loads && custom_audience.sees(feature.owner))
+            .map(|(_, each)| each.origin)
+            .collect();
+        origins
+            .iter()
+            .map(|origin| format!(" {origin}"))
+            .collect::<String>()
     };
     let csp = format!(
         "default-src 'self'; script-src 'self'{}; style-src 'self' 'unsafe-inline'; \

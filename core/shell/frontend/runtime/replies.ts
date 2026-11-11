@@ -16,12 +16,12 @@ export async function parseApiResponse(
   value: unknown,
 ): Promise<unknown> {
   const route = path.split('?')[0]!;
+  if (core.some((replies) => replies(route, method))) return checkReply(core, path, method, value);
   if (route.startsWith('/api/platform/')) {
     // Its audit subjects include every owner's declarations. Only a successful platform
     // response needs this validator; the asset server admits its chunk to platform owners.
     const { replies } = await import('../../../platform_owner/api/runtime.js');
     if (replies(route, method)) return checkReply([replies], path, method, value);
   }
-  const owners = core.some((replies) => replies(route, method)) ? core : await loadReplyChecks();
-  return checkReply(owners, path, method, value);
+  return checkReply(await loadReplyChecks(), path, method, value);
 }

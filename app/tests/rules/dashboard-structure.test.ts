@@ -261,7 +261,7 @@ test('no frontend modules import each other in a cycle', () => {
 });
 
 test('every route is declared once, its parent a route or a sidebar of pages, and every sidebar lists one', () => {
-  const entries: readonly RouteMeta[] = routeMeta;
+  const entries: readonly RouteMeta[] = routeMeta();
   const sidebars = features.flatMap((feature) => feature.sidebars ?? []);
   assert(entries.length > 0, 'the route table must declare its screens');
   for (const entry of entries) {

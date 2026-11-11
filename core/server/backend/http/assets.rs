@@ -57,34 +57,86 @@ pub(crate) struct Audience {
     pub platform: bool,
 }
 impl Audience {
-    pub fn sees(&self, owner: Option<&str>) -> bool { owner.is_none() || self.platform || owner == self.code.as_deref() }
+    pub fn sees(&self, owner: Option<&str>) -> bool {
+        owner.is_none() || self.platform || owner == self.code.as_deref()
+    }
 }
 
-pub(crate) async fn audience(state: &std::sync::Arc<State>, request: &axum::extract::Request) -> Audience {
-    if !crate::manifest::registry().features.iter().any(|feature| feature.owner.is_some())
-        && !state.assets.get(request.uri().path()).is_some_and(|asset| asset.private.is_some()) {
+pub(crate) async fn audience(
+    state: &std::sync::Arc<State>,
+    request: &axum::extract::Request,
+) -> Audience {
+    if !crate::manifest::registry()
+        .features
+        .iter()
+        .any(|feature| feature.owner.is_some())
+        && !state
+            .assets
+            .get(request.uri().path())
+            .is_some_and(|asset| asset.private.is_some())
+    {
         return Audience::default();
     }
     let mut probe = axum::http::Request::new(());
     *probe.method_mut() = request.method().clone();
     *probe.uri_mut() = request.uri().clone();
     *probe.headers_mut() = request.headers().clone();
-    if let Some(site) = request.extensions().get::<crate::foundation::config::Site>() { probe.extensions_mut().insert(site.clone()); }
+    if let Some(site) = request
+        .extensions()
+        .get::<crate::foundation::config::Site>()
+    {
+        probe.extensions_mut().insert(site.clone());
+    }
     let (parts, _) = probe.into_parts();
-    let Ok(input) = super::middleware::head(state, &parts, "/assets/*") else { return Audience::default(); };
-    state.read(move |db| {
-        use super::route::Grant;
-        let auth = super::route::Session.authorize(db, &input)?;
-        let code = if let crate::foundation::config::Site::Dsp(code) = &input.site {
-            if let Some(dsp) = db.dsp_at(code)? && db.may(&auth.user.id, &input.site, &dsp.id, crate::tenancy::roles::ACCESS)? { Some(code.clone()) } else { None }
-        } else { None };
-        Ok(Audience { code, platform: auth.user.platform_owner })
-    }).await.unwrap_or_default()
+    let Ok(input) = super::middleware::head(state, &parts, "/assets/*") else {
+        return Audience::default();
+    };
+    state
+        .read(move |db| {
+            use super::route::Grant;
+            let auth = super::route::Session.authorize(db, &input)?;
+            let code = if let crate::foundation::config::Site::Dsp(code) = &input.site {
+                if let Some(dsp) = db.dsp_at(code)?
+                    && db.may(
+                        &auth.user.id,
+                        &input.site,
+                        &dsp.id,
+                        crate::tenancy::roles::ACCESS,
+                    )?
+                {
+                    Some(code.clone())
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            Ok(Audience {
+                code,
+                platform: auth.user.platform_owner,
+            })
+        })
+        .await
+        .unwrap_or_default()
 }
 
 pub fn custom_frontend(state: &State, name: &str) -> Option<(String, Vec<String>)> {
-    state.assets.iter().find_map(|(url, asset)| asset.private.as_ref().filter(|private| private.feature.as_deref() == Some(name)).map(|private| (url.clone(), private.styles.clone())))
-        .or_else(|| state.config.development.then(|| (format!("/custom/{name}.js"), Vec::new())))
+    state
+        .assets
+        .iter()
+        .find_map(|(url, asset)| {
+            asset
+                .private
+                .as_ref()
+                .filter(|private| private.feature.as_deref() == Some(name))
+                .map(|private| (url.clone(), private.styles.clone()))
+        })
+        .or_else(|| {
+            state
+                .config
+                .development
+                .then(|| (format!("/custom/{name}.js"), Vec::new()))
+        })
 }
 
 pub struct Asset {
@@ -122,7 +174,11 @@ pub fn assets(
         }
     }
     let manifest = root.join("private-assets.json");
-    let mut private: HashMap<String, PrivateAsset> = if manifest.is_file() { serde_json::from_slice(&std::fs::read(manifest)?)? } else { HashMap::new() };
+    let mut private: HashMap<String, PrivateAsset> = if manifest.is_file() {
+        serde_json::from_slice(&std::fs::read(manifest)?)?
+    } else {
+        HashMap::new()
+    };
     let mut result = HashMap::new();
     let mut size = 0;
     for (route, file) in files {
@@ -207,12 +263,22 @@ pub fn assets(
     }
     ensure(private.is_empty(), "custom_asset_missing", 503)?;
     for (path, asset) in &result {
-        ensure(!path.starts_with("/assets/custom-") || asset.private.is_some(), "custom_asset_unowned", 503)?;
+        ensure(
+            !path.starts_with("/assets/custom-") || asset.private.is_some(),
+            "custom_asset_unowned",
+            503,
+        )?;
     }
     Ok(result)
 }
 /// `GET` and `HEAD` of `/`, `/service-worker.js` and `/assets/*`, with an ETag so browsers revalidate cheaply.
-pub(super) fn serve(state: &State, method: &Method, path: &str, headers: &HeaderMap, audience: &Audience) -> Result<Response> {
+pub(super) fn serve(
+    state: &State,
+    method: &Method,
+    path: &str,
+    headers: &HeaderMap,
+    audience: &Audience,
+) -> Result<Response> {
     ensure(
         !path.contains("..") && !path.contains('%') && !path.contains('\\'),
         "not_found",
@@ -223,7 +289,14 @@ pub(super) fn serve(state: &State, method: &Method, path: &str, headers: &Header
         .get(path)
         .ok_or_else(|| Error::new("not_found", 404))?;
     if let Some(private) = &asset.private {
-        ensure((private.platform && audience.platform) || (!private.platform && private.owner.is_some() && audience.sees(private.owner.as_deref())), "not_found", 404)?;
+        ensure(
+            (private.platform && audience.platform)
+                || (!private.platform
+                    && private.owner.is_some()
+                    && audience.sees(private.owner.as_deref())),
+            "not_found",
+            404,
+        )?;
     }
     let accepted = headers
         .get("accept-encoding")
@@ -264,7 +337,16 @@ pub(super) fn serve(state: &State, method: &Method, path: &str, headers: &Header
     if let Some(encoding) = representation.encoding {
         h.insert("content-encoding", encoding.parse().unwrap());
     }
-    h.insert("cache-control", if asset.private.is_some() { "private, no-store" } else { asset.cache }.parse().unwrap());
+    h.insert(
+        "cache-control",
+        if asset.private.is_some() {
+            "private, no-store"
+        } else {
+            asset.cache
+        }
+        .parse()
+        .unwrap(),
+    );
     if !unchanged {
         h.insert(
             "content-length",

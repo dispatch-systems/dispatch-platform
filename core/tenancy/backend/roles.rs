@@ -328,12 +328,28 @@ impl Store {
     }
     fn scope_role(&self, dsp: &str, mut role: Role) -> Result<Role> {
         let code = self.feature_code(dsp)?;
-        role.permissions.retain(|id| registry().features.iter().find(|feature| feature.owner.is_some() && feature.permissions.iter().chain(feature.subfeatures.iter().flat_map(|sub| sub.permissions)).any(|permission| permission.id == id)).is_none_or(|feature| feature.belongs_to(code.as_deref())));
+        role.permissions.retain(|id| {
+            registry()
+                .features
+                .iter()
+                .find(|feature| {
+                    feature.owner.is_some()
+                        && feature
+                            .permissions
+                            .iter()
+                            .chain(feature.subfeatures.iter().flat_map(|sub| sub.permissions))
+                            .any(|permission| permission.id == id)
+                })
+                .is_none_or(|feature| feature.belongs_to(code.as_deref()))
+        });
         Ok(role)
     }
     pub fn roles(&self, dsp: &str) -> Result<Vec<Role>> {
         let roles: Vec<CountedRole> = self.dsp(dsp)?.query_as(ROLES, params![now(), dsp])?;
-        roles.into_iter().map(|role| self.scope_role(dsp, role.0)).collect()
+        roles
+            .into_iter()
+            .map(|role| self.scope_role(dsp, role.0))
+            .collect()
     }
     // Nobody hands out access they do not hold: the owner role is reserved for
     // owners, and any other role must fit inside the actor's own permissions.

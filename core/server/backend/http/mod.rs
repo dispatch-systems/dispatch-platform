@@ -125,7 +125,11 @@ async fn fallback(AxumState(state): AxumState<Arc<State>>, request: Request) -> 
     let asset = [Method::GET, Method::HEAD].contains(request.method())
         && (path == "/" || path == "/service-worker.js" || path.starts_with("/assets/"));
     if asset {
-        let audience = request.extensions().get::<assets::Audience>().cloned().unwrap_or_default();
+        let audience = request
+            .extensions()
+            .get::<assets::Audience>()
+            .cloned()
+            .unwrap_or_default();
         return assets::serve(&state, request.method(), path, request.headers(), &audience)
             .unwrap_or_else(middleware::failure);
     }

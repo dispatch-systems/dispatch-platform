@@ -14,9 +14,32 @@ export interface FrontendFeature {
 }
 
 let installed: readonly FrontendFeature[] = [];
+let publicFeatures: readonly FrontendFeature[] = [];
+let customNames = new Set<string>();
 /** Called once by the app, before the first render, with every owner's manifest. */
 export function installFeatures(features: readonly FrontendFeature[]) {
+  publicFeatures = features;
+  customNames = new Set();
   installed = features;
+}
+/** Installs only manifests loaded for the DSP whose view the app just admitted. */
+export function installCustomFeatures(features: readonly FrontendFeature[]) {
+  customNames = new Set(features.map((feature) => feature.name));
+  if (!features.length) {
+    installed = publicFeatures;
+    return;
+  }
+  const page = (feature: FrontendFeature) =>
+    featureCatalog.find((entry) => entry.kind === 'page' && entry.id === feature.name);
+  const pages = [...publicFeatures.filter(page), ...features];
+  pages.sort((a, b) => {
+    const place = (feature: FrontendFeature) => {
+      const entry = page(feature);
+      return entry?.kind === 'page' ? (entry.place ?? 65535) : 65535;
+    };
+    return place(a) - place(b) || a.name.localeCompare(b.name);
+  });
+  installed = [...pages, ...publicFeatures.filter((feature) => !page(feature))];
 }
 /** Every owner's manifest, in the order the owners are listed. */
 export const manifests = () => installed;
@@ -37,7 +60,9 @@ export function presentBy<T extends { part?: Feature }>(
   slot: (feature: FrontendFeature) => readonly T[] | undefined,
 ) {
   return installed.flatMap((owner) =>
-    featureCatalog.some((f) => f.id === owner.name) && !hasFeature(view, owner.name as Feature)
+    (customNames.has(owner.name) &&
+      !view?.custom?.frontends.some((feature) => feature.name === owner.name)) ||
+    (featureCatalog.some((f) => f.id === owner.name) && !hasFeature(view, owner.name as Feature))
       ? []
       : (slot(owner) ?? [])
           .filter((each) => !each.part || hasFeature(view, each.part))

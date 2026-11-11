@@ -328,7 +328,11 @@ impl Store {
                 let tester = opened && self.beta_tester(&dsp.id, &a.user.id)?;
                 self.shown_features(&dsp.id, tester)?
             };
-            let private: Vec<_> = crate::tenancy::catalog::catalog().iter().filter(|feature| feature.owner.is_some() && feature.owner == dsp.code.as_deref()).map(|feature| feature.id.to_owned()).collect();
+            let private: Vec<_> = crate::tenancy::catalog::catalog()
+                .iter()
+                .filter(|feature| feature.owner.is_some() && feature.owner == dsp.code.as_deref())
+                .map(|feature| feature.id.to_owned())
+                .collect();
             let mut summary = DspSummary {
                 custom_features: (!private.is_empty()).then_some(private),
                 features,

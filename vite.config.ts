@@ -16,9 +16,7 @@ export default defineConfig({
     // font's is (INTER-LICENSE.txt), as their licenses ask copies to carry.
     license: { fileName: 'assets/THIRD-PARTY-LICENSES.txt' },
     rolldownOptions: {
-      output: {
-
-      },
+      output: {},
       treeshake: {
         // The table modules run nothing when imported. Saying so lets the unused table
         // code behind the shared `ui` index leave the entry chunk, as it did before

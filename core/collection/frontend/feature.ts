@@ -1,9 +1,8 @@
 import { createElement, lazy } from 'react';
-import { schedulingPermissions } from '../../tenancy/api/generated/access-catalog.js';
 import { collectorsRead } from '../api/urls.js';
 import { begins } from '../../shell/frontend/runtime/data-policy.js';
 import { connectionFeatures } from '../../shell/frontend/runtime/features.js';
-import { can } from '../../shell/frontend/runtime/permissions.js';
+import { can, schedulingPermissions } from '../../shell/frontend/runtime/permissions.js';
 import {
   connectionCard,
   connectionCards,

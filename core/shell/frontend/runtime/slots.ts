@@ -12,7 +12,7 @@
 // `FrontendFeature` by declaration merging, and what the hosts read it with; then its names
 // here.
 export type { FrontendFeature } from './slots/installed.js';
-export { installFeatures } from './slots/installed.js';
+export { installFeatures, installCustomFeatures } from './slots/installed.js';
 export type {
   Access,
   DspPageContext,

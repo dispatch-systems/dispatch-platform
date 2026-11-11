@@ -3,9 +3,11 @@ import {
   permissionGroups as generatedPermissionGroups,
   impliedPermissions as generatedImpliedPermissions,
   permissionParents as generatedPermissionParents,
+  permissions as publicPermissions,
+  schedulingPermissions as publicSchedulingPermissions,
 } from '../../../tenancy/api/generated/access-catalog.js';
 import type { DspView, Permission } from '../../../accounts/api/index.js';
-import { grants } from './features.js';
+import { featureLabel, grants } from './features.js';
 
 // A permission of a feature the DSP lacks is held by nobody, owners included.
 export const can = (view: DspView | undefined, permission: Permission) =>
@@ -18,16 +20,51 @@ export const can = (view: DspView | undefined, permission: Permission) =>
 export const visiblePermissions = (view: DspView, stored: readonly Permission[]) =>
   stored.filter((permission) => grants(view.features, permission));
 
-export const permissionLabels: Record<Permission, string> = generatedPermissionLabels;
+export let permissionLabels: Record<Permission, string> = generatedPermissionLabels as Record<
+  Permission,
+  string
+>;
 /** The backend catalog owns the sections and each permission belongs to exactly one. */
-const permissionGroups: readonly (readonly [string, readonly Permission[]])[] =
+let permissionGroups: readonly (readonly [string, readonly Permission[]])[] =
   generatedPermissionGroups;
 /** The sections the role sheet shows a DSP: those whose permissions exist in it. */
 export const visiblePermissionGroups = (view: DspView) =>
   permissionGroups.filter(([, items]) => items.some((p) => grants(view.features, p)));
 /** Granting the key includes each of its values, however many steps away, from the backend's rules. */
-export const impliedPermissions: Partial<Record<Permission, readonly Permission[]>> =
+export let impliedPermissions: Partial<Record<Permission, readonly Permission[]>> =
   generatedImpliedPermissions;
 /** The permission each finer one sits under on the role sheet, which it includes too. */
-export const permissionParents: Partial<Record<Permission, Permission>> =
-  generatedPermissionParents;
+export let permissionParents: Partial<Record<Permission, Permission>> = generatedPermissionParents;
+
+/** The current DSP's role and scheduling choices, with no other owner's declarations. */
+export let allPermissions: readonly Permission[] = publicPermissions;
+export let schedulingPermissions: readonly Permission[] = publicSchedulingPermissions;
+export function installCustomPermissions(
+  custom?: DspView['custom'],
+  scheduling: readonly Permission[] = [],
+) {
+  const permissions = custom?.permissions ?? [];
+  permissionLabels = {
+    ...generatedPermissionLabels,
+    ...Object.fromEntries(permissions.map((p) => [p.id, p.label])),
+  } as Record<Permission, string>;
+  impliedPermissions = {
+    ...generatedImpliedPermissions,
+    ...Object.fromEntries(permissions.map((p) => [p.id, p.implied])),
+  };
+  permissionParents = {
+    ...generatedPermissionParents,
+    ...Object.fromEntries(permissions.flatMap((p) => (p.under ? [[p.id, p.under]] : []))),
+  };
+  permissionGroups = [
+    ...generatedPermissionGroups,
+    ...(custom?.catalog ?? [])
+      .filter((entry) => entry.permissions.length)
+      .map((entry): [string, Permission[]] => [
+        featureLabel(entry.id),
+        entry.permissions as Permission[],
+      ]),
+  ];
+  allPermissions = [...publicPermissions, ...permissions.map((p) => p.id as Permission)].sort();
+  schedulingPermissions = [...publicSchedulingPermissions, ...scheduling];
+}

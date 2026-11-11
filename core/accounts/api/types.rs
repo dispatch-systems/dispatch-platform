@@ -326,13 +326,17 @@ pub struct CustomFeatures {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "core/accounts/api/generated/"))]
 #[serde(rename_all = "lowercase")]
-pub enum CustomKind { Page, Sub }
+pub enum CustomKind {
+    Page,
+    Sub,
+}
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "core/accounts/api/generated/"))]
 pub struct CustomFeature {
     pub id: String,
     pub label: String,
+    pub place: u16,
     pub kind: CustomKind,
     pub permissions: Vec<String>,
     pub requires: Vec<String>,

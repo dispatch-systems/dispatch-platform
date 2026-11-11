@@ -29,6 +29,7 @@ import { openView, saveRole } from '../../core/shell/frontend/runtime/session.js
 import { getSession } from '../../core/shell/frontend/runtime/endpoints.js';
 import { cancelPrefetches } from '../../core/shell/frontend/runtime/prefetch.js';
 import { verified } from '../../core/shell/frontend/runtime/access-recovery.js';
+import { clearCustomFeatures, prepareCustomFeatures } from './custom-features.js';
 
 type Session = SessionView;
 
@@ -64,6 +65,7 @@ export function useAppAdmission(
       admission.current++;
       cancelPrefetches();
       credentials(activeCsrf);
+      clearCustomFeatures();
       setView(undefined);
       setSwitching(
         Boolean(parseHash(window.location.hash).dspId && navigationState.current.session),
@@ -151,6 +153,7 @@ export function useAppAdmission(
         // A lazy security screen may not have committed the newly accepted session yet.
         // Dropping the DSP view must preserve that session's live CSRF credential.
         credentials(activeCsrf);
+        if (!opening) clearCustomFeatures();
         setView(undefined);
         setSwitching(Boolean(next.dspId && current.session && (!sameWorkspace || opening)));
         setAddress(next);
@@ -235,11 +238,15 @@ export function useAppAdmission(
     // Role changes and expired views immediately stop using the old admission.
     cancelPrefetches();
     credentials(session.csrf);
+    clearCustomFeatures();
     setView(undefined);
     setSwitching(true);
     try {
       const next = await openView(session, dspId, current);
       if (!current()) return;
+      const installCustom = await prepareCustomFeatures(next, current);
+      if (!current()) return;
+      installCustom?.();
       credentials(session.csrf, next.token);
       // The view is admitted from here, before React commits it. An address change in
       // between, a link followed as the DSP opens, must find it, rather than take the
@@ -272,6 +279,7 @@ export function useAppAdmission(
       sessionRequest.current++;
       cancelPrefetches();
       credentials('');
+      clearCustomFeatures();
       setSession(null);
       setView(undefined);
       setSwitching(false);
@@ -281,6 +289,7 @@ export function useAppAdmission(
   }, []);
   useEffect(() => {
     admission.current++;
+    clearCustomFeatures();
     setView(undefined);
     if (!dspId) saveRole();
     if (!session || securityRequired || showAuth) {
@@ -296,6 +305,7 @@ export function useAppAdmission(
     return () => {
       // eslint-disable-next-line react-hooks/exhaustive-deps -- the count ends whatever admission is in flight by then
       admission.current++;
+      clearCustomFeatures();
     };
   }, [session, dspId, fail, securityRequired, showAuth, reopen]);
   async function logout() {
@@ -305,6 +315,7 @@ export function useAppAdmission(
     sessionRequest.current++;
     cancelPrefetches();
     credentials('');
+    clearCustomFeatures();
     setSession(null);
     setView(undefined);
     navigate('');
