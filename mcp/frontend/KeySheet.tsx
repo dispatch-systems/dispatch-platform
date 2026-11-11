@@ -7,7 +7,7 @@ import type {
   AgentKeyRequest,
   AgentTool,
 } from '../api/index.js';
-import { Badge, Modal } from '../../core/shell/frontend/ui/index.js';
+import { Badge, Modal, SaveChangesDialog } from '../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../core/shell/frontend/runtime/useAction.js';
 import { createAgentKey, updateAgentKey } from '../api/client.js';
 import {
@@ -190,26 +190,14 @@ export function KeySheet({
         )}
       </form>
       {confirming && (
-        <Modal title="Save changes?" dismissible={false} onClose={() => {}}>
-          <p>
-            {existing ? `This ${noun} has unsaved changes.` : 'This key hasn’t been created yet.'}
-          </p>
-          <div className="form-actions">
-            <button type="button" onClick={close}>
-              Discard changes
-            </button>
-            <button
-              type="button"
-              className="primary"
-              disabled={!ready || save.busy}
-              onClick={async () => {
-                if (!(await save.run())) setConfirming(false);
-              }}
-            >
-              Save changes
-            </button>
-          </div>
-        </Modal>
+        <SaveChangesDialog
+          saveable={ready && !save.busy}
+          discard={close}
+          save={save.run}
+          stay={() => setConfirming(false)}
+        >
+          {existing ? `This ${noun} has unsaved changes.` : 'This key hasn’t been created yet.'}
+        </SaveChangesDialog>
       )}
       {revoking && existing && (
         <RevokeDialog
