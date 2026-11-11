@@ -5,12 +5,10 @@ mod backend;
 
 use dispatch_core::manifest::{Feature, feature, optional, perm};
 
-pub(crate) const FEATURE_ID: &str = "live_route_data";
-
 pub const FEATURE: Feature = Feature {
     place: 140,
     // It reads the DSP's route source, Cortex, which switches on with it.
-    switch: optional(FEATURE_ID, "Live Route Data", &["routes"]),
+    switch: optional("live_route_data", "Live Route Data", &["routes"]),
     depends_on: &["routes", "cortex"],
     permissions: &[perm(
         "live_route_data.manage",
@@ -20,5 +18,10 @@ pub const FEATURE: Feature = Feature {
     // When it reads, on its own page of Settings.
     settings: &[backend::settings::COLLECTION],
     live_readers: &[&backend::reader::READER],
-    ..feature(FEATURE_ID)
+    ..feature("live_route_data")
 };
+
+/// Whether this feature's background reader still has authority to run.
+pub(crate) fn enabled(db: &dispatch_core::db::Store, dsp: &str) -> dispatch_core::Result<bool> {
+    db.feature_enabled(dsp, FEATURE.switch.id)
+}

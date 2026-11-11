@@ -478,3 +478,24 @@ async fn persistent_throttling_does_not_request_a_browser_fallback() {
     assert_eq!(stand.asked("itinerary-2"), 2);
     assert_eq!(stand.pages.load(Ordering::SeqCst), 1);
 }
+
+#[tokio::test(start_paused = true)]
+async fn authority_is_rechecked_after_cooldown_before_another_provider_request() {
+    let (stand, session) = stand_in(Plays::ThrottledOnce).await;
+    let mut native = Native::new(&session).unwrap();
+    let checks = Arc::new(AtomicUsize::new(0));
+    let check = {
+        let checks = checks.clone();
+        move || -> dispatch_core::collection::browser::Pending<'static, ()> {
+            let current = checks.fetch_add(1, Ordering::SeqCst) == 0;
+            Box::pin(async move { dispatch_core::ensure(current, "connection_changed", 409) })
+        }
+    };
+    let result = native.read(&stand.day.scope, Mode::Final, &check).await;
+    assert!(
+        matches!(result, Err(Failure::Stopped(error)) if error.is(dispatch_core::Code::ConnectionChanged))
+    );
+    assert_eq!(checks.load(Ordering::SeqCst), 2);
+    assert_eq!(stand.asked("itinerary-1"), 1);
+    assert_eq!(stand.asked("itinerary-2"), 1);
+}

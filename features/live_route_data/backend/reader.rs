@@ -344,11 +344,7 @@ fn authorize(
             state
                 .read(move |db| {
                     db.ensure_dsp_active(&dsp)?;
-                    dispatch_core::ensure(
-                        db.feature_enabled(&dsp, crate::FEATURE_ID)?,
-                        "feature_disabled",
-                        409,
-                    )?;
+                    dispatch_core::ensure(crate::enabled(db, &dsp)?, "feature_disabled", 409)?;
                     dispatch_core::ensure(
                         revision.is_some()
                             && db.connection_revision(&dsp, cortex::PROVIDER)? == revision,
