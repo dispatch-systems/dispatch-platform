@@ -201,7 +201,7 @@ async fn decoded(
 fn passing(failure: &Failure) -> bool {
     match failure {
         Failure::Throttled(_) | Failure::SignedOut => true,
-        Failure::Unavailable(error) => error.code == "provider_unavailable",
+        Failure::Unavailable(error) => error.is(dispatch_core::Code::ProviderUnavailable),
         _ => false,
     }
 }
