@@ -1,5 +1,7 @@
 # Slack
 
+Custom integrations request OAuth scopes only for their owning DSP. Their event types must already be subscribed by shared features: Slack subscriptions belong to the whole app. Startup rejects a custom integration that adds a global event type.
+
 Dispatch's app in a DSP's Slack workspaces. A DSP adds it to as many workspaces as it uses, and
 each workspace belongs to that DSP alone: everything Slack sends names its workspace, and that
 alone decides the DSP it reaches. On its own, the app shows, on its Home tab, which DSP the

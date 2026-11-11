@@ -68,6 +68,7 @@ static CUSTOM: Feature = Feature {
     routes: || vec![
       dispatch_core::server::http::route::read("/custom-public", dispatch_core::server::http::route::Public, |_, _, _| Ok(dispatch_core::server::http::input::Reply::json(json!({"ok":true})))),
       dispatch_core::server::http::route::read("/custom-session", dispatch_core::server::http::route::Session, |_, _, _| Ok(dispatch_core::server::http::input::Reply::json(json!({"ok":true})))),
+      dispatch_core::server::http::route::write("/custom-public-post", dispatch_core::server::http::route::Public, |_, _, _| Ok(dispatch_core::server::http::input::Reply::json(json!({"ran":true})))),
       dispatch_core::server::http::route::read(
         "/api/dsp/nll-probe", dispatch_core::server::http::route::Dsp("nll_probe.view"),
         |db, c, _| Ok(dispatch_core::server::http::input::Reply::json(json!({"count": db.dsp(c.dsp_id())?.count("SELECT count(*) FROM nll_probe", [])?})))
@@ -584,4 +585,88 @@ async fn a_custom_route_keeps_its_declared_public_or_session_grant() {
             .status,
         404
     );
+}
+
+#[tokio::test]
+async fn custom_callbacks_have_only_a_live_owning_dsp_entrypoint() {
+    let server = Server::start().await;
+    let north = server.dsp("nll").await;
+    let member = server.signed_in("member@dispatch.test", &north).await;
+    let mut answers = Vec::new();
+    for host in [None, Some(format!("invite.localhost:{}", server.port))] {
+        let visitor = Who {
+            cookie: String::new(),
+            csrf: String::new(),
+            view: String::new(),
+            host,
+        };
+        for path in ["/custom-public", "/custom-session"] {
+            answers.push((
+                "outside owner host",
+                path,
+                server.send("GET", path, &visitor, None).await.status,
+            ));
+        }
+    }
+    let own = north.clone();
+    server
+        .state
+        .run(move |db| testing::set_dsp_status(db, &own, "suspended"))
+        .await
+        .unwrap();
+    for path in ["/custom-public", "/custom-session"] {
+        answers.push((
+            "disabled owner",
+            path,
+            server.send("GET", path, &member, None).await.status,
+        ));
+    }
+    server
+        .state
+        .run(move |db| {
+            let actor = testing::platform_owner(db);
+            let name = db.find_dsp(&north)?.name;
+            db.delete_dsp(&north, &name, &actor)
+        })
+        .await
+        .unwrap();
+    for path in ["/custom-public", "/custom-session"] {
+        answers.push((
+            "deleted owner",
+            path,
+            server.send("GET", path, &member, None).await.status,
+        ));
+    }
+    assert!(
+        answers.iter().all(|(_, _, status)| *status == 404),
+        "{answers:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_custom_public_callback_checks_the_owner_again_after_its_body_arrives() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let server = Server::start().await;
+    let north = server.dsp("nll").await;
+    let mut connection = tokio::net::TcpStream::connect(("127.0.0.1", server.port))
+        .await
+        .unwrap();
+    let headers = format!(
+        "POST /custom-public-post HTTP/1.1\r\nHost: nll.localhost:{}\r\nContent-Type: application/json\r\nContent-Length: 2\r\nExpect: 100-continue\r\nConnection: close\r\n\r\n",
+        server.port
+    );
+    connection.write_all(headers.as_bytes()).await.unwrap();
+    // Hyper asks for the body only after the route's initial owner admission passed.
+    let mut ready = [0; b"HTTP/1.1 100 Continue\r\n\r\n".len()];
+    connection.read_exact(&mut ready).await.unwrap();
+    assert_eq!(&ready, b"HTTP/1.1 100 Continue\r\n\r\n");
+    server
+        .state
+        .run(move |db| testing::set_dsp_status(db, &north, "suspended"))
+        .await
+        .unwrap();
+    connection.write_all(b"{}").await.unwrap();
+    let mut answer = String::new();
+    connection.read_to_string(&mut answer).await.unwrap();
+    assert!(answer.starts_with("HTTP/1.1 404"), "{answer}");
 }

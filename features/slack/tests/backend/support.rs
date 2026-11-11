@@ -83,6 +83,20 @@ static LISTENER: Feature = Feature {
     on: &[dispatch_core::on!(PeopleChanged, people_changed)],
     ..feature("listening")
 };
+/// A custom integration whose extra permission belongs to one DSP; its event is already
+/// subscribed by the shared listener, so it expands no workspace's event delivery.
+pub static CUSTOM: Feature = Feature {
+    switch: dispatch_core::manifest::custom("dsp42_probe", "Probe", &[]),
+    depends_on: &["slack"],
+    integrations: &[Integration {
+        needs: &["reactions:write"],
+        hears: &["file_shared"],
+        heard: Some(|_, _| Box::pin(async {})),
+        ..integration("slack", "dsp42_probe.reactions", "Reactions")
+    }],
+    ..feature("dsp42_probe")
+}
+.registered(Some("dsp42"), "dsp42_probe");
 /// Each DSP whose people the stand-in heard changed, in every test, once each time.
 static CHANGED: Mutex<Vec<String>> = Mutex::new(Vec::new());
 fn people_changed(_: Arc<State>, dsp: String, _: PeopleChanged) -> Upkeep {
@@ -340,7 +354,7 @@ pub fn ready(dsp: &str, ready: bool) {
 
 /// Installs Slack and the stand-ins.
 pub fn install() {
-    testing::install(&[], &[&FEATURE, &LISTENER, &KEEPER]);
+    testing::install(&[], &[&FEATURE, &LISTENER, &KEEPER, &CUSTOM]);
 }
 /// A platform with one DSP, and its server's state.
 pub fn platform() -> (impl Drop, Arc<State>, String) {

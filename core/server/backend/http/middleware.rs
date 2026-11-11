@@ -322,6 +322,10 @@ pub fn head(state: &State, parts: &Parts, pattern: &'static str) -> Result<Input
         query: Value::Object(query),
         ip,
         site,
+        owner: parts
+            .extensions
+            .get::<super::input::FeatureOwner>()
+            .map(|owner| owner.0),
         trace,
         pattern,
     })

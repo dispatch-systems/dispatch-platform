@@ -1,9 +1,6 @@
 //! Installing the app and renewing the workspace's tokens.
 use super::{API, HTTP, Installed, Slack, Tokens, answer, timed, unreachable};
-use crate::backend::{
-    app::{RETURN_PATH, scopes},
-    fixture,
-};
+use crate::backend::{app::RETURN_PATH, fixture};
 use dispatch_core::{Error, Result, db::now};
 use serde::Deserialize;
 
@@ -13,21 +10,30 @@ impl Slack {
     /// Where the browser goes to install the app. `team` skips Slack's choice of workspace, as
     /// reconnecting or updating one does. Fixture mode skips Slack: the browser comes straight
     /// back with a code naming the workspace, `fixture:<team>`.
-    pub fn install_url(&self, origin: &str, state: &str, team: Option<&str>) -> String {
+    pub fn install_url(
+        &self,
+        origin: &str,
+        state: &str,
+        team: Option<&str>,
+        scopes: &[&str],
+    ) -> String {
         let back = format!("{origin}{RETURN_PATH}");
         let (base, query) = match self {
             Self::Fixture => (
                 back.as_str(),
                 vec![
                     ("state", state.to_owned()),
-                    ("code", format!("fixture:{}", team.unwrap_or_default())),
+                    (
+                        "code",
+                        format!("fixture:{}:{}", team.unwrap_or_default(), scopes.join(",")),
+                    ),
                 ],
             ),
             Self::Live(client) => (
                 AUTHORIZE,
                 [
                     ("client_id", client.id.clone()),
-                    ("scope", scopes().join(",")),
+                    ("scope", scopes.join(",")),
                     ("redirect_uri", back.clone()),
                     ("state", state.to_owned()),
                 ]
@@ -140,3 +146,7 @@ async fn form<T: for<'de> Deserialize<'de>>(method: &str, fields: &[(&str, &str)
     serde_json::from_value(answer(method, response).await?)
         .map_err(|_| Error::new("slack_install_failed", 502))
 }
+
+#[cfg(test)]
+#[path = "../../tests/backend/slack/oauth.rs"]
+mod tests;

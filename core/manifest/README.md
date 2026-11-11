@@ -61,6 +61,7 @@ Every field of `Feature`, as `feature.rs` fills it.
 | `dsp_connection`           | `mod.rs`          | Whether it adds one of the DSP's own accounts to Settings' DSP Connections, as a collector's connection is.                                  |
 | `people`                   | `people/`         | Who its data names, for the feature that tells people apart: a `People` for each kind of data, with what else it knows of them.              |
 | `integrations`             | `integrations`    | What it does through another feature's connection, starting on or off in each of its accounts, and clears of one forgotten.                  |
+| `integration_events`       | `integrations`    | A connection's globally subscribed base events; custom integrations may reuse these and shared integrations' subscriptions only.             |
 | `exposes`                  | `exposes`         | What it offers every other feature, each through a contract; one feature at most offers each.                                                |
 | `on`                       | `events`          | What it does when something happens for a DSP: a collection succeeding, the DSP's people changing, or another feature's event.               |
 | `deleting`                 | `deleting`        | What it lets go of as a DSP is deleted: what the DSP connected through it, its rows outside the DSP's folder, and what it holds in memory.   |

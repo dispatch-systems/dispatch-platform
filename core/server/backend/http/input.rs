@@ -9,6 +9,9 @@ use axum::{
 use serde_json::{Value, json};
 
 #[derive(Clone)]
+pub(super) struct FeatureOwner(pub &'static str);
+
+#[derive(Clone)]
 pub struct Input {
     pub path: String,
     pub method: Method,
@@ -18,6 +21,8 @@ pub struct Input {
     pub ip: String,
     /// Which of the server's addresses the request came to.
     pub site: crate::foundation::config::Site,
+    /// Assigned by the registered route, never by a request header.
+    pub(super) owner: Option<&'static str>,
     pub trace: crate::foundation::observability::RequestTrace,
     // The registered pattern, whose `{name}` segments name the path parameters.
     pub(super) pattern: &'static str,

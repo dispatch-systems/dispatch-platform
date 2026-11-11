@@ -4,7 +4,7 @@
 //! Slack is called outside the database, and the member's permission is checked again after
 //! every wait, before anything is written. The install link, the other way in, is `link`'s.
 use super::{
-    app::scopes,
+    app::scopes_for,
     bot::Bot,
     fixture, logo, members,
     slack::{Installed, Slack},
@@ -70,7 +70,13 @@ pub(super) fn install_url(
         (Slack::Fixture, None) => Some(fixture::free_team(db)?),
         (_, team) => team,
     };
-    Ok(slack.install_url(&db.config.origin, state, team.as_deref()))
+    let (dsp, _) = started(state).ok_or_else(|| Error::new("slack_connect_expired", 409))?;
+    Ok(slack.install_url(
+        &db.config.origin,
+        state,
+        team.as_deref(),
+        &scopes_for(db, dsp)?,
+    ))
 }
 
 /// The DSP's workspaces, each with its logo's version, and its install link for adding one, as
@@ -112,7 +118,7 @@ fn described(
         } else {
             WorkspaceStatus::Connected
         },
-        needs_update: !scopes()
+        needs_update: !scopes_for(db, dsp)?
             .iter()
             .all(|scope| workspace.scopes.iter().any(|had| had == scope)),
         integrations: db.slack_integrations(dsp, &workspace.team)?,

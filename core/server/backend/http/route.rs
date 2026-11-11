@@ -84,7 +84,14 @@ impl Grant for Public {
     fn access(self) -> Access {
         Access::Public
     }
-    fn authorize(self, _: &Store, _: &Input) -> Result<()> {
+    fn authorize(self, db: &Store, input: &Input) -> Result<()> {
+        if let Some(owner) = input.owner {
+            ensure(
+                db.dsp_at(owner)?.is_some_and(|dsp| db.serves(&dsp)),
+                "not_found",
+                404,
+            )?;
+        }
         Ok(())
     }
 }
@@ -94,6 +101,7 @@ impl Grant for Session {
         Access::Session
     }
     fn authorize(self, db: &Store, input: &Input) -> Result<Auth> {
+        Public.authorize(db, input)?;
         let support = input.support_read_token(db.config.development);
         let raw = if let Some(raw) = input.observation_token(&db.config)? {
             crate::accounts::browser::at_origin(&db.config, input)?;
@@ -170,6 +178,13 @@ impl Grant for Dsp {
     fn authorize(self, db: &Store, input: &Input) -> Result<Context> {
         let auth = Session.authorize(db, input)?;
         let context = db.from_view(&auth, input.header("x-dispatch-view"), self.0)?;
+        ensure(
+            input
+                .owner
+                .is_none_or(|owner| context.dsp.code.as_deref() == Some(owner)),
+            "not_found",
+            404,
+        )?;
         input
             .trace
             .lock()
@@ -622,28 +637,35 @@ impl Route {
     }
     async fn answer(&self, state: Arc<State>, request: Request) -> Result<Response> {
         let request = if let Some(owner) = self.owner {
-            let (parts, body) = request.into_parts();
+            let (mut parts, body) = request.into_parts();
+            parts.extensions.insert(input::FeatureOwner(owner));
             let input = middleware::head(&state, &parts, self.path)?;
-            if let Site::Dsp(code) = &input.site {
-                ensure(code == owner, "not_found", 404)?;
-            }
-            if matches!(self.access, Access::Dsp(_)) {
-                state
-                    .read(move |db| {
+            let dsp_route = matches!(self.access, Access::Dsp(_));
+            let admin = matches!(input.site, Site::Admin);
+            ensure(
+                matches!(&input.site, Site::Dsp(code) if code == owner) || (admin && dsp_route),
+                "not_found",
+                404,
+            )?;
+            state
+                .read(move |db| {
+                    let own = db
+                        .dsp_at(owner)?
+                        .filter(|dsp| db.serves(dsp))
+                        .ok_or_else(|| Error::new("not_found", 404))?;
+                    if dsp_route {
                         let auth = Session.authorize(db, &input)?;
+                        ensure(!admin || auth.user.platform_owner, "not_found", 404)?;
                         let context = db.from_view(
                             &auth,
                             input.header("x-dispatch-view"),
                             crate::tenancy::roles::ACCESS,
                         )?;
-                        ensure(
-                            db.owns_feature(&context.dsp.id, Some(owner))?,
-                            "not_found",
-                            404,
-                        )
-                    })
-                    .await?;
-            }
+                        ensure(context.dsp.id == own.id, "not_found", 404)?;
+                    }
+                    Ok(())
+                })
+                .await?;
             Request::from_parts(parts, body)
         } else {
             request

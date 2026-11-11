@@ -238,6 +238,9 @@ pub struct Feature {
     /// What it does through other features' connections, which their settings switch on and
     /// off for each account: `integrations::Integration` says how to declare one.
     pub integrations: &'static [Integration],
+    /// A connection's own globally subscribed event types. When present, custom integrations
+    /// may reuse only these and the event types shared integrations already subscribe to.
+    pub integration_events: Option<&'static [&'static str]>,
     /// What it offers every other feature, each through a contract, by `expose!`: one
     /// feature at most offers each contract.
     pub exposes: &'static [exposes::Exposed],
@@ -286,6 +289,7 @@ pub const fn feature(name: &'static str) -> Feature {
         commands: None,
         people: &[],
         integrations: &[],
+        integration_events: None,
         exposes: &[],
         deleting: Deleting::NONE,
         page_sources: &[],
