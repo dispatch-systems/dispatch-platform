@@ -1,0 +1,42 @@
+/* The emoji and GIF pickers share their panel and search field. */
+.emoji-panel,
+.gif-panel {
+  position: absolute;
+  bottom: 100%;
+  left: var(--side);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: 0 10px 30px #0004;
+}
+.emoji-search,
+.gif-search {
+  display: flex;
+  flex-direction: row;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  margin: 8px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+.emoji-search input,
+.gif-search input {
+  flex: 1;
+  min-width: 0;
+  height: calc(32px * var(--scale));
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  outline: none;
+  color: var(--foreground);
+  font-size: var(--typed-size);
+}

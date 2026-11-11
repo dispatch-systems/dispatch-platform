@@ -3,6 +3,7 @@ import { Search } from 'lucide-react';
 import type { GifSearch, MessageGif } from '../../api/index.js';
 import { useFeedback } from '../../../../core/shell/frontend/runtime/feedback.js';
 import { findGifs, shownAt } from './klipy.js';
+import '../shared/picker.css';
 import './gif-picker.css';
 
 /** How long typing rests before it's searched. */

@@ -14,6 +14,7 @@ import {
   type Emoji,
   type Tone,
 } from './emoji.js';
+import '../shared/picker.css';
 import './emoji-picker.css';
 
 // Adding an emoji to what's written: a smiley beside the paperclip opens every emoji a phone

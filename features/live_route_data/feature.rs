@@ -20,3 +20,8 @@ pub const FEATURE: Feature = Feature {
     live_readers: &[&backend::reader::READER],
     ..feature("live_route_data")
 };
+
+/// Whether this feature's background reader still has authority to run.
+pub(crate) fn enabled(db: &dispatch_core::db::Store, dsp: &str) -> dispatch_core::Result<bool> {
+    db.feature_enabled(dsp, FEATURE.switch.id)
+}

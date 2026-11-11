@@ -18,6 +18,11 @@ use std::{
     },
 };
 
+use tokio::time::Instant;
+fn authorized() -> dispatch_core::collection::browser::Pending<'static, ()> {
+    Box::pin(async { Ok(()) })
+}
+
 const AREA: &str = "area-1";
 const COMPANY: &str = "company-1";
 
@@ -59,6 +64,10 @@ enum Plays {
     WrongItinerary,
     /// The second itinerary is its driver's, but not one the collection keeps.
     UncheckedItinerary,
+    /// One itinerary asks for a cooldown once, then answers normally.
+    ThrottledOnce,
+    /// That itinerary remains throttled after retrying.
+    Throttled,
 }
 
 /// Cortex for one session: its list page hands out a key, and every read must be signed
@@ -72,6 +81,8 @@ struct Stand {
     reads: AtomicUsize,
     /// How many times each itinerary was asked for.
     asked: Mutex<HashMap<String, usize>>,
+    /// The stand-in rejects a retry before the delay it told the reader has passed.
+    throttled_until: Mutex<Option<Instant>>,
 }
 impl Stand {
     fn signed(&self, path: &str, query: &str, request: &Asked) -> Option<usize> {
@@ -215,6 +226,32 @@ impl Stand {
                     *times
                 };
                 match self.plays {
+                    Plays::ThrottledOnce if index == 1 && times == 1 => {
+                        *self.throttled_until.lock().unwrap() =
+                            Some(Instant::now() + Duration::from_secs(20));
+                        return Response::builder()
+                            .status(StatusCode::TOO_MANY_REQUESTS)
+                            .header(header::RETRY_AFTER, "20")
+                            .body(Body::empty())
+                            .unwrap();
+                    }
+                    Plays::ThrottledOnce
+                        if index == 1
+                            && self
+                                .throttled_until
+                                .lock()
+                                .unwrap()
+                                .is_some_and(|until| until > Instant::now()) =>
+                    {
+                        return status(StatusCode::TOO_MANY_REQUESTS);
+                    }
+                    Plays::Throttled if index == 1 => {
+                        return Response::builder()
+                            .status(StatusCode::TOO_MANY_REQUESTS)
+                            .header(header::RETRY_AFTER, "0")
+                            .body(Body::empty())
+                            .unwrap();
+                    }
                     Plays::FlakyItinerary if index == 1 && times == 1 => {
                         return status(StatusCode::SERVICE_UNAVAILABLE);
                     }
@@ -289,6 +326,7 @@ async fn stand_in(plays: Plays) -> (Arc<Stand>, SignedIn) {
         pages: AtomicUsize::new(0),
         reads: AtomicUsize::new(0),
         asked: Mutex::default(),
+        throttled_until: Mutex::default(),
     });
     let app = Router::new().fallback(answer).with_state(stand.clone());
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -311,7 +349,7 @@ async fn a_day_is_read_whole_with_the_key_its_list_page_carries() {
     let (stand, session) = stand_in(Plays::FlakyItinerary).await;
     let mut native = Native::new(&session).unwrap();
     let scope = stand.day.scope.clone();
-    let capture = native.read(&scope, Mode::Final).await.unwrap();
+    let capture = native.read(&scope, Mode::Final, &authorized).await.unwrap();
     capture.validate(&request()).unwrap();
     assert_eq!(capture.summaries, stand.day.summaries);
     assert_eq!(capture.route_summaries, stand.day.route_summaries);
@@ -326,7 +364,7 @@ async fn a_day_is_read_whole_with_the_key_its_list_page_carries() {
     // The itinerary that failed was asked for once more.
     assert_eq!(stand.asked("itinerary-2"), 2);
     // The key is kept for the next read.
-    native.read(&scope, Mode::Final).await.unwrap();
+    native.read(&scope, Mode::Final, &authorized).await.unwrap();
     assert_eq!(stand.pages.load(Ordering::SeqCst), 1);
 }
 
@@ -351,7 +389,7 @@ async fn a_day_not_read_whole_says_why() {
         let (stand, session) = stand_in(plays).await;
         let outcome = match Native::new(&session)
             .unwrap()
-            .read(&stand.day.scope, Mode::Final)
+            .read(&stand.day.scope, Mode::Final, &authorized)
             .await
         {
             Ok(capture) => {
@@ -383,7 +421,7 @@ async fn a_day_read_natively_is_kept_once_checked_and_its_reader_reads_the_next(
     let read = |plays| async move {
         let (stand, session) = stand_in(plays).await;
         let scope = stand.day.scope.clone();
-        let read = read_natively(&session, &request(), &scope, &unprompted)
+        let read = read_natively(&session, &request(), &scope, &unprompted, &authorized)
             .await
             .unwrap();
         (stand, read)
@@ -392,7 +430,10 @@ async fn a_day_read_natively_is_kept_once_checked_and_its_reader_reads_the_next(
     let (stand, day) = read(Plays::FlakyItinerary).await;
     let (mut reader, day) = day.unwrap();
     day.validate(&request()).unwrap();
-    reader.read(&stand.day.scope, Mode::Final).await.unwrap();
+    reader
+        .read(&stand.day.scope, Mode::Final, &authorized)
+        .await
+        .unwrap();
     assert_eq!(stand.pages.load(Ordering::SeqCst), 1);
     // Otherwise it says why: as the reader names it, or a day read whole that fails the checks.
     for (plays, why) in [
@@ -402,4 +443,59 @@ async fn a_day_read_natively_is_kept_once_checked_and_its_reader_reads_the_next(
         let (_, day) = read(plays).await;
         assert_eq!(day.err(), Some(why), "{plays:?}");
     }
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_throttled_itinerary_is_retried_without_reading_successful_ones_again() {
+    let (stand, session) = stand_in(Plays::ThrottledOnce).await;
+    let mut reader = Native::new(&session).unwrap();
+    let capture = reader
+        .read(&stand.day.scope, Mode::Final, &authorized)
+        .await
+        .unwrap();
+    capture.validate(&request()).unwrap();
+    assert_eq!(stand.asked("itinerary-1"), 1);
+    assert_eq!(stand.asked("itinerary-2"), 2);
+    assert_eq!(stand.pages.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn persistent_throttling_does_not_request_a_browser_fallback() {
+    let (stand, session) = stand_in(Plays::Throttled).await;
+    let result = read_natively(
+        &session,
+        &request(),
+        &stand.day.scope,
+        &unprompted,
+        &authorized,
+    )
+    .await;
+    assert_eq!(
+        result.err().map(|error| error.code).as_deref(),
+        Some("cortex_throttled")
+    );
+    assert_eq!(stand.asked("itinerary-1"), 1);
+    assert_eq!(stand.asked("itinerary-2"), 2);
+    assert_eq!(stand.pages.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test(start_paused = true)]
+async fn authority_is_rechecked_after_cooldown_before_another_provider_request() {
+    let (stand, session) = stand_in(Plays::ThrottledOnce).await;
+    let mut native = Native::new(&session).unwrap();
+    let checks = Arc::new(AtomicUsize::new(0));
+    let check = {
+        let checks = checks.clone();
+        move || -> dispatch_core::collection::browser::Pending<'static, ()> {
+            let current = checks.fetch_add(1, Ordering::SeqCst) == 0;
+            Box::pin(async move { dispatch_core::ensure(current, "connection_changed", 409) })
+        }
+    };
+    let result = native.read(&stand.day.scope, Mode::Final, &check).await;
+    assert!(
+        matches!(result, Err(Failure::Stopped(error)) if error.is(dispatch_core::Code::ConnectionChanged))
+    );
+    assert_eq!(checks.load(Ordering::SeqCst), 2);
+    assert_eq!(stand.asked("itinerary-1"), 1);
+    assert_eq!(stand.asked("itinerary-2"), 1);
 }
