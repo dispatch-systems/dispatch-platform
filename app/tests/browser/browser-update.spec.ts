@@ -6,6 +6,8 @@ import {
 } from '../../../core/server/tests/support/update.js';
 import { expectDate, setDate } from '../../../features/timecard/tests/support/page.js';
 
+test.use({ dispatchOptions: { env: { DISPATCH_FIXTURE_TODAY: '2026-09-15' } } });
+
 // An automatic update reloads the page in place: a test of Timecard's state across core's reload.
 
 test('reload preserves DSP, meal tab, selected date and search on mobile', async ({
@@ -28,7 +30,18 @@ test('reload preserves DSP, meal tab, selected date and search on mobile', async
   await expect(page.getByRole('heading', { name: 'Timecard', exact: true })).toBeVisible();
   await page.getByRole('tab', { name: 'Meal Breaks', exact: true }).click();
   await setDate(page, '2026-09-15');
+  const filtered = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      url.pathname === '/api/dsp/paycom/meal-breaks/page' &&
+      url.searchParams.get('date') === '2026-09-15' &&
+      url.searchParams.get('q') === 'avery'
+    );
+  });
   await page.getByLabel('Search meal break employees').fill('Avery');
+  expect((await (await filtered).json()).rows.length).toBeGreaterThan(0);
+  await expect(page.getByRole('table', { name: 'Employee meal breaks' })).toBeVisible();
+  await expect(page.locator('.paycom-day-results')).toHaveAttribute('aria-busy', 'false');
   await page.evaluate(() => window.scrollTo(0, 200));
   const scroll = await page.evaluate(() => window.scrollY);
   expect(scroll).toBeGreaterThan(0);
