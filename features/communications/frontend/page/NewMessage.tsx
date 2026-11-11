@@ -21,14 +21,14 @@ import './new-message.css';
 
 export function NewMessage({
   workspaces,
-  texting,
+  hasPhone,
   reach,
   group,
   close,
 }: {
   workspaces: readonly CommunicationsWorkspace[];
   /** Whether the DSP has a phone to text through. */
-  texting: boolean;
+  hasPhone: boolean;
   /** Opens the conversation with whoever was picked, or starts it. */
   reach: (target: Target) => Promise<void>;
   /** Starts a message to a group. */
@@ -39,7 +39,7 @@ export function NewMessage({
   const [active, setActive] = useState(0);
   const list = useId();
   const name = typed.trim();
-  const number = texting ? textNumber(name) : undefined;
+  const number = hasPhone ? textNumber(name) : undefined;
   const slack = workspaces.length > 0;
   const searching = slack && !number;
   const read = useCallback(() => getContacts(name).then((answer) => answer.contacts), [name]);
@@ -74,7 +74,7 @@ export function NewMessage({
     const target = contact && memberTarget(contact);
     if (target) void chosen.run(target);
   };
-  const label = slack ? (texting ? 'Name or phone number' : 'Name') : 'Phone number';
+  const label = slack ? (hasPhone ? 'Name or phone number' : 'Name') : 'Phone number';
   return (
     <Modal title="New message" onClose={close} initialFocus="input">
       <div className="new-message">

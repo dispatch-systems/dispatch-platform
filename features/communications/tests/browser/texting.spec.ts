@@ -41,6 +41,7 @@ test('without Slack, a number not saved as a contact can be texted first and ope
   await page.getByRole('button', { name: 'New message' }).click();
   await number.fill('+1 (202) 555-0177');
   await dialog.getByRole('option', { name: 'Text (202) 555-0177' }).click();
+  await expect(dialog).toHaveCount(0);
   await expect(page).toHaveURL(address);
   await expect(conversation.getByText('Hello from dispatch', { exact: true })).toBeVisible();
   await expect(conversation.getByRole('button', { name: 'Save contact' })).toBeVisible();

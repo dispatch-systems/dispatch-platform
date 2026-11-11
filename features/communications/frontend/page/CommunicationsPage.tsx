@@ -78,6 +78,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   // The sections the DSP has, the one chosen shown, else the one the page opened on; with none,
   // Slack's, empty until it's connected.
   const texting = Boolean(inbox?.texting);
+  const hasPhone = Boolean(inbox?.phones.length);
   const sections: Section[] = SECTIONS.filter((each) => inbox && each.offered(inbox)).map(
     (each) => each.id,
   );
@@ -248,7 +249,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
               </button>
             )}
             {working.length > 0 && <CopyChatLink workspaces={working} />}
-            {(working.length > 0 || texting) && (
+            {(working.length > 0 || hasPhone) && (
               <button
                 className="primary"
                 aria-label="New message"
@@ -394,7 +395,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
         {composing && (
           <NewMessage
             workspaces={working}
-            texting={texting}
+            hasPhone={hasPhone}
             reach={reach}
             group={startGroup}
             close={() => setComposing(false)}
