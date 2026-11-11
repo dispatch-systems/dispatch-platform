@@ -30,9 +30,7 @@ async function complete(page: Page) {
   await page.getByRole('textbox', { name: /Statement of the problem: date/ }).fill('11/08/2026');
 }
 
-test('a driver is written up, list filters survive opening it, and signing locks it', async ({
-  page,
-}) => {
+test('a driver is written up from the page, then marked signed and locked', async ({ page }) => {
   const name = await newUniform(page);
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('alert')).toHaveText('Fill in the blanks marked in yellow.');
@@ -85,7 +83,9 @@ test('browser Back keeps the dirty writeup until one Save or Discard decision', 
   await expect(page.getByRole('heading', { name: 'New writeup', exact: true })).toHaveCount(0);
 });
 
-test('a readable long notice prints whole on one letter page', async ({ page }) => {
+test('a long writeup still prints on one letter page, its sections shrunk to fit their lines', async ({
+  page,
+}) => {
   await newUniform(page);
   const long = 'DA did not arrive to work in full uniform and was reminded at stand up. '.repeat(6);
   await text(page, '1. Statement of the problem', long);
@@ -180,13 +180,11 @@ test('cancelling photo preparation sends neither an upload nor a signature', asy
       send.call(this, body);
     };
   });
-  await page
-    .getByLabel(/^Signed copy/)
-    .setInputFiles({
-      name: 'paper.png',
-      mimeType: 'image/png',
-      buffer: Buffer.from(png, 'base64'),
-    });
+  await page.getByLabel(/^Signed copy/).setInputFiles({
+    name: 'paper.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(png, 'base64'),
+  });
   await expect(page.getByRole('img', { name: 'Selected signed copy' })).toBeVisible();
   await page.getByRole('dialog').getByRole('button', { name: 'Mark signed', exact: true }).click();
   await page.waitForFunction(() =>

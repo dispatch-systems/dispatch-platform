@@ -68,8 +68,9 @@ export async function keepCopy(id: string, revision: number, photo: Blob, reques
       photo,
     );
   } catch (cause) {
-    if (cause instanceof ApiError && errors[cause.code])
-      throw new ApiError(cause.code, errors[cause.code], cause.status, cause.requestId);
+    const message = cause instanceof ApiError ? errors[cause.code] : undefined;
+    if (cause instanceof ApiError && message)
+      throw new ApiError(cause.code, message, cause.status, cause.requestId);
     throw cause;
   }
 }
