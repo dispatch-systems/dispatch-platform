@@ -133,7 +133,10 @@ pub fn logged(
     env: &[(&str, &std::ffi::OsStr)],
 ) -> Result<(bool, Duration)> {
     let file = fs::OpenOptions::new()
+        // A signal diagnostic appended by the CLI must survive any last child output.
+        // OpenOptions rejects append + truncate; the native flags support both atomically.
         .write(true)
+        .custom_flags(libc::O_APPEND)
         .create(true)
         .truncate(true)
         .mode(0o600)

@@ -448,6 +448,7 @@ pub fn run_commands(root: &Path, commands: &[String], keep: bool) -> Result<bool
     // Each run's logs apart, so runs side by side never write over each other's.
     let logs = scratch.join("test").join(std::process::id().to_string());
     fs::create_dir_all(&logs)?;
+    let _signal_log = crate::signals::run_log(logs.join("1.log"));
     let run = Run::start(root, &scratch)?;
     let mut passed = true;
     for (index, step) in steps(commands).iter().enumerate() {
@@ -461,6 +462,7 @@ pub fn run_commands(root: &Path, commands: &[String], keep: bool) -> Result<bool
         passed = false;
         break;
     }
+    crate::signals::finish();
     if keep {
         println!("Kept the build in {}.", run.build.display());
         return Ok(passed);

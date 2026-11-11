@@ -154,6 +154,7 @@ fn side_by_side(root: &Path, commands: &[String], env: &Environment) -> Result<b
     // Each run's logs apart, so runs side by side never write over each other's.
     let logs = scratch.join("check").join(std::process::id().to_string());
     fs::create_dir_all(&logs)?;
+    let _signal_log = crate::signals::run_log(logs.join("1.log"));
     let said = Mutex::new(());
     let passed = std::thread::scope(|scope| {
         let runs: Vec<_> = commands
@@ -188,6 +189,7 @@ fn side_by_side(root: &Path, commands: &[String], env: &Environment) -> Result<b
     })?
     .into_iter()
     .all(|ok| ok);
+    crate::signals::finish();
     if passed {
         fs::remove_dir_all(&logs)?;
     }

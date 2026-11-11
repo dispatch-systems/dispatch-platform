@@ -18,6 +18,7 @@ pub mod preview;
 pub mod review;
 pub mod scaffold;
 pub mod shot;
+pub mod signals;
 pub mod slot;
 pub mod status;
 pub mod test;

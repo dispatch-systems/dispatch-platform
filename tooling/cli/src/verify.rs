@@ -116,6 +116,7 @@ pub fn run(root: &Path, feature: &str, runner: &dyn Runner) -> Result<bool> {
     let scratch = workspace::checkout_scratch(root)?;
     let logs: PathBuf = scratch.join("verify").join(std::process::id().to_string());
     fs::create_dir_all(&logs)?;
+    let _signal_log = crate::signals::run_log(logs.join("1.log"));
     let (mut passed, mut failed) = (0, Vec::<String>::new());
 
     let changed = test::changed(root, runner)?;
@@ -169,6 +170,7 @@ pub fn run(root: &Path, feature: &str, runner: &dyn Runner) -> Result<bool> {
     }
 
     let mut next = vec![];
+    crate::signals::finish();
     if failed.is_empty() {
         fs::remove_dir_all(&logs)?;
         println!("All {passed} passed for {feature}.");
