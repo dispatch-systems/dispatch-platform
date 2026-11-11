@@ -18,63 +18,25 @@ import { WeekGrid } from './tabs/week/WeekGrid.js';
 import { useDvicPage } from './useDvicPage.js';
 
 export function DvicPage({ view }: { view: DspView }) {
-  const {
-    status,
-    tab,
-    tabs,
-    setTab,
-    query,
-    search,
-    vehicles,
-    page,
-    setPage,
-    selected,
-    setSelected,
-    today,
-    start,
-    latestDate,
-    days,
-    end,
-    day,
-    running,
-    completed,
-    checked,
-    publication,
-    inspections,
-    summary,
-    daySummary,
-    counts,
-    filtered,
-    collected,
-    shown,
-    newest,
-    canCollect,
-    settings,
-    sync,
-    cancel,
-    selectWeek,
-    selectDay,
-    changeQuery,
-    changeVehicles,
-  } = useDvicPage(view);
+  const dvic = useDvicPage(view);
   return (
     <div className="dvic-page">
       <Header title="DVIC">
-        {settings && (
-          <button onClick={() => navigate(settings)}>
+        {dvic.settings && (
+          <button onClick={() => navigate(dvic.settings)}>
             <Settings2 size={16} />
             Collection settings
           </button>
         )}
-        {canCollect && (
+        {dvic.canCollect && (
           <button
             className="primary"
-            disabled={sync.busy || !!running}
-            onClick={() => void sync.run()}
+            disabled={dvic.sync.busy || !!dvic.running}
+            onClick={() => void dvic.sync.run()}
             title="Check the latest publication weeks and the week shown"
           >
             <RefreshCw size={16} />
-            {sync.busy || running ? 'Syncing…' : 'Sync now'}
+            {dvic.sync.busy || dvic.running ? 'Syncing…' : 'Sync now'}
           </button>
         )}
       </Header>
@@ -84,96 +46,98 @@ export function DvicPage({ view }: { view: DspView }) {
           <button
             className="icon-button"
             aria-label="Previous week"
-            disabled={!status.data || start <= '2000-01-02'}
-            onClick={() => selectWeek(shiftDate(start, -7))}
+            disabled={!dvic.status.data || dvic.start <= '2000-01-02'}
+            onClick={() => dvic.selectWeek(shiftDate(dvic.start, -7))}
           >
             <ChevronLeft size={16} />
           </button>
           <span className="dvic-week-label">
-            {status.data ? `${inspectionDate(start)} – ${inspectionDate(end)}` : '—'}
+            {dvic.status.data ? `${inspectionDate(dvic.start)} – ${inspectionDate(dvic.end)}` : '—'}
           </span>
           <button
             className="icon-button"
             aria-label="Next week"
-            disabled={!status.data || end >= today}
-            onClick={() => selectWeek(shiftDate(start, 7))}
+            disabled={!dvic.status.data || dvic.end >= dvic.today}
+            onClick={() => dvic.selectWeek(shiftDate(dvic.start, 7))}
           >
             <ChevronRight size={16} />
           </button>
           <button
-            disabled={!status.data || start === weekStart(latestDate ?? today)}
-            onClick={() => selectWeek(latestDate ?? today)}
+            disabled={!dvic.status.data || dvic.start === weekStart(dvic.latestDate ?? dvic.today)}
+            onClick={() => dvic.selectWeek(dvic.latestDate ?? dvic.today)}
             title="The most recent collected week"
           >
             Latest
           </button>
           <button
             disabled={
-              !status.data || (start === weekStart(today) && (tab === 'week' || day === today))
+              !dvic.status.data ||
+              (dvic.start === weekStart(dvic.today) &&
+                (dvic.tab === 'week' || dvic.day === dvic.today))
             }
-            onClick={() => selectWeek(today, today)}
+            onClick={() => dvic.selectWeek(dvic.today, dvic.today)}
             title="Today's inspections"
           >
             Today
           </button>
         </div>
         <span className="dvic-freshness">
-          {status.data?.station || view.profile.stationCode}
-          {completed || checked
-            ? ' · Synced ' + time(completed || checked, view.dsp.timezone)
+          {dvic.status.data?.station || view.profile.stationCode}
+          {dvic.completed || dvic.checked
+            ? ' · Synced ' + time(dvic.completed || dvic.checked, view.dsp.timezone)
             : ' · No completed sync yet'}
         </span>
       </div>
-      <ErrorBox message={status.error} />
-      <ErrorBox message={sync.error} />
-      <ErrorBox message={cancel.error} />
-      {status.error && <button onClick={status.refresh}>Retry collection status</button>}
-      {running && (
+      <ErrorBox message={dvic.status.error} />
+      <ErrorBox message={dvic.sync.error} />
+      <ErrorBox message={dvic.cancel.error} />
+      {dvic.status.error && <button onClick={dvic.status.refresh}>Retry collection status</button>}
+      {dvic.running && (
         <div className="dvic-sync-state" role="status">
           <span>
-            {running.status === 'waiting_verification'
+            {dvic.running.status === 'waiting_verification'
               ? 'Cortex needs verification in Connections.'
-              : running.status === 'queued'
+              : dvic.running.status === 'queued'
                 ? 'DVIC sync queued'
-                : running.message || 'Collecting DVIC reports…'}
+                : dvic.running.message || 'Collecting DVIC reports…'}
           </span>
-          {canCollect && (
-            <button disabled={cancel.busy} onClick={() => void cancel.run()}>
+          {dvic.canCollect && (
+            <button disabled={dvic.cancel.busy} onClick={() => void dvic.cancel.run()}>
               Cancel sync
             </button>
           )}
         </div>
       )}
-      {!running && newest?.status === 'failed' && (
-        <ErrorBox message={'Last sync failed: ' + (newest.error || newest.message)} />
+      {!dvic.running && dvic.newest?.status === 'failed' && (
+        <ErrorBox message={'Last sync failed: ' + (dvic.newest.error || dvic.newest.message)} />
       )}
       <Tabs
         label="DVIC views"
-        value={tabs.open?.id ?? tab}
-        onChange={(id) => tabs.change(id, (own) => setTab(own as 'day' | 'week'))}
-        onIntent={tabs.warm}
-        items={tabs.items}
+        value={dvic.tabs.open?.id ?? dvic.tab}
+        onChange={(id) => dvic.tabs.change(id, (own) => dvic.setTab(own as 'day' | 'week'))}
+        onIntent={dvic.tabs.warm}
+        items={dvic.tabs.items}
       />
-      {tabs.open ? (
-        <HostedTab tab={tabs.open} />
+      {dvic.tabs.open ? (
+        <HostedTab tab={dvic.tabs.open} />
       ) : (
         <>
-          {tab === 'day' && (
+          {dvic.tab === 'day' && (
             <nav className="dvic-week-strip" aria-label="Inspection days">
-              {days.map((date) => (
+              {dvic.days.map((date) => (
                 <button
                   key={date}
-                  disabled={date > today || summary === undefined}
-                  aria-pressed={day === date}
-                  onClick={() => selectDay(date)}
+                  disabled={date > dvic.today || dvic.summary === undefined}
+                  aria-pressed={dvic.day === date}
+                  onClick={() => dvic.selectDay(date)}
                 >
                   <span>{inspectionWeekday(date)}</span>
                   <strong>{Number(date.slice(8))}</strong>
                   <small>
-                    {summary === undefined || date > today
+                    {dvic.summary === undefined || date > dvic.today
                       ? '—'
-                      : counts.get(date) || collected(date)
-                        ? (counts.get(date) ?? 0) + ' short'
+                      : dvic.counts.get(date) || dvic.collected(date)
+                        ? (dvic.counts.get(date) ?? 0) + ' short'
                         : 'Not collected'}
                   </small>
                 </button>
@@ -184,13 +148,13 @@ export function DvicPage({ view }: { view: DspView }) {
             <SearchInput
               label="Search drivers"
               placeholder="Search drivers…"
-              value={query}
-              onChange={changeQuery}
+              value={dvic.query}
+              onChange={dvic.changeQuery}
             />
             <select
               aria-label="Vehicle type"
-              value={vehicles}
-              onChange={(e) => changeVehicles(e.target.value as VehicleClass)}
+              value={dvic.vehicles}
+              onChange={(e) => dvic.changeVehicles(e.target.value as VehicleClass)}
             >
               <option value="">All vehicles</option>
               <option value="dot">DOT</option>
@@ -202,74 +166,77 @@ export function DvicPage({ view }: { view: DspView }) {
           </div>
           <ErrorBox
             message={
-              inspections.error
-                ? (summary ? 'Showing previously loaded inspections. ' : '') + inspections.error
+              dvic.inspections.error
+                ? (dvic.summary ? 'Showing previously loaded inspections. ' : '') +
+                  dvic.inspections.error
                 : ''
             }
           />
-          {inspections.error && <button onClick={inspections.refresh}>Retry inspections</button>}
-          {summary === undefined ? (
-            !inspections.error &&
-            !status.error &&
-            (status.paused || inspections.paused ? (
+          {dvic.inspections.error && (
+            <button onClick={dvic.inspections.refresh}>Retry inspections</button>
+          )}
+          {dvic.summary === undefined ? (
+            !dvic.inspections.error &&
+            !dvic.status.error &&
+            (dvic.status.paused || dvic.inspections.paused ? (
               <p className="muted">Inspections will load when you reconnect.</p>
             ) : (
               <Loading />
             ))
           ) : (
             <>
-              {tab === 'day' ? (
+              {dvic.tab === 'day' ? (
                 <>
                   <h2 className="dvic-day-heading">
-                    {inspectionDate(day, true)}, {day.slice(0, 4)}
+                    {inspectionDate(dvic.day, true)}, {dvic.day.slice(0, 4)}
                   </h2>
                   <DayDigest
-                    day={day}
-                    summary={daySummary}
-                    query={search}
-                    publication={publication}
-                    filtered={filtered}
-                    collected={collected(day)}
-                    onSelect={(row) => setSelected(row.id)}
+                    day={dvic.day}
+                    summary={dvic.daySummary}
+                    query={dvic.search}
+                    publication={dvic.publication}
+                    filtered={dvic.filtered}
+                    collected={dvic.collected(dvic.day)}
+                    onSelect={(row) => dvic.setSelected(row.id)}
                   />
                 </>
               ) : (
                 <WeekGrid
-                  days={days}
-                  summary={summary}
-                  today={today}
-                  collected={collected}
-                  filtered={filtered}
-                  page={page}
-                  onPageChange={setPage}
-                  onSelect={setSelected}
+                  days={dvic.days}
+                  summary={dvic.summary}
+                  today={dvic.today}
+                  collected={dvic.collected}
+                  filtered={dvic.filtered}
+                  page={dvic.page}
+                  onPageChange={dvic.setPage}
+                  onSelect={dvic.setSelected}
                 />
               )}
               <footer className="dvic-footer">
                 <span>
-                  {tab === 'week'
+                  {dvic.tab === 'week'
                     ? "Each cell is the driver's inspection time that day. "
                     : 'Sorted shortest first. '}
                   Only inspections below the required duration are collected, so this is not a
                   completion rate. Dates and times are as reported by Amazon.
                 </span>
                 <span>
-                  {shown} {shown === 1 ? 'record' : 'records'}
-                  {tab === 'week' ? ' this week' : ''}
+                  {dvic.shown} {dvic.shown === 1 ? 'record' : 'records'}
+                  {dvic.tab === 'week' ? ' this week' : ''}
                 </span>
               </footer>
             </>
           )}
         </>
       )}
-      {selected && (
+      {dvic.selected && (
         <InspectionDetail
-          id={selected}
-          from={start}
-          to={end}
-          publication={publication}
-          onClose={() => setSelected(undefined)}
-          onSelect={setSelected}
+          id={dvic.selected}
+          from={dvic.start}
+          to={dvic.end}
+          publication={dvic.publication}
+          onClose={() => dvic.setSelected(undefined)}
+          onSelect={dvic.setSelected}
         />
       )}
     </div>
