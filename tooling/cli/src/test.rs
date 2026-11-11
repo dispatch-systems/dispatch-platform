@@ -70,7 +70,7 @@ fn builds(command: &str) -> bool {
 /// Every file the checkout changed from where it left `origin/main`, committed or not, deleted
 /// files aside.
 pub fn changed(root: &Path, runner: &dyn Runner) -> Result<Vec<String>> {
-    let git = |args: &[&str]| workspace::text(runner, &[&["git"][..], args].concat(), Some(root));
+    let git = |args: &[&str]| workspace::git(runner, root, args);
     let base = git(&["merge-base", "origin/main", "HEAD"])?;
     let mut files: Vec<String> = git(&["diff", "--name-only", "--diff-filter=d", "-z", &base])?
         .split('\0')
@@ -504,7 +504,7 @@ pub struct Plan {
     pub notes: Vec<String>,
 }
 pub fn plan(root: &Path, tests: Tests<'_>, runner: &dyn Runner) -> Result<Plan> {
-    let git = |args: &[&str]| workspace::text(runner, &[&["git"][..], args].concat(), Some(root));
+    let git = |args: &[&str]| workspace::git(runner, root, args);
     let mut plan = Plan {
         scope: String::new(),
         head: git(&["rev-parse", "HEAD"])?,

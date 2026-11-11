@@ -97,7 +97,7 @@ fn live(file: &str) -> bool {
 /// The checkout's commit, and the fingerprint of every file a server holds from its start: all
 /// of them but the pages' code.
 fn source(root: &Path, runner: &dyn Runner) -> Result<Source> {
-    let git = |args: &[&str]| workspace::text(runner, &[&["git"][..], args].concat(), Some(root));
+    let git = |args: &[&str]| workspace::git(runner, root, args);
     let commit = git(&["rev-parse", "HEAD"])?;
     let tree = git(&["rev-parse", "HEAD^{tree}"])?;
     let dirty = !git(&["--no-optional-locks", "status", "--porcelain", "-z"])?.is_empty();

@@ -33,11 +33,7 @@ pub enum Approval {
 /// Each UI file the change touches against `origin/main`, by the hash of its contents, or
 /// `deleted`: committed, or as the worktree holds it with `worktree`.
 fn files(root: &Path, worktree: bool, runner: &dyn Runner) -> Result<BTreeMap<String, String>> {
-    let git = |args: &[&str]| {
-        let mut command = vec!["git"];
-        command.extend_from_slice(args);
-        workspace::text(runner, &command, Some(root))
-    };
+    let git = |args: &[&str]| workspace::git(runner, root, args);
     let main = git(&["merge-base", "origin/main", "HEAD"])?;
     let against = match worktree {
         true => main.clone(),

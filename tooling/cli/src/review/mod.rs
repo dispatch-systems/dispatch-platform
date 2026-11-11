@@ -110,9 +110,7 @@ struct Checkout<'a> {
 }
 impl Checkout<'_> {
     fn git(&self, args: &[&str]) -> Result<String> {
-        let mut command = vec!["git"];
-        command.extend_from_slice(args);
-        workspace::text(self.runner, &command, Some(self.root))
+        workspace::git(self.runner, self.root, args)
     }
     fn head(&self) -> Result<String> {
         self.git(&["rev-parse", "HEAD"])

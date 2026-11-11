@@ -69,18 +69,14 @@ pub fn text(runner: &dyn Runner, args: &[&str], cwd: Option<&Path>) -> Result<St
         .trim()
         .to_owned())
 }
+/// What `git` with `args` prints in `root`, trimmed.
+pub fn git(runner: &dyn Runner, root: &Path, args: &[&str]) -> Result<String> {
+    text(runner, &[&["git"][..], args].concat(), Some(root))
+}
 /// The repository's Git folder that every worktree shares, by its absolute path.
 pub fn shared_git(root: &Path, runner: &dyn Runner) -> Result<PathBuf> {
-    Ok(PathBuf::from(text(
-        runner,
-        &[
-            "git",
-            "rev-parse",
-            "--path-format=absolute",
-            "--git-common-dir",
-        ],
-        Some(root),
-    )?))
+    let args = ["rev-parse", "--path-format=absolute", "--git-common-dir"];
+    Ok(PathBuf::from(git(runner, root, &args)?))
 }
 /// The slice every command `logged` runs goes in, from every worktree at once. Between them they
 /// have a low CPU weight and one memory ceiling: at `MemoryMax` they swap, and past the swap

@@ -86,9 +86,7 @@ impl Clone {
         Ok(Self { root, worktrees })
     }
     fn git(&self, runner: &dyn Runner, args: &[&str]) -> Result<String> {
-        let mut command = vec!["git"];
-        command.extend_from_slice(args);
-        workspace::text(runner, &command, Some(&self.root))
+        workspace::git(runner, &self.root, args)
     }
 }
 
