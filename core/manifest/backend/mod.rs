@@ -212,6 +212,9 @@ pub struct Feature {
     /// What it adds to a database other owners add to as well (each DSP's, the platform's,
     /// a collector's), numbered by the feature itself from 1 and recorded under its name.
     pub own_migrations: &'static [OwnMigrations],
+    /// Equivalent owner names accepted in immutable migration receipts. New receipts
+    /// still use `name`; existing receipts are never rewritten or copied.
+    pub migration_aliases: &'static [&'static str],
     /// Immutable ledgers needed to read retired storage during an owner-controlled import.
     /// These databases are never created or opened as current storage.
     pub retired_migrations: &'static [Migrations],
@@ -278,6 +281,7 @@ pub const fn feature(name: &'static str) -> Feature {
         keeps: &[],
         migrations: &[],
         own_migrations: &[],
+        migration_aliases: &[],
         retired_migrations: &[],
         tables: &[],
         domains: &[],

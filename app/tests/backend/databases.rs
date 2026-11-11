@@ -5,7 +5,7 @@
 //! wherever it is declared.
 use crate::snapshot;
 use dispatch_core::{
-    db::{Db, Kind, Migration, Migrations, migrations::Apply},
+    db::{Db, Kind, Migration, Migrations, OwnMigrations, migrations::Apply},
     foundation::crypto,
     manifest::{Feature, Registry, feature, optional},
 };
@@ -59,7 +59,10 @@ fn every_database_keeps_its_version_cache_and_migrations() {
         let owned: Vec<_> = kind
             .owned_migrations()
             .iter()
-            .map(|(owner, migration)| (*owner, migration.id, migration.name, applied(migration)))
+            .map(|each| {
+                let migration = &each.migration;
+                (each.owner, migration.id, migration.name, applied(migration))
+            })
             .collect();
         if !owned.is_empty() {
             let recorded: Vec<(String, u32, String)> = db
@@ -144,4 +147,38 @@ fn a_registry_whose_migrations_repeat_an_id_is_refused() {
     };
     crate::install();
     with(&REPEAT).check();
+}
+
+#[test]
+fn migration_owner_aliases_cannot_claim_another_owner_or_ambiguous_history() {
+    crate::install();
+    static OWN: &[OwnMigrations] = &[OwnMigrations {
+        kind: Kind::DSP,
+        list: &[Migration {
+            id: 1,
+            name: "notes",
+            apply: Apply::Sql(""),
+        }],
+    }];
+    let check = |aliases, own_migrations| {
+        let extra = Box::leak(Box::new(Feature {
+            switch: optional("alias_owner", "Alias owner", &[]),
+            migration_aliases: aliases,
+            own_migrations,
+            ..feature("alias_owner")
+        }));
+        catch_unwind(AssertUnwindSafe(|| with(extra).check()))
+    };
+    assert!(check(&["next_alias_owner"], OWN).is_ok());
+    for aliases in [
+        &["alias_owner"][..],
+        &["communications"][..],
+        &["dispatch_phone"][..],
+        &["next_alias_owner", "next_alias_owner"][..],
+        &["core"][..],
+        &["../outside"][..],
+    ] {
+        assert!(check(aliases, OWN).is_err(), "accepted {aliases:?}");
+    }
+    assert!(check(&["next_alias_owner"], &[]).is_err());
 }

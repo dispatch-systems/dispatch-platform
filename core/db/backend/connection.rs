@@ -64,7 +64,7 @@ impl Db {
     fn created(
         file: &Path,
         kind: Kind,
-        owned: &[(&'static str, super::Migration)],
+        owned: &[super::OwnedMigration],
         seed: impl FnOnce(&Self) -> Result<()>,
     ) -> Result<Self> {
         let db = Self::connect(file, kind, true)?;
