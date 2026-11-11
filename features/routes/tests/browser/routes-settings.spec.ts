@@ -197,7 +197,7 @@ test('a Routes rule reads yesterday unless it is set to read today so far', asyn
     .getByRole('button', { name: /^Routes/ })
     .click();
   const routes = page.getByRole('region', { name: 'Routes', exact: true });
-  const rule = routes.locator('.collectors-rule-head');
+  const rule = routes.locator('.schedule-rule-head');
   await routes.getByRole('button', { name: 'Add rule' }).click();
   const day = routes.getByRole('radiogroup', { name: 'Day' });
   await expect(day.getByRole('radio', { name: 'Yesterday' })).toBeChecked();

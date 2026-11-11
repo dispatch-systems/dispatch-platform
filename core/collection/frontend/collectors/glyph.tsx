@@ -2,9 +2,6 @@ import type { Pattern } from './rules.js';
 
 // A pattern drawn as a tiny day: a track, its runs as pins or ticks, a repeat's hours as a band.
 
-const W = 150;
-const H = 40;
-const MID = H / 2;
 const at = (hour: number, width: number) => (width * hour) / 24;
 
 function Track({ width, y, height }: { width: number; y: number; height: number }) {
@@ -48,31 +45,6 @@ function Band({
         />
       ))}
     </>
-  );
-}
-
-/** A pattern's card art. */
-export function Glyph({ pattern }: { pattern: Pattern }) {
-  const pin = (hour: number) => (
-    <g key={hour}>
-      <rect
-        className="glyph-ink"
-        x={at(hour, W) - 1.5}
-        y={MID - 12}
-        width={3}
-        height={19}
-        rx={1.5}
-      />
-      <circle className="glyph-ink" cx={at(hour, W)} cy={MID - 12} r={4.5} />
-    </g>
-  );
-  return (
-    <svg className="glyph" viewBox={`0 0 ${W} ${H}`} aria-hidden="true">
-      <Track width={W} y={MID - 6} height={12} />
-      {pattern === 'once' && pin(9)}
-      {pattern === 'few' && [6.5, 12, 17.5].map(pin)}
-      {pattern === 'repeat' && <Band width={W} y={MID - 10} height={20} tick={10} step={1.25} />}
-    </svg>
   );
 }
 

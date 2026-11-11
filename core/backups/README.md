@@ -50,7 +50,7 @@ the platform's key.
 - `api/` owns the routes, Rust wire types, generated TypeScript and the browser's calls.
 - The Backups tab is the platform owner's (`core/platform_owner/frontend/dsps/DspBackupsTab.tsx`,
   with its own rule editor, calendar and styles beside it), calling these routes through
-  `api/client.ts`. It shares nothing with the Collectors page.
+  `api/client.ts`. Its timing model and timing controls are shared with the Collectors page in the shell; monthly dates, retention and included data stay here.
 - `migrations/platform/0026_dsp_backups.sql` adds the schedules, rules and backups to the
   platform database, beside each DSP's folder, so a restore of that folder neither forgets the
   backups taken since nor moves when they run.

@@ -279,26 +279,6 @@
 .collectors [data-rule='4'] {
   --rule: var(--series-5);
 }
-.collectors-rule {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--card);
-}
-.collectors-rule + .collectors-rule {
-  margin-top: 8px;
-}
-.collectors-rule.is-open {
-  box-shadow:
-    0 1px 2px var(--shadow-color),
-    0 6px 20px -12px var(--shadow-color);
-}
-.collectors-rule-head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 46px;
-  padding: 0 8px 0 15px;
-}
 .collectors-rule-mark {
   display: inline-flex;
   flex-shrink: 0;
@@ -311,11 +291,6 @@
   --glyph-ink: var(--rule);
   --glyph-track: color-mix(in srgb, var(--rule) 22%, var(--card));
   --glyph-band: color-mix(in srgb, var(--rule) 34%, var(--card));
-}
-.collectors-rule-head strong {
-  font-size: 14px;
-  font-weight: 550;
-  font-variant-numeric: tabular-nums;
 }
 .collectors-kind {
   color: var(--muted-foreground);
@@ -333,117 +308,7 @@
   color: var(--warning);
   font-size: 13px;
 }
-.collectors-rule-tools {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  margin-left: auto;
-}
-.collectors-rule-tools button {
-  min-height: 32px;
-  padding: 6px 10px;
-  border-color: transparent;
-  background: transparent;
-  color: var(--muted-foreground);
-  font-size: 13px;
-}
-.collectors-rule-tools button:hover {
-  background: var(--accent);
-  color: var(--foreground);
-}
-.collectors-rule-tools button.icon-button {
-  width: 32px;
-  padding: 7px;
-}
-.collectors-rule-tools .collectors-edit {
-  gap: 6px;
-  border-color: var(--border);
-  background: var(--background);
-  color: var(--foreground);
-}
-.collectors-rule-body {
-  min-width: 0;
-  margin: 0;
-  padding: 2px 14px 14px;
-  border: 0;
-}
 
-/* The patterns: a card each, a tiny day. */
-.collectors-patterns {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-.collectors-pattern {
-  --glyph-bg: color-mix(in srgb, var(--muted) 62%, var(--card));
-  --glyph-ink: color-mix(in srgb, var(--muted-foreground) 82%, var(--card));
-  --glyph-track: var(--card);
-  --glyph-band: color-mix(in srgb, var(--muted-foreground) 22%, var(--card));
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: flex-start;
-  gap: 9px;
-  padding: 7px 7px 10px;
-  border: 1px solid var(--border);
-  border-radius: 11px;
-  background: var(--card);
-  color: var(--foreground);
-  font-size: 13.5px;
-  font-weight: 500;
-  text-align: left;
-  transition:
-    border-color var(--motion-duration),
-    box-shadow var(--motion-duration);
-}
-.collectors-pattern:hover {
-  --glyph-ink: var(--foreground);
-  border-color: var(--input);
-}
-.collectors-art {
-  display: flex;
-  align-items: center;
-  height: 50px;
-  padding: 0 14px;
-  border-radius: 7px;
-  background: var(--glyph-bg);
-}
-.collectors-art .glyph {
-  display: block;
-  width: 100%;
-  height: auto;
-  overflow: visible;
-}
-.collectors-pattern > span:not(.collectors-art) {
-  padding: 0 7px;
-  line-height: 18px;
-  white-space: nowrap;
-}
-.collectors-pattern[aria-checked='true'] {
-  --glyph-bg: color-mix(in srgb, var(--primary) 11%, var(--card));
-  --glyph-ink: var(--primary);
-  --glyph-band: color-mix(in srgb, var(--primary) 30%, var(--card));
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 15%, transparent);
-  color: var(--primary);
-  font-weight: 600;
-}
-.collectors-pattern .collectors-check {
-  position: absolute;
-  top: -8px;
-  right: -8px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  border-radius: 50%;
-  background: var(--primary);
-  box-shadow: 0 0 0 3px var(--card);
-  color: var(--primary-foreground);
-}
 .glyph .glyph-track {
   fill: var(--glyph-track);
 }
@@ -492,40 +357,6 @@
   font-size: 13px;
   font-weight: 500;
 }
-.collectors-times {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-.collectors-time {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-}
-.collectors-fields input[type='time'] {
-  width: 132px;
-  min-height: 36px;
-  background: var(--card);
-  font-variant-numeric: tabular-nums;
-}
-.collectors-fields input[aria-invalid='true'] {
-  border-color: var(--destructive);
-}
-.collectors-sentence {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  color: var(--muted-foreground);
-  font-size: 13px;
-}
-.collectors-sentence select {
-  min-height: 36px;
-  background-color: var(--card);
-  color: var(--foreground);
-}
-
 /* The week: a strip a day, a tick a run, each in its rule's colour; then the next runs. */
 .collectors-preview {
   display: grid;
@@ -888,9 +719,6 @@
   }
 }
 @media (max-width: 640px) {
-  .collectors-patterns {
-    grid-template-columns: minmax(0, 1fr);
-  }
   .collectors-fields {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -913,4 +741,8 @@
   .collected-group + .collected-group {
     border-top: 1px solid var(--border);
   }
+}
+
+.collectors-fields .schedule-times {
+  gap: 6px;
 }
