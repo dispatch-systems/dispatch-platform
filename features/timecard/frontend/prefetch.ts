@@ -1,9 +1,15 @@
-import { employeesUrl } from './employee-url.js';
+import { performancePolicy } from '../../../core/shell/frontend/lib/performance-policy.js';
 import type { DspView } from '../../../core/accounts/api/index.js';
 import type { EmployeesResponse } from '../api/index.js';
 import { readUpdateState } from '../../../core/shell/frontend/runtime/navigation-state.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
-import { dailyPageUrl, employeeTimecardUrl, mealPageUrl, paycomSettingsPath } from '../api/urls.js';
+import {
+  dailyPageUrl,
+  employeesPath,
+  employeeTimecardUrl,
+  mealPageUrl,
+  paycomSettingsPath,
+} from '../api/urls.js';
 import { hasFeature } from '../../../core/shell/frontend/runtime/features.js';
 import { dspHash } from '../../../core/shell/frontend/runtime/navigation.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
@@ -32,7 +38,10 @@ function timecardUrls(tab: string, date: string, view: DspView): string[] {
     const status = readUpdateState('employee-status', 'all', hash);
     const page = readUpdateState('employee-page', 0, hash);
     const desc = readUpdateState('employee-sort-desc', false, hash);
-    const directoryUrl = employeesUrl(query, status, desc, page);
+    const directoryUrl =
+      `${employeesPath}?q=${encodeURIComponent(query)}&status=${status}` +
+      `&limit=${performancePolicy.employeePageSize}&offset=${page * performancePolicy.employeePageSize}` +
+      `&direction=${desc ? 'desc' : 'asc'}`;
     urls.push(directoryUrl);
     const selection = readUpdateState<
       { code: string; period?: { from: string; to: string } | null } | undefined

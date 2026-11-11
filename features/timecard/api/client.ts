@@ -1,4 +1,3 @@
-import { employeesUrl } from '../frontend/employee-url.js';
 import { useEffect } from 'react';
 import { performancePolicy } from '../../../core/shell/frontend/lib/performance-policy.js';
 import { wordedApi } from '../../../core/shell/frontend/runtime/api.js';
@@ -101,7 +100,12 @@ export const useEmployees = (
   descending: boolean,
   refreshKey: string,
   page = 0,
-) => useCachedData<EmployeesResponse>(employeesUrl(query, status, descending, page), 0, refreshKey);
+) =>
+  useCachedData<EmployeesResponse>(
+    `/api/dsp/employees?q=${encodeURIComponent(query)}&status=${status}&limit=${performancePolicy.employeePageSize}&offset=${page * performancePolicy.employeePageSize}&direction=${descending ? 'desc' : 'asc'}`,
+    0,
+    refreshKey,
+  );
 export const useDailyTimecards = (url: string, refreshKey?: string | null) =>
   useCachedData<DailyTimecardPage>(url, performancePolicy.recoveryPollMs, refreshKey);
 export const useMealComparison = (url: string, refreshKey?: string | null) =>
