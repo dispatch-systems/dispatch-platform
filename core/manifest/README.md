@@ -46,7 +46,7 @@ Every field of `Feature`, as `feature.rs` fills it.
 | `live_readers`             | `live_readers`    | What it reads from a provider for each DSP every few minutes, on a schedule each DSP sets, within the server rather than as jobs.            |
 | `migrations`               | `storage`         | What it adds to a database it keeps whole: that database's one list.                                                                         |
 | `own_migrations`           | `storage`         | What it adds to a database other owners add to, numbered by the feature from 1 and recorded under its name.                                  |
-| `migration_aliases`        | `storage`         | Other owner names its immutable migration receipts may use. Lookup accepts them; new receipts use the current feature name.                 |
+| `migration_aliases`        | `storage`         | Other owner names its immutable migration receipts may use. Lookup accepts them; new receipts use the current feature name.                  |
 | `retired_migrations`       | `storage`         | The ledger of a database it no longer opens, kept so its retired storage can be read during an import.                                       |
 | `retired_identifiers`      | `retirement`      | Identifiers it renamed, migrated at startup and refused by current readers.                                                                  |
 | `retired_schedule_aliases` | `retirement`      | Schedule names it no longer keeps, each split as a DSP opens into a rule of each collection that replaces it, timed as it was.               |
