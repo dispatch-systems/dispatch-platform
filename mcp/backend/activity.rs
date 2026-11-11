@@ -5,7 +5,7 @@
 //! here, in memory, once answered. The scheduler writes calls down in batches, so an agent's
 //! read never waits for the platform's write lock. Calls are kept 90 days, and at most
 //! `DAILY` of each key's a day, so one busy key cannot fill the disk.
-use super::{piece::Kept, server};
+use super::{locked, piece::Kept, server};
 use crate::api::types::{AgentActivity, AgentActivityKey, AgentActivityPage, AgentDsp};
 use dispatch_core::{
     Result, State,
@@ -96,7 +96,7 @@ pub struct Taken {
 
 impl Activity {
     fn held(&self) -> MutexGuard<'_, Held> {
-        self.0.lock().unwrap_or_else(|poison| poison.into_inner())
+        locked(&self.0)
     }
     /// Counts each key's calls recorded today as the database holds them, so a restart
     /// keeps its cap. One count a key, read from the key's own index.
@@ -260,7 +260,7 @@ pub fn tool_call(body: &[u8]) -> Option<String> {
 
 /// Notes what a handler found of an agent's call: the DSP it was about, and how it ended.
 pub fn note(trace: &RequestTrace, dsp: Option<AgentDsp>, outcome: &str) {
-    let mut context = trace.lock().unwrap_or_else(|poison| poison.into_inner());
+    let mut context = locked(trace);
     let noted = noted(&mut context);
     noted.dsp = dsp;
     noted.outcome = Some(outcome.to_owned());

@@ -1,11 +1,9 @@
 //! How much each key is used, kept in memory: one process serves an environment, so a
 //! count here is the whole count. Agent reads stay reads; once a minute the scheduler
 //! writes down when each key was last used.
+use crate::{locked, minute::Minute};
 use dispatch_core::{Result, db::now, ensure};
-use std::{
-    collections::{HashMap, VecDeque},
-    sync::Mutex,
-};
+use std::{collections::HashMap, sync::Mutex};
 
 /// Calls a key may make in one minute.
 pub const PER_MINUTE: u32 = 120;
@@ -13,7 +11,7 @@ pub const PER_MINUTE: u32 = 120;
 #[derive(Default)]
 pub struct Usage(Mutex<HashMap<String, Use>>);
 struct Use {
-    calls: VecDeque<i64>,
+    calls: Minute,
     at: i64,
     client: String,
     unsaved: bool,
@@ -28,18 +26,16 @@ impl Usage {
         self.admit_at(key, client, now())
     }
     fn admit_at(&self, key: &str, client: &str, at: i64) -> Result<()> {
-        let mut keys = self.0.lock().unwrap_or_else(|poison| poison.into_inner());
+        let mut keys = locked(&self.0);
         let entry = keys.entry(key.to_owned()).or_insert_with(|| Use {
-            calls: VecDeque::new(),
+            calls: Minute::default(),
             at,
             client: String::new(),
             unsaved: false,
         });
-        while entry.calls.front().is_some_and(|seen| *seen <= at - 60_000) {
-            entry.calls.pop_front();
-        }
-        ensure(entry.calls.len() < PER_MINUTE as usize, "rate_limited", 429)?;
-        entry.calls.push_back(at);
+        let calls = entry.calls.count(at);
+        ensure(calls < PER_MINUTE as usize, "rate_limited", 429)?;
+        entry.calls.record(at);
         entry.at = at;
         entry.client = client.to_owned();
         entry.unsaved = true;
@@ -47,7 +43,7 @@ impl Usage {
     }
     /// The last calls not yet written down, which then count as written.
     pub fn take(&self) -> Vec<(String, LastUse)> {
-        let mut keys = self.0.lock().unwrap_or_else(|poison| poison.into_inner());
+        let mut keys = locked(&self.0);
         keys.iter_mut()
             .filter(|(_, entry)| entry.unsaved)
             .map(|(key, entry)| {
@@ -59,7 +55,7 @@ impl Usage {
     /// Marks keys' last calls as not yet written down again, after writing them failed.
     /// The next take writes whatever each key's last call is by then.
     pub fn unsaved(&self, keys: &[String]) {
-        let mut entries = self.0.lock().unwrap_or_else(|poison| poison.into_inner());
+        let mut entries = locked(&self.0);
         for key in keys {
             if let Some(entry) = entries.get_mut(key) {
                 entry.unsaved = true;
@@ -68,7 +64,7 @@ impl Usage {
     }
     /// Each key's last call as this process saw it, newer than what is written down.
     pub fn last(&self) -> HashMap<String, LastUse> {
-        let keys = self.0.lock().unwrap_or_else(|poison| poison.into_inner());
+        let keys = locked(&self.0);
         keys.iter()
             .map(|(key, entry)| (key.clone(), (entry.at, entry.client.clone())))
             .collect()

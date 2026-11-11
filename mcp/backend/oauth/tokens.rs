@@ -35,7 +35,7 @@ pub(super) fn exchange(db: &Store, form: &Query) -> Answer<Value> {
         ));
     }
     check_scope(form)?;
-    let known = clients::known(client_id)
+    let known = clients::known_app(client_id).is_some()
         || (client_id.starts_with("dcr_") && db.registered_client(client_id)?.is_some())
         || (client_id.starts_with("https://") && website_approved(db, client_id)?);
     if !known {

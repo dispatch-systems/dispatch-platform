@@ -1,8 +1,8 @@
 //! What a tool runs with: the connection and the DSPs a checked call is about, and the
 //! database, which it reads and writes through its context so the connection is checked again
 //! each time, as it stands then.
-use super::{Answer, AnyTool, Effect, Failure, Refusal, db_caller, has_all, permitted};
-use crate::Caller;
+use super::{Answer, AnyTool, Effect, Failure, Refusal, has_all, permitted};
+use crate::{Caller, KeyStore};
 #[cfg(any(feature = "driver_match", feature = "dvic"))]
 use dispatch_core::manifest::people::{self, Everyone};
 use dispatch_core::{
@@ -119,7 +119,7 @@ impl Cx {
     /// The connection as it stands now, if it may still do what the call does with the tool
     /// at the call's DSPs.
     fn recheck(&self, db: &Store) -> Answer<Caller> {
-        let current = db_caller(db, &self.caller)?;
+        let current = db.revalidate_agent(&self.caller)?;
         permitted(&current, self.tool, self.effect)?;
         for dsp in self.dsps.iter() {
             if !current.dsps.iter().any(|reached| reached.id == dsp.id) {
