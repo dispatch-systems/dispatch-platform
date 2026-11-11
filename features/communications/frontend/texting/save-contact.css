@@ -46,33 +46,12 @@
 .contact-people ul {
   list-style: none;
 }
-.contact-people button {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 10px;
-  width: 100%;
-  min-height: 0;
-  padding: 7px 8px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  font-weight: 400;
-  text-align: left;
-}
-.contact-people button:hover {
-  background: var(--accent);
-}
 .contact-people button[aria-pressed='true'] {
   background: var(--muted);
 }
 .contact-people button svg {
   margin-left: auto;
   color: var(--primary);
-}
-.contact-people strong {
-  font-size: var(--ui-size);
-  font-weight: 500;
 }
 .contact-panel .search {
   width: 100%;
