@@ -18,9 +18,8 @@ export const replies: Replies = (route, method, context) => {
     id: sectionId(value.id, context?.dsp?.code),
   });
   if (route === '/api/dsp/settings' && method === 'GET')
-    return z.pipe(
-      listing,
-      z.transform((value) => {
+    return listing.check(
+      z.overwrite((value) => {
         const sections = value.sections.map(normalize);
         if (new Set(sections.map((section) => section.id)).size !== sections.length)
           throw new Error('invalid_api_response');
@@ -28,9 +27,8 @@ export const replies: Replies = (route, method, context) => {
       }),
     );
   if (route.startsWith('/api/dsp/settings/') && method === 'POST')
-    return z.pipe(
-      saved,
-      z.transform((value) =>
+    return saved.check(
+      z.overwrite((value) =>
         'section' in value ? { ...value, section: normalize(value.section) } : value,
       ),
     );
