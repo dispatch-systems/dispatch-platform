@@ -20,7 +20,10 @@ use crate::discovery::Scope;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use dispatch_core::{
     Error, Result,
-    collection::browser::http::{Http, Refusal, SignedIn, Wire, WireError},
+    collection::browser::{
+        Pending,
+        http::{Http, Refusal, SignedIn, Wire, WireError},
+    },
     db::now,
     ensure,
     foundation::{clock, observability},
@@ -51,6 +54,10 @@ const KEY_BYTES: usize = 1024;
 /// The application's name for itself, on every request it signs.
 const USER_REF: &str = "cortex-webapp-user";
 
+/// The caller's current authority to read with this session. Owned context lets each
+/// check run after a cooldown without borrowing a stale database snapshot.
+pub type Check = dyn Fn() -> Pending<'static, ()> + Send + Sync;
+
 /// Why a day was not read with no browser.
 #[derive(Debug)]
 pub enum Failure {
@@ -62,6 +69,8 @@ pub enum Failure {
     SignedOut,
     /// Cortex asked for a cooldown. Neither signing again nor opening a page helps it.
     Throttled(Error),
+    /// The caller withdrew or changed its authority while a read was waiting.
+    Stopped(Error),
     /// Cortex did not answer every read, or answered what the day cannot be read from; the
     /// error says which.
     Unavailable(Error),
@@ -79,6 +88,7 @@ impl Failure {
             Self::Refused => "routes_native_refused",
             Self::SignedOut => "routes_native_signed_out",
             Self::Throttled(_) => "routes_native_throttled",
+            Self::Stopped(_) => "routes_native_stopped",
             Self::Unavailable(_) => "routes_native_unavailable",
         }
     }
@@ -87,6 +97,7 @@ impl Failure {
     fn worse(self, other: Self) -> Self {
         let rank = |failure: &Self| match failure {
             Self::Throttled(_) => 0,
+            Self::Stopped(_) => 0,
             Self::Refused => 1,
             Self::SignedOut => 2,
             _ => 3,
@@ -297,9 +308,11 @@ impl Native {
         &mut self,
         scope: &Scope,
         mode: Mode,
+        check: &Check,
     ) -> std::result::Result<Capture, Failure> {
         let retry_budget = Mutex::new(RETRY_BUDGET);
         self.throttle.wait(&retry_budget).await?;
+        check().await.map_err(Failure::Stopped)?;
         let started_at = now();
         let mut asked_again = false;
         loop {
@@ -316,6 +329,7 @@ impl Native {
                 historical: historical(scope),
                 throttle: &self.throttle,
                 retry_budget: &retry_budget,
+                check,
             };
             match reading.day(mode, started_at).await {
                 // The page is asked once more: Cortex stopped accepting its key, or sends the
@@ -381,6 +395,7 @@ struct Reading<'a> {
     historical: &'static str,
     throttle: &'a Throttle,
     retry_budget: &'a Mutex<Duration>,
+    check: &'a Check,
 }
 impl Reading<'_> {
     async fn day(&self, mode: Mode, started_at: i64) -> std::result::Result<Capture, Failure> {
@@ -468,6 +483,7 @@ impl Reading<'_> {
                     if !self.throttle.wait(self.retry_budget).await? {
                         tokio::time::sleep(RETRY_PAUSE * attempt).await;
                     }
+                    (self.check)().await.map_err(Failure::Stopped)?;
                     attempt += 1;
                 }
                 Err(failure) => return Err(failure),
@@ -510,8 +526,11 @@ impl Reading<'_> {
             if pending.is_empty() {
                 break;
             }
-            if attempt > 0 && !self.throttle.wait(self.retry_budget).await? {
-                tokio::time::sleep(RETRY_PAUSE).await;
+            if attempt > 0 {
+                if !self.throttle.wait(self.retry_budget).await? {
+                    tokio::time::sleep(RETRY_PAUSE).await;
+                }
+                (self.check)().await.map_err(Failure::Stopped)?;
             }
             failure = None;
             let mut answers = stream::iter(pending)

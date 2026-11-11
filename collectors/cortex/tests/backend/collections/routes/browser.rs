@@ -36,7 +36,10 @@ async fn fixture_mode_reads_a_whole_day_in_the_scope_it_resolves() {
             (scope.service_area_id.as_str(), scope.provider.as_str()),
             (area, provider)
         );
-        let day = browser.read(&request, &scope).await.unwrap();
+        let day = browser
+            .read(&request, &scope, &|| Box::pin(async { Ok(()) }))
+            .await
+            .unwrap();
         day.capture.validate(&request).unwrap();
         assert_eq!(day.capture.scope, scope);
         assert_eq!(day.capture.itineraries.len(), 2);
@@ -60,7 +63,9 @@ async fn a_scope_kept_for_another_request_is_refused() {
             .await
             .unwrap();
         change(&mut kept);
-        let read = Browser::new(None, &config).unwrap().read(&request, &kept);
+        let read = Browser::new(None, &config)
+            .unwrap()
+            .read(&request, &kept, &|| Box::pin(async { Ok(()) }));
         read.await.err().map(|error| error.code)
     };
     let changes: [(bool, Change); 7] = [

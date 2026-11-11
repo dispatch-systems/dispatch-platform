@@ -14,7 +14,7 @@
 use super::{
     Day, INVALID, Method, NATIVE, Navigation,
     capture::{Capture, Collection, ItineraryCapture, Request},
-    native::{Failure, Native},
+    native::{Check, Failure, Native},
     page::{MOVE_FAILED, patterns, routes_page},
     protocol::{
         CaptureBudget, ITINERARY, ROUTE_SUMMARIES, SUMMARIES, itineraries_listed, owned_by, parsed,
@@ -40,6 +40,12 @@ use std::{
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
+/// A read's diagnostics and the caller's authority to resume provider requests.
+pub(super) struct ReadContext<'a> {
+    pub metrics: &'a Recorder,
+    pub check: &'a Check,
+}
+
 impl Tab<'_> {
     /// The scope of the day `request` names: the service area and provider it names, or
     /// found on Cortex as discovery finds them.
@@ -59,13 +65,14 @@ impl Tab<'_> {
         scope: &Scope,
         started_at: i64,
         method: &Method,
-        metrics: &Recorder,
+        context: &ReadContext<'_>,
         progress: F,
     ) -> Result<Day>
     where
         F: Fn(i64, String) -> Fut,
         Fut: Future<Output = Result<()>>,
     {
+        let (metrics, check) = (context.metrics, context.check);
         request.validate()?;
         ensure(
             (1..=4).contains(&method.tabs) && (1..=16).contains(&method.downloads),
@@ -80,7 +87,7 @@ impl Tab<'_> {
         if method.navigation == Navigation::Native {
             let session = SignedIn::of(self.browser, self.origin, &cortex::HOSTS).await?;
             // A day is checked before the browser closes: one that fails is read with it.
-            match read_natively(&session, request, scope, &progress).await? {
+            match read_natively(&session, request, scope, &progress, check).await? {
                 Ok((reader, capture)) => {
                     // Nothing needs the browser now: it closes before the day is kept.
                     self.browser.close().await;
@@ -260,13 +267,14 @@ pub(super) async fn read_natively<F, Fut>(
     request: &Request,
     scope: &Scope,
     progress: &F,
+    check: &Check,
 ) -> Result<std::result::Result<(Native, Capture), &'static str>>
 where
     F: Fn(i64, String) -> Fut,
     Fut: Future<Output = Result<()>>,
 {
     let mut reader = Native::new(session)?;
-    Ok(match reader.read(scope, request.mode).await {
+    Ok(match reader.read(scope, request.mode, check).await {
         Ok(capture) => {
             progress(95, "Validating routes".into()).await?;
             match capture.validate(request) {
@@ -274,7 +282,7 @@ where
                 Err(_) => Err(INVALID),
             }
         }
-        Err(Failure::Throttled(error)) => return Err(error),
+        Err(Failure::Throttled(error) | Failure::Stopped(error)) => return Err(error),
         Err(failure) => Err(failure.label()),
     })
 }
@@ -290,6 +298,28 @@ impl Driver {
             &Method::default(),
             run.metrics,
             |progress, message| run.progress(progress, message),
+            &{
+                let (state, job, owner) =
+                    (run.state.clone(), run.job.to_owned(), run.owner.to_owned());
+                let request = request.clone();
+                move || {
+                    let (state, job, owner, request) =
+                        (state.clone(), job.clone(), owner.clone(), request.clone());
+                    Box::pin(async move {
+                        state
+                            .read(move |db| {
+                                let dsp = db.guard(&job, &owner)?;
+                                ensure(
+                                    db.profile(&dsp.id)?.station_code == request.station
+                                        && dsp.timezone == request.timezone,
+                                    "routes_scope_mismatch",
+                                    409,
+                                )
+                            })
+                            .await
+                    })
+                }
+            },
         )
         .await
     }
@@ -300,6 +330,7 @@ impl Driver {
         method: &Method,
         metrics: &Recorder,
         progress: F,
+        check: &Check,
     ) -> Result<Capture>
     where
         F: Fn(i64, String) -> Fut,
@@ -310,7 +341,14 @@ impl Driver {
         let mut tab = self.tab();
         let scope = tab.routes_scope(request, metrics).await?;
         let day = tab
-            .read_routes(request, &scope, started_at, method, metrics, progress)
+            .read_routes(
+                request,
+                &scope,
+                started_at,
+                method,
+                &ReadContext { metrics, check },
+                progress,
+            )
             .await?;
         Ok(day.capture)
     }

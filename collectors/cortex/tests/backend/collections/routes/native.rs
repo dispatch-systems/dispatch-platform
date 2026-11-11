@@ -19,6 +19,9 @@ use std::{
 };
 
 use tokio::time::Instant;
+fn authorized() -> dispatch_core::collection::browser::Pending<'static, ()> {
+    Box::pin(async { Ok(()) })
+}
 
 const AREA: &str = "area-1";
 const COMPANY: &str = "company-1";
@@ -346,7 +349,7 @@ async fn a_day_is_read_whole_with_the_key_its_list_page_carries() {
     let (stand, session) = stand_in(Plays::FlakyItinerary).await;
     let mut native = Native::new(&session).unwrap();
     let scope = stand.day.scope.clone();
-    let capture = native.read(&scope, Mode::Final).await.unwrap();
+    let capture = native.read(&scope, Mode::Final, &authorized).await.unwrap();
     capture.validate(&request()).unwrap();
     assert_eq!(capture.summaries, stand.day.summaries);
     assert_eq!(capture.route_summaries, stand.day.route_summaries);
@@ -361,7 +364,7 @@ async fn a_day_is_read_whole_with_the_key_its_list_page_carries() {
     // The itinerary that failed was asked for once more.
     assert_eq!(stand.asked("itinerary-2"), 2);
     // The key is kept for the next read.
-    native.read(&scope, Mode::Final).await.unwrap();
+    native.read(&scope, Mode::Final, &authorized).await.unwrap();
     assert_eq!(stand.pages.load(Ordering::SeqCst), 1);
 }
 
@@ -386,7 +389,7 @@ async fn a_day_not_read_whole_says_why() {
         let (stand, session) = stand_in(plays).await;
         let outcome = match Native::new(&session)
             .unwrap()
-            .read(&stand.day.scope, Mode::Final)
+            .read(&stand.day.scope, Mode::Final, &authorized)
             .await
         {
             Ok(capture) => {
@@ -418,7 +421,7 @@ async fn a_day_read_natively_is_kept_once_checked_and_its_reader_reads_the_next(
     let read = |plays| async move {
         let (stand, session) = stand_in(plays).await;
         let scope = stand.day.scope.clone();
-        let read = read_natively(&session, &request(), &scope, &unprompted)
+        let read = read_natively(&session, &request(), &scope, &unprompted, &authorized)
             .await
             .unwrap();
         (stand, read)
@@ -427,7 +430,10 @@ async fn a_day_read_natively_is_kept_once_checked_and_its_reader_reads_the_next(
     let (stand, day) = read(Plays::FlakyItinerary).await;
     let (mut reader, day) = day.unwrap();
     day.validate(&request()).unwrap();
-    reader.read(&stand.day.scope, Mode::Final).await.unwrap();
+    reader
+        .read(&stand.day.scope, Mode::Final, &authorized)
+        .await
+        .unwrap();
     assert_eq!(stand.pages.load(Ordering::SeqCst), 1);
     // Otherwise it says why: as the reader names it, or a day read whole that fails the checks.
     for (plays, why) in [
@@ -443,7 +449,10 @@ async fn a_day_read_natively_is_kept_once_checked_and_its_reader_reads_the_next(
 async fn a_throttled_itinerary_is_retried_without_reading_successful_ones_again() {
     let (stand, session) = stand_in(Plays::ThrottledOnce).await;
     let mut reader = Native::new(&session).unwrap();
-    let capture = reader.read(&stand.day.scope, Mode::Final).await.unwrap();
+    let capture = reader
+        .read(&stand.day.scope, Mode::Final, &authorized)
+        .await
+        .unwrap();
     capture.validate(&request()).unwrap();
     assert_eq!(stand.asked("itinerary-1"), 1);
     assert_eq!(stand.asked("itinerary-2"), 2);
@@ -453,7 +462,14 @@ async fn a_throttled_itinerary_is_retried_without_reading_successful_ones_again(
 #[tokio::test]
 async fn persistent_throttling_does_not_request_a_browser_fallback() {
     let (stand, session) = stand_in(Plays::Throttled).await;
-    let result = read_natively(&session, &request(), &stand.day.scope, &unprompted).await;
+    let result = read_natively(
+        &session,
+        &request(),
+        &stand.day.scope,
+        &unprompted,
+        &authorized,
+    )
+    .await;
     assert_eq!(
         result.err().map(|error| error.code).as_deref(),
         Some("cortex_throttled")

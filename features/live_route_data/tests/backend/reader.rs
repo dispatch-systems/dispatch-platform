@@ -57,6 +57,10 @@ use dispatch_core::collection::browser::http::{FIXTURE, SignedIn};
 use std::{future::Future, task::Poll};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+fn authorized() -> dispatch_core::collection::browser::Pending<'static, ()> {
+    Box::pin(async { Ok(()) })
+}
+
 fn request() -> Request {
     Request {
         collection: routes::Collection::Routes,
@@ -122,7 +126,7 @@ async fn throttling_and_cancelling_its_cooldown_keep_the_reader_until_its_connec
         ..Held::default()
     };
     for _ in 0..4 {
-        let result = held.read_native(&request, Some(7)).await;
+        let result = held.read_native(&request, Some(7), &authorized).await;
         assert_eq!(
             result.err().map(|e| e.code).as_deref(),
             Some("cortex_throttled")
@@ -131,7 +135,7 @@ async fn throttling_and_cancelling_its_cooldown_keep_the_reader_until_its_connec
         assert_eq!(held.ladder, Ladder::default());
     }
     server.await.unwrap();
-    let mut pending = Box::pin(held.read_native(&request, Some(7)));
+    let mut pending = Box::pin(held.read_native(&request, Some(7), &authorized));
     std::future::poll_fn(|cx| {
         assert!(pending.as_mut().poll(cx).is_pending());
         Poll::Ready(())
@@ -139,7 +143,12 @@ async fn throttling_and_cancelling_its_cooldown_keep_the_reader_until_its_connec
     .await;
     drop(pending);
     assert!(held.native.is_some());
-    assert!(held.read_native(&request, Some(8)).await.unwrap().is_err());
+    assert!(
+        held.read_native(&request, Some(8), &authorized)
+            .await
+            .unwrap()
+            .is_err()
+    );
     assert!(held.native.is_none());
 }
 
@@ -150,14 +159,16 @@ async fn a_first_read_keeps_a_long_cooldown_and_releases_subsequent_turns_withou
     let scope = routes::fixture(&request).unwrap().scope;
     let mut held = Held::default();
     held.ladder.browser_reads = 3;
-    let first = held.read_fresh(native, scope, 7, &request).await;
+    let first = held
+        .read_fresh(native, scope, 7, &request, &authorized)
+        .await;
     assert_eq!(
         first.err().map(|e| e.code).as_deref(),
         Some("cortex_throttled")
     );
     server.await.unwrap();
     assert!(held.native.as_ref().unwrap().native.has_cooldown());
-    let mut next = Box::pin(held.read_native(&request, Some(7)));
+    let mut next = Box::pin(held.read_native(&request, Some(7), &authorized));
     std::future::poll_fn(|cx| {
         // No timer or provider request may occupy the shared turn during a long cooldown.
         let Poll::Ready(Err(error)) = next.as_mut().poll(cx) else {
@@ -180,7 +191,7 @@ async fn cancelling_a_first_native_read_retains_its_cooldown_before_the_browser_
     let scope = routes::fixture(&request).unwrap().scope;
     let mut held = Held::default();
     held.ladder.browser_reads = 3;
-    let mut reading = Box::pin(held.read_fresh(native, scope, 7, &request));
+    let mut reading = Box::pin(held.read_fresh(native, scope, 7, &request, &authorized));
     // Cancel after the first throttle was observed, while the first native read awaits
     // its retry. Polls are driven by the provider future's own wakeups.
     std::future::poll_fn(|cx| {
@@ -199,7 +210,7 @@ async fn cancelling_a_first_native_read_retains_its_cooldown_before_the_browser_
     drop(reading);
     server.await.unwrap();
     assert!(held.native.as_ref().unwrap().native.has_cooldown());
-    let mut next = Box::pin(held.read_native(&request, Some(7)));
+    let mut next = Box::pin(held.read_native(&request, Some(7), &authorized));
     std::future::poll_fn(|cx| {
         // The browser ladder cannot discard a newly handed reader's outstanding cooldown.
         assert!(next.as_mut().poll(cx).is_pending());
@@ -208,6 +219,11 @@ async fn cancelling_a_first_native_read_retains_its_cooldown_before_the_browser_
     .await;
     drop(next);
     assert!(held.native.is_some());
-    assert!(held.read_native(&request, Some(8)).await.unwrap().is_err());
+    assert!(
+        held.read_native(&request, Some(8), &authorized)
+            .await
+            .unwrap()
+            .is_err()
+    );
     assert!(held.native.is_none());
 }

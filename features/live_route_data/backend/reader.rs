@@ -132,6 +132,7 @@ impl Held {
         &mut self,
         request: &Request,
         revision: Option<i64>,
+        check: &routes::Check,
     ) -> Result<std::result::Result<Read, Option<&'static str>>> {
         // The native reader goes first while it reads the scope today's request names, under
         // the connection's revision now: never once the connection is disabled.
@@ -144,7 +145,7 @@ impl Held {
                     .is_ok()
         });
         let fallback = if let Some(handed) = native {
-            let fallback = match handed.native.read(&handed.scope, request.mode).await {
+            let fallback = match handed.native.read(&handed.scope, request.mode, check).await {
                 Ok(capture) => match capture.validate(request) {
                     Ok(()) => {
                         self.ladder.read_natively();
@@ -165,6 +166,10 @@ impl Held {
                     let label = failure.label();
                     match failure {
                         // A throttle is no reason to replace this session or open a page.
+                        Failure::Stopped(error) => {
+                            self.native = None;
+                            return Err(error);
+                        }
                         Failure::Throttled(error) => {
                             self.ladder.throttled();
                             return Err(error);
@@ -198,6 +203,7 @@ impl Held {
         scope: Scope,
         revision: i64,
         request: &Request,
+        check: &routes::Check,
     ) -> Result<std::result::Result<Read, &'static str>> {
         self.native = Some(Handed {
             native,
@@ -205,7 +211,7 @@ impl Held {
             revision,
         });
         let handed = self.native.as_mut().expect("installed native reader");
-        let fallback = match handed.native.read(&handed.scope, request.mode).await {
+        let fallback = match handed.native.read(&handed.scope, request.mode, check).await {
             Ok(capture) => match capture.validate(request) {
                 Ok(()) => {
                     self.ladder.browsed();
@@ -218,6 +224,10 @@ impl Held {
                 }
                 Err(_) => routes::INVALID,
             },
+            Err(Failure::Stopped(error)) => {
+                self.native = None;
+                return Err(error);
+            }
             Err(Failure::Throttled(error)) => {
                 self.ladder.throttled();
                 return Err(error);
@@ -257,15 +267,16 @@ impl LiveReader for Routes {
                     Ok((request, db.connection_revision(&dsp, cortex::PROVIDER)?))
                 })
                 .await?;
-            let fallback = match held.read_native(&request, revision).await? {
+            let check = authorize(reading, &request, revision);
+            let fallback = match held.read_native(&request, revision, &check).await? {
                 Ok(read) => return Ok(read),
                 Err(fallback) => fallback,
             };
             // The DSP's browser opens only while its connection is enabled
             // (`connection_required`): one enabled again since, under a revision this read didn't
             // see, is the next read's.
-            let revision = revision.ok_or_else(|| Error::new("connection_changed", 409))?;
-            browse(reading, &request, revision, held, fallback).await
+            let revision = revision.ok_or_else(|| Error::new("connection_required", 409))?;
+            browse(reading, &request, revision, held, fallback, &check).await
         })
     }
     /// A day's first read empties live route data of the day before.
@@ -318,6 +329,45 @@ impl LiveReader for Routes {
     }
 }
 
+/// Recheck the current connection and scope after a provider wait, before its copied
+/// session can admit another request. Publication's guard remains a separate check.
+fn authorize(
+    reading: &Reading,
+    request: &Request,
+    revision: Option<i64>,
+) -> impl Fn() -> Pending<'static, ()> + Send + Sync {
+    let (state, dsp, request) = (reading.state.clone(), reading.dsp.clone(), request.clone());
+    move || {
+        let (state, dsp, request) = (state.clone(), dsp.clone(), request.clone());
+        Box::pin(async move {
+            state
+                .read(move |db| {
+                    db.ensure_dsp_active(&dsp)?;
+                    dispatch_core::ensure(
+                        db.feature_enabled(&dsp, crate::FEATURE.switch.id)?,
+                        "feature_disabled",
+                        409,
+                    )?;
+                    dispatch_core::ensure(
+                        revision.is_some()
+                            && db.connection_revision(&dsp, cortex::PROVIDER)? == revision,
+                        "connection_changed",
+                        409,
+                    )?;
+                    let current = dispatch_routes::live_request(db, &dsp)?;
+                    dispatch_core::ensure(
+                        current.date == request.date
+                            && current.station == request.station
+                            && current.timezone == request.timezone,
+                        "routes_scope_mismatch",
+                        409,
+                    )
+                })
+                .await
+        })
+    }
+}
+
 /// Today's routes read in the DSP's Cortex browser, and the scope they were read in. The browser
 /// is the reader's alone while it reads, and closes after.
 async fn browse(
@@ -326,6 +376,7 @@ async fn browse(
     revision: i64,
     held: &mut Held,
     fallback: Option<&'static str>,
+    check: &routes::Check,
 ) -> Result<Read> {
     let open = reading.browser(cortex::PROVIDER).await?;
     let read = async {
@@ -334,7 +385,7 @@ async fn browse(
         let mut labels: Vec<_> = fallback.into_iter().collect();
         if let Some(native) = browser.reader().await? {
             match held
-                .read_fresh(native, scope.clone(), revision, request)
+                .read_fresh(native, scope.clone(), revision, request, check)
                 .await?
             {
                 Ok(mut read) => {
@@ -346,7 +397,7 @@ async fn browse(
                 Err(fallback) => labels.push(fallback),
             }
         }
-        let day = browser.read(request, &scope).await?;
+        let day = browser.read(request, &scope, check).await?;
         held.ladder.browsed();
         held.native = day.native.map(|native| Handed {
             native,

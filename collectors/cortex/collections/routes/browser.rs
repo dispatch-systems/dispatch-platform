@@ -2,8 +2,9 @@
 //! opens the DSP's Cortex browser only when it must (`readers::Reading::browser`), and reads
 //! with the native reader it hands back, with no browser, until that reader fails.
 use super::capture::{Request, fixture_in, fixture_scope};
+use super::collect::ReadContext;
 use super::native::Native;
-use super::{Day, Method, Navigation};
+use super::{Check, Day, Method, Navigation};
 use crate::{
     HOSTS,
     connection::{Tab, application},
@@ -93,7 +94,7 @@ impl Browser {
     /// The day `request` names after the native reader could not read it: the application's
     /// signatures, then moves and pages. On success it hands back a reader carrying the
     /// browser's session as the read left it, which the application may have changed.
-    pub async fn read(mut self, request: &Request, scope: &Scope) -> Result<Day> {
+    pub async fn read(mut self, request: &Request, scope: &Scope, check: &Check) -> Result<Day> {
         let Some(application) = &mut self.application else {
             return Ok(Day {
                 capture: fixture_in(request, scope)?,
@@ -112,7 +113,10 @@ impl Browser {
                     navigation: Navigation::Signed,
                     ..Method::default()
                 },
-                &unrecorded(),
+                &ReadContext {
+                    metrics: &unrecorded(),
+                    check,
+                },
                 |_, _| async { Ok(()) },
             )
             .await?;
