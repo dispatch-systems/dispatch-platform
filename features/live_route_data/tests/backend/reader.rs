@@ -284,6 +284,7 @@ async fn replacing_credentials_during_a_cooldown_stops_the_old_session_before_it
         &json!({"username":"replacement@example.test","password":"replacement-password"}),
     )
     .unwrap();
+    testing::change_connection(&store, &dsp, cortex::PROVIDER).unwrap();
     tokio::time::advance(Duration::from_secs(20)).await;
     let result = reading.await;
     assert_eq!(
