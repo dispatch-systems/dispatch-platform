@@ -12,7 +12,12 @@
 //! elsewhere, as with a work phone handed to another driver, never is. Either is queued, and filed,
 //! in the write that checks where it goes and that the member may still send it, so no handoff,
 //! stop or change of their access comes between.
-use super::{filing, live_day, numbers::work_number, reading::message, storage::TextStore};
+use super::{
+    filing, live_day,
+    numbers::work_number,
+    reading::{self, message},
+    storage::TextStore,
+};
 use crate::{
     api::types::{CommunicationsUpload, Message, MessageGif},
     backend::{
@@ -75,9 +80,7 @@ pub async fn send(
 /// nobody had; for a driver's, the work phone they have now (`live_day::phones_now`), refused while
 /// they have none.
 fn recipient(db: &Store, dsp: &str, id: &str) -> Result<String> {
-    let conversation = db
-        .communications_text_conversation(dsp, id)?
-        .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
+    let conversation = reading::found(db, dsp, id)?;
     let phone = match (&conversation.driver, conversation.kind) {
         (Some((source, driver)), _) => live_day::phones_now(db, dsp, source)?.remove(driver),
         (None, ConversationKind::Slack) => None,

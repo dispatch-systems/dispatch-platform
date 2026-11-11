@@ -28,9 +28,7 @@ pub fn pick(
     by: &str,
     at: i64,
 ) -> Result<Conversation> {
-    let conversation = db
-        .communications_text_conversation(dsp, id)?
-        .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
+    let conversation = reading::found(db, dsp, id)?;
     let phone = match (conversation.kind, conversation.driver, conversation.number) {
         (ConversationKind::Work, None, Some(number)) => ten_digits(&number),
         _ => None,

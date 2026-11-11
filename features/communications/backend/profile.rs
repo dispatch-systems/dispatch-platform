@@ -4,14 +4,10 @@
 //! workspace: a Slack conversation's own, or for one by text, a driver's work conversation or one
 //! with someone's own number, the first of the DSP's workspaces they're in. What none knows is left
 //! out.
-use super::{
-    conversations,
-    people::People,
-    texts::{reading, storage::TextStore},
-};
+use super::{conversations, people::People, texts::reading};
 use crate::api::types::Profile;
 use dispatch_core::{
-    Error, Result, State,
+    Result, State,
     db::Store,
     manifest::people::{self, Person},
 };
@@ -33,9 +29,7 @@ pub fn member(db: &Store, state: &State, dsp: &str, id: &str) -> Result<Profile>
 /// it is, or whoever Driver Match has its number for; their Slack workspace, the first of the
 /// DSP's they're in.
 pub fn text(db: &Store, state: &State, dsp: &str, id: &str) -> Result<Profile> {
-    let conversation = db
-        .communications_text_conversation(dsp, id)?
-        .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
+    let conversation = reading::found(db, dsp, id)?;
     let people = People::read(db, state, dsp)?;
     let person = reading::whose(&people, &conversation);
     let workspaces = kit::workspaces(db, dsp)?;
