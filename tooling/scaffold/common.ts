@@ -60,6 +60,7 @@ const RESERVED = [
   'auth',
   'browsers',
   'collectors',
+  'custom',
   'core',
   'drivers',
   'features',

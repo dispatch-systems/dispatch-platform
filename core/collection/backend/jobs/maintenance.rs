@@ -3,10 +3,13 @@
 //! pass after the server starts has ended, every task's, it logs `upkeep.settled`: the tests'
 //! servers are handed over then, their data as that pass leaves it.
 use crate::{
-    Error, Result, State, collection::registry::Provider, db::now, foundation::observability,
-    manifest::registry,
+    Error, Result, State,
+    collection::registry::Provider,
+    db::now,
+    foundation::observability,
+    manifest::{self, Feature, registry},
 };
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, sync::Arc, time::Duration};
 
 pub(super) struct Maintenance {
     pub tasks: tokio::task::JoinSet<usize>,
@@ -46,11 +49,11 @@ impl Maintenance {
             if !self.running.insert(id) {
                 continue;
             }
-            let due = now() - self.last[index] >= task.every.as_millis() as i64;
+            let due = now() - self.last[index] >= task.every().as_millis() as i64;
             if due {
                 self.last[index] = now();
             }
-            let work = (task.run)(state.clone(), due);
+            let work = task.run(state.clone(), due);
             self.tasks.spawn(async move {
                 work.await;
                 id
@@ -75,12 +78,71 @@ impl Maintenance {
         Ok(())
     }
 }
-fn declared() -> impl Iterator<Item = &'static crate::manifest::Maintenance> {
+enum Task {
+    Platform(&'static manifest::Maintenance),
+    Dsp(&'static Feature, &'static manifest::DspMaintenance),
+}
+impl Task {
+    fn every(&self) -> Duration {
+        match self {
+            Self::Platform(task) => task.every,
+            Self::Dsp(_, task) => task.every,
+        }
+    }
+    fn run(self, state: Arc<State>, due: bool) -> manifest::Upkeep {
+        match self {
+            Self::Platform(task) => (task.run)(state, due),
+            Self::Dsp(feature, task) => Box::pin(for_dsps(state, feature, task, due)),
+        }
+    }
+}
+fn declared() -> impl Iterator<Item = Task> {
     registry()
         .agents
         .into_iter()
         .flat_map(|a| a.maintenance)
         .chain(registry().features.iter().flat_map(|f| f.maintenance))
+        .map(Task::Platform)
+        .chain(
+            registry()
+                .dsp_maintenance()
+                .map(|(feature, task)| Task::Dsp(feature, task)),
+        )
+}
+
+async fn for_dsps(
+    state: Arc<State>,
+    feature: &'static Feature,
+    task: &'static manifest::DspMaintenance,
+    due: bool,
+) {
+    let failed = |dsp: Option<&str>, error: &Error| {
+        observability::event(
+            "error",
+            "dsp_maintenance_failed",
+            serde_json::json!({"feature":feature.name,"dspId":dsp,"error":error.code}),
+        );
+    };
+    let dsps = match state.read(|db| db.served_ids()).await {
+        Ok(dsps) => dsps,
+        Err(error) => return failed(None, &error),
+    };
+    for dsp in dsps {
+        // The previous DSP's callback may have awaited outside work. Admit this DSP afresh.
+        let at = dsp.clone();
+        let enabled = state
+            .read(move |db| {
+                Ok(db.serves_dsp(&at)?
+                    && feature.belongs_to(db.feature_code(&at)?.as_deref())
+                    && db.feature_enabled(&at, feature.switch.id)?)
+            })
+            .await;
+        match enabled {
+            Ok(true) => (task.run)(state.clone(), dsp, due).await,
+            Ok(false) => {}
+            Err(error) => failed(Some(&dsp), &error),
+        }
+    }
 }
 
 async fn cleanup(state: &Arc<State>, prune_audit: bool) -> Result<()> {

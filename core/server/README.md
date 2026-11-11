@@ -17,6 +17,11 @@ streams a file back under the name it's saved as, and `Reply::picture` answers o
 shows, which the browser keeps for a week for that view of the DSP: its address names the
 version, so a changed picture comes at a new one.
 
+`route.also_at("/old/address")` registers a compatibility address beside a route's canonical
+one. Flatten its two registrations into the owner's routes: both share the handler, access
+gate, upload limit and write policy, and each parses its own path and parameters. Keep both in
+the route inventory while clients use either address.
+
 The built dashboard is served from memory, loaded as the server starts: its page at `/`, its
 files at `/assets/`, and at `/service-worker.js` the worker that shows what the server pushes to a
 browser, at the root so it serves every page of its address.

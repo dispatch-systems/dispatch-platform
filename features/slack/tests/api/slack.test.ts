@@ -96,7 +96,9 @@ test('an owner adds Dispatch to several workspaces, reconnects one and disconnec
   // Reconnecting names the workspace, so Slack doesn't ask which, as fixture mode's code shows;
   // it stays one of two.
   const reconnect = await owner.post('/api/dsp/slack/connect', { team: operations.teamId });
-  assert.equal(install(reconnect.value.url).code, `fixture:${operations.teamId}`);
+  const reconnectCode = install(reconnect.value.url).code;
+  assert.equal(reconnectCode.split(':')[1], operations.teamId);
+  assert.equal(reconnectCode.split(':').slice(2).join(':'), code.split(':').slice(2).join(':'));
   const reconnected = await owner.post(
     '/api/dsp/slack/connect/finish',
     install(reconnect.value.url),
@@ -293,10 +295,17 @@ test("each workspace's install link updates it on its own, beside the one adding
   assert.equal((await goes(replaced)).status, 404);
   // Each goes to its own workspace in Slack, which Slack then doesn't ask to choose.
   const toSlack = await goes(operations);
-  assert.equal(install(toSlack.location).code, 'fixture:T0FIXTURE1');
+  const operationsCode = install(toSlack.location).code;
+  assert.equal(operationsCode.split(':')[1], 'T0FIXTURE1');
+  assert.ok(operationsCode.split(':').slice(2).join(':').split(',').includes('chat:write'));
   const back = await goes(toSlack.location);
   assert.equal(new URL(back.location).searchParams.get('team'), 'T0FIXTURE1');
-  assert.equal(install((await goes(drivers)).location).code, 'fixture:T0FIXTURE2');
+  const driversCode = install((await goes(drivers)).location).code;
+  assert.equal(driversCode.split(':')[1], 'T0FIXTURE2');
+  assert.equal(
+    driversCode.split(':').slice(2).join(':'),
+    operationsCode.split(':').slice(2).join(':'),
+  );
   // The one adding a workspace still works, and still shows on Connections.
   assert.equal((await goes(adding)).status, 302);
   assert.notEqual((await owner.read('/api/dsp/slack/account')).link, null);

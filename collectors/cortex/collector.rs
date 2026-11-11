@@ -430,6 +430,7 @@ pub(crate) mod codes {
     pub const CORTEX_SOURCE_CHANGED: Code = Code::new("cortex_source_changed");
     pub const ROUTES_MOVE_UNANSWERED: Code = Code::new("routes_move_unanswered");
     pub const CORTEX_CONTENT_INCOMPLETE: Code = Code::new("cortex_content_incomplete");
+    pub const CORTEX_THROTTLED: Code = Code::new("cortex_throttled");
     pub const CORTEX_SCOPE_MISMATCH: Code = Code::new("cortex_scope_mismatch");
     pub const CORTEX_TIMEZONE_MISMATCH: Code = Code::new("cortex_timezone_mismatch");
     pub const CORTEX_SOURCE_TOO_LARGE: Code = Code::new("cortex_source_too_large");
@@ -448,6 +449,7 @@ pub(crate) mod codes {
         CORTEX_SOURCE_CHANGED,
         DVIC_SOURCE_CHANGED,
         CORTEX_CONTENT_INCOMPLETE,
+        CORTEX_THROTTLED,
         PERFORMANCE_API_UNREADABLE,
     ];
 }

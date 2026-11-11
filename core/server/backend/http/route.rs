@@ -84,7 +84,14 @@ impl Grant for Public {
     fn access(self) -> Access {
         Access::Public
     }
-    fn authorize(self, _: &Store, _: &Input) -> Result<()> {
+    fn authorize(self, db: &Store, input: &Input) -> Result<()> {
+        if let Some(owner) = input.owner {
+            ensure(
+                db.dsp_at(owner)?.is_some_and(|dsp| db.serves(&dsp)),
+                "not_found",
+                404,
+            )?;
+        }
         Ok(())
     }
 }
@@ -94,6 +101,7 @@ impl Grant for Session {
         Access::Session
     }
     fn authorize(self, db: &Store, input: &Input) -> Result<Auth> {
+        Public.authorize(db, input)?;
         let support = input.support_read_token(db.config.development);
         let raw = if let Some(raw) = input.observation_token(&db.config)? {
             crate::accounts::browser::at_origin(&db.config, input)?;
@@ -170,6 +178,13 @@ impl Grant for Dsp {
     fn authorize(self, db: &Store, input: &Input) -> Result<Context> {
         let auth = Session.authorize(db, input)?;
         let context = db.from_view(&auth, input.header("x-dispatch-view"), self.0)?;
+        ensure(
+            input
+                .owner
+                .is_none_or(|owner| context.dsp.code.as_deref() == Some(owner)),
+            "not_found",
+            404,
+        )?;
         input
             .trace
             .lock()
@@ -245,15 +260,16 @@ type Blocking = Arc<dyn Fn(&Store, &State, &Input, Work) -> Result<Reply> + Send
 type Gate = Arc<dyn Fn(&State, &Input) -> Result<()> + Send + Sync>;
 type Pending = Pin<Box<dyn Future<Output = Result<Reply>> + Send>>;
 pub type Served = Pin<Box<dyn Future<Output = Response> + Send>>;
-type Uploaded = Box<dyn Fn(Arc<State>, Input, Upload) -> Pending + Send + Sync>;
+type Uploaded = Arc<dyn Fn(Arc<State>, Input, Upload) -> Pending + Send + Sync>;
 /// Signs in the caller of a protocol route under the shared lock, counts the call, and puts
 /// who it is in the request's extensions.
 type Signer = Arc<
     dyn Fn(&Store, &State, &Input) -> Result<Box<dyn FnOnce(&mut Extensions) + Send>> + Send + Sync,
 >;
+#[derive(Clone)]
 enum Handler {
     Blocking(Blocking),
-    Async(Box<dyn Fn(Arc<State>, Input) -> Pending + Send + Sync>),
+    Async(Arc<dyn Fn(Arc<State>, Input) -> Pending + Send + Sync>),
     /// Its most bytes, and the handler.
     Upload(u64, Uploaded),
     Memory(fn(&State) -> Reply),
@@ -280,6 +296,7 @@ impl LogLabel {
     }
 }
 pub struct Route {
+    pub(super) owner: Option<&'static str>,
     pub method: Method,
     pub path: &'static str,
     pub access: Access,
@@ -350,7 +367,7 @@ pub fn coalesced_read_by(
     let Handler::Blocking(handler) = route.handler else {
         unreachable!()
     };
-    route.handler = Handler::Async(Box::new(move |state, input| {
+    route.handler = Handler::Async(Arc::new(move |state, input| {
         let handler = handler.clone();
         let key = key.clone();
         Box::pin(async move {
@@ -400,7 +417,7 @@ where
     F: Future<Output = Result<Reply>> + Send + 'static,
 {
     let handler = move |state, input| Box::pin(handler(state, input, access)) as Pending;
-    let handler = Handler::Async(Box::new(handler));
+    let handler = Handler::Async(Arc::new(handler));
     Route::new(method, path, access, Work::Async, handler)
 }
 /// `GET path` for work that waits outside the database. The handler receives the
@@ -443,7 +460,7 @@ where
     assert!(limit <= UPLOAD_LIMIT, "{path}: an upload of at most 100 MB");
     let handler =
         move |state, input, upload| Box::pin(handler(state, input, access, upload)) as Pending;
-    let handler = Handler::Upload(limit, Box::new(handler));
+    let handler = Handler::Upload(limit, Arc::new(handler));
     Route::new(Method::POST, path, access, Work::Upload, handler)
 }
 /// `method path` for a protocol an agent speaks whose requests the handler reads itself,
@@ -485,6 +502,7 @@ pub struct Answered<'a> {
 /// A public `method path` whose requests the handler reads and answers itself, as OAuth's
 /// form posts and redirects need. Such a path sits outside `/api/`, so the JSON-only rule
 /// and the Origin check that guard the dashboard's API never apply to it.
+/// Shared callbacks use the admin hostname; custom callbacks use their owner's hostname.
 pub fn protocol(
     method: Method,
     path: &'static str,
@@ -507,6 +525,23 @@ pub fn probe(path: &'static str, handler: fn(&State) -> Reply) -> Route {
 }
 
 impl Route {
+    /// Serves this route at another address with the same handler, authorization, limits and
+    /// invalidation policy. Both registrations retain their own request path and parameters.
+    pub fn also_at(self, path: &'static str) -> [Self; 2] {
+        let alias = Self {
+            owner: self.owner,
+            method: self.method.clone(),
+            path,
+            access: self.access,
+            work: self.work,
+            invalidates_schedules: self.invalidates_schedules,
+            logged: self.logged,
+            gate: self.gate.clone(),
+            handler: self.handler.clone(),
+        };
+        [self, alias]
+    }
+
     fn new<A: Grant>(
         method: Method,
         path: &'static str,
@@ -515,6 +550,7 @@ impl Route {
         handler: Handler,
     ) -> Self {
         Route {
+            owner: None,
             method,
             path,
             access: access.access(),
@@ -589,7 +625,16 @@ impl Route {
             let trace = request.extensions().get::<RequestTrace>().cloned();
             (crate::db::now(), std::time::Instant::now(), trace)
         });
-        let (response, failed) = match self.answer(state.clone(), request).await {
+        let answer = self.answer(state.clone(), request);
+        let answer = match self.owner {
+            Some(owner) => {
+                crate::server::state::FEATURE_OWNER
+                    .scope(owner, answer)
+                    .await
+            }
+            None => answer.await,
+        };
+        let (response, failed) = match answer {
             Ok(response) => (response, None),
             Err(error) => {
                 let code = error.code.clone();
@@ -619,6 +664,41 @@ impl Route {
         response
     }
     async fn answer(&self, state: Arc<State>, request: Request) -> Result<Response> {
+        let request = if let Some(owner) = self.owner {
+            let (mut parts, body) = request.into_parts();
+            parts.extensions.insert(input::FeatureOwner(owner));
+            let input = middleware::head(&state, &parts, self.path)?;
+            let dsp_route = matches!(self.access, Access::Dsp(_));
+            let admin = matches!(input.site, Site::Admin);
+            ensure(
+                matches!(&input.site, Site::Dsp(code) if code == owner) || (admin && dsp_route),
+                "not_found",
+                404,
+            )?;
+            state
+                .read(move |db| {
+                    let own = db
+                        .dsp_at(owner)?
+                        .filter(|dsp| db.serves(dsp))
+                        .ok_or_else(|| Error::new("not_found", 404))?;
+                    if dsp_route {
+                        let auth = Session.authorize(db, &input)?;
+                        ensure(!admin || auth.user.platform_owner, "not_found", 404)?;
+                        let context = db.from_view(
+                            &auth,
+                            input.header("x-dispatch-view"),
+                            crate::tenancy::roles::ACCESS,
+                        )?;
+                        ensure(context.dsp.id == own.id, "not_found", 404)?;
+                    }
+                    Ok(())
+                })
+                .await?;
+            Request::from_parts(parts, body)
+        } else {
+            request
+        };
+
         // Even public routes and GET routes registered as writes cannot mutate through the
         // support browser. The one POST opens a signed view and skips its visit audit below.
         let support = input::cookies(
@@ -658,11 +738,11 @@ impl Route {
                 let request = self.signed(signer.clone(), state, request).await?;
                 return Ok(handler(request).await);
             }
-            // Agents' sign-in, and the pages outside services send the browser back to, are
-            // the admin's alone.
+            // Shared sign-in and provider callbacks use the admin. A custom callback has
+            // already been admitted at its owner's hostname above.
             Handler::Open(handler) => {
                 let admin = request.extensions().get::<Site>() == Some(&Site::Admin);
-                ensure(admin, "not_found", 404)?;
+                ensure(self.owner.is_some() || admin, "not_found", 404)?;
                 return Ok(handler(state, request).await);
             }
             Handler::Page(handler) => return Ok(handler(state, request).await),

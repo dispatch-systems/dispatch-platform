@@ -2,8 +2,8 @@
 //! `retired_migrations` for one it no longer opens) and the tables it keeps (`tables`), which
 //! no other owner's code runs SQL on.
 use crate::{
-    db::{self, Kind, Migration, Migrations},
-    manifest::Registry,
+    db::{self, Kind, Migration, Migrations, OwnedMigration},
+    manifest::{Feature, Registry},
 };
 
 /// The tables an owner keeps, by the database that holds them: `&[("paycom",
@@ -47,13 +47,29 @@ impl Registry {
     }
     /// What each feature numbers itself for one kind of database, with the feature each is
     /// recorded under, in the registry's order.
-    pub fn owned_migrations(&self, kind: Kind) -> Vec<(&'static str, Migration)> {
-        let owners = self.features.iter().flat_map(|feature| {
-            feature
-                .own_migrations
-                .iter()
-                .map(move |owned| (feature.name, owned))
-        });
+    pub fn owned_migrations(&self, kind: Kind) -> Vec<OwnedMigration> {
+        self.owned_migrations_matching(kind, |_| true)
+    }
+    /// Tenant storage receives only declarations belonging to its DSP code.
+    pub fn owned_migrations_for(&self, kind: Kind, code: Option<&str>) -> Vec<OwnedMigration> {
+        self.owned_migrations_matching(kind, |feature| feature.belongs_to(code))
+    }
+    fn owned_migrations_matching(
+        &self,
+        kind: Kind,
+        matching: impl Fn(&Feature) -> bool,
+    ) -> Vec<OwnedMigration> {
+        let owners = self
+            .features
+            .iter()
+            .copied()
+            .filter(|feature| matching(feature))
+            .flat_map(|feature| {
+                feature
+                    .own_migrations
+                    .iter()
+                    .map(move |owned| (feature.name, feature.migration_aliases, owned))
+            });
         db::owned_ledger(kind, owners)
     }
     /// Every table an owner declares, as its owner, database and name: core's, the agents'
@@ -86,6 +102,45 @@ impl Registry {
 /// or a repeat, a retired database is neither active nor declared twice, every list of
 /// migrations names a database as declared, and every table is declared once.
 pub(crate) fn check(registry: &Registry) {
+    let mut owners = std::collections::BTreeSet::new();
+    for feature in registry.features {
+        assert!(
+            owners.insert(feature.name),
+            "migration owner is declared twice"
+        );
+    }
+    for feature in registry.features {
+        assert!(
+            feature.migration_aliases.is_empty() || !feature.own_migrations.is_empty(),
+            "{} declares migration aliases without own migrations",
+            feature.name
+        );
+        for alias in feature.migration_aliases {
+            assert!(
+                !alias.is_empty()
+                    && alias
+                        .bytes()
+                        .all(|b| b.is_ascii_lowercase() || b == b'_' || b.is_ascii_digit())
+                    && alias.as_bytes()[0].is_ascii_lowercase(),
+                "{} declares an invalid migration owner alias",
+                feature.name
+            );
+            assert!(
+                *alias != "core"
+                    && *alias != "agents"
+                    && registry.collectors.iter().all(|c| c.id() != *alias)
+                    && owners.insert(alias),
+                "migration owner alias {alias} is claimed more than once or is already active"
+            );
+            assert!(
+                feature
+                    .owner
+                    .is_none_or(|code| alias.starts_with(&format!("{code}_"))),
+                "{} declares a migration alias outside its DSP namespace",
+                feature.name
+            );
+        }
+    }
     let databases: Vec<Kind> = registry.databases().collect();
     for (index, kind) in databases.iter().enumerate() {
         assert!(

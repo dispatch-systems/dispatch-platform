@@ -336,7 +336,7 @@ fn generated_dirs(root: &Path) -> Vec<PathBuf> {
         .filter(|dir| dir.is_dir())
         .into_iter()
         .collect();
-    for top in ["core", "collectors", "features"] {
+    for top in ["core", "collectors"] {
         for entry in std::fs::read_dir(root.join(top)).expect("an owners' folder") {
             let dir = entry.unwrap().path().join("api/generated");
             if dir.is_dir() {
@@ -344,6 +344,13 @@ fn generated_dirs(root: &Path) -> Vec<PathBuf> {
             }
         }
     }
+    dirs.extend(
+        dispatch_core::manifest::registry()
+            .features
+            .iter()
+            .map(|feature| root.join(feature.directory()).join("api/generated"))
+            .filter(|dir| dir.is_dir()),
+    );
     dirs
 }
 #[test]
@@ -360,6 +367,7 @@ fn typescript_contracts_match_the_rust_types() {
             matches!(
                 parts[..],
                 ["core" | "collectors" | "features", _, "api", "generated", _]
+                    | ["features", "custom", _, _, "api", "generated", _]
                     | ["mcp", "api", "generated", _]
             ),
             "{} is in no owner's api/generated/: name it in its type's export_to",
@@ -557,8 +565,10 @@ fn feature_map(root: &Path) -> String {
             "env": feature.env,
             "settings": feature.settings.iter().map(|section| section.id).collect::<Vec<_>>(),
         });
-        let dir = format!("features/{}", feature.name);
+        let dir = feature.directory();
         let entry = json!({
+            "directory": dir,
+            "owner": feature.owner,
             "collectors": collectors,
             "depends_on": feature.depends_on.iter().collect::<BTreeSet<_>>(),
             "frontend": root.join(&dir).join("frontend/feature.ts").is_file(),
@@ -607,7 +617,7 @@ fn frontend_list(root: &Path) -> String {
     let owners: Vec<String> = registry
         .features
         .iter()
-        .map(|feature| format!("features/{}", feature.name))
+        .map(|feature| feature.directory())
         .chain(
             registry
                 .collectors
@@ -621,7 +631,13 @@ fn frontend_list(root: &Path) -> String {
     let mut imports = String::new();
     let mut list = String::new();
     for dir in &owners {
-        let name = dir.rsplit('/').next().unwrap();
+        let identity;
+        let name = if let Some(custom) = dir.strip_prefix("features/custom/") {
+            identity = format!("custom_{}", custom.replace('/', "_"));
+            identity.as_str()
+        } else {
+            dir.rsplit('/').next().unwrap()
+        };
         let local: String = name
             .split('_')
             .enumerate()

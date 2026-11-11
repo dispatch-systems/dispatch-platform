@@ -89,8 +89,10 @@ impl Store {
             "SELECT feature,beta FROM dsp_features WHERE dsp_id=? AND shown=0",
             [dsp],
         )?;
+        let code = self.feature_code(dsp)?;
         Ok(catalog()
             .iter()
+            .filter(|f| f.owner.is_none_or(|owner| Some(owner) == code.as_deref()))
             .filter(|f| !f.mandatory && f.kind != Kind::Connection)
             .filter_map(|f| {
                 rows.iter()
@@ -126,6 +128,11 @@ impl Store {
         actor: &str,
     ) -> Result<FeatureVisibility> {
         let feature = find(id).ok_or_else(|| crate::Error::new("feature_not_found", 404))?;
+        ensure(
+            self.owns_feature(dsp, feature.owner)?,
+            "feature_not_found",
+            404,
+        )?;
         ensure(!feature.mandatory, "feature_mandatory", 409)?;
         ensure(feature.kind != Kind::Connection, "invalid_input", 400)?;
         self.platform.transaction(|| {

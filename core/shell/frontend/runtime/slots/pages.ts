@@ -193,16 +193,20 @@ export function movedTo(
   page: string,
   query: URLSearchParams,
 ): { page: DspRouteId; query?: Record<string, string> } | undefined {
+  let carried: Record<string, string> | undefined;
   const formerly = dspPage((route) =>
     route.formerly?.some((address) => {
       const [at, asked] = address.split('?');
-      return (
-        at === page &&
-        [...new URLSearchParams(asked)].every(([key, value]) => query.get(key) === value)
-      );
+      const matched = new URLSearchParams(asked);
+      if (at === page && [...matched].every(([key, value]) => query.get(key) === value)) {
+        const rest = [...query].filter(([key]) => !matched.has(key));
+        if (rest.length) carried = Object.fromEntries(rest);
+        return true;
+      }
+      return false;
     }),
   );
-  if (formerly) return { page: formerly };
+  if (formerly) return carried ? { page: formerly, query: carried } : { page: formerly };
   const host = settingsPage();
   const tab = manifests().find((feature) => feature.movedToSettings?.[page])?.movedToSettings?.[
     page

@@ -24,7 +24,7 @@ test('with its phone and no Slack, Communications opens on Recents, where its te
 }) => {
   await login(page);
   await openDsp(page, 'Northline Logistics');
-  await page.getByRole('link', { name: 'Communications' }).click();
+  await page.getByRole('link', { name: 'Dispatch Phone' }).click();
   // It opens on Recents, the first section, which lists the texts.
   const sections = page.getByRole('tablist', { name: 'Sections' });
   const recents = sections.getByRole('tab', { name: /Recents/ });
@@ -178,7 +178,7 @@ test('Today’s Routes reads before it says No routes, a read that fails says so
     await held;
     await route.continue();
   });
-  await page.getByRole('link', { name: 'Communications' }).click();
+  await page.getByRole('link', { name: 'Dispatch Phone' }).click();
   // It opens on Recents, where the DSP's texts wait, which reads Today's Routes as it shows.
   const sections = page.getByRole('tablist', { name: 'Sections' });
   await sections.getByRole('tab', { name: "Today's Routes" }).click();
@@ -247,7 +247,7 @@ test('with Slack too, the sections switch, each with how many wait, stay as chos
 
   await login(page);
   await openDsp(page, 'Northline Logistics');
-  await page.getByRole('link', { name: 'Communications' }).click();
+  await page.getByRole('link', { name: 'Dispatch Phone' }).click();
   const sections = page.getByRole('tablist', { name: 'Sections' });
   const recents = sections.getByRole('tab', { name: /Recents/ });
   const slack = sections.getByRole('tab', { name: /Slack/ });
@@ -269,7 +269,7 @@ test('with Slack too, the sections switch, each with how many wait, stay as chos
   const text = (conversations as { id: string; number: string | null }[]).find(
     (each) => each.number === '+14255550199',
   )!;
-  const toText = `/#dsp/${north.id}/communications?open=${text.id}`;
+  const toText = `/#dsp/${north.id}/dispatch-phone?open=${text.id}`;
   await page.goto(toText);
   await expect(page.getByRole('region', { name: '(425) 555-0199' })).toBeVisible();
   await expect(recents).toHaveAttribute('aria-selected', 'true');
@@ -296,7 +296,7 @@ test('with Slack too, the sections switch, each with how many wait, stay as chos
     photos: [],
   });
   expect(group.status, group.body).toBe(201);
-  const toGroup = `/#dsp/${north.id}/communications?group=${group.value.id}`;
+  const toGroup = `/#dsp/${north.id}/dispatch-phone?group=${group.value.id}`;
   await sections.getByRole('tab', { name: /Routes/ }).click();
   await page.goto(toGroup);
   await expect(page.getByRole('region', { name: 'Morning wave' })).toBeVisible();
@@ -368,7 +368,7 @@ test('with Slack needing an update, Recents still works, and Update Slack covers
 
   await login(page);
   await openDsp(page, 'Northline Logistics');
-  await page.getByRole('link', { name: 'Communications' }).click();
+  await page.getByRole('link', { name: 'Dispatch Phone' }).click();
   const update = page.getByRole('dialog', { name: 'Update Slack' });
   const sections = page.getByRole('tablist', { name: 'Sections' });
   await sections.getByRole('tab', { name: /Recents/ }).click();
@@ -415,7 +415,7 @@ test('a teammate typing shows above the box, and their reply since the member st
 
   await login(page);
   await openDsp(page, 'Northline Logistics');
-  await page.getByRole('link', { name: 'Communications' }).click();
+  await page.getByRole('link', { name: 'Dispatch Phone' }).click();
   await page
     .getByRole('region', { name: 'Conversations' })
     .getByRole('listitem')
@@ -517,7 +517,7 @@ test('bounded text windows keep the visible part anchored and defer eviction unt
     const answer = textWindow(source, all, url, true);
     await route.fulfill({ json: answer });
   });
-  await page.getByRole('link', { name: 'Communications' }).click();
+  await page.getByRole('link', { name: 'Dispatch Phone' }).click();
   const list = page.getByRole('region', { name: 'Conversations' });
   await list
     .getByRole('listitem')
@@ -797,7 +797,7 @@ async function textFixture(page: Page, all: Message[], ready = false) {
 }
 
 async function openText(page: Page) {
-  await page.getByRole('link', { name: 'Communications' }).click();
+  await page.getByRole('link', { name: 'Dispatch Phone' }).click();
   const list = page.getByRole('region', { name: 'Conversations' });
   await list
     .getByRole('listitem')

@@ -107,6 +107,17 @@ impl Store {
     pub fn set_code(&self, id: &str, code: &str) -> Result<String> {
         let code = code.trim().to_ascii_lowercase();
         ensure(short_code(&code), "invalid_short_code", 400)?;
+        self.ensure_not_deleting(id)?;
+        let before = self.find_dsp(id)?.code;
+        ensure(
+            before.as_deref() == Some(code.as_str())
+                || !registry()
+                    .features
+                    .iter()
+                    .any(|feature| feature.owner.is_some() && feature.owner == before.as_deref()),
+            "custom_feature_transfer_required",
+            409,
+        )?;
         ensure(
             !self.config.reserved_code(&code)
                 && self.platform.count(
@@ -120,6 +131,14 @@ impl Store {
             "UPDATE dsps SET code=?,revision=revision+1 WHERE id=?",
             [code.as_str(), id],
         )?;
+        if crate::manifest::registry()
+            .features
+            .iter()
+            .any(|f| f.owner == Some(code.as_str()))
+        {
+            self.migrate_dsp(id)?;
+            self.open_collectors(id)?;
+        }
         self.set_profile(id, json!({"abbreviation": code.to_ascii_uppercase()}))?;
         Ok(code)
     }
@@ -339,7 +358,13 @@ impl Store {
                     }
                 }
                 // The latest collection any keeper knows of.
-                for keeper in registry().keepers() {
+                let code = self.feature_code(id)?;
+                for keeper in registry()
+                    .features
+                    .iter()
+                    .filter(|feature| feature.belongs_to(code.as_deref()))
+                    .flat_map(|feature| feature.keeps)
+                {
                     let collected = keeper.last_collected(self, id)?;
                     summary.last_collection = summary.last_collection.take().max(collected);
                 }

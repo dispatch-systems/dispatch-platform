@@ -15,7 +15,14 @@ use dispatch_core::{
     testing,
 };
 use serde_json::{Value, json};
-use std::{os::unix::fs::PermissionsExt, sync::Arc};
+use std::{
+    os::unix::fs::PermissionsExt,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
+
+type Maintained = (String, bool, dispatch_core::Result<usize>);
+static MAINTAINED: Mutex<Option<tokio::sync::mpsc::UnboundedSender<Maintained>>> = Mutex::new(None);
 
 /// Every DSP has it, with one section of the DSP's and one each member has.
 static PROBE: Feature = Feature {
@@ -37,8 +44,108 @@ static PROBE: Feature = Feature {
         .member()
         .on("general"),
     ],
+    routes: || {
+        vec![dispatch_core::server::http::route::protocol(
+            axum::http::Method::POST,
+            "/shared-protocol",
+            raw_callback,
+        )]
+    },
     ..feature("probe")
 };
+
+// A test-only custom feature exercises the same generated registration and HTTP dispatch as
+// an app feature, without adding a product feature to any build.
+static CUSTOM: Feature = Feature {
+    switch: dispatch_core::manifest::custom("nll_probe", "Owner probe", &[]),
+    permissions: &[dispatch_core::manifest::perm("nll_probe.view", "View probe", 1).group("Probe")],
+    own_migrations: &[dispatch_core::db::OwnMigrations {
+        kind: dispatch_core::db::Kind::DSP,
+        list: &[dispatch_core::db::Migration {
+            id: 1,
+            name: "probe",
+            apply: dispatch_core::db::migrations::Apply::Sql("CREATE TABLE nll_probe (value INTEGER NOT NULL)"),
+        }],
+    }],
+    tables: &[("dsp", &["nll_probe"])],
+    audit: dispatch_core::manifest::Audit {
+        areas: &[("nll_probe.item2.", dispatch_core::tenancy::api::audit::AuditArea::Collections)],
+        ..dispatch_core::manifest::Audit::NONE
+    },
+    routes: || vec![
+      dispatch_core::server::http::route::read("/custom-public", dispatch_core::server::http::route::Public, |_, _, _| Ok(dispatch_core::server::http::input::Reply::json(json!({"ok":true})))),
+      dispatch_core::server::http::route::read("/custom-session", dispatch_core::server::http::route::Session, |_, _, _| Ok(dispatch_core::server::http::input::Reply::json(json!({"ok":true})))),
+      dispatch_core::server::http::route::write("/custom-public-post", dispatch_core::server::http::route::Public, |_, _, _| Ok(dispatch_core::server::http::input::Reply::json(json!({"ran":true})))),
+      dispatch_core::server::http::route::protocol(axum::http::Method::POST, "/custom-protocol", raw_callback),
+      dispatch_core::server::http::route::read(
+        "/api/dsp/nll-probe", dispatch_core::server::http::route::Dsp("nll_probe.view"),
+        |db, c, _| Ok(dispatch_core::server::http::input::Reply::json(json!({"count": db.dsp(c.dsp_id())?.count("SELECT count(*) FROM nll_probe", [])?})))
+    )],
+    on: &[dispatch_core::on!(dispatch_core::manifest::events::PeopleChanged, custom_event)],
+    dsp_maintenance: &[dispatch_core::manifest::DspMaintenance {
+        every: Duration::from_secs(60),
+        run: custom_upkeep,
+    }],
+    ..feature("nll_probe")
+}.registered(Some("nll"), "nll_probe");
+fn raw_callback(
+    state: Arc<State>,
+    request: axum::extract::Request,
+) -> dispatch_core::server::http::route::Served {
+    Box::pin(async move {
+        use axum::response::IntoResponse;
+        let signature = request.headers().get("content-type").unwrap().clone();
+        let body = axum::body::to_bytes(request.into_body(), 1024)
+            .await
+            .unwrap();
+        match state
+            .run(move |_| {
+                Ok(dispatch_core::server::http::input::Reply::json(json!({
+                    "body": String::from_utf8(body.to_vec()).unwrap(),
+                    "contentType": signature.to_str().unwrap(),
+                })))
+            })
+            .await
+        {
+            Ok(reply) => reply.into_response(),
+            Err(error) => error.into_response(),
+        }
+    })
+}
+fn custom_upkeep(state: Arc<State>, dsp: String, due: bool) -> dispatch_core::manifest::Upkeep {
+    Box::pin(async move {
+        let at = dsp.clone();
+        let result = state
+            .run_serving(
+                dsp.clone(),
+                dispatch_core::server::cache::DataDomain::TENANT,
+                move |db| db.dsp(&at)?.exec("INSERT INTO nll_probe VALUES (2)", []),
+            )
+            .await;
+        MAINTAINED
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .send((dsp, due, result))
+            .unwrap();
+    })
+}
+fn custom_event(
+    state: Arc<State>,
+    dsp: String,
+    _: dispatch_core::manifest::events::PeopleChanged,
+) -> dispatch_core::manifest::Upkeep {
+    Box::pin(async move {
+        state
+            .run(move |db| {
+                db.dsp(&dsp)?.exec("INSERT INTO nll_probe VALUES (1)", [])?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+    })
+}
 
 struct Server {
     _root: tempfile::TempDir,
@@ -60,7 +167,7 @@ struct Answer {
 }
 impl Server {
     async fn start() -> Self {
-        testing::install(&[], &[&PROBE]);
+        testing::install(&[], &[&PROBE, &CUSTOM]);
         let root = tempfile::tempdir().unwrap();
         std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
         let dashboard = root.path().join("dashboard");
@@ -350,4 +457,309 @@ async fn one_members_own_values_are_not_anothers() {
         server.days(&second, "probe.limits").await,
         Some((json!(90), 0))
     );
+}
+
+#[tokio::test]
+async fn custom_storage_switches_events_and_routes_belong_only_to_the_owner_code() {
+    let server = Server::start().await;
+    let north = server.dsp("nll").await;
+    let summit = server.dsp("sum").await;
+    let (own, other) = (north.clone(), summit.clone());
+    server.state.run(move |db| {
+        let actor = testing::platform_owner(db);
+        // Assigning the code after provisioning applies the custom migration immediately.
+        assert!(db.dsp(&own)?.has_table("nll_probe")?);
+        assert!(!db.dsp(&other)?.has_table("nll_probe")?);
+        assert!(!db.feature_enabled(&own, "nll_probe")?);
+        let directory = db.dsp(&own)?;
+        directory.exec("DELETE FROM owner_migrations WHERE owner='nll_probe'", [])?;
+        directory.exec("DROP TABLE nll_probe", [])?;
+        directory.transaction(|| {
+            db.set_code(&own, "nll")?;
+            assert!(db.dsp(&own)?.has_table("nll_probe")?);
+            Ok(())
+        })?;
+        assert_eq!(db.set_code(&own, "othercode").unwrap_err().code, "custom_feature_transfer_required");
+        assert_eq!(db.set_feature(&other, "nll_probe", true, &actor).unwrap_err().status, 404);
+        assert_eq!(db.set_visibility(&other, "nll_probe", dispatch_core::tenancy::visibility::Visibility::Shown, &actor).unwrap_err().status, 404);
+        // A stale or imported switch row cannot bypass runtime ownership.
+        db.platform.exec("INSERT INTO dsp_features(dsp_id,feature,enabled,changed_at) VALUES (?,'nll_probe',1,'')", [&other])?;
+        db.enable_all_features(&other)?;
+        db.keep_switches()?;
+        assert!(!db.feature_enabled(&other, "nll_probe")?);
+        assert!(!dispatch_core::tenancy::catalog::grants(&db.features(&other)?, "nll_probe.view"));
+        db.set_feature(&own, "nll_probe", true, &actor)?;
+        Ok(())
+    }).await.unwrap();
+    dispatch_core::manifest::events::publish(
+        &server.state,
+        &north,
+        dispatch_core::manifest::events::PeopleChanged,
+    )
+    .await;
+    dispatch_core::manifest::events::publish(
+        &server.state,
+        &summit,
+        dispatch_core::manifest::events::PeopleChanged,
+    )
+    .await;
+    let owner = server.signed_in("owner@dispatch.test", &north).await;
+    let other = server.signed_in("owner@dispatch.test", &summit).await;
+    let answer = server.send("GET", "/api/dsp/nll-probe", &owner, None).await;
+    assert_eq!(answer.status, 200, "{}", answer.body);
+    assert_eq!(answer.body["count"], 1);
+    assert_eq!(
+        server
+            .send("GET", "/api/dsp/nll-probe", &other, None)
+            .await
+            .status,
+        404
+    );
+    let at_other = Who {
+        host: Some(format!("sum.localhost:{}", server.port)),
+        ..owner
+    };
+    assert_eq!(
+        server
+            .send("GET", "/api/dsp/nll-probe", &at_other, None)
+            .await
+            .status,
+        404
+    );
+}
+
+#[tokio::test]
+async fn scheduled_custom_upkeep_receives_only_its_owner_even_with_foreign_switch_rows() {
+    let server = Server::start().await;
+    let north = server.dsp("nll").await;
+    let summit = server.dsp("sum").await;
+    let own = north.clone();
+    server.state.run(move |db| {
+        let actor = testing::platform_owner(db);
+        // The owner sorts last: receiving its callback means this declaration already
+        // passed every non-owner, including one with an imported enabled switch row.
+        db.platform.exec("UPDATE dsps SET name='ZZ owner' WHERE id=?", [&own])?;
+        db.platform.exec("INSERT INTO dsp_features(dsp_id,feature,enabled,changed_at) VALUES (?,'nll_probe',1,'')", [&summit])?;
+        db.set_feature(&own, "nll_probe", true, &actor)?;
+        Ok(())
+    }).await.unwrap();
+    let (sent, mut received) = tokio::sync::mpsc::unbounded_channel();
+    *MAINTAINED.lock().unwrap() = Some(sent);
+    let (stop, stopped) = tokio::sync::watch::channel(false);
+    let mut scheduler = tokio::spawn(dispatch_core::collection::jobs::start(
+        server.state.clone(),
+        stopped,
+    ));
+    let (dsp, due, wrote) = tokio::select! {
+        found = received.recv() => found.unwrap(),
+        ended = &mut scheduler => panic!("scheduler ended before upkeep: {ended:?}"),
+    };
+    assert_eq!(dsp, north);
+    assert!(due);
+    assert_eq!(wrote.unwrap(), 1);
+    stop.send_replace(true);
+    scheduler.await.unwrap().unwrap();
+    assert!(
+        received.try_recv().is_err(),
+        "no other DSP received custom upkeep"
+    );
+    *MAINTAINED.lock().unwrap() = None;
+}
+
+#[tokio::test]
+async fn a_custom_route_keeps_its_declared_public_or_session_grant() {
+    let server = Server::start().await;
+    let north = server.dsp("nll").await;
+    let anonymous = Who {
+        cookie: String::new(),
+        csrf: String::new(),
+        view: String::new(),
+        host: Some(format!("nll.localhost:{}", server.port)),
+    };
+    assert_eq!(
+        server
+            .send("GET", "/custom-public", &anonymous, None)
+            .await
+            .status,
+        200
+    );
+    assert_eq!(
+        server
+            .send("GET", "/custom-session", &anonymous, None)
+            .await
+            .status,
+        401
+    );
+    let mut member = server.signed_in("member@dispatch.test", &north).await;
+    member.view.clear();
+    assert_eq!(
+        server
+            .send("GET", "/custom-session", &member, None)
+            .await
+            .status,
+        200
+    );
+    let raw = server
+        .send(
+            "POST",
+            "/custom-protocol",
+            &anonymous,
+            Some(json!({"event":"hello"})),
+        )
+        .await;
+    assert_eq!(raw.status, 200);
+    assert_eq!(raw.body["body"], r#"{"event":"hello"}"#);
+    assert_eq!(raw.body["contentType"], "application/json");
+    assert_eq!(
+        server
+            .send("POST", "/shared-protocol", &anonymous, Some(json!({})))
+            .await
+            .status,
+        404
+    );
+    let admin = Who {
+        host: None,
+        cookie: String::new(),
+        csrf: String::new(),
+        view: String::new(),
+    };
+    assert_eq!(
+        server
+            .send("POST", "/shared-protocol", &admin, Some(json!({})))
+            .await
+            .status,
+        200
+    );
+    let other = Who {
+        host: Some(format!("sum.localhost:{}", server.port)),
+        ..anonymous
+    };
+    assert_eq!(
+        server
+            .send("POST", "/custom-protocol", &other, Some(json!({})))
+            .await
+            .status,
+        404
+    );
+    assert_eq!(
+        server
+            .send("GET", "/custom-public", &other, None)
+            .await
+            .status,
+        404
+    );
+    assert_eq!(
+        server
+            .send("GET", "/custom-session", &other, None)
+            .await
+            .status,
+        404
+    );
+}
+
+#[tokio::test]
+async fn custom_callbacks_have_only_a_live_owning_dsp_entrypoint() {
+    let server = Server::start().await;
+    let north = server.dsp("nll").await;
+    let member = server.signed_in("member@dispatch.test", &north).await;
+    let mut answers = Vec::new();
+    for host in [None, Some(format!("invite.localhost:{}", server.port))] {
+        let visitor = Who {
+            cookie: String::new(),
+            csrf: String::new(),
+            view: String::new(),
+            host,
+        };
+        for (method, path) in [
+            ("GET", "/custom-public"),
+            ("GET", "/custom-session"),
+            ("POST", "/custom-protocol"),
+        ] {
+            answers.push((
+                "outside owner host",
+                path,
+                server
+                    .send(method, path, &visitor, Some(json!({})))
+                    .await
+                    .status,
+            ));
+        }
+    }
+    let own = north.clone();
+    server
+        .state
+        .run(move |db| testing::set_dsp_status(db, &own, "suspended"))
+        .await
+        .unwrap();
+    for (method, path) in [
+        ("GET", "/custom-public"),
+        ("GET", "/custom-session"),
+        ("POST", "/custom-protocol"),
+    ] {
+        answers.push((
+            "disabled owner",
+            path,
+            server
+                .send(method, path, &member, Some(json!({})))
+                .await
+                .status,
+        ));
+    }
+    server
+        .state
+        .run(move |db| {
+            let actor = testing::platform_owner(db);
+            let name = db.find_dsp(&north)?.name;
+            db.delete_dsp(&north, &name, &actor)
+        })
+        .await
+        .unwrap();
+    for (method, path) in [
+        ("GET", "/custom-public"),
+        ("GET", "/custom-session"),
+        ("POST", "/custom-protocol"),
+    ] {
+        answers.push((
+            "deleted owner",
+            path,
+            server
+                .send(method, path, &member, Some(json!({})))
+                .await
+                .status,
+        ));
+    }
+    assert!(
+        answers.iter().all(|(_, _, status)| *status == 404),
+        "{answers:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_custom_public_callback_checks_the_owner_again_after_its_body_arrives() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    for path in ["/custom-public-post", "/custom-protocol"] {
+        let server = Server::start().await;
+        let north = server.dsp("nll").await;
+        let mut connection = tokio::net::TcpStream::connect(("127.0.0.1", server.port))
+            .await
+            .unwrap();
+        let headers = format!(
+            "POST {path} HTTP/1.1\r\nHost: nll.localhost:{}\r\nContent-Type: application/json\r\nContent-Length: 2\r\nExpect: 100-continue\r\nConnection: close\r\n\r\n",
+            server.port
+        );
+        connection.write_all(headers.as_bytes()).await.unwrap();
+        // Hyper asks for the body only after the route's initial owner admission passed.
+        let mut ready = [0; b"HTTP/1.1 100 Continue\r\n\r\n".len()];
+        connection.read_exact(&mut ready).await.unwrap();
+        assert_eq!(&ready, b"HTTP/1.1 100 Continue\r\n\r\n");
+        server
+            .state
+            .run(move |db| testing::set_dsp_status(db, &north, "suspended"))
+            .await
+            .unwrap();
+        connection.write_all(b"{}").await.unwrap();
+        let mut answer = String::new();
+        connection.read_to_string(&mut answer).await.unwrap();
+        assert!(answer.starts_with("HTTP/1.1 404"), "{answer}");
+    }
 }

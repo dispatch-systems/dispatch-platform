@@ -1,33 +1,15 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback } from 'react';
 import { useData } from '../../../../../core/shell/frontend/runtime/data-reads.js';
-import { call, channelLinking, workspaceUrl } from '../../../api/client.js';
+import { call, channelLinking, integrationReading, workspaceUrl } from '../../../api/client.js';
 import type { SlackCanvases } from '../../../api/generated/SlackCanvases.js';
 import type { SlackChannelCanvases } from '../../../api/generated/SlackChannelCanvases.js';
 
 // Sync Canvases's endpoints, as its section and its card in a workspace's settings call them.
 
 /** Sync Canvases in the workspace `team`: where documents go, the channels linked, and each canvas kept. */
-const canvasReaders = new Set<() => void>();
-export function useSlackCanvases(team: string) {
-  const url = `${workspaceUrl(team)}/canvases`;
-  const read = useCallback(
-    (signal: AbortSignal) => call<SlackCanvases>(url, undefined, signal),
-    [url],
-  );
-  // Canvases are written as Slack tells of them, so an open section reads them again every 10 seconds.
-  const canvases = useData<SlackCanvases>(url, 10000, undefined, undefined, false, read);
-  const { refresh } = canvases;
-  useEffect(() => {
-    canvasReaders.add(refresh);
-    return () => void canvasReaders.delete(refresh);
-  }, [refresh]);
-  return canvases;
-}
-/** Has every reading of Sync Canvases read it again, after a change. */
-const canvasesChanged = <T>(answer: T) => {
-  for (const read of canvasReaders) read();
-  return answer;
-};
+const { useReading: useSlackCanvases, changed: canvasesChanged } =
+  integrationReading<SlackCanvases>('canvases');
+export { useSlackCanvases };
 /** Sync Canvases' channels: every canvas in each kept in its folder. */
 export const canvasLinking = channelLinking<SlackCanvases>('canvases', canvasesChanged);
 /** The canvases in the workspace `team`'s channel `channel`, to choose from. */

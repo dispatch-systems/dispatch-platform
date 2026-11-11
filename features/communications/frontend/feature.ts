@@ -28,13 +28,17 @@ const QuickRepliesSettings = lazy(() =>
 const loadPhones = () => import('./texting/phone/PhonesCard.js');
 const PhonesCard = lazy(() => loadPhones().then((module) => ({ default: module.PhonesCard })));
 
+const addresses = ['/api/dsp/communications', '/api/dsp/dispatch-phone'];
+const here = (path: string) => addresses.some((base) => begins(path, base));
+
 export const feature: FrontendFeature = {
   name: 'communications',
   routes: [
     {
       id: 'communications',
+      formerly: ['dispatch-phone'],
       scope: 'dsp',
-      label: 'Communications',
+      label: 'Dispatch Phone',
       icon: MessagesSquare,
       // How many conversations wait on an answer.
       badge: { load: () => import('./badge.js').then((module) => module.WaitingCount) },
@@ -100,9 +104,6 @@ export const feature: FrontendFeature = {
   longPolls: ['/api/dsp/communications/updates'],
   // Each of its writes changes its reads, but saying who is typing, which changes none.
   cache: {
-    write: (write, url) =>
-      write.startsWith('/api/dsp/communications') && !write.endsWith('/typing')
-        ? begins(url, '/api/dsp/communications')
-        : undefined,
+    write: (write, url) => (here(write) && !write.endsWith('/typing') ? here(url) : undefined),
   },
 };

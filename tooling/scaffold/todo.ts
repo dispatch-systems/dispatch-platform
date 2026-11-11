@@ -1,3 +1,4 @@
+import { featureAt, featureDirectory, featureLocations } from '../shared/features.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { MARKER, marked } from './doctor.js';
@@ -59,6 +60,13 @@ const KINDS = [...Object.values(KIND_OF), 'integration'];
  * integration by its folder's name as `integration:file_intake`, or a top folder, as `mcp`.
  */
 function ownerOf(file: string) {
+  const feature = featureAt(file);
+  if (feature) {
+    const rest = file.slice(feature.dir.length + 1).split('/');
+    return rest[0] === 'integrations' && rest.length > 2
+      ? `integration:${rest[1]}`
+      : `feature:${feature.name}`;
+  }
   const parts = file.split('/');
   const [top = '', name] = parts;
   if (top === 'features' && parts[2] === 'integrations' && parts.length > 4)
@@ -99,17 +107,17 @@ export function integrations(root: string, name?: string) {
           .map((entry) => `${dir}/${entry.name}`)
           .sort()
       : [];
-  return folders('features')
-    .flatMap((feature) => folders(`${feature}/integrations`))
+  return featureLocations(root)
+    .flatMap(({ dir }) => folders(`${dir}/integrations`))
     .filter((dir) => !name || path.posix.basename(dir) === name);
 }
 /** Whether `wanted` names an owner the checkout has, as `named` reads it. */
 export function known(root: string, wanted: string) {
   if (KINDS.includes(wanted)) return true;
   const [kind, name = ''] = wanted.includes(':') ? wanted.split(':') : ['', wanted];
-  if (!/^[a-z][a-z0-9_]*$/.test(name)) return false;
+  if (!/^[a-z0-9][a-z0-9_]*$/.test(name)) return false;
   const folders: Record<string, string[]> = {
-    feature: [`features/${name}`],
+    feature: [featureDirectory(root, name)],
     collector: [`collectors/${name}`],
     core: [`core/${name}`],
     integration: integrations(root, name),

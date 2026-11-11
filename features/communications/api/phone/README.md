@@ -3,7 +3,7 @@
 What Dispatch's Android app and its DSP say to each other: every call the app makes, at the DSP's
 own address (`https://<code>.dspdispatch.com`), under `/api/communications/phone`, and what each
 answers. The handlers are beside this file, each with its limits at its top;
-[Communications' README](../../README.md#dispatch-phones) says what Communications does with what
+[Dispatch Phone' README](../../README.md#dispatch-phones) says what Dispatch Phone does with what
 they carry.
 
 Every call sends and answers JSON (`Content-Type: application/json`), but a file's bytes. Times
@@ -14,7 +14,7 @@ with `{"error": "<code>", "message": "…"}`: the app acts on the code, never th
 
 - **Where:** at the DSP's own address alone, while the DSP is active. Anywhere else, or carrying
   a cookie (as a browser would) to any call but the app's, a call is refused `sign_in_required`
-  (401). While Communications is off for the DSP, every call is refused `phones_off` (403).
+  (401). While Dispatch Phone is off for the DSP, every call is refused `phones_off` (403).
 - **Pairing** takes the code someone at the DSP showed (`POST /api/communications/phone/pair`),
   and answers the phone's key: 64 hexadecimal letters (`KEY_BYTES` in hexadecimal), given once,
   which the app keeps.
@@ -302,7 +302,7 @@ phone fetches to install the app or update it, and which the Phones card links t
 A call that fails without an answer, or with a `5xx`, is safe to make again: reports and statuses
 are idempotent, and a file's bytes replace themselves. The app tries again with a growing pause,
 and gives up only on what Dispatch would refuse again however often it's sent: a text or status
-refused alone, and a file's bytes refused but while the DSP or Communications is away
+refused alone, and a file's bytes refused but while the DSP or Dispatch Phone is away
 (`sign_in_required`, `phones_off`) or for `upload_incomplete`. A text only fails once its phone
 says so, as after its pictures couldn't be fetched five times in a row or past its `expires`
 (`expired`); once it's removed, when every text waiting on it fails with `phones_removed` as its

@@ -52,230 +52,286 @@ const PLACE_MOST: usize = 14 + texting::ID_MOST;
 
 pub fn routes() -> Vec<Route> {
     let mut routes = vec![
-        read("/api/dsp/communications", USE, inbox::overview),
-        read("/api/dsp/communications/waiting", USE, inbox::waiting),
-        async_get("/api/dsp/communications/updates", USE, inbox::updates),
-        read("/api/dsp/communications/conversations", USE, inbox::found),
+        read("/api/dsp/dispatch-phone", USE, inbox::overview).also_at("/api/dsp/communications"),
+        read("/api/dsp/dispatch-phone/waiting", USE, inbox::waiting)
+            .also_at("/api/dsp/communications/waiting"),
+        async_get("/api/dsp/dispatch-phone/updates", USE, inbox::updates)
+            .also_at("/api/dsp/communications/updates"),
+        read("/api/dsp/dispatch-phone/conversations", USE, inbox::found)
+            .also_at("/api/dsp/communications/conversations"),
         async_post(
-            "/api/dsp/communications/conversations",
+            "/api/dsp/dispatch-phone/conversations",
             USE,
             conversations::open,
-        ),
+        )
+        .also_at("/api/dsp/communications/conversations"),
         read(
-            "/api/dsp/communications/conversations/{id}",
+            "/api/dsp/dispatch-phone/conversations/{id}",
             USE,
             conversations::conversation,
-        ),
+        )
+        .also_at("/api/dsp/communications/conversations/{id}"),
         read(
-            "/api/dsp/communications/conversations/{id}/window",
+            "/api/dsp/dispatch-phone/conversations/{id}/window",
             USE,
             conversations::window,
-        ),
+        )
+        .also_at("/api/dsp/communications/conversations/{id}/window"),
         read(
-            "/api/dsp/communications/conversations/{id}/profile",
+            "/api/dsp/dispatch-phone/conversations/{id}/profile",
             USE,
             conversations::profile,
-        ),
+        )
+        .also_at("/api/dsp/communications/conversations/{id}/profile"),
         async_post(
-            "/api/dsp/communications/conversations/{id}/messages",
+            "/api/dsp/dispatch-phone/conversations/{id}/messages",
             USE,
             conversations::send,
-        ),
-        read("/api/dsp/communications/gifs", USE, gifs::search),
+        )
+        .also_at("/api/dsp/communications/conversations/{id}/messages"),
+        read("/api/dsp/dispatch-phone/gifs", USE, gifs::search)
+            .also_at("/api/dsp/communications/gifs"),
         read(
-            "/api/communications/gifs/fixture/gifs/{list}",
+            "/api/dispatch-phone/gifs/fixture/gifs/{list}",
             Public,
             gifs::fixture_results,
-        ),
+        )
+        .also_at("/api/communications/gifs/fixture/gifs/{list}"),
         async_post(
-            "/api/communications/gifs/fixture/gifs/share/{slug}",
+            "/api/dispatch-phone/gifs/fixture/gifs/share/{slug}",
             Public,
             gifs::fixture_shared,
-        ),
+        )
+        .also_at("/api/communications/gifs/fixture/gifs/share/{slug}"),
         read(
-            "/api/communications/gifs/fixture/media/{name}",
+            "/api/dispatch-phone/gifs/fixture/media/{name}",
             Public,
             gifs::fixture_media,
-        ),
+        )
+        .also_at("/api/communications/gifs/fixture/media/{name}"),
         write(
-            "/api/dsp/communications/conversations/{id}/done",
+            "/api/dsp/dispatch-phone/conversations/{id}/done",
             USE,
             conversations::done,
         )
-        .changes(DOMAIN),
+        .changes(DOMAIN)
+        .also_at("/api/dsp/communications/conversations/{id}/done"),
         async_post(
-            "/api/dsp/communications/conversations/{id}/typing",
+            "/api/dsp/dispatch-phone/conversations/{id}/typing",
             USE,
             conversations::typing,
-        ),
+        )
+        .also_at("/api/dsp/communications/conversations/{id}/typing"),
         async_post(
-            "/api/dsp/communications/conversations/{id}/messages/{message}/retry",
+            "/api/dsp/dispatch-phone/conversations/{id}/messages/{message}/retry",
             USE,
             texts::retry,
-        ),
+        )
+        .also_at("/api/dsp/communications/conversations/{id}/messages/{message}/retry"),
         write(
-            "/api/dsp/communications/conversations/{id}/contact",
+            "/api/dsp/dispatch-phone/conversations/{id}/contact",
             USE,
             texts::save_contact,
         )
-        .changes(DOMAIN),
+        .changes(DOMAIN)
+        .also_at("/api/dsp/communications/conversations/{id}/contact"),
         // Changes who the number is, which every feature showing people reads: not only its own.
         write(
-            "/api/dsp/communications/conversations/{id}/person",
+            "/api/dsp/dispatch-phone/conversations/{id}/person",
             USE,
             texts::add_to_person,
-        ),
+        )
+        .also_at("/api/dsp/communications/conversations/{id}/person"),
         write(
-            "/api/dsp/communications/conversations/{id}/person/remove",
+            "/api/dsp/dispatch-phone/conversations/{id}/person/remove",
             USE,
             texts::remove_from_person,
-        ),
+        )
+        .also_at("/api/dsp/communications/conversations/{id}/person/remove"),
         write(
-            "/api/dsp/communications/conversations/{id}/block",
+            "/api/dsp/dispatch-phone/conversations/{id}/block",
             USE,
             texts::block,
         )
-        .changes(DOMAIN),
+        .changes(DOMAIN)
+        .also_at("/api/dsp/communications/conversations/{id}/block"),
         write(
-            "/api/dsp/communications/conversations/{id}/unblock",
+            "/api/dsp/dispatch-phone/conversations/{id}/unblock",
             USE,
             texts::unblock,
         )
-        .changes(DOMAIN),
+        .changes(DOMAIN)
+        .also_at("/api/dsp/communications/conversations/{id}/unblock"),
         write(
-            "/api/dsp/communications/texts/conversations",
+            "/api/dsp/dispatch-phone/texts/conversations",
             USE,
             texts::text_first,
         )
-        .changes(DOMAIN),
+        .changes(DOMAIN)
+        .also_at("/api/dsp/communications/texts/conversations"),
         read(
-            "/api/dsp/communications/texts/contacts",
+            "/api/dsp/dispatch-phone/texts/contacts",
             USE,
             texts::text_contacts,
-        ),
-        read("/api/dsp/communications/texts/people", USE, texts::addable),
+        )
+        .also_at("/api/dsp/communications/texts/contacts"),
+        read("/api/dsp/dispatch-phone/texts/people", USE, texts::addable)
+            .also_at("/api/dsp/communications/texts/people"),
         async_get(
-            "/api/dsp/communications/texts/files/{id}",
+            "/api/dsp/dispatch-phone/texts/files/{id}",
             USE,
             texts::text_file,
-        ),
+        )
+        .also_at("/api/dsp/communications/texts/files/{id}"),
         async_get(
-            "/api/dsp/communications/texts/files/{id}/preview",
+            "/api/dsp/dispatch-phone/texts/files/{id}/preview",
             USE,
             texts::text_file_preview,
-        ),
+        )
+        .also_at("/api/dsp/communications/texts/files/{id}/preview"),
         async_post(
-            "/api/dsp/communications/texts/files/{id}/fetch",
+            "/api/dsp/dispatch-phone/texts/files/{id}/fetch",
             USE,
             texts::fetch_text_file,
-        ),
+        )
+        .also_at("/api/dsp/communications/texts/files/{id}/fetch"),
         // As large as any upload: the phone side refuses a picture past what a text carries.
         upload(
-            "/api/dsp/communications/texts/uploads",
+            "/api/dsp/dispatch-phone/texts/uploads",
             USE,
             UPLOAD_LIMIT,
             texts::add_text_photo,
-        ),
-        read("/api/dsp/communications/routes", USE, texts::todays_routes),
+        )
+        .also_at("/api/dsp/communications/texts/uploads"),
+        read("/api/dsp/dispatch-phone/routes", USE, texts::todays_routes)
+            .also_at("/api/dsp/communications/routes"),
         read(
-            "/api/dsp/communications/quick-replies",
+            "/api/dsp/dispatch-phone/quick-replies",
             USE,
             replies::quick_replies,
-        ),
+        )
+        .also_at("/api/dsp/communications/quick-replies"),
         write(
-            "/api/dsp/communications/quick-replies",
+            "/api/dsp/dispatch-phone/quick-replies",
             USE,
             replies::save_quick_replies,
         )
-        .changes(DOMAIN),
+        .changes(DOMAIN)
+        .also_at("/api/dsp/communications/quick-replies"),
         write(
-            "/api/dsp/communications/conversations/{id}/driver",
+            "/api/dsp/dispatch-phone/conversations/{id}/driver",
             USE,
             texts::pick_driver,
         )
-        .changes(DOMAIN),
+        .changes(DOMAIN)
+        .also_at("/api/dsp/communications/conversations/{id}/driver"),
         read(
-            "/api/dsp/communications/contacts",
+            "/api/dsp/dispatch-phone/contacts",
             USE,
             conversations::listed,
-        ),
+        )
+        .also_at("/api/dsp/communications/contacts"),
         read(
-            "/api/dsp/communications/groups/choices",
+            "/api/dsp/dispatch-phone/groups/choices",
             USE,
             groups::group_choices,
-        ),
-        async_post("/api/dsp/communications/groups", USE, groups::create_group),
-        read("/api/dsp/communications/groups/{id}", USE, groups::group),
+        )
+        .also_at("/api/dsp/communications/groups/choices"),
+        async_post("/api/dsp/dispatch-phone/groups", USE, groups::create_group)
+            .also_at("/api/dsp/communications/groups"),
+        read("/api/dsp/dispatch-phone/groups/{id}", USE, groups::group)
+            .also_at("/api/dsp/communications/groups/{id}"),
         read(
-            "/api/dsp/communications/groups/{id}/people",
+            "/api/dsp/dispatch-phone/groups/{id}/people",
             USE,
             groups::group_people,
-        ),
+        )
+        .also_at("/api/dsp/communications/groups/{id}/people"),
         async_post(
-            "/api/dsp/communications/groups/{id}/messages",
+            "/api/dsp/dispatch-phone/groups/{id}/messages",
             USE,
             groups::message_group,
-        ),
+        )
+        .also_at("/api/dsp/communications/groups/{id}/messages"),
         write(
-            "/api/dsp/communications/groups/{id}/done",
+            "/api/dsp/dispatch-phone/groups/{id}/done",
             USE,
             groups::group_done,
         )
-        .changes(DOMAIN),
+        .changes(DOMAIN)
+        .also_at("/api/dsp/communications/groups/{id}/done"),
         upload(
-            "/api/dsp/communications/uploads",
+            "/api/dsp/dispatch-phone/uploads",
             USE,
             compose::SLACK.largest,
             files::add_photo,
-        ),
-        async_get("/api/dsp/communications/files/{id}", USE, files::file),
+        )
+        .also_at("/api/dsp/communications/uploads"),
+        async_get("/api/dsp/dispatch-phone/files/{id}", USE, files::file)
+            .also_at("/api/dsp/communications/files/{id}"),
         async_get(
-            "/api/dsp/communications/files/{id}/preview",
+            "/api/dsp/dispatch-phone/files/{id}/preview",
             USE,
             files::file_preview,
-        ),
+        )
+        .also_at("/api/dsp/communications/files/{id}/preview"),
         read(
-            "/api/dsp/communications/workspaces/{team}/logo",
+            "/api/dsp/dispatch-phone/workspaces/{team}/logo",
             USE,
             files::logo,
-        ),
-        read("/api/dsp/communications/push", USE, push::key),
-        async_post("/api/dsp/communications/push", USE, push::subscribe),
+        )
+        .also_at("/api/dsp/communications/workspaces/{team}/logo"),
+        read("/api/dsp/dispatch-phone/push", USE, push::key)
+            .also_at("/api/dsp/communications/push"),
+        async_post("/api/dsp/dispatch-phone/push", USE, push::subscribe)
+            .also_at("/api/dsp/communications/push"),
         write(
-            "/api/dsp/communications/push/remove",
+            "/api/dsp/dispatch-phone/push/remove",
             USE,
             push::unsubscribe,
         )
-        .changes(DOMAIN),
-        protocol(Method::GET, initials::PATH, |_, request| {
-            Box::pin(async move { files::picture(request) })
-        }),
+        .changes(DOMAIN)
+        .also_at("/api/dsp/communications/push/remove"),
+        protocol(
+            Method::GET,
+            "/dispatch-phone/initials/1/{name}",
+            |_, request| Box::pin(async move { files::picture(request) }),
+        )
+        .also_at(initials::PATH),
         read(
-            "/api/dsp/communications/phones",
+            "/api/dsp/dispatch-phone/phones",
             phones::MANAGE,
             phones::listed,
-        ),
+        )
+        .also_at("/api/dsp/communications/phones"),
         write(
-            "/api/dsp/communications/phones/pairing",
+            "/api/dsp/dispatch-phone/phones/pairing",
             phones::MANAGE,
             phones::new_pairing,
-        ),
+        )
+        .also_at("/api/dsp/communications/phones/pairing"),
         read(
-            "/api/dsp/communications/phones/pairing/{id}",
+            "/api/dsp/dispatch-phone/phones/pairing/{id}",
             phones::MANAGE,
             phones::pairing_status,
-        ),
+        )
+        .also_at("/api/dsp/communications/phones/pairing/{id}"),
         write(
-            "/api/dsp/communications/phones/{id}/rename",
+            "/api/dsp/dispatch-phone/phones/{id}/rename",
             phones::MANAGE,
             phones::rename,
-        ),
+        )
+        .also_at("/api/dsp/communications/phones/{id}/rename"),
         async_post(
-            "/api/dsp/communications/phones/{id}/remove",
+            "/api/dsp/dispatch-phone/phones/{id}/remove",
             phones::MANAGE,
             phones::remove,
-        ),
-    ];
+        )
+        .also_at("/api/dsp/communications/phones/{id}/remove"),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
     routes.extend(super::phone::routes());
     routes
 }

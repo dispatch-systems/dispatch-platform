@@ -339,11 +339,19 @@ test('a link to Settings opens the page that draws the settings, on the page it 
 test('a link to where a page once was opens it where it is now, and a page of Settings with the rest of the link', () => {
   installFeatures([
     { name: 'alpha', routes: [{ ...page('options'), hostsSettings: true }] },
-    { name: 'beta', routes: [{ ...page('match'), formerly: ['options?tab=match'] }] },
+    { name: 'beta', routes: [{ ...page('match'), formerly: ['options?tab=match', 'old-match'] }] },
     { name: 'gamma', movedToSettings: { gamma: 'gamma' } },
   ]);
   const moved = (page: string, query = '') => movedTo(page, new URLSearchParams(query));
   assert.deepEqual(moved('options', 'tab=match'), { page: 'match' });
+  assert.deepEqual(moved('options', 'tab=match&open=conversation'), {
+    page: 'match',
+    query: { open: 'conversation' },
+  });
+  assert.deepEqual(moved('old-match', 'open=conversation&group=group'), {
+    page: 'match',
+    query: { open: 'conversation', group: 'group' },
+  });
   assert.equal(moved('options', 'tab=data'), undefined);
   assert.deepEqual(moved('gamma', 'workspace=T1&section=channels'), {
     page: 'options',

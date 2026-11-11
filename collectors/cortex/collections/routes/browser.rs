@@ -2,8 +2,9 @@
 //! opens the DSP's Cortex browser only when it must (`readers::Reading::browser`), and reads
 //! with the native reader it hands back, with no browser, until that reader fails.
 use super::capture::{Request, fixture_in, fixture_scope};
+use super::collect::ReadContext;
 use super::native::Native;
-use super::{Day, Method};
+use super::{Check, Day, Method, Navigation};
 use crate::{
     HOSTS,
     connection::{Tab, application},
@@ -80,12 +81,20 @@ impl Browser {
             }
         }
     }
-    /// The day `request` names, in `scope`, read as the routes collection reads it: natively
-    /// first, then with the application's signatures, then by moves and pages. A day read
-    /// natively closes the browser, as a job's does: nothing needs it after. Read another way,
-    /// it hands back a reader carrying the browser's session as the read left it, which
-    /// signing in again or the application may have changed since the native read began.
-    pub async fn read(mut self, request: &Request, scope: &Scope) -> Result<Day> {
+    /// The browser's session as a native reader, before reading a day. The caller keeps it
+    /// in place while reading, so throttling or cancellation cannot lose its cooldown.
+    /// Fixture reads need no native reader.
+    pub async fn reader(&self) -> Result<Option<Native>> {
+        let Some(application) = &self.application else {
+            return Ok(None);
+        };
+        let session = SignedIn::of(&application.browser, &application.origin, &HOSTS).await?;
+        Native::new(&session).map(Some)
+    }
+    /// The day `request` names after the native reader could not read it: the application's
+    /// signatures, then moves and pages. On success it hands back a reader carrying the
+    /// browser's session as the read left it, which the application may have changed.
+    pub async fn read(mut self, request: &Request, scope: &Scope, check: &Check) -> Result<Day> {
         let Some(application) = &mut self.application else {
             return Ok(Day {
                 capture: fixture_in(request, scope)?,
@@ -100,8 +109,14 @@ impl Browser {
                 request,
                 scope,
                 now(),
-                &Method::default(),
-                &unrecorded(),
+                &Method {
+                    navigation: Navigation::Signed,
+                    ..Method::default()
+                },
+                &ReadContext {
+                    metrics: &unrecorded(),
+                    check,
+                },
                 |_, _| async { Ok(()) },
             )
             .await?;

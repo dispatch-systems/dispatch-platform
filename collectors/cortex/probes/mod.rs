@@ -211,7 +211,7 @@ pub async fn measure_route_method<R: serde::Serialize>(
         let metrics = Recorder::new(&json!({}));
         let started = Instant::now();
         let capture = tokio::time::timeout(Duration::from_secs(600),
-            driver.collect_routes_with(&request, &method, &metrics, |_, _| async { Ok(()) }))
+            driver.collect_routes_with(&request, &method, &metrics, |_, _| async { Ok(()) }, &|| Box::pin(async { Ok(()) })))
             .await.map_err(|_| Error::new("benchmark_deadline", 504)).and_then(|result| result);
         let collect_ms = started.elapsed().as_millis();
         let browser_cpu_usec = cgroup_cpu_usec(&cgroup) - cpu_before;

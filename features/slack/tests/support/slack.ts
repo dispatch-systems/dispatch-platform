@@ -6,7 +6,7 @@ type Fixture = Awaited<ReturnType<typeof fixture>>;
 type Client = Awaited<ReturnType<Fixture['client']>>;
 
 // Fixture mode stands in for Slack: installing sends the browser straight back with a code
-// naming the workspace, `fixture:<team>`, and it signs with a secret tests sign with too.
+// naming the workspace and granted scopes, and it signs with a secret tests sign with too.
 const SIGNING_SECRET = 'fixture-signing-secret';
 /** What Slack carries back to Dispatch from an install's address. */
 export const install = (url: string) => {
@@ -20,7 +20,7 @@ export async function connect(client: Client, team?: string) {
   const { state, code } = install(started.value.url);
   return client.post('/api/dsp/slack/connect/finish', {
     state,
-    code: team ? `fixture:${team}` : code,
+    code: team ? code.replace(/^fixture:[^:]*/, `fixture:${team}`) : code,
   });
 }
 /** Sends `body` to Slack's address `path` as Slack would, signed `at` seconds since 1970. */

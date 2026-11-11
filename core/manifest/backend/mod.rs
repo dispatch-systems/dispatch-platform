@@ -14,6 +14,7 @@ pub mod caching;
 pub mod collectors;
 pub mod commands;
 pub mod deleting;
+pub mod dsp_maintenance;
 pub mod env;
 pub mod events;
 pub mod exposes;
@@ -34,6 +35,7 @@ pub use audit::Audit;
 pub use collectors::{Capability, Collection, Collector};
 pub use commands::{Commands, Demo};
 pub use deleting::Deleting;
+pub use dsp_maintenance::DspMaintenance;
 pub use keeping::{
     Keeper, MAX_QUEUE_CAPACITY, MIN_QUEUE_CAPACITY, ScheduleAlias, Schedules, schedules,
 };
@@ -45,7 +47,7 @@ pub use settings::{
     number, pick, section, text, time, timezone, toggle,
 };
 pub use storage::Tables;
-pub use switches::{Sub, Switch, mandatory, optional, sub, tab};
+pub use switches::{Sub, Switch, custom, mandatory, optional, sub, tab};
 pub use upkeep::{Maintenance, Upkeep};
 
 use crate::{
@@ -144,6 +146,7 @@ impl Registry {
         audit::check(self);
         deleting::check(self);
         page_sources::check(self);
+        dsp_maintenance::check(self);
         agents::check(self);
         settings::check(self);
     }
@@ -153,6 +156,8 @@ impl Registry {
 pub struct Feature {
     /// Its directory's name.
     pub name: &'static str,
+    /// The one DSP code that owns it, assigned by the generated feature list.
+    pub owner: Option<&'static str>,
     /// Where it sits among the features: its pages in the sidebar, its page on the DSPs page,
     /// its permissions' section on the role sheet. Lowest first; two at one place go by name,
     /// so a number need not be free.
@@ -207,6 +212,9 @@ pub struct Feature {
     /// What it adds to a database other owners add to as well (each DSP's, the platform's,
     /// a collector's), numbered by the feature itself from 1 and recorded under its name.
     pub own_migrations: &'static [OwnMigrations],
+    /// Equivalent owner names accepted in immutable migration receipts. New receipts
+    /// still use `name`; existing receipts are never rewritten or copied.
+    pub migration_aliases: &'static [&'static str],
     /// Immutable ledgers needed to read retired storage during an owner-controlled import.
     /// These databases are never created or opened as current storage.
     pub retired_migrations: &'static [Migrations],
@@ -216,8 +224,10 @@ pub struct Feature {
     pub domains: &'static [DataDomain],
     /// What evicts the reads it caches, and any other owner's read its data feeds.
     pub cached: &'static [Cached],
-    /// Upkeep it needs the scheduler to run.
+    /// Platform-wide upkeep. A custom feature uses `dsp_maintenance` instead.
     pub maintenance: &'static [Maintenance],
+    /// Upkeep run separately for each active DSP with this feature enabled.
+    pub dsp_maintenance: &'static [DspMaintenance],
     /// How its actions read in the activity log.
     pub audit: Audit,
     /// Fills a new DSP with demo data: the development seed's DSPs and Diagnostics' test
@@ -231,6 +241,9 @@ pub struct Feature {
     /// What it does through other features' connections, which their settings switch on and
     /// off for each account: `integrations::Integration` says how to declare one.
     pub integrations: &'static [Integration],
+    /// A connection's own globally subscribed event types. When present, custom integrations
+    /// may reuse only these and the event types shared integrations already subscribe to.
+    pub integration_events: Option<&'static [&'static str]>,
     /// What it offers every other feature, each through a contract, by `expose!`: one
     /// feature at most offers each contract.
     pub exposes: &'static [exposes::Exposed],
@@ -249,6 +262,7 @@ pub struct Feature {
 pub const fn feature(name: &'static str) -> Feature {
     Feature {
         name,
+        owner: None,
         place: u16::MAX,
         retired_identifiers: &[],
         upgrade_storage: None,
@@ -267,19 +281,70 @@ pub const fn feature(name: &'static str) -> Feature {
         keeps: &[],
         migrations: &[],
         own_migrations: &[],
+        migration_aliases: &[],
         retired_migrations: &[],
         tables: &[],
         domains: &[],
         cached: &[],
         maintenance: &[],
+        dsp_maintenance: &[],
         audit: Audit::NONE,
         demo: None,
         commands: None,
         people: &[],
         integrations: &[],
+        integration_events: None,
         exposes: &[],
         deleting: Deleting::NONE,
         page_sources: &[],
         on: &[],
     }
+}
+
+impl Feature {
+    /// Binds a manifest to its folder's identity. Only the generated app list sets ownership.
+    pub const fn registered(mut self, owner: Option<&'static str>, name: &'static str) -> Self {
+        assert!(
+            same(self.name, name),
+            "feature name does not match its folder"
+        );
+        assert!(
+            self.owner.is_none(),
+            "feature ownership is assigned by its folder"
+        );
+        self.owner = owner;
+        self
+    }
+    /// Whether this declaration belongs to the DSP with this code.
+    pub fn belongs_to(&self, code: Option<&str>) -> bool {
+        self.owner.is_none_or(|owner| Some(owner) == code)
+    }
+    /// Its repository-relative directory, for generated inventories.
+    pub fn directory(&self) -> String {
+        match self.owner {
+            Some(code) => format!(
+                "features/custom/{code}/{}",
+                self.name
+                    .strip_prefix(code)
+                    .unwrap()
+                    .strip_prefix('_')
+                    .unwrap()
+            ),
+            None => format!("features/{}", self.name),
+        }
+    }
+}
+const fn same(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut i = 0;
+    while i < a.len() {
+        if a[i] != b[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
 }

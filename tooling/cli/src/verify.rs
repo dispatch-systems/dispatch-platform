@@ -111,7 +111,9 @@ pub fn run(root: &Path, feature: &str, runner: &dyn Runner) -> Result<bool> {
     crate::check::here(root, "verify", runner)?;
     require(
         workspace::has_feature(root, feature),
-        &format!("This checkout has no feature named {feature}: features/{feature} isn't there."),
+        &format!(
+            "This checkout has no feature named {feature}: no folder declares that stable id."
+        ),
     )?;
     let scratch = workspace::checkout_scratch(root)?;
     let logs: PathBuf = scratch.join("verify").join(std::process::id().to_string());

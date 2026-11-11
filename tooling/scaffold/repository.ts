@@ -1,4 +1,6 @@
 import fs from 'node:fs';
+import { featureLocations, featureDirectory } from '../shared/features.js';
+export { featureLocations, featureDirectory } from '../shared/features.js';
 import path from 'node:path';
 import { UsageError } from './common.js';
 
@@ -27,7 +29,9 @@ const rustSources = (root: string) =>
   ownerRoots.flatMap((dir) => files(root, dir, /\.rs$/)).filter((file) => !/\/tests\//.test(file));
 
 export const features = (root: string) =>
-  directories(root, 'features').filter((name) => exists(root, `features/${name}/feature.rs`));
+  featureLocations(root)
+    .filter(({ dir }) => exists(root, `${dir}/feature.rs`))
+    .map(({ name }) => name);
 export const collectors = (root: string) =>
   directories(root, 'collectors').filter((name) => exists(root, `collectors/${name}/collector.rs`));
 export const coreParts = (root: string) => directories(root, 'core');
@@ -36,7 +40,9 @@ export const coreParts = (root: string) => directories(root, 'core');
 export function nextPlace(root: string) {
   let highest = 0;
   for (const name of features(root))
-    for (const match of read(root, `features/${name}/feature.rs`).matchAll(/^\s*place:\s*(\d+),/gm))
+    for (const match of read(root, `${featureDirectory(root, name)}/feature.rs`).matchAll(
+      /^\s*place:\s*(\d+),/gm,
+    ))
       highest = Math.max(highest, Number(match[1]));
   return (Math.floor(highest / 10) + 1) * 10;
 }
@@ -59,7 +65,7 @@ export function ownPermissionOrder(root: string, feature: string) {
     [...text.matchAll(/\bperm\(\s*"[^"]*",\s*"[^"]*",\s*(\d+)\s*,?\s*\)/g)].map((match) =>
       Number(match[1]),
     );
-  const own = orders(read(root, `features/${feature}/feature.rs`));
+  const own = orders(read(root, `${featureDirectory(root, feature)}/feature.rs`));
   if (!own.length) return nextPermissionOrder(root);
   const used = new Set(rustSources(root).flatMap((file) => orders(read(root, file))));
   let order = Math.max(...own) + 1;
@@ -131,7 +137,7 @@ export function keeperOf(root: string, site: string, collection: string) {
 }
 /** A feature's page as its `frontend/feature.ts` declares it: its address and label. */
 export function pageOf(root: string, feature: string) {
-  const file = `features/${feature}/frontend/feature.ts`;
+  const file = `${featureDirectory(root, feature)}/frontend/feature.ts`;
   if (!exists(root, file)) return undefined;
   const source = read(root, file);
   // The first of its routes: a sidebar of pages it declares is none.
@@ -146,7 +152,7 @@ export function pageOf(root: string, feature: string) {
 /** Every page's id in a DSP, and every sidebar of pages', as the owners' manifests declare them. */
 export function dspPages(root: string) {
   return [
-    ...features(root).map((owner) => `features/${owner}`),
+    ...features(root).map((owner) => featureDirectory(root, owner)),
     ...collectors(root).map((owner) => `collectors/${owner}`),
     ...coreParts(root).map((owner) => `core/${owner}`),
   ]

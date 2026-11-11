@@ -2,6 +2,7 @@
   "/.well-known",
   "/api",
   "/communications",
+  "/dispatch-phone",
   "/oauth",
   "/slack"
 ]

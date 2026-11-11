@@ -25,7 +25,7 @@ import { lex, rust, useTree } from './support/rust.js';
  * it stays when the feature is left out of a build.
  */
 const contract = (file: string) =>
-  /^features\/[^/]+\/contract(\/|$)/.exec(file)?.[0].replace(/\/$/, '');
+  /^features\/(?:custom\/[^/]+\/)?[^/]+\/contract(\/|$)/.exec(file)?.[0].replace(/\/$/, '');
 /**
  * What an owner may use: core and itself always, a feature what it declares, and a feature or
  * the MCP every contract; a collector none, as it sits below the features.

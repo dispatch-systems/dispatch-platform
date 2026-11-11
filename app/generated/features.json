@@ -1,5 +1,7 @@
 {
   "communications": {
+    "directory": "features/communications",
+    "owner": null,
     "collectors": [],
     "depends_on": [
       "slack"
@@ -55,67 +57,129 @@
       ],
       "people": [],
       "routes": [
+        "GET /api/dsp/dispatch-phone",
         "GET /api/dsp/communications",
+        "GET /api/dsp/dispatch-phone/waiting",
         "GET /api/dsp/communications/waiting",
+        "GET /api/dsp/dispatch-phone/updates",
         "GET /api/dsp/communications/updates",
+        "GET /api/dsp/dispatch-phone/conversations",
         "GET /api/dsp/communications/conversations",
+        "POST /api/dsp/dispatch-phone/conversations",
         "POST /api/dsp/communications/conversations",
+        "GET /api/dsp/dispatch-phone/conversations/{id}",
         "GET /api/dsp/communications/conversations/{id}",
+        "GET /api/dsp/dispatch-phone/conversations/{id}/window",
         "GET /api/dsp/communications/conversations/{id}/window",
+        "GET /api/dsp/dispatch-phone/conversations/{id}/profile",
         "GET /api/dsp/communications/conversations/{id}/profile",
+        "POST /api/dsp/dispatch-phone/conversations/{id}/messages",
         "POST /api/dsp/communications/conversations/{id}/messages",
+        "GET /api/dsp/dispatch-phone/gifs",
         "GET /api/dsp/communications/gifs",
+        "GET /api/dispatch-phone/gifs/fixture/gifs/{list}",
         "GET /api/communications/gifs/fixture/gifs/{list}",
+        "POST /api/dispatch-phone/gifs/fixture/gifs/share/{slug}",
         "POST /api/communications/gifs/fixture/gifs/share/{slug}",
+        "GET /api/dispatch-phone/gifs/fixture/media/{name}",
         "GET /api/communications/gifs/fixture/media/{name}",
+        "POST /api/dsp/dispatch-phone/conversations/{id}/done",
         "POST /api/dsp/communications/conversations/{id}/done",
+        "POST /api/dsp/dispatch-phone/conversations/{id}/typing",
         "POST /api/dsp/communications/conversations/{id}/typing",
+        "POST /api/dsp/dispatch-phone/conversations/{id}/messages/{message}/retry",
         "POST /api/dsp/communications/conversations/{id}/messages/{message}/retry",
+        "POST /api/dsp/dispatch-phone/conversations/{id}/contact",
         "POST /api/dsp/communications/conversations/{id}/contact",
+        "POST /api/dsp/dispatch-phone/conversations/{id}/person",
         "POST /api/dsp/communications/conversations/{id}/person",
+        "POST /api/dsp/dispatch-phone/conversations/{id}/person/remove",
         "POST /api/dsp/communications/conversations/{id}/person/remove",
+        "POST /api/dsp/dispatch-phone/conversations/{id}/block",
         "POST /api/dsp/communications/conversations/{id}/block",
+        "POST /api/dsp/dispatch-phone/conversations/{id}/unblock",
         "POST /api/dsp/communications/conversations/{id}/unblock",
+        "POST /api/dsp/dispatch-phone/texts/conversations",
         "POST /api/dsp/communications/texts/conversations",
+        "GET /api/dsp/dispatch-phone/texts/contacts",
         "GET /api/dsp/communications/texts/contacts",
+        "GET /api/dsp/dispatch-phone/texts/people",
         "GET /api/dsp/communications/texts/people",
+        "GET /api/dsp/dispatch-phone/texts/files/{id}",
         "GET /api/dsp/communications/texts/files/{id}",
+        "GET /api/dsp/dispatch-phone/texts/files/{id}/preview",
         "GET /api/dsp/communications/texts/files/{id}/preview",
+        "POST /api/dsp/dispatch-phone/texts/files/{id}/fetch",
         "POST /api/dsp/communications/texts/files/{id}/fetch",
+        "POST /api/dsp/dispatch-phone/texts/uploads",
         "POST /api/dsp/communications/texts/uploads",
+        "GET /api/dsp/dispatch-phone/routes",
         "GET /api/dsp/communications/routes",
+        "GET /api/dsp/dispatch-phone/quick-replies",
         "GET /api/dsp/communications/quick-replies",
+        "POST /api/dsp/dispatch-phone/quick-replies",
         "POST /api/dsp/communications/quick-replies",
+        "POST /api/dsp/dispatch-phone/conversations/{id}/driver",
         "POST /api/dsp/communications/conversations/{id}/driver",
+        "GET /api/dsp/dispatch-phone/contacts",
         "GET /api/dsp/communications/contacts",
+        "GET /api/dsp/dispatch-phone/groups/choices",
         "GET /api/dsp/communications/groups/choices",
+        "POST /api/dsp/dispatch-phone/groups",
         "POST /api/dsp/communications/groups",
+        "GET /api/dsp/dispatch-phone/groups/{id}",
         "GET /api/dsp/communications/groups/{id}",
+        "GET /api/dsp/dispatch-phone/groups/{id}/people",
         "GET /api/dsp/communications/groups/{id}/people",
+        "POST /api/dsp/dispatch-phone/groups/{id}/messages",
         "POST /api/dsp/communications/groups/{id}/messages",
+        "POST /api/dsp/dispatch-phone/groups/{id}/done",
         "POST /api/dsp/communications/groups/{id}/done",
+        "POST /api/dsp/dispatch-phone/uploads",
         "POST /api/dsp/communications/uploads",
+        "GET /api/dsp/dispatch-phone/files/{id}",
         "GET /api/dsp/communications/files/{id}",
+        "GET /api/dsp/dispatch-phone/files/{id}/preview",
         "GET /api/dsp/communications/files/{id}/preview",
+        "GET /api/dsp/dispatch-phone/workspaces/{team}/logo",
         "GET /api/dsp/communications/workspaces/{team}/logo",
+        "GET /api/dsp/dispatch-phone/push",
         "GET /api/dsp/communications/push",
+        "POST /api/dsp/dispatch-phone/push",
         "POST /api/dsp/communications/push",
+        "POST /api/dsp/dispatch-phone/push/remove",
         "POST /api/dsp/communications/push/remove",
+        "GET /dispatch-phone/initials/1/{name}",
         "GET /communications/initials/1/{name}",
+        "GET /api/dsp/dispatch-phone/phones",
         "GET /api/dsp/communications/phones",
+        "POST /api/dsp/dispatch-phone/phones/pairing",
         "POST /api/dsp/communications/phones/pairing",
+        "GET /api/dsp/dispatch-phone/phones/pairing/{id}",
         "GET /api/dsp/communications/phones/pairing/{id}",
+        "POST /api/dsp/dispatch-phone/phones/{id}/rename",
         "POST /api/dsp/communications/phones/{id}/rename",
+        "POST /api/dsp/dispatch-phone/phones/{id}/remove",
         "POST /api/dsp/communications/phones/{id}/remove",
+        "POST /api/dispatch-phone/phone/pair",
         "POST /api/communications/phone/pair",
+        "GET /api/dispatch-phone/phone/app",
         "GET /api/communications/phone/app",
+        "GET /api/dispatch-phone/phone/app/download",
         "GET /api/communications/phone/app/download",
+        "GET /api/dispatch-phone/phone/outbox",
         "GET /api/communications/phone/outbox",
+        "POST /api/dispatch-phone/phone/texts",
         "POST /api/communications/phone/texts",
+        "POST /api/dispatch-phone/phone/files/{id}",
         "POST /api/communications/phone/files/{id}",
+        "GET /api/dispatch-phone/phone/files/{id}",
         "GET /api/communications/phone/files/{id}",
+        "POST /api/dispatch-phone/phone/files/{id}/preview",
         "POST /api/communications/phone/files/{id}/preview",
+        "POST /api/dispatch-phone/phone/files/{id}/gone",
         "POST /api/communications/phone/files/{id}/gone",
+        "POST /api/dispatch-phone/phone/statuses",
         "POST /api/communications/phone/statuses"
       ],
       "exposes": [],
@@ -174,6 +238,8 @@
     ]
   },
   "conduct": {
+    "directory": "features/conduct",
+    "owner": null,
     "collectors": [],
     "depends_on": [],
     "frontend": true,
@@ -244,6 +310,8 @@
     "subfeatures": []
   },
   "daily_performance": {
+    "directory": "features/daily_performance",
+    "owner": null,
     "collectors": [
       "cortex"
     ],
@@ -324,6 +392,8 @@
     "subfeatures": []
   },
   "documents": {
+    "directory": "features/documents",
+    "owner": null,
     "collectors": [],
     "depends_on": [],
     "frontend": true,
@@ -424,6 +494,8 @@
     "subfeatures": []
   },
   "driver_match": {
+    "directory": "features/driver_match",
+    "owner": null,
     "collectors": [],
     "depends_on": [],
     "frontend": true,
@@ -512,6 +584,8 @@
     "subfeatures": []
   },
   "driver_profiles": {
+    "directory": "features/driver_profiles",
+    "owner": null,
     "collectors": [
       "cortex"
     ],
@@ -590,6 +664,8 @@
     "subfeatures": []
   },
   "dvic": {
+    "directory": "features/dvic",
+    "owner": null,
     "collectors": [
       "cortex"
     ],
@@ -684,6 +760,8 @@
     ]
   },
   "home": {
+    "directory": "features/home",
+    "owner": null,
     "collectors": [],
     "depends_on": [],
     "frontend": true,
@@ -716,6 +794,8 @@
     "subfeatures": []
   },
   "live_route_data": {
+    "directory": "features/live_route_data",
+    "owner": null,
     "collectors": [],
     "depends_on": [
       "cortex",
@@ -755,6 +835,8 @@
     "subfeatures": []
   },
   "routes": {
+    "directory": "features/routes",
+    "owner": null,
     "collectors": [
       "cortex"
     ],
@@ -932,6 +1014,8 @@
     "subfeatures": []
   },
   "settings": {
+    "directory": "features/settings",
+    "owner": null,
     "collectors": [],
     "depends_on": [],
     "frontend": true,
@@ -970,6 +1054,8 @@
     "subfeatures": []
   },
   "slack": {
+    "directory": "features/slack",
+    "owner": null,
     "collectors": [],
     "depends_on": [],
     "frontend": true,
@@ -1089,6 +1175,8 @@
     "subfeatures": []
   },
   "team": {
+    "directory": "features/team",
+    "owner": null,
     "collectors": [],
     "depends_on": [],
     "frontend": true,
@@ -1135,6 +1223,8 @@
     "subfeatures": []
   },
   "timecard": {
+    "directory": "features/timecard",
+    "owner": null,
     "collectors": [
       "cortex",
       "paycom"
@@ -1288,6 +1378,8 @@
     ]
   },
   "uniforms": {
+    "directory": "features/uniforms",
+    "owner": null,
     "collectors": [],
     "depends_on": [],
     "frontend": true,
@@ -1347,6 +1439,8 @@
     "subfeatures": []
   },
   "vans": {
+    "directory": "features/vans",
+    "owner": null,
     "collectors": [
       "cortex"
     ],
@@ -1418,6 +1512,8 @@
     "subfeatures": []
   },
   "weekly_scorecard": {
+    "directory": "features/weekly_scorecard",
+    "owner": null,
     "collectors": [
       "cortex"
     ],

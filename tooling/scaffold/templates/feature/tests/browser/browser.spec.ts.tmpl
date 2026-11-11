@@ -8,7 +8,13 @@ import {
 // The seeded DSP has every feature switched on, and its owner holds every permission.
 {{#page}}
 
-test('{{label}} opens from the sidebar of a DSP that has it', async ({ page }) => {
+test('{{label}} opens from the sidebar of a DSP that has it', async ({ page{{#owner}}, dispatch{{/owner}} }) => {
+{{#owner}}
+  const owner = await dispatch.client();
+  const dsp = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
+  await owner.post(`/api/platform/dsps/${dsp.id}/code`, { code: '{{owner}}' });
+  await owner.post(`/api/platform/dsps/${dsp.id}/features`, { feature: '{{name}}', enabled: true });
+{{/owner}}
   await login(page);
   await openDsp(page, 'Northline Logistics');
   await page.getByRole('link', { name: '{{label}}', exact: true }).click();
@@ -17,7 +23,13 @@ test('{{label}} opens from the sidebar of a DSP that has it', async ({ page }) =
 {{/page}}
 {{#sidebar}}
 
-test('{{label}} opens the sidebar of its pages, and each of them from it', async ({ page }) => {
+test('{{label}} opens the sidebar of its pages, and each of them from it', async ({ page{{#owner}}, dispatch{{/owner}} }) => {
+{{#owner}}
+  const owner = await dispatch.client();
+  const dsp = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
+  await owner.post(`/api/platform/dsps/${dsp.id}/code`, { code: '{{owner}}' });
+  await owner.post(`/api/platform/dsps/${dsp.id}/features`, { feature: '{{name}}', enabled: true });
+{{/owner}}
   await login(page);
   await openDsp(page, 'Northline Logistics');
   await page
@@ -30,7 +42,13 @@ test('{{label}} opens the sidebar of its pages, and each of them from it', async
 {{/sidebar}}
 {{#tab}}
 
-test('{{label}} opens as a tab of {{hostLabel}}', async ({ page }) => {
+test('{{label}} opens as a tab of {{hostLabel}}', async ({ page{{#owner}}, dispatch{{/owner}} }) => {
+{{#owner}}
+  const owner = await dispatch.client();
+  const dsp = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
+  await owner.post(`/api/platform/dsps/${dsp.id}/code`, { code: '{{owner}}' });
+  await owner.post(`/api/platform/dsps/${dsp.id}/features`, { feature: '{{name}}', enabled: true });
+{{/owner}}
   await login(page);
   await openDsp(page, 'Northline Logistics');
   await page.getByRole('link', { name: '{{hostLabel}}', exact: true }).click();
@@ -40,7 +58,13 @@ test('{{label}} opens as a tab of {{hostLabel}}', async ({ page }) => {
 {{/tab}}
 {{#connection}}
 
-test('{{label}} has its card on the Connections page', async ({ page }) => {
+test('{{label}} has its card on the Connections page', async ({ page{{#owner}}, dispatch{{/owner}} }) => {
+{{#owner}}
+  const owner = await dispatch.client();
+  const dsp = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
+  await owner.post(`/api/platform/dsps/${dsp.id}/code`, { code: '{{owner}}' });
+  await owner.post(`/api/platform/dsps/${dsp.id}/features`, { feature: '{{name}}', enabled: true });
+{{/owner}}
   await login(page);
   await openDsp(page, 'Northline Logistics');
   await page

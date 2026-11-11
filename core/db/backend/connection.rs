@@ -33,32 +33,46 @@ impl Db {
     /// applies the migrations it lacks. `seed` holds the rows a new database needs
     /// and commits together with its schema, so no reader sees one without them.
     pub fn create(file: &Path, kind: Kind, seed: &str) -> Result<Self> {
-        let db = Self::created(file, kind, |db| Ok(db.0.execute_batch(seed)?))?;
+        let db = Self::created(file, kind, &kind.owned_migrations(), |db| {
+            Ok(db.0.execute_batch(seed)?)
+        })?;
         migrations::migrate(&db, kind)?;
         Ok(db)
     }
     /// Creates new core DSP storage with its identity in the schema transaction,
     /// or adopts a legacy database only while its identity migration is first applied.
-    pub(crate) fn create_dsp(file: &Path, id: &str) -> Result<Self> {
+    pub(crate) fn create_dsp(file: &Path, id: &str, code: Option<&str>) -> Result<Self> {
         ensure(super::identifier(id, "dsp_"), "invalid_dsp_id", 400)?;
-        let db = Self::created(file, Kind::DSP, |db| migrations::bind_identity(db, id))?;
-        migrations::migrate_dsp(&db, id)?;
+        let db = Self::created(
+            file,
+            Kind::DSP,
+            &Kind::DSP.owned_migrations_for(code),
+            |db| migrations::bind_identity(db, id),
+        )?;
+        migrations::migrate_dsp(&db, id, code)?;
         Ok(db)
     }
     /// Opens the database, creating it when it is missing with `kind`'s schema and what `seed`
     /// writes, in one transaction.
-    fn created(file: &Path, kind: Kind, seed: impl FnOnce(&Self) -> Result<()>) -> Result<Self> {
+    pub fn create_for(file: &Path, kind: Kind, seed: &str, code: Option<&str>) -> Result<Self> {
+        let db = Self::created(file, kind, &kind.owned_migrations_for(code), |db| {
+            Ok(db.0.execute_batch(seed)?)
+        })?;
+        migrations::migrate_for(&db, kind, code)?;
+        Ok(db)
+    }
+    fn created(
+        file: &Path,
+        kind: Kind,
+        owned: &[super::OwnedMigration],
+        seed: impl FnOnce(&Self) -> Result<()>,
+    ) -> Result<Self> {
         let db = Self::connect(file, kind, true)?;
         if db.version()? == 0 {
             let tx = migrations::immediate(&db)?;
             // Another connection may have created it while this one waited.
             if db.version()? == 0 {
-                migrations::apply(
-                    &db,
-                    kind.name(),
-                    &kind.migrations(),
-                    &kind.owned_migrations(),
-                )?;
+                migrations::apply(&db, kind.name(), &kind.migrations(), owned)?;
                 seed(&db)?;
                 tx.pragma_update(None, "user_version", kind.version())?;
             }

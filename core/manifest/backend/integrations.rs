@@ -113,6 +113,29 @@ pub(super) fn check(features: &[&'static Feature]) {
                  something if it does",
                 feature.name
             );
+            if feature.owner.is_some()
+                && let Some(base) = features
+                    .iter()
+                    .find(|connection| connection.name == integration.connection)
+                    .and_then(|connection| connection.integration_events)
+            {
+                let shared: BTreeSet<_> = base
+                    .iter()
+                    .copied()
+                    .chain(
+                        features
+                            .iter()
+                            .filter(|feature| feature.owner.is_none())
+                            .flat_map(|feature| feature.integrations)
+                            .filter(|other| other.connection == integration.connection)
+                            .flat_map(|other| other.hears.iter().copied()),
+                    )
+                    .collect();
+                assert!(
+                    integration.hears.iter().all(|event| shared.contains(event)),
+                    "custom integration {id} cannot introduce globally subscribed event types"
+                );
+            }
         }
     }
 }
@@ -133,3 +156,7 @@ impl Registry {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/integrations.rs"]
+mod tests;

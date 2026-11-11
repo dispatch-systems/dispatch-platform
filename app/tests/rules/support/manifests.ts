@@ -1,6 +1,16 @@
+import { featureDirectory } from '../../../../tooling/shared/features.js';
 import { closing, includes, lexFile, literalAt, rust, type Lexed } from './rust.js';
 import { readCrate } from './cargo.js';
-import { collectors, features, files, isFile, isTestFile, ownerOf, type Owner } from './repo.js';
+import {
+  root,
+  collectors,
+  features,
+  files,
+  isFile,
+  isTestFile,
+  ownerOf,
+  type Owner,
+} from './repo.js';
 
 /** A span of a file's source, as offsets into it. */
 export type Span = { file: string; start: number; end: number };
@@ -450,8 +460,9 @@ function readDeclared(owner: Owner): Set<string> {
   if (owner.layer !== 'feature') return new Set();
   const names = featureManifest(owner)?.dependsOn ?? [];
   const dirs = names.map((name) =>
-    isFile(`features/${name}/feature.rs`) || !isFile(`collectors/${name}/collector.rs`)
-      ? `features/${name}`
+    isFile(`${featureDirectory(root, name)}/feature.rs`) ||
+    !isFile(`collectors/${name}/collector.rs`)
+      ? featureDirectory(root, name)
       : `collectors/${name}`,
   );
   const kinds = new Set(kept(owner).flatMap(({ jobKind }) => (jobKind ? [jobKind] : [])));

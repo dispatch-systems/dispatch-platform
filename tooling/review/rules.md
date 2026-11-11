@@ -79,7 +79,7 @@ password. Security routes are exempt from the normal MFA gate only so verificati
 complete; enrollment, factor removal, recovery-code replacement and session revocation must
 enforce their own recent-authentication requirement.
 
-## `{features/*/feature.rs,collectors/*/collector.rs}`
+## `{features/*/feature.rs,features/custom/*/*/feature.rs,collectors/*/collector.rs}`
 
 A switch, tab, permission, read toggle or collection is declared once, in its owner's manifest,
 with its label; the catalog, the role sheet and the DSPs page are built from it. Flag one
@@ -98,6 +98,10 @@ A collector names no feature and none of a feature's tables. It returns typed da
 that keeps the collection writes it.
 
 ## `features/**`
+
+A custom feature belongs only to the DSP code in `features/custom/<code>/<name>/`; its ids
+start with `<code>_`, its switch is custom and optional, and it exposes no contracts or MCP
+tools. Nothing it runs or shows reaches another DSP.
 
 A feature uses only its own tables, core, and the collectors and features its manifest
 declares. Flag SQL against another owner's tables and imports beyond those dependencies.

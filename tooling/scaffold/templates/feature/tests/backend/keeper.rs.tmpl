@@ -7,11 +7,15 @@ use serde_json::json;
 fn publishes_what_the_collectors_fixture_brings() {
     testing::install(&[{{testCollectors}}], &[&crate::FEATURE]);
     let (_root, store, dsp) = testing::bootstrapped();
+{{#owner}}
+    store.set_code(&dsp, "{{owner}}").unwrap();
+    store.set_feature(&dsp, "{{name}}", true, &testing::a_user(&store)).unwrap();
+{{/owner}}
     let collected = {{siteIdent}}::COLLECTOR
         .fixture("America/Chicago", &json!({{fixtureRequest}}))
         .unwrap();
     {{pascal}}Keeper.publish(&store, &dsp, "job-1", collected).unwrap();
-    let kept = store.{{name}}_items(&dsp).unwrap();
+    let kept = store.{{codeName}}_items(&dsp).unwrap();
     assert_eq!(
         kept.iter().map(|item| item.name.as_str()).collect::<Vec<_>>(),
         ["job-1"]

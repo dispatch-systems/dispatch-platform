@@ -110,7 +110,13 @@ pub fn seed(db: &Store) -> Result<()> {
 /// Fills a new DSP with every feature's demo data, given its timezone, and gives its default
 /// roles what they hold in a demo.
 pub fn demo(db: &Store, dsp: &str, timezone: &str) -> Result<()> {
-    for demo in registry().features.iter().filter_map(|f| f.demo) {
+    let code = db.feature_code(dsp)?;
+    for demo in registry()
+        .features
+        .iter()
+        .filter(|f| f.belongs_to(code.as_deref()))
+        .filter_map(|f| f.demo)
+    {
         demo(db, dsp, timezone)?;
     }
     crate::tenancy::roles::demo(&*db.dsp(dsp)?, dsp)

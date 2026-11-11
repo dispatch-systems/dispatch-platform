@@ -1,5 +1,7 @@
 # Slack
 
+Custom integrations request OAuth scopes only for their owning DSP. Their event types must already be subscribed by shared features: Slack subscriptions belong to the whole app. Startup rejects a custom integration that adds a global event type.
+
 Dispatch's app in a DSP's Slack workspaces. A DSP adds it to as many workspaces as it uses, and
 each workspace belongs to that DSP alone: everything Slack sends names its workspace, and that
 alone decides the DSP it reaches. On its own, the app shows, on its Home tab, which DSP the
@@ -320,10 +322,11 @@ Slack's manifest lists each one's integration, upkeep, migration and tables. `in
   Slack has them, reads its members, and marks it broken if Slack no longer honours its tokens, so its card offers to
   reconnect it. Import Files saves the files due every minute, and catches up hourly. Sync
   Canvases syncs the canvases due every minute, and lists its channels' every ten minutes.
-- **Fixture mode** never calls Slack: installing comes straight back with `fixture:<team>` as the
+- **Fixture mode** never calls Slack: installing comes straight back with `fixture:<team>:<scopes>` as the
   code, the first of its workspaces (Operations, Drivers, Managers) that no DSP has yet, or the
-  one being reconnected; a code that lists what the admin approved,
-  `fixture:<team>:<scope>,<scope>`, gives a workspace that needs updating. Its tokens name their
+  one being reconnected. Its code lists the scopes requested for that DSP; supplying fewer
+  granted scopes gives a workspace that needs updating. The short `fixture:<team>` code grants
+  all registered scopes for tests that choose a workspace directly. Its tokens name their
   workspace; one whose ID holds `GONE` is refused. Each workspace has the same channels,
   `general`, `dispatch`, `photos`, `random` and the private `managers`, the bot in `general` and
   `managers` to start, and what it joins and leaves is kept for the server's run. Its members are

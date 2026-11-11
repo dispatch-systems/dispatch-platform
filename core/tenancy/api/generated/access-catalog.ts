@@ -176,7 +176,7 @@ export const featureCatalog = [
   },
   {
     "id": "communications",
-    "label": "Communications",
+    "label": "Dispatch Phone",
     "permissions": [
       "communications.use",
       "phones.manage"
@@ -363,7 +363,7 @@ export const permissions = [
 ] as const;
 export const permissionLabels = {
   "collections.run": "Run Collections",
-  "communications.use": "Use Communications",
+  "communications.use": "Use Dispatch Phone",
   "conduct.manage": "Manage Conduct",
   "conduct.use": "Use Conduct",
   "connections.manage": "Manage DSP Connections",
@@ -464,7 +464,7 @@ export const permissionGroups = [
     ]
   ],
   [
-    "Communications",
+    "Dispatch Phone",
     [
       "communications.use",
       "phones.manage"

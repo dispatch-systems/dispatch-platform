@@ -1,3 +1,4 @@
+import { featureDirectory } from '../shared/features.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -38,10 +39,14 @@ export type Row = Record<string, string | number | boolean | string[] | null>;
 const read = (root: string, file: string) => fs.readFileSync(path.join(root, file), 'utf8');
 const json = <T>(root: string, file: string): T => JSON.parse(read(root, file)) as T;
 /** Where a contract's crate is, from its type's path: a feature's contract crate, or core. */
-const contractDir = (contract: string) => {
+const contractDir = (root: string, contract: string) => {
   const crate = contract.split('::')[0]!;
   const feature = /^dispatch_(\w+)_contract$/.exec(crate)?.[1];
-  return feature ? `features/${feature}/contract` : crate === 'dispatch_core' ? 'core' : crate;
+  return feature
+    ? `${featureDirectory(root, feature)}/contract`
+    : crate === 'dispatch_core'
+      ? 'core'
+      : crate;
 };
 const features = (root: string) => json<Record<string, Feature>>(root, FEATURES);
 const pages = (root: string) => {
@@ -128,7 +133,7 @@ export const LISTS: Record<string, { about: string; rows: (root: string) => Row[
             name: exposed.name,
             feature: name,
             contract: exposed.contract,
-            in: contractDir(exposed.contract),
+            in: contractDir(root, exposed.contract),
             about: exposed.about,
           }),
         ),
@@ -149,7 +154,7 @@ export const LISTS: Record<string, { about: string; rows: (root: string) => Row[
         .map(([event, { kind, heardBy }]) => ({
           event,
           type: kind,
-          in: contractDir(kind),
+          in: contractDir(root, kind),
           heardBy,
         }));
     },
@@ -215,9 +220,9 @@ export const LISTS: Record<string, { about: string; rows: (root: string) => Row[
 export function explain(root: string, name: string): Row {
   const all = features(root);
   const feature = all[name];
-  const folder = ['features', 'collectors']
-    .map((owner) => `${owner}/${name}`)
-    .find((dir) => fs.existsSync(path.join(root, dir)));
+  const folder = [featureDirectory(root, name), `collectors/${name}`].find((dir) =>
+    fs.existsSync(path.join(root, dir)),
+  );
   if (!folder)
     throw new Error(`No feature or collector ${name}: dispatchdev list features names them`);
   const manifest = `${folder}/frontend/feature.ts`;

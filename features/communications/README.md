@@ -1,9 +1,33 @@
-# Communications
+# Dispatch Phone
+
+## Name migration
+
+The page accepts `dispatch-phone` and `communications`, preserving conversation, group and
+other query parameters. APIs accept `/api/dsp/dispatch-phone` and `/api/dispatch-phone/phone`
+alongside their existing `/communications` addresses. Both are registrations of the same
+handlers, authorization, upload limits and write policies. This bridge still emits the existing
+addresses, including notification, initials and app-download links, so its predecessor can read
+them after rollback. The new addresses become canonical only once this bridge is an installed
+rollback target.
+
+This is the bridge release. Stored feature and permission IDs, settings keys, migration owner,
+table names, attachment directories and object-store keys, browser drafts and notification
+coordination retain their existing identities. There is one data set: changing the displayed
+name or address neither copies nor clears it. Relay continues using its existing protocol
+address until the bridge is an installed rollback target. The staged plan and release gates are
+in [the migration plan](../../ops/dispatch-phone-migration.md).
+
+Migration receipts also accept the future owner `dispatch_phone`. Existing receipt names,
+IDs and timestamps remain unchanged, and new steps still record `communications`. Recognizing
+either owner prevents an applied migration running again after a rename or rollback. It does
+not activate a stored-identity, table or attachment migration.
+
+## Purpose
 
 The DSP's direct messages with the members of its Slack workspaces, and the texts its dispatch
 phones relay. Employees write to the DSP's Dispatch app in Slack, in its Messages tab; anyone
-texts the DSP's phones; anyone at the DSP whose role gives them Communications reads each
-conversation on the Communications page and answers it there. A Slack answer reaches the
+texts the DSP's phones; anyone at the DSP whose role gives them Dispatch Phone reads each
+conversation on the Dispatch Phone page and answers it there. A Slack answer reaches the
 employee's direct message under the full name and photo of whoever wrote it; a text answer goes
 from the DSP's phone as written. Slack's part works on Slack's own foundation for direct
 messages: while it's on in a workspace, Slack no longer answers what's written to the app that
@@ -17,12 +41,12 @@ and every other number's in Recents.
   neither: without Slack on, it hears nothing of Slack, and without a phone paired, nothing of
   texts. A DSP's switch record from when Phones was a feature of its own, `phones`, is left as it
   was and read by nothing.
-- **Permissions:** `communications.use` (Use Communications) covers reading the DSP's
+- **Permissions:** `communications.use` (Use Dispatch Phone) covers reading the DSP's
   conversations, who each is with, and answering them. Owners hold it; another role holds it once
   the DSP's owner turns it on. Every route is behind it, but the image of someone's initials,
   managing the phones, and the phones' own address. `phones.manage` (Manage Phones), apart from
   it, is for the phones' card: pairing, renaming and removing the DSP's phones, as core's
-  `connections.manage` (Manage DSP Connections) allows too, which exists while Communications is
+  `connections.manage` (Manage DSP Connections) allows too, which exists while Dispatch Phone is
   on, as its phones are the DSP's own (`dsp_connection`). Owners hold it; another role holds it
   once the DSP's owner turns it on, as it did while Phones declared it.
 - **Its integration:** `communications.messages`, under each workspace's Integrations in Slack's
@@ -53,7 +77,7 @@ and every other number's in Recents.
   allowed it; offered where the browser shows one from the page, or can be pushed to while the
   server pushes (as a phone's can: [New messages](#new-messages)), and left out elsewhere.
   And `communications.quick_replies` (Quick replies), the DSP's, under `communications.use`, so
-  anyone who uses Communications edits them, on Communications' own page under Features: drawn by
+  anyone who uses Dispatch Phone edits them, on Dispatch Phone' own page under Features: drawn by
   its own component, `frontend/replies/`, as a list of texts is none of Settings' kinds of value.
   Up to 30 short replies, each up to 500 characters, in their order, each in a box of its own with
   Remove, Add reply under them, and Save, which leaves out the empty ones; before the page moves
@@ -67,7 +91,7 @@ and every other number's in Recents.
 
 ## The page
 
-- **Communications** in the sidebar, for those with `communications.use`, with how many
+- **Dispatch Phone** in the sidebar, for those with `communications.use`, with how many
   conversations wait beside it, Slack's and the numbers' texts (`waiting`, as the banner of phones down reads it, every 30 seconds
   on every page, and as the number changes while it's open). The page fills the window, however wide (`fills`),
   the list beside the conversation open, each scrolling on its own, and everything on it grows
@@ -91,7 +115,7 @@ and every other number's in Recents.
 - **Phones offline:** in the heading, a chip for each of the DSP's dispatch phones that isn't
   online, with how long since it was last seen, by its name when the DSP has several (Phone
   offline · 14m), as the overview and each update bring them.
-- **The list:** in Slack, with two or more workspaces where Communications works, which it
+- **The list:** in Slack, with two or more workspaces where Dispatch Phone works, which it
   shows, every one or one of them, each by its logo (else the first letters of its name), as the Update
   popup, Copy chat link and the profile's Slack row show it too, with how many of its
   conversations wait; that choice is remembered in the browser for each member at each DSP, and
@@ -170,11 +194,11 @@ and every other number's in Recents.
 - **Display** opens the member's own Message display in Settings, which the page looks as, with
   either section.
 - **Copy chat link** copies the address that opens the app's Messages tab in a workspace where
-  Communications works, chosen from a menu with several, for employees to write to the DSP.
+  Dispatch Phone works, chosen from a menu with several, for employees to write to the DSP.
   It and New message show only with such a workspace.
 - **Setting Slack up**, for those who also hold `connections.manage`, which connects and updates
   the DSP's workspaces: while the DSP has none, and no phone paired, Connect Slack takes the
-  inbox's place; while a workspace where Communications is on hasn't approved all it uses
+  inbox's place; while a workspace where Dispatch Phone is on hasn't approved all it uses
   (`needsUpdate`), Update Slack covers the page while it shows Slack, not the sidebar, with no
   way to close it but to Recents while the DSP texts; each such workspace with Update and Copy
   link (its own install link, for whoever approves apps in that Slack), until an update brings
@@ -249,7 +273,7 @@ driver who had the DSP's work phones, while they work today, with a route today 
 now; the one by text with their own number, their default, the
 first of Driver Match's numbers for them, one added to theirs before their sources' (a driver's
 new phone, so not the one they last wrote from); and their Slack one, in a workspace where
-Communications works, the latest written in, else their first account there. Shown, as chips,
+Dispatch Phone works, the latest written in, else their first account there. Shown, as chips,
 on each of them while one is another than the conversation open, each waiting as the page's list has it, so its dot
 follows each update, and one started since is found by whom it's with. A driver with a work phone
 now has the work conversation of the ID that has it, as Driver Match may know them by several,
@@ -316,7 +340,7 @@ went, and their bytes; never who a text is from or which conversation it's in, w
 decides ([Texts](#texts)).
 
 - **The card:** on Settings' DSP Connections, for those who manage the DSP's phones or all its
-  connections (`connectionPieces`, `dsp`), while Communications is on: each phone, by its number,
+  connections (`connectionPieces`, `dsp`), while Dispatch Phone is on: each phone, by its number,
   with its name, model and the app's version, tagged Update while that's older than the one the
   DSP's address hands out, Online once it checked in in the last two minutes, else Offline and
   for how long, read again every 30 seconds; what needs attention on it, as it last said it stands
@@ -325,7 +349,7 @@ decides ([Texts](#texts)).
   many pictures it received that its texting app hasn't downloaded; Rename and Remove in its menu; a name changed and
   not saved asks "Save changes?", with only Save and Discard, before the dialog closes; closing
   the browser tab drops it silently. Its routes are refused (`not_found`) while
-  Communications is off, though managing all the DSP's connections still lets a member in. With
+  Dispatch Phone is off, though managing all the DSP's connections still lets a member in. With
   none, No phone. **Add phone** shows the code that pairs the next phone, as a QR code its app
   reads and as its eight letters, and how long it lasts; one expired, or replaced by a newer one
   as another session makes, gives way to a new one with New code; the dialog closes once its own
@@ -364,9 +388,9 @@ decides ([Texts](#texts)).
   removed, with `phones_removed` as their error, filed as they fail; those waiting on a phone
   offline fail as they expire ([Texts](#texts)). A phone calling an address no DSP has, as once its
   DSP is deleted, is refused as `phones_removed` too, and unpairs.
-- **Their address:** `/api/communications/phone/…`, at the DSP's own address alone, never from a
+- **Their address:** `/api/dispatch-phone/phone/…`, at the DSP's own address alone, never from a
   browser (a request with a cookie is refused) but for the app, while the DSP is active and
-  Communications is on there (`phones_off` otherwise): pairing by the code, and the app, public;
+  Dispatch Phone is on there (`phones_off` otherwise): pairing by the code, and the app, public;
   every other call by `Authorization: Bearer <key>`, which the route checks itself, as Slack's
   signed events are checked (public to the server, which no session reaches). A phone waits on its
   outbox for what Dispatch has for it (woken by its own live channel, `phones`, apart from the
@@ -458,7 +482,7 @@ queues a text for a phone.
   filing again fails, logged as `communications_texts_refile_failed` with its DSP and day, or
   that a restart cuts short, is filed again by every minute's upkeep, the earliest four noted
   first, each on its own, while Routes is on, until each is done. Today's are filed again every
-  minute too, so a change nothing heard, as while Communications was off, is repaired by the next
+  minute too, so a change nothing heard, as while Dispatch Phone was off, is repaired by the next
   pass, which writes only once one belongs elsewhere, a failure logged with its day; an earlier
   day's only as Routes says it changed, or as it's noted.
 - **Waiting:** as a Slack conversation's: a text in after the latest text out that didn't fail,
@@ -470,7 +494,7 @@ queues a text for a phone.
   latest answer or Done, though it came before the day's first live read. A text in during those
   two hours waits, and counts, as on the live day, until answered, Done, or the two hours pass;
   then none waits or counts, and the next day starts afresh. When the live day ended is kept as
-  Communications first saw it (`communications_live_days`), as it hears today's route data change
+  Dispatch Phone first saw it (`communications_live_days`), as it hears today's route data change
   or by the next minute's upkeep, never after the day itself ended, as for a day a stop never
   saved. Each time today's route data changes, the work conversations waiting by their texts are
   noted changed as the live day began or ended, so the pages waiting on changes hear it, and each
@@ -478,7 +502,7 @@ queues a text for a phone.
   hears it, or none shown any more: kept in its memory, so every driver's on the first change
   since it started. As the two hours after the stop pass, so are the work conversations waiting,
   and every driver's, as any may have had a work phone at the stop, so the pages hear them stop
-  waiting, and that phone go: from Communications' own conversations, so Routes failing to read
+  waiting, and that phone go: from Dispatch Phone' own conversations, so Routes failing to read
   the day then never holds it up.
 - **Answering:** what someone at the DSP writes goes as written, nothing added, from the phone that
   last texted that number, else the one seen last, one online before any offline, with its
@@ -526,9 +550,9 @@ in their own direct message with the app, and their answers come back together.
   and a chip once picked, and each left out while it holds nobody: **Today**, everyone on a route
   on the DSP's own day, then each wave by when it starts, as Routes has read the day
   (`driver_routes`), while it's on and has read some; **Roles**, drivers, helpers and the office,
-  as Driver Match knows them; and with two or more workspaces where Communications works,
+  as Driver Match knows them; and with two or more workspaces where Dispatch Phone works,
   **Workspaces**, everyone and each workspace's. Today's and the roles' groups hold their people
-  in every workspace where Communications works; a workspace picked narrows them to it, and picked
+  in every workspace where Dispatch Phone works; a workspace picked narrows them to it, and picked
   alone is everyone in it; someone picked by name always gets it. Each person gets it once, by one
   of their accounts: the one picked by name, else the first in a workspace picked, the one last
   written in first. It's called what was picked: one pick's name, else theirs joined, someone by
@@ -543,9 +567,9 @@ in their own direct message with the app, and their answers come back together.
   asking Dispatch to slow down (429, Retry-After) is waited out as long as it says, up to two
   minutes, and beyond that tried again two minutes later; one to a workspace where Slack needs
   updating or reconnecting waits, uncounted, five minutes at a time; a try that fails is tried
-  again after a minute, five and fifteen, then given up; one to a workspace where Communications
+  again after a minute, five and fifteen, then given up; one to a workspace where Dispatch Phone
   no longer works, or someone no longer in it, isn't sent at all. None goes out more than two
-  hours after it was written, as while Communications was off: a wave running late has moved on,
+  hours after it was written, as while Dispatch Phone was off: a wave running late has moved on,
   so it's given up as too late, or as what it waited on, when that was Slack: no post starts
   past then, a photo's post tried again or a token renewed first included, and a post doesn't
   wait on Slack asking it to slow down. Each is kept until it's sent or
@@ -574,7 +598,7 @@ in their own direct message with the app, and their answers come back together.
   opens it.
 - **Its people,** in the profile's place: the group, who first sent it and when, and each of its
   people with what they do and whether they replied, or its latest message is sending, was sent
-  or wasn't and why (Not sent: too late, Slack needs updating, Slack disconnected, Communications
+  or wasn't and why (Not sent: too late, Slack needs updating, Slack disconnected, Dispatch Phone
   off in Slack, no longer in Slack, Slack refused it), each opening their own conversation.
 
 ## Messages in
@@ -592,8 +616,8 @@ in their own direct message with the app, and their answers come back together.
   of what it said before is kept, logged or read. Slack changing a message itself, as to show a
   link's preview, isn't an edit. An edit Slack tells of before its message, as when keeping the
   message failed and is tried again, keeps the message as edited, and the message told of after
-  doesn't change it back. A message kept is edited while Communications works there, though it
-  was sent before Communications was last switched on.
+  doesn't change it back. A message kept is edited while Dispatch Phone works there, though it
+  was sent before Dispatch Phone was last switched on.
 - **Told of:** what Slack tells of is kept once Slack has its answer; keeping it is tried again a
   second, five and thirty seconds after it fails, then left to catching up, the failure logged as
   `communications_heard_failed` with its DSP and code alone.
@@ -605,7 +629,7 @@ in their own direct message with the app, and their answers come back together.
   reading files or the workspace needs reconnecting. One of a workspace the DSP no longer has
   is tried again later each time, in case it's connected again, and then given up. Only files Slack hosts are downloaded, up to 100 MB; a larger one, or a link to
   elsewhere, keeps its name, type and size alone.
-- **Never before it was on:** a message is kept only if it was sent once Slack, Communications
+- **Never before it was on:** a message is kept only if it was sent once Slack, Dispatch Phone
   and its integration in that workspace were all on, the latest of the three
   (`feature_on_since`, and Slack's switch record or the workspace's connection): one Slack tells
   of late, or catching up finds, sent before then is left. Slack's other answer, while it's off,
@@ -626,7 +650,7 @@ in their own direct message with the app, and their answers come back together.
 
 ## GIFs
 
-A part of Communications switched on its own, `communications.gifs` (GIFs), off until the
+A part of Dispatch Phone switched on its own, `communications.gifs` (GIFs), off until the
 platform owner switches it on for a DSP; then, while the server has its KLIPY API key
 (`KLIPY_API_KEY`), **Choose GIF** under the plus opens KLIPY's GIFs where the emoji picker opens:
 trending ones until something is typed in **Search KLIPY**, then those KLIPY finds for it, in
@@ -657,7 +681,7 @@ never call it. GIFs go in a conversation, not yet to a group.
   away busy, and its note cleared. One Slack may have taken that wasn't kept, as when the server
   stopped between, is looked for in the direct message (`im:history`, every page since it was
   noted) by its note's ID: by the pass every minute, once no try holds it, which keeps it if
-  it's there and clears the note if not, while Communications works in its workspace, however
+  it's there and clears the note if not, while Dispatch Phone works in its workspace, however
   long that takes; or at once when its writer sends the same message, with the same photos,
   there again, which then keeps that post rather than post a second, or, not finding it, tries
   again under the same note, so whichever try Slack took is found. Each claims the note first:
@@ -671,7 +695,7 @@ never call it. GIFs go in a conversation, not yet to a group.
   address, the conversation's workspace first (`users.info`): Slack's own drawn photo isn't
   theirs. Each photo found, or found missing, is remembered in memory for an hour, never kept.
   With none, it goes under an image of their first and last initials, which Dispatch publishes
-  at a public address on the admin's (`/communications/initials/1/<letters>.png`), because
+  at a public address on the admin's (`/dispatch-phone/initials/1/<letters>.png`), because
   Slack shows a message's photo only from a web address: one or two capitals in Inter at weight
   600 on one of the dashboard's identity tones, and nothing else. `tooling/initials-glyphs.mjs`
   writes the letters' outlines (`backend/initials/glyphs.rs`) from the font the dashboard
@@ -684,9 +708,9 @@ never call it. GIFs go in a conversation, not yet to a group.
 - **Messaging first:** someone at the DSP opens a direct message with any active member of a
   workspace where it's on (`conversations.open`, `im:write`): the conversation it answers isn't
   listed until a message is in it, so the page holds it until then.
-- **Where it can't:** a conversation of a workspace Communications doesn't work in now, as one
+- **Where it can't:** a conversation of a workspace Dispatch Phone doesn't work in now, as one
   switched off there, needing reconnecting or disconnected, stays listed with its history; the
-  page writes only where its workspaces say Communications works (`on`), and sending there is
+  page writes only where its workspaces say Dispatch Phone works (`on`), and sending there is
   refused (`communications_off`).
 
 ## Waiting, Responded and Done
@@ -705,10 +729,10 @@ The page waits on `updates`, a long poll as the dashboard's other live pages use
 which answers once a change it hasn't seen is kept, or who is writing changes, or twenty seconds
 pass: each conversation changed, as it is now, how many wait, and the workspaces as they are, so
 the page follows one connected, updated, switched off or disconnected, and writes only where
-Communications works. A conversation changes with any
+Dispatch Phone works. A conversation changes with any
 of its messages, as one edited or a file kept, so a page with it open reads it again. Who at the DSP is writing in
 which conversation is kept in memory alone, each for six seconds after their page last said so
-(`typing`), or until they send, and shown to everyone else with Communications.
+(`typing`), or until they send, and shown to everyone else with Dispatch Phone.
 
 ## New messages
 
@@ -744,7 +768,7 @@ not; and with it closed, or on a phone, as a push (**Pushed**, below).
   stops, changing nothing more, once its page moves on to another DSP or member, or they choose
   again. Each message new in what waits, as above, as the server reads it again on each change to
   the DSP's conversations, goes to each browser kept of each member who has Notifications on and may
-  use Communications there then, as a session of theirs at the address they subscribed at would
+  use Dispatch Phone there then, as a session of theirs at the address they subscribed at would
   (their account, role, the DSP and its features as now), titled with who wrote it, saying what as
   the list shows it, and opening the conversation at that address; never the DSP's own. What waited
   when the server began watching the DSP goes nowhere. Pushes go apart from the change, a batch at a
@@ -801,7 +825,7 @@ Where to add:
 - **A kind of conversation:** its kind in the API, then `conversations/kinds.ts`, its party in
   `party.tsx` and `parties.tsx`, its section's `holds`, and its chip in `ElsewhereChips.tsx`.
 - **What the page says of the phones:** as phones offline, in `texting/`; managing them, in
-  `texting/phone/`. The phone side itself stays behind Communications' API.
+  `texting/phone/`. The phone side itself stays behind Dispatch Phone' API.
 - **How new messages alert:** `alerts/`.
 
 ## What it reads of other features
@@ -841,13 +865,13 @@ name's UTF-16 code units, for the page to mark.
 
 Behind `communications.use`:
 
-- `GET /api/dsp/communications`, with `team=<id>` for one workspace's answered conversations
+- `GET /api/dsp/dispatch-phone`, with `team=<id>` for one workspace's answered conversations
   alone: the conversations waiting, the longest waiting first, and the groups waiting, then the
   fifty latest answered conversations and groups of each section, Slack's, the numbers' and,
   with live route data, the work ones of any day, and whether older are left of each (`more`,
   `moreTexts`, `moreWork`) (one listed under a group is the group's, as its `groupId` says),
   with the DSP's workspaces (whether it works in each, the address of the app's Messages tab
-  there, `chatLink`, whether, on there, it needs updating for what Communications uses,
+  there, `chatLink`, whether, on there, it needs updating for what Dispatch Phone uses,
   `needsUpdate`, and the version of its logo, `logo`, none without one), who is typing, each
   with their person and photo, and the latest change (`revision`).
 - `GET …/quick-replies`: the DSP's quick replies, in their order, and their `revision`;
@@ -941,10 +965,10 @@ Behind `communications.use`:
 - `GET …/workspaces/{team}/logo?v=<logo>`: a workspace's logo, the copy Slack keeps of it, read
   through Slack's `kit`; the browser keeps it until its version changes.
 
-Behind `phones.manage` or `connections.manage`, while Communications is on (`not_found`
+Behind `phones.manage` or `connections.manage`, while Dispatch Phone is on (`not_found`
 otherwise), the phones' card's:
 
-- `GET /api/dsp/communications/phones`: the DSP's phones, those removed left out, in the order
+- `GET /api/dsp/dispatch-phone/phones`: the DSP's phones, those removed left out, in the order
   paired, each with what needs attention on it (`health`), none from an app that never said.
 - `POST …/phones/pairing`: a new code to pair the next phone, in place of any shown before, with
   its picture and when it expires.
@@ -952,9 +976,9 @@ otherwise), the phones' card's:
 - `POST …/phones/{id}/rename` (`name`, up to 60 characters), and `…/remove`, its access checked
   again as it's removed.
 
-Public, on the admin's address: `GET /communications/initials/1/{letters}.png`. Public to the
+Public, on the admin's address: `GET /dispatch-phone/initials/1/{letters}.png`. Public to the
 server, at a DSP's own address, by a phone's key, the phones' own:
-`/api/communications/phone/{pair,outbox,texts,statuses,files/{id},files/{id}/preview,files/{id}/gone}`, as their
+`/api/dispatch-phone/phone/{pair,outbox,texts,statuses,files/{id},files/{id}/preview,files/{id}/gone}`, as their
 [protocol reference](api/phone/README.md) says.
 
 ## Data and upkeep
@@ -992,7 +1016,7 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   with their revision, in its `settings` table under `communications.quick_replies`. For pushes,
   `communications_push` (each browser a member is told in, by where its pushes go, with the keys
   they're encrypted for and the address it was subscribed at: migration 18), kept until it's let
-  go of. The phone side's, as Phones made them before Communications adopted them (its migrations
+  go of. The phone side's, as Phones made them before Dispatch Phone adopted them (its migrations
   7 and 8, which find them made on a database Phones migrated, and leave Phones' own records of
   its migrations as they were): `phones_devices` (each phone, by its key's SHA-256, and how it last
   said it stands, `health`, migration 14), `phones_pairings` (the code that pairs the
@@ -1037,13 +1061,13 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   place or a removal that failed leaves, and of bytes left arriving an hour, as a restart leaves,
   each on its own: one that fails, logged as `communications_tidy_failed` with its DSP and job,
   leaves the rest to go, and is tried again the next hour. And the phone side's, hourly, in each DSP with
-  Communications on: letting go of pictures added and never sent within a day; of bytes no file
+  Dispatch Phone on: letting go of pictures added and never sent within a day; of bytes no file
   keeps, as bytes sent again in place of others and a removal that failed leave, and of bytes left
   arriving an hour, as a restart leaves, each on its own; and of codes expired. Each of these jobs
   runs on its own too: one that fails, logged as `phones_tidy_failed` with its DSP and job, leaves
   the rest to run, and is tried again the next hour. Either's letting go of bytes lets go of their
   cached copies and previews too, and of previews left being made an hour, as a restart leaves.
-  And hourly, with an object store, in each DSP with Communications on, for each store of bytes
+  And hourly, with an object store, in each DSP with Dispatch Phone on, for each store of bytes
   (`copies`): letting go of what the object store keeps that no file does, once a day, as listing
   it is paid for by the page; then copying what waits in the DSP's data to it, a hundred at a
   time, keeping the cache within its limit after each hundred, and, once `R2_ONLY` is set, making
@@ -1051,12 +1075,12 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   the cache within its limit. Each on its own: one that fails, logged as
   `communications_copies_failed` with its DSP, store and job, is tried again the next hour, its
   bytes still waiting in the DSP's data, and R2 being down or slow holds up no text or message.
-  And every minute, while the server pushes, each DSP with Communications on and a browser kept
+  And every minute, while the server pushes, each DSP with Dispatch Phone on and a browser kept
   is watched for what to push, as after a restart; one whose pushes fail is logged as
   `communications_push_failed` with its DSP, and one a push service refused twice as
   `communications_push_refused` with its status, never its address.
 - **Fixture mode** never calls Slack: Slack's fixture answers what Slack itself calls, and
-  `integrations/messages/fixture.rs` what only Communications does. Each member's direct
+  `integrations/messages/fixture.rs` what only Dispatch Phone does. Each member's direct
   message with the app is `D` and the rest of their ID, and holds what the app posted there, as
   Slack lists it; Jordan Ellis's holds what they wrote while Dispatch wasn't listening, for
   catching up: a message, a photo, a question with a reply in its thread, the app's own answer,
@@ -1074,7 +1098,7 @@ server, at a DSP's own address, by a phone's key, the phones' own:
 
 ## Conversation window protocol
 
-`GET /api/dsp/communications/conversations/{id}/window`, under `communications.use`, answers with
+`GET /api/dsp/dispatch-phone/conversations/{id}/window`, under `communications.use`, answers with
 one window of a conversation, at most 150 of its messages, oldest first, and, apart from it, the
 conversation's latest 50. The page reads a conversation through it, holding that window and the
 latest 50 in place of every page it loaded; while a conversation's origins aren't ready, and for
@@ -1088,8 +1112,8 @@ another shares one message with it. A token is a place, never a grant: it's seal
 platform's key for its DSP, conversation and version of the protocol, and every request checks
 the session, the feature, the role and the conversation again.
 
-Each answer reads the messages kept, their files and Communications' revision in one transaction
-on the DSP's database. The revision, a decimal number, is opaque: it covers Communications' data,
+Each answer reads the messages kept, their files and Dispatch Phone' revision in one transaction
+on the DSP's database. The revision, a decimal number, is opaque: it covers Dispatch Phone' data,
 not routes or who people are, and holds no history still between requests. A token of an earlier
 revision is answered from what's kept now at its place, with `rebased` set; whoever reads the
 answer replaces the whole window, set or not. One of a revision ahead of the database is refused
@@ -1140,7 +1164,7 @@ ready, a set with no messages has none of these (null); while it isn't, `ready` 
 origin is never a message, a token, a receipt or a sign that someone replied. The page asks for
 origins with every window it reads.
 
-The index is Communications' own (migration 22): by the DSP's timezone, where each run, day and
+The index is Dispatch Phone' own (migration 22): by the DSP's timezone, where each run, day and
 sender starts in a conversation, and only those (`communications_slack_origins`,
 `communications_text_origins`); how far each conversation's stands (`communications_origin_state`);
 where a build has reached, so it goes on from there (`communications_origin_builds`); and one row
@@ -1155,7 +1179,7 @@ body, status or file changes no run or day: an origin's name, face, group's name
 are read from whoever holds them now, as it's read.
 
 Upkeep builds it, every minute, in bookkeeping turns that check the DSP is active and
-Communications on there, so no cached read of anything else is let go. A pass visits at most eight
+Dispatch Phone on there, so no cached read of anything else is let go. A pass visits at most eight
 conversations of each transport at a DSP, going on from where the last stopped, a place kept in the
 database, and reads one chunk of 256 rows' metadata at each. A build starts over once the DSP's
 timezone, the algorithm, or a source epoch it didn't count changes. One known insertion, or a
