@@ -23,7 +23,11 @@ async function custom(page: Page, dispatch: Dispatch, hold = false) {
   const entry = `/assets/custom-${own.code}-fuel-log-12345678.js`;
   const style = `/assets/custom-${own.code}-fuel-log-12345678.css`;
   const lazy = `/assets/custom-${own.code}-fuel-page-12345678.js`;
-  const module = `export const feature = { name: '${id}', routes: [{
+  const module = `const sourceStyle = document.createElement('style');
+    sourceStyle.dataset.viteDevId = '/features/custom/${own.code}/fuel_log/frontend/feature.css';
+    sourceStyle.textContent = ':root { --owner-vite-style: 1; }';
+    document.head.append(sourceStyle);
+    export const feature = { name: '${id}', routes: [{
     id: '${routeId}', scope: 'dsp', label: 'Fuel Log', nav: true, feature: '${id}',
     permission: ({view}) => view.permissions.includes('${id}.view'),
     preload: () => import('${lazy}'), render: () => 'Fuel entries'
@@ -96,6 +100,11 @@ test('an owner sees the custom page and role choice while another DSP receives n
       ),
     )
     .toBe('1');
+  expect(
+    await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--owner-vite-style').trim(),
+    ),
+  ).toBe('1');
   await page.getByRole('link', { name: 'Team & Roles', exact: true }).click();
   await page.getByRole('tab', { name: 'Roles', exact: true }).click();
   await page.getByRole('button', { name: 'Create role', exact: true }).click();
@@ -115,6 +124,31 @@ test('an owner sees the custom page and role choice while another DSP receives n
       ),
     )
     .toBe('');
+  expect(
+    await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--owner-vite-style').trim(),
+    ),
+  ).toBe('');
+  // Native module imports are cached. Re-entering must restore the detached development
+  // styles without executing the module again, then remove them on the next boundary.
+  await page.getByRole('button', { name: 'Exit view', exact: true }).click();
+  await openDsp(page, 'Northline Logistics');
+  await expect(link).toBeVisible();
+  expect(
+    await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--owner-vite-style').trim(),
+    ),
+  ).toBe('1');
+  await page.getByRole('button', { name: 'Exit view', exact: true }).click();
+  await openDsp(page, 'Summit Delivery');
+  await expect(page.getByRole('region', { name: 'DSP viewing mode', exact: true })).toContainText(
+    'Summit Delivery',
+  );
+  expect(
+    await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--owner-vite-style').trim(),
+    ),
+  ).toBe('');
 
   // A real, separate DSP account gives the foreign browser no platform-owner exception.
   const created = await feature.platform.post('/api/platform/dsps', {
@@ -203,6 +237,11 @@ test('a delayed custom import cannot install its page or styles into the next DS
   }, feature.entry);
   await expect(page.getByRole('link', { name: 'Fuel Log', exact: true })).toHaveCount(0);
   await expect(page.getByText('Fuel entries', { exact: true })).toHaveCount(0);
+  expect(
+    await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--owner-vite-style').trim(),
+    ),
+  ).toBe('');
   expect(
     await page.evaluate(() =>
       [...document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')].some((link) =>
