@@ -3,7 +3,12 @@ import { Check, UserPlus } from 'lucide-react';
 import type { Conversation, Correspondent, RouteDriver } from '../../api/index.js';
 import { addToPerson, saveContact, useTextPeople } from '../../api/client.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
-import { Loading, Modal, Popover, SearchInput } from '../../../../core/shell/frontend/ui/index.js';
+import {
+  Loading,
+  Popover,
+  SaveChangesDialog,
+  SearchInput,
+} from '../../../../core/shell/frontend/ui/index.js';
 import { Face } from '../shared/Face.js';
 import { ListEmpty } from '../shared/List.js';
 import { Segments } from '../shared/Segments.js';
@@ -127,23 +132,12 @@ export function SaveContact({
         )}
       </Popover>
       {confirming && (
-        <Modal title="Save changes?" dismissible={false} onClose={() => {}}>
-          <div className="form-actions">
-            <button type="button" onClick={closed}>
-              Discard changes
-            </button>
-            <button
-              type="button"
-              className="primary"
-              disabled={!saveable(unsaved)}
-              onClick={async () => {
-                if (!(await save.run(unsaved))) setConfirming(false);
-              }}
-            >
-              Save changes
-            </button>
-          </div>
-        </Modal>
+        <SaveChangesDialog
+          saveable={saveable(unsaved)}
+          discard={closed}
+          save={() => save.run(unsaved)}
+          stay={() => setConfirming(false)}
+        />
       )}
     </>
   );

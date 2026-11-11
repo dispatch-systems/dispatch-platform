@@ -5,7 +5,7 @@ import {
   type Permission,
   type Role,
 } from '../../../core/accounts/api/index.js';
-import { Modal } from '../../../core/shell/frontend/ui/index.js';
+import { Modal, SaveChangesDialog } from '../../../core/shell/frontend/ui/index.js';
 import {
   can,
   impliedPermissions as implied,
@@ -116,24 +116,14 @@ export function RoleSheet({
         </div>
       </form>
       {confirming && (
-        <Modal title="Save changes?" dismissible={false} onClose={() => {}}>
-          <p>This role has unsaved changes.</p>
-          <div className="form-actions">
-            <button type="button" onClick={close}>
-              Discard changes
-            </button>
-            <button
-              type="button"
-              className="primary"
-              disabled={save.busy || !name.trim()}
-              onClick={async () => {
-                if (!(await save.run())) setConfirming(false);
-              }}
-            >
-              Save changes
-            </button>
-          </div>
-        </Modal>
+        <SaveChangesDialog
+          saveable={!save.busy && Boolean(name.trim())}
+          discard={close}
+          save={save.run}
+          stay={() => setConfirming(false)}
+        >
+          This role has unsaved changes.
+        </SaveChangesDialog>
       )}
     </Modal>
   );

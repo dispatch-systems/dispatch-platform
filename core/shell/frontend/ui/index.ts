@@ -14,6 +14,7 @@ export { Modal } from './Modal.js';
 export { PageBadge } from './PageBadge.js';
 export { Pagination } from './Pagination.js';
 export { Popover, openContextMenu } from './Popover.js';
+export { SaveChangesDialog } from './SaveChangesDialog.js';
 export { SearchInput } from './SearchInput.js';
 export { SidebarHead } from './SidebarHead.js';
 export { RecoveryCodes } from './RecoveryCodes.js';

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useAction } from '../../../../../core/shell/frontend/runtime/useAction.js';
-import { Modal } from '../../../../../core/shell/frontend/ui/index.js';
+import { Modal, SaveChangesDialog } from '../../../../../core/shell/frontend/ui/index.js';
 import { renamePhone } from '../../../api/client.js';
 import type { PhoneRow } from '../../../api/index.js';
 
@@ -58,23 +58,12 @@ export function RenameDialog({
         </div>
       </form>
       {confirming && (
-        <Modal title="Save changes?" dismissible={false} onClose={() => {}}>
-          <div className="form-actions">
-            <button type="button" onClick={() => onClose(renamed.current)}>
-              Discard changes
-            </button>
-            <button
-              type="button"
-              className="primary"
-              disabled={rename.busy || !name.trim()}
-              onClick={async () => {
-                if (!(await save())) setConfirming(false);
-              }}
-            >
-              Save changes
-            </button>
-          </div>
-        </Modal>
+        <SaveChangesDialog
+          saveable={!rename.busy && Boolean(name.trim())}
+          discard={() => onClose(renamed.current)}
+          save={save}
+          stay={() => setConfirming(false)}
+        />
       )}
     </Modal>
   );
