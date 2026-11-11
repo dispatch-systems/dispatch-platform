@@ -20,6 +20,7 @@ import type {
   PaycomSettings,
 } from './index.js';
 import {
+  employeesUrl,
   dailyTimecardsUrl,
   dailyPageUrl,
   mealPageUrl,
@@ -100,12 +101,7 @@ export const useEmployees = (
   descending: boolean,
   refreshKey: string,
   page = 0,
-) =>
-  useCachedData<EmployeesResponse>(
-    `/api/dsp/employees?q=${encodeURIComponent(query)}&status=${status}&limit=${performancePolicy.employeePageSize}&offset=${page * performancePolicy.employeePageSize}&direction=${descending ? 'desc' : 'asc'}`,
-    0,
-    refreshKey,
-  );
+) => useCachedData<EmployeesResponse>(employeesUrl(query, status, descending, page), 0, refreshKey);
 export const useDailyTimecards = (url: string, refreshKey?: string | null) =>
   useCachedData<DailyTimecardPage>(url, performancePolicy.recoveryPollMs, refreshKey);
 export const useMealComparison = (url: string, refreshKey?: string | null) =>

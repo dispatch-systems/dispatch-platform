@@ -4,7 +4,7 @@ import { readUpdateState } from '../../../core/shell/frontend/runtime/navigation
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import {
   dailyPageUrl,
-  employeesPath,
+  employeesUrl,
   employeeTimecardUrl,
   mealPageUrl,
   paycomSettingsPath,
@@ -13,8 +13,8 @@ import { hasFeature } from '../../../core/shell/frontend/runtime/features.js';
 import { dspHash } from '../../../core/shell/frontend/runtime/navigation.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import { admitted, warm } from '../../../core/shell/frontend/runtime/route-prefetch.js';
-import { performancePolicy } from '../../../core/shell/frontend/lib/performance-policy.js';
 import { selectedPaycomDate } from './paycom-date.js';
+import { selectedTimecardTab } from './tabs.js';
 
 // What the Timecard reads first, so that its selected tab's data starts with its code.
 
@@ -37,10 +37,7 @@ function timecardUrls(tab: string, date: string, view: DspView): string[] {
     const status = readUpdateState('employee-status', 'all', hash);
     const page = readUpdateState('employee-page', 0, hash);
     const desc = readUpdateState('employee-sort-desc', false, hash);
-    const directoryUrl =
-      `${employeesPath}?q=${encodeURIComponent(query)}&status=${status}` +
-      `&limit=${performancePolicy.employeePageSize}&offset=${page * performancePolicy.employeePageSize}` +
-      `&direction=${desc ? 'desc' : 'asc'}`;
+    const directoryUrl = employeesUrl(query, status, desc, page);
     urls.push(directoryUrl);
     const selection = readUpdateState<
       { code: string; period?: { from: string; to: string } | null } | undefined
@@ -58,21 +55,6 @@ function timecardUrls(tab: string, date: string, view: DspView): string[] {
 
 export function prefetchTimecardTab(tab: string, date: string, view: DspView, immediate = false) {
   warm(timecardUrls(tab, date, view), 'route:paycom', immediate);
-}
-
-function selectedTimecardTab(view: DspView) {
-  const preferred = readUpdateState<string | undefined>(
-    'paycom-tab',
-    undefined,
-    dspHash(view.dsp.id, 'paycom'),
-  );
-  const choices = [
-    ['timecards', 'timecard.daily'],
-    ['meal-breaks', 'timecard.meal_breaks'],
-    ['employees', 'timecard.employees'],
-  ] as const;
-  const shown = choices.filter(([, feature]) => hasFeature(view, feature));
-  return shown.find(([tab]) => tab === preferred)?.[0] ?? shown[0]?.[0];
 }
 
 /** A warm return may commit immediately only when every selected read belongs to this admission. */
