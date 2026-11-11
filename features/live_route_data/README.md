@@ -69,8 +69,9 @@ through core's live readers (`core/collection/backend/readers/`), never as jobs.
   next attempt without opening a browser, including when that was its first native read.
   Longer cooldowns return promptly instead of occupying a shared live-read turn; short retries
   share a thirty-second wait budget. Cancelling a read during that cooldown keeps its reader
-  too; a changed connection or scope still discards it. Normal reads keep their parallelism
-  and the configured schedule.
+  too. Before native requests resume, the connection revision and complete current route request
+  are checked again, including provider, service area and discovery identity; a change discards
+  the reader. Normal reads keep their parallelism and the configured schedule.
 - **Records:** each read in the jobs database's `live_reads` (core's), with counts and codes only.
   A read the browsers' memory turned away is tried once more within its slot, which keeps the
   retry's record once it reads, and the first try's otherwise (core's).

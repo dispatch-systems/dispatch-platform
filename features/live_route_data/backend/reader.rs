@@ -352,13 +352,7 @@ fn authorize(
                         409,
                     )?;
                     let current = dispatch_routes::live_request(db, &dsp)?;
-                    dispatch_core::ensure(
-                        current.date == request.date
-                            && current.station == request.station
-                            && current.timezone == request.timezone,
-                        "routes_scope_mismatch",
-                        409,
-                    )
+                    dispatch_core::ensure(current == request, "routes_scope_mismatch", 409)
                 })
                 .await
         })
