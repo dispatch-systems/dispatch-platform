@@ -161,6 +161,26 @@ export const disconnectSlack = (team: string) =>
   call<SlackAccount>(`/api/dsp/slack/workspaces/${encodeURIComponent(team)}/disconnect`, {});
 export const workspaceUrl = (team: string) =>
   `/api/dsp/slack/workspaces/${encodeURIComponent(team)}`;
+/** An integration's live readings: polled every 10 seconds and refreshed after its own writes. */
+export function integrationReading<T>(path: string) {
+  const readers = new Set<() => void>();
+  function useReading(team: string) {
+    const url = `${workspaceUrl(team)}/${path}`;
+    const read = useCallback((signal: AbortSignal) => call<T>(url, undefined, signal), [url]);
+    const reading = useData<T>(url, 10000, undefined, undefined, false, read);
+    const { refresh } = reading;
+    useEffect(() => {
+      readers.add(refresh);
+      return () => void readers.delete(refresh);
+    }, [refresh]);
+    return reading;
+  }
+  const changed = (answer: T) => {
+    for (const read of readers) read();
+    return answer;
+  };
+  return { useReading, changed };
+}
 /** The address of the workspace `team`'s logo, at its `version`, which it carries. */
 export const workspaceLogoUrl = (team: string, version: string) =>
   `${workspaceUrl(team)}/logo?v=${version}`;
