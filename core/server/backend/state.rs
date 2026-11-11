@@ -134,7 +134,7 @@ impl State {
             .transpose()?;
         Ok(Arc::new(Self {
             key: store.key.clone(),
-            assets: http::assets(&config.dashboard, &config.release)?,
+            assets: http::assets(&config.dashboard, &config.release, config.environment)?,
             config,
             db_slots: Arc::new(Semaphore::new(DB_SLOTS)),
             background_slots: Arc::new(Semaphore::new(BACKGROUND_SLOTS)),

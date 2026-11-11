@@ -1,5 +1,8 @@
 //! The built dashboard, loaded once and served from memory.
-use crate::{Error, Result, State, ensure, foundation::crypto};
+use crate::{
+    Error, Result, State, ensure,
+    foundation::{config::Environment, crypto},
+};
 use axum::{
     body::Body,
     http::{HeaderMap, Method, StatusCode},
@@ -45,7 +48,11 @@ pub struct Asset {
 }
 // Artifacts are immutable for the process lifetime. Deployment restarts the core.
 // Load once so both GET and HEAD need no filesystem work on the request path.
-pub fn assets(root: &std::path::Path, release: &str) -> Result<HashMap<String, Asset>> {
+pub fn assets(
+    root: &std::path::Path,
+    release: &str,
+    environment: Environment,
+) -> Result<HashMap<String, Asset>> {
     // The service worker serves the pages of the address it's at and below: it's at the root.
     let mut files = vec![
         ("/".to_owned(), root.join("index.html")),
@@ -78,7 +85,12 @@ pub fn assets(root: &std::path::Path, release: &str) -> Result<HashMap<String, A
         }
         let mut bytes = std::fs::read(&file)?;
         if route == "/" {
-            let html = String::from_utf8_lossy(&bytes);
+            let mut html = String::from_utf8_lossy(&bytes).into_owned();
+            // The page names Dev's yellow tab icon; Production's is blue, so the two are never
+            // mistaken for each other.
+            if environment.is_production() {
+                html = html.replace("/assets/favicon-dev.", "/assets/favicon.");
+            }
             bytes = html
                 .replacen(
                     "</head>",
