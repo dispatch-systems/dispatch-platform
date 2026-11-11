@@ -216,3 +216,25 @@ test('Documents route warming supplies the same custom reader and logical cache 
   assert.equal(reading.revision, revision);
   assert.equal(dataCache.peek(documentsFolderUrl()).data, reading);
 });
+
+test('optimistic folder contents keep server order when names or modification times tie', () => {
+  const files = [item('file-a', null), item('file-b', null)];
+  const folders = [item('folder-a', 0), item('folder-b', 0)].map((folder) => ({
+    ...folder,
+    name: 'Same name',
+  }));
+  const expected = [...folders, ...files];
+  const pending: Pending[] = [
+    {
+      key: 'move',
+      change: 'moved',
+      item: files[1]!,
+      folder: 'elsewhere',
+      to: undefined,
+    },
+  ];
+  // A moved file starts in the optimistic arrivals, then joins the server reading.
+  for (const reading of [[...folders, files[0]!], expected]) {
+    assert.deepEqual(overlaid(reading, pending, undefined, false), expected);
+  }
+});
