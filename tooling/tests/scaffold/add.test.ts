@@ -384,6 +384,10 @@ test('add resolves a custom stable id into its owner folder and refuses an expos
     fs.mkdirSync(path.dirname(path.join(copy, file)), { recursive: true });
     fs.writeFileSync(path.join(copy, file), text);
   }
+  // Generate writes this metadata even before the feature declares an API.
+  const metadata = path.join(copy, 'features/custom/dsp42/fuel_log/api/generated');
+  fs.mkdirSync(metadata, { recursive: true });
+  fs.writeFileSync(path.join(metadata, 'private-catalog.ts'), 'export const peopleKinds = [];\n');
   const added = (await planAdd(copy, ['api', '--to', 'dsp42_fuel_log'])).plan;
   assert(added.files.has('features/custom/dsp42/fuel_log/api/routes.rs'));
   assert.match(file(added, 'features/custom/dsp42/fuel_log/api/routes.rs'), /dsp42-fuel-log/);
