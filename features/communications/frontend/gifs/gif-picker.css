@@ -1,44 +1,8 @@
 /* KLIPY's GIFs over the thread, at the box's left edge, as the emoji picker opens; on a phone,
    the composer's width. */
 .gif-panel {
-  position: absolute;
-  bottom: 100%;
-  left: var(--side);
-  z-index: 20;
-  display: flex;
-  flex-direction: column;
   width: min(calc(340px * var(--scale)), calc(100% - 2 * var(--side)));
   height: min(calc(420px * var(--scale)), 70vh);
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--popover);
-  color: var(--popover-foreground);
-  box-shadow: 0 10px 30px #0004;
-}
-.gif-search {
-  display: flex;
-  flex-direction: row;
-  flex-shrink: 0;
-  align-items: center;
-  gap: 6px;
-  margin: 8px;
-  padding: 0 10px;
-  border-radius: 8px;
-  background: var(--muted);
-  color: var(--muted-foreground);
-}
-.gif-search input {
-  flex: 1;
-  min-width: 0;
-  height: calc(32px * var(--scale));
-  min-height: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  outline: none;
-  color: var(--foreground);
-  font-size: var(--typed-size);
 }
 .gif-grid {
   display: flex;
