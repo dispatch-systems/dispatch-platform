@@ -29,9 +29,8 @@ and weeks, so it's best submitted well before the limit.
   its files', pictures' and copies' memory goes (`deleting.forgotten`), with none kept of
   what was under way. Behind `documents.use` too:
   `GET /api/dsp/documents/folder` (a folder and what it holds, or with `q`, what a search inside
-  it found), `GET …/folder/read` (the same, or that it hasn't changed), `GET …/query` and
-  `…/query/describe` (the same, a page at a time), `POST …/new` (a folder, Doc, Sheet or
-  Slides), `POST …/upload` (a file, up to 100 MB), `GET …/items/{id}/download` and
+  it found), `GET …/folder/read` (the same, or that it hasn't changed), `POST …/new` (a folder,
+  Doc, Sheet or Slides), `POST …/upload` (a file, up to 100 MB), `GET …/items/{id}/download` and
   `…/items/{id}/thumbnail`, and `POST …/items/{id}/rename`, `…/move` and `…/trash`. Behind
   `documents.use` as well, for a member's own Google account:
   `POST /api/dsp/documents/link` and `…/link/finish`, and `POST /api/dsp/documents/add`, for
