@@ -29,7 +29,11 @@ import { openView, saveRole } from '../../core/shell/frontend/runtime/session.js
 import { getSession } from '../../core/shell/frontend/runtime/endpoints.js';
 import { cancelPrefetches } from '../../core/shell/frontend/runtime/prefetch.js';
 import { verified } from '../../core/shell/frontend/runtime/access-recovery.js';
-import { clearCustomFeatures, prepareCustomFeatures } from './custom-features.js';
+import {
+  clearCustomFeatures,
+  prepareCustomFeatures,
+  setPlatformCustomStyles,
+} from './custom-features.js';
 import { clearPlatformFeatures, preparePlatformFeatures } from './platform-features.js';
 
 type Session = SessionView;
@@ -172,7 +176,10 @@ export function useAppAdmission(
         // A lazy security screen may not have committed the newly accepted session yet.
         // Dropping the DSP view must preserve that session's live CSRF credential.
         credentials(activeCsrf);
-        if (!opening) clearCustomFeatures();
+        if (!opening) {
+          setPlatformCustomStyles(false);
+          clearCustomFeatures();
+        }
         setView(undefined);
         setSwitching(Boolean(next.dspId && current.session && (!sameWorkspace || opening)));
         setAddress(next);
@@ -200,6 +207,12 @@ export function useAppAdmission(
     };
   }, [load]);
   const { dspId, page } = address;
+  useLayoutEffect(() => {
+    setPlatformCustomStyles(
+      Boolean(session?.platformFrontend) && !dspId && !showAuth && !securityRequired,
+    );
+    return () => setPlatformCustomStyles(false);
+  }, [session, dspId, showAuth, securityRequired]);
   useEffect(() => {
     if (session && !showAuth && !securityRequired)
       void prepareRoute(

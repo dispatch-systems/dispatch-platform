@@ -1,3 +1,4 @@
+import { setPlatformCustomStyles } from './custom-features.js';
 import type { SessionView } from '../../core/accounts/api/index.js';
 import {
   installCustomPlatformFeatures,
@@ -13,6 +14,7 @@ let generation = 0;
 
 export function clearPlatformFeatures() {
   generation++;
+  setPlatformCustomStyles(false);
   installCustomPlatformFeatures();
 }
 

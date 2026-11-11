@@ -28,6 +28,7 @@ async function custom(page: Page, dispatch: Dispatch, hold = false) {
   const routeId = `${own.code}-fuel-log`;
   const entry = `/assets/custom-${own.code}-fuel-log-12345678.js`;
   const platformEntry = '/assets/owner-browser-catalog-12345678.js';
+  const platformStyle = `/assets/custom-${own.code}-platform-12345678.css`;
   const style = `/assets/custom-${own.code}-fuel-log-12345678.css`;
   const lazy = `/assets/custom-${own.code}-fuel-page-12345678.js`;
   let authenticated = false;
@@ -65,10 +66,23 @@ async function custom(page: Page, dispatch: Dispatch, hold = false) {
       contentType: 'text/javascript',
       body: `export const featureLabels = ${JSON.stringify({ [id]: 'Fuel Log' })};
       export const permissionLabels = ${JSON.stringify({ [`${id}.view`]: 'View Fuel Log' })};
-      export const features = [{ name: ${JSON.stringify(id)}, platformSlots: async () => ({ slots: {
+      export const features = [{ name: ${JSON.stringify(id)}, platformSlots: async () => {
+        const style = document.createElement('style');
+        style.dataset.viteDevId = '/features/custom/${own.code}/fuel_log/frontend/platform.css';
+        style.textContent = ':root { --owner-platform-source: 1; }';
+        document.head.append(style);
+        await new Promise((resolve) => {
+          const link = document.createElement('link');
+          link.rel = 'stylesheet'; link.href = ${JSON.stringify(platformStyle)};
+          link.onload = resolve; document.head.append(link);
+        });
+        return { slots: {
         auditWording: { phrases: { ${JSON.stringify(`${id}.recorded`)}: () => ['logged fuel'] } }
-      } }) }];`,
+      } }; } }];`,
     }),
+  );
+  await page.route(`**${platformStyle}`, (route) =>
+    route.fulfill({ contentType: 'text/css', body: ':root { --owner-platform-style: 1; }' }),
   );
   await page.route('**/api/platform/audit?*', (route) =>
     route.fulfill({
@@ -318,6 +332,14 @@ test('an owner sees the custom page and role choice while another DSP receives n
   await expect(page.getByRole('listitem').filter({ hasText: 'enabled Fuel Log' })).toContainText(
     'View Fuel Log',
   );
+  expect(
+    await page.evaluate(() => {
+      const style = getComputedStyle(document.documentElement);
+      return ['--owner-platform-source', '--owner-platform-style'].map((name) =>
+        style.getPropertyValue(name).trim(),
+      );
+    }),
+  ).toEqual(['1', '1']);
 });
 
 test('a delayed custom import cannot install its page or styles into the next DSP', async ({

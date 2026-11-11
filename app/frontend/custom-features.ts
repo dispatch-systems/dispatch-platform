@@ -17,6 +17,9 @@ type Loaded = PeopleDescriptors & {
 let pending = new AbortController();
 const styles = new Set<HTMLLinkElement>();
 let activeSources = new Set<string>();
+let activeStyles = new Set<string>();
+let platformStyles = false;
+const cachedStyles = new Map<string, HTMLLinkElement>();
 let sourceObserver: MutationObserver | undefined;
 
 /** Vite keeps source CSS in style tags and caches its modules. Retain those tags for HMR
@@ -25,8 +28,28 @@ function sourceStyles() {
   document.querySelectorAll<HTMLStyleElement>('style[data-vite-dev-id]').forEach((style) => {
     const file = style.dataset.viteDevId?.replaceAll('\\', '/') ?? '';
     const feature = /\/features\/custom\/([a-z0-9]+)\/([a-z][a-z0-9_]*)\//.exec(file);
-    if (feature) style.media = activeSources.has(`${feature[1]}_${feature[2]}`) ? 'all' : 'not all';
+    if (feature)
+      style.media =
+        platformStyles || activeSources.has(`${feature[1]}_${feature[2]}`) ? 'all' : 'not all';
   });
+  document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]').forEach((style) => {
+    if (!new URL(style.href).pathname.startsWith('/assets/custom-')) return;
+    // Admission stages its own styles with media disabled until its view commits.
+    if (styles.has(style) && !activeStyles.has(style.href)) return;
+    cachedStyles.set(style.href, style);
+    style.media = platformStyles || activeStyles.has(style.href) ? 'all' : 'not all';
+  });
+  if (platformStyles)
+    for (const style of cachedStyles.values()) {
+      style.media = 'all';
+      if (!style.isConnected) document.head.append(style);
+    }
+}
+/** Platform slots can belong to any owner, but their styles apply only on platform pages. */
+export function setPlatformCustomStyles(active: boolean) {
+  platformStyles = active;
+  watchSourceStyles();
+  sourceStyles();
 }
 function watchSourceStyles() {
   if (sourceObserver) return;
@@ -41,14 +64,21 @@ export function clearCustomFeatures() {
   pending.abort();
   pending = new AbortController();
   activeSources = new Set();
+  activeStyles = new Set();
   watchSourceStyles();
   sourceStyles();
   for (const style of styles) style.remove();
   styles.clear();
   // Vite may have loaded a private page's CSS along with its lazy component.
   document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]').forEach((style) => {
-    if (new URL(style.href).pathname.startsWith('/assets/custom-')) style.remove();
+    if (!new URL(style.href).pathname.startsWith('/assets/custom-')) return;
+    cachedStyles.set(style.href, style);
+    style.media = 'not all';
+    // A lazy slot may still be waiting for this link's load event. Detaching it before
+    // it finishes would leave the cached module's promise pending forever.
+    if (style.sheet) style.remove();
   });
+  sourceStyles();
   installCustomFeatures([]);
   installCustomCatalog();
   installCustomPermissions();
@@ -118,6 +148,8 @@ export async function prepareCustomFeatures(view: DspView, current: () => boolea
     installCustomPeople(modules);
     installCustomFeatures(modules.map((module) => module.feature));
     activeSources = new Set(entries.map((entry) => entry.name));
+    activeStyles = new Set(css.map((style) => style.href));
+    for (const style of css) cachedStyles.set(style.href, style);
     sourceStyles();
     for (const style of css) style.media = 'all';
   };
