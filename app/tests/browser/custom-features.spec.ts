@@ -12,12 +12,17 @@ import {
 } from '../../../core/shell/tests/support/fixtures.js';
 import { capturedMail } from '../../../core/shell/tests/support/mail-support.js';
 
+const OWNER_CODE = 'fscl';
+
 // The server's owner metadata and private-asset access have HTTP coverage; the build has a
 // real two-owner bundle test. This stand-in exercises their browser admission and slots
 // without adding a custom feature to the product build.
 async function custom(page: Page, dispatch: Dispatch, hold = false) {
   const platform = await dispatch.client();
   const own = platform.session.dsps.find((dsp: { code: string }) => dsp.code === demo.memberDsp);
+  const coded = await platform.post(`/api/platform/dsps/${own.id}/code`, { code: OWNER_CODE });
+  expect(coded.status).toBe(200);
+  own.code = OWNER_CODE;
   const id = `${own.code}_fuel_log`;
   const routeId = `${own.code}-fuel-log`;
   const entry = `/assets/custom-${own.code}-fuel-log-12345678.js`;
