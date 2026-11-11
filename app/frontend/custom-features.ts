@@ -14,6 +14,7 @@ type Loaded = PeopleDescriptors & {
   feature: FrontendFeature;
   schedulingPermissions?: readonly Permission[];
 };
+const unavailable = () => new Error('Unable to open this DSP.');
 let pending = new AbortController();
 const styles = new Set<HTMLLinkElement>();
 let activeSources = new Set<string>();
@@ -103,7 +104,7 @@ function prepareStyle(url: string, signal: AbortSignal): Promise<HTMLLinkElement
     };
     const aborted = () => done(new DOMException('Workspace changed', 'AbortError'));
     style.onload = () => done();
-    style.onerror = () => done(new Error('Unable to open this DSP.'));
+    style.onerror = () => done(unavailable());
     if (signal.aborted) return aborted();
     signal.addEventListener('abort', aborted, { once: true });
     styles.add(style);
@@ -119,12 +120,12 @@ export async function prepareCustomFeatures(view: DspView, current: () => boolea
   const modules = await Promise.all(
     entries.map(async (entry): Promise<Loaded> => {
       const loaded = (await import(/* @vite-ignore */ entry.url)) as Loaded;
-      if (loaded.feature?.name !== entry.name) throw new Error('Unable to open this DSP.');
+      if (loaded.feature?.name !== entry.name) throw unavailable();
       return loaded;
     }),
   ).catch(() => {
     sourceStyles();
-    throw new Error('Unable to open this DSP.');
+    throw unavailable();
   });
   sourceStyles();
   if (!current() || signal.aborted) return;
