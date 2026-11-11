@@ -790,6 +790,15 @@ async fn custom_storage_switches_events_and_routes_belong_only_to_the_owner_code
         assert!(db.dsp(&own)?.has_table("nll_probe")?);
         assert!(!db.dsp(&other)?.has_table("nll_probe")?);
         assert!(!db.feature_enabled(&own, "nll_probe")?);
+        let report = db.feature_report(&own)?;
+        assert!(report.features.iter().any(|feature| feature.feature == "nll_probe" && !feature.enabled));
+        assert!(!report.features.iter().any(|feature| feature.feature == "sum_probe"));
+        let custom = report.custom.unwrap();
+        assert_eq!(custom.len(), 1);
+        assert_eq!((custom[0].id.as_str(), custom[0].label.as_str()), ("nll_probe", "Owner probe"));
+        let other_report = db.feature_report(&other)?;
+        assert!(!other_report.features.iter().any(|feature| feature.feature == "nll_probe"));
+        assert_eq!(other_report.custom.unwrap()[0].id, "sum_probe");
         let directory = db.dsp(&own)?;
         directory.exec("DELETE FROM owner_migrations WHERE owner='nll_probe'", [])?;
         directory.exec("DROP TABLE nll_probe", [])?;

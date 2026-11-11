@@ -7,6 +7,7 @@ import {
   featureCatalog,
   featureLabel,
   grants,
+  type FeatureEntry,
 } from '../../../core/shell/frontend/runtime/features.js';
 import { previewSwitch, sideEffects } from '../../../core/platform_owner/frontend/dsps/switches.js';
 
@@ -99,4 +100,44 @@ test('a permission exists only with its feature', () => {
   assert.equal(grants(['cortex'], 'connections.manage'), true);
   assert.equal(grants(['timecard', 'uniforms'], 'connections.manage'), false);
   for (const permission of permissions) assert.equal(grants(features, permission), true);
+});
+
+test("the DSP report's custom catalog participates in switch dependencies and tabs", () => {
+  const page = {
+    id: 'fixture_log',
+    label: 'Log',
+    kind: 'page',
+    permissions: [],
+    requires: ['routes'],
+  } as unknown as FeatureEntry;
+  const tab = {
+    id: 'fixture_log.entries',
+    label: 'Entries',
+    kind: 'sub',
+    page: page.id,
+    tab: true,
+    permissions: [],
+    requires: [],
+  } as unknown as FeatureEntry;
+  const catalog = [...featureCatalog, page, tab];
+  const enabled = previewSwitch([], page.id, true, catalog)!;
+  assert.deepEqual(enabled, [
+    { feature: 'cortex', enabled: true },
+    { feature: page.id, enabled: true },
+    { feature: tab.id, enabled: true },
+  ]);
+  assert.deepEqual(sideEffects(page, enabled, catalog), [{ feature: 'cortex', enabled: true }]);
+  assert.equal(featureLabel(tab.id, catalog), 'Log · Entries');
+  assert.deepEqual(
+    previewSwitch(
+      enabled.map((change) => change.feature),
+      'cortex',
+      false,
+      catalog,
+    ),
+    [
+      { feature: 'cortex', enabled: false },
+      { feature: page.id, enabled: false },
+    ],
+  );
 });

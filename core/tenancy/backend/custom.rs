@@ -20,15 +20,7 @@ pub(crate) fn view(db: &Store, state: &State, context: &Context) -> Result<Optio
     if owners.is_empty() {
         return Ok(None);
     }
-    let catalog = catalog::catalog().iter().filter(|feature| feature.owner.is_some() && feature.owner == code.as_deref()).map(|feature| CustomFeature {
-        id: feature.id.to_owned(), label: feature.label.to_owned(),
-        place: owners.iter().find(|owner| owner.switch.id == feature.id || matches!(feature.kind, catalog::Kind::Sub(page) if page == owner.switch.id)).map_or(u16::MAX, |owner| owner.place),
-        kind: match feature.kind { catalog::Kind::Sub(_) => CustomKind::Sub, _ => CustomKind::Page },
-        permissions: feature.permissions.iter().map(|id| (*id).to_owned()).collect(),
-        requires: feature.requires.iter().map(|id| (*id).to_owned()).collect(),
-        page: match feature.kind { catalog::Kind::Sub(page) => Some(page.to_owned()), _ => None },
-        tab: feature.tab, connects: feature.connects,
-    }).collect();
+    let catalog = catalog(code.as_deref());
     let mut declared: Vec<_> = owners
         .iter()
         .flat_map(|feature| {
@@ -74,4 +66,36 @@ pub(crate) fn view(db: &Store, state: &State, context: &Context) -> Result<Optio
         permissions,
         frontends,
     }))
+}
+
+/// The custom switches and parts belonging to one DSP code, including those switched off.
+pub(crate) fn catalog(code: Option<&str>) -> Vec<CustomFeature> {
+    catalog::catalog()
+        .iter()
+        .filter(|entry| entry.owner.is_some() && entry.owner == code)
+        .map(|entry| CustomFeature {
+            id: entry.id.to_owned(),
+            label: entry.label.to_owned(),
+            place: registry()
+                .features
+                .iter()
+                .find(|feature| {
+                    feature.switch.id == entry.id
+                        || matches!(entry.kind, catalog::Kind::Sub(page) if page == feature.switch.id)
+                })
+                .map_or(u16::MAX, |feature| feature.place),
+            kind: match entry.kind {
+                catalog::Kind::Sub(_) => CustomKind::Sub,
+                _ => CustomKind::Page,
+            },
+            permissions: entry.permissions.iter().map(|id| (*id).to_owned()).collect(),
+            requires: entry.requires.iter().map(|id| (*id).to_owned()).collect(),
+            page: match entry.kind {
+                catalog::Kind::Sub(page) => Some(page.to_owned()),
+                _ => None,
+            },
+            tab: entry.tab,
+            connects: entry.connects,
+        })
+        .collect()
 }
