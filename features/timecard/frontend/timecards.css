@@ -84,13 +84,6 @@
     padding: 12px;
   }
 }
-.paycom-source-status {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 12px;
-  align-items: center;
-}
-
 .paycom-sync-page .heading-actions {
   display: flex;
   align-items: center;

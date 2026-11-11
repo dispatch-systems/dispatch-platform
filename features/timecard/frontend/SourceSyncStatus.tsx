@@ -9,12 +9,10 @@ export function SourceSyncStatus({
   name,
   source,
   timezone,
-  compact = false,
 }: {
   name: string;
   source?: DailySyncSource;
   timezone: string;
-  compact?: boolean;
 }) {
   const status = source?.job?.status;
   const target = source?.active
@@ -37,64 +35,50 @@ export function SourceSyncStatus({
             : status === 'succeeded'
               ? 'Sync complete'
               : 'Waiting for next sync';
-  if (compact) {
-    const collectedAt = source?.collectedAt;
-    const collectedToday =
-      collectedAt && localDate(timezone, new Date(collectedAt)) === localDate(timezone);
-    const timestamp = collectedAt
-      ? collectedToday
-        ? timeOfDay(collectedAt, timezone)
-        : time(collectedAt, timezone)
-      : null;
-    return (
-      <div
-        className="paycom-header-sync"
-        role="status"
-        aria-label={`${name} sync`}
-        title={collectedAt ? `Last successful sync ${time(collectedAt, timezone)}` : undefined}
-      >
-        {status === 'failed' && !source?.active ? (
-          <span className="paycom-sync-failed">
-            <AlertTriangle size={15} aria-hidden="true" />
-            {name} failed
-          </span>
-        ) : (
-          <Badge
-            value={
-              message === 'Sync complete'
-                ? 'succeeded'
-                : source?.active
-                  ? (status ?? 'running')
-                  : 'pending'
-            }
-          >
-            {name} {message === 'Sync complete' ? 'synced' : message.toLowerCase()}
-            {target && ` · ${target}`}
-          </Badge>
-        )}
-        {collectedAt && message === 'Sync complete' && (
-          <span className="paycom-sync-timestamp">
-            ·{' '}
-            <time
-              dateTime={collectedAt}
-              title={`Last successful sync ${time(collectedAt, timezone)}`}
-            >
-              {timestamp}
-            </time>
-          </span>
-        )}
-      </div>
-    );
-  }
+  const collectedAt = source?.collectedAt;
+  const collectedToday =
+    collectedAt && localDate(timezone, new Date(collectedAt)) === localDate(timezone);
+  const timestamp = collectedAt
+    ? collectedToday
+      ? timeOfDay(collectedAt, timezone)
+      : time(collectedAt, timezone)
+    : null;
   return (
-    <div className="paycom-source-status">
-      <span className="muted">{name}</span>
-      <span role="status" aria-label={`${name} sync`}>
-        {message}
-        {target && ` · ${target}`}
-      </span>
-      {source?.collectedAt && (
-        <span className="muted">Last successful sync {time(source.collectedAt, timezone)}</span>
+    <div
+      className="paycom-header-sync"
+      role="status"
+      aria-label={`${name} sync`}
+      title={collectedAt ? `Last successful sync ${time(collectedAt, timezone)}` : undefined}
+    >
+      {status === 'failed' && !source?.active ? (
+        <span className="paycom-sync-failed">
+          <AlertTriangle size={15} aria-hidden="true" />
+          {name} failed
+        </span>
+      ) : (
+        <Badge
+          value={
+            message === 'Sync complete'
+              ? 'succeeded'
+              : source?.active
+                ? (status ?? 'running')
+                : 'pending'
+          }
+        >
+          {name} {message === 'Sync complete' ? 'synced' : message.toLowerCase()}
+          {target && ` · ${target}`}
+        </Badge>
+      )}
+      {collectedAt && message === 'Sync complete' && (
+        <span className="paycom-sync-timestamp">
+          ·{' '}
+          <time
+            dateTime={collectedAt}
+            title={`Last successful sync ${time(collectedAt, timezone)}`}
+          >
+            {timestamp}
+          </time>
+        </span>
       )}
     </div>
   );
