@@ -93,12 +93,12 @@ test('sign-in, DSP onboarding and member profiles own their screen dependencies'
     const files = modules.filter(({ file }) => path.resolve(file).startsWith(directory + path.sep));
     assert(files.length > 0, `${screen} must have its own screen directory`);
     for (const { file, dependencies: references } of files) {
-      for (const { specifier, target } of references)
+      for (const { specifier, target, resolved } of references)
         if (target?.startsWith(accounts + path.sep))
           assert(
             target.startsWith(directory + path.sep) ||
               (shared.test(target) && path.dirname(target) === accounts) ||
-              (screen !== 'sign-in' && mapEntries.includes(target)),
+              (screen !== 'sign-in' && resolved !== undefined && mapEntries.includes(resolved)),
             `${file} imports ${specifier}; each accounts screen owns its forms, layouts and styles; only onboarding and profiles share the route map`,
           );
     }
