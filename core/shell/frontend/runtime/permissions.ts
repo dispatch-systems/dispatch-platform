@@ -7,7 +7,7 @@ import {
   schedulingPermissions as publicSchedulingPermissions,
 } from '../../../tenancy/api/generated/access-catalog.js';
 import type { DspView, Permission } from '../../../accounts/api/index.js';
-import { featureLabel, grants } from './features.js';
+import { featureCatalog, featureLabel, grants, type PageEntry } from './features.js';
 
 // A permission of a feature the DSP lacks is held by nobody, owners included.
 export const can = (view: DspView | undefined, permission: Permission) =>
@@ -20,10 +20,7 @@ export const can = (view: DspView | undefined, permission: Permission) =>
 export const visiblePermissions = (view: DspView, stored: readonly Permission[]) =>
   stored.filter((permission) => grants(view.features, permission));
 
-export let permissionLabels: Record<Permission, string> = generatedPermissionLabels as Record<
-  Permission,
-  string
->;
+export let permissionLabels: Partial<Record<Permission, string>> = generatedPermissionLabels;
 /** The backend catalog owns the sections and each permission belongs to exactly one. */
 let permissionGroups: readonly (readonly [string, readonly Permission[]])[] =
   generatedPermissionGroups;
@@ -47,7 +44,7 @@ export function installCustomPermissions(
   permissionLabels = {
     ...generatedPermissionLabels,
     ...Object.fromEntries(permissions.map((p) => [p.id, p.label])),
-  } as Record<Permission, string>;
+  };
   impliedPermissions = {
     ...generatedImpliedPermissions,
     ...Object.fromEntries(permissions.map((p) => [p.id, p.implied])),
@@ -56,14 +53,24 @@ export function installCustomPermissions(
     ...generatedPermissionParents,
     ...Object.fromEntries(permissions.flatMap((p) => (p.under ? [[p.id, p.under]] : []))),
   };
+  const owned = new Set(featureCatalog.flatMap((entry) => entry.permissions));
+  const pageGroups = featureCatalog
+    .filter((entry): entry is PageEntry => entry.kind === 'page')
+    .sort((a, b) => (a.place ?? 65535) - (b.place ?? 65535) || a.id.localeCompare(b.id))
+    .flatMap((page) => [
+      page,
+      ...featureCatalog.filter((entry) => entry.kind === 'sub' && entry.page === page.id),
+    ])
+    .filter((entry) => entry.permissions.length)
+    .map((entry): [string, readonly Permission[]] => [featureLabel(entry.id), entry.permissions]);
   permissionGroups = [
-    ...generatedPermissionGroups,
-    ...(custom?.catalog ?? [])
-      .filter((entry) => entry.permissions.length)
-      .map((entry): [string, Permission[]] => [
-        featureLabel(entry.id),
-        entry.permissions as Permission[],
-      ]),
+    ...pageGroups,
+    ...generatedPermissionGroups
+      .map(([label, items]): [string, Permission[]] => [
+        label,
+        items.filter((id) => !owned.has(id)),
+      ])
+      .filter(([, items]) => items.length),
   ];
   allPermissions = [...publicPermissions, ...permissions.map((p) => p.id as Permission)].sort();
   schedulingPermissions = [...publicSchedulingPermissions, ...scheduling];

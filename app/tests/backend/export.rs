@@ -261,10 +261,7 @@ fn exposes() -> String {
 
 fn custom_types() -> String {
     use dispatch_core::tenancy::catalog::{self, Kind};
-    let catalog: Vec<_> = catalog::catalog()
-        .iter()
-        .filter(|feature| feature.owner.is_some())
-        .collect();
+    let catalog = catalog::catalog();
     let union = |ids: Vec<&str>| {
         if ids.is_empty() {
             "never".to_owned()
@@ -277,11 +274,11 @@ fn custom_types() -> String {
     };
     let rows = [
         (
-            "CustomFeatureId",
+            "FeatureId",
             catalog.iter().map(|feature| feature.id).collect::<Vec<_>>(),
         ),
         (
-            "CustomPageId",
+            "PageId",
             catalog
                 .iter()
                 .filter(|feature| feature.kind == Kind::Page)
@@ -289,7 +286,7 @@ fn custom_types() -> String {
                 .collect(),
         ),
         (
-            "CustomSubId",
+            "SubId",
             catalog
                 .iter()
                 .filter(|feature| matches!(feature.kind, Kind::Sub(_)))
@@ -297,11 +294,8 @@ fn custom_types() -> String {
                 .collect(),
         ),
         (
-            "CustomPermissionId",
-            catalog
-                .iter()
-                .flat_map(|feature| feature.permissions.iter().copied())
-                .collect(),
+            "PermissionId",
+            dispatch_core::tenancy::roles::PERMISSIONS.to_vec(),
         ),
     ];
     "// Generated build-wide ids. Type-only: custom identities never enter the public bundle.\n"

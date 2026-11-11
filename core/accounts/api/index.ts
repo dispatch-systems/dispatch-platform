@@ -2,13 +2,13 @@ import type { Narrow } from '../../foundation/api/narrow.js';
 import type { Feature } from '../../tenancy/api/index.js';
 import type { Role as GeneratedRole } from './generated/Role';
 import type { DspView as GeneratedDspView } from './generated/DspView';
-import type { CustomPermissionId } from '../../tenancy/api/generated/custom-types.js';
+import type { PermissionId } from '../../tenancy/api/generated/custom-types.js';
 export type { PublicUser as User } from './generated/PublicUser';
 export type { Member as Membership } from './generated/Member';
 export type { DspInvitation } from './generated/DspInvitation';
 import { permissions } from '../../tenancy/api/generated/access-catalog.js';
 export { permissions };
-export type Permission = (typeof permissions)[number] | CustomPermissionId;
+export type Permission = PermissionId;
 /** `members` and `invitations` are counted by the role list only; a saved role has null. */
 export type Role = Narrow<GeneratedRole, { permissions: Permission[] }>;
 export type { DspSummary } from './generated/DspSummary';

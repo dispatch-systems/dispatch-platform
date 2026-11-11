@@ -50,7 +50,7 @@ function prepareStyle(url: string, signal: AbortSignal): Promise<HTMLLinkElement
     };
     const aborted = () => done(new DOMException('Workspace changed', 'AbortError'));
     style.onload = () => done();
-    style.onerror = () => done(new Error('custom_styles_unavailable'));
+    style.onerror = () => done(new Error('Unable to open this DSP.'));
     if (signal.aborted) return aborted();
     signal.addEventListener('abort', aborted, { once: true });
     styles.add(style);
@@ -64,11 +64,13 @@ export async function prepareCustomFeatures(view: DspView, current: () => boolea
   const entries = view.custom?.frontends ?? [];
   const modules = await Promise.all(
     entries.map(async (entry): Promise<Loaded> => {
-      const loaded: Loaded = await import(/* @vite-ignore */ entry.url);
-      if (loaded.feature?.name !== entry.name) throw new Error('invalid_custom_feature');
+      const loaded = (await import(/* @vite-ignore */ entry.url)) as Loaded;
+      if (loaded.feature?.name !== entry.name) throw new Error('Unable to open this DSP.');
       return loaded;
     }),
-  );
+  ).catch(() => {
+    throw new Error('Unable to open this DSP.');
+  });
   if (!current() || signal.aborted) return;
   let css: HTMLLinkElement[];
   try {
