@@ -6,9 +6,9 @@ mod backend;
 
 /// What its API answers with, which the app writes to TypeScript.
 pub use api::types::{
-    ConductBackup, ConductCategory, ConductFinalKind, ConductOverview, ConductPerson, ConductSaved,
-    ConductStanding, ConductStepDown, ConductStepKind, ConductTier, ConductUnit, ConductWriteup,
-    ConductWriteupRow,
+    ConductBackup, ConductCategory, ConductContext, ConductDriver, ConductFinalKind,
+    ConductHistory, ConductImpact, ConductOverview, ConductPerson, ConductSaved, ConductStanding,
+    ConductStepDown, ConductStepKind, ConductTier, ConductUnit, ConductWriteup, ConductWriteupRow,
 };
 
 use dispatch_core::{
@@ -35,6 +35,7 @@ pub const FEATURE: Feature = Feature {
             "conduct_copies",
             "conduct_backups",
             "conduct_backup_folders",
+            "conduct_requests",
         ],
     )],
     own_migrations: &[OwnMigrations {
@@ -50,11 +51,23 @@ pub const FEATURE: Feature = Feature {
                 name: "conduct_backups",
                 apply: Sql(include_str!("migrations/dsp/0002_conduct_backups.sql")),
             },
+            Migration {
+                id: 3,
+                name: "conduct_requests",
+                apply: Sql(include_str!("migrations/dsp/0003_conduct_requests.sql")),
+            },
         ],
     }],
     // Every minute, the signed copies not yet backed up.
     maintenance: &[backend::backups::MAINTENANCE],
     domains: &[backend::DOMAIN],
+    cached: &[dispatch_core::server::cache::Cached {
+        read: backend::CACHED,
+        evicted: dispatch_core::server::cache::Evicted::ByPeopleAnd(&[
+            backend::DOMAIN,
+            dispatch_core::server::cache::DataDomain::TENANT,
+        ]),
+    }],
     // Its categories' changes and a writeup's deletion, filed under Settings.
     audit: Audit::NONE,
     ..feature("conduct")
@@ -71,6 +84,10 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         ConductStepKind,
         ConductStepDown,
         ConductCategory,
+        ConductContext,
+        ConductDriver,
+        ConductHistory,
+        ConductImpact,
         ConductPerson,
         ConductWriteupRow,
         ConductStanding,

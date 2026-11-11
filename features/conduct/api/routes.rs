@@ -3,14 +3,14 @@
 //! deleting writeups is `conduct.use`; categories and how the backup is going are
 //! `conduct.manage`.
 use super::types::{CategoryInput, ConductSaved, WriteupInput};
-use crate::backend::{DOMAIN, backups, categories, copies, overview, writeups};
+use crate::backend::{DOMAIN, backups, categories, copies, history, overview, writeups};
 use dispatch_core::{
     Result, State,
     db::Store,
     foundation::validate as v,
     server::http::{
-        input::{Input, Reply, query_number},
-        route::{Dsp, Grant, Member, Route, async_get, read, upload, write},
+        input::{Input, Reply, optional, optional_text, query_number},
+        route::{Dsp, Grant, Member, Route, async_get, coalesced_read, read, upload, write},
         upload::Upload,
     },
 };
@@ -22,7 +22,14 @@ const MANAGE: Dsp = Dsp("conduct.manage");
 
 pub fn routes() -> Vec<Route> {
     vec![
-        read("/api/dsp/conduct", USE, overview_read),
+        coalesced_read("/api/dsp/conduct", USE, overview_read),
+        read("/api/dsp/conduct/writeups", USE, history_read),
+        read("/api/dsp/conduct/context", USE, context_read),
+        read(
+            "/api/dsp/conduct/categories/{id}/impact",
+            MANAGE,
+            impact_read,
+        ),
         write("/api/dsp/conduct/writeups", USE, writeup_add),
         read("/api/dsp/conduct/writeups/{id}", USE, writeup_read),
         write("/api/dsp/conduct/writeups/{id}", USE, writeup_change),
@@ -51,14 +58,93 @@ pub fn routes() -> Vec<Route> {
     ]
 }
 
-fn overview_read(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
-    Reply::of(&overview::read(db, c.state, c)?)
+fn overview_read(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    v::fields(&input.query, &[])?;
+    let bytes = c.state.read_cache.json(
+        dispatch_core::server::cache::Scope::tenant(crate::backend::CACHED, &c.dsp.id),
+        overview::today(c)?,
+        c.state
+            .data_revision
+            .load(std::sync::atomic::Ordering::Relaxed),
+        || overview::read(db, c.state, c),
+    )?;
+    Ok(Reply::encoded(bytes))
 }
-/// The writeup `id` as it is now, with the page's data.
+fn history_read(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    let q = &input.query;
+    v::fields(
+        q,
+        &[
+            "person", "q", "category", "tier", "status", "after", "limit",
+        ],
+    )?;
+    let tier = optional(q, "tier", |q, k| {
+        v::choice(q, k, &["", "verbal", "written", "final"])
+    })?
+    .unwrap_or("");
+    let status = optional(q, "status", |q, k| {
+        v::choice(q, k, &["", "waiting", "signed"])
+    })?
+    .unwrap_or("");
+    Reply::of(&history::read(
+        db,
+        c.state,
+        &c.dsp.id,
+        history::Query {
+            person: optional_text(q, "person", 128)?,
+            search: optional_text(q, "q", 200)?,
+            category: optional_text(q, "category", 64)?,
+            tier,
+            status,
+            after: optional_text(q, "after", 256)?,
+            limit: query_number(q, "limit", 50, 1, 100)?,
+        },
+    )?)
+}
+fn context_read(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    let q = &input.query;
+    v::fields(q, &["person", "category", "date", "edit"])?;
+    let date = v::text(q, "date", 10, 10)?;
+    v::date(date)?;
+    Reply::of(&history::context(
+        db,
+        c.state,
+        &c.dsp.id,
+        v::text(q, "person", 1, 128)?,
+        v::text(q, "category", 1, 64)?,
+        date,
+        optional_text(q, "edit", 128)?,
+    )?)
+}
+fn impact_read(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    use super::types::{ConductStepDown, ConductStepKind, ConductUnit};
+    let q = &input.query;
+    v::fields(q, &["kind", "after", "unit", "revision"])?;
+    let kind = v::choice(q, "kind", &["reduce", "reset", "never"])?;
+    let step = if kind == "never" {
+        None
+    } else {
+        Some(ConductStepDown {
+            kind: ConductStepKind::parse(kind)
+                .ok_or_else(|| dispatch_core::Error::new("invalid_input", 400))?,
+            after: query_number(q, "after", 6, 1, 999)? as i64,
+            unit: ConductUnit::parse(v::choice(q, "unit", &["days", "weeks", "months"])?)
+                .ok_or_else(|| dispatch_core::Error::new("invalid_input", 400))?,
+        })
+    };
+    Reply::of(&history::impact(
+        db,
+        c.state,
+        c,
+        input.param("id"),
+        query_number(q, "revision", 0, 1, i64::MAX as usize)? as i64,
+        step,
+    )?)
+}
+/// The writeup `id` as it is now, without repeating the page's history.
 fn saved(db: &Store, c: &Member, id: &str) -> Result<ConductSaved> {
     Ok(ConductSaved {
         writeup: overview::writeup(db, c.state, &c.dsp.id, id)?,
-        overview: overview::read(db, c.state, c)?,
     })
 }
 
@@ -84,12 +170,25 @@ fn writeup_change(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     Reply::of(&saved(db, c, id)?)
 }
 fn writeup_sign(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
-    v::fields(&input.body, &["signedOn", "revision"])?;
+    v::fields(&input.body, &["signedOn", "revision", "request"])?;
     let signed_on = v::text(&input.body, "signedOn", 10, 10)?;
     v::date(signed_on)?;
     let id = input.param("id");
     let revision = v::integer(&input.body, "revision", 1, i64::MAX)?;
-    writeups::sign(db, c, id, revision, signed_on, &overview::today(c)?)?;
+    let request = optional(&input.body, "request", |b, k| v::text(b, k, 16, 100))?;
+    if request.is_some() {
+        writeups::sign_requested(
+            db,
+            c,
+            id,
+            revision,
+            signed_on,
+            &overview::today(c)?,
+            request,
+        )?;
+    } else {
+        writeups::sign(db, c, id, revision, signed_on, &overview::today(c)?)?;
+    }
     Reply::of(&saved(db, c, id)?)
 }
 fn writeup_delete(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
@@ -101,7 +200,7 @@ fn writeup_delete(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 
 /// Keeps a photo of a writeup's signed paper, its bytes read whole before the write.
 async fn copy_keep(state: Arc<State>, input: Input, access: Dsp, upload: Upload) -> Result<Reply> {
-    v::fields(&input.query, &["revision"])?;
+    v::fields(&input.query, &["revision", "request"])?;
     let revision = i64::try_from(query_number(&input.query, "revision", 0, 1, usize::MAX)?)
         .map_err(|_| dispatch_core::Error::new("invalid_input", 400))?;
     let asked = input.clone();
@@ -120,10 +219,14 @@ async fn copy_keep(state: Arc<State>, input: Input, access: Dsp, upload: Upload)
             // Checked again: the member may have lost access while the photo came in.
             let c = access.authorize(db, &input)?;
             let id = input.param("id");
-            copies::keep(db, &c, id, revision, &bytes)?;
+            let request = optional(&input.query, "request", |q, k| v::text(q, k, 16, 100))?;
+            if request.is_some() {
+                copies::keep_requested(db, &c, id, revision, &bytes, request)?;
+            } else {
+                copies::keep(db, &c, id, revision, &bytes)?;
+            }
             Reply::of(&ConductSaved {
                 writeup: overview::writeup(db, &ran, &c.dsp.id, id)?,
-                overview: overview::read(db, &ran, &c)?,
             })
         })
         .await

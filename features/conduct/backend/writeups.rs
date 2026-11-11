@@ -21,10 +21,14 @@ pub(crate) struct Subject {
 const SELECT: &str = "SELECT w.*, EXISTS(SELECT 1 FROM conduct_copies k WHERE k.writeup_id=w.id) has_copy \
      FROM conduct_writeups w";
 
+pub(crate) const ROWS: &str = "SELECT w.id,w.person,w.person_name,w.category_id,w.tier,w.final_kind,\
+     w.suspension,w.written_on,w.supervisor_name,w.signed_on,w.revision,w.created_at,\
+     EXISTS(SELECT 1 FROM conduct_copies k WHERE k.writeup_id=w.id) has_copy FROM conduct_writeups w";
+
 /// Every writeup, the newest first.
 pub(crate) fn rows(db: &Db) -> Result<Vec<ConductWriteupRow>> {
     db.query_as(
-        &format!("{SELECT} ORDER BY w.written_on DESC, w.created_at DESC, w.id"),
+        &format!("{ROWS} ORDER BY w.written_on DESC, w.created_at DESC, w.id"),
         [],
     )
 }
@@ -144,8 +148,36 @@ pub(crate) fn sign(
     signed_on: &str,
     today: &str,
 ) -> Result<()> {
+    sign_requested(store, c, id, revision, signed_on, today, None)
+}
+
+pub(crate) fn sign_requested(
+    store: &Store,
+    c: &Context,
+    id: &str,
+    revision: i64,
+    signed_on: &str,
+    today: &str,
+    request: Option<&str>,
+) -> Result<()> {
+    let operation = super::requests::Operation {
+        request,
+        kind: "sign",
+        writeup: id,
+        revision,
+        payload: signed_on,
+    };
     let db = store.dsp(&c.dsp.id)?;
     db.transaction(|| {
+        if let Some(result) = operation.previous(&db, c)? {
+            let kept = one(&db, id)?;
+            ensure(
+                kept.row.revision == result && kept.row.signed_on.as_deref() == Some(signed_on),
+                "conduct_writeup_changed",
+                409,
+            )?;
+            return Ok(());
+        }
         let writeup = unsigned(&db, id, Some(revision))?;
         ensure(
             writeup.row.written_on.as_str() <= signed_on && signed_on <= today,
@@ -157,6 +189,7 @@ pub(crate) fn sign(
              revision=revision+1 WHERE id=?",
             params![signed_on, c.auth.user.name(), iso(), id],
         )?;
+        operation.record(&db, c, revision + 1)?;
         Ok(())
     })
 }
@@ -167,6 +200,7 @@ pub(crate) fn delete(store: &Store, c: &Context, id: &str, revision: i64) -> Res
     let db = store.dsp(&c.dsp.id)?;
     super::logged(store, &db, || {
         let writeup = unsigned(&db, id, Some(revision))?;
+        db.exec("DELETE FROM conduct_requests WHERE writeup_id=?", [id])?;
         db.exec("DELETE FROM conduct_copies WHERE writeup_id=?", [id])?;
         db.exec("DELETE FROM conduct_writeups WHERE id=?", [id])?;
         // By its id alone: the activity log keeps no one's disciplinary record.

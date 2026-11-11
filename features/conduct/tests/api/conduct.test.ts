@@ -70,10 +70,17 @@ test('a writeup is written up for someone, suggests the next tier, and locks onc
     `${owner.session.user.firstName} ${owner.session.user.lastName}`,
   );
   assert.deepEqual(
-    saved.overview.standings.map((s) => [s.person, s.categoryId, s.tier, s.stepsDownTo]),
+    ((await owner.get(route)).value as ConductOverview).standings.map((s) => [
+      s.person,
+      s.categoryId,
+      s.tier,
+      s.stepsDownTo,
+    ]),
     [[person.code, 'tardies', 'verbal', null]],
   );
-  assert(saved.overview.standings[0]!.stepsDownOn! > overview.today);
+  assert(
+    ((await owner.get(route)).value as ConductOverview).standings[0]!.stepsDownOn! > overview.today,
+  );
 
   // A suspension is only a final's, and a final with one says how long.
   for (const bad of [

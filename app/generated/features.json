@@ -189,7 +189,9 @@
         "names": false,
         "subjects": []
       },
-      "cached": [],
+      "cached": [
+        "conduct.overview"
+      ],
       "commands": null,
       "demo": false,
       "domains": [
@@ -204,6 +206,9 @@
       "people": [],
       "routes": [
         "GET /api/dsp/conduct",
+        "GET /api/dsp/conduct/writeups",
+        "GET /api/dsp/conduct/context",
+        "GET /api/dsp/conduct/categories/{id}/impact",
         "POST /api/dsp/conduct/writeups",
         "GET /api/dsp/conduct/writeups/{id}",
         "POST /api/dsp/conduct/writeups/{id}",
@@ -232,6 +237,7 @@
         "conduct_backups",
         "conduct_categories",
         "conduct_copies",
+        "conduct_requests",
         "conduct_writeups"
       ]
     },
