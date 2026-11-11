@@ -25,10 +25,7 @@ schedule on the Collectors page, behind `daily_performance.manage` (`backend/set
 `lookback_days` (1–30, default 7) and `refresh_hours` (1–168, default 20), the dates a run,
 by its rules or Collect now, rechecks and how long one collected stays fresh. Runs read the
 values with `settings::read`; core keeps them in the DSP's settings and records each change as
-`settings.changed`. A policy kept before in its database's `settings` (`collection_policy`)
-moves in once as the server starts (`upgrade_storage`, through `settings::carry_over`), unless
-the section was saved already; the old value stays, read only by that move.
-`daily_performance.policy_updated`, from before, still reads in the log.
+`settings.changed`. `daily_performance.policy_updated`, from before, still reads in the log.
 
 Each day's capture is validated against the requested dates and discovered company/station.
 A job publishes its days atomically, each idempotent per job and day; recollection replaces a

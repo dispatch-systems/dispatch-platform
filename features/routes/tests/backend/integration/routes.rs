@@ -1216,40 +1216,6 @@ async fn a_retention_window_retires_older_days_only_while_routes_are_on() {
 }
 
 #[test]
-fn a_window_chosen_before_settings_kept_it_moves_in_once_for_its_own_dsp() {
-    install();
-    let (_root, db, id) = ready();
-    let actor = common::a_user(&db);
-    let other = db.new_dsp("Other DSP", "UTC", &actor, false).unwrap().id;
-    // Each DSP's window as the release before kept it, in its own route data, and its settings
-    // as they were then.
-    for (dsp, days) in [(&id, 90), (&other, 365)] {
-        db.routes_db(dsp)
-            .unwrap()
-            .exec(
-                "INSERT INTO route_retention(id,days,changed_by,changed_at) VALUES (1,?,?,?)",
-                rusqlite::params![days, actor, dispatch_core::db::iso()],
-            )
-            .unwrap();
-        common::before_settings(&db, dsp).unwrap();
-    }
-    let upgrade = dispatch_routes::FEATURE.upgrade_storage.unwrap();
-    let days = |dsp: &str| settings::read::<Value>(&db, dsp, retention()).unwrap()["days"].clone();
-    upgrade(&db, &id).unwrap();
-    assert_eq!(days(&id), json!(90));
-    assert_eq!(days(&other), Value::Null);
-    upgrade(&db, &other).unwrap();
-    assert_eq!(days(&other), json!(365));
-    // Changed in Settings since, it isn't moved again; and the move itself recorded nothing.
-    let every = json!({"days": null});
-    settings::save(&db, &id, &actor, retention(), &every, 1, true).unwrap();
-    upgrade(&db, &id).unwrap();
-    assert_eq!(days(&id), Value::Null);
-    assert_eq!(days(&other), json!(365));
-    assert!(common::audit_actions(&db, &other, "settings.").is_empty());
-}
-
-#[test]
 fn the_task_key_migration_keeps_every_row_and_compacts_events() {
     let db = rusqlite::Connection::open_in_memory().unwrap();
     db.execute_batch(include_str!(

@@ -29,10 +29,7 @@ schedule on the Collectors page, behind `weekly_scorecard.manage` (`backend/sett
 `lookback_weeks` (1–8, default 1) and `refresh_hours` (1–168, default 20), the weeks a run, by
 its rules or Collect now, rechecks and how long one checked stays fresh. Runs read the values
 with `settings::read`;
-core keeps them in the DSP's settings and records each change as `settings.changed`. A policy
-kept before in its database's `settings` (`collection_policy`) moves in once as the server
-starts, after the import below (`upgrade_storage`, through `settings::carry_over`), unless the
-section was saved already; the old value stays, read only by that move.
+core keeps them in the DSP's settings and records each change as `settings.changed`.
 `weekly_scorecard.policy_updated`, from before, still reads in the log.
 
 Startup retires old Dispatch identifiers: saved switches (including disabled states), role

@@ -1,14 +1,7 @@
 //! Daily Performance's settings, with its collection on the Collectors page: which dates a
-//! run rechecks; and the policy a DSP chose before Settings kept it, moved in once.
-use super::storage::{DailyPerformanceStore, STORAGE};
-use dispatch_core::{
-    Result,
-    db::Store,
-    manifest::{Section, number, section},
-    settings,
-};
+//! run rechecks.
+use dispatch_core::manifest::{Section, number, section};
 use serde::Deserialize;
-use serde_json::{Value, json};
 
 /// Which dates a run of its collection rechecks, apart from when its rules run it: the
 /// `lookback_days` before today, each unless collected within `refresh_hours`.
@@ -28,33 +21,4 @@ pub const COLLECTION: Section = section(
 pub struct Policy {
     pub lookback_days: u32,
     pub refresh_hours: u32,
-}
-
-/// The policy as the release before kept it, in its own database's settings.
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Kept {
-    lookback_days: u32,
-    refresh_hours: u32,
-}
-
-/// Moves the policy a DSP chose before Settings kept it, its database's `collection_policy`,
-/// into `COLLECTION` as the DSP's first values, at startup (`settings::carry_over`). The old
-/// value is read as the DSP first opens since, whatever it is, and not again; it stays as it
-/// was, read only here. One that doesn't parse isn't moved, so the defaults hold, and a value
-/// its field doesn't hold now reads as the default, the other moving still.
-pub(crate) fn upgrade(store: &Store, id: &str) -> Result<()> {
-    settings::carry_over(store, id, &COLLECTION, || {
-        // A DSP whose database isn't made yet chose no policy.
-        if store.dsp(id)?.setting(STORAGE.marker, Value::Null)? != json!(1) {
-            return Ok(None);
-        }
-        let kept = store
-            .daily_performance_db(id)?
-            .setting("collection_policy", Value::Null)?;
-        Ok(serde_json::from_value::<Kept>(kept).ok().map(|kept| {
-            json!({"lookback_days": kept.lookback_days, "refresh_hours": kept.refresh_hours})
-        }))
-    });
-    Ok(())
 }

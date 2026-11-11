@@ -1,5 +1,5 @@
 //! Weekly Scorecard's database registration, startup compatibility and Store boundary.
-use super::{keeper, publication, reads, retirement, settings};
+use super::{keeper, publication, reads, retirement};
 use crate::api::types::WeeklyScorecardWeeks;
 use dispatch_core::{
     Result,
@@ -29,10 +29,9 @@ pub static STORAGE: AddedStorage = AddedStorage {
     verify,
 };
 /// What starting the server does to storage kept before: imports the retired scorecard
-/// database, then moves the policy its own database kept into Settings.
+/// database.
 pub(crate) fn upgrade(store: &Store, id: &str) -> Result<()> {
-    retirement::upgrade(store, id)?;
-    settings::upgrade(store, id)
+    retirement::upgrade(store, id)
 }
 fn verify(db: &Db) -> Result<()> {
     ensure(

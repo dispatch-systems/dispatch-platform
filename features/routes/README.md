@@ -143,10 +143,7 @@ it is live route data, in a database of its own, `routelive`.
   a day the route data holds asks to confirm first, naming the first day it keeps as the expiry
   within the hour counts it: back from the day it is then where the DSP is, so the next day's in
   the hour before midnight. Expiry and collection requests read it with `settings::read`; core
-  keeps it in the DSP's settings. The window a DSP chose before, in its route data's
-  `route_retention`, moves in once as the server starts (`upgrade_storage`, through
-  `settings::carry_over`), unless the section was saved already; the table stays, read only by
-  that move.
+  keeps it in the DSP's settings.
 - **Log:** `routes.collection_requested` and `routes.data_expired`, under Collections; a change
   of the window is core's `settings.changed`, and of its schedule core's `schedule.updated` and
   `schedule.toggled`, each rule in words with its Day; one from before reads a schedule of today

@@ -1,5 +1,5 @@
 //! DSP and member settings declared through `manifest::settings`.
-//! Storage, saving and carry-over policy: `core/settings/README.md`.
+//! Storage and saving policy: `core/settings/README.md`.
 //!
 //! `store` owns records, `kinds` validates fields, `read` and `save` serve product callers,
 //! and `api` serves members. `forget_member` removes a member's own settings.
@@ -12,7 +12,7 @@ mod store;
 
 pub use read::{read, read_member};
 pub(crate) use save::save_listing;
-pub use save::{Saved, carry_over, save};
+pub use save::{Saved, save};
 pub(crate) use store::forget_member;
 
 /// The read cache's name for what a member's Settings shows of a DSP, evicted by every write

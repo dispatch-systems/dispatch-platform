@@ -84,9 +84,7 @@ through Driver Match.
   a rollback, marks the summaries dirty, and reads use the publications until the next
   publication or the hourly upkeep rebuilds them.
 - **Storage:** in the collectors' own databases, which it migrates: Paycom's (`paycom`) and
-  Cortex's (`cortex`). Its settings are core's, in the DSP's own database; the preferences it
-  kept in Paycom's `settings` before (`paycom.preferences`) move into them once, as the DSP
-  opens (`settings::carry_over`), into each section never saved, and are read nowhere else.
+  Cortex's (`cortex`). Its settings are core's, in the DSP's own database.
   A Paycom collection asks it for the employee a sync reads, for everyone known, and for the
   newest pay period collected, which one read through Paycom's API counts its periods from.
   A Cortex meal collection asks it for the scope's active publication, so
