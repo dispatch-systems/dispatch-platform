@@ -130,16 +130,7 @@ async fn provision(config: &Config, commit: &str) -> Result<()> {
 
 impl Worktree {
     pub async fn prepare(config: &Config, job: &SupportJob, source: Option<&str>) -> Result<Self> {
-        let identifier = job
-            .detail
-            .ticket
-            .id
-            .strip_prefix("support_")
-            .ok_or("Invalid support ticket id")?;
-        require(
-            identifier.len() <= 32 && identifier.chars().all(|c| c.is_ascii_hexdigit()),
-            "Invalid support ticket id",
-        )?;
+        let identifier = ticket(&job.detail.ticket.id).ok_or("Invalid support ticket id")?;
         require(
             matches!(job.environment.as_str(), "dev" | "production"),
             "Invalid support environment",
@@ -372,16 +363,9 @@ impl Worktree {
     }
 
     pub async fn cleanup_analysis_job(config: &Config, job: &SupportJob) -> Result<()> {
-        let id = job
-            .detail
-            .ticket
-            .id
-            .strip_prefix("support_")
-            .ok_or("Invalid support id")?;
+        let id = ticket(&job.detail.ticket.id).ok_or("Invalid support id")?;
         require(
-            id.len() == 32
-                && id.chars().all(|c| c.is_ascii_hexdigit())
-                && matches!(job.environment.as_str(), "dev" | "production"),
+            matches!(job.environment.as_str(), "dev" | "production"),
             "Invalid support source identity",
         )?;
         let name = format!("support-{}-{id}-analysis", job.environment);
@@ -399,3 +383,14 @@ impl Worktree {
 pub fn is_sha(value: &str) -> bool {
     value.len() == 40 && value.chars().all(|c| c.is_ascii_hexdigit())
 }
+
+/// A ticket's own part of its id, the 32 hexadecimal characters after `support_` the platform
+/// gives every ticket: what its worktrees are named by, and found again by to remove.
+fn ticket(id: &str) -> Option<&str> {
+    id.strip_prefix("support_")
+        .filter(|own| own.len() == 32 && own.chars().all(|c| c.is_ascii_hexdigit()))
+}
+
+#[cfg(test)]
+#[path = "../tests/backend/worktrees.rs"]
+mod tests;
