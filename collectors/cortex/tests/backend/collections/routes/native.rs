@@ -18,6 +18,8 @@ use std::{
     },
 };
 
+use tokio::time::Instant;
+
 const AREA: &str = "area-1";
 const COMPANY: &str = "company-1";
 
