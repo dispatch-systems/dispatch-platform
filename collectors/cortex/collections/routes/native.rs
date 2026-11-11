@@ -41,6 +41,9 @@ const RETRY_PAUSE: Duration = Duration::from_secs(2);
 const THROTTLE_PAUSE: Duration = Duration::from_secs(10);
 /// Bound a provider's retry delay before adding it to a monotonic instant.
 const MAX_COOLDOWN: Duration = Duration::from_secs(24 * 60 * 60);
+/// A read spends at most this much of its turn waiting on throttling. Longer cooldowns
+/// fail promptly and stay with the reader for a later scheduled attempt.
+const RETRY_BUDGET: Duration = Duration::from_secs(30);
 /// As much as the list's page may be. It was 727 KB.
 const PAGE_LIMIT: usize = 8 * 1024 * 1024;
 /// As long as the key or the session it names may be.
@@ -243,14 +246,17 @@ impl Throttle {
     }
     /// Whether a throttle was observed, including one whose delay passed while in-flight
     /// requests drained. A healthy read has no timer or added wait.
-    async fn wait(&self) -> bool {
+    async fn wait(&self, before: Instant) -> std::result::Result<bool, Failure> {
         let until = *self.until.lock().expect("route cooldown");
         let Some(until) = until else {
-            return false;
+            return Ok(false);
         };
+        if until > before && until > Instant::now() {
+            return Err(self.failure());
+        }
         sleep_until(until).await;
         *self.until.lock().expect("route cooldown") = None;
-        true
+        Ok(true)
     }
 }
 
@@ -271,6 +277,15 @@ impl Native {
             throttle: Throttle::default(),
         })
     }
+    /// A throttle's cooldown still belongs to this reader, even if it elapsed since a
+    /// cancelled read. Keep the reader rather than reopening a browser before observing it.
+    pub fn has_cooldown(&self) -> bool {
+        self.throttle
+            .until
+            .lock()
+            .expect("route cooldown")
+            .is_some()
+    }
     /// The day `scope` names as `mode` reads it, whole: both lists and every itinerary the
     /// list names, each its driver's. It is checked as every capture is by its caller.
     pub async fn read(
@@ -278,7 +293,8 @@ impl Native {
         scope: &Scope,
         mode: Mode,
     ) -> std::result::Result<Capture, Failure> {
-        self.throttle.wait().await;
+        let retry_before = Instant::now() + RETRY_BUDGET;
+        self.throttle.wait(retry_before).await?;
         let started_at = now();
         let mut asked_again = false;
         loop {
@@ -294,6 +310,7 @@ impl Native {
                 referer: format!("{}{}", self.origin, scope.list_path()),
                 historical: historical(scope),
                 throttle: &self.throttle,
+                retry_before,
             };
             match reading.day(mode, started_at).await {
                 // The page is asked once more: Cortex stopped accepting its key, or sends the
@@ -358,6 +375,7 @@ struct Reading<'a> {
     referer: String,
     historical: &'static str,
     throttle: &'a Throttle,
+    retry_before: Instant,
 }
 impl Reading<'_> {
     async fn day(&self, mode: Mode, started_at: i64) -> std::result::Result<Capture, Failure> {
@@ -442,7 +460,7 @@ impl Reading<'_> {
             match self.get(endpoint, params, MAX_BODY).await {
                 Ok(wire) => return decoded(wire, MAX_BODY, |_| Ok(())).await,
                 Err(failure) if passing(&failure) && attempt < LIST_ATTEMPTS => {
-                    if !self.throttle.wait().await {
+                    if !self.throttle.wait(self.retry_before).await? {
                         tokio::time::sleep(RETRY_PAUSE * attempt).await;
                     }
                     attempt += 1;
@@ -487,7 +505,7 @@ impl Reading<'_> {
             if pending.is_empty() {
                 break;
             }
-            if attempt > 0 && !self.throttle.wait().await {
+            if attempt > 0 && !self.throttle.wait(self.retry_before).await? {
                 tokio::time::sleep(RETRY_PAUSE).await;
             }
             failure = None;

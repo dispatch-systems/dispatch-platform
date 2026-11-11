@@ -18,7 +18,9 @@ in, has the page asked for its key once more, and the browser closes once the da
 A throttled native read (HTTP 429) pauses new requests while in-flight reads drain, keeps
 successful responses for that attempt, and retries only what is missing after Retry-After
 (seconds or an HTTP date), or ten seconds without one. A supplied delay is bounded at a day.
-The cooldown stays with the reader across cancellation; throttling never asks the browser to
+A read waits on throttling for at most thirty seconds; a longer cooldown fails promptly
+and stays with the reader for a later scheduled attempt. The cooldown stays with the reader
+across cancellation; throttling never asks the browser to
 sign or discover again, and its fixed endpoint and status are logged without identifiers.
 Healthy reads still download twelve at a time without a cooldown.
 `routes::Native` reads a day so for anything holding a session, outside a job too, and says why

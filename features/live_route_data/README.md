@@ -66,7 +66,9 @@ through core's live readers (`core/collection/backend/readers/`), never as jobs.
   later: the next day starts afresh. A restart inside the window goes on with the day as it was,
   emptying nothing.
 - **Throttling:** a native read refused with HTTP 429 keeps its reader and cooldown for the
-  next attempt without opening a browser. Cancelling a read during that cooldown keeps it
+  next attempt without opening a browser, including when that was its first native read.
+  Longer cooldowns return promptly instead of occupying a shared live-read turn; short retries
+  share a thirty-second wait budget. Cancelling a read during that cooldown keeps its reader
   too; a changed connection or scope still discards it. Normal reads keep their parallelism
   and the configured schedule.
 - **Records:** each read in the jobs database's `live_reads` (core's), with counts and codes only.
