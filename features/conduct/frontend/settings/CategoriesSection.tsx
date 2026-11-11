@@ -30,7 +30,7 @@ export function CategoriesSection() {
           const count = (id: string) => overview.categoryCounts[id] ?? 0;
           return (
             <div className="table-wrap">
-              <table className="conduct-table">
+              <table className="conduct-table conduct-category-table">
                 <thead>
                   <tr>
                     <th>Category</th>
@@ -48,7 +48,17 @@ export function CategoriesSection() {
                       key={category.id}
                       className={category.retired ? 'conduct-retired' : undefined}
                     >
-                      <td>{category.name}</td>
+                      <td>
+                        {category.name}
+                        <div className="conduct-category-details">
+                          {category.retired ? (
+                            <span className="muted">Retired</span>
+                          ) : (
+                            <TierBadge tier={category.startTier} />
+                          )}
+                          <span className="conduct-note">{stepDownRule(category.stepDown)}</span>
+                        </div>
+                      </td>
                       <td>
                         {category.retired ? (
                           <span className="muted">Retired</span>

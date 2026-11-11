@@ -398,6 +398,24 @@
 .conduct-retired td:first-child {
   color: var(--muted-foreground);
 }
+.conduct-category-details {
+  display: none;
+}
+@media (max-width: 600px) {
+  .conduct-category-table th:nth-child(2),
+  .conduct-category-table th:nth-child(3),
+  .conduct-category-table td:nth-child(2),
+  .conduct-category-table td:nth-child(3) {
+    display: none;
+  }
+  .conduct-category-details {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    margin-top: 6px;
+  }
+}
 .conduct-backup-failing {
   display: flex;
   align-items: flex-start;
