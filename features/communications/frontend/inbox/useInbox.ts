@@ -6,9 +6,8 @@ import {
   olderConversations,
   waitingUrl,
 } from '../../api/client.js';
-import { ApiError } from '../../../../core/shell/frontend/runtime/api.js';
+import { longPoll } from '../../../../core/shell/frontend/runtime/long-poll.js';
 import { dataCache } from '../../../../core/shell/frontend/runtime/data-cache.js';
-import { backoff } from '../../../../core/shell/frontend/lib/backoff.js';
 import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import { sectionNamed, type Section } from './sections.js';
 import {
@@ -58,22 +57,13 @@ export function useInbox(chosen?: string) {
   const refresh = useCallback(() => setGeneration((n) => n + 1), []);
 
   useEffect(() => {
-    let disposed = false;
-    let controller: AbortController | undefined;
-    let retry: ReturnType<typeof setTimeout> | undefined;
-    let failures = 0;
     let fresh = true;
-    const listen = async () => {
-      if (disposed || document.hidden || controller || !navigator.onLine) return;
-      const request = new AbortController();
-      controller = request;
-      let delay = 0;
-      let stopped = false;
-      try {
+    const poll = longPoll(
+      async (signal) => {
         const listed = current.current;
         if (fresh || !listed) {
-          const read = await getCommunications(request.signal, team);
-          if (disposed || request.signal.aborted) return;
+          const read = await getCommunications(signal, team);
+          if (signal.aborted) return;
           fresh = false;
           scope.current = team;
           change(read);
@@ -85,9 +75,9 @@ export function useInbox(chosen?: string) {
           const update = await getCommunicationsUpdates(
             listed.revision,
             listed.typing.version,
-            AbortSignal.any([request.signal, AbortSignal.timeout(30_000)]),
+            AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
           );
-          if (disposed || request.signal.aborted) return;
+          if (signal.aborted) return;
           if (update.reset) fresh = true;
           else {
             change(updated(current.current ?? listed, update));
@@ -95,34 +85,23 @@ export function useInbox(chosen?: string) {
             if (ids.length) setChanged((last) => ({ at: last.at + 1, ids }));
           }
         }
-        failures = 0;
         setError('');
-      } catch (cause) {
-        if (disposed || request.signal.aborted) return;
-        stopped = cause instanceof ApiError && [401, 403].includes(cause.status);
+      },
+      (cause) => {
         setError(messageOf(cause));
         fresh = true;
-        delay = backoff(failures++);
-      } finally {
-        if (controller === request) controller = undefined;
-        if (!disposed && !request.signal.aborted && !stopped && !document.hidden)
-          retry = setTimeout(() => void listen(), delay);
-      }
-    };
+      },
+    );
     const resume = () => {
-      if (retry) clearTimeout(retry);
-      controller?.abort();
-      controller = undefined;
+      poll.pause();
       fresh = true;
-      if (!document.hidden && navigator.onLine) void listen();
+      if (!document.hidden && navigator.onLine) void poll.listen();
     };
     document.addEventListener('visibilitychange', resume);
     window.addEventListener('online', resume);
     resume();
     return () => {
-      disposed = true;
-      controller?.abort();
-      if (retry) clearTimeout(retry);
+      poll.dispose();
       document.removeEventListener('visibilitychange', resume);
       window.removeEventListener('online', resume);
     };

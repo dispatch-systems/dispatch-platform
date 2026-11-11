@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { UniformAdjustment, UniformInventory } from '../api/index.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
-import { ApiError } from '../../../core/shell/frontend/runtime/api.js';
+import { longPoll } from '../../../core/shell/frontend/runtime/long-poll.js';
 import { getUniformUpdates } from '../api/client.js';
-import { backoff } from '../../../core/shell/frontend/lib/backoff.js';
 import { messageOf } from '../../../core/shell/frontend/lib/errors.js';
 import { applyUniformAdjustments, applyUniformSnapshot, applyUniformUpdates } from './uniforms.js';
 
@@ -31,57 +30,37 @@ export function useUniformInventory(token: string) {
   }, []);
 
   useEffect(() => {
-    let disposed = false;
     let after: number | undefined;
-    let controller: AbortController | undefined;
-    let retry: ReturnType<typeof setTimeout> | undefined;
-    let failures = 0;
-    const listen = async () => {
-      if (disposed || document.hidden || controller || !navigator.onLine) return;
-      const request = new AbortController();
-      controller = request;
-      let delay = 0;
-      let stopped = false;
-      try {
+    const poll = longPoll(
+      async (signal) => {
         const update = await getUniformUpdates(
           after,
-          AbortSignal.any([request.signal, AbortSignal.timeout(25_000)]),
+          AbortSignal.any([signal, AbortSignal.timeout(25_000)]),
         );
-        if (disposed || request.signal.aborted) return;
+        if (signal.aborted) return;
         setData((current) => applyUniformUpdates(current, update));
         after = update.revision;
-        failures = 0;
         setError('');
         setStatus('live');
-      } catch (cause) {
-        if (disposed || request.signal.aborted) return;
-        stopped = cause instanceof ApiError && [401, 403].includes(cause.status);
+      },
+      (cause, stopped) => {
         setError(messageOf(cause));
         setStatus(stopped ? 'unavailable' : 'reconnecting');
         after = undefined;
-        delay = backoff(failures++);
-      } finally {
-        if (controller === request) controller = undefined;
-        if (!disposed && !request.signal.aborted && !stopped && !document.hidden)
-          retry = setTimeout(() => void listen(), delay);
-      }
-    };
+      },
+    );
     const resume = () => {
-      if (retry) clearTimeout(retry);
-      controller?.abort();
-      controller = undefined;
+      poll.pause();
       after = undefined;
       setStatus(document.hidden ? 'paused' : navigator.onLine ? 'connecting' : 'reconnecting');
-      if (!document.hidden && navigator.onLine) void listen();
+      if (!document.hidden && navigator.onLine) void poll.listen();
     };
     document.addEventListener('visibilitychange', resume);
     window.addEventListener('online', resume);
     window.addEventListener('offline', resume);
     resume();
     return () => {
-      disposed = true;
-      controller?.abort();
-      if (retry) clearTimeout(retry);
+      poll.dispose();
       document.removeEventListener('visibilitychange', resume);
       window.removeEventListener('online', resume);
       window.removeEventListener('offline', resume);
