@@ -2,12 +2,13 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { privateFeatures } from './tooling/build/private-features.js';
 import { backendProxy } from './tooling/dev/backend-paths.js';
+import { privateSourceGuard } from './tooling/dev/private-sources.js';
 // Standalone Vite defaults; npm run dev supplies its own ports and session proxy.
 const api = `http://127.0.0.1:${process.env.DISPATCH_DEV_API_PORT ?? '5180'}`;
 export default defineConfig({
   root: 'app/frontend',
   base: './',
-  plugins: [react(), privateFeatures(process.cwd())],
+  plugins: [react(), privateFeatures(process.cwd()), privateSourceGuard(process.cwd(), api)],
   build: {
     outDir: '../../.build/dashboard',
     emptyOutDir: true,
