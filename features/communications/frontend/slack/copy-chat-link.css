@@ -3,13 +3,6 @@
   position: relative;
 }
 .chat-link-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: var(--control-height);
-  padding: 8px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
   background: var(--background);
   font-size: 14px;
   font-weight: 500;
@@ -18,9 +11,6 @@
 }
 .chat-link-button::-webkit-details-marker {
   display: none;
-}
-.chat-link-button:hover {
-  background: var(--accent);
 }
 .chat-link-menu .account-popover {
   inset: calc(100% + 6px) 0 auto auto;

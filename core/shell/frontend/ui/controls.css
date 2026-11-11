@@ -15,6 +15,22 @@ button {
 button:hover {
   background: var(--accent);
 }
+.documents-link-button,
+.slack-link-button,
+.chat-link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--control-height);
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.documents-link-button:hover,
+.slack-link-button:hover,
+.chat-link-button:hover {
+  background: var(--accent);
+}
 button:disabled {
   opacity: 0.5;
   cursor: default;
