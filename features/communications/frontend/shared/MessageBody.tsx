@@ -21,7 +21,8 @@ export function MessageBody({
   message,
   attachments,
 }: {
-  message: Pick<Message, 'id' | 'text' | 'editedAt' | 'files'> & Partial<Pick<Message, 'status' | 'gif'>>;
+  message: Pick<Message, 'id' | 'text' | 'editedAt' | 'files'> &
+    Partial<Pick<Message, 'status' | 'gif'>>;
   /** Where a photo, video or file of it is read from, by the way it went. */
   attachments: Pick<Attachments, 'address' | 'preview' | 'fetch'>;
 }) {
