@@ -14,7 +14,7 @@
 use super::{
     Day, INVALID, Method, NATIVE, Navigation,
     capture::{Capture, Collection, ItineraryCapture, Request},
-    native::Native,
+    native::{Failure, Native},
     page::{MOVE_FAILED, patterns, routes_page},
     protocol::{
         CaptureBudget, ITINERARY, ROUTE_SUMMARIES, SUMMARIES, itineraries_listed, owned_by, parsed,
@@ -274,6 +274,7 @@ where
                 Err(_) => Err(INVALID),
             }
         }
+        Err(Failure::Throttled(error)) => return Err(error),
         Err(failure) => Err(failure.label()),
     })
 }

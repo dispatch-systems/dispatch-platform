@@ -15,6 +15,12 @@ withheld from the page so nothing renders. A day's routes are read first with no
 browser's session: every read signed here with the key Cortex gives the list's own page, and
 downloaded gzipped twelve at a time; a key Cortex refuses, or a session it keeps sending to sign
 in, has the page asked for its key once more, and the browser closes once the day is read whole.
+A throttled native read (HTTP 429) pauses new requests while in-flight reads drain, keeps
+successful responses for that attempt, and retries only what is missing after Retry-After
+(seconds or an HTTP date), or ten seconds without one. A supplied delay is bounded at a day.
+The cooldown stays with the reader across cancellation; throttling never asks the browser to
+sign or discover again, and its fixed endpoint and status are logged without identifiers.
+Healthy reads still download twelve at a time without a cooldown.
 `routes::Native` reads a day so for anything holding a session, outside a job too, and says why
 it could not: no key on the page, the key refused, the session ended, or Cortex unavailable.
 Otherwise the day is signed by the application's own API action, stopped before it leaves the

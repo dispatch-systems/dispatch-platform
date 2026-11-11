@@ -121,6 +121,37 @@ pub enum Refusal {
     Unreadable(&'static str),
 }
 
+/// A wire read's refusal, with the response's status and requested retry delay when it
+/// reached the provider. No response body, address or session is retained in the error.
+pub struct WireError {
+    pub refusal: Refusal,
+    pub status: Option<u16>,
+    pub retry_after: Option<Duration>,
+}
+impl From<Refusal> for WireError {
+    fn from(refusal: Refusal) -> Self {
+        Self {
+            refusal,
+            status: None,
+            retry_after: None,
+        }
+    }
+}
+
+/// Retry-After's seconds or HTTP date. A date already passed permits an immediate retry.
+fn retry_after(value: Option<&reqwest::header::HeaderValue>) -> Option<Duration> {
+    let value = value?.to_str().ok()?.trim();
+    if !value.is_empty() && value.bytes().all(|b| b.is_ascii_digit()) {
+        return value.parse::<u64>().ok().map(Duration::from_secs);
+    }
+    let at = chrono::DateTime::parse_from_rfc2822(value).ok()?;
+    Some(Duration::from_millis(
+        at.timestamp_millis()
+            .saturating_sub(crate::db::now())
+            .max(0) as u64,
+    ))
+}
+
 /// A provider's session as a signed-in browser held it: the cookies its requests carry and
 /// the browser's user agent, so a reader can go on with it after the browser closes. Kept in
 /// memory only.
@@ -516,7 +547,7 @@ impl Http {
         headers: &[(String, String)],
         referer: &str,
         limit: usize,
-    ) -> std::result::Result<Wire, Refusal> {
+    ) -> std::result::Result<Wire, WireError> {
         let target = self.target(url)?;
         let accept = if kind == "text/html" {
             "text/html,application/xhtml+xml"
@@ -536,17 +567,28 @@ impl Http {
         }
         let response = request.send().await.map_err(|_| Refusal::Unavailable)?;
         let status = response.status();
-        if status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
-            return Err(Refusal::Unavailable);
+        let failed = |refusal| WireError {
+            refusal,
+            status: Some(status.as_u16()),
+            retry_after: None,
+        };
+        if status == StatusCode::TOO_MANY_REQUESTS {
+            return Err(WireError {
+                retry_after: retry_after(response.headers().get(reqwest::header::RETRY_AFTER)),
+                ..failed(Refusal::Unavailable)
+            });
+        }
+        if status.is_server_error() {
+            return Err(failed(Refusal::Unavailable));
         }
         if status.is_redirection() {
-            return Err(Refusal::Unreadable("http_redirected"));
+            return Err(failed(Refusal::Unreadable("http_redirected")));
         }
         if [StatusCode::UNAUTHORIZED, StatusCode::FORBIDDEN].contains(&status) {
-            return Err(Refusal::Unreadable("http_refused"));
+            return Err(failed(Refusal::Unreadable("http_refused")));
         }
         if status != StatusCode::OK {
-            return Err(Refusal::Unreadable("http_status"));
+            return Err(failed(Refusal::Unreadable("http_status")));
         }
         let gzipped = match response
             .headers()
@@ -556,10 +598,10 @@ impl Http {
             None => false,
             Some(Ok(encoding)) if encoding.eq_ignore_ascii_case("identity") => false,
             Some(Ok(encoding)) if encoding.eq_ignore_ascii_case("gzip") => true,
-            Some(_) => return Err(Refusal::Unreadable("http_encoding")),
+            Some(_) => return Err(failed(Refusal::Unreadable("http_encoding"))),
         };
         Ok(Wire {
-            body: Self::bytes(response, kind, limit).await?,
+            body: Self::bytes(response, kind, limit).await.map_err(failed)?,
             gzipped,
         })
     }

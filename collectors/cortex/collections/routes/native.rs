@@ -12,22 +12,24 @@
 //! itinerary, or not at all.
 use super::capture::{Capture, Collection, ItineraryCapture, MAX_BODY, Mode};
 use super::protocol::{
-    CaptureBudget, ROUTE_SUMMARIES, SUMMARIES, itineraries_listed, itinerary_path, owned_by, parsed,
+    CaptureBudget, ITINERARY, ROUTE_SUMMARIES, SUMMARIES, itineraries_listed, itinerary_path,
+    owned_by, parsed,
 };
 use crate as cortex;
 use crate::discovery::Scope;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use dispatch_core::{
     Error, Result,
-    collection::browser::http::{Http, Refusal, SignedIn, Wire},
+    collection::browser::http::{Http, Refusal, SignedIn, Wire, WireError},
     db::now,
     ensure,
-    foundation::clock,
+    foundation::{clock, observability},
 };
 use futures_util::stream::{self, StreamExt};
 use hmac::{Hmac, KeyInit, Mac};
-use serde_json::Value;
-use std::time::Duration;
+use serde_json::{Value, json};
+use std::{sync::Mutex, time::Duration};
+use tokio::time::{Instant, sleep_until};
 
 /// Itineraries downloaded at once, as many as the application's signatures are.
 const DOWNLOADS: usize = 12;
@@ -35,6 +37,10 @@ const DOWNLOADS: usize = 12;
 const LIST_ATTEMPTS: u32 = 3;
 /// How long Cortex is left before a read is asked for again, times the attempts so far.
 const RETRY_PAUSE: Duration = Duration::from_secs(2);
+/// A throttle without Retry-After leaves the provider alone before another attempt.
+const THROTTLE_PAUSE: Duration = Duration::from_secs(10);
+/// Bound a provider's retry delay before adding it to a monotonic instant.
+const MAX_COOLDOWN: Duration = Duration::from_secs(24 * 60 * 60);
 /// As much as the list's page may be. It was 727 KB.
 const PAGE_LIMIT: usize = 8 * 1024 * 1024;
 /// As long as the key or the session it names may be.
@@ -51,6 +57,8 @@ pub enum Failure {
     Refused,
     /// Cortex sends the session to sign in: it has ended.
     SignedOut,
+    /// Cortex asked for a cooldown. Neither signing again nor opening a page helps it.
+    Throttled(Error),
     /// Cortex did not answer every read, or answered what the day cannot be read from; the
     /// error says which.
     Unavailable(Error),
@@ -67,16 +75,18 @@ impl Failure {
             Self::NoKey => "routes_native_no_key",
             Self::Refused => "routes_native_refused",
             Self::SignedOut => "routes_native_signed_out",
+            Self::Throttled(_) => "routes_native_throttled",
             Self::Unavailable(_) => "routes_native_unavailable",
         }
     }
-    /// The worse of two reads' failures: a refusal says the key, a redirect the session,
-    /// before anything a single read went through.
+    /// Throttling stops the attempt before another key or browser is asked for. Otherwise
+    /// a refusal says the key, a redirect the session, before a single unread response.
     fn worse(self, other: Self) -> Self {
         let rank = |failure: &Self| match failure {
-            Self::Refused => 0,
-            Self::SignedOut => 1,
-            _ => 2,
+            Self::Throttled(_) => 0,
+            Self::Refused => 1,
+            Self::SignedOut => 2,
+            _ => 3,
         };
         if rank(&other) < rank(&self) {
             other
@@ -188,11 +198,60 @@ async fn decoded(
 }
 /// Whether asking again may help: Cortex was briefly unavailable, or redirected for a
 /// moment, as it once did every request of a poll.
-fn passing(refusal: &Refusal) -> bool {
-    matches!(
-        refusal,
-        Refusal::Unavailable | Refusal::Unreadable("http_redirected")
-    )
+fn passing(failure: &Failure) -> bool {
+    match failure {
+        Failure::Throttled(_) | Failure::SignedOut => true,
+        Failure::Unavailable(error) => error.code == "provider_unavailable",
+        _ => false,
+    }
+}
+
+/// Shared by the day's requests and retained with its reader. A throttle stops admission,
+/// while requests already in flight drain. Keeping the deadline here survives cancellation.
+#[derive(Default)]
+struct Throttle {
+    until: Mutex<Option<Instant>>,
+}
+impl Throttle {
+    fn failure(&self) -> Failure {
+        Failure::Throttled(Error::new(cortex::codes::CORTEX_THROTTLED.as_str(), 502))
+    }
+    fn active(&self) -> bool {
+        self.until
+            .lock()
+            .expect("route cooldown")
+            .is_some_and(|until| until > Instant::now())
+    }
+    fn refused(&self, endpoint: &'static str, error: WireError) -> Failure {
+        observability::event(
+            "warn",
+            "cortex.routes_read_failed",
+            json!({"endpoint":endpoint,"status":error.status,
+                "retryAfterMs":error.retry_after.map(|d|d.as_millis().min(u64::MAX as u128) as u64)}),
+        );
+        if error.status != Some(429) {
+            return error.refusal.into();
+        }
+        let retry = error
+            .retry_after
+            .unwrap_or(THROTTLE_PAUSE)
+            .min(MAX_COOLDOWN);
+        let until = Instant::now() + retry;
+        let mut held = self.until.lock().expect("route cooldown");
+        *held = Some(held.map_or(until, |previous| previous.max(until)));
+        self.failure()
+    }
+    /// Whether a throttle was observed, including one whose delay passed while in-flight
+    /// requests drained. A healthy read has no timer or added wait.
+    async fn wait(&self) -> bool {
+        let until = *self.until.lock().expect("route cooldown");
+        let Some(until) = until else {
+            return false;
+        };
+        sleep_until(until).await;
+        *self.until.lock().expect("route cooldown") = None;
+        true
+    }
 }
 
 /// A DSP's routes read over plain HTTP with its session, keeping the key between reads.
@@ -200,6 +259,7 @@ pub struct Native {
     http: Http,
     origin: String,
     key: Option<Key>,
+    throttle: Throttle,
 }
 impl Native {
     /// A reader carrying `session`: the cookies and user agent a browser signed in with.
@@ -208,6 +268,7 @@ impl Native {
             http: Http::with_session(session, &cortex::HOSTS)?,
             origin: session.origin.clone(),
             key: None,
+            throttle: Throttle::default(),
         })
     }
     /// The day `scope` names as `mode` reads it, whole: both lists and every itinerary the
@@ -217,6 +278,7 @@ impl Native {
         scope: &Scope,
         mode: Mode,
     ) -> std::result::Result<Capture, Failure> {
+        self.throttle.wait().await;
         let started_at = now();
         let mut asked_again = false;
         loop {
@@ -231,6 +293,7 @@ impl Native {
                 scope,
                 referer: format!("{}{}", self.origin, scope.list_path()),
                 historical: historical(scope),
+                throttle: &self.throttle,
             };
             match reading.day(mode, started_at).await {
                 // The page is asked once more: Cortex stopped accepting its key, or sends the
@@ -256,10 +319,17 @@ impl Native {
             .await
         {
             Ok(wire) => decoded(wire, PAGE_LIMIT, |_| Ok(())).await?,
-            Err(Refusal::Unreadable("http_redirected" | "http_refused")) => {
-                return Err(Failure::SignedOut);
+            Err(error) => {
+                return Err(
+                    match self
+                        .throttle
+                        .refused("/operations/execution/itineraries", error)
+                    {
+                        Failure::Refused | Failure::SignedOut => Failure::SignedOut,
+                        failure => failure,
+                    },
+                );
             }
-            Err(refusal) => return Err(refusal.into()),
         };
         match Key::of_page(&html) {
             Some(key) => Ok(key),
@@ -287,6 +357,7 @@ struct Reading<'a> {
     scope: &'a Scope,
     referer: String,
     historical: &'static str,
+    throttle: &'a Throttle,
 }
 impl Reading<'_> {
     async fn day(&self, mode: Mode, started_at: i64) -> std::result::Result<Capture, Failure> {
@@ -339,11 +410,25 @@ impl Reading<'_> {
         endpoint: &str,
         params: &[(&str, &str)],
         limit: usize,
-    ) -> std::result::Result<Wire, Refusal> {
+    ) -> std::result::Result<Wire, Failure> {
+        if self.throttle.active() {
+            return Err(self.throttle.failure());
+        }
         let (url, headers) = self.key.sign(self.origin, endpoint, params);
         self.http
             .wire(&url, "application/json", &headers, &self.referer, limit)
             .await
+            .map_err(|error| {
+                let endpoint = match endpoint {
+                    SUMMARIES => SUMMARIES,
+                    ROUTE_SUMMARIES => ROUTE_SUMMARIES,
+                    _ if endpoint.starts_with(ITINERARY) => {
+                        "/operations/execution/api/itineraries/{id}"
+                    }
+                    _ => "unknown",
+                };
+                self.throttle.refused(endpoint, error)
+            })
     }
     /// A list's text, asked again while Cortex is briefly unavailable or redirects: a
     /// redirect that lasts sends the session to sign in.
@@ -356,11 +441,13 @@ impl Reading<'_> {
         loop {
             match self.get(endpoint, params, MAX_BODY).await {
                 Ok(wire) => return decoded(wire, MAX_BODY, |_| Ok(())).await,
-                Err(refusal) if passing(&refusal) && attempt < LIST_ATTEMPTS => {
-                    tokio::time::sleep(RETRY_PAUSE * attempt).await;
+                Err(failure) if passing(&failure) && attempt < LIST_ATTEMPTS => {
+                    if !self.throttle.wait().await {
+                        tokio::time::sleep(RETRY_PAUSE * attempt).await;
+                    }
                     attempt += 1;
                 }
-                Err(refusal) => return Err(refusal.into()),
+                Err(failure) => return Err(failure),
             }
         }
     }
@@ -400,7 +487,7 @@ impl Reading<'_> {
             if pending.is_empty() {
                 break;
             }
-            if attempt > 0 {
+            if attempt > 0 && !self.throttle.wait().await {
                 tokio::time::sleep(RETRY_PAUSE).await;
             }
             failure = None;

@@ -59,6 +59,10 @@ enum Plays {
     WrongItinerary,
     /// The second itinerary is its driver's, but not one the collection keeps.
     UncheckedItinerary,
+    /// One itinerary asks for a cooldown once, then answers normally.
+    ThrottledOnce,
+    /// That itinerary remains throttled after retrying.
+    Throttled,
 }
 
 /// Cortex for one session: its list page hands out a key, and every read must be signed
@@ -72,6 +76,8 @@ struct Stand {
     reads: AtomicUsize,
     /// How many times each itinerary was asked for.
     asked: Mutex<HashMap<String, usize>>,
+    /// The stand-in rejects a retry before the delay it told the reader has passed.
+    throttled_until: Mutex<Option<Instant>>,
 }
 impl Stand {
     fn signed(&self, path: &str, query: &str, request: &Asked) -> Option<usize> {
@@ -215,6 +221,32 @@ impl Stand {
                     *times
                 };
                 match self.plays {
+                    Plays::ThrottledOnce if index == 1 && times == 1 => {
+                        *self.throttled_until.lock().unwrap() =
+                            Some(Instant::now() + Duration::from_secs(20));
+                        return Response::builder()
+                            .status(StatusCode::TOO_MANY_REQUESTS)
+                            .header(header::RETRY_AFTER, "20")
+                            .body(Body::empty())
+                            .unwrap();
+                    }
+                    Plays::ThrottledOnce
+                        if index == 1
+                            && self
+                                .throttled_until
+                                .lock()
+                                .unwrap()
+                                .is_some_and(|until| until > Instant::now()) =>
+                    {
+                        return status(StatusCode::TOO_MANY_REQUESTS);
+                    }
+                    Plays::Throttled if index == 1 => {
+                        return Response::builder()
+                            .status(StatusCode::TOO_MANY_REQUESTS)
+                            .header(header::RETRY_AFTER, "0")
+                            .body(Body::empty())
+                            .unwrap();
+                    }
                     Plays::FlakyItinerary if index == 1 && times == 1 => {
                         return status(StatusCode::SERVICE_UNAVAILABLE);
                     }
@@ -289,6 +321,7 @@ async fn stand_in(plays: Plays) -> (Arc<Stand>, SignedIn) {
         pages: AtomicUsize::new(0),
         reads: AtomicUsize::new(0),
         asked: Mutex::default(),
+        throttled_until: Mutex::default(),
     });
     let app = Router::new().fallback(answer).with_state(stand.clone());
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -402,4 +435,28 @@ async fn a_day_read_natively_is_kept_once_checked_and_its_reader_reads_the_next(
         let (_, day) = read(plays).await;
         assert_eq!(day.err(), Some(why), "{plays:?}");
     }
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_throttled_itinerary_is_retried_without_reading_successful_ones_again() {
+    let (stand, session) = stand_in(Plays::ThrottledOnce).await;
+    let mut reader = Native::new(&session).unwrap();
+    let capture = reader.read(&stand.day.scope, Mode::Final).await.unwrap();
+    capture.validate(&request()).unwrap();
+    assert_eq!(stand.asked("itinerary-1"), 1);
+    assert_eq!(stand.asked("itinerary-2"), 2);
+    assert_eq!(stand.pages.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn persistent_throttling_does_not_request_a_browser_fallback() {
+    let (stand, session) = stand_in(Plays::Throttled).await;
+    let result = read_natively(&session, &request(), &stand.day.scope, &unprompted).await;
+    assert_eq!(
+        result.err().map(|error| error.code).as_deref(),
+        Some("cortex_throttled")
+    );
+    assert_eq!(stand.asked("itinerary-1"), 1);
+    assert_eq!(stand.asked("itinerary-2"), 2);
+    assert_eq!(stand.pages.load(Ordering::SeqCst), 1);
 }

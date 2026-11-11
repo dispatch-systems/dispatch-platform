@@ -52,3 +52,70 @@ fn a_reader_failing_fresh_from_a_browser_leaves_the_next_reads_to_the_browser() 
     browsed(&mut ladder);
     assert!(!ladder.native_first());
 }
+
+#[tokio::test]
+async fn throttling_and_cancelling_its_cooldown_keep_the_reader_until_its_connection_changes() {
+    use dispatch_core::collection::browser::http::{FIXTURE, SignedIn};
+    use std::{future::Future, task::Poll};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{FIXTURE}:{}", listener.local_addr().unwrap().port());
+    let server = tokio::spawn(async move {
+        // Several throttled slots must not escalate to the browser. The last response
+        // asks for a cooldown in which the next read can be cancelled.
+        for delay in [0, 0, 0, 120] {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut headers = Vec::new();
+            while !headers.ends_with(b"\r\n\r\n") {
+                headers.push(stream.read_u8().await.unwrap());
+            }
+            stream.write_all(format!("HTTP/1.1 429 Too Many Requests\r\nRetry-After: {delay}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").as_bytes()).await.unwrap();
+        }
+    });
+    let request = Request {
+        collection: routes::Collection::Routes,
+        mode: routes::Mode::Final,
+        date: "2026-09-25".into(),
+        station: "TST1".into(),
+        timezone: "America/Los_Angeles".into(),
+        dsp_name: "Fixture Logistics".into(),
+        dsp_abbreviation: "FXTR".into(),
+        service_area_id: Some("area-1".into()),
+        provider: Some("company-1".into()),
+    };
+    let mut held = Held {
+        native: Some(Handed {
+            native: Native::new(&SignedIn {
+                origin,
+                cookies: Vec::new(),
+                user_agent: "Fixture".into(),
+            })
+            .unwrap(),
+            scope: routes::fixture(&request).unwrap().scope,
+            revision: 7,
+        }),
+        ..Held::default()
+    };
+    for _ in 0..4 {
+        let result = held.read_native(&request, Some(7)).await;
+        assert_eq!(
+            result.err().map(|e| e.code).as_deref(),
+            Some("cortex_throttled")
+        );
+        assert!(held.native.is_some());
+        assert_eq!(held.ladder, Ladder::default());
+    }
+    server.await.unwrap();
+    let mut pending = Box::pin(held.read_native(&request, Some(7)));
+    std::future::poll_fn(|cx| {
+        assert!(pending.as_mut().poll(cx).is_pending());
+        Poll::Ready(())
+    })
+    .await;
+    drop(pending);
+    assert!(held.native.is_some());
+    // A changed connection still ends the held session, even during a cooldown.
+    assert!(held.read_native(&request, Some(8)).await.unwrap().is_err());
+    assert!(held.native.is_none());
+}

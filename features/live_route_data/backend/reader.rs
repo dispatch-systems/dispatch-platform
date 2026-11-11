@@ -119,6 +119,69 @@ pub struct Read {
     labels: Vec<&'static str>,
 }
 
+impl Held {
+    /// The held reader's read, or why the browser should try; a throttled read keeps the
+    /// reader in place and fails without a browser, as does one cancelled while it waits.
+    async fn read_native(
+        &mut self,
+        request: &Request,
+        revision: Option<i64>,
+    ) -> Result<std::result::Result<Read, Option<&'static str>>> {
+        // The native reader goes first while it reads the scope today's request names, under
+        // the connection's revision now: never once the connection is disabled.
+        let native = self.native.as_mut().filter(|handed| {
+            self.ladder.native_first()
+                && revision == Some(handed.revision)
+                && request
+                    .scope_request()
+                    .validate_scope(&handed.scope)
+                    .is_ok()
+        });
+        let fallback = if let Some(handed) = native {
+            let fallback = match handed.native.read(&handed.scope, request.mode).await {
+                Ok(capture) => match capture.validate(request) {
+                    Ok(()) => {
+                        self.ladder.read_natively();
+                        let revision = handed.revision;
+                        return Ok(Ok(Read {
+                            capture,
+                            revision,
+                            browser: false,
+                            labels: vec![routes::NATIVE],
+                        }));
+                    }
+                    Err(_) => {
+                        self.ladder.failed();
+                        routes::INVALID
+                    }
+                },
+                Err(failure) => {
+                    let label = failure.label();
+                    match failure {
+                        // A throttle is no reason to replace this session or open a page.
+                        Failure::Throttled(error) => return Err(error),
+                        // Cortex briefly unavailable keeps the reader for the next read.
+                        Failure::Unavailable(error) if self.ladder.unavailable() => {
+                            return Err(error);
+                        }
+                        Failure::Unavailable(_) => {}
+                        _ => self.ladder.failed(),
+                    }
+                    label
+                }
+            };
+            Some(fallback)
+        } else {
+            None
+        };
+        // Another way of reading may renew the browser's session. Let its reader
+        // replace this one; a read cancelled before here still holds the old one.
+        self.native = None;
+        self.ladder.browsing();
+        Ok(Err(fallback))
+    }
+}
+
 impl LiveReader for Routes {
     type Held = Held;
     type Read = Read;
@@ -147,53 +210,11 @@ impl LiveReader for Routes {
                     Ok((request, db.connection_revision(&dsp, cortex::PROVIDER)?))
                 })
                 .await?;
-            let mut labels = Vec::new();
-            // The native reader goes first while it reads the scope today's request names, under
-            // the connection's revision now: never once the connection is disabled.
-            let native = held.native.take().filter(|handed| {
-                held.ladder.native_first()
-                    && revision == Some(handed.revision)
-                    && request
-                        .scope_request()
-                        .validate_scope(&handed.scope)
-                        .is_ok()
-            });
-            if let Some(mut handed) = native {
-                let fallback = match handed.native.read(&handed.scope, request.mode).await {
-                    Ok(capture) => match capture.validate(&request) {
-                        Ok(()) => {
-                            held.ladder.read_natively();
-                            let revision = handed.revision;
-                            held.native = Some(handed);
-                            return Ok(Read {
-                                capture,
-                                revision,
-                                browser: false,
-                                labels: vec![routes::NATIVE],
-                            });
-                        }
-                        Err(_) => {
-                            held.ladder.failed();
-                            routes::INVALID
-                        }
-                    },
-                    Err(failure) => {
-                        let label = failure.label();
-                        match failure {
-                            // Cortex briefly unavailable keeps the reader for the next read.
-                            Failure::Unavailable(error) if held.ladder.unavailable() => {
-                                held.native = Some(handed);
-                                return Err(error);
-                            }
-                            Failure::Unavailable(_) => {}
-                            _ => held.ladder.failed(),
-                        }
-                        label
-                    }
-                };
-                labels.push(fallback);
-            }
-            held.ladder.browsing();
+            let fallback = match held.read_native(&request, revision).await? {
+                Ok(read) => return Ok(read),
+                Err(fallback) => fallback,
+            };
+            let mut labels: Vec<_> = fallback.into_iter().collect();
             // The DSP's browser opens only while its connection is enabled
             // (`connection_required`): one enabled again since, under a revision this read didn't
             // see, is the next read's.
