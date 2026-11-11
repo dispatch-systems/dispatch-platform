@@ -1,3 +1,4 @@
+import { featureLocations } from '../shared/features.js';
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -71,6 +72,31 @@ const MADE: [string, ...string[]][] = [
   ['slot', 'smoke_shortcuts', '--description', 'Its shortcuts on a page.'],
   // A feature the pieces below are added to, with a table.
   ['feature', 'smoke_rows', '--tables', 'dsp'],
+  [
+    'feature',
+    'smoke_custom',
+    '--custom',
+    'nll',
+    '--page',
+    '--api',
+    '--tables',
+    'dsp',
+    '--settings',
+  ],
+  ['collector', 'smoke_custom_site'],
+  [
+    'feature',
+    'smoke_custom_keeper',
+    '--custom',
+    '12',
+    '--keeps',
+    'smoke_custom_site.records',
+    '--tables',
+    'smoke_custom_site',
+    '--people',
+    'own',
+  ],
+  ['integration', 'smoke_custom_notes', '--to', 'nll_smoke_custom'],
 ];
 
 /**
@@ -98,6 +124,7 @@ const ADDED: string[][] = [
   // A keeper's tests install the collector it keeps from, as its contract's must; a page shows
   // it.
   ['contract', 'keeper_counts', '--to', 'smoke_keeper', '--shown'],
+  ['api', '--to', '12_smoke_custom_keeper'],
 ];
 
 /** Copies the checkout's files, committed or not, into `to`, with its packages linked. */
@@ -173,12 +200,20 @@ async function check(copied: string, logs: string) {
       .map((name) => `app/tests/rules/${name}`),
     ...plan.rules.filter((file) => !file.startsWith('tooling/tests/scaffold/')),
   ];
-  const owners = ['features', 'collectors', 'mcp/tools']
-    .flatMap((dir) => fs.readdirSync(path.join(copied, dir)).map((name) => `${dir}/${name}`))
-    .filter((dir) => /\/smoke/.test(dir));
+  const owners = [
+    ...featureLocations(copied).map((feature) => feature.dir),
+    ...['collectors', 'mcp/tools'].flatMap((dir) =>
+      fs.readdirSync(path.join(copied, dir)).map((name) => `${dir}/${name}`),
+    ),
+  ].filter((dir) => /\/smoke/.test(dir));
   const crates = owners
     .filter((dir) => fs.existsSync(path.join(copied, dir, 'Cargo.toml')))
-    .map((dir) => `dispatch-${path.basename(dir).replace(/_/g, '-')}`);
+    .map(
+      (dir) =>
+        /^name\s*=\s*"([^"]+)"/m.exec(
+          fs.readFileSync(path.join(copied, dir, 'Cargo.toml'), 'utf8'),
+        )![1]!,
+    );
   const lint: [string, string[]][] = [
     [
       'clippy',

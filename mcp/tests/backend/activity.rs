@@ -231,7 +231,9 @@ async fn what_agents_did_at_a_dsp_is_never_written_down_once_it_is_deleted() {
     flush(&state).await.unwrap();
     // Held after, until the server lets go of the DSP.
     Kept::of(&state).activity.record(call);
-    dispatch_core::tenancy::deletion::forget(&state, &north).await;
+    dispatch_core::tenancy::deletion::forget(&state, &north)
+        .await
+        .unwrap();
     assert_eq!(Kept::of(&state).activity.pending(), 0);
     let written = state
         .read(move |db| {

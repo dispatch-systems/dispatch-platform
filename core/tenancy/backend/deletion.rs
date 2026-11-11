@@ -77,6 +77,7 @@ impl Store {
     /// (`finish`), and records who deleted it, by its name, as nothing else names it now.
     pub fn delete_dsp(&self, id: &str, name: &str, actor: &str) -> Result<()> {
         self.ensure_deletable(id, name)?;
+        let code = self.feature_code(id)?;
         let own: Vec<(String,)> = self.dsp(id)?.query_as("SELECT id FROM users", [])?;
         let own: Vec<String> = own
             .into_iter()
@@ -91,7 +92,12 @@ impl Store {
             if let Some(agents) = registry().agents {
                 (agents.forget_dsp)(self, id)?;
             }
-            for forget in registry().features.iter().filter_map(|f| f.deleting.forget) {
+            for forget in registry()
+                .features
+                .iter()
+                .filter(|f| f.belongs_to(code.as_deref()))
+                .filter_map(|f| f.deleting.forget)
+            {
                 forget(self, id)?;
             }
             self.forget_legacy_people(id)?;
@@ -99,8 +105,8 @@ impl Store {
                 .exec("DELETE FROM dsp_features WHERE dsp_id=?", [id])?;
             self.platform.exec("DELETE FROM dsps WHERE id=?", [id])?;
             self.platform.exec(
-                "INSERT INTO dsp_deletions(dsp_id,started_at) VALUES (?,?)",
-                [id, iso().as_str()],
+                "INSERT INTO dsp_deletions(dsp_id,started_at,code) VALUES (?,?,?)",
+                rusqlite::params![id, iso(), code],
             )?;
             self.audit(Some(actor), None, "dsp.deleted", name)
         })
@@ -153,7 +159,7 @@ where
     let _reserved = state
         .read(move |db| db.reserve_deletion(&at, &asked(db)?.0))
         .await?;
-    revoke(state, dsp).await;
+    revoke(state, dsp).await?;
     let at = dsp.to_owned();
     state
         .run(move |db| {
@@ -167,10 +173,18 @@ where
 
 /// Gives back what the DSP connected outside Dispatch through each feature, as its features
 /// declare, whether or not they're on there: best effort, each logging its own failures.
-pub async fn revoke(state: &Arc<State>, dsp: &str) {
-    for revoke in registry().features.iter().filter_map(|f| f.deleting.revoke) {
+pub async fn revoke(state: &Arc<State>, dsp: &str) -> Result<()> {
+    let at = dsp.to_owned();
+    let code = state.read(move |db| db.feature_code(&at)).await?;
+    for revoke in registry()
+        .features
+        .iter()
+        .filter(|f| f.belongs_to(code.as_deref()))
+        .filter_map(|f| f.deleting.revoke)
+    {
         revoke(state.clone(), dsp.to_owned()).await;
     }
+    Ok(())
 }
 
 /// Finishes deleting each DSP whose rows are gone, one at a time: its jobs and what its live
@@ -207,7 +221,7 @@ async fn finish_one(state: &Arc<State>, dsp: &str) -> Result<()> {
     tokio::task::spawn_blocking(move || remove(&aside))
         .await
         .map_err(|_| Error::new("operation_failed", 500))??;
-    forget(state, dsp).await;
+    forget(state, dsp).await?;
     if let Some(objects) = &state.objects {
         // No upload starts once the DSP is disabled, which it was before its delete began, and
         // one let through before is given up `UPLOAD` after: a listing begun once that, and a
@@ -238,7 +252,9 @@ async fn finish_one(state: &Arc<State>, dsp: &str) -> Result<()> {
 /// Lets go of everything the server holds of a deleted DSP in memory: its browsers, its cached
 /// reads, the connections idle stores keep to its databases, and what the agents and each
 /// feature hold.
-pub async fn forget(state: &Arc<State>, dsp: &str) {
+pub async fn forget(state: &Arc<State>, dsp: &str) -> Result<()> {
+    let at = dsp.to_owned();
+    let code = state.read(move |db| db.feature_code(&at)).await?;
     state.browsers.revoke(dsp).await;
     state.forget_dsp(dsp);
     if let Some(agents) = registry().agents {
@@ -247,10 +263,12 @@ pub async fn forget(state: &Arc<State>, dsp: &str) {
     for forgotten in registry()
         .features
         .iter()
+        .filter(|f| f.belongs_to(code.as_deref()))
         .filter_map(|f| f.deleting.forgotten)
     {
         forgotten(state, dsp);
     }
+    Ok(())
 }
 
 /// Deletes the folder and everything in it, as one already gone is.

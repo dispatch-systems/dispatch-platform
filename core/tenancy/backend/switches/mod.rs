@@ -20,6 +20,16 @@ pub struct SwitchedFeatures {
 }
 
 impl Store {
+    /// The DSP code selecting custom declarations, retained while a deletion finishes.
+    pub(crate) fn feature_code(&self, dsp: &str) -> Result<Option<String>> {
+        let found: Option<(Option<String>,)> = self.platform.one_as(
+            "SELECT code FROM dsps WHERE id=?1 UNION ALL SELECT code FROM dsp_deletions WHERE dsp_id=?1 LIMIT 1", [dsp])?;
+        Ok(found.and_then(|(code,)| code))
+    }
+    pub(crate) fn owns_feature(&self, dsp: &str, owner: Option<&str>) -> Result<bool> {
+        Ok(owner.is_none() || self.feature_code(dsp)?.as_deref() == owner)
+    }
+
     /// The DSP's features, in catalog order: what is switched on, less the tabs of a
     /// page that is off.
     pub fn features(&self, dsp: &str) -> Result<Vec<String>> {
@@ -37,8 +47,10 @@ impl Store {
             )?
             .into_iter()
             .collect();
+        let code = self.feature_code(dsp)?;
         Ok(catalog()
             .iter()
+            .filter(|f| f.owner.is_none_or(|owner| Some(owner) == code.as_deref()))
             .filter(|f| f.mandatory || stored.get(f.id).copied().unwrap_or(f.default))
             .map(|f| f.id.to_owned())
             .collect())
@@ -90,9 +102,9 @@ impl Store {
                 self.platform.exec(
                     "INSERT INTO dsp_features(dsp_id,feature,enabled,changed_at) \
                      SELECT DISTINCT dsp_id,?1,1,?2 FROM dsp_features WHERE enabled=1 \
-                     AND feature IN (SELECT value FROM json_each(?3)) \
+                     AND feature IN (SELECT value FROM json_each(?3)) AND (?4 IS NULL OR dsp_id IN (SELECT id FROM dsps WHERE code=?4)) \
                      ON CONFLICT(dsp_id,feature) DO NOTHING",
-                    params![page.id, iso(), serde_json::to_string(&parts)?],
+                    params![page.id, iso(), serde_json::to_string(&parts)?, page.owner],
                 )?;
             }
             let made_optional: Vec<&Feature> = catalog()
@@ -102,6 +114,7 @@ impl Store {
             if !made_optional.is_empty() {
                 for row in self.platform.all("SELECT id FROM dsps", [])? {
                     for feature in &made_optional {
+                        if !self.owns_feature(crate::db::s(&row, "id"), feature.owner)? { continue; }
                         self.platform.exec(
                             "INSERT INTO dsp_features(dsp_id,feature,enabled,changed_at) \
                              VALUES (?,?,1,?) ON CONFLICT(dsp_id,feature) DO UPDATE SET \
@@ -118,8 +131,8 @@ impl Store {
                 if was != feature.default {
                     self.platform.exec(
                         "INSERT OR IGNORE INTO dsp_features(dsp_id,feature,enabled,changed_at) \
-                         SELECT id,?1,?2,?3 FROM dsps",
-                        params![feature.id, was, iso()],
+                         SELECT id,?1,?2,?3 FROM dsps WHERE (?4 IS NULL OR code=?4)",
+                        params![feature.id, was, iso(), feature.owner],
                     )?;
                 }
             }
@@ -176,6 +189,9 @@ impl Store {
             "INSERT OR IGNORE INTO dsp_features(dsp_id,feature,enabled,changed_at) VALUES (?,?,?,?)"
         };
         for feature in catalog() {
+            if !self.owns_feature(dsp, feature.owner)? {
+                continue;
+            }
             self.platform
                 .exec(sql, params![dsp, feature.id, on(feature), iso()])?;
         }
@@ -196,12 +212,18 @@ impl Store {
         actor: &str,
     ) -> Result<SwitchedFeatures> {
         let feature = find(id).ok_or_else(|| crate::Error::new("feature_not_found", 404))?;
+        ensure(
+            self.owns_feature(dsp, feature.owner)?,
+            "feature_not_found",
+            404,
+        )?;
         ensure(!feature.mandatory, "feature_mandatory", 409)?;
         self.platform.transaction(|| {
             self.find_dsp(dsp)?;
             let plan = plan::plan(self.switches(dsp)?, feature, enabled)?;
             let changed = plan.changed;
             for (f, on) in &changed {
+                ensure(self.owns_feature(dsp, f.owner)?, "feature_not_found", 404)?;
                 self.platform.exec(
                     "INSERT INTO dsp_features(dsp_id,feature,enabled,changed_by,changed_at) \
                      VALUES (?1,?2,?3,?4,?5) ON CONFLICT(dsp_id,feature) DO UPDATE SET \

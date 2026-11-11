@@ -1,5 +1,7 @@
 {
   "communications": {
+    "directory": "features/communications",
+    "owner": null,
     "collectors": [],
     "depends_on": [
       "slack"
@@ -236,6 +238,8 @@
     ]
   },
   "conduct": {
+    "directory": "features/conduct",
+    "owner": null,
     "collectors": [],
     "depends_on": [],
     "frontend": true,
@@ -300,6 +304,8 @@
     "subfeatures": []
   },
   "daily_performance": {
+    "directory": "features/daily_performance",
+    "owner": null,
     "collectors": [
       "cortex"
     ],
@@ -380,6 +386,8 @@
     "subfeatures": []
   },
   "documents": {
+    "directory": "features/documents",
+    "owner": null,
     "collectors": [],
     "depends_on": [],
     "frontend": true,
@@ -480,6 +488,8 @@
     "subfeatures": []
   },
   "driver_match": {
+    "directory": "features/driver_match",
+    "owner": null,
     "collectors": [],
     "depends_on": [],
     "frontend": true,
@@ -568,6 +578,8 @@
     "subfeatures": []
   },
   "driver_profiles": {
+    "directory": "features/driver_profiles",
+    "owner": null,
     "collectors": [
       "cortex"
     ],
@@ -646,6 +658,8 @@
     "subfeatures": []
   },
   "dvic": {
+    "directory": "features/dvic",
+    "owner": null,
     "collectors": [
       "cortex"
     ],
@@ -740,6 +754,8 @@
     ]
   },
   "home": {
+    "directory": "features/home",
+    "owner": null,
     "collectors": [],
     "depends_on": [],
     "frontend": true,
@@ -772,6 +788,8 @@
     "subfeatures": []
   },
   "live_route_data": {
+    "directory": "features/live_route_data",
+    "owner": null,
     "collectors": [],
     "depends_on": [
       "cortex",
@@ -811,6 +829,8 @@
     "subfeatures": []
   },
   "routes": {
+    "directory": "features/routes",
+    "owner": null,
     "collectors": [
       "cortex"
     ],
@@ -988,6 +1008,8 @@
     "subfeatures": []
   },
   "settings": {
+    "directory": "features/settings",
+    "owner": null,
     "collectors": [],
     "depends_on": [],
     "frontend": true,
@@ -1026,6 +1048,8 @@
     "subfeatures": []
   },
   "slack": {
+    "directory": "features/slack",
+    "owner": null,
     "collectors": [],
     "depends_on": [],
     "frontend": true,
@@ -1145,6 +1169,8 @@
     "subfeatures": []
   },
   "team": {
+    "directory": "features/team",
+    "owner": null,
     "collectors": [],
     "depends_on": [],
     "frontend": true,
@@ -1191,6 +1217,8 @@
     "subfeatures": []
   },
   "timecard": {
+    "directory": "features/timecard",
+    "owner": null,
     "collectors": [
       "cortex",
       "paycom"
@@ -1344,6 +1372,8 @@
     ]
   },
   "uniforms": {
+    "directory": "features/uniforms",
+    "owner": null,
     "collectors": [],
     "depends_on": [],
     "frontend": true,
@@ -1403,6 +1433,8 @@
     "subfeatures": []
   },
   "vans": {
+    "directory": "features/vans",
+    "owner": null,
     "collectors": [
       "cortex"
     ],
@@ -1474,6 +1506,8 @@
     "subfeatures": []
   },
   "weekly_scorecard": {
+    "directory": "features/weekly_scorecard",
+    "owner": null,
     "collectors": [
       "cortex"
     ],

@@ -1,3 +1,4 @@
+import { featureDirectory, featureLocations } from '../shared/features.js';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -260,20 +261,23 @@ export type Options = {
 function folders(root: string, kind: Kind, name: string) {
   // The MCP and the app are each one owner in one folder, with no name of their own.
   if (unnamed(kind)) return [homes[kind]].filter((dir) => exists(root, dir));
-  if (!/^[a-z][a-z0-9_]*$/.test(name)) return [];
+  if (!/^[a-z0-9][a-z0-9_]*$/.test(name)) return [];
   // An integration is in whichever feature holds it, found as `dispatchdev todo` finds it.
   if (kind === 'integration') return integrations(root, name);
+  if (kind === 'feature') return [featureDirectory(root, name)].filter((dir) => exists(root, dir));
   return [`${homes[kind]}/${name}`].filter((dir) => exists(root, dir));
 }
 /** The names of the owners of `kind` there are. */
 function owners(root: string, kind: Kind) {
   const names =
-    kind === 'integration'
-      ? integrations(root).map((dir) => path.posix.basename(dir))
-      : fs
-          .readdirSync(path.join(root, homes[kind]), { withFileTypes: true })
-          .filter((entry) => entry.isDirectory())
-          .map((entry) => entry.name);
+    kind === 'feature'
+      ? featureLocations(root).map((feature) => feature.name)
+      : kind === 'integration'
+        ? integrations(root).map((dir) => path.posix.basename(dir))
+        : fs
+            .readdirSync(path.join(root, homes[kind]), { withFileTypes: true })
+            .filter((entry) => entry.isDirectory())
+            .map((entry) => entry.name);
   return [...new Set(names)].sort();
 }
 

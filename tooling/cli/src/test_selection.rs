@@ -168,6 +168,14 @@ fn joined(dir: &str, relative: &str) -> String {
 /// The owner a file belongs to, by its directory: core, a collector, a feature, the MCP or
 /// the app.
 fn owner(file: &str) -> Option<String> {
+    if let Some(custom) = file.strip_prefix("features/custom/") {
+        let mut parts = custom.split('/');
+        return Some(format!(
+            "features/custom/{}/{}",
+            parts.next()?,
+            parts.next()?
+        ));
+    }
     let mut parts = file.split('/');
     match (parts.next()?, parts.next()?, parts.next()) {
         (top @ ("core" | "mcp" | "app"), _, _) => Some(top.to_owned()),
@@ -653,6 +661,31 @@ mod tests {
         assert_eq!(
             tested("features/routes/backend/routes.rs"),
             "cargo test --locked -p dispatch-backend -p dispatch-routes"
+        );
+    }
+    #[test]
+    fn custom_owners_with_equal_leaf_names_select_only_their_own_crates() {
+        let (_root, workspace) = workspace(
+            r#""core", "features/custom/east/fuel", "features/custom/west/fuel", "app/backend""#,
+            &[
+                ("core", "dispatch-core", &[]),
+                ("features/custom/east/fuel", "dispatch-east-fuel", &["core"]),
+                ("features/custom/west/fuel", "dispatch-west-fuel", &["core"]),
+                (
+                    "app/backend",
+                    "dispatch-backend",
+                    &["features/custom/east/fuel", "features/custom/west/fuel"],
+                ),
+            ],
+        );
+        let commands = affected(
+            &["features/custom/east/fuel/backend/store.rs".to_owned()],
+            &Value::Null,
+            &workspace,
+        );
+        assert_eq!(
+            commands[1],
+            "cargo test --locked -p dispatch-backend -p dispatch-east-fuel"
         );
     }
     #[test]

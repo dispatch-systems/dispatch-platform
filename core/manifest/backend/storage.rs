@@ -3,7 +3,7 @@
 //! no other owner's code runs SQL on.
 use crate::{
     db::{self, Kind, Migration, Migrations},
-    manifest::Registry,
+    manifest::{Feature, Registry},
 };
 
 /// The tables an owner keeps, by the database that holds them: `&[("paycom",
@@ -48,12 +48,32 @@ impl Registry {
     /// What each feature numbers itself for one kind of database, with the feature each is
     /// recorded under, in the registry's order.
     pub fn owned_migrations(&self, kind: Kind) -> Vec<(&'static str, Migration)> {
-        let owners = self.features.iter().flat_map(|feature| {
-            feature
-                .own_migrations
-                .iter()
-                .map(move |owned| (feature.name, owned))
-        });
+        self.owned_migrations_matching(kind, |_| true)
+    }
+    /// Tenant storage receives only declarations belonging to its DSP code.
+    pub fn owned_migrations_for(
+        &self,
+        kind: Kind,
+        code: Option<&str>,
+    ) -> Vec<(&'static str, Migration)> {
+        self.owned_migrations_matching(kind, |feature| feature.belongs_to(code))
+    }
+    fn owned_migrations_matching(
+        &self,
+        kind: Kind,
+        matching: impl Fn(&Feature) -> bool,
+    ) -> Vec<(&'static str, Migration)> {
+        let owners = self
+            .features
+            .iter()
+            .copied()
+            .filter(|feature| matching(feature))
+            .flat_map(|feature| {
+                feature
+                    .own_migrations
+                    .iter()
+                    .map(move |owned| (feature.name, owned))
+            });
         db::owned_ledger(kind, owners)
     }
     /// Every table an owner declares, as its owner, database and name: core's, the agents'

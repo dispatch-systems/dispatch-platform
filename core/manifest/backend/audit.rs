@@ -26,9 +26,10 @@ pub(crate) fn check(registry: &Registry) {
     let agents = registry.agents.into_iter().flat_map(|a| a.audit.areas);
     for (prefix, area) in agents.chain(registry.features.iter().flat_map(|f| f.audit.areas)) {
         let plain = prefix.ends_with('.')
-            && prefix
-                .split('.')
-                .all(|part| part.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'));
+            && prefix.split('.').all(|part| {
+                part.bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+            });
         assert!(
             plain && *area != AuditArea::Settings,
             "{prefix} is no audit prefix of an area"

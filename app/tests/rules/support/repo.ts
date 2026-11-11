@@ -1,3 +1,4 @@
+import { featureAt } from '../../../../tooling/shared/features.js';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -65,6 +66,9 @@ const layers: Record<string, Layer> = {
   features: 'feature',
 };
 export function ownerOf(file: string): Owner | undefined {
+  const feature = featureAt(file);
+  if (file.startsWith('features/'))
+    return feature && file !== feature.dir ? { ...feature, layer: 'feature' } : undefined;
   const [top, name, rest] = file.split('/');
   if (top === 'app') return { dir: 'app', layer: 'app', name: 'app' };
   // The MCP is one owner, in one folder: everything outside agents use, and how they connect.

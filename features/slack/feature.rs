@@ -187,6 +187,7 @@ pub const FEATURE: Feature = Feature {
         integrations::import_files::INTEGRATION,
         integrations::sync_canvases::INTEGRATION,
     ],
+    integration_events: Some(backend::app::EVENTS),
     audit: Audit {
         areas: &[("slack.", Connections)],
         ..Audit::NONE

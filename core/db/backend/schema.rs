@@ -218,6 +218,11 @@ const PLATFORM: &[Migration] = &[
         name: "feature_defaults",
         apply: Code(feature_defaults),
     },
+    Migration {
+        id: 28,
+        name: "deleted_dsp_code",
+        apply: Code(deleted_dsp_code),
+    },
 ];
 const JOBS: &[Migration] = &[
     Migration {
@@ -432,4 +437,8 @@ fn security_hardening(db: &Db) -> Result<()> {
         "CREATE INDEX IF NOT EXISTS throttle_namespace_expiry ON throttle(namespace, reset_at)",
     )?;
     Ok(())
+}
+
+fn deleted_dsp_code(db: &Db) -> Result<()> {
+    add_column(db, "dsp_deletions", "code", "TEXT")
 }

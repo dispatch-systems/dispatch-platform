@@ -41,7 +41,7 @@ export function workspaceCrates(root: string): WorkspaceCrate[] {
       [''],
     );
   const members = [...list.matchAll(/"([^"]+)"/g)].flatMap(([, member]) => matching(member!));
-  return members
+  return [...new Set(members)]
     .filter((dir) => fs.existsSync(path.join(root, dir, 'Cargo.toml')))
     .map((dir) => {
       const text = read(`${dir}/Cargo.toml`);

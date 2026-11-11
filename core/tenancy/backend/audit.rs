@@ -316,8 +316,28 @@ impl Store {
             };
             event.as_object_mut().unwrap().remove("data");
         }
-        for names in registry().features.iter().filter_map(|f| f.audit.names) {
-            names(self, &mut events);
+        for feature in registry().features {
+            let Some(names) = feature.audit.names else {
+                continue;
+            };
+            if feature.owner.is_none() {
+                names(self, &mut events);
+                continue;
+            }
+            let mut owned = Vec::new();
+            let mut indexes = Vec::new();
+            for (index, event) in events.iter().enumerate() {
+                if self.owns_feature(s(event, "dspId"), feature.owner)? {
+                    indexes.push(index);
+                    owned.push(event.clone());
+                }
+            }
+            if !owned.is_empty() {
+                names(self, &mut owned);
+                for (index, event) in indexes.into_iter().zip(owned) {
+                    events[index] = event;
+                }
+            }
         }
         let total = self.platform.count(
             &format!("SELECT count(*) {filters} AND {area}"),

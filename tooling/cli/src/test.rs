@@ -155,7 +155,13 @@ pub fn owner(root: &Path, given: &str) -> Result<(String, String)> {
         ("core", "core"),
     ]
     .into_iter()
-    .filter(|(_, home)| root.join(home).join(given).is_dir())
+    .filter(|(kind, home)| {
+        if *kind == "feature" {
+            crate::workspace::has_feature(root, given)
+        } else {
+            root.join(home).join(given).is_dir()
+        }
+    })
     .map(|(kind, _)| kind)
     .collect();
     match kinds.as_slice() {

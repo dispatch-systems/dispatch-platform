@@ -140,13 +140,13 @@ fn concurrent_legacy_dsp_adoption_accepts_the_identity_committed_while_waiting()
         let probed = &probed;
         let resume = &resume;
         let waiting = scope.spawn(move || {
-            migrate_dsp_after_probe(&second, id, || {
+            migrate_dsp_after_probe(&second, id, None, || {
                 probed.wait();
                 resume.wait();
             })
         });
         probed.wait();
-        migrate_dsp(&first, id).unwrap();
+        migrate_dsp(&first, id, None).unwrap();
         resume.wait();
         waiting.join().unwrap().unwrap();
     });
@@ -365,7 +365,7 @@ fn jobs_and_schedules_from_before_the_dvic_collection_keep_their_rows_through_th
         ))
         .unwrap();
     let db = Db::open(&file, Kind::DSP).unwrap();
-    migrate_dsp(&db, &id).unwrap();
+    migrate_dsp(&db, &id, None).unwrap();
     verify_dsp_identity(&db, &id).unwrap();
     assert_eq!(ids(&db), (1..=14).collect::<Vec<i64>>());
     assert_eq!(dump(&db), recorded(Kind::DSP));
@@ -453,7 +453,7 @@ fn schedules_from_before_collections_were_open_keep_their_rows_through_the_rebui
         ))
         .unwrap();
     let db = Db::open(&file, Kind::DSP).unwrap();
-    migrate_dsp(&db, &id).unwrap();
+    migrate_dsp(&db, &id, None).unwrap();
     verify_dsp_identity(&db, &id).unwrap();
     assert_eq!(ids(&db), (1..=14).collect::<Vec<i64>>());
     assert_eq!(dump(&db), recorded(Kind::DSP));

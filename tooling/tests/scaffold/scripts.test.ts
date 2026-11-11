@@ -73,7 +73,7 @@ test('without --dry-run it writes into the root, and refuses to write over an ow
   assert(fs.existsSync(path.join(copy, 'features/desk/backend/settings.rs')));
   assert.match(
     fs.readFileSync(path.join(copy, 'app/backend/features.rs'), 'utf8'),
-    /&dispatch_desk::FEATURE,/,
+    /&dispatch_desk::FEATURE\.registered\(None, "desk"\),/,
   );
   // Builds run with --locked: Cargo.lock lists the new crate, and the app's use of it.
   if (spawnSync('cargo', ['--version'], { cwd: copy }).status === 0) {

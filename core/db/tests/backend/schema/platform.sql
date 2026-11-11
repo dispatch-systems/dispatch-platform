@@ -10,7 +10,7 @@ CREATE TABLE backup_rules ( id TEXT PRIMARY KEY, dsp_id TEXT NOT NULL, position 
 CREATE TABLE backup_schedules ( dsp_id TEXT PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 1, revision INTEGER NOT NULL DEFAULT 0, generation TEXT NOT NULL );
 CREATE TABLE backups ( id TEXT PRIMARY KEY, dsp_id TEXT NOT NULL, rule_id TEXT, requested_by TEXT, status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'succeeded', 'failed')), created_at INTEGER NOT NULL, finished_at INTEGER, expires_at INTEGER, keep_last INTEGER, skipped TEXT NOT NULL DEFAULT '[]', size INTEGER, files TEXT, error TEXT );
 CREATE TABLE driver_codes ( code TEXT PRIMARY KEY, dsp_id TEXT NOT NULL, created_at TEXT NOT NULL );
-CREATE TABLE dsp_deletions ( dsp_id TEXT PRIMARY KEY, started_at TEXT NOT NULL );
+CREATE TABLE dsp_deletions ( dsp_id TEXT PRIMARY KEY, started_at TEXT NOT NULL , code TEXT);
 CREATE TABLE dsp_features ( dsp_id TEXT NOT NULL REFERENCES dsps(id), feature TEXT NOT NULL, enabled INTEGER NOT NULL CHECK(enabled IN (0,1)), changed_by TEXT, changed_at TEXT NOT NULL, shown INTEGER NOT NULL DEFAULT 1 CHECK (shown IN (0, 1)), beta INTEGER NOT NULL DEFAULT 0 CHECK (beta IN (0, 1)), PRIMARY KEY(dsp_id,feature) );
 CREATE TABLE dsps (id TEXT PRIMARY KEY, name TEXT NOT NULL, environment TEXT NOT NULL CHECK(environment IN ('production','preview')), status TEXT NOT NULL CHECK(status IN ('provisioning','active','suspended','failed')), timezone TEXT NOT NULL, permanent INTEGER NOT NULL DEFAULT 0 CHECK(permanent IN (0,1)), revision INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, code TEXT);
 CREATE TABLE feature_availability ( feature TEXT PRIMARY KEY, mandatory INTEGER NOT NULL CHECK (mandatory IN (0, 1)) , default_on INTEGER CHECK (default_on IN (0, 1)));

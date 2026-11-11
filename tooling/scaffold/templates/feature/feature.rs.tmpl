@@ -25,7 +25,7 @@ pub const FEATURE: Feature = Feature {
     depends_on: &[{{dependsOn}}],
 {{/dependsOn}}
 {{#switch}}
-    switch: optional("{{name}}", "{{label}}", &[{{requires}}]),
+    switch: {{switchConstructor}}("{{name}}", "{{label}}", &[{{requires}}]),
 {{/switch}}
 {{^switch}}
     switch: mandatory("{{name}}", "{{label}}"),

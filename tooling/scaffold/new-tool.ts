@@ -1,3 +1,4 @@
+import { featureDirectory, featureLocations } from '../shared/features.js';
 import path from 'node:path';
 import { UsageError, parseArguments, template, type Values } from './common.js';
 import { emptyPlan, formatRust, snapshotsNote, type Plan } from './plan.js';
@@ -63,7 +64,7 @@ function toolNames(root: string) {
 function switches(root: string) {
   const found = new Set<string>();
   for (const owner of features(root)) {
-    const manifest = read(root, `features/${owner}/feature.rs`);
+    const manifest = read(root, `${featureDirectory(root, owner)}/feature.rs`);
     for (const match of manifest.matchAll(/(?:optional|mandatory)\(\s*"([^"]+)"/g))
       found.add(match[1]!);
     for (const match of manifest.matchAll(/\b(?:tab|sub)\(\s*"([^"]+)"/g)) found.add(match[1]!);
@@ -77,7 +78,7 @@ function switches(root: string) {
 function mandatorySwitches(root: string) {
   const found = new Set<string>();
   for (const owner of features(root)) {
-    const manifest = read(root, `features/${owner}/feature.rs`);
+    const manifest = read(root, `${featureDirectory(root, owner)}/feature.rs`);
     for (const match of manifest.matchAll(/\bmandatory\(\s*"([^"]+)"/g)) found.add(match[1]!);
     // A part's declaration runs to the next part's, or the end of its list.
     const parts = [...manifest.matchAll(/\b(?:tab|sub)\(\s*"([^"]+)"/g)];
@@ -144,6 +145,16 @@ function toolValues(root: string, argv: string[]) {
   if (!SCOPES.includes(scope))
     throw new UsageError(`--scope is ${SCOPES.join(', ')}, not ${args.options.get('scope')}`);
   const needed = listOf(args.options.get('features'), 'features', /^[a-z][a-z0-9_.]*$/);
+  const custom = new Set(
+    featureLocations(root)
+      .filter((feature) => feature.owner)
+      .map((feature) => feature.name),
+  );
+  if (
+    needed.some((id) => custom.has(id.split('.')[0]!)) ||
+    custom.has(args.options.get('reads') ?? '')
+  )
+    throw new UsageError('Custom features cannot declare MCP tools');
   const known = switches(root);
   for (const id of needed)
     if (!known.has(id))
@@ -154,7 +165,7 @@ function toolValues(root: string, argv: string[]) {
   if (through !== undefined) {
     if (!features(root).includes(through))
       throw new UsageError(`--reads names a feature, and ${through} is none`);
-    const contract = `features/${through}/contract`;
+    const contract = `${featureDirectory(root, through)}/contract`;
     if (!exists(root, `${contract}/Cargo.toml`))
       throw new UsageError(
         `${through} exposes no contract: \`dispatchdev add contract <name> --to ${through}\` gives it one`,
@@ -227,7 +238,7 @@ function toolValues(root: string, argv: string[]) {
     // Its name as people read it, as its manifest's switch gives it.
     throughLabel: through
       ? (/\b(?:optional|mandatory)\(\s*"[^"]+",\s*"([^"]+)"/.exec(
-          read(root, `features/${through}/feature.rs`),
+          read(root, `${featureDirectory(root, through)}/feature.rs`),
         )?.[1] ?? labelOf(through))
       : '',
   };

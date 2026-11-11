@@ -103,6 +103,9 @@ impl Kind {
     pub fn owned_migrations(self) -> Vec<(&'static str, Migration)> {
         registry().owned_migrations(self)
     }
+    pub fn owned_migrations_for(self, code: Option<&str>) -> Vec<(&'static str, Migration)> {
+        registry().owned_migrations_for(self, code)
+    }
 }
 
 /// `kind`'s migrations, gathered from every owner's `Migrations` and ordered by id. Their
@@ -302,6 +305,9 @@ pub(super) fn run(
     if pending(&done, list).is_empty() && pending_owned(&done_owned, owned).is_empty() {
         return Ok(());
     }
+    if !db.0.is_autocommit() {
+        return db.transaction(|| apply(db, kind, list, owned));
+    }
     let tx = immediate(db)?;
     apply(db, kind, list, owned)?;
     tx.commit()?;
@@ -317,6 +323,16 @@ pub fn migrate(db: &Db, kind: Kind) -> Result<()> {
         kind.name(),
         &kind.migrations(),
         &kind.owned_migrations(),
+    )
+}
+
+/// Upgrades tenant-scoped storage with only the DSP's migrations.
+pub fn migrate_for(db: &Db, kind: Kind, code: Option<&str>) -> Result<()> {
+    run(
+        db,
+        kind.name(),
+        &kind.migrations(),
+        &kind.owned_migrations_for(code),
     )
 }
 
@@ -343,13 +359,18 @@ pub(crate) fn verify_dsp_identity(db: &Db, id: &str) -> Result<()> {
 /// Migrates an existing core DSP database and binds a legacy file exactly once.
 /// The identity row and migration record commit together, so a database that has
 /// recorded migration 5 but later loses or changes its identity is never rebound.
-pub(crate) fn migrate_dsp(db: &Db, id: &str) -> Result<()> {
-    migrate_dsp_after_probe(db, id, || {})
+pub(crate) fn migrate_dsp(db: &Db, id: &str, code: Option<&str>) -> Result<()> {
+    migrate_dsp_after_probe(db, id, code, || {})
 }
 
-fn migrate_dsp_after_probe<F: FnOnce()>(db: &Db, id: &str, after_probe: F) -> Result<()> {
+fn migrate_dsp_after_probe<F: FnOnce()>(
+    db: &Db,
+    id: &str,
+    code: Option<&str>,
+    after_probe: F,
+) -> Result<()> {
     let list = &Kind::DSP.migrations();
-    let owned = &Kind::DSP.owned_migrations();
+    let owned = &Kind::DSP.owned_migrations_for(code);
     let done = applied(db)?;
     if done.contains(&5) {
         verify_dsp_identity(db, id)?;

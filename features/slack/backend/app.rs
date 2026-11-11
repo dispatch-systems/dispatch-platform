@@ -5,7 +5,7 @@
 //! integration, which `scopes` and `events` add to these.
 use super::integrations;
 use dispatch_core::{
-    Result, ensure, foundation::config::Config, manifest::integrations::Integration,
+    Result, db::Store, ensure, foundation::config::Config, manifest::integrations::Integration,
 };
 use serde_json::{Value, json};
 
@@ -45,23 +45,41 @@ pub const EVENTS: &[&str] = &[
     "tokens_revoked",
 ];
 
-/// What the app asks each workspace's admin to let it do: what Slack itself uses, then what its
-/// integrations need, each once. One added shows Update on each workspace's card until its
-/// admin approves it.
+/// Every capability the app declares in its Slack manifest. Install requests use `scopes_for`
+/// so a custom integration never adds permissions to another DSP's workspaces.
 pub fn scopes() -> Vec<&'static str> {
-    with_integrations(SCOPES, |integration| integration.needs)
+    with_integrations(
+        SCOPES,
+        integrations::declared().map(|(_, integration)| integration),
+        |integration| integration.needs,
+    )
+}
+/// What this DSP's workspace admin is asked to approve, including its optional features.
+pub fn scopes_for(db: &Store, dsp: &str) -> Result<Vec<&'static str>> {
+    Ok(with_integrations(
+        SCOPES,
+        integrations::for_dsp(db, dsp)?.map(|(_, integration)| integration),
+        |integration| integration.needs,
+    ))
 }
 /// What the app asks Slack to tell it of: what Slack itself hears of, then what its
 /// integrations do, each once.
 pub fn events() -> Vec<&'static str> {
-    with_integrations(EVENTS, |integration| integration.hears)
+    with_integrations(
+        EVENTS,
+        integrations::declared()
+            .filter(|(feature, _)| feature.owner.is_none())
+            .map(|(_, integration)| integration),
+        |integration| integration.hears,
+    )
 }
 fn with_integrations(
     own: &[&'static str],
+    integrations: impl Iterator<Item = &'static Integration>,
     theirs: fn(&Integration) -> &'static [&'static str],
 ) -> Vec<&'static str> {
     let mut all = own.to_vec();
-    for (_, integration) in integrations::declared() {
+    for integration in integrations {
         for each in theirs(integration) {
             if !all.contains(each) {
                 all.push(each);
@@ -96,6 +114,26 @@ pub fn run(config: &Config, args: &[String]) -> Result<Value> {
 /// each other in a workspace.
 fn manifest(config: &Config) -> Value {
     let origin = &config.origin;
+    let shared = with_integrations(
+        SCOPES,
+        integrations::declared()
+            .filter(|(feature, _)| feature.owner.is_none())
+            .map(|(_, integration)| integration),
+        |integration| integration.needs,
+    );
+    let all = scopes();
+    let custom: Vec<_> = all
+        .iter()
+        .filter(|scope| !shared.contains(scope))
+        .copied()
+        .collect();
+    let mut scopes = json!({"bot": all});
+    if !custom.is_empty() {
+        // Slack requires optional scopes in both bot and bot_optional. The latter marks
+        // them optional; Dispatch's install URL requests only the scopes_for that DSP.
+        // https://docs.slack.dev/authentication/installing-with-oauth/#optional-scopes
+        scopes["bot_optional"] = json!(custom);
+    }
     let (name, handle) = if config.environment.is_production() {
         ("Dispatch", "dispatch")
     } else {
@@ -116,7 +154,7 @@ fn manifest(config: &Config) -> Value {
         },
         "oauth_config": {
             "redirect_urls": [format!("{origin}{RETURN_PATH}")],
-            "scopes": {"bot": scopes()},
+            "scopes": scopes,
         },
         "settings": {
             "event_subscriptions": {

@@ -7,6 +7,13 @@ use dispatch_core::{
 };
 use rusqlite::params;
 
+/// Stored ids may outlive a declaration; only a declaration owned by another DSP is refused.
+fn belongs_to(db: &Store, dsp: &str, id: &str) -> Result<bool> {
+    let code = db.find_dsp(dsp)?.code;
+    Ok(integrations::declared()
+        .find(|(_, integration)| integration.id == id)
+        .is_none_or(|(feature, _)| feature.belongs_to(code.as_deref())))
+}
 /// Whether the integration `id` starts on in every workspace, as its feature declares it.
 fn starts_on(id: &str) -> bool {
     integrations::declared().any(|(_, integration)| integration.id == id && integration.starts_on)
@@ -61,7 +68,16 @@ impl IntegrationStore for Store {
             Ok(rows.into_iter().map(|(id,)| id).collect())
         };
         let (mut on, off) = (ids("slack_integrations")?, ids("slack_integrations_off")?);
-        for (_, integration) in integrations::declared() {
+        let declared: Vec<_> = integrations::for_dsp(self, dsp)?
+            .map(|(_, integration)| integration)
+            .collect();
+        let code = self.find_dsp(dsp)?.code;
+        let foreign: Vec<_> = integrations::declared()
+            .filter(|(feature, _)| !feature.belongs_to(code.as_deref()))
+            .map(|(_, integration)| integration.id)
+            .collect();
+        on.retain(|id| !foreign.contains(&id.as_str()));
+        for integration in declared {
             let id = integration.id.to_owned();
             if integration.starts_on && !off.contains(&id) && !on.contains(&id) {
                 on.push(id);
@@ -71,6 +87,9 @@ impl IntegrationStore for Store {
         Ok(on)
     }
     fn slack_integration_on_since(&self, dsp: &str, team: &str, id: &str) -> Result<Option<i64>> {
+        if !belongs_to(self, dsp, id)? {
+            return Ok(None);
+        }
         let db = self.dsp(dsp)?;
         let switched: Option<(i64,)> = db.one_as(
             &format!(
@@ -93,6 +112,11 @@ impl IntegrationStore for Store {
         Ok(connected.map(|(at,)| at))
     }
     fn turn_on_slack_integration(&self, dsp: &str, team: &str, id: &str, by: &str) -> Result<bool> {
+        dispatch_core::ensure(
+            belongs_to(self, dsp, id)?,
+            "slack_integration_not_found",
+            404,
+        )?;
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             if switched_on(&db, team, id)? {
@@ -117,6 +141,11 @@ impl IntegrationStore for Store {
         id: &str,
         by: &str,
     ) -> Result<bool> {
+        dispatch_core::ensure(
+            belongs_to(self, dsp, id)?,
+            "slack_integration_not_found",
+            404,
+        )?;
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             if !switched_on(&db, team, id)? {

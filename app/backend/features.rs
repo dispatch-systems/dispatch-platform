@@ -5,39 +5,39 @@ use dispatch_core::manifest::Feature;
 
 pub const FEATURES: &[&Feature] = &[
     #[cfg(feature = "communications")]
-    &dispatch_communications::FEATURE,
+    &dispatch_communications::FEATURE.registered(None, "communications"),
     #[cfg(feature = "conduct")]
-    &dispatch_conduct::FEATURE,
+    &dispatch_conduct::FEATURE.registered(None, "conduct"),
     #[cfg(feature = "daily_performance")]
-    &dispatch_daily_performance::FEATURE,
+    &dispatch_daily_performance::FEATURE.registered(None, "daily_performance"),
     #[cfg(feature = "documents")]
-    &dispatch_documents::FEATURE,
+    &dispatch_documents::FEATURE.registered(None, "documents"),
     #[cfg(feature = "driver_match")]
-    &dispatch_driver_match::FEATURE,
+    &dispatch_driver_match::FEATURE.registered(None, "driver_match"),
     #[cfg(feature = "driver_profiles")]
-    &dispatch_driver_profiles::FEATURE,
+    &dispatch_driver_profiles::FEATURE.registered(None, "driver_profiles"),
     #[cfg(feature = "dvic")]
-    &dispatch_dvic::FEATURE,
+    &dispatch_dvic::FEATURE.registered(None, "dvic"),
     #[cfg(feature = "home")]
-    &dispatch_home::FEATURE,
+    &dispatch_home::FEATURE.registered(None, "home"),
     #[cfg(feature = "live_route_data")]
-    &dispatch_live_route_data::FEATURE,
+    &dispatch_live_route_data::FEATURE.registered(None, "live_route_data"),
     #[cfg(feature = "routes")]
-    &dispatch_routes::FEATURE,
+    &dispatch_routes::FEATURE.registered(None, "routes"),
     #[cfg(feature = "settings")]
-    &dispatch_settings::FEATURE,
+    &dispatch_settings::FEATURE.registered(None, "settings"),
     #[cfg(feature = "slack")]
-    &dispatch_slack::FEATURE,
+    &dispatch_slack::FEATURE.registered(None, "slack"),
     #[cfg(feature = "team")]
-    &dispatch_team::FEATURE,
+    &dispatch_team::FEATURE.registered(None, "team"),
     #[cfg(feature = "timecard")]
-    &dispatch_timecard::FEATURE,
+    &dispatch_timecard::FEATURE.registered(None, "timecard"),
     #[cfg(feature = "uniforms")]
-    &dispatch_uniforms::FEATURE,
+    &dispatch_uniforms::FEATURE.registered(None, "uniforms"),
     #[cfg(feature = "vans")]
-    &dispatch_vans::FEATURE,
+    &dispatch_vans::FEATURE.registered(None, "vans"),
     #[cfg(feature = "weekly_scorecard")]
-    &dispatch_weekly_scorecard::FEATURE,
+    &dispatch_weekly_scorecard::FEATURE.registered(None, "weekly_scorecard"),
 ];
 
 /// Every feature's API types in TypeScript, as each lists them, for the app's export test.

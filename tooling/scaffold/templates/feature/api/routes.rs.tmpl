@@ -23,7 +23,7 @@ fn summary({{summaryParameters}}) -> Result<Reply> {
     Reply::of(&{{pascal}}Summary {
         dsp_id: c.dsp_id().to_owned(),
 {{#tables}}
-        items: db.{{name}}_items(c.dsp_id())?.len(),
+        items: db.{{codeName}}_items(c.dsp_id())?.len(),
 {{/tables}}
     })
 }

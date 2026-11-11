@@ -93,7 +93,10 @@ test('with no flags, a feature is a crate with a switch and a view permission, a
   // The registry's list has it by name, there while the app's Cargo feature of its name is on,
   // as it is by default.
   const list = file(plan, 'app/backend/features.rs');
-  assert.match(list, /\n {4}#\[cfg\(feature = "parking"\)\]\n {4}&dispatch_parking::FEATURE,\n/);
+  assert.match(
+    list,
+    /\n {4}#\[cfg\(feature = "parking"\)\]\n {4}&dispatch_parking::FEATURE\.registered\(None, "parking"\),\n/,
+  );
   const listed = [...list.matchAll(/feature = "(\w+)"\)\]\n {4}&/g)].map((match) => match[1]!);
   assert.deepEqual(listed, [...listed].sort());
   const app = file(plan, 'app/backend/Cargo.toml');
@@ -558,7 +561,10 @@ test('--no-backend writes a frontend-only feature, and refuses the pieces that n
   const manifest = file(plan, 'features/front/feature.rs');
   assert.doesNotMatch(manifest, /mod backend|mod tests/);
   assert.match(manifest, /switch: optional\(/);
-  assert.match(file(plan, 'app/backend/features.rs'), /&dispatch_front::FEATURE,/);
+  assert.match(
+    file(plan, 'app/backend/features.rs'),
+    /&dispatch_front::FEATURE\.registered\(None, "front"\),/,
+  );
   await refused(/add --page, --sidebar or --tab-of/, 'front', '--no-backend');
   await refused(/add --page, --sidebar or --tab-of/, 'front', '--settings', '--no-backend');
   for (const piece of [['--api'], ['--settings'], ['--tables', 'dsp'], ['--keeps', 'cortex.dvic']])
@@ -651,5 +657,52 @@ test("listing a feature keeps on the features the MCP's tools need", async () =>
   assert.deepEqual(
     links(file(await feature('parking', '--page'), 'app/backend/Cargo.toml')),
     before,
+  );
+});
+
+test('--custom separates the owner folder from prefixed identities and fixes import depth', async () => {
+  const plan = await feature(
+    'fuel_log',
+    '--custom',
+    'dsp42',
+    '--page',
+    '--api',
+    '--tables',
+    'dsp',
+    '--settings',
+  );
+  const dir = 'features/custom/dsp42/fuel_log';
+  assert.match(file(plan, `${dir}/feature.rs`), /custom\("dsp42_fuel_log", "Fuel Log", &\[\]\)/);
+  assert.match(file(plan, `${dir}/feature.rs`), /perm\("dsp42_fuel_log.view"/);
+  assert.match(file(plan, `${dir}/frontend/feature.ts`), /name: 'dsp42_fuel_log'/);
+  assert.match(file(plan, `${dir}/frontend/feature.ts`), /id: 'dsp42-fuel-log'/);
+  assert.match(file(plan, `${dir}/Cargo.toml`), /path = "\.\.\/\.\.\/\.\.\/\.\.\/core"/);
+  assert.match(
+    file(plan, `${dir}/api/types.rs`),
+    /features\/custom\/dsp42\/fuel_log\/api\/generated\//,
+  );
+  assert.match(
+    file(plan, 'app/backend/features.rs'),
+    /FEATURE.registered\(Some\("dsp42"\), "dsp42_fuel_log"\)/,
+  );
+  assert.match(
+    file(plan, 'app/backend/Cargo.toml'),
+    /path = "\.\.\/\.\.\/features\/custom\/dsp42\/fuel_log"/,
+  );
+  assert.match(file(plan, 'Cargo.toml'), /"features\/custom\/dsp42\/fuel_log"/);
+  assert.match(file(plan, `${dir}/tests/backend/storage.rs`), /set_code\(&dsp, "dsp42"\)/);
+  for (const code of ['x', 'DSP42', '../dsp42', 'fs_cl', 'abcdefghijklmnopq'])
+    await refused(/DSP code/, 'fuel_log', '--custom', code);
+  await refused(/optional/, 'fuel_log', '--custom', 'dsp42', '--mandatory');
+  await refused(/contracts/, 'fuel_log', '--custom', 'dsp42', '--contract', 'fuel');
+  const numeric = await feature('fuel_log', '--custom', '12', '--api', '--tables', 'dsp');
+  assert.match(file(numeric, 'features/custom/12/fuel_log/feature.rs'), /custom\("12_fuel_log"/);
+  assert.match(
+    file(numeric, 'features/custom/12/fuel_log/backend/storage.rs'),
+    /fn dsp_12_fuel_log_items/,
+  );
+  assert.match(
+    file(numeric, 'features/custom/12/fuel_log/migrations/dsp/0001_12_fuel_log.sql'),
+    /CREATE TABLE IF NOT EXISTS dsp_12_fuel_log_items/,
   );
 });

@@ -22,6 +22,7 @@ pub enum Kind {
 #[derive(Clone, Copy, Debug)]
 pub struct Feature {
     pub id: &'static str,
+    pub owner: Option<&'static str>,
     pub label: &'static str,
     pub kind: Kind,
     /// The permissions this feature owns. Without it, nobody in the DSP holds them.
@@ -58,11 +59,12 @@ fn page(feature: &manifest::Feature) -> Feature {
     let permissions: Vec<_> = feature
         .permissions
         .iter()
-        .filter(|permission| permission.group.is_none())
+        .filter(|permission| permission.group.is_none() || feature.owner.is_some())
         .map(|permission| permission.id)
         .collect();
     Feature {
         id: switch.id,
+        owner: feature.owner,
         label: switch.label,
         kind: Kind::Page,
         // Made once, with the catalog, which lasts as long as the process.
@@ -88,6 +90,7 @@ fn page_subs(feature: &manifest::Feature) -> impl Iterator<Item = Feature> {
         let permissions: Vec<_> = sub.permissions.iter().map(|p| p.id).collect();
         Feature {
             id: sub.id,
+            owner: feature.owner,
             label: sub.label,
             kind: Kind::Sub(switch.id),
             // Made once, with the catalog, which lasts as long as the process.
@@ -161,6 +164,7 @@ fn connection(provider: Provider) -> Feature {
     let provides: Vec<_> = collector.capabilities().iter().map(|c| c.id).collect();
     Feature {
         id: collector.id(),
+        owner: None,
         label: collector.label(),
         kind: Kind::Connection,
         permissions: &[],
