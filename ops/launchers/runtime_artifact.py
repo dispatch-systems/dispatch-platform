@@ -47,11 +47,15 @@ def host_binary():
         if restored is not None:
             return restored
         # Selecting the whole workspace resolves dependency features as the workspace build
-        # does, so right after one this reuses its output instead of compiling them again.
-        subprocess.check_call(["cargo", "build", "--locked", "--release", "--workspace", "--bin", "dispatch-host"],
+        # does, so right after one this reuses its output instead of compiling them again. That
+        # holds in one profile alone: packaging the debug backend says so, and its host is built
+        # in debug too, where a release one would compile every dependency a second time.
+        profile = "debug" if os.environ.get("DISPATCH_HOST_PROFILE") == "debug" else "release"
+        subprocess.check_call(["cargo", "build", "--locked", *(["--release"] if profile == "release" else []),
+                               "--workspace", "--bin", "dispatch-host"],
                               cwd=root, stdout=sys.stderr)
         metadata = json.loads(command("cargo", "metadata", "--locked", "--no-deps", "--format-version=1", cwd=root))
-        return Path(metadata["target_directory"]) / "release/dispatch-host"
+        return Path(metadata["target_directory"]) / profile / "dispatch-host"
     require(here.name == "management", "Run host tooling from a checkout or installed management directory")
     binary = here / "dispatch-host"
     require(binary.exists(), "Installed host management is missing; install it from a checkout with --install-management")

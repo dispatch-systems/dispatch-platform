@@ -11,6 +11,10 @@ const root = process.cwd(),
   // For a change's own tests, on this machine and on its PR: the debug backend, built through the
   // cache in seconds where a release build takes minutes. Main's checks test the release build.
   debug = process.argv.includes('--debug');
+// The host tool that writes and verifies the build's manifest is built from this checkout when
+// none was restored. Beside the debug backend it is built in debug too, from the dependencies
+// that build just compiled: a release one compiles them all a second time.
+if (debug) process.env.DISPATCH_HOST_PROFILE = 'debug';
 // An installed runtime holds the host's management tools, in `.runtime/management` on Dev and
 // `management` on Production; a checkout's dev server records itself in `.runtime` without
 // making it one.

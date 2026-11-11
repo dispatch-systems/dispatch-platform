@@ -35,9 +35,21 @@ class SharedToolingTests(unittest.TestCase):
         with patch.object(runtime, "__file__", str(self.root / "ops/launchers/runtime_artifact.py")), \
                 patch.object(runtime.subprocess, "check_call") as build, \
                 patch.object(runtime, "command", return_value=json.dumps({"target_directory": str(custom)})):
-            self.assertEqual(runtime.host_binary.__wrapped__(), custom / "release/dispatch-host")
+            with patch.dict(os.environ, clear=False):
+                os.environ.pop("DISPATCH_HOST_PROFILE", None)
+                self.assertEqual(runtime.host_binary.__wrapped__(), custom / "release/dispatch-host")
             build.assert_called_once_with(["cargo", "build", "--locked", "--release", "--workspace", "--bin", "dispatch-host"],
                                           cwd=self.root, stdout=sys.stderr)
+            # Beside a debug backend it is built in debug, from what that build compiled; any
+            # other word for a profile builds the release one.
+            for asked, profile in (("debug", "debug"), ("fast", "release")):
+                build.reset_mock()
+                with patch.dict(os.environ, {"DISPATCH_HOST_PROFILE": asked}):
+                    self.assertEqual(runtime.host_binary.__wrapped__(), custom / profile / "dispatch-host")
+                build.assert_called_once_with(
+                    ["cargo", "build", "--locked", *(["--release"] if profile == "release" else []),
+                     "--workspace", "--bin", "dispatch-host"],
+                    cwd=self.root, stdout=sys.stderr)
 
     def test_an_installed_copy_inside_a_checkout_never_builds_the_checkout(self):
         # Dev installs management under its own checkout; that copy must keep using its binary.
