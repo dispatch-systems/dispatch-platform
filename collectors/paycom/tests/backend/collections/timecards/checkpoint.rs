@@ -207,17 +207,8 @@ async fn checkpoint_started() -> Result<(tempfile::TempDir, Arc<State>, String, 
 }
 
 #[tokio::test]
-async fn a_checkpoint_waiting_for_sqlite_does_not_block_foreground_reads() -> Result<()> {
-    use std::sync::{Mutex, mpsc};
-    static BUSY: Mutex<Option<(tokio::sync::oneshot::Sender<()>, mpsc::Receiver<()>)>> =
-        Mutex::new(None);
-    fn blocked(_: i32) -> bool {
-        if let Some((began, release)) = BUSY.lock().unwrap().take() {
-            let _ = began.send(());
-            let _ = release.recv();
-        }
-        true
-    }
+async fn a_checkpoint_transaction_does_not_block_foreground_reads() -> Result<()> {
+    use std::sync::mpsc;
     let (_root, state, dsp, job) = checkpoint_started().await?;
     let checkpoint = Checkpoint::new(state.clone(), &job, "owner");
     let employee = json!({"code":"AA01","name":"Fixture","department":"Driver","position":"Driver","station":"S","active":true});
@@ -226,19 +217,23 @@ async fn a_checkpoint_waiting_for_sqlite_does_not_block_foreground_reads() -> Re
     let resume = checkpoint
         .prepare(&period, std::slice::from_ref(&employee), "UTC")
         .await?;
-    let at = dsp.clone();
-    state
-        .read(move |db| {
-            db.collector(&at, PROVIDER)?.0.busy_handler(Some(blocked))?;
-            Ok(())
-        })
-        .await?;
-    let outside = Store::open(state.config.clone(), state.key.clone())?;
-    let held = outside.collector(&dsp, PROVIDER)?;
-    held.exec("BEGIN IMMEDIATE", [])?;
     let (began, waiting) = tokio::sync::oneshot::channel();
     let (release, blocked_until) = mpsc::channel();
-    *BUSY.lock().unwrap() = Some((began, blocked_until));
+    let at = dsp.clone();
+    state.read(move |db| {
+        let storage = db.collector(&at, PROVIDER)?;
+        let mut began = Some(began);
+        storage.0.create_scalar_function("hold_checkpoint", 0,
+            rusqlite::functions::FunctionFlags::SQLITE_UTF8, move |_| {
+                if let Some(began) = began.take() {
+                    let _ = began.send(());
+                    let _ = blocked_until.recv();
+                }
+                Ok(0)
+            })?;
+        storage.exec("CREATE TEMP TRIGGER hold_checkpoint BEFORE INSERT ON collection_checkpoint_pages BEGIN SELECT hold_checkpoint(); END", [])?;
+        Ok(())
+    }).await?;
     let save = tokio::spawn(async move {
         checkpoint
             .save(&resume.token, &employee, &period, &records)
@@ -247,7 +242,7 @@ async fn a_checkpoint_waiting_for_sqlite_does_not_block_foreground_reads() -> Re
     let entered = tokio::time::timeout(std::time::Duration::from_secs(5), waiting)
         .await
         .is_ok_and(|result| result.is_ok());
-    // The actual save is now inside SQLite's busy handler, before its transaction commits.
+    // The actual save is now inside its SQLite transaction, before its first insert.
     // Release it before failing so the original exclusive-lock implementation exits cleanly.
     let shared = entered && state.transition.try_read().is_ok();
     let read = if shared {
@@ -262,7 +257,6 @@ async fn a_checkpoint_waiting_for_sqlite_does_not_block_foreground_reads() -> Re
     } else {
         None
     };
-    held.exec("ROLLBACK", [])?;
     release.send(()).unwrap();
     save.await.unwrap()?;
     assert!(entered, "the controlled SQLite write was never reached");
