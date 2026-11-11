@@ -107,6 +107,26 @@ impl Fake {
     }
 }
 impl System for Fake {
+    fn release_staging(&self) -> PathBuf {
+        self.snapshot.with_file_name("dev-verification")
+    }
+    fn available_space(&self, _path: &Path) -> Result<u64> {
+        Ok(self.copy_control.borrow()["freeBytes"]
+            .as_u64()
+            .unwrap_or(24u64 * 1024 * 1024 * 1024))
+    }
+    fn download(
+        &self,
+        args: &[&str],
+        cwd: Option<&Path>,
+        timeout: u64,
+        output: &Path,
+        limit: u64,
+    ) -> Result<Vec<u8>> {
+        let result = self.command(args, cwd, timeout, Some(output))?;
+        require(output.metadata()?.len() <= limit, "Download is too large")?;
+        Ok(result)
+    }
     fn command(
         &self,
         args: &[&str],
@@ -355,7 +375,7 @@ impl System for Fake {
                         header.as_mut_bytes()[..9].copy_from_slice(b"../escape");
                     }
                     if shape == "large" {
-                        header.set_size(crate::MAX_BYTES + 1);
+                        header.set_size(local::INPUT_BYTES + 1);
                         header.set_cksum();
                         archive.get_mut().write_all(header.as_bytes())?;
                         return Ok(vec![]);
@@ -839,12 +859,15 @@ impl Fixture {
             backup: false,
             after: None,
         };
-        Release::new(
-            &self.system,
-            &options,
-            "1.0.0",
-            &self.temp.path().join("releases"),
-        )
+        Release {
+            staging: self.temp.path().join("dev-verification"),
+            ..Release::new(
+                &self.system,
+                &options,
+                "1.0.0",
+                &self.temp.path().join("releases"),
+            )
+        }
     }
     /// `release publish` with no version, as a person runs it.
     fn publish(&self, args: &[&str]) -> Result<Value> {
@@ -1702,7 +1725,7 @@ fn migrations_publish_only_after_a_recent_production_backup_that_restores() {
             && !script.contains("integrity_check")
     }));
     assert!(
-        fs::read_dir(release.directory.join(".dev-verification"))
+        fs::read_dir(release.staging.clone())
             .unwrap()
             .next()
             .is_none()
@@ -1811,6 +1834,8 @@ fn dev_checks_refuse_before_capture_or_receipt_and_clean_private_staging() {
         ("host", "physical dispatch-dev"),
         ("sandbox", "sandbox unavailable"),
         ("custody", "Unfinished private Dev staging"),
+        ("legacyCustody", "Unfinished private Dev staging"),
+        ("space", "24 GiB free"),
         ("export", "export failed"),
         ("files", "restore every file"),
         ("captureFiles", "restore every captured file"),
@@ -1824,7 +1849,7 @@ fn dev_checks_refuse_before_capture_or_receipt_and_clean_private_staging() {
         ("content", "differs from its manifest"),
         ("link", "only regular files"),
         ("escape", "Unsafe backup export path"),
-        ("large", "1 GiB input limit"),
+        ("large", "8 GiB input limit"),
         ("duplicate", "duplicate members"),
         ("key", "platform key is missing"),
         ("missingConfig", "startup config is missing"),
@@ -1835,13 +1860,20 @@ fn dev_checks_refuse_before_capture_or_receipt_and_clean_private_staging() {
         let prepared = f.prepare();
         let release = f.release();
         match case {
+            "legacyCustody" => {
+                io::private_directory(&release.directory.join(".dev-verification/leftover"))
+                    .unwrap();
+            }
+            "space" => {
+                f.system.copy_control.borrow_mut()["freeBytes"] =
+                    json!(24u64 * 1024 * 1024 * 1024 - 1);
+            }
             "host" => {
                 f.system.host.replace("dispatch-production".into());
             }
             "sandbox" | "export" => f.system.fail(case),
             "custody" => {
-                io::private_directory(&release.directory.join(".dev-verification/leftover"))
-                    .unwrap();
+                io::private_directory(&release.staging.join("leftover")).unwrap();
             }
             "files" => {
                 f.system.copy_control.borrow_mut()["files"] = json!(11);
@@ -1921,7 +1953,7 @@ fn dev_checks_refuse_before_capture_or_receipt_and_clean_private_staging() {
         }
         if case != "custody" && case != "host" {
             assert!(
-                fs::read_dir(release.directory.join(".dev-verification"))
+                fs::read_dir(release.staging.clone())
                     .unwrap()
                     .next()
                     .is_none(),
@@ -1942,7 +1974,7 @@ fn cleanup_failure_keeps_private_custody_and_never_records_passing_evidence() {
     let release = f.release();
     f.system.copy_control.borrow_mut()["cleanupFail"] = json!(true);
     let result = release.backup();
-    let custody = release.directory.join(".dev-verification");
+    let custody = release.staging.clone();
     let left: Vec<_> = fs::read_dir(&custody)
         .unwrap()
         .map(|v| v.unwrap().path())
@@ -2164,7 +2196,7 @@ fn migrations_publish_only_once_a_copy_of_productions_backup_starts_under_the_re
         let refused = release.publish(&prepared).unwrap_err().to_string();
         assert!(refused.contains(named), "{named}: {refused}");
         assert!(
-            fs::read_dir(release.directory.join(".dev-verification"))
+            fs::read_dir(release.staging.clone())
                 .unwrap()
                 .next()
                 .is_none()
@@ -2972,4 +3004,22 @@ fn a_slack_app_the_release_changes_is_saved_to_paste_into_slack() {
     let result = release.execute(Stage::Publish, None).unwrap();
     assert_eq!(result["slackManifest"], json!(saved(&release)));
     assert_eq!(io::read_json(&saved(&release)).unwrap(), changed);
+}
+
+#[test]
+#[cfg_attr(
+    not(target_os = "linux"),
+    ignore = "requires Linux Bubblewrap namespaces"
+)]
+fn dev_rehearsal_accepts_files_above_the_previous_limit() {
+    let f = Fixture::migrating();
+    let prepared = f.prepare();
+    f.system.copy_control.borrow_mut()["largeFile"] = json!(true);
+    f.release()
+        .dev_copy(
+            "/srv/dispatch/backups/2026-10-14-091500-before-v1.0.0",
+            &prepared,
+            local::Check::Upgrade,
+        )
+        .unwrap();
 }

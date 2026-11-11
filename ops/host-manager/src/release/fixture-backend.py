@@ -17,11 +17,17 @@ if command == "restore":
     assert sorted(Path("/sys/class/net").glob("*")) == []
     # No network request is needed to prove that the host's routes are absent.
     assert len(Path("/proc/net/route").read_text().splitlines()) == 1
-    assert os.statvfs("/work").f_blocks * os.statvfs("/work").f_frsize <= 2 * 1024 ** 3
+    assert os.stat("/work").st_dev == os.stat("/input").st_dev
+    if target.name == "upgrade":
+        assert not Path("/work/restore").exists()
     assert os.statvfs("/tmp").f_blocks * os.statvfs("/tmp").f_frsize <= 64 * 1024 ** 2
+    if control.get("largeFile"):
+        with open("/work/above-old-limit", "wb") as output:
+            output.truncate(1024 ** 3 + 1)
+        Path("/work/above-old-limit").unlink()
     if control.get("fileLimit"):
         with open("/work/oversize", "wb") as output:
-            output.truncate(1024 ** 3 + 1)
+            output.truncate(8 * 1024 ** 3 + 1)
     if control.get("memoryLimit"):
         # Reserve address space without touching/allocating physical pages.
         with mmap.mmap(-1, 4 * 1024 ** 3 + 1):

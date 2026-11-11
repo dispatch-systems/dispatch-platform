@@ -15,7 +15,17 @@ pub fn command(
     timeout: u64,
     output: Option<&Path>,
 ) -> Result<Vec<u8>> {
-    execute(args, cwd, timeout, output, None)
+    execute(args, cwd, timeout, output, MAX_BYTES, None)
+}
+/// Download with an explicit transport bound; ordinary commands retain their default.
+pub fn download(
+    args: &[&str],
+    cwd: Option<&Path>,
+    timeout: u64,
+    output: &Path,
+    limit: u64,
+) -> Result<Vec<u8>> {
+    execute(args, cwd, timeout, Some(output), limit, None)
 }
 /// Run bootstrap with only explicitly supplied environment and private stdin.
 /// Child output is never included in an error that could expose initial credentials.
@@ -26,7 +36,15 @@ pub fn isolated(
     env: &std::collections::BTreeMap<String, String>,
     input: &[u8],
 ) -> Result<()> {
-    execute(args, Some(cwd), timeout, None, Some((env, input))).map(|_| ())
+    execute(
+        args,
+        Some(cwd),
+        timeout,
+        None,
+        MAX_BYTES,
+        Some((env, input)),
+    )
+    .map(|_| ())
 }
 type PrivateInput<'a> = (&'a std::collections::BTreeMap<String, String>, &'a [u8]);
 fn execute(
@@ -34,6 +52,7 @@ fn execute(
     cwd: Option<&Path>,
     timeout: u64,
     output: Option<&Path>,
+    limit: u64,
     private: Option<PrivateInput<'_>>,
 ) -> Result<Vec<u8>> {
     let stdout = tempfile::tempfile()?;
@@ -87,7 +106,7 @@ fn execute(
             break status;
         }
         if Instant::now() >= deadline
-            || sink.metadata()?.len() > MAX_BYTES
+            || sink.metadata()?.len() > limit
             || stderr.metadata()?.len() > 1024 * 1024
         {
             unsafe {
@@ -117,7 +136,7 @@ fn execute(
         .into());
     }
     if output.is_some() {
-        require(sink.metadata()?.len() <= MAX_BYTES, "Download is too large")?;
+        require(sink.metadata()?.len() <= limit, "Download is too large")?;
         return Ok(vec![]);
     }
     require(
@@ -130,4 +149,28 @@ fn execute(
     let mut bytes = vec![];
     stdout.read_to_end(&mut bytes)?;
     Ok(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn download_enforces_the_callers_bound_even_after_a_fast_exit() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("output");
+        download(&["printf", "12345"], None, 30, &path, 5).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"12345");
+        let error = download(
+            &["printf", "123456"],
+            None,
+            30,
+            &root.path().join("oversize"),
+            5,
+        )
+        .unwrap_err();
+        assert!(
+            error.to_string().contains("large") || error.to_string().contains("limit"),
+            "{error}"
+        );
+    }
 }

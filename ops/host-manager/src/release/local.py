@@ -3,12 +3,13 @@ import json
 import os
 from pathlib import Path
 import resource
+import shutil
 import sqlite3
 import subprocess
 import sys
 
 resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
-resource.setrlimit(resource.RLIMIT_FSIZE, (1024 ** 3, 1024 ** 3))
+resource.setrlimit(resource.RLIMIT_FSIZE, (8 * 1024 ** 3, 8 * 1024 ** 3))
 resource.setrlimit(resource.RLIMIT_NOFILE, (256, 256))
 resource.setrlimit(resource.RLIMIT_AS, (4 * 1024 ** 3, 4 * 1024 ** 3))
 BACKEND = "/runtime/services/rust/dispatch-backend"
@@ -44,6 +45,7 @@ def main():
             integrity = False
     answer = {"files": restored["files"], "databases": len(databases), "integrity": integrity}
     if sys.argv[1] == "upgrade" and integrity and databases:
+        shutil.rmtree("/work/restore")
         restore("/work/upgrade")
         report = run(["/bin/bash", "--noprofile", "--norc", "-c", r'''
 set -eu
