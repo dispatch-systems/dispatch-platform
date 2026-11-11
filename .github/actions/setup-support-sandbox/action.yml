@@ -6,8 +6,7 @@ runs:
     - name: Install the support execution sandbox
       shell: bash
       run: |
-        sudo apt-get update -qq
-        sudo apt-get install -y --no-install-recommends apparmor bubblewrap
+        bash tooling/ci/install-packages.sh --no-install-recommends apparmor bubblewrap
         # Allow namespaces for Bubblewrap while retaining its mount/network isolation.
         sudo apparmor_parser -r <<'PROFILE'
         abi <abi/4.0>,
