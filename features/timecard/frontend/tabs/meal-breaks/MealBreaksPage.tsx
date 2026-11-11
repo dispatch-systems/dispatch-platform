@@ -1,3 +1,4 @@
+import { useSettled } from '../../../../../core/shell/frontend/runtime/useSettled.js';
 import { performancePolicy } from '../../../../../core/shell/frontend/lib/performance-policy.js';
 import { useUpdateState } from '../../../../../core/shell/frontend/runtime/navigation-state.js';
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
@@ -55,11 +56,7 @@ export function MealBreaksPage({
   const [query, setQuery] = useUpdateState('meal-query', ''),
     [filter, setFilter] = useUpdateState('meal-filter', 'all');
   const state = useTableState('meal', { id: 'employee', desc: false });
-  const [settledQuery, setSettledQuery] = useState(query);
-  useEffect(() => {
-    const timer = setTimeout(() => setSettledQuery(query), performancePolicy.employeeSearchDelayMs);
-    return () => clearTimeout(timer);
-  }, [query]);
+  const settledQuery = useSettled(query, performancePolicy.employeeSearchDelayMs);
   const deferredSearch = useDeferredValue(settledQuery.toLowerCase());
   const searching = deferredSearch !== query.toLowerCase();
   const [exporting, setExporting] = useState(false);

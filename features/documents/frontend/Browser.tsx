@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useSettled } from '../../../core/shell/frontend/runtime/useSettled.js';
 import {
   ExternalLink,
   FileUp,
@@ -44,7 +45,6 @@ import {
   shown,
   trails,
   useFolder,
-  useSettled,
   type Asked,
   type Filter,
   type Layout,
