@@ -6,25 +6,21 @@ runs:
     - name: Install the support execution sandbox
       shell: bash
       run: |
-        # Use Ubuntu directly: the runner's mirror-list transport can fail on its Azure mirror.
-        . /etc/os-release
-        sources="$RUNNER_TEMP/support-ubuntu.sources"
-        cat > "$sources" <<SOURCES
-        Types: deb
-        URIs: https://archive.ubuntu.com/ubuntu
-        Suites: $VERSION_CODENAME $VERSION_CODENAME-updates
-        Components: main universe
-        Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
-
-        Types: deb
-        URIs: https://security.ubuntu.com/ubuntu
-        Suites: $VERSION_CODENAME-security
-        Components: main universe
-        Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
-        SOURCES
-        apt_options=(-o "Dir::Etc::sourcelist=$sources" -o 'Dir::Etc::sourceparts=-' -o Acquire::Retries=2)
-        sudo apt-get "${apt_options[@]}" update --error-on=any -qq
-        sudo apt-get "${apt_options[@]}" install -y --no-install-recommends apparmor bubblewrap
+        # Compare the runner's network access with APT's privilege-separated downloader.
+        for account in runner root _apt; do
+          echo "Network diagnostics: $account"
+          sudo -u "$account" sh -c '
+            id
+            ls -ld /etc/resolv.conf /run/systemd/resolve 2>/dev/null || true
+            for name in http_proxy https_proxy HTTP_PROXY HTTPS_PROXY; do
+              if printenv "$name" >/dev/null; then echo "$name is set"; fi
+            done
+            timeout 10 getent ahostsv4 archive.ubuntu.com || true
+            timeout 10 curl --head --silent --show-error --max-time 8 https://archive.ubuntu.com/ubuntu/dists/noble/InRelease || true
+          '
+        done
+        sudo apt-get update -qq
+        sudo apt-get install -y --no-install-recommends apparmor bubblewrap
         # Allow namespaces for Bubblewrap while retaining its mount/network isolation.
         sudo apparmor_parser -r <<'PROFILE'
         abi <abi/4.0>,
