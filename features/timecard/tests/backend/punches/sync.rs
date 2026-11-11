@@ -71,6 +71,20 @@ fn a_scoped_publication_rejects_other_employees_periods_and_incomplete_captures(
     let db = store.collector(id, paycom::PROVIDER)?;
     let pool = db.all("SELECT * FROM paycom_payloads ORDER BY format,digest", [])?;
     let refs = db.all("SELECT * FROM paycom_employee_sync_payload_refs", [])?;
+    assert!(
+        pool.is_empty(),
+        "employee sync must not write pooled bodies"
+    );
+    assert!(refs.is_empty(), "employee sync must not write references");
+    for expected in capture["timecards"].as_array().unwrap() {
+        let actual = saved
+            .timecards
+            .iter()
+            .find(|card| card.card.date == expected["date"])
+            .unwrap();
+        let punches: Vec<crate::Punch> = serde_json::from_value(expected["punches"].clone())?;
+        assert_eq!(actual.card.punches, punches);
+    }
     let mut stale = capture.clone();
     stale["collectedAt"] = json!("2099-01-01T00:00:00Z");
     stale["timecards"][13]["punches"][0]["in"] = json!("07:55");
@@ -89,33 +103,54 @@ fn a_scoped_publication_rejects_other_employees_periods_and_incomplete_captures(
         refs
     );
 
-    // Equal timestamps still replace, but a later envelope alone shares the same body.
+    // Equal timestamps still replace; a later envelope keeps all JSON inline.
     capture["timecards"][13]["punches"][0]["in"] = json!("07:56");
     publish_employee_timecard(&store, id, &scope, &capture)?;
-    let count = db.count("SELECT count(*) FROM paycom_payloads", [])?;
+    assert_eq!(db.count("SELECT count(*) FROM paycom_payloads", [])?, 0);
     capture["collectedAt"] = json!("2099-01-03T00:00:00Z");
     publish_employee_timecard(&store, id, &scope, &capture)?;
-    assert_eq!(db.count("SELECT count(*) FROM paycom_payloads", [])?, count);
+    assert_eq!(db.count("SELECT count(*) FROM paycom_payloads", [])?, 0);
     assert_eq!(
         db.one("SELECT data FROM employee_timecard_syncs", [])?
             .unwrap()["data"],
         capture.to_string()
     );
     // A stored-format fixture with a scalar timestamp distinct from the raw envelope.
-    let payload = super::super::payloads::Payload::capture(&capture)?;
+    let mut body = capture.clone();
+    body.as_object_mut().unwrap().remove("collectedAt");
+    // Old-build stored-format fixture: recursively sorted canonical JSON, not a product writer.
+    fn sorted(value: &Value) -> Value {
+        match value {
+            Value::Object(fields) => {
+                let fields: std::collections::BTreeMap<_, _> = fields
+                    .iter()
+                    .map(|(key, value)| (key.clone(), sorted(value)))
+                    .collect();
+                serde_json::to_value(fields).unwrap()
+            }
+            Value::Array(values) => Value::Array(values.iter().map(sorted).collect()),
+            other => other.clone(),
+        }
+    }
+    let body = sorted(&body).to_string();
+    let digest =
+        dispatch_core::foundation::crypto::sha(format!("paycom.employee-capture.v1\0{body}"));
+    let attach = || -> Result<()> {
+        db.exec("INSERT INTO paycom_employee_sync_payload_refs VALUES (?,?,?,'paycom.employee-capture.v1',?,?)",
+            params!["E001", scope.from, scope.to, digest, s(&capture, "collectedAt")])?;
+        Ok(())
+    };
     db.transaction(|| {
+        db.exec(
+            "INSERT INTO paycom_payloads VALUES ('paycom.employee-capture.v1',?,?)",
+            params![digest, body],
+        )?;
         db.exec(
             r#"UPDATE employee_timecard_syncs SET collected_at='2099-01-04T00:00:00Z',
                data='{"$dispatchPayload":"paycom.employee-capture.v1"}'"#,
             [],
         )?;
-        payload.attach_sync(
-            &db,
-            "E001",
-            &scope.from,
-            &scope.to,
-            s(&capture, "collectedAt"),
-        )
+        attach()
     })?;
     let joined = db
         .one(
@@ -173,13 +208,7 @@ fn a_scoped_publication_rejects_other_employees_periods_and_incomplete_captures(
                 .code,
             "paycom_payload_unavailable"
         );
-        payload.attach_sync(
-            &db,
-            "E001",
-            &scope.from,
-            &scope.to,
-            s(&capture, "collectedAt"),
-        )
+        attach()
     })?;
 
     // Rollback REPLACE/UPDATE and DELETE invalidate only that capture, with full inline fallback.
@@ -209,6 +238,9 @@ fn a_scoped_publication_rejects_other_employees_periods_and_incomplete_captures(
     );
     capture["collectedAt"] = json!("2099-01-06T00:00:00Z");
     publish_employee_timecard(&store, id, &scope, &capture)?;
+    // Seed an existing old-build reference before exercising invalidation.
+    db.exec("INSERT INTO paycom_employee_sync_payload_refs VALUES (?,?,?,'paycom.employee-capture.v1',?,?)",
+        params!["E001", scope.from, scope.to, digest, s(&capture, "collectedAt")])?;
     db.exec(
         "UPDATE employee_timecard_syncs SET collected_at='2099-01-06T01:00:00Z'",
         [],
@@ -225,12 +257,26 @@ fn a_scoped_publication_rejects_other_employees_periods_and_incomplete_captures(
     capture["collectedAt"] = json!("2099-01-07T00:00:00Z");
     publish_employee_timecard(&store, id, &scope, &capture)?;
 
+    // An old-build reference makes both rollback and deletion invalidation non-vacuous.
+    let mut current_body = capture.clone();
+    current_body.as_object_mut().unwrap().remove("collectedAt");
+    let current_body = sorted(&current_body).to_string();
+    let current_digest = dispatch_core::foundation::crypto::sha(format!(
+        "paycom.employee-capture.v1\0{current_body}"
+    ));
+    db.exec(
+        "INSERT INTO paycom_payloads VALUES ('paycom.employee-capture.v1',?,?)",
+        params![current_digest, current_body],
+    )?;
+    db.exec("INSERT INTO paycom_employee_sync_payload_refs VALUES (?,?,?,'paycom.employee-capture.v1',?,?)",
+        params!["E001", scope.from, scope.to, current_digest, s(&capture, "collectedAt")])?;
     let before_rows = db.all("SELECT * FROM employee_timecard_syncs", [])?;
     let before_refs = db.all("SELECT * FROM paycom_employee_sync_payload_refs", [])?;
+    assert_eq!(before_refs.len(), 1);
     let before_pool = db.all("SELECT * FROM paycom_payloads ORDER BY format,digest", [])?;
     db.0.execute_batch(
-        "CREATE TRIGGER reject_sync_ref BEFORE INSERT ON paycom_employee_sync_payload_refs
-         BEGIN SELECT RAISE(ABORT,'fixture_ref_failure'); END;",
+        "CREATE TRIGGER reject_sync_write AFTER UPDATE ON employee_timecard_syncs
+         BEGIN SELECT RAISE(ABORT,'fixture_sync_failure'); END;",
     )?;
     capture["collectedAt"] = json!("2099-01-08T00:00:00Z");
     capture["timecards"][13]["punches"][0]["in"] = json!("07:54");
@@ -247,7 +293,7 @@ fn a_scoped_publication_rejects_other_employees_periods_and_incomplete_captures(
         db.all("SELECT * FROM paycom_payloads ORDER BY format,digest", [])?,
         before_pool
     );
-    db.0.execute_batch("DROP TRIGGER reject_sync_ref;")?;
+    db.0.execute_batch("DROP TRIGGER reject_sync_write;")?;
     db.exec("DELETE FROM employee_timecard_syncs", [])?;
     assert_eq!(
         db.count("SELECT count(*) FROM paycom_employee_sync_payload_refs", [])?,

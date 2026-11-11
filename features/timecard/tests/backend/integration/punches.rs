@@ -189,7 +189,7 @@ fn publication_is_atomic_and_keeps_the_last_successful_dataset() {
     let current = storage
         .setting("paycom.publicationFingerprint", Value::Null)
         .unwrap();
-    // A failure after legacy rows and a payload/ref were written rolls everything back.
+    // A failure after inline rows are written rolls the entire publication back.
     let snapshot = || {
         [
             "publications",
@@ -216,10 +216,9 @@ fn publication_is_atomic_and_keeps_the_last_successful_dataset() {
     storage
         .0
         .execute_batch(
-            "CREATE TRIGGER reject_payload_ref BEFORE INSERT ON paycom_timecard_payload_refs
-         WHEN EXISTS(SELECT 1 FROM paycom_timecard_payload_refs
-                     WHERE publication_id=NEW.publication_id)
-         BEGIN SELECT RAISE(ABORT,'fixture_ref_failure'); END;",
+            "CREATE TRIGGER reject_timecard BEFORE INSERT ON timecards
+         WHEN EXISTS(SELECT 1 FROM timecards WHERE publication_id=NEW.publication_id)
+         BEGIN SELECT RAISE(ABORT,'fixture_card_failure'); END;",
         )
         .unwrap();
     let mut rejected = data.clone();
@@ -229,7 +228,7 @@ fn publication_is_atomic_and_keeps_the_last_successful_dataset() {
     assert_eq!(db.employee_timecard(id, "E001", None).unwrap(), before);
     storage
         .0
-        .execute_batch("DROP TRIGGER reject_payload_ref;")
+        .execute_batch("DROP TRIGGER reject_timecard;")
         .unwrap();
     let mut historical =
         fixtures::fixture_date("UTC", Some("2020-09-05".parse().unwrap())).unwrap();
@@ -339,18 +338,11 @@ fn timecard_links_publish_with_unchanged_hours_and_are_returned() {
     };
     assert_eq!(count("publications"), 2);
     assert_eq!(count("timecard_sources"), 12);
-    assert_eq!(count("paycom_payloads"), 2);
+    assert_eq!(count("paycom_payloads"), 0);
     // An identical repeat only refreshes the collection time.
     linked["collectedAt"] = json!("2099-01-02T00:00:00.000Z");
     db.publish_timecards(id, &linked).unwrap();
     assert_eq!(count("publications"), 2);
-    paycom
-        .exec(
-            "DELETE FROM paycom_timecard_payload_refs WHERE employee_code='E003'
-         AND publication_id=(SELECT id FROM publications WHERE active=1)",
-            [],
-        )
-        .unwrap();
     db.publish_timecards(id, &linked).unwrap();
     assert_eq!(
         paycom
@@ -376,7 +368,7 @@ fn timecard_links_publish_with_unchanged_hours_and_are_returned() {
     linked["collectedAt"] = json!("2099-01-03T00:00:00.000Z");
     db.publish_timecards(id, &linked).unwrap();
     assert_eq!(count("publications"), 3);
-    assert_eq!(count("paycom_payloads"), 2);
+    assert_eq!(count("paycom_payloads"), 0);
     assert_eq!(
         db.employee_timecard(id, "E001", None)
             .unwrap()
@@ -384,6 +376,83 @@ fn timecard_links_publish_with_unchanged_hours_and_are_returned() {
             .name,
         "Retained Actor"
     );
+}
+
+#[test]
+fn publications_keep_every_inline_punch_without_pool_or_reference_rows() {
+    install();
+    let (_root, store, id) = bootstrapped();
+    let mut data = fixtures::fixture_date("UTC", Some("2026-09-19".parse().unwrap())).unwrap();
+    data["timecards"][0]["punches"] = json!([]);
+    data["timecards"][0]["hours"] = json!(0.0);
+    data["timecards"][0]["status"] = json!("No punches");
+    store.publish_timecards(&id, &data).unwrap();
+    let db = store.collector(&id, paycom::PROVIDER).unwrap();
+    for table in [
+        "paycom_payloads",
+        "paycom_timecard_payload_refs",
+        "paycom_employee_sync_payload_refs",
+    ] {
+        assert_eq!(
+            db.count(&format!("SELECT count(*) FROM {table}"), [])
+                .unwrap(),
+            0,
+            "{table} must stay empty after publication"
+        );
+    }
+    let keeper = dispatch_timecard::FEATURE
+        .keeps
+        .iter()
+        .find(|keeper| keeper.keeps() == "paycom.collect")
+        .unwrap();
+    let published = keeper.published(&db).unwrap();
+    assert_eq!(published.len(), data["timecards"].as_array().unwrap().len());
+    let range = store
+        .daily_timecards_range(&id, s(&data, "from"), s(&data, "to"), "name", false, None)
+        .unwrap();
+    for employee in data["employees"].as_array().unwrap() {
+        let detail = store
+            .employee_timecard(&id, s(employee, "code"), None)
+            .unwrap();
+        let expected: Vec<_> = data["timecards"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|card| card["employeeCode"] == employee["code"])
+            .collect();
+        assert_eq!(detail.timecards.len(), expected.len());
+        for expected in expected {
+            let punches: Vec<dispatch_timecard::Punch> =
+                serde_json::from_value(expected["punches"].clone()).unwrap();
+            let actual = detail
+                .timecards
+                .iter()
+                .find(|card| card.card.date == expected["date"])
+                .unwrap();
+            assert_eq!(actual.card.punches, punches);
+            let daily = range[s(expected, "date")]
+                .rows
+                .iter()
+                .find(|row| row.card.employee_code == employee["code"])
+                .unwrap();
+            assert_eq!(daily.card.punches, punches);
+            let probe = published
+                .iter()
+                .find(|card| {
+                    card["employeeCode"] == employee["code"] && card["date"] == expected["date"]
+                })
+                .unwrap();
+            assert_eq!(probe["punches"], expected["punches"]);
+            let inline = db
+                .one(
+                    "SELECT punches FROM timecards WHERE employee_code=? AND date=?",
+                    [s(employee, "code"), s(expected, "date")],
+                )
+                .unwrap()
+                .unwrap();
+            assert_eq!(inline["punches"], expected["punches"].to_string());
+        }
+    }
 }
 
 #[test]
@@ -444,21 +513,18 @@ fn unchanged_publications_reuse_storage_but_changed_data_and_history_survive() {
             .len(),
         3
     );
-    // Changes in scalar hours still share the original two distinct punch arrays.
-    assert_eq!(
-        provider
-            .count("SELECT count(*) FROM paycom_payloads", [])
-            .unwrap(),
-        2
-    );
-    assert_eq!(
-        provider
-            .count("SELECT count(*) FROM paycom_timecard_payload_refs", [])
-            .unwrap(),
-        provider
-            .count("SELECT count(*) FROM timecards", [])
-            .unwrap(),
-    );
+    for table in [
+        "paycom_payloads",
+        "paycom_timecard_payload_refs",
+        "paycom_employee_sync_payload_refs",
+    ] {
+        assert_eq!(
+            provider
+                .count(&format!("SELECT count(*) FROM {table}"), [])
+                .unwrap(),
+            0
+        );
+    }
     let date = "2026-09-13";
     let card = data["timecards"]
         .as_array_mut()
@@ -483,7 +549,7 @@ fn unchanged_publications_reuse_storage_but_changed_data_and_history_survive() {
         provider
             .count("SELECT count(*) FROM paycom_payloads", [])
             .unwrap(),
-        3
+        0
     );
     assert_eq!(
         provider
@@ -502,7 +568,21 @@ fn unchanged_publications_reuse_storage_but_changed_data_and_history_survive() {
     // Fixture for the future stored format; product writers never emit this marker.
     provider
         .transaction(|| {
-            let refs = provider.all("SELECT * FROM paycom_timecard_payload_refs", [])?;
+            // Explicit old-build fixture: canonical v1 bodies and sidecar references.
+            let mut refs = Vec::new();
+            for mut row in provider.all("SELECT publication_id,employee_code,date,punches FROM timecards", [])? {
+                let punches: Vec<std::collections::BTreeMap<String, Value>> =
+                    serde_json::from_str(s(&row, "punches"))?;
+                let body = serde_json::to_string(&punches)?;
+                let digest = dispatch_core::foundation::crypto::sha(format!("paycom.punches.v1\0{body}"));
+                provider.exec(
+                    "INSERT INTO paycom_payloads VALUES ('paycom.punches.v1',?,?) ON CONFLICT DO NOTHING",
+                    rusqlite::params![digest, body],
+                )?;
+                row["format"] = json!("paycom.punches.v1");
+                row["digest"] = json!(digest);
+                refs.push(row);
+            }
             provider.exec(
                 r#"UPDATE timecards SET punches='{"$dispatchPayload":"paycom.punches.v1"}'"#,
                 [],
