@@ -26,7 +26,7 @@ test('templates fill values and keep or drop sections, and refuse a name without
   assert.throws(() => render('{{#on}}x{{/off}}', { on: true, off: true }), /closes on/);
 });
 
-test('with no flags, a feature is a crate with a switch, a view permission and a browser test', async () => {
+test('with no flags, a feature is a crate with a switch and a view permission, and no screen to test', async () => {
   const plan = await feature('parking');
   assert.deepEqual(writes(plan, 'features/parking'), [
     'Cargo.toml',
@@ -34,7 +34,6 @@ test('with no flags, a feature is a crate with a switch, a view permission and a
     'feature.rs',
     'frontend/feature.ts',
     'frontend/platform-slots.ts',
-    'tests/browser/parking.spec.ts',
   ]);
   const cargo = file(plan, 'features/parking/Cargo.toml');
   assert.match(cargo, /^name = "dispatch-parking"$/m);
@@ -74,7 +73,7 @@ test('with no flags, a feature is a crate with a switch, a view permission and a
     ])
     .map((match) => Number(match[1]));
   assert(place % 10 === 0 && places.every((other) => other < place), `${place} follows ${places}`);
-  // The DSPs page shows its switch with the icon its frontend gives, which a browser test sees.
+  // The DSPs page shows its switch with the icon its frontend gives.
   assert.match(
     file(plan, 'features/parking/frontend/feature.ts'),
     /platformSlots: \(\) => import\('.\/platform-slots.js'\),/,
@@ -83,10 +82,6 @@ test('with no flags, a feature is a crate with a switch, a view permission and a
   assert.match(
     file(plan, 'features/parking/frontend/platform-slots.ts'),
     /switch: \{ id: 'parking', icon: LayoutGrid \},/,
-  );
-  assert.match(
-    file(plan, 'features/parking/tests/browser/parking.spec.ts'),
-    /getByRole\('switch', \{ name: 'Parking', exact: true \}\)\)\.toBeChecked\(\)/,
   );
 
   // The workspace's members cover it already, so Cargo.toml is no change, and the frontend's
@@ -114,26 +109,25 @@ test('with no flags, a feature is a crate with a switch, a view permission and a
   );
   // With no switch, it has nothing to show in the frontend.
   assert(
-    !writes(await feature('lobby', '--mandatory'), 'features/lobby').includes(
+    !writes(await feature('lobby', '--mandatory', '--api'), 'features/lobby').includes(
       'frontend/feature.ts',
     ),
   );
 });
 
 test('--mandatory makes a feature every DSP has and, with nothing to gate, no permission', async () => {
-  const plan = await feature('lobby', '--mandatory');
+  // A tab of another's page, which needs no permission of its own.
+  const plan = await feature('lobby', '--mandatory', '--tab-of', 'uniforms');
   const manifest = file(plan, 'features/lobby/feature.rs');
   assert.match(
     manifest,
     /^pub const FEATURE: Feature = Feature \{\n {4}place: \d+,\n {4}switch: mandatory\("lobby", "Lobby"\),\n {4}\.\.feature\("lobby"\)\n\};$/m,
   );
   assert.doesNotMatch(manifest, /optional|perm/);
-  // With no API or frontend either, it keeps an empty backend/ and its manifest's test: a
-  // feature has a backend, an API or a frontend.
-  assert(file(plan, 'features/lobby/backend/mod.rs'));
-  assert.match(manifest, /#\[cfg\(test\)\]\n#\[path = "tests\/backend\/feature.rs"\]\nmod tests;/);
-  assert.match(file(plan, 'features/lobby/tests/backend/feature.rs'), /assert!\(switch\.mandatory/);
   assert.match(file(plan, 'features/lobby/README.md'), /Mandatory/);
+  // Alone, with no switch to show, it would be nothing: a feature has a backend, an API or a
+  // frontend.
+  await refused(/--mandatory alone makes a feature with nothing in it/, 'lobby', '--mandatory');
   // An endpoint still needs a permission to check.
   const gated = file(await feature('lobby', '--mandatory', '--api'), 'features/lobby/feature.rs');
   assert.match(gated, /switch: mandatory\("lobby", "Lobby"\),/);
@@ -306,7 +300,13 @@ test("--keeps tells one collector's collection from another's of the same name",
     fs.mkdirSync(path.dirname(path.join(copy, name)), { recursive: true });
     fs.writeFileSync(path.join(copy, name), content);
   }
-  const { plan } = await planFeature(copy, ['yard_checks', '--keeps', 'yard.dvic']);
+  const { plan } = await planFeature(copy, [
+    'yard_checks',
+    '--keeps',
+    'yard.dvic',
+    '--tables',
+    'yard_checks',
+  ]);
   assert.match(
     file(plan, 'features/yard_checks/backend/keeper.rs'),
     /use dispatch_yard::dvic::JOB_KIND;/,
@@ -356,10 +356,10 @@ test("--keeps writes the keeper of a collector's collection, tested with its fix
   assert.match(keeper, /use dispatch_fleet::shifts::JOB_KIND;/);
   assert.match(keeper, /"fleet_log.collect"/);
   assert.match(keeper, /fn storages\(&self\)/);
-  assert.match(
-    file(plan, 'features/fleet_log/tests/backend/keeper.rs'),
-    /dispatch_fleet::COLLECTOR\s*\.fixture\(/,
-  );
+  // Its test reads back what the keeper kept from the fixture's run.
+  const keeperTest = file(plan, 'features/fleet_log/tests/backend/keeper.rs');
+  assert.match(keeperTest, /dispatch_fleet::COLLECTOR\s*\.fixture\(/);
+  assert.match(keeperTest, /let kept = store\.fleet_log_items\(&dsp\)\.unwrap\(\);\n\s*assert_eq!/);
   assert.match(
     file(plan, 'features/fleet_log/migrations/fleet_log/0001_baseline.sql'),
     /storage_identity/,
@@ -383,9 +383,21 @@ test("--keeps writes the keeper of a collector's collection, tested with its fix
     planFeature(copy, ['fleet_log', '--tables', 'fleet_log']),
     /--tables takes dsp/,
   );
+  // What each run brings is stored in a table, which its test reads back.
+  await assert.rejects(
+    planFeature(copy, ['fleet_log', '--keeps', 'fleet.shifts']),
+    /--keeps stores what each run brings in its table: add --tables/,
+  );
   // What it collects is said in its frontend, which a mandatory feature with no screen lacks.
   await assert.rejects(
-    planFeature(copy, ['fleet_log', '--keeps', 'fleet.shifts', '--mandatory']),
+    planFeature(copy, [
+      'fleet_log',
+      '--keeps',
+      'fleet.shifts',
+      '--tables',
+      'fleet_log',
+      '--mandatory',
+    ]),
     /add --page, or leave out --mandatory/,
   );
 });
@@ -466,7 +478,7 @@ test('--page and --tab-of write frontend/feature.ts, the screen and a browser te
 
 test('--settings declares a section its backend reads, which Settings draws: no screen of its own', async () => {
   const plan = await feature('notes', '--settings', '--icon', 'Truck');
-  // Its frontend is its switch's alone, and so is its browser test.
+  // Its frontend is its switch's alone, with no screen for a browser test.
   assert.deepEqual(
     writes(plan, 'features/notes').filter((name) => /^(backend|frontend|tests)\//.test(name)),
     [
@@ -475,12 +487,10 @@ test('--settings declares a section its backend reads, which Settings draws: no 
       'frontend/feature.ts',
       'frontend/platform-slots.ts',
       'tests/backend/settings.rs',
-      'tests/browser/notes.spec.ts',
     ],
   );
   const frontend = file(plan, 'features/notes/frontend/feature.ts');
   assert.doesNotMatch(frontend, /settingsSections/);
-  assert.doesNotMatch(file(plan, 'features/notes/tests/browser/notes.spec.ts'), /'Settings'/);
   assert.match(file(plan, 'features/notes/frontend/platform-slots.ts'), /icon: Truck \}/);
   // With no page of its own, its manifest gives the icon its page of Settings shows.
   assert.match(frontend, /^import \{ Truck \} from 'lucide-react';$/m);

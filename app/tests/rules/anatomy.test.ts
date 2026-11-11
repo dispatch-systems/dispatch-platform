@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { features as frontends } from '../../frontend/features.js';
 import { featureManifest, textOf } from './support/manifests.js';
 import { holds } from './support/holds.js';
 import {
@@ -53,6 +54,24 @@ const hasRustTest = (directory: string) =>
   filesIn(directory).some((file) => file.endsWith('.rs') && testAttributes(lexFile(file)).length);
 /** Whether a Rust file holds a test. */
 const isRustTest = (file: string) => isFile(file) && testAttributes(lexFile(file)).length > 0;
+/**
+ * Whether an owner's frontend draws a screen of its own: a page, a sidebar of pages, a tab of
+ * another's page, a card, section or integration on Connections, a section of Settings or an
+ * action in the account menu. A switch alone is the DSPs page's to draw.
+ */
+const hasScreen = (name: string) => {
+  const frontend = frontends.find((each) => each.name === name);
+  return [
+    frontend?.routes,
+    frontend?.sidebars,
+    frontend?.pageTabs,
+    frontend?.connectionPieces,
+    frontend?.connectionSections,
+    frontend?.connectionIntegrations,
+    frontend?.settingsSections,
+    frontend?.accountActions,
+  ].some((screens) => screens?.length);
+};
 
 test('every feature has its crate, manifest and README, and a backend, an API or a frontend', () => {
   const missing = features().flatMap(({ dir }) => [
@@ -86,12 +105,10 @@ test('an optional piece arrives with its companions', () => {
       out.push(`${dir} has backend/ and no test in tests/backend/`);
     if (isDirectory(`${dir}/api`) && !isDirectory(`${dir}/tests/api`))
       out.push(`${dir} has api/ and no tests/api/`);
-    if (isDirectory(`${dir}/frontend`)) {
-      if (!isFile(`${dir}/frontend/feature.ts`))
-        out.push(`${dir} has frontend/ and no frontend/feature.ts`);
-      if (!isDirectory(`${dir}/tests/browser`))
-        out.push(`${dir} has frontend/ and no tests/browser/`);
-    }
+    if (isDirectory(`${dir}/frontend`) && !isFile(`${dir}/frontend/feature.ts`))
+      out.push(`${dir} has frontend/ and no frontend/feature.ts`);
+    if (hasScreen(owner.name) && !isDirectory(`${dir}/tests/browser`))
+      out.push(`${dir} has a screen in frontend/ and no tests/browser/`);
     // Tables arrive with the migrations that create them, and migrations with their
     // declaration in the manifest.
     const manifest = featureManifest(owner);

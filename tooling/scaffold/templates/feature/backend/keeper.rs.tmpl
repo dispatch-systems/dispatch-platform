@@ -1,8 +1,6 @@
 //! {{label}} keeps {{siteLabel}}'s `{{collection}}` collection: the engine hands it what each
 //! finished job brought, and it stores it for that DSP.
-{{#tables}}
 use crate::{{pascal}}Store;
-{{/tables}}
 {{#ownDatabase}}
 use super::storage::STORAGE;
 use dispatch_core::collection::registry::AddedStorage;
@@ -28,11 +26,9 @@ impl Keeper for {{pascal}}Keeper {
         schedules("{{name}}.collect")
     }
     /// Stores a finished collection: `collected.data` is what the collector returned.
-    fn publish(&self, {{publishParameters}}) -> Result<()> {
-{{#tables}}
+    fn publish(&self, store: &Store, dsp: &str, job: &str, _collected: Collected) -> Result<()> {
         // TODO(scaffold): store the rows `collected.data` holds; the starter records the job.
         store.add_{{name}}_item(dsp, job)?;
-{{/tables}}
         Ok(())
     }
 {{#ownDatabase}}

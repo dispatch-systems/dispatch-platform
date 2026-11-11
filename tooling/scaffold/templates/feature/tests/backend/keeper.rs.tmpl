@@ -11,11 +11,9 @@ fn publishes_what_the_collectors_fixture_brings() {
         .fixture("America/Chicago", &json!({{fixtureRequest}}))
         .unwrap();
     {{pascal}}Keeper.publish(&store, &dsp, "job-1", collected).unwrap();
-{{#tables}}
     let kept = store.{{name}}_items(&dsp).unwrap();
     assert_eq!(
         kept.iter().map(|item| item.name.as_str()).collect::<Vec<_>>(),
         ["job-1"]
     );
-{{/tables}}
 }

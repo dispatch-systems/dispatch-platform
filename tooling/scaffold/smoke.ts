@@ -69,10 +69,8 @@ const MADE: [string, ...string[]][] = [
   ['slot', 'smoke_badges', '--description', 'Its badges on the DSPs page.'],
   // A second slot, after the first.
   ['slot', 'smoke_shortcuts', '--description', 'Its shortcuts on a page.'],
-  // Features the pieces below are added to: one with a table, and one of a manifest alone,
-  // whose test module is its manifest's last item.
+  // A feature the pieces below are added to, with a table.
   ['feature', 'smoke_rows', '--tables', 'dsp'],
-  ['feature', 'smoke_bare', '--mandatory'],
 ];
 
 /**
@@ -86,7 +84,6 @@ const ADDED: string[][] = [
   // A sidebar its page moves under.
   ['sidebar', 'drafts,archive', '--to', 'smoke_front'],
   ['api', '--to', 'smoke_front'],
-  ['api', '--to', 'smoke_bare'],
   ['contract', 'smoke_rows_counts', '--to', 'smoke_rows'],
   // The product's own: Team has no backend/ for its settings, nor a team.view for their manage
   // permission to imply, which add once broke; Uniform Inventory's settings join the backend
