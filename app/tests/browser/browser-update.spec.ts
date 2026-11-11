@@ -40,7 +40,7 @@ test('reload preserves DSP, meal tab, selected date and search on mobile', async
   });
   await page.getByLabel('Search meal break employees').fill('Avery');
   expect((await (await filtered).json()).rows.length).toBeGreaterThan(0);
-  await expect(page.getByRole('table', { name: 'Employee meal breaks' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Meal break comparison' })).toBeVisible();
   await expect(page.locator('.paycom-day-results')).toHaveAttribute('aria-busy', 'false');
   await page.evaluate(() => window.scrollTo(0, 200));
   const scroll = await page.evaluate(() => window.scrollY);
