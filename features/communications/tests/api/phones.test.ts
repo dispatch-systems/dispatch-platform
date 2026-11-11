@@ -71,12 +71,20 @@ test('A phone pairs once with a code, then calls with its key at its DSP alone',
     at: Date.now(),
   };
   const reported = await f.request(
-    '/api/communications/phone/texts',
+    '/api/dispatch-phone/phone/texts',
     { texts: [text] },
     { ...at, ...key },
   );
   assert.equal(reported.status, 200, reported.body);
   assert.equal(reported.value.texts[0].clientId, 'sms-1');
+  // The phone keeps its key and text IDs while either server address is in use.
+  const repeated = await f.request(
+    '/api/communications/phone/texts',
+    { texts: [text] },
+    { ...at, ...key },
+  );
+  assert.equal(repeated.status, 200, repeated.body);
+  assert.deepEqual(repeated.value, reported.value);
   // The key works at its DSP's address alone, and only while the phone is paired.
   const elsewhere = await f.request('/api/communications/phone/texts', { texts: [text] }, key);
   assert.equal(elsewhere.status, 401);
@@ -94,6 +102,7 @@ test('A phone pairs once with a code, then calls with its key at its DSP alone',
   assert.equal((await owner.post(switches, off)).status, 200);
   await owner.select(north.id);
   assert.equal((await owner.get('/api/dsp/communications/phones')).status, 404);
+  assert.equal((await owner.get('/api/dsp/dispatch-phone/phones')).status, 404);
   assert.equal((await owner.post('/api/dsp/communications/phones/pairing')).status, 404);
   const asleep = await f.request(
     '/api/communications/phone/texts',

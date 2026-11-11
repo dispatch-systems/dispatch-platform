@@ -26,7 +26,7 @@ const notSent: Record<NotSent, string> = {
   too_late: 'too late',
   needs_update: 'Slack needs updating',
   disconnected: 'Slack disconnected',
-  off: 'Communications off in Slack',
+  off: 'Dispatch Phone off in Slack',
   gone: 'no longer in Slack',
   refused: 'Slack refused it',
 };

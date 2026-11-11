@@ -71,7 +71,7 @@ test('Communications is on from the start in a workspace just connected', async 
     .getByRole('button', { name: 'Integrations', exact: true })
     .click();
   // Its card, under the workspace's Integrations, on.
-  await expect(page.getByRole('switch', { name: 'Communications', exact: true })).toBeChecked();
+  await expect(page.getByRole('switch', { name: 'Dispatch Phone', exact: true })).toBeChecked();
 });
 
 test('an owner connects Slack from Communications, answers a member as they write, and writes to someone first', async ({
@@ -82,7 +82,7 @@ test('an owner connects Slack from Communications, answers a member as they writ
   await working(page, 'Jordan Ellis');
   await login(page);
   await openDsp(page, 'Summit Delivery');
-  await page.getByRole('link', { name: 'Communications' }).click();
+  await page.getByRole('link', { name: 'Dispatch Phone' }).click();
   // Without Slack, connecting it takes the inbox's place, and there's no one to write to.
   await expect(
     page.getByRole('heading', { name: 'Employees message your DSP through Slack' }),
@@ -184,7 +184,7 @@ test('an owner connects Slack from Communications, answers a member as they writ
   await expect(opensProfile.last()).toBeFocused();
   await opensProfile.last().click();
   await expect(profile).toBeVisible();
-  await page.getByRole('heading', { name: 'Communications', level: 1 }).click();
+  await page.getByRole('heading', { name: 'Dispatch Phone', level: 1 }).click();
   await expect(profile).toHaveCount(0);
 
   // Written to again, it waits, until the check on its row, named for them, marks it done
@@ -292,14 +292,14 @@ test('Slack needing an update covers its section alone, the sidebar still going 
   await slackChosen(page, dispatch);
   await login(page);
   await openDsp(page, 'Summit Delivery');
-  await page.getByRole('link', { name: 'Communications' }).click();
+  await page.getByRole('link', { name: 'Dispatch Phone' }).click();
   const update = page.getByRole('dialog', { name: 'Update Slack' });
   await expect(update.getByRole('listitem')).toHaveText(/Operations/);
   // The sidebar still goes elsewhere.
   await page.getByRole('link', { name: 'Team & Roles' }).click();
   await expect(page).toHaveURL(/\/team/);
   await expect(update).toHaveCount(0);
-  await page.getByRole('link', { name: 'Communications' }).click();
+  await page.getByRole('link', { name: 'Dispatch Phone' }).click();
   // Updated from here, Slack comes back here, and it's gone.
   await update.getByRole('button', { name: 'Update' }).click();
   await expect(page.getByText('Slack connected')).toBeVisible();
@@ -347,7 +347,7 @@ test('with two workspaces, each by its logo or initials, the lists show the one 
 
   await login(page);
   await openDsp(page, 'Summit Delivery');
-  await page.getByRole('link', { name: 'Communications' }).click();
+  await page.getByRole('link', { name: 'Dispatch Phone' }).click();
   // Nothing chosen in this browser, it opens on Recents, which lists both workspaces'; Slack
   // shows one of them.
   const sections = page.getByRole('tablist', { name: 'Sections' });
@@ -406,7 +406,7 @@ test('with two workspaces, each by its logo or initials, the lists show the one 
     .click();
   const profile = page.getByRole('dialog', { name: 'Casey Rivera' });
   await expect(profile).toBeVisible();
-  await page.getByRole('heading', { name: 'Communications', level: 1 }).click();
+  await page.getByRole('heading', { name: 'Dispatch Phone', level: 1 }).click();
   await expect(profile).toBeVisible();
 });
 
@@ -424,7 +424,7 @@ test('an owner messages a group from New message, its answers come back together
   await slackChosen(page, dispatch);
   await login(page);
   await openDsp(page, 'Summit Delivery');
-  await page.getByRole('link', { name: 'Communications' }).click();
+  await page.getByRole('link', { name: 'Dispatch Phone' }).click();
   // Message a group comes first in New message, and Enter picks it.
   await page.getByRole('button', { name: 'New message' }).click();
   await expect(page.getByRole('option', { name: 'Message a group' })).toHaveAttribute(
@@ -518,7 +518,7 @@ test('Display opens the member’s own Message display, its preview made to fit,
 
   await login(page);
   await openDsp(page, 'Summit Delivery');
-  await page.getByRole('link', { name: 'Communications' }).click();
+  await page.getByRole('link', { name: 'Dispatch Phone' }).click();
   await page.getByRole('button', { name: 'Display' }).click();
   await expect(page.getByRole('heading', { name: 'Display', level: 1 })).toBeVisible();
   await expect(

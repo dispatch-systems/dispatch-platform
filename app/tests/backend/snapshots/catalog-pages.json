@@ -90,7 +90,7 @@
     },
     {
       "id": "communications",
-      "label": "Communications",
+      "label": "Dispatch Phone",
       "permissions": ["communications.use", "phones.manage"],
       "requires": [],
       "default": false,

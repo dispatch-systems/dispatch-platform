@@ -37,7 +37,7 @@ use dispatch_routes_contract::RouteDataChanged;
 
 pub const FEATURE: Feature = Feature {
     place: 95,
-    switch: optional("communications", "Communications", &[]),
+    switch: optional("communications", "Dispatch Phone", &[]),
     // Choosing a GIF of KLIPY's for a message, switched on its own.
     subfeatures: &[sub(backend::gifs::PART, "GIFs")],
     // It works through Slack: what's written to the app in the DSP's workspaces; and through its
@@ -46,7 +46,7 @@ pub const FEATURE: Feature = Feature {
     // Reading the DSP's conversations and answering them, one permission for both; and pairing,
     // renaming and removing its phones, as those who manage the DSP's connections may too.
     permissions: &[
-        perm("communications.use", "Use Communications", 95),
+        perm("communications.use", "Use Dispatch Phone", 95),
         perm("phones.manage", "Manage Phones", 150),
     ],
     // How the page looks to each member, their own, on Settings' Display page; and the DSP's
