@@ -56,9 +56,7 @@ test('generated platform contracts validate real responses', async (t) => {
           connects: false,
         },
       ],
-      permissions: [
-        { id: permission, label: 'View Probe', group: null, implied: ['access'], under: null },
-      ],
+      permissions: [{ id: permission, label: 'View Probe', group: null, implied: [], under: null }],
       frontends: [
         {
           name: id,

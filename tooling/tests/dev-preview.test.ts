@@ -10,7 +10,7 @@ import { startPreview } from '../dev/dev-server.js';
 import { demo, until } from '../../core/shell/tests/support/support.js';
 
 test('parallel worktree previews isolate ports, files, fixtures and browser sessions, and sign in without a limit', async (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-preview-test-'));
+  const root = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'dispatch-preview-test-'));
   const worktrees = ['first', 'second'].map((name) => {
     const cwd = path.join(root, name);
     fs.mkdirSync(path.join(cwd, 'app/frontend'), { recursive: true });

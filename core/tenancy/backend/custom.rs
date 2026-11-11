@@ -47,9 +47,12 @@ pub(crate) fn view(db: &Store, state: &State, context: &Context) -> Result<Optio
             group: permission.group.map(str::to_owned),
             implied: roles::granting(&[permission.id.to_owned()])
                 .into_iter()
-                .filter(|id| id != permission.id)
+                .filter(|id| id != permission.id && roles::belongs_to(id, code.as_deref()))
                 .collect(),
-            under: permission.under.map(str::to_owned),
+            under: permission
+                .under
+                .filter(|id| roles::belongs_to(id, code.as_deref()))
+                .map(str::to_owned),
         })
         .collect();
     let frontends = owners

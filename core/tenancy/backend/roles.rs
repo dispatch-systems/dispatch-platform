@@ -54,6 +54,21 @@ pub static IMPLIED: LazyLock<Vec<(&'static str, &'static str)>> = LazyLock::new(
 pub fn granting(permissions: &[String]) -> Vec<String> {
     granting_by(&IMPLIED, permissions)
 }
+/// Shared permissions and those of this DSP's own custom features may name its role choices.
+pub(crate) fn belongs_to(id: &str, code: Option<&str>) -> bool {
+    registry()
+        .features
+        .iter()
+        .find(|feature| {
+            feature.owner.is_some()
+                && feature
+                    .permissions
+                    .iter()
+                    .chain(feature.subfeatures.iter().flat_map(|sub| sub.permissions))
+                    .any(|permission| permission.id == id)
+        })
+        .is_none_or(|feature| feature.belongs_to(code))
+}
 /// `held` and `more`, in the role sheet's order.
 pub fn with(held: &[String], more: &[String]) -> Vec<String> {
     PERMISSIONS
@@ -328,20 +343,8 @@ impl Store {
     }
     fn scope_role(&self, dsp: &str, mut role: Role) -> Result<Role> {
         let code = self.feature_code(dsp)?;
-        role.permissions.retain(|id| {
-            registry()
-                .features
-                .iter()
-                .find(|feature| {
-                    feature.owner.is_some()
-                        && feature
-                            .permissions
-                            .iter()
-                            .chain(feature.subfeatures.iter().flat_map(|sub| sub.permissions))
-                            .any(|permission| permission.id == id)
-                })
-                .is_none_or(|feature| feature.belongs_to(code.as_deref()))
-        });
+        role.permissions
+            .retain(|id| belongs_to(id, code.as_deref()));
         Ok(role)
     }
     pub fn roles(&self, dsp: &str) -> Result<Vec<Role>> {

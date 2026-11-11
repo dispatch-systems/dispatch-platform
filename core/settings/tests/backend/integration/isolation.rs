@@ -58,7 +58,7 @@ static PROBE: Feature = Feature {
 // an app feature, without adding a product feature to any build.
 static CUSTOM: Feature = Feature {
     switch: dispatch_core::manifest::custom("nll_probe", "Owner probe", &[]),
-    permissions: &[dispatch_core::manifest::perm("nll_probe.view", "View probe", 1).group("Probe")],
+    permissions: &[dispatch_core::manifest::perm("nll_probe.view", "View probe", 1).group("Probe").implies(&["sum_probe.view"]).under("sum_probe.view")],
     own_migrations: &[dispatch_core::db::OwnMigrations {
         kind: dispatch_core::db::Kind::DSP,
         list: &[dispatch_core::db::Migration {
@@ -88,6 +88,16 @@ static CUSTOM: Feature = Feature {
     }],
     ..feature("nll_probe")
 }.registered(Some("nll"), "nll_probe");
+static FOREIGN: Feature = Feature {
+    switch: dispatch_core::manifest::custom("sum_probe", "Foreign probe", &[]),
+    permissions: &[dispatch_core::manifest::perm(
+        "sum_probe.view",
+        "Foreign permission",
+        2,
+    )],
+    ..feature("sum_probe")
+}
+.registered(Some("sum"), "sum_probe");
 fn raw_callback(
     state: Arc<State>,
     request: axum::extract::Request,
@@ -167,7 +177,7 @@ struct Answer {
 }
 impl Server {
     async fn start() -> Self {
-        testing::install(&[], &[&PROBE, &CUSTOM]);
+        testing::install(&[], &[&PROBE, &CUSTOM, &FOREIGN]);
         let root = tempfile::tempdir().unwrap();
         std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
         let dashboard = root.path().join("dashboard");
@@ -388,9 +398,16 @@ async fn custom_assets_require_the_owner_session_before_head_or_etag_handling() 
         view: String::new(),
         host: owner.host.clone(),
     };
-    // Both DSP sessions are valid at their own host; the second owns no custom metadata.
+    // Both sessions are valid at their own host; metadata never includes the other's IDs,
+    // even through a declared permission implication or parent.
     let off_view = server.open(&owner, &north).await;
     assert_eq!(off_view.body["custom"]["frontends"], json!([]));
+    assert!(!off_view.body.to_string().contains("sum_probe"));
+    assert_eq!(
+        off_view.body["custom"]["permissions"][0]["implied"],
+        json!([])
+    );
+    assert!(off_view.body["custom"]["permissions"][0]["under"].is_null());
     let own = north.clone();
     server
         .state

@@ -402,7 +402,7 @@ fn access_catalog() -> String {
     let parents: BTreeMap<_, _> = dispatch_core::manifest::registry()
         .permissions()
         .filter(|permission| public(permission.id))
-        .filter_map(|permission| Some((permission.id, permission.under?)))
+        .filter_map(|permission| Some((permission.id, permission.under.filter(|id| public(id))?)))
         .collect();
     // Each page's own section, then a section for each of its parts that owns permissions.
     let mut groups: Vec<(String, Vec<&str>)> = Vec::new();

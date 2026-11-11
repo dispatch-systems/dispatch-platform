@@ -1,5 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
+import http from 'node:http';
 import type { IncomingMessage } from 'node:http';
 import type { Plugin } from 'vite';
 import { featureLocations } from '../shared/features.js';
@@ -87,16 +88,46 @@ export async function mayReadSource(
 ): Promise<boolean> {
   if (!cookie || !request.headers.host) return false;
   try {
-    const response = await fetch(`${backend}/api/session`, {
-      headers: { host: request.headers.host, cookie },
-      redirect: 'manual',
+    // Node's fetch replaces Host. Authenticate at the browser's DSP authority rather
+    // than the loopback backend authority.
+    const session = await new Promise<
+      | {
+          user: { platformOwner: boolean };
+          security: { required: boolean; verified: boolean };
+          dsps: { code: string | null; status: string }[];
+        }
+      | undefined
+    >((resolve) => {
+      const outgoing = http.get(
+        `${backend}/api/session`,
+        {
+          headers: { host: request.headers.host!, cookie },
+          signal: AbortSignal.timeout(10_000),
+        },
+        (response) => {
+          response.on('error', () => resolve(undefined));
+          if (response.statusCode !== 200) {
+            response.resume();
+            resolve(undefined);
+            return;
+          }
+          let body = '';
+          response.setEncoding('utf8');
+          response.on('data', (chunk) => {
+            body += chunk;
+          });
+          response.on('end', () => {
+            try {
+              resolve(JSON.parse(body));
+            } catch {
+              resolve(undefined);
+            }
+          });
+        },
+      );
+      outgoing.on('error', () => resolve(undefined));
     });
-    if (!response.ok) return false;
-    const session = (await response.json()) as {
-      user: { platformOwner: boolean };
-      security: { required: boolean; verified: boolean };
-      dsps: { code: string | null; status: string }[];
-    };
+    if (!session) return false;
     if (session.security.required && !session.security.verified) return false;
     return (
       session.user.platformOwner ||
