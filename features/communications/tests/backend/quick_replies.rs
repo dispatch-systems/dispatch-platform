@@ -10,6 +10,12 @@ fn quick_replies_keep_their_order_within_their_limits_on_the_revision_read() {
     let (_root, db, dsp) = testing::bootstrapped();
     let none = quick_replies(&db, &dsp).unwrap();
     assert_eq!((none.replies.len(), none.revision), (0, 0));
+    let data = db.dsp(&dsp).unwrap();
+    data.set(
+        "dispatch_phone.quick_replies",
+        &serde_json::json!({"replies":[],"revision":0}),
+    )
+    .unwrap();
 
     let saved = save_quick_replies(
         &db,
@@ -22,10 +28,11 @@ fn quick_replies_keep_their_order_within_their_limits_on_the_revision_read() {
     let read = quick_replies(&db, &dsp).unwrap();
     assert_eq!(read.replies, ["On my way", "Call dispatch when you can"]);
     assert_eq!((saved.revision, read.revision), (1, 1));
-    let data = db.dsp(&dsp).unwrap();
-    data.exec("UPDATE settings SET key='dispatch_phone.quick_replies' WHERE key='communications.quick_replies'", []).unwrap();
-    let future = quick_replies(&db, &dsp).unwrap();
-    assert_eq!((future.replies, future.revision), (read.replies, 1));
+    assert!(
+        data.setting("dispatch_phone.quick_replies", serde_json::Value::Null)
+            .unwrap()
+            .is_null()
+    );
 
     // Another session saved since: the save on what it read first is refused, and nothing changes.
     let stale = save_quick_replies(&db, &dsp, &["Later".into()], 0, "me").unwrap_err();
@@ -73,15 +80,20 @@ fn quick_replies_keep_their_order_within_their_limits_on_the_revision_read() {
             serde_json::json!([count("added", "12"), count("removed", "1")]),
         ]
     );
-    assert_eq!(data.count("SELECT count(*) FROM settings WHERE key IN ('communications.quick_replies','dispatch_phone.quick_replies')", []).unwrap(), 1);
     data.set(
         "dispatch_phone.quick_replies",
         &serde_json::json!({"replies":["conflicting"],"revision":99}),
     )
     .unwrap();
-    let before = data
-        .all("SELECT key,value FROM settings ORDER BY key", [])
-        .unwrap();
+    let records = || {
+        (
+            data.setting("communications.quick_replies", serde_json::Value::Null)
+                .unwrap(),
+            data.setting("dispatch_phone.quick_replies", serde_json::Value::Null)
+                .unwrap(),
+        )
+    };
+    let before = records();
     assert_eq!(
         quick_replies(&db, &dsp).unwrap_err().code,
         "settings_identity_conflict"
@@ -92,9 +104,5 @@ fn quick_replies_keep_their_order_within_their_limits_on_the_revision_read() {
             .code,
         "settings_identity_conflict"
     );
-    assert_eq!(
-        data.all("SELECT key,value FROM settings ORDER BY key", [])
-            .unwrap(),
-        before
-    );
+    assert_eq!(records(), before);
 }

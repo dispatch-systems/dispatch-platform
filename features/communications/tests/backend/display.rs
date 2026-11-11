@@ -121,26 +121,28 @@ fn each_members_display_reads_as_they_saved_it_each_field_by_its_id() {
     assert_eq!(read(&other), defaults);
 
     let data = db.dsp(&dsp).unwrap();
-    let old = format!("section:communications.display:{member}");
-    let future = format!("section:dispatch_phone.display:{member}");
-    data.exec("UPDATE settings SET key=? WHERE key=?", [&future, &old])
-        .unwrap();
-    assert_eq!(read(&member), chosen);
+    let future = format!("section:dispatch_phone.display:{other}");
+    data.set(
+        &future,
+        &serde_json::json!({"revision":4,"values":{"sound":false}}),
+    )
+    .unwrap();
+    assert!(!read(&other).sound);
     settings::save(
         &db,
         &dsp,
-        &member,
+        &other,
         &DISPLAY,
         &serde_json::json!({"sound":true}),
-        1,
+        4,
         false,
     )
     .unwrap();
-    assert!(read(&member).sound);
-    assert_eq!(read(&other), defaults);
+    assert!(read(&other).sound);
+    assert_eq!(read(&member), chosen);
     assert!(
-        data.one("SELECT key FROM settings WHERE key=?", [&future])
+        data.setting(&future, serde_json::Value::Null)
             .unwrap()
-            .is_none()
+            .is_null()
     );
 }
