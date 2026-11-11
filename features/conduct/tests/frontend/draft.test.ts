@@ -1,8 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { ConductOverview, ConductWriteupRow } from '../../api/index.js';
-import { emptyDraft, filled, filledOf, refill } from '../../frontend/compose/draft.js';
-import { record } from '../../frontend/tiers.js';
+import type { ConductWriteupRow, ConductContext } from '../../api/index.js';
+import { emptyDraft, filled, filledOf, missing, refill } from '../../frontend/compose/draft.js';
 
 const writeup = (
   id: string,
@@ -36,7 +35,11 @@ const category = (id: string, name: string, startTier: ConductWriteupRow['tier']
   retired: false,
 });
 
-const overview: ConductOverview = {
+const context: ConductContext = {
+  standing: 'written',
+  earlier: [writeup('w1', 'verbal', '2026-08-09'), writeup('w2', 'written', '2026-08-23')],
+};
+const overview = {
   today: '2026-11-08',
   categories: [
     category('tardies', 'Excessive Tardies', 'verbal'),
@@ -66,7 +69,7 @@ const overview: ConductOverview = {
 };
 
 test('choosing someone and a category suggests the tier above where they stand and names their writeups since their record was clean', () => {
-  assert.deepEqual(filled(overview, 'ana', 'tardies'), {
+  assert.deepEqual(filled(overview.categories[0], context), {
     tier: 'final',
     statement: 'Excessive Tardies statement on [date].',
     prior:
@@ -74,13 +77,12 @@ test('choosing someone and a category suggests the tier above where they stand a
     plan: 'Excessive Tardies plan.',
   });
   // Editing a writeup looks from where they stood just before it.
-  assert.deepEqual(record(overview, 'ana', 'tardies', 'w2'), {
-    stood: 'verbal',
-    earlier: [overview.writeups[1]],
-  });
-  assert.equal(filled(overview, 'ana', 'tardies', 'w2')?.tier, 'written');
+  assert.equal(
+    filled(overview.categories[0], { standing: 'verbal', earlier: [overview.writeups[1]!] })?.tier,
+    'written',
+  );
   // A clean record starts where the category does, naming nothing before.
-  assert.deepEqual(filled(overview, 'ana', 'damage'), {
+  assert.deepEqual(filled(overview.categories[1], { standing: null, earlier: [] }), {
     tier: 'final',
     statement: 'Vehicle Damage statement on [date].',
     prior: 'Vehicle Damage prior.',
@@ -93,17 +95,29 @@ test('choosing again refills only what nobody changed since it was filled', () =
   const first = refill(
     { ...start, category: 'tardies' },
     filledOf(start),
-    filled(overview, 'ana', 'tardies'),
+    filled(overview.categories[0], context),
   );
   assert.equal(first.draft.tier, 'final');
   const typed = { ...first.draft, statement: 'DA was late on 10/30.', tier: 'written' as const };
   const again = refill(
     { ...typed, category: 'damage' },
     first.before,
-    filled(overview, 'ana', 'damage'),
+    filled(overview.categories[1], { standing: null, earlier: [] }),
   );
   assert.equal(again.draft.statement, 'DA was late on 10/30.');
   assert.equal(again.draft.tier, 'written');
   assert.equal(again.draft.plan, 'Vehicle Damage plan.');
   assert.equal(again.draft.prior, 'Vehicle Damage prior.');
+});
+
+test('a section above the server limit is rejected before saving', () => {
+  const draft = {
+    ...emptyDraft('2026-11-08', 'ana'),
+    category: 'tardies',
+    statement: 'x'.repeat(4001),
+    prior: 'Discussed.',
+    plan: 'Arrive on time.',
+  };
+  assert.equal(missing(draft), 'Each section can contain up to 4,000 characters.');
+  assert.equal(missing({ ...draft, statement: 'x'.repeat(4000) }), undefined);
 });

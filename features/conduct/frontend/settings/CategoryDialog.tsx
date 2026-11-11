@@ -1,9 +1,19 @@
 import { useState } from 'react';
-import { ErrorBox, Modal } from '../../../../core/shell/frontend/ui/index.js';
+import { DataState, ErrorBox, Modal } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
-import type { CategoryInput, ConductCategory, ConductOverview } from '../../api/index.js';
-import { addCategory, changeCategory, retireCategory } from '../../api/client.js';
-import { tierShort, tiers } from '../tiers.js';
+import type {
+  CategoryInput,
+  ConductCategory,
+  ConductOverview,
+  ConductPerson,
+} from '../../api/index.js';
+import {
+  addCategory,
+  changeCategory,
+  retireCategory,
+  useCategoryImpact,
+} from '../../api/client.js';
+import { printedDay, tierShort, tiers } from '../tiers.js';
 import { useSaveChanges } from '../useSaveChanges.js';
 import { StepDown, stepDownReady, usualStepDown } from './StepDown.js';
 
@@ -24,10 +34,12 @@ export function CategoryDialog({
   category,
   close,
   saved,
+  people,
 }: {
   category?: ConductCategory;
   close: () => void;
   saved: (overview: ConductOverview) => void;
+  people: ConductPerson[];
 }) {
   const [start] = useState<CategoryInput>(() =>
     category
@@ -59,11 +71,22 @@ export function CategoryDialog({
     },
     { inline: true, success: 'Category retired' },
   );
+  const policyChanged = Boolean(
+    category && JSON.stringify(input.stepDown) !== JSON.stringify(category.stepDown),
+  );
+  const impact = useCategoryImpact(
+    category?.id ?? '',
+    category?.revision ?? 1,
+    input.stepDown,
+    policyChanged && stepDownReady(input.stepDown),
+  );
   const ready =
     [input.name, input.statement, input.prior, input.plan].every((text) => text.trim()) &&
-    stepDownReady(input.stepDown);
+    stepDownReady(input.stepDown) &&
+    (!policyChanged || Boolean(impact.data));
   const { leave, asking } = useSaveChanges({
     what: 'This category',
+    busy: save.busy || retire.busy,
     dirty: JSON.stringify(input) !== JSON.stringify(start),
     saveable: ready,
     save: () => save.run(),
@@ -107,21 +130,72 @@ export function CategoryDialog({
           </div>
         </div>
         <StepDown step={input.stepDown} change={(stepDown) => set({ stepDown })} />
+        {policyChanged && (
+          <DataState data={impact.data} error={impact.error} retry={impact.refresh}>
+            {(changes) => (
+              <section>
+                <h3>Affected drivers ({changes.length})</h3>
+                {changes.length > 0 && (
+                  <div className="table-wrap">
+                    <table className="conduct-table">
+                      <thead>
+                        <tr>
+                          <th>Driver</th>
+                          <th>Current</th>
+                          <th>Proposed</th>
+                          <th>Next step down</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {changes.map((change) => (
+                          <tr key={change.person}>
+                            <td>
+                              {people.find((p) => p.code === change.person)?.name ?? change.person}
+                            </td>
+                            <td>{change.before ? tierShort[change.before.tier] : 'Clean'}</td>
+                            <td>{change.after ? tierShort[change.after.tier] : 'Clean'}</td>
+                            <td>
+                              {change.after?.stepsDownOn
+                                ? printedDay(change.after.stepsDownOn)
+                                : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+            )}
+          </DataState>
+        )}
+
         <label className="conduct-field">
           <span className="conduct-label">1. Statement of the problem</span>
           <textarea
             rows={3}
+            maxLength={4000}
             value={input.statement}
             onChange={(e) => set({ statement: e.target.value })}
           />
         </label>
         <label className="conduct-field">
           <span className="conduct-label">2. Prior discussion or warnings</span>
-          <textarea rows={3} value={input.prior} onChange={(e) => set({ prior: e.target.value })} />
+          <textarea
+            maxLength={4000}
+            rows={3}
+            value={input.prior}
+            onChange={(e) => set({ prior: e.target.value })}
+          />
         </label>
         <label className="conduct-field">
           <span className="conduct-label">3. Corrective action</span>
-          <textarea rows={3} value={input.plan} onChange={(e) => set({ plan: e.target.value })} />
+          <textarea
+            maxLength={4000}
+            rows={3}
+            value={input.plan}
+            onChange={(e) => set({ plan: e.target.value })}
+          />
         </label>
         <ErrorBox message={save.error || retire.error} />
         <div className="form-actions">
@@ -129,7 +203,7 @@ export function CategoryDialog({
             <button
               type="button"
               className="danger conduct-retire"
-              disabled={retire.busy}
+              disabled={retire.busy || save.busy}
               onClick={() => void retire.run()}
             >
               Retire
@@ -138,7 +212,7 @@ export function CategoryDialog({
           <button type="button" onClick={() => leave(close)}>
             Cancel
           </button>
-          <button type="submit" className="primary" disabled={!ready || save.busy}>
+          <button type="submit" className="primary" disabled={!ready || save.busy || retire.busy}>
             {save.busy ? 'Saving…' : 'Save'}
           </button>
         </div>

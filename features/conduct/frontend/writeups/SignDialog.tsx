@@ -1,11 +1,14 @@
-import { useState } from 'react';
-import { Check, ImagePlus } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Check } from 'lucide-react';
 import { DateField, ErrorBox, Modal } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import type { ConductOverview, ConductSaved, ConductWriteupRow } from '../../api/index.js';
 import { keepCopy, signWriteup } from '../../api/client.js';
 import { Person, categoryName, personOf } from '../parts.js';
 import { finalNote, printedDay, tierShort } from '../tiers.js';
+import { randomId } from '../../../../core/shell/frontend/lib/random-id.js';
+import { useLeaveGuard } from '../../../../core/shell/frontend/runtime/leave.js';
+import { PhotoPicker, type PickedPhoto } from './PhotoPicker.js';
 import { shrunk } from './photo.js';
 
 /** Marks a writeup signed on the day its paper was, with a photo of the paper if there is one. */
@@ -24,25 +27,65 @@ export function SignDialog({
   // photo of its paper is never kept for, nor signed as, a changed one.
   const [notice] = useState(writeup);
   const [day, setDay] = useState(overview.today);
-  const [photo, setPhoto] = useState<File>();
+  const [photo, setPhoto] = useState<PickedPhoto>();
+  const [request] = useState(randomId);
+  const preparation = useRef<AbortController | null>(null);
+  const committing = useRef(false);
+  const prepared = useRef<{ photo: PickedPhoto; bytes: Blob; request: string } | null>(null);
+  const guard = useRef<((then: () => void) => void) | null>(null);
+  useEffect(() => {
+    guard.current = (then) => {
+      if (!committing.current) {
+        preparation.current?.abort();
+        then();
+      }
+    };
+  });
+  useLeaveGuard(guard);
+  useEffect(() => () => preparation.current?.abort(), []);
+  const cancel = () => {
+    if (!committing.current) {
+      preparation.current?.abort();
+      close();
+    }
+  };
+  const [phase, setPhase] = useState<'idle' | 'preparing' | 'saving'>('idle');
   // The photo this dialog kept, and the revision keeping it moved the writeup to.
-  const [kept, setKept] = useState<{ photo: File; revision: number }>();
+  const [kept, setKept] = useState<{ photo: PickedPhoto; revision: number }>();
   const sign = useAction(
     async () => {
-      // The photo first, of the notice as read: a signed writeup keeps the photo it has. Kept,
-      // the writeup moves to the revision the sign then names, a retry's too.
-      let revision = kept?.revision ?? notice.revision;
-      if (photo && photo !== kept?.photo) {
-        revision = (await keepCopy(notice.id, revision, await shrunk(photo))).writeup.revision;
-        setKept({ photo, revision });
+      const stop = new AbortController();
+      preparation.current = stop;
+      setPhase('preparing');
+      try {
+        let revision = kept?.revision ?? notice.revision;
+        if (photo && photo !== kept?.photo && prepared.current?.photo !== photo) {
+          prepared.current = {
+            photo,
+            bytes: await shrunk(photo.file, stop.signal, photo.turns),
+            request: randomId(),
+          };
+        }
+        stop.signal.throwIfAborted();
+        committing.current = true;
+        setPhase('saving');
+        if (photo && photo !== kept?.photo && prepared.current) {
+          revision = (
+            await keepCopy(notice.id, revision, prepared.current.bytes, prepared.current.request)
+          ).writeup.revision;
+          setKept({ photo, revision });
+        }
+        signed(await signWriteup(notice.id, day, revision, request));
+      } finally {
+        committing.current = false;
+        setPhase('idle');
       }
-      signed(await signWriteup(notice.id, day, revision));
     },
     { inline: true, success: 'Marked signed' },
   );
   const note = notice.tier === 'final' ? finalNote(notice.finalKind, notice.suspension) : '';
   return (
-    <Modal title="Mark signed" onClose={close}>
+    <Modal title="Mark signed" dismissible={phase !== 'saving'} onClose={cancel}>
       <div className="conduct-dialog">
         <div className="conduct-sign-summary">
           <Person person={personOf(overview, notice.person)} />
@@ -51,7 +94,7 @@ export function SignDialog({
             {note && ` ${note}`} · {printedDay(notice.writtenOn)}
           </span>
         </div>
-        <div className="conduct-field">
+        <fieldset className="conduct-field" disabled={sign.busy}>
           <span className="conduct-label" aria-hidden="true">
             Signed on
           </span>
@@ -63,25 +106,11 @@ export function SignDialog({
             today={overview.today}
             onChange={setDay}
           />
-        </div>
-        <label className="conduct-photo">
-          <span className="conduct-label">
-            Signed copy <span className="muted">(optional)</span>
-          </span>
-          <span className="conduct-photo-pick">
-            <ImagePlus size={20} />
-            {photo ? photo.name : 'Take a photo or choose a file'}
-          </span>
-          <input
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={(event) => setPhoto(event.target.files?.[0])}
-          />
-        </label>
+        </fieldset>
+        <PhotoPicker photo={photo} change={setPhoto} disabled={sign.busy} />
         <ErrorBox message={sign.error} />
         <div className="form-actions">
-          <button type="button" onClick={close}>
+          <button type="button" disabled={phase === 'saving'} onClick={cancel}>
             Cancel
           </button>
           <button

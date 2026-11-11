@@ -1,30 +1,52 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Notice, type NoticeContent } from './Notice.js';
+import { fitNotice, Notice, type NoticeContent } from './Notice.js';
 
-/**
- * Prints a notice on its own: `print` puts it on a sheet only printing shows, beside the page,
- * opens the browser's print dialog, and once it closes calls `after`; `sheet` is that sheet,
- * drawn wherever the screen is.
- */
+/** Fonts and real sheet geometry are checked before opening the native print dialog. */
 export function usePrintNotice() {
   const [printing, setPrinting] = useState<{ content: NoticeContent; after?: () => void }>();
+  const [error, setError] = useState('');
+  const paper = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!printing) return;
+    let active = true;
+    let frame: number | undefined;
     const done = () => {
-      setPrinting(undefined);
-      printing.after?.();
+      if (active) {
+        setPrinting(undefined);
+        printing.after?.();
+      }
     };
     window.addEventListener('afterprint', done, { once: true });
-    // Once its lettering has loaded, so the page prints in it.
-    void document.fonts.ready.then(() => window.print());
-    return () => window.removeEventListener('afterprint', done);
+    void document.fonts.ready.then(() => {
+      if (!active) return;
+      frame = requestAnimationFrame(() => {
+        if (!active || !paper.current) return;
+        fitNotice(paper.current);
+        if (paper.current.querySelector('[data-unreadable],[data-overflow]')) {
+          setError('Shorten the notice sections before printing.');
+          done();
+          return;
+        }
+        window.print();
+      });
+    });
+    return () => {
+      active = false;
+      if (frame !== undefined) cancelAnimationFrame(frame);
+      window.removeEventListener('afterprint', done);
+    };
   }, [printing]);
   return {
-    print: (content: NoticeContent, after?: () => void) => setPrinting({ content, after }),
+    error,
+    busy: Boolean(printing),
+    print: (content: NoticeContent, after?: () => void) => {
+      setError('');
+      setPrinting({ content, after });
+    },
     sheet: printing
       ? createPortal(
-          <div className="conduct-print">
+          <div ref={paper} className="conduct-print">
             <Notice content={printing.content} />
           </div>,
           document.body,

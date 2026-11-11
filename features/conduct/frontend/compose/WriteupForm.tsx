@@ -1,13 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, Printer } from 'lucide-react';
 import { DateField, ErrorBox } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import type { ConductOverview, ConductSaved, ConductWriteup } from '../../api/index.js';
-import { addWriteup, changeWriteup } from '../../api/client.js';
-import { Notice } from '../notice/Notice.js';
-import { usePrintNotice } from '../notice/usePrintNotice.js';
-import { record } from '../tiers.js';
+import { addWriteup, changeWriteup, useConductContext } from '../../api/client.js';
+import { NoticePaper } from '../notice/NoticePaper.js';
 import { useSaveChanges } from '../useSaveChanges.js';
+import { DriverPicker } from './DriverPicker.js';
+import { TemplateSection } from './TemplateSection.js';
 import { TierPicker } from './TierPicker.js';
 import { type Draft, filled, filledOf, inputOf, missing, refill } from './draft.js';
 
@@ -32,48 +32,93 @@ export function WriteupForm({
   supervisorName: string;
   cancel: () => void;
   /** Called with what a save answered, once its notice has printed when it was to print. */
-  saved: (saved: ConductSaved) => void;
+  saved: (saved: ConductSaved, print?: boolean) => void;
 }) {
-  const [start] = useState(() =>
-    refill(
-      initial,
-      filledOf(initial),
-      editing ? undefined : filled(overview, initial.person, initial.category),
-    ),
-  );
-  const [state, setState] = useState(start);
-  // The revision the draft was read at: a later read of the writeup doesn't move it, so a save
-  // over someone else's change is refused rather than overwriting it.
+  const [start] = useState(initial);
+  const [state, setState] = useState({ draft: start, before: filledOf(start) });
   const [revision] = useState(editing?.revision);
   const { draft } = state;
   const [problem, setProblem] = useState('');
-  const { print, sheet } = usePrintNotice();
+  const fields = useRef<HTMLFieldSetElement>(null);
+  const category = overview.categories.find((c) => c.id === draft.category);
+  const context = useConductContext(draft.person, draft.category, draft.writtenOn, editing?.id);
+  const baseline = useConductContext(
+    editing ? start.person : '',
+    editing ? start.category : '',
+    start.writtenOn,
+    editing?.id,
+  );
+  const baselineReady = useRef(false);
+  const suggestion = filled(category, context.data);
+  const suggestionKey = JSON.stringify(suggestion);
+  const previousSuggestion = useRef('');
+  useEffect(() => {
+    if (!suggestion || (editing && !baseline.data) || previousSuggestion.current === suggestionKey)
+      return;
+    previousSuggestion.current = suggestionKey;
+    const base =
+      editing && !baselineReady.current
+        ? filled(
+            overview.categories.find((c) => c.id === start.category),
+            baseline.data,
+          )
+        : undefined;
+    baselineReady.current = true;
+    setState((current) => {
+      const before = base ?? current.before;
+      if (
+        editing &&
+        current.draft.person === start.person &&
+        current.draft.category === start.category &&
+        current.draft.writtenOn === start.writtenOn
+      )
+        return { ...current, before };
+      return refill(current.draft, before, suggestion);
+    });
+  }, [suggestion, suggestionKey, editing, start, baseline.data, overview.categories]);
   const edit = (next: Partial<Draft>) => {
     setProblem('');
-    setState(({ draft, before }) => {
-      const changed = { ...draft, ...next };
-      const chose = next.person !== undefined || next.category !== undefined;
-      return chose
-        ? refill(changed, before, filled(overview, changed.person, changed.category, editing?.id))
-        : { draft: changed, before };
-    });
+    setState((current) => ({ ...current, draft: { ...current.draft, ...next } }));
   };
   const save = useAction(
     async (andPrint: boolean) => {
       const why = missing(draft);
-      if (why) return setProblem(why);
+      if (why) {
+        setProblem(why);
+        const invalid =
+          (!draft.person
+            ? fields.current?.querySelector<HTMLElement>('[role="combobox"]')
+            : !draft.category
+              ? fields.current?.querySelector<HTMLElement>('select')
+              : draft.tier === 'final' && draft.final === 'suspension' && !draft.suspension.trim()
+                ? fields.current?.querySelector<HTMLElement>('[aria-label="Suspension length"]')
+                : undefined) ??
+          fields.current?.querySelector<HTMLElement>('[data-conduct-blank][data-empty]') ??
+          [...(fields.current?.querySelectorAll<HTMLTextAreaElement>('textarea') ?? [])].find(
+            (field) => !field.value.trim() || [...field.value].length > 4000,
+          );
+        (
+          invalid ??
+          fields.current?.querySelector<HTMLElement>(!draft.person ? '[role="combobox"]' : 'select')
+        )?.focus();
+        return;
+      }
+      if (!context.data) {
+        setProblem(context.error || 'Wait for the driver’s record to load.');
+        return;
+      }
       const result = editing
         ? await changeWriteup(editing.id, inputOf(draft, revision))
         : await addWriteup(inputOf(draft));
-      if (andPrint) print(result.writeup, () => saved(result));
-      else saved(result);
+      saved(result, andPrint);
     },
     { inline: true },
   );
   const { leave, asking } = useSaveChanges({
     what: 'This writeup',
-    dirty: JSON.stringify(draft) !== JSON.stringify(start.draft),
-    saveable: !missing(draft),
+    busy: save.busy,
+    dirty: JSON.stringify(draft) !== JSON.stringify(start),
+    saveable: !save.busy && !missing(draft) && Boolean(context.data),
     // Saved, it opens the writeup, so leaving goes no further.
     save: async () => {
       await save.run(false);
@@ -81,8 +126,8 @@ export function WriteupForm({
     },
   });
 
-  const { stood, earlier } = record(overview, draft.person, draft.category, editing?.id);
-  const category = overview.categories.find((c) => c.id === draft.category);
+  const stood = context.data?.standing;
+  const earlier = context.data?.earlier ?? [];
   const people = overview.people.filter((p) => !p.left || p.code === draft.person);
   const categories = overview.categories.filter((c) => !c.retired || c.id === draft.category);
   const person = overview.people.find((p) => p.code === draft.person);
@@ -99,14 +144,19 @@ export function WriteupForm({
   };
   return (
     <>
-      <button type="button" className="conduct-back" onClick={() => leave(cancel)}>
+      <button
+        type="button"
+        className="conduct-back"
+        disabled={save.busy}
+        onClick={() => leave(cancel)}
+      >
         <ChevronLeft size={15} />
         Conduct
       </button>
       <div className="page-heading">
         <h1>{editing ? 'Edit writeup' : 'New writeup'}</h1>
         <div className="heading-actions">
-          <button type="button" onClick={() => leave(cancel)}>
+          <button type="button" disabled={save.busy} onClick={() => leave(cancel)}>
             Cancel
           </button>
           <button type="button" disabled={save.busy} onClick={() => void save.run(false)}>
@@ -125,18 +175,15 @@ export function WriteupForm({
       </div>
       <ErrorBox message={problem || save.error} />
       <div className="conduct-compose">
-        <div className="conduct-fields">
+        <fieldset ref={fields} className="conduct-fields" disabled={save.busy}>
           <div className="conduct-pair">
             <label className="conduct-field">
               <span className="conduct-label">Driver</span>
-              <select value={draft.person} onChange={(e) => edit({ person: e.target.value })}>
-                <option value="">Choose a driver</option>
-                {people.map((p) => (
-                  <option key={p.code} value={p.code}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
+              <DriverPicker
+                people={people}
+                value={draft.person}
+                change={(person) => edit({ person })}
+              />
             </label>
             <label className="conduct-field">
               <span className="conduct-label">Category</span>
@@ -171,47 +218,31 @@ export function WriteupForm({
           </div>
           <TierPicker
             tier={draft.tier}
-            suggested={
-              category
-                ? filled(overview, draft.person, draft.category, editing?.id)?.tier
-                : undefined
-            }
+            suggested={suggestion?.tier}
             earlier={earlier}
             atFinal={stood === 'final'}
             final={draft.final}
             suspension={draft.suspension}
             change={(next) => edit(next)}
           />
-          <label className="conduct-field">
-            <span className="conduct-label">1. Statement of the problem</span>
-            <textarea
-              rows={4}
-              value={draft.statement}
-              onChange={(e) => edit({ statement: e.target.value })}
-            />
-          </label>
-          <label className="conduct-field">
-            <span className="conduct-label">2. Prior discussion or warnings</span>
-            <textarea
-              rows={5}
-              value={draft.prior}
-              onChange={(e) => edit({ prior: e.target.value })}
-            />
-          </label>
-          <label className="conduct-field">
-            <span className="conduct-label">3. Corrective action</span>
-            <textarea
-              rows={4}
-              value={draft.plan}
-              onChange={(e) => edit({ plan: e.target.value })}
-            />
-          </label>
-        </div>
-        <div className="conduct-preview">
-          <Notice content={content} marked />
-        </div>
+          <TemplateSection
+            label="1. Statement of the problem"
+            value={draft.statement}
+            change={(statement) => edit({ statement })}
+          />
+          <TemplateSection
+            label="2. Prior discussion or warnings"
+            value={draft.prior}
+            change={(prior) => edit({ prior })}
+          />
+          <TemplateSection
+            label="3. Corrective action"
+            value={draft.plan}
+            change={(plan) => edit({ plan })}
+          />
+        </fieldset>
+        <NoticePaper content={content} marked preview />
       </div>
-      {sheet}
       {asking}
     </>
   );

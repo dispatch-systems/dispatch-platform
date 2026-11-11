@@ -3,6 +3,9 @@ import { Empty } from '../../../../core/shell/frontend/ui/index.js';
 import type { ConductOverview } from '../../api/index.js';
 import { Person, RowLink, TierBadge, categoryName, personOf } from '../parts.js';
 import { printedDay, tiers } from '../tiers.js';
+import { indexOf } from '../data.js';
+import { type HistoryFilters } from '../../api/client.js';
+import { useListScroll } from '../useListScroll.js';
 import { useConductFilters } from '../useConductFilters.js';
 
 /**
@@ -12,31 +15,34 @@ import { useConductFilters } from '../useConductFilters.js';
 export function DriversTab({
   overview,
   openDriver,
+  filters,
+  change,
 }: {
   overview: ConductOverview;
   openDriver: (code: string) => void;
+  filters: HistoryFilters;
+  change: (filters: HistoryFilters) => void;
 }) {
-  const { search, category, tier, controls } = useConductFilters(overview.categories);
+  const { search, category, tier, controls } = useConductFilters(
+    overview.categories,
+    filters,
+    change,
+  );
   const rows = useMemo(() => {
-    const codes = new Set([
-      ...overview.standings.map((s) => s.person),
-      ...overview.writeups.filter((w) => !w.signedOn).map((w) => w.person),
-    ]);
-    return [...codes]
-      .map((code) => {
-        const standings = overview.standings
-          .filter((s) => s.person === code)
-          .sort((a, b) => tiers.indexOf(b.tier) - tiers.indexOf(a.tier));
-        const theirs = overview.writeups.filter((w) => w.person === code);
+    const index = indexOf(overview);
+    return overview.drivers
+      .map((driver) => {
+        const standings = index.standings.get(driver.person) ?? [];
         return {
-          person: personOf(overview, code),
+          person: personOf(overview, driver.person),
           standings,
           highest: standings[0] ? tiers.indexOf(standings[0].tier) : -1,
-          count: theirs.length,
-          last: theirs[0]?.writtenOn ?? '',
-          waiting: theirs.some((w) => !w.signedOn),
+          count: driver.count,
+          last: driver.latestOn,
+          waiting: driver.awaitingSignature,
         };
       })
+      .filter((row) => row.standings.length || row.waiting)
       .filter((row) => {
         const named = row.person.name
           .toLocaleLowerCase()
@@ -50,6 +56,7 @@ export function DriversTab({
       })
       .sort((a, b) => b.highest - a.highest || b.last.localeCompare(a.last));
   }, [overview, search, category, tier]);
+  useListScroll(true);
   return (
     <>
       <div className="table-toolbar conduct-toolbar">{controls}</div>

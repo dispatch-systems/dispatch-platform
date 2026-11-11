@@ -301,27 +301,12 @@
   position: sticky;
   top: 12px;
 }
-.conduct-preview .conduct-notice {
-  zoom: 0.62;
-}
-.conduct-paper .conduct-notice {
-  zoom: 0.84;
-}
 @media (max-width: 1300px) {
   .conduct-compose {
     grid-template-columns: 1fr;
   }
   .conduct-preview {
     position: static;
-  }
-  .conduct-preview .conduct-notice {
-    zoom: 0.75;
-  }
-}
-@media (max-width: 860px) {
-  .conduct-preview .conduct-notice,
-  .conduct-paper .conduct-notice {
-    zoom: 0.42;
   }
 }
 @media (max-width: 600px) {
@@ -601,4 +586,100 @@
     margin: 0;
     box-shadow: none;
   }
+}
+
+.conduct-fields,
+fieldset.conduct-field {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.conduct-driver-picker {
+  position: relative;
+}
+.conduct-driver-options {
+  position: absolute;
+  z-index: 5;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: 280px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--popover);
+  box-shadow: 0 8px 20px #0002;
+}
+.conduct-driver-options button {
+  display: flex;
+  width: 100%;
+  justify-content: flex-start;
+  border: 0;
+  border-radius: 0;
+}
+.conduct-driver-options [aria-selected='true'] {
+  background: var(--selection);
+}
+.conduct-section-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.conduct-template {
+  padding: 12px;
+  border: 1px solid var(--input);
+  border-radius: var(--radius);
+  line-height: 2.5;
+  white-space: pre-wrap;
+}
+.conduct-template input {
+  display: inline-block;
+  width: min(100%, 180px);
+  min-height: 32px;
+  margin: 0 4px;
+  padding: 2px 7px;
+}
+.conduct-template input[data-empty] {
+  background: var(--warning-surface);
+}
+.conduct-paper-width {
+  min-width: 0;
+  width: 100%;
+}
+.conduct-paper-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+.conduct-paper-full {
+  overflow: auto;
+  padding: 8px;
+}
+.conduct-photo-preview {
+  display: grid;
+  place-items: center;
+  height: 280px;
+  overflow: hidden;
+  background: var(--muted);
+  border-radius: var(--radius);
+}
+.conduct-photo-preview img {
+  max-width: 250px;
+  max-height: 250px;
+  object-fit: contain;
+}
+.conduct-copy-open {
+  border: 0;
+  background: none;
+  padding: 0;
+  max-width: 100%;
+}
+.conduct-copy-large {
+  display: block;
+  max-width: 100%;
+  max-height: 80dvh;
+  object-fit: contain;
+  margin: auto;
 }
