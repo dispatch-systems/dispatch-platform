@@ -188,7 +188,7 @@ pub fn owned(
     if !name.is_empty() {
         args.push(&name);
     }
-    args.push("--list");
+    args.extend(["--list", "--debug"]);
     if let Some(only) = only {
         args.extend(["--only", only]);
     }

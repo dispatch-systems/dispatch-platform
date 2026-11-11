@@ -169,10 +169,12 @@ test('--only keeps one kind of tests and the build it needs, --file one test, --
     `node node_modules/tsx/dist/cli.mjs --test ${owned('features/dvic/tests/frontend', /\.test\.ts$/).join(' ')}`,
   ]);
   const spec = 'features/dvic/tests/browser/dvic.spec.ts';
-  assert.deepEqual(list('feature', 'dvic', '--file', spec).commands, [
-    'npm run build -- --debug',
-    `npm run test:ui -- ${spec}`,
-  ]);
+  // The debug package, by default and as `dispatchdev test --owner` asks for it by name.
+  for (const debug of [[], ['--debug']])
+    assert.deepEqual(list('feature', 'dvic', '--file', spec, ...debug).commands, [
+      'npm run build -- --debug',
+      `npm run test:ui -- ${spec}`,
+    ]);
   assert.deepEqual(list('feature', 'dvic', '--file', spec, '--release').commands, [
     'npm run build',
     `npm run test:ui -- ${spec}`,

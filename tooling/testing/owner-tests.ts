@@ -383,7 +383,9 @@ function parse(rest: string[]) {
   const options = new Map<string, string>();
   for (let index = 0; index < rest.length; index++) {
     const [flag, inline] = rest[index]!.split(/=(.*)/s, 2) as [string, string | undefined];
-    if (['--list', '--no-build', '--release'].includes(flag) && inline === undefined)
+    // `--debug` names the default: `dispatchdev test --owner` passes it, to this checkout's
+    // script or through `--root` to another's, where the release package may be the default.
+    if (['--list', '--no-build', '--release', '--debug'].includes(flag) && inline === undefined)
       flags.add(flag);
     else if (['--only', '--file'].includes(flag)) {
       const value = inline ?? rest[++index];
