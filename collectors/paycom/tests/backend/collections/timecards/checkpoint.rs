@@ -222,10 +222,10 @@ async fn a_checkpoint_transaction_does_not_block_foreground_reads() -> Result<()
     let at = dsp.clone();
     state.read(move |db| {
         let storage = db.collector(&at, PROVIDER)?;
-        let mut began = Some(began);
+        let began = std::sync::Mutex::new(Some(began));
         storage.0.create_scalar_function("hold_checkpoint", 0,
             rusqlite::functions::FunctionFlags::SQLITE_UTF8, move |_| {
-                if let Some(began) = began.take() {
+                if let Some(began) = began.lock().unwrap().take() {
                     let _ = began.send(());
                     let _ = blocked_until.recv();
                 }
