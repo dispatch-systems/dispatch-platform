@@ -234,10 +234,6 @@ test(
     await until(async () => (await owner.read('/api/platform/health')).browsers.active === 0);
     latencies.sort((a, b) => a - b);
     const p95 = latencies[Math.ceil(latencies.length * 0.95) - 1]!;
-    assert(
-      p95 < 2000,
-      `API read batch p95 ${p95.toFixed(0)} ms exceeded the responsiveness budget`,
-    );
     console.log(
       'CAPACITY',
       JSON.stringify({
@@ -258,6 +254,10 @@ test(
         completeMemorySamples,
         queueMs: jobs.map((id) => final.find((j) => j.id === id)!.metrics[0]!.queueMs),
       }),
+    );
+    assert(
+      p95 < 2000,
+      `API read batch p95 ${p95.toFixed(0)} ms exceeded the responsiveness budget\n${slowTurns(f.logs())}`,
     );
   },
 );
