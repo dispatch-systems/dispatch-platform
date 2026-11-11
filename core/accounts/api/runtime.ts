@@ -140,6 +140,7 @@ export const sessionSchema = z.object({
 export const viewRole = z.object({ id: text, name: text, owner: z.boolean() });
 // Most DSPs have no custom declarations. Validate those views without loading the
 // custom metadata schema; any other view goes through the full validator before admission.
+const emptyList = z.array(filled).check(z.maxLength(0));
 const viewSchema = z.object({
   dsp,
   token: filled,
@@ -149,13 +150,13 @@ const viewSchema = z.object({
   features: z.array(z.enum(features)),
   custom: z.optional(
     z.object({
-      catalog: z.array(z.never()),
-      permissions: z.array(z.never()),
-      frontends: z.array(z.never()),
+      catalog: emptyList,
+      permissions: emptyList,
+      frontends: emptyList,
     }),
   ),
   profile,
-}) satisfies z.ZodMiniType<DspView>;
+}) as z.ZodMiniType<DspView>;
 const okSchema = z.object({ ok: z.literal(true) });
 
 /** The replies of sign-in, security, the session and its DSP view, and the list of DSPs. */
