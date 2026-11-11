@@ -389,6 +389,18 @@ async fn custom_assets_require_the_owner_session_before_head_or_etag_handling() 
         host: owner.host.clone(),
     };
     // Both DSP sessions are valid at their own host; the second owns no custom metadata.
+    let off_view = server.open(&owner, &north).await;
+    assert_eq!(off_view.body["custom"]["frontends"], json!([]));
+    let own = north.clone();
+    server
+        .state
+        .run(move |db| {
+            let actor = testing::platform_owner(db);
+            db.set_feature(&own, "nll_probe", true, &actor)?;
+            Ok(())
+        })
+        .await
+        .unwrap();
     let own_view = server.open(&owner, &north).await;
     assert_eq!(
         own_view.body["custom"]["frontends"][0]["url"],
