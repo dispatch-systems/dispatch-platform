@@ -38,3 +38,8 @@ waits or every task the server retains. Normal worker waits share one two-second
 patient work waits up to a minute. A refusal is `platform_busy`, and the request's log names
 the limiter that refused it. Started blocking work retains its admission until it finishes,
 including after its caller disconnects.
+
+Validated live-page writes use the per-DSP staging lane alongside foreground WAL readers.
+After the transaction, the blocking worker briefly takes the exclusive transition to drain
+readers and evict LIVE caches before returning and notifying readers, even if its caller
+cancelled. Final publication and tenant lifecycle changes still use exclusive transitions.

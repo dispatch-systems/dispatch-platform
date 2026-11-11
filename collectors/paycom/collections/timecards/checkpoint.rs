@@ -201,14 +201,16 @@ impl Checkpoint {
         let records = records.to_vec();
         let job = self.job.clone();
         let owner = self.owner.clone();
-        let state = self.state.clone();
         let dsp = self
             .state
-            .run_bookkeeping(move |db| {
+            .read(move |db| Ok(db.guard(&job, &owner)?.id))
+            .await?;
+        let job = self.job.clone();
+        let owner = self.owner.clone();
+        let dsp = self
+            .state
+            .run_live_staging(dsp, move |db| {
                 let dsp = db.guard(&job, &owner)?;
-                state
-                    .read_cache
-                    .invalidate_tenant(&dsp.id, dispatch_core::server::cache::DataDomain::LIVE);
                 let row = db.job_row(&job, None)?;
                 let storage = db.collector(&dsp.id, PROVIDER)?;
                 // Save resume data and visible results with one transaction per driver.

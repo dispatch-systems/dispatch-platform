@@ -40,6 +40,7 @@ enum Access {
     Read,
     Write,
     Unpublished,
+    LiveStaging,
 }
 
 enum CacheChange {
@@ -188,8 +189,28 @@ impl State {
         dsp: impl Into<String>,
         f: impl FnOnce(&db::Store) -> Result<T> + Send + 'static,
     ) -> impl Future<Output = Result<T>> + Send {
+        self.staging(dsp.into(), Access::Unpublished, f)
+    }
+    /// Commits validated live pages alongside WAL readers, serialized per DSP. The worker
+    /// then drains readers under the exclusive transition and evicts LIVE before returning:
+    /// a reader begun during the commit cannot leave an old cached answer after notification.
+    /// Ownership and connection guards belong in `f`; publication and lifecycle remain exclusive.
+    #[track_caller]
+    pub fn run_live_staging<T: Send + 'static>(
+        self: &Arc<Self>,
+        dsp: impl Into<String>,
+        f: impl FnOnce(&db::Store) -> Result<T> + Send + 'static,
+    ) -> impl Future<Output = Result<T>> + Send {
+        self.staging(dsp.into(), Access::LiveStaging, f)
+    }
+    #[track_caller]
+    fn staging<T: Send + 'static>(
+        self: &Arc<Self>,
+        dsp: String,
+        access: Access,
+        f: impl FnOnce(&db::Store) -> Result<T> + Send + 'static,
+    ) -> impl Future<Output = Result<T>> + Send {
         let caller = std::panic::Location::caller();
-        let dsp = dsp.into();
         async move {
             let waiting = std::time::Instant::now();
             let turn = self
@@ -206,8 +227,12 @@ impl State {
                 );
             }
             self.turn(
-                Access::Unpublished,
-                CacheChange::Bookkeeping,
+                access,
+                if access == Access::LiveStaging {
+                    CacheChange::Tenant(dsp.clone(), cache::DataDomain::LIVE)
+                } else {
+                    CacheChange::Bookkeeping
+                },
                 move |db| {
                     // Once begun, the worker retains this turn even if its caller leaves.
                     let _turn = turn;
@@ -439,7 +464,7 @@ impl State {
                 None => db::Store::open(state.config.clone(), state.key.clone())?,
             };
             let waiting = std::time::Instant::now();
-            let lock_ms;
+            let mut lock_ms;
             let work_started;
             let result = if access == Access::Write {
                 let _guard = state
@@ -449,14 +474,14 @@ impl State {
                 lock_ms = waiting.elapsed().as_secs_f64() * 1000.0;
                 work_started = std::time::Instant::now();
                 // Invalidate before work, including errors after partially committed writes.
-                match change {
+                match &change {
                     CacheChange::All => {
                         state
                             .data_revision
                             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     }
                     CacheChange::Tenant(dsp, domain) => {
-                        state.read_cache.invalidate_tenant(&dsp, domain)
+                        state.read_cache.invalidate_tenant(dsp, *domain)
                     }
                     CacheChange::Bookkeeping => {}
                 }
@@ -471,6 +496,19 @@ impl State {
                 f(&db)
             };
             let work_ms = work_started.elapsed().as_secs_f64() * 1000.0;
+            if access == Access::LiveStaging {
+                // The blocking worker owns this fence even if its async caller was cancelled.
+                // Acquire only after letting go of the shared transition; no lock upgrade.
+                let fence_started = std::time::Instant::now();
+                let _guard = state
+                    .transition
+                    .write()
+                    .map_err(|_| Error::new("platform_unavailable", 503))?;
+                lock_ms += fence_started.elapsed().as_secs_f64() * 1000.0;
+                if let CacheChange::Tenant(dsp, domain) = &change {
+                    state.read_cache.invalidate_tenant(dsp, *domain);
+                }
+            }
             // Any transaction in the work has committed, so the mailer finds what it queued,
             // the scheduler the deadlines it moved, and the live readers what was switched.
             if db.take_mail_queued() {

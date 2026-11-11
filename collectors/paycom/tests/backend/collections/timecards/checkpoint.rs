@@ -9,33 +9,7 @@ use std::os::unix::fs::PermissionsExt;
 
 #[tokio::test]
 async fn resume_is_bound_to_job_roster_period_revision_and_fixed_expiry() -> Result<()> {
-    crate::testing::install(&[&crate::COLLECTOR], &[]);
-    let root = tempfile::tempdir()?;
-    std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700))?;
-    let mut config = Config::load()?;
-    config.root = root.path().into();
-    config.fixture = true;
-    config.development = true;
-    config.environment = Environment::Preview;
-    let state = State::new(config)?;
-    let (dsp, job) = state
-        .run(|db| {
-            let bootstrap = operations::bootstrap(
-                db,
-                "checkpoint@example.test",
-                "Test",
-                "Owner",
-                "checkpoint-password",
-            )?;
-            let dsp = s(&bootstrap["dsp"], "id").to_owned();
-            testing::enable_connection(db, &dsp, paycom::PROVIDER)?;
-            testing::set_connection_revision(db, &dsp, paycom::PROVIDER, 1)?;
-            let job =
-                db.enqueue_for(&dsp, None, "checkpoint-test", paycom::PROVIDER, &json!({}))?;
-            db.claim_job("owner", |_, _| true)?;
-            Ok((dsp, s(&job, "id").to_owned()))
-        })
-        .await?;
+    let (_root, state, dsp, job) = checkpoint_started().await?;
     let checkpoint = Checkpoint::new(state.clone(), &job, "owner");
     let employee = json!({"code":"AA01","name":"Fixture","department":"Driver","position":"Driver","station":"S","active":true});
     let period = json!({"start":"2026-09-06","end":"2026-09-19"});
@@ -198,5 +172,109 @@ async fn resume_is_bound_to_job_roster_period_revision_and_fixed_expiry() -> Res
             Ok(())
         })
         .await?;
+    Ok(())
+}
+
+async fn checkpoint_started() -> Result<(tempfile::TempDir, Arc<State>, String, String)> {
+    crate::testing::install(&[&crate::COLLECTOR], &[]);
+    let root = tempfile::tempdir()?;
+    std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700))?;
+    let mut config = Config::load()?;
+    config.root = root.path().into();
+    config.fixture = true;
+    config.development = true;
+    config.environment = Environment::Preview;
+    let state = State::new(config)?;
+    let (dsp, job) = state
+        .run(|db| {
+            let bootstrap = operations::bootstrap(
+                db,
+                "checkpoint@example.test",
+                "Test",
+                "Owner",
+                "checkpoint-password",
+            )?;
+            let dsp = s(&bootstrap["dsp"], "id").to_owned();
+            testing::enable_connection(db, &dsp, paycom::PROVIDER)?;
+            testing::set_connection_revision(db, &dsp, paycom::PROVIDER, 1)?;
+            let job =
+                db.enqueue_for(&dsp, None, "checkpoint-test", paycom::PROVIDER, &json!({}))?;
+            db.claim_job("owner", |_, _| true)?;
+            Ok((dsp, s(&job, "id").to_owned()))
+        })
+        .await?;
+    Ok((root, state, dsp, job))
+}
+
+#[tokio::test]
+async fn a_checkpoint_transaction_does_not_block_foreground_reads() -> Result<()> {
+    use std::sync::mpsc;
+    let (_root, state, dsp, job) = checkpoint_started().await?;
+    let checkpoint = Checkpoint::new(state.clone(), &job, "owner");
+    let employee = json!({"code":"AA01","name":"Fixture","department":"Driver","position":"Driver","station":"S","active":true});
+    let period = json!({"start":"2026-09-06","end":"2026-09-19"});
+    let records = (6..20).map(|day| json!({"employeeCode":"AA01","date":format!("2026-09-{day:02}"),"hours":0,"status":"Complete","punches":[]})).collect::<Vec<_>>();
+    let resume = checkpoint
+        .prepare(&period, std::slice::from_ref(&employee), "UTC")
+        .await?;
+    let (began, waiting) = tokio::sync::oneshot::channel();
+    let (release, blocked_until) = mpsc::channel();
+    let at = dsp.clone();
+    state.read(move |db| {
+        let storage = db.collector(&at, PROVIDER)?;
+        let began = std::sync::Mutex::new(Some(began));
+        storage.0.create_scalar_function("hold_checkpoint", 0,
+            rusqlite::functions::FunctionFlags::SQLITE_UTF8, move |_| {
+                if let Some(began) = began.lock().unwrap().take() {
+                    let _ = began.send(());
+                    let _ = blocked_until.recv();
+                }
+                Ok(0)
+            })?;
+        storage.exec("CREATE TEMP TRIGGER hold_checkpoint BEFORE INSERT ON collection_checkpoint_pages BEGIN SELECT hold_checkpoint(); END", [])?;
+        Ok(())
+    }).await?;
+    let save = tokio::spawn(async move {
+        checkpoint
+            .save(&resume.token, &employee, &period, &records)
+            .await
+    });
+    let entered = tokio::time::timeout(std::time::Duration::from_secs(5), waiting)
+        .await
+        .is_ok_and(|result| result.is_ok());
+    // The actual save is now inside its SQLite transaction, before its first insert.
+    // Release it before failing so the original exclusive-lock implementation exits cleanly.
+    let shared = entered && state.transition.try_read().is_ok();
+    let read = if shared {
+        let at = dsp.clone();
+        Some(
+            dispatch_core::testing::requested(state.read(move |db| {
+                db.collector(&at, PROVIDER)?
+                    .count("SELECT count(*) FROM collection_checkpoint_pages", [])
+            }))
+            .await,
+        )
+    } else {
+        None
+    };
+    release.send(()).unwrap();
+    save.await.unwrap()?;
+    assert!(entered, "the controlled SQLite write was never reached");
+    assert!(
+        shared,
+        "a Paycom page save held the global exclusive transition while waiting for SQLite"
+    );
+    assert_eq!(
+        read.unwrap()?,
+        0,
+        "WAL readers see the previous committed page"
+    );
+    let count = state
+        .read(move |db| {
+            db.collector(&dsp, PROVIDER)?
+                .count("SELECT count(*) FROM collection_checkpoint_pages", [])
+        })
+        .await?;
+    assert_eq!(count, 1);
     Ok(())
 }
