@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import mapUrl from './assets/member-profile-map.svg?url';
+import mapUrl from './route-map.svg?url';
 
 export { mapUrl };
 // Match the dashboard's 700px mobile breakpoint; share one query across loading and rendering.
@@ -25,7 +25,7 @@ function loadMap() {
   }));
 }
 
-export function useMemberProfileMap() {
+export function useRouteMap() {
   const desktop = useSyncExternalStore(subscribeViewport, isDesktop);
   const [loaded, setLoaded] = useState(() => ready || !desktop);
   useEffect(() => {

@@ -2,7 +2,7 @@ import type { ReactNode, Ref } from 'react';
 import { Brand } from '../../../shell/frontend/runtime/Brand.js';
 import { useViewportFit } from '../../../shell/frontend/ui/useViewportFit.js';
 import { MemberProfileMap, type MemberProfileRoute } from './MemberProfileMap.js';
-import { useMemberProfileMap } from './member-profile-map-asset.js';
+import { useRouteMap } from '../route-map/map-asset.js';
 import './member-profile.css';
 
 export function MemberProfileLayout({
@@ -22,7 +22,7 @@ export function MemberProfileLayout({
   route?: MemberProfileRoute;
 }) {
   const fit = useViewportFit();
-  const { desktop, ready } = useMemberProfileMap();
+  const { desktop, ready } = useRouteMap();
   return (
     <div
       ref={ref}

@@ -44,7 +44,7 @@ test('desktop form is usable while the map loads and if the map fails', async ({
 }) => {
   const url = await ownerInvitation(page, dispatch.root);
   // SVG <use> consumers may include their region fragment in the routed URL.
-  const mapAsset = /\/onboarding-map-[^/]+\.svg(?:[#?].*)?$/;
+  const mapAsset = /\/route-map-[^/]+\.svg(?:[#?].*)?$/;
   let release!: () => void;
   let waiting = false;
   const delayed = new Promise<void>((resolve) => {

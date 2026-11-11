@@ -88,7 +88,7 @@ test('a DSP member invite creates a profile in its own responsive map screen', a
   expect(session.user.email).toBe('new-member@dispatch.test');
   expect(session.dsps).toHaveLength(1);
   expect(session.dsps[0].name).toBe('Northline Logistics');
-  expect(assets.filter((url) => /onboarding-map|login-van|renderer-.*\.js/.test(url))).toEqual([]);
+  expect(assets.filter((url) => /login-van|renderer-.*\.js/.test(url))).toEqual([]);
   expect(errors).toEqual([]);
 });
 
@@ -197,9 +197,7 @@ for (const variant of ['phone', 'reduced motion', 'unavailable artwork'] as cons
     // having failed, fetches it again to import it.
     else expect(failedArtwork).toBeGreaterThan(0);
     if (variant === 'phone')
-      expect(
-        assets.filter((url) => /member-profile-map|login-van|renderer-.*\.js/.test(url)),
-      ).toEqual([]);
+      expect(assets.filter((url) => /route-map|login-van|renderer-.*\.js/.test(url))).toEqual([]);
   });
 }
 
