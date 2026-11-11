@@ -216,7 +216,7 @@ export function GoogleDriveCard({ view }: { view: DspView }) {
                   </button>
                 )}
                 <a
-                  className="documents-link-button"
+                  className="link-button documents-link-button"
                   href={connection.folderUrl}
                   target="_blank"
                   rel="noreferrer"
@@ -381,7 +381,10 @@ export function GoogleAccountCard({ view, email }: { view: DspView; email: strin
                     </button>
                   )}
                   {data.me.state === 'shared' && (
-                    <a className="documents-link-button" href={dspHash(view.dsp.id, 'documents')}>
+                    <a
+                      className="link-button documents-link-button"
+                      href={dspHash(view.dsp.id, 'documents')}
+                    >
                       <FolderOpen size={16} />
                       Open Documents
                     </a>

@@ -1,3 +1,4 @@
+import { useSettled } from '../../../core/shell/frontend/runtime/useSettled.js';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { DspView } from '../../../core/accounts/api/index.js';
 import type { Job } from '../../../core/collection/api/index.js';
@@ -94,14 +95,7 @@ export function useDvicPage(view: DspView) {
   const [chosenWeek, setChosenWeek] = useUpdateState<string | undefined>('dvic-week', undefined);
   const [chosenDay, setChosenDay] = useUpdateState<string | undefined>('dvic-day', undefined);
   const [query, setQuery] = useUpdateState('dvic-query', '');
-  const [search, setSearch] = useState(query.trim().toLowerCase());
-  useEffect(() => {
-    const timer = setTimeout(
-      () => setSearch(query.trim().toLowerCase()),
-      performancePolicy.employeeSearchDelayMs,
-    );
-    return () => clearTimeout(timer);
-  }, [query]);
+  const search = useSettled(query, performancePolicy.employeeSearchDelayMs).trim().toLowerCase();
   const [vehicles, setVehicles] = useUpdateState<VehicleClass>('dvic-vehicles', '');
   const [page, setPage] = useUpdateState('dvic-week-page', 0);
   const [selected, setSelected] = useState<string>();
