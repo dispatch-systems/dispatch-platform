@@ -17,6 +17,11 @@ name or address neither copies nor clears it. Relay continues using its existing
 address until the bridge is an installed rollback target. The staged plan and release gates are
 in [the migration plan](../../ops/dispatch-phone-migration.md).
 
+Migration receipts also accept the future owner `dispatch_phone`. Existing receipt names,
+IDs and timestamps remain unchanged, and new steps still record `communications`. Recognizing
+either owner prevents an applied migration running again after a rename or rollback. It does
+not activate a stored-identity, table or attachment migration.
+
 ## Purpose
 
 The DSP's direct messages with the members of its Slack workspaces, and the texts its dispatch

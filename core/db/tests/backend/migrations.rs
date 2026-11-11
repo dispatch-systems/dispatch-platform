@@ -607,6 +607,25 @@ fn a_failing_migration_changes_nothing() {
     assert_eq!(dump(&db), before);
     assert_eq!(ids(&db), before_ids);
     assert!(db.0.is_autocommit());
+
+    let owned = [
+        OwnedMigration {
+            owner: "alpha",
+            aliases: &["renamed_alpha"],
+            migration: Migration { id: 1, ..list[0] },
+        },
+        OwnedMigration {
+            owner: "alpha",
+            aliases: &["renamed_alpha"],
+            migration: Migration { id: 2, ..list[1] },
+        },
+    ];
+    assert_eq!(
+        run(&db, "test", &[], &owned).unwrap_err().code,
+        "migration_failed"
+    );
+    assert_eq!(dump(&db), before);
+    assert!(applied_owned(&db, &owned).unwrap().is_empty());
 }
 
 #[test]
@@ -626,8 +645,10 @@ fn connections_racing_to_open_first_apply_each_migration_once() {
         let file = root.path().join(format!("race-{round}.sqlite"));
         let barrier = std::sync::Barrier::new(4);
         std::thread::scope(|scope| {
-            for _ in 0..4 {
-                scope.spawn(|| {
+            for index in 0..4 {
+                let barrier = &barrier;
+                let file = &file;
+                scope.spawn(move || {
                     barrier.wait();
                     // The seed would fail on its primary key if two connections ran it.
                     let db = Db::create(
@@ -636,7 +657,20 @@ fn connections_racing_to_open_first_apply_each_migration_once() {
                         "INSERT INTO settings VALUES ('seeded','1');",
                     )
                     .unwrap();
-                    run(&db, "test", list, &[]).unwrap();
+                    let (owner, aliases): (_, &'static [&'static str]) = if index % 2 == 0 {
+                        ("alpha", &["renamed_alpha"])
+                    } else {
+                        ("renamed_alpha", &["alpha"])
+                    };
+                    run(&db, "test", list, &[OwnedMigration {
+                        owner,
+                        aliases,
+                        migration: Migration {
+                            id: 1,
+                            name: "alias_once",
+                            apply: Apply::Sql("CREATE TABLE alias_once(id INTEGER PRIMARY KEY); INSERT INTO alias_once VALUES (1);"),
+                        },
+                    }]).unwrap();
                 });
             }
         });
@@ -656,6 +690,15 @@ fn connections_racing_to_open_first_apply_each_migration_once() {
             db.all("SELECT key FROM settings", []).unwrap(),
             vec![json!({"key":"seeded"})]
         );
+        assert_eq!(
+            db.all("SELECT * FROM alias_once", []).unwrap(),
+            vec![json!({"id":1})]
+        );
+        assert_eq!(
+            db.count("SELECT count(*) FROM owner_migrations", [])
+                .unwrap(),
+            1
+        );
     }
 }
 
@@ -669,22 +712,24 @@ fn features_number_their_own_migrations_and_each_is_recorded_under_its_name() {
     let db = Db::create(&root.path().join("owned.sqlite"), Kind::DSP, "").unwrap();
     let shared = ids(&db);
     let owned = [
-        (
-            "alpha",
-            Migration {
+        OwnedMigration {
+            owner: "alpha",
+            aliases: &[],
+            migration: Migration {
                 id: 1,
                 name: "alpha_notes",
                 apply: Apply::Sql("CREATE TABLE alpha_notes (id TEXT);"),
             },
-        ),
-        (
-            "beta",
-            Migration {
+        },
+        OwnedMigration {
+            owner: "beta",
+            aliases: &[],
+            migration: Migration {
                 id: 1,
                 name: "beta_notes",
                 apply: Apply::Sql("CREATE TABLE beta_notes (id TEXT);"),
             },
-        ),
+        },
     ];
     run(&db, "dsp", &Kind::DSP.migrations(), &owned).unwrap();
     let recorded = |db: &Db| -> Vec<(String, i64, String)> {
@@ -736,5 +781,173 @@ fn a_feature_whose_own_migrations_skip_a_number_is_refused() {
             list: LIST,
         },
     ];
-    owned_ledger(Kind::DSP, owned.iter().map(|each| ("alpha", each)));
+    owned_ledger(Kind::DSP, owned.iter().map(|each| ("alpha", &[][..], each)));
+}
+
+#[test]
+fn equivalent_migration_owners_keep_receipts_across_upgrade_and_rollback() {
+    crate::testing::install(&[], &[]);
+    let root = private();
+    let file = root.path().join("owners.sqlite");
+    let first = Migration {
+        id: 1,
+        name: "notes",
+        apply: Apply::Sql("CREATE TABLE notes(id INTEGER PRIMARY KEY, text TEXT);"),
+    };
+    let second = Migration {
+        id: 2,
+        name: "initial_note",
+        apply: Apply::Sql("INSERT INTO notes VALUES (1,'retained');"),
+    };
+    let bridge = [OwnedMigration {
+        owner: "alpha",
+        aliases: &["renamed_alpha"],
+        migration: first,
+    }];
+    let renamed = [
+        OwnedMigration {
+            owner: "renamed_alpha",
+            aliases: &["alpha"],
+            migration: first,
+        },
+        OwnedMigration {
+            owner: "renamed_alpha",
+            aliases: &["alpha"],
+            migration: second,
+        },
+    ];
+    let receipts = |db: &Db| {
+        db.all("SELECT * FROM owner_migrations ORDER BY id", [])
+            .unwrap()
+    };
+    let db = Db::create(&file, Kind::DSP, "").unwrap();
+    run(&db, "dsp", &[], &bridge).unwrap();
+    let original = receipts(&db);
+    drop(db);
+
+    let db = Db::open(&file, Kind::DSP).unwrap();
+    run(&db, "dsp", &[], &renamed).unwrap();
+    let upgraded = receipts(&db);
+    assert_eq!(upgraded[0], original[0]);
+    assert_eq!(upgraded.len(), 2);
+    assert_eq!(upgraded[1]["owner"], "renamed_alpha");
+    drop(db);
+
+    let db = Db::open(&file, Kind::DSP).unwrap();
+    // The bridge tolerates the newer id and recognizes the original receipt.
+    run(&db, "dsp", &[], &bridge).unwrap();
+    db.exec(
+        "UPDATE notes SET text='written during rollback' WHERE id=1",
+        [],
+    )
+    .unwrap();
+    run(&db, "dsp", &[], &renamed).unwrap();
+    assert_eq!(receipts(&db), upgraded);
+    assert_eq!(
+        db.one("SELECT text FROM notes WHERE id=1", [])
+            .unwrap()
+            .unwrap()["text"],
+        "written during rollback"
+    );
+
+    // A fresh renamed installation records only its own spelling; the bridge must
+    // recognize those receipts too, including before taking the migration lock.
+    let fresh = Db::create(&root.path().join("fresh.sqlite"), Kind::DSP, "").unwrap();
+    run(&fresh, "dsp", &[], &renamed).unwrap();
+    let future_receipts = receipts(&fresh);
+    run(&fresh, "dsp", &[], &bridge).unwrap();
+    assert_eq!(receipts(&fresh), future_receipts);
+    // Force a locked application pass with a genuinely pending shared step.
+    let next = Kind::DSP.migrations().last().unwrap().id + 1;
+    let shared = [Migration {
+        id: next,
+        name: "extra",
+        apply: Apply::Sql("CREATE TABLE extra(id TEXT);"),
+    }];
+    run(&fresh, "dsp", &shared, &bridge).unwrap();
+    assert_eq!(receipts(&fresh), future_receipts);
+
+    let conflicting = OwnedMigration {
+        owner: "alpha",
+        aliases: &["renamed_alpha"],
+        migration: second,
+    };
+    fresh
+        .exec(
+            "INSERT INTO owner_migrations(owner,id,name,applied_at) VALUES ('alpha',2,'other',42)",
+            [],
+        )
+        .unwrap();
+    let before = receipts(&fresh);
+    assert_eq!(
+        run(&fresh, "dsp", &[], &[conflicting]).unwrap_err().code,
+        "migration_owner_conflict"
+    );
+    assert_eq!(receipts(&fresh), before);
+    assert_eq!(fresh.count("SELECT count(*) FROM notes", []).unwrap(), 1);
+}
+
+#[test]
+fn owner_aliases_follow_the_tenants_selected_migration_declarations() {
+    use crate::manifest::{Feature, Registry, feature};
+    static SHARED: Feature = Feature {
+        migration_aliases: &["next_shared"],
+        own_migrations: &[OwnMigrations {
+            kind: Kind::DSP,
+            list: &[Migration {
+                id: 1,
+                name: "shared_note",
+                apply: Apply::Sql("CREATE TABLE shared_note(id TEXT);"),
+            }],
+        }],
+        ..feature("shared")
+    };
+    static CUSTOM: Feature = Feature {
+        owner: Some("dota"),
+        migration_aliases: &["dota_next_note"],
+        own_migrations: &[OwnMigrations {
+            kind: Kind::DSP,
+            list: &[Migration {
+                id: 1,
+                name: "custom_note",
+                apply: Apply::Sql("CREATE TABLE custom_note(id TEXT);"),
+            }],
+        }],
+        ..feature("dota_note")
+    };
+    let registry = Registry {
+        features: &[&SHARED, &CUSTOM],
+        collectors: &[],
+        agents: None,
+    };
+    crate::testing::install(&[], &[]);
+    let root = private();
+    for (index, code) in [Some("dota"), Some("dotb"), None].into_iter().enumerate() {
+        let db = Db::create(&root.path().join(format!("{index}.sqlite")), Kind::DSP, "").unwrap();
+        db.0.execute_batch(
+            "CREATE TABLE shared_note(id TEXT); \
+             INSERT INTO owner_migrations VALUES ('next_shared',1,'shared_note',7), \
+             ('dota_next_note',1,'custom_note',8);",
+        )
+        .unwrap();
+        if code == Some("dota") {
+            db.exec("CREATE TABLE custom_note(id TEXT)", []).unwrap();
+        }
+        let before = db
+            .all("SELECT * FROM owner_migrations ORDER BY owner", [])
+            .unwrap();
+        run(
+            &db,
+            "dsp",
+            &[],
+            &registry.owned_migrations_for(Kind::DSP, code),
+        )
+        .unwrap();
+        assert_eq!(db.has_table("custom_note").unwrap(), code == Some("dota"));
+        assert_eq!(
+            db.all("SELECT * FROM owner_migrations ORDER BY owner", [])
+                .unwrap(),
+            before
+        );
+    }
 }
