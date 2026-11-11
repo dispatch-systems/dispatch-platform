@@ -306,7 +306,13 @@ test("--keeps tells one collector's collection from another's of the same name",
     fs.mkdirSync(path.dirname(path.join(copy, name)), { recursive: true });
     fs.writeFileSync(path.join(copy, name), content);
   }
-  const { plan } = await planFeature(copy, ['yard_checks', '--keeps', 'yard.dvic']);
+  const { plan } = await planFeature(copy, [
+    'yard_checks',
+    '--keeps',
+    'yard.dvic',
+    '--tables',
+    'yard_checks',
+  ]);
   assert.match(
     file(plan, 'features/yard_checks/backend/keeper.rs'),
     /use dispatch_yard::dvic::JOB_KIND;/,
@@ -356,10 +362,10 @@ test("--keeps writes the keeper of a collector's collection, tested with its fix
   assert.match(keeper, /use dispatch_fleet::shifts::JOB_KIND;/);
   assert.match(keeper, /"fleet_log.collect"/);
   assert.match(keeper, /fn storages\(&self\)/);
-  assert.match(
-    file(plan, 'features/fleet_log/tests/backend/keeper.rs'),
-    /dispatch_fleet::COLLECTOR\s*\.fixture\(/,
-  );
+  // Its test reads back what the keeper kept from the fixture's run.
+  const keeperTest = file(plan, 'features/fleet_log/tests/backend/keeper.rs');
+  assert.match(keeperTest, /dispatch_fleet::COLLECTOR\s*\.fixture\(/);
+  assert.match(keeperTest, /let kept = store\.fleet_log_items\(&dsp\)\.unwrap\(\);\n\s*assert_eq!/);
   assert.match(
     file(plan, 'features/fleet_log/migrations/fleet_log/0001_baseline.sql'),
     /storage_identity/,
@@ -383,9 +389,21 @@ test("--keeps writes the keeper of a collector's collection, tested with its fix
     planFeature(copy, ['fleet_log', '--tables', 'fleet_log']),
     /--tables takes dsp/,
   );
+  // What each run brings is stored in a table, which its test reads back.
+  await assert.rejects(
+    planFeature(copy, ['fleet_log', '--keeps', 'fleet.shifts']),
+    /--keeps stores what each run brings in its table: add --tables/,
+  );
   // What it collects is said in its frontend, which a mandatory feature with no screen lacks.
   await assert.rejects(
-    planFeature(copy, ['fleet_log', '--keeps', 'fleet.shifts', '--mandatory']),
+    planFeature(copy, [
+      'fleet_log',
+      '--keeps',
+      'fleet.shifts',
+      '--tables',
+      'fleet_log',
+      '--mandatory',
+    ]),
     /add --page, or leave out --mandatory/,
   );
 });

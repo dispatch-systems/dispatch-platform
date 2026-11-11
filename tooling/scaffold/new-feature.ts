@@ -51,7 +51,7 @@ export const usage = `Usage: dispatchdev new feature <name> [options]
   --api                             api/ with one endpoint behind the view permission
   --tables <database>               a first table: dsp, a collector's database, or the
                                     feature's own name with --keeps for a database of its own
-  --keeps <collector>.<collection>  the keeper of a collector's collection
+  --keeps <collector>.<collection>  the keeper of a collector's collection; needs --tables
   --people <source>                 who its table names, connected to Driver Match by their
                                     IDs of a collector's source, as amazon, or by IDs of its
                                     own with own; needs --tables
@@ -266,6 +266,8 @@ function featureValues(root: string, argv: string[], adding = false) {
       `--tables takes dsp, a collector's database (${collectors(root).join(', ')}), or ${name} ` +
         `with --keeps for a database of its own beside the collector's`,
     );
+  if (keeps && !database)
+    throw new UsageError('--keeps stores what each run brings in its table: add --tables');
 
   // Who its table names, by the IDs of a source a collector declares.
   const sources = peopleSources(root);
@@ -404,9 +406,6 @@ function featureValues(root: string, argv: string[], adding = false) {
       : database.owner === 'collector'
         ? `each DSP's \`${database.name}\` database`
         : `a database of its own beside ${namesOf(site).label}'s`;
-  // Parameters a starter body does not read yet are named so the compiler does not warn.
-  const parameters = (read: boolean, list: [string, string][]) =>
-    list.map(([parameter, type]) => `${read ? parameter : `_${parameter}`}: ${type}`).join(', ');
 
   // Settings draws its sections itself, from what its backend declares: no screen of its own.
   const screens = page || Boolean(host) || connection || sidebar;
@@ -499,11 +498,6 @@ function featureValues(root: string, argv: string[], adding = false) {
     collectionLabel: listed?.label ?? '',
     counted: listed?.counted ?? '',
     fixtureRequest: `{"collection": "${collection}"}`,
-    publishParameters: `${parameters(Boolean(database), [
-      ['store', '&Store'],
-      ['dsp', '&str'],
-      ['job', '&str'],
-    ])}, _collected: Collected`,
     testCollectors: used.map((collector) => `&${identOf(collector)}::COLLECTOR`).join(', '),
     frontend,
     screens,
