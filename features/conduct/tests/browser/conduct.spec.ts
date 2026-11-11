@@ -141,7 +141,7 @@ test('unreadable multiline content remains saved whole and is refused for printi
   await expect(page.locator('.conduct-print')).toHaveCount(0);
 });
 
-test('cancelling photo preparation sends neither an upload nor a signature', async ({ page }) => {
+test('photo preparation cancels safely, then a rotated copy is signed', async ({ page }) => {
   await newUniform(page);
   await complete(page);
   await page.getByRole('button', { name: 'Save', exact: true }).click();
@@ -149,14 +149,14 @@ test('cancelling photo preparation sends neither an upload nor a signature', asy
   const png = await page.evaluate(() => {
     const canvas = document.createElement('canvas');
     canvas.width = 2;
-    canvas.height = 2;
+    canvas.height = 3;
     return canvas.toDataURL('image/png').split(',')[1]!;
   });
   await page.evaluate(() => {
     const state = window as typeof window & {
       conductPhotoTest: { release?: () => void; closed: boolean; sent: number };
     };
-    state.conductPhotoTest = { closed: false, sent: 0 };
+    state.conductPhotoTest = { closed: false, sent: 0, restore: () => {} };
     const original = window.createImageBitmap.bind(window);
     Object.defineProperty(window, 'createImageBitmap', {
       value: async (image: Blob) => {
@@ -175,6 +175,10 @@ test('cancelling photo preparation sends neither an upload nor a signature', asy
       },
     });
     const send = XMLHttpRequest.prototype.send;
+    state.conductPhotoTest.restore = () => {
+      window.createImageBitmap = original;
+      XMLHttpRequest.prototype.send = send;
+    };
     XMLHttpRequest.prototype.send = function (body) {
       state.conductPhotoTest.sent++;
       send.call(this, body);
@@ -211,4 +215,27 @@ test('cancelling photo preparation sends neither an upload nor a signature', asy
   ).toBe(0);
   await expect(page.getByText('Awaiting signature', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Edit', exact: true })).toBeVisible();
+  await page.evaluate(() =>
+    (
+      window as typeof window & { conductPhotoTest: { restore: () => void } }
+    ).conductPhotoTest.restore(),
+  );
+  await page.getByRole('button', { name: 'Mark signed', exact: true }).click();
+  await page
+    .getByLabel(/^Signed copy/)
+    .setInputFiles({
+      name: 'paper.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(png, 'base64'),
+    });
+  await page.getByRole('button', { name: 'Rotate', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Mark signed', exact: true }).click();
+  await expect(page.getByText(/^Signed \d+\/\d+\/\d{4}$/)).toBeVisible();
+  const copy = page.getByRole('img', { name: 'Signed copy', exact: true });
+  await expect(copy).toBeVisible();
+  await expect
+    .poll(() =>
+      copy.evaluate((image: HTMLImageElement) => [image.naturalWidth, image.naturalHeight]),
+    )
+    .toEqual([3, 2]);
 });
