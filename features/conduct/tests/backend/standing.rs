@@ -125,3 +125,23 @@ fn a_wait_in_months_ends_on_the_same_day_or_the_months_last() {
     let ten = step(ConductStepKind::Reset, 10, ConductUnit::Days).unwrap();
     assert_eq!(due(day("2026-12-25"), &ten), Some(day("2027-01-04")));
 }
+
+#[test]
+fn a_historical_record_excludes_later_notices_and_steps_down_at_the_selected_date() {
+    let categories = [category(
+        "safety",
+        step(ConductStepKind::Reduce, 6, ConductUnit::Months),
+    )];
+    let rows = [
+        writeup("later", "ana", "safety", Final, "2026-11-01"),
+        writeup("older", "ana", "safety", Written, "2026-01-01"),
+    ];
+    let historical = work_out(&categories, &rows, day("2026-10-01"));
+    assert_eq!(historical.standings[0].tier, Verbal);
+    assert_eq!(historical.standings[0].latest_id, "older");
+    assert!(!historical.stood_before.contains_key("later"));
+    assert_eq!(
+        work_out(&categories, &rows, day("2026-11-08")).standings[0].tier,
+        Final
+    );
+}

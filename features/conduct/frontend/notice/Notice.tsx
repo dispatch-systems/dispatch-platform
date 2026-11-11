@@ -65,6 +65,7 @@ const smallest = 0.001;
  * across (`width`) or down, and marks it `data-overflow` if even the smallest doesn't.
  */
 function fit(element: HTMLElement, across: boolean) {
+  if (!element.clientWidth || !element.clientHeight) return;
   const fits = () =>
     across
       ? element.scrollWidth <= element.clientWidth + 1
@@ -82,17 +83,48 @@ function fit(element: HTMLElement, across: boolean) {
     scale(low);
   }
   element.toggleAttribute('data-overflow', !fits());
+  const base = element.classList.contains('conduct-notice-answer')
+    ? 10.3
+    : element.classList.contains('conduct-notice-signature')
+      ? 22.4
+      : 12;
+  element.toggleAttribute(
+    'data-unreadable',
+    Number(element.style.getPropertyValue('--fit')) * base < 7,
+  );
 }
 
-/** A ref whose element `fit` keeps fitted as what it shows (`shown`) changes, and again once
- * lettering loads. */
+/** Printing fits synchronously after fonts load, independently of queued preview work. */
+export function fitNotice(notice: HTMLElement) {
+  for (const element of notice.querySelectorAll<HTMLElement>('[data-conduct-fit]'))
+    fit(element, element.dataset.conductFit === 'across');
+}
+
+const pending = new Map<HTMLElement, boolean>();
+let frame: number | undefined;
+function schedule(element: HTMLElement, across: boolean) {
+  pending.set(element, across);
+  frame ??= requestAnimationFrame(() => {
+    frame = undefined;
+    for (const [element, across] of pending) if (element.isConnected) fit(element, across);
+    pending.clear();
+  });
+}
 function useFit<T extends HTMLElement>(across: boolean, shown: string) {
   const ref = useRef<T>(null);
   useLayoutEffect(() => {
     const element = ref.current;
     if (!element) return;
-    fit(element, across);
-    void document.fonts.ready.then(() => fit(element, across));
+    let active = true;
+    schedule(element, across);
+    if (document.fonts.status !== 'loaded')
+      void document.fonts.ready.then(() => {
+        if (active) schedule(element, across);
+      });
+    return () => {
+      active = false;
+      pending.delete(element);
+    };
   }, [across, shown]);
   return ref;
 }
@@ -113,7 +145,12 @@ function Filled({
 }) {
   const ref = useFit<HTMLSpanElement>(true, children);
   return (
-    <span ref={ref} className={`conduct-notice-text ${className}`} style={at(top, left, width)}>
+    <span
+      ref={ref}
+      data-conduct-fit="across"
+      className={`conduct-notice-text ${className}`}
+      style={at(top, left, width)}
+    >
       {children}
     </span>
   );
@@ -142,7 +179,12 @@ function Answer({ top, text, marked }: { top: number; text: string; marked: bool
   const parts = text.split(blank);
   const blanks = marked ? (text.match(blank) ?? []) : [];
   return (
-    <div ref={box} className="conduct-notice-answer" style={at(top + 14.6, 92, 448)}>
+    <div
+      ref={box}
+      data-conduct-fit="down"
+      className="conduct-notice-answer"
+      style={at(top + 14.6, 92, 448)}
+    >
       {marked
         ? parts.map((part, index) => (
             <Fragment key={index}>

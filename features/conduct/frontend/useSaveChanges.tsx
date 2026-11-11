@@ -15,17 +15,24 @@ export function useSaveChanges({
   dirty,
   saveable,
   save,
+  busy = false,
 }: {
   /** What has the changes, as the question names it: "This category". */
   what: string;
   dirty: boolean;
+  busy?: boolean;
   saveable: boolean;
   /** Saves the changes; whether leaving should go on. */
   save: () => Promise<boolean>;
 }) {
   const [then, setThen] = useState<(() => void) | null>(null);
   const [saving, setSaving] = useState(false);
-  const leave: Leave = (next) => (dirty ? setThen(() => next) : next());
+  const released = useRef(false);
+  const leave: Leave = (next) => {
+    if (busy) return;
+    if (released.current || !dirty) next();
+    else setThen(() => next);
+  };
   const guard = useRef<Leave | null>(null);
   useEffect(() => {
     guard.current = leave;
@@ -39,6 +46,7 @@ export function useSaveChanges({
           type="button"
           disabled={saving}
           onClick={() => {
+            released.current = true;
             setThen(null);
             then();
           }}

@@ -6,6 +6,7 @@ import type { ConductCategory } from '../../api/index.js';
 import { restoreCategory } from '../../api/client.js';
 import { TierBadge } from '../parts.js';
 import { useConduct } from '../useConduct.js';
+import { stepDownRule } from './StepDown.js';
 import { CategoryDialog } from './CategoryDialog.js';
 
 /** The categories of writeup on Conduct's page of Settings: each in use, then those retired. */
@@ -26,14 +27,15 @@ export function CategoriesSection() {
       </div>
       <DataState data={overview} error={error} retry={refresh}>
         {(overview) => {
-          const count = (id: string) => overview.writeups.filter((w) => w.categoryId === id).length;
+          const count = (id: string) => overview.categoryCounts[id] ?? 0;
           return (
             <div className="table-wrap">
-              <table className="conduct-table">
+              <table className="conduct-table conduct-category-table">
                 <thead>
                   <tr>
                     <th>Category</th>
                     <th>Starts at</th>
+                    <th>Step down</th>
                     <th>Writeups</th>
                     <th>
                       <span className="sr-only">Change</span>
@@ -46,7 +48,17 @@ export function CategoriesSection() {
                       key={category.id}
                       className={category.retired ? 'conduct-retired' : undefined}
                     >
-                      <td>{category.name}</td>
+                      <td>
+                        {category.name}
+                        <div className="conduct-category-details">
+                          {category.retired ? (
+                            <span className="muted">Retired</span>
+                          ) : (
+                            <TierBadge tier={category.startTier} />
+                          )}
+                          <span className="conduct-note">{stepDownRule(category.stepDown)}</span>
+                        </div>
+                      </td>
                       <td>
                         {category.retired ? (
                           <span className="muted">Retired</span>
@@ -54,6 +66,7 @@ export function CategoriesSection() {
                           <TierBadge tier={category.startTier} />
                         )}
                       </td>
+                      <td>{stepDownRule(category.stepDown)}</td>
                       <td>{count(category.id)}</td>
                       <td className="cell-end">
                         {category.retired ? (
@@ -87,6 +100,7 @@ export function CategoriesSection() {
         <CategoryDialog
           category={open === 'new' ? undefined : open}
           close={() => setOpen(undefined)}
+          people={overview?.people ?? []}
           saved={take}
         />
       )}

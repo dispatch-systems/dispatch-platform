@@ -1,7 +1,7 @@
 //! What the page reads in one answer: the categories, the people writeups are for, every
 //! writeup and where each person stands, each writeup's person as the directory knows them now.
 use super::{categories, standing, writeups};
-use crate::api::types::{ConductOverview, ConductPerson, ConductWriteup};
+use crate::api::types::{ConductDriver, ConductOverview, ConductPerson, ConductWriteup};
 use chrono::NaiveDate;
 use dispatch_core::{
     Error, Result, State,
@@ -10,7 +10,7 @@ use dispatch_core::{
     foundation::clock,
     manifest::people::{self, Everyone},
 };
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Today where the DSP is.
 fn day(c: &Context) -> Result<NaiveDate> {
@@ -72,14 +72,31 @@ pub(crate) fn read(store: &Store, state: &State, c: &Context) -> Result<ConductO
         dispatch_core::foundation::names::compare(&a.name, &b.name)
             .then_with(|| a.code.cmp(&b.code))
     });
+    let mut drivers: BTreeMap<String, ConductDriver> = BTreeMap::new();
+    let mut category_counts = BTreeMap::new();
+    for writeup in &writeups {
+        *category_counts
+            .entry(writeup.category_id.clone())
+            .or_default() += 1;
+        let driver = drivers
+            .entry(writeup.person.clone())
+            .or_insert_with(|| ConductDriver {
+                person: writeup.person.clone(),
+                count: 0,
+                latest_on: writeup.written_on.clone(),
+                awaiting_signature: false,
+            });
+        driver.count += 1;
+        driver.awaiting_signature |= writeup.signed_on.is_none();
+    }
     let worked = standing::work_out(&categories, &writeups, today);
     Ok(ConductOverview {
         today: today.to_string(),
         standings: worked.standings,
-        stood_before: worked.stood_before,
+        drivers: drivers.into_values().collect(),
+        category_counts,
         categories,
         people,
-        writeups,
     })
 }
 
@@ -94,7 +111,7 @@ pub(crate) fn writeup(store: &Store, state: &State, dsp: &str, id: &str) -> Resu
 
 /// The person a writeup's `code` names now: whoever kept their IDs once merged, or, once the
 /// directory knows nobody by it, the name the writeup printed.
-fn now(everyone: &Everyone, code: &str, written: &str) -> ConductPerson {
+pub(super) fn now(everyone: &Everyone, code: &str, written: &str) -> ConductPerson {
     everyone.person(code).map_or_else(
         || ConductPerson {
             code: code.to_owned(),

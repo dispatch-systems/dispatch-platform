@@ -30,12 +30,11 @@ pub(crate) fn work_out(
     writeups: &[ConductWriteupRow],
     today: NaiveDate,
 ) -> Worked {
-    let step_of = |category: &str| {
-        categories
-            .iter()
-            .find(|c| c.id == category)
-            .and_then(|c| c.step_down)
-    };
+    let steps: BTreeMap<_, _> = categories
+        .iter()
+        .map(|c| (c.id.as_str(), c.step_down))
+        .collect();
+    let step_of = |category: &str| steps.get(category).copied().flatten();
     let mut records: BTreeMap<(&str, &str), (Held, &ConductWriteupRow)> = BTreeMap::new();
     let mut stood_before = BTreeMap::new();
     // The oldest first, the order they were written in.
@@ -43,6 +42,9 @@ pub(crate) fn work_out(
         let Ok(on) = NaiveDate::parse_from_str(&writeup.written_on, "%Y-%m-%d") else {
             continue;
         };
+        if on > today {
+            continue;
+        }
         let key = (writeup.person.as_str(), writeup.category_id.as_str());
         let stood = records
             .get(&key)
@@ -70,6 +72,8 @@ pub(crate) fn work_out(
                 latest_on: latest.written_on.clone(),
                 steps_down_on: next.map(|(on, _)| on.to_string()),
                 steps_down_to: next.and_then(|(_, to)| to),
+                latest_final_kind: latest.final_kind,
+                latest_suspension: latest.suspension.clone(),
             })
         })
         .collect();
