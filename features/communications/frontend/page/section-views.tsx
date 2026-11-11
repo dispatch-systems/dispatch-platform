@@ -1,15 +1,11 @@
 import type { ReactNode } from 'react';
 import { History, Route } from 'lucide-react';
-import type {
-  Communications,
-  CommunicationsWorkspace,
-  Conversation,
-  Writing,
-} from '../../api/index.js';
+import type { Communications, CommunicationsWorkspace, Conversation } from '../../api/index.js';
 import { SlackLogo } from '../../../slack/frontend/index.js';
 import { places } from '../conversations/party.js';
 import type { Target } from '../conversations/target.js';
 import type { Section } from '../inbox/sections.js';
+import type { Listing } from '../inbox/listing.js';
 import { ContactList } from '../slack/ContactList.js';
 import { TextContactList } from '../texting/TextContactList.js';
 import { RoutesBoard } from '../todays-routes/RoutesBoard.js';
@@ -41,7 +37,10 @@ export type RoutesShown = {
 };
 
 /** What a section's list is drawn with. */
-export type ListContext = {
+export type ListContext = Pick<
+  Listing,
+  'open' | 'typing' | 'timeZone' | 'now' | 'warm' | 'done'
+> & {
   inbox: Communications;
   /** What's typed in Search, trimmed. */
   typed: string;
@@ -51,18 +50,10 @@ export type ListContext = {
   working: readonly CommunicationsWorkspace[];
   /** The conversation open, as last read. */
   current?: Conversation;
-  /** What's open: a conversation or a group, by its ID. */
-  open?: string;
-  typing: readonly Writing[];
-  timeZone: string;
-  now: number;
   /** Opens a conversation, or starts one. */
   reach: (target: Target) => Promise<void>;
   /** Shows a conversation as the page's own writes left it. */
   show: (conversation: Conversation) => void;
-  /** Reads a conversation before it's opened, as its row is pointed at or reached. */
-  warm: (id: string) => void;
-  done: (conversation: Conversation) => void;
   routes: RoutesShown;
 };
 

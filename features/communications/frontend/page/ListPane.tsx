@@ -1,14 +1,9 @@
 import { useState } from 'react';
-import type {
-  Communications,
-  CommunicationsWorkspace,
-  Conversation,
-  Group,
-  Writing,
-} from '../../api/index.js';
+import type { Communications, CommunicationsWorkspace, Conversation } from '../../api/index.js';
 import { SearchInput } from '../../../../core/shell/frontend/ui/index.js';
 import type { Target } from '../conversations/target.js';
 import { ConversationList } from '../inbox/ConversationList.js';
+import type { Listing } from '../inbox/listing.js';
 import { waitingIn, type Row } from '../inbox/inbox.js';
 import { groupsSection, lists, sectionNamed, type Section } from '../inbox/sections.js';
 import { Count } from '../shared/Count.js';
@@ -44,7 +39,7 @@ export function ListPane({
   show,
   routes,
   ...listing
-}: {
+}: Listing & {
   inbox: Communications;
   /** Today's Routes as the page reads it. */
   routes: RoutesShown;
@@ -73,16 +68,6 @@ export function ListPane({
   reach: (target: Target) => Promise<void>;
   /** Shows a conversation as the page's own writes left it. */
   show: (conversation: Conversation) => void;
-  /** What's open: a conversation or a group, by its ID. */
-  open?: string;
-  typing: readonly Writing[];
-  timeZone: string;
-  now: number;
-  select: (id: string) => void;
-  warm: (id: string) => void;
-  openGroup: (id: string) => void;
-  done: (conversation: Conversation) => void;
-  doneGroup: (group: Group) => void;
 }) {
   const [contacting, setContacts] = useState(false);
   const [typed, setTyped] = useState('');

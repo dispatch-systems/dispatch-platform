@@ -99,24 +99,19 @@ export function runs(
     const current = days.at(-1)!;
     const by = writer(message);
     const run = current.runs.at(-1);
+    const first = days.length === 1 && current.runs.length === 0;
     if (run?.writer === by && message.at - run.messages.at(-1)!.at < PAUSE_MS)
       run.messages.push(message);
     else
       current.runs.push({
-        key:
-          days.length === 1 && current.runs.length === 0 && origins
-            ? origins.origin.id
-            : message.id,
-        origin:
-          days.length === 1 && current.runs.length === 0 && origins ? origins.origin : message,
+        key: first && origins ? origins.origin.id : message.id,
+        origin: first && origins ? origins.origin : message,
         before: run?.messages.at(-1) ?? (days.length === 1 ? origins?.beforeOrigin : undefined),
         continued: false,
         writer: by,
         messages: [message],
         sentBefore:
-          run?.origin.sender ??
-          run?.sentBefore ??
-          (days.length === 1 && !current.runs.length ? origins?.sentBeforeOrigin : undefined),
+          run?.origin.sender ?? run?.sentBefore ?? (first ? origins?.sentBeforeOrigin : undefined),
       });
   }
   const last = days.at(-1)?.runs.at(-1);
