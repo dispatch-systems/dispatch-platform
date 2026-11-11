@@ -23,12 +23,23 @@ export function installFeatures(features: readonly FrontendFeature[]) {
   installed = features;
 }
 /** Installs only manifests loaded for the DSP whose view the app just admitted. */
-export function installCustomFeatures(
-  features: readonly FrontendFeature[],
-  order?: (features: readonly FrontendFeature[]) => readonly FrontendFeature[],
-) {
+export function installCustomFeatures(features: readonly FrontendFeature[]) {
   customNames = new Set(features.map((feature) => feature.name));
-  installed = order ? order([...publicFeatures, ...features]) : publicFeatures;
+  if (!features.length) {
+    installed = publicFeatures;
+    return;
+  }
+  const page = (feature: FrontendFeature) =>
+    featureCatalog.find((entry) => entry.kind === 'page' && entry.id === feature.name);
+  const pages = [...publicFeatures.filter(page), ...features];
+  pages.sort((a, b) => {
+    const place = (feature: FrontendFeature) => {
+      const entry = page(feature);
+      return entry?.kind === 'page' ? (entry.place ?? 65535) : 65535;
+    };
+    return place(a) - place(b) || a.name.localeCompare(b.name);
+  });
+  installed = [...pages, ...publicFeatures.filter((feature) => !page(feature))];
 }
 /** Every owner's manifest, in the order the owners are listed. */
 export const manifests = () => installed;

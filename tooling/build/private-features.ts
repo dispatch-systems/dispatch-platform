@@ -56,6 +56,22 @@ export function privateFeatures(directory: string): Plugin {
                 }
               : {}),
             output: {
+              codeSplitting: {
+                groups: [
+                  {
+                    name(id) {
+                      const feature = featureOf(id);
+                      return feature
+                        ? `custom-${feature.name.replaceAll('_', '-')}`
+                        : platform(id)
+                          ? 'owner-runtime'
+                          : null;
+                    },
+                    priority: 50,
+                    entriesAware: true,
+                  },
+                ],
+              },
               chunkFileNames(chunk) {
                 const audience = audienceOf([...chunk.moduleIds, chunk.facadeModuleId ?? '']);
                 if (audience?.owner) return `assets/custom-${audience.owner}-[name]-[hash].js`;
@@ -65,8 +81,7 @@ export function privateFeatures(directory: string): Plugin {
                 )?.[1];
                 // Rolldown can name shared public dependencies after their private entry
                 // importers. Those importer names must not escape through public URLs.
-                if (chunk.name.includes('custom-') || chunk.name.includes('~'))
-                  return 'assets/shared-[hash].js';
+                if (chunk.name.includes('custom-')) return 'assets/shared-[hash].js';
                 return `assets/${chunk.name === 'frontend' && owner ? owner : '[name]'}-[hash].js`;
               },
               assetFileNames(asset) {
