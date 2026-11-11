@@ -41,7 +41,7 @@ export function privateFeatures(directory: string): Plugin {
           rolldownOptions: {
             // These entries are imported by server-supplied URLs, so the public graph does
             // not reference their exports. Keep the manifests and catalogs they expose.
-            preserveEntrySignatures: 'exports-only',
+            preserveEntrySignatures: 'allow-extension',
             ...(features.length
               ? {
                   input: {
@@ -56,6 +56,7 @@ export function privateFeatures(directory: string): Plugin {
                 }
               : {}),
             output: {
+              strictExecutionOrder: true,
               codeSplitting: {
                 groups: [
                   {
