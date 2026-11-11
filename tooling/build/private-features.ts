@@ -41,7 +41,7 @@ export function privateFeatures(directory: string): Plugin {
           rolldownOptions: {
             // These entries are imported by server-supplied URLs, so the public graph does
             // not reference their exports. Keep the manifests and catalogs they expose.
-            preserveEntrySignatures: 'allow-extension',
+            preserveEntrySignatures: 'exports-only',
             ...(features.length
               ? {
                   input: {
@@ -56,26 +56,6 @@ export function privateFeatures(directory: string): Plugin {
                 }
               : {}),
             output: {
-              strictExecutionOrder: true,
-              codeSplitting: {
-                groups: [
-                  {
-                    name(id) {
-                      const feature = featureOf(id);
-                      return feature
-                        ? `custom-${feature.name.replaceAll('_', '-')}`
-                        : platform(id)
-                          ? 'owner-runtime'
-                          : null;
-                    },
-                    priority: 50,
-                    entriesAware: true,
-                    // Group private modules themselves; their public dependencies keep
-                    // the normal shared graph rather than inheriting this private group.
-                    includeDependenciesRecursively: false,
-                  },
-                ],
-              },
               chunkFileNames(chunk) {
                 const audience = audienceOf([...chunk.moduleIds, chunk.facadeModuleId ?? '']);
                 if (audience?.owner) return `assets/custom-${audience.owner}-[name]-[hash].js`;
