@@ -894,3 +894,101 @@ fn employee_and_daily_names_use_first_last_for_search_and_pagination() {
         vec!["Ana Zulu", "Justin Allen Jr", "Mateo de la Cruz"]
     );
 }
+
+#[tokio::test]
+async fn cancelled_live_staging_evicts_a_read_started_during_its_commit()
+-> dispatch_core::Result<()> {
+    use dispatch_core::{
+        State,
+        server::cache::{DataDomain, Evicted, Scope},
+    };
+    use std::sync::mpsc;
+    #[derive(Debug)]
+    struct Finished(tokio::sync::oneshot::Sender<()>);
+    impl Drop for Finished {
+        fn drop(&mut self) {
+            // Dropping a completed worker result, after the async caller has left.
+            let (replacement, _) = tokio::sync::oneshot::channel();
+            let _ = std::mem::replace(&mut self.0, replacement).send(());
+        }
+    }
+    install();
+    let (_root, db, dsp) = bootstrapped();
+    let config = db.config.clone();
+    drop(db);
+    let state = State::new(config)?;
+    let read = dispatch_timecard::FEATURE.cached.iter().find(|cached| {
+        matches!(&cached.evicted, Evicted::By(domains) if domains.contains(&DataDomain::LIVE))
+    }).expect("Timecard declares a cached live read").read;
+    let scope = Scope::tenant(read, dsp.clone());
+    let at = dsp.clone();
+    state
+        .run_bookkeeping(move |db| db.dsp(&at)?.set("live-staging-probe", json!(0)))
+        .await?;
+    let (began, writing) = tokio::sync::oneshot::channel();
+    let (commit, wait_commit) = mpsc::channel();
+    let (finished, completion) = tokio::sync::oneshot::channel();
+    let writer = tokio::spawn({
+        let (state, at) = (state.clone(), dsp.clone());
+        async move {
+            state
+                .run_live_staging(at.clone(), move |db| {
+                    let data = db.dsp(&at)?;
+                    data.transaction(|| {
+                        data.set("live-staging-probe", json!(1))?;
+                        let _ = began.send(());
+                        let _ = wait_commit.recv();
+                        Ok(())
+                    })?;
+                    Ok(Finished(finished))
+                })
+                .await
+        }
+    });
+    writing.await.unwrap();
+    let shared = state.transition.try_read().is_ok();
+    if !shared {
+        commit.send(()).unwrap();
+        drop(writer.await.unwrap()?);
+        panic!("live staging blocked foreground readers");
+    }
+    let (reading, started) = tokio::sync::oneshot::channel();
+    let (finish_read, wait_read) = mpsc::channel();
+    let reader = tokio::spawn({
+        let (state, at, scope) = (state.clone(), dsp.clone(), scope.clone());
+        let cache = state.clone();
+        async move {
+            state
+                .read(move |db| {
+                    cache.read_cache.read(scope, "day".into(), 1, || {
+                        let before = db.dsp(&at)?.setting("live-staging-probe", json!(-1))?;
+                        let _ = reading.send(());
+                        let _ = wait_read.recv();
+                        Ok(before)
+                    })
+                })
+                .await
+        }
+    });
+    started.await.unwrap();
+    writer.abort();
+    assert!(writer.await.unwrap_err().is_cancelled());
+    commit.send(()).unwrap();
+    finish_read.send(()).unwrap();
+    assert_eq!(reader.await.unwrap()?, json!(0));
+    completion.await.unwrap();
+    let cache = state.clone();
+    let after = state
+        .read(move |db| {
+            cache.read_cache.read(scope, "day".into(), 1, || {
+                db.dsp(&dsp)?.setting("live-staging-probe", json!(-1))
+            })
+        })
+        .await?;
+    assert_eq!(
+        after,
+        json!(1),
+        "a cancelled save's worker must drain and evict the late cached read"
+    );
+    Ok(())
+}
