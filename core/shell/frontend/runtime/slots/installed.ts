@@ -15,13 +15,20 @@ export interface FrontendFeature {
 
 let installed: readonly FrontendFeature[] = [];
 let publicFeatures: readonly FrontendFeature[] = [];
+let platformInstalled: readonly FrontendFeature[] = [];
 let customNames = new Set<string>();
 /** Called once by the app, before the first render, with every owner's manifest. */
 export function installFeatures(features: readonly FrontendFeature[]) {
   publicFeatures = features;
   customNames = new Set();
   installed = features;
+  platformInstalled = features;
 }
+/** Platform slots have their own audience and never install DSP pages or permissions. */
+export function installPlatformFeatures(features: readonly FrontendFeature[]) {
+  platformInstalled = [...publicFeatures, ...features];
+}
+export const platformManifests = () => platformInstalled;
 /** Installs only manifests loaded for the DSP whose view the app just admitted. */
 export function installCustomFeatures(features: readonly FrontendFeature[]) {
   customNames = new Set(features.map((feature) => feature.name));

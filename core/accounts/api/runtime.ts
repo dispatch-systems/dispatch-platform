@@ -125,18 +125,30 @@ const recoveryCodes = z.object({
 const passkeyOptions = z.object({
   publicKey: z.looseObject({ challenge: filled }),
 });
-export const sessionSchema = z.object({
-  user: userSchema,
-  csrf: filled,
-  dsps: z.array(dspSummary),
-  development: z.boolean(),
-  environment,
-  release: text,
-  providerMode,
-  source: z.object({ version: z.nullable(text), commit: z.nullable(text) }),
-  security: securityStatus,
-  readOnly: z.boolean(),
-}) satisfies z.ZodMiniType<SessionView>;
+export const sessionSchema = z
+  .object({
+    user: userSchema,
+    csrf: filled,
+    dsps: z.array(dspSummary),
+    platformFrontend: z.optional(filled),
+    development: z.boolean(),
+    environment,
+    release: text,
+    providerMode,
+    source: z.object({ version: z.nullable(text), commit: z.nullable(text) }),
+    security: securityStatus,
+    readOnly: z.boolean(),
+  })
+  .check(
+    z.refine(
+      (session) =>
+        !session.platformFrontend ||
+        (session.user.platformOwner &&
+          (!session.security.required || session.security.verified) &&
+          (session.platformFrontend === '/custom/platform.js' ||
+            /^\/assets\/owner-[A-Za-z0-9_.-]+\.js$/.test(session.platformFrontend))),
+    ),
+  ) satisfies z.ZodMiniType<SessionView>;
 const viewRole = z.object({ id: text, name: text, owner: z.boolean() });
 const customFeatures = z.object({
   catalog: z.array(

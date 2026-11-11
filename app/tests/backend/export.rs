@@ -27,6 +27,7 @@ const COLLECTIONS: &str = "core/collection/api/generated/collections.ts";
 /// The kinds of record an audit event names, core's and the features', which the audit
 /// log's reply check accepts.
 const AUDIT_SUBJECTS: &str = "core/tenancy/api/generated/audit-subjects.ts";
+const PLATFORM_LABELS: &str = "core/platform_owner/api/generated/custom-labels.ts";
 /// The kinds of collected data that name people, and the sources of their IDs, in their
 /// order, as lists of people show them. Only those lists import it, with the icons it imports.
 const PEOPLE_DATA: &str = "core/manifest/api/generated/people-data.ts";
@@ -84,6 +85,7 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
     bindings.insert(CAPABILITIES.into(), capabilities());
     bindings.insert(COLLECTIONS.into(), collections());
     bindings.insert(AUDIT_SUBJECTS.into(), audit_subjects());
+    bindings.insert(PLATFORM_LABELS.into(), platform_labels());
     bindings.insert(PEOPLE_DATA.into(), people_data());
     bindings.insert(PEOPLE_FEATURES.into(), people_features());
     bindings.insert(EXPOSES.into(), exposes());
@@ -158,6 +160,47 @@ fn audit_subjects() -> String {
     generated(
         "the audit log's subjects",
         &[("auditSubjects", kinds.into())],
+    )
+}
+
+/// Labels the platform owner needs even when no DSP view is open.
+fn platform_labels() -> String {
+    use dispatch_core::tenancy::catalog::{self, Kind};
+    let catalog = catalog::catalog();
+    let features: BTreeMap<_, _> = catalog
+        .iter()
+        .filter(|entry| entry.owner.is_some())
+        .map(|entry| {
+            let label = if let Kind::Sub(page) = entry.kind {
+                format!(
+                    "{} · {}",
+                    catalog.iter().find(|entry| entry.id == page).unwrap().label,
+                    entry.label
+                )
+            } else {
+                entry.label.to_owned()
+            };
+            (entry.id, label)
+        })
+        .collect();
+    let permissions: BTreeMap<_, _> = dispatch_core::manifest::registry()
+        .features
+        .iter()
+        .filter(|feature| feature.owner.is_some())
+        .flat_map(|feature| {
+            feature
+                .permissions
+                .iter()
+                .chain(feature.subfeatures.iter().flat_map(|sub| sub.permissions))
+        })
+        .map(|permission| (permission.id, permission.label))
+        .collect();
+    generated(
+        "custom declarations for the platform owner",
+        &[
+            ("featureLabels", serde_json::json!(features)),
+            ("permissionLabels", serde_json::json!(permissions)),
+        ],
     )
 }
 

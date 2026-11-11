@@ -56,6 +56,15 @@ fn session(db: &Store, user: &User, _: &Input) -> Result<Reply> {
         } else {
             summaries(db, user)?
         },
+        platform_frontend: (user.user.platform_owner
+            && (!security.required || security.verified)
+            && crate::manifest::registry()
+                .features
+                .iter()
+                .any(|feature| feature.owner.is_some()))
+        .then(|| crate::server::http::custom_frontend(user.state, "platform"))
+        .flatten()
+        .map(|(url, _)| url),
         development: db.config.development,
         environment: db.config.environment,
         release: db.config.release.clone(),

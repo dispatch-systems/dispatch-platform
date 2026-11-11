@@ -18,6 +18,7 @@ const inventories = new Set([
   'core/manifest/api/generated/PeopleKind.ts',
   'core/manifest/api/generated/PeopleSource.ts',
   'core/platform_owner/api/runtime.ts',
+  'core/platform_owner/api/generated/custom-labels.ts',
 ]);
 
 /** Protect source requests as well as release chunks; Vite otherwise serves /@fs publicly. */
@@ -36,6 +37,7 @@ export function privateSources(directory: string) {
       return { platform: true };
     }
     const entry = /^\/(?:custom\/([^/]+)\.js|@id\/__x00__dispatch-custom:([^/]+))$/.exec(route);
+    if (route === '/@id/__x00__dispatch-custom-platform') return { platform: true };
     if (entry) {
       const owner = owners.get(entry[1] ?? entry[2]!);
       return owner ? { owner } : { platform: true };

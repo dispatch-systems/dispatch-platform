@@ -30,6 +30,7 @@ import { getSession } from '../../core/shell/frontend/runtime/endpoints.js';
 import { cancelPrefetches } from '../../core/shell/frontend/runtime/prefetch.js';
 import { verified } from '../../core/shell/frontend/runtime/access-recovery.js';
 import { clearCustomFeatures, prepareCustomFeatures } from './custom-features.js';
+import { clearPlatformFeatures, preparePlatformFeatures } from './platform-features.js';
 
 type Session = SessionView;
 
@@ -66,6 +67,7 @@ export function useAppAdmission(
       cancelPrefetches();
       credentials(activeCsrf);
       clearCustomFeatures();
+      clearPlatformFeatures();
       setView(undefined);
       setSwitching(
         Boolean(parseHash(window.location.hash).dspId && navigationState.current.session),
@@ -76,6 +78,22 @@ export function useAppAdmission(
         firstSession.current = undefined;
         const next = await reading;
         if (request !== sessionRequest.current) return;
+        // A signed-out document cannot include an owner's private page sources in its
+        // CSP. Signing in or completing MFA needs a fresh document before admission.
+        if (
+          afterLogin &&
+          (!next.security.required || next.security.verified) &&
+          (next.platformFrontend || next.dsps.some((dsp) => dsp.customFeatures?.length))
+        ) {
+          location.reload();
+          return;
+        }
+        const installPlatform = await preparePlatformFeatures(
+          next,
+          () => request === sessionRequest.current,
+        );
+        if (request !== sessionRequest.current) return;
+        installPlatform?.();
         credentials(next.csrf);
         setView(undefined);
         setSession(next);
@@ -110,6 +128,7 @@ export function useAppAdmission(
     return () => {
       // eslint-disable-next-line react-hooks/exhaustive-deps -- the count ends whatever request is in flight by then
       sessionRequest.current++;
+      clearPlatformFeatures();
     };
   }, [load, warmAuth]);
   useEffect(() => {
@@ -280,6 +299,7 @@ export function useAppAdmission(
       cancelPrefetches();
       credentials('');
       clearCustomFeatures();
+      clearPlatformFeatures();
       setSession(null);
       setView(undefined);
       setSwitching(false);
@@ -316,6 +336,7 @@ export function useAppAdmission(
     cancelPrefetches();
     credentials('');
     clearCustomFeatures();
+    clearPlatformFeatures();
     setSession(null);
     setView(undefined);
     navigate('');

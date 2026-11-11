@@ -216,6 +216,10 @@ pub struct SessionResponse {
     pub user: PublicUser,
     pub csrf: String,
     pub dsps: Vec<DspSummary>,
+    /// Private platform slots and labels, sent only to a verified platform owner.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub platform_frontend: Option<String>,
     pub development: bool,
     pub environment: Environment,
     pub release: String,

@@ -6,6 +6,7 @@ import { featureAt, featureLocations } from '../shared/features.js';
 type Audience = { owner?: string; platform?: boolean; feature?: string; styles?: string[] };
 const ENTRY = '/custom/';
 const VIRTUAL = '\0dispatch-custom:';
+const PLATFORM = '\0dispatch-custom-platform';
 const normalized = (file: string) => file.replaceAll('\\', '/').split('?')[0]!;
 
 /** Custom entries are independent build inputs, never an import map in the public app. */
@@ -22,7 +23,8 @@ export function privateFeatures(directory: string): Plugin {
     return featureAt(relative)?.owner ? featureAt(relative) : undefined;
   };
   const platform = (id: string) =>
-    /\/core\/(?:platform_owner\/api\/runtime\.ts|tenancy\/api\/generated\/audit-subjects\.ts)$/.test(
+    id === PLATFORM ||
+    /\/core\/(?:platform_owner\/api\/(?:runtime\.ts|generated\/custom-labels\.ts)|tenancy\/api\/generated\/audit-subjects\.ts)$/.test(
       normalized(id),
     );
   const audienceOf = (ids: readonly string[]): Audience | undefined => {
@@ -46,6 +48,7 @@ export function privateFeatures(directory: string): Plugin {
               ? {
                   input: {
                     index: path.join(root, 'app/frontend/index.html'),
+                    'owner-platform': `${ENTRY}platform.js`,
                     ...Object.fromEntries(
                       features.map((feature) => [
                         `custom-${feature.name.replaceAll('_', '-')}`,
@@ -96,11 +99,27 @@ export function privateFeatures(directory: string): Plugin {
       };
     },
     resolveId(id) {
+      if (features.length && id === `${ENTRY}platform.js`) return PLATFORM;
       if (id.startsWith(ENTRY) && id.endsWith('.js') && byName.has(id.slice(ENTRY.length, -3)))
         return VIRTUAL + id.slice(ENTRY.length, -3);
       return null;
     },
     load(id) {
+      if (id === PLATFORM) {
+        const frontends = features.filter((feature) =>
+          fs.existsSync(path.join(root, feature.dir, 'frontend/feature.ts')),
+        );
+        return (
+          frontends
+            .map(
+              (feature, index) =>
+                `import { feature as feature${index} } from ${JSON.stringify(path.join(root, feature.dir, 'frontend/feature.ts'))};`,
+            )
+            .join('\n') +
+          `\nexport const features = [${frontends.map((_, index) => `feature${index}`).join(',')}];\n` +
+          `export { featureLabels, permissionLabels } from ${JSON.stringify(path.join(root, 'core/platform_owner/api/generated/custom-labels.ts'))};\n`
+        );
+      }
       if (!id.startsWith(VIRTUAL)) return null;
       const feature = byName.get(id.slice(VIRTUAL.length))!;
       const from = path.join(root, feature.dir, 'frontend/feature.ts');
@@ -135,7 +154,9 @@ export function privateFeatures(directory: string): Plugin {
         if (file.type === 'chunk') {
           const entry = file.facadeModuleId?.startsWith(VIRTUAL)
             ? file.facadeModuleId.slice(VIRTUAL.length)
-            : undefined;
+            : file.facadeModuleId === PLATFORM
+              ? 'platform'
+              : undefined;
           mark(file.fileName, { ...audience, ...(entry ? { feature: entry } : {}) });
           for (const css of file.viteMetadata?.importedCss ?? []) mark(css, audience);
         } else mark(file.fileName, audience);
@@ -154,7 +175,9 @@ export function privateFeatures(directory: string): Plugin {
           if (to?.platform && !from && file.dynamicImports.includes(dependency)) continue;
           if (
             to &&
-            (!from || (to.platform && !from.platform) || (to.owner && from.owner !== to.owner))
+            (!from ||
+              (to.platform && !from.platform) ||
+              (to.owner && !from.platform && from.owner !== to.owner))
           )
             throw new Error(
               `${file.fileName} imports an asset outside its audience: ${dependency}`,

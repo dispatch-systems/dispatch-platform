@@ -22,6 +22,12 @@ test('the dashboard build keeps custom entries, lazy code, styles and resources 
      window.openOwner = () => import(${JSON.stringify(path.join(root, 'core/platform_owner/api/runtime.ts'))});`,
   );
   write('core/platform_owner/api/runtime.ts', 'export const label = "PLATFORM_ONLY_LABEL";');
+  write(
+    'core/platform_owner/api/generated/custom-labels.ts',
+    `
+    export const featureLabels = { a11_alpha: 'ALPHA_PRIVATE_LABEL', b22_beta: 'BETA_PRIVATE_LABEL' };
+    export const permissionLabels = { 'a11_alpha.view': 'View alpha' };`,
+  );
   for (const [owner, name] of [
     ['a11', 'alpha'],
     ['b22', 'beta'],
@@ -56,7 +62,12 @@ test('the dashboard build keeps custom entries, lazy code, styles and resources 
   const privateAssets = JSON.parse(
     fs.readFileSync(path.join(out, 'private-assets.json'), 'utf8'),
   ) as Record<string, { owner?: string; platform?: boolean; feature?: string; styles?: string[] }>;
-  const entries = Object.entries(privateAssets).filter(([, asset]) => asset.feature);
+  const entries = Object.entries(privateAssets).filter(([, asset]) => asset.owner && asset.feature);
+  const platformEntry = Object.entries(privateAssets).find(
+    ([, asset]) => asset.feature === 'platform',
+  );
+  assert(platformEntry?.[1].platform);
+  assert.match(platformEntry[0], /^\/assets\/owner-/);
   assert.deepEqual(entries.map(([, asset]) => asset.feature).sort(), [
     'a11_alpha',
     'a11_records',
@@ -96,8 +107,10 @@ test('the dashboard build keeps custom entries, lazy code, styles and resources 
             fs.readFileSync(path.join(out, file), 'utf8').includes(secret!),
         );
       assert.ok(files.length, `fixture marker ${secret} disappeared`);
-      for (const file of files)
-        assert.equal(privateAssets[`/${file}`]?.owner, owner, `${secret} escaped into ${file}`);
+      for (const file of files) {
+        const audience = privateAssets[`/${file}`];
+        assert(audience?.owner === owner || audience?.platform, `${secret} escaped into ${file}`);
+      }
     }
   }
   for (const file of fs.readdirSync(out, { recursive: true, encoding: 'utf8' })) {
