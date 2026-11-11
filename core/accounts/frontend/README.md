@@ -1,6 +1,6 @@
 # Authentication screens
 
-- `dsp-onboarding/` owns DSP setup, owner invitations, its forms, map and styles.
+- `dsp-onboarding/` owns DSP setup, owner invitations, its forms and styles.
 - `member-profile/` owns member invitations, profile creation, the completion lanyard and the
   pages for an expired or already-accepted invitation link, for the invite page opened without
   one, and for a DSP's address no DSP has.
@@ -8,7 +8,7 @@
 
 `SignedOutScreen` and `InvitationScreen` choose the screen. Screen directories never import
 each other; `app/tests/rules/dashboard-structure.test.ts` enforces that boundary. Shared app and
-UI primitives are allowed. Similar artwork is maintained separately by each screen.
+UI primitives are allowed. Onboarding and member profiles share only the route map, its loader and SVG in `route-map/`; their screen styles remain separate.
 
 Member profile acceptance creates the account without logging in. The only navigation
 data sent to Sign In is an in-memory email and entrance flag in `core/accounts/frontend/sign-in-handoff.ts`.

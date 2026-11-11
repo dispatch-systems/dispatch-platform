@@ -1,7 +1,7 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { useViewportFit } from '../../../shell/frontend/ui/useViewportFit.js';
 import { Brand } from '../../../shell/frontend/runtime/Brand.js';
-import { useOnboardingMap } from './map-asset.js';
+import { useRouteMap } from '../route-map/map-asset.js';
 import { OnboardingMap } from './OnboardingMap.js';
 import './onboarding.css';
 
@@ -15,7 +15,7 @@ export function OnboardingLayout({
   children: ReactNode;
 }) {
   const fit = useViewportFit();
-  const { desktop, ready } = useOnboardingMap();
+  const { desktop, ready } = useRouteMap();
   const heading = useRef<HTMLHeadingElement>(null);
   const previous = useRef(title);
   useEffect(() => {

@@ -82,20 +82,24 @@ const doors = (directory: string) => [
 
 test('sign-in, DSP onboarding and member profiles own their screen dependencies', () => {
   const accounts = path.resolve('core/accounts/frontend');
-  // The one module the screens share: where a signed-in user goes next.
+  // The sign-in handoff is shared; onboarding and profiles also share only their route map.
   const shared = /[\\/]sign-in-handoff\.(js|ts)$/;
+  const mapEntries = ['RouteMap.tsx', 'map-asset.ts'].map((file) =>
+    path.join(accounts, 'route-map', file),
+  );
   const screens = ['sign-in', 'dsp-onboarding', 'member-profile'];
   for (const screen of screens) {
     const directory = path.join(accounts, screen);
     const files = modules.filter(({ file }) => path.resolve(file).startsWith(directory + path.sep));
     assert(files.length > 0, `${screen} must have its own screen directory`);
     for (const { file, dependencies: references } of files) {
-      for (const { specifier, target } of references)
+      for (const { specifier, target, resolved } of references)
         if (target?.startsWith(accounts + path.sep))
           assert(
             target.startsWith(directory + path.sep) ||
-              (shared.test(target) && path.dirname(target) === accounts),
-            `${file} imports ${specifier}; each accounts screen owns its forms, layouts, styles and artwork`,
+              (shared.test(target) && path.dirname(target) === accounts) ||
+              (screen !== 'sign-in' && resolved !== undefined && mapEntries.includes(resolved)),
+            `${file} imports ${specifier}; each accounts screen owns its forms, layouts and styles; only onboarding and profiles share the route map`,
           );
     }
   }

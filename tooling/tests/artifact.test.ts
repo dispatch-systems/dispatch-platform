@@ -173,7 +173,7 @@ test(
     });
     assert.equal(noCompression.headers.get('content-encoding'), null);
     const mapFile = manifest.files.find((file) =>
-      /dashboard\/assets\/onboarding-map-.*\.svg$/.test(file.path),
+      /dashboard\/assets\/route-map-.*\.svg$/.test(file.path),
     )!;
     assert(mapFile, 'onboarding map is shipped as an independent vector asset');
     const map = await fetch(f.env.DISPATCH_ORIGIN + mapFile.path.replace('dashboard', ''), {

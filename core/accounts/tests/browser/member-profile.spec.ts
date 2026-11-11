@@ -14,7 +14,7 @@ test('an expired invitation has its own page that returns to the separate sign-i
   ).toBeVisible();
   await expect(page.getByLabel('First name', { exact: true })).toHaveCount(0);
   await fits(page);
-  expect(assets.filter((url) => /(?:onboarding|member-profile)-map.*\.svg/.test(url))).toEqual([]);
+  expect(assets.filter((url) => /route-map.*\.svg/.test(url))).toEqual([]);
   await page.setViewportSize({ width: 1280, height: 800 });
   await expect(page.locator('.member-profile-map')).toHaveAttribute('data-route', 'cancelled');
   await fits(page);
