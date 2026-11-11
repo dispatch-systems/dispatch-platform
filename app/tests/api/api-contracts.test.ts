@@ -34,6 +34,24 @@ test('generated platform contracts validate real responses', async (t) => {
   const f = await fixture();
   t.after(f.close);
   const owner = await f.client();
+  const platformSession = {
+    ...owner.session,
+    platformFrontend: '/assets/owner-catalog-12345678.js',
+  };
+  assert.deepEqual(await parseApiResponse('/api/session', 'GET', platformSession), platformSession);
+  for (const invalid of [
+    { ...platformSession, user: { ...platformSession.user, platformOwner: false } },
+    {
+      ...platformSession,
+      security: { ...platformSession.security, required: true, verified: false },
+    },
+    { ...platformSession, platformFrontend: 'https://outside.invalid/entry.js' },
+    { ...platformSession, platformFrontend: '/assets/custom-other-entry.js' },
+  ])
+    await assert.rejects(
+      parseApiResponse('/api/session', 'GET', invalid),
+      /^Error: invalid_api_response$/,
+    );
   const dsp = owner.session.dsps.find((d: DspSummary) => d.name === 'Northline Logistics');
   const view = await owner.select(dsp.id);
   const id = `${view.dsp.code}_probe`;

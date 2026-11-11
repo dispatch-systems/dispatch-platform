@@ -5,7 +5,7 @@ import path from 'node:path';
 import { createServer, type ProxyOptions, type ViteDevServer } from 'vite';
 import { demo, fixture } from '../testing/fixture-server.js';
 import { backendProxy } from './backend-paths.js';
-import { mayReadSource, privateSources } from './private-sources.js';
+import { mayReadSource, privateSources, privateSourceGuard } from './private-sources.js';
 
 const previewCookie = (value: string, port: number) =>
   value
@@ -160,6 +160,7 @@ export async function startPreview({
       configFile: path.join(cwd, 'vite.config.ts'),
       root: path.join(cwd, 'app/frontend'),
       clearScreen: false,
+      plugins: [privateSourceGuard(cwd, `http://127.0.0.1:${app.env.PORT}`)],
       server: {
         host,
         port: address.port,

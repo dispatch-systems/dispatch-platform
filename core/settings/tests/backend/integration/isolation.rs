@@ -27,6 +27,11 @@ static MAINTAINED: Mutex<Option<tokio::sync::mpsc::UnboundedSender<Maintained>>>
 /// Every DSP has it, with one section of the DSP's and one each member has.
 static PROBE: Feature = Feature {
     switch: mandatory("probe", "Probe"),
+    page_sources: &[dispatch_core::manifest::page_source(
+        "probe.images",
+        dispatch_core::manifest::Loads::Images,
+        "https://shared-media.example.test",
+    )],
     settings: &[
         section(
             "probe.limits",
@@ -58,6 +63,10 @@ static PROBE: Feature = Feature {
 // an app feature, without adding a product feature to any build.
 static CUSTOM: Feature = Feature {
     switch: dispatch_core::manifest::custom("nll_probe", "Owner probe", &[]),
+    page_sources: &[
+        dispatch_core::manifest::page_source("nll_probe.images", dispatch_core::manifest::Loads::Images, "https://owner-media.example.test"),
+        dispatch_core::manifest::page_source("nll_probe.calls", dispatch_core::manifest::Loads::Calls, "https://owner-calls.example.test"),
+    ],
     permissions: &[dispatch_core::manifest::perm("nll_probe.view", "View probe", 1).group("Probe").implies(&["sum_probe.view"]).under("sum_probe.view")],
     own_migrations: &[dispatch_core::db::OwnMigrations {
         kind: dispatch_core::db::Kind::DSP,
@@ -90,6 +99,11 @@ static CUSTOM: Feature = Feature {
 }.registered(Some("nll"), "nll_probe");
 static FOREIGN: Feature = Feature {
     switch: dispatch_core::manifest::custom("sum_probe", "Foreign probe", &[]),
+    page_sources: &[dispatch_core::manifest::page_source(
+        "sum_probe.images",
+        dispatch_core::manifest::Loads::Images,
+        "https://foreign-media.example.test",
+    )],
     permissions: &[dispatch_core::manifest::perm(
         "sum_probe.view",
         "Foreign permission",
@@ -209,7 +223,10 @@ impl Server {
             "export const admin = true;",
         )
         .unwrap();
-        private.insert("/assets/owner-runtime.js".into(), json!({"platform":true}));
+        private.insert(
+            "/assets/owner-runtime.js".into(),
+            json!({"platform":true,"feature":"platform"}),
+        );
         std::fs::write(
             dashboard.join("private-assets.json"),
             serde_json::to_vec(&private).unwrap(),
@@ -398,6 +415,12 @@ async fn custom_assets_require_the_owner_session_before_head_or_etag_handling() 
         view: String::new(),
         host: owner.host.clone(),
     };
+    for who in [&owner, &foreign] {
+        let session = server.send("GET", "/api/session", who, None).await;
+        assert!(session.body.get("platformFrontend").is_none());
+    }
+    let session = server.send("GET", "/api/session", &platform, None).await;
+    assert_eq!(session.body["platformFrontend"], "/assets/owner-runtime.js");
     // Both sessions are valid at their own host; metadata never includes the other's IDs,
     // even through a declared permission implication or parent.
     let off_view = server.open(&owner, &north).await;
@@ -440,6 +463,34 @@ async fn custom_assets_require_the_owner_session_before_head_or_etag_handling() 
             )
             .header("cookie", &who.cookie)
     };
+    for (who, own_sources, foreign_sources) in [
+        (&anonymous, false, false),
+        (&owner, true, false),
+        (&foreign, false, true),
+        (&platform, true, true),
+    ] {
+        let document = request(reqwest::Method::GET, "/", who)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(document.status(), 200);
+        let csp = document.headers()["content-security-policy"]
+            .to_str()
+            .unwrap();
+        assert!(csp.contains("https://shared-media.example.test"));
+        assert_eq!(
+            csp.contains("https://owner-media.example.test"),
+            own_sources
+        );
+        assert_eq!(
+            csp.contains("https://owner-calls.example.test"),
+            own_sources
+        );
+        assert_eq!(
+            csp.contains("https://foreign-media.example.test"),
+            foreign_sources
+        );
+    }
     for path in [
         "/assets/custom-nll-entry.js",
         "/assets/custom-nll-lazy.js",
@@ -513,6 +564,74 @@ async fn custom_assets_require_the_owner_session_before_head_or_etag_handling() 
             404
         );
     }
+    assert_eq!(
+        request(reqwest::Method::GET, "/assets/owner-runtime.js", &platform)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        200
+    );
+    // A session awaiting MFA gets neither the private entry nor its CSP origins, even
+    // on /api/session, which itself remains readable to complete verification.
+    server
+        .state
+        .run(|db| {
+            let actor = testing::platform_owner(db);
+            db.directory(None)?.exec(
+                "INSERT INTO authenticator_apps(user_id,secret,created_at) VALUES (?,'sealed',1)",
+                [&actor],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    let gated = request(reqwest::Method::GET, "/api/session", &platform)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(gated.status(), 200);
+    assert!(
+        !gated.headers()["content-security-policy"]
+            .to_str()
+            .unwrap()
+            .contains("https://owner-media.example.test")
+    );
+    let gated: Value = gated.json().await.unwrap();
+    assert_eq!(gated["security"]["required"], true);
+    assert_eq!(gated["security"]["verified"], false);
+    assert!(gated.get("platformFrontend").is_none());
+    assert_eq!(
+        request(reqwest::Method::GET, "/assets/owner-runtime.js", &platform)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        404
+    );
+    let hash = crypto::sha(
+        platform
+            .cookie
+            .strip_prefix("dispatch_session=")
+            .unwrap()
+            .as_bytes(),
+    );
+    server
+        .state
+        .run(move |db| {
+            db.directory(None)?.exec(
+                "INSERT INTO session_security(session_hash,verified_at) VALUES (?,?)",
+                rusqlite::params![hash, db::now()],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    let verified = server.send("GET", "/api/session", &platform, None).await;
+    assert_eq!(
+        verified.body["platformFrontend"],
+        "/assets/owner-runtime.js"
+    );
     assert_eq!(
         request(reqwest::Method::GET, "/assets/owner-runtime.js", &platform)
             .send()

@@ -11,6 +11,7 @@ import {
   type Dispatch,
 } from '../../../core/shell/tests/support/fixtures.js';
 import { capturedMail } from '../../../core/shell/tests/support/mail-support.js';
+import type { AuditPage } from '../../../core/platform_owner/api/index.js';
 
 const OWNER_CODE = 'fscl';
 
@@ -26,8 +27,89 @@ async function custom(page: Page, dispatch: Dispatch, hold = false) {
   const id = `${own.code}_fuel_log`;
   const routeId = `${own.code}-fuel-log`;
   const entry = `/assets/custom-${own.code}-fuel-log-12345678.js`;
+  const platformEntry = '/assets/owner-browser-catalog-12345678.js';
   const style = `/assets/custom-${own.code}-fuel-log-12345678.css`;
   const lazy = `/assets/custom-${own.code}-fuel-page-12345678.js`;
+  let authenticated = false;
+  // Model the server's audience-scoped document policy separately from API admission.
+  await page.route('**/*', async (route) => {
+    if (route.request().resourceType() !== 'document') return route.fallback();
+    const response = await route.fetch();
+    await route.fulfill({
+      response,
+      headers: {
+        ...response.headers(),
+        'content-security-policy': `default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:${authenticated ? ' https://owner-media.example.test' : ''}`,
+      },
+    });
+  });
+  await page.route('**/api/auth/login', async (route) => {
+    const response = await route.fetch();
+    if (response.ok()) authenticated = true;
+    await route.fulfill({ response });
+  });
+  await page.route('https://owner-media.example.test/probe.svg', (route) =>
+    route.fulfill({
+      contentType: 'image/svg+xml',
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>',
+    }),
+  );
+  await page.route('**/api/session', async (route) => {
+    const response = await route.fetch();
+    const session = await response.json();
+    if (response.ok() && session.user.platformOwner) session.platformFrontend = platformEntry;
+    await route.fulfill({ response, json: session });
+  });
+  await page.route(`**${platformEntry}`, (route) =>
+    route.fulfill({
+      contentType: 'text/javascript',
+      body: `export const featureLabels = ${JSON.stringify({ [id]: 'Fuel Log' })};
+      export const permissionLabels = ${JSON.stringify({ [`${id}.view`]: 'View Fuel Log' })};
+      export const features = [{ name: ${JSON.stringify(id)}, platformSlots: async () => ({ slots: {
+        auditWording: { phrases: { ${JSON.stringify(`${id}.recorded`)}: () => ['logged fuel'] } }
+      } }) }];`,
+    }),
+  );
+  await page.route('**/api/platform/audit?*', (route) =>
+    route.fulfill({
+      json: {
+        events: [
+          {
+            id: 2,
+            at: '2026-09-16T14:44:00Z',
+            actorId: 'usr_fixture',
+            actorName: 'Fixture owner',
+            dspId: own.id,
+            dspName: own.name,
+            action: `${id}.recorded`,
+            area: 'collections',
+            detail: '',
+            target: null,
+            ref: null,
+            changes: [],
+          },
+          {
+            id: 1,
+            at: '2026-09-16T14:43:00Z',
+            actorId: 'usr_fixture',
+            actorName: 'Fixture owner',
+            dspId: own.id,
+            dspName: own.name,
+            action: 'dsp.feature_enabled',
+            area: 'settings',
+            detail: id,
+            target: null,
+            ref: null,
+            changes: [{ field: 'permission', from: null, to: `${id}.view` }],
+          },
+        ],
+        total: 2,
+        counts: { collections: 1, settings: 1 },
+        actors: [],
+        dsps: [{ id: own.id, name: own.name }],
+      } satisfies AuditPage,
+    }),
+  );
   const module = `const sourceStyle = document.createElement('style');
     sourceStyle.dataset.viteDevId = '/features/custom/${own.code}/fuel_log/frontend/feature.css';
     sourceStyle.textContent = ':root { --owner-vite-style: 1; }';
@@ -82,14 +164,28 @@ async function custom(page: Page, dispatch: Dispatch, hold = false) {
   return { own, id, entry, lazy, held, module, platform };
 }
 
+const ownerImage = (page: Page) =>
+  page.evaluate(
+    () =>
+      new Promise<boolean>((resolve) => {
+        const image = new Image();
+        image.onload = () => resolve(true);
+        image.onerror = () => resolve(false);
+        image.src = 'https://owner-media.example.test/probe.svg';
+      }),
+  );
+
 test('an owner sees the custom page and role choice while another DSP receives none of its code or names', async ({
   page,
   browser,
   dispatch,
 }) => {
   const feature = await custom(page, dispatch);
-  await login(page);
+  await page.goto('/');
+  expect(await ownerImage(page)).toBe(false);
+  await signIn(page);
   await openDsp(page, 'Northline Logistics');
+  expect(await ownerImage(page)).toBe(true);
   const link = page.getByRole('link', { name: 'Fuel Log', exact: true });
   await expect(link).toBeVisible();
   const loaded = page.waitForResponse(
@@ -214,6 +310,14 @@ test('an owner sees the custom page and role choice while another DSP receives n
     await other.unrouteAll({ behavior: 'ignoreErrors' });
     await context.close();
   }
+  await page.getByRole('button', { name: 'Exit view', exact: true }).click();
+  await page.getByRole('link', { name: 'Audit log', exact: true }).click();
+  await expect(
+    page.getByRole('listitem').filter({ hasText: 'Fixture owner logged fuel' }),
+  ).toBeVisible();
+  await expect(page.getByRole('listitem').filter({ hasText: 'enabled Fuel Log' })).toContainText(
+    'View Fuel Log',
+  );
 });
 
 test('a delayed custom import cannot install its page or styles into the next DSP', async ({
