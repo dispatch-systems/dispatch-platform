@@ -1,7 +1,7 @@
 import { useDeferredValue, useEffect, useState } from 'react';
 import { ArrowLeft, Search, Sparkles } from 'lucide-react';
 import { useTickets } from '../../api/client.js';
-import { hashQuery, replaceHashQuery } from '../../../shell/frontend/runtime/navigation.js';
+import { replaceHashQuery, useHashQuery } from '../../../shell/frontend/runtime/navigation.js';
 import { DataState, Header } from '../../../shell/frontend/ui/index.js';
 import { TicketList } from '../tickets/TicketList.js';
 import { TicketDetail } from '../tickets/TicketDetail.js';
@@ -9,8 +9,11 @@ import { TicketPagination } from '../tickets/TicketPagination.js';
 import { statusLabels } from '../format.js';
 import '../support.css';
 
+/** The ticket the address names. */
+const ticketNamed = (query: URLSearchParams) => query.get('ticket') ?? '';
+
 export function SupportPage() {
-  const [selected, setSelected] = useState(() => hashQuery().get('ticket') ?? '');
+  const [selected, setSelected] = useHashQuery(ticketNamed);
   const [status, setStatus] = useState('');
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search);
@@ -18,11 +21,6 @@ export function SupportPage() {
   useEffect(() => {
     if (selected) window.scrollTo({ top: 0 });
   }, [selected]);
-  useEffect(() => {
-    const changed = () => setSelected(hashQuery().get('ticket') ?? '');
-    window.addEventListener('hashchange', changed);
-    return () => window.removeEventListener('hashchange', changed);
-  }, []);
   const open = (id: string) => {
     setSelected(id);
     replaceHashQuery(id ? { ticket: id } : {});

@@ -1,9 +1,10 @@
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense } from 'react';
 import type { DspView, SessionView } from '../../../../core/accounts/api/index.js';
 import {
   hashQuery,
   replaceHashQuery,
   settingsHash,
+  useHashQuery,
 } from '../../../../core/shell/frontend/runtime/navigation.js';
 import { can } from '../../../../core/shell/frontend/runtime/permissions.js';
 import {
@@ -91,21 +92,16 @@ export function Workspaces({ session, view }: { session: SessionView; view: DspV
 
 type Chosen = { workspace: string; section: string };
 /** The workspace and the section the address names. */
-const named = (): Chosen => ({
-  workspace: hashQuery().get('workspace') ?? '',
-  section: hashQuery().get('section') ?? '',
+const named = (query: URLSearchParams): Chosen => ({
+  workspace: query.get('workspace') ?? '',
+  section: query.get('section') ?? '',
 });
 /**
  * The workspace and the section the address names, followed as it moves, and `choose` to open
  * others, which records them in the address beside what else it names, as Settings' page.
  */
 function useChosen() {
-  const [chosen, setChosen] = useState(named);
-  useEffect(() => {
-    const follow = () => setChosen(named());
-    window.addEventListener('hashchange', follow);
-    return () => window.removeEventListener('hashchange', follow);
-  }, []);
+  const [chosen, setChosen] = useHashQuery(named);
   const choose = (next: Chosen) => {
     const query = hashQuery();
     query.set('workspace', next.workspace);
