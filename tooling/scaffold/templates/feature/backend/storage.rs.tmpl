@@ -49,15 +49,15 @@ impl FromRow for {{pascal}}Item {
 
 /// What {{label}} reads and writes for one DSP.
 pub trait {{pascal}}Store {
-    fn {{name}}_items(&self, dsp: &str) -> Result<Vec<{{pascal}}Item>>;
-    fn add_{{name}}_item(&self, dsp: &str, name: &str) -> Result<{{pascal}}Item>;
+    fn {{codeName}}_items(&self, dsp: &str) -> Result<Vec<{{pascal}}Item>>;
+    fn add_{{codeName}}_item(&self, dsp: &str, name: &str) -> Result<{{pascal}}Item>;
 }
 impl {{pascal}}Store for Store {
-    fn {{name}}_items(&self, dsp: &str) -> Result<Vec<{{pascal}}Item>> {
+    fn {{codeName}}_items(&self, dsp: &str) -> Result<Vec<{{pascal}}Item>> {
         let db = {{open}};
         db.query_as("SELECT * FROM {{table}} ORDER BY created_at,id", [])
     }
-    fn add_{{name}}_item(&self, dsp: &str, name: &str) -> Result<{{pascal}}Item> {
+    fn add_{{codeName}}_item(&self, dsp: &str, name: &str) -> Result<{{pascal}}Item> {
         let item = {{pascal}}Item {
             id: crypto::token()?,
             name: name.to_owned(),

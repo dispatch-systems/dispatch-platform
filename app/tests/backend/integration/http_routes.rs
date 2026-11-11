@@ -74,7 +74,7 @@ fn owners() -> Vec<(String, Vec<Route>)> {
         registry
             .features
             .iter()
-            .map(|feature| (format!("features/{}", feature.name), (feature.routes)())),
+            .map(|feature| (feature.directory(), (feature.routes)())),
     );
     owners
 }

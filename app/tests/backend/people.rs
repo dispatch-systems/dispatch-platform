@@ -10,28 +10,46 @@ fn every_connection_reads_its_people_from_a_new_dsp() {
     crate::install();
     let (_root, db, id) = common::bootstrapped();
     db.enable_all_features(&id).unwrap();
-    for people in registry().people() {
-        let kind = people.kind.id;
-        let named = (people.read)(&db, &id).unwrap_or_else(|e| panic!("{kind}: {e:?}"));
-        assert!(named.is_empty(), "{kind} names someone a new DSP lacks");
-        if let Some((_, records)) = people.records {
-            assert!(
-                records(&db, &id).unwrap().is_empty(),
-                "{kind} counts records"
-            );
+    let actor = common::platform_owner(&db);
+    let mut owners = std::collections::BTreeMap::new();
+    for feature in registry().features {
+        if let Some(code) = feature.owner
+            && !owners.contains_key(code)
+        {
+            let dsp = db.new_dsp("People schema", "UTC", &actor, false).unwrap();
+            db.set_code(&dsp.id, code).unwrap();
+            db.enable_all_features(&dsp.id).unwrap();
+            owners.insert(code, dsp.id);
         }
-        if let Some(workdays) = people.workdays {
-            assert!(
-                workdays(&db, &id).unwrap().worked.is_empty(),
-                "{kind} has days"
-            );
-        }
-        if let Some(departments) = people.driver_departments {
-            departments(&db, &id).unwrap();
-        }
-        if let Some(photos) = people.photos {
-            let none = photos(&db, &id, &["nobody".into()]).unwrap();
-            assert!(none.is_none(), "{kind} has a photo of nobody");
+    }
+    for feature in registry().features {
+        let id = feature
+            .owner
+            .and_then(|code| owners.get(code))
+            .unwrap_or(&id);
+        for people in feature.people {
+            let kind = people.kind.id;
+            let named = (people.read)(&db, id).unwrap_or_else(|e| panic!("{kind}: {e:?}"));
+            assert!(named.is_empty(), "{kind} names someone a new DSP lacks");
+            if let Some((_, records)) = people.records {
+                assert!(
+                    records(&db, id).unwrap().is_empty(),
+                    "{kind} counts records"
+                );
+            }
+            if let Some(workdays) = people.workdays {
+                assert!(
+                    workdays(&db, id).unwrap().worked.is_empty(),
+                    "{kind} has days"
+                );
+            }
+            if let Some(departments) = people.driver_departments {
+                departments(&db, id).unwrap();
+            }
+            if let Some(photos) = people.photos {
+                let none = photos(&db, id, &["nobody".into()]).unwrap();
+                assert!(none.is_none(), "{kind} has a photo of nobody");
+            }
         }
     }
 }

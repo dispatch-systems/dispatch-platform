@@ -12,18 +12,18 @@ fn keeps_what_it_adds_for_each_dsp() {
 {{/owner}}
     let owner = testing::a_user(&store);
     let other = store.new_dsp("Other DSP", "UTC", &owner, false).unwrap().id;
-    assert!(store.{{name}}_items(&dsp).unwrap().is_empty());
-    let added = store.add_{{name}}_item(&dsp, "First").unwrap();
+    assert!(store.{{codeName}}_items(&dsp).unwrap().is_empty());
+    let added = store.add_{{codeName}}_item(&dsp, "First").unwrap();
 {{^owner}}
-    store.add_{{name}}_item(&other, "Second").unwrap();
+    store.add_{{codeName}}_item(&other, "Second").unwrap();
 {{/owner}}
     assert_eq!(added.name, "First");
-    assert_eq!(store.{{name}}_items(&dsp).unwrap(), vec![added]);
+    assert_eq!(store.{{codeName}}_items(&dsp).unwrap(), vec![added]);
 {{#owner}}
-    assert!(store.{{name}}_items(&other).is_err());
+    assert!(store.{{codeName}}_items(&other).is_err());
 {{/owner}}
 {{^owner}}
-    let theirs = store.{{name}}_items(&other).unwrap();
+    let theirs = store.{{codeName}}_items(&other).unwrap();
     assert_eq!(
         theirs.iter().map(|item| item.name.as_str()).collect::<Vec<_>>(),
         ["Second"]

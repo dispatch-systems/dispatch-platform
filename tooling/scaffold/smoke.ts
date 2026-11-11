@@ -72,7 +72,31 @@ const MADE: [string, ...string[]][] = [
   ['slot', 'smoke_shortcuts', '--description', 'Its shortcuts on a page.'],
   // A feature the pieces below are added to, with a table.
   ['feature', 'smoke_rows', '--tables', 'dsp'],
-  ['feature', 'smoke_custom', '--custom', 'nll', '--api', '--tables', 'dsp', '--settings'],
+  [
+    'feature',
+    'smoke_custom',
+    '--custom',
+    'nll',
+    '--page',
+    '--api',
+    '--tables',
+    'dsp',
+    '--settings',
+  ],
+  ['collector', 'smoke_custom_site'],
+  [
+    'feature',
+    'smoke_custom_keeper',
+    '--custom',
+    '12',
+    '--keeps',
+    'smoke_custom_site.records',
+    '--tables',
+    'smoke_custom_site',
+    '--people',
+    'own',
+  ],
+  ['integration', 'smoke_custom_notes', '--to', 'nll_smoke_custom'],
 ];
 
 /**
@@ -100,6 +124,7 @@ const ADDED: string[][] = [
   // A keeper's tests install the collector it keeps from, as its contract's must; a page shows
   // it.
   ['contract', 'keeper_counts', '--to', 'smoke_keeper', '--shown'],
+  ['api', '--to', '12_smoke_custom_keeper'],
 ];
 
 /** Copies the checkout's files, committed or not, into `to`, with its packages linked. */

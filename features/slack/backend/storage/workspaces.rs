@@ -233,7 +233,7 @@ impl WorkspaceStore for Store {
         // What each integration keeps of it in tables of its own feature's, which it clears
         // first: should one fail, Slack keeps the workspace and its tokens, and disconnecting
         // again tries again.
-        for (_, integration) in integrations::declared() {
+        for (_, integration) in integrations::for_dsp(self, dsp)? {
             if let Some(forget) = integration.forget {
                 forget(self, dsp, team)?;
             }

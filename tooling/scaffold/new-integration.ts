@@ -63,7 +63,9 @@ export async function planIntegration(root: string, argv: string[]) {
     throw new UsageError(`--icon names a lucide-react icon, as Truck: ${icon} is none`);
   const hears = listed(args.options.get('hears'), 'hears');
   const ownerManifest = read(root, `${featureDirectory(root, owner)}/feature.rs`);
-  const ownerLabel = /\b(?:optional|mandatory)\(\s*"[^"]+",\s*"([^"]+)"/.exec(ownerManifest)?.[1];
+  const ownerLabel = /\b(?:optional|mandatory|custom)\(\s*"[^"]+",\s*"([^"]+)"/.exec(
+    ownerManifest,
+  )?.[1];
   // Its card and section follow those listed already: Slack's own sections in its manifest,
   // and each integration's card and section in its folder.
   const declared = [
@@ -151,7 +153,10 @@ export async function planIntegration(root: string, argv: string[]) {
   if (!own) installing(root, plan, featureDirectory(root, owner), { feature: 'slack' });
   if (!own)
     await edit(`${featureDirectory(root, owner)}/Cargo.toml`, (text) =>
-      mergeToml(text, '[dependencies]\ndispatch-slack = { path = "../slack" }\n'),
+      mergeToml(
+        text,
+        `[dependencies]\ndispatch-slack = { path = "${path.posix.relative(featureDirectory(root, owner), featureDirectory(root, 'slack'))}" }\n`,
+      ),
     );
   await edit(`${featureDirectory(root, owner)}/feature.rs`, (text) =>
     mergeRust(text, piece, left, [], () => true),

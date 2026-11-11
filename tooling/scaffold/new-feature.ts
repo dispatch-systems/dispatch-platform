@@ -460,6 +460,7 @@ function featureValues(root: string, argv: string[], adding = false) {
   const values: Values = {
     ...names,
     dir,
+    codeName: /^[a-z]/.test(name) ? name : `dsp_${name}`,
     owner: owner ?? '',
     switchConstructor: owner ? 'custom' : 'optional',
     backend: Boolean(database) || keeps || settings || Boolean(contract),
@@ -491,7 +492,7 @@ function featureValues(root: string, argv: string[], adding = false) {
       : `{${database.owner === 'core' ? 'Kind, ' : ''}Migration, ${own ? 'Migrations' : 'OwnMigrations'}, migrations::Apply::Sql}`,
     kind,
     open,
-    table: args.options.get('table') ?? `${name}_items`,
+    table: args.options.get('table') ?? `${/^[a-z]/.test(name) ? name : `dsp_${name}`}_items`,
     migrationId,
     migrationName,
     migrationFile: `${String(migrationId).padStart(4, '0')}_${migrationName}.sql`,
@@ -655,11 +656,14 @@ export async function renderFeature(root: string, argv: string[], adding = false
     const file = `${dir}/${target}`;
     const toRoot = '../'.repeat(path.posix.dirname(file).split('/').length);
     let text = template(`feature/${source}`, { ...filled, toRoot });
-    if (values.owner && target.startsWith('tests/'))
-      text = text.replaceAll(
-        '&crate::FEATURE',
-        `&crate::FEATURE.registered(Some("${values.owner}"), "${name}")`,
-      );
+    if (values.owner && target.startsWith('tests/') && target.endsWith('.rs')) {
+      text = text
+        .replaceAll('&crate::FEATURE', '&REGISTERED_FEATURE')
+        .replace(
+          '#[test]',
+          `static REGISTERED_FEATURE: dispatch_core::manifest::Feature = crate::FEATURE.registered(Some("${values.owner}"), "${name}");\n\n#[test]`,
+        );
+    }
     plan.files.set(file, await format(file, text));
   };
   for (const [wanted, source, target] of pieces(values))

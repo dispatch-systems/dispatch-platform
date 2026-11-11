@@ -159,7 +159,7 @@ where
     let _reserved = state
         .read(move |db| db.reserve_deletion(&at, &asked(db)?.0))
         .await?;
-    revoke(state, dsp).await;
+    revoke(state, dsp).await?;
     let at = dsp.to_owned();
     state
         .run(move |db| {
@@ -173,11 +173,9 @@ where
 
 /// Gives back what the DSP connected outside Dispatch through each feature, as its features
 /// declare, whether or not they're on there: best effort, each logging its own failures.
-pub async fn revoke(state: &Arc<State>, dsp: &str) {
+pub async fn revoke(state: &Arc<State>, dsp: &str) -> Result<()> {
     let at = dsp.to_owned();
-    let Ok(code) = state.read(move |db| db.feature_code(&at)).await else {
-        return;
-    };
+    let code = state.read(move |db| db.feature_code(&at)).await?;
     for revoke in registry()
         .features
         .iter()
@@ -186,6 +184,7 @@ pub async fn revoke(state: &Arc<State>, dsp: &str) {
     {
         revoke(state.clone(), dsp.to_owned()).await;
     }
+    Ok(())
 }
 
 /// Finishes deleting each DSP whose rows are gone, one at a time: its jobs and what its live

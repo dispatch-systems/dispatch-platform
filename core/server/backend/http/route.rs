@@ -627,21 +627,23 @@ impl Route {
             if let Site::Dsp(code) = &input.site {
                 ensure(code == owner, "not_found", 404)?;
             }
-            state
-                .read(move |db| {
-                    let auth = Session.authorize(db, &input)?;
-                    let context = db.from_view(
-                        &auth,
-                        input.header("x-dispatch-view"),
-                        crate::tenancy::roles::ACCESS,
-                    )?;
-                    ensure(
-                        db.owns_feature(&context.dsp.id, Some(owner))?,
-                        "not_found",
-                        404,
-                    )
-                })
-                .await?;
+            if matches!(self.access, Access::Dsp(_)) {
+                state
+                    .read(move |db| {
+                        let auth = Session.authorize(db, &input)?;
+                        let context = db.from_view(
+                            &auth,
+                            input.header("x-dispatch-view"),
+                            crate::tenancy::roles::ACCESS,
+                        )?;
+                        ensure(
+                            db.owns_feature(&context.dsp.id, Some(owner))?,
+                            "not_found",
+                            404,
+                        )
+                    })
+                    .await?;
+            }
             Request::from_parts(parts, body)
         } else {
             request

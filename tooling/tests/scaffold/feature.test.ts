@@ -695,6 +695,14 @@ test('--custom separates the owner folder from prefixed identities and fixes imp
     await refused(/DSP code/, 'fuel_log', '--custom', code);
   await refused(/optional/, 'fuel_log', '--custom', 'dsp42', '--mandatory');
   await refused(/contracts/, 'fuel_log', '--custom', 'dsp42', '--contract', 'fuel');
-  const numeric = await feature('fuel_log', '--custom', '12', '--api');
+  const numeric = await feature('fuel_log', '--custom', '12', '--api', '--tables', 'dsp');
   assert.match(file(numeric, 'features/custom/12/fuel_log/feature.rs'), /custom\("12_fuel_log"/);
+  assert.match(
+    file(numeric, 'features/custom/12/fuel_log/backend/storage.rs'),
+    /fn dsp_12_fuel_log_items/,
+  );
+  assert.match(
+    file(numeric, 'features/custom/12/fuel_log/migrations/dsp/0001_12_fuel_log.sql'),
+    /CREATE TABLE IF NOT EXISTS dsp_12_fuel_log_items/,
+  );
 });

@@ -32,6 +32,15 @@ pub fn declared() -> impl Iterator<Item = (&'static Feature, &'static Integratio
     registry().integrations(SLACK)
 }
 
+/// Integrations belonging to this DSP, including its disabled features for cleanup.
+pub fn for_dsp(
+    db: &Store,
+    dsp: &str,
+) -> Result<impl Iterator<Item = (&'static Feature, &'static Integration)>> {
+    let code = db.find_dsp(dsp)?.code;
+    Ok(declared().filter(move |(feature, _)| feature.belongs_to(code.as_deref())))
+}
+
 /// Switches the integration `id` on or off in the DSP's workspace `team`, for a member who
 /// manages Slack, and records it in the activity log as `<integration> in <workspace>`. An
 /// integration whose feature the DSP doesn't have is as good as none.

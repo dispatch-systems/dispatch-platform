@@ -137,7 +137,8 @@ export async function planAdd(root: string, argv: string[]) {
         : `--table names one of ${name}'s tables: ${Object.values(tables).flat().join(', ') || 'it has none'}`,
     );
   const label = /\b(?:optional|mandatory|custom)\(\s*"[^"]+",\s*"([^"]+)"/.exec(manifest)?.[1];
-  const { pascal, slug } = names(name);
+  const { pascal } = names(custom ? `dsp_${name}` : name);
+  const slug = name.replaceAll('_', '-');
   // Its sidebar takes the feature's id, which its page of that id, with a parent, can't share.
   if (had && !joins && had.id === slug)
     throw new UsageError(

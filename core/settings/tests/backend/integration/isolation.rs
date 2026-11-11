@@ -58,7 +58,10 @@ static CUSTOM: Feature = Feature {
         areas: &[("nll_probe.item2.", dispatch_core::tenancy::api::audit::AuditArea::Collections)],
         ..dispatch_core::manifest::Audit::NONE
     },
-    routes: || vec![dispatch_core::server::http::route::read(
+    routes: || vec![
+      dispatch_core::server::http::route::read("/custom-public", dispatch_core::server::http::route::Public, |_, _, _| Ok(dispatch_core::server::http::input::Reply::json(json!({"ok":true})))),
+      dispatch_core::server::http::route::read("/custom-session", dispatch_core::server::http::route::Session, |_, _, _| Ok(dispatch_core::server::http::input::Reply::json(json!({"ok":true})))),
+      dispatch_core::server::http::route::read(
         "/api/dsp/nll-probe", dispatch_core::server::http::route::Dsp("nll_probe.view"),
         |db, c, _| Ok(dispatch_core::server::http::input::Reply::json(json!({"count": db.dsp(c.dsp_id())?.count("SELECT count(*) FROM nll_probe", [])?})))
     )],
@@ -405,15 +408,15 @@ async fn custom_storage_switches_events_and_routes_belong_only_to_the_owner_code
         assert!(db.dsp(&own)?.has_table("nll_probe")?);
         assert!(!db.dsp(&other)?.has_table("nll_probe")?);
         assert!(!db.feature_enabled(&own, "nll_probe")?);
-        let fresh = db.new_dsp("Onboarding probe", "UTC", &actor, false)?.id;
-        db.set_code(&own, "oldnll")?;
-        db.dsp(&fresh)?.transaction(|| {
-            db.set_code(&fresh, "nll")?;
-            assert!(db.dsp(&fresh)?.has_table("nll_probe")?);
+        let directory = db.dsp(&own)?;
+        directory.exec("DELETE FROM owner_migrations WHERE owner='nll_probe'", [])?;
+        directory.exec("DROP TABLE nll_probe", [])?;
+        directory.transaction(|| {
+            db.set_code(&own, "nll")?;
+            assert!(db.dsp(&own)?.has_table("nll_probe")?);
             Ok(())
         })?;
-        db.set_code(&fresh, "nll2")?;
-        db.set_code(&own, "nll")?;
+        assert_eq!(db.set_code(&own, "othercode").unwrap_err().code, "custom_feature_transfer_required");
         assert_eq!(db.set_feature(&other, "nll_probe", true, &actor).unwrap_err().status, 404);
         assert_eq!(db.set_visibility(&other, "nll_probe", dispatch_core::tenancy::visibility::Visibility::Shown, &actor).unwrap_err().status, 404);
         // A stale or imported switch row cannot bypass runtime ownership.
@@ -456,6 +459,59 @@ async fn custom_storage_switches_events_and_routes_belong_only_to_the_owner_code
     assert_eq!(
         server
             .send("GET", "/api/dsp/nll-probe", &at_other, None)
+            .await
+            .status,
+        404
+    );
+}
+
+#[tokio::test]
+async fn a_custom_route_keeps_its_declared_public_or_session_grant() {
+    let server = Server::start().await;
+    let north = server.dsp("nll").await;
+    let anonymous = Who {
+        cookie: String::new(),
+        csrf: String::new(),
+        view: String::new(),
+        host: Some(format!("nll.localhost:{}", server.port)),
+    };
+    assert_eq!(
+        server
+            .send("GET", "/custom-public", &anonymous, None)
+            .await
+            .status,
+        200
+    );
+    assert_eq!(
+        server
+            .send("GET", "/custom-session", &anonymous, None)
+            .await
+            .status,
+        401
+    );
+    let mut member = server.signed_in("member@dispatch.test", &north).await;
+    member.view.clear();
+    assert_eq!(
+        server
+            .send("GET", "/custom-session", &member, None)
+            .await
+            .status,
+        200
+    );
+    let other = Who {
+        host: Some(format!("sum.localhost:{}", server.port)),
+        ..anonymous
+    };
+    assert_eq!(
+        server
+            .send("GET", "/custom-public", &other, None)
+            .await
+            .status,
+        404
+    );
+    assert_eq!(
+        server
+            .send("GET", "/custom-session", &other, None)
             .await
             .status,
         404

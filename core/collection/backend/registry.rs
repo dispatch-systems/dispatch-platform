@@ -327,7 +327,14 @@ impl Store {
         provider
             .collector()
             .verify(&*self.collector(id, provider)?)?;
+        let code = self.feature_code(id)?;
         for kind in provider.job_kinds() {
+            if registry()
+                .keeping(kind)
+                .is_some_and(|feature| !feature.belongs_to(code.as_deref()))
+            {
+                continue;
+            }
             registry()
                 .keeper(kind)
                 .verify(&*self.collector(id, provider)?)?;

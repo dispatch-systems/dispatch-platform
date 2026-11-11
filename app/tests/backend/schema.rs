@@ -3,7 +3,7 @@
 use crate::snapshot;
 use dispatch_core::{
     collection::registry::Provider,
-    db::{Db, Kind, migrate},
+    db::{Db, Kind, migrate, migrate_for},
     foundation::config::Config,
     manifest::registry,
     server::startup,
@@ -21,7 +21,45 @@ fn schemas() -> PathBuf {
     snapshot::root().join("core/db/tests/backend/schema")
 }
 fn recording(kind: Kind) -> PathBuf {
-    schemas().join(format!("{}.sql", kind.name()))
+    recording_for(kind, None)
+}
+fn recording_for(kind: Kind, code: Option<&str>) -> PathBuf {
+    let custom = code.filter(|code| {
+        kind != Kind::PLATFORM
+            && kind != Kind::JOBS
+            && registry().features.iter().any(|feature| {
+                feature.owner == Some(*code)
+                    && (feature.own_migrations.iter().any(|m| m.kind == kind)
+                        || feature.migrations.iter().any(|m| m.kind == kind))
+            })
+    });
+    schemas().join(match custom {
+        Some(code) => format!("{}-{code}.sql", kind.name()),
+        None => format!("{}.sql", kind.name()),
+    })
+}
+fn codes() -> Vec<Option<&'static str>> {
+    let owners: std::collections::BTreeSet<_> = registry()
+        .features
+        .iter()
+        .filter_map(|feature| feature.owner)
+        .collect();
+    std::iter::once(None)
+        .chain(owners.into_iter().map(Some))
+        .collect()
+}
+fn database_for(kind: Kind, code: Option<&str>) -> bool {
+    registry()
+        .features
+        .iter()
+        .filter(|feature| feature.owner.is_some())
+        .find(|feature| {
+            feature
+                .keeps
+                .iter()
+                .any(|keeper| keeper.storages().iter().any(|storage| storage.kind == kind))
+        })
+        .is_none_or(|feature| feature.belongs_to(code))
 }
 // Tables, then indexes, then triggers, so a snapshot also runs as a script.
 fn dump(db: &Db) -> String {
@@ -53,8 +91,8 @@ fn older(file: &Path, kind: Kind, schema: &str) {
         .unwrap();
     std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o600)).unwrap();
 }
-fn recorded(kind: Kind) -> String {
-    std::fs::read_to_string(recording(kind)).unwrap_or_else(|error| {
+fn recorded_for(kind: Kind, code: Option<&str>) -> String {
+    std::fs::read_to_string(recording_for(kind, code)).unwrap_or_else(|error| {
         let name = kind.name();
         panic!(
             "{name} has no recorded schema ({error}): `{}` writes it",
@@ -62,8 +100,8 @@ fn recorded(kind: Kind) -> String {
         )
     })
 }
-fn legacy(kind: Kind) -> String {
-    let schema = recorded(kind).replace(RECORD, "");
+fn legacy(kind: Kind, code: Option<&str>) -> String {
+    let schema = recorded_for(kind, code).replace(RECORD, "");
     if kind == Kind::DSP {
         schema.replace(DSP_IDENTITY, "")
     } else {
@@ -90,73 +128,80 @@ fn new_databases_match_the_recorded_schema() {
     let mut config = Config::load().unwrap();
     config.root = root.path().into();
     let store = startup::prepare_storage(config).unwrap();
-    let id = dispatch_core::foundation::crypto::id("dsp").unwrap();
-    store
-        .platform
-        .exec(
-            "INSERT INTO \
-        dsps(id,name,environment,status,timezone,created_at) VALUES \
-        (?,'Schema','preview','provisioning','UTC',?)",
-            [&id, &dispatch_core::db::iso()],
-        )
-        .unwrap();
-    store.provision(&id).unwrap();
-    // Core's databases, then each collector's, with those its collections' keepers add.
-    let mut leases = vec![(Kind::DSP, store.dsp(&id).unwrap())];
-    let mut custom = Vec::new();
-    for provider in Provider::all() {
-        let collector = provider.collector().database();
-        leases.push((collector, store.collector(&id, provider).unwrap()));
-        for storage in provider.added_storages() {
-            if registry().features.iter().any(|feature| {
-                feature.owner.is_some()
-                    && feature.keeps.iter().any(|keeper| {
-                        keeper
-                            .storages()
-                            .iter()
-                            .any(|added| added.kind == storage.kind)
-                    })
-            }) {
-                let file = root.path().join(format!("{}.sqlite", storage.kind.name()));
-                custom.push((storage.kind, Db::create(&file, storage.kind, "").unwrap()));
-                continue;
+    let mut recorded_paths = std::collections::BTreeSet::new();
+    for (kind, db) in [(Kind::PLATFORM, &store.platform), (Kind::JOBS, &store.jobs)] {
+        let path = recording(kind);
+        recorded_paths.insert(path.clone());
+        snapshot::compare(&path, &dump(db));
+        let before = dump(db);
+        migrate(db, kind).unwrap();
+        assert_eq!(dump(db), before);
+    }
+    // A shared DSP and one of each custom owner exercise provisioning as it runs, before
+    // any second migration pass can repair missing work.
+    for code in codes() {
+        let id = dispatch_core::foundation::crypto::id("dsp").unwrap();
+        store.platform.exec("INSERT INTO dsps(id,name,environment,status,timezone,created_at,code) VALUES (?,'Schema','preview','provisioning','UTC',?,?)", rusqlite::params![id, dispatch_core::db::iso(), code]).unwrap();
+        store.provision(&id).unwrap();
+        let mut leases = vec![(Kind::DSP, store.dsp(&id).unwrap())];
+        for provider in Provider::all() {
+            leases.push((
+                provider.collector().database(),
+                store.collector(&id, provider).unwrap(),
+            ));
+            for storage in provider
+                .added_storages()
+                .filter(|storage| database_for(storage.kind, code))
+            {
+                leases.push((
+                    storage.kind,
+                    store.added_storage(&id, provider, storage).unwrap(),
+                ));
             }
-            let added = store.added_storage(&id, provider, storage).unwrap();
-            leases.push((storage.kind, added));
+        }
+        let mut opened: Vec<_> = leases.iter().map(|(kind, _)| kind.name()).collect();
+        let mut declared: Vec<_> = registry()
+            .databases()
+            .filter(|kind| {
+                *kind != Kind::PLATFORM && *kind != Kind::JOBS && database_for(*kind, code)
+            })
+            .map(|kind| kind.name())
+            .collect();
+        opened.sort();
+        declared.sort();
+        assert_eq!(opened, declared);
+        for (kind, db) in leases {
+            let path = recording_for(kind, code);
+            recorded_paths.insert(path.clone());
+            snapshot::compare(&path, &dump(&db));
+            let expected: Vec<i64> = kind.migrations().iter().map(|m| m.id.into()).collect();
+            assert_eq!(ids(&db), expected);
+            let owners: Vec<(String, i64)> = db
+                .query_as(
+                    "SELECT owner,id FROM owner_migrations ORDER BY owner,id",
+                    [],
+                )
+                .unwrap();
+            let mut expected_owners: Vec<_> = kind
+                .owned_migrations_for(code)
+                .iter()
+                .map(|(owner, migration)| ((*owner).to_owned(), i64::from(migration.id)))
+                .collect();
+            expected_owners.sort();
+            assert_eq!(owners, expected_owners);
+            let before = dump(&db);
+            migrate_for(&db, kind, code).unwrap();
+            assert_eq!(dump(&db), before);
+            assert_eq!(ids(&db), expected);
         }
     }
-    let databases: Vec<(Kind, &Db)> =
-        [(Kind::PLATFORM, &store.platform), (Kind::JOBS, &store.jobs)]
-            .into_iter()
-            .chain(leases.iter().map(|(kind, db)| (*kind, &**db)))
-            .chain(custom.iter().map(|(kind, db)| (*kind, db)))
-            .collect();
-    let mut opened: Vec<_> = databases.iter().map(|(kind, _)| kind.name()).collect();
-    let mut declared: Vec<_> = registry().databases().map(|kind| kind.name()).collect();
-    opened.sort();
-    declared.sort();
-    assert_eq!(opened, declared);
     if snapshot::updating() {
-        // A database no owner declares any longer leaves no schema behind.
         for entry in std::fs::read_dir(schemas()).unwrap() {
             let path = entry.unwrap().path();
-            let stem = path.file_stem().unwrap().to_string_lossy().into_owned();
-            if !declared.contains(&stem.as_str()) {
+            if !recorded_paths.contains(&path) {
                 std::fs::remove_file(path).unwrap();
             }
         }
-    }
-    for (kind, db) in databases {
-        // The schema catalogue records the union of every owner's tables. Runtime DSP
-        // isolation is exercised by the custom-feature HTTP fixture.
-        migrate(db, kind).unwrap();
-        snapshot::compare(&recording(kind), &dump(db));
-        let expected: Vec<i64> = kind.migrations().iter().map(|m| m.id.into()).collect();
-        assert_eq!(ids(db), expected);
-        // A second pass finds nothing to do.
-        migrate(db, kind).unwrap();
-        assert_eq!(dump(db), recorded(kind));
-        assert_eq!(ids(db), expected);
     }
 }
 
@@ -164,11 +209,25 @@ fn new_databases_match_the_recorded_schema() {
 fn a_database_an_older_binary_made_ends_like_a_new_one() {
     crate::install();
     let root = private();
-    for kind in registry().databases() {
-        let file = root.path().join(format!("{}.sqlite", kind.name()));
-        older(&file, kind, &legacy(kind));
-        let db = Db::create(&file, kind, "INSERT INTO never_run VALUES (1);").unwrap();
-        assert_eq!(dump(&db), recorded(kind), "{}", kind.name());
+    for code in codes() {
+        for kind in registry()
+            .databases()
+            .filter(|kind| database_for(*kind, code))
+        {
+            let file = root.path().join(format!(
+                "{}-{}.sqlite",
+                kind.name(),
+                code.unwrap_or("shared")
+            ));
+            older(&file, kind, &legacy(kind, code));
+            let db = if kind == Kind::PLATFORM || kind == Kind::JOBS {
+                Db::create(&file, kind, "INSERT INTO never_run VALUES (1);")
+            } else {
+                Db::create_for(&file, kind, "INSERT INTO never_run VALUES (1);", code)
+            }
+            .unwrap();
+            assert_eq!(dump(&db), recorded_for(kind, code), "{}", kind.name());
+        }
     }
 }
 
