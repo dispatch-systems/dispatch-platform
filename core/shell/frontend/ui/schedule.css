@@ -112,11 +112,6 @@
   }
 }
 
-.schedule-rule-tag {
-  background: color-mix(in srgb, var(--rule) 14%, var(--card));
-  color: color-mix(in srgb, var(--rule) 80%, var(--foreground));
-}
-
 .schedule-rule-body {
   min-width: 0;
   margin: 0;

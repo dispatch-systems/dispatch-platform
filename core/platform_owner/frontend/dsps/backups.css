@@ -136,6 +136,10 @@
   font-weight: 500;
   white-space: nowrap;
 }
+.backups-rule-tag {
+  background: color-mix(in srgb, var(--rule) 14%, var(--card));
+  color: color-mix(in srgb, var(--rule) 80%, var(--foreground));
+}
 
 /* A rule's fields, a label beside each. */
 .backups-fields {
