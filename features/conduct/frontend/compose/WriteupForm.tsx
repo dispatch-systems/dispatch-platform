@@ -56,18 +56,18 @@ export function WriteupForm({
     if (!suggestion || (editing && !baseline.data) || previousSuggestion.current === suggestionKey)
       return;
     previousSuggestion.current = suggestionKey;
-    const base =
-      editing && !baselineReady.current
-        ? filled(
-            overview.categories.find((c) => c.id === start.category),
-            baseline.data,
-          )
-        : undefined;
+    const initializing = editing && !baselineReady.current;
+    const base = initializing
+      ? filled(
+          overview.categories.find((c) => c.id === start.category),
+          baseline.data,
+        )
+      : undefined;
     baselineReady.current = true;
     setState((current) => {
       const before = base ?? current.before;
       if (
-        editing &&
+        initializing &&
         current.draft.person === start.person &&
         current.draft.category === start.category &&
         current.draft.writtenOn === start.writtenOn

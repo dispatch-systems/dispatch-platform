@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Plus } from 'lucide-react';
 import type { DspView, SessionView } from '../../../core/accounts/api/index.js';
 import { DataState, ErrorBox, Header, Tabs } from '../../../core/shell/frontend/ui/index.js';
@@ -120,9 +120,21 @@ export function ConductPage({ session, view }: { session: SessionView; view: Dsp
   const { address, open, back, filters } = useConductAddress(guards);
   const [toPrint, setToPrint] = useState<ConductWriteup>();
   const clearPrint = useCallback(() => setToPrint(undefined), []);
+  const navigation = useRef(0);
+  useEffect(() => {
+    const moved = () => navigation.current++;
+    window.addEventListener('hashchange', moved);
+    return () => {
+      moved();
+      window.removeEventListener('hashchange', moved);
+    };
+  }, []);
   const start = useAction(async (person?: string) => {
+    const started = navigation.current;
+    const from = window.location.hash;
     await reload();
-    open({ view: 'write', person });
+    if (started === navigation.current && from === window.location.hash)
+      open({ view: 'write', person });
   });
   const supervisorName = `${session.user.firstName} ${session.user.lastName}`;
   return (

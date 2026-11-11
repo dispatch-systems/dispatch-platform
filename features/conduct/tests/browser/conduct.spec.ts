@@ -5,6 +5,9 @@ async function newUniform(page: Page) {
   await login(page);
   await openDsp(page, 'Northline Logistics');
   await page.getByRole('link', { name: 'Conduct', exact: true }).click();
+  return uniform(page);
+}
+async function uniform(page: Page) {
   await page.getByRole('button', { name: 'New writeup' }).click();
   await page.getByRole('combobox', { name: 'Driver', exact: true }).click();
   await page.getByRole('listbox', { name: 'Drivers' }).getByRole('option').first().click();
@@ -42,6 +45,24 @@ test('a driver is written up from the page, then marked signed and locked', asyn
   await complete(page);
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name })).toBeVisible();
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  const revised = 'DA arrived without a safety vest and was issued a replacement.';
+  await text(page, '1. Statement of the problem', revised);
+  const detail = /\/api\/dsp\/conduct\/writeups\/[^/?]+$/;
+  await page.route(detail, (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill({ status: 503, json: { error: 'unavailable' } })
+      : route.continue(),
+  );
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1, name })).toBeVisible();
+  await expect(page.locator('.conduct-paper .conduct-notice-answer').first()).toHaveText(revised);
+  await page.evaluate(() => {
+    window.print = () => {};
+  });
+  await page.getByRole('button', { name: 'Print', exact: true }).click();
+  await expect(page.locator('.conduct-print .conduct-notice-answer').first()).toHaveText(revised);
+  await page.unroute(detail);
   await page.getByRole('button', { name: 'Conduct', exact: true }).click();
   await page.getByRole('tab', { name: 'Writeups', exact: true }).click();
   await page.getByRole('textbox', { name: 'Search drivers' }).fill(name);
@@ -68,6 +89,73 @@ test('a driver is written up from the page, then marked signed and locked', asyn
   await expect(page.getByText(/^Signed \d+\/\d+\/\d{4}$/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Print', exact: true })).toBeVisible();
+});
+
+test('returning an edited notice to its date restores untouched suggestions', async ({ page }) => {
+  await newUniform(page);
+  await complete(page);
+  const original = await page.getByRole('textbox', { name: 'Date', exact: true }).inputValue();
+  const prior = await page
+    .getByRole('textbox', { name: '2. Prior discussion or warnings' })
+    .inputValue();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByRole('button', { name: 'Conduct', exact: true }).click();
+  await uniform(page);
+  await expect(page.getByRole('radio', { name: /Written.*Suggested/i })).toBeChecked();
+  await complete(page);
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await expect(page.getByRole('radio', { name: /Written.*Suggested/i })).toBeChecked();
+  const correction = 'Check the uniform with dispatch before starting the route.';
+  await text(page, '3. Corrective action', correction);
+  const [month, day, year] = original.split('/').map(Number);
+  const previous = new Date(Date.UTC(year!, month! - 1, day! - 1)).toLocaleDateString('en-US', {
+    timeZone: 'UTC',
+  });
+  const date = page.getByRole('textbox', { name: 'Date', exact: true });
+  await date.fill(previous);
+  await date.press('Enter');
+  await expect(page.getByRole('radio', { name: /Verbal.*Suggested/i })).toBeChecked();
+  await expect(page.getByRole('textbox', { name: '2. Prior discussion or warnings' })).toHaveValue(
+    prior,
+  );
+  await date.fill(original);
+  await date.press('Enter');
+  await expect(page.getByRole('radio', { name: /Written.*Suggested/i })).toBeChecked();
+  await expect(page.getByRole('textbox', { name: '2. Prior discussion or warnings' })).toHaveValue(
+    /Previous writeups for Uniform: Verbal Warning/,
+  );
+  await expect(page.getByRole('textbox', { name: '3. Corrective action' })).toHaveValue(correction);
+});
+
+test('leaving Conduct while its new-writeup read waits keeps the destination address', async ({
+  page,
+}) => {
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await page.getByRole('link', { name: 'Conduct', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Conduct', exact: true })).toBeVisible();
+  let release!: () => void, requested!: () => void;
+  const waiting = new Promise<void>((resolve) => (release = resolve));
+  const started = new Promise<void>((resolve) => (requested = resolve));
+  await page.route('**/api/dsp/conduct', async (route) => {
+    const response = await route.fetch();
+    requested();
+    await waiting;
+    await route.fulfill({ response });
+  });
+  await page.getByRole('button', { name: 'New writeup' }).click();
+  await started;
+  await page.getByRole('link', { name: 'Documents', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Documents', exact: true })).toBeVisible();
+  const destination = page.url();
+  const response = page.waitForResponse((response) => response.url().endsWith('/api/dsp/conduct'));
+  release();
+  await response;
+  // Let the released read's continuation render before checking the page it no longer owns.
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+  await expect(page).toHaveURL(destination);
+  await expect(page.getByRole('heading', { name: 'Documents', exact: true })).toBeVisible();
 });
 
 test('browser Back keeps the dirty writeup until one Save or Discard decision', async ({

@@ -54,10 +54,17 @@ export const copyUrl = (id: string) => `${writeupUrl(id)}/copy`;
 export const useWriteup = (id: string, refreshKey?: string) =>
   useConductRead<ConductWriteup>(writeupUrl(id), refreshKey);
 
+/** Acknowledged notice data replaces any older detail, even when its next read fails. */
+async function saveWriteup(save: () => Promise<ConductSaved>) {
+  const session = dataCache.session;
+  const saved = await save();
+  if (session === dataCache.session) dataCache.put(writeupUrl(saved.writeup.id), saved.writeup);
+  return saved;
+}
 export const addWriteup = (input: WriteupInput) =>
-  api<ConductSaved>(`${conductUrl}/writeups`, input);
+  saveWriteup(() => api<ConductSaved>(`${conductUrl}/writeups`, input));
 export const changeWriteup = (id: string, input: WriteupInput) =>
-  api<ConductSaved>(writeupUrl(id), input);
+  saveWriteup(() => api<ConductSaved>(writeupUrl(id), input));
 export async function signWriteup(
   id: string,
   signedOn: string,
@@ -65,11 +72,13 @@ export async function signWriteup(
   request?: string,
 ) {
   try {
-    return await api<ConductSaved>(`${writeupUrl(id)}/sign`, {
-      signedOn,
-      revision,
-      ...(request ? { request } : {}),
-    });
+    return await saveWriteup(() =>
+      api<ConductSaved>(`${writeupUrl(id)}/sign`, {
+        signedOn,
+        revision,
+        ...(request ? { request } : {}),
+      }),
+    );
   } catch (cause) {
     dataCache.invalidate((url) => url.startsWith(conductUrl));
     throw cause;
@@ -87,9 +96,11 @@ export const deleteWriteup = (id: string, revision: number) =>
 /** Keeps `photo` as the signed paper of the writeup `id` as it reads at `revision`. */
 export async function keepCopy(id: string, revision: number, photo: Blob, request?: string) {
   try {
-    return await upload<ConductSaved>(
-      `${copyUrl(id)}?${new URLSearchParams({ revision: String(revision), ...(request ? { request } : {}) })}`,
-      photo,
+    return await saveWriteup(() =>
+      upload<ConductSaved>(
+        `${copyUrl(id)}?${new URLSearchParams({ revision: String(revision), ...(request ? { request } : {}) })}`,
+        photo,
+      ),
     );
   } catch (cause) {
     dataCache.invalidate((url) => url.startsWith(conductUrl));
