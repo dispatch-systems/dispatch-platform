@@ -69,6 +69,9 @@ export function privateFeatures(directory: string): Plugin {
                     },
                     priority: 50,
                     entriesAware: true,
+                    // Group private modules themselves; their public dependencies keep
+                    // the normal shared graph rather than inheriting this private group.
+                    includeDependenciesRecursively: false,
                   },
                 ],
               },
