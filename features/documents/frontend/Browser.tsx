@@ -273,7 +273,7 @@ export function Browser({
         </div>
         <div className="heading-actions">
           <a
-            className="documents-link-button"
+            className="link-button documents-link-button"
             href={read?.url ?? connection.folderUrl}
             target="_blank"
             rel="noreferrer"
@@ -283,7 +283,7 @@ export function Browser({
           </a>
           <Popover
             className="row-menu documents-upload"
-            triggerClassName="documents-link-button"
+            triggerClassName="link-button documents-link-button"
             label="Upload"
             trigger={
               <>
