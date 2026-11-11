@@ -203,8 +203,13 @@ fn a_signalled_cli_names_its_sender_once_and_keeps_its_signal_exit_status() {
     use std::{
         fs,
         io::{BufRead, BufReader},
-        os::unix::process::ExitStatusExt,
+        os::{
+            fd::{AsRawFd, FromRawFd, OwnedFd},
+            unix::process::{CommandExt, ExitStatusExt},
+        },
         process::Stdio,
+        sync::mpsc,
+        time::Duration,
     };
     let fixture = checkout("signal-sender");
     let root = fixture.path();
@@ -268,29 +273,88 @@ fn a_signalled_cli_names_its_sender_once_and_keeps_its_signal_exit_status() {
         })
         .collect();
     let scratch = dispatchdev_cli::workspace::checkout_scratch(root).unwrap();
-    for (signal, name, stderr_open) in [
-        (libc::SIGTERM, "SIGTERM", true),
-        (libc::SIGINT, "SIGINT", true),
-        (libc::SIGHUP, "SIGHUP", true),
-        (libc::SIGTERM, "SIGTERM", false),
-    ] {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_dispatchdev"))
+    let waiting = |ignored: Option<i32>, stderr: Stdio| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_dispatchdev"));
+        command
             .args(["test", "--root", root.to_str().unwrap()])
             .env_remove("CI")
             .env_remove("DISPATCH_BUILD_SLOT")
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .unwrap();
-        let pid = child.id();
-        if !stderr_open {
-            drop(child.stderr.take());
+            .stderr(stderr);
+        if let Some(signal) = ignored {
+            // As nohup starts a command: the signal is ignored before the command runs.
+            unsafe {
+                command.pre_exec(move || {
+                    libc::signal(signal, libc::SIG_IGN);
+                    Ok(())
+                })
+            };
         }
+        let mut child = command.spawn().unwrap();
         let stdout = BufReader::new(child.stdout.take().unwrap());
         for line in stdout.lines() {
             if line.unwrap().starts_with(dispatchdev_cli::slot::WAITING) {
                 break;
             }
+        }
+        child
+    };
+    // A pipe nobody reads, filled to its last byte, then left to block as a terminal's does.
+    let full = || {
+        let mut ends = [0; 2];
+        assert_eq!(unsafe { libc::pipe(ends.as_mut_ptr()) }, 0);
+        let [read, write] = ends.map(|end| unsafe { OwnedFd::from_raw_fd(end) });
+        for end in [&read, &write] {
+            unsafe { libc::fcntl(end.as_raw_fd(), libc::F_SETFD, libc::FD_CLOEXEC) };
+        }
+        let flags = unsafe { libc::fcntl(write.as_raw_fd(), libc::F_GETFL) };
+        unsafe { libc::fcntl(write.as_raw_fd(), libc::F_SETFL, flags | libc::O_NONBLOCK) };
+        for size in [4096, 1] {
+            let bytes = vec![0u8; size];
+            while unsafe { libc::write(write.as_raw_fd(), bytes.as_ptr().cast(), size) } > 0 {}
+        }
+        unsafe { libc::fcntl(write.as_raw_fd(), libc::F_SETFL, flags) };
+        (read, write)
+    };
+    // A command a signal failed to end would hang the suite. It is killed after half a
+    // minute, and the signal asserted of it is then not the one it was sent.
+    let ended = |mut child: std::process::Child| {
+        let pid = child.id() as i32;
+        let (end, wait) = mpsc::channel();
+        let watch = std::thread::spawn(move || {
+            if wait.recv_timeout(Duration::from_secs(30)).is_err() {
+                unsafe { libc::kill(pid, libc::SIGKILL) };
+            }
+        });
+        let status = child.wait().unwrap();
+        // The watchdog has gone if it had to kill the command.
+        let _ = end.send(());
+        watch.join().unwrap();
+        let mut stderr = String::new();
+        if let Some(mut pipe) = child.stderr.take() {
+            std::io::Read::read_to_string(&mut pipe, &mut stderr).unwrap();
+        }
+        (status, stderr)
+    };
+    for (signal, name, stderr) in [
+        (libc::SIGTERM, "SIGTERM", "read"),
+        (libc::SIGINT, "SIGINT", "read"),
+        (libc::SIGHUP, "SIGHUP", "read"),
+        (libc::SIGTERM, "SIGTERM", "closed"),
+        (libc::SIGTERM, "SIGTERM", "stalled"),
+    ] {
+        let stderr_open = stderr == "read";
+        let stalled = (stderr == "stalled").then(full);
+        let mut child = waiting(
+            None,
+            match &stalled {
+                Some((_, write)) => Stdio::from(write.try_clone().unwrap()),
+                None => Stdio::piped(),
+            },
+        );
+        let pid = child.id();
+        if stderr == "closed" {
+            drop(child.stderr.take());
         }
         // Inspect the exact process we started before signalling it.
         let process = Command::new("ps")
@@ -299,10 +363,9 @@ fn a_signalled_cli_names_its_sender_once_and_keeps_its_signal_exit_status() {
             .unwrap();
         assert!(String::from_utf8_lossy(&process.stdout).contains("dispatchdev"));
         assert_eq!(unsafe { libc::kill(pid as i32, signal) }, 0);
-        let output = child.wait_with_output().unwrap();
-        assert_eq!(output.status.signal(), Some(signal), "{name}");
-        assert_eq!(128 + output.status.signal().unwrap(), 128 + signal);
-        let stderr = String::from_utf8(output.stderr).unwrap();
+        let (status, stderr) = ended(child);
+        assert_eq!(status.signal(), Some(signal), "{name}, stderr {stderr}");
+        assert_eq!(128 + status.signal().unwrap(), 128 + signal);
         let lines: Vec<_> = stderr
             .lines()
             .filter(|line| line.starts_with("dispatchdev: received "))
@@ -335,12 +398,40 @@ fn a_signalled_cli_names_its_sender_once_and_keeps_its_signal_exit_status() {
             line.contains(&format!("ppid={} ", unsafe { libc::getppid() })),
             "{line}"
         );
+        let me = std::env::current_exe().unwrap().canonicalize().unwrap();
         #[cfg(target_os = "linux")]
+        assert!(line.contains(me.to_str().unwrap()), "{line}");
+        // macOS names the executable alone: its arguments come with its environment.
+        #[cfg(target_os = "macos")]
         assert!(
-            line.contains(std::env::current_exe().unwrap().to_str().unwrap()),
+            line.ends_with(&format!(
+                "command={}",
+                serde_json::to_string(me.to_str().unwrap()).unwrap()
+            )),
             "{line}"
         );
     }
+    // A signal the command was started ignoring is still ignored, and another still ends it.
+    let child = waiting(Some(libc::SIGHUP), Stdio::piped());
+    let pid = child.id();
+    // Linux says which signals a process ignores and which it catches; macOS has no such
+    // report, and the code deciding it is the same there.
+    #[cfg(target_os = "linux")]
+    {
+        let status = fs::read_to_string(format!("/proc/{pid}/status")).unwrap();
+        let mask = |name: &str| {
+            let line = status.lines().find(|line| line.starts_with(name)).unwrap();
+            u64::from_str_radix(line.split_whitespace().nth(1).unwrap(), 16).unwrap()
+        };
+        let hangup = 1 << (libc::SIGHUP - 1);
+        assert_ne!(mask("SigIgn:") & hangup, 0, "{status}");
+        assert_eq!(mask("SigCgt:") & hangup, 0, "{status}");
+    }
+    assert_eq!(unsafe { libc::kill(pid as i32, libc::SIGTERM) }, 0);
+    let (status, stderr) = ended(child);
+    assert_eq!(status.signal(), Some(libc::SIGTERM), "{stderr}");
+    let log = fs::read_to_string(scratch.join("test").join(pid.to_string()).join("1.log")).unwrap();
+    assert!(log.contains("received SIGTERM (15)"), "{log}");
     drop(held);
     let contents: Vec<_> = fs::read_dir(&scratch)
         .unwrap()

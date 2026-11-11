@@ -12,9 +12,13 @@ use std::{
     sync::{
         Mutex,
         atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering},
+        mpsc,
     },
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
+
+/// How long the sender's line may take to write before the signal ends the command anyway.
+const PATIENCE: Duration = Duration::from_millis(500);
 
 static CLAIMED: AtomicBool = AtomicBool::new(false);
 static SIGNAL: AtomicI32 = AtomicI32::new(0);
@@ -54,6 +58,15 @@ pub fn install() -> Result<()> {
     for signal in [libc::SIGTERM, libc::SIGINT, libc::SIGHUP] {
         // Zero initialises the platform's sigaction layout; libc owns those differences.
         let mut action: libc::sigaction = unsafe { std::mem::zeroed() };
+        // A signal the command was started ignoring, as nohup starts one ignoring SIGHUP,
+        // stays ignored.
+        if unsafe { libc::sigaction(signal, std::ptr::null(), &mut action) } != 0 {
+            return Err(std::io::Error::last_os_error().into());
+        }
+        if action.sa_sigaction == libc::SIG_IGN {
+            continue;
+        }
+        action = unsafe { std::mem::zeroed() };
         action.sa_sigaction = received as *const () as usize;
         action.sa_flags = libc::SA_SIGINFO | libc::SA_RESTART;
         unsafe {
@@ -94,6 +107,28 @@ impl Drop for RunLog {
 
 fn report() {
     let signal = SIGNAL.load(Ordering::Acquire);
+    // Naming the sender must never keep the signal from ending the command: a reader of
+    // stderr that has stalled would hold the write for good. The line gets a moment on a
+    // thread of its own, and the signal is raised whether or not it was written.
+    let (written, wait) = mpsc::channel();
+    let _ = std::thread::Builder::new()
+        .name("signal-line".into())
+        .spawn(move || {
+            name_sender(signal);
+            let _ = written.send(());
+        });
+    let _ = wait.recv_timeout(PATIENCE);
+    // Preserve signal death (and shell status 128+n). No forwarding: group delivery and
+    // the kernel's descriptor/lock cleanup remain exactly as they were.
+    unsafe {
+        libc::signal(signal, libc::SIG_DFL);
+        libc::raise(signal);
+        libc::_exit(128 + signal);
+    }
+}
+
+/// One line to the run's log, then to stderr, which is the write that can stall.
+fn name_sender(signal: i32) {
     let pid = PID.load(Ordering::Relaxed);
     let uid = UID.load(Ordering::Relaxed);
     let timestamp = SystemTime::now()
@@ -114,15 +149,6 @@ fn report() {
         parent.map_or_else(|| "unknown".into(), |pid| pid.to_string()),
         serde_json::to_string(&command.unwrap_or_else(|| "unknown".into())).unwrap(),
     );
-    // Avoid the stderr lock: the interrupted thread could hold it while reporting a failure.
-    // A closed stderr pipe must not replace the original signal with SIGPIPE, which macOS
-    // sends to the whole process, so no one thread's mask holds it: it is ignored for this
-    // one write. Children keep the disposition they were started with.
-    unsafe {
-        let pipe = libc::signal(libc::SIGPIPE, libc::SIG_IGN);
-        libc::write(libc::STDERR_FILENO, line.as_ptr().cast(), line.len());
-        libc::signal(libc::SIGPIPE, pipe);
-    }
     let log = LOG
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -136,12 +162,14 @@ fn report() {
     {
         let _ = file.write_all(line.as_bytes());
     }
-    // Preserve signal death (and shell status 128+n). No forwarding: group delivery and
-    // the kernel's descriptor/lock cleanup remain exactly as they were.
+    // Avoid the stderr lock: the interrupted thread could hold it while reporting a failure.
+    // A closed stderr pipe must not replace the original signal with SIGPIPE, which macOS
+    // sends to the whole process, so no one thread's mask holds it: it is ignored for this
+    // one write. Children keep the disposition they were started with.
     unsafe {
-        libc::signal(signal, libc::SIG_DFL);
-        libc::raise(signal);
-        libc::_exit(128 + signal);
+        let pipe = libc::signal(libc::SIGPIPE, libc::SIG_IGN);
+        libc::write(libc::STDERR_FILENO, line.as_ptr().cast(), line.len());
+        libc::signal(libc::SIGPIPE, pipe);
     }
 }
 
@@ -184,37 +212,12 @@ fn sender(pid: i32) -> (Option<String>, Option<u32>) {
         )
     };
     let parent = (read == size).then_some(info.pbi_ppid);
-    // KERN_PROCARGS2 returns argc, executable path, padding, then argv (and environment).
-    // Stop at argc: environment variables must never enter the diagnostic.
-    let mut mib = [libc::CTL_KERN, libc::KERN_PROCARGS2, pid];
-    let mut bytes = vec![0u8; 1024 * 1024];
-    let mut length = bytes.len();
-    let read = unsafe {
-        libc::sysctl(
-            mib.as_mut_ptr(),
-            mib.len() as u32,
-            bytes.as_mut_ptr().cast(),
-            &mut length,
-            std::ptr::null_mut(),
-            0,
-        )
-    };
-    let command = if read == 0 && length >= 4 {
-        bytes.truncate(length);
-        let argc = i32::from_ne_bytes(bytes[..4].try_into().unwrap());
-        let payload = &bytes[4..];
-        payload.iter().position(|b| *b == 0).and_then(|end| {
-            let args = &payload[end + 1..];
-            let start = args.iter().position(|b| *b != 0)?;
-            let args: Vec<_> = args[start..]
-                .split(|b| *b == 0)
-                .take(argc.max(0) as usize)
-                .map(String::from_utf8_lossy)
-                .collect();
-            (!args.is_empty()).then(|| args.join(" "))
-        })
-    } else {
-        None
-    };
+    // Only the executable's path: the kernel hands a process's arguments back in one area
+    // with its environment and no sure boundary between them, and an environment must never
+    // enter the diagnostic.
+    let mut path = vec![0u8; libc::PROC_PIDPATHINFO_MAXSIZE as usize];
+    let length = unsafe { libc::proc_pidpath(pid, path.as_mut_ptr().cast(), path.len() as u32) };
+    let command =
+        (length > 0).then(|| String::from_utf8_lossy(&path[..length as usize]).into_owned());
     (command, parent)
 }
