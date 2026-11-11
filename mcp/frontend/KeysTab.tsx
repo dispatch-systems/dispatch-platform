@@ -168,27 +168,18 @@ export function KeysTab() {
                   )}
                 </div>
               )}
-              {open === 'new' && (
+              {(open === 'new' || editing) && (
                 <KeySheet
+                  key={editing?.id ?? 'new'}
                   dsps={data.dsps}
                   tools={data.tools}
+                  existing={editing}
                   close={() => setOpen(null)}
                   created={(made) => {
                     setOpen(null);
                     setCreated(made);
                     keys.refresh();
                   }}
-                  changed={() => {}}
-                />
-              )}
-              {editing && (
-                <KeySheet
-                  key={editing.id}
-                  dsps={data.dsps}
-                  tools={data.tools}
-                  existing={editing}
-                  close={() => setOpen(null)}
-                  created={() => {}}
                   changed={() => {
                     setOpen(null);
                     keys.refresh();

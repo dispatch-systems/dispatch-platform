@@ -187,9 +187,54 @@ pub struct ConductStanding {
     pub steps_down_on: Option<String>,
     /// The tier they step down to then; none clears their record in the category.
     pub steps_down_to: Option<ConductTier>,
+    pub latest_final_kind: Option<ConductFinalKind>,
+    pub latest_suspension: Option<String>,
 }
 
-/// `GET /api/dsp/conduct`: everything the page draws.
+/// A driver's history totals, independent of the page of history currently open.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/conduct/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct ConductDriver {
+    pub person: String,
+    pub count: usize,
+    pub latest_on: String,
+    pub awaiting_signature: bool,
+}
+
+/// One bounded page of writeups, in notice-date order.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/conduct/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct ConductHistory {
+    pub writeups: Vec<ConductWriteupRow>,
+    pub next_cursor: Option<String>,
+}
+
+/// The record immediately before a notice at the selected date.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/conduct/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct ConductContext {
+    pub standing: Option<ConductTier>,
+    pub earlier: Vec<ConductWriteupRow>,
+}
+
+/// The change a proposed step-down rule makes to one driver's standing.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/conduct/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct ConductImpact {
+    pub person: String,
+    pub before: Option<ConductStanding>,
+    pub after: Option<ConductStanding>,
+}
+
+/// Compact categories, people, standings and history totals for the page.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "features/conduct/api/generated/"))]
@@ -201,13 +246,10 @@ pub struct ConductOverview {
     pub categories: Vec<ConductCategory>,
     /// Everyone a writeup may be for or is, by name.
     pub people: Vec<ConductPerson>,
-    /// Every writeup, the newest first.
-    pub writeups: Vec<ConductWriteupRow>,
+    pub drivers: Vec<ConductDriver>,
+    pub category_counts: BTreeMap<String, usize>,
     /// Where each person stands in each category their record isn't clean in.
     pub standings: Vec<ConductStanding>,
-    /// Where each writeup's person stood in its category just before it, by writeup id: none
-    /// for a writeup written while their record there was clean.
-    pub stood_before: BTreeMap<String, ConductTier>,
 }
 
 /// A writeup whole, as it prints.
@@ -237,14 +279,13 @@ impl FromRow for ConductWriteup {
     }
 }
 
-/// What a write to a writeup answers: the writeup as it is now, and the page's data with it.
+/// The writeup as it reads after a mutation; history and summaries revalidate separately.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "features/conduct/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct ConductSaved {
     pub writeup: ConductWriteup,
-    pub overview: ConductOverview,
 }
 
 /// `GET /api/dsp/conduct/backup`: where signed copies are backed up, and how that's going, for

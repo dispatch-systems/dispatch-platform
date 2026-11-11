@@ -12,6 +12,7 @@ import {
 import { Face } from '../shared/Face.js';
 import { ListEmpty } from '../shared/List.js';
 import { Segments } from '../shared/Segments.js';
+import '../shared/people.css';
 import './save-contact.css';
 
 /** The most a contact's name may be, as the server keeps it. */

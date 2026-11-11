@@ -205,7 +205,7 @@ function Broken({ view, connection }: { view: DspView; connection: DocumentsConn
             <ArrowRight size={16} />
           </a>
           <a
-            className="documents-link-button"
+            className="link-button documents-link-button"
             href={connection.folderUrl}
             target="_blank"
             rel="noreferrer"

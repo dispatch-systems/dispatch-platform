@@ -52,10 +52,6 @@
   --identity-ink: var(--violet);
   --identity-surface: var(--violet-surface);
 }
-.dsp-avatar.tone-3 {
-  --identity-ink: var(--slate);
-  --identity-surface: var(--slate-surface);
-}
 .dsp-avatar.tone-4 {
   --identity-ink: var(--steel);
   --identity-surface: var(--steel-surface);

@@ -24,9 +24,32 @@ pub(crate) fn keep(
     revision: i64,
     bytes: &[u8],
 ) -> Result<()> {
+    keep_requested(store, c, id, revision, bytes, None)
+}
+
+pub(crate) fn keep_requested(
+    store: &Store,
+    c: &Context,
+    id: &str,
+    revision: i64,
+    bytes: &[u8],
+    request: Option<&str>,
+) -> Result<()> {
     let media_type = picture_type(bytes)?;
+    let digest = dispatch_core::foundation::crypto::sha(bytes);
+    let operation = super::requests::Operation {
+        request,
+        kind: "copy",
+        writeup: id,
+        revision,
+        payload: &digest,
+    };
     let db = store.dsp(&c.dsp.id)?;
     db.transaction(|| {
+        if let Some(result) = operation.previous(&db, c)? {
+            writeups::unsigned(&db, id, Some(result))?;
+            return Ok(());
+        }
         writeups::unsigned(&db, id, Some(revision))?;
         db.exec(
             "INSERT INTO conduct_copies (writeup_id,media_type,bytes,added_by_name,added_at) \
@@ -38,6 +61,7 @@ pub(crate) fn keep(
             "UPDATE conduct_writeups SET revision=revision+1,updated_at=? WHERE id=?",
             params![iso(), id],
         )?;
+        operation.record(&db, c, revision + 1)?;
         Ok(())
     })
 }

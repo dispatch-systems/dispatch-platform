@@ -1,3 +1,7 @@
+export type { ConductContext } from './generated/ConductContext';
+export type { ConductDriver } from './generated/ConductDriver';
+export type { ConductHistory } from './generated/ConductHistory';
+export type { ConductImpact } from './generated/ConductImpact';
 // Conduct's API types, as its screens use them.
 export type { ConductBackup } from './generated/ConductBackup';
 export type { ConductCategory } from './generated/ConductCategory';

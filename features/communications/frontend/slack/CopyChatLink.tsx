@@ -29,7 +29,7 @@ export function CopyChatLink({ workspaces }: { workspaces: readonly Communicatio
   return (
     <Popover
       className="chat-link-menu"
-      triggerClassName="chat-link-button"
+      triggerClassName="link-button chat-link-button"
       label="Copy chat link"
       trigger={label}
     >

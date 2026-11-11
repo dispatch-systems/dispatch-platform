@@ -1,15 +1,8 @@
 import { ChevronLeft, Plus } from 'lucide-react';
-import { Empty } from '../../../../core/shell/frontend/ui/index.js';
 import type { ConductOverview } from '../../api/index.js';
-import {
-  Person,
-  RowLink,
-  SignedState,
-  TierBadge,
-  WriteupTier,
-  categoryName,
-  personOf,
-} from '../parts.js';
+import { Person, TierBadge, categoryName, personOf } from '../parts.js';
+import { emptyFilters } from '../../api/client.js';
+import { WriteupsTab } from '../writeups/WriteupsTab.js';
 import { finalNote, printedDay, stepDown, tiers } from '../tiers.js';
 
 /** One driver: where they stand in each category, on its ladder, when they next step down, and
@@ -29,7 +22,6 @@ export function DriverView({
 }) {
   const person = personOf(overview, code);
   const standings = overview.standings.filter((s) => s.person === code);
-  const writeups = overview.writeups.filter((w) => w.person === code);
   return (
     <>
       <button type="button" className="conduct-back" onClick={back}>
@@ -50,10 +42,9 @@ export function DriverView({
       {standings.length > 0 && (
         <div className="conduct-ladders">
           {standings.map((standing) => {
-            const latest = writeups.find((w) => w.id === standing.latestId);
             const note =
-              latest?.tier === 'final' && standing.tier === 'final'
-                ? finalNote(latest.finalKind, latest.suspension)
+              standing.tier === 'final'
+                ? finalNote(standing.latestFinalKind, standing.latestSuspension)
                 : '';
             const next = stepDown(standing);
             const reached = tiers.indexOf(standing.tier);
@@ -92,40 +83,14 @@ export function DriverView({
         </div>
       )}
       <h2 className="conduct-section-title">History</h2>
-      {writeups.length === 0 ? (
-        <Empty title="No writeups" />
-      ) : (
-        <div className="table-wrap">
-          <table className="conduct-table">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Category</th>
-                <th>Tier</th>
-                <th>Supervisor</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {writeups.map((w) => (
-                <tr key={w.id} className="conduct-row" onClick={() => openWriteup(w.id)}>
-                  <td className="conduct-nowrap">
-                    <RowLink open={() => openWriteup(w.id)}>{printedDay(w.writtenOn)}</RowLink>
-                  </td>
-                  <td>{categoryName(overview, w.categoryId)}</td>
-                  <td>
-                    <WriteupTier writeup={w} />
-                  </td>
-                  <td className="conduct-nowrap">{w.supervisorName}</td>
-                  <td>
-                    <SignedState writeup={w} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <WriteupsTab
+        overview={overview}
+        filters={emptyFilters}
+        change={() => {}}
+        person={code}
+        history
+        openWriteup={openWriteup}
+      />
     </>
   );
 }

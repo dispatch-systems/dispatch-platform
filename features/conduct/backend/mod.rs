@@ -10,7 +10,9 @@
 pub(crate) mod backups;
 pub(crate) mod categories;
 pub(crate) mod copies;
+pub(crate) mod history;
 pub(crate) mod overview;
+mod requests;
 pub(crate) mod settings;
 pub(crate) mod standing;
 pub(crate) mod writeups;
@@ -27,6 +29,7 @@ use dispatch_core::{
 
 /// The kind of data Conduct's writes change.
 pub const DOMAIN: DataDomain = DataDomain::new("conduct");
+pub const CACHED: &str = "conduct.overview";
 
 /// Runs `change` in a transaction of the DSP's database `db` inside one of the platform's, for a
 /// change with its event in the activity log: either commits with the other, unless the

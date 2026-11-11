@@ -8,6 +8,7 @@ import { clock } from '../shared/format.js';
 import { Face } from '../shared/Face.js';
 import { ListEmpty } from '../shared/List.js';
 import { RouteCode } from './RouteFacts.js';
+import '../shared/people.css';
 import './pick-driver.css';
 
 // Pick driver, for a work phone nobody held: one of today's drivers, found by name or route, each
