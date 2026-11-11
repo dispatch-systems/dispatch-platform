@@ -121,6 +121,14 @@ fn queue_limits_and_authority_are_checked_again_before_publication() {
             .status,
         429
     );
+    // A worker claims the oldest job, and jobs queued within one millisecond tie: the manual
+    // request is made the oldest by its time, as it is by its order.
+    db.jobs
+        .exec(
+            "UPDATE jobs SET created_at='2026-01-01T00:00:00.000Z' WHERE actor_id IS NOT NULL",
+            [],
+        )
+        .unwrap();
     let job = db.claim_job("worker", |_, _| true).unwrap().unwrap();
     let jid = job.id.as_str();
     db.guard(jid, "worker").unwrap();
