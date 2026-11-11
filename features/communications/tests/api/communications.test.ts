@@ -7,7 +7,7 @@ import { connect, event, fromSlack } from '../../../slack/tests/support/slack.js
 
 type Fixture = Awaited<ReturnType<typeof fixture>>;
 
-const route = '/api/dsp/communications';
+const route = '/api/dsp/dispatch-phone';
 /** Slack's `ts` for now: seconds, a point and microseconds. */
 const now = () => (Date.now() / 1000).toFixed(6);
 /** Jordan Ellis writing to the app in Operations, as Slack tells of it. */
@@ -50,6 +50,8 @@ test('a direct message reaches Communications live, and its answer and photo go 
   const [conversation] = (await read()).conversations;
   assert.equal(conversation.state, 'waiting');
   assert.equal(conversation.last.text, 'Running late');
+  const legacy = '/api/dsp/communications';
+  assert.deepEqual((await owner.read(legacy)).conversations, (await read()).conversations);
   assert.equal((await owner.read(`${route}/waiting`)).count, 1);
 
   // A photo they send is kept in Dispatch, which serves it.
@@ -68,7 +70,11 @@ test('a direct message reaches Communications live, and its answer and photo go 
   const bytes = await f.raw(`${route}/files/${photo}`, undefined, owner.headers);
   assert.equal(bytes.status, 200);
   assert.equal(bytes.headers.get('content-type'), 'image/png');
-  assert.deepEqual([...new Uint8Array(await bytes.arrayBuffer()).slice(0, 4)], [137, 80, 78, 71]);
+  const picture = new Uint8Array(await bytes.arrayBuffer());
+  assert.deepEqual([...picture.slice(0, 4)], [137, 80, 78, 71]);
+  const oldPicture = await f.raw(`${legacy}/files/${photo}`, undefined, owner.headers);
+  assert.equal(oldPicture.status, 200);
+  assert.deepEqual(new Uint8Array(await oldPicture.arrayBuffer()), picture);
 
   // Answered, it waits no more; written to again, it waits; marked done, it doesn't.
   const answer = await owner.post(`${route}/conversations/${conversation.id}/messages`, {
@@ -79,7 +85,7 @@ test('a direct message reaches Communications live, and its answer and photo go 
   assert.equal((await read()).conversations[0].state, 'responded');
   await write({ text: 'Thanks' });
   await until(async () => (await read()).waiting === 1);
-  const done = await owner.post(`${route}/conversations/${conversation.id}/done`);
+  const done = await owner.post(`${legacy}/conversations/${conversation.id}/done`);
   assert.equal(done.value.state, 'done');
   assert.equal((await read()).waiting, 0);
 
@@ -120,6 +126,7 @@ test('Communications answers only those whose role gives them it, and the profil
   const north = refused.session.dsps[0];
   await refused.select(north.id);
   assert.equal((await refused.get(route)).status, 403);
+  assert.equal((await refused.get('/api/dsp/communications')).status, 403);
   const replies = { replies: ['On my way'], revision: 0 };
   assert.equal((await refused.post(`${route}/quick-replies`, replies)).status, 403);
 

@@ -16,7 +16,7 @@ use std::{
 /// Where each pair of initials is published, on the admin's address: `<letters>.png`. Its
 /// version changes with the drawing, so Slack, which keeps an image by its address, shows a new
 /// one.
-pub const PATH: &str = "/communications/initials/1/{name}";
+pub const PATH: &str = "/dispatch-phone/initials/1/{name}";
 /// How many pixels square an image is.
 const SIZE: usize = 256;
 /// How tall its letters are, to the em, as the dashboard sizes an avatar's.

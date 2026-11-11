@@ -16,7 +16,7 @@ import './setup.css';
 // Either comes back here from Slack.
 
 /** This page, where Slack sends the browser back to finish. */
-const PAGE = 'communications';
+const PAGE = 'dispatch-phone';
 
 /** To Slack, to add a workspace, or update the workspace `team`. */
 async function install(asked: { team: string } | { label: string }) {

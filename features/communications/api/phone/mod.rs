@@ -19,43 +19,56 @@ use access::{Address, Phone};
 use dispatch_core::server::http::route::{Public, Route, async_get, async_post, upload};
 
 /// Where a phone downloads the app, at its DSP's address, as the phones' card links to it.
-pub(in crate::api) const DOWNLOAD: &str = "/api/communications/phone/app/download";
+pub(in crate::api) const DOWNLOAD: &str = "/api/dispatch-phone/phone/app/download";
 
 /// The phones' routes, at the DSP's own address: pairing by a code, and the app, public; every
 /// other call by the key a phone was given.
 pub(in crate::api) fn routes() -> Vec<Route> {
     vec![
-        async_post("/api/communications/phone/pair", Public, pairing::pair),
-        async_get("/api/communications/phone/app", Address, app::details),
-        async_get(DOWNLOAD, Address, app::download),
-        async_get("/api/communications/phone/outbox", Phone, outbox::outbox),
-        async_post("/api/communications/phone/texts", Phone, texts::texts),
+        async_post("/api/dispatch-phone/phone/pair", Public, pairing::pair)
+            .also_at("/api/communications/phone/pair"),
+        async_get("/api/dispatch-phone/phone/app", Address, app::details)
+            .also_at("/api/communications/phone/app"),
+        async_get(DOWNLOAD, Address, app::download)
+            .also_at("/api/communications/phone/app/download"),
+        async_get("/api/dispatch-phone/phone/outbox", Phone, outbox::outbox)
+            .also_at("/api/communications/phone/outbox"),
+        async_post("/api/dispatch-phone/phone/texts", Phone, texts::texts)
+            .also_at("/api/communications/phone/texts"),
         upload(
-            "/api/communications/phone/files/{id}",
+            "/api/dispatch-phone/phone/files/{id}",
             Phone,
             LIMITS.largest,
             files::file_in,
-        ),
+        )
+        .also_at("/api/communications/phone/files/{id}"),
         async_get(
-            "/api/communications/phone/files/{id}",
+            "/api/dispatch-phone/phone/files/{id}",
             Phone,
             files::file_out,
-        ),
+        )
+        .also_at("/api/communications/phone/files/{id}"),
         upload(
-            "/api/communications/phone/files/{id}/preview",
+            "/api/dispatch-phone/phone/files/{id}/preview",
             Phone,
             PREVIEW_MOST,
             files::preview_in,
-        ),
+        )
+        .also_at("/api/communications/phone/files/{id}/preview"),
         async_post(
-            "/api/communications/phone/files/{id}/gone",
+            "/api/dispatch-phone/phone/files/{id}/gone",
             Phone,
             files::gone,
-        ),
+        )
+        .also_at("/api/communications/phone/files/{id}/gone"),
         async_post(
-            "/api/communications/phone/statuses",
+            "/api/dispatch-phone/phone/statuses",
             Phone,
             outbox::statuses,
-        ),
+        )
+        .also_at("/api/communications/phone/statuses"),
     ]
+    .into_iter()
+    .flatten()
+    .collect()
 }

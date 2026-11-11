@@ -234,7 +234,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
     >
       <Shown value={display}>
         <div className="communications-page" inert={updating.length > 0}>
-          <Header title="Communications">
+          <Header title="Dispatch Phone">
             {layout !== 'phone' && offline}
             {sections.length > 0 && displaySettings && (
               <button

@@ -51,7 +51,7 @@ pub const INTEGRATION: Integration = Integration {
     heard: Some(heard),
     fixture: Some(fixture::answer),
     forget: Some(forget),
-    ..integration("slack", ID, "Communications")
+    ..integration("slack", ID, "Dispatch Phone")
 };
 
 /// Whether the workspace's admin has approved all Communications uses there: else updating Slack

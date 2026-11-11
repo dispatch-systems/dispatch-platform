@@ -42,7 +42,7 @@ export function choices(settings: SettingsAnswer | undefined) {
 /** The conversation or group open on Communications' page, while it's in front of the member. */
 export function inFront(): InFront {
   if (document.visibilityState !== 'visible' || !document.hasFocus()) return {};
-  if (parseHash(location.hash).page !== 'communications') return {};
+  if (parseHash(location.hash).page !== 'dispatch-phone') return {};
   const query = hashQuery();
   return { conversation: query.get('open') ?? undefined, group: query.get('group') ?? undefined };
 }
@@ -67,7 +67,7 @@ export function alertMember(access: () => Watching) {
     const card = phonesCard(access());
     for (const each of phones.fresh) notify(each.words, '', `phone-down:${each.key}`, card);
     for (const each of fresh) {
-      const opens = pageHash(access(), 'communications', { open: each.conversationId });
+      const opens = pageHash(access(), 'dispatch-phone', { open: each.conversationId });
       notify(each.from, preview(each.message), each.message.id, opens);
     }
   };

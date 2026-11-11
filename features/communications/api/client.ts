@@ -60,11 +60,11 @@ const wording: Readonly<Record<string, string>> = {
   phones_pairing_unavailable: "A code couldn't be made. Try again.",
   phones_pairing_invalid: "That code didn't work. Make a new one.",
   phones_removed: 'This phone was removed.',
-  phones_off: 'Communications is off for this DSP.',
+  phones_off: 'Dispatch Phone is off for this DSP.',
   phones_app_not_found: "The app isn't available yet.",
   communications_group_not_found: 'This group is no longer here. Refresh the page.',
   communications_contact_not_found: 'This person is no longer in your Slack workspace.',
-  communications_off: 'Communications is off in this Slack workspace.',
+  communications_off: 'Dispatch Phone is off in this Slack workspace.',
   communications_upload_not_found: 'A photo is no longer attached. Add it again.',
   communications_reply_sending: 'This message is still sending.',
   communications_photo_kind: 'Photos must be PNG, JPEG or GIF.',
@@ -88,7 +88,7 @@ function worded(error: unknown) {
 /** One of its calls, a refusal worded as Communications words it. */
 const api = wordedApi(wording);
 
-const communicationsUrl = '/api/dsp/communications';
+const communicationsUrl = '/api/dsp/dispatch-phone';
 /** `path` asking `asked`, what's left empty left out: as `team`, for one workspace's alone. */
 function address(path: string, asked: Record<string, string | undefined>) {
   const query = new URLSearchParams(

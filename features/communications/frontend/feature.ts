@@ -7,7 +7,7 @@ import { messages } from '../integrations/messages/frontend/integration.js';
 
 declare module '../../../core/shell/frontend/runtime/slots.js' {
   interface DspPages {
-    communications: true;
+    'dispatch-phone': true;
   }
 }
 
@@ -28,13 +28,17 @@ const QuickRepliesSettings = lazy(() =>
 const loadPhones = () => import('./texting/phone/PhonesCard.js');
 const PhonesCard = lazy(() => loadPhones().then((module) => ({ default: module.PhonesCard })));
 
+const addresses = ['/api/dsp/dispatch-phone', '/api/dsp/communications'];
+const here = (path: string) => addresses.some((base) => begins(path, base));
+
 export const feature: FrontendFeature = {
   name: 'communications',
   routes: [
     {
-      id: 'communications',
+      id: 'dispatch-phone',
+      formerly: ['communications'],
       scope: 'dsp',
-      label: 'Communications',
+      label: 'Dispatch Phone',
       icon: MessagesSquare,
       // How many conversations wait on an answer.
       badge: { load: () => import('./badge.js').then((module) => module.WaitingCount) },
@@ -61,7 +65,7 @@ export const feature: FrontendFeature = {
       id: 'communications.quick_replies',
       load: loadQuickReplies,
       render: () => createElement(QuickRepliesSettings),
-      prefetch: () => ['/api/dsp/communications/quick-replies'],
+      prefetch: () => ['/api/dsp/dispatch-phone/quick-replies'],
     },
   ],
   // Alerts the member to new messages on every page, as they chose in Message display, and a
@@ -88,7 +92,7 @@ export const feature: FrontendFeature = {
       visible: (view) => can(view, 'connections.manage') || can(view, 'phones.manage'),
       // Managing the DSP's phones alone shows it, as managing all its connections does.
       others: (view) => can(view, 'phones.manage'),
-      reads: ['/api/dsp/communications/phones'],
+      reads: ['/api/dsp/dispatch-phone/phones'],
       load: loadPhones,
       render: ({ view }) => view && createElement(PhonesCard, { view }),
     },
@@ -97,12 +101,9 @@ export const feature: FrontendFeature = {
   platformSlots: () => import('./platform-slots.js'),
   connectionIntegrations: [messages],
   // Its page waits on changes to the DSP's conversations, and who is typing in them.
-  longPolls: ['/api/dsp/communications/updates'],
+  longPolls: ['/api/dsp/dispatch-phone/updates'],
   // Each of its writes changes its reads, but saying who is typing, which changes none.
   cache: {
-    write: (write, url) =>
-      write.startsWith('/api/dsp/communications') && !write.endsWith('/typing')
-        ? begins(url, '/api/dsp/communications')
-        : undefined,
+    write: (write, url) => (here(write) && !write.endsWith('/typing') ? here(url) : undefined),
   },
 };

@@ -245,15 +245,16 @@ type Blocking = Arc<dyn Fn(&Store, &State, &Input, Work) -> Result<Reply> + Send
 type Gate = Arc<dyn Fn(&State, &Input) -> Result<()> + Send + Sync>;
 type Pending = Pin<Box<dyn Future<Output = Result<Reply>> + Send>>;
 pub type Served = Pin<Box<dyn Future<Output = Response> + Send>>;
-type Uploaded = Box<dyn Fn(Arc<State>, Input, Upload) -> Pending + Send + Sync>;
+type Uploaded = Arc<dyn Fn(Arc<State>, Input, Upload) -> Pending + Send + Sync>;
 /// Signs in the caller of a protocol route under the shared lock, counts the call, and puts
 /// who it is in the request's extensions.
 type Signer = Arc<
     dyn Fn(&Store, &State, &Input) -> Result<Box<dyn FnOnce(&mut Extensions) + Send>> + Send + Sync,
 >;
+#[derive(Clone)]
 enum Handler {
     Blocking(Blocking),
-    Async(Box<dyn Fn(Arc<State>, Input) -> Pending + Send + Sync>),
+    Async(Arc<dyn Fn(Arc<State>, Input) -> Pending + Send + Sync>),
     /// Its most bytes, and the handler.
     Upload(u64, Uploaded),
     Memory(fn(&State) -> Reply),
@@ -350,7 +351,7 @@ pub fn coalesced_read_by(
     let Handler::Blocking(handler) = route.handler else {
         unreachable!()
     };
-    route.handler = Handler::Async(Box::new(move |state, input| {
+    route.handler = Handler::Async(Arc::new(move |state, input| {
         let handler = handler.clone();
         let key = key.clone();
         Box::pin(async move {
@@ -400,7 +401,7 @@ where
     F: Future<Output = Result<Reply>> + Send + 'static,
 {
     let handler = move |state, input| Box::pin(handler(state, input, access)) as Pending;
-    let handler = Handler::Async(Box::new(handler));
+    let handler = Handler::Async(Arc::new(handler));
     Route::new(method, path, access, Work::Async, handler)
 }
 /// `GET path` for work that waits outside the database. The handler receives the
@@ -443,7 +444,7 @@ where
     assert!(limit <= UPLOAD_LIMIT, "{path}: an upload of at most 100 MB");
     let handler =
         move |state, input, upload| Box::pin(handler(state, input, access, upload)) as Pending;
-    let handler = Handler::Upload(limit, Box::new(handler));
+    let handler = Handler::Upload(limit, Arc::new(handler));
     Route::new(Method::POST, path, access, Work::Upload, handler)
 }
 /// `method path` for a protocol an agent speaks whose requests the handler reads itself,
@@ -507,6 +508,22 @@ pub fn probe(path: &'static str, handler: fn(&State) -> Reply) -> Route {
 }
 
 impl Route {
+    /// Serves this route at another address with the same handler, authorization, limits and
+    /// invalidation policy. Both registrations retain their own request path and parameters.
+    pub fn also_at(self, path: &'static str) -> [Self; 2] {
+        let alias = Self {
+            method: self.method.clone(),
+            path,
+            access: self.access,
+            work: self.work,
+            invalidates_schedules: self.invalidates_schedules,
+            logged: self.logged,
+            gate: self.gate.clone(),
+            handler: self.handler.clone(),
+        };
+        [self, alias]
+    }
+
     fn new<A: Grant>(
         method: Method,
         path: &'static str,

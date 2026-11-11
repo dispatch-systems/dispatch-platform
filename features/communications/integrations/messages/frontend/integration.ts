@@ -10,16 +10,16 @@ export const MESSAGES = 'communications.messages';
 export const messages: ConnectionIntegration = {
   connection: 'slack',
   id: MESSAGES,
-  label: 'Communications',
+  label: 'Dispatch Phone',
   icon: MessagesSquare,
-  description: 'Messages people send Dispatch in Slack show on the Communications page.',
-  steps: ['People message Dispatch in Slack', 'Your team answers on the Communications page'],
+  description: 'Messages people send Dispatch in Slack show on the Dispatch Phone page.',
+  steps: ['People message Dispatch in Slack', 'Your team answers on the Dispatch Phone page'],
   sees: [
     { icon: MessagesSquare, text: 'Messages people send Dispatch, with their photos and files' },
     { icon: Mail, text: "Members' email addresses, to answer under your team's Slack photos" },
   ],
   turningOn: [
-    { text: 'Messages people send Dispatch show on the Communications page' },
+    { text: 'Messages people send Dispatch show on the Dispatch Phone page' },
     { text: 'Messages from before it was on are never kept' },
   ],
   turningOff: [

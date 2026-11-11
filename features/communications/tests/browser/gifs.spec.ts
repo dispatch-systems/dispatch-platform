@@ -8,7 +8,7 @@ test('Choose GIF shows each GIF at its own shape, scrolls through them, and send
 }) => {
   await login(page);
   await openDsp(page, 'Northline Logistics');
-  await page.getByRole('link', { name: 'Communications' }).click();
+  await page.getByRole('link', { name: 'Dispatch Phone' }).click();
   await page
     .getByRole('region', { name: 'Conversations' })
     .getByRole('listitem')
