@@ -390,10 +390,7 @@ impl Run {
         } else {
             None
         };
-        let mut own: Vec<(&str, &OsStr)> = vec![("TMPDIR", self.tmp.as_os_str())];
-        if let Some(slot) = &slot {
-            own.push((slot::HELD, slot.path.as_os_str()));
-        }
+        let mut own = slot::passed_on(&self.tmp, &slot);
         if isolated {
             own.extend([
                 ("CARGO_TARGET_DIR", self.build.as_os_str()),
@@ -430,6 +427,11 @@ impl Run {
         Ok(freed)
     }
 }
+/// A step's line: whether it passed, how long it took, and what it ran.
+pub fn line(ok: bool, took: std::time::Duration, label: &str) {
+    let took = workspace::duration(took);
+    println!("{}  {took:>7}  {label}", if ok { "ok  " } else { "FAIL" });
+}
 /// Prints a failed command's lines that say why, and where its whole output is.
 pub fn explain(log: &Path) {
     for line in check::failure(&fs::read_to_string(log).unwrap_or_default()) {
@@ -451,12 +453,10 @@ pub fn run_commands(root: &Path, commands: &[String], keep: bool) -> Result<bool
     for (index, step) in steps(commands).iter().enumerate() {
         let log = logs.join(format!("{}.log", index + 1));
         let (ok, took) = run.step(step, &log, &[])?;
-        let took = workspace::duration(took);
+        line(ok, took, &label(&step.command));
         if ok {
-            println!("ok    {took:>7}  {}", label(&step.command));
             continue;
         }
-        println!("FAIL  {took:>7}  {}", label(&step.command));
         explain(&log);
         passed = false;
         break;

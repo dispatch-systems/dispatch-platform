@@ -12,7 +12,6 @@ use serde_json::Value;
 use std::{
     fs,
     path::{Path, PathBuf},
-    time::Duration,
 };
 
 const TSX: &str = "node node_modules/tsx/dist/cli.mjs";
@@ -77,11 +76,6 @@ fn quick(root: &Path, changed: &[String]) -> Result<Vec<(String, String)>> {
     }
     Ok(steps)
 }
-/// A step's line, as `dispatchdev test` prints its own.
-fn line(ok: bool, took: Duration, label: &str) {
-    let took = workspace::duration(took);
-    println!("{}  {took:>7}  {label}", if ok { "ok  " } else { "FAIL" });
-}
 /// What a generator left to write in `feature`, a line each: `file:line: what it asks for`.
 fn markers(root: &Path, feature: &str, runner: &dyn Runner) -> Result<Vec<String>> {
     let owner = format!("feature:{feature}");
@@ -133,12 +127,9 @@ pub fn run(root: &Path, feature: &str, runner: &dyn Runner) -> Result<bool> {
         } else {
             None
         };
-        let mut env = vec![("TMPDIR", scratch.as_os_str())];
-        if let Some(slot) = &slot {
-            env.push((slot::HELD, slot.path.as_os_str()));
-        }
+        let env = slot::passed_on(&scratch, &slot);
         let (ok, took) = workspace::logged(command, root, &log, &env)?;
-        line(ok, took, label);
+        test::line(ok, took, label);
         if ok {
             passed += 1;
         } else {

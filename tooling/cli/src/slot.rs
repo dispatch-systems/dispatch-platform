@@ -8,6 +8,7 @@
 use crate::{Result, Runner, build::Environment, workspace};
 use fs2::FileExt;
 use std::{
+    ffi::OsStr,
     fs::{self, File, OpenOptions},
     io::{Read, Write},
     os::unix::fs::{DirBuilderExt, OpenOptionsExt},
@@ -24,6 +25,15 @@ pub const HELD: &str = "DISPATCH_BUILD_SLOT";
 /// How a wait for a slot is told, so a preview's can be read from its log.
 pub const WAITING: &str = "Waiting for a build slot";
 
+/// What a step passes on to the commands it starts: `TMPDIR` set to `tmp`, and the slot it
+/// holds, if any.
+pub fn passed_on<'a>(tmp: &'a Path, slot: &'a Option<Slot>) -> Vec<(&'a str, &'a OsStr)> {
+    let mut env = vec![("TMPDIR", tmp.as_os_str())];
+    if let Some(slot) = slot {
+        env.push((HELD, slot.path.as_os_str()));
+    }
+    env
+}
 /// A build slot, held until it drops.
 pub struct Slot {
     /// Its file, which `HELD` names to the commands the step starts.

@@ -5,7 +5,6 @@ use crate::{
     test_selection, workspace,
 };
 use std::{
-    ffi::OsStr,
     fs,
     path::{Path, PathBuf},
     sync::Mutex,
@@ -168,15 +167,11 @@ fn side_by_side(root: &Path, commands: &[String], env: &Environment) -> Result<b
                         true => Slot::take(root, command, env, &crate::Native)?,
                         false => None,
                     };
-                    let mut own: Vec<(&str, &OsStr)> = vec![("TMPDIR", scratch.as_os_str())];
-                    if let Some(slot) = &slot {
-                        own.push((slot::HELD, slot.path.as_os_str()));
-                    }
+                    let own = slot::passed_on(scratch, &slot);
                     let (ok, took) = workspace::logged(command, root, &log, &own)?;
                     // A failure's lines stay together under its own.
                     let _said = said.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-                    let took = workspace::duration(took);
-                    println!("{}  {took:>7}  {command}", if ok { "ok  " } else { "FAIL" });
+                    crate::test::line(ok, took, command);
                     if !ok {
                         crate::test::explain(&log);
                     }
