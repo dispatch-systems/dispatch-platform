@@ -10,6 +10,10 @@ sources=$(mktemp "$RUNNER_TEMP/dispatch-ubuntu-XXXXXX.sources")
 chmod 644 "$sources"
 apt_options=(-o "Dir::Etc::sourcelist=$sources" -o 'Dir::Etc::sourceparts=-' -o Acquire::Retries=2)
 
+# PROOF ONLY, reverted before review: the runner's own mirror put out of reach, as kernel.org's
+# address was, so this run installs through the fallback.
+echo '192.0.2.1 azure.archive.ubuntu.com' | sudo tee -a /etc/hosts > /dev/null
+
 for mirror in http://azure.archive.ubuntu.com/ubuntu https://mirrors.edge.kernel.org/ubuntu; do
   cat > "$sources" <<SOURCES
 Types: deb
