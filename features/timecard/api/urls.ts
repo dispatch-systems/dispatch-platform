@@ -1,12 +1,17 @@
 import type { EmployeeTimecardPeriod } from './index.js';
-import { performancePolicy } from '../../../core/shell/frontend/lib/performance-policy.js';
 
 // Timecard's addresses, which its prefetch builds before its page or client load: kept apart
 // from the client, so the manifest every page loads carries only these.
 
 export const employeesPath = '/api/dsp/employees';
-export const employeesUrl = (query: string, status: string, descending: boolean, page = 0) =>
-  `${employeesPath}?q=${encodeURIComponent(query)}&status=${status}&limit=${performancePolicy.employeePageSize}&offset=${page * performancePolicy.employeePageSize}&direction=${descending ? 'desc' : 'asc'}`;
+export const employeesUrl = (
+  query: string,
+  status: string,
+  descending: boolean,
+  page: number,
+  limit: number,
+) =>
+  `${employeesPath}?q=${encodeURIComponent(query)}&status=${status}&limit=${limit}&offset=${page * limit}&direction=${descending ? 'desc' : 'asc'}`;
 export const mealBreaksPath = '/api/dsp/paycom/meal-breaks';
 export const mealPeriodPath = `${mealBreaksPath}/period`;
 export const mealPeriodGapsPath = `${mealBreaksPath}/period-gaps`;

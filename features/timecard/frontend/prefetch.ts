@@ -14,6 +14,7 @@ import { dspHash } from '../../../core/shell/frontend/runtime/navigation.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import { admitted, warm } from '../../../core/shell/frontend/runtime/route-prefetch.js';
 import { selectedPaycomDate } from './paycom-date.js';
+import { performancePolicy } from '../../../core/shell/frontend/lib/performance-policy.js';
 import { selectedTimecardTab } from './tabs.js';
 
 // What the Timecard reads first, so that its selected tab's data starts with its code.
@@ -37,7 +38,13 @@ function timecardUrls(tab: string, date: string, view: DspView): string[] {
     const status = readUpdateState('employee-status', 'all', hash);
     const page = readUpdateState('employee-page', 0, hash);
     const desc = readUpdateState('employee-sort-desc', false, hash);
-    const directoryUrl = employeesUrl(query, status, desc, page);
+    const directoryUrl = employeesUrl(
+      query,
+      status,
+      desc,
+      page,
+      performancePolicy.employeePageSize,
+    );
     urls.push(directoryUrl);
     const selection = readUpdateState<
       { code: string; period?: { from: string; to: string } | null } | undefined
