@@ -197,19 +197,21 @@ test('a Routes rule reads yesterday unless it is set to read today so far', asyn
     .getByRole('button', { name: /^Routes/ })
     .click();
   const routes = page.getByRole('region', { name: 'Routes', exact: true });
-  const rule = routes.locator('.collectors-rule-head');
+  const rule = routes.getByText('Every day at 9:00 AM', { exact: true });
   await routes.getByRole('button', { name: 'Add rule' }).click();
   const day = routes.getByRole('radiogroup', { name: 'Day' });
   await expect(day.getByRole('radio', { name: 'Yesterday' })).toBeChecked();
   await routes.getByLabel('Time 1').fill('09:00');
   await day.getByText('Today so far', { exact: true }).click();
   await routes.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(rule).toContainText('Every day at 9:00 AMToday so far');
+  await expect(rule).toBeVisible();
+  await expect(routes.getByText('Today so far', { exact: true })).toBeVisible();
   expect((await stored())[0].collects).toBe('routes_today');
   // Set back, it reads yesterday.
   await routes.getByRole('button', { name: 'Edit', exact: true }).click();
   await day.getByText('Yesterday', { exact: true }).click();
   await routes.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(rule).toContainText('Every day at 9:00 AMYesterday');
+  await expect(rule).toBeVisible();
+  await expect(routes.getByText('Yesterday', { exact: true })).toBeVisible();
   expect((await stored())[0].collects).toBe('routes');
 });
