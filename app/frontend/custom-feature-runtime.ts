@@ -1,6 +1,7 @@
 import type { DspView, Permission } from '../../core/accounts/api/index.js';
 import { installCustomCatalog } from '../../core/shell/frontend/runtime/features.js';
-import { installCustomPermissions } from '../../core/shell/frontend/runtime/custom-permissions.js';
+import { installCustomPermissions } from '../../core/shell/frontend/runtime/permission-catalog.js';
+import { installSchedulingPermissions } from '../../core/shell/frontend/runtime/permissions.js';
 import {
   installCustomPeople,
   type PeopleDescriptors,
@@ -52,6 +53,7 @@ export function clearCustomFeatures() {
   installCustomFeatures([]);
   installCustomCatalog();
   installCustomPermissions();
+  installSchedulingPermissions();
   installCustomPeople([]);
 }
 
@@ -111,10 +113,8 @@ export async function prepareCustomFeatures(view: DspView, current: () => boolea
   if (!current() || signal.aborted) return;
   return () => {
     installCustomCatalog(view.custom);
-    installCustomPermissions(
-      view.custom,
-      modules.flatMap((module) => module.schedulingPermissions ?? []),
-    );
+    installCustomPermissions(view.custom);
+    installSchedulingPermissions(modules.flatMap((module) => module.schedulingPermissions ?? []));
     installCustomPeople(modules);
     installCustomFeatures(modules.map((module) => module.feature));
     activeSources = new Set(entries.map((entry) => entry.name));
