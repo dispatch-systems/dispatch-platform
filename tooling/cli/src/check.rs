@@ -237,7 +237,9 @@ impl Pass {
         }
         let tree = tree(root, runner)?;
         Ok(Some(Self {
-            file: shared(root, runner)?.join(PASSES).join(&tree),
+            file: workspace::shared_git(root, runner)?
+                .join(PASSES)
+                .join(&tree),
             tree,
             says: format!(
                 "{}\n{}",
@@ -262,19 +264,6 @@ impl Pass {
 /// The hash of the tree `root`'s checkout has committed.
 fn tree(root: &Path, runner: &dyn Runner) -> Result<String> {
     workspace::text(runner, &["git", "rev-parse", "HEAD^{tree}"], Some(root))
-}
-/// The repository's Git folder that every worktree shares.
-fn shared(root: &Path, runner: &dyn Runner) -> Result<PathBuf> {
-    Ok(PathBuf::from(workspace::text(
-        runner,
-        &[
-            "git",
-            "rev-parse",
-            "--path-format=absolute",
-            "--git-common-dir",
-        ],
-        Some(root),
-    )?))
 }
 /// The `CLIPPY` settings in `env`, which change what clippy says.
 fn clippy_settings(env: &Environment) -> Vec<String> {
@@ -331,7 +320,7 @@ impl Lints {
             .filter_map(|name| fs::read_to_string(root.join(name)).ok())
             .collect();
         Ok(Some(Self {
-            file: shared(root, runner)?.join(LINTS).join(&key),
+            file: workspace::shared_git(root, runner)?.join(LINTS).join(&key),
             key,
             says: format!("{command}\n{}\n{config}", clippy_settings(env).join("\n")),
         }))

@@ -42,22 +42,13 @@ impl Slot {
         if env.get("CI").is_some_and(|v| v == "true") || env.contains_key(HELD) {
             return Ok(None);
         }
-        let common = workspace::text(
-            runner,
-            &[
-                "git",
-                "rev-parse",
-                "--path-format=absolute",
-                "--git-common-dir",
-            ],
-            Some(root),
-        )?;
+        let common = workspace::shared_git(root, runner)?;
         let worktree = root
             .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or("a checkout");
         let slot = Self::wait(
-            &Path::new(&common).join(FOLDER),
+            &common.join(FOLDER),
             &format!("{what} in {worktree}"),
             &|seconds| std::thread::sleep(std::time::Duration::from_secs(seconds)),
             &mut |text| println!("{text}"),

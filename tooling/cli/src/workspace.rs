@@ -69,6 +69,19 @@ pub fn text(runner: &dyn Runner, args: &[&str], cwd: Option<&Path>) -> Result<St
         .trim()
         .to_owned())
 }
+/// The repository's Git folder that every worktree shares, by its absolute path.
+pub fn shared_git(root: &Path, runner: &dyn Runner) -> Result<PathBuf> {
+    Ok(PathBuf::from(text(
+        runner,
+        &[
+            "git",
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-common-dir",
+        ],
+        Some(root),
+    )?))
+}
 /// The slice every command `logged` runs goes in, from every worktree at once. Between them they
 /// have a low CPU weight and one memory ceiling: at `MemoryMax` they swap, and past the swap
 /// they may use, the kernel ends one of them, never anything outside.

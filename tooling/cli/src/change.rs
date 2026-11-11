@@ -69,17 +69,7 @@ pub struct Clone {
 impl Clone {
     /// The clone of the checkout at `from`, the clone itself or one of its worktrees.
     pub fn of(from: &Path, runner: &dyn Runner) -> Result<Self> {
-        let git = workspace::text(
-            runner,
-            &[
-                "git",
-                "rev-parse",
-                "--path-format=absolute",
-                "--git-common-dir",
-            ],
-            Some(from),
-        )?;
-        let git = PathBuf::from(git);
+        let git = workspace::shared_git(from, runner)?;
         require(
             git.file_name().is_some_and(|name| name == ".git"),
             "Run it in a clone of the repository, or one of its worktrees.",

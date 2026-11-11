@@ -164,24 +164,9 @@ fn backend_matches(root: &Path, runner: &dyn Runner) -> Option<bool> {
         return None;
     }
     let key = build::key(root, "debug", &env, runner).ok()?;
-    let common = workspace::text(
-        runner,
-        &[
-            "git",
-            "rev-parse",
-            "--path-format=absolute",
-            "--git-common-dir",
-        ],
-        Some(root),
-    )
-    .ok()?;
-    let receipt = fs::read_to_string(
-        Path::new(&common)
-            .join("dispatch-rust-builds")
-            .join(key)
-            .join("sha256"),
-    )
-    .ok()?;
+    let common = workspace::shared_git(root, runner).ok()?;
+    let receipt =
+        fs::read_to_string(common.join("dispatch-rust-builds").join(key).join("sha256")).ok()?;
     let expected = receipt
         .lines()
         .find_map(|line| line.strip_suffix("  dispatch-backend"))?;
