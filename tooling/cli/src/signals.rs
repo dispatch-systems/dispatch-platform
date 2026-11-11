@@ -93,14 +93,6 @@ impl Drop for RunLog {
 }
 
 fn report() {
-    // A closed stderr pipe must not replace the original signal with SIGPIPE. This mask
-    // belongs only to the reporter thread; commands and their children keep theirs.
-    unsafe {
-        let mut set: libc::sigset_t = std::mem::zeroed();
-        libc::sigemptyset(&mut set);
-        libc::sigaddset(&mut set, libc::SIGPIPE);
-        libc::pthread_sigmask(libc::SIG_BLOCK, &set, std::ptr::null_mut());
-    }
     let signal = SIGNAL.load(Ordering::Acquire);
     let pid = PID.load(Ordering::Relaxed);
     let uid = UID.load(Ordering::Relaxed);
@@ -123,7 +115,14 @@ fn report() {
         serde_json::to_string(&command.unwrap_or_else(|| "unknown".into())).unwrap(),
     );
     // Avoid the stderr lock: the interrupted thread could hold it while reporting a failure.
-    unsafe { libc::write(libc::STDERR_FILENO, line.as_ptr().cast(), line.len()) };
+    // A closed stderr pipe must not replace the original signal with SIGPIPE, which macOS
+    // sends to the whole process, so no one thread's mask holds it: it is ignored for this
+    // one write. Children keep the disposition they were started with.
+    unsafe {
+        let pipe = libc::signal(libc::SIGPIPE, libc::SIG_IGN);
+        libc::write(libc::STDERR_FILENO, line.as_ptr().cast(), line.len());
+        libc::signal(libc::SIGPIPE, pipe);
+    }
     let log = LOG
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
