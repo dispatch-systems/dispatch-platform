@@ -37,16 +37,6 @@ permissions, collection schedules, job kinds/requests and audit action prefixes 
 their weekly names. IDs, restrictions and schedule timing are preserved. New requests reject
 old permissions, collection names and routes.
 
-A marked prior `scorecard/scorecard.sqlite` is imported into the new database in a transaction.
-All publications, rows and source metadata keep their IDs and verified-scope flags. A durable
-receipt and count/foreign-key checks make retries safe. Unverified historical scope remains
-quarantined. Missing or conflicting marked state fails closed.
-
-After import the prior directory moves to the DSP's
-`state/weekly_scorecard_migration_backup`; it is an inactive recovery archive.
-Matching existing archives are reused after verifying every remaining source file. Moves
-across filesystems use a private staged copy, verify and sync it, then remove the source.
-Conflicting archives stop before the new marker is committed and retain both directories.
 Historical shipped SQL files remain unchanged for migration evidence. Automatic rollback to a binary
 that only understands retired identifiers is not supported after this transition; recovery
 requires restoring a consistent pre-transition snapshot of the platform, jobs and DSP data.

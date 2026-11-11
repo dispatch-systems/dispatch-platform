@@ -48,7 +48,6 @@ pub const FEATURE: Feature = Feature {
     routes: api::routes::routes,
     // Which weeks its collection rechecks, drawn with it on Settings' Collectors page.
     settings: &[backend::settings::COLLECTION],
-    upgrade_storage: Some(backend::storage::upgrade),
     keeps: &[&backend::keeper::WeeklyScorecard],
     tables: &[(
         "weekly_scorecard",

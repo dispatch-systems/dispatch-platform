@@ -2,13 +2,11 @@
 //! page, one week at a time, published into the DSP's scorecard database. Every row
 //! Amazon sends is kept as JSON beside the keys reads filter on. Browser and HTTP
 //! data is untrusted input.
-pub(crate) mod archive;
 pub(crate) mod exposed;
 pub(crate) mod keeper;
 pub(crate) mod people;
 pub(crate) mod publication;
 pub(crate) mod reads;
-pub(crate) mod retirement;
 pub(crate) mod settings;
 pub(crate) mod storage;
 

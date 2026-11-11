@@ -2,7 +2,6 @@ use crate::backend::publication::keys;
 use dispatch_cortex::weekly_scorecard::{DATASETS, Request};
 use dispatch_cortex::weekly_scorecard::{dataset, fixture};
 use serde_json::json;
-mod archive;
 #[test]
 fn requests_are_recognized_by_their_collection() {
     assert!(
