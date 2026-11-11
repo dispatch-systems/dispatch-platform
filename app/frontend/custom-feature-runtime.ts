@@ -1,6 +1,6 @@
 import type { DspView, Permission } from '../../core/accounts/api/index.js';
 import { installCustomCatalog } from '../../core/shell/frontend/runtime/features.js';
-import { installCustomPermissions } from '../../core/shell/frontend/runtime/permissions.js';
+import { installCustomPermissions } from '../../core/shell/frontend/runtime/custom-permissions.js';
 import {
   installCustomPeople,
   type PeopleDescriptors,
