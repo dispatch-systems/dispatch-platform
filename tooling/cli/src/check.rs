@@ -2,10 +2,8 @@ use crate::{
     Result, Runner,
     build::{self, Environment},
     slot::{self, Slot},
-    test_selection::{self, Workspace},
-    workspace,
+    test_selection, workspace,
 };
-use serde_json::Value;
 use std::{
     ffi::OsStr,
     fs,
@@ -33,11 +31,7 @@ pub struct Plan {
 }
 /// The branch's plan, or what stops it from being pushed.
 pub fn plan(root: &Path, runner: &dyn Runner) -> Result<Plan> {
-    let command = |args: &[&str]| -> Result<String> {
-        Ok(String::from_utf8(runner.command(args, Some(root), 120)?)?
-            .trim()
-            .to_owned())
-    };
+    let command = |args: &[&str]| workspace::text(runner, args, Some(root));
     let branch = command(&["git", "rev-parse", "--abbrev-ref", "HEAD"])?;
     let dirty = !command(&["git", "status", "--porcelain"])?.is_empty();
     let problems = blockers(&branch, dirty);
@@ -58,13 +52,7 @@ pub fn plan(root: &Path, runner: &dyn Runner) -> Result<Plan> {
     .lines()
     .map(str::to_owned)
     .collect();
-    // Without a readable plan, the changed tests and crates alone are named.
-    let plan = std::fs::read_to_string(root.join("tooling/ci/test-plan.json"))
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or(Value::Null);
-    // Without a readable workspace, as in a checkout with no Rust, no crate is named.
-    let workspace = Workspace::read(root).unwrap_or_default();
+    let (plan, workspace) = test_selection::read(root);
     let commands = test_selection::affected(&changed, &plan, &workspace)
         .into_iter()
         .filter(|command| command.starts_with("cargo clippy"))

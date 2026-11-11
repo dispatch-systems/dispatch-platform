@@ -4,8 +4,7 @@
 use crate::{
     Result, Runner, check, require,
     slot::{self, Slot},
-    test_selection::{self, Workspace},
-    workspace,
+    test_selection, workspace,
 };
 use fs2::FileExt;
 use serde::Serialize;
@@ -85,11 +84,7 @@ pub fn changed(root: &Path, runner: &dyn Runner) -> Result<Vec<String>> {
 /// The commands for the tests `changed` touches, and a note naming the changed tests
 /// `dispatchdev check` runs instead.
 fn selected(root: &Path, changed: &[String]) -> (Vec<String>, Vec<String>) {
-    let plan = fs::read_to_string(root.join("tooling/ci/test-plan.json"))
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or(Value::Null);
-    let workspace = Workspace::read(root).unwrap_or_default();
+    let (plan, workspace) = test_selection::read(root);
     let commands = test_selection::affected(changed, &plan, &workspace)
         .into_iter()
         .filter(|command| !command.starts_with("cargo clippy"))
