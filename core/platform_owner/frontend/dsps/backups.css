@@ -120,37 +120,12 @@
 }
 
 /* A rule: its words, how long it keeps and how much it holds; opened, its fields. */
-.backups-rule {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--card);
-}
-.backups-rule + .backups-rule {
-  margin-top: 8px;
-}
-.backups-rule.is-open {
-  box-shadow:
-    0 1px 2px var(--shadow-color),
-    0 6px 20px -12px var(--shadow-color);
-}
-.backups-rule-head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 46px;
-  padding: 0 8px 0 15px;
-}
 .backups-rule-mark {
   flex-shrink: 0;
   width: 10px;
   height: 28px;
   border-radius: 5px;
   background: var(--rule);
-}
-.backups-rule-head strong {
-  font-size: 14px;
-  font-weight: 550;
-  font-variant-numeric: tabular-nums;
 }
 .backups-tag {
   padding: 1px 8px;
@@ -160,112 +135,6 @@
   font-size: 12px;
   font-weight: 500;
   white-space: nowrap;
-}
-.backups-rule-tools {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  margin-left: auto;
-}
-.backups-rule-tools button {
-  min-height: 32px;
-  padding: 6px 10px;
-  border-color: transparent;
-  background: transparent;
-  color: var(--muted-foreground);
-  font-size: 13px;
-}
-.backups-rule-tools button:hover {
-  background: var(--accent);
-  color: var(--foreground);
-}
-.backups-rule-tools button.icon-button {
-  width: 32px;
-  padding: 7px;
-}
-.backups-rule-tools .backups-edit {
-  gap: 6px;
-  border-color: var(--border);
-  background: var(--background);
-  color: var(--foreground);
-}
-.backups-rule-body {
-  min-width: 0;
-  margin: 0;
-  padding: 2px 14px 14px;
-  border: 0;
-}
-
-/* How a rule's day is made: a card each, its day drawn on a line. */
-.backups-patterns {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-.backups-pattern {
-  --glyph-ink: color-mix(in srgb, var(--muted-foreground) 82%, var(--card));
-  --glyph-track: color-mix(in srgb, var(--muted-foreground) 22%, var(--card));
-  --glyph-band: color-mix(in srgb, var(--muted-foreground) 18%, var(--card));
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 8px;
-  padding: 8px 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 11px;
-  background: var(--card);
-  color: var(--foreground);
-  font-size: 13.5px;
-  font-weight: 500;
-  text-align: left;
-}
-.backups-pattern:hover {
-  border-color: var(--input);
-}
-.backups-pattern > span:not(.backups-check) {
-  padding: 0 6px;
-  white-space: nowrap;
-}
-.backups-pattern[aria-checked='true'] {
-  --glyph-ink: var(--primary);
-  --glyph-track: color-mix(in srgb, var(--primary) 22%, var(--card));
-  --glyph-band: color-mix(in srgb, var(--primary) 18%, var(--card));
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 15%, transparent);
-  color: var(--primary);
-  font-weight: 600;
-}
-.backups-glyph {
-  display: block;
-  width: 100%;
-  height: 36px;
-  padding: 6px 12px;
-  border-radius: 7px;
-  background: color-mix(in srgb, var(--muted) 62%, var(--card));
-}
-.backups-glyph-track {
-  fill: var(--glyph-track);
-}
-.backups-glyph-band {
-  fill: var(--glyph-band);
-}
-.backups-glyph-ink {
-  fill: var(--glyph-ink);
-}
-.backups-check {
-  position: absolute;
-  top: -8px;
-  right: -8px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: var(--primary);
-  box-shadow: 0 0 0 3px var(--card);
-  color: var(--primary-foreground);
 }
 
 /* A rule's fields, a label beside each. */
@@ -340,36 +209,6 @@
 }
 .backups-dates[aria-invalid='true'] button {
   border-color: color-mix(in srgb, var(--destructive) 45%, var(--border));
-}
-.backups-times,
-.backups-sentence {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-}
-.backups-sentence {
-  color: var(--muted-foreground);
-  font-size: 13px;
-}
-.backups-time {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-}
-.backups-fields input[type='time'] {
-  width: 132px;
-  min-height: 36px;
-  background: var(--card);
-  font-variant-numeric: tabular-nums;
-}
-.backups-fields input[aria-invalid='true'] {
-  border-color: var(--destructive);
-}
-.backups-fields select {
-  min-height: 36px;
-  background-color: var(--card);
-  color: var(--foreground);
 }
 .backups-keep {
   display: grid;
@@ -535,10 +374,6 @@
   flex: 1;
   min-width: 0;
 }
-.backups-rule-tag {
-  background: color-mix(in srgb, var(--rule) 14%, var(--card));
-  color: color-mix(in srgb, var(--rule) 80%, var(--foreground));
-}
 .backups-download {
   display: inline-flex;
   align-items: center;
@@ -557,6 +392,9 @@
 }
 
 @media (max-width: 760px) {
+  .backups-rule .schedule-patterns {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .backups-head,
   .backups-body,
   .backups-preview,
@@ -564,9 +402,6 @@
     padding-inline: 16px;
   }
   .backups-preview {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .backups-patterns {
     grid-template-columns: minmax(0, 1fr);
   }
   .backups-fields {
@@ -580,12 +415,12 @@
     grid-template-columns: repeat(7, minmax(0, 1fr));
   }
   /* A rule's words take their line; its tags and tools the next. */
-  .backups-rule-head {
+  .backups-rule .schedule-rule-head {
     flex-wrap: wrap;
     row-gap: 6px;
     padding-block: 10px;
   }
-  .backups-rule-head strong {
+  .backups-rule .schedule-rule-head strong {
     flex: 1 1 calc(100% - 40px);
   }
   .backups-history li {
@@ -596,4 +431,10 @@
   .backups-when {
     min-width: 0;
   }
+}
+
+.backups-keep select {
+  min-height: 36px;
+  background-color: var(--card);
+  color: var(--foreground);
 }

@@ -1,21 +1,12 @@
-import { Check, ChevronUp, Pencil, Plus, Trash2, X } from 'lucide-react';
+import {
+  SchedulePatterns,
+  ScheduleTimes,
+  ScheduleRuleTools,
+} from '../../../shell/frontend/ui/ScheduleEditor.js';
 import type { ReactNode } from 'react';
 import type { BackupItem, KeepFor, KeepUnit } from '../../../backups/api/index.js';
 import { DayPicker } from '../../../shell/frontend/ui/index.js';
-import {
-  EVERY,
-  MAX_TIMES,
-  PATTERNS,
-  UNITS,
-  duration,
-  keepText,
-  patternOf,
-  ruleText,
-  unitText,
-  withPattern,
-  type Draft,
-  type Pattern,
-} from './backupRules.js';
+import { UNITS, keepText, ruleText, unitText, type Draft } from './backupRules.js';
 
 // One rule of a DSP's backup schedule: its words, how long it keeps and how much it holds, and
 // opened, how its day is made, which days or dates it runs on, when, how long it keeps what it
@@ -41,67 +32,21 @@ export function BackupRuleEditor({
   toggle: () => void;
   remove: () => void;
 }) {
-  const pattern = patternOf(rule);
   const held = items.filter((item) => item.always || !rule.skipped.includes(item.id)).length;
   return (
-    <div className={`backups-rule${open ? ' is-open' : ''}`} data-rule={place % 5}>
-      <div className="backups-rule-head">
+    <div className={`backups-rule schedule-rule${open ? ' is-open' : ''}`} data-rule={place % 5}>
+      <div className="schedule-rule-head">
         <span className="backups-rule-mark" aria-hidden="true" />
         <strong>{ruleText(rule)}</strong>
         <span className="backups-tag">{keepText(rule)}</span>
         <span className="backups-tag">
           {held === items.length ? 'Everything' : `${held} of ${items.length}`}
         </span>
-        <span className="backups-rule-tools">
-          <button
-            type="button"
-            className="icon-button"
-            aria-label="Delete rule"
-            disabled={disabled}
-            onClick={remove}
-          >
-            <Trash2 size={15} />
-          </button>
-          {open ? (
-            <button
-              type="button"
-              className="icon-button"
-              aria-label="Close rule"
-              disabled={disabled}
-              onClick={toggle}
-            >
-              <ChevronUp size={16} />
-            </button>
-          ) : (
-            <button type="button" className="backups-edit" disabled={disabled} onClick={toggle}>
-              <Pencil size={13} />
-              Edit
-            </button>
-          )}
-        </span>
+        <ScheduleRuleTools open={open} disabled={disabled} toggle={toggle} remove={remove} />
       </div>
       {open && (
-        <fieldset className="backups-rule-body" disabled={disabled}>
-          <div className="backups-patterns" role="radiogroup" aria-label="Pattern">
-            {PATTERNS.map((each) => (
-              <button
-                type="button"
-                role="radio"
-                key={each.pattern}
-                className="backups-pattern"
-                aria-checked={each.pattern === pattern}
-                onClick={() => change(withPattern(rule, each.pattern))}
-              >
-                <Glyph pattern={each.pattern} />
-                <span>{each.label}</span>
-                {each.pattern === pattern && (
-                  <span className="backups-check">
-                    <Check size={12} />
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
+        <fieldset className="schedule-rule-body" disabled={disabled}>
+          <SchedulePatterns rule={rule} change={change} />
           <div className="backups-fields">
             <span className="backups-label">On</span>
             <div className="backups-segments" role="radiogroup" aria-label="On">
@@ -137,42 +82,7 @@ export function BackupRuleEditor({
                 <Dates rule={rule} change={change} />
               </>
             )}
-            {rule.kind === 'times' ? (
-              <Times rule={rule} change={change} />
-            ) : (
-              <>
-                <span className="backups-label">Every</span>
-                <div className="backups-sentence">
-                  <select
-                    aria-label="Every"
-                    value={rule.every ?? ''}
-                    onChange={(e) => change({ ...rule, every: Number(e.target.value) })}
-                  >
-                    {EVERY.map((every) => (
-                      <option key={every} value={every}>
-                        {duration(every)}
-                      </option>
-                    ))}
-                  </select>
-                  <span>from</span>
-                  <input
-                    type="time"
-                    aria-label="From"
-                    required
-                    value={rule.from ?? ''}
-                    onChange={(e) => change({ ...rule, from: e.target.value })}
-                  />
-                  <span>to</span>
-                  <input
-                    type="time"
-                    aria-label="To"
-                    required
-                    value={rule.to ?? ''}
-                    onChange={(e) => change({ ...rule, to: e.target.value })}
-                  />
-                </div>
-              </>
-            )}
+            <ScheduleTimes rule={rule} change={change} />
             <span className="backups-label backups-top">Keep</span>
             <Keep rule={rule} change={change} />
             <span className="backups-label backups-top">Includes</span>
@@ -181,38 +91,6 @@ export function BackupRuleEditor({
         </fieldset>
       )}
     </div>
-  );
-}
-
-/** A day made once, a few times, or repeating during hours, drawn on a line. */
-function Glyph({ pattern }: { pattern: Pattern }) {
-  const pins = pattern === 'once' ? [50] : pattern === 'few' ? [25, 50, 75] : [];
-  return (
-    <svg className="backups-glyph" viewBox="0 0 100 24" aria-hidden="true">
-      <rect x="4" y="10" width="92" height="4" rx="2" className="backups-glyph-track" />
-      {pattern === 'repeat' && (
-        <>
-          <rect x="22" y="6" width="56" height="12" rx="4" className="backups-glyph-band" />
-          {[28, 36, 44, 52, 60, 68].map((x) => (
-            <rect
-              key={x}
-              x={x - 1}
-              y="7"
-              width="2"
-              height="10"
-              rx="1"
-              className="backups-glyph-ink"
-            />
-          ))}
-        </>
-      )}
-      {pins.map((x) => (
-        <g key={x} className="backups-glyph-ink">
-          <rect x={x - 1.5} y="5" width="3" height="14" rx="1.5" />
-          <circle cx={x} cy="5" r="3.5" />
-        </g>
-      ))}
-    </svg>
   );
 }
 
@@ -247,54 +125,6 @@ function Dates({ rule, change }: { rule: Draft; change: (rule: Draft) => void })
         Last day
       </button>
     </div>
-  );
-}
-
-/** A rule's times: one, or a few, each changed, removed or added in place. */
-function Times({ rule, change }: { rule: Draft; change: (rule: Draft) => void }) {
-  const set = (index: number, value: string) =>
-    change({ ...rule, times: rule.times.map((time, at) => (at === index ? value : time)) });
-  const repeated = (time: string, index: number) => rule.times.indexOf(time) !== index;
-  return (
-    <>
-      <span className="backups-label">At</span>
-      <div className="backups-times">
-        {rule.times.map((time, index) => (
-          <span className="backups-time" key={index}>
-            <input
-              type="time"
-              aria-label={`Time ${index + 1}`}
-              required
-              value={time}
-              aria-invalid={(!!time && repeated(time, index)) || undefined}
-              onChange={(e) => set(index, e.target.value)}
-            />
-            {rule.times.length > 1 && (
-              <button
-                type="button"
-                className="icon-button"
-                aria-label={`Remove time ${index + 1}`}
-                onClick={() =>
-                  change({ ...rule, times: rule.times.filter((_, at) => at !== index) })
-                }
-              >
-                <X size={14} />
-              </button>
-            )}
-          </span>
-        ))}
-        {patternOf(rule) === 'few' && rule.times.length < MAX_TIMES && (
-          <button
-            type="button"
-            className="text-button"
-            onClick={() => change({ ...rule, times: [...rule.times, ''] })}
-          >
-            <Plus size={15} />
-            Add a time
-          </button>
-        )}
-      </div>
-    </>
   );
 }
 

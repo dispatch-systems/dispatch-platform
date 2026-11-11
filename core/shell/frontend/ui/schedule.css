@@ -1,0 +1,188 @@
+/* How a rule's day is made: a card each, its day drawn on a line. */
+.schedule-patterns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.schedule-pattern {
+  --glyph-ink: color-mix(in srgb, var(--muted-foreground) 82%, var(--card));
+  --glyph-track: color-mix(in srgb, var(--muted-foreground) 22%, var(--card));
+  --glyph-band: color-mix(in srgb, var(--muted-foreground) 18%, var(--card));
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 8px 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--card);
+  color: var(--foreground);
+  font-size: 13.5px;
+  font-weight: 500;
+  text-align: left;
+}
+.schedule-pattern:hover {
+  border-color: var(--input);
+}
+.schedule-pattern > span:not(.schedule-check) {
+  padding: 0 6px;
+  white-space: nowrap;
+}
+.schedule-pattern[aria-checked='true'] {
+  --glyph-ink: var(--primary);
+  --glyph-track: color-mix(in srgb, var(--primary) 22%, var(--card));
+  --glyph-band: color-mix(in srgb, var(--primary) 18%, var(--card));
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 15%, transparent);
+  color: var(--primary);
+  font-weight: 600;
+}
+.schedule-glyph {
+  display: block;
+  width: 100%;
+  height: 36px;
+  padding: 6px 12px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--muted) 62%, var(--card));
+}
+.schedule-glyph-track {
+  fill: var(--glyph-track);
+}
+.schedule-glyph-band {
+  fill: var(--glyph-band);
+}
+.schedule-glyph-ink {
+  fill: var(--glyph-ink);
+}
+.schedule-check {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 0 0 3px var(--card);
+  color: var(--primary-foreground);
+}
+
+.schedule-times,
+.schedule-sentence {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.schedule-sentence {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.schedule-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.schedule-times input[type='time'],
+.schedule-sentence input[type='time'] {
+  width: 132px;
+  min-height: 36px;
+  background: var(--card);
+  font-variant-numeric: tabular-nums;
+}
+.schedule-times input[aria-invalid='true'] {
+  border-color: var(--destructive);
+}
+.schedule-sentence select {
+  min-height: 36px;
+  background-color: var(--card);
+  color: var(--foreground);
+}
+
+.schedule-label {
+  font-size: 13px;
+  font-weight: 500;
+}
+@media (max-width: 640px) {
+  .schedule-patterns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.schedule-rule-tag {
+  background: color-mix(in srgb, var(--rule) 14%, var(--card));
+  color: color-mix(in srgb, var(--rule) 80%, var(--foreground));
+}
+
+.schedule-rule-body {
+  min-width: 0;
+  margin: 0;
+  padding: 2px 14px 14px;
+  border: 0;
+}
+
+.schedule-rule-tools .schedule-edit {
+  gap: 6px;
+  border-color: var(--border);
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.schedule-rule-tools button.icon-button {
+  width: 32px;
+  padding: 7px;
+}
+
+.schedule-rule-tools button:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+
+.schedule-rule-tools button {
+  min-height: 32px;
+  padding: 6px 10px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+.schedule-rule-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.schedule-rule-head strong {
+  font-size: 14px;
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+}
+
+.schedule-rule-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 46px;
+  padding: 0 8px 0 15px;
+}
+
+.schedule-rule.is-open {
+  box-shadow:
+    0 1px 2px var(--shadow-color),
+    0 6px 20px -12px var(--shadow-color);
+}
+
+.schedule-rule + .schedule-rule {
+  margin-top: 8px;
+}
+
+.schedule-rule {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+}
