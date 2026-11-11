@@ -13,10 +13,5 @@ fn custom_features_cannot_dispatch_platform_wide_upkeep() {
         ..feature("dsp42_probe")
     }
     .registered(Some("dsp42"), "dsp42_probe");
-    static REGISTRY: Registry = Registry {
-        collectors: &[],
-        features: &[&CUSTOM],
-        agents: None,
-    };
-    REGISTRY.check();
+    crate::testing::whole(None, &[], &[&CUSTOM]).check();
 }
