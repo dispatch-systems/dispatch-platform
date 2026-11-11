@@ -3,7 +3,29 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { brotliDecompressSync, gunzipSync } from 'node:zlib';
+import { compressAssets } from '../build/compress-assets.js';
 import { dashboardGraphSizes } from '../testing/dashboard-assets.js';
+
+test('small shared chunks use lossless precompressed representations when they are smaller', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-small-chunk-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const file = path.join(root, 'shared.js');
+  const source = Buffer.from(`export const labels = ${JSON.stringify(Array(12).fill('A shared label'))};`);
+  assert(source.length < 1024);
+  fs.writeFileSync(file, source);
+  await compressAssets(root);
+  const br = fs.readFileSync(file + '.br');
+  const gz = fs.readFileSync(file + '.gz');
+  assert(br.length < source.length);
+  assert(gz.length < source.length);
+  assert.deepEqual(brotliDecompressSync(br), source);
+  assert.deepEqual(gunzipSync(gz), source);
+  assert.deepEqual(dashboardGraphSizes(root, { shared: { file: 'shared.js' } }, ['shared']).scripts, {
+    raw: source.length,
+    transferred: br.length,
+  });
+});
 
 test('critical dashboard graphs count shared dependencies and CSS once while leaving dynamic panels deferred', (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-dashboard-graph-'));
