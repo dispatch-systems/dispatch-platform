@@ -915,8 +915,9 @@ fn owner_aliases_follow_the_tenants_selected_migration_declarations() {
         }],
         ..feature("dota_note")
     };
+    static FEATURES: &[&Feature] = &[&SHARED, &CUSTOM];
     let registry = Registry {
-        features: &[&SHARED, &CUSTOM],
+        features: FEATURES,
         collectors: &[],
         agents: None,
     };
