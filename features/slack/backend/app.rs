@@ -129,8 +129,9 @@ fn manifest(config: &Config) -> Value {
         .collect();
     let mut scopes = json!({"bot": all});
     if !custom.is_empty() {
-        // Register custom capabilities without making them mandatory for every installer.
-        // Dispatch's install URL requests only the scopes_for that DSP.
+        // Slack requires optional scopes in both bot and bot_optional. The latter marks
+        // them optional; Dispatch's install URL requests only the scopes_for that DSP.
+        // https://docs.slack.dev/authentication/installing-with-oauth/#optional-scopes
         scopes["bot_optional"] = json!(custom);
     }
     let (name, handle) = if config.environment.is_production() {

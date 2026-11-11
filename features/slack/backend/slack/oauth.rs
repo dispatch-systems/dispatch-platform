@@ -9,7 +9,7 @@ const AUTHORIZE: &str = "https://slack.com/oauth/v2/authorize";
 impl Slack {
     /// Where the browser goes to install the app. `team` skips Slack's choice of workspace, as
     /// reconnecting or updating one does. Fixture mode skips Slack: the browser comes straight
-    /// back with a code naming the workspace, `fixture:<team>`.
+    /// back with a code naming the workspace and granted scopes, `fixture:<team>:<scopes>`.
     pub fn install_url(
         &self,
         origin: &str,

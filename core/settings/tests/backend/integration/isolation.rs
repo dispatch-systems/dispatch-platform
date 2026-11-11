@@ -44,6 +44,13 @@ static PROBE: Feature = Feature {
         .member()
         .on("general"),
     ],
+    routes: || {
+        vec![dispatch_core::server::http::route::protocol(
+            axum::http::Method::POST,
+            "/shared-protocol",
+            raw_callback,
+        )]
+    },
     ..feature("probe")
 };
 
@@ -69,6 +76,7 @@ static CUSTOM: Feature = Feature {
       dispatch_core::server::http::route::read("/custom-public", dispatch_core::server::http::route::Public, |_, _, _| Ok(dispatch_core::server::http::input::Reply::json(json!({"ok":true})))),
       dispatch_core::server::http::route::read("/custom-session", dispatch_core::server::http::route::Session, |_, _, _| Ok(dispatch_core::server::http::input::Reply::json(json!({"ok":true})))),
       dispatch_core::server::http::route::write("/custom-public-post", dispatch_core::server::http::route::Public, |_, _, _| Ok(dispatch_core::server::http::input::Reply::json(json!({"ran":true})))),
+      dispatch_core::server::http::route::protocol(axum::http::Method::POST, "/custom-protocol", raw_callback),
       dispatch_core::server::http::route::read(
         "/api/dsp/nll-probe", dispatch_core::server::http::route::Dsp("nll_probe.view"),
         |db, c, _| Ok(dispatch_core::server::http::input::Reply::json(json!({"count": db.dsp(c.dsp_id())?.count("SELECT count(*) FROM nll_probe", [])?})))
@@ -80,6 +88,30 @@ static CUSTOM: Feature = Feature {
     }],
     ..feature("nll_probe")
 }.registered(Some("nll"), "nll_probe");
+fn raw_callback(
+    state: Arc<State>,
+    request: axum::extract::Request,
+) -> dispatch_core::server::http::route::Served {
+    Box::pin(async move {
+        use axum::response::IntoResponse;
+        let signature = request.headers().get("content-type").unwrap().clone();
+        let body = axum::body::to_bytes(request.into_body(), 1024)
+            .await
+            .unwrap();
+        match state
+            .run(move |_| {
+                Ok(dispatch_core::server::http::input::Reply::json(json!({
+                    "body": String::from_utf8(body.to_vec()).unwrap(),
+                    "contentType": signature.to_str().unwrap(),
+                })))
+            })
+            .await
+        {
+            Ok(reply) => reply.into_response(),
+            Err(error) => error.into_response(),
+        }
+    })
+}
 fn custom_upkeep(state: Arc<State>, dsp: String, due: bool) -> dispatch_core::manifest::Upkeep {
     Box::pin(async move {
         let at = dsp.clone();
@@ -567,10 +599,48 @@ async fn a_custom_route_keeps_its_declared_public_or_session_grant() {
             .status,
         200
     );
+    let raw = server
+        .send(
+            "POST",
+            "/custom-protocol",
+            &anonymous,
+            Some(json!({"event":"hello"})),
+        )
+        .await;
+    assert_eq!(raw.status, 200);
+    assert_eq!(raw.body["body"], r#"{"event":"hello"}"#);
+    assert_eq!(raw.body["contentType"], "application/json");
+    assert_eq!(
+        server
+            .send("POST", "/shared-protocol", &anonymous, Some(json!({})))
+            .await
+            .status,
+        404
+    );
+    let admin = Who {
+        host: None,
+        cookie: String::new(),
+        csrf: String::new(),
+        view: String::new(),
+    };
+    assert_eq!(
+        server
+            .send("POST", "/shared-protocol", &admin, Some(json!({})))
+            .await
+            .status,
+        200
+    );
     let other = Who {
         host: Some(format!("sum.localhost:{}", server.port)),
         ..anonymous
     };
+    assert_eq!(
+        server
+            .send("POST", "/custom-protocol", &other, Some(json!({})))
+            .await
+            .status,
+        404
+    );
     assert_eq!(
         server
             .send("GET", "/custom-public", &other, None)
@@ -600,11 +670,18 @@ async fn custom_callbacks_have_only_a_live_owning_dsp_entrypoint() {
             view: String::new(),
             host,
         };
-        for path in ["/custom-public", "/custom-session"] {
+        for (method, path) in [
+            ("GET", "/custom-public"),
+            ("GET", "/custom-session"),
+            ("POST", "/custom-protocol"),
+        ] {
             answers.push((
                 "outside owner host",
                 path,
-                server.send("GET", path, &visitor, None).await.status,
+                server
+                    .send(method, path, &visitor, Some(json!({})))
+                    .await
+                    .status,
             ));
         }
     }
@@ -614,11 +691,18 @@ async fn custom_callbacks_have_only_a_live_owning_dsp_entrypoint() {
         .run(move |db| testing::set_dsp_status(db, &own, "suspended"))
         .await
         .unwrap();
-    for path in ["/custom-public", "/custom-session"] {
+    for (method, path) in [
+        ("GET", "/custom-public"),
+        ("GET", "/custom-session"),
+        ("POST", "/custom-protocol"),
+    ] {
         answers.push((
             "disabled owner",
             path,
-            server.send("GET", path, &member, None).await.status,
+            server
+                .send(method, path, &member, Some(json!({})))
+                .await
+                .status,
         ));
     }
     server
@@ -630,11 +714,18 @@ async fn custom_callbacks_have_only_a_live_owning_dsp_entrypoint() {
         })
         .await
         .unwrap();
-    for path in ["/custom-public", "/custom-session"] {
+    for (method, path) in [
+        ("GET", "/custom-public"),
+        ("GET", "/custom-session"),
+        ("POST", "/custom-protocol"),
+    ] {
         answers.push((
             "deleted owner",
             path,
-            server.send("GET", path, &member, None).await.status,
+            server
+                .send(method, path, &member, Some(json!({})))
+                .await
+                .status,
         ));
     }
     assert!(
@@ -646,27 +737,29 @@ async fn custom_callbacks_have_only_a_live_owning_dsp_entrypoint() {
 #[tokio::test]
 async fn a_custom_public_callback_checks_the_owner_again_after_its_body_arrives() {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    let server = Server::start().await;
-    let north = server.dsp("nll").await;
-    let mut connection = tokio::net::TcpStream::connect(("127.0.0.1", server.port))
-        .await
-        .unwrap();
-    let headers = format!(
-        "POST /custom-public-post HTTP/1.1\r\nHost: nll.localhost:{}\r\nContent-Type: application/json\r\nContent-Length: 2\r\nExpect: 100-continue\r\nConnection: close\r\n\r\n",
-        server.port
-    );
-    connection.write_all(headers.as_bytes()).await.unwrap();
-    // Hyper asks for the body only after the route's initial owner admission passed.
-    let mut ready = [0; b"HTTP/1.1 100 Continue\r\n\r\n".len()];
-    connection.read_exact(&mut ready).await.unwrap();
-    assert_eq!(&ready, b"HTTP/1.1 100 Continue\r\n\r\n");
-    server
-        .state
-        .run(move |db| testing::set_dsp_status(db, &north, "suspended"))
-        .await
-        .unwrap();
-    connection.write_all(b"{}").await.unwrap();
-    let mut answer = String::new();
-    connection.read_to_string(&mut answer).await.unwrap();
-    assert!(answer.starts_with("HTTP/1.1 404"), "{answer}");
+    for path in ["/custom-public-post", "/custom-protocol"] {
+        let server = Server::start().await;
+        let north = server.dsp("nll").await;
+        let mut connection = tokio::net::TcpStream::connect(("127.0.0.1", server.port))
+            .await
+            .unwrap();
+        let headers = format!(
+            "POST {path} HTTP/1.1\r\nHost: nll.localhost:{}\r\nContent-Type: application/json\r\nContent-Length: 2\r\nExpect: 100-continue\r\nConnection: close\r\n\r\n",
+            server.port
+        );
+        connection.write_all(headers.as_bytes()).await.unwrap();
+        // Hyper asks for the body only after the route's initial owner admission passed.
+        let mut ready = [0; b"HTTP/1.1 100 Continue\r\n\r\n".len()];
+        connection.read_exact(&mut ready).await.unwrap();
+        assert_eq!(&ready, b"HTTP/1.1 100 Continue\r\n\r\n");
+        server
+            .state
+            .run(move |db| testing::set_dsp_status(db, &north, "suspended"))
+            .await
+            .unwrap();
+        connection.write_all(b"{}").await.unwrap();
+        let mut answer = String::new();
+        connection.read_to_string(&mut answer).await.unwrap();
+        assert!(answer.starts_with("HTTP/1.1 404"), "{answer}");
+    }
 }

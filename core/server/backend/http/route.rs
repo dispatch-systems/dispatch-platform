@@ -501,6 +501,7 @@ pub struct Answered<'a> {
 /// A public `method path` whose requests the handler reads and answers itself, as OAuth's
 /// form posts and redirects need. Such a path sits outside `/api/`, so the JSON-only rule
 /// and the Origin check that guard the dashboard's API never apply to it.
+/// Shared callbacks use the admin hostname; custom callbacks use their owner's hostname.
 pub fn protocol(
     method: Method,
     path: &'static str,
@@ -606,7 +607,16 @@ impl Route {
             let trace = request.extensions().get::<RequestTrace>().cloned();
             (crate::db::now(), std::time::Instant::now(), trace)
         });
-        let (response, failed) = match self.answer(state.clone(), request).await {
+        let answer = self.answer(state.clone(), request);
+        let answer = match self.owner {
+            Some(owner) => {
+                crate::server::state::FEATURE_OWNER
+                    .scope(owner, answer)
+                    .await
+            }
+            None => answer.await,
+        };
+        let (response, failed) = match answer {
             Ok(response) => (response, None),
             Err(error) => {
                 let code = error.code.clone();
@@ -710,11 +720,11 @@ impl Route {
                 let request = self.signed(signer.clone(), state, request).await?;
                 return Ok(handler(request).await);
             }
-            // Agents' sign-in, and the pages outside services send the browser back to, are
-            // the admin's alone.
+            // Shared sign-in and provider callbacks use the admin. A custom callback has
+            // already been admitted at its owner's hostname above.
             Handler::Open(handler) => {
                 let admin = request.extensions().get::<Site>() == Some(&Site::Admin);
-                ensure(admin, "not_found", 404)?;
+                ensure(self.owner.is_some() || admin, "not_found", 404)?;
                 return Ok(handler(state, request).await);
             }
             Handler::Page(handler) => return Ok(handler(state, request).await),

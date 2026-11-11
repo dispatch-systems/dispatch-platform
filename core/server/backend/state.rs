@@ -11,6 +11,9 @@ use std::sync::{Arc, Mutex, RwLock};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 tokio::task_local! {
+    /// Custom HTTP handlers retain their owner across body and provider waits. Every database
+    /// turn checks that owner under the transition lock before the handler's work runs.
+    pub(super) static FEATURE_OWNER: &'static str;
     /// Set while a claimed job runs: see `State::patiently`.
     static PATIENT: ();
     /// Repeated server-owned polls share bounded capacity with background work.
@@ -449,6 +452,7 @@ impl State {
         // allocating another database pool or failing otherwise healthy requests.
         let started = std::time::Instant::now();
         let trace = observability::REQUEST_TRACE.try_with(Clone::clone).ok();
+        let owner = FEATURE_OWNER.try_with(|owner| *owner).ok();
         let admitted = self.admit(trace.is_none()).await?;
         let queued_ms = started.elapsed().as_secs_f64() * 1000.0;
         let state = self.clone();
@@ -464,6 +468,16 @@ impl State {
                 None => db::Store::open(state.config.clone(), state.key.clone())?,
             };
             let waiting = std::time::Instant::now();
+            let work = |db: &db::Store| {
+                if let Some(owner) = owner {
+                    crate::ensure(
+                        db.dsp_at(owner)?.is_some_and(|dsp| db.serves(&dsp)),
+                        "not_found",
+                        404,
+                    )?;
+                }
+                f(db)
+            };
             let mut lock_ms;
             let work_started;
             let result = if access == Access::Write {
@@ -485,7 +499,7 @@ impl State {
                     }
                     CacheChange::Bookkeeping => {}
                 }
-                f(&db)
+                work(&db)
             } else {
                 let _guard = state
                     .transition
@@ -493,7 +507,7 @@ impl State {
                     .map_err(|_| Error::new("platform_unavailable", 503))?;
                 lock_ms = waiting.elapsed().as_secs_f64() * 1000.0;
                 work_started = std::time::Instant::now();
-                f(&db)
+                work(&db)
             };
             let work_ms = work_started.elapsed().as_secs_f64() * 1000.0;
             if access == Access::LiveStaging {
