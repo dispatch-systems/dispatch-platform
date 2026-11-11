@@ -13,7 +13,7 @@ import {
   retireCategory,
   useCategoryImpact,
 } from '../../api/client.js';
-import { printedDay, tierShort, tiers } from '../tiers.js';
+import { stepDown, tierShort, tiers } from '../tiers.js';
 import { useSaveChanges } from '../useSaveChanges.js';
 import { StepDown, stepDownReady, usualStepDown } from './StepDown.js';
 
@@ -143,7 +143,6 @@ export function CategoryDialog({
                           <th>Driver</th>
                           <th>Current</th>
                           <th>Proposed</th>
-                          <th>Next step down</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -152,12 +151,25 @@ export function CategoryDialog({
                             <td>
                               {people.find((p) => p.code === change.person)?.name ?? change.person}
                             </td>
-                            <td>{change.before ? tierShort[change.before.tier] : 'Clean'}</td>
-                            <td>{change.after ? tierShort[change.after.tier] : 'Clean'}</td>
                             <td>
-                              {change.after?.stepsDownOn
-                                ? printedDay(change.after.stepsDownOn)
-                                : '—'}
+                              {change.before ? (
+                                <>
+                                  {tierShort[change.before.tier]}
+                                  <div className="conduct-note">{stepDown(change.before)}</div>
+                                </>
+                              ) : (
+                                'Clean'
+                              )}
+                            </td>
+                            <td>
+                              {change.after ? (
+                                <>
+                                  {tierShort[change.after.tier]}
+                                  <div className="conduct-note">{stepDown(change.after)}</div>
+                                </>
+                              ) : (
+                                'Clean'
+                              )}
                             </td>
                           </tr>
                         ))}

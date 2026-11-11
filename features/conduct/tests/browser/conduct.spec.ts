@@ -154,7 +154,12 @@ test('photo preparation cancels safely, then a rotated copy is signed', async ({
   });
   await page.evaluate(() => {
     const state = window as typeof window & {
-      conductPhotoTest: { release?: () => void; closed: boolean; sent: number };
+      conductPhotoTest: {
+        release?: () => void;
+        closed: boolean;
+        sent: number;
+        restore: () => void;
+      };
     };
     state.conductPhotoTest = { closed: false, sent: 0, restore: () => {} };
     const original = window.createImageBitmap.bind(window);
@@ -184,11 +189,12 @@ test('photo preparation cancels safely, then a rotated copy is signed', async ({
       send.call(this, body);
     };
   });
-  await page.getByLabel(/^Signed copy/).setInputFiles({
+  const photoFile = {
     name: 'paper.png',
     mimeType: 'image/png',
     buffer: Buffer.from(png, 'base64'),
-  });
+  };
+  await page.getByLabel(/^Signed copy/).setInputFiles(photoFile);
   await expect(page.getByRole('img', { name: 'Selected signed copy' })).toBeVisible();
   await page.getByRole('dialog').getByRole('button', { name: 'Mark signed', exact: true }).click();
   await page.waitForFunction(() =>
@@ -221,13 +227,7 @@ test('photo preparation cancels safely, then a rotated copy is signed', async ({
     ).conductPhotoTest.restore(),
   );
   await page.getByRole('button', { name: 'Mark signed', exact: true }).click();
-  await page
-    .getByLabel(/^Signed copy/)
-    .setInputFiles({
-      name: 'paper.png',
-      mimeType: 'image/png',
-      buffer: Buffer.from(png, 'base64'),
-    });
+  await page.getByLabel(/^Signed copy/).setInputFiles(photoFile);
   await page.getByRole('button', { name: 'Rotate', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Mark signed', exact: true }).click();
   await expect(page.getByText(/^Signed \d+\/\d+\/\d{4}$/)).toBeVisible();

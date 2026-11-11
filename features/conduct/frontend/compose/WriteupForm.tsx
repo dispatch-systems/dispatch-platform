@@ -104,7 +104,6 @@ export function WriteupForm({
         return;
       }
       if (!context.data) {
-        setProblem(context.error || 'Wait for the driver’s record to load.');
         return;
       }
       const result = editing
@@ -159,13 +158,17 @@ export function WriteupForm({
           <button type="button" disabled={save.busy} onClick={() => leave(cancel)}>
             Cancel
           </button>
-          <button type="button" disabled={save.busy} onClick={() => void save.run(false)}>
+          <button
+            type="button"
+            disabled={save.busy || (!missing(draft) && !context.data)}
+            onClick={() => void save.run(false)}
+          >
             Save
           </button>
           <button
             type="button"
             className="primary"
-            disabled={save.busy}
+            disabled={save.busy || (!missing(draft) && !context.data)}
             onClick={() => void save.run(true)}
           >
             <Printer size={16} />
@@ -173,7 +176,12 @@ export function WriteupForm({
           </button>
         </div>
       </div>
-      <ErrorBox message={problem || save.error} />
+      <ErrorBox message={problem || save.error || context.error} />
+      {context.error && (
+        <button type="button" onClick={context.refresh}>
+          Retry loading
+        </button>
+      )}
       <div className="conduct-compose">
         <fieldset ref={fields} className="conduct-fields" disabled={save.busy}>
           <div className="conduct-pair">

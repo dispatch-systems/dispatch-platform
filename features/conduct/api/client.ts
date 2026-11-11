@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { ApiError, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
 import { useCachedData } from '../../../core/shell/frontend/runtime/data-reads.js';
 import { upload } from '../../../core/shell/frontend/runtime/transfer.js';
@@ -14,8 +15,7 @@ import type {
   WriteupInput,
 } from './index.js';
 
-// Conduct's endpoints, as its screens call them. Each write answers with the page's data as
-// it is after it, so the page shows the change at once.
+// Conduct reads share prefetched data and word failures locally; writes invalidate their reads.
 
 /** What its error codes say. Only its own screens make the calls that raise them. */
 const errors: Readonly<Record<string, string>> = {
@@ -36,9 +36,14 @@ const errors: Readonly<Record<string, string>> = {
 };
 const api = wordedApi(errors);
 
+function useConductRead<T>(url: string, refreshKey?: string) {
+  const load = useCallback((signal: AbortSignal) => api<T>(url, undefined, signal), [url]);
+  return useCachedData<T>(url, 0, refreshKey, load);
+}
+
 export const conductUrl = '/api/dsp/conduct';
-/** Everything the page draws. */
-export const useConductOverview = () => useCachedData<ConductOverview>(conductUrl);
+/** Compact current standings and history totals. */
+export const useConductOverview = () => useConductRead<ConductOverview>(conductUrl);
 
 const writeupUrl = (id: string) => `${conductUrl}/writeups/${encodeURIComponent(id)}`;
 /** The address of the photo of a writeup's signed paper. */
@@ -46,7 +51,7 @@ export const copyUrl = (id: string) => `${writeupUrl(id)}/copy`;
 
 /** The writeup `id` whole, as it prints. */
 export const useWriteup = (id: string, refreshKey?: string) =>
-  useCachedData<ConductWriteup>(writeupUrl(id), 0, refreshKey);
+  useConductRead<ConductWriteup>(writeupUrl(id), refreshKey);
 
 export const addWriteup = (input: WriteupInput) =>
   api<ConductSaved>(`${conductUrl}/writeups`, input);
@@ -78,7 +83,7 @@ export async function keepCopy(id: string, revision: number, photo: Blob, reques
 export const backupUrl = `${conductUrl}/backup`;
 /** How backing signed copies up is going, read again whenever `refreshKey` changes. */
 export const useConductBackup = (refreshKey: string) =>
-  useCachedData<ConductBackup>(backupUrl, 0, refreshKey);
+  useConductRead<ConductBackup>(backupUrl, refreshKey);
 
 const categoryUrl = (id: string) => `${conductUrl}/categories/${encodeURIComponent(id)}`;
 export const addCategory = (input: CategoryInput) =>
@@ -92,11 +97,11 @@ export const restoreCategory = (id: string) =>
 export type HistoryFilters = { search: string; category: string; tier: string; status: string };
 export const emptyFilters: HistoryFilters = { search: '', category: '', tier: '', status: '' };
 export const useConductHistory = (filters: HistoryFilters, person = '', after = '') =>
-  useCachedData<ConductHistory>(
+  useConductRead<ConductHistory>(
     `${conductUrl}/writeups?${new URLSearchParams({ person, q: filters.search, category: filters.category, tier: filters.tier, status: filters.status, after })}`,
   );
 export const useConductContext = (person: string, category: string, date: string, edit = '') =>
-  useCachedData<ConductContext>(
+  useConductRead<ConductContext>(
     person && category
       ? `${conductUrl}/context?${new URLSearchParams({ person, category, date, edit })}`
       : '',
@@ -107,7 +112,7 @@ export const useCategoryImpact = (
   step: ConductStepDown | null,
   enabled: boolean,
 ) =>
-  useCachedData<ConductImpact[]>(
+  useConductRead<ConductImpact[]>(
     enabled
       ? `${categoryUrl(id)}/impact?${new URLSearchParams({ revision: String(revision), kind: step?.kind ?? 'never', ...(step ? { after: String(step.after), unit: step.unit } : {}) })}`
       : '',
