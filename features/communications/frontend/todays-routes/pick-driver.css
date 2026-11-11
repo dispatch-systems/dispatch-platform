@@ -28,32 +28,11 @@
   overflow-y: auto;
   list-style: none;
 }
-.pick-driver-panel li button {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 10px;
-  width: 100%;
-  min-height: 0;
-  padding: 7px 8px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  font-weight: 400;
-  text-align: left;
-}
-.pick-driver-panel li button:hover {
-  background: var(--accent);
-}
 /* Within the head's actions, whose buttons' words a phone hides, a driver's name stays. */
 .thread-head .pick-driver-panel li button > span {
   display: flex;
   flex-direction: column;
   gap: 2px;
-}
-.pick-driver-panel strong {
-  font-size: var(--ui-size);
-  font-weight: 500;
 }
 .pick-driver-panel small {
   display: flex;
@@ -61,4 +40,14 @@
   gap: 6px;
   color: var(--muted-foreground);
   font-size: var(--small-size);
+}
+
+@container communications (width < 680px) {
+  /* The wrapped header has room for the panel; its button alone does not. */
+  .pick-driver {
+    position: static;
+  }
+  .pick-driver-panel {
+    right: 12px;
+  }
 }
