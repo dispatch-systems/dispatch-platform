@@ -1,5 +1,8 @@
 import type { DspView, Permission } from '../../core/accounts/api/index.js';
-import { featureCatalog, installCustomCatalog } from '../../core/shell/frontend/runtime/features.js';
+import {
+  featureCatalog,
+  installCustomCatalog,
+} from '../../core/shell/frontend/runtime/features.js';
 import { installCustomPermissions } from '../../core/shell/frontend/runtime/permission-catalog.js';
 import { installSchedulingPermissions } from '../../core/shell/frontend/runtime/permissions.js';
 import {

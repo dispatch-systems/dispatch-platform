@@ -11,7 +11,9 @@ test('small shared chunks use lossless precompressed representations when they a
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-small-chunk-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const file = path.join(root, 'shared.js');
-  const source = Buffer.from(`export const labels = ${JSON.stringify(Array(12).fill('A shared label'))};`);
+  const source = Buffer.from(
+    `export const labels = ${JSON.stringify(Array(12).fill('A shared label'))};`,
+  );
   assert(source.length < 1024);
   fs.writeFileSync(file, source);
   await compressAssets(root);
@@ -21,10 +23,13 @@ test('small shared chunks use lossless precompressed representations when they a
   assert(gz.length < source.length);
   assert.deepEqual(brotliDecompressSync(br), source);
   assert.deepEqual(gunzipSync(gz), source);
-  assert.deepEqual(dashboardGraphSizes(root, { shared: { file: 'shared.js' } }, ['shared']).scripts, {
-    raw: source.length,
-    transferred: br.length,
-  });
+  assert.deepEqual(
+    dashboardGraphSizes(root, { shared: { file: 'shared.js' } }, ['shared']).scripts,
+    {
+      raw: source.length,
+      transferred: br.length,
+    },
+  );
 });
 
 test('critical dashboard graphs count shared dependencies and CSS once while leaving dynamic panels deferred', (t) => {

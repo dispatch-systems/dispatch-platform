@@ -15,7 +15,6 @@ export async function compressAssets(directory: string) {
       .map(async (name) => {
         const file = path.join(directory, name),
           bytes = await fs.readFile(file);
-        if (bytes.length < 1024) return;
         const variants = await Promise.all([
           brotli(bytes, { params: { [constants.BROTLI_PARAM_QUALITY]: 11 } }),
           gz(bytes, { level: 9 }),
