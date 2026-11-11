@@ -138,14 +138,22 @@ test('an owner sees the custom page and role choice while another DSP receives n
     ).status,
   ).toBe(200);
   const context = await browser.newContext();
+  const other = await context.newPage();
   try {
-    const other = await context.newPage();
     const urls: string[] = [];
-    const bodies: Promise<string>[] = [];
-    other.on('response', (response) => {
-      urls.push(response.url());
+    const bodies: string[] = [];
+    // Capture each response before delivering it. CDP can discard a document's response
+    // body when sign-in navigates away; buffering here keeps the byte assertion complete.
+    await other.route('**/*', async (route) => {
+      const response = await route.fetch({
+        maxRedirects: 0,
+        headers: { ...route.request().headers(), 'accept-encoding': 'identity' },
+      });
+      const body = await response.body();
+      urls.push(route.request().url());
       if (/javascript|json|css|html/.test(response.headers()['content-type'] ?? ''))
-        bodies.push(response.text());
+        bodies.push(body.toString('utf8'));
+      await route.fulfill({ response, body });
     });
     await other.goto(dspAddress(page, 'other'));
     await signIn(other, 'other-owner@dispatch.test');
@@ -158,12 +166,13 @@ test('an owner sees the custom page and role choice while another DSP receives n
     const session = await dispatch.client('other-owner@dispatch.test', demo.password, 'other');
     expect(session.session.user.platformOwner).toBe(false);
     expect(session.session.dsps.map((item: { id: string }) => item.id)).toEqual([dsp.id]);
-    for (const value of [...urls, ...(await Promise.all(bodies))]) {
+    for (const value of [...urls, ...bodies]) {
       expect(value).not.toContain(feature.id);
       expect(value).not.toContain('Fuel Log');
       expect(value).not.toContain(feature.entry);
     }
   } finally {
+    await other.unrouteAll({ behavior: 'ignoreErrors' });
     await context.close();
   }
 });
@@ -178,6 +187,7 @@ test('a delayed custom import cannot install its page or styles into the next DS
   const held = await feature.held;
   await page.goBack();
   await expect(page.getByRole('heading', { name: 'DSPs', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'All DSPs', exact: true }).click();
   await openDsp(page, 'Summit Delivery');
   await expect(page.getByRole('region', { name: 'DSP viewing mode', exact: true })).toContainText(
     'Summit Delivery',
@@ -187,6 +197,10 @@ test('a delayed custom import cannot install its page or styles into the next DS
   );
   await held.fulfill({ contentType: 'text/javascript', body: feature.module });
   await finished;
+  await page.evaluate(async (url) => {
+    await import(url);
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  }, feature.entry);
   await expect(page.getByRole('link', { name: 'Fuel Log', exact: true })).toHaveCount(0);
   await expect(page.getByText('Fuel entries', { exact: true })).toHaveCount(0);
   expect(
