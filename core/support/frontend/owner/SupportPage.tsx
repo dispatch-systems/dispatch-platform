@@ -9,8 +9,11 @@ import { TicketPagination } from '../tickets/TicketPagination.js';
 import { statusLabels } from '../format.js';
 import '../support.css';
 
+/** The ticket the address names. */
+const ticketNamed = (query: URLSearchParams) => query.get('ticket') ?? '';
+
 export function SupportPage() {
-  const [selected, setSelected] = useHashQuery((query) => query.get('ticket') ?? '');
+  const [selected, setSelected] = useHashQuery(ticketNamed);
   const [status, setStatus] = useState('');
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search);

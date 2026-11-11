@@ -75,11 +75,14 @@ function refusal(error: string, app: string | null): ReactNode {
   }
 }
 
+/** The address's query as text, which names the request. */
+const queryText = (query: URLSearchParams) => query.toString();
+
 /** Platform → Agents → an app asking to connect, opened from `#authorize?request=<id>`: one
  * column in the middle of the page, the request asking in its own words. */
 export function AuthorizePage() {
   // Another request opened in this tab changes only the address's query.
-  const [query] = useHashQuery((address) => address.toString());
+  const [query] = useHashQuery(queryText);
   return (
     <section className="agents-authorize">
       <Authorization key={query} query={new URLSearchParams(query)} />

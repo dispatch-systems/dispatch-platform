@@ -14,6 +14,9 @@ export const OpenPage = createContext<DspPageContext | undefined>(undefined);
 
 type Item = readonly [string, ReactNode];
 
+/** The tab the address names. */
+const tabNamed = (query: URLSearchParams) => query.get('tab');
+
 /**
  * A page's tabs with those other owners add to it, after its own, and the one of theirs that
  * is open, if one is. `change` opens the tab chosen in the strip: theirs here, the page's own
@@ -23,7 +26,7 @@ export function usePageTabs(page: string, own: readonly Item[]) {
   const context = use(OpenPage);
   const hosted = context ? pageTabs(page, context.view) : [];
   // The address moving, as Back or the page's own link in the sidebar moves it, moves the tab.
-  const [requested, setRequested] = useHashQuery((query) => query.get('tab'));
+  const [requested, setRequested] = useHashQuery(tabNamed);
   const open = hosted.find((tab) => tab.id === requested);
   const select = (id: string | null) => {
     const query = Object.fromEntries(hashQuery());

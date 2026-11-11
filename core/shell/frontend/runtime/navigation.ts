@@ -157,6 +157,8 @@ export function pushHashQuery(query: Record<string, string>, state: Record<strin
  * What `read` finds in the address's query, followed as the address moves: Back or Forward, or a
  * link to the page with another query, which does not remount it. Recording a page's own state
  * in the address moves it without an event, so the page sets what it shows itself as it does.
+ * `read` is one function for the page's life, declared outside its component: the address is
+ * followed again whenever it is another.
  */
 export function useHashQuery<T>(read: (query: URLSearchParams) => T) {
   const [value, setValue] = useState(() => read(hashQuery()));
@@ -164,7 +166,6 @@ export function useHashQuery<T>(read: (query: URLSearchParams) => T) {
     const follow = () => setValue(read(hashQuery()));
     window.addEventListener('hashchange', follow);
     return () => window.removeEventListener('hashchange', follow);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `read` reads the query alone, so the one the page first gave reads it as well as any later
-  }, []);
+  }, [read]);
   return [value, setValue] as const;
 }
