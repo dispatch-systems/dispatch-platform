@@ -75,6 +75,9 @@ impl FromRow for Dsp {
 #[cfg_attr(feature = "ts", ts(export_to = "core/accounts/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct DspSummary {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub custom_features: Option<Vec<String>>,
     #[serde(flatten)]
     pub dsp: Dsp,
     pub profile: DspProfile,
@@ -189,6 +192,9 @@ pub struct RoleSummary {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "core/accounts/api/generated/"))]
 pub struct DspView {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub custom: Option<CustomFeatures>,
     pub dsp: Dsp,
     pub role: RoleSummary,
     /// What the role may do, within the DSP's features.
@@ -305,4 +311,51 @@ text_enum! {
         Active => "active",
         Disabled => "disabled",
     }
+}
+
+/// One DSP's code-built features; absent from every other DSP's view.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/accounts/api/generated/"))]
+pub struct CustomFeatures {
+    pub catalog: Vec<CustomFeature>,
+    pub permissions: Vec<CustomPermission>,
+    pub frontends: Vec<CustomFrontend>,
+}
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/accounts/api/generated/"))]
+#[serde(rename_all = "lowercase")]
+pub enum CustomKind { Page, Sub }
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/accounts/api/generated/"))]
+pub struct CustomFeature {
+    pub id: String,
+    pub label: String,
+    pub kind: CustomKind,
+    pub permissions: Vec<String>,
+    pub requires: Vec<String>,
+    pub page: Option<String>,
+    pub tab: bool,
+    pub connects: bool,
+}
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/accounts/api/generated/"))]
+pub struct CustomPermission {
+    pub id: String,
+    pub label: String,
+    pub group: Option<String>,
+    pub implied: Vec<String>,
+    pub under: Option<String>,
+}
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/accounts/api/generated/"))]
+pub struct CustomFrontend {
+    pub name: String,
+    pub url: String,
+    pub styles: Vec<String>,
+    pub place: u16,
 }

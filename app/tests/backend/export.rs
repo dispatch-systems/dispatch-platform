@@ -45,6 +45,16 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
     // Each feature's, as it lists them, when the build has it.
     bindings.extend(crate::features::typescript(&cfg));
     bindings.insert(ACCESS_CATALOG.into(), access_catalog());
+    bindings.insert("core/tenancy/api/generated/custom-types.ts".into(), custom_types());
+    for feature in dispatch_core::manifest::registry().features.iter().filter(|feature| feature.owner.is_some()) {
+        let path = PathBuf::from(feature.directory()).join("api/generated/private-catalog.ts");
+        let mut text = people_data_for(&[*feature], false);
+        text += &generated("this owner's people and scheduling permissions", &[
+            ("peopleFeatures", serde_json::json!(if feature.people.is_empty() { Vec::<&str>::new() } else { vec![feature.switch.id] })),
+            ("schedulingPermissions", serde_json::json!(feature.keeps.iter().map(|keeper| keeper.schedules().permission).collect::<Vec<_>>())),
+        ]);
+        bindings.insert(path, text);
+    }
     bindings.insert(CAPABILITIES.into(), capabilities());
     bindings.insert(COLLECTIONS.into(), collections());
     bindings.insert(AUDIT_SUBJECTS.into(), audit_subjects());
@@ -130,9 +140,14 @@ fn audit_subjects() -> String {
 /// lucide-react by its name; then every source of IDs, in its order; then every title a person
 /// may be given, in the order they are offered.
 fn people_data() -> String {
+    let public: Vec<_> = dispatch_core::manifest::registry().features.iter().copied().filter(|feature| feature.owner.is_none()).collect();
+    people_data_for(&public, true)
+}
+fn people_data_for(features: &[&dispatch_core::manifest::Feature], titles: bool) -> String {
     use std::collections::BTreeSet;
     let quoted = |text: &str| serde_json::to_string(text).unwrap();
-    let kinds = dispatch_core::manifest::registry().people();
+    let mut kinds: Vec<_> = features.iter().flat_map(|feature| feature.people).collect();
+    kinds.sort_by_key(|kind| (kind.kind.order, kind.kind.id));
     let icons: BTreeSet<_> = kinds.iter().map(|kind| kind.kind.icon).collect();
     let mut text =
         "// Generated from the kinds of data the features' people declare, their sources \
@@ -147,20 +162,23 @@ fn people_data() -> String {
     for kind in &kinds {
         let unit = kind.unit().map_or("null".to_owned(), quoted);
         text += &format!(
-            "  {{ id: {}, label: {}, unit: {unit}, icon: {} }},\n",
+            "  {{ id: {}, label: {}, order: {}, unit: {unit}, icon: {} }},\n",
             quoted(kind.kind.id),
             quoted(kind.kind.label),
+            kind.kind.order,
             kind.kind.icon
         );
     }
     text += "] as const;\nexport const peopleSources = [\n";
-    for source in Source::all() {
+    for source in Source::all().filter(|source| kinds.iter().any(|kind| kind.source == *source)) {
         text += &format!(
-            "  {{ id: {}, label: {} }},\n",
+            "  {{ id: {}, label: {}, order: {} }},\n",
             quoted(source.as_str()),
-            quoted(source.label())
+            quoted(source.label()),
+            source.order()
         );
     }
+    if !titles { return text + "] as const;\n"; }
     text += "] as const;\nexport const personTitles = [\n";
     for title in PersonTitle::ALL {
         text += &format!(
@@ -177,7 +195,7 @@ fn people_features() -> String {
     let features: Vec<_> = dispatch_core::manifest::registry()
         .features
         .iter()
-        .filter(|feature| !feature.people.is_empty())
+        .filter(|feature| feature.owner.is_none() && !feature.people.is_empty())
         .map(|feature| feature.switch.id)
         .collect();
     generated(
@@ -208,11 +226,26 @@ fn exposes() -> String {
     generated("what features expose", &[("exposes", offered.into())])
 }
 
+fn custom_types() -> String {
+    use dispatch_core::tenancy::catalog::{self, Kind};
+    let catalog: Vec<_> = catalog::catalog().iter().filter(|feature| feature.owner.is_some()).collect();
+    let union = |ids: Vec<&str>| if ids.is_empty() { "never".to_owned() } else { ids.iter().map(|id| serde_json::to_string(id).unwrap()).collect::<Vec<_>>().join(" | ") };
+    let rows = [
+        ("CustomFeatureId", catalog.iter().map(|feature| feature.id).collect::<Vec<_>>()),
+        ("CustomPageId", catalog.iter().filter(|feature| feature.kind == Kind::Page).map(|feature| feature.id).collect()),
+        ("CustomSubId", catalog.iter().filter(|feature| matches!(feature.kind, Kind::Sub(_))).map(|feature| feature.id).collect()),
+        ("CustomPermissionId", catalog.iter().flat_map(|feature| feature.permissions.iter().copied()).collect()),
+    ];
+    "// Generated build-wide ids. Type-only: custom identities never enter the public bundle.\n".to_owned() + &rows.into_iter().map(|(name, ids)| format!("export type {name} = {};\n", union(ids))).collect::<String>()
+}
+
 /// Runtime catalogs, exported from their actual values rather than Rust source formatting.
 fn access_catalog() -> String {
     use dispatch_core::tenancy::{catalog, roles};
     use serde_json::json;
-    let catalog = catalog::catalog();
+    let private: std::collections::BTreeSet<_> = dispatch_core::manifest::registry().features.iter().filter(|feature| feature.owner.is_some()).flat_map(|feature| feature.permissions.iter().chain(feature.subfeatures.iter().flat_map(|sub| sub.permissions))).map(|permission| permission.id).collect();
+    let public = |id: &str| !private.contains(id);
+    let catalog: Vec<_> = catalog::catalog().iter().filter(|feature| feature.owner.is_none()).collect();
     let ids = |kind| {
         catalog
             .iter()
@@ -254,45 +287,47 @@ fn access_catalog() -> String {
             entry
         })
         .collect();
-    let labels: BTreeMap<_, _> = roles::LABELS.iter().copied().collect();
+    let labels: BTreeMap<_, _> = roles::LABELS.iter().copied().filter(|(id, _)| public(id)).collect();
     // Everything each permission grants as well, however many steps away.
     let implied: BTreeMap<_, _> = roles::PERMISSIONS
         .iter()
+        .filter(|permission| public(permission))
         .map(|permission| {
             let granted = roles::granting(&[(*permission).to_owned()]);
-            (*permission, granted[1..].to_vec())
+            (*permission, granted[1..].iter().filter(|id| public(id)).cloned().collect::<Vec<_>>())
         })
         .filter(|(_, granted)| !granted.is_empty())
         .collect();
     let parents: BTreeMap<_, _> = dispatch_core::manifest::registry()
         .permissions()
+        .filter(|permission| public(permission.id))
         .filter_map(|permission| Some((permission.id, permission.under?)))
         .collect();
     // Each page's own section, then a section for each of its parts that owns permissions.
-    let mut groups: Vec<(String, &[&str])> = Vec::new();
-    for page in catalog::pages() {
+    let mut groups: Vec<(String, Vec<&str>)> = Vec::new();
+    for page in catalog::pages().filter(|page| page.owner.is_none()) {
         // A page that owns none, as one every DSP has may, has no section of its own.
         if !page.permissions.is_empty() {
-            groups.push((page.label.to_owned(), page.permissions));
+            groups.push((page.label.to_owned(), page.permissions.to_vec()));
         }
         for sub in catalog
             .iter()
             .filter(|sub| sub.kind == catalog::Kind::Sub(page.id) && !sub.permissions.is_empty())
         {
-            groups.push((format!("{} · {}", page.label, sub.label), sub.permissions));
+            groups.push((format!("{} · {}", page.label, sub.label), sub.permissions.to_vec()));
         }
     }
     groups.extend(
         roles::GROUPS
             .iter()
-            .map(|(group, permissions)| ((*group).to_owned(), permissions.as_slice())),
+            .map(|(group, permissions)| ((*group).to_owned(), permissions.iter().filter(|id| public(id)).copied().collect::<Vec<_>>())).filter(|(_, permissions)| !permissions.is_empty()),
     );
     let mut grouped: Vec<_> = groups
         .iter()
-        .flat_map(|(_, permissions)| *permissions)
+        .flat_map(|(_, permissions)| permissions.iter())
         .copied()
         .collect();
-    let mut permissions = roles::PERMISSIONS.to_vec();
+    let mut permissions: Vec<_> = roles::PERMISSIONS.iter().copied().filter(|id| public(id)).collect();
     grouped.sort();
     permissions.sort();
     assert_eq!(
@@ -304,7 +339,7 @@ fn access_catalog() -> String {
     }));
     // What a member needs to open the Collectors page: one of these.
     let mut scheduling: Vec<&str> = dispatch_core::collection::schedules::Scheduled::all()
-        .map(|scheduled| scheduled.keeper.schedules().permission)
+        .map(|scheduled| scheduled.keeper.schedules().permission).filter(|id| public(id))
         .collect();
     scheduling.sort();
     scheduling.dedup();
@@ -317,7 +352,7 @@ fn access_catalog() -> String {
             json!(catalog.iter().map(|feature| feature.id).collect::<Vec<_>>()),
         ),
         ("featureCatalog", json!(entries)),
-        ("permissions", json!(*roles::PERMISSIONS)),
+        ("permissions", json!(permissions)),
         ("permissionLabels", json!(labels)),
         ("permissionGroups", json!(groups)),
         ("impliedPermissions", json!(implied)),
@@ -617,6 +652,7 @@ fn frontend_list(root: &Path) -> String {
     let owners: Vec<String> = registry
         .features
         .iter()
+        .filter(|feature| feature.owner.is_none())
         .map(|feature| feature.directory())
         .chain(
             registry

@@ -83,9 +83,13 @@ pub async fn pipeline(
         context.route = Some(route);
     }
     let agent = request.uri().path().starts_with("/api/v1/");
+    let mut custom_audience = super::assets::Audience::default();
     let mut response = match admit(&state, &request) {
         Ok(site) => {
             request.extensions_mut().insert(site);
+            let audience = super::assets::audience(&state, &request).await;
+            request.extensions_mut().insert(audience.clone());
+            custom_audience = audience;
             observability::REQUEST_TRACE
                 .scope(trace.clone(), next.run(request))
                 .await
@@ -157,11 +161,8 @@ pub async fn pipeline(
     let development = state.config.development;
     // What features' pages load from outside (`page_sources`), beside the dashboard's own.
     let outside = |loads| {
-        registry()
-            .page_origins(loads)
-            .iter()
-            .map(|origin| format!(" {origin}"))
-            .collect::<String>()
+        let origins: std::collections::BTreeSet<_> = registry().page_sources().filter(|(feature, each)| each.loads == loads && custom_audience.sees(feature.owner)).map(|(_, each)| each.origin).collect();
+        origins.iter().map(|origin| format!(" {origin}")).collect::<String>()
     };
     let csp = format!(
         "default-src 'self'; script-src 'self'{}; style-src 'self' 'unsafe-inline'; \

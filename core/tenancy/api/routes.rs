@@ -111,6 +111,7 @@ fn open_dsp(db: &Store, user: &User, input: &Input) -> Result<Reply> {
         c.permissions.clone()
     };
     Reply::of(&DspView {
+        custom: crate::tenancy::custom::view(db, user.state, &c)?,
         token: db.view_token(&c),
         profile: db.profile(&c.dsp.id)?,
         permissions: c.visible(&held).cloned().collect(),
