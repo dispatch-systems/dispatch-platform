@@ -66,7 +66,7 @@ pub fn message(dsp: &str, waiting: &WaitingMessage, address: &str) -> Vec<u8> {
     json!({
         "title": cut(&waiting.from, TITLE_MOST),
         "body": cut(&preview(&waiting.message.text, &waiting.message.files), BODY_MOST),
-        "url": format!("{address}dispatch-phone?{opens}"),
+        "url": format!("{address}communications?{opens}"),
         "tag": waiting.message.id,
         "dsp": dsp,
         "conversation": waiting.conversation_id,

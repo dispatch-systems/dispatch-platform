@@ -2,11 +2,13 @@
 
 ## Name migration
 
-The canonical page is `dispatch-phone`; `communications` opens it with the conversation, group
-and other query parameters preserved. APIs are under `/api/dsp/dispatch-phone` and
-`/api/dispatch-phone/phone`. Their old `/communications` addresses are direct aliases of the
-same handlers, authorization, upload limits and write policies, so older pages and Relay builds
-continue to work. The old initials and attachment links remain readable too.
+The page accepts `dispatch-phone` and `communications`, preserving conversation, group and
+other query parameters. APIs accept `/api/dsp/dispatch-phone` and `/api/dispatch-phone/phone`
+alongside their existing `/communications` addresses. Both are registrations of the same
+handlers, authorization, upload limits and write policies. This bridge still emits the existing
+addresses, including notification, initials and app-download links, so its predecessor can read
+them after rollback. The new addresses become canonical only once this bridge is an installed
+rollback target.
 
 This is the bridge release. Stored feature and permission IDs, settings keys, migration owner,
 table names, attachment directories and object-store keys, browser drafts and notification

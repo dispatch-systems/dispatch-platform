@@ -46,7 +46,7 @@ const FILTER: &str = "medium";
 const SHARED_MOST: u64 = 2 * 1024 * 1024;
 
 /// Where fixture mode's stand-in for KLIPY answers, on the server itself.
-const FIXTURE: &str = "/api/dispatch-phone/gifs/fixture";
+const FIXTURE: &str = "/api/communications/gifs/fixture";
 
 /// Where the page searches KLIPY's GIFs for the member `user` of the DSP `dsp`: refused while the
 /// server has no KLIPY key.

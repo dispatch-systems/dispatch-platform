@@ -88,7 +88,7 @@ function worded(error: unknown) {
 /** One of its calls, a refusal worded as Communications words it. */
 const api = wordedApi(wording);
 
-const communicationsUrl = '/api/dsp/dispatch-phone';
+const communicationsUrl = '/api/dsp/communications';
 /** `path` asking `asked`, what's left empty left out: as `team`, for one workspace's alone. */
 function address(path: string, asked: Record<string, string | undefined>) {
   const query = new URLSearchParams(

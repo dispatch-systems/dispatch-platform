@@ -11,7 +11,7 @@ fn someones_initials_come_from_their_first_and_last_names() {
     assert_eq!(of("李", "王"), None);
     assert_eq!(
         address("https://admin.example.test", "KB"),
-        "https://admin.example.test/dispatch-phone/initials/1/KB.png"
+        "https://admin.example.test/communications/initials/1/KB.png"
     );
 }
 

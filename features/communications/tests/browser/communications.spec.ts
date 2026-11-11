@@ -21,7 +21,7 @@ import { connect, event, fromSlack, install } from '../../../slack/tests/support
  * Slack's section. */
 async function working(page: Page, ...named: string[]) {
   await page.route(
-    (url) => /\/api\/dsp\/dispatch-phone\/conversations\/[^/]+(?:\/window)?$/.test(url.pathname),
+    (url) => /\/api\/dsp\/communications\/conversations\/[^/]+(?:\/window)?$/.test(url.pathname),
     async (route) => {
       if (route.request().method() !== 'GET') return route.fallback();
       const response = await route.fetch();
@@ -91,7 +91,7 @@ test('an owner connects Slack from Communications, answers a member as they writ
   await page.getByRole('button', { name: 'Connect Slack' }).click();
   // Slack sends the browser back here, which finishes connecting it.
   await expect(page.getByText('Slack connected')).toBeVisible();
-  await expect(page).toHaveURL(/\/dispatch-phone$/);
+  await expect(page).toHaveURL(/\/communications$/);
 
   // A member writes to the app: their conversation arrives waiting, counted in the sidebar.
   const write = (text: string) =>
@@ -223,17 +223,17 @@ test('an owner connects Slack from Communications, answers a member as they writ
   );
   // The first reading of the list, and of the conversation, fails.
   const reading = (url: URL) =>
-    url.pathname === '/api/dsp/dispatch-phone' ||
-    /^\/api\/dsp\/dispatch-phone\/conversations\/[^/]+(?:\/window)?$/.test(url.pathname);
+    url.pathname === '/api/dsp/communications' ||
+    /^\/api\/dsp\/communications\/conversations\/[^/]+(?:\/window)?$/.test(url.pathname);
   const failed = new Set<string>();
   await page.route(reading, (route) => {
     const path = new URL(route.request().url()).pathname;
     if (
       route.request().method() !== 'GET' ||
-      failed.has(path === '/api/dsp/dispatch-phone' ? 'list' : 'one')
+      failed.has(path === '/api/dsp/communications' ? 'list' : 'one')
     )
       return route.continue();
-    failed.add(path === '/api/dsp/dispatch-phone' ? 'list' : 'one');
+    failed.add(path === '/api/dsp/communications' ? 'list' : 'one');
     return route.fulfill({ status: 503, json: { error: 'unavailable', message: 'Busy' } });
   });
   await page
@@ -303,7 +303,7 @@ test('Slack needing an update covers its section alone, the sidebar still going 
   // Updated from here, Slack comes back here, and it's gone.
   await update.getByRole('button', { name: 'Update' }).click();
   await expect(page.getByText('Slack connected')).toBeVisible();
-  await expect(page).toHaveURL(/\/dispatch-phone$/);
+  await expect(page).toHaveURL(/\/communications$/);
   await expect(update).toHaveCount(0);
 });
 
@@ -338,7 +338,7 @@ test('with two workspaces, each by its logo or initials, the lists show the one 
   // Operations' logo, which Dispatch keeps a copy of once it's connected.
   await expect
     .poll(async () => {
-      const { workspaces } = await owner.read('/api/dsp/dispatch-phone');
+      const { workspaces } = await owner.read('/api/dsp/communications');
       return (workspaces as { teamId: string; logo: string | null }[]).some(
         (workspace) => workspace.teamId === 'T0FIXTURE1' && workspace.logo,
       );
@@ -784,10 +784,10 @@ test.describe('on a phone', () => {
     const list = page.getByRole('region', { name: 'Conversations' });
     const casey = page.getByRole('region', { name: 'Casey Rivera' });
     await list.getByRole('button', { name: /^Casey Rivera/ }).click();
-    await expect(page).toHaveURL(/\/dispatch-phone\?open=/);
+    await expect(page).toHaveURL(/\/communications\?open=/);
     await casey.getByLabel('Message').fill('Behind the van');
     await page.goBack();
-    await expect(page).toHaveURL(/\/dispatch-phone$/);
+    await expect(page).toHaveURL(/\/communications$/);
     await expect(casey).toHaveCount(0);
     await list.getByRole('button', { name: /^Casey Rivera/ }).click();
     await expect(casey.getByLabel('Message')).toHaveValue('Behind the van');

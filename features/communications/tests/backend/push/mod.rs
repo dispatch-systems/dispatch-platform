@@ -94,7 +94,7 @@ async fn each_message_new_in_what_waits_goes_to_each_browser_of_each_member_told
         // Opening the conversation at the admin's address, where they subscribed, for a page in
         // front to tell as this DSP's.
         let opens = format!(
-            "{}/#dsp/{dsp}/dispatch-phone?open={}",
+            "{}/#dsp/{dsp}/communications?open={}",
             state.config.origin, conversation.id
         );
         assert_eq!(pushed[0]["url"], opens);

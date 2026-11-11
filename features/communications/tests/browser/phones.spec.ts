@@ -35,7 +35,7 @@ test('Add phone closes once its own code pairs a phone, and a rename asks before
   const made = async () =>
     (await (
       await page.waitForResponse((response) =>
-        response.url().endsWith('/api/dsp/dispatch-phone/phones/pairing'),
+        response.url().endsWith('/api/dsp/communications/phones/pairing'),
       )
     ).json()) as PhonePairing;
   let making = made();
@@ -59,7 +59,7 @@ test('Add phone closes once its own code pairs a phone, and a rename asks before
   const owner = await dispatch.client();
   const north = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
   await owner.select(north.id);
-  const theirs = await owner.post('/api/dsp/dispatch-phone/phones/pairing');
+  const theirs = await owner.post('/api/dsp/communications/phones/pairing');
   await pair(theirs.value.code, '(206) 555-0177');
   await page.clock.fastForward(3_000);
 
@@ -67,7 +67,7 @@ test('Add phone closes once its own code pairs a phone, and a rename asks before
   // the dialog last asked, a second before the code expires. The dialog's asks after that code
   // wait here, each answered by the server once let through.
   const asks: Route[] = [];
-  await page.route('**/api/dsp/dispatch-phone/phones/pairing/*', (route) =>
+  await page.route('**/api/dsp/communications/phones/pairing/*', (route) =>
     route.request().url().endsWith(`/${first.id}`) ? route.continue() : void asks.push(route),
   );
   const answer = async () => {
@@ -109,12 +109,12 @@ test('The card offers the app its DSP hands out: its download, an update to an o
   const app: PhoneApp = {
     name: 'DSP Dispatch: Relay Dev',
     version: '1.4.0',
-    link: `http://${dispatch.at(demo.memberDsp).host}/api/dispatch-phone/phone/app/download`,
+    link: `http://${dispatch.at(demo.memberDsp).host}/api/communications/phone/app/download`,
     picture: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=',
   };
   const lastSeenAt = Date.now() - 3 * 60_000;
   // Its stand-in phone runs an older version than that and has been offline for three minutes.
-  await page.route('**/api/dsp/dispatch-phone/phones', async (route) => {
+  await page.route('**/api/dsp/communications/phones', async (route) => {
     const response = await route.fetch();
     const data = (await response.json()) as Phones;
     // Long details, which the row cuts short, never hide the tag: a model as long as a phone may
@@ -225,7 +225,7 @@ test('the banner of a phone down follows it on every page, with alerts off', asy
   expect(quiet.status, quiet.body).toBe(200);
   // The DSP's phone as the server answers it, sending or not.
   let cantSend = false;
-  await page.route('**/api/dsp/dispatch-phone/waiting', async (route) => {
+  await page.route('**/api/dsp/communications/waiting', async (route) => {
     const response = await route.fetch();
     const phone = {
       id: 'phone_x',

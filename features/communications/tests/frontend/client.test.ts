@@ -111,7 +111,7 @@ test('window reads preserve opaque positions, zero leading, priority and cancell
   );
   const first = asked[0]!;
   const parsed = new URL(first.url, 'https://dispatch.test');
-  assert.equal(parsed.pathname, '/api/dsp/dispatch-phone/conversations/tc_id/window');
+  assert.equal(parsed.pathname, '/api/dsp/communications/conversations/tc_id/window');
   assert.equal(parsed.searchParams.get('anchor'), anchor);
   assert.equal(parsed.searchParams.get('leading'), '0');
   assert.equal(first.init?.signal?.aborted, false);

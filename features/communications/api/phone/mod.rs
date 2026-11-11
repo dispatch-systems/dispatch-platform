@@ -19,7 +19,7 @@ use access::{Address, Phone};
 use dispatch_core::server::http::route::{Public, Route, async_get, async_post, upload};
 
 /// Where a phone downloads the app, at its DSP's address, as the phones' card links to it.
-pub(in crate::api) const DOWNLOAD: &str = "/api/dispatch-phone/phone/app/download";
+pub(in crate::api) const DOWNLOAD: &str = "/api/communications/phone/app/download";
 
 /// The phones' routes, at the DSP's own address: pairing by a code, and the app, public; every
 /// other call by the key a phone was given.
@@ -29,8 +29,12 @@ pub(in crate::api) fn routes() -> Vec<Route> {
             .also_at("/api/communications/phone/pair"),
         async_get("/api/dispatch-phone/phone/app", Address, app::details)
             .also_at("/api/communications/phone/app"),
-        async_get(DOWNLOAD, Address, app::download)
-            .also_at("/api/communications/phone/app/download"),
+        async_get(
+            "/api/dispatch-phone/phone/app/download",
+            Address,
+            app::download,
+        )
+        .also_at(DOWNLOAD),
         async_get("/api/dispatch-phone/phone/outbox", Phone, outbox::outbox)
             .also_at("/api/communications/phone/outbox"),
         async_post("/api/dispatch-phone/phone/texts", Phone, texts::texts)

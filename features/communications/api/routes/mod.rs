@@ -292,10 +292,12 @@ pub fn routes() -> Vec<Route> {
         )
         .changes(DOMAIN)
         .also_at("/api/dsp/communications/push/remove"),
-        protocol(Method::GET, initials::PATH, |_, request| {
-            Box::pin(async move { files::picture(request) })
-        })
-        .also_at("/communications/initials/1/{name}"),
+        protocol(
+            Method::GET,
+            "/dispatch-phone/initials/1/{name}",
+            |_, request| Box::pin(async move { files::picture(request) }),
+        )
+        .also_at(initials::PATH),
         read(
             "/api/dsp/dispatch-phone/phones",
             phones::MANAGE,

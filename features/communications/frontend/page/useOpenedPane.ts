@@ -106,7 +106,7 @@ export function useOpenedPane({
   useEffect(() => {
     const followed = () => {
       const next = addressed();
-      if (parseHash(location.hash).page !== 'dispatch-phone') return;
+      if (parseHash(location.hash).page !== 'communications') return;
       const shows = Boolean(next.address.conversation || next.address.group);
       if (shows || phone) adopt(next);
     };

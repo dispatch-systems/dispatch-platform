@@ -310,7 +310,7 @@ test("A DSP's address hands out its server's build of the app to anyone, and pho
     [
       'DSP Dispatch: Relay Dev',
       '1.3.1-dev.14',
-      `http://${at.host}/api/dispatch-phone/phone/app/download`,
+      `http://${at.host}/api/communications/phone/app/download`,
     ],
   );
   assert.match(app.picture, /^data:image\/svg\+xml;base64,/);

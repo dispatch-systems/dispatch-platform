@@ -96,17 +96,17 @@ async function reading(dispatch: Dispatch, hours: number) {
   await owner.select(north.id);
   await window('00:00', '23:59');
   await expect
-    .poll(async () => (await owner.read('/api/dsp/dispatch-phone/routes')).drivers.length)
+    .poll(async () => (await owner.read('/api/dsp/communications/routes')).drivers.length)
     .toBe(2);
   return {
     page: `/#dsp/${north.id}/communications`,
     end: () => window('00:00', timeAt(hours)),
     /** Texts one of today's drivers, as someone at the DSP does. */
     text: async (driverId: string, text: string) => {
-      const opened = await owner.post('/api/dsp/dispatch-phone/texts/conversations', { driverId });
+      const opened = await owner.post('/api/dsp/communications/texts/conversations', { driverId });
       expect(opened.status, opened.body).toBe(200);
       const sent = await owner.post(
-        `/api/dsp/dispatch-phone/conversations/${opened.value.id}/messages`,
+        `/api/dsp/communications/conversations/${opened.value.id}/messages`,
         { text, photos: [] },
       );
       expect(sent.status, sent.body).toBe(201);
@@ -163,7 +163,7 @@ test('a driver’s work conversation keeps what’s being written while they hol
   // from its first read as the test fetches it for the page, before the page has it, so opening a
   // conversation, which replaces the page's address and with it what the browser kept of the
   // read, can't come first.
-  const routesRead = '**/api/dsp/dispatch-phone/routes';
+  const routesRead = '**/api/dsp/communications/routes';
   let duringDay!: (routes: unknown) => void;
   const during = new Promise((resolve) => (duringDay = resolve));
   await page.route(
@@ -214,7 +214,7 @@ test('a driver’s work conversation keeps what’s being written while they hol
   );
   const readAgain = page.waitForResponse(
     (response) =>
-      /\/api\/dsp\/dispatch-phone\/conversations\/[^/?]+(?:\/window)?$/.test(
+      /\/api\/dsp\/communications\/conversations\/[^/?]+(?:\/window)?$/.test(
         new URL(response.url()).pathname,
       ) && response.request().method() === 'GET',
   );
@@ -277,7 +277,7 @@ test('a driver’s progress stays as it was last read, though another driver’s
   await expect(profile.getByText('2 of 2 stops')).toBeVisible();
 
   // Today's Routes read after it, as the page comes back into view, has them further on.
-  const routesRead = '**/api/dsp/dispatch-phone/routes';
+  const routesRead = '**/api/dsp/communications/routes';
   await page.route(routesRead, async (route) => {
     const response = await route.fetch();
     const read = await response.json();

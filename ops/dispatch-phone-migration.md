@@ -7,11 +7,13 @@ and a unit test is not evidence of a phone updating or of a successful productio
 
 ## Sequence
 
-1. **Address and name bridge.** Change the existing visible wording and canonical page and API
-   addresses. Keep the old addresses as registrations of the same handlers, including their
+1. **Address and name bridge.** Change the existing visible wording and accept the new page
+   and API addresses beside the existing ones. Both registrations share the same handlers,
    authorization, tenant checks, upload limits and invalidation policies. Preserve conversation
-   and group parameters on old links. Keep every stored identity and byte location unchanged.
-   Existing Relay versions continue using their original address for messaging and updates.
+   and group parameters on either spelling. Continue emitting the old addresses until this
+   bridge is an installed rollback target: its predecessor cannot open a new page address.
+   Keep every stored identity and byte location unchanged. Existing Relay versions continue
+   using their original address for messaging and updates.
 2. **Storage compatibility bridge.** Before changing a durable identity, make the current
    runtime able to read and write both the existing and proposed storage layouts. Give the
    feature an explicit layout version in each DSP's storage; select all of its table names
@@ -24,8 +26,9 @@ and a unit test is not evidence of a phone updating or of a successful productio
    Exercise an already-paired Dev Relay through an update and a dashboard reply. A production
    release requires the user's specific approval. Do not activate the storage migration until
    the completed bridge is the installed, verified rollback target in that environment.
-4. **Migrate durable names and active source.** Rename the feature folder/crate/modules and
-   active symbols to `dispatch_phone` / Dispatch Phone, with `dispatch-phone` in addresses.
+4. **Migrate durable names and active source.** Switch emitted page/API/notification/initials
+   addresses to `dispatch-phone` once the address bridge is the rollback target. Rename the
+   feature folder/crate/modules and active symbols to `dispatch_phone` / Dispatch Phone.
    Preserve the old migration ledger as immutable history and recognize its owner through a
    declared alias. Migrate per-DSP database names and configuration in transactions, leaving
    row IDs and values unchanged. Atomically advance the layout version only after its database

@@ -174,7 +174,7 @@ test('Today’s Routes reads before it says No routes, a read that fails says so
   // Its first read waits until the test lets it go.
   let release!: () => void;
   const held = new Promise<void>((resolve) => (release = resolve));
-  await page.route('**/api/dsp/dispatch-phone/routes', async (route) => {
+  await page.route('**/api/dsp/communications/routes', async (route) => {
     await held;
     await route.continue();
   });
@@ -190,8 +190,8 @@ test('Today’s Routes reads before it says No routes, a read that fails says so
 
   // Read again, as the page comes back into view, it fails: Today's Routes says so, Recents
   // doesn't.
-  await page.unroute('**/api/dsp/dispatch-phone/routes');
-  await page.route('**/api/dsp/dispatch-phone/routes', (route) =>
+  await page.unroute('**/api/dsp/communications/routes');
+  await page.route('**/api/dsp/communications/routes', (route) =>
     route.fulfill({ status: 500, json: { error: 'internal', message: 'Something went wrong.' } }),
   );
   await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
@@ -203,10 +203,10 @@ test('Today’s Routes reads before it says No routes, a read that fails says so
   // Opened again on Recents, as chosen, then offline while Today's Routes' first read is on its
   // way: it says it'll read on reconnecting, never No routes, and shows the day once that read
   // answers back online.
-  await page.unroute('**/api/dsp/dispatch-phone/routes');
+  await page.unroute('**/api/dsp/communications/routes');
   let answer!: () => void;
   const answered = new Promise<void>((resolve) => (answer = resolve));
-  await page.route('**/api/dsp/dispatch-phone/routes', async (route) => {
+  await page.route('**/api/dsp/communications/routes', async (route) => {
     await answered;
     await route.continue();
   });
@@ -265,11 +265,11 @@ test('with Slack too, the sections switch, each with how many wait, stay as chos
   await expect(slack).toHaveAttribute('aria-selected', 'true');
 
   // A link to a text, as a new one's notification is, opens it in Recents.
-  const { conversations } = await owner.read('/api/dsp/dispatch-phone');
+  const { conversations } = await owner.read('/api/dsp/communications');
   const text = (conversations as { id: string; number: string | null }[]).find(
     (each) => each.number === '+14255550199',
   )!;
-  const toText = `/#dsp/${north.id}/communications?open=${text.id}`;
+  const toText = `/#dsp/${north.id}/dispatch-phone?open=${text.id}`;
   await page.goto(toText);
   await expect(page.getByRole('region', { name: '(425) 555-0199' })).toBeVisible();
   await expect(recents).toHaveAttribute('aria-selected', 'true');
@@ -279,7 +279,7 @@ test('with Slack too, the sections switch, each with how many wait, stay as chos
   await sections.getByRole('tab', { name: /Routes/ }).click();
   await page.getByRole('button', { name: 'Board' }).click();
   await expect(page.getByRole('region', { name: "Today's Routes" })).toBeVisible();
-  const started = await owner.post('/api/dsp/dispatch-phone/texts/conversations', {
+  const started = await owner.post('/api/dsp/communications/texts/conversations', {
     number: '2065550123',
   });
   expect(started.status, started.body).toBe(200);
@@ -289,14 +289,14 @@ test('with Slack too, the sections switch, each with how many wait, stay as chos
 
   // From Today's Routes, which lists no group, a link to a group opens it in Slack, and one to the
   // text again, Recents; from Recents, which lists groups too, a link to the group stays there.
-  const group = await owner.post('/api/dsp/dispatch-phone/groups', {
+  const group = await owner.post('/api/dsp/communications/groups', {
     name: 'Morning wave',
     people: [{ teamId: 'T0FIXTURE1', userId: 'U0FIXJORDAN' }],
     text: 'Running 20 minutes late',
     photos: [],
   });
   expect(group.status, group.body).toBe(201);
-  const toGroup = `/#dsp/${north.id}/communications?group=${group.value.id}`;
+  const toGroup = `/#dsp/${north.id}/dispatch-phone?group=${group.value.id}`;
   await sections.getByRole('tab', { name: /Routes/ }).click();
   await page.goto(toGroup);
   await expect(page.getByRole('region', { name: 'Morning wave' })).toBeVisible();
@@ -410,7 +410,7 @@ test('a teammate typing shows above the box, and their reply since the member st
   expect(granted.status).toBe(200);
   const teammate = await dispatch.client(demo.member);
   await teammate.select(north.id);
-  const { conversations } = await teammate.read('/api/dsp/dispatch-phone');
+  const { conversations } = await teammate.read('/api/dsp/communications');
   const id = conversations.find((c: { number: string }) => c.number === '+14255550199').id;
 
   await login(page);
@@ -427,7 +427,7 @@ test('a teammate typing shows above the box, and their reply since the member st
   const box = conversation.getByLabel('Message');
   const send = conversation.getByRole('button', { name: 'Send', exact: true });
   await expect(box).toBeEnabled();
-  expect((await teammate.post(`/api/dsp/dispatch-phone/conversations/${id}/typing`)).status).toBe(
+  expect((await teammate.post(`/api/dsp/communications/conversations/${id}/typing`)).status).toBe(
     200,
   );
   await expect(conversation.getByRole('status').filter({ hasText: 'is typing…' })).toBeVisible();
@@ -436,7 +436,7 @@ test('a teammate typing shows above the box, and their reply since the member st
   // they wrote since is still asked about.
   let release!: () => void;
   const held = new Promise<void>((resolve) => (release = resolve));
-  await page.route('**/api/dsp/dispatch-phone/conversations/*/messages', async (route) => {
+  await page.route('**/api/dsp/communications/conversations/*/messages', async (route) => {
     if (route.request().method() === 'POST') await held;
     await route.continue();
   });
@@ -444,7 +444,7 @@ test('a teammate typing shows above the box, and their reply since the member st
   await send.click();
   await expect(box).toHaveValue('');
   await box.fill('The gate code is 4412');
-  const reply = await teammate.post(`/api/dsp/dispatch-phone/conversations/${id}/messages`, {
+  const reply = await teammate.post(`/api/dsp/communications/conversations/${id}/messages`, {
     text: 'Calling them now',
   });
   expect(reply.status).toBe(201);
@@ -472,7 +472,7 @@ test('a teammate typing shows above the box, and their reply since the member st
   await conversation.getByRole('button', { name: 'Attach', exact: true }).click();
   await conversation.getByRole('button', { name: 'Attach Image' }).click();
   await (await choosing).setFiles({ name: 'gate.png', mimeType: 'image/png', buffer: PIXEL });
-  const again = await teammate.post(`/api/dsp/dispatch-phone/conversations/${id}/messages`, {
+  const again = await teammate.post(`/api/dsp/communications/conversations/${id}/messages`, {
     text: 'Sending them a photo too',
   });
   expect(again.status).toBe(201);
@@ -734,11 +734,11 @@ async function textFixture(page: Page, all: Message[], ready = false) {
     beforeLegacy: undefined as (() => Promise<void>) | undefined,
   };
   // Freeze background updates so the single explicit invalidation is the only refresh trigger.
-  await page.route('**/api/dsp/dispatch-phone/updates?*', async (route) => {
+  await page.route('**/api/dsp/communications/updates?*', async (route) => {
     await stopped.promise;
     await route.abort();
   });
-  await page.route('**/api/dsp/dispatch-phone', async (route) => {
+  await page.route('**/api/dsp/communications', async (route) => {
     const response = await route.fetch();
     const value = (await response.json()) as Communications;
     await route.fulfill({ json: { ...value, revision: value.revision + revision } });
@@ -755,7 +755,7 @@ async function textFixture(page: Page, all: Message[], ready = false) {
     await route.fulfill({ json: answer });
   });
   await page.route(
-    /\/api\/dsp\/dispatch-phone\/conversations\/[^/?]+(?:\?[^#]*)?$/,
+    /\/api\/dsp\/communications\/conversations\/[^/?]+(?:\?[^#]*)?$/,
     async (route) => {
       if (!source || !route.request().url().includes(`/conversations/${source.conversation.id}`))
         return route.continue();
@@ -784,7 +784,7 @@ async function textFixture(page: Page, all: Message[], ready = false) {
     invalidate: async () => {
       revision++;
       const response = page.waitForResponse(
-        (response) => new URL(response.url()).pathname === '/api/dsp/dispatch-phone',
+        (response) => new URL(response.url()).pathname === '/api/dsp/communications',
       );
       await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
       await (await response).finished();
