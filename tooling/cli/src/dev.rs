@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     fs,
-    io::Read,
     os::unix::fs::{MetadataExt, PermissionsExt},
     path::Path,
 };
@@ -138,17 +137,7 @@ fn source(root: &Path, runner: &dyn Runner) -> Result<Source> {
     })
 }
 fn digest(path: &Path) -> Result<Vec<u8>> {
-    let mut file = fs::File::open(path)?;
-    let mut hash = Sha256::new();
-    let mut buffer = [0; 65536];
-    loop {
-        let count = file.read(&mut buffer)?;
-        if count == 0 {
-            break;
-        }
-        hash.update(&buffer[..count]);
-    }
-    Ok(hash.finalize().to_vec())
+    build::sha256(&mut fs::File::open(path)?)
 }
 /// Reuse the existing exact-input cache receipt; a stale or overridden backend has no proof.
 fn backend_matches(root: &Path, runner: &dyn Runner) -> Option<bool> {

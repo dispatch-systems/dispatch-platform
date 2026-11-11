@@ -14,6 +14,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
+pub use store::sha256;
 
 pub fn ci_enabled(root: &Path, env: &Environment) -> bool {
     env.get("CI").is_some_and(|v| v == "true")
