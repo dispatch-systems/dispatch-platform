@@ -43,7 +43,15 @@ test('standalone Vite protects custom source aliases and raw files with the real
     'target/debug/dispatch-backend',
     '.test-build/probe/private-input.json',
   ];
-  for (const file of outputs) write(file, 'private build metadata');
+  for (const file of outputs)
+    write(
+      file,
+      file.endsWith('.js')
+        ? 'export const privateBuild = true;'
+        : file.endsWith('.json')
+          ? '{"private":true}'
+          : 'private build metadata',
+    );
   fs.symlinkSync(
     path.join(root, 'features/custom/sum/probe/frontend/feature.ts'),
     path.join(root, 'app/frontend/shortcut.ts'),

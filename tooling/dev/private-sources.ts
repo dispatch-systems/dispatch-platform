@@ -9,6 +9,7 @@ type Audience = { owner: string } | { platform: true };
 // These inventories contain several owners' identifiers. They are never browser inputs.
 const inventories = new Set([
   'Cargo.toml',
+  'Cargo.lock',
   'app/backend/Cargo.toml',
   'app/backend/features.rs',
   'app/generated/features.json',
@@ -49,6 +50,10 @@ export function privateSources(directory: string) {
     }
     const owner = /\/features\/custom\/([a-z0-9]+)\//.exec(file)?.[1];
     if (owner) return { owner };
+    // Builds copy private source and identifiers outside their owning feature folder.
+    // Those artifacts are not development browser inputs, including staged builds.
+    if (/(?:^|\/)(?:\.build(?:-[^/]*)?|\.test-build(?:-[^/]*)?|target)(?:\/|$)/.test(file))
+      return { platform: true };
     // A later middleware must not turn an undecoded private path into a public one.
     if (route.includes('%')) return { platform: true };
     return inventories.has(path.relative(root, file).replaceAll('\\', '/'))
