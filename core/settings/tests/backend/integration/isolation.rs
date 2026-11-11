@@ -44,7 +44,7 @@ static PROBE: Feature = Feature {
 // an app feature, without adding a product feature to any build.
 static CUSTOM: Feature = Feature {
     switch: dispatch_core::manifest::custom("nll_probe", "Owner probe", &[]),
-    permissions: &[dispatch_core::manifest::perm("nll_probe.view", "View probe", 500).group("Probe")],
+    permissions: &[dispatch_core::manifest::perm("nll_probe.view", "View probe", 1).group("Probe")],
     own_migrations: &[dispatch_core::db::OwnMigrations {
         kind: dispatch_core::db::Kind::DSP,
         list: &[dispatch_core::db::Migration {

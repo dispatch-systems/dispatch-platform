@@ -9,16 +9,16 @@ test('custom file ownership retains both the DSP and folder across every source 
     'tests/api/log.test.ts',
     'contract/Cargo.toml',
   ]) {
-    assert.deepEqual(featureAt(`features/custom/fscl/fuel_log/${leaf}`), {
-      dir: 'features/custom/fscl/fuel_log',
-      name: 'fscl_fuel_log',
-      owner: 'fscl',
+    assert.deepEqual(featureAt(`features/custom/dsp42/fuel_log/${leaf}`), {
+      dir: 'features/custom/dsp42/fuel_log',
+      name: 'dsp42_fuel_log',
+      owner: 'dsp42',
     });
     assert.equal(featureAt(`features/custom/other/fuel_log/${leaf}`)?.name, 'other_fuel_log');
   }
   for (const file of [
     'features/custom',
-    'features/custom/fscl',
+    'features/custom/dsp42',
     'features/custom/BAD/fuel_log/x.rs',
   ])
     assert.equal(featureAt(file), undefined);

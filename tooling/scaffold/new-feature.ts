@@ -543,7 +543,7 @@ function featureValues(root: string, argv: string[], adding = false) {
     pagePascal: pascal,
     pageLabel: names.label,
     sidebar,
-    sidebarFirst: sidebarPages?.[0] ?? '',
+    sidebarFirst: sidebarNames[0]?.id ?? '',
     sidebarLabels: sidebarNames.map((each) => each.label).join(', '),
     sidebarKeys: sidebarNames.map(({ id }) => `    ${key(id)}: true;`).join('\n'),
     sidebarLazies: sidebarNames

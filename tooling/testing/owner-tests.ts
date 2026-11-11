@@ -264,8 +264,7 @@ function folders(root: string, kind: Kind, name: string) {
   if (!/^[a-z0-9][a-z0-9_]*$/.test(name)) return [];
   // An integration is in whichever feature holds it, found as `dispatchdev todo` finds it.
   if (kind === 'integration') return integrations(root, name);
-  if (kind === 'feature')
-    return [featureDirectory(root, name)].filter((dir) => exists(root, `${dir}/feature.rs`));
+  if (kind === 'feature') return [featureDirectory(root, name)].filter((dir) => exists(root, dir));
   return [`${homes[kind]}/${name}`].filter((dir) => exists(root, dir));
 }
 /** The names of the owners of `kind` there are. */

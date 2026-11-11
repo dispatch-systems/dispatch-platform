@@ -664,37 +664,37 @@ test('--custom separates the owner folder from prefixed identities and fixes imp
   const plan = await feature(
     'fuel_log',
     '--custom',
-    'fscl',
+    'dsp42',
     '--page',
     '--api',
     '--tables',
     'dsp',
     '--settings',
   );
-  const dir = 'features/custom/fscl/fuel_log';
-  assert.match(file(plan, `${dir}/feature.rs`), /custom\("fscl_fuel_log", "Fuel Log", &\[\]\)/);
-  assert.match(file(plan, `${dir}/feature.rs`), /perm\("fscl_fuel_log.view"/);
-  assert.match(file(plan, `${dir}/frontend/feature.ts`), /name: 'fscl_fuel_log'/);
-  assert.match(file(plan, `${dir}/frontend/feature.ts`), /id: 'fscl-fuel-log'/);
+  const dir = 'features/custom/dsp42/fuel_log';
+  assert.match(file(plan, `${dir}/feature.rs`), /custom\("dsp42_fuel_log", "Fuel Log", &\[\]\)/);
+  assert.match(file(plan, `${dir}/feature.rs`), /perm\("dsp42_fuel_log.view"/);
+  assert.match(file(plan, `${dir}/frontend/feature.ts`), /name: 'dsp42_fuel_log'/);
+  assert.match(file(plan, `${dir}/frontend/feature.ts`), /id: 'dsp42-fuel-log'/);
   assert.match(file(plan, `${dir}/Cargo.toml`), /path = "\.\.\/\.\.\/\.\.\/\.\.\/core"/);
   assert.match(
     file(plan, `${dir}/api/types.rs`),
-    /features\/custom\/fscl\/fuel_log\/api\/generated\//,
+    /features\/custom\/dsp42\/fuel_log\/api\/generated\//,
   );
   assert.match(
     file(plan, 'app/backend/features.rs'),
-    /FEATURE.registered\(Some\("fscl"\), "fscl_fuel_log"\)/,
+    /FEATURE.registered\(Some\("dsp42"\), "dsp42_fuel_log"\)/,
   );
   assert.match(
     file(plan, 'app/backend/Cargo.toml'),
-    /path = "\.\.\/\.\.\/features\/custom\/fscl\/fuel_log"/,
+    /path = "\.\.\/\.\.\/features\/custom\/dsp42\/fuel_log"/,
   );
-  assert.match(file(plan, 'Cargo.toml'), /"features\/custom\/fscl\/fuel_log"/);
-  assert.match(file(plan, `${dir}/tests/backend/storage.rs`), /set_code\(&dsp, "fscl"\)/);
-  for (const code of ['x', 'FSCL', '../fscl', 'fs_cl', 'abcdefghijklmnopq'])
+  assert.match(file(plan, 'Cargo.toml'), /"features\/custom\/dsp42\/fuel_log"/);
+  assert.match(file(plan, `${dir}/tests/backend/storage.rs`), /set_code\(&dsp, "dsp42"\)/);
+  for (const code of ['x', 'DSP42', '../dsp42', 'fs_cl', 'abcdefghijklmnopq'])
     await refused(/DSP code/, 'fuel_log', '--custom', code);
-  await refused(/optional/, 'fuel_log', '--custom', 'fscl', '--mandatory');
-  await refused(/contracts/, 'fuel_log', '--custom', 'fscl', '--contract', 'fuel');
+  await refused(/optional/, 'fuel_log', '--custom', 'dsp42', '--mandatory');
+  await refused(/contracts/, 'fuel_log', '--custom', 'dsp42', '--contract', 'fuel');
   const numeric = await feature('fuel_log', '--custom', '12', '--api');
   assert.match(file(numeric, 'features/custom/12/fuel_log/feature.rs'), /custom\("12_fuel_log"/);
 });

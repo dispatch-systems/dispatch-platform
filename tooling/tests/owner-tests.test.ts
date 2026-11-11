@@ -398,7 +398,7 @@ test('a custom stable id selects only its nested owner even when leaf names matc
     fs.writeFileSync(path.join(root, file), text);
   };
   write('tooling/ci/test-plan.json', '{"native":{}}');
-  for (const code of ['fscl', '12']) {
+  for (const code of ['dsp42', '12']) {
     const dir = `features/custom/${code}/fuel_log`;
     write(`${dir}/feature.rs`, '');
     write(
