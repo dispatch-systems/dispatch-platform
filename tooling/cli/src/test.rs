@@ -4,8 +4,7 @@
 use crate::{
     Result, Runner, check, require,
     slot::{self, Slot},
-    test_selection::{self, Workspace},
-    workspace,
+    test_selection, workspace,
 };
 use fs2::FileExt;
 use serde::Serialize;
@@ -70,7 +69,7 @@ fn builds(command: &str) -> bool {
 /// Every file the checkout changed from where it left `origin/main`, committed or not, deleted
 /// files aside.
 pub fn changed(root: &Path, runner: &dyn Runner) -> Result<Vec<String>> {
-    let git = |args: &[&str]| workspace::text(runner, &[&["git"][..], args].concat(), Some(root));
+    let git = |args: &[&str]| workspace::git(runner, root, args);
     let base = git(&["merge-base", "origin/main", "HEAD"])?;
     let mut files: Vec<String> = git(&["diff", "--name-only", "--diff-filter=d", "-z", &base])?
         .split('\0')
@@ -85,11 +84,7 @@ pub fn changed(root: &Path, runner: &dyn Runner) -> Result<Vec<String>> {
 /// The commands for the tests `changed` touches, and a note naming the changed tests
 /// `dispatchdev check` runs instead.
 fn selected(root: &Path, changed: &[String]) -> (Vec<String>, Vec<String>) {
-    let plan = fs::read_to_string(root.join("tooling/ci/test-plan.json"))
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or(Value::Null);
-    let workspace = Workspace::read(root).unwrap_or_default();
+    let (plan, workspace) = test_selection::read(root);
     let commands = test_selection::affected(changed, &plan, &workspace)
         .into_iter()
         .filter(|command| !command.starts_with("cargo clippy"))
@@ -395,10 +390,7 @@ impl Run {
         } else {
             None
         };
-        let mut own: Vec<(&str, &OsStr)> = vec![("TMPDIR", self.tmp.as_os_str())];
-        if let Some(slot) = &slot {
-            own.push((slot::HELD, slot.path.as_os_str()));
-        }
+        let mut own = slot::passed_on(&self.tmp, &slot);
         if isolated {
             own.extend([
                 ("CARGO_TARGET_DIR", self.build.as_os_str()),
@@ -435,6 +427,11 @@ impl Run {
         Ok(freed)
     }
 }
+/// A step's line: whether it passed, how long it took, and what it ran.
+pub fn line(ok: bool, took: std::time::Duration, label: &str) {
+    let took = workspace::duration(took);
+    println!("{}  {took:>7}  {label}", if ok { "ok  " } else { "FAIL" });
+}
 /// Prints a failed command's lines that say why, and where its whole output is.
 pub fn explain(log: &Path) {
     for line in check::failure(&fs::read_to_string(log).unwrap_or_default()) {
@@ -456,12 +453,10 @@ pub fn run_commands(root: &Path, commands: &[String], keep: bool) -> Result<bool
     for (index, step) in steps(commands).iter().enumerate() {
         let log = logs.join(format!("{}.log", index + 1));
         let (ok, took) = run.step(step, &log, &[])?;
-        let took = workspace::duration(took);
+        line(ok, took, &label(&step.command));
         if ok {
-            println!("ok    {took:>7}  {}", label(&step.command));
             continue;
         }
-        println!("FAIL  {took:>7}  {}", label(&step.command));
         explain(&log);
         passed = false;
         break;
@@ -504,7 +499,7 @@ pub struct Plan {
     pub notes: Vec<String>,
 }
 pub fn plan(root: &Path, tests: Tests<'_>, runner: &dyn Runner) -> Result<Plan> {
-    let git = |args: &[&str]| workspace::text(runner, &[&["git"][..], args].concat(), Some(root));
+    let git = |args: &[&str]| workspace::git(runner, root, args);
     let mut plan = Plan {
         scope: String::new(),
         head: git(&["rev-parse", "HEAD"])?,

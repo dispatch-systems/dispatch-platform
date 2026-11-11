@@ -12,6 +12,7 @@ use crate::{
     Result, Runner,
     build::Environment,
     change::{Clone, Repository},
+    merge::short,
     pr, preview, require, workspace,
 };
 use findings::{Answered, Tag};
@@ -110,9 +111,7 @@ struct Checkout<'a> {
 }
 impl Checkout<'_> {
     fn git(&self, args: &[&str]) -> Result<String> {
-        let mut command = vec!["git"];
-        command.extend_from_slice(args);
-        workspace::text(self.runner, &command, Some(self.root))
+        workspace::git(self.runner, self.root, args)
     }
     fn head(&self) -> Result<String> {
         self.git(&["rev-parse", "HEAD"])
@@ -431,7 +430,8 @@ pub fn prepare(root: &Path, ask: &Prepare, runner: &dyn Runner) -> Result<()> {
     if tier == Tier::Light {
         println!(
             "{branch} is light (documentation and tests alone): it needs no review. Its PR's \
-             Review section opens `Tier light · not reviewed`."
+             Review section opens `{}`.",
+            pr::LIGHT
         );
         return Ok(());
     }
@@ -715,7 +715,7 @@ pub fn ui(path: &str) -> bool {
 /// What the change is for, from its PR body: the title, its Summary, and its Problem, Symptom
 /// or Why.
 fn purpose(root: &Path) -> Result<String> {
-    let path = workspace::checkout_scratch(root)?.join("pr-body.md");
+    let path = pr::body_path(root)?;
     let text = fs::read_to_string(&path).map_err(|_| {
         format!(
             "{} is missing: the brief takes the change's purpose from it.",
@@ -906,7 +906,7 @@ pub fn record(
             paths.join(", ")
         ));
     }
-    let body = workspace::checkout_scratch(root)?.join("pr-body.md");
+    let body = pr::body_path(root)?;
     let text = fs::read_to_string(&body)?;
     workspace::write_private(&body, &pr::with_review_line(&text, &line)?)?;
     // The fixes and the body go up before the pass is kept, held to what `dispatchdev pr` holds
@@ -1025,10 +1025,6 @@ pub fn summary(tier: Tier, passes: &[Recorded]) -> String {
         });
     }
     parts.join(" · ")
-}
-
-fn short(sha: &str) -> &str {
-    &sha[..sha.len().min(10)]
 }
 
 #[cfg(test)]

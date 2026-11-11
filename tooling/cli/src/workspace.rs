@@ -5,7 +5,7 @@ use std::{
     fs,
     io::Write,
     os::unix::fs::{DirBuilderExt, OpenOptionsExt},
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     process::{Command, Stdio},
     time::{Duration, Instant},
 };
@@ -68,6 +68,29 @@ pub fn text(runner: &dyn Runner, args: &[&str], cwd: Option<&Path>) -> Result<St
     Ok(String::from_utf8(runner.command(args, cwd, 120)?)?
         .trim()
         .to_owned())
+}
+/// What `git` with `args` prints in `root`, trimmed.
+pub fn git(runner: &dyn Runner, root: &Path, args: &[&str]) -> Result<String> {
+    text(runner, &[&["git"][..], args].concat(), Some(root))
+}
+/// A path with its `.` and `..` worked out, so a file reached two ways is named one way.
+pub fn normal(path: &Path) -> PathBuf {
+    let mut normal = PathBuf::new();
+    for part in path.components() {
+        match part {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normal.pop();
+            }
+            part => normal.push(part),
+        }
+    }
+    normal
+}
+/// The repository's Git folder that every worktree shares, by its absolute path.
+pub fn shared_git(root: &Path, runner: &dyn Runner) -> Result<PathBuf> {
+    let args = ["rev-parse", "--path-format=absolute", "--git-common-dir"];
+    Ok(PathBuf::from(git(runner, root, &args)?))
 }
 /// The slice every command `logged` runs goes in, from every worktree at once. Between them they
 /// have a low CPU weight and one memory ceiling: at `MemoryMax` they swap, and past the swap

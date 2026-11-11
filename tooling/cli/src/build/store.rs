@@ -22,6 +22,10 @@ pub(super) fn hash(path: &Path) -> Result<String> {
 }
 /// The SHA-256 of what's left to read, in lowercase hex.
 pub(super) fn digest(reader: &mut impl Read) -> Result<String> {
+    Ok(crate::to_hex(&sha256(reader)?))
+}
+/// The SHA-256 of what's left to read.
+pub fn sha256(reader: &mut impl Read) -> Result<Vec<u8>> {
     let mut digest = Sha256::new();
     let mut buffer = [0; 65536];
     loop {
@@ -31,7 +35,7 @@ pub(super) fn digest(reader: &mut impl Read) -> Result<String> {
         }
         digest.update(&buffer[..count]);
     }
-    Ok(crate::to_hex(&digest.finalize()))
+    Ok(digest.finalize().to_vec())
 }
 pub(super) fn copy_binary(source: &Path, destination: &Path) -> Result<()> {
     let parent = destination

@@ -2,12 +2,9 @@ use crate::{
     Result, Runner,
     build::{self, Environment},
     slot::{self, Slot},
-    test_selection::{self, Workspace},
-    workspace,
+    test_selection, workspace,
 };
-use serde_json::Value;
 use std::{
-    ffi::OsStr,
     fs,
     path::{Path, PathBuf},
     sync::Mutex,
@@ -33,11 +30,7 @@ pub struct Plan {
 }
 /// The branch's plan, or what stops it from being pushed.
 pub fn plan(root: &Path, runner: &dyn Runner) -> Result<Plan> {
-    let command = |args: &[&str]| -> Result<String> {
-        Ok(String::from_utf8(runner.command(args, Some(root), 120)?)?
-            .trim()
-            .to_owned())
-    };
+    let command = |args: &[&str]| workspace::text(runner, args, Some(root));
     let branch = command(&["git", "rev-parse", "--abbrev-ref", "HEAD"])?;
     let dirty = !command(&["git", "status", "--porcelain"])?.is_empty();
     let problems = blockers(&branch, dirty);
@@ -58,13 +51,7 @@ pub fn plan(root: &Path, runner: &dyn Runner) -> Result<Plan> {
     .lines()
     .map(str::to_owned)
     .collect();
-    // Without a readable plan, the changed tests and crates alone are named.
-    let plan = std::fs::read_to_string(root.join("tooling/ci/test-plan.json"))
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or(Value::Null);
-    // Without a readable workspace, as in a checkout with no Rust, no crate is named.
-    let workspace = Workspace::read(root).unwrap_or_default();
+    let (plan, workspace) = test_selection::read(root);
     let commands = test_selection::affected(&changed, &plan, &workspace)
         .into_iter()
         .filter(|command| command.starts_with("cargo clippy"))
@@ -180,15 +167,11 @@ fn side_by_side(root: &Path, commands: &[String], env: &Environment) -> Result<b
                         true => Slot::take(root, command, env, &crate::Native)?,
                         false => None,
                     };
-                    let mut own: Vec<(&str, &OsStr)> = vec![("TMPDIR", scratch.as_os_str())];
-                    if let Some(slot) = &slot {
-                        own.push((slot::HELD, slot.path.as_os_str()));
-                    }
+                    let own = slot::passed_on(scratch, &slot);
                     let (ok, took) = workspace::logged(command, root, &log, &own)?;
                     // A failure's lines stay together under its own.
                     let _said = said.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-                    let took = workspace::duration(took);
-                    println!("{}  {took:>7}  {command}", if ok { "ok  " } else { "FAIL" });
+                    crate::test::line(ok, took, command);
                     if !ok {
                         crate::test::explain(&log);
                     }
@@ -237,7 +220,9 @@ impl Pass {
         }
         let tree = tree(root, runner)?;
         Ok(Some(Self {
-            file: shared(root, runner)?.join(PASSES).join(&tree),
+            file: workspace::shared_git(root, runner)?
+                .join(PASSES)
+                .join(&tree),
             tree,
             says: format!(
                 "{}\n{}",
@@ -262,19 +247,6 @@ impl Pass {
 /// The hash of the tree `root`'s checkout has committed.
 fn tree(root: &Path, runner: &dyn Runner) -> Result<String> {
     workspace::text(runner, &["git", "rev-parse", "HEAD^{tree}"], Some(root))
-}
-/// The repository's Git folder that every worktree shares.
-fn shared(root: &Path, runner: &dyn Runner) -> Result<PathBuf> {
-    Ok(PathBuf::from(workspace::text(
-        runner,
-        &[
-            "git",
-            "rev-parse",
-            "--path-format=absolute",
-            "--git-common-dir",
-        ],
-        Some(root),
-    )?))
 }
 /// The `CLIPPY` settings in `env`, which change what clippy says.
 fn clippy_settings(env: &Environment) -> Vec<String> {
@@ -331,7 +303,7 @@ impl Lints {
             .filter_map(|name| fs::read_to_string(root.join(name)).ok())
             .collect();
         Ok(Some(Self {
-            file: shared(root, runner)?.join(LINTS).join(&key),
+            file: workspace::shared_git(root, runner)?.join(LINTS).join(&key),
             key,
             says: format!("{command}\n{}\n{config}", clippy_settings(env).join("\n")),
         }))

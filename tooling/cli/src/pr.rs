@@ -75,6 +75,10 @@ pub fn sections(title: &str) -> Result<&'static [&'static str]> {
         _ => &["Summary", "Why", "Change", "Risk", "Verification", "Review"],
     })
 }
+/// The body of the PR of the checkout at `root`: `pr-body.md` in its scratch folder.
+pub fn body_path(root: &Path) -> Result<std::path::PathBuf> {
+    Ok(workspace::checkout_scratch(root)?.join("pr-body.md"))
+}
 /// The text of the body's section `name`, trimmed, if it has one.
 pub fn section<'a>(body: &'a str, name: &str) -> Option<&'a str> {
     let heading = format!("## {name}");
@@ -96,12 +100,18 @@ pub fn section<'a>(body: &'a str, name: &str) -> Option<&'a str> {
 /// The Review section's first line while the change's review is still to come: `review record`
 /// replaces it, and `merge` treats it as not reviewed.
 pub const PENDING: &str = "Under review";
-/// Whether `line` opens a Review section: the line `review record` writes, `Tier light · not
-/// reviewed` for a change that needs none, `Not reviewed:` and why for one merged without a
-/// review, or `PENDING` until its review is recorded.
-fn review_line(line: &str) -> bool {
+/// The Review section's first line for a light change, which needs no review.
+pub const LIGHT: &str = "Tier light · not reviewed";
+/// The line `body`'s Review section opens with, if it has one.
+pub fn review_line(body: &str) -> Option<&str> {
+    section(body, "Review").and_then(|review| review.lines().next())
+}
+/// Whether `line` opens a Review section: the line `review record` writes, `LIGHT` for a change
+/// that needs none, `Not reviewed:` and why for one merged without a review, or `PENDING` until
+/// its review is recorded.
+fn opens_review(line: &str) -> bool {
     line == PENDING
-        || line == "Tier light · not reviewed"
+        || line == LIGHT
         || ["Tier standard · ", "Tier sensitive · "]
             .iter()
             .any(|start| line.starts_with(start))
@@ -119,7 +129,7 @@ pub fn with_review_line(body: &str, line: &str) -> Result<String> {
     let (before, rest) = body.split_at(at);
     let rest = rest.trim_start_matches('\n');
     let rest = match rest.lines().next() {
-        Some(first) if review_line(first) => &rest[first.len()..],
+        Some(first) if opens_review(first) => &rest[first.len()..],
         _ => rest,
     };
     let rest = rest.trim_start_matches('\n');
@@ -189,9 +199,7 @@ pub fn check_body(title: &str, body: &str) -> Result<()> {
         )?;
     }
     require(
-        section(body, "Review")
-            .and_then(|review| review.lines().next())
-            .is_some_and(review_line),
+        review_line(body).is_some_and(opens_review),
         "Review opens with `Under review` until `dispatchdev review record` writes its line, \
          `Tier light · not reviewed`, or `Not reviewed:` and why.",
     )?;
@@ -235,7 +243,7 @@ pub fn titled(text: &str) -> (Option<&str>, &str) {
 /// `dispatchdev pr --skeleton --title <title>`: the body's title and sections, in the checkout's
 /// scratch folder, where `pr` reads it from.
 pub fn start_body(root: &Path, title: &str) -> Result<()> {
-    let body = workspace::checkout_scratch(root)?.join("pr-body.md");
+    let body = body_path(root)?;
     let wanted = skeleton(title, &body)?;
     println!("Wrote {}: {}.", body.display(), wanted.join(", "));
     println!(
@@ -293,7 +301,7 @@ pub fn publish(
     env: &Environment,
     runner: &dyn Runner,
 ) -> Result<Option<Published>> {
-    let body = workspace::checkout_scratch(root)?.join("pr-body.md");
+    let body = body_path(root)?;
     let text = std::fs::read_to_string(&body).map_err(|_| {
         format!(
             "{} is missing: `dispatchdev pr --skeleton --title \"<title>\"` starts it.",
@@ -303,11 +311,7 @@ pub fn publish(
     let (title, text) = titled(&text);
     let title = title.ok_or_else(|| format!("{} doesn't start with # <title>.", body.display()))?;
     check_body(title, text)?;
-    let git = |args: &[&str]| {
-        let mut command = vec!["git"];
-        command.extend_from_slice(args);
-        workspace::text(runner, &command, Some(root))
-    };
+    let git = |args: &[&str]| workspace::git(runner, root, args);
     let branch = git(&["branch", "--show-current"])?;
     require(
         !branch.is_empty() && branch != "main",
@@ -409,7 +413,7 @@ pub fn publish(
         }
     };
     // A recorded or skipped review is done.
-    let pending = section(text, "Review").and_then(|review| review.lines().next()) == Some(PENDING);
+    let pending = review_line(text) == Some(PENDING);
     Ok(Some(Published {
         url,
         repository,

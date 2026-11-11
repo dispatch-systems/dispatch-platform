@@ -12,11 +12,7 @@ use crate::{
 use std::path::Path;
 
 pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
-    let git = |args: &[&str]| {
-        let mut command = vec!["git"];
-        command.extend_from_slice(args);
-        workspace::text(runner, &command, Some(root))
-    };
+    let git = |args: &[&str]| workspace::git(runner, root, args);
     let branch = git(&["branch", "--show-current"])?;
     if branch.is_empty() || branch == "main" {
         println!(

@@ -175,6 +175,16 @@ fn owner(file: &str) -> Option<String> {
         _ => None,
     }
 }
+/// The checkout's test plan, `tooling/ci/test-plan.json`, and its workspace. Without a readable
+/// plan, the changed tests and crates alone are named; without a readable workspace, as in a
+/// checkout with no Rust, no crate is named.
+pub fn read(root: &Path) -> (Value, Workspace) {
+    let plan = fs::read_to_string(root.join("tooling/ci/test-plan.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or(Value::Null);
+    (plan, Workspace::read(root).unwrap_or_default())
+}
 /// The local commands that check what the diff touches: the Rust crates it changes, and the
 /// test files it changes or that watch a source it changes, from `tooling/ci/test-plan.json`.
 /// `npm run check:rules` already runs the rule and dashboard tests, found by where they live and

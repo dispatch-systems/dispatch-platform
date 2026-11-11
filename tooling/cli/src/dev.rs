@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     fs,
-    io::Read,
     os::unix::fs::{MetadataExt, PermissionsExt},
     path::Path,
 };
@@ -97,7 +96,7 @@ fn live(file: &str) -> bool {
 /// The checkout's commit, and the fingerprint of every file a server holds from its start: all
 /// of them but the pages' code.
 fn source(root: &Path, runner: &dyn Runner) -> Result<Source> {
-    let git = |args: &[&str]| workspace::text(runner, &[&["git"][..], args].concat(), Some(root));
+    let git = |args: &[&str]| workspace::git(runner, root, args);
     let commit = git(&["rev-parse", "HEAD"])?;
     let tree = git(&["rev-parse", "HEAD^{tree}"])?;
     let dirty = !git(&["--no-optional-locks", "status", "--porcelain", "-z"])?.is_empty();
@@ -138,17 +137,7 @@ fn source(root: &Path, runner: &dyn Runner) -> Result<Source> {
     })
 }
 fn digest(path: &Path) -> Result<Vec<u8>> {
-    let mut file = fs::File::open(path)?;
-    let mut hash = Sha256::new();
-    let mut buffer = [0; 65536];
-    loop {
-        let count = file.read(&mut buffer)?;
-        if count == 0 {
-            break;
-        }
-        hash.update(&buffer[..count]);
-    }
-    Ok(hash.finalize().to_vec())
+    build::sha256(&mut fs::File::open(path)?)
 }
 /// Reuse the existing exact-input cache receipt; a stale or overridden backend has no proof.
 fn backend_matches(root: &Path, runner: &dyn Runner) -> Option<bool> {
@@ -164,24 +153,9 @@ fn backend_matches(root: &Path, runner: &dyn Runner) -> Option<bool> {
         return None;
     }
     let key = build::key(root, "debug", &env, runner).ok()?;
-    let common = workspace::text(
-        runner,
-        &[
-            "git",
-            "rev-parse",
-            "--path-format=absolute",
-            "--git-common-dir",
-        ],
-        Some(root),
-    )
-    .ok()?;
-    let receipt = fs::read_to_string(
-        Path::new(&common)
-            .join("dispatch-rust-builds")
-            .join(key)
-            .join("sha256"),
-    )
-    .ok()?;
+    let common = workspace::shared_git(root, runner).ok()?;
+    let receipt =
+        fs::read_to_string(common.join("dispatch-rust-builds").join(key).join("sha256")).ok()?;
     let expected = receipt
         .lines()
         .find_map(|line| line.strip_suffix("  dispatch-backend"))?;
