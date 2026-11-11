@@ -1,3 +1,4 @@
+import { performancePolicy } from '../../../core/shell/frontend/lib/performance-policy.js';
 import type { DspView } from '../../../core/accounts/api/index.js';
 import type { EmployeesResponse } from '../api/index.js';
 import { readUpdateState } from '../../../core/shell/frontend/runtime/navigation-state.js';
@@ -13,8 +14,8 @@ import { hasFeature } from '../../../core/shell/frontend/runtime/features.js';
 import { dspHash } from '../../../core/shell/frontend/runtime/navigation.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import { admitted, warm } from '../../../core/shell/frontend/runtime/route-prefetch.js';
-import { performancePolicy } from '../../../core/shell/frontend/lib/performance-policy.js';
 import { selectedPaycomDate } from './paycom-date.js';
+import { selectedTimecardTab } from './tabs.js';
 
 // What the Timecard reads first, so that its selected tab's data starts with its code.
 
@@ -58,21 +59,6 @@ function timecardUrls(tab: string, date: string, view: DspView): string[] {
 
 export function prefetchTimecardTab(tab: string, date: string, view: DspView, immediate = false) {
   warm(timecardUrls(tab, date, view), 'route:paycom', immediate);
-}
-
-function selectedTimecardTab(view: DspView) {
-  const preferred = readUpdateState<string | undefined>(
-    'paycom-tab',
-    undefined,
-    dspHash(view.dsp.id, 'paycom'),
-  );
-  const choices = [
-    ['timecards', 'timecard.daily'],
-    ['meal-breaks', 'timecard.meal_breaks'],
-    ['employees', 'timecard.employees'],
-  ] as const;
-  const shown = choices.filter(([, feature]) => hasFeature(view, feature));
-  return shown.find(([tab]) => tab === preferred)?.[0] ?? shown[0]?.[0];
 }
 
 /** A warm return may commit immediately only when every selected read belongs to this admission. */
