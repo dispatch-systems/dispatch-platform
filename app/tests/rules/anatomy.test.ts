@@ -56,7 +56,8 @@ const hasRustTest = (directory: string) =>
 const isRustTest = (file: string) => isFile(file) && testAttributes(lexFile(file)).length > 0;
 /**
  * Whether an owner's frontend draws a screen of its own: a page, a sidebar of pages, a tab of
- * another's page or a card on Connections. A switch alone is the DSPs page's to draw.
+ * another's page, a card, section or integration on Connections, a section of Settings or an
+ * action in the account menu. A switch alone is the DSPs page's to draw.
  */
 const hasScreen = (name: string) => {
   const frontend = frontends.find((each) => each.name === name);
@@ -65,6 +66,10 @@ const hasScreen = (name: string) => {
     frontend?.sidebars,
     frontend?.pageTabs,
     frontend?.connectionPieces,
+    frontend?.connectionSections,
+    frontend?.connectionIntegrations,
+    frontend?.settingsSections,
+    frontend?.accountActions,
   ].some((screens) => screens?.length);
 };
 
