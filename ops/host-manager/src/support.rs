@@ -91,18 +91,13 @@ pub fn verify(updater: &Updater<'_>) -> Result<()> {
         "Active artifact has no support worker",
     )?;
     for &path in resources {
+        let file = manifest
+            .files
+            .iter()
+            .find(|file| file.path == path)
+            .ok_or("Support resource missing from verified artifact")?;
         require(
-            manifest.files.iter().any(|file| file.path == path),
-            "Support resource missing from verified artifact",
-        )?;
-        require(
-            artifact::file_hash(&updater.active.join(path))?
-                == manifest
-                    .files
-                    .iter()
-                    .find(|file| file.path == path)
-                    .expect("checked")
-                    .sha256,
+            artifact::file_hash(&updater.active.join(path))? == file.sha256,
             "Support resource changed",
         )?;
     }

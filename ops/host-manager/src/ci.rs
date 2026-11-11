@@ -1,9 +1,9 @@
 //! The gate job's artifact check: the packaged build carries the run's own source commit and
 //! a complete, untampered inventory before it is published for Dev and releases.
-use crate::{Result, artifact, io::System};
+use crate::{Result, artifact};
 use std::path::Path;
 
-pub fn run(args: &[String], _system: &dyn System) -> Result<()> {
+pub fn run(args: &[String]) -> Result<()> {
     let args: Vec<_> = args.iter().map(String::as_str).collect();
     match args.as_slice() {
         ["verify", archive] => {

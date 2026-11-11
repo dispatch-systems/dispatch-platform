@@ -2,7 +2,7 @@ use super::*;
 use crate::releases::Provenance;
 use std::{
     fs::File,
-    io::{Read, Write},
+    io::Write,
     os::unix::fs::{MetadataExt, PermissionsExt},
 };
 
@@ -583,16 +583,9 @@ impl Release<'_> {
             response.status == 200,
             &format!("{origin} returned an unsuccessful response"),
         )?;
-        let mut bytes = vec![];
-        response
-            .body
-            .take(16 * 1024 * 1024 + 1)
-            .read_to_end(&mut bytes)?;
-        require(
-            !bytes.is_empty() && bytes.len() <= 16 * 1024 * 1024,
-            &format!("{origin} response empty or oversized"),
-        )?;
-        Ok(bytes)
+        io::bounded_body(response.body)?
+            .filter(|bytes| !bytes.is_empty())
+            .ok_or_else(|| format!("{origin} response empty or oversized").into())
     }
     pub(super) fn verify_production(&self, prepared: &Provenance, release: &Value) -> Result<()> {
         say("Waiting for Production to install the release");

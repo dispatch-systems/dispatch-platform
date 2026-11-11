@@ -6,7 +6,7 @@ use crate::{
     Result, artifact,
     io::{self, System},
     management, releases, require,
-    updater::{Environment, GH},
+    updater::{self, Environment, GH},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -47,8 +47,7 @@ impl Options {
     }
     fn validate(&self) -> Result<()> {
         require(
-            self.root.file_name().and_then(|s| s.to_str())
-                == Some(if self.production { "public" } else { "live" }),
+            self.root.file_name().and_then(|s| s.to_str()) == Some(self.environment().root_name()),
             "Real environment root required",
         )?;
         let canonical = |address: &str| {
@@ -261,29 +260,7 @@ fn prepare(options: &Options, system: &dyn System) -> Result<transaction::Journa
                 && git(&["status", "--porcelain"])?.is_empty(),
             "Clean Dev checkout on main required",
         )?;
-        let origin = git(&["remote", "get-url", "origin"])?;
-        require(
-            crate::REPOSITORIES.iter().any(|name| {
-                origin == format!("https://github.com/{name}.git")
-                    || origin == format!("git@github.com:{name}.git")
-            }),
-            "Unexpected repository origin",
-        )?;
-        require(
-            git(&[
-                "ls-tree",
-                "-r",
-                "--name-only",
-                "HEAD",
-                "--",
-                "config",
-                "data",
-                "dsps",
-                ".platform.lock",
-            ])?
-            .is_empty(),
-            "Dev source must not contain private environment paths",
-        )?;
+        updater::check_checkout(&git)?;
         git(&["fetch", "origin", "main"])?;
         let commit = git(&["rev-parse", "HEAD"])?;
         require(

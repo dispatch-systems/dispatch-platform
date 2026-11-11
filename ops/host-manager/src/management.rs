@@ -3,21 +3,10 @@ use crate::{
     updater::{Environment, Updater},
 };
 use serde_json::Value;
-use std::{
-    fs,
-    io::{Read, Write},
-    os::unix::fs::PermissionsExt,
-    path::Path,
-};
+use std::{fs, io::Write, os::unix::fs::PermissionsExt, path::Path};
 
 pub fn directory(updater: &Updater<'_>) -> std::path::PathBuf {
-    updater
-        .root
-        .join(if updater.environment == Environment::Dev {
-            ".runtime/management"
-        } else {
-            "management"
-        })
+    updater.root.join(updater.environment.management())
 }
 pub fn supported(root: &Path) -> Result<bool> {
     Ok(io::read_json(&root.join("tooling/build-info.json"))?["hostManagement"] == 1)
@@ -51,15 +40,7 @@ pub(super) fn copy_verified(
     io::private_directory(directory)?;
     let source = active.join("services/rust/dispatch-backend");
     let mut staged = tempfile::NamedTempFile::new_in(directory)?;
-    let mut input = fs::File::open(&source)?;
-    let mut bytes = [0; 65536];
-    loop {
-        let n = input.read(&mut bytes)?;
-        if n == 0 {
-            break;
-        }
-        staged.write_all(&bytes[..n])?;
-    }
+    std::io::copy(&mut fs::File::open(&source)?, &mut staged)?;
     staged
         .as_file()
         .set_permissions(fs::Permissions::from_mode(0o700))?;

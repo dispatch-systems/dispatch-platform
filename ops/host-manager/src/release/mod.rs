@@ -207,12 +207,8 @@ fn next_version(latest: &str, bump: &str) -> Result<String> {
 }
 
 impl<'a> Release<'a> {
-    fn new(system: &'a dyn System, options: &Options, version: &str, platform: PathBuf) -> Self {
-        let directory = options
-            .releases
-            .clone()
-            .unwrap_or_else(|| platform.join("releases"));
-        let release = Self::at(system, &options.root, &directory, &options.origins, version);
+    fn new(system: &'a dyn System, options: &Options, version: &str, directory: &Path) -> Self {
+        let release = Self::at(system, &options.root, directory, &options.origins, version);
         Self {
             notes: options.notes.clone().unwrap_or(release.notes.clone()),
             fresh: options.version.is_none(),
@@ -268,6 +264,12 @@ impl<'a> Release<'a> {
         let mut command = vec!["gh", "api", &endpoint];
         command.extend_from_slice(args);
         Ok(serde_json::from_str(&self.command(&command, None, 120)?)?)
+    }
+    /// Deletes `endpoint`, which answers with no body for `api` to read.
+    fn delete(&self, endpoint: &str) -> Result<()> {
+        let endpoint = format!("repos/{REPOSITORY}/{endpoint}");
+        self.command(&["gh", "api", &endpoint, "--method", "DELETE"], None, 120)?;
+        Ok(())
     }
     fn journal_path(&self) -> PathBuf {
         self.directory.join(format!(".{}-state.json", self.tag))
@@ -625,7 +627,7 @@ pub fn run(args: &[String], system: &dyn System) -> Result<Value> {
             "Version must be newer than the latest release",
         )?;
     }
-    Release::new(system, &options, &version, platform)
+    Release::new(system, &options, &version, &directory)
         .execute(options.stage, options.commit.as_deref())
 }
 

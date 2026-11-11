@@ -67,6 +67,51 @@ impl Environment {
             Self::Production => "dispatch-production.service",
         }
     }
+    /// The name of the environment's root folder.
+    pub fn root_name(self) -> &'static str {
+        match self {
+            Self::Dev => "live",
+            Self::Production => "public",
+        }
+    }
+    /// The runtime the environment serves, from its root.
+    pub fn active(self) -> &'static str {
+        match self {
+            Self::Dev => ".build",
+            Self::Production => "live",
+        }
+    }
+    /// Where the environment's host management is installed, from its root.
+    pub fn management(self) -> &'static str {
+        match self {
+            Self::Dev => ".runtime/management",
+            Self::Production => "management",
+        }
+    }
+}
+/// What Dev's checkout holds of its own, which the source it runs must never contain.
+const PRIVATE_PATHS: [&str; 4] = ["config", "data", "dsps", ".platform.lock"];
+/// Requires the Dev checkout `git` runs in to be a clone of this platform's repository whose
+/// HEAD holds none of Dev's private paths. Setup checks its checkout the same way before Dev has
+/// an updater.
+pub fn check_checkout(git: &dyn Fn(&[&str]) -> Result<String>) -> Result<()> {
+    let origin = git(&["remote", "get-url", "origin"])?;
+    require(
+        crate::REPOSITORIES.iter().any(|name| {
+            origin == format!("https://github.com/{name}.git")
+                || origin == format!("git@github.com:{name}.git")
+        }),
+        "Unexpected repository origin",
+    )?;
+    check_source(git, "HEAD")
+}
+fn check_source(git: &dyn Fn(&[&str]) -> Result<String>, commit: &str) -> Result<()> {
+    let mut args = vec!["ls-tree", "-r", "--name-only", commit, "--"];
+    args.extend(PRIVATE_PATHS);
+    require(
+        git(&args)?.is_empty(),
+        "Dev source must not contain private environment paths",
+    )
 }
 /// The `gh` Production verifies releases with, by its root-owned path, so a user-writable `gh`
 /// earlier on PATH can't fake `gh attestation verify`.
@@ -90,12 +135,7 @@ impl<'a> Updater<'a> {
     pub fn new(root: &Path, environment: Environment, system: &'a dyn System) -> Result<Self> {
         let root = std::path::absolute(root)?;
         require(
-            root.file_name().and_then(|s| s.to_str())
-                == Some(if environment == Environment::Dev {
-                    "live"
-                } else {
-                    "public"
-                }),
+            root.file_name().and_then(|s| s.to_str()) == Some(environment.root_name()),
             "Invalid environment root",
         )?;
         io::private_directory(&root)?;
@@ -103,11 +143,7 @@ impl<'a> Updater<'a> {
         let platform = root.join("data/platform");
         io::private_directory(&runtime)?;
         io::private_directory(&platform)?;
-        let active = root.join(if environment == Environment::Dev {
-            ".build"
-        } else {
-            "live"
-        });
+        let active = root.join(environment.active());
         require(!active.is_symlink(), "Runtime symlink denied")?;
         let config = io::read_json(&root.join("config/updater.json"))?;
         require(
@@ -131,7 +167,7 @@ impl<'a> Updater<'a> {
                 .append(true)
                 .mode(0o600)
                 .open(exclude)?;
-            for name in ["config", "data", "dsps", ".platform.lock"] {
+            for name in PRIVATE_PATHS {
                 if !existing.lines().any(|line| line == format!("/{name}")) {
                     writeln!(out, "/{name}")?;
                 }
@@ -177,32 +213,7 @@ impl<'a> Updater<'a> {
                 .is_empty(),
             "Dev checkout contains unfinished changes",
         )?;
-        let origin = self.git(&["remote", "get-url", "origin"])?;
-        require(
-            crate::REPOSITORIES.iter().any(|name| {
-                origin == format!("https://github.com/{name}.git")
-                    || origin == format!("git@github.com:{name}.git")
-            }),
-            "Unexpected repository origin",
-        )?;
-        self.check_source("HEAD")
-    }
-    fn check_source(&self, commit: &str) -> Result<()> {
-        require(
-            self.git(&[
-                "ls-tree",
-                "-r",
-                "--name-only",
-                commit,
-                "--",
-                "config",
-                "data",
-                "dsps",
-                ".platform.lock",
-            ])?
-            .is_empty(),
-            "Dev source must not contain private environment paths",
-        )
+        check_checkout(&|args| self.git(args))
     }
     fn service(&self, action: &str) -> Result<()> {
         self.system.command(
@@ -339,7 +350,7 @@ impl<'a> Updater<'a> {
         let manifest = artifact::verify(candidate, Some(commit))?;
         let current = if self.environment == Environment::Dev {
             self.clean_checkout()?;
-            self.check_source(commit)?;
+            check_source(&|args| self.git(args), commit)?;
             Some(self.git(&["rev-parse", "HEAD"])?)
         } else {
             None

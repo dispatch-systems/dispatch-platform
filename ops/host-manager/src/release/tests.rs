@@ -843,7 +843,7 @@ impl Fixture {
             &self.system,
             &options,
             "1.0.0",
-            self.temp.path().to_path_buf(),
+            &self.temp.path().join("releases"),
         )
     }
     /// `release publish` with no version, as a person runs it.

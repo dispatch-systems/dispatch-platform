@@ -15,7 +15,7 @@ pub fn run(args: &[String]) -> Result<()> {
         return crate::setup::run(&args[1..], &Native);
     }
     if args.first().is_some_and(|s| s == "ci") {
-        return crate::ci::run(&args[1..], &Native);
+        return crate::ci::run(&args[1..]);
     }
     if args.first().is_some_and(|s| s == "release") {
         let result = crate::release::run(&args[1..], &Native)?;
