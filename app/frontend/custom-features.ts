@@ -21,6 +21,10 @@ let activeStyles = new Set<string>();
 let platformStyles = false;
 const cachedStyles = new Map<string, HTMLLinkElement>();
 let sourceObserver: MutationObserver | undefined;
+const privateStyles = () =>
+  [...document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')].filter((style) =>
+    new URL(style.href).pathname.startsWith('/assets/custom-'),
+  );
 
 /** Vite keeps source CSS in style tags and caches its modules. Retain those tags for HMR
  * and cached re-entry, but apply them only while their feature is admitted. */
@@ -32,8 +36,7 @@ function sourceStyles() {
       style.media =
         platformStyles || activeSources.has(`${feature[1]}_${feature[2]}`) ? 'all' : 'not all';
   });
-  document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]').forEach((style) => {
-    if (!new URL(style.href).pathname.startsWith('/assets/custom-')) return;
+  privateStyles().forEach((style) => {
     // Admission stages its own styles with media disabled until its view commits.
     if (styles.has(style) && !activeStyles.has(style.href)) return;
     cachedStyles.set(style.href, style);
@@ -63,15 +66,13 @@ function watchSourceStyles() {
 export function clearCustomFeatures() {
   pending.abort();
   pending = new AbortController();
-  activeSources = new Set();
-  activeStyles = new Set();
+  activeSources.clear();
+  activeStyles.clear();
   watchSourceStyles();
-  sourceStyles();
   for (const style of styles) style.remove();
   styles.clear();
   // Vite may have loaded a private page's CSS along with its lazy component.
-  document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]').forEach((style) => {
-    if (!new URL(style.href).pathname.startsWith('/assets/custom-')) return;
+  privateStyles().forEach((style) => {
     cachedStyles.set(style.href, style);
     style.media = 'not all';
     // A lazy slot may still be waiting for this link's load event. Detaching it before
