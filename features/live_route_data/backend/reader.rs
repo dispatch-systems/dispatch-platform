@@ -336,7 +336,7 @@ fn authorize(
     dsp: &str,
     request: &Request,
     revision: Option<i64>,
-) -> impl Fn() -> Pending<'static, ()> + Send + Sync {
+) -> impl Fn() -> Pending<'static, ()> + Send + Sync + 'static {
     let (state, dsp, request) = (state.clone(), dsp.to_owned(), request.clone());
     move || {
         let (state, dsp, request) = (state.clone(), dsp.clone(), request.clone());
@@ -345,7 +345,7 @@ fn authorize(
                 .read(move |db| {
                     db.ensure_dsp_active(&dsp)?;
                     dispatch_core::ensure(
-                        db.feature_enabled(&dsp, crate::FEATURE.switch.id)?,
+                        db.feature_enabled(&dsp, crate::FEATURE_ID)?,
                         "feature_disabled",
                         409,
                     )?;

@@ -5,10 +5,12 @@ mod backend;
 
 use dispatch_core::manifest::{Feature, feature, optional, perm};
 
+pub(crate) const FEATURE_ID: &str = "live_route_data";
+
 pub const FEATURE: Feature = Feature {
     place: 140,
     // It reads the DSP's route source, Cortex, which switches on with it.
-    switch: optional("live_route_data", "Live Route Data", &["routes"]),
+    switch: optional(FEATURE_ID, "Live Route Data", &["routes"]),
     depends_on: &["routes", "cortex"],
     permissions: &[perm(
         "live_route_data.manage",
@@ -18,5 +20,5 @@ pub const FEATURE: Feature = Feature {
     // When it reads, on its own page of Settings.
     settings: &[backend::settings::COLLECTION],
     live_readers: &[&backend::reader::READER],
-    ..feature("live_route_data")
+    ..feature(FEATURE_ID)
 };
