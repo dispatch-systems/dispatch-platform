@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
-import { ApiError, view } from '../../shell/frontend/runtime/api.js';
-import { backoff } from '../../shell/frontend/lib/backoff.js';
+import { view } from '../../shell/frontend/runtime/api.js';
+import { longPoll } from '../../shell/frontend/runtime/long-poll.js';
 import { dataCache } from '../../shell/frontend/runtime/data-cache.js';
 import {
   collectionAffects,
@@ -17,10 +17,7 @@ export function useCollectionUpdates() {
   const token = view;
   useEffect(() => {
     let disposed = false;
-    let controller: AbortController | undefined;
-    let retry: ReturnType<typeof setTimeout> | undefined;
     let pending: ReturnType<typeof setTimeout> | undefined;
-    let failures = 0;
     let after = '';
     let pendingVersion: string | undefined;
     let pendingChanges: CollectionChange[] = [];
@@ -40,58 +37,44 @@ export function useCollectionUpdates() {
         }
       }, 400);
     };
-    const listen = async () => {
-      if (disposed || document.hidden || !navigator.onLine || controller) return;
-      const request = new AbortController();
-      controller = request;
-      let delay = 0;
-      let stopped = false;
-      try {
+    const poll = longPoll(
+      async (signal) => {
         const result = await getCollectionUpdates(
           after,
-          AbortSignal.any([request.signal, AbortSignal.timeout(30000)]),
+          AbortSignal.any([signal, AbortSignal.timeout(30000)]),
         );
-        if (!request.signal.aborted && !disposed) {
+        if (!signal.aborted && !disposed) {
           // Record the baseline before a fast first update can coalesce with it.
           if (after === '')
             dataCache.observeVersion('collections', result.revision, collectionData);
           else if (result.revision !== after) refresh(result.revision, result.changes);
           after = result.revision;
-          failures = 0;
         }
-      } catch (error) {
-        if (!request.signal.aborted && !disposed) {
-          stopped = error instanceof ApiError && [401, 403].includes(error.status);
-          delay = backoff(failures++);
-          // A transient transport failure still gets a conventional data refresh.
-          if (!stopped && failures === 1) dataCache.invalidate(collectionData);
-        }
-      } finally {
-        if (controller === request) controller = undefined;
-        if (!disposed && !document.hidden && !stopped)
-          retry = setTimeout(() => void listen(), delay);
-      }
-    };
+      },
+      (_cause, stopped, first) => {
+        // A transient transport failure still gets a conventional data refresh.
+        if (!stopped && first) dataCache.invalidate(collectionData);
+      },
+    );
     const visibility = () => {
-      if (retry) clearTimeout(retry);
+      poll.clearRetry();
       if (document.hidden || !navigator.onLine) {
-        controller?.abort();
+        poll.pause();
         if (pending) clearTimeout(pending);
         pending = undefined;
         pendingChanges = [];
       } else {
         after = '';
-        void listen();
+        void poll.listen();
       }
     };
     document.addEventListener('visibilitychange', visibility);
     window.addEventListener('online', visibility);
     window.addEventListener('offline', visibility);
-    void listen();
+    void poll.listen();
     return () => {
       disposed = true;
-      controller?.abort();
-      if (retry) clearTimeout(retry);
+      poll.dispose();
       if (pending) clearTimeout(pending);
       document.removeEventListener('visibilitychange', visibility);
       window.removeEventListener('online', visibility);
