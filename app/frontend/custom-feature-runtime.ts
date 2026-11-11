@@ -8,7 +8,6 @@ import {
 } from '../../core/shell/frontend/runtime/people.js';
 import {
   installCustomFeatures,
-  manifests,
   type FrontendFeature,
 } from '../../core/shell/frontend/runtime/slots.js';
 
@@ -133,7 +132,7 @@ export async function prepareCustomFeatures(view: DspView, current: () => boolea
     installSchedulingPermissions(modules.flatMap((module) => module.schedulingPermissions ?? []));
     installCustomPeople(modules);
     const features = modules.map((module) => module.feature);
-    installCustomFeatures(features, orderedFeatures([...manifests(), ...features]));
+    installCustomFeatures(features, orderedFeatures);
     activeSources = new Set(entries.map((entry) => entry.name));
     sourceStyles();
     for (const style of css) style.media = 'all';

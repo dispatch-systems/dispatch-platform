@@ -25,10 +25,10 @@ export function installFeatures(features: readonly FrontendFeature[]) {
 /** Installs only manifests loaded for the DSP whose view the app just admitted. */
 export function installCustomFeatures(
   features: readonly FrontendFeature[],
-  ordered?: readonly FrontendFeature[],
+  order?: (features: readonly FrontendFeature[]) => readonly FrontendFeature[],
 ) {
   customNames = new Set(features.map((feature) => feature.name));
-  installed = ordered ?? publicFeatures;
+  installed = order ? order([...publicFeatures, ...features]) : publicFeatures;
 }
 /** Every owner's manifest, in the order the owners are listed. */
 export const manifests = () => installed;
