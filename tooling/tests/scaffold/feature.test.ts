@@ -114,26 +114,25 @@ test('with no flags, a feature is a crate with a switch, a view permission and a
   );
   // With no switch, it has nothing to show in the frontend.
   assert(
-    !writes(await feature('lobby', '--mandatory'), 'features/lobby').includes(
+    !writes(await feature('lobby', '--mandatory', '--api'), 'features/lobby').includes(
       'frontend/feature.ts',
     ),
   );
 });
 
 test('--mandatory makes a feature every DSP has and, with nothing to gate, no permission', async () => {
-  const plan = await feature('lobby', '--mandatory');
+  // A tab of another's page, which needs no permission of its own.
+  const plan = await feature('lobby', '--mandatory', '--tab-of', 'uniforms');
   const manifest = file(plan, 'features/lobby/feature.rs');
   assert.match(
     manifest,
     /^pub const FEATURE: Feature = Feature \{\n {4}place: \d+,\n {4}switch: mandatory\("lobby", "Lobby"\),\n {4}\.\.feature\("lobby"\)\n\};$/m,
   );
   assert.doesNotMatch(manifest, /optional|perm/);
-  // With no API or frontend either, it keeps an empty backend/ and its manifest's test: a
-  // feature has a backend, an API or a frontend.
-  assert(file(plan, 'features/lobby/backend/mod.rs'));
-  assert.match(manifest, /#\[cfg\(test\)\]\n#\[path = "tests\/backend\/feature.rs"\]\nmod tests;/);
-  assert.match(file(plan, 'features/lobby/tests/backend/feature.rs'), /assert!\(switch\.mandatory/);
   assert.match(file(plan, 'features/lobby/README.md'), /Mandatory/);
+  // Alone, with no switch to show, it would be nothing: a feature has a backend, an API or a
+  // frontend.
+  await refused(/--mandatory alone makes a feature with nothing in it/, 'lobby', '--mandatory');
   // An endpoint still needs a permission to check.
   const gated = file(await feature('lobby', '--mandatory', '--api'), 'features/lobby/feature.rs');
   assert.match(gated, /switch: mandatory\("lobby", "Lobby"\),/);

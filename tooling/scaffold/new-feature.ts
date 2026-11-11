@@ -47,7 +47,8 @@ import {
 
 export const usage = `Usage: dispatchdev new feature <name> [options]
 
-  --mandatory                       every DSP has it, with no switch to turn it off
+  --mandatory                       every DSP has it, with no switch to turn it off; needs
+                                    a piece of its own, as --page, --api or --settings
   --api                             api/ with one endpoint behind the view permission
   --tables <database>               a first table: dsp, a collector's database, or the
                                     feature's own name with --keeps for a database of its own
@@ -411,6 +412,11 @@ function featureValues(root: string, argv: string[], adding = false) {
   const screens = page || Boolean(host) || connection || sidebar;
   // A switch shows on the DSPs page with its icon, which the frontend's platform slots give.
   const frontend = screens || switched;
+  // With no switch to show, a mandatory feature is only what its pieces make it.
+  if (!api && !frontend && !database && !keeps && !contract && !settings)
+    throw new UsageError(
+      '--mandatory alone makes a feature with nothing in it: add a piece, as --page, --api or --settings',
+    );
   // What a keeper's collection collects is said in its frontend, which a browser test holds.
   if (keeps && !frontend)
     throw new UsageError(
@@ -424,16 +430,11 @@ function featureValues(root: string, argv: string[], adding = false) {
     (new RegExp(`\\bfeature: '${name}'`).test(manifest) && /\bicon: /.test(manifest)) ||
     /^ {2}icon: /m.test(manifest);
   const settingsIcon = settings && (frontend || Boolean(manifest)) && !pageIcon;
-  // backend/ holds its storage, keeper and settings. A feature with none of them, no API and
-  // no frontend, as --mandatory alone, keeps an empty one and its manifest's test: the anatomy
-  // rule wants a backend, an API or a frontend.
-  const manifestOnly = !api && !frontend && !database && !keeps && !contract && !settings;
   // A page's id as a key of DspPages.
   const key = (id: string) => (/^[A-Za-z_$][\w$]*$/.test(id) ? id : `'${id}'`);
   const values: Values = {
     ...names,
-    backend: Boolean(database) || keeps || settings || manifestOnly || Boolean(contract),
-    manifestTest: manifestOnly,
+    backend: Boolean(database) || keeps || settings || Boolean(contract),
     switch: switched,
     permission,
     viewOrder: order,
@@ -582,7 +583,6 @@ function pieces(values: Values): [boolean, string, string][] {
     [true, 'feature.rs', 'feature.rs'],
     [true, 'README.md', 'README.md'],
     [values.backend as boolean, 'backend/mod.rs', 'backend/mod.rs'],
-    [values.manifestTest as boolean, 'tests/backend/feature.rs', 'tests/backend/feature.rs'],
     [values.api as boolean, 'api/mod.rs', 'api/mod.rs'],
     [values.api as boolean, 'api/routes.rs', 'api/routes.rs'],
     [values.api as boolean, 'api/types.rs', 'api/types.rs'],

@@ -167,38 +167,6 @@ test('add merges a piece into a feature that exists: its slot entries, fields an
     /home\.view/,
   );
 
-  // A manifest alone's stamped test goes once a piece makes it more, with its module, which
-  // was the manifest's last item.
-  const bare = await planFeature(copy, ['bare_demo', '--mandatory']);
-  for (const [name, content] of bare.plan.files) {
-    fs.mkdirSync(path.dirname(path.join(copy, name)), { recursive: true });
-    fs.writeFileSync(path.join(copy, name), content);
-  }
-  const grown = (await planAdd(copy, ['api', '--to', 'bare_demo'])).plan;
-  assert.deepEqual(grown.removed, [
-    'features/bare_demo/tests/backend/feature.rs',
-    'features/bare_demo/backend/mod.rs',
-  ]);
-  assert.doesNotMatch(changed(grown, 'features/bare_demo/feature.rs'), /mod (tests|backend);/);
-  // What the author wrote into either stays: their function, and their test without the
-  // stamped assertion.
-  const written = await planFeature(copy, ['bare_kept', '--mandatory']);
-  for (const [name, content] of written.plan.files) {
-    const own = name.endsWith('/backend/mod.rs')
-      ? `${content}pub(crate) fn greeting() {}\n`
-      : name.endsWith('/tests/backend/feature.rs')
-        ? `${content}\n#[test]\nfn greets() {}\n`
-        : content;
-    fs.mkdirSync(path.dirname(path.join(copy, name)), { recursive: true });
-    fs.writeFileSync(path.join(copy, name), own);
-  }
-  const kept = (await planAdd(copy, ['api', '--to', 'bare_kept'])).plan;
-  assert.equal(kept.removed, undefined);
-  assert.match(changed(kept, 'features/bare_kept/feature.rs'), /^mod backend;$/m);
-  const stamped = changed(kept, 'features/bare_kept/tests/backend/feature.rs');
-  assert.match(stamped, /fn greets\(\)/);
-  assert.doesNotMatch(stamped, /permissions\.is_empty/);
-
   await assert.rejects(add('api', '--to', 'uniforms'), /uniforms has api\/ already/);
   await assert.rejects(add('settings', '--to', 'documents'), /documents retired documents\.manage/);
   await assert.rejects(add('page', '--to', 'documents'), /documents has a page already/);
