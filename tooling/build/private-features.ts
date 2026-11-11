@@ -81,7 +81,8 @@ export function privateFeatures(directory: string): Plugin {
                 )?.[1];
                 // Rolldown can name shared public dependencies after their private entry
                 // importers. Those importer names must not escape through public URLs.
-                if (chunk.name.includes('custom-')) return 'assets/shared-[hash].js';
+                if (chunk.name.includes('custom-') || chunk.name.includes('~'))
+                  return 'assets/shared-[hash].js';
                 return `assets/${chunk.name === 'frontend' && owner ? owner : '[name]'}-[hash].js`;
               },
               assetFileNames(asset) {

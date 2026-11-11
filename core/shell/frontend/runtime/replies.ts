@@ -16,12 +16,6 @@ export async function parseApiResponse(
   value: unknown,
 ): Promise<unknown> {
   const route = path.split('?')[0]!;
-  if (route === '/api/session/dsp' && method === 'POST') {
-    const publicView = accounts(route, method)!.safeParse(value);
-    if (publicView.success) return publicView.data;
-    const { replies } = await import('../../../accounts/api/custom-view-runtime.js');
-    return checkReply([replies], path, method, value);
-  }
   if (core.some((replies) => replies(route, method))) return checkReply(core, path, method, value);
   if (route.startsWith('/api/platform/')) {
     // Its audit subjects include every owner's declarations. Only a successful platform

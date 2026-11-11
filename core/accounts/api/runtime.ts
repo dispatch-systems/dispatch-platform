@@ -30,7 +30,7 @@ const connectionStatus = z.enum([
   'needs_verification',
   'error',
 ]);
-export const filled = text.check(z.minLength(1));
+const filled = text.check(z.minLength(1));
 const userSchema = z.object({
   id: filled,
   email: filled,
@@ -38,7 +38,7 @@ const userSchema = z.object({
   lastName: text,
   platformOwner: z.boolean(),
 }) satisfies z.ZodMiniType<User>;
-export const dsp = z.object({
+const dsp = z.object({
   id: filled,
   name: text,
   environment,
@@ -49,16 +49,16 @@ export const dsp = z.object({
   createdAt: text,
   code: z.nullable(text),
 }) satisfies z.ZodMiniType<Dsp>;
-export const profile = z.object({
+const profile = z.object({
   abbreviation: text,
   stationCode: text,
   setupRequired: z.boolean(),
   supportVisible: z.boolean(),
   aiSupportHidden: z.boolean(),
 }) satisfies z.ZodMiniType<DspProfile>;
-export const publicFeatures = new Set<string>(features);
-export const publicPermissions = new Set<string>(permissions);
-export const customId = (id: string, code: string | null) =>
+const publicFeatures = new Set<string>(features);
+const publicPermissions = new Set<string>(permissions);
+const customId = (id: string, code: string | null) =>
   Boolean(
     code &&
     id.startsWith(`${code}_`) &&
@@ -137,26 +137,96 @@ export const sessionSchema = z.object({
   security: securityStatus,
   readOnly: z.boolean(),
 }) satisfies z.ZodMiniType<SessionView>;
-export const viewRole = z.object({ id: text, name: text, owner: z.boolean() });
-// Most DSPs have no custom declarations. Validate those views without loading the
-// custom metadata schema; any other view goes through the full validator before admission.
-const emptyList = z.array(filled).check(z.maxLength(0));
-const viewSchema = z.object({
-  dsp,
-  token: filled,
-  role: viewRole,
-  roles: z.optional(z.array(viewRole)),
-  permissions: z.array(z.enum(permissions)),
-  features: z.array(z.enum(features)),
-  custom: z.optional(
+const viewRole = z.object({ id: text, name: text, owner: z.boolean() });
+const customFeatures = z.object({
+  catalog: z.array(
     z.object({
-      catalog: emptyList,
-      permissions: emptyList,
-      frontends: emptyList,
+      id: filled,
+      label: filled,
+      place: count,
+      kind: z.enum(['page', 'sub']),
+      permissions: z.array(filled),
+      requires: z.array(filled),
+      page: z.nullable(filled),
+      tab: z.boolean(),
+      connects: z.boolean(),
     }),
   ),
-  profile,
-}) as z.ZodMiniType<DspView>;
+  permissions: z.array(
+    z.object({
+      id: filled,
+      label: filled,
+      group: z.nullable(filled),
+      implied: z.array(filled),
+      under: z.nullable(filled),
+    }),
+  ),
+  frontends: z.array(
+    z.object({ name: filled, url: filled, styles: z.array(filled), place: count }),
+  ),
+});
+const viewSchema = z
+  .object({
+    dsp,
+    token: filled,
+    role: viewRole,
+    roles: z.optional(z.array(viewRole)),
+    permissions: z.array(filled),
+    features: z.array(filled),
+    custom: z.optional(customFeatures),
+    profile,
+  })
+  .check(
+    z.refine((view) => {
+      const custom = view.custom;
+      const catalog = custom?.catalog ?? [];
+      const declared = custom?.permissions ?? [];
+      const ids = new Set(catalog.map((feature) => feature.id));
+      const grants = new Set([
+        ...publicPermissions,
+        ...declared.map((permission) => permission.id),
+      ]);
+      const asset = (url: string, extension: string) =>
+        Boolean(
+          view.dsp.code &&
+          url.startsWith(`/assets/custom-${view.dsp.code}-`) &&
+          new RegExp(`^/assets/[A-Za-z0-9_.-]+\\.${extension}$`).test(url),
+        );
+      return (
+        ids.size === catalog.length &&
+        new Set(declared.map((permission) => permission.id)).size === declared.length &&
+        catalog.every(
+          (feature) =>
+            customId(feature.id, view.dsp.code) &&
+            !publicFeatures.has(feature.id) &&
+            feature.permissions.every((permission) => grants.has(permission)) &&
+            (feature.kind === 'page'
+              ? feature.page === null
+              : Boolean(
+                  feature.page &&
+                  ids.has(feature.page) &&
+                  feature.id.startsWith(`${feature.page}.`),
+                )),
+        ) &&
+        declared.every(
+          (permission) =>
+            customId(permission.id, view.dsp.code) &&
+            !publicPermissions.has(permission.id) &&
+            permission.implied.every((id) => grants.has(id)) &&
+            (!permission.under || grants.has(permission.under)),
+        ) &&
+        view.features.every((id) => publicFeatures.has(id) || ids.has(id)) &&
+        view.permissions.every((id) => grants.has(id)) &&
+        (custom?.frontends ?? []).every(
+          (entry) =>
+            catalog.some((feature) => feature.kind === 'page' && feature.id === entry.name) &&
+            view.features.includes(entry.name) &&
+            (entry.url === `/custom/${entry.name}.js` || asset(entry.url, 'js')) &&
+            entry.styles.every((url) => asset(url, 'css')),
+        )
+      );
+    }),
+  ) as z.ZodMiniType<DspView>;
 const okSchema = z.object({ ok: z.literal(true) });
 
 /** The replies of sign-in, security, the session and its DSP view, and the list of DSPs. */
