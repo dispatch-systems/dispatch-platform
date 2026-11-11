@@ -19,11 +19,12 @@ import { useDvicPage } from './useDvicPage.js';
 
 export function DvicPage({ view }: { view: DspView }) {
   const dvic = useDvicPage(view);
+  const { settings } = dvic;
   return (
     <div className="dvic-page">
       <Header title="DVIC">
-        {dvic.settings && (
-          <button onClick={() => navigate(dvic.settings)}>
+        {settings && (
+          <button onClick={() => navigate(settings)}>
             <Settings2 size={16} />
             Collection settings
           </button>
