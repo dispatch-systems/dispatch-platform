@@ -430,7 +430,8 @@ pub fn prepare(root: &Path, ask: &Prepare, runner: &dyn Runner) -> Result<()> {
     if tier == Tier::Light {
         println!(
             "{branch} is light (documentation and tests alone): it needs no review. Its PR's \
-             Review section opens `Tier light · not reviewed`."
+             Review section opens `{}`.",
+            pr::LIGHT
         );
         return Ok(());
     }

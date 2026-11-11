@@ -97,13 +97,11 @@ pub fn unreviewed(
     head: &str,
     runner: &dyn Runner,
 ) -> Result<Option<String>> {
-    let line = pr::section(body, "Review")
-        .and_then(|review| review.lines().next())
-        .unwrap_or_default();
+    let line = pr::review_line(body).unwrap_or_default();
     if line.starts_with("Not reviewed:") {
         return Ok(None);
     }
-    if line == "Tier light · not reviewed" {
+    if line == pr::LIGHT {
         let judged = review::judged(root, runner)?;
         return Ok((judged.tier != review::tier::Tier::Light).then(|| {
             format!(
@@ -202,7 +200,7 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
         Some(root),
     )?;
     println!("**Merged: {}** (#{})", pull.title, pull.number);
-    if let Some(line) = pr::section(body, "Review").and_then(|review| review.lines().next()) {
+    if let Some(line) = pr::review_line(body) {
         println!("Reviewed: {line}");
     }
     for outcome in review::left(root)? {

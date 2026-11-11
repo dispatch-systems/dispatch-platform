@@ -96,12 +96,18 @@ pub fn section<'a>(body: &'a str, name: &str) -> Option<&'a str> {
 /// The Review section's first line while the change's review is still to come: `review record`
 /// replaces it, and `merge` treats it as not reviewed.
 pub const PENDING: &str = "Under review";
-/// Whether `line` opens a Review section: the line `review record` writes, `Tier light · not
-/// reviewed` for a change that needs none, `Not reviewed:` and why for one merged without a
-/// review, or `PENDING` until its review is recorded.
-fn review_line(line: &str) -> bool {
+/// The Review section's first line for a light change, which needs no review.
+pub const LIGHT: &str = "Tier light · not reviewed";
+/// The line `body`'s Review section opens with, if it has one.
+pub fn review_line(body: &str) -> Option<&str> {
+    section(body, "Review").and_then(|review| review.lines().next())
+}
+/// Whether `line` opens a Review section: the line `review record` writes, `LIGHT` for a change
+/// that needs none, `Not reviewed:` and why for one merged without a review, or `PENDING` until
+/// its review is recorded.
+fn opens_review(line: &str) -> bool {
     line == PENDING
-        || line == "Tier light · not reviewed"
+        || line == LIGHT
         || ["Tier standard · ", "Tier sensitive · "]
             .iter()
             .any(|start| line.starts_with(start))
@@ -119,7 +125,7 @@ pub fn with_review_line(body: &str, line: &str) -> Result<String> {
     let (before, rest) = body.split_at(at);
     let rest = rest.trim_start_matches('\n');
     let rest = match rest.lines().next() {
-        Some(first) if review_line(first) => &rest[first.len()..],
+        Some(first) if opens_review(first) => &rest[first.len()..],
         _ => rest,
     };
     let rest = rest.trim_start_matches('\n');
@@ -189,9 +195,7 @@ pub fn check_body(title: &str, body: &str) -> Result<()> {
         )?;
     }
     require(
-        section(body, "Review")
-            .and_then(|review| review.lines().next())
-            .is_some_and(review_line),
+        review_line(body).is_some_and(opens_review),
         "Review opens with `Under review` until `dispatchdev review record` writes its line, \
          `Tier light · not reviewed`, or `Not reviewed:` and why.",
     )?;
@@ -405,7 +409,7 @@ pub fn publish(
         }
     };
     // A recorded or skipped review is done.
-    let pending = section(text, "Review").and_then(|review| review.lines().next()) == Some(PENDING);
+    let pending = review_line(text) == Some(PENDING);
     Ok(Some(Published {
         url,
         repository,
