@@ -12,6 +12,7 @@ use crate::{
     Result, Runner,
     build::Environment,
     change::{Clone, Repository},
+    merge::short,
     pr, preview, require, workspace,
 };
 use findings::{Answered, Tag};
@@ -1023,10 +1024,6 @@ pub fn summary(tier: Tier, passes: &[Recorded]) -> String {
         });
     }
     parts.join(" · ")
-}
-
-fn short(sha: &str) -> &str {
-    &sha[..sha.len().min(10)]
 }
 
 #[cfg(test)]
