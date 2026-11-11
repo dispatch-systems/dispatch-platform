@@ -78,9 +78,10 @@ pub(crate) async fn audience(
         return Audience::default();
     }
     let mut probe = axum::http::Request::new(());
-    // Authenticate HEAD as a read, without retaining a request body across the database turn.
+    // Authenticate as an asset read, including MFA, even when the original route is the
+    // session/security API. Those routes' own exemptions must not reveal private sources.
     *probe.method_mut() = axum::http::Method::GET;
-    *probe.uri_mut() = parts.uri.clone();
+    *probe.uri_mut() = axum::http::Uri::from_static("/assets/");
     *probe.headers_mut() = parts.headers.clone();
     *probe.extensions_mut() = parts.extensions.clone();
     probe
