@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import {
   landingPage,
   movedTo,
@@ -151,4 +152,19 @@ export function replaceHashQuery(query: Record<string, string>) {
  * without navigating: Back returns to the address before, which the page hears as it changes. */
 export function pushHashQuery(query: Record<string, string>, state: Record<string, unknown> = {}) {
   history.pushState(state, '', withHashQuery(query));
+}
+/**
+ * What `read` finds in the address's query, followed as the address moves: Back or Forward, or a
+ * link to the page with another query, which does not remount it. Recording a page's own state
+ * in the address moves it without an event, so the page sets what it shows itself as it does.
+ */
+export function useHashQuery<T>(read: (query: URLSearchParams) => T) {
+  const [value, setValue] = useState(() => read(hashQuery()));
+  useEffect(() => {
+    const follow = () => setValue(read(hashQuery()));
+    window.addEventListener('hashchange', follow);
+    return () => window.removeEventListener('hashchange', follow);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `read` reads the query alone, so the one the page first gave reads it as well as any later
+  }, []);
+  return [value, setValue] as const;
 }

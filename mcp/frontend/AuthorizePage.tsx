@@ -16,7 +16,7 @@ import {
   useOAuthRequest,
 } from '../api/client.js';
 import { Brand } from '../../core/shell/frontend/runtime/Brand.js';
-import { hashQuery, platformHash } from '../../core/shell/frontend/runtime/navigation.js';
+import { platformHash, useHashQuery } from '../../core/shell/frontend/runtime/navigation.js';
 import { useAction } from '../../core/shell/frontend/runtime/useAction.js';
 import { appKindName, blankKey, knownApp } from './agents.js';
 import { calendarDay } from '../../core/shell/frontend/lib/format.js';
@@ -78,13 +78,8 @@ function refusal(error: string, app: string | null): ReactNode {
 /** Platform → Agents → an app asking to connect, opened from `#authorize?request=<id>`: one
  * column in the middle of the page, the request asking in its own words. */
 export function AuthorizePage() {
-  const [query, setQuery] = useState(() => hashQuery().toString());
   // Another request opened in this tab changes only the address's query.
-  useEffect(() => {
-    const changed = () => setQuery(hashQuery().toString());
-    window.addEventListener('hashchange', changed);
-    return () => window.removeEventListener('hashchange', changed);
-  }, []);
+  const [query] = useHashQuery((address) => address.toString());
   return (
     <section className="agents-authorize">
       <Authorization key={query} query={new URLSearchParams(query)} />
