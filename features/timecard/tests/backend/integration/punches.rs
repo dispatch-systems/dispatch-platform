@@ -904,12 +904,13 @@ async fn cancelled_live_staging_evicts_a_read_started_during_its_commit()
     };
     use std::sync::mpsc;
     #[derive(Debug)]
-    struct Finished(tokio::sync::oneshot::Sender<()>);
+    struct Finished(Option<tokio::sync::oneshot::Sender<()>>);
     impl Drop for Finished {
         fn drop(&mut self) {
             // Dropping a completed worker result, after the async caller has left.
-            let (replacement, _) = tokio::sync::oneshot::channel();
-            let _ = std::mem::replace(&mut self.0, replacement).send(());
+            if let Some(done) = self.0.take() {
+                let _ = done.send(());
+            }
         }
     }
     install();
@@ -940,7 +941,7 @@ async fn cancelled_live_staging_evicts_a_read_started_during_its_commit()
                         let _ = wait_commit.recv();
                         Ok(())
                     })?;
-                    Ok(Finished(finished))
+                    Ok(Finished(Some(finished)))
                 })
                 .await
         }
