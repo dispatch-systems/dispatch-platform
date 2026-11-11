@@ -64,7 +64,7 @@ impl Audience {
 
 pub(crate) async fn audience(
     state: &std::sync::Arc<State>,
-    request: &axum::extract::Request,
+    parts: &axum::http::request::Parts,
 ) -> Audience {
     if !crate::manifest::registry()
         .features
@@ -72,21 +72,20 @@ pub(crate) async fn audience(
         .any(|feature| feature.owner.is_some())
         && !state
             .assets
-            .get(request.uri().path())
+            .get(parts.uri.path())
             .is_some_and(|asset| asset.private.is_some())
     {
         return Audience::default();
     }
     let mut probe = axum::http::Request::new(());
-    *probe.method_mut() = request.method().clone();
-    *probe.uri_mut() = request.uri().clone();
-    *probe.headers_mut() = request.headers().clone();
-    if let Some(site) = request
-        .extensions()
-        .get::<crate::foundation::config::Site>()
-    {
-        probe.extensions_mut().insert(site.clone());
-    }
+    // Authenticate HEAD as a read, without retaining a request body across the database turn.
+    *probe.method_mut() = axum::http::Method::GET;
+    *probe.uri_mut() = parts.uri.clone();
+    *probe.headers_mut() = parts.headers.clone();
+    *probe.extensions_mut() = parts.extensions.clone();
+    probe
+        .extensions_mut()
+        .insert(crate::foundation::observability::RequestTrace::default());
     let (parts, _) = probe.into_parts();
     let Ok(input) = super::middleware::head(state, &parts, "/assets/*") else {
         return Audience::default();

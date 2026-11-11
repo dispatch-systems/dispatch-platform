@@ -86,12 +86,13 @@ pub async fn pipeline(
     let mut custom_audience = super::assets::Audience::default();
     let mut response = match admit(&state, &request) {
         Ok(site) => {
-            request.extensions_mut().insert(site);
-            let audience = super::assets::audience(&state, &request).await;
-            request.extensions_mut().insert(audience.clone());
+            let (mut parts, body) = request.into_parts();
+            parts.extensions.insert(site);
+            let audience = super::assets::audience(&state, &parts).await;
+            parts.extensions.insert(audience.clone());
             custom_audience = audience;
             observability::REQUEST_TRACE
-                .scope(trace.clone(), next.run(request))
+                .scope(trace.clone(), next.run(Request::from_parts(parts, body)))
                 .await
         }
         Err(error) => failure(error),
