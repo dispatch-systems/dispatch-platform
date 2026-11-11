@@ -7,6 +7,9 @@
 //! features built at once never take each other's numbers. The shared list keeps every
 //! migration features declared there before, recorded as it always was. Both records are
 //! made whenever migrations apply; an older release ignores the second.
+//! A feature's `migration_aliases` recognizes equivalent owner names when deciding what
+//! has run. Receipts keep the original owner, name and time; only genuinely new steps
+//! record the current owner. Tenant-filtered declarations carry their own aliases.
 //!
 //! Contract for migration authors: additive only. New tables, new nullable or
 //! defaulted columns, and new indexes. The previous release must keep working on
@@ -57,6 +60,14 @@ pub struct OwnMigrations {
     pub list: &'static [Migration],
 }
 
+/// One feature's migration, including the other names its immutable receipts may use.
+#[derive(Clone, Copy)]
+pub struct OwnedMigration {
+    pub owner: &'static str,
+    pub aliases: &'static [&'static str],
+    pub migration: Migration,
+}
+
 /// A kind of database, declared by the owner that creates its files: core the platform's,
 /// the environment's jobs and each DSP's own; a collector its provider's; a feature one it
 /// keeps whole.
@@ -100,10 +111,10 @@ impl Kind {
     }
     /// The migrations features number for it themselves, with the feature each is recorded
     /// under, in the registry's order.
-    pub fn owned_migrations(self) -> Vec<(&'static str, Migration)> {
+    pub fn owned_migrations(self) -> Vec<OwnedMigration> {
         registry().owned_migrations(self)
     }
-    pub fn owned_migrations_for(self, code: Option<&str>) -> Vec<(&'static str, Migration)> {
+    pub fn owned_migrations_for(self, code: Option<&str>) -> Vec<OwnedMigration> {
         registry().owned_migrations_for(self, code)
     }
 }
@@ -126,23 +137,27 @@ pub fn ledger<'a>(kind: Kind, owners: impl IntoIterator<Item = &'a Migrations>) 
 /// feature's must run from 1 without a gap or a repeat, or this panics.
 pub fn owned_ledger<'a>(
     kind: Kind,
-    owners: impl IntoIterator<Item = (&'static str, &'a OwnMigrations)>,
-) -> Vec<(&'static str, Migration)> {
-    let mut gathered: Vec<(&'static str, Vec<Migration>)> = Vec::new();
-    for (owner, owned) in owners {
+    owners: impl IntoIterator<Item = (&'static str, &'static [&'static str], &'a OwnMigrations)>,
+) -> Vec<OwnedMigration> {
+    let mut gathered: Vec<(&'static str, &'static [&'static str], Vec<Migration>)> = Vec::new();
+    for (owner, aliases, owned) in owners {
         if owned.kind.name != kind.name {
             continue;
         }
-        match gathered.iter_mut().find(|(each, _)| *each == owner) {
-            Some((_, list)) => list.extend(owned.list.iter().copied()),
-            None => gathered.push((owner, owned.list.to_vec())),
+        match gathered.iter_mut().find(|(each, _, _)| *each == owner) {
+            Some((_, _, list)) => list.extend(owned.list.iter().copied()),
+            None => gathered.push((owner, aliases, owned.list.to_vec())),
         }
     }
     let mut ledger = Vec::new();
-    for (owner, mut list) in gathered {
+    for (owner, aliases, mut list) in gathered {
         list.sort_by_key(|migration| migration.id);
         numbered(kind, &list, &format!(" of {owner}"));
-        ledger.extend(list.into_iter().map(|migration| (owner, migration)));
+        ledger.extend(list.into_iter().map(|migration| OwnedMigration {
+            owner,
+            aliases,
+            migration,
+        }));
     }
     ledger
 }
@@ -193,14 +208,29 @@ fn applied(db: &Db) -> Result<BTreeSet<u32>> {
 }
 
 /// The migrations features numbered themselves that the database records, by feature.
-fn applied_owned(db: &Db) -> Result<BTreeSet<(String, u32)>> {
+fn applied_owned(db: &Db, owned: &[OwnedMigration]) -> Result<BTreeSet<(String, u32)>> {
     if !db.has_table("owner_migrations")? {
         return Ok(BTreeSet::new());
     }
     let mut statement = db.0.prepare("SELECT owner,id FROM owner_migrations")?;
-    let ids = statement
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
-        .collect::<rusqlite::Result<_>>()?;
+    let rows = statement.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, u32>(1)?))
+    })?;
+    let mut ids = BTreeSet::new();
+    for row in rows {
+        let (owner, id) = row?;
+        // The caller already selected the declarations for this tenant. Never resolve
+        // receipt ownership against the unscoped registry or rewrite historical rows.
+        let current = owned
+            .iter()
+            .find(|each| each.owner == owner || each.aliases.contains(&owner.as_str()))
+            .map_or(owner.as_str(), |each| each.owner);
+        crate::ensure(
+            ids.insert((current.to_owned(), id)),
+            "migration_owner_conflict",
+            503,
+        )?;
+    }
     Ok(ids)
 }
 
@@ -209,11 +239,11 @@ fn pending<'a>(done: &BTreeSet<u32>, list: &'a [Migration]) -> Vec<&'a Migration
 }
 fn pending_owned<'a>(
     done: &BTreeSet<(String, u32)>,
-    owned: &'a [(&'static str, Migration)],
-) -> Vec<&'a (&'static str, Migration)> {
+    owned: &'a [OwnedMigration],
+) -> Vec<&'a OwnedMigration> {
     owned
         .iter()
-        .filter(|(owner, m)| !done.contains(&((*owner).to_owned(), m.id)))
+        .filter(|each| !done.contains(&(each.owner.to_owned(), each.migration.id)))
         .collect()
 }
 
@@ -242,7 +272,7 @@ pub(super) fn apply(
     db: &Db,
     kind: &str,
     list: &[Migration],
-    owned: &[(&'static str, Migration)],
+    owned: &[OwnedMigration],
 ) -> Result<()> {
     db.0.execute_batch(
         "CREATE TABLE IF NOT EXISTS schema_migrations (id INTEGER PRIMARY \
@@ -251,6 +281,7 @@ pub(super) fn apply(
         NULL, name TEXT NOT NULL, applied_at INTEGER NOT NULL, PRIMARY KEY(owner, id))",
     )?;
     // Read again under the write lock: another connection may have just finished.
+    let done_owned = applied_owned(db, owned)?;
     for migration in pending(&applied(db)?, list) {
         step(db, kind, None, migration)?;
         db.0.execute(
@@ -258,7 +289,8 @@ pub(super) fn apply(
             rusqlite::params![migration.id, migration.name, now()],
         )?;
     }
-    for (owner, migration) in pending_owned(&applied_owned(db)?, owned) {
+    for each in pending_owned(&done_owned, owned) {
+        let (owner, migration) = (each.owner, &each.migration);
         step(db, kind, Some(owner), migration)?;
         db.0.execute(
             "INSERT INTO owner_migrations(owner,id,name,applied_at) VALUES (?,?,?,?)",
@@ -275,16 +307,11 @@ pub(super) fn immediate(db: &Db) -> Result<Transaction<'_>> {
     )?)
 }
 
-pub(super) fn run(
-    db: &Db,
-    kind: &str,
-    list: &[Migration],
-    owned: &[(&'static str, Migration)],
-) -> Result<()> {
+pub(super) fn run(db: &Db, kind: &str, list: &[Migration], owned: &[OwnedMigration]) -> Result<()> {
     // Startup checks every database and nearly always finds nothing to do, so look
     // without taking the write lock first.
     let done = applied(db)?;
-    let done_owned = applied_owned(db)?;
+    let done_owned = applied_owned(db, owned)?;
     let newer: Vec<u32> = done
         .iter()
         .copied()
@@ -292,7 +319,11 @@ pub(super) fn run(
         .collect();
     let newer_owned: Vec<String> = done_owned
         .iter()
-        .filter(|(owner, id)| owned.iter().all(|(o, m)| o != owner || m.id != *id))
+        .filter(|(owner, id)| {
+            owned
+                .iter()
+                .all(|each| each.owner != owner || each.migration.id != *id)
+        })
         .map(|(owner, id)| format!("{owner}:{id}"))
         .collect();
     if !newer.is_empty() || !newer_owned.is_empty() {

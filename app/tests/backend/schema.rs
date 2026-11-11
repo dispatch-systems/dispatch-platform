@@ -185,7 +185,7 @@ fn new_databases_match_the_recorded_schema() {
             let mut expected_owners: Vec<_> = kind
                 .owned_migrations_for(code)
                 .iter()
-                .map(|(owner, migration)| ((*owner).to_owned(), i64::from(migration.id)))
+                .map(|each| (each.owner.to_owned(), i64::from(each.migration.id)))
                 .collect();
             expected_owners.sort();
             assert_eq!(owners, expected_owners);
