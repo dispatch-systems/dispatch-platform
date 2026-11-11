@@ -9,7 +9,9 @@ async function newUniform(page: Page) {
   await page.getByRole('combobox', { name: 'Driver', exact: true }).click();
   await page.getByRole('listbox', { name: 'Drivers' }).getByRole('option').first().click();
   const name = await page.getByRole('combobox', { name: 'Driver', exact: true }).inputValue();
-  await page.getByLabel('Category', { exact: true }).selectOption({ label: 'Uniform' });
+  await page
+    .getByRole('combobox', { name: 'Category', exact: true })
+    .selectOption({ label: 'Uniform' });
   await expect(
     page.getByRole('textbox', { name: /Statement of the problem: missing item/ }),
   ).toBeVisible();
