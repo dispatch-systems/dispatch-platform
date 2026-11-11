@@ -41,3 +41,13 @@
   color: var(--muted-foreground);
   font-size: var(--small-size);
 }
+
+@container communications (width < 680px) {
+  /* The wrapped header has room for the panel; its button alone does not. */
+  .pick-driver {
+    position: static;
+  }
+  .pick-driver-panel {
+    right: 12px;
+  }
+}
