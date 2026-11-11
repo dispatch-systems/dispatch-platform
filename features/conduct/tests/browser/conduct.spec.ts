@@ -42,13 +42,13 @@ test('a driver is written up from the page, then marked signed and locked', asyn
   await expect(page.getByRole('heading', { level: 1, name })).toBeVisible();
   await page.getByRole('button', { name: 'Conduct', exact: true }).click();
   await page.getByRole('tab', { name: 'Writeups', exact: true }).click();
-  await page.getByRole('searchbox', { name: 'Search drivers' }).fill(name);
+  await page.getByRole('textbox', { name: 'Search drivers' }).fill(name);
   await page.getByRole('combobox', { name: 'Category', exact: true }).selectOption('uniform');
   await page.getByRole('button', { name: 'Awaiting signature', exact: true }).click();
   await page.locator('tbody tr').filter({ hasText: name }).getByRole('button').first().click();
   await expect(page.getByRole('heading', { level: 1, name })).toBeVisible();
   await page.getByRole('button', { name: 'Conduct', exact: true }).click();
-  await expect(page.getByRole('searchbox', { name: 'Search drivers' })).toHaveValue(name);
+  await expect(page.getByRole('textbox', { name: 'Search drivers' })).toHaveValue(name);
   await expect(page.getByRole('combobox', { name: 'Category', exact: true })).toHaveValue(
     'uniform',
   );
