@@ -8,7 +8,10 @@ use std::{
 };
 
 const MEMBERS: usize = 100_000;
-const WORK_BYTES: &str = "2147483648";
+pub(super) const INPUT_BYTES: u64 = 8 * 1024 * 1024 * 1024;
+// Tar headers and alignment add bytes beyond the extracted content.
+const TRANSPORT_BYTES: u64 = INPUT_BYTES + MEMBERS as u64 * 2048 + 10240;
+const RESERVE_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 const CHECK: &str = include_str!("local.py");
 
 #[derive(Clone, Copy, PartialEq)]
@@ -36,14 +39,31 @@ impl Release<'_> {
                 == "dispatch-dev",
             "Backup verification requires the physical dispatch-dev host",
         )?;
-        let custody = self.directory.join(".dev-verification");
+        let custody = self.staging.clone();
         io::private_directory(&custody)?;
+        // Interrupted copies from the previous location still require explicit cleanup.
+        let legacy = self.directory.join(".dev-verification");
+        if legacy.try_exists()? || legacy.is_symlink() {
+            io::private_directory(&legacy)?;
+            require(
+                fs::read_dir(&legacy)?.next().is_none(),
+                &format!(
+                    "Unfinished private Dev staging in {}; obtain approval to inspect and clean it before retrying",
+                    legacy.display()
+                ),
+            )?;
+        }
+
         require(
             fs::read_dir(&custody)?.next().is_none(),
             &format!(
                 "Unfinished private Dev staging in {}; obtain approval to inspect and clean it before retrying",
                 custody.display()
             ),
+        )?;
+        require(
+            self.system.available_space(&custody)? >= 2 * INPUT_BYTES + RESERVE_BYTES,
+            "Dev backup staging requires at least 24 GiB free",
         )?;
         let args = sandbox();
         let mut check: Vec<&str> = args.iter().map(String::as_str).collect();
@@ -69,7 +89,7 @@ impl Release<'_> {
         let work = tempfile::Builder::new()
             .prefix("copy-")
             .permissions(fs::Permissions::from_mode(0o700))
-            .tempdir_in(self.directory.join(".dev-verification"))?;
+            .tempdir_in(self.staging.clone())?;
         // A killed coordinator leaves private custody and blocks a retry. Explicit cleanup
         // must finish before returning evidence, including after an ordinary failure.
         let work = work.keep();
@@ -80,7 +100,7 @@ impl Release<'_> {
             );
             let command = backup::remote(&script);
             self.system
-                .command(
+                .download(
                     &[
                         "ssh",
                         "-o",
@@ -91,12 +111,14 @@ impl Release<'_> {
                         &command,
                     ],
                     Some(&self.root),
-                    900,
-                    Some(&archive),
+                    1800,
+                    &archive,
+                    TRANSPORT_BYTES,
                 )
                 .map_err(|_| "Production backup export failed; no Dev evidence recorded")?;
             let input = work.join("input");
             let (content, config, manifest) = extract(&archive, &input)?;
+            fs::remove_file(&archive)?;
             let taken_at = chrono::DateTime::parse_from_rfc3339(
                 manifest["createdAt"]
                     .as_str()
@@ -119,7 +141,14 @@ impl Release<'_> {
             self.unpack_prepared(prepared, &runtime)?;
             let checker = work.join("check.py");
             fs::write(&checker, CHECK)?;
+            let scratch = work.join("work");
+            io::private_directory(&scratch)?;
             let mut args = sandbox();
+            args.extend([
+                "--bind".into(),
+                scratch.to_str().ok_or("Invalid Dev path")?.into(),
+                "/work".into(),
+            ]);
             for (from, to) in [
                 (&input, "/input"),
                 (&runtime, "/runtime"),
@@ -147,7 +176,7 @@ impl Release<'_> {
             ]);
             let args: Vec<&str> = args.iter().map(String::as_str).collect();
             let output = self
-                .command(&args, None, 1800)
+                .command(&args, None, 3600)
                 .map_err(|_| "Dev restore/startup sandbox failed; private output suppressed")?;
             let found: Value = serde_json::from_str(&output)
                 .map_err(|_| "Dev check returned an invalid report")?;
@@ -219,10 +248,6 @@ fn sandbox() -> Vec<String> {
         "67108864",
         "--tmpfs",
         "/tmp",
-        "--size",
-        WORK_BYTES,
-        "--tmpfs",
-        "/work",
         "--clearenv",
         "--setenv",
         "PATH",
@@ -234,7 +259,11 @@ fn sandbox() -> Vec<String> {
 
 /// Extract a bounded private inventory; tar cannot create links/devices or escape staging.
 fn extract(archive: &Path, input: &Path) -> Result<(String, String, Value)> {
-    assets::regular(archive)?;
+    let info = fs::symlink_metadata(archive)?;
+    require(
+        info.is_file() && !info.is_symlink() && info.nlink() == 1 && info.len() <= TRANSPORT_BYTES,
+        "Backup transport exceeds its limit or is not a regular file",
+    )?;
     io::private_directory(input)?;
     let mut inventory = std::collections::BTreeMap::new();
     let mut bytes = 0u64;
@@ -274,8 +303,8 @@ fn extract(archive: &Path, input: &Path) -> Result<(String, String, Value)> {
             .checked_add(entry.size())
             .ok_or("Backup export size overflow")?;
         require(
-            bytes <= crate::MAX_BYTES,
-            "Backup export exceeds the 1 GiB input limit",
+            bytes <= INPUT_BYTES,
+            "Backup export exceeds the 8 GiB input limit",
         )?;
         io::private_directory(target.parent().ok_or("Invalid backup export path")?)?;
         let mut file = fs::OpenOptions::new()

@@ -31,8 +31,8 @@ refuses before capture if none exists. It never falls back to Production's insta
 for a restore drill.
 
 The coordinator exports the captured backup and config into a private directory under
-`releases/.dev-verification/`. Transport and extracted input are limited to 1 GiB and 100,000
-members; only unique safe regular files/directories are allowed. The backup manifest's file
+`/data/dispatch-release-verification/` on Dev. Extracted input is limited to 8 GiB and 100,000
+members; transport allows that content plus bounded tar headers. Only unique safe regular files/directories are allowed. The backup manifest's file
 hashes and sizes must match, including the original 32-byte platform key; a missing key refuses
 rather than generating a substitute. The captured startup env must still match Production's current
 `config/platform.env` at every export. Other required external files are not mounted: missing
@@ -47,9 +47,14 @@ configuration with only state and artifact paths redirected. This entrypoint sta
 listener, job, reader, provider worker or mailer. Network isolation also denies egress if
 startup ever attempts it.
 
-The disposable working filesystem is a 2 GiB tmpfs; sandbox `/tmp` is limited to 64 MiB.
-Backend files are individually limited to 1 GiB and its address space to 4 GiB. Larger backups, insufficient memory or
-migration growth beyond those bounds refuse. Capacity is an operator preflight responsibility;
+The disposable working filesystem is a private disk-backed directory on Dev's `/data`
+filesystem, isolated from the live service's root disk. Preflight requires 24 GiB free:
+two 8 GiB copies plus an 8 GiB reserve. The archive is removed after extraction and the
+integrity-checked restore is removed before the independent upgrade restore. Sandbox `/tmp`
+is limited to 64 MiB, individual backend files to 8 GiB and address space to 4 GiB.
+Export has a 30-minute timeout and the sandbox a one-hour timeout. The disk workspace has
+no aggregate quota: the free-space preflight and per-file bound cannot prevent migration
+growth or concurrent builds from exhausting `/data`. Insufficient capacity refuses;
 these bounds do not promise that every Production dataset fits. No raw backend/config output
 leaves the sandbox. Startup errors are reported as counts, without private event fields.
 

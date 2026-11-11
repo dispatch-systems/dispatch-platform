@@ -26,6 +26,22 @@ pub trait System {
         timeout: u64,
         output: Option<&Path>,
     ) -> Result<Vec<u8>>;
+    fn download(
+        &self,
+        _args: &[&str],
+        _cwd: Option<&Path>,
+        _timeout: u64,
+        _output: &Path,
+        _limit: u64,
+    ) -> Result<Vec<u8>> {
+        Err("Bounded download unavailable".into())
+    }
+    fn release_staging(&self) -> PathBuf {
+        "/data/dispatch-release-verification".into()
+    }
+    fn available_space(&self, path: &Path) -> Result<u64> {
+        Ok(fs2::available_space(path)?)
+    }
     fn bootstrap(
         &self,
         _args: &[&str],
@@ -80,6 +96,16 @@ impl System for Native {
         dispatch_shared::process::command(args, cwd, timeout, output)
     }
 
+    fn download(
+        &self,
+        args: &[&str],
+        cwd: Option<&Path>,
+        timeout: u64,
+        output: &Path,
+        limit: u64,
+    ) -> Result<Vec<u8>> {
+        dispatch_shared::process::download(args, cwd, timeout, output, limit)
+    }
     fn bootstrap(
         &self,
         args: &[&str],
