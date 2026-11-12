@@ -157,12 +157,13 @@ async function request<T>(
   signal: AbortSignal | undefined,
   priority: 'auto' | 'high' | 'low',
 ): Promise<T> {
+  const method = body === undefined ? 'GET' : 'POST';
   const finish = body === undefined ? undefined : beginBrowserWrite();
   const requestView = view;
   const requestContext = replyContext;
   try {
     const response = await fetch(url, {
-      method: body === undefined ? 'GET' : 'POST',
+      method,
       credentials: 'same-origin',
       priority,
       headers: {
@@ -197,12 +198,7 @@ async function request<T>(
       );
     }
     try {
-      const parsed = (await parseApiResponse(
-        url,
-        body === undefined ? 'GET' : 'POST',
-        value,
-        requestContext,
-      )) as T;
+      const parsed = (await parseApiResponse(url, method, value, requestContext)) as T;
       if (body !== undefined && requestView === view)
         dataCache.invalidate((key) => mutationAffects(url, key));
       return parsed;

@@ -4,33 +4,23 @@ import { sectionId } from './identities.js';
 
 // Normalize identity fields before every hook, direct read or raw prefetch can cache them.
 // Loose objects retain the values, revision and owner-specific field descriptions unchanged.
-const section = z.looseObject({ id: text, page: text });
-const page = z.looseObject({ id: text });
-const listing = z.looseObject({ pages: z.array(page), sections: z.array(section) });
-const saved = z.union([
-  z.looseObject({ section, reopen: z.boolean() }),
-  z.object({ warning: text }),
-]);
-
 export const replies: Replies = (route, method, context) => {
-  const normalize = <T extends { id: string }>(value: T): T => ({
-    ...value,
-    id: sectionId(value.id, context?.dsp?.code),
+  const read = method === 'GET';
+  if (read ? route !== '/api/dsp/settings' : !route.startsWith('/api/dsp/settings/'))
+    return undefined;
+
+  const section = z.looseObject({
+    id: text.check((parsed) => {
+      parsed.value = sectionId(parsed.value, context?.dsp?.code);
+    }),
+    page: text,
   });
-  if (route === '/api/dsp/settings' && method === 'GET')
-    return listing.check(
-      z.overwrite((value) => {
-        const sections = value.sections.map(normalize);
+  if (read)
+    return z
+      .looseObject({ pages: z.array(z.looseObject({ id: text })), sections: z.array(section) })
+      .check(({ value: { sections } }) => {
         if (new Set(sections.map((section) => section.id)).size !== sections.length)
           throw new Error('invalid_api_response');
-        return { ...value, sections };
-      }),
-    );
-  if (route.startsWith('/api/dsp/settings/') && method === 'POST')
-    return saved.check(
-      z.overwrite((value) =>
-        'section' in value ? { ...value, section: normalize(value.section) } : value,
-      ),
-    );
-  return undefined;
+      });
+  return z.union([z.looseObject({ section, reopen: z.boolean() }), z.object({ warning: text })]);
 };

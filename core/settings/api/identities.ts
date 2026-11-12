@@ -7,9 +7,7 @@ export const sectionResolver =
   (identities: readonly Identity[]) =>
   (id: string, code?: string | null): string =>
     identities.find(
-      (family) =>
-        (family.owner === null || family.owner === code) &&
-        (family.id === id || family.aliases.includes(id)),
+      (family) => (family.owner === null || family.owner === code) && family.aliases.includes(id),
     )?.id ?? id;
 
 export const sectionId = sectionResolver(sectionIdentities);
