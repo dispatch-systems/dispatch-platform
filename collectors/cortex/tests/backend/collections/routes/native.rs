@@ -68,6 +68,8 @@ enum Plays {
     ThrottledOnce,
     /// That itinerary remains throttled after retrying.
     Throttled,
+    /// That itinerary is throttled the first two times it is asked for, then answers.
+    ThrottledTwice,
 }
 
 /// Cortex for one session: its list page hands out a key, and every read must be signed
@@ -245,7 +247,10 @@ impl Stand {
                     {
                         return status(StatusCode::TOO_MANY_REQUESTS);
                     }
-                    Plays::Throttled if index == 1 => {
+                    Plays::ThrottledTwice if index == 1 && times > 2 => {
+                        self.day.itineraries[index].detail.clone()
+                    }
+                    Plays::Throttled | Plays::ThrottledTwice if index == 1 => {
                         return Response::builder()
                             .status(StatusCode::TOO_MANY_REQUESTS)
                             .header(header::RETRY_AFTER, "0")
@@ -475,8 +480,29 @@ async fn persistent_throttling_does_not_request_a_browser_fallback() {
         Some("cortex_throttled")
     );
     assert_eq!(stand.asked("itinerary-1"), 1);
-    assert_eq!(stand.asked("itinerary-2"), 2);
+    // It is asked for round after round, and the read ends once they are spent.
+    assert_eq!(stand.asked("itinerary-2"), 12);
     assert_eq!(stand.pages.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn a_day_throttled_round_after_round_is_read_whole_fewer_at_a_time_from_then_on() {
+    let (stand, session) = stand_in(Plays::ThrottledTwice).await;
+    let mut reader = Native::new(&session).unwrap();
+    let mut scope = stand.day.scope.clone();
+    let capture = reader.read(&scope, Mode::Final, &authorized).await.unwrap();
+    capture.validate(&request()).unwrap();
+    // What was read is kept through each round; only the throttled itinerary is asked again.
+    assert_eq!(stand.asked("itinerary-1"), 1);
+    assert_eq!(stand.asked("itinerary-2"), 3);
+    // Each throttled round narrowed the next, and the read's record says so.
+    assert_eq!(reader.throttling(), [("throttled", 2), ("downloads", 1)]);
+    // The day's next read stays narrow and meets no throttle; another day starts wide again.
+    reader.read(&scope, Mode::Final, &authorized).await.unwrap();
+    assert_eq!(reader.throttling(), [("downloads", 1)]);
+    scope.date = "2026-09-26".into();
+    let _ = reader.read(&scope, Mode::Final, &authorized).await;
+    assert!(reader.throttling().is_empty());
 }
 
 #[tokio::test(start_paused = true)]
