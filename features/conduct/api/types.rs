@@ -200,7 +200,10 @@ pub struct ConductDriver {
     pub person: String,
     pub count: usize,
     pub latest_on: String,
-    pub awaiting_signature: bool,
+    /// How many of their writeups wait to be marked signed.
+    pub awaiting_signature: usize,
+    /// The categories they have a writeup in, in the DSP's order.
+    pub categories: Vec<String>,
 }
 
 /// One bounded page of writeups, in notice-date order.

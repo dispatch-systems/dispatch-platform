@@ -84,10 +84,24 @@ pub(crate) fn read(store: &Store, state: &State, c: &Context) -> Result<ConductO
                 person: writeup.person.clone(),
                 count: 0,
                 latest_on: writeup.written_on.clone(),
-                awaiting_signature: false,
+                awaiting_signature: 0,
+                categories: Vec::new(),
             });
         driver.count += 1;
-        driver.awaiting_signature |= writeup.signed_on.is_none();
+        driver.awaiting_signature += usize::from(writeup.signed_on.is_none());
+        if !driver.categories.contains(&writeup.category_id) {
+            driver.categories.push(writeup.category_id.clone());
+        }
+    }
+    let order: BTreeMap<&str, usize> = categories
+        .iter()
+        .enumerate()
+        .map(|(at, category)| (category.id.as_str(), at))
+        .collect();
+    for driver in drivers.values_mut() {
+        driver
+            .categories
+            .sort_by_key(|id| order.get(id.as_str()).copied().unwrap_or(usize::MAX));
     }
     let worked = standing::work_out(&categories, &writeups, today);
     Ok(ConductOverview {

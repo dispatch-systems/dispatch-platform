@@ -3,4 +3,12 @@
 /**
  * A driver's history totals, independent of the page of history currently open.
  */
-export type ConductDriver = { person: string, count: number, latestOn: string, awaitingSignature: boolean, };
+export type ConductDriver = { person: string, count: number, latestOn: string,
+/**
+ * How many of their writeups wait to be marked signed.
+ */
+awaitingSignature: number,
+/**
+ * The categories they have a writeup in, in the DSP's order.
+ */
+categories: Array<string>, };
