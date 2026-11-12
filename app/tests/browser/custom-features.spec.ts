@@ -11,6 +11,7 @@ import {
   type Dispatch,
 } from '../../../core/shell/tests/support/fixtures.js';
 import { capturedMail } from '../../../core/shell/tests/support/mail-support.js';
+import { virtualAuthenticator } from '../../../core/accounts/tests/support/authenticator.js';
 import type { AuditPage } from '../../../core/platform_owner/api/index.js';
 
 const OWNER_CODE = 'fscl';
@@ -380,4 +381,90 @@ test('a delayed custom import cannot install its page or styles into the next DS
       ),
     ),
   ).toBe(false);
+});
+
+test('recent verification keeps replacement recovery codes available to save', async ({
+  page,
+  dispatch,
+}) => {
+  await custom(page, dispatch);
+  await virtualAuthenticator(page);
+  await login(page);
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.getByRole('tab', { name: 'Security', exact: true }).click();
+  await page.getByRole('button', { name: 'Add passkey', exact: true }).click();
+  const adding = page.getByRole('dialog', { name: 'Add passkey', exact: true });
+  await adding.getByLabel('Passkey name').fill('Fixture security key');
+  await adding.getByRole('button', { name: 'Add passkey', exact: true }).click();
+  const heading = page.getByRole('heading', { name: 'Save your recovery codes', exact: true });
+  await expect(heading).toBeVisible();
+  const refreshed = page.waitForResponse('**/api/session');
+  await page.getByRole('button', { name: 'I saved my recovery codes', exact: true }).click();
+  await (await refreshed).finished();
+  // Only this fixture's account verification ages; no real clock or live account changes.
+  dispatch.database('data/platform/accounts.sqlite', (db) => {
+    db.exec('UPDATE session_security SET verified_at=verified_at-301000');
+  });
+  let releaseSession!: () => void;
+  const sessionsHeld = new Promise<void>((resolve) => {
+    releaseSession = resolve;
+  });
+  let holdingSessions = true;
+  const sessionReads: Promise<void>[] = [];
+  await page.route('**/api/session', async (route) => {
+    if (!holdingSessions) return route.fallback();
+    const finished = (async () => {
+      await sessionsHeld;
+      await route.fallback();
+      await (await route.request().response())?.finished();
+    })();
+    sessionReads.push(finished);
+    await finished;
+  });
+  let releaseCodes!: () => void;
+  const codesHeld = new Promise<void>((resolve) => {
+    releaseCodes = resolve;
+  });
+  let created!: (codes: string[]) => void;
+  const replacement = new Promise<string[]>((resolve) => {
+    created = resolve;
+  });
+  await page.route('**/api/auth/security/recovery-codes', async (route) => {
+    const response = await route.fetch();
+    if (response.ok()) {
+      created((await response.json()).codes);
+      await codesHeld;
+    }
+    await route.fulfill({ response });
+  });
+  try {
+    await page.getByRole('button', { name: 'Replace recovery codes', exact: true }).click();
+    const prompt = page.getByRole('dialog', { name: 'Confirm it’s you', exact: true });
+    await expect(prompt).toBeVisible();
+    await prompt.getByRole('button', { name: 'Verify with passkey', exact: true }).click();
+    const codes = await replacement;
+    expect(codes).toHaveLength(10);
+    releaseCodes();
+    await expect(heading).toBeVisible();
+    await expect(page.getByLabel('Formatted recovery codes')).toContainText(codes[0]!);
+    // Let an admission refresh finish after the one-time codes are displayed. It must
+    // leave this document and its waiting action in place until the codes are saved.
+    holdingSessions = false;
+    releaseSession();
+    await Promise.all(sessionReads);
+    await page.evaluate(
+      () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+    );
+    await expect(heading).toBeVisible();
+    await expect(page.getByLabel('Formatted recovery codes')).toContainText(codes[0]!);
+    const downloading = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Download', exact: true }).click();
+    const download = await downloading;
+    const file = await download.path();
+    expect(file).toBeTruthy();
+  } finally {
+    releaseCodes();
+    releaseSession();
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  }
 });
