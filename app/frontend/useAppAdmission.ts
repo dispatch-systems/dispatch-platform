@@ -362,11 +362,12 @@ export function useAppAdmission(
       void perform(reopen);
     });
   const closeVerification = () => setReauthenticate(false);
-  const completeVerification = async () => {
+  const completeVerification = () => {
     // Keep the admitted page while its waiting action resumes. It may return one-time
     // recovery codes; account settings refreshes the session once those are saved.
     verified(true);
     setReauthenticate(false);
+    return Promise.resolve();
   };
   return {
     session,
