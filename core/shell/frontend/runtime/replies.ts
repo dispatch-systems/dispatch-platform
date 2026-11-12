@@ -18,5 +18,7 @@ export async function parseApiResponse(
   value: unknown,
   context?: ReplyContext,
 ): Promise<unknown> {
-  return checkReply(core, path, method, value, context, loadReplyChecks);
+  const route = path.split('?')[0]!;
+  const owners = core.some((replies) => replies(route, method)) ? core : await loadReplyChecks();
+  return checkReply(owners, path, method, value, context);
 }

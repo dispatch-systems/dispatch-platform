@@ -21,7 +21,7 @@ export type Replies = (
 
 /**
  * A reply, checked by the first of `owners` that has a validator for its route. A reply none
- * of them checks goes to the owners `load` brings, answered as a promise, or passes as it came.
+ * of them checks passes as it came.
  */
 export function checkReply(
   owners: readonly Replies[],
@@ -29,15 +29,11 @@ export function checkReply(
   method: Method,
   value: unknown,
   context?: ReplyContext,
-  load?: () => Promise<readonly Replies[]>,
 ): unknown {
   const route = path.split('?')[0]!;
   let schema: z.ZodMiniType | undefined;
   for (const replies of owners) if ((schema = replies(route, method, context))) break;
-  if (!schema)
-    return load
-      ? load().then((fallback) => checkReply(fallback, route, method, value, context))
-      : value;
+  if (!schema) return value;
   const result = schema.safeParse(value);
   // Never expose a server payload, session token or employee data in an error.
   if (!result.success) throw new Error('invalid_api_response');
