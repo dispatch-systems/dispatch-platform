@@ -39,7 +39,7 @@ export function DriversTab({
           highest: standings[0] ? tiers.indexOf(standings[0].tier) : -1,
           count: driver.count,
           last: driver.latestOn,
-          waiting: driver.awaitingSignature,
+          waiting: driver.awaitingSignature > 0,
         };
       })
       .filter((row) => row.standings.length || row.waiting)

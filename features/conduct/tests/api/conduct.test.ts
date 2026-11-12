@@ -106,6 +106,17 @@ test('a writeup is written up for someone, suggests the next tier, and locks onc
   assert.equal(changed.status, 409);
   assert.equal(changed.value.error, 'conduct_writeup_signed');
 
+  // Their totals count what waits to be signed, and name their categories in the DSP's order.
+  const safety = await owner.post(`${route}/writeups`, { ...input, category: 'safety' });
+  assert.equal(safety.status, 201, safety.body);
+  const driver = ((await owner.get(route)).value as ConductOverview).drivers.find(
+    (d) => d.person === person.code,
+  );
+  assert.deepEqual(
+    [driver?.count, driver?.awaitingSignature, driver?.categories],
+    [2, 1, ['safety', 'tardies']],
+  );
+
   // Another DSP knows nothing of it.
   const other = owner.session.dsps.find((d: { id: string }) => d.id !== north.id);
   await owner.select(other.id);

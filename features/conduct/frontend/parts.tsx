@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { PenLine } from 'lucide-react';
 import { PersonAvatar } from '../../../core/shell/frontend/runtime/PersonAvatar.js';
 import type {
   ConductOverview,
@@ -43,16 +44,47 @@ export function SignedState({ writeup }: { writeup: ConductWriteupRow }) {
   );
 }
 
+/** A writeup's signature: when it was signed, or a button that marks it signed where given. */
+export function WriteupStatus({
+  writeup,
+  markSigned,
+}: {
+  writeup: ConductWriteupRow;
+  markSigned?: (writeup: ConductWriteupRow) => void;
+}) {
+  if (writeup.signedOn || !markSigned) return <SignedState writeup={writeup} />;
+  return (
+    <button
+      type="button"
+      className="conduct-small"
+      onClick={(event) => {
+        event.stopPropagation();
+        markSigned(writeup);
+      }}
+    >
+      <PenLine size={14} />
+      Mark signed
+    </button>
+  );
+}
+
+/** Someone's photo, or their initials, sized by `className`. */
+export function Avatar({ person, className }: { person: ConductPerson; className: string }) {
+  return (
+    <PersonAvatar
+      name={person.name}
+      code={person.left ? null : person.code}
+      photo={person.photo}
+      className={className}
+    />
+  );
+}
+
 /** Someone, with their photo or initials. */
-export function Person({ person, large = false }: { person: ConductPerson; large?: boolean }) {
+export function Person({ person }: { person: ConductPerson }) {
   return (
     <span className="conduct-person">
-      <PersonAvatar
-        name={person.name}
-        code={person.left ? null : person.code}
-        photo={person.photo}
-        className={large ? 'conduct-avatar conduct-avatar-large' : 'conduct-avatar'}
-      />
+      <Avatar person={person} className="conduct-avatar" />
       <span>{person.name}</span>
     </span>
   );

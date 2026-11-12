@@ -1,8 +1,7 @@
 import { useUpdateState } from '../../../../core/shell/frontend/runtime/navigation-state.js';
-import { PenLine } from 'lucide-react';
 import { DataState, Empty } from '../../../../core/shell/frontend/ui/index.js';
 import type { ConductOverview, ConductWriteupRow } from '../../api/index.js';
-import { Person, RowLink, SignedState, WriteupTier, categoryName, personOf } from '../parts.js';
+import { Person, RowLink, WriteupStatus, WriteupTier, categoryName, personOf } from '../parts.js';
 import { printedDay } from '../tiers.js';
 import { useConductHistory, type HistoryFilters } from '../../api/client.js';
 import { useListScroll } from '../useListScroll.js';
@@ -15,48 +14,41 @@ export function WriteupsTab({
   markSigned,
   filters,
   change,
-  person,
-  history = false,
 }: {
   overview: ConductOverview;
   openWriteup: (id: string) => void;
-  markSigned?: (writeup: ConductWriteupRow) => void;
+  markSigned: (writeup: ConductWriteupRow) => void;
   filters: HistoryFilters;
   change: (filters: HistoryFilters) => void;
-  person?: string;
-  history?: boolean;
 }) {
   const { controls } = useConductFilters(overview.categories, filters, change);
   return (
     <>
-      {!history && (
-        <div className="table-toolbar conduct-toolbar">
-          {controls}
-          <select
-            aria-label="Status"
-            value={filters.status}
-            onChange={(e) => change({ ...filters, status: e.target.value })}
-          >
-            <option value="">All statuses</option>
-            <option value="waiting">Awaiting signature</option>
-            <option value="signed">Signed</option>
-          </select>
-          <button
-            type="button"
-            aria-pressed={filters.status === 'waiting'}
-            onClick={() =>
-              change({ ...filters, status: filters.status === 'waiting' ? '' : 'waiting' })
-            }
-          >
-            Awaiting signature
-          </button>
-        </div>
-      )}
+      <div className="table-toolbar conduct-toolbar">
+        {controls}
+        <select
+          aria-label="Status"
+          value={filters.status}
+          onChange={(e) => change({ ...filters, status: e.target.value })}
+        >
+          <option value="">All statuses</option>
+          <option value="waiting">Awaiting signature</option>
+          <option value="signed">Signed</option>
+        </select>
+        <button
+          type="button"
+          aria-pressed={filters.status === 'waiting'}
+          onClick={() =>
+            change({ ...filters, status: filters.status === 'waiting' ? '' : 'waiting' })
+          }
+        >
+          Awaiting signature
+        </button>
+      </div>
       <HistoryRows
-        key={JSON.stringify([person, filters])}
+        key={JSON.stringify(filters)}
         overview={overview}
         filters={filters}
-        person={person}
         openWriteup={openWriteup}
         markSigned={markSigned}
       />
@@ -67,15 +59,10 @@ export function WriteupsTab({
 function HistoryRows({
   overview,
   filters,
-  person,
   openWriteup,
   markSigned,
-}: Omit<Parameters<typeof WriteupsTab>[0], 'change' | 'history'>) {
-  const [navigation, setNavigation] = useUpdateState(
-    `conduct-history:${JSON.stringify([person, filters])}`,
-    { page: 0, cursors: [''] },
-  );
-  const read = useConductHistory(filters, person, navigation.cursors[navigation.page]);
+}: Omit<Parameters<typeof WriteupsTab>[0], 'change'>) {
+  const { read, ...pages } = useHistoryPages(filters);
   useListScroll(Boolean(read.data));
   const rows = read.data?.writeups ?? [];
   return (
@@ -112,22 +99,7 @@ function HistoryRows({
                       </td>
                       <td className="conduct-nowrap">{w.supervisorName}</td>
                       <td>
-                        {w.signedOn || !markSigned ? (
-                          <SignedState writeup={w} />
-                        ) : (
-                          <button
-                            type="button"
-                            className="conduct-small"
-                            disabled={!markSigned}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              markSigned?.(w);
-                            }}
-                          >
-                            <PenLine size={14} />
-                            Mark signed
-                          </button>
-                        )}
+                        <WriteupStatus writeup={w} markSigned={markSigned} />
                       </td>
                     </tr>
                   ))}
@@ -135,31 +107,45 @@ function HistoryRows({
               </table>
             </div>
           )}
-          <div className="form-actions">
-            <button
-              type="button"
-              disabled={navigation.page === 0}
-              onClick={() => setNavigation((n) => ({ ...n, page: n.page - 1 }))}
-            >
-              Previous
-            </button>
-            <button
-              type="button"
-              disabled={!read.data?.nextCursor}
-              onClick={() => {
-                const next = read.data?.nextCursor;
-                if (next)
-                  setNavigation((n) => ({
-                    page: n.page + 1,
-                    cursors: [...n.cursors.slice(0, n.page + 1), next],
-                  }));
-              }}
-            >
-              Next
-            </button>
-          </div>
+          <Pager {...pages} />
         </>
       )}
     </DataState>
+  );
+}
+
+/** One page of the writeups `filters` and `person` name at a time, which page in the address. */
+export function useHistoryPages(filters: HistoryFilters, person?: string) {
+  const [navigation, setNavigation] = useUpdateState(
+    `conduct-history:${JSON.stringify([person, filters])}`,
+    { page: 0, cursors: [''] },
+  );
+  const read = useConductHistory(filters, person, navigation.cursors[navigation.page]);
+  const next = read.data?.nextCursor;
+  return {
+    read,
+    previous:
+      navigation.page > 0 ? () => setNavigation((n) => ({ ...n, page: n.page - 1 })) : undefined,
+    next: next
+      ? () =>
+          setNavigation((n) => ({
+            page: n.page + 1,
+            cursors: [...n.cursors.slice(0, n.page + 1), next],
+          }))
+      : undefined,
+  };
+}
+
+/** Going to the page before or after, either disabled where there's none. */
+export function Pager({ previous, next }: { previous?: () => void; next?: () => void }) {
+  return (
+    <div className="form-actions">
+      <button type="button" disabled={!previous} onClick={previous}>
+        Previous
+      </button>
+      <button type="button" disabled={!next} onClick={next}>
+        Next
+      </button>
+    </div>
   );
 }

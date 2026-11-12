@@ -2,23 +2,18 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Plus } from 'lucide-react';
 import type { DspView, SessionView } from '../../../core/accounts/api/index.js';
 import { DataState, ErrorBox, Header, Tabs } from '../../../core/shell/frontend/ui/index.js';
-import type {
-  ConductOverview,
-  ConductSaved,
-  ConductWriteup,
-  ConductWriteupRow,
-} from '../api/index.js';
+import type { ConductOverview, ConductSaved, ConductWriteup } from '../api/index.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import { LeaveGuards, type Guards } from '../../../core/shell/frontend/runtime/leave.js';
 import { usePrintNotice } from './notice/usePrintNotice.js';
-import { type HistoryFilters, readWriteup, useWriteup } from '../api/client.js';
+import { type HistoryFilters, useWriteup } from '../api/client.js';
 import { useConductAddress, type ConductAddress } from './address.js';
 import { WriteupForm } from './compose/WriteupForm.js';
 import { draftOf, emptyDraft } from './compose/draft.js';
 import { DriverView } from './drivers/DriverView.js';
 import { DriversTab } from './drivers/DriversTab.js';
 import { useConduct } from './useConduct.js';
-import { SignDialog } from './writeups/SignDialog.js';
+import { useMarkSigned } from './writeups/useMarkSigned.js';
 import { WriteupView } from './writeups/WriteupView.js';
 import { WriteupsTab } from './writeups/WriteupsTab.js';
 
@@ -53,11 +48,7 @@ function Lists({
   change: (filters: HistoryFilters) => void;
   write: () => void;
 }) {
-  const [signing, setSigning] = useState<ConductWriteupRow>();
-  const beginSign = useAction(async (row: ConductWriteupRow) => {
-    const fresh = await readWriteup(row.id);
-    if (!fresh.signedOn) setSigning(fresh);
-  });
+  const { markSigned, dialog } = useMarkSigned(overview, take);
   return (
     <>
       <Header title="Conduct">
@@ -93,22 +84,10 @@ function Lists({
           filters={filters}
           change={change}
           openWriteup={(id) => open({ view: 'writeup', id })}
-          markSigned={(row) => {
-            if (!beginSign.busy) void beginSign.run(row);
-          }}
+          markSigned={markSigned}
         />
       )}
-      {signing && (
-        <SignDialog
-          overview={overview}
-          writeup={signing}
-          close={() => setSigning(undefined)}
-          signed={() => {
-            take();
-            setSigning(undefined);
-          }}
-        />
-      )}
+      {dialog}
     </>
   );
 }
@@ -172,6 +151,7 @@ export function ConductPage({ session, view }: { session: SessionView; view: Dsp
                     void start.run(address.person);
                   }}
                   openWriteup={(id) => open({ view: 'writeup', id })}
+                  take={take}
                 />
               );
             case 'writeup':
