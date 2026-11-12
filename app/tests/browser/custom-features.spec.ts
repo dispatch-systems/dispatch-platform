@@ -449,17 +449,15 @@ test('recent verification keeps replacement recovery codes available to save', a
     await prompt.getByRole('button', { name: 'Verify with passkey', exact: true }).click();
     const codes = await replacement;
     expect(codes).toHaveLength(10);
-    releaseCodes();
-    await expect(heading).toBeVisible();
-    await expect(page.getByLabel('Formatted recovery codes')).toContainText(codes[0]!);
-    // Let an admission refresh finish after the one-time codes are displayed. It must
-    // leave this document and its waiting action in place until the codes are saved.
+    // The server has replaced the saved codes. Finish any admission refresh before
+    // releasing their response: it must preserve the document awaiting those codes.
     holdingSessions = false;
     releaseSession();
     await Promise.all(sessionReads);
     await page.evaluate(
       () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
     );
+    releaseCodes();
     expect(navigations).toEqual([]);
     await expect(heading).toBeVisible();
     await expect(page.getByLabel('Formatted recovery codes')).toContainText(codes[0]!);
