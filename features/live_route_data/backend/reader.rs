@@ -123,6 +123,8 @@ pub struct Read {
     browser: bool,
     /// What read it and why native reading fell back, as a job's metrics name them.
     labels: Vec<&'static str>,
+    /// What throttling did to it (`Native::throttling`).
+    throttling: Counts,
 }
 
 impl Held {
@@ -155,6 +157,7 @@ impl Held {
                             revision,
                             browser: false,
                             labels: vec![routes::NATIVE],
+                            throttling: handed.native.throttling(),
                         }));
                     }
                     Err(_) => {
@@ -220,6 +223,7 @@ impl Held {
                         revision,
                         browser: true,
                         labels: vec![routes::NATIVE],
+                        throttling: handed.native.throttling(),
                     }));
                 }
                 Err(_) => routes::INVALID,
@@ -295,6 +299,7 @@ impl LiveReader for Routes {
                 counts.push(("browser", 1));
             }
             counts.extend(read.labels.into_iter().map(|label| (label, 1)));
+            counts.extend(read.throttling);
             Ok(counts)
         })
     }
@@ -403,6 +408,7 @@ async fn browse(
             revision,
             browser: true,
             labels,
+            throttling: Counts::new(),
         })
     }
     .await;

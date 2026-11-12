@@ -8,8 +8,9 @@
 //! the read. The lists come first, each asked again while Cortex is briefly unavailable or
 //! redirects; then every itinerary the list names, a few at a time, each asked for gzipped,
 //! decoded and checked for its driver once, away from the threads serving requests.
-//! Whatever failed is asked once more. A day is read whole, both lists and every
-//! itinerary, or not at all.
+//! Whatever failed is asked once more; what Cortex throttled is asked again after each
+//! cooldown, fewer at a time, which the reader keeps to for the rest of that day. A day is
+//! read whole, both lists and every itinerary, or not at all.
 use super::capture::{Capture, Collection, ItineraryCapture, MAX_BODY, Mode};
 use super::protocol::{
     CaptureBudget, ITINERARY, ROUTE_SUMMARIES, SUMMARIES, itineraries_listed, itinerary_path,
@@ -31,11 +32,20 @@ use dispatch_core::{
 use futures_util::stream::{self, StreamExt};
 use hmac::{Hmac, KeyInit, Mac};
 use serde_json::{Value, json};
-use std::{sync::Mutex, time::Duration};
+use std::{
+    sync::{
+        Mutex,
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+    },
+    time::Duration,
+};
 use tokio::time::{Instant, sleep_until};
 
-/// Itineraries downloaded at once, as many as the application's signatures are.
-const DOWNLOADS: usize = 12;
+/// Itineraries downloaded at once: as many as the application's signatures are, then fewer
+/// after each round Cortex throttled.
+const DOWNLOADS: [usize; 3] = [12, 4, 1];
+/// Rounds of itineraries a read asks for at most, so one Cortex throttles with no delay ends.
+const ROUNDS: usize = 12;
 /// Times a list is asked for while Cortex is briefly unavailable or redirects.
 const LIST_ATTEMPTS: u32 = 3;
 /// How long Cortex is left before a read is asked for again, times the attempts so far.
@@ -44,9 +54,10 @@ const RETRY_PAUSE: Duration = Duration::from_secs(2);
 const THROTTLE_PAUSE: Duration = Duration::from_secs(10);
 /// Bound a provider's retry delay before adding it to a monotonic instant.
 const MAX_COOLDOWN: Duration = Duration::from_secs(24 * 60 * 60);
-/// A read spends at most this much of its turn waiting on throttling. Longer cooldowns
-/// fail promptly and stay with the reader for a later scheduled attempt.
-const RETRY_BUDGET: Duration = Duration::from_secs(30);
+/// A read spends at most this much of its turn waiting on throttling, well inside the
+/// shortest interval between live reads. Longer cooldowns fail promptly and stay with the
+/// reader for a later scheduled attempt.
+const RETRY_BUDGET: Duration = Duration::from_secs(120);
 /// As much as the list's page may be. It was 727 KB.
 const PAGE_LIMIT: usize = 8 * 1024 * 1024;
 /// As long as the key or the session it names may be.
@@ -225,8 +236,28 @@ fn passing(failure: &Failure) -> bool {
 #[derive(Default)]
 struct Throttle {
     until: Mutex<Option<Instant>>,
+    /// How far down `DOWNLOADS` throttled rounds have brought the day's reads.
+    narrowed: AtomicUsize,
+    /// Cortex throttled since itineraries were last asked for: the next round narrows. Kept
+    /// here, it outlasts a read that ends on a long cooldown or is cancelled in one.
+    narrows: AtomicBool,
+    /// Requests Cortex throttled during the read under way.
+    refused: AtomicU64,
 }
 impl Throttle {
+    /// Itineraries downloaded at once now.
+    fn downloads(&self) -> usize {
+        DOWNLOADS[self.narrowed.load(Ordering::Relaxed)]
+    }
+    /// Before a round of itineraries: one that follows a throttle asks for fewer at once,
+    /// down to one.
+    fn narrow(&self) {
+        if self.narrows.swap(false, Ordering::Relaxed) {
+            let narrowed = self.narrowed.load(Ordering::Relaxed);
+            self.narrowed
+                .store((narrowed + 1).min(DOWNLOADS.len() - 1), Ordering::Relaxed);
+        }
+    }
     fn failure(&self) -> Failure {
         Failure::Throttled(Error::new(cortex::codes::CORTEX_THROTTLED.as_str(), 502))
     }
@@ -240,12 +271,14 @@ impl Throttle {
         observability::event(
             "warn",
             "cortex.routes_read_failed",
-            json!({"endpoint":endpoint,"status":error.status,
+            json!({"endpoint":endpoint,"status":error.status,"downloads":self.downloads(),
                 "retryAfterMs":error.retry_after.map(|d|d.as_millis().min(u64::MAX as u128) as u64)}),
         );
         if error.status != Some(429) {
             return error.refusal.into();
         }
+        self.refused.fetch_add(1, Ordering::Relaxed);
+        self.narrows.store(true, Ordering::Relaxed);
         let retry = error
             .retry_after
             .unwrap_or(THROTTLE_PAUSE)
@@ -282,6 +315,8 @@ pub struct Native {
     origin: String,
     key: Option<Key>,
     throttle: Throttle,
+    /// The day its reads were last narrowed for. Another day starts at full width.
+    day: String,
 }
 impl Native {
     /// A reader carrying `session`: the cookies and user agent a browser signed in with.
@@ -291,7 +326,23 @@ impl Native {
             origin: session.origin.clone(),
             key: None,
             throttle: Throttle::default(),
+            day: String::new(),
         })
+    }
+    /// What throttling did to the last read, as its record counts it: the requests Cortex
+    /// throttled (`throttled`), and how many itineraries the day's reads download at once
+    /// since (`downloads`). Nothing for a read at full width that met none.
+    pub fn throttling(&self) -> Vec<(&'static str, u64)> {
+        let refused = self.throttle.refused.load(Ordering::Relaxed);
+        let downloads = self.throttle.downloads();
+        let mut counts = Vec::new();
+        if refused > 0 {
+            counts.push(("throttled", refused));
+        }
+        if downloads < DOWNLOADS[0] {
+            counts.push(("downloads", downloads as u64));
+        }
+        counts
     }
     /// A throttle's cooldown still belongs to this reader, even if it elapsed since a
     /// cancelled read. Keep the reader rather than reopening a browser before observing it.
@@ -310,6 +361,12 @@ impl Native {
         mode: Mode,
         check: &Check,
     ) -> std::result::Result<Capture, Failure> {
+        self.throttle.refused.store(0, Ordering::Relaxed);
+        if self.day != scope.date {
+            self.day.clone_from(&scope.date);
+            self.throttle.narrowed.store(0, Ordering::Relaxed);
+            self.throttle.narrows.store(false, Ordering::Relaxed);
+        }
         let retry_budget = Mutex::new(RETRY_BUDGET);
         self.throttle.wait(&retry_budget).await?;
         check().await.map_err(Failure::Stopped)?;
@@ -513,7 +570,9 @@ impl Reading<'_> {
         })
         .await
     }
-    /// Every itinerary `listed` names, `DOWNLOADS` at a time, then what failed once more.
+    /// Every itinerary `listed` names, a few at a time, then what failed once more. What
+    /// Cortex throttled is asked again after each cooldown, fewer at a time, while the
+    /// read's wait budget and `ROUNDS` last.
     async fn itineraries(
         &self,
         listed: &[(String, String)],
@@ -521,24 +580,30 @@ impl Reading<'_> {
     ) -> std::result::Result<Vec<ItineraryCapture>, Failure> {
         let mut read: Vec<Option<String>> = vec![None; listed.len()];
         let mut failure = None;
-        for attempt in 0..2 {
+        let mut asked_again = false;
+        for round in 0..ROUNDS {
             let pending: Vec<usize> = (0..listed.len()).filter(|i| read[*i].is_none()).collect();
             if pending.is_empty() {
                 break;
             }
-            if attempt > 0 {
+            if round > 0 {
                 if !self.throttle.wait(self.retry_budget).await? {
+                    if asked_again {
+                        break;
+                    }
+                    asked_again = true;
                     tokio::time::sleep(RETRY_PAUSE).await;
                 }
                 (self.check)().await.map_err(Failure::Stopped)?;
             }
+            self.throttle.narrow();
             failure = None;
             let mut answers = stream::iter(pending)
                 .map(|index| async move {
                     let limit = MAX_BODY.min(bytes.remaining());
                     (index, self.itinerary(&listed[index], limit).await)
                 })
-                .buffer_unordered(DOWNLOADS);
+                .buffer_unordered(self.throttle.downloads());
             while let Some((index, answer)) = answers.next().await {
                 match answer {
                     Ok(detail) => {
