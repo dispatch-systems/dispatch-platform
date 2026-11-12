@@ -18,9 +18,10 @@ export const replies: Replies = (route, method, context) => {
   if (read)
     return z
       .looseObject({ pages: z.array(z.looseObject({ id: text })), sections: z.array(section) })
-      .check(({ value: { sections } }) => {
-        if (new Set(sections.map((section) => section.id)).size !== sections.length)
-          throw new Error('invalid_api_response');
-      });
+      .check(
+        z.refine(
+          ({ sections }) => new Set(sections.map((each) => each.id)).size === sections.length,
+        ),
+      );
   return z.union([z.looseObject({ section, reopen: z.boolean() }), z.object({ warning: text })]);
 };

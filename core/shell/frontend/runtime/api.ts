@@ -18,16 +18,11 @@ export function credentials(nextCsrf: string, nextView = '', dsp?: ReplyContext[
     clearNavigationState();
     clearDestinations();
   }
-  if (
-    csrf !== nextCsrf ||
-    view !== nextView ||
-    replyContext.dsp?.id !== dsp?.id ||
-    replyContext.dsp?.code !== dsp?.code
-  )
-    dataCache.clear();
+  // A view token is signed for its DSP at its revision: another DSP or code is another view.
+  if (csrf !== nextCsrf || view !== nextView) dataCache.clear();
   csrf = nextCsrf;
   view = nextView;
-  replyContext = nextView && dsp ? { dsp: { id: dsp.id, code: dsp.code } } : {};
+  replyContext = { dsp };
 }
 export class ApiError extends Error {
   constructor(
