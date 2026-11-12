@@ -536,7 +536,9 @@ async fn a_day_throttled_round_after_round_is_read_whole_fewer_at_a_time_from_th
 async fn a_read_ended_by_a_long_cooldown_narrows_the_read_after_it() {
     let (stand, session) = stand_in(Plays::ThrottledLong).await;
     let mut reader = Native::new(&session).unwrap();
-    let ended = reader.read(&stand.day.scope, Mode::Final, &authorized).await;
+    let ended = reader
+        .read(&stand.day.scope, Mode::Final, &authorized)
+        .await;
     assert!(matches!(ended, Err(Failure::Throttled(_))));
     tokio::time::advance(Duration::from_secs(180)).await;
     reader
