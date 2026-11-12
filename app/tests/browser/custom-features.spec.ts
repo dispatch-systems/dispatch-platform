@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import type { Page, Route } from '@playwright/test';
+import type { Page, Request, Route } from '@playwright/test';
 import {
   test,
   expect,
@@ -415,16 +415,13 @@ test('recent verification keeps replacement recovery codes available to save', a
     releaseSession = resolve;
   });
   let holdingSessions = true;
-  const sessionReads: Promise<void>[] = [];
+  const sessionReads: Request[] = [];
   await page.route('**/api/session', async (route) => {
-    if (!holdingSessions) return route.fallback();
-    const finished = (async () => {
+    if (holdingSessions) {
+      sessionReads.push(route.request());
       await sessionsHeld;
-      await route.fallback();
-      await (await route.request().response())?.finished();
-    })();
-    sessionReads.push(finished);
-    await finished;
+    }
+    await route.fallback();
   });
   let releaseCodes!: () => void;
   const codesHeld = new Promise<void>((resolve) => {
@@ -453,7 +450,7 @@ test('recent verification keeps replacement recovery codes available to save', a
     // releasing their response: it must preserve the document awaiting those codes.
     holdingSessions = false;
     releaseSession();
-    await Promise.all(sessionReads);
+    await Promise.all(sessionReads.map(async (request) => (await request.response())?.finished()));
     await page.evaluate(
       () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
     );
