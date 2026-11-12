@@ -33,8 +33,9 @@ import {
   clearCustomFeatures,
   prepareCustomFeatures,
   setPlatformCustomStyles,
-} from './custom-features.js';
-import { clearPlatformFeatures, preparePlatformFeatures } from './platform-features.js';
+  clearPlatformFeatures,
+  preparePlatformFeatures,
+} from './private-features.js';
 
 type Session = SessionView;
 
