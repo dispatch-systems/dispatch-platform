@@ -70,6 +70,8 @@ enum Plays {
     Throttled,
     /// That itinerary is throttled the first two times it is asked for, then answers.
     ThrottledTwice,
+    /// That itinerary asks once for a cooldown longer than a read waits, then answers.
+    ThrottledLong,
 }
 
 /// Cortex for one session: its list page hands out a key, and every read must be signed
@@ -85,6 +87,9 @@ struct Stand {
     asked: Mutex<HashMap<String, usize>>,
     /// The stand-in rejects a retry before the delay it told the reader has passed.
     throttled_until: Mutex<Option<Instant>>,
+    /// Itineraries being answered now, and the most there were at once.
+    answering: AtomicUsize,
+    most_at_once: AtomicUsize,
 }
 impl Stand {
     fn signed(&self, path: &str, query: &str, request: &Asked) -> Option<usize> {
@@ -247,6 +252,13 @@ impl Stand {
                     {
                         return status(StatusCode::TOO_MANY_REQUESTS);
                     }
+                    Plays::ThrottledLong if index == 1 && times == 1 => {
+                        return Response::builder()
+                            .status(StatusCode::TOO_MANY_REQUESTS)
+                            .header(header::RETRY_AFTER, "180")
+                            .body(Body::empty())
+                            .unwrap();
+                    }
                     Plays::ThrottledTwice if index == 1 && times > 2 => {
                         self.day.itineraries[index].detail.clone()
                     }
@@ -314,10 +326,20 @@ async fn answer(State(stand): State<Arc<Stand>>, request: Asked) -> Response<Bod
         request.uri().query().unwrap_or("").to_owned(),
     );
     if path == "/operations/execution/itineraries" {
-        stand.page()
-    } else {
-        stand.read(&path, &query, &request)
+        return stand.page();
     }
+    // An itinerary takes a moment of the test's clock, so those asked for together overlap.
+    let held = matches!(stand.plays, Plays::ThrottledTwice) && path.contains("/itineraries/");
+    if held {
+        let answering = stand.answering.fetch_add(1, Ordering::SeqCst) + 1;
+        stand.most_at_once.fetch_max(answering, Ordering::SeqCst);
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    let answer = stand.read(&path, &query, &request);
+    if held {
+        stand.answering.fetch_sub(1, Ordering::SeqCst);
+    }
+    answer
 }
 
 /// A stand-in playing `plays`, and the session a browser signed in to it with.
@@ -332,6 +354,8 @@ async fn stand_in(plays: Plays) -> (Arc<Stand>, SignedIn) {
         reads: AtomicUsize::new(0),
         asked: Mutex::default(),
         throttled_until: Mutex::default(),
+        answering: AtomicUsize::new(0),
+        most_at_once: AtomicUsize::new(0),
     });
     let app = Router::new().fallback(answer).with_state(stand.clone());
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -485,7 +509,7 @@ async fn persistent_throttling_does_not_request_a_browser_fallback() {
     assert_eq!(stand.pages.load(Ordering::SeqCst), 1);
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_day_throttled_round_after_round_is_read_whole_fewer_at_a_time_from_then_on() {
     let (stand, session) = stand_in(Plays::ThrottledTwice).await;
     let mut reader = Native::new(&session).unwrap();
@@ -497,12 +521,29 @@ async fn a_day_throttled_round_after_round_is_read_whole_fewer_at_a_time_from_th
     assert_eq!(stand.asked("itinerary-2"), 3);
     // Each throttled round narrowed the next, and the read's record says so.
     assert_eq!(reader.throttling(), [("throttled", 2), ("downloads", 1)]);
-    // The day's next read stays narrow and meets no throttle; another day starts wide again.
+    // The day's next read meets no throttle, asking for its itineraries one at a time;
+    // another day starts wide again.
+    stand.most_at_once.store(0, Ordering::SeqCst);
     reader.read(&scope, Mode::Final, &authorized).await.unwrap();
     assert_eq!(reader.throttling(), [("downloads", 1)]);
+    assert_eq!(stand.most_at_once.load(Ordering::SeqCst), 1);
     scope.date = "2026-09-26".into();
     let _ = reader.read(&scope, Mode::Final, &authorized).await;
     assert!(reader.throttling().is_empty());
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_read_ended_by_a_long_cooldown_narrows_the_read_after_it() {
+    let (stand, session) = stand_in(Plays::ThrottledLong).await;
+    let mut reader = Native::new(&session).unwrap();
+    let ended = reader.read(&stand.day.scope, Mode::Final, &authorized).await;
+    assert!(matches!(ended, Err(Failure::Throttled(_))));
+    tokio::time::advance(Duration::from_secs(180)).await;
+    reader
+        .read(&stand.day.scope, Mode::Final, &authorized)
+        .await
+        .unwrap();
+    assert_eq!(reader.throttling(), [("downloads", 4)]);
 }
 
 #[tokio::test(start_paused = true)]

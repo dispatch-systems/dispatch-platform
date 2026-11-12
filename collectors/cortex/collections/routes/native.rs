@@ -35,7 +35,7 @@ use serde_json::{Value, json};
 use std::{
     sync::{
         Mutex,
-        atomic::{AtomicU64, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
     },
     time::Duration,
 };
@@ -238,6 +238,9 @@ struct Throttle {
     until: Mutex<Option<Instant>>,
     /// How far down `DOWNLOADS` throttled rounds have brought the day's reads.
     narrowed: AtomicUsize,
+    /// Cortex throttled since itineraries were last asked for: the next round narrows. Kept
+    /// here, it outlasts a read that ends on a long cooldown or is cancelled in one.
+    narrows: AtomicBool,
     /// Requests Cortex throttled during the read under way.
     refused: AtomicU64,
 }
@@ -246,11 +249,14 @@ impl Throttle {
     fn downloads(&self) -> usize {
         DOWNLOADS[self.narrowed.load(Ordering::Relaxed)]
     }
-    /// A round was throttled: the next asks for fewer at once, down to one.
+    /// Before a round of itineraries: one that follows a throttle asks for fewer at once,
+    /// down to one.
     fn narrow(&self) {
-        let narrowed = self.narrowed.load(Ordering::Relaxed);
-        self.narrowed
-            .store((narrowed + 1).min(DOWNLOADS.len() - 1), Ordering::Relaxed);
+        if self.narrows.swap(false, Ordering::Relaxed) {
+            let narrowed = self.narrowed.load(Ordering::Relaxed);
+            self.narrowed
+                .store((narrowed + 1).min(DOWNLOADS.len() - 1), Ordering::Relaxed);
+        }
     }
     fn failure(&self) -> Failure {
         Failure::Throttled(Error::new(cortex::codes::CORTEX_THROTTLED.as_str(), 502))
@@ -265,13 +271,14 @@ impl Throttle {
         observability::event(
             "warn",
             "cortex.routes_read_failed",
-            json!({"endpoint":endpoint,"status":error.status,
+            json!({"endpoint":endpoint,"status":error.status,"downloads":self.downloads(),
                 "retryAfterMs":error.retry_after.map(|d|d.as_millis().min(u64::MAX as u128) as u64)}),
         );
         if error.status != Some(429) {
             return error.refusal.into();
         }
         self.refused.fetch_add(1, Ordering::Relaxed);
+        self.narrows.store(true, Ordering::Relaxed);
         let retry = error
             .retry_after
             .unwrap_or(THROTTLE_PAUSE)
@@ -358,6 +365,7 @@ impl Native {
         if self.day != scope.date {
             self.day.clone_from(&scope.date);
             self.throttle.narrowed.store(0, Ordering::Relaxed);
+            self.throttle.narrows.store(false, Ordering::Relaxed);
         }
         let retry_budget = Mutex::new(RETRY_BUDGET);
         self.throttle.wait(&retry_budget).await?;
@@ -579,16 +587,16 @@ impl Reading<'_> {
                 break;
             }
             if round > 0 {
-                if self.throttle.wait(self.retry_budget).await? {
-                    self.throttle.narrow();
-                } else if asked_again {
-                    break;
-                } else {
+                if !self.throttle.wait(self.retry_budget).await? {
+                    if asked_again {
+                        break;
+                    }
                     asked_again = true;
                     tokio::time::sleep(RETRY_PAUSE).await;
                 }
                 (self.check)().await.map_err(Failure::Stopped)?;
             }
+            self.throttle.narrow();
             failure = None;
             let mut answers = stream::iter(pending)
                 .map(|index| async move {

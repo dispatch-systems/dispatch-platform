@@ -19,13 +19,15 @@ A throttled native read (HTTP 429) pauses new requests while in-flight reads dra
 successful responses for that attempt, and retries only what is missing after Retry-After
 (seconds or an HTTP date), or ten seconds without one. A supplied delay is bounded at a day.
 Each throttled round of itineraries narrows the next, from twelve at a time to four, then one,
-and the reader keeps to that for the rest of the day's reads; another day starts at twelve. A
+and the reader keeps to that for the rest of the day's reads, also when the throttled read ended
+on a long cooldown or was cancelled; another day starts at twelve. A
 read asks for at most twelve rounds and waits on throttling for at most two minutes; a longer
 cooldown fails promptly and stays with the reader for a later scheduled attempt. The cooldown stays with the reader
 across cancellation; throttling never asks the browser to
 sign or discover again, and its fixed endpoint and status are logged without identifiers.
 Healthy reads still download twelve at a time without a cooldown. `Native::throttling` counts
-what a read met: the requests throttled, and the narrower width since.
+what a read met: the requests throttled, and the narrower width since; each refusal's log event
+carries the width it was asked at (`downloads`).
 `routes::Native` reads a day so for anything holding a session, outside a job too, and says why
 it could not: no key on the page, the key refused, the session ended, or Cortex unavailable.
 Otherwise the day is signed by the application's own API action, stopped before it leaves the
