@@ -56,6 +56,15 @@ fn session(db: &Store, user: &User, _: &Input) -> Result<Reply> {
         } else {
             summaries(db, user)?
         },
+        platform_frontend: (user.user.platform_owner
+            && (!security.required || security.verified)
+            && crate::manifest::registry()
+                .features
+                .iter()
+                .any(|feature| feature.owner.is_some()))
+        .then(|| crate::server::http::custom_frontend(user.state, "platform"))
+        .flatten()
+        .map(|(url, _)| url),
         development: db.config.development,
         environment: db.config.environment,
         release: db.config.release.clone(),
@@ -111,6 +120,7 @@ fn open_dsp(db: &Store, user: &User, input: &Input) -> Result<Reply> {
         c.permissions.clone()
     };
     Reply::of(&DspView {
+        custom: crate::tenancy::custom::view(db, user.state, &c)?,
         token: db.view_token(&c),
         profile: db.profile(&c.dsp.id)?,
         permissions: c.visible(&held).cloned().collect(),

@@ -34,8 +34,86 @@ test('generated platform contracts validate real responses', async (t) => {
   const f = await fixture();
   t.after(f.close);
   const owner = await f.client();
+  const platformSession = {
+    ...owner.session,
+    platformFrontend: '/assets/owner-catalog-12345678.js',
+  };
+  assert.deepEqual(await parseApiResponse('/api/session', 'GET', platformSession), platformSession);
+  for (const invalid of [
+    { ...platformSession, user: { ...platformSession.user, platformOwner: false } },
+    {
+      ...platformSession,
+      security: { ...platformSession.security, required: true, verified: false },
+    },
+    { ...platformSession, platformFrontend: 'https://outside.invalid/entry.js' },
+    { ...platformSession, platformFrontend: '/assets/custom-other-entry.js' },
+  ])
+    await assert.rejects(
+      parseApiResponse('/api/session', 'GET', invalid),
+      /^Error: invalid_api_response$/,
+    );
   const dsp = owner.session.dsps.find((d: DspSummary) => d.name === 'Northline Logistics');
-  await owner.select(dsp.id);
+  const view = await owner.select(dsp.id);
+  const id = `${view.dsp.code}_probe`;
+  const permission = `${id}.view`;
+  const customView = {
+    ...view,
+    features: [...view.features, id],
+    permissions: [...view.permissions, permission],
+    custom: {
+      catalog: [
+        {
+          id,
+          label: 'Probe',
+          place: 50,
+          kind: 'page',
+          permissions: [permission],
+          requires: [],
+          page: null,
+          tab: false,
+          connects: false,
+        },
+      ],
+      permissions: [{ id: permission, label: 'View Probe', group: null, implied: [], under: null }],
+      frontends: [
+        {
+          name: id,
+          place: 50,
+          url: `/assets/custom-${view.dsp.code}-probe-12345678.js`,
+          styles: [`/assets/custom-${view.dsp.code}-probe-12345678.css`],
+        },
+      ],
+    },
+  };
+  const parseView = (value: unknown) => parseApiResponse('/api/session/dsp', 'POST', value);
+  assert.deepEqual(await parseView(customView), customView);
+  const unlisted = structuredClone(customView);
+  unlisted.custom.catalog = [];
+  const foreign = structuredClone(customView);
+  foreign.features[foreign.features.length - 1] = 'other_probe';
+  foreign.permissions[foreign.permissions.length - 1] = 'other_probe.view';
+  foreign.custom.catalog[0]!.id = 'other_probe';
+  foreign.custom.catalog[0]!.permissions = ['other_probe.view'];
+  foreign.custom.permissions[0]!.id = 'other_probe.view';
+  foreign.custom.frontends[0]!.name = 'other_probe';
+  const disabled = structuredClone(customView);
+  disabled.features = view.features;
+  const undeclared = structuredClone(customView);
+  undeclared.permissions.push(`${id}.unknown`);
+  for (const invalid of [unlisted, foreign, disabled, undeclared])
+    await assert.rejects(parseView(invalid), /^Error: invalid_api_response$/);
+  for (const url of [
+    'https://outside.invalid/entry.js',
+    '/assets/custom-other-probe-12345678.js',
+    `/custom/${id}.js?extra=1`,
+  ]) {
+    const invalid = structuredClone(customView);
+    invalid.custom.frontends[0]!.url = url;
+    await assert.rejects(parseView(invalid), /^Error: invalid_api_response$/);
+  }
+  const badStyle = structuredClone(customView);
+  badStyle.custom.frontends[0]!.styles = ['/assets/custom-other-style.css'];
+  await assert.rejects(parseView(badStyle), /^Error: invalid_api_response$/);
   const read = async <T>(route: string): Promise<T> => {
     const response = await owner.get(route);
     assert.equal(response.status, 200, response.body);

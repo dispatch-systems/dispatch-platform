@@ -18,6 +18,11 @@ import {
   peopleSources,
   personTitles,
 } from '../../../core/manifest/api/generated/people-data.js';
+import {
+  privatePeopleKinds,
+  privatePeopleSources,
+  peopleOrder,
+} from '../../../core/shell/frontend/runtime/people.js';
 
 /** How each role reads: its name, the name of its filter, and its colour. */
 export const roles: Record<PersonRole, { label: string; filter: string; tone: string }> = {
@@ -82,13 +87,17 @@ export const links: Record<IdLink, { label: string; joined: string }> = {
 };
 
 /** Every source of IDs, in their order, as their owners declare them. */
-export const sourceKinds: readonly PeopleSource[] = peopleSources.map((source) => source.id);
+export const sourceKinds = (): readonly PeopleSource[] =>
+  peopleOrder([...peopleSources, ...privatePeopleSources]).map(
+    (source) => source.id as PeopleSource,
+  );
 /** How a source is named: "Paycom". */
 export const sourceLabel = (source: PeopleSource) =>
-  peopleSources.find((s) => s.id === source)?.label ?? source;
+  [...peopleSources, ...privatePeopleSources].find((s) => s.id === source)?.label ?? source;
 
 /** A kind of collected data as its feature declares it: its label, unit and icon. */
-export const dataKind = (data: PeopleKind) => peopleKinds.find((kind) => kind.id === data);
+export const dataKind = (data: PeopleKind) =>
+  [...peopleKinds, ...privatePeopleKinds].find((kind) => kind.id === data);
 /** How a kind of collected data is named. */
 export const dataLabel = (data: PeopleKind) => dataKind(data)?.label ?? data;
 /** How much of one kind of data a person has, in its own unit. */

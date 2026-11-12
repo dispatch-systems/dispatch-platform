@@ -10,11 +10,22 @@ import { startPreview } from '../dev/dev-server.js';
 import { demo, until } from '../../core/shell/tests/support/support.js';
 
 test('parallel worktree previews isolate ports, files, fixtures and browser sessions, and sign in without a limit', async (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-preview-test-'));
+  const root = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'dispatch-preview-test-'));
   const worktrees = ['first', 'second'].map((name) => {
     const cwd = path.join(root, name);
     fs.mkdirSync(path.join(cwd, 'app/frontend'), { recursive: true });
-    fs.writeFileSync(path.join(cwd, 'vite.config.ts'), 'export default {};');
+    fs.writeFileSync(
+      path.join(cwd, 'vite.config.ts'),
+      `export default { server: { fs: { allow: [${JSON.stringify(cwd)}] } } };`,
+    );
+    for (const owner of ['nll', 'sum']) {
+      const dir = path.join(cwd, `features/custom/${owner}/probe/frontend`);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, 'feature.ts'),
+        `export const label = '${owner} private feature';`,
+      );
+    }
     fs.writeFileSync(path.join(cwd, 'app/frontend/index.html'), `<h1>${name} worktree</h1>`);
     fs.writeFileSync(
       path.join(cwd, 'app/frontend/entry.js'),
@@ -187,6 +198,16 @@ test('parallel worktree previews isolate ports, files, fixtures and browser sess
   assert.equal(jar.size, 3);
   const member = await request(memberOrigin, '/api/session');
   assert.equal(member.value.user.platformOwner, false);
+  const cookie = [...jar].map(([name, value]) => `${name}=${value}`).join('; ');
+  for (const [code, status] of [
+    ['nll', 200],
+    ['sum', 404],
+  ] as const) {
+    const source = `/@fs${fs.realpathSync(worktrees[1]!)}/features/custom/${code}/probe/frontend/feature.ts`;
+    const answer = await fetch(memberOrigin + source, { headers: { cookie } });
+    assert.equal(answer.status, status);
+    if (status === 200) assert.match(await answer.text(), /nll private feature/);
+  }
   assert.equal((await request(first.origin, '/api/session')).value.user.platformOwner, true);
   assert.notEqual(owner.value.user.id, member.value.user.id);
   assert.equal((await request(first.origin, '/api/auth/logout', {})).status, 403);

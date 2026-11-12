@@ -10,7 +10,7 @@ pub mod route;
 mod unmatched;
 pub mod upload;
 
-pub use assets::{Asset, assets, browser_update_ready};
+pub use assets::{Asset, assets, browser_update_ready, custom_frontend};
 pub use input::Input;
 pub use route::{Access, Answered, Route, Work};
 pub use unmatched::unmatched_areas;
@@ -125,7 +125,12 @@ async fn fallback(AxumState(state): AxumState<Arc<State>>, request: Request) -> 
     let asset = [Method::GET, Method::HEAD].contains(request.method())
         && (path == "/" || path == "/service-worker.js" || path.starts_with("/assets/"));
     if asset {
-        return assets::serve(&state, request.method(), path, request.headers())
+        let audience = request
+            .extensions()
+            .get::<assets::Audience>()
+            .cloned()
+            .unwrap_or_default();
+        return assets::serve(&state, request.method(), path, request.headers(), &audience)
             .unwrap_or_else(middleware::failure);
     }
     unmatched::unmatched(AxumState(state), request).await

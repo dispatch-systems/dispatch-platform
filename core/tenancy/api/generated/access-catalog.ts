@@ -65,6 +65,7 @@ export const featureCatalog = [
     "permissions": [],
     "requires": [],
     "kind": "page",
+    "place": 10,
     "mandatory": true
   },
   {
@@ -78,7 +79,8 @@ export const featureCatalog = [
     "requires": [
       "timecards"
     ],
-    "kind": "page"
+    "kind": "page",
+    "place": 20
   },
   {
     "id": "uniforms",
@@ -89,7 +91,8 @@ export const featureCatalog = [
       "uniforms.manage"
     ],
     "requires": [],
-    "kind": "page"
+    "kind": "page",
+    "place": 30
   },
   {
     "id": "routes",
@@ -102,7 +105,8 @@ export const featureCatalog = [
     "requires": [
       "routes"
     ],
-    "kind": "page"
+    "kind": "page",
+    "place": 40
   },
   {
     "id": "dvic",
@@ -115,7 +119,8 @@ export const featureCatalog = [
     "requires": [
       "dvic"
     ],
-    "kind": "page"
+    "kind": "page",
+    "place": 50
   },
   {
     "id": "weekly_scorecard",
@@ -128,7 +133,8 @@ export const featureCatalog = [
     "requires": [
       "weekly_scorecard"
     ],
-    "kind": "page"
+    "kind": "page",
+    "place": 60
   },
   {
     "id": "driver_profiles",
@@ -139,7 +145,8 @@ export const featureCatalog = [
     "requires": [
       "associates"
     ],
-    "kind": "page"
+    "kind": "page",
+    "place": 70
   },
   {
     "id": "driver_match",
@@ -149,6 +156,7 @@ export const featureCatalog = [
     ],
     "requires": [],
     "kind": "page",
+    "place": 75,
     "mandatory": true
   },
   {
@@ -162,7 +170,8 @@ export const featureCatalog = [
     "requires": [
       "daily_performance"
     ],
-    "kind": "page"
+    "kind": "page",
+    "place": 80
   },
   {
     "id": "documents",
@@ -172,6 +181,7 @@ export const featureCatalog = [
     ],
     "requires": [],
     "kind": "page",
+    "place": 90,
     "connects": true
   },
   {
@@ -183,6 +193,7 @@ export const featureCatalog = [
     ],
     "requires": [],
     "kind": "page",
+    "place": 95,
     "connects": true
   },
   {
@@ -191,6 +202,7 @@ export const featureCatalog = [
     "permissions": [],
     "requires": [],
     "kind": "page",
+    "place": 100,
     "mandatory": true
   },
   {
@@ -199,6 +211,7 @@ export const featureCatalog = [
     "permissions": [],
     "requires": [],
     "kind": "page",
+    "place": 110,
     "mandatory": true
   },
   {
@@ -209,6 +222,7 @@ export const featureCatalog = [
     ],
     "requires": [],
     "kind": "page",
+    "place": 120,
     "connects": true
   },
   {
@@ -220,7 +234,8 @@ export const featureCatalog = [
     "requires": [
       "vans"
     ],
-    "kind": "page"
+    "kind": "page",
+    "place": 130
   },
   {
     "id": "live_route_data",
@@ -231,7 +246,8 @@ export const featureCatalog = [
     "requires": [
       "routes"
     ],
-    "kind": "page"
+    "kind": "page",
+    "place": 140
   },
   {
     "id": "conduct",
@@ -241,7 +257,8 @@ export const featureCatalog = [
       "conduct.manage"
     ],
     "requires": [],
-    "kind": "page"
+    "kind": "page",
+    "place": 150
   },
   {
     "id": "timecard.daily",
@@ -327,39 +344,39 @@ export const featureCatalog = [
   }
 ] as const;
 export const permissions = [
-  "uniforms.view",
-  "uniforms.adjust",
-  "uniforms.manage",
-  "timecard.view",
-  "timecard.manage",
   "collections.run",
-  "routes.view",
-  "routes.collect",
-  "routes.manage",
-  "dvic.view",
-  "dvic.collect",
-  "dvic.manage",
-  "weekly_scorecard.view",
-  "weekly_scorecard.collect",
-  "weekly_scorecard.manage",
-  "driver_profiles.collect",
-  "driver_match.manage",
-  "members.invite",
-  "members.manage",
-  "roles.manage",
-  "settings.manage",
-  "connections.manage",
   "communications.use",
-  "daily_performance.view",
+  "conduct.manage",
+  "conduct.use",
+  "connections.manage",
   "daily_performance.collect",
   "daily_performance.manage",
+  "daily_performance.view",
   "documents.use",
-  "slack.manage",
-  "vans.collect",
+  "driver_match.manage",
+  "driver_profiles.collect",
+  "dvic.collect",
+  "dvic.manage",
+  "dvic.view",
   "live_route_data.manage",
+  "members.invite",
+  "members.manage",
   "phones.manage",
-  "conduct.use",
-  "conduct.manage"
+  "roles.manage",
+  "routes.collect",
+  "routes.manage",
+  "routes.view",
+  "settings.manage",
+  "slack.manage",
+  "timecard.manage",
+  "timecard.view",
+  "uniforms.adjust",
+  "uniforms.manage",
+  "uniforms.view",
+  "vans.collect",
+  "weekly_scorecard.collect",
+  "weekly_scorecard.manage",
+  "weekly_scorecard.view"
 ] as const;
 export const permissionLabels = {
   "collections.run": "Run Collections",

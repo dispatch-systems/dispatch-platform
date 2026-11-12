@@ -29,6 +29,13 @@ import { openView, saveRole } from '../../core/shell/frontend/runtime/session.js
 import { getSession } from '../../core/shell/frontend/runtime/endpoints.js';
 import { cancelPrefetches } from '../../core/shell/frontend/runtime/prefetch.js';
 import { verified } from '../../core/shell/frontend/runtime/access-recovery.js';
+import {
+  clearCustomFeatures,
+  prepareCustomFeatures,
+  setPlatformCustomStyles,
+  clearPlatformFeatures,
+  preparePlatformFeatures,
+} from './private-features.js';
 
 type Session = SessionView;
 
@@ -64,6 +71,8 @@ export function useAppAdmission(
       admission.current++;
       cancelPrefetches();
       credentials(activeCsrf);
+      clearCustomFeatures();
+      clearPlatformFeatures();
       setView(undefined);
       setSwitching(
         Boolean(parseHash(window.location.hash).dspId && navigationState.current.session),
@@ -74,6 +83,22 @@ export function useAppAdmission(
         firstSession.current = undefined;
         const next = await reading;
         if (request !== sessionRequest.current) return;
+        // A signed-out document cannot include an owner's private page sources in its
+        // CSP. Signing in or completing MFA needs a fresh document before admission.
+        if (
+          afterLogin &&
+          (!next.security.required || next.security.verified) &&
+          (next.platformFrontend || next.dsps.some((dsp) => dsp.customFeatures?.length))
+        ) {
+          location.reload();
+          return;
+        }
+        const installPlatform = await preparePlatformFeatures(
+          next,
+          () => request === sessionRequest.current,
+        );
+        if (request !== sessionRequest.current) return;
+        installPlatform?.();
         credentials(next.csrf);
         setView(undefined);
         setSession(next);
@@ -108,6 +133,7 @@ export function useAppAdmission(
     return () => {
       // eslint-disable-next-line react-hooks/exhaustive-deps -- the count ends whatever request is in flight by then
       sessionRequest.current++;
+      clearPlatformFeatures();
     };
   }, [load, warmAuth]);
   useEffect(() => {
@@ -151,6 +177,10 @@ export function useAppAdmission(
         // A lazy security screen may not have committed the newly accepted session yet.
         // Dropping the DSP view must preserve that session's live CSRF credential.
         credentials(activeCsrf);
+        if (!opening) {
+          setPlatformCustomStyles(false);
+          clearCustomFeatures();
+        }
         setView(undefined);
         setSwitching(Boolean(next.dspId && current.session && (!sameWorkspace || opening)));
         setAddress(next);
@@ -178,6 +208,12 @@ export function useAppAdmission(
     };
   }, [load]);
   const { dspId, page } = address;
+  useLayoutEffect(() => {
+    setPlatformCustomStyles(
+      Boolean(session?.platformFrontend) && !dspId && !showAuth && !securityRequired,
+    );
+    return () => setPlatformCustomStyles(false);
+  }, [session, dspId, showAuth, securityRequired]);
   useEffect(() => {
     if (session && !showAuth && !securityRequired)
       void prepareRoute(
@@ -235,11 +271,15 @@ export function useAppAdmission(
     // Role changes and expired views immediately stop using the old admission.
     cancelPrefetches();
     credentials(session.csrf);
+    clearCustomFeatures();
     setView(undefined);
     setSwitching(true);
     try {
       const next = await openView(session, dspId, current);
       if (!current()) return;
+      const installCustom = await prepareCustomFeatures(next, current);
+      if (!current()) return;
+      installCustom?.();
       credentials(session.csrf, next.token);
       // The view is admitted from here, before React commits it. An address change in
       // between, a link followed as the DSP opens, must find it, rather than take the
@@ -272,6 +312,8 @@ export function useAppAdmission(
       sessionRequest.current++;
       cancelPrefetches();
       credentials('');
+      clearCustomFeatures();
+      clearPlatformFeatures();
       setSession(null);
       setView(undefined);
       setSwitching(false);
@@ -281,6 +323,7 @@ export function useAppAdmission(
   }, []);
   useEffect(() => {
     admission.current++;
+    clearCustomFeatures();
     setView(undefined);
     if (!dspId) saveRole();
     if (!session || securityRequired || showAuth) {
@@ -296,6 +339,7 @@ export function useAppAdmission(
     return () => {
       // eslint-disable-next-line react-hooks/exhaustive-deps -- the count ends whatever admission is in flight by then
       admission.current++;
+      clearCustomFeatures();
     };
   }, [session, dspId, fail, securityRequired, showAuth, reopen]);
   async function logout() {
@@ -305,6 +349,8 @@ export function useAppAdmission(
     sessionRequest.current++;
     cancelPrefetches();
     credentials('');
+    clearCustomFeatures();
+    clearPlatformFeatures();
     setSession(null);
     setView(undefined);
     navigate('');
@@ -316,10 +362,12 @@ export function useAppAdmission(
       void perform(reopen);
     });
   const closeVerification = () => setReauthenticate(false);
-  const completeVerification = async () => {
+  const completeVerification = () => {
+    // Keep the admitted page while its waiting action resumes. It may return one-time
+    // recovery codes; account settings refreshes the session once those are saved.
     verified(true);
     setReauthenticate(false);
-    await load(true);
+    return Promise.resolve();
   };
   return {
     session,

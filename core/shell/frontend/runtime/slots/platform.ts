@@ -3,7 +3,10 @@ import type { LucideIcon } from 'lucide-react';
 import type { AuditEvent } from '../../../../platform_owner/api/index.js';
 import type { JobMetrics, PageReads } from '../../../../collection/api/index.js';
 import type { PageFeature } from '../../../../tenancy/api/index.js';
-import { manifests } from './installed.js';
+import { installPlatformFeatures, platformManifests, type FrontendFeature } from './installed.js';
+import { featureLabel } from '../features.js';
+import { permissionLabels } from '../permissions.js';
+import type { Permission } from '../../../../accounts/api/index.js';
 
 // The platform owner's slots: what an owner puts in them loads only with the platform owner's
 // pages, so no other page carries it.
@@ -73,21 +76,40 @@ declare module './installed.js' {
 
 let loaded: { of: readonly unknown[]; slots: readonly PlatformSlots[] } | undefined;
 let slotsLoad: { of: readonly unknown[]; load: Promise<void> } | undefined;
+let customLabels: {
+  features: Readonly<Record<string, string>>;
+  permissions: Readonly<Record<string, string>>;
+} = { features: {}, permissions: {} };
+/** Called only after admitting a platform-owner session; cleared on identity changes. */
+export function installCustomPlatformFeatures(
+  features: readonly FrontendFeature[] = [],
+  labels: typeof customLabels = { features: {}, permissions: {} },
+) {
+  installPlatformFeatures(features);
+  customLabels = labels;
+  loaded = undefined;
+  slotsLoad = undefined;
+}
+export const platformFeatureLabel = (id: string) => customLabels.features[id] ?? featureLabel(id);
+export const platformPermissionLabel = (id: string) =>
+  customLabels.permissions[id] ?? permissionLabels[id as Permission];
 /**
  * Loads what every owner puts in the platform owner's slots, once for the manifests installed;
  * a failed load is tried again next time. The readers below find nothing until it has loaded.
  */
 export function loadPlatformSlots() {
-  const of = manifests();
+  const of = platformManifests();
   if (slotsLoad?.of !== of) {
     const load = Promise.all(
       of.flatMap(({ platformSlots }) =>
         platformSlots ? [platformSlots().then(({ slots }) => slots)] : [],
       ),
     ).then(
-      (slots) => void (loaded = { of, slots }),
+      (slots) => {
+        if (platformManifests() === of) loaded = { of, slots };
+      },
       (error: unknown) => {
-        slotsLoad = undefined;
+        if (slotsLoad?.of === of) slotsLoad = undefined;
         throw error;
       },
     );
@@ -96,7 +118,7 @@ export function loadPlatformSlots() {
   return slotsLoad.load;
 }
 /** What has loaded for the manifests installed, if it has. */
-const loadedSlots = () => (loaded?.of === manifests() ? loaded.slots : []);
+const loadedSlots = () => (loaded?.of === platformManifests() ? loaded.slots : []);
 
 /** How the mail log names an owner's kind of email, once the slots have loaded. */
 export const mailKindLabel = (kind: string) =>
@@ -104,7 +126,7 @@ export const mailKindLabel = (kind: string) =>
 /** The icon of a feature's switch: the one its platform slots name, else its page's. */
 export const switchIcon = (id: string) =>
   loadedSlots().find((slots) => slots.switch?.id === id)?.switch?.icon ??
-  manifests()
+  platformManifests()
     .find((feature) => feature.name === id)
     ?.routes?.find((route) => route.icon)?.icon;
 

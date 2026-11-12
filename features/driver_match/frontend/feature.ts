@@ -1,6 +1,6 @@
 import { createElement, lazy } from 'react';
 import { Fingerprint } from 'lucide-react';
-import { peopleFeatures } from '../../../core/manifest/api/generated/people-features.js';
+import { peopleFeatures } from '../../../core/shell/frontend/runtime/people.js';
 import { begins } from '../../../core/shell/frontend/runtime/data-policy.js';
 import { hasFeature } from '../../../core/shell/frontend/runtime/features.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';

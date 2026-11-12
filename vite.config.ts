@@ -1,12 +1,14 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { privateFeatures } from './tooling/build/private-features.js';
 import { backendProxy } from './tooling/dev/backend-paths.js';
+import { privateSourceGuard } from './tooling/dev/private-sources.js';
 // Standalone Vite defaults; npm run dev supplies its own ports and session proxy.
 const api = `http://127.0.0.1:${process.env.DISPATCH_DEV_API_PORT ?? '5180'}`;
 export default defineConfig({
   root: 'app/frontend',
   base: './',
-  plugins: [react()],
+  plugins: [react(), privateFeatures(process.cwd()), privateSourceGuard(process.cwd(), api)],
   build: {
     outDir: '../../.build/dashboard',
     emptyOutDir: true,
@@ -15,16 +17,7 @@ export default defineConfig({
     // font's is (INTER-LICENSE.txt), as their licenses ask copies to carry.
     license: { fileName: 'assets/THIRD-PARTY-LICENSES.txt' },
     rolldownOptions: {
-      output: {
-        // An owner's lazily loaded entry is `<owner>/frontend/index.ts`: name its chunk after
-        // the owner rather than the `frontend` folder, so chunks stay readable.
-        chunkFileNames: (chunk) => {
-          const owner = /[\\/]([^\\/]+)[\\/]frontend[\\/]index\.tsx?$/.exec(
-            chunk.facadeModuleId ?? '',
-          )?.[1];
-          return `assets/${chunk.name === 'frontend' && owner ? owner : '[name]'}-[hash].js`;
-        },
-      },
+      output: {},
       treeshake: {
         // The table modules run nothing when imported. Saying so lets the unused table
         // code behind the shared `ui` index leave the entry chunk, as it did before

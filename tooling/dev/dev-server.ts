@@ -5,6 +5,7 @@ import path from 'node:path';
 import { createServer, type ProxyOptions, type ViteDevServer } from 'vite';
 import { demo, fixture } from '../testing/fixture-server.js';
 import { backendProxy } from './backend-paths.js';
+import { mayReadSource, privateSources, privateSourceGuard } from './private-sources.js';
 
 const previewCookie = (value: string, port: number) =>
   value
@@ -40,27 +41,32 @@ async function enterDemo(
 
 // Cookies ignore ports. Only this preview's cookies may reach its fixture backend;
 // the backend and published application keep their normal session cookie name.
-function sessionProxy(target: string, port: number): ProxyOptions {
+function sessionCookies(header: string | undefined, port: number) {
   const cookie = `dispatch_preview_${port}`;
   const observation = `dispatch_preview_observation_${port}`;
+  return (
+    header
+      ?.split(';')
+      .map((part) => part.trim())
+      .flatMap((part) => {
+        const name = part.split('=', 1)[0]!.trim();
+        if (name === cookie) return [part.replace(cookie, 'dispatch_session')];
+        if (name === observation) return [part.replace(observation, 'dispatch_observation_read')];
+        return [];
+      })
+      .join('; ') || undefined
+  );
+}
+function sessionProxy(target: string, port: number): ProxyOptions {
   return {
     target,
     changeOrigin: false,
     configure(proxy) {
       proxy.on('proxyReq', (outgoing, incoming) => {
-        const sessions = incoming.headers.cookie
-          ?.split(';')
-          .map((part) => part.trim())
-          .flatMap((part) => {
-            const name = part.split('=', 1)[0]!.trim();
-            if (name === cookie) return [part.replace(cookie, 'dispatch_session')];
-            if (name === observation)
-              return [part.replace(observation, 'dispatch_observation_read')];
-            return [];
-          });
+        const sessions = sessionCookies(incoming.headers.cookie, port);
         // Keep malformed and duplicate cookies so the backend can reject them rather
         // than silently recovering the human session underneath observation access.
-        if (sessions?.length) outgoing.setHeader('cookie', sessions.join('; '));
+        if (sessions) outgoing.setHeader('cookie', sessions);
         else outgoing.removeHeader('cookie');
       });
       proxy.on('proxyRes', (response) => {
@@ -86,6 +92,7 @@ export async function startPreview({
   let ui: ViteDevServer | undefined;
   let app: Awaited<ReturnType<typeof fixture>> | undefined;
   const entryPath = `/__preview/${randomUUID()}`;
+  const privateSource = privateSources(cwd);
   // Bind once and retain the socket. Concurrent worktrees cannot claim the same
   // free port between discovery and startup, and HMR shares this exact server.
   const server = http.createServer((request, response) => {
@@ -105,7 +112,24 @@ export async function startPreview({
         if (address && typeof address !== 'string') void enterDemo(app, response, address.port);
       }
     } else {
-      ui.middlewares(request, response);
+      const audience = privateSource(request.url ?? '/');
+      const address = server.address();
+      if (!audience) ui.middlewares(request, response);
+      else if (address && typeof address !== 'string') {
+        const frontend = ui;
+        void mayReadSource(
+          `http://127.0.0.1:${app.env.PORT}`,
+          request,
+          sessionCookies(request.headers.cookie, address.port),
+          audience,
+        ).then((allowed) => {
+          if (allowed) frontend.middlewares(request, response);
+          else {
+            response.writeHead(404, { 'cache-control': 'private, no-store' });
+            response.end();
+          }
+        });
+      }
     }
   });
   let closing: Promise<void> | undefined;
@@ -136,6 +160,7 @@ export async function startPreview({
       configFile: path.join(cwd, 'vite.config.ts'),
       root: path.join(cwd, 'app/frontend'),
       clearScreen: false,
+      plugins: [privateSourceGuard(cwd, `http://127.0.0.1:${app.env.PORT}`)],
       server: {
         host,
         port: address.port,

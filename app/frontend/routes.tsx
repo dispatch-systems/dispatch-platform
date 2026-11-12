@@ -23,10 +23,23 @@ import {
 import { dspHash } from '../../core/shell/frontend/runtime/navigation.js';
 import type { NavItem } from '../../core/shell/frontend/shell/Shell.js';
 import { features } from './features.js';
+import {
+  manifests,
+  type FrontendFeature,
+} from '../../core/shell/frontend/runtime/slots/installed.js';
 
 // Every owner's pages, each with its navigation, access and component, in sidebar order: its
 // owner's, but a platform page that names another to follow comes right after it.
-const table: readonly Route[] = placed(features.flatMap((feature) => feature.routes ?? []));
+let owners: readonly FrontendFeature[] | undefined;
+let placedRoutes: readonly Route[] = [];
+function table() {
+  const current = manifests().length ? manifests() : features;
+  if (owners !== current) {
+    owners = current;
+    placedRoutes = placed(current.flatMap((feature) => feature.routes ?? []));
+  }
+  return placedRoutes;
+}
 function placed(routes: readonly Route[]) {
   const ordered = routes.filter((route) => route.scope !== 'platform' || !route.after);
   for (const route of routes)
@@ -44,7 +57,7 @@ const available = (route: Route, access: Access) =>
   route.scope !== 'dsp' || !route.feature || !access.view || hasFeature(access.view, route.feature);
 
 export const findRoute = (scope: Route['scope'], page: string) =>
-  table.find((route) => route.scope === scope && route.id === page);
+  table().find((route) => route.scope === scope && route.id === page);
 /** A previously rendered tab with admitted cached data can commit before the next paint. */
 export function canNavigateImmediately(scope: Route['scope'], page: string, access: Access) {
   const route = findRoute(scope, page);
@@ -87,7 +100,7 @@ export function navigation(scope: Route['scope'], access: Access): NavItem[] {
     badge: route.badge,
     preload: () => prepareRoute(scope, route.id, access),
   });
-  return sidebarItems(scope, access, table).map((each) =>
+  return sidebarItems(scope, access, table()).map((each) =>
     'sidebar' in each
       ? {
           id: each.sidebar.id,
@@ -110,7 +123,7 @@ export function navigation(scope: Route['scope'], access: Access): NavItem[] {
  */
 export const landing = (access: Access) =>
   landingPage() ??
-  table.find((route): route is DspRoute => route.scope === 'dsp' && listed(route, access))?.id;
+  table().find((route): route is DspRoute => route.scope === 'dsp' && listed(route, access))?.id;
 
 /** The page for an address, or the app's wording for one this person cannot open. */
 function PageContent({

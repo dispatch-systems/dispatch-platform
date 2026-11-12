@@ -1,4 +1,7 @@
-import { featureCatalog as generatedFeatureCatalog } from '../../../tenancy/api/generated/access-catalog.js';
+import {
+  featureCatalog as generatedFeatureCatalog,
+  permissions as publicPermissions,
+} from '../../../tenancy/api/generated/access-catalog.js';
 import type {
   ConnectionFeature,
   Feature,
@@ -17,7 +20,11 @@ type Entry<Kind, Id> = {
   requires: readonly string[];
 };
 /** `mandatory`: every DSP has it, with no switch to turn it off. */
-export type PageEntry = Entry<'page', PageFeature> & { mandatory?: boolean; provides?: undefined };
+export type PageEntry = Entry<'page', PageFeature> & {
+  place?: number;
+  mandatory?: boolean;
+  provides?: undefined;
+};
 /**
  * A part of `page`, switched on its own: one of its tabs, or another part. It exists only
  * while its page is on too, with the permissions it owns.
@@ -35,7 +42,13 @@ export type ConnectionEntry = Entry<'connection', ConnectionFeature> & {
 };
 export type FeatureEntry = PageEntry | SubEntry | ConnectionEntry;
 /** The backend-owned catalog, generated alongside the wire contracts. */
-export const featureCatalog: readonly FeatureEntry[] = generatedFeatureCatalog;
+export let featureCatalog: readonly FeatureEntry[] = generatedFeatureCatalog;
+/** Metadata admitted with the current DSP's view, discarded at every workspace boundary. */
+export function installCustomCatalog(custom?: DspView['custom']) {
+  featureCatalog = custom
+    ? [...generatedFeatureCatalog, ...(custom.catalog as unknown as FeatureEntry[])]
+    : generatedFeatureCatalog;
+}
 /** The parts of `page` switched on their own, its tabs and others, in catalog order. */
 export const subsOf = (page: string) =>
   featureCatalog.filter((f): f is SubEntry => f.kind === 'sub' && f.page === page);
@@ -62,5 +75,7 @@ export function grants(features: readonly string[], permission: Permission) {
         (f.kind === 'connection' || ('connects' in f && f.connects)) && features.includes(f.id),
     );
   const owner = featureCatalog.find((f) => f.permissions.includes(permission));
-  return !owner || features.includes(owner.id);
+  return owner
+    ? features.includes(owner.id)
+    : (publicPermissions as readonly string[]).includes(permission);
 }

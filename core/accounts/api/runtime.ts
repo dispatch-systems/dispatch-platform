@@ -56,20 +56,37 @@ const profile = z.object({
   supportVisible: z.boolean(),
   aiSupportHidden: z.boolean(),
 }) satisfies z.ZodMiniType<DspProfile>;
-const permission = z.enum(permissions);
-const feature = z.enum(features);
-const dspSummary = z.looseObject({
-  ...dsp.shape,
-  profile,
-  ownerEmail: z.nullable(text),
-  ownerStatus: z.enum(['active', 'invited', 'missing']),
-  connections: z.record(text, connectionStatus),
-  lastCollection: z.nullable(text),
-  nextCollection: z.nullable(text),
-  role: z.nullable(text),
-  features: z.array(feature),
-  members: count,
-}) satisfies z.ZodMiniType<DspSummary>;
+const publicFeatures = new Set<string>(features);
+const publicPermissions = new Set<string>(permissions);
+const customId = (id: string, code: string | null) =>
+  Boolean(
+    code &&
+    id.startsWith(`${code}_`) &&
+    /^[a-z0-9]+_[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*$/.test(id),
+  );
+const dspSummary = z
+  .looseObject({
+    ...dsp.shape,
+    profile,
+    ownerEmail: z.nullable(text),
+    ownerStatus: z.enum(['active', 'invited', 'missing']),
+    connections: z.record(text, connectionStatus),
+    lastCollection: z.nullable(text),
+    nextCollection: z.nullable(text),
+    role: z.nullable(text),
+    features: z.array(filled),
+    customFeatures: z.optional(z.array(filled)),
+    members: count,
+  })
+  .check(
+    z.refine((summary) => {
+      const custom = summary.customFeatures ?? [];
+      return (
+        custom.every((id) => customId(id, summary.code)) &&
+        summary.features.every((id) => publicFeatures.has(id) || custom.includes(id))
+      );
+    }),
+  ) satisfies z.ZodMiniType<DspSummary>;
 const securityStatus = z.object({
   enrolled: z.boolean(),
   required: z.boolean(),
@@ -108,28 +125,120 @@ const recoveryCodes = z.object({
 const passkeyOptions = z.object({
   publicKey: z.looseObject({ challenge: filled }),
 });
-export const sessionSchema = z.object({
-  user: userSchema,
-  csrf: filled,
-  dsps: z.array(dspSummary),
-  development: z.boolean(),
-  environment,
-  release: text,
-  providerMode,
-  source: z.object({ version: z.nullable(text), commit: z.nullable(text) }),
-  security: securityStatus,
-  readOnly: z.boolean(),
-}) satisfies z.ZodMiniType<SessionView>;
+export const sessionSchema = z
+  .object({
+    user: userSchema,
+    csrf: filled,
+    dsps: z.array(dspSummary),
+    platformFrontend: z.optional(filled),
+    development: z.boolean(),
+    environment,
+    release: text,
+    providerMode,
+    source: z.object({ version: z.nullable(text), commit: z.nullable(text) }),
+    security: securityStatus,
+    readOnly: z.boolean(),
+  })
+  .check(
+    z.refine(
+      (session) =>
+        !session.platformFrontend ||
+        (session.user.platformOwner &&
+          (!session.security.required || session.security.verified) &&
+          (session.platformFrontend === '/custom/platform.js' ||
+            /^\/assets\/owner-[A-Za-z0-9_.-]+\.js$/.test(session.platformFrontend))),
+    ),
+  ) satisfies z.ZodMiniType<SessionView>;
 const viewRole = z.object({ id: text, name: text, owner: z.boolean() });
-const viewSchema = z.object({
-  dsp,
-  token: filled,
-  role: viewRole,
-  roles: z.optional(z.array(viewRole)),
-  permissions: z.array(permission),
-  features: z.array(feature),
-  profile,
-}) satisfies z.ZodMiniType<DspView>;
+const customFeatures = z.object({
+  catalog: z.array(
+    z.object({
+      id: filled,
+      label: filled,
+      place: count,
+      kind: z.enum(['page', 'sub']),
+      permissions: z.array(filled),
+      requires: z.array(filled),
+      page: z.nullable(filled),
+      tab: z.boolean(),
+      connects: z.boolean(),
+    }),
+  ),
+  permissions: z.array(
+    z.object({
+      id: filled,
+      label: filled,
+      group: z.nullable(filled),
+      implied: z.array(filled),
+      under: z.nullable(filled),
+    }),
+  ),
+  frontends: z.array(
+    z.object({ name: filled, url: filled, styles: z.array(filled), place: count }),
+  ),
+});
+const viewSchema = z
+  .object({
+    dsp,
+    token: filled,
+    role: viewRole,
+    roles: z.optional(z.array(viewRole)),
+    permissions: z.array(filled),
+    features: z.array(filled),
+    custom: z.optional(customFeatures),
+    profile,
+  })
+  .check(
+    z.refine((view) => {
+      const custom = view.custom;
+      const catalog = custom?.catalog ?? [];
+      const declared = custom?.permissions ?? [];
+      const ids = new Set(catalog.map((feature) => feature.id));
+      const grants = new Set([
+        ...publicPermissions,
+        ...declared.map((permission) => permission.id),
+      ]);
+      const asset = (url: string, extension: string) =>
+        Boolean(
+          view.dsp.code &&
+          url.startsWith(`/assets/custom-${view.dsp.code}-`) &&
+          new RegExp(`^/assets/[A-Za-z0-9_.-]+\\.${extension}$`).test(url),
+        );
+      return (
+        ids.size === catalog.length &&
+        new Set(declared.map((permission) => permission.id)).size === declared.length &&
+        catalog.every(
+          (feature) =>
+            customId(feature.id, view.dsp.code) &&
+            !publicFeatures.has(feature.id) &&
+            feature.permissions.every((permission) => grants.has(permission)) &&
+            (feature.kind === 'page'
+              ? feature.page === null
+              : Boolean(
+                  feature.page &&
+                  ids.has(feature.page) &&
+                  feature.id.startsWith(`${feature.page}.`),
+                )),
+        ) &&
+        declared.every(
+          (permission) =>
+            customId(permission.id, view.dsp.code) &&
+            !publicPermissions.has(permission.id) &&
+            permission.implied.every((id) => grants.has(id)) &&
+            (!permission.under || grants.has(permission.under)),
+        ) &&
+        view.features.every((id) => publicFeatures.has(id) || ids.has(id)) &&
+        view.permissions.every((id) => grants.has(id)) &&
+        (custom?.frontends ?? []).every(
+          (entry) =>
+            catalog.some((feature) => feature.kind === 'page' && feature.id === entry.name) &&
+            view.features.includes(entry.name) &&
+            (entry.url === `/custom/${entry.name}.js` || asset(entry.url, 'js')) &&
+            entry.styles.every((url) => asset(url, 'css')),
+        )
+      );
+    }),
+  ) as z.ZodMiniType<DspView>;
 const okSchema = z.object({ ok: z.literal(true) });
 
 /** The replies of sign-in, security, the session and its DSP view, and the list of DSPs. */

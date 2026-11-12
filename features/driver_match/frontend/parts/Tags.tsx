@@ -25,6 +25,6 @@ export function LinkTag({ link }: { link: IdLink }) {
 
 /** A source, by its name, in its own tone. */
 export function SourceTag({ source }: { source: PeopleSource }) {
-  const tone = sourceKinds.indexOf(source) % 4;
+  const tone = sourceKinds().indexOf(source) % 4;
   return <span className={`driver-source tone-${tone}`}>{sourceLabel(source)}</span>;
 }

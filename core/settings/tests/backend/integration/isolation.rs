@@ -27,6 +27,11 @@ static MAINTAINED: Mutex<Option<tokio::sync::mpsc::UnboundedSender<Maintained>>>
 /// Every DSP has it, with one section of the DSP's and one each member has.
 static PROBE: Feature = Feature {
     switch: mandatory("probe", "Probe"),
+    page_sources: &[dispatch_core::manifest::page_source(
+        "probe.images",
+        dispatch_core::manifest::Loads::Images,
+        "https://shared-media.example.test",
+    )],
     settings: &[
         section(
             "probe.limits",
@@ -58,7 +63,11 @@ static PROBE: Feature = Feature {
 // an app feature, without adding a product feature to any build.
 static CUSTOM: Feature = Feature {
     switch: dispatch_core::manifest::custom("nll_probe", "Owner probe", &[]),
-    permissions: &[dispatch_core::manifest::perm("nll_probe.view", "View probe", 1).group("Probe")],
+    page_sources: &[
+        dispatch_core::manifest::page_source("nll_probe.images", dispatch_core::manifest::Loads::Images, "https://owner-media.example.test"),
+        dispatch_core::manifest::page_source("nll_probe.calls", dispatch_core::manifest::Loads::Calls, "https://owner-calls.example.test"),
+    ],
+    permissions: &[dispatch_core::manifest::perm("nll_probe.view", "View probe", 1).group("Probe").implies(&["sum_probe.view"]).under("sum_probe.view")],
     own_migrations: &[dispatch_core::db::OwnMigrations {
         kind: dispatch_core::db::Kind::DSP,
         list: &[dispatch_core::db::Migration {
@@ -88,6 +97,21 @@ static CUSTOM: Feature = Feature {
     }],
     ..feature("nll_probe")
 }.registered(Some("nll"), "nll_probe");
+static FOREIGN: Feature = Feature {
+    switch: dispatch_core::manifest::custom("sum_probe", "Foreign probe", &[]),
+    page_sources: &[dispatch_core::manifest::page_source(
+        "sum_probe.images",
+        dispatch_core::manifest::Loads::Images,
+        "https://foreign-media.example.test",
+    )],
+    permissions: &[dispatch_core::manifest::perm(
+        "sum_probe.view",
+        "Foreign permission",
+        2,
+    )],
+    ..feature("sum_probe")
+}
+.registered(Some("sum"), "sum_probe");
 fn raw_callback(
     state: Arc<State>,
     request: axum::extract::Request,
@@ -167,12 +191,47 @@ struct Answer {
 }
 impl Server {
     async fn start() -> Self {
-        testing::install(&[], &[&PROBE, &CUSTOM]);
+        testing::install(&[], &[&PROBE, &CUSTOM, &FOREIGN]);
         let root = tempfile::tempdir().unwrap();
         std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
         let dashboard = root.path().join("dashboard");
         std::fs::create_dir_all(&dashboard).unwrap();
         std::fs::write(dashboard.join("index.html"), "<html><head></head></html>").unwrap();
+        std::fs::create_dir(dashboard.join("assets")).unwrap();
+        let mut private = serde_json::Map::new();
+        for (name, body) in [
+            ("custom-nll-entry.js", "export const label = 'Owner probe';"),
+            ("custom-nll-lazy.js", "export const page = 'owner page';"),
+            ("custom-nll-style.css", ".owner-probe { color: red; }"),
+            ("custom-nll-image.svg", "<svg>owner image</svg>"),
+        ] {
+            std::fs::write(dashboard.join("assets").join(name), body).unwrap();
+            let mut entry = json!({"owner":"nll"});
+            if name == "custom-nll-entry.js" {
+                entry["feature"] = json!("nll_probe");
+                entry["styles"] = json!(["/assets/custom-nll-style.css"]);
+            }
+            private.insert(format!("/assets/{name}"), entry);
+        }
+        std::fs::write(
+            dashboard.join("assets/shared.js"),
+            "export const shared = true;",
+        )
+        .unwrap();
+        std::fs::write(
+            dashboard.join("assets/owner-runtime.js"),
+            "export const admin = true;",
+        )
+        .unwrap();
+        private.insert(
+            "/assets/owner-runtime.js".into(),
+            json!({"platform":true,"feature":"platform"}),
+        );
+        std::fs::write(
+            dashboard.join("private-assets.json"),
+            serde_json::to_vec(&private).unwrap(),
+        )
+        .unwrap();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let mut config = Config::load().unwrap();
@@ -189,6 +248,12 @@ impl Server {
         config.dsp_origin = format!("http://{{code}}.localhost:{port}");
         let store = startup::prepare_storage(config.clone()).unwrap();
         operations::seed(&store).unwrap();
+        let summit = store
+            .platform
+            .one("SELECT id FROM dsps WHERE code='sum'", [])
+            .unwrap()
+            .unwrap();
+        testing::owner_of(&store, s(&summit, "id"), "summit@dispatch.test", "Summit").unwrap();
         // A second member of Northline's, beside the one the fixtures have.
         let north = s(
             &store
@@ -334,6 +399,260 @@ impl Server {
     async fn save(&self, who: &Who, path: &str, body: Value) -> Answer {
         self.send("POST", path, who, Some(body)).await
     }
+}
+
+#[tokio::test]
+async fn custom_assets_require_the_owner_session_before_head_or_etag_handling() {
+    let server = Server::start().await;
+    let north = server.dsp("nll").await;
+    let summit = server.dsp("sum").await;
+    let owner = server.signed_in("member@dispatch.test", &north).await;
+    let foreign = server.signed_in("summit@dispatch.test", &summit).await;
+    let platform = server.signed_in("owner@dispatch.test", &summit).await;
+    let anonymous = Who {
+        cookie: String::new(),
+        csrf: String::new(),
+        view: String::new(),
+        host: owner.host.clone(),
+    };
+    for who in [&owner, &foreign] {
+        let session = server.send("GET", "/api/session", who, None).await;
+        assert!(session.body.get("platformFrontend").is_none());
+    }
+    let session = server.send("GET", "/api/session", &platform, None).await;
+    assert_eq!(session.body["platformFrontend"], "/assets/owner-runtime.js");
+    // Both sessions are valid at their own host; metadata never includes the other's IDs,
+    // even through a declared permission implication or parent.
+    let off_view = server.open(&owner, &north).await;
+    assert_eq!(off_view.body["custom"]["frontends"], json!([]));
+    assert!(!off_view.body.to_string().contains("sum_probe"));
+    assert_eq!(
+        off_view.body["custom"]["permissions"][0]["implied"],
+        json!([])
+    );
+    assert!(off_view.body["custom"]["permissions"][0]["under"].is_null());
+    let own = north.clone();
+    server
+        .state
+        .run(move |db| {
+            let actor = testing::platform_owner(db);
+            db.set_feature(&own, "nll_probe", true, &actor)?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    let own_view = server.open(&owner, &north).await;
+    assert_eq!(
+        own_view.body["custom"]["frontends"][0]["url"],
+        "/assets/custom-nll-entry.js"
+    );
+    let other_view = server.open(&foreign, &summit).await;
+    assert_eq!(other_view.status, 200);
+    assert!(!other_view.body.to_string().contains("nll_probe"));
+    assert!(!other_view.body.to_string().contains("Owner probe"));
+    let origin = format!("http://127.0.0.1:{}", server.port);
+    let request = |method, path: &str, who: &Who| {
+        server
+            .client
+            .request(method, format!("{origin}{path}"))
+            .header(
+                "host",
+                who.host
+                    .clone()
+                    .unwrap_or_else(|| format!("127.0.0.1:{}", server.port)),
+            )
+            .header("cookie", &who.cookie)
+    };
+    for (who, own_sources, foreign_sources) in [
+        (&anonymous, false, false),
+        (&owner, true, false),
+        (&foreign, false, true),
+        (&platform, true, true),
+    ] {
+        let document = request(reqwest::Method::GET, "/", who)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(document.status(), 200);
+        let csp = document.headers()["content-security-policy"]
+            .to_str()
+            .unwrap();
+        assert!(csp.contains("https://shared-media.example.test"));
+        assert_eq!(
+            csp.contains("https://owner-media.example.test"),
+            own_sources
+        );
+        assert_eq!(
+            csp.contains("https://owner-calls.example.test"),
+            own_sources
+        );
+        assert_eq!(
+            csp.contains("https://foreign-media.example.test"),
+            foreign_sources
+        );
+    }
+    for path in [
+        "/assets/custom-nll-entry.js",
+        "/assets/custom-nll-lazy.js",
+        "/assets/custom-nll-style.css",
+        "/assets/custom-nll-image.svg",
+    ] {
+        let allowed = request(reqwest::Method::GET, path, &owner)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(allowed.status(), 200, "{path}");
+        assert_eq!(allowed.headers()["cache-control"], "private, no-store");
+        let tag = allowed.headers()["etag"].clone();
+        assert!(!allowed.bytes().await.unwrap().is_empty());
+        for method in [reqwest::Method::GET, reqwest::Method::HEAD] {
+            for who in [&foreign, &anonymous] {
+                let refused = request(method.clone(), path, who)
+                    .header("if-none-match", &tag)
+                    .send()
+                    .await
+                    .unwrap();
+                assert_eq!(refused.status(), 404, "{path}");
+                assert!(refused.headers().get("etag").is_none());
+            }
+            for who in [&owner, &platform] {
+                assert_eq!(
+                    request(method.clone(), path, who)
+                        .send()
+                        .await
+                        .unwrap()
+                        .status(),
+                    200,
+                    "{path}"
+                );
+                assert_eq!(
+                    request(method.clone(), path, who)
+                        .header("if-none-match", &tag)
+                        .send()
+                        .await
+                        .unwrap()
+                        .status(),
+                    304,
+                    "{path}"
+                );
+            }
+        }
+    }
+    for who in [&owner, &foreign, &anonymous] {
+        assert_eq!(
+            request(reqwest::Method::GET, "/assets/owner-runtime.js", who)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            404
+        );
+        assert_eq!(
+            request(reqwest::Method::GET, "/assets/shared.js", who)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            200
+        );
+        assert_eq!(
+            request(reqwest::Method::GET, "/private-assets.json", who)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            404
+        );
+    }
+    assert_eq!(
+        request(reqwest::Method::GET, "/assets/owner-runtime.js", &platform)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        200
+    );
+    // A session awaiting MFA gets neither the private entry nor its CSP origins, even
+    // on /api/session, which itself remains readable to complete verification.
+    server
+        .state
+        .run(|db| {
+            let actor = testing::platform_owner(db);
+            db.directory(None)?.exec(
+                "INSERT INTO authenticator_apps(user_id,secret,created_at) VALUES (?,'sealed',1)",
+                [&actor],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    let gated = request(reqwest::Method::GET, "/api/session", &platform)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(gated.status(), 200);
+    assert!(
+        !gated.headers()["content-security-policy"]
+            .to_str()
+            .unwrap()
+            .contains("https://owner-media.example.test")
+    );
+    let gated: Value = gated.json().await.unwrap();
+    assert_eq!(gated["security"]["required"], true);
+    assert_eq!(gated["security"]["verified"], false);
+    assert!(gated.get("platformFrontend").is_none());
+    assert_eq!(
+        request(reqwest::Method::GET, "/assets/owner-runtime.js", &platform)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        404
+    );
+    let hash = crypto::sha(
+        platform
+            .cookie
+            .strip_prefix("dispatch_session=")
+            .unwrap()
+            .as_bytes(),
+    );
+    server
+        .state
+        .run(move |db| {
+            db.directory(None)?.exec(
+                "INSERT INTO session_security(session_hash,verified_at) VALUES (?,?)",
+                rusqlite::params![hash, db::now()],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    let verified = server.send("GET", "/api/session", &platform, None).await;
+    assert_eq!(
+        verified.body["platformFrontend"],
+        "/assets/owner-runtime.js"
+    );
+    assert_eq!(
+        request(reqwest::Method::GET, "/assets/owner-runtime.js", &platform)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        200
+    );
+    server
+        .state
+        .run(move |db| testing::set_dsp_status(db, &north, "suspended"))
+        .await
+        .unwrap();
+    assert_eq!(
+        request(reqwest::Method::GET, "/assets/custom-nll-entry.js", &owner)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        404
+    );
 }
 fn days(days: i64, revision: i64) -> Value {
     json!({"values": {"days": days}, "revision": revision})

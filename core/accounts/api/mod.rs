@@ -13,6 +13,11 @@ pub fn typescript(cfg: &ts_rs::Config) -> crate::Typescript {
     crate::typescript!(
         cfg,
         types::AccountSession,
+        types::CustomFeatures,
+        types::CustomFeature,
+        types::CustomKind,
+        types::CustomPermission,
+        types::CustomFrontend,
         types::AuthenticatorSetup,
         types::Dsp,
         types::DspInvitation,
