@@ -59,18 +59,32 @@ pub fn pull(
     parsed(&text, required(repository))
 }
 /// The first PR of `gh pr list --json` output, with the state of its check named `required`.
+/// A commit keeps the checks of every run it had, as when its PR was closed and reopened: the
+/// check counts in the newest run of its workflow alone, as it does for GitHub.
 fn parsed(text: &str, required: Option<&str>) -> Result<Option<Pull>> {
     let pulls: Vec<Value> = serde_json::from_str(text)?;
     let Some(found) = pulls.first() else {
         return Ok(None);
     };
     let text = |key: &str| found[key].as_str().unwrap_or_default().to_owned();
+    let checks = found["statusCheckRollup"]
+        .as_array()
+        .map_or(&[][..], Vec::as_slice);
+    // The run a check belongs to, from the address of its job.
+    let run = |check: &Value| -> Option<u64> {
+        let after = check["detailsUrl"].as_str()?.split("/runs/").nth(1)?;
+        after.split('/').next()?.parse().ok()
+    };
     let required = required.map(|required| {
-        found["statusCheckRollup"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .find(|check| check["name"] == required)
+        let named = || checks.iter().filter(|check| check["name"] == required);
+        let workflow = named().next().map(|check| &check["workflowName"]);
+        let newest = checks
+            .iter()
+            .filter(|check| Some(&check["workflowName"]) == workflow)
+            .filter_map(run)
+            .max();
+        named()
+            .find(|check| run(check) == newest)
             .map_or(Check::Missing, |check| {
                 match (check["status"].as_str(), check["conclusion"].as_str()) {
                     (Some("COMPLETED"), Some("SUCCESS")) => Check::Passed,
@@ -268,6 +282,39 @@ mod tests {
         assert_eq!(
             pull(r#",{"name":"platform","status":"COMPLETED","conclusion":"CANCELLED"}"#),
             Some(Check::Failed)
+        );
+        // A commit whose PR was reopened has two runs: the older one's verdict, a gate that
+        // failed because the reopening cancelled its jobs, no longer counts, nor does a newer
+        // run of another workflow.
+        let check = |workflow: &str, run: u64, name: &str, state: &str| {
+            format!(
+                r#",{{"name":"{name}","workflowName":"{workflow}",{state},
+                    "detailsUrl":"https://github.com/o/r/actions/runs/{run}/job/1"}}"#
+            )
+        };
+        let failed = r#""status":"COMPLETED","conclusion":"FAILURE""#;
+        let passed = r#""status":"COMPLETED","conclusion":"SUCCESS""#;
+        let older = check("Platform checks", 5, "platform", failed);
+        let caches = check("PR caches", 6, "delete", passed);
+        let newer = |name, state| check("Platform checks", 7, name, state);
+        assert_eq!(pull(&older), Some(Check::Failed));
+        assert_eq!(
+            pull(&format!("{older}{caches}{}", newer("changes", passed))),
+            Some(Check::Missing),
+            "the newer run hasn't reached its gate"
+        );
+        assert_eq!(
+            pull(&format!("{older}{caches}{}", newer("platform", passed))),
+            Some(Check::Passed)
+        );
+        assert_eq!(
+            pull(&format!(
+                "{}{}",
+                newer("platform", failed),
+                check("Platform checks", 5, "platform", passed)
+            )),
+            Some(Check::Failed),
+            "whichever GitHub lists first"
         );
         // The agent docs run no checks, so none is waited for.
         let docs = parsed(&rollup(""), required(Repository::AgentDocs))
