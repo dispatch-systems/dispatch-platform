@@ -6,7 +6,11 @@ import type { PublicUser } from "./PublicUser";
 import type { RuntimeSource } from "./RuntimeSource";
 import type { SecurityStatus } from "./SecurityStatus";
 
-export type SessionResponse = { user: PublicUser, csrf: string, dsps: Array<DspSummary>, development: boolean, environment: Environment, release: string, providerMode: ProviderMode, source: RuntimeSource, security: SecurityStatus,
+export type SessionResponse = { user: PublicUser, csrf: string, dsps: Array<DspSummary>,
+/**
+ * Private platform slots and labels, sent only to a verified platform owner.
+ */
+platformFrontend?: string, development: boolean, environment: Environment, release: string, providerMode: ProviderMode, source: RuntimeSource, security: SecurityStatus,
 /**
  * Host-issued observation and support sessions can only inspect the dashboard.
  */

@@ -81,6 +81,9 @@ pub struct FeatureState {
 #[serde(rename_all = "camelCase")]
 pub struct DspFeatureReport {
     pub features: Vec<FeatureState>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub custom: Option<Vec<crate::accounts::api::types::CustomFeature>>,
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub schedules: i64,
     #[cfg_attr(feature = "ts", ts(type = "number"))]

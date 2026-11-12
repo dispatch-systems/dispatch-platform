@@ -4,6 +4,7 @@ pub mod api;
 pub mod audit;
 pub mod beta;
 pub mod catalog;
+pub(crate) mod custom;
 pub mod deletion;
 pub mod dsps;
 pub mod roles;

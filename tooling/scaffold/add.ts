@@ -76,7 +76,14 @@ export async function planAdd(root: string, argv: string[]) {
   const custom = featureLocations(root).find((feature) => feature.name === name)?.owner;
   if (custom && piece === 'contract')
     throw new UsageError('Custom features cannot expose contracts');
-  if (piece === 'api' && exists(root, `${dir}/api`))
+  // Generated private metadata exists before a custom feature declares any API source.
+  const api = `${dir}/api`;
+  if (
+    piece === 'api' &&
+    files(root, api, /./).some(
+      (file) => file !== `${api}/generated` && !file.startsWith(`${api}/generated/`),
+    )
+  )
     throw new UsageError(`${name} has api/ already: add its endpoints there`);
   if (piece === 'page' && pageOf(root, name))
     throw new UsageError(`${name} has a page already: add a tab of it with add tab-of ${name}`);

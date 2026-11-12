@@ -219,10 +219,14 @@ test('every owner with screens has a manifest, the app lists them all, and each 
   for (const { file } of manifests)
     assert.equal(file, path.join(owner(file)!, 'frontend', 'feature.ts'));
   const listed = modules.find(({ file }) => file === FEATURES)!.eager;
+  // Custom manifests are independent owner-only entries, never public imports.
+  const shared = manifests.filter(
+    ({ file }) => !file.startsWith(path.join('features', 'custom') + path.sep),
+  );
   assert.deepEqual(
     [...listed].sort(),
-    manifests.map(({ file }) => file).sort(),
-    `${FEATURES} lists exactly every owner's frontend/feature.ts`,
+    shared.map(({ file }) => file).sort(),
+    `${FEATURES} lists exactly every shared owner's frontend/feature.ts`,
   );
   const graph = new Map(modules.map(({ file, eager }) => [file, eager]));
   for (const { file, eager, lazy } of manifests) {
@@ -261,7 +265,7 @@ test('no frontend modules import each other in a cycle', () => {
 });
 
 test('every route is declared once, its parent a route or a sidebar of pages, and every sidebar lists one', () => {
-  const entries: readonly RouteMeta[] = routeMeta;
+  const entries: readonly RouteMeta[] = routeMeta();
   const sidebars = features.flatMap((feature) => feature.sidebars ?? []);
   assert(entries.length > 0, 'the route table must declare its screens');
   for (const entry of entries) {

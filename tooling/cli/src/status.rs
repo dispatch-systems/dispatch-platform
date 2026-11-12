@@ -1,17 +1,19 @@
 //! `dispatchdev status`: where the checkout's change stands, from branch to merge, and what
 //! comes next: what is committed and pushed, its PR and required check, its tier and review,
-//! and whether what it shows was approved.
+//! and whether what it shows was approved. Checks that haven't ended say how long they have
+//! gone on, or that GitHub never started them.
 use crate::{
     Result, Runner,
     change::Repository,
+    ci::{self, Pending},
     merge::{self, Check, short},
     preview::{self, Approval},
     review::{self, Progress},
     workspace,
 };
-use std::path::Path;
+use std::{path::Path, time::SystemTime};
 
-pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
+pub fn run(root: &Path, now: SystemTime, runner: &dyn Runner) -> Result<()> {
     let git = |args: &[&str]| workspace::git(runner, root, args);
     let branch = git(&["branch", "--show-current"])?;
     if branch.is_empty() || branch == "main" {
@@ -69,6 +71,16 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
     );
     let repository = Repository::of(root, runner)?;
     let pull = merge::pull(root, repository, &branch, runner)?;
+    // How its checks are getting on, while its required one hasn't ended on this commit.
+    let pending = match &pull {
+        Some(pull)
+            if pull.head == head
+                && matches!(pull.required, Some(Check::Running | Check::Missing)) =>
+        {
+            ci::pending(root, &branch, &head, now, runner)?
+        }
+        _ => None,
+    };
     match &pull {
         None => println!("PR: none open"),
         Some(pull) => println!(
@@ -81,11 +93,17 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
                 (Some(check), true) => format!(
                     ", {}: {}",
                     merge::REQUIRED,
-                    match check {
-                        Check::Passed => "passed",
-                        Check::Running => "running",
-                        Check::Failed => "failed",
-                        Check::Missing => "not started",
+                    match (check, &pending) {
+                        (Check::Passed, _) => "passed".to_owned(),
+                        (Check::Failed, _) => "failed".to_owned(),
+                        (_, Some(Pending::Dropped { run, waited })) => format!(
+                            "never started, GitHub has left run {run} queued without a job for {}",
+                            workspace::duration(*waited)
+                        ),
+                        (_, Some(Pending::Running(waited))) =>
+                            format!("running for {}", workspace::duration(*waited)),
+                        (Check::Running, None) => "running".to_owned(),
+                        (Check::Missing, None) => "not started".to_owned(),
                     }
                 ),
             }
@@ -106,6 +124,7 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
     );
     // Nothing checks the agent docs before their PR, nor on it.
     let checked = repository == Repository::Platform;
+    let dropped = matches!(pending, Some(Pending::Dropped { .. }));
     let next = match (&pull, dirty, pushed) {
         (_, true, _) if checked => "Commit it, then `dispatchdev check`".to_owned(),
         (_, true, _) => "Commit it, then `dispatchdev pr`".to_owned(),
@@ -126,10 +145,16 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
                 }
                 (None | Some(Check::Passed), true) => "`dispatchdev merge`".to_owned(),
                 (None, false) => "GitHub's PR head isn't this commit yet: wait a moment".to_owned(),
+                (Some(_), _) if dropped => "`dispatchdev merge`, once its checks passed".to_owned(),
                 (Some(_), _) => format!("Its checks are running: {}/checks", pull.url),
             },
         },
     };
-    println!("{}", workspace::next(&[next]));
+    // A run GitHub dropped comes first: nothing that follows starts the checks.
+    let restart = dropped.then(|| ci::restart(&branch));
+    println!(
+        "{}",
+        workspace::next(&restart.into_iter().chain([next]).collect::<Vec<_>>())
+    );
     Ok(())
 }

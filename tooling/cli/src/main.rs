@@ -563,9 +563,9 @@ fn run() -> Result<()> {
             }
         },
         "merge" => merge::run(&line.root()?, &Native),
-        "ci" => ci::run(&line.root()?, &Native),
+        "ci" => ci::run(&line.root()?, std::time::SystemTime::now(), &Native),
         "landed" => ci::landed(&line.root()?, &Native, &std::thread::sleep),
-        "status" => status::run(&line.root()?, &Native),
+        "status" => status::run(&line.root()?, std::time::SystemTime::now(), &Native),
         "preview" => match line.arguments.first().map(String::as_str) {
             None => {
                 let pages: Vec<&str> = line

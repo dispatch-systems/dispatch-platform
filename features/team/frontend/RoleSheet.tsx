@@ -1,13 +1,9 @@
 import { useState } from 'react';
-import {
-  permissions as allPermissions,
-  type DspView,
-  type Permission,
-  type Role,
-} from '../../../core/accounts/api/index.js';
+import { type DspView, type Permission, type Role } from '../../../core/accounts/api/index.js';
 import { Modal, SaveChangesDialog } from '../../../core/shell/frontend/ui/index.js';
 import {
   can,
+  allPermissions,
   impliedPermissions as implied,
   permissionLabels,
   permissionParents,

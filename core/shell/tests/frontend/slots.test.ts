@@ -21,6 +21,11 @@ import {
   connectionSections,
   errorLabelOf,
   installFeatures,
+  installCustomFeatures,
+  installCustomPlatformFeatures,
+  platformFeatureLabel,
+  platformPermissionLabel,
+  routeOf,
   isLongPoll,
   pageTabs,
   runWording,
@@ -55,6 +60,58 @@ import type { Feature, PageFeature } from '../../../tenancy/api/index.js';
 const pageId = (id: string) => id as DspRouteId;
 const switchId = (id: string) => id as PageFeature;
 const loads = (slots: PlatformSlots) => async () => ({ slots });
+
+test('custom platform slots and labels survive DSP boundaries without installing DSP pages', async (t) => {
+  t.after(() => installCustomPlatformFeatures());
+  installFeatures([{ name: 'shared' }]);
+  installCustomPlatformFeatures(
+    [
+      {
+        name: 'dsp42_probe',
+        routes: [page('private-board')],
+        platformSlots: loads({
+          auditWording: { spoken: ['probe'] },
+          mailKinds: { 'probe.mail': 'Probe mail' },
+        }),
+      },
+    ],
+    { features: { dsp42_probe: 'Probe' }, permissions: { 'dsp42_probe.view': 'View probe' } },
+  );
+  installCustomFeatures([]);
+  await loadPlatformSlots();
+  assert.deepEqual(
+    auditWording().map((wording) => wording.spoken),
+    [['probe']],
+  );
+  assert.equal(platformFeatureLabel('dsp42_probe'), 'Probe');
+  assert.equal(platformPermissionLabel('dsp42_probe.view'), 'View probe');
+  assert.equal(routeOf('dsp', 'private-board'), undefined);
+  installCustomPlatformFeatures();
+  assert.deepEqual(auditWording(), []);
+  assert.equal(platformFeatureLabel('dsp42_probe'), 'dsp42_probe');
+  assert.equal(platformPermissionLabel('dsp42_probe.view'), undefined);
+});
+
+test('a late platform slot import cannot replace the next identity’s loaded wording', async (t) => {
+  t.after(() => installCustomPlatformFeatures());
+  installFeatures([]);
+  let release!: (value: { slots: PlatformSlots }) => void;
+  const held = new Promise<{ slots: PlatformSlots }>((resolve) => {
+    release = resolve;
+  });
+  installCustomPlatformFeatures([{ name: 'old', platformSlots: () => held }]);
+  const old = loadPlatformSlots();
+  installCustomPlatformFeatures([
+    { name: 'new', platformSlots: loads({ auditWording: { spoken: ['new'] } }) },
+  ]);
+  await loadPlatformSlots();
+  release({ slots: { auditWording: { spoken: ['old'] } } });
+  await old;
+  assert.deepEqual(
+    auditWording().map((wording) => wording.spoken),
+    [['new']],
+  );
+});
 
 test("a page's switch shows the icon its feature declares, once loaded", async () => {
   installFeatures([

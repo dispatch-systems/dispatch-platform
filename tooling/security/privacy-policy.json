@@ -86,6 +86,12 @@
       "rule": "known-private-identity",
       "lineSha256": "7db4abff494a0529a1f6fd00ee3c5fbdca96fcefffb2f30c3749436722cfda1b",
       "reason": "Preserve the licensor's copyright notice in the license; no fixture identity is allowed by this exception."
+    },
+    {
+      "path": "app/tests/browser/custom-features.spec.ts",
+      "rule": "known-private-identity",
+      "lineSha256": "0f7b40da7ffe7b83829e8ec857dba20ecdadd0b41c07eda424a59d084d20c3f3",
+      "reason": "Synthetic owner-code browser fixture for the requested custom feature isolation test; no live DSP data."
     }
   ],
   "assets": {

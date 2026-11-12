@@ -29,7 +29,12 @@ export const capabilityLabel = (capability: string): string =>
  * page or part needs a capability with several providers and none is on: the backend refuses
  * that switch until one is chosen. A mandatory feature or part has no switch: nothing changes.
  */
-export function previewSwitch(enabled: readonly string[], id: Feature, on: boolean) {
+export function previewSwitch(
+  enabled: readonly string[],
+  id: Feature,
+  on: boolean,
+  catalog = featureCatalog,
+) {
   const current = new Set(enabled);
   const changed: { feature: Feature; enabled: boolean }[] = [];
   const flip = (feature: FeatureEntry, to: boolean) => {
@@ -41,20 +46,20 @@ export function previewSwitch(enabled: readonly string[], id: Feature, on: boole
   const provides = (f: FeatureEntry, capability: string) =>
     f.provides?.includes(capability) ?? false;
   const provided = (capability: string) =>
-    featureCatalog.some((f) => provides(f, capability) && current.has(f.id));
+    catalog.some((f) => provides(f, capability) && current.has(f.id));
   // On, and with its page on for a part: what exists.
   const live = (f: FeatureEntry) => current.has(f.id) && (f.kind !== 'sub' || current.has(f.page));
-  const feature = featureCatalog.find((f) => f.id === id)!;
+  const feature = catalog.find((f) => f.id === id)!;
   if (feature.mandatory) return changed;
   if (on) {
     for (const capability of feature.provides ?? [])
-      for (const other of featureCatalog)
+      for (const other of catalog)
         if (provides(other, capability) && other.id !== feature.id) flip(other, false);
     // Each capability `f` requires that no connection on provides, from its one provider.
     const connect = (f: FeatureEntry) => {
       for (const capability of f.requires) {
         if (provided(capability)) continue;
-        const providers = featureCatalog.filter((p) => provides(p, capability));
+        const providers = catalog.filter((p) => provides(p, capability));
         if (providers.length !== 1) return false;
         flip(providers[0]!, true);
       }
@@ -63,22 +68,23 @@ export function previewSwitch(enabled: readonly string[], id: Feature, on: boole
     if (!connect(feature)) return undefined;
     flip(feature, true);
     // A page shows one of its tabs at least: its first, when none is on.
-    const own = tabsOf(feature.id);
+    const own = tabsOf(feature.id, catalog);
     if (own[0] && !own.some((t) => current.has(t.id))) flip(own[0], true);
     // A page's parts that come on with it need their connections too.
-    for (const part of subsOf(feature.id)) if (live(part) && !connect(part)) return undefined;
+    for (const part of subsOf(feature.id, catalog))
+      if (live(part) && !connect(part)) return undefined;
   } else {
     flip(feature, false);
     // Then whatever is left short, until nothing more is.
     let before: number;
     do {
       before = changed.length;
-      for (const page of featureCatalog) {
+      for (const page of catalog) {
         if (page.kind !== 'page' || !live(page)) continue;
-        const own = tabsOf(page.id);
+        const own = tabsOf(page.id, catalog);
         if (own.length && !own.some((t) => current.has(t.id))) flip(page, false);
       }
-      for (const f of featureCatalog)
+      for (const f of catalog)
         if (f.kind !== 'connection' && live(f) && !f.requires.every(provided)) flip(f, false);
     } while (changed.length !== before);
   }
@@ -91,11 +97,12 @@ export function previewSwitch(enabled: readonly string[], id: Feature, on: boole
 export const sideEffects = (
   feature: FeatureEntry,
   changes: readonly { feature: Feature; enabled: boolean }[],
+  catalog = featureCatalog,
 ) =>
   changes.filter(
     (change) =>
       change.feature !== feature.id &&
-      !(change.enabled && tabsOf(feature.id).some((tab) => tab.id === change.feature)),
+      !(change.enabled && tabsOf(feature.id, catalog).some((tab) => tab.id === change.feature)),
   );
 /** A switch's name in a question or a notice: a tab says it is one. */
 export const switchLabel = (feature: FeatureEntry) =>

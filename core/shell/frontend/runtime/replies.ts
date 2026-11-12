@@ -1,11 +1,10 @@
 import { checkReply, type Method, type ReplyContext } from '../../../foundation/api/runtime.js';
 import { replies as accounts } from '../../../accounts/api/runtime.js';
 import { replies as collection } from '../../../collection/api/runtime.js';
-import { replies as platformOwner } from '../../../platform_owner/api/runtime.js';
 import { replies as settings } from '../../../settings/api/runtime.js';
 import { loadReplyChecks } from './slots.js';
 
-const core = [accounts, collection, platformOwner, settings];
+const core = [accounts, collection, settings];
 
 /**
  * A reply, checked by core's validators for its route or else by those an installed owner gives
@@ -19,6 +18,13 @@ export async function parseApiResponse(
   context?: ReplyContext,
 ): Promise<unknown> {
   const route = path.split('?')[0]!;
-  const owners = core.some((replies) => replies(route, method)) ? core : await loadReplyChecks();
-  return checkReply(owners, path, method, value, context);
+  if (core.some((replies) => replies(route, method)))
+    return checkReply(core, path, method, value, context);
+  if (route.startsWith('/api/platform/')) {
+    // Its audit subjects include every owner's declarations. Only a successful platform
+    // response needs this validator; the asset server admits its chunk to platform owners.
+    const { replies } = await import('../../../platform_owner/api/runtime.js');
+    if (replies(route, method)) return checkReply([replies], path, method, value);
+  }
+  return checkReply(await loadReplyChecks(), path, method, value, context);
 }

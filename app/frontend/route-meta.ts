@@ -1,5 +1,6 @@
 import { title } from '../../core/shell/frontend/lib/format.js';
 import { features } from './features.js';
+import { manifests } from '../../core/shell/frontend/runtime/slots/installed.js';
 
 export type RouteMeta = {
   id: string;
@@ -11,9 +12,10 @@ export type RouteMeta = {
 
 // Every page's address and label, as the owners' manifests declare them, without their
 // components.
-export const routeMeta: readonly RouteMeta[] = features.flatMap((feature) =>
-  (feature.routes ?? []).map(({ id, scope, label, parent }) => ({ id, scope, label, parent })),
-);
+export const routeMeta = (): readonly RouteMeta[] =>
+  (manifests().length ? manifests() : features).flatMap((feature) =>
+    (feature.routes ?? []).map(({ id, scope, label, parent }) => ({ id, scope, label, parent })),
+  );
 
 export const routeLabel = (scope: RouteMeta['scope'], page: string) =>
-  routeMeta.find((route) => route.scope === scope && route.id === page)?.label ?? title(page);
+  routeMeta().find((route) => route.scope === scope && route.id === page)?.label ?? title(page);

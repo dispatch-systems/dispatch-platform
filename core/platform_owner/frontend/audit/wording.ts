@@ -1,5 +1,4 @@
 import type { AuditChange, AuditEvent } from '../../api/index.js';
-import type { Permission } from '../../../accounts/api/index.js';
 import { errorLabel } from '../../../shell/frontend/runtime/api.js';
 import {
   calendarDay,
@@ -8,8 +7,11 @@ import {
   timeOfDay,
   title,
 } from '../../../shell/frontend/lib/format.js';
-import { permissionLabels } from '../../../shell/frontend/runtime/permissions.js';
-import { featureCatalog, featureLabel } from '../../../shell/frontend/runtime/features.js';
+import { featureCatalog } from '../../../shell/frontend/runtime/features.js';
+import {
+  platformFeatureLabel as featureLabel,
+  platformPermissionLabel,
+} from '../../../shell/frontend/runtime/slots.js';
 import { collections } from '../../../collection/api/generated/collections.js';
 import type { BackupRuleInput } from '../../../backups/api/index.js';
 import { keepText, ruleText } from '../dsps/backupRules.js';
@@ -340,7 +342,7 @@ function ownerValue(field: string, value: string) {
   return undefined;
 }
 export function changeValue(field: string, value: string) {
-  if (field === 'permission') return permissionLabels[value as Permission] ?? title(value);
+  if (field === 'permission') return platformPermissionLabel(value) ?? title(value);
   if (field === 'enabled') return value === 'true' ? 'On' : 'Off';
   if (field === 'collection')
     return scheduleLabel(value) ?? ownerValue(field, value) ?? title(value);
