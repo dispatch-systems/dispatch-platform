@@ -9,7 +9,7 @@ pub use crate::tenancy::audit::{AuditChange, AuditQuery};
 pub use connection::{Db, boolean, flag, n, s};
 pub use files::{key_file, lock_file, private_dir, private_file, read_only, retire, write_private};
 pub use migrations::{
-    Kind, Migration, Migrations, OwnMigrations, migrate, migrate_for, owned_ledger,
+    Kind, Migration, Migrations, OwnMigrations, OwnedMigration, migrate, migrate_for, owned_ledger,
 };
 pub use row::{FromRow, Row};
 /// Core's own databases, what its parts add to them and the tables it keeps, as the

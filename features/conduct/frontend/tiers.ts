@@ -1,6 +1,5 @@
 import type {
   ConductFinalKind,
-  ConductOverview,
   ConductStanding,
   ConductTier,
   ConductWriteupRow,
@@ -43,34 +42,6 @@ export function printedDay(day: string) {
 export function suggestedTier(standing: ConductTier | undefined, start: ConductTier) {
   const next = standing ? Math.min(tiers.indexOf(standing) + 1, tiers.length - 1) : 0;
   return tiers[Math.max(next, tiers.indexOf(start))]!;
-}
-
-/**
- * Where `person` stands in `category` for a writeup being written, and their writeups in it
- * since their record there was last clean, oldest first. For the writeup `editing`, in its own
- * person and category, where they stood just before it.
- */
-export function record(
-  overview: ConductOverview,
-  person: string,
-  category: string,
-  editing?: string,
-): { stood: ConductTier | undefined; earlier: ConductWriteupRow[] } {
-  const theirs = overview.writeups.filter((w) => w.person === person && w.categoryId === category);
-  const at = editing ? theirs.findIndex((w) => w.id === editing) : -1;
-  const stood =
-    at >= 0
-      ? overview.stoodBefore[editing!]
-      : overview.standings.find((s) => s.person === person && s.categoryId === category)?.tier;
-  const earlier: ConductWriteupRow[] = [];
-  if (stood) {
-    // Back from the newest, to the one written while their record was clean.
-    for (const w of theirs.slice(at + 1)) {
-      earlier.push(w);
-      if (!overview.stoodBefore[w.id]) break;
-    }
-  }
-  return { stood, earlier: earlier.reverse() };
 }
 
 /** When someone next steps down in a category, if they ever do. */

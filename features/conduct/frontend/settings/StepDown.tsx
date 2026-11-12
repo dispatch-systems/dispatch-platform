@@ -81,3 +81,10 @@ export function StepDown({
     </div>
   );
 }
+
+/** The policy as a category row names it. */
+export function stepDownRule(step: ConductStepDown | null) {
+  if (!step) return 'Never';
+  const unit = step.after === 1 ? step.unit.slice(0, -1) : step.unit;
+  return `${step.kind === 'reset' ? 'Full reset' : 'Reduce one tier'} · ${step.after} ${unit}`;
+}

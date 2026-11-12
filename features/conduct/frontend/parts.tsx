@@ -6,6 +6,7 @@ import type {
   ConductTier,
   ConductWriteupRow,
 } from '../api/index.js';
+import { indexOf } from './data.js';
 import { finalNote, printedDay, tierShort } from './tiers.js';
 
 // The small pieces every screen of Conduct draws alike.
@@ -59,11 +60,11 @@ export function Person({ person, large = false }: { person: ConductPerson; large
 
 /** The person `code` names, as the page's data knows them. */
 export const personOf = (overview: ConductOverview, code: string): ConductPerson =>
-  overview.people.find((p) => p.code === code) ?? { code, name: code, photo: null, left: true };
+  indexOf(overview).people.get(code) ?? { code, name: code, photo: null, left: true };
 
 /** The name of the category `id`. */
 export const categoryName = (overview: ConductOverview, id: string) =>
-  overview.categories.find((c) => c.id === id)?.name ?? id;
+  indexOf(overview).categories.get(id)?.name ?? id;
 
 /** What opens a table's row, for the keyboard: the row itself opens it for a pointer. */
 export function RowLink({ open, children }: { open: () => void; children: ReactNode }) {

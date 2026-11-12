@@ -78,12 +78,7 @@
 }
 .backups-spin {
   color: var(--muted-foreground);
-  animation: backups-spin 1s linear infinite;
-}
-@keyframes backups-spin {
-  to {
-    transform: rotate(360deg);
-  }
+  animation: dispatch-spin 1s linear infinite;
 }
 
 .backups-body {

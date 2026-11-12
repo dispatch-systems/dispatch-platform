@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useSettled } from '../../../core/shell/frontend/runtime/useSettled.js';
 import {
   ExternalLink,
   FileUp,
@@ -44,7 +45,6 @@ import {
   shown,
   trails,
   useFolder,
-  useSettled,
   type Asked,
   type Filter,
   type Layout,
@@ -273,7 +273,7 @@ export function Browser({
         </div>
         <div className="heading-actions">
           <a
-            className="documents-link-button"
+            className="link-button documents-link-button"
             href={read?.url ?? connection.folderUrl}
             target="_blank"
             rel="noreferrer"
@@ -283,7 +283,7 @@ export function Browser({
           </a>
           <Popover
             className="row-menu documents-upload"
-            triggerClassName="documents-link-button"
+            triggerClassName="link-button documents-link-button"
             label="Upload"
             trigger={
               <>

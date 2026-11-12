@@ -45,7 +45,7 @@ export function WorkspaceCard({
             </button>
           )}
           {configures && settings && (
-            <a className="slack-link-button" href={settings}>
+            <a className="link-button slack-link-button" href={settings}>
               <Settings2 size={16} />
               Settings
             </a>

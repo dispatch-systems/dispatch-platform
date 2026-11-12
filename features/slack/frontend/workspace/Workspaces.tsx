@@ -35,7 +35,7 @@ export function Workspaces({ session, view }: { session: SessionView; view: DspV
                 title="No Slack workspaces"
                 action={
                   connections && (
-                    <a className="slack-link-button" href={connections}>
+                    <a className="link-button slack-link-button" href={connections}>
                       Connections
                     </a>
                   )

@@ -22,13 +22,22 @@ with a photo of the paper if they like.
 - **Page:** Conduct, in a DSP's sidebar: Drivers (each driver at a tier, their tier in each
   category) and Writeups (every writeup), a driver's own page (each category's tier and when it
   next steps down), a writeup's, and the form that
-  writes or changes one beside its notice. What it shows is in the address (`frontend/address.ts`)
-  so Back and links work.
-- **API** (`api/routes.rs`): `GET /api/dsp/conduct` reads everything the page draws, and every
-  write answers with it again, so the page shows a change at once. Writeups under
+  writes or changes one beside its notice. Its search, category, tier and signature filters are in the address (`frontend/address.ts`),
+  so Back and links restore them; page cursors and scroll return with the list.
+- **API** (`api/routes.rs`): `GET /api/dsp/conduct` reads compact categories, people, current standings,
+  driver totals and category counts. It uses the shared read cache, evicted by Conduct, DSP
+  and directory changes, with the DSP-local date in its key. The page consumes prefetched
+  data, revalidates while visible and at the DSP date boundary, and refreshes before starting
+  a notice. `GET /api/dsp/conduct/writeups` returns a bounded page filtered by person, search,
+  category, tier and signature state, with a cursor naming the complete date/creation/id
+  ordering. Merged directory codes are resolved before filtering.
+  `GET /api/dsp/conduct/context` supplies standing and previous notices at the selected
+  notice date, preserving an edited notice's position within that day. A writeup mutation
+  answers with that writeup; category mutations answer with the compact overview. Writeups under
   `/api/dsp/conduct/writeups[/{id}[/sign|/delete|/copy]]`, behind `conduct.use`; categories under
-  `/api/dsp/conduct/categories[/{id}[/retire|/restore]]`, behind `conduct.manage`, as is
-  `GET /api/dsp/conduct/backup`: where the DSP's files are kept, by the name members know that
+  `/api/dsp/conduct/categories[/{id}[/retire|/restore]]`, behind `conduct.manage`, as are the read-only
+  `GET /api/dsp/conduct/categories/{id}/impact` preview of a proposed step-down rule,
+  bound to the category revision, and `GET /api/dsp/conduct/backup`: where the DSP's files are kept, by the name members know that
   by; whether the backup is failing; why, in the words of what keeps them: why it can't keep
   them now, or why it didn't keep the copy tried latest; and how many signed copies aren't
   backed up yet. It answers only a member who may still read it once those are asked.
@@ -43,6 +52,10 @@ with a photo of the paper if they like.
     directory (`people::everyone`) and keeps their name as printed; the page shows whoever the
     code names now, a merged person's code finding whoever kept their IDs. Signed, it never
     changes again, nor can it be deleted. Edits name the revision they read.
+  - `conduct_requests`: actor-bound receipts for copy uploads and signatures, committed with
+    the mutation. Retrying the same request returns its result; another actor, payload or
+    notice cannot reuse it. Receipts cascade with unsigned deletion so an older release can
+    still delete unsigned notices.
   - `conduct_copies`: the photo of a writeup's signed paper, which the page shrinks to 2000
     pixels before sending. A signed writeup's photo, once kept, stays.
   - `conduct_backups`: each signed copy as it's backed up: where it was saved, or how many tries
@@ -79,17 +92,22 @@ with a photo of the paper if they like.
 
 - `backend/standing.rs`: the tier rules, climbing and stepping down: where each person stands in
   each category, when they next step down, and where they stood before each writeup.
-- `backend/categories.rs`, `writeups.rs`, `copies.rs`: their storage and checks.
+- `backend/categories.rs`, `writeups.rs`, `copies.rs`, `requests.rs`: their storage, revision
+  checks and retry receipts.
+- `backend/history.rs`: paginated history, date-specific drafting and category policy impact.
 - `backend/backups.rs`: backing signed copies up, and how it's going.
-- `backend/overview.rs`: the page's one read, with each writeup's person as the directory knows
-  them now.
+- `backend/overview.rs`: compact summaries, with people as the directory knows them now.
+- `frontend/writeups/`: photo preview, rotation and retake before signing; cancellation during
+  preparation and a non-dismissible commit phase; signed photos with explicit retry and enlargement.
 - `frontend/tiers.ts`: how tiers read and climb on the page, from what the server works out,
   and what a writeup prints.
 - `frontend/notice/`: the notice, laid out in points as the DSP's own form so it prints on one
-  letter page, a section too long for its four lines shrinking to fit; its fixed wording in
+  letter page, a section too long for its four lines shrinking to fit, with printing refused below 7pt
+  and all saved text preserved; responsive width fitting and an enlarged reading view; its fixed wording in
   `wording.ts`; printing it alone; and in `fonts/`, the free fonts it falls back on where a
   computer lacks Arial Narrow, Arial or Snell Roundhand, each with its license.
-- `frontend/compose/`: the writeup form; `draft.ts` fills it as a person and a category are
+- `frontend/compose/`: the writeup form, searchable driver picker and directly editable
+  template blanks, with full-text editing and client-side section limits; `draft.ts` fills it as a person and a category are
   chosen, keeping whatever someone changed.
 - `frontend/drivers/`, `frontend/writeups/`, `frontend/settings/`: each screen;
   `settings/StepDown.tsx` sets a category's step down.

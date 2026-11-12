@@ -1,0 +1,25 @@
+/* Driver choices in Pick driver and Save contact keep the same row. */
+.pick-driver-panel li button,
+.contact-people button {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  width: 100%;
+  min-height: 0;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-weight: 400;
+  text-align: left;
+}
+.pick-driver-panel li button:hover,
+.contact-people button:hover {
+  background: var(--accent);
+}
+.pick-driver-panel strong,
+.contact-people strong {
+  font-size: var(--ui-size);
+  font-weight: 500;
+}

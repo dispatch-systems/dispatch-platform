@@ -10,6 +10,86 @@ use dispatch_core::testing;
 
 const TODAY: &str = "2026-11-08";
 
+#[test]
+fn uncertain_copy_and_sign_responses_replay_only_the_same_actors_operation() {
+    let (_root, store, c) = ready();
+    let id = add(
+        &store,
+        &c,
+        &subject(),
+        &writing("tardies", ConductTier::Verbal, None),
+        TODAY,
+    )
+    .unwrap();
+    let photo = [0xff, 0xd8, 0xff, 0xdb];
+    let copy_request = Some("copy-request-123456789");
+    copies::keep_requested(&store, &c, &id, 1, &photo, copy_request).unwrap();
+    // The upload committed but the caller did not receive it: its retry is a read of the receipt.
+    copies::keep_requested(&store, &c, &id, 1, &photo, copy_request).unwrap();
+    assert_eq!(read(&store, &c.dsp.id, &id).unwrap().row.revision, 2);
+    assert_eq!(
+        copies::keep_requested(&store, &c, &id, 1, &[0xff, 0xd8, 0xff, 0xe0], copy_request)
+            .unwrap_err()
+            .code,
+        "conduct_request_conflict"
+    );
+    let mut other = c.clone();
+    other.auth.user.id = "another-supervisor".into();
+    assert_eq!(
+        copies::keep_requested(&store, &other, &id, 1, &photo, copy_request)
+            .unwrap_err()
+            .code,
+        "conduct_request_conflict"
+    );
+    let signing = Some("sign-request-123456789");
+    sign_requested(&store, &c, &id, 2, "2026-11-03", TODAY, signing).unwrap();
+    sign_requested(&store, &c, &id, 2, "2026-11-03", TODAY, signing).unwrap();
+    assert_eq!(read(&store, &c.dsp.id, &id).unwrap().row.revision, 3);
+    assert_eq!(
+        sign_requested(&store, &c, &id, 2, "2026-11-04", TODAY, signing)
+            .unwrap_err()
+            .code,
+        "conduct_request_conflict"
+    );
+    assert_eq!(
+        sign_requested(&store, &other, &id, 2, "2026-11-03", TODAY, signing)
+            .unwrap_err()
+            .code,
+        "conduct_request_conflict"
+    );
+    // The preceding release deletes unsigned rows without knowing about receipts.
+    let unsigned = add(
+        &store,
+        &c,
+        &subject(),
+        &writing("tardies", ConductTier::Verbal, None),
+        TODAY,
+    )
+    .unwrap();
+    copies::keep_requested(
+        &store,
+        &c,
+        &unsigned,
+        1,
+        &photo,
+        Some("legacy-delete-123456789"),
+    )
+    .unwrap();
+    let db = store.dsp(&c.dsp.id).unwrap();
+    db.exec("DELETE FROM conduct_copies WHERE writeup_id=?", [&unsigned])
+        .unwrap();
+    db.exec("DELETE FROM conduct_writeups WHERE id=?", [&unsigned])
+        .unwrap();
+    assert_eq!(
+        db.count(
+            "SELECT COUNT(*) FROM conduct_requests WHERE writeup_id=?",
+            [&unsigned]
+        )
+        .unwrap(),
+        0
+    );
+}
+
 fn subject() -> Subject {
     Subject {
         code: "P-0001".into(),

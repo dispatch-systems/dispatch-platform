@@ -1,7 +1,4 @@
-import {
-  readUpdateState,
-  useUpdateState,
-} from '../../../core/shell/frontend/runtime/navigation-state.js';
+import { useUpdateState } from '../../../core/shell/frontend/runtime/navigation-state.js';
 import {
   lazy,
   Suspense,
@@ -26,7 +23,6 @@ import { prefetchRouteData } from '../../../core/shell/frontend/runtime/route-pr
 import { prefetchTimecardTab } from './prefetch.js';
 import { usePaycomDate } from './DateControls.js';
 import {
-  dspHash,
   navigate,
   pageHash,
   settingsHash,
@@ -34,6 +30,7 @@ import {
 import { SourceSyncStatus } from './SourceSyncStatus.js';
 import { EmployeePeriodSync } from './tabs/employees/EmployeePeriodSync.js';
 import { useDailySync } from './useDailySync.js';
+import { shownTimecardTabs, preferredTimecardTab, selectedTimecardTab } from './tabs.js';
 
 const loadEmployees = () => import('./tabs/employees/EmployeesPage.js');
 const loadTimecards = () => import('./tabs/daily/TimecardsPage.js');
@@ -50,23 +47,6 @@ function loadTab(tab: string) {
       : loadTimecards();
 }
 
-// Each is a tab the platform switches on its own; the page has at least one while on.
-const tabs = [
-  ['timecards', 'Timecard', 'timecard.daily'],
-  ['meal-breaks', 'Meal Breaks', 'timecard.meal_breaks'],
-  ['employees', 'Employees', 'timecard.employees'],
-] as const;
-
-function selectedTimecardTab(view: DspView) {
-  const selected = readUpdateState<string | undefined>(
-    'paycom-tab',
-    undefined,
-    dspHash(view.dsp.id, 'paycom'),
-  );
-  const shown = tabs.filter(([, , feature]) => hasFeature(view, feature));
-  return shown.some(([id]) => id === selected) ? selected! : (shown[0]?.[0] ?? 'timecards');
-}
-
 const committedTabs = new Set<string>();
 function CommittedTab({ tab, children }: { tab: string; children: ReactNode }) {
   useLayoutEffect(() => {
@@ -76,12 +56,12 @@ function CommittedTab({ tab, children }: { tab: string; children: ReactNode }) {
 }
 
 export function preloadTimecardPage(view: DspView) {
-  return loadTab(selectedTimecardTab(view));
+  return loadTab(selectedTimecardTab(view) ?? 'timecards');
 }
 
 /** Import completion alone does not mean React has resolved the selected lazy component. */
 export function isTimecardPageReady(view: DspView) {
-  return committedTabs.has(selectedTimecardTab(view));
+  return committedTabs.has(selectedTimecardTab(view) ?? 'timecards');
 }
 
 export function PaycomPage({ view }: { view: DspView }) {
@@ -98,10 +78,8 @@ export function PaycomPage({ view }: { view: DspView }) {
   const { date, today, selectDate } = usePaycomDate(view.dsp.id, view.dsp.timezone);
   const settings = usePaycomSettings();
   useCollectionUpdates();
-  const shownTabs = tabs.filter(([, , feature]) => hasFeature(view, feature));
-  const ownTab = shownTabs.some(([id]) => id === selectedTab)
-    ? selectedTab!
-    : (shownTabs[0]?.[0] ?? 'timecards');
+  const shownTabs = shownTimecardTabs(view);
+  const ownTab = preferredTimecardTab(shownTabs, selectedTab) ?? 'timecards';
   const hosting = usePageTabs(
     'paycom',
     shownTabs.map(([id, label]) => [id, label]),

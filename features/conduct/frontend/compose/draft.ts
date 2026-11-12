@@ -1,10 +1,11 @@
 import type {
-  ConductOverview,
+  ConductCategory,
+  ConductContext,
   ConductTier,
   ConductWriteup,
   WriteupInput,
 } from '../../api/index.js';
-import { blank, priorLine, record, suggestedTier } from '../tiers.js';
+import { blank, priorLine, suggestedTier } from '../tiers.js';
 import type { FinalChoice } from './TierPicker.js';
 
 // A writeup as it's being written, and how choosing who it's for and its category fills it.
@@ -54,17 +55,13 @@ export const draftOf = (writeup: ConductWriteup): Draft => ({
  * record there was last clean. For `editing`, where they stood just before it.
  */
 export function filled(
-  overview: ConductOverview,
-  person: string,
-  category: string,
-  editing?: string,
+  kind: ConductCategory | undefined,
+  context: ConductContext | undefined,
 ): Filled | undefined {
-  const kind = overview.categories.find((c) => c.id === category);
-  if (!person || !kind) return undefined;
-  const { stood, earlier } = record(overview, person, category, editing);
-  const line = priorLine(kind.name, earlier);
+  if (!kind || !context) return undefined;
+  const line = priorLine(kind.name, context.earlier);
   return {
-    tier: suggestedTier(stood, kind.startTier),
+    tier: suggestedTier(context.standing ?? undefined, kind.startTier),
     statement: kind.statement,
     prior: line ? `${kind.prior}\n${line}` : kind.prior,
     plan: kind.plan,
@@ -115,6 +112,8 @@ export function missing(draft: Draft): string | undefined {
   if (draft.tier === 'final' && draft.final === 'suspension' && !draft.suspension.trim())
     return 'Enter how long the suspension is.';
   const sections = [draft.statement, draft.prior, draft.plan];
+  if (sections.some((text) => [...text].length > 4000))
+    return 'Each section can contain up to 4,000 characters.';
   if (sections.some((text) => !text.trim())) return 'Fill in every section.';
   if (sections.some((text) => text.match(blank))) return 'Fill in the blanks marked in yellow.';
   return undefined;

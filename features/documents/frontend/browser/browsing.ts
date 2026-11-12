@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useSyncExternalStore } from 'react';
 import { hashQuery } from '../../../../core/shell/frontend/runtime/navigation.js';
 import type { DocumentsItem, FolderStep, NewKind } from '../../api/client.js';
 
@@ -47,15 +47,6 @@ export function useFolder() {
     },
     () => hashQuery().get('folder') ?? undefined,
   );
-}
-/** `value`, once it stops changing for a moment. */
-export function useSettled(value: string, ms = 150) {
-  const [settled, setSettled] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setSettled(value), ms);
-    return () => clearTimeout(timer);
-  }, [value, ms]);
-  return settled;
 }
 
 export const LAYOUT = 'documents.layout';

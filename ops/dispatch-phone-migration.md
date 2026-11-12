@@ -47,9 +47,13 @@ and a unit test is not evidence of a phone updating or of a successful productio
    aliases for offline phones; their removal is a separate decision. Historical migrations,
    audit facts and compatibility declarations can retain the former name.
 
-The first step is implemented by this change. Subsequent steps require their own reviewed
-implementation and evidence; this document does not assert that a storage migration already
-exists or is safe to activate.
+The address bridge is implemented. The first storage compatibility piece recognizes both
+migration-owner names without rewriting receipts or replaying applied steps. It still records
+new steps under `communications`. This is not the completed storage bridge: mutable settings,
+permissions, integrations, table layouts and bytes still need their own compatibility work.
+Before renaming the feature folder, teach the shipped-source history rule to resolve declared
+lineage while preserving its existing digests and history entries. No storage rename is safe
+to activate on the strength of migration-owner compatibility alone.
 
 ## Identity inventory
 

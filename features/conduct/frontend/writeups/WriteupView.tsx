@@ -1,26 +1,14 @@
 import { useState } from 'react';
 import { ChevronLeft, PenLine, Pencil, Printer, Trash2 } from 'lucide-react';
-import { ConfirmDialog, DataState } from '../../../../core/shell/frontend/ui/index.js';
-import { usePicture } from '../../../../core/shell/frontend/runtime/usePicture.js';
+import { ConfirmDialog, DataState, ErrorBox } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
-import type { ConductOverview, ConductSaved, ConductWriteup } from '../../api/index.js';
-import { copyUrl, deleteWriteup, useWriteup } from '../../api/client.js';
-import { Notice } from '../notice/Notice.js';
+import type { ConductOverview, ConductWriteup } from '../../api/index.js';
+import { deleteWriteup, readWriteup, useWriteup } from '../../api/client.js';
+import { NoticePaper } from '../notice/NoticePaper.js';
+import { SignedCopy } from './SignedCopy.js';
 import { usePrintNotice } from '../notice/usePrintNotice.js';
 import { SignedState, categoryName, personOf } from '../parts.js';
 import { SignDialog } from './SignDialog.js';
-
-/** The photo of a writeup's signed paper. */
-function SignedCopy({ writeup }: { writeup: ConductWriteup }) {
-  const [box, src, lost] = usePicture<HTMLDivElement>(
-    `${copyUrl(writeup.id)}?v=${writeup.revision}`,
-  );
-  return (
-    <div ref={box} className="conduct-copy">
-      {src && <img src={src} alt="Signed copy" onError={lost} />}
-    </div>
-  );
-}
 
 /** One writeup as it prints: printed, changed or deleted until it's signed, then only printed. */
 export function WriteupView({
@@ -34,13 +22,15 @@ export function WriteupView({
   id: string;
   back: () => void;
   edit: () => void;
-  take: (overview: ConductOverview) => void;
+  take: (overview?: ConductOverview) => void;
 }) {
-  const row = overview.writeups.find((w) => w.id === id);
-  // Read again whenever the list says it changed.
-  const read = useWriteup(id, row ? `${row.revision}-${row.hasCopy}` : undefined);
-  const { print, sheet } = usePrintNotice();
-  const [signing, setSigning] = useState(false);
+  const read = useWriteup(id);
+  const { print, sheet, error: printError } = usePrintNotice();
+  const [signing, setSigning] = useState<ConductWriteup>();
+  const beginSign = useAction(async () => {
+    const fresh = await readWriteup(id);
+    if (!fresh.signedOn) setSigning(fresh);
+  });
   const [deleting, setDeleting] = useState(false);
   const remove = useAction(
     async (revision: number) => {
@@ -55,6 +45,7 @@ export function WriteupView({
         <ChevronLeft size={15} />
         Conduct
       </button>
+      <ErrorBox message={printError} />
       <DataState data={read.data} error={read.error} retry={read.refresh}>
         {(writeup) => {
           const person = personOf(overview, writeup.person);
@@ -85,30 +76,33 @@ export function WriteupView({
                     Print
                   </button>
                   {!writeup.signedOn && (
-                    <button type="button" className="primary" onClick={() => setSigning(true)}>
+                    <button
+                      type="button"
+                      className="primary"
+                      disabled={beginSign.busy}
+                      onClick={() => void beginSign.run()}
+                    >
                       <PenLine size={16} />
                       Mark signed
                     </button>
                   )}
                 </div>
               </div>
-              <div className="conduct-paper">
-                <Notice content={writeup} />
-              </div>
+              <NoticePaper content={writeup} />
               {writeup.hasCopy && (
                 <section className="conduct-copy-section">
                   <h2 className="conduct-section-title">Signed copy</h2>
-                  <SignedCopy writeup={writeup} />
+                  <SignedCopy id={writeup.id} revision={writeup.revision} />
                 </section>
               )}
               {signing && (
                 <SignDialog
                   overview={overview}
-                  writeup={writeup}
-                  close={() => setSigning(false)}
-                  signed={(saved: ConductSaved) => {
-                    take(saved.overview);
-                    setSigning(false);
+                  writeup={signing}
+                  close={() => setSigning(undefined)}
+                  signed={() => {
+                    take();
+                    setSigning(undefined);
                   }}
                 />
               )}

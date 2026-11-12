@@ -15,6 +15,18 @@ button {
 button:hover {
   background: var(--accent);
 }
+.link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--control-height);
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.link-button:hover {
+  background: var(--accent);
+}
 button:disabled {
   opacity: 0.5;
   cursor: default;
