@@ -363,9 +363,10 @@ export function useAppAdmission(
     });
   const closeVerification = () => setReauthenticate(false);
   const completeVerification = async () => {
+    // Keep the admitted page while its waiting action resumes. It may return one-time
+    // recovery codes; account settings refreshes the session once those are saved.
     verified(true);
     setReauthenticate(false);
-    await load(true);
   };
   return {
     session,
