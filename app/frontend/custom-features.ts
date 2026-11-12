@@ -154,7 +154,6 @@ export async function prepareCustomFeatures(view: DspView, current: () => boolea
     activeStyles = new Set(css.map((style) => style.href));
     for (const style of css) cachedStyles.set(style.href, style);
     sourceStyles();
-    for (const style of css) style.media = 'all';
   };
 }
 
