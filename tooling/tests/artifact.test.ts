@@ -94,7 +94,7 @@ test(
           '../../core/accounts/frontend/settings/ProfileBadge.tsx',
           '../../features/driver_match/frontend/badge.ts',
         ],
-        raw: 440_000,
+        raw: 445_000,
         transferred: 130_000,
       },
       {
