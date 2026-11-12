@@ -1188,7 +1188,7 @@ fn the_agent_docs_pr_is_published_reviewed_and_merged_with_no_check() {
     assert_eq!(published.url, Github::PULL);
     let repository = ["--repo", Repository::AgentDocs.name()];
     assert_eq!(github.last()[3..6], ["7", repository[0], repository[1]]);
-    crate::status::run(root, github).unwrap();
+    crate::status::run(root, std::time::UNIX_EPOCH, github).unwrap();
     let waits = error(crate::merge::run(root, github));
     assert!(waits.contains("It isn't reviewed"), "{waits}");
 
