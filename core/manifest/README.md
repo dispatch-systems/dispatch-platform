@@ -40,6 +40,7 @@ Every field of `Feature`, as `feature.rs` fills it.
 | `routes`                   | `mod.rs`          | Its endpoints, each with its path and access, which the server checks before a handler runs; listed in its `tests/api/routes.txt`.           |
 | `env`                      | `env`             | The server's environment variables it reads with `config.setting`, in groups that go together; part of a group refuses to start.             |
 | `settings`                 | `settings`        | Its sections of a DSP's Settings, each of fields saved together, which Settings draws and core keeps: `settings::read` reads them.           |
+| `settings_keys`            | `settings`        | Raw DSP setting keys with accepted aliases, normalized within the declaring feature's tenant scope.                                          |
 | `keeps`                    | `keeping`         | The collections it keeps: for each, what a run needs, how what it brings is stored, what a schedule of it queues and who sets it (`Keeper`). |
 | `schedule_aliases`         | `keeping`         | A name a schedule collects by that reads one of its collections another way, as Routes' Today so far, offered as its rules' choice.          |
 | `live`                     | `mod.rs`          | The permissions that may follow its collections' progress through the collection updates the dashboard waits on.                             |

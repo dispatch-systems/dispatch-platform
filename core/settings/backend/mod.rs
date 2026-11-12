@@ -3,6 +3,7 @@
 //!
 //! `store` owns records, `kinds` validates fields, `read` and `save` serve product callers,
 //! and `api` serves members. `forget_member` removes a member's own settings.
+mod aliases;
 #[path = "../api/mod.rs"]
 pub mod api;
 pub(crate) mod kinds;
@@ -10,6 +11,8 @@ mod read;
 mod save;
 mod store;
 
+pub(crate) use aliases::prepare;
+pub use aliases::{read_key, write_key};
 pub use read::{read, read_member};
 pub(crate) use save::save_listing;
 pub use save::{Saved, save};

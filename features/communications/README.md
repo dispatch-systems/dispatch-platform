@@ -22,6 +22,14 @@ IDs and timestamps remain unchanged, and new steps still record `communications`
 either owner prevents an applied migration running again after a rename or rollback. It does
 not activate a stored-identity, table or attachment migration.
 
+Display and Quick replies accept the future section IDs `dispatch_phone.display` and
+`dispatch_phone.quick_replies`, and the raw quick-reply payload accepts the future key too.
+Reads and writes keep one authority and preserve revision checks. Startup can rekey these
+records back to this bridge's canonical names after rollback, retaining every member's
+settings and the raw payload. Conflicting records stop preparation instead of guessing a
+winner. The browser normalizes known section IDs before prefetch/cache use; this does not yet
+switch feature, permission, integration or Settings page identities.
+
 ## Purpose
 
 The DSP's direct messages with the members of its Slack workspaces, and the texts its dispatch

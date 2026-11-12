@@ -7,18 +7,22 @@ import { dataCache } from './data-cache.js';
 import { clearDestinations } from './navigation.js';
 import { mutationAffects } from './data-policy.js';
 import { errorLabelOf, isLongPoll } from './slots.js';
+import type { ReplyContext } from '../../../foundation/api/runtime.js';
+let replyContext: ReplyContext = {};
 export let csrf = '',
   view = '';
 /** Whose view a view token is: its DSP, and the role viewed as, without its signature. */
 export const viewing = (token: string) => token.slice(0, token.lastIndexOf('.') + 1);
-export function credentials(nextCsrf: string, nextView = '') {
+export function credentials(nextCsrf: string, nextView = '', dsp?: ReplyContext['dsp']) {
   if (csrf && csrf !== nextCsrf) {
     clearNavigationState();
     clearDestinations();
   }
+  // A view token is signed for its DSP at its revision: another DSP or code is another view.
   if (csrf !== nextCsrf || view !== nextView) dataCache.clear();
   csrf = nextCsrf;
   view = nextView;
+  replyContext = { dsp };
 }
 export class ApiError extends Error {
   constructor(
@@ -148,11 +152,13 @@ async function request<T>(
   signal: AbortSignal | undefined,
   priority: 'auto' | 'high' | 'low',
 ): Promise<T> {
+  const method = body === undefined ? 'GET' : 'POST';
   const finish = body === undefined ? undefined : beginBrowserWrite();
   const requestView = view;
+  const requestContext = replyContext;
   try {
     const response = await fetch(url, {
-      method: body === undefined ? 'GET' : 'POST',
+      method,
       credentials: 'same-origin',
       priority,
       headers: {
@@ -187,7 +193,7 @@ async function request<T>(
       );
     }
     try {
-      const parsed = (await parseApiResponse(url, body === undefined ? 'GET' : 'POST', value)) as T;
+      const parsed = (await parseApiResponse(url, method, value, requestContext)) as T;
       if (body !== undefined && requestView === view)
         dataCache.invalidate((key) => mutationAffects(url, key));
       return parsed;

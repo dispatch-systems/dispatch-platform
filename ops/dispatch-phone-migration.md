@@ -55,6 +55,12 @@ Before renaming the feature folder, teach the shipped-source history rule to res
 lineage while preserving its existing digests and history entries. No storage rename is safe
 to activate on the strength of migration-owner compatibility alone.
 
+Settings compatibility is the next piece: section IDs and raw setting keys accept explicit
+aliases, preserve member/DSP revisions and payloads, and rekey one record per family within
+its tenant. Conflicting records are preserved and stop normalization. Browser section IDs are
+normalized before cache insertion. Feature/permission/integration identities, Settings page
+addresses and physical storage layouts remain separate unfinished gates.
+
 ## Identity inventory
 
 | Surface                     | Existing identity                                                                                                     | Proposed active identity and preservation                                                                                                               |

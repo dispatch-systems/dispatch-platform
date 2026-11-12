@@ -28,7 +28,9 @@ export async function saveSettings(section: string, save: SettingsSave) {
   if ('section' in answer && current && dataCache.session === session)
     dataCache.put(settingsRead, {
       ...current,
-      sections: current.sections.map((each) => (each.id === section ? answer.section : each)),
+      sections: current.sections.map((each) =>
+        each.id === answer.section.id ? answer.section : each,
+      ),
     });
   if ('section' in answer && answer.reopen)
     window.dispatchEvent(new Event('dispatch-view-expired'));

@@ -90,6 +90,7 @@ pub const FEATURE: Feature = Feature {
             "communications_text_origins",
         ],
     )],
+    settings_keys: &[backend::quick_replies::KEPT],
     migration_aliases: &["dispatch_phone"],
     own_migrations: &[OwnMigrations {
         kind: Kind::DSP,

@@ -91,7 +91,7 @@ pub(crate) fn sections(
     let mut sections = Vec::with_capacity(seen.len());
     for ((feature, section), (page, label, group, order)) in seen {
         let member = (section.scope == Scope::Member).then(|| c.actor());
-        let record = records.of(section, member);
+        let record = records.of(section, member)?;
         let shown = match view(db, c, &mut lists, feature, section, page.clone(), record) {
             Ok(shown) => shown,
             Err(error) => {
@@ -145,7 +145,7 @@ pub(crate) fn save_as(
 ) -> Result<SettingsSaved> {
     let (feature, section) = declared
         .into_iter()
-        .find(|(feature, section)| section.id == id && shown(c, *feature, section))
+        .find(|(feature, section)| section.accepts(id) && shown(c, *feature, section))
         .ok_or_else(|| Error::new("not_found", 404))?;
     ensure(c.allows(section.permission), "permission_denied", 403)?;
     let body: SettingsSave =
@@ -181,7 +181,8 @@ fn visible(c: &Context, feature: Option<&Feature>, section: &Section) -> bool {
 /// Whether the DSP has `section` as the member sees it: core's always, a feature's while it,
 /// and its part, are on and not hidden from them.
 fn shown(c: &Context, feature: Option<&Feature>, section: &Section) -> bool {
-    feature.is_none_or(|feature| c.has(feature.switch.id))
+    feature
+        .is_none_or(|feature| feature.belongs_to(c.dsp.code.as_deref()) && c.has(feature.switch.id))
         && section.part.is_none_or(|part| c.has(part))
 }
 

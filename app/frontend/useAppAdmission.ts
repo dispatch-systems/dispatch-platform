@@ -280,7 +280,7 @@ export function useAppAdmission(
       const installCustom = await prepareCustomFeatures(next, current);
       if (!current()) return;
       installCustom?.();
-      credentials(session.csrf, next.token);
+      credentials(session.csrf, next.token, next.dsp);
       // The view is admitted from here, before React commits it. An address change in
       // between, a link followed as the DSP opens, must find it, rather than take the
       // moment for a workspace boundary and drop the view with nothing to reopen it.

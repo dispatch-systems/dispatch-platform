@@ -13,6 +13,28 @@ fn checked(feature: &'static Feature) {
 const FIELDS: &[Field] = &[toggle("enabled", "On", true)];
 
 #[test]
+fn aliases_cannot_claim_another_setting_owner_or_member_key() {
+    let declared = |aliases| {
+        Box::leak(Box::new(Feature {
+            switch: optional("x", "X", &[]),
+            settings: Box::leak(Box::new([
+                section("x.policy", "Policy", "access", FIELDS).aliases(aliases)
+            ])),
+            ..feature("x")
+        }))
+    };
+    checked(declared(&["next_x.policy"]));
+    for aliases in [
+        &["x.policy"][..],
+        &["accounts.theme"][..],
+        &["x.policy:member"][..],
+        &["next_x.policy", "next_x.policy"][..],
+    ] {
+        assert!(std::panic::catch_unwind(|| checked(declared(aliases))).is_err());
+    }
+}
+
+#[test]
 #[should_panic(expected = "x's section x.policy is under y.manage, which it doesn't declare")]
 fn a_section_under_another_features_permission_is_refused() {
     static X: Feature = Feature {

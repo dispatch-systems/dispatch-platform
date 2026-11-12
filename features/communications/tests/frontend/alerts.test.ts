@@ -95,11 +95,26 @@ test('every message waiting is remembered, however many wait', () => {
 });
 
 /** The member's choices of how a new message alerts them, as Settings answers them. */
-const chose = (notifications: boolean) =>
-  ({
-    pages: [],
-    sections: [{ id: 'communications.display', values: { sound: false, notifications } }],
-  }) as unknown as SettingsAnswer;
+const chose = (notifications: boolean): SettingsAnswer => ({
+  pages: [{ id: 'display', label: 'Display', group: 'personal', order: 95 }],
+  sections: [
+    {
+      id: 'communications.display',
+      page: 'display',
+      label: 'Message display',
+      order: 0,
+      scope: 'member',
+      custom: true,
+      collection: null,
+      reader: null,
+      fields: [],
+      values: { sound: false, notifications },
+      revision: 0,
+      sources: [],
+      keywords: [],
+    },
+  ],
+});
 /** Until what's queued has had its turn. */
 const turns = () => new Promise((resolve) => setImmediate(resolve));
 
