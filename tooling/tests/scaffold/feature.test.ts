@@ -691,6 +691,14 @@ test('--custom separates the owner folder from prefixed identities and fixes imp
   );
   assert.match(file(plan, 'Cargo.toml'), /"features\/custom\/dsp42\/fuel_log"/);
   assert.match(file(plan, `${dir}/tests/backend/storage.rs`), /set_code\(&dsp, "dsp42"\)/);
+  // No demo DSP has its code: before the screenshot, its note gives one the code and switches
+  // the feature on, by the name its switch has.
+  const notes = plan.notes.join('\n');
+  assert.match(notes, /dsps\/<id>\/code --data '\{"code":"dsp42"\}'/);
+  assert.match(
+    notes,
+    /dsps\/<id>\/features --data '\{"feature":"dsp42_fuel_log","enabled":true\}'/,
+  );
   for (const code of ['x', 'DSP42', '../dsp42', 'fs_cl', 'abcdefghijklmnopq'])
     await refused(/DSP code/, 'fuel_log', '--custom', code);
   await refused(/optional/, 'fuel_log', '--custom', 'dsp42', '--mandatory');

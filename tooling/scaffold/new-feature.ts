@@ -699,10 +699,11 @@ export const settingsNote = (name: string, slug: string) =>
 
 /**
  * The commands that show what the feature shows on the dev server, as the fixtures' Dev DSP has
- * it, once `npm run dev` restarts on the backend the feature changed.
+ * it, once `npm run dev` restarts on the backend the feature changed. No demo DSP has a custom
+ * feature's code, so its note gives Dev DSP the code and switches the feature on first.
  */
 function devServerNote(values: Values) {
-  const { slug, hostPage, hostLabel } = values;
+  const { name, owner, slug, hostPage, hostLabel } = values;
   const opens = (
     [
       [values.page, `--page ${slug}`, 'its page'],
@@ -716,7 +717,14 @@ function devServerNote(values: Values) {
   const shown = opens.map(
     ([, args, what]) => `\`dispatchdev shot --dsp dev ${args}\` shows ${what}`,
   );
-  return `Restart \`npm run dev\` for its backend; then ${shown.join('; ')}.`;
+  const restart = 'Restart `npm run dev` for its backend';
+  if (!owner) return `${restart}; then ${shown.join('; ')}.`;
+  const post = '`dispatchdev api POST /api/platform/dsps/<id>';
+  return (
+    `${restart}. No demo DSP has the code ${owner}: with Dev DSP's id from ` +
+    `\`dispatchdev api GET /api/session\`, ${post}/code --data '{"code":"${owner}"}'\`, then ` +
+    `${post}/features --data '{"feature":"${name}","enabled":true}'\`. Then ${shown.join('; ')}.`
+  );
 }
 
 /** Where a page reads what's exposed, whose `ExposedName` names each one a page shows. */
