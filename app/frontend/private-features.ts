@@ -1,26 +1,18 @@
 import type { DspView, SessionView } from '../../core/accounts/api/index.js';
 
-type Modules = {
-  custom: typeof import('./custom-features.js');
-  platform: typeof import('./platform-features.js');
-};
-let loaded: Modules | undefined;
-let reading: Promise<Modules> | undefined;
-let customGeneration = 0;
-let platformGeneration = 0;
+type Implementation = typeof import('./custom-features.js');
+let loaded: Implementation | undefined;
+let reading: Promise<Implementation> | undefined;
 let platformStyles = false;
 
-// Ordinary DSPs need none of the private admission machinery. Keep its synchronous
-// boundary hooks once loaded, including while a feature's own import is still pending.
+// Once private admission has loaded, workspace boundaries clear it synchronously even
+// while a feature's own import is pending. The caller's admission guards staged loads.
 function load() {
-  return (reading ??= Promise.all([
-    import('./custom-features.js'),
-    import('./platform-features.js'),
-  ])
-    .then(([custom, platform]) => {
-      loaded = { custom, platform };
-      custom.setPlatformCustomStyles(platformStyles);
-      return loaded;
+  return (reading ??= import('./custom-features.js')
+    .then((implementation) => {
+      loaded = implementation;
+      implementation.setPlatformCustomStyles(platformStyles);
+      return implementation;
     })
     .catch((error: unknown) => {
       reading = undefined;
@@ -28,29 +20,23 @@ function load() {
     }));
 }
 export function clearCustomFeatures() {
-  customGeneration++;
-  loaded?.custom.clearCustomFeatures();
+  loaded?.clearCustomFeatures();
 }
 export function clearPlatformFeatures() {
-  platformGeneration++;
   platformStyles = false;
-  loaded?.platform.clearPlatformFeatures();
+  loaded?.clearPlatformFeatures();
 }
 export function setPlatformCustomStyles(active: boolean) {
   platformStyles = active;
-  loaded?.custom.setPlatformCustomStyles(active);
+  loaded?.setPlatformCustomStyles(active);
 }
 export async function prepareCustomFeatures(view: DspView, current: () => boolean) {
   if (!view.custom) return;
-  const generation = customGeneration;
-  const { custom } = await load();
-  const admitted = () => generation === customGeneration && current();
-  if (admitted()) return custom.prepareCustomFeatures(view, admitted);
+  const implementation = await load();
+  if (current()) return implementation.prepareCustomFeatures(view, current);
 }
 export async function preparePlatformFeatures(session: SessionView, current: () => boolean) {
   if (!session.platformFrontend) return;
-  const generation = platformGeneration;
-  const { platform } = await load();
-  const admitted = () => generation === platformGeneration && current();
-  if (admitted()) return platform.preparePlatformFeatures(session, admitted);
+  const implementation = await load();
+  if (current()) return implementation.preparePlatformFeatures(session, current);
 }

@@ -1,4 +1,4 @@
-import type { DspView, Permission } from '../../core/accounts/api/index.js';
+import type { DspView, Permission, SessionView } from '../../core/accounts/api/index.js';
 import { installCustomCatalog } from '../../core/shell/frontend/runtime/features.js';
 import { installCustomPermissions } from '../../core/shell/frontend/runtime/permissions.js';
 import {
@@ -7,6 +7,7 @@ import {
 } from '../../core/shell/frontend/runtime/people.js';
 import {
   installCustomFeatures,
+  installCustomPlatformFeatures,
   type FrontendFeature,
 } from '../../core/shell/frontend/runtime/slots.js';
 
@@ -155,4 +156,35 @@ export async function prepareCustomFeatures(view: DspView, current: () => boolea
     sourceStyles();
     for (const style of css) style.media = 'all';
   };
+}
+
+type PlatformLoaded = {
+  features: readonly FrontendFeature[];
+  featureLabels: Readonly<Record<string, string>>;
+  permissionLabels: Readonly<Record<string, string>>;
+};
+let platformGeneration = 0;
+
+export function clearPlatformFeatures() {
+  platformGeneration++;
+  setPlatformCustomStyles(false);
+  installCustomPlatformFeatures();
+}
+
+/** The server supplies this private entry only to verified platform owners. */
+export async function preparePlatformFeatures(session: SessionView, current: () => boolean) {
+  if (
+    !session.user.platformOwner ||
+    (session.security.required && !session.security.verified) ||
+    !session.platformFrontend
+  )
+    return;
+  const request = platformGeneration;
+  const loaded = (await import(/* @vite-ignore */ session.platformFrontend)) as PlatformLoaded;
+  if (!current() || request !== platformGeneration) return;
+  return () =>
+    installCustomPlatformFeatures(loaded.features, {
+      features: loaded.featureLabels,
+      permissions: loaded.permissionLabels,
+    });
 }
