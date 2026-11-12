@@ -14,25 +14,27 @@ export function FeatureSwitchDialog({
   feature,
   on,
   enabled,
+  catalog = featureCatalog,
   onClose,
   onConfirm,
 }: {
   feature: FeatureEntry;
   on: boolean;
   enabled: readonly string[];
+  catalog?: readonly FeatureEntry[];
   onClose: () => void;
   /** Called once it's asked for, with every switch it changes. */
   onConfirm: (changes: { feature: string; enabled: boolean }[]) => void;
 }) {
-  const preview = previewSwitch(enabled, feature.id, on);
-  const entry = (id: string) => featureCatalog.find((f) => f.id === id)!;
+  const preview = previewSwitch(enabled, feature.id, on, catalog);
+  const entry = (id: string) => catalog.find((f) => f.id === id)!;
   // The capabilities the page lacks a provider of, when one must be chosen first.
   const unmet = preview
     ? []
     : feature.requires.filter(
-        (c) => !featureCatalog.some((f) => f.provides?.includes(c) && enabled.includes(f.id)),
+        (c) => !catalog.some((f) => f.provides?.includes(c) && enabled.includes(f.id)),
       );
-  const others = sideEffects(feature, preview ?? []);
+  const others = sideEffects(feature, preview ?? [], catalog);
   // The capability two features have in common, or the first one either supplies or needs.
   const shared = (
     a: { provides?: readonly string[]; requires: readonly string[] },
@@ -50,11 +52,11 @@ export function FeatureSwitchDialog({
       return 'has no other tab on';
     if (on && change.enabled) {
       // The feature, or a part of a page on with it, that needs what comes on.
-      const parts = feature.kind === 'page' ? subsOf(feature.id) : [];
+      const parts = feature.kind === 'page' ? subsOf(feature.id, catalog) : [];
       const needing =
         [feature, ...parts].find((f) => f.requires.some((c) => other.provides?.includes(c))) ??
         feature;
-      return `${featureLabel(needing.id)} needs ${capabilityLabel(shared(needing, other))}`;
+      return `${featureLabel(needing.id, catalog)} needs ${capabilityLabel(shared(needing, other))}`;
     }
     if (on) return `one ${capabilityLabel(shared(feature, other)).replace(/^an? /, '')} at a time`;
     return `needs ${capabilityLabel(shared(other, feature))}`;
@@ -67,7 +69,7 @@ export function FeatureSwitchDialog({
           <ul className="dsp-switch-effects">
             {others.map((change) => (
               <li key={change.feature}>
-                <strong>{featureLabel(change.feature)}</strong>
+                <strong>{featureLabel(change.feature, catalog)}</strong>
                 <span>{why(change)}</span>
               </li>
             ))}

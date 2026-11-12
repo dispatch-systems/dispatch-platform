@@ -9,13 +9,13 @@ import {
   useDspFeatures,
 } from '../../api/client.js';
 import {
-  featureCatalog,
   featureLabel,
   subsOf,
   type ConnectionEntry,
   type FeatureEntry,
   type PageEntry,
 } from '../../../shell/frontend/runtime/features.js';
+import { featureCatalog as publicCatalog } from '../../../tenancy/api/generated/access-catalog.js';
 import { useUpdateState } from '../../../shell/frontend/runtime/navigation-state.js';
 import {
   hashQuery,
@@ -32,32 +32,35 @@ const byLabel = (a: { label: string }, b: { label: string }) => a.label.localeCo
 // AI Support isn't in the catalog: its switch shows or hides the DSP's button alone.
 const aiSupport = { id: 'ai_support', label: 'AI Support', kind: 'support' } as const;
 type Item = PageEntry | ConnectionEntry | typeof aiSupport;
-// The list's groups, each alphabetical: the optional features with AI Support, the connections,
-// then what every DSP has.
-const groups: [string, readonly Item[]][] = [
-  [
-    'Features',
+// Each DSP gets only its own custom declarations alongside the shared catalog.
+function grouped(
+  catalog: readonly FeatureEntry[],
+  custom: ReadonlySet<string>,
+): [string, readonly Item[]][] {
+  return [
     [
-      ...featureCatalog.filter((f): f is PageEntry => f.kind === 'page' && !f.mandatory),
-      aiSupport,
-    ].sort(byLabel),
-  ],
-  [
-    'Connections',
-    featureCatalog.filter((f): f is ConnectionEntry => f.kind === 'connection').sort(byLabel),
-  ],
-  [
-    'Every DSP',
-    featureCatalog.filter((f): f is PageEntry => f.kind === 'page' && !!f.mandatory).sort(byLabel),
-  ],
-];
-const items = groups.flatMap(([, members]) => members);
-// The connections that supply what a feature or part requires.
-const suppliers = (feature: FeatureEntry) =>
-  featureCatalog.filter(
-    (f): f is ConnectionEntry =>
-      f.kind === 'connection' && feature.requires.some((c) => f.provides.includes(c)),
-  );
+      'Features',
+      [
+        ...catalog.filter(
+          (f): f is PageEntry => f.kind === 'page' && !f.mandatory && !custom.has(f.id),
+        ),
+        aiSupport,
+      ].sort(byLabel),
+    ],
+    [
+      'Custom',
+      catalog.filter((f): f is PageEntry => f.kind === 'page' && custom.has(f.id)).sort(byLabel),
+    ],
+    [
+      'Connections',
+      catalog.filter((f): f is ConnectionEntry => f.kind === 'connection').sort(byLabel),
+    ],
+    [
+      'Every DSP',
+      catalog.filter((f): f is PageEntry => f.kind === 'page' && !!f.mandatory).sort(byLabel),
+    ],
+  ];
+}
 // Who among the DSP's people sees an optional feature or part, from the most to the fewest.
 const sights: readonly (readonly [Visibility, string])[] = [
   ['shown', 'Everyone'],
@@ -112,11 +115,28 @@ function nameInAddress(id: string) {
 // platform owner keeps it.
 export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () => void }) {
   const { data, error, refresh } = useDspFeatures(dsp.id);
+  const custom = useMemo(() => new Set(dsp.customFeatures ?? []), [dsp.customFeatures]);
+  const catalog = useMemo<readonly FeatureEntry[]>(
+    () => [
+      ...publicCatalog,
+      ...((data?.custom ?? []).filter((entry) =>
+        custom.has(entry.id),
+      ) as unknown as FeatureEntry[]),
+    ],
+    [data?.custom, custom],
+  );
+  const groups = grouped(catalog, custom);
+  const items = groups.flatMap(([, members]) => members);
+  const suppliers = (feature: FeatureEntry) =>
+    catalog.filter(
+      (f): f is ConnectionEntry =>
+        f.kind === 'connection' && feature.requires.some((c) => f.provides.includes(c)),
+    );
   const [query, setQuery] = useUpdateState('dsp-feature-query', '');
   const [filter, setFilter] = useUpdateState<Filter>('dsp-feature-filter', 'all');
   const [chosen, setChosen] = useState(() => hashQuery().get('feature') ?? '');
   // A switch that takes other features with it, asked about before it is made.
-  const [asking, setAsking] = useState<{ feature: FeatureEntry; on: boolean }>();
+  const [asking, setAsking] = useState<{ dsp: string; feature: FeatureEntry; on: boolean }>();
   // As read, with what was changed here over it: each change shows at once and saves behind the
   // ones before it, and once the last is saved the DSP's features are read again and the list's
   // counts follow. Before the features are read, what the DSP's summary says is on.
@@ -161,12 +181,12 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
     return (
       item.kind === 'page' &&
       has(item) &&
-      [item, ...subsOf(item.id).filter(has)].some((f) => reaches(f) === to)
+      [item, ...subsOf(item.id, catalog).filter(has)].some((f) => reaches(f) === to)
     );
   };
   const named = (item: Item) => {
     const words = query.trim().toLowerCase();
-    return [item, ...subsOf(item.id)].some((f) => f.label.toLowerCase().includes(words));
+    return [item, ...subsOf(item.id, catalog)].some((f) => f.label.toLowerCase().includes(words));
   };
   const listed = groups
     .map(([name, members]) => [name, members.filter((m) => named(m) && passes(m, filter))] as const)
@@ -206,13 +226,13 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
         ),
     );
   const toggle = (feature: FeatureEntry, on: boolean) => {
-    const preview = previewSwitch(enabled, feature.id, on);
+    const preview = previewSwitch(enabled, feature.id, on, catalog);
     // Alone, or already as asked: no question to ask.
-    if (preview && !sideEffects(feature, preview).length) {
+    if (preview && !sideEffects(feature, preview, catalog).length) {
       if (preview.length) switchTo(feature, on, preview);
       return;
     }
-    setAsking({ feature, on });
+    setAsking({ dsp: dsp.id, feature, on });
   };
   const see = (feature: FeatureEntry, to: Visibility) =>
     change(
@@ -270,7 +290,7 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
     const widest = reach(visibility(page));
     return (
       <ul className="dsp-feature-rows" aria-label={`${page.label}'s parts`}>
-        {subsOf(page.id).map((part) => {
+        {subsOf(page.id, catalog).map((part) => {
           const sight = reaches(part);
           const needs = suppliers(part).map((f) => f.label);
           return (
@@ -307,12 +327,12 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
         <>
           <h4 className="dsp-group">Used by</h4>
           <ul className="dsp-feature-rows">
-            {featureCatalog
+            {catalog
               .filter((f) => f.kind !== 'connection' && suppliers(f).includes(item))
               .map((f) =>
                 link(
                   f.kind === 'sub' ? f.page : f.id,
-                  featureLabel(f.id),
+                  featureLabel(f.id, catalog),
                   <small>{has(f) ? 'On' : 'Off'}</small>,
                 ),
               )}
@@ -347,7 +367,7 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
             </div>
           </>
         )}
-        {subsOf(item.id).length > 0 && (
+        {subsOf(item.id, catalog).length > 0 && (
           <>
             <h4 className="dsp-group">Parts</h4>
             {parts(item)}
@@ -443,11 +463,12 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
           </section>
         )}
       </div>
-      {asking && data && (
+      {asking?.dsp === dsp.id && data && (
         <FeatureSwitchDialog
           feature={asking.feature}
           on={asking.on}
           enabled={enabled}
+          catalog={catalog}
           onClose={() => setAsking(undefined)}
           onConfirm={(changes) => {
             setAsking(undefined);

@@ -326,7 +326,7 @@ pub struct CustomFeatures {
     pub permissions: Vec<CustomPermission>,
     pub frontends: Vec<CustomFrontend>,
 }
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "core/accounts/api/generated/"))]
 #[serde(rename_all = "lowercase")]
@@ -334,7 +334,7 @@ pub enum CustomKind {
     Page,
     Sub,
 }
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "core/accounts/api/generated/"))]
 pub struct CustomFeature {

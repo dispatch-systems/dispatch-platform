@@ -13,7 +13,11 @@ import {
 } from '../../../core/shell/tests/support/fixtures.js';
 import { capturedMail } from '../../../core/shell/tests/support/mail-support.js';
 import { virtualAuthenticator } from '../../../core/accounts/tests/support/authenticator.js';
-import type { AuditPage } from '../../../core/platform_owner/api/index.js';
+import type {
+  AuditPage,
+  DspFeatureReport,
+  Visibility,
+} from '../../../core/platform_owner/api/index.js';
 
 const OWNER_CODE = 'fscl';
 
@@ -33,6 +37,19 @@ async function custom(page: Page, dispatch: Dispatch, hold = false) {
   const platformStyle = `/assets/custom-${own.code}-platform-12345678.css`;
   const style = `/assets/custom-${own.code}-fuel-log-12345678.css`;
   const lazy = `/assets/custom-${own.code}-fuel-page-12345678.js`;
+  const catalog = [
+    {
+      id,
+      label: 'Fuel Log',
+      place: 500,
+      kind: 'page',
+      permissions: [`${id}.view`],
+      requires: [],
+      page: null,
+      tab: false,
+      connects: false,
+    },
+  ];
   let authenticated = false;
   // Model the server's audience-scoped document policy separately from API admission.
   await page.route('**/*', async (route) => {
@@ -142,19 +159,7 @@ async function custom(page: Page, dispatch: Dispatch, hold = false) {
       view.features.push(id);
       view.permissions.push(`${id}.view`);
       view.custom = {
-        catalog: [
-          {
-            id,
-            label: 'Fuel Log',
-            place: 500,
-            kind: 'page',
-            permissions: [`${id}.view`],
-            requires: [],
-            page: null,
-            tab: false,
-            connects: false,
-          },
-        ],
+        catalog,
         permissions: [
           { id: `${id}.view`, label: 'View Fuel Log', group: null, implied: [], under: null },
         ],
@@ -177,7 +182,7 @@ async function custom(page: Page, dispatch: Dispatch, hold = false) {
   await page.route(`**${style}`, (route) =>
     route.fulfill({ contentType: 'text/css', body: ':root { --owner-fuel-style: 1; }' }),
   );
-  return { own, id, entry, lazy, held, module, platform };
+  return { own, id, entry, lazy, held, module, platform, platformEntry, catalog };
 }
 
 const ownerImage = (page: Page) =>
@@ -382,6 +387,165 @@ test('a delayed custom import cannot install its page or styles into the next DS
       ),
     ),
   ).toBe(false);
+});
+
+test("the platform lists custom controls only on their owning DSP's Features tab", async ({
+  page,
+  dispatch,
+}) => {
+  const feature = await custom(page, dispatch);
+  const own = feature.own.id;
+  const part = `${feature.id}.entries`;
+  const catalog = [
+    ...feature.catalog.map((entry) => ({ ...entry, requires: ['routes'] })),
+    {
+      ...feature.catalog[0]!,
+      id: part,
+      label: 'Entries',
+      kind: 'sub',
+      page: feature.id,
+      tab: true,
+      permissions: [],
+    },
+  ];
+  const ids = catalog.map((entry) => entry.id);
+  const summarize = (dsps: { id: string; customFeatures?: string[] }[]) => {
+    for (const dsp of dsps) if (dsp.id === own) dsp.customFeatures = ids;
+  };
+  await page.route('**/api/session', async (route) => {
+    const response = await route.fetch();
+    const session = await response.json();
+    if (response.ok()) {
+      session.platformFrontend = feature.platformEntry;
+      summarize(session.dsps);
+    }
+    await route.fulfill({ response, json: session });
+  });
+  await page.route('**/api/platform/dsps', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const response = await route.fetch();
+    const dsps = await response.json();
+    summarize(dsps);
+    await route.fulfill({ response, json: dsps });
+  });
+  let enabled = false;
+  let visibility: Visibility = 'shown';
+  const states = () =>
+    ids.map((id) => ({
+      feature: id,
+      enabled: id === part || enabled,
+      visibility: id === part ? ('shown' as const) : visibility,
+      changedAt: null,
+      changedBy: null,
+    }));
+  await page.route(`**/api/platform/dsps/${own}/features`, async (route) => {
+    if (route.request().method() === 'POST') {
+      const requested = route.request().postDataJSON();
+      expect(requested.feature).toBe(feature.id);
+      enabled = requested.enabled;
+      return route.fulfill({
+        json: {
+          features: enabled ? ids : [part],
+          changed: [{ feature: feature.id, enabled }],
+        },
+      });
+    }
+    const response = await route.fetch();
+    const report: DspFeatureReport = await response.json();
+    await route.fulfill({
+      response,
+      json: {
+        ...report,
+        features: [...report.features, ...states()],
+        custom: catalog,
+      },
+    });
+  });
+  await page.route(`**/api/platform/dsps/${own}/features/visibility`, (route) => {
+    const requested = route.request().postDataJSON();
+    expect(requested.feature).toBe(feature.id);
+    visibility = requested.visibility;
+    return route.fulfill({
+      json: {
+        hidden: visibility === 'hidden' ? [feature.id] : [],
+        beta: visibility === 'beta' ? [feature.id] : [],
+      },
+    });
+  });
+  await login(page);
+  await page
+    .getByRole('region', { name: 'DSPs', exact: true })
+    .getByRole('button', { name: /Northline Logistics/ })
+    .click();
+  const pane = page.getByRole('region', {
+    name: 'Northline Logistics',
+    exact: true,
+  });
+  await pane.getByRole('tab', { name: 'Features', exact: true }).click();
+  const customGroup = pane.getByRole('group', { name: 'Custom', exact: true });
+  await expect(customGroup).toBeVisible();
+  await customGroup.getByRole('button', { name: /Fuel Log/ }).click();
+  const toggle = pane.getByRole('switch', { name: 'Fuel Log', exact: true });
+  await expect(toggle).not.toBeChecked();
+  await toggle.check();
+  await expect(toggle).toBeChecked();
+  await expect(pane.getByRole('switch', { name: 'Entries tab', exact: true })).toBeChecked();
+  const sight = pane.getByRole('radiogroup', {
+    name: 'Who sees Fuel Log',
+    exact: true,
+  });
+  await sight.getByRole('radio', { name: 'Beta testers', exact: true }).click();
+  await expect(sight.getByRole('radio', { name: 'Beta testers', exact: true })).toBeChecked();
+  await sight.getByRole('radio', { name: 'Hidden', exact: true }).click();
+  await expect(sight.getByRole('radio', { name: 'Hidden', exact: true })).toBeChecked();
+  // Switching DSPs must immediately discard the previous report's private names and section.
+  await pane.getByRole('button', { name: 'Switch DSP', exact: true }).click();
+  await page
+    .getByRole('dialog', { name: 'Switch DSP', exact: true })
+    .getByRole('button', { name: /Summit Delivery/ })
+    .click();
+  const other = page.getByRole('region', {
+    name: 'Summit Delivery',
+    exact: true,
+  });
+  await expect(other.getByRole('navigation', { name: 'Features', exact: true })).toBeVisible();
+  await expect(other.getByRole('group', { name: 'Custom', exact: true })).toHaveCount(0);
+  await expect(other.getByText('Fuel Log', { exact: true })).toHaveCount(0);
+
+  await other.getByRole('button', { name: 'Switch DSP', exact: true }).click();
+  await page
+    .getByRole('dialog', { name: 'Switch DSP', exact: true })
+    .getByRole('button', { name: /Northline Logistics/ })
+    .click();
+  await expect(toggle).toBeChecked();
+  expect(
+    (
+      await feature.platform.post(`/api/platform/dsps/${own}/features`, {
+        feature: 'cortex',
+        enabled: false,
+      })
+    ).status,
+  ).toBe(200);
+  await toggle.uncheck();
+  const cortex = pane
+    .getByRole('navigation', { name: 'Features', exact: true })
+    .getByRole('button')
+    .filter({ has: page.getByText('Cortex', { exact: true }) });
+  await expect(cortex).toContainText('Off');
+  await toggle.click();
+  await expect(
+    page.getByRole('dialog', { name: 'Switch on Fuel Log?', exact: true }),
+  ).toBeVisible();
+  // Browser navigation can leave a confirmation open without using the DSP switcher.
+  const foreign = feature.platform.session.dsps.find((dsp: { code: string }) => dsp.code === 'sum');
+  const address = new URL(page.url());
+  address.hash = `dsps?dsp=${foreign.id}&feature=${feature.id}`;
+  await page.goto(address.href);
+  await expect(other.getByRole('navigation', { name: 'Features', exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Switch on Fuel Log?', exact: true })).toHaveCount(
+    0,
+  );
+  await expect(other.getByRole('group', { name: 'Custom', exact: true })).toHaveCount(0);
 });
 
 test('recent verification keeps replacement recovery codes available to save', async ({
