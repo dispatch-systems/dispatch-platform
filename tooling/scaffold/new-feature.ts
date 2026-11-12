@@ -699,8 +699,8 @@ export const settingsNote = (name: string, slug: string) =>
 
 /**
  * The commands that show what the feature shows on the dev server, as the fixtures' Dev DSP has
- * it, once `npm run dev` restarts on the backend the feature changed. No demo DSP has a custom
- * feature's code, so its note gives Dev DSP the code and switches the feature on first.
+ * it, once `npm run dev` restarts on the backend the feature changed. Only a DSP with a custom
+ * feature's code has it, so its note finds or makes that DSP and switches the feature on first.
  */
 function devServerNote(values: Values) {
   const { name, owner, slug, hostPage, hostLabel } = values;
@@ -714,16 +714,20 @@ function devServerNote(values: Values) {
     ] as [unknown, string, string][]
   ).filter(([shown]) => shown);
   if (!opens.length) return undefined;
-  const shown = opens.map(
-    ([, args, what]) => `\`dispatchdev shot --dsp dev ${args}\` shows ${what}`,
-  );
+  const shown = opens
+    .map(
+      ([, args, what]) =>
+        `\`dispatchdev shot --dsp ${owner ? '<id>' : 'dev'} ${args}\` shows ${what}`,
+    )
+    .join('; ');
   const restart = 'Restart `npm run dev` for its backend';
-  if (!owner) return `${restart}; then ${shown.join('; ')}.`;
+  if (!owner) return `${restart}; then ${shown}.`;
   const post = '`dispatchdev api POST /api/platform/dsps/<id>';
   return (
-    `${restart}. No demo DSP has the code ${owner}: with Dev DSP's id from ` +
-    `\`dispatchdev api GET /api/session\`, ${post}/code --data '{"code":"${owner}"}'\`, then ` +
-    `${post}/features --data '{"feature":"${name}","enabled":true}'\`. Then ${shown.join('; ')}.`
+    `${restart}. Only a DSP with the code ${owner} has it, and \`dispatchdev api GET ` +
+    `/api/session\` lists the demo DSPs with their ids and codes. Unless one has the code, give ` +
+    `it to one: ${post}/code --data '{"code":"${owner}"}'\`. Switch the feature on for that DSP: ` +
+    `${post}/features --data '{"feature":"${name}","enabled":true}'\`. Then ${shown}.`
   );
 }
 
