@@ -61,12 +61,12 @@ function Lists({
         label="Conduct"
         value={tab}
         items={[
-          ['drivers', 'Drivers'],
           ['writeups', 'Writeups'],
+          ['drivers', 'Drivers'],
         ]}
         onChange={(id) =>
           open(
-            { view: 'list', tab: id === 'writeups' ? 'writeups' : 'drivers', filters },
+            { view: 'list', tab: id === 'drivers' ? 'drivers' : 'writeups', filters },
             { replace: true },
           )
         }

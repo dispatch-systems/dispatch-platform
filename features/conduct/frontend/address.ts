@@ -9,7 +9,7 @@ import {
 } from '../../../core/shell/frontend/runtime/navigation.js';
 
 // What the page shows, kept in its address so Back, a reload and a link each open it again:
-// `?tab=writeups`, `?driver=<code>`, `?writeup=<id>`, `?write=new` (with `for=<code>`) and
+// `?tab=drivers`, `?driver=<code>`, `?writeup=<id>`, `?write=new` (with `for=<code>`) and
 // `?write=<id>` to edit one.
 
 export type ConductAddress =
@@ -33,7 +33,7 @@ function read(): ConductAddress {
   if (driver) return { view: 'driver', person: driver };
   return {
     view: 'list',
-    tab: query.get('tab') === 'writeups' ? 'writeups' : 'drivers',
+    tab: query.get('tab') === 'drivers' ? 'drivers' : 'writeups',
     filters: {
       search: query.get('q') ?? '',
       category: query.get('category') ?? '',
@@ -48,7 +48,7 @@ function query(address: ConductAddress): Record<string, string> {
     case 'list':
       return Object.fromEntries(
         Object.entries({
-          tab: address.tab === 'writeups' ? 'writeups' : '',
+          tab: address.tab === 'drivers' ? 'drivers' : '',
           q: address.filters?.search ?? '',
           category: address.filters?.category ?? '',
           tier: address.filters?.tier ?? '',
@@ -74,7 +74,7 @@ const own = () => (history.state as Record<string, unknown> | null)?.[OWN] === t
 /**
  * What the address says the page shows; `open`, which shows another as a step of the browser's
  * history, or in place of this one with `replace`; and `back`, which goes back a step while the
- * page made it, or else to the list.
+ * page made it, or else to the list: the drivers from one of them, otherwise the writeups.
  */
 export function useConductAddress(guards: Guards) {
   const [address, setAddress] = useState(read);
@@ -104,8 +104,12 @@ export function useConductAddress(guards: Guards) {
   );
   const back = useCallback(() => {
     if (own()) history.back();
-    else open({ view: 'list', tab: 'drivers' }, { replace: true });
-  }, [open]);
+    else
+      open(
+        { view: 'list', tab: address.view === 'driver' ? 'drivers' : 'writeups' },
+        { replace: true },
+      );
+  }, [open, address.view]);
   return {
     address,
     open,
