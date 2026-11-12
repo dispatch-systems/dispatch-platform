@@ -21,11 +21,6 @@ async function uniform(page: Page) {
   return name;
 }
 async function text(page: Page, label: string, value: string) {
-  const section = page
-    .locator('[data-conduct-section]')
-    .filter({ has: page.getByText(label, { exact: true }) });
-  const edit = section.getByRole('button', { name: 'Edit text', exact: true });
-  if (await edit.count()) await edit.click();
   await page.getByRole('textbox', { name: label, exact: true }).fill(value);
 }
 async function complete(page: Page) {
@@ -89,6 +84,22 @@ test('a driver is written up from the page, then marked signed and locked', asyn
   await expect(page.getByText(/^Signed \d+\/\d+\/\d{4}$/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Print', exact: true })).toBeVisible();
+});
+
+test('wording is edited around blanks that no edit removes', async ({ page }) => {
+  const name = await newUniform(page);
+  const wording = page
+    .getByRole('textbox', { name: '1. Statement of the problem', exact: true })
+    .first();
+  await wording.press('ControlOrMeta+A');
+  await wording.press('Backspace');
+  await wording.pressSequentially('DA arrived without ');
+  await complete(page);
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1, name })).toBeVisible();
+  await expect(page.locator('.conduct-paper .conduct-notice-answer').first()).toHaveText(
+    'DA arrived without a safety vest on 11/08/2026.',
+  );
 });
 
 test('returning an edited notice to its date restores untouched suggestions', async ({ page }) => {
@@ -178,7 +189,8 @@ test('a long writeup still prints on one letter page, its sections shrunk to fit
 }) => {
   await newUniform(page);
   const long = 'DA did not arrive to work in full uniform and was reminded at stand up. '.repeat(6);
-  await text(page, '1. Statement of the problem', long);
+  await page.getByRole('textbox', { name: /Statement of the problem: missing item/ }).fill(long);
+  await page.getByRole('textbox', { name: /Statement of the problem: date/ }).fill('11/08/2026');
   const entries = Array.from({ length: 5 }, (_, n) => `Incident ${n + 1}: late arrival discussed.`);
   await text(page, '2. Prior discussion or warnings', entries.join('\n'));
   await text(page, '3. Corrective action', long);

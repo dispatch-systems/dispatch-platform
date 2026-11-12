@@ -773,28 +773,42 @@ fieldset.conduct-field {
 .conduct-driver-options [aria-selected='true'] {
   background: var(--selection);
 }
-.conduct-section-label {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
 .conduct-template {
   padding: 12px;
   border: 1px solid var(--input);
   border-radius: var(--radius);
-  line-height: 2.5;
+  line-height: 2;
   white-space: pre-wrap;
+  cursor: text;
 }
-.conduct-template input {
+.conduct-template:focus-within {
+  border-color: var(--ring);
+}
+.conduct-template [contenteditable] {
+  outline: none;
+}
+/* Wording with nothing in it keeps a width, so it can still be clicked and typed into. */
+.conduct-template [data-conduct-wording]:empty {
   display: inline-block;
-  width: min(100%, 180px);
-  min-height: 32px;
-  margin: 0 4px;
-  padding: 2px 7px;
+  min-width: 4px;
 }
-.conduct-template input[data-empty] {
+.conduct-template [data-conduct-blank] {
+  margin: 0 3px;
+  padding: 3px 8px;
+  border: 1px solid var(--input);
+  border-radius: 6px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.conduct-template [data-conduct-blank]:focus {
+  border-color: var(--ring);
+}
+.conduct-template [data-conduct-blank][data-empty] {
   background: var(--warning-surface);
+}
+.conduct-template [data-conduct-blank]:empty::before {
+  content: attr(data-name);
+  color: var(--muted-foreground);
 }
 .conduct-paper-width {
   min-width: 0;
