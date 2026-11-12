@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import type { Page, Route } from '@playwright/test';
 import {
   test,
@@ -405,6 +406,10 @@ test('recent verification keeps replacement recovery codes available to save', a
   dispatch.database('data/platform/accounts.sqlite', (db) => {
     db.exec('UPDATE session_security SET verified_at=verified_at-301000');
   });
+  const navigations: string[] = [];
+  page.on('request', (request) => {
+    if (request.isNavigationRequest()) navigations.push(request.url());
+  });
   let releaseSession!: () => void;
   const sessionsHeld = new Promise<void>((resolve) => {
     releaseSession = resolve;
@@ -455,13 +460,16 @@ test('recent verification keeps replacement recovery codes available to save', a
     await page.evaluate(
       () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
     );
+    expect(navigations).toEqual([]);
     await expect(heading).toBeVisible();
     await expect(page.getByLabel('Formatted recovery codes')).toContainText(codes[0]!);
     const downloading = page.waitForEvent('download');
     await page.getByRole('button', { name: 'Download', exact: true }).click();
     const download = await downloading;
     const file = await download.path();
-    expect(file).toBeTruthy();
+    if (!file) throw new Error('Recovery codes were not downloaded');
+    const saved = fs.readFileSync(file, 'utf8');
+    for (const code of codes) expect(saved).toContain(code);
   } finally {
     releaseCodes();
     releaseSession();
