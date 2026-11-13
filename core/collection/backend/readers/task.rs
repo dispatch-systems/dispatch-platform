@@ -193,6 +193,7 @@ impl Task {
             ) => self.write_record(&day, since, at, ended, Err(code)).await,
             (Attempt::Read(_turn, at, read), _) => {
                 let outcome = self.keep(&reading, &day, read).await;
+                crate::collection::release_memory().await;
                 self.record(&day, since, at, now(), outcome).await
             }
             (Attempt::Failed(at, ended, error), _) => {
@@ -308,6 +309,7 @@ impl Task {
         };
         self.busy();
         let stopped = self.reader.stopped(&self.reading(plan, &day)).await;
+        crate::collection::release_memory().await;
         let at = now();
         let stopped = match stopped {
             Ok(()) => {

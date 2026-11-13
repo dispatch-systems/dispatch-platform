@@ -279,13 +279,5 @@ async fn run(state: Arc<State>, job: JobRow, owner: String) {
         events::publish(&state, &changed_dsp, CollectionSucceeded { keeps }).await;
     }
     state.updates.changed(&changed_dsp, keeper.keeps(), change);
-    // A collection parses tens of megabytes; hand the freed pages back to the host
-    // rather than keeping them resident until the next one.
-    let _ = tokio::task::spawn_blocking(|| {
-        #[cfg(target_env = "gnu")]
-        unsafe {
-            libc::malloc_trim(0);
-        }
-    })
-    .await;
+    crate::collection::release_memory().await;
 }
