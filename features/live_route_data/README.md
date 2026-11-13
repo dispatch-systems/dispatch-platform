@@ -50,6 +50,10 @@ through core's live readers (`core/collection/backend/readers/`), never as jobs.
     connection disabled, it goes unused, and a read taken under another revision is never kept,
     as `keep_live` checks as it writes (`connection_changed`). While the connection is disabled,
     the browser doesn't open (`connection_required`).
+  - A native read after the day's first asks Cortex only for routes something may be happening
+    on: a route the list shows finished, its driver's session ended, or not begun, and says the
+    same of as at its last read, clock aside, keeps the itinerary read then, so the read is still
+    whole. One read in six asks for every itinerary again.
   - A read that isn't whole is never kept.
 - **A day:** its first whole read empties live route data of the day before (`clear_live`) before
   it is kept (`keep_live`). Each read after is kept in place. Once the window ends, the day is
@@ -82,8 +86,10 @@ through core's live readers (`core/collection/backend/readers/`), never as jobs.
   counts `browser` when it opened the DSP's browser, what read the day (`routes_native`,
   `routes_signed` or `routes_signed_moved`, as a job's metrics name them; none in fixture mode), and
   why native reading fell back (`routes_native_no_key`, `_refused`, `_signed_out`, `_unavailable`
-  or `_invalid`), each as 1; and what throttling did to a native read: the requests Cortex
-  throttled (`throttled`) and how many itineraries its reads download at once since (`downloads`),
+  or `_invalid`), each as 1; what throttling did to a native read: the requests Cortex
+  throttled (`throttled`) and how many itineraries its reads download at once since (`downloads`);
+  the itineraries it reused from the read before for routes the list showed settled (`reused`);
+  and those a read of every itinerary found changed though the list said the same (`unseen`),
   each only when it happened. A failed read keeps its error's code. The days started and stopped
   are in `live_days`.
 - **Data:** none of its own: live route data and historical route data are Routes'.

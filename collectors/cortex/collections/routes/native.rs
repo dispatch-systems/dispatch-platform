@@ -36,6 +36,8 @@ use futures_util::stream::{self, StreamExt};
 use hmac::{Hmac, KeyInit, Mac};
 use serde_json::{Value, json};
 use std::{
+    collections::HashMap,
+    hash::{DefaultHasher, Hash, Hasher},
     sync::{
         Arc, Mutex,
         atomic::{AtomicU64, Ordering},
@@ -309,6 +311,68 @@ impl Throttle {
     }
 }
 
+/// Reads of today in a row that reuse settled routes' itineraries, counting the one that
+/// asks for them all: one read in six asks Cortex for every itinerary again, so a change
+/// the list did not show is in live route data within half an hour at the default pace.
+const WHOLE_EVERY: u64 = 6;
+/// What a route's entry in the list says that moves with the clock rather than with what
+/// its driver did: left out of what tells a settled route changed.
+const CLOCKED: [&str; 6] = [
+    "timeRemainingSecs",
+    "projectedCompletionTime",
+    "stateOfChargeRemainingPercent",
+    "stateOfChargeRemainingPercentUpdatedAt",
+    "centroid",
+    "weatherData",
+];
+
+/// What a reader keeps of today as it last read it whole or in part, to ask Cortex for less:
+/// each itinerary, compressed, with what the list said of its route then.
+#[derive(Default)]
+struct Kept {
+    scope: Option<Scope>,
+    /// Reads of the scope kept so far.
+    reads: u64,
+    /// Each itinerary by its id, with its route's entry in the list as it was, clock aside.
+    routes: HashMap<String, (u64, Detail)>,
+}
+/// What the list says of a route, clock aside, to tell whether it changed.
+fn said(entry: &Value) -> u64 {
+    let mut entry = entry.clone();
+    if let Some(fields) = entry.as_object_mut() {
+        for field in CLOCKED {
+            fields.remove(field);
+        }
+    }
+    let mut hasher = DefaultHasher::new();
+    entry.to_string().hash(&mut hasher);
+    hasher.finish()
+}
+/// Whether the list shows a route nothing is happening on: finished, its driver's session
+/// ended, or not begun.
+fn settled(entry: &Value) -> bool {
+    let finished = entry["executionStatus"] == "COMPLETE" && entry["driverSessionEnded"] == true;
+    let unbegun = entry["itineraryStartTime"].is_null()
+        && entry["stopProgress"]["completed"].as_u64() == Some(0);
+    finished || unbegun
+}
+impl Kept {
+    /// The itinerary kept for a settled route the list says the same of as when it was read.
+    fn settled(&self, id: &str, entry: &Value) -> Option<&Detail> {
+        let (was, detail) = self.routes.get(id)?;
+        (settled(entry) && *was == said(entry)).then_some(detail)
+    }
+}
+/// Each route's entry in the day's list, by its itinerary.
+fn entries(summaries: &Value) -> HashMap<&str, &Value> {
+    summaries["itinerarySummaries"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| Some((entry["itineraryId"].as_str()?, entry)))
+        .collect()
+}
+
 /// A DSP's routes read over plain HTTP with its session, keeping the key between reads.
 pub struct Native {
     http: Http,
@@ -316,6 +380,12 @@ pub struct Native {
     key: Option<Key>,
     /// The gate of the account it last read, and what that read met of its throttling.
     throttle: Option<Throttle>,
+    kept: Kept,
+    /// Itineraries the last read reused from the read before, asking Cortex for none of them.
+    reused: u64,
+    /// Settled routes whose itinerary the last read, asking for them all, found changed
+    /// though the list said the same: what a read that reuses them would not have seen.
+    unseen: u64,
 }
 impl Native {
     /// A reader carrying `session`: the cookies and user agent a browser signed in with.
@@ -325,17 +395,28 @@ impl Native {
             origin: session.origin.clone(),
             key: None,
             throttle: None,
+            kept: Kept::default(),
+            reused: 0,
+            unseen: 0,
         })
     }
-    /// What throttling did to the last read, as its record counts it: the requests Cortex
-    /// throttled (`throttled`), and how many requests the account's gate admits at once
-    /// since (`downloads`). Nothing for a read at full width that met none.
-    pub fn throttling(&self) -> Vec<(&'static str, u64)> {
+    /// What the last read met, as its record counts it: the requests Cortex throttled
+    /// (`throttled`), how many requests the account's gate admits at once since
+    /// (`downloads`), the itineraries it reused for settled routes (`reused`), and those a
+    /// read of them all found changed though the list said the same (`unseen`). Nothing for
+    /// a read at full width that met no throttle, reused none and found none.
+    pub fn counts(&self) -> Vec<(&'static str, u64)> {
+        let mut counts = Vec::new();
+        if self.reused > 0 {
+            counts.push(("reused", self.reused));
+        }
+        if self.unseen > 0 {
+            counts.push(("unseen", self.unseen));
+        }
         let Some(throttle) = &self.throttle else {
-            return Vec::new();
+            return counts;
         };
         let refused = throttle.refused.load(Ordering::Relaxed);
-        let mut counts = Vec::new();
         if refused > 0 {
             counts.push(("throttled", refused));
         }
@@ -353,6 +434,11 @@ impl Native {
     }
     /// The day `scope` names as `mode` reads it, whole: both lists and every itinerary the
     /// list names, each its driver's. It is checked as every capture is by its caller.
+    ///
+    /// A snapshot of the day this reader read last asks Cortex only for the routes
+    /// something may be happening on: a route the list shows finished, or not begun, and says
+    /// the same of as at its last read keeps the itinerary read then. One read in `WHOLE_EVERY`
+    /// read asks for them all, as does a first read, another day's or a completed day's.
     pub async fn read(
         &mut self,
         scope: &Scope,
@@ -364,6 +450,11 @@ impl Native {
             refused: AtomicU64::new(0),
         });
         let throttle = self.throttle.as_ref().expect("the read's throttle");
+        if mode != Mode::Snapshot || self.kept.scope.as_ref() != Some(scope) {
+            self.kept = Kept::default();
+        }
+        let whole = self.kept.reads.is_multiple_of(WHOLE_EVERY);
+        (self.reused, self.unseen) = (0, 0);
         let retry_budget = Mutex::new(RETRY_BUDGET);
         throttle.wait(&retry_budget).await?;
         check().await.map_err(Failure::Stopped)?;
@@ -384,6 +475,7 @@ impl Native {
                 throttle,
                 retry_budget: &retry_budget,
                 check,
+                kept: (!whole).then_some(&self.kept),
             };
             match reading.day(mode, started_at).await {
                 // The page is asked once more: Cortex stopped accepting its key, or sends the
@@ -395,6 +487,39 @@ impl Native {
                     }
                     if result.is_ok() && throttle.refused.load(Ordering::Relaxed) == 0 {
                         throttle.gate.read_clean();
+                    }
+                    if let (Ok(capture), Mode::Snapshot) = (&result, mode) {
+                        let entries = entries(&capture.summaries);
+                        let read = (capture.itineraries.iter())
+                            .filter_map(|i| Some((i, *entries.get(i.id.as_str())?)));
+                        if whole {
+                            // Each as text: Cortex may compress the same itinerary another
+                            // way, which is no change to it.
+                            let settled: Vec<(Detail, Detail)> = (read.clone())
+                                .filter_map(|(i, entry)| {
+                                    let kept = self.kept.settled(&i.id, entry)?;
+                                    Some((kept.clone(), i.detail.clone()))
+                                })
+                                .collect();
+                            self.unseen = tokio::task::spawn_blocking(move || {
+                                (settled.iter())
+                                    .filter(|(kept, read)| kept.text().ok() != read.text().ok())
+                                    .count() as u64
+                            })
+                            .await
+                            .unwrap_or(0);
+                        } else {
+                            self.reused = (read.clone())
+                                .filter(|(i, entry)| self.kept.settled(&i.id, entry).is_some())
+                                .count() as u64;
+                        }
+                        self.kept = Kept {
+                            scope: Some(scope.clone()),
+                            reads: self.kept.reads + 1,
+                            routes: read
+                                .map(|(i, entry)| (i.id.clone(), (said(entry), i.detail.clone())))
+                                .collect(),
+                        };
                     }
                     return result;
                 }
@@ -456,6 +581,8 @@ struct Reading<'a> {
     throttle: &'a Throttle,
     retry_budget: &'a Mutex<Duration>,
     check: &'a Check,
+    /// What the reader kept of the day, when this read may reuse settled routes' itineraries.
+    kept: Option<&'a Kept>,
 }
 impl Reading<'_> {
     async fn day(&self, mode: Mode, started_at: i64) -> std::result::Result<Capture, Failure> {
@@ -489,7 +616,9 @@ impl Reading<'_> {
             502,
         )?;
         let listed = itineraries_listed(&summaries, scope)?;
-        let itineraries = self.itineraries(&listed, &bytes).await?;
+        let itineraries = self
+            .itineraries(&listed, &entries(&summaries), &bytes)
+            .await?;
         Ok(Capture {
             version: 1,
             collection: Collection::Routes,
@@ -577,9 +706,20 @@ impl Reading<'_> {
     async fn itineraries(
         &self,
         listed: &[(String, String)],
+        entries: &HashMap<&str, &Value>,
         bytes: &CaptureBudget,
     ) -> std::result::Result<Vec<ItineraryCapture>, Failure> {
         let mut read: Vec<Option<Detail>> = vec![None; listed.len()];
+        // A settled route the list says the same of keeps the itinerary read before.
+        if let Some(kept) = self.kept {
+            for (place, (id, _)) in read.iter_mut().zip(listed) {
+                let entry = entries.get(id.as_str());
+                if let Some(detail) = entry.and_then(|entry| kept.settled(id, entry)) {
+                    bytes.add(detail.bytes())?;
+                    *place = Some(detail.clone());
+                }
+            }
+        }
         let mut failure = None;
         let mut asked_again = false;
         for round in 0..ROUNDS {

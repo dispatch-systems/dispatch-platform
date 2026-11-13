@@ -72,6 +72,8 @@ enum Plays {
     ThrottledTwice,
     /// That itinerary asks once for a cooldown longer than a read waits, then answers.
     ThrottledLong,
+    /// The list shows the first route finished, its driver's session ended.
+    Settled,
 }
 
 /// Cortex for one session: its list page hands out a key, and every read must be signed
@@ -164,6 +166,7 @@ impl Stand {
         }
     }
     fn read(&self, path: &str, query: &str, request: &Asked) -> Response<Body> {
+        let mut level = flate2::Compression::fast();
         let first = self.reads.fetch_add(1, Ordering::SeqCst) == 0;
         if matches!(self.plays, Plays::SignsOut)
             || matches!(self.plays, Plays::RedirectsOnce) && first
@@ -285,12 +288,25 @@ impl Stand {
                         detail["itineraryDetails"]["stops"] = json!("none");
                         detail.to_string()
                     }
+                    // The finished route's itinerary comes compressed another way the second
+                    // time it is asked for, and changed from the third.
+                    Plays::Settled if index == 0 && times == 2 => {
+                        level = flate2::Compression::best();
+                        self.day.itineraries[0].detail.text().unwrap()
+                    }
+                    Plays::Settled if index == 0 && times > 2 => {
+                        let mut detail: Value =
+                            serde_json::from_str(&self.day.itineraries[0].detail.text().unwrap())
+                                .unwrap();
+                        detail["itineraryDetails"]["progressStatus"] = json!("BEHIND");
+                        detail.to_string()
+                    }
                     _ => self.day.itineraries[index].detail.text().unwrap(),
                 }
             }
             None => return status(StatusCode::NOT_FOUND),
         };
-        let mut gzipped = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        let mut gzipped = flate2::write::GzEncoder::new(Vec::new(), level);
         gzipped.write_all(body.as_bytes()).unwrap();
         Response::builder()
             .header(header::CONTENT_TYPE, "application/json;charset=UTF-8")
@@ -349,9 +365,13 @@ async fn answer(State(stand): State<Arc<Stand>>, request: Asked) -> Response<Bod
 async fn stand_in(plays: Plays) -> (Arc<Stand>, SignedIn) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let origin = format!("http://{FIXTURE}:{}", listener.local_addr().unwrap().port());
+    let mut day = fixture(&request()).unwrap();
+    if matches!(plays, Plays::Settled) {
+        day.summaries["itinerarySummaries"][0]["driverSessionEnded"] = json!(true);
+    }
     let stand = Arc::new(Stand {
         plays,
-        day: fixture(&request()).unwrap(),
+        day,
         keys: Mutex::default(),
         pages: AtomicUsize::new(0),
         reads: AtomicUsize::new(0),
@@ -529,18 +549,18 @@ async fn a_day_throttled_round_after_round_is_read_whole_fewer_at_a_time_until_r
     assert_eq!(stand.asked("itinerary-1"), 1);
     assert_eq!(stand.asked("itinerary-2"), 3);
     // Each throttled round narrowed the next, and the read's record says so.
-    assert_eq!(reader.throttling(), [("throttled", 2), ("downloads", 1)]);
+    assert_eq!(reader.counts(), [("throttled", 2), ("downloads", 1)]);
     // Another reader of the account, as a job's beside a live read's, is admitted as narrowly.
     stand.most_at_once.store(0, Ordering::SeqCst);
     let mut other = Native::new(&session).unwrap();
     other.read(&scope, Mode::Final, &authorized).await.unwrap();
-    assert_eq!(other.throttling(), [("downloads", 1)]);
+    assert_eq!(other.counts(), [("downloads", 1)]);
     assert_eq!(stand.most_at_once.load(Ordering::SeqCst), 1);
     // Reads that go on meeting no throttle widen it again, a step at a time.
     reader.read(&scope, Mode::Final, &authorized).await.unwrap();
-    assert_eq!(reader.throttling(), [("downloads", 1)]);
+    assert_eq!(reader.counts(), [("downloads", 1)]);
     reader.read(&scope, Mode::Final, &authorized).await.unwrap();
-    assert_eq!(reader.throttling(), [("downloads", 2)]);
+    assert_eq!(reader.counts(), [("downloads", 2)]);
 }
 
 #[tokio::test(start_paused = true)]
@@ -556,7 +576,7 @@ async fn a_read_ended_by_a_long_cooldown_narrows_the_read_after_it() {
         .read(&stand.day.scope, Mode::Final, &authorized)
         .await
         .unwrap();
-    assert_eq!(reader.throttling(), [("downloads", 2)]);
+    assert_eq!(reader.counts(), [("downloads", 2)]);
 }
 
 #[tokio::test(start_paused = true)]
@@ -615,4 +635,61 @@ async fn a_request_that_waited_at_the_gate_asks_its_authority_again_before_it_is
     assert_eq!(checks.load(Ordering::SeqCst), 2);
     assert_eq!(stand.pages.load(Ordering::SeqCst), 0);
     assert_eq!(stand.asked("itinerary-1"), 0);
+}
+
+#[tokio::test]
+async fn a_snapshot_asks_again_only_for_routes_something_may_be_happening_on() {
+    let (stand, session) = stand_in(Plays::Settled).await;
+    let scope = stand.day.scope.clone();
+    let mut reader = Native::new(&session).unwrap();
+    let asked = || (stand.asked("itinerary-1"), stand.asked("itinerary-2"));
+    // Its first read of the day asks for every itinerary.
+    let first = reader
+        .read(&scope, Mode::Snapshot, &authorized)
+        .await
+        .unwrap();
+    assert_eq!(asked(), (1, 1));
+    assert!(reader.counts().is_empty());
+    // The next keeps the finished route's, which the list says the same of, and is whole.
+    let next = reader
+        .read(&scope, Mode::Snapshot, &authorized)
+        .await
+        .unwrap();
+    assert_eq!(asked(), (1, 2));
+    assert_eq!(reader.counts(), [("reused", 1)]);
+    assert_eq!(next.itineraries.len(), 2);
+    let text = |capture: &Capture| capture.itineraries[0].detail.text().unwrap();
+    assert_eq!(text(&next), text(&first));
+    // One read in six asks for them all again, and found nothing the list had not shown.
+    for _ in 0..4 {
+        reader
+            .read(&scope, Mode::Snapshot, &authorized)
+            .await
+            .unwrap();
+    }
+    assert_eq!(asked(), (1, 6));
+    reader
+        .read(&scope, Mode::Snapshot, &authorized)
+        .await
+        .unwrap();
+    assert_eq!(asked(), (2, 7));
+    // Cortex compressed the finished route's another way that time, which is no change.
+    assert!(reader.counts().is_empty());
+    // The next such read finds it changed though the list said the same, and counts it.
+    for _ in 0..5 {
+        reader
+            .read(&scope, Mode::Snapshot, &authorized)
+            .await
+            .unwrap();
+    }
+    assert_eq!(asked(), (2, 12));
+    reader
+        .read(&scope, Mode::Snapshot, &authorized)
+        .await
+        .unwrap();
+    assert_eq!(asked(), (3, 13));
+    assert_eq!(reader.counts(), [("unseen", 1)]);
+    // A completed day's read reuses nothing.
+    reader.read(&scope, Mode::Final, &authorized).await.unwrap();
+    assert_eq!(asked(), (4, 14));
 }
