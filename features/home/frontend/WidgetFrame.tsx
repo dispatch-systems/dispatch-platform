@@ -1,4 +1,4 @@
-import { Component, useEffect, useState, type ComponentType, type ReactNode } from 'react';
+import { Component, memo, useEffect, useState, type ComponentType, type ReactNode } from 'react';
 import type { DspView } from '../../../core/accounts/api/index.js';
 import type {
   Widget,
@@ -9,8 +9,8 @@ import type {
 // What draws each widget, loaded once, the first time it's shown.
 const loaded = new WeakMap<Widget, ComponentType<WidgetProps>>();
 
-/** A widget in its frame: loading on its own, and failing alone. */
-export function WidgetFrame({
+/** A widget in its frame: loading on its own, failing alone, and drawn again only as it changes. */
+export const WidgetFrame = memo(function WidgetFrame({
   widget,
   size,
   view,
@@ -26,7 +26,7 @@ export function WidgetFrame({
       </Failing>
     </article>
   );
-}
+});
 
 /** The widget once its code has loaded, its frame empty until then. */
 function Drawn({ widget, size, view }: { widget: Widget; size: WidgetSize; view: DspView }) {

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { Widget } from '../../../../core/shell/frontend/runtime/slots.js';
-import { keeping, resized, shown, starting } from '../../frontend/layout.js';
+import { adding, keeping, moving, resized, shown, starting } from '../../frontend/layout.js';
 
 const widget = (id: string, more: Partial<Widget> = {}) =>
   ({ id, label: id, sizes: ['small', 'wide'], load: async () => () => null, ...more }) as Widget;
@@ -60,4 +60,28 @@ test('a widget resized from any side takes its nearest step, its other sides sta
   // Past the grid's edge, or over another, it doesn't.
   assert.equal(resized(vans, at('vans.fleet', 9, 0), 'e', [3, 0], []), undefined);
   assert.equal(resized(vans, placed, 'w', [-3, 0], [at('dvic.today', 0, 3)]), undefined);
+});
+
+test("a widget held over others moves them to the free cells nearest their own, and they're back once it moves on", () => {
+  const placed = [at('dvic.today', 0, 0), at('vans.fleet', 3, 0), at('team.today', 0, 3)];
+  // Over Vans, Vans makes way to the nearest free cells; DVIC's cells are free once it's held.
+  assert.deepEqual(moving(placed, 'dvic.today', { x: 3, y: 0 }), [
+    at('dvic.today', 3, 0),
+    at('vans.fleet', 0, 0),
+    at('team.today', 0, 3),
+  ]);
+  // Moved on from there, every other widget is where it was before it was picked up.
+  assert.deepEqual(moving(placed, 'dvic.today', { x: 9, y: 9 }), [
+    at('dvic.today', 9, 9),
+    at('vans.fleet', 3, 0),
+    at('team.today', 0, 3),
+  ]);
+  // Off the grid, it goes nowhere.
+  assert.equal(moving(placed, 'dvic.today', { x: 10, y: 0 }), undefined);
+});
+
+test('the grid holds only what fits the page: a widget with no room is not added', () => {
+  const full = [{ ...at('routes.today', 0, 0), w: 12, h: 12 }];
+  assert.equal(adding(full, widget('vans.fleet')), undefined);
+  assert.deepEqual(adding([at('dvic.today', 0, 0)], widget('vans.fleet')), at('vans.fleet', 3, 0));
 });

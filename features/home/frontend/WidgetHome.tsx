@@ -1,6 +1,7 @@
 import { Suspense, lazy, useMemo, useState } from 'react';
 import { Pencil, Plus } from 'lucide-react';
 import type { DspView, SessionView } from '../../../core/accounts/api/index.js';
+import { useFillsWindow } from '../../../core/shell/frontend/runtime/fills.js';
 import { usePreference } from '../../../core/shell/frontend/runtime/preferences.js';
 import type { Widget } from '../../../core/shell/frontend/runtime/slots.js';
 import { Header } from '../../../core/shell/frontend/ui/index.js';
@@ -25,6 +26,8 @@ export function WidgetHome({
   view: DspView;
   available: readonly Widget[];
 }) {
+  // The grid fills the window below the page's header, which never scrolls.
+  useFillsWindow();
   const saved = usePreference(view, 'home.layout');
   const layout = useMemo(
     () => saved.value?.widgets ?? starting(available),

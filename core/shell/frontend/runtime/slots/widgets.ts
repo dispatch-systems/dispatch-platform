@@ -11,9 +11,9 @@ import type { Access } from './pages.js';
 // to the frame.
 
 /**
- * The size steps a widget may be drawn at, in the Home page grid's cells: twelve columns that
- * stretch with the window, and rows each as tall as a column is wide, so a layout is the same on
- * every screen.
+ * The size steps a widget may be drawn at, in the Home page grid's cells: twelve columns across
+ * the page and twelve rows down the window, which stretch with it, so a layout is the same on
+ * every screen and the page never scrolls. Small is a sixteenth of the page, full half of it.
  */
 export const widgetSizes = {
   small: { columns: 3, rows: 3 },
