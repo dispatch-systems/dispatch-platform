@@ -385,10 +385,8 @@ test(
       for (const date of Object.keys(held)) releaseDay(date);
       for (const timer of timers) clearTimeout(timer);
     });
-    // The collection waits for sixteen routes at once. Cortex answers over HTTP/2; this
-    // stand-in over HTTP/1.1, to which the browser opens six connections, so six at once
-    // is all it can see.
-    const atOnce = (routes: number) => Math.min(6, routes);
+    // The collection waits for as many routes at once as the account's gate admits: four.
+    const atOnce = (routes: number) => Math.min(4, routes);
     let active = 0;
     let swiped = false;
     const route = (date: string, n: number) => {
@@ -495,7 +493,7 @@ test(
       assert.equal(published[0].verifiedGapPairs, count, `${date}: each meal keeps both gaps`);
       const read = Object.keys(reads).filter((id) => id.includes(date));
       assert.equal(read.length, count, `${date}: every route's itinerary was read`);
-      assert.equal(peaks[date], atOnce(count), `${date}: as many at once as the browser sends`);
+      assert.equal(peaks[date], atOnce(count), `${date}: as many at once as the gate admits`);
       assert.equal(pages[date] ?? 0, 0, `${date}: no route's page is loaded`);
       assert.equal(unasked[date] ?? 0, 0, `${date}: each route is asked of the application`);
       // A finished day changes no more: unless a route changed while it was read, its list
@@ -654,5 +652,72 @@ test(
     assert.equal(requests[still], 1);
     assert.equal(pages[still], 1);
     assert.deepEqual(asked, {});
+  },
+);
+test(
+  'Cortex asks a throttled route again, never loading its page',
+  { skip: native, timeout: 180000 },
+  async (t) => {
+    // Cortex throttles the first request for two of the day's five routes.
+    const date = '2026-01-20';
+    const ids = [1, 2, 3, 4, 5].map((n) => `itinerary-${date}-${n}`);
+    const throttled = [ids[1]!, ids[3]!];
+    const requests: Record<string, number> = {};
+    let pages = 0;
+    const on = Date.parse(`${date}T20:00:00Z`);
+    const route = (id: string) => ({
+      itineraryId: id,
+      transporterId: id.replace('itinerary', 'driver'),
+      routeCode: `CX${id.at(-1)}`,
+      companyId: 'provider-1',
+      executionStatus: 'COMPLETE',
+      stopProgress: { total: 1, completed: 1 },
+      breaks: [
+        {
+          punchId: 'punch-1',
+          breakId: 'meal-1',
+          type: 'MEAL',
+          state: 'OFF',
+          timeStampOn: on,
+          timeStampOff: on + 1800000,
+          sequenceNumber: 1,
+        },
+      ],
+    });
+    const { collect, owner } = await site(t, async (url) => {
+      if (url.pathname.startsWith(itineraryApi)) {
+        const id = url.searchParams.get('itineraryId')!;
+        requests[id] = (requests[id] ?? 0) + 1;
+        if (throttled.includes(id) && requests[id] === 1) return { status: 429 };
+        return {
+          json: {
+            itineraryDetails: {
+              ...route(id),
+              localDate: date.split('-').map(Number),
+              serviceAreaId: 'area-1',
+              unknownStops: [],
+              inactiveTasks: [],
+              stops: [
+                { tasks: [delivered('before', on - 60000), delivered('after', on + 1860000)] },
+              ],
+            },
+          },
+        };
+      }
+      if (url.pathname === summariesApi) return { json: listResponse(ids.map(route)) };
+      if (url.pathname.includes('/documentType/')) pages++;
+      return { html: executionPage({}) };
+    });
+    const job = await collect(date, `throttled-${date}`, 120000);
+    assert.equal(job.status, 'succeeded', JSON.stringify(job));
+    const published = (await owner.get(`/api/dsp/cortex/meal-breaks?date=${date}`)).value;
+    assert.equal(published[0].itineraryCount, 5);
+    assert.equal(published[0].verifiedGapPairs, 5);
+    // Each throttled route was asked once more, the others once, and no route's page loaded.
+    assert.deepEqual(
+      requests,
+      Object.fromEntries(ids.map((id) => [id, throttled.includes(id) ? 2 : 1])),
+    );
+    assert.equal(pages, 0);
   },
 );

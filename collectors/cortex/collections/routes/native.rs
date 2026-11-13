@@ -50,8 +50,6 @@ const ROUNDS: usize = 12;
 const LIST_ATTEMPTS: u32 = 3;
 /// How long Cortex is left before a read is asked for again, times the attempts so far.
 const RETRY_PAUSE: Duration = Duration::from_secs(2);
-/// A throttle without Retry-After leaves the provider alone before another attempt.
-const THROTTLE_PAUSE: Duration = Duration::from_secs(10);
 /// Bound a provider's retry delay before adding it to a monotonic instant.
 const MAX_COOLDOWN: Duration = Duration::from_secs(24 * 60 * 60);
 /// A read spends at most this much of its turn waiting on throttling, well inside the
@@ -253,12 +251,8 @@ impl Throttle {
             return error.refusal.into();
         }
         self.refused.fetch_add(1, Ordering::Relaxed);
-        self.gate.throttled(
-            error
-                .retry_after
-                .unwrap_or(THROTTLE_PAUSE)
-                .min(MAX_COOLDOWN),
-        );
+        self.gate
+            .throttled(error.retry_after.unwrap_or(gate::PAUSE).min(MAX_COOLDOWN));
         self.failure()
     }
     /// A request's place among the account's, which a throttle met while it waited for one

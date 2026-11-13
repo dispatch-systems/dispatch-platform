@@ -2,7 +2,12 @@ use super::{
     capture::{Capture, Coverage, Itinerary},
     live::Writer,
 };
-use crate::{codes, collections::routes::page::MOVE, connection::Driver, discovery::Scope};
+use crate::{
+    codes,
+    collections::routes::page::MOVE,
+    connection::{Driver, gate},
+    discovery::Scope,
+};
 use dispatch_core::{
     Error, Result,
     collection::{
@@ -314,7 +319,8 @@ impl Driver {
                     .evaluate(&call(MOVE, &json!(url)))
                     .await
                     .is_ok_and(|v| v == true);
-            if moved && let Some(result) = self.hook_result(page, candidate, metrics).await? {
+            if moved && let Some(result) = self.hook_result(page, scope, candidate, metrics).await?
+            {
                 return evidence(result, metrics);
             }
             // The application did not answer, or its request failed: load the page.
@@ -348,16 +354,18 @@ impl Driver {
             sleep(Duration::from_millis(50)).await;
         }
         *moving = true;
-        match self.hook_result(page, candidate, metrics).await? {
+        match self.hook_result(page, scope, candidate, metrics).await? {
             Some(result) => evidence(result, metrics),
             None => self.rendered(scope, candidate, metrics).await,
         }
     }
     /// What the hook read for `candidate`, or none when the application's request for it
-    /// failed or no request came within 20 s.
+    /// failed or no request came within 20 s. A request Cortex throttled ends the collection
+    /// (`cortex_throttled`), as no other way of reading the route asks Cortex for less.
     async fn hook_result(
         &self,
         page: &Page,
+        scope: &Scope,
         candidate: &Candidate,
         metrics: &Recorder,
     ) -> Result<Option<Value>> {
@@ -368,6 +376,13 @@ impl Driver {
         );
         while Instant::now() < deadline {
             match self.browser.evaluate(&page.id, &take).await {
+                // A route's own page throttled: the account cools, and the collection's next
+                // attempt reads it.
+                Ok(value) if value["throttled"] == true => {
+                    metrics.detail("meal_throttled");
+                    gate::of(&self.origin, scope.provider.as_str()).throttled(gate::PAUSE);
+                    return Err(Error::new(codes::CORTEX_THROTTLED.as_str(), 502));
+                }
                 Ok(value) if value["unanswered"] == true => {
                     metrics.detail("meal_hook_unanswered");
                     return Ok(None);
@@ -574,6 +589,7 @@ impl Driver {
         let mut records: BTreeMap<String, (String, Itinerary)> = BTreeMap::new();
         let mut known = HashSet::new();
         let reads = AtomicUsize::new(0);
+        let throttled = AtomicBool::new(false);
         // Later passes only re-read routes whose meals changed, so they are short.
         // Swipes arrive every few minutes at midday; allow for several of them.
         for pass in 0..6 {
@@ -629,6 +645,7 @@ impl Driver {
                         .collect(),
                     next: AtomicUsize::new(0),
                     stopped: AtomicBool::new(false),
+                    throttled: &throttled,
                     reads: &reads,
                     done: AtomicUsize::new(records.len()),
                     total: candidates.len(),
@@ -693,6 +710,11 @@ impl Driver {
                 itineraries: records.into_values().map(|(_, route)| route).collect(),
             };
             capture.validate(scope)?;
+            // A day read whole that met no throttle counts toward widening the account's
+            // gate again, as a native read of a day does.
+            if method.hook && !throttled.load(Ordering::SeqCst) {
+                gate::of(&self.origin, &scope.provider).read_clean();
+            }
             progress(95, "Validating meal publication".into()).await?;
             return Ok(serde_json::to_value(capture)?);
         }
