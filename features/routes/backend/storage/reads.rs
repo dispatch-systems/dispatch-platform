@@ -1,5 +1,5 @@
 //! Dashboard and package queries with their row-to-API adapters.
-use super::{RoutesStore, stored_capture};
+use super::{RoutesStore, stored_itinerary};
 use crate::backend::shaping::Shaper;
 use crate::{
     api::types::{
@@ -13,6 +13,7 @@ use dispatch_core::{
     db::{Db, Store, s},
 };
 use dispatch_cortex::routes::Mode;
+use rusqlite::params;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 
@@ -193,24 +194,32 @@ pub(super) fn route_package(store: &Store, id: &str, tracking: &str) -> Result<R
         "SELECT t.*,i.driver_name,i.route_code,a.address1,a.city,a.state,a.postal_code,\
          a.latitude address_latitude,a.longitude address_longitude \
          FROM tasks t JOIN route_publications p ON p.id=t.publication_id AND p.active=1 \
-         AND p.tasks_pruned=0 \
          LEFT JOIN itineraries i ON i.publication_id=t.publication_id AND i.itinerary_id=t.itinerary_id \
          LEFT JOIN addresses a ON a.address_id=t.address_id \
          WHERE t.tracking_id=? ORDER BY t.day DESC,t.executed_at,t.task_id LIMIT 500",
         [tracking],
     )?;
-    // On an old day whose task rows were let go, the package is in the responses of the
-    // itineraries that day's lookup names for it.
+    // On an old day whose delivered and picked-up task rows were let go, the rows it kept are
+    // read above, and the rest of the package is in the responses of the itineraries that
+    // day's lookup names for it: each task once, whichever way it was read.
     let old = db.all(
         "SELECT d.publication_id,d.itinerary_id,i.driver_name,i.route_code FROM package_days d \
          JOIN route_publications p ON p.id=d.publication_id AND p.active=1 AND p.tasks_pruned=1 \
          LEFT JOIN itineraries i ON i.publication_id=d.publication_id AND i.itinerary_id=d.itinerary_id \
-         WHERE d.tracking_id=? ORDER BY p.day DESC LIMIT 100",
-        [tracking],
+         WHERE d.tracking_id=? ORDER BY p.day DESC LIMIT ?",
+        params![tracking, OLD_ITINERARIES],
     )?;
+    let task_of = |task: &Value| {
+        (
+            s(task, "publication_id").to_owned(),
+            s(task, "itinerary_id").to_owned(),
+            s(task, "task_id").to_owned(),
+        )
+    };
+    let mut read: std::collections::HashSet<_> = rows.iter().map(task_of).collect();
     for held in &old {
         for mut task in stored_tasks(&db, s(held, "publication_id"), s(held, "itinerary_id"))? {
-            if task["tracking_id"] == tracking {
+            if task["tracking_id"] == tracking && read.insert(task_of(&task)) {
                 task["driver_name"] = held["driver_name"].clone();
                 task["route_code"] = held["route_code"].clone();
                 rows.push(task);
@@ -251,6 +260,9 @@ const ITINERARY_SELECT: &str = "SELECT i.itinerary_id,i.transporter_id,i.driver_
     d.departed_at,d.first_stop_at,d.last_stop_at,d.session_end_at,d.stops_total,d.stops_completed,d.tasks_total,\
     d.delivered,d.picked_up,d.not_delivered,d.breaks_secs,d.overtime_secs \
     FROM itineraries i JOIN driver_days d ON d.publication_id=i.publication_id AND d.itinerary_id=i.itinerary_id";
+/// The itineraries of old days a package's history is read from at most, newest first: each
+/// is a stored response unpacked and shaped, and a package is on one or two a day it was out.
+const OLD_ITINERARIES: i64 = 16;
 /// An itinerary's tasks as its rows had them, read from its stored response: for a day whose
 /// task rows were let go. Each as a row of `tasks` joined to its address, in the rows' order,
 /// with the itinerary's day and driver; a task both on the route and removed from it is the
@@ -263,8 +275,9 @@ fn stored_tasks(db: &Db, publication_id: &str, itinerary_id: &str) -> Result<Vec
     else {
         return Ok(Vec::new());
     };
-    let capture = stored_capture(db, &publication)?;
-    let Some(captured) = capture.itineraries.iter().find(|i| i.id == itinerary_id) else {
+    // Its lists and this one response: no other driver's is read.
+    let capture = stored_itinerary(db, &publication, itinerary_id)?;
+    let Some(captured) = capture.itineraries.first() else {
         return Ok(Vec::new());
     };
     let shaped = Shaper::new(&capture).shape(captured)?;

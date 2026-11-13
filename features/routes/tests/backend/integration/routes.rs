@@ -304,19 +304,23 @@ async fn a_day_is_published_into_normalized_rows_with_its_raw_responses() {
         .route_itinerary(&id, "2026-09-25", "itinerary-1")
         .unwrap()
         .unwrap();
+    // A package only ever removed from a route, whose rows stay.
+    let only_removed = db.route_package(&id, "TBA000000000009").unwrap();
+    assert!(!only_removed.events.is_empty());
     let storage = db.routes_db(&id).unwrap();
+    // The lookup names only what is let go; the undelivered and removed rows stay.
+    let removed = "active=1 AND (task_type='PICK_UP' OR task_state='DELIVERED')";
     storage
         .exec(
-            "INSERT INTO package_days SELECT DISTINCT tracking_id,publication_id,itinerary_id \
-             FROM tasks WHERE tracking_id IS NOT NULL",
+            &format!(
+                "INSERT INTO package_days SELECT DISTINCT tracking_id,publication_id,itinerary_id \
+                 FROM tasks WHERE tracking_id IS NOT NULL AND {removed}"
+            ),
             [],
         )
         .unwrap();
     let let_go = storage
-        .exec(
-            "DELETE FROM tasks WHERE active=1 AND (task_type='PICK_UP' OR task_state='DELIVERED')",
-            [],
-        )
+        .exec(&format!("DELETE FROM tasks WHERE {removed}"), [])
         .unwrap();
     assert!(let_go > 0);
     storage
@@ -333,6 +337,10 @@ async fn a_day_is_published_into_normalized_rows_with_its_raw_responses() {
         );
     }
     assert_eq!(db.route_package(&id, "TBA000000000002").unwrap(), package);
+    assert_eq!(
+        db.route_package(&id, "TBA000000000009").unwrap(),
+        only_removed
+    );
     assert_eq!(db.route_package(&id, "TBA999999999999").unwrap().events, []);
 }
 

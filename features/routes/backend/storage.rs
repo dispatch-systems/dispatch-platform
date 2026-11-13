@@ -225,6 +225,14 @@ impl RoutesStore for Store {
 
 /// A publication's capture as it was collected, from its stored responses.
 pub(super) fn stored_capture(db: &Db, row: &Value) -> Result<Capture> {
+    stored(db, row, None)
+}
+/// A publication's capture holding of its itineraries only `itinerary`, when the day lists it:
+/// its lists and that one response, for a read of one driver's day that needs no other's.
+pub(super) fn stored_itinerary(db: &Db, row: &Value, itinerary: &str) -> Result<Capture> {
+    stored(db, row, Some(itinerary))
+}
+fn stored(db: &Db, row: &Value, only: Option<&str>) -> Result<Capture> {
     let publication = s(row, "id");
     let declared: i64 = db.0.query_row(
         "SELECT COALESCE(SUM(raw_bytes),0) FROM route_raw WHERE publication_id=?",
@@ -260,6 +268,7 @@ pub(super) fn stored_capture(db: &Db, row: &Value) -> Result<Capture> {
     // Each itinerary stays compressed as it is stored: it is text only as it is read.
     let itineraries = listed(&summaries, &scope)
         .into_iter()
+        .filter(|(id, _)| only.is_none_or(|only| only == id))
         .map(|(id, transporter_id)| {
             let (body, raw): (Vec<u8>, i64) = db.0.query_row(
                 "SELECT body,raw_bytes FROM route_raw WHERE publication_id=? AND name=?",
