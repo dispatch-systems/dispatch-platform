@@ -5,17 +5,22 @@ import type { Feature } from '../../../../tenancy/api/index.js';
 import { present } from './installed.js';
 import type { Access } from './pages.js';
 
-// The widgets slot: what each feature shows of itself on a member's Home page. A widget sits in
-// a frame of the page's grid at one of the size steps it supports, which the member chooses,
-// and draws what fits that step; within a step, its own CSS fits what it shows to the frame.
+// The widgets slot: what each feature shows of itself on a member's Home page. A widget sits where
+// the member places it on the page's grid, at one of the size steps it supports, which resizing
+// it snaps between, and draws what fits that step; within a step, its own CSS fits what it shows
+// to the frame.
 
-/** The size steps a widget may be drawn at, in the Home page grid's columns and rows. */
+/**
+ * The size steps a widget may be drawn at, in the Home page grid's cells: twelve columns that
+ * stretch with the window, and rows each as tall as a column is wide, so a layout is the same on
+ * every screen.
+ */
 export const widgetSizes = {
-  small: { columns: 1, rows: 1 },
-  wide: { columns: 2, rows: 1 },
-  tall: { columns: 1, rows: 2 },
-  large: { columns: 2, rows: 2 },
-  full: { columns: 4, rows: 2 },
+  small: { columns: 3, rows: 3 },
+  wide: { columns: 6, rows: 3 },
+  tall: { columns: 3, rows: 6 },
+  large: { columns: 6, rows: 6 },
+  full: { columns: 12, rows: 6 },
 } as const;
 export type WidgetSize = keyof typeof widgetSizes;
 
