@@ -9,8 +9,9 @@ import sys
 def has_build_paths(data, root, env):
     # Match standard Linux login names (up to 32 bytes). Otherwise adjacent
     # literals such as /home + /root + error codes + /usr look like a home path.
+    # The Home feature's own sources (features/home/...) are the repository's.
     # Exact roots below also cover custom locations and longer directory names.
-    if re.search(rb"(?<!/dispatch-build)/(?:home)/[^/\x00\s]{1,32}/|/(?:Users)/[^/\x00\r\n]+/|/(?:root)/|[A-Za-z]:[/\\]+Users[/\\]+", data):
+    if re.search(rb"(?<!/dispatch-build)(?<!features)/(?:home)/[^/\x00\s]{1,32}/|/(?:Users)/[^/\x00\r\n]+/|/(?:root)/|[A-Za-z]:[/\\]+Users[/\\]+", data):
         return True
     home = Path(env.get("HOME") or Path.home())
     paths = [Path(root), home, Path(env.get("CARGO_HOME") or home / ".cargo"),

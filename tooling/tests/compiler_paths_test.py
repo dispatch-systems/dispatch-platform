@@ -85,12 +85,16 @@ class CompilerPathTests(unittest.TestCase):
 
     def test_artifact_gate_rejects_home_and_custom_build_paths_without_printing_them(self):
         env = {"HOME": "/private/operator", "CARGO_HOME": "/cache/private-registry"}
-        for mapped in [b"/dispatch-build/cargo/registry/a.rs", b"/dispatch-build/home/folder/a.rs"]:
+        # The Home feature's sources are named from the checkout, as every crate's are.
+        for mapped in [b"/dispatch-build/cargo/registry/a.rs", b"/dispatch-build/home/folder/a.rs",
+                       b"features/home/backend/layout.rs"]:
             self.assertFalse(gate.has_build_paths(mapped, "/checkout", env))
         for private in ["/" + "home/operator/src/a.rs", "/" + "home/" + "a" * 32 + "/a.rs",
                         "/" + "Users/operator/a.rs", "/" + "Users/Example Person/a.rs",
                         "C:" + chr(92) + "Users" + chr(92) + "operator", "/cache/private-registry/a.rs",
-                        "/checkout/src/main.rs", "/private/operator/a.rs"]:
+                        "/checkout/src/main.rs", "/private/operator/a.rs",
+                        # Packed right after another literal, as the compiler may lay them out.
+                        "src/lib.rs" + "/" + "home/operator/a.rs"]:
             self.assertTrue(gate.has_build_paths(private.encode(), "/checkout", env))
         with tempfile.TemporaryDirectory() as directory:
             binary = Path(directory) / "bad-binary"
