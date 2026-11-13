@@ -222,7 +222,7 @@ impl Wire {
     /// Its text as `into_text` reads it, and the body it came as when that was gzipped and
     /// inflates to exactly that text: what keeps a large response compressed needs its text
     /// only to check it. A body that opens with a byte-order mark, which the text drops, is
-    /// not handed back.
+    /// not handed back, nor one longer than its text.
     pub fn into_parts(
         self,
         limit: usize,
@@ -241,8 +241,10 @@ impl Wire {
         if decoded.len() > limit {
             return Err(Refusal::Unreadable("http_too_large"));
         }
-        let marked = decoded.starts_with("\u{feff}".as_bytes());
-        Ok((utf8(decoded)?, (!marked).then_some(self.body)))
+        // Nor is one longer than its text, as bytes after its first member would make it:
+        // what is kept is then never more than the text a caller counts against its budget.
+        let kept = !decoded.starts_with("\u{feff}".as_bytes()) && self.body.len() <= decoded.len();
+        Ok((utf8(decoded)?, kept.then_some(self.body)))
     }
 }
 
