@@ -28,9 +28,14 @@ read asks for at most twelve rounds and waits on throttling for at most two minu
 cooldown fails promptly and stays with the gate for a later scheduled attempt. The cooldown stays with the gate
 across cancellation; throttling never asks the browser to
 sign or discover again, and its fixed endpoint and status are logged without identifiers.
-Healthy reads download four at a time without a cooldown. `Native::throttling` counts
+Healthy reads download four at a time without a cooldown. `Native::counts` counts
 what a read met: the requests throttled, and the narrower width since; each refusal's log event
 carries the width it was asked at (`downloads`).
+A reader asked for a snapshot of the day it read last asks only for routes something may be
+happening on: one the list shows finished, its driver's session ended, or not begun, and says
+the same of as at its last read, clock aside, keeps the itinerary read then, and one read in six
+asks for them all; its counts say how many it reused (`reused`) and how many a read of them all
+found changed though the list said the same (`unseen`).
 `routes::Native` reads a day so for anything holding a session, outside a job too, and says why
 it could not: no key on the page, the key refused, the session ended, or Cortex unavailable.
 Otherwise the day is signed by the application's own API action, stopped before it leaves the
