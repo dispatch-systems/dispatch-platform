@@ -6,8 +6,8 @@ import { present } from './installed.js';
 import type { Access } from './pages.js';
 
 // The widgets slot: what each feature shows of itself on a member's Home page. A widget sits where
-// the member places it on the page's grid, as many cells across and down as they size it, from
-// one by one to the whole grid, and fits what it shows to them: it is drawn with its cells, and
+// the member places it on the page's grid, at one of the sizes it declares, which resizing it
+// snaps between, and fits what it shows to that size: it is drawn with its columns and rows, and
 // its own CSS fits within them.
 
 /**
@@ -27,8 +27,11 @@ export type Widget = {
   /** Its name in the list of widgets to add. */
   label: string;
   icon: LucideIcon;
-  /** Its size as it is added, which the member may change to any from one cell to the grid. */
-  size: WidgetCells;
+  /**
+   * The sizes it draws, in cells, each once and from one cell to the whole grid: the first the
+   * one it is added at, and resizing it snaps to the nearest of them.
+   */
+  sizes: readonly [WidgetCells, ...WidgetCells[]];
   /** Who may add it and see it; omitted means every member. */
   permission?: (access: Access) => boolean;
   /** The part of its owner's feature it goes with: off or hidden with it. */

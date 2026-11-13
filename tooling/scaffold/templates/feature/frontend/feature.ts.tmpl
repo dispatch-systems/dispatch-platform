@@ -109,13 +109,16 @@ export const feature: FrontendFeature = {
   ],
 {{/connection}}
 {{#widget}}
-  // Its widget for each member's Home page, drawn at the size they give it.
+  // Its widget for each member's Home page, at the size of these they choose.
   widgets: [
     {
       id: '{{name}}.overview',
       label: '{{label}}',
       icon: {{icon}},
-      size: { columns: 3, rows: 3 },
+      sizes: [
+        { columns: 2, rows: 2 },
+        { columns: 4, rows: 2 },
+      ],
 {{#permission}}
       permission: ({ view }) => can(view, '{{name}}.view'),
 {{/permission}}

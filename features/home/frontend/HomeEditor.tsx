@@ -36,8 +36,7 @@ function useSize() {
 /**
  * The page while its member arranges it: each widget picked up and dropped anywhere on the
  * grid, those where it would land moving aside while it's held there and back once it moves on;
- * resized from any side, a cell at a time as the pointer goes, from one cell to the grid's edge;
- * or removed; others added from the list of those that fit. Every change shows at once and is
+ * resized from any side, snapping to its nearest size as the pointer goes; or removed; others added from the list of those that fit. Every change shows at once and is
  * kept behind it.
  */
 export function HomeEditor({
@@ -148,9 +147,14 @@ export function HomeEditor({
     cell.addEventListener('pointercancel', end);
   };
 
-  // Follows the pointer from the handle it pressed, the widget a cell larger or smaller for each
-  // the pointer goes, kept as it's let go.
-  const resize = (event: PointerEvent<HTMLElement>, at: PlacedWidget, edge: Edge) => {
+  // Follows the pointer from the handle it pressed, the widget taking the size of its own nearest
+  // as it goes, kept as it's let go.
+  const resize = (
+    event: PointerEvent<HTMLElement>,
+    widget: Widget,
+    at: PlacedWidget,
+    edge: Edge,
+  ) => {
     event.preventDefault();
     event.stopPropagation();
     const handle = event.currentTarget;
@@ -160,6 +164,7 @@ export function HomeEditor({
     let last = at;
     const move = (moved: globalThis.PointerEvent) => {
       const next = resized(
+        widget,
         at,
         edge,
         [(moved.clientX - startX) / across, (moved.clientY - startY) / down],
@@ -236,7 +241,7 @@ export function HomeEditor({
                     key={edge}
                     className={`home-handle home-handle-${edge}`}
                     aria-hidden="true"
-                    onPointerDown={(event) => resize(event, at, edge)}
+                    onPointerDown={(event) => resize(event, widget, at, edge)}
                   />
                 ))}
               </div>

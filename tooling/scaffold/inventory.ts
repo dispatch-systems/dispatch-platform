@@ -93,7 +93,9 @@ export function declaredWidgets(source: string) {
     .map((entry) => ({
       id: text('id', entry),
       label: text('label', entry),
-      size: (/\bsize: \{ columns: (\d+), rows: (\d+) \}/.exec(entry) ?? []).slice(1).join('×'),
+      sizes: [...entry.matchAll(/\{ columns: (\d+), rows: (\d+) \}/g)].map(
+        ([, columns, rows]) => `${columns}×${rows}`,
+      ),
     }));
 }
 /** Whether a backend slot holds something: a non-empty list, object or value. */
@@ -219,7 +221,7 @@ export const LISTS: Record<string, { about: string; rows: (root: string) => Row[
       ).permissions.map(([id, label]) => ({ id, label })),
   },
   widgets: {
-    about: 'every widget a member adds to their Home page, with the size in cells it is added at',
+    about: 'every widget a member adds to their Home page, with the sizes in cells it draws',
     rows: (root) =>
       Object.keys(features(root)).flatMap((name) => {
         const manifest = `${featureDirectory(root, name)}/frontend/feature.ts`;
@@ -228,7 +230,7 @@ export const LISTS: Record<string, { about: string; rows: (root: string) => Row[
           id: widget.id,
           label: widget.label,
           feature: name,
-          size: widget.size,
+          sizes: widget.sizes,
         }));
       }),
   },

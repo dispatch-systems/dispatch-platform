@@ -42,7 +42,7 @@ export const widgetOf = (widgets: readonly Widget[], id: string) =>
 
 /** `widget` at the size it's added at, where it first fits beside `placed`; none where it can't. */
 export function adding(placed: readonly Cells[], widget: Widget): PlacedWidget | undefined {
-  const { columns: w, rows: h } = widget.size;
+  const { columns: w, rows: h } = widget.sizes[0];
   const spot = nearest(placed, { x: 0, y: 0, w, h });
   return spot && { id: widget.id, ...spot, w, h };
 }
@@ -61,21 +61,23 @@ export const starting = (widgets: readonly Widget[]) =>
     }, []);
 
 /**
- * What the page shows of `layout`: each widget placed that the member has now, by its id now, in
- * the cells it was placed in. One back from a feature switched off, where another was placed
- * meanwhile, shows at the free cells nearest its own, and is kept there once they arrange the
- * page; with none free, it waits, kept, until there are.
+ * What the page shows of `layout`: each widget placed that the member has now, by its id now,
+ * where it was placed, at the size of its own nearest the cells it was placed in. One back from a
+ * feature switched off, where another was placed meanwhile, shows at the free cells nearest its
+ * own, and is kept there once they arrange the page; with none free, it waits, kept, until there
+ * are.
  */
 export function shown(layout: readonly PlacedWidget[], widgets: readonly Widget[]) {
   const placed: { widget: Widget; at: PlacedWidget }[] = [];
   for (const each of layout) {
     const widget = widgetOf(widgets, each.id);
     if (!widget || placed.some((other) => other.widget === widget)) continue;
+    const { columns: w, rows: h } = sizeNearest(widget, each.w, each.h);
     const spot = nearest(
       placed.map((other) => other.at),
-      each,
+      { x: each.x, y: each.y, w, h },
     );
-    if (spot) placed.push({ widget, at: { ...each, ...spot, id: widget.id } });
+    if (spot) placed.push({ widget, at: { id: widget.id, ...spot, w, h } });
   }
   return placed;
 }
@@ -117,36 +119,34 @@ export function moving(
 /** The sides of a widget a resize handle moves: an edge, or the two of a corner. */
 export type Edge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 
+/** `widget`'s size nearest `w` by `h` cells, the first of those as near. */
+export const sizeNearest = (widget: Widget, w: number, h: number) =>
+  widget.sizes.reduce((best, size) => {
+    const off = (each: typeof size) => Math.abs(each.columns - w) + Math.abs(each.rows - h);
+    return off(size) < off(best) ? size : best;
+  });
+
 /**
- * `at` with `edge` dragged `columns` across and `rows` down, in cells and parts of one: a cell
- * more or less for each one the pointer goes, from one cell to the grid's edge, its other sides
- * where they were; none where it would cover any of `others`.
+ * `at` with `edge` dragged `columns` across and `rows` down, in cells and parts of one, at the
+ * size of `widget`'s nearest that, its other sides where they were; none where that would leave
+ * the grid or cover any of `others`.
  */
 export function resized(
+  widget: Widget,
   at: PlacedWidget,
   edge: Edge,
   [columns, rows]: readonly [number, number],
   others: readonly Cells[],
 ): PlacedWidget | undefined {
-  const [east, west] = [edge.includes('e'), edge.includes('w')];
-  const [south, north] = [edge.includes('s'), edge.includes('n')];
-  const clamp = (value: number, most: number) => Math.min(Math.max(Math.round(value), 1), most);
-  const w = east
-    ? clamp(at.w + columns, COLUMNS - at.x)
-    : west
-      ? clamp(at.w - columns, at.x + at.w)
-      : at.w;
-  const h = south
-    ? clamp(at.h + rows, ROWS - at.y)
-    : north
-      ? clamp(at.h - rows, at.y + at.h)
-      : at.h;
+  const w = at.w + (edge.includes('e') ? columns : edge.includes('w') ? -columns : 0);
+  const h = at.h + (edge.includes('s') ? rows : edge.includes('n') ? -rows : 0);
+  const size = sizeNearest(widget, w, h);
   const next = {
     ...at,
-    x: west ? at.x + at.w - w : at.x,
-    y: north ? at.y + at.h - h : at.y,
-    w,
-    h,
+    x: edge.includes('w') ? at.x + at.w - size.columns : at.x,
+    y: edge.includes('n') ? at.y + at.h - size.rows : at.y,
+    w: size.columns,
+    h: size.rows,
   };
   return fits(others, next) ? next : undefined;
 }

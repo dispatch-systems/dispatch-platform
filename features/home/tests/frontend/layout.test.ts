@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import type { Widget } from '../../../../core/shell/frontend/runtime/slots.js';
 import { adding, keeping, moving, resized, shown, starting } from '../../frontend/layout.js';
 
+const cells = (columns: number, rows: number) => ({ columns, rows });
 const widget = (id: string, more: Partial<Widget> = {}) =>
   ({
     id,
     label: id,
-    size: { columns: 3, rows: 3 },
+    sizes: [cells(3, 3)],
     load: async () => () => null,
     ...more,
   }) as Widget;
@@ -15,10 +16,10 @@ const at = (id: string, x: number, y: number, w = 3, h = 3) => ({ id, x, y, w, h
 
 test('a page never arranged starts with the widgets that have a place on it, in that order, from the top left', () => {
   const widgets = [
-    widget('vans.fleet', { home: 2, size: { columns: 6, rows: 3 } }),
+    widget('vans.fleet', { home: 2, sizes: [cells(6, 3)] }),
     widget('dvic.today', { home: 1 }),
     widget('team.today'),
-    widget('routes.today', { home: 3, size: { columns: 12, rows: 6 } }),
+    widget('routes.today', { home: 3, sizes: [cells(12, 6)] }),
   ];
   assert.deepEqual(starting(widgets), [
     at('dvic.today', 0, 0),
@@ -46,19 +47,24 @@ test("the page shows the widgets the member has, by their ids now, and keeps the
   ]);
 });
 
-test('a widget resized from any side grows or shrinks a cell at a time, its other sides staying, from one cell to the grid', () => {
-  const placed = at('vans.fleet', 3, 3);
-  // Past half a cell to the right is a cell wider.
-  assert.deepEqual(resized(placed, 'e', [1.6, 0], []), at('vans.fleet', 3, 3, 5, 3));
-  assert.deepEqual(resized(placed, 'e', [0.4, 0], []), placed);
-  // From the left, it grows leftward; from the top-left corner, up and left.
-  assert.deepEqual(resized(placed, 'w', [-3, 0], []), at('vans.fleet', 0, 3, 6, 3));
-  assert.deepEqual(resized(placed, 'nw', [-1, -2], []), at('vans.fleet', 2, 1, 4, 5));
-  // Never smaller than a cell, nor past the grid's edge.
-  assert.deepEqual(resized(placed, 'se', [-9, -9], []), at('vans.fleet', 3, 3, 1, 1));
-  assert.deepEqual(resized(placed, 'e', [20, 0], []), at('vans.fleet', 3, 3, 9, 3));
-  // Nor over another.
-  assert.equal(resized(placed, 'w', [-3, 0], [at('dvic.today', 0, 3)]), undefined);
+test('a widget resized from any side snaps to the nearest of its own sizes, its other sides staying, and never leaves the grid or covers another', () => {
+  const misses = widget('dvic.misses', { sizes: [cells(1, 1), cells(2, 1), cells(3, 2)] });
+  const placed = at('dvic.misses', 3, 3, 1, 1);
+  // A cell and a bit to the right is 2×1; on down and right, 3×2. Never a size it doesn't have.
+  assert.deepEqual(resized(misses, placed, 'e', [1.2, 0], []), at('dvic.misses', 3, 3, 2, 1));
+  assert.deepEqual(resized(misses, placed, 'se', [2, 1], []), at('dvic.misses', 3, 3, 3, 2));
+  assert.deepEqual(resized(misses, placed, 'se', [6, 6], []), at('dvic.misses', 3, 3, 3, 2));
+  assert.deepEqual(resized(misses, placed, 'e', [0.4, 0], []), placed);
+  // From the top-left corner, it grows up and left.
+  assert.deepEqual(resized(misses, placed, 'nw', [-2, -1], []), at('dvic.misses', 1, 2, 3, 2));
+  // Past the grid's edge, or over another, it doesn't.
+  assert.equal(resized(misses, at('dvic.misses', 11, 0, 1, 1), 'e', [2, 0], []), undefined);
+  assert.equal(resized(misses, placed, 'e', [1, 0], [at('vans.fleet', 4, 3)]), undefined);
+  // Placed at cells none of its sizes is, it shows at its nearest.
+  assert.deepEqual(
+    shown([at('dvic.misses', 0, 0, 3, 3)], [misses]).map((each) => each.at),
+    [at('dvic.misses', 0, 0, 3, 2)],
+  );
 });
 
 test("a widget held over others moves them to the free cells nearest their own, and they're back once it moves on", () => {
