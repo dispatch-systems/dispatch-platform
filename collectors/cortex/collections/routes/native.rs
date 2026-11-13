@@ -9,14 +9,17 @@
 //! redirects; then every itinerary the list names, a few at a time, each asked for gzipped,
 //! decoded and checked for its driver once, away from the threads serving requests.
 //! Whatever failed is asked once more; what Cortex throttled is asked again after each
-//! cooldown, fewer at a time, which the reader keeps to for the rest of that day. A day is
-//! read whole, both lists and every itinerary, or not at all.
+//! cooldown, fewer at a time. Every request waits its place at the account's gate
+//! (`connection::gate`), which every reader of the account on this server shares, so a
+//! throttle one of them meets cools and narrows them all. A day is read whole, both lists
+//! and every itinerary, or not at all.
 use super::capture::{Capture, Collection, ItineraryCapture, MAX_BODY, Mode};
 use super::protocol::{
     CaptureBudget, ITINERARY, ROUTE_SUMMARIES, SUMMARIES, itineraries_listed, itinerary_path,
     owned_by, parsed,
 };
 use crate as cortex;
+use crate::connection::gate::{self, Gate};
 use crate::discovery::Scope;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use dispatch_core::{
@@ -34,16 +37,13 @@ use hmac::{Hmac, KeyInit, Mac};
 use serde_json::{Value, json};
 use std::{
     sync::{
-        Mutex,
-        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+        Arc, Mutex,
+        atomic::{AtomicU64, Ordering},
     },
     time::Duration,
 };
 use tokio::time::{Instant, sleep_until};
 
-/// Itineraries downloaded at once: as many as the application's signatures are, then fewer
-/// after each round Cortex throttled.
-const DOWNLOADS: [usize; 3] = [12, 4, 1];
 /// Rounds of itineraries a read asks for at most, so one Cortex throttles with no delay ends.
 const ROUNDS: usize = 12;
 /// Times a list is asked for while Cortex is briefly unavailable or redirects.
@@ -231,68 +231,40 @@ fn passing(failure: &Failure) -> bool {
     }
 }
 
-/// Shared by the day's requests and retained with its reader. A throttle stops admission,
-/// while requests already in flight drain. Keeping the deadline here survives cancellation.
-#[derive(Default)]
+/// What a read meets of the account's throttling: its gate, which every reader of the account
+/// shares, and the requests Cortex throttled during this read.
 struct Throttle {
-    until: Mutex<Option<Instant>>,
-    /// How far down `DOWNLOADS` throttled rounds have brought the day's reads.
-    narrowed: AtomicUsize,
-    /// Cortex throttled since itineraries were last asked for: the next round narrows. Kept
-    /// here, it outlasts a read that ends on a long cooldown or is cancelled in one.
-    narrows: AtomicBool,
+    gate: Arc<Gate>,
     /// Requests Cortex throttled during the read under way.
     refused: AtomicU64,
 }
 impl Throttle {
-    /// Itineraries downloaded at once now.
-    fn downloads(&self) -> usize {
-        DOWNLOADS[self.narrowed.load(Ordering::Relaxed)]
-    }
-    /// Before a round of itineraries: one that follows a throttle asks for fewer at once,
-    /// down to one.
-    fn narrow(&self) {
-        if self.narrows.swap(false, Ordering::Relaxed) {
-            let narrowed = self.narrowed.load(Ordering::Relaxed);
-            self.narrowed
-                .store((narrowed + 1).min(DOWNLOADS.len() - 1), Ordering::Relaxed);
-        }
-    }
     fn failure(&self) -> Failure {
         Failure::Throttled(Error::new(cortex::codes::CORTEX_THROTTLED.as_str(), 502))
-    }
-    fn active(&self) -> bool {
-        self.until
-            .lock()
-            .expect("route cooldown")
-            .is_some_and(|until| until > Instant::now())
     }
     fn refused(&self, endpoint: &'static str, error: WireError) -> Failure {
         observability::event(
             "warn",
             "cortex.routes_read_failed",
-            json!({"endpoint":endpoint,"status":error.status,"downloads":self.downloads(),
+            json!({"endpoint":endpoint,"status":error.status,"downloads":self.gate.width(),
                 "retryAfterMs":error.retry_after.map(|d|d.as_millis().min(u64::MAX as u128) as u64)}),
         );
         if error.status != Some(429) {
             return error.refusal.into();
         }
         self.refused.fetch_add(1, Ordering::Relaxed);
-        self.narrows.store(true, Ordering::Relaxed);
-        let retry = error
-            .retry_after
-            .unwrap_or(THROTTLE_PAUSE)
-            .min(MAX_COOLDOWN);
-        let until = Instant::now() + retry;
-        let mut held = self.until.lock().expect("route cooldown");
-        *held = Some(held.map_or(until, |previous| previous.max(until)));
+        self.gate.throttled(
+            error
+                .retry_after
+                .unwrap_or(THROTTLE_PAUSE)
+                .min(MAX_COOLDOWN),
+        );
         self.failure()
     }
     /// Whether a throttle was observed, including one whose delay passed while in-flight
     /// requests drained. A healthy read has no timer or added wait.
     async fn wait(&self, budget: &Mutex<Duration>) -> std::result::Result<bool, Failure> {
-        let until = *self.until.lock().expect("route cooldown");
-        let Some(until) = until else {
+        let Some(until) = self.gate.cooldown() else {
             return Ok(false);
         };
         let delay = until.saturating_duration_since(Instant::now());
@@ -304,7 +276,7 @@ impl Throttle {
             *remaining = remaining.saturating_sub(delay);
         }
         sleep_until(until).await;
-        *self.until.lock().expect("route cooldown") = None;
+        self.gate.cooled(until);
         Ok(true)
     }
 }
@@ -314,9 +286,8 @@ pub struct Native {
     http: Http,
     origin: String,
     key: Option<Key>,
-    throttle: Throttle,
-    /// The day its reads were last narrowed for. Another day starts at full width.
-    day: String,
+    /// The gate of the account it last read, and what that read met of its throttling.
+    throttle: Option<Throttle>,
 }
 impl Native {
     /// A reader carrying `session`: the cookies and user agent a browser signed in with.
@@ -325,22 +296,23 @@ impl Native {
             http: Http::with_session(session, &cortex::HOSTS)?,
             origin: session.origin.clone(),
             key: None,
-            throttle: Throttle::default(),
-            day: String::new(),
+            throttle: None,
         })
     }
     /// What throttling did to the last read, as its record counts it: the requests Cortex
-    /// throttled (`throttled`), and how many itineraries the day's reads download at once
+    /// throttled (`throttled`), and how many requests the account's gate admits at once
     /// since (`downloads`). Nothing for a read at full width that met none.
     pub fn throttling(&self) -> Vec<(&'static str, u64)> {
-        let refused = self.throttle.refused.load(Ordering::Relaxed);
-        let downloads = self.throttle.downloads();
+        let Some(throttle) = &self.throttle else {
+            return Vec::new();
+        };
+        let refused = throttle.refused.load(Ordering::Relaxed);
         let mut counts = Vec::new();
         if refused > 0 {
             counts.push(("throttled", refused));
         }
-        if downloads < DOWNLOADS[0] {
-            counts.push(("downloads", downloads as u64));
+        if throttle.gate.narrowed() {
+            counts.push(("downloads", throttle.gate.width() as u64));
         }
         counts
     }
@@ -348,10 +320,8 @@ impl Native {
     /// cancelled read. Keep the reader rather than reopening a browser before observing it.
     pub fn has_cooldown(&self) -> bool {
         self.throttle
-            .until
-            .lock()
-            .expect("route cooldown")
-            .is_some()
+            .as_ref()
+            .is_some_and(|throttle| throttle.gate.cooldown().is_some())
     }
     /// The day `scope` names as `mode` reads it, whole: both lists and every itinerary the
     /// list names, each its driver's. It is checked as every capture is by its caller.
@@ -361,21 +331,20 @@ impl Native {
         mode: Mode,
         check: &Check,
     ) -> std::result::Result<Capture, Failure> {
-        self.throttle.refused.store(0, Ordering::Relaxed);
-        if self.day != scope.date {
-            self.day.clone_from(&scope.date);
-            self.throttle.narrowed.store(0, Ordering::Relaxed);
-            self.throttle.narrows.store(false, Ordering::Relaxed);
-        }
+        self.throttle = Some(Throttle {
+            gate: gate::of(&self.origin, &scope.provider),
+            refused: AtomicU64::new(0),
+        });
+        let throttle = self.throttle.as_ref().expect("the read's throttle");
         let retry_budget = Mutex::new(RETRY_BUDGET);
-        self.throttle.wait(&retry_budget).await?;
+        throttle.wait(&retry_budget).await?;
         check().await.map_err(Failure::Stopped)?;
         let started_at = now();
         let mut asked_again = false;
         loop {
             let key = match self.key.take() {
                 Some(key) => key,
-                None => self.page_key(scope).await?,
+                None => self.page_key(scope, throttle).await?,
             };
             let reading = Reading {
                 http: &self.http,
@@ -384,7 +353,7 @@ impl Native {
                 scope,
                 referer: format!("{}{}", self.origin, scope.list_path()),
                 historical: historical(scope),
-                throttle: &self.throttle,
+                throttle,
                 retry_budget: &retry_budget,
                 check,
             };
@@ -396,6 +365,9 @@ impl Native {
                     if !matches!(result, Err(Failure::Refused | Failure::SignedOut)) {
                         self.key = Some(key);
                     }
+                    if result.is_ok() && throttle.refused.load(Ordering::Relaxed) == 0 {
+                        throttle.gate.read_clean();
+                    }
                     return result;
                 }
             }
@@ -403,7 +375,11 @@ impl Native {
     }
     /// The key the list's page carries. A page that sends the session to sign in, or is
     /// not the console's own, has none because the session ended.
-    async fn page_key(&self, scope: &Scope) -> std::result::Result<Key, Failure> {
+    async fn page_key(
+        &self,
+        scope: &Scope,
+        throttle: &Throttle,
+    ) -> std::result::Result<Key, Failure> {
         let url = format!("{}{}", self.origin, scope.list_path());
         let referer = format!("{}/", self.origin);
         let html = match self
@@ -414,10 +390,7 @@ impl Native {
             Ok(wire) => decoded(wire, PAGE_LIMIT, |_| Ok(())).await?,
             Err(error) => {
                 return Err(
-                    match self
-                        .throttle
-                        .refused("/operations/execution/itineraries", error)
-                    {
+                    match throttle.refused("/operations/execution/itineraries", error) {
                         Failure::Refused | Failure::SignedOut => Failure::SignedOut,
                         failure => failure,
                     },
@@ -506,7 +479,12 @@ impl Reading<'_> {
         params: &[(&str, &str)],
         limit: usize,
     ) -> std::result::Result<Wire, Failure> {
-        if self.throttle.active() {
+        if self.throttle.gate.cooling() {
+            return Err(self.throttle.failure());
+        }
+        // Its place among the account's requests, which a throttle met while it waited ends.
+        let _admitted = self.throttle.gate.admit().await;
+        if self.throttle.gate.cooling() {
             return Err(self.throttle.failure());
         }
         let (url, headers) = self.key.sign(self.origin, endpoint, params);
@@ -596,14 +574,15 @@ impl Reading<'_> {
                 }
                 (self.check)().await.map_err(Failure::Stopped)?;
             }
-            self.throttle.narrow();
+            self.throttle.gate.narrow();
             failure = None;
             let mut answers = stream::iter(pending)
                 .map(|index| async move {
                     let limit = MAX_BODY.min(bytes.remaining());
                     (index, self.itinerary(&listed[index], limit).await)
                 })
-                .buffer_unordered(self.throttle.downloads());
+                // The gate admits as many at once as the account may ask for.
+                .buffer_unordered(self.throttle.gate.width());
             while let Some((index, answer)) = answers.next().await {
                 match answer {
                     Ok(detail) => {

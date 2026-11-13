@@ -510,10 +510,10 @@ async fn persistent_throttling_does_not_request_a_browser_fallback() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_day_throttled_round_after_round_is_read_whole_fewer_at_a_time_from_then_on() {
+async fn a_day_throttled_round_after_round_is_read_whole_fewer_at_a_time_until_reads_run_clean() {
     let (stand, session) = stand_in(Plays::ThrottledTwice).await;
     let mut reader = Native::new(&session).unwrap();
-    let mut scope = stand.day.scope.clone();
+    let scope = stand.day.scope.clone();
     let capture = reader.read(&scope, Mode::Final, &authorized).await.unwrap();
     capture.validate(&request()).unwrap();
     // What was read is kept through each round; only the throttled itinerary is asked again.
@@ -521,15 +521,17 @@ async fn a_day_throttled_round_after_round_is_read_whole_fewer_at_a_time_from_th
     assert_eq!(stand.asked("itinerary-2"), 3);
     // Each throttled round narrowed the next, and the read's record says so.
     assert_eq!(reader.throttling(), [("throttled", 2), ("downloads", 1)]);
-    // The day's next read meets no throttle, asking for its itineraries one at a time;
-    // another day starts wide again.
+    // Another reader of the account, as a job's beside a live read's, is admitted as narrowly.
     stand.most_at_once.store(0, Ordering::SeqCst);
+    let mut other = Native::new(&session).unwrap();
+    other.read(&scope, Mode::Final, &authorized).await.unwrap();
+    assert_eq!(other.throttling(), [("downloads", 1)]);
+    assert_eq!(stand.most_at_once.load(Ordering::SeqCst), 1);
+    // Reads that go on meeting no throttle widen it again, a step at a time.
     reader.read(&scope, Mode::Final, &authorized).await.unwrap();
     assert_eq!(reader.throttling(), [("downloads", 1)]);
-    assert_eq!(stand.most_at_once.load(Ordering::SeqCst), 1);
-    scope.date = "2026-09-26".into();
-    let _ = reader.read(&scope, Mode::Final, &authorized).await;
-    assert!(reader.throttling().is_empty());
+    reader.read(&scope, Mode::Final, &authorized).await.unwrap();
+    assert_eq!(reader.throttling(), [("downloads", 2)]);
 }
 
 #[tokio::test(start_paused = true)]
@@ -545,7 +547,7 @@ async fn a_read_ended_by_a_long_cooldown_narrows_the_read_after_it() {
         .read(&stand.day.scope, Mode::Final, &authorized)
         .await
         .unwrap();
-    assert_eq!(reader.throttling(), [("downloads", 4)]);
+    assert_eq!(reader.throttling(), [("downloads", 2)]);
 }
 
 #[tokio::test(start_paused = true)]

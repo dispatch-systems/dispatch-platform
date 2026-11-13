@@ -1,5 +1,6 @@
 //! Cortex authentication and performance transport from Amazon Logistics.
 pub(crate) mod companies;
+pub(crate) mod gate;
 pub mod performance;
 use self::companies::COMPANIES;
 use crate::collections::meals::collect as collection;
