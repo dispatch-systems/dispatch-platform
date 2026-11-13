@@ -86,6 +86,12 @@ async fn removing_a_member_deletes_their_account_and_settings_and_keeps_their_na
     for whose in [&member, &owner] {
         settings::save(&db, dsp, s(whose, "id"), &MINE, &on, 0, false).unwrap();
     }
+    // And how each arranged the sidebar.
+    let arranged = serde_json::from_value(json!({"order": ["team"], "hidden": []})).unwrap();
+    for whose in [&member, &owner] {
+        db.arrange_sidebar(dsp, s(whose, "id"), &arranged).unwrap();
+    }
+    let sidebar = |whose: &serde_json::Value| db.sidebar(dsp, s(whose, "id")).unwrap();
     let mine = |whose: &serde_json::Value| {
         settings::read_member::<serde_json::Value>(&db, dsp, s(whose, "id"), &MINE).unwrap()["on"]
             .clone()
@@ -131,6 +137,7 @@ async fn removing_a_member_deletes_their_account_and_settings_and_keeps_their_na
     }
     assert!(theirs("SELECT created_by FROM invitations").is_none());
     assert_eq!((mine(&member), mine(&owner)), (json!(false), json!(true)));
+    assert_eq!((sidebar(&member), sidebar(&owner)), (None, Some(arranged)));
     let log = audits(&db, Some(dsp)).unwrap();
     let event = log
         .as_array()

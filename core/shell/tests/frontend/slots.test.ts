@@ -37,6 +37,8 @@ import {
   ownerPlace,
   pageSidebar,
   pagesUnder,
+  arranged,
+  rearranged,
   sidebarItems,
   switchIcon,
   type ConnectionCard,
@@ -327,6 +329,34 @@ test("the app's sidebar lists a sidebar of pages once, where its first page is, 
   assert.equal(pageSidebar('dsp', 'schedules')?.label, 'Time');
   assert.equal(pageSidebar('dsp', 'punch')?.label, 'Time');
   assert.equal(pageSidebar('dsp', 'notes'), undefined);
+});
+
+test("a member's arrangement orders the sidebar's items but the one kept last, places one they never placed after its neighbour, and keeps the place of one they lost", () => {
+  const items = (...ids: string[]) => ids.map((id) => ({ id }));
+  const ids = (...arrangement: Parameters<typeof arranged>) => {
+    const { movable, fixed } = arranged(...arrangement);
+    return [movable.map(({ id }) => id).join(' '), fixed?.id];
+  };
+  const app = items('home', 'timecard', 'team', 'settings', 'conduct');
+  assert.deepEqual(ids(app, 'settings', { order: [], hidden: [] }), [
+    'home timecard team conduct',
+    'settings',
+  ]);
+  const theirs = { order: ['team', 'home', 'timecard', 'conduct'], hidden: ['conduct'] };
+  assert.deepEqual(ids(app, 'settings', theirs), ['team home timecard conduct', 'settings']);
+  // Pages a release adds follow the ones they follow in the app's order, wherever those are.
+  const grown = items('first', 'home', 'reports', 'exports', 'timecard', 'team', 'conduct');
+  assert.deepEqual(ids(grown, undefined, theirs), [
+    'first team home reports exports timecard conduct',
+    undefined,
+  ]);
+  // Arranging without Timecard, switched off, keeps it after Home, where it comes back.
+  const without = rearranged(theirs, ['home', 'team'], ['team']);
+  assert.deepEqual(without, {
+    order: ['home', 'timecard', 'conduct', 'team'],
+    hidden: ['team', 'conduct'],
+  });
+  assert.deepEqual(ids(app, 'settings', without), ['home timecard conduct team', 'settings']);
 });
 
 test('a page another owner puts under a sidebar of pages leaves its item where its own page is, and the sidebar lists it while the DSP has its feature', () => {
