@@ -894,6 +894,10 @@
         {
           "id": 12,
           "name": "days_untold"
+        },
+        {
+          "id": 13,
+          "name": "old_days"
         }
       ],
       "routelive": [
@@ -984,6 +988,7 @@
         "driver_days",
         "drivers",
         "itineraries",
+        "package_days",
         "route_days_noted",
         "route_days_untold",
         "route_publications",

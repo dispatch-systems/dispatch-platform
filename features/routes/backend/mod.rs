@@ -24,7 +24,7 @@ pub use saving::save_day;
 pub use shaping::{gunzip, prepare};
 pub use staging::stage;
 pub use storage::{DATABASE, LIVE_DATABASE, LIVE_STORAGE, RoutesStore, STORAGE};
-pub(crate) use storage::{add_details, add_live_work_phone, add_work_phone};
+pub(crate) use storage::{add_details, add_live_work_phone, add_old_days, add_work_phone};
 
 use dispatch_core::server::cache::DataDomain;
 

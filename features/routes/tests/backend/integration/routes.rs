@@ -298,6 +298,102 @@ async fn a_day_is_published_into_normalized_rows_with_its_raw_responses() {
             .unwrap()
             .is_none()
     );
+    // An old day whose delivered and picked-up task rows were let go reads the same: an
+    // itinerary's tasks from its stored response, and a package through the day's lookup.
+    let other = db
+        .route_itinerary(&id, "2026-09-25", "itinerary-1")
+        .unwrap()
+        .unwrap();
+    // A package only ever removed from a route, whose rows stay.
+    let only_removed = db.route_package(&id, "TBA000000000009").unwrap();
+    assert!(!only_removed.events.is_empty());
+    let storage = db.routes_db(&id).unwrap();
+    // The lookup names only what is let go; the undelivered and removed rows stay.
+    let removed = "active=1 AND (task_type='PICK_UP' OR task_state='DELIVERED')";
+    storage
+        .exec(
+            &format!(
+                "INSERT INTO package_days SELECT DISTINCT tracking_id,publication_id,itinerary_id \
+                 FROM tasks WHERE tracking_id IS NOT NULL AND {removed}"
+            ),
+            [],
+        )
+        .unwrap();
+    let let_go = storage
+        .exec(&format!("DELETE FROM tasks WHERE {removed}"), [])
+        .unwrap();
+    assert!(let_go > 0);
+    storage
+        .exec("UPDATE route_publications SET tasks_pruned=1", [])
+        .unwrap();
+    drop(storage);
+    for (itinerary, read) in [("itinerary-2", &detail), ("itinerary-1", &other)] {
+        assert_eq!(
+            db.route_itinerary(&id, "2026-09-25", itinerary)
+                .unwrap()
+                .as_ref(),
+            Some(read),
+            "{itinerary}"
+        );
+    }
+    assert_eq!(db.route_package(&id, "TBA000000000002").unwrap(), package);
+    assert_eq!(
+        db.route_package(&id, "TBA000000000009").unwrap(),
+        only_removed
+    );
+    assert_eq!(db.route_package(&id, "TBA999999999999").unwrap().events, []);
+}
+
+#[tokio::test]
+async fn a_packages_history_across_many_old_days_reads_the_same_without_their_rows() {
+    install();
+    let (_root, db, id) = ready();
+    let state = State::new(db.config.clone()).unwrap();
+    // The package picked up and delivered on two itineraries of each of 125 days, four
+    // events a day, and on one itinerary of the newest: the answer's five hundred then end
+    // with the two pickups of one day, one on each of its itineraries.
+    let newest = chrono::NaiveDate::from_ymd_opt(2026, 9, 25).unwrap();
+    for back in 0..126 {
+        let day = (newest - chrono::Duration::days(back)).to_string();
+        let mut capture = routes::fixture(&request(&day, Mode::Final)).unwrap();
+        if back == 0 {
+            let first = capture.summaries["itinerarySummaries"][0].clone();
+            capture.summaries["itinerarySummaries"] = json!([first]);
+            capture.itineraries.truncate(1);
+        }
+        publish(&state, &db, &id, &format!("day-{back}"), &day, &capture).await;
+    }
+    let before = db.route_package(&id, "TBA000000000001").unwrap();
+    assert_eq!(before.events.len(), 500);
+    let last: Vec<_> = (before.events[498..].iter())
+        .map(|event| (event.itinerary_id.as_str(), event.task.task_type.as_deref()))
+        .collect();
+    assert_eq!(
+        last,
+        [
+            ("itinerary-1", Some("PICK_UP")),
+            ("itinerary-2", Some("PICK_UP"))
+        ]
+    );
+    let storage = db.routes_db(&id).unwrap();
+    let removed = "active=1 AND (task_type='PICK_UP' OR task_state='DELIVERED')";
+    storage
+        .exec(
+            &format!(
+                "INSERT INTO package_days SELECT DISTINCT tracking_id,publication_id,itinerary_id \
+                 FROM tasks WHERE tracking_id IS NOT NULL AND {removed}"
+            ),
+            [],
+        )
+        .unwrap();
+    storage
+        .exec(&format!("DELETE FROM tasks WHERE {removed}"), [])
+        .unwrap();
+    storage
+        .exec("UPDATE route_publications SET tasks_pruned=1", [])
+        .unwrap();
+    drop(storage);
+    assert_eq!(db.route_package(&id, "TBA000000000001").unwrap(), before);
 }
 
 #[tokio::test]

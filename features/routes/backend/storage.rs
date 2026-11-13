@@ -68,6 +68,21 @@ pub(crate) fn add_work_phone(db: &Db) -> Result<()> {
     ))?;
     Ok(())
 }
+/// Migration 13: a day may be marked as one whose delivered and picked-up task rows were let
+/// go once it was old, its itineraries' tasks then read from the responses kept whole in
+/// `route_raw`, which hold every one. No day is so yet; the previous release never reads the
+/// column, and reads every day from its rows. With it, the lookup that finds a package on
+/// such a day, and an index no read used dropped.
+pub(crate) fn add_old_days(db: &Db) -> Result<()> {
+    add_column(
+        db,
+        "route_publications",
+        "tasks_pruned",
+        "INTEGER NOT NULL DEFAULT 0 CHECK (tasks_pruned IN (0, 1))",
+    )?;
+    db.0.execute_batch(include_str!("../migrations/routedata/0013_old_days.sql"))?;
+    Ok(())
+}
 /// Live route data's migration 2: each itinerary keeps its work phone, as in historical route
 /// data; a day's one read needs no index to find it by.
 pub(crate) fn add_live_work_phone(db: &Db) -> Result<()> {
@@ -210,6 +225,14 @@ impl RoutesStore for Store {
 
 /// A publication's capture as it was collected, from its stored responses.
 pub(super) fn stored_capture(db: &Db, row: &Value) -> Result<Capture> {
+    stored(db, row, None)
+}
+/// A publication's capture holding of its itineraries only `itinerary`, when the day lists it:
+/// its lists and that one response, for a read of one driver's day that needs no other's.
+pub(super) fn stored_itinerary(db: &Db, row: &Value, itinerary: &str) -> Result<Capture> {
+    stored(db, row, Some(itinerary))
+}
+fn stored(db: &Db, row: &Value, only: Option<&str>) -> Result<Capture> {
     let publication = s(row, "id");
     let declared: i64 = db.0.query_row(
         "SELECT COALESCE(SUM(raw_bytes),0) FROM route_raw WHERE publication_id=?",
@@ -245,6 +268,7 @@ pub(super) fn stored_capture(db: &Db, row: &Value) -> Result<Capture> {
     // Each itinerary stays compressed as it is stored: it is text only as it is read.
     let itineraries = listed(&summaries, &scope)
         .into_iter()
+        .filter(|(id, _)| only.is_none_or(|only| only == id))
         .map(|(id, transporter_id)| {
             let (body, raw): (Vec<u8>, i64) = db.0.query_row(
                 "SELECT body,raw_bytes FROM route_raw WHERE publication_id=? AND name=?",

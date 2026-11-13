@@ -1,5 +1,6 @@
 //! Dashboard and package queries with their row-to-API adapters.
-use super::RoutesStore;
+use super::{RoutesStore, stored_itinerary};
+use crate::backend::shaping::Shaper;
 use crate::{
     api::types::{
         RouteAddress, RouteBreak, RouteDayView, RouteDays, RouteItinerary, RouteItineraryDetail,
@@ -9,10 +10,11 @@ use crate::{
 };
 use dispatch_core::{
     Result,
-    db::{Store, s},
+    db::{Db, Store, s},
 };
 use dispatch_cortex::routes::Mode;
-use serde_json::Value;
+use rusqlite::params;
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 /// Every day with a publication at the DSP's station, newest first.
@@ -92,12 +94,21 @@ pub(super) fn route_itinerary(
     else {
         return Ok(None);
     };
-    let tasks = db.all(
-        "SELECT t.*,a.address1,a.city,a.state,a.postal_code,a.latitude address_latitude,a.longitude address_longitude \
-         FROM tasks t LEFT JOIN addresses a ON a.address_id=t.address_id \
-         WHERE t.publication_id=? AND t.itinerary_id=? ORDER BY t.executed_at,t.task_id",
-        [&publication_id, itinerary_id],
-    )?;
+    // An old day whose task rows were let go has them in its itinerary's stored response.
+    let pruned = db.count(
+        "SELECT tasks_pruned FROM route_publications WHERE id=?",
+        [&publication_id],
+    )? == 1;
+    let tasks = if pruned {
+        stored_tasks(&db, &publication_id, itinerary_id)?
+    } else {
+        db.all(
+            "SELECT t.*,a.address1,a.city,a.state,a.postal_code,a.latitude address_latitude,a.longitude address_longitude \
+             FROM tasks t LEFT JOIN addresses a ON a.address_id=t.address_id \
+             WHERE t.publication_id=? AND t.itinerary_id=? ORDER BY t.executed_at,t.task_id",
+            [&publication_id, itinerary_id],
+        )?
+    };
     // Preserve the query's task ordering while indexing each active task once.
     let mut by_stop: HashMap<&str, Vec<&Value>> = HashMap::new();
     for task in &tasks {
@@ -179,16 +190,64 @@ pub(super) fn route_itinerary(
 /// Everything that happened to a package across the days stored, newest first.
 pub(super) fn route_package(store: &Store, id: &str, tracking: &str) -> Result<RoutePackage> {
     let db = store.routes_db(id)?;
-    let events = db
-        .all(
-            "SELECT t.*,i.driver_name,i.route_code,a.address1,a.city,a.state,a.postal_code,\
-             a.latitude address_latitude,a.longitude address_longitude \
-             FROM tasks t JOIN route_publications p ON p.id=t.publication_id AND p.active=1 \
-             LEFT JOIN itineraries i ON i.publication_id=t.publication_id AND i.itinerary_id=t.itinerary_id \
-             LEFT JOIN addresses a ON a.address_id=t.address_id \
-             WHERE t.tracking_id=? ORDER BY t.day DESC,t.executed_at,t.task_id LIMIT 500",
-            [tracking],
-        )?
+    let mut rows = db.all(
+        "SELECT t.*,i.driver_name,i.route_code,a.address1,a.city,a.state,a.postal_code,\
+         a.latitude address_latitude,a.longitude address_longitude \
+         FROM tasks t JOIN route_publications p ON p.id=t.publication_id AND p.active=1 \
+         LEFT JOIN itineraries i ON i.publication_id=t.publication_id AND i.itinerary_id=t.itinerary_id \
+         LEFT JOIN addresses a ON a.address_id=t.address_id \
+         WHERE t.tracking_id=? ORDER BY t.day DESC,t.executed_at,t.task_id LIMIT ?",
+        params![tracking, MOST_EVENTS],
+    )?;
+    // On an old day whose delivered and picked-up task rows were let go, the rows it kept are
+    // read above, and the rest of the package is in the responses of the itineraries that
+    // day's lookup names for it: each task once, whichever way it was read.
+    let old = db.all(
+        "SELECT d.publication_id,d.itinerary_id,p.day,i.driver_name,i.route_code FROM package_days d \
+         JOIN route_publications p ON p.id=d.publication_id AND p.active=1 AND p.tasks_pruned=1 \
+         LEFT JOIN itineraries i ON i.publication_id=d.publication_id AND i.itinerary_id=d.itinerary_id \
+         WHERE d.tracking_id=? ORDER BY p.day DESC",
+        [tracking],
+    )?;
+    let task_of = |task: &Value| {
+        (
+            s(task, "publication_id").to_owned(),
+            s(task, "itinerary_id").to_owned(),
+            s(task, "task_id").to_owned(),
+        )
+    };
+    let mut read: std::collections::HashSet<_> = rows.iter().map(task_of).collect();
+    // Newest day first, until the answer's five hundred events are found, and then to the
+    // end of the day that found them: within a day events are ordered by when they happened,
+    // across its itineraries, so the last of the answer may be on any of them.
+    let mut found = 0;
+    let mut last_day = None;
+    for held in &old {
+        let day = s(held, "day");
+        if found >= MOST_EVENTS && last_day != Some(day) {
+            break;
+        }
+        last_day = Some(day);
+        for mut task in stored_tasks(&db, s(held, "publication_id"), s(held, "itinerary_id"))? {
+            if task["tracking_id"] == tracking && read.insert(task_of(&task)) {
+                task["driver_name"] = held["driver_name"].clone();
+                task["route_code"] = held["route_code"].clone();
+                rows.push(task);
+                found += 1;
+            }
+        }
+    }
+    if !old.is_empty() {
+        // As the rows are ordered: newest day first, then by when it happened.
+        rows.sort_by(|a, b| {
+            (s(b, "day").cmp(s(a, "day"))).then_with(|| {
+                (a["executed_at"].as_i64(), s(a, "task_id"))
+                    .cmp(&(b["executed_at"].as_i64(), s(b, "task_id")))
+            })
+        });
+        rows.truncate(MOST_EVENTS as usize);
+    }
+    let events = rows
         .iter()
         .map(|t| RoutePackageEvent {
             day: s(t, "day").into(),
@@ -212,6 +271,62 @@ const ITINERARY_SELECT: &str = "SELECT i.itinerary_id,i.transporter_id,i.driver_
     d.departed_at,d.first_stop_at,d.last_stop_at,d.session_end_at,d.stops_total,d.stops_completed,d.tasks_total,\
     d.delivered,d.picked_up,d.not_delivered,d.breaks_secs,d.overtime_secs \
     FROM itineraries i JOIN driver_days d ON d.publication_id=i.publication_id AND d.itinerary_id=i.itinerary_id";
+/// The events a package's history answers with at most, newest first.
+const MOST_EVENTS: i64 = 500;
+/// An itinerary's tasks as its rows had them, read from its stored response: for a day whose
+/// task rows were let go. Each as a row of `tasks` joined to its address, in the rows' order,
+/// with the itinerary's day and driver; a task both on the route and removed from it is the
+/// one on the route, as its rows kept it. None for an itinerary the day holds no response of.
+fn stored_tasks(db: &Db, publication_id: &str, itinerary_id: &str) -> Result<Vec<Value>> {
+    let Some(publication) = db.one(
+        "SELECT * FROM route_publications WHERE id=?",
+        [publication_id],
+    )?
+    else {
+        return Ok(Vec::new());
+    };
+    // Its lists and this one response: no other driver's is read.
+    let capture = stored_itinerary(db, &publication, itinerary_id)?;
+    let Some(captured) = capture.itineraries.first() else {
+        return Ok(Vec::new());
+    };
+    let shaped = Shaper::new(&capture).shape(captured)?;
+    let mut seen = std::collections::HashSet::new();
+    let mut tasks = Vec::with_capacity(shaped.tasks.len() + shaped.inactive.len());
+    let rows = (shaped.tasks.iter().map(|task| (task, 1)))
+        .chain(shaped.inactive.iter().map(|task| (task, 0)));
+    for (task, active) in rows {
+        if !seen.insert(task.id.as_str()) {
+            continue;
+        }
+        let mut row = serde_json::to_value(task)?;
+        row["task_id"] = json!(task.id);
+        row["active"] = json!(active);
+        row["day"] = publication["day"].clone();
+        row["publication_id"] = json!(publication_id);
+        row["itinerary_id"] = json!(itinerary_id);
+        row["transporter_id"] = json!(shaped.transporter_id);
+        if let Some(address) = &task.address_id
+            && let Some(kept) = db.one(
+                "SELECT address1,city,state,postal_code,latitude address_latitude,\
+                 longitude address_longitude FROM addresses WHERE address_id=?",
+                [address],
+            )?
+        {
+            for (field, value) in kept.as_object().into_iter().flatten() {
+                row[field] = value.clone();
+            }
+        }
+        tasks.push(row);
+    }
+    // As `ORDER BY executed_at,task_id` has them: those without a time first.
+    tasks.sort_by(|a, b| {
+        (a["executed_at"].as_i64(), s(a, "task_id"))
+            .cmp(&(b["executed_at"].as_i64(), s(b, "task_id")))
+    });
+    Ok(tasks)
+}
+
 fn itinerary_from(r: &Value) -> RouteItinerary {
     RouteItinerary {
         itinerary_id: s(r, "itinerary_id").into(),
