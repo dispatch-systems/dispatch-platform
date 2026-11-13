@@ -30,7 +30,7 @@ import { sourceLink } from '../lib/source.js';
 import {
   accountActions,
   arranged,
-  lastItem,
+  keptItems,
   loadedSidebar,
   loadSidebar,
   rearranged,
@@ -274,18 +274,17 @@ export function Shell({
       preventScroll: true,
     });
   }, [list.shown]);
-  // The app's sidebar, a DSP's as its member arranged it, with Settings kept last; any other
-  // as the app lists it, its last item set apart.
+  // The app's sidebar, a DSP's as its member arranged it, between the page it opens on and
+  // Settings; any other as the app lists it, its last item set apart.
   const { arrangement, arrange } = useArrangement(view);
-  const { movable, fixed } = useMemo(
-    () => arranged(navigation, view && lastItem(), arrangement),
+  const { first, movable, last } = useMemo(
+    () => arranged(navigation, view ? keptItems() : {}, arrangement),
     [navigation, view, arrangement],
   );
   const listed = view
-    ? [
-        ...movable.filter((item) => !arrangement.hidden.includes(item.id)),
-        ...(fixed ? [fixed] : []),
-      ]
+    ? [first, ...movable.filter((item) => !arrangement.hidden.includes(item.id)), last].filter(
+        (item) => item !== undefined,
+      )
     : navigation;
   // The page the member began arranging it on: opening another ends it.
   const [arranging, setArranging] = useState<string>();
@@ -295,7 +294,7 @@ export function Shell({
       label="Primary navigation"
       items={listed}
       current={sidebar?.id ?? current}
-      apart={view ? fixed?.id : navigation.at(-1)?.id}
+      apart={view ? last?.id : navigation.at(-1)?.id}
       dspId={dspId}
       open={open}
       close={close}
@@ -362,7 +361,8 @@ export function Shell({
                   <SidebarEdit
                     items={movable}
                     hidden={arrangement.hidden}
-                    fixed={fixed}
+                    first={first}
+                    last={last}
                     arrange={(ids, hidden) => arrange(rearranged(arrangement, ids, hidden))}
                     reset={() => arrange({ order: [], hidden: [] })}
                     done={() => {

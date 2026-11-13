@@ -285,26 +285,35 @@ function placing(ids: readonly string[], among: readonly string[]) {
   });
   return placed;
 }
-/** The item of a DSP's sidebar kept after the rest, never moved or hidden: Settings'. */
-export function lastItem() {
-  const page = settingsPage();
-  return page && (pageSidebar('dsp', page)?.id ?? page);
-}
+/** The item of a DSP's sidebar that lists `page`: its own, or that of the sidebar it is under. */
+const itemOf = (page: DspRouteId | undefined) => page && (pageSidebar('dsp', page)?.id ?? page);
 /**
- * The app's sidebar as a member arranged it. `items` are in the app's order: all but `fixed`,
- * the one with the id `last`, are `movable`, in the member's order, the hidden ones among them;
- * one the member never placed, as a page a release added, follows the item it follows in the
- * app's order.
+ * The items of a DSP's sidebar a member neither moves nor hides: the page the DSP opens on,
+ * kept before the rest, and Settings, kept after them.
+ */
+export const keptItems = () => ({ first: itemOf(landingPage()), last: itemOf(settingsPage()) });
+/**
+ * The app's sidebar as a member arranged it. `items` are in the app's order: the ones `kept`
+ * names stay `first` and `last`, and the rest are `movable`, in the member's order, the hidden
+ * ones among them; one the member never placed, as a page a release added, follows the item it
+ * follows in the app's order.
  */
 export function arranged<T extends { id: string }>(
   items: readonly T[],
-  last: string | undefined,
+  kept: { first?: string; last?: string },
   { order }: SidebarArrangement,
 ) {
-  const fixed = items.find((item) => item.id === last);
-  const movable = new Map(items.filter((item) => item !== fixed).map((item) => [item.id, item]));
+  const first = items.find((item) => item.id === kept.first);
+  const last = items.find((item) => item.id === kept.last);
+  const movable = new Map(
+    items.filter((item) => item !== first && item !== last).map((item) => [item.id, item]),
+  );
   const theirs = [...new Set(order)].filter((id) => movable.has(id));
-  return { movable: placing(theirs, [...movable.keys()]).map((id) => movable.get(id)!), fixed };
+  return {
+    first,
+    movable: placing(theirs, [...movable.keys()]).map((id) => movable.get(id)!),
+    last,
+  };
 }
 /**
  * What to keep once a member arranges the items they have as `ids`, hiding `hidden`: an item

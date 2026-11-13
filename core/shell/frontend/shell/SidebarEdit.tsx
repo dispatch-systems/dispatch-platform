@@ -69,14 +69,15 @@ function Listed({
 
 /**
  * The app's sidebar while its member arranges it, in place of its links: each item they list
- * with a handle to move it and an eye to hide it, the one kept last below them, and those
- * hidden under their own heading, each with the eye that lists it again where it was. Every
+ * with a handle to move it and an eye to hide it, between the ones kept first and last, which
+ * have neither, and those hidden under their own heading, each with the eye that lists it again where it was. Every
  * change is arranged at once (`arrange`, with every item in its order and those hidden).
  */
 export function SidebarEdit({
   items,
   hidden,
-  fixed,
+  first,
+  last,
   arrange,
   reset,
   done,
@@ -84,8 +85,9 @@ export function SidebarEdit({
   /** Every item that moves, in the member's order, the hidden ones among them. */
   items: readonly Item[];
   hidden: readonly string[];
-  /** The item kept last, which neither moves nor hides. */
-  fixed?: Item;
+  /** The items kept before and after them, which neither move nor hide. */
+  first?: Item;
+  last?: Item;
   arrange: (ids: string[], hidden: string[]) => void;
   reset: () => void;
   done: () => void;
@@ -111,7 +113,16 @@ export function SidebarEdit({
     const at = (id: unknown) => listed.findIndex((item) => item.id === id);
     move(at(active.id), at(over.id));
   };
-  const FixedIcon = fixed?.icon;
+  const kept = (item: Item | undefined, className: string) => {
+    if (!item) return null;
+    const Icon = item.icon;
+    return (
+      <div className={className}>
+        {Icon && <Icon aria-hidden="true" />}
+        <span>{item.label}</span>
+      </div>
+    );
+  };
   return (
     <div className="nav-list app-pages sidebar-edit" role="group" aria-label="Edit sidebar">
       <div className="sidebar-edit-bar">
@@ -122,6 +133,7 @@ export function SidebarEdit({
           Done
         </button>
       </div>
+      {kept(first, 'nav-item sidebar-edit-item')}
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -144,12 +156,7 @@ export function SidebarEdit({
           </ul>
         </SortableContext>
       </DndContext>
-      {fixed && (
-        <div className="nav-item nav-apart sidebar-edit-item">
-          {FixedIcon && <FixedIcon aria-hidden="true" />}
-          <span>{fixed.label}</span>
-        </div>
-      )}
+      {kept(last, 'nav-item nav-apart sidebar-edit-item')}
       {unlisted.length > 0 && (
         <>
           <h2>Hidden</h2>

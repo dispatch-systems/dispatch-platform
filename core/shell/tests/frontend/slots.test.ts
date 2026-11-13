@@ -331,32 +331,39 @@ test("the app's sidebar lists a sidebar of pages once, where its first page is, 
   assert.equal(pageSidebar('dsp', 'notes'), undefined);
 });
 
-test("a member's arrangement orders the sidebar's items but the one kept last, places one they never placed after its neighbour, and keeps the place of one they lost", () => {
+test("a member's arrangement orders the sidebar's items between the ones kept first and last, places one they never placed after its neighbour, and keeps the place of one they lost", () => {
   const items = (...ids: string[]) => ids.map((id) => ({ id }));
   const ids = (...arrangement: Parameters<typeof arranged>) => {
-    const { movable, fixed } = arranged(...arrangement);
-    return [movable.map(({ id }) => id).join(' '), fixed?.id];
+    const { first, movable, last } = arranged(...arrangement);
+    return [first?.id, movable.map(({ id }) => id).join(' '), last?.id];
   };
-  const app = items('home', 'timecard', 'team', 'settings', 'conduct');
-  assert.deepEqual(ids(app, 'settings', { order: [], hidden: [] }), [
-    'home timecard team conduct',
+  const kept = { first: 'home', last: 'settings' };
+  const app = items('timecard', 'home', 'team', 'settings', 'conduct');
+  assert.deepEqual(ids(app, kept, { order: [], hidden: [] }), [
+    'home',
+    'timecard team conduct',
     'settings',
   ]);
-  const theirs = { order: ['team', 'home', 'timecard', 'conduct'], hidden: ['conduct'] };
-  assert.deepEqual(ids(app, 'settings', theirs), ['team home timecard conduct', 'settings']);
+  // Neither moves, whatever was kept of them.
+  const theirs = {
+    order: ['team', 'settings', 'timecard', 'home', 'conduct'],
+    hidden: ['conduct'],
+  };
+  assert.deepEqual(ids(app, kept, theirs), ['home', 'team timecard conduct', 'settings']);
   // Pages a release adds follow the ones they follow in the app's order, wherever those are.
-  const grown = items('first', 'home', 'reports', 'exports', 'timecard', 'team', 'conduct');
-  assert.deepEqual(ids(grown, undefined, theirs), [
-    'first team home reports exports timecard conduct',
+  const grown = items('first', 'timecard', 'reports', 'exports', 'team', 'conduct');
+  assert.deepEqual(ids(grown, {}, theirs), [
+    undefined,
+    'first team timecard reports exports conduct',
     undefined,
   ]);
-  // Arranging without Timecard, switched off, keeps it after Home, where it comes back.
-  const without = rearranged(theirs, ['home', 'team'], ['team']);
+  // Arranging without Timecard, switched off, keeps it after what it followed, where it comes back.
+  const without = rearranged(theirs, ['conduct', 'team'], ['team']);
   assert.deepEqual(without, {
-    order: ['home', 'timecard', 'conduct', 'team'],
-    hidden: ['team', 'conduct'],
+    order: ['conduct', 'team', 'settings', 'timecard', 'home'],
+    hidden: ['team'],
   });
-  assert.deepEqual(ids(app, 'settings', without), ['home timecard conduct team', 'settings']);
+  assert.deepEqual(ids(app, kept, without), ['home', 'conduct team timecard', 'settings']);
 });
 
 test('a page another owner puts under a sidebar of pages leaves its item where its own page is, and the sidebar lists it while the DSP has its feature', () => {

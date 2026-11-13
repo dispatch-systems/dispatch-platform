@@ -12,10 +12,14 @@ test('a member arranges the sidebar where it is, with the keyboard, by dragging 
   // The DSP's own page is drawn once its view is in, and the sidebar lists every page then.
   await expect(page.locator('.dsp-page')).toBeVisible();
   await expect(names.last()).toHaveText('Settings');
-  const [first, second, third, fourth, ...rest] = await names.allTextContents();
+  const [home, first, second, third, fourth, ...rest] = await names.allTextContents();
   await page.getByLabel('Account menu').click();
   await page.getByRole('button', { name: 'Edit sidebar' }).click();
   const handle = (name: string) => page.getByRole('button', { name: `Move ${name}` });
+  // The page the DSP opens on stays first, and Settings last: neither has a handle.
+  await expect(handle(second!)).toBeVisible();
+  await expect(handle(home!)).toHaveCount(0);
+  await expect(handle('Settings')).toHaveCount(0);
 
   await handle(second!).focus();
   await page.keyboard.press('ArrowUp');
@@ -42,7 +46,7 @@ test('a member arranges the sidebar where it is, with the keyboard, by dragging 
   await expect(page.getByRole('button', { name: `Show ${fourth}` })).toBeVisible();
   await page.getByRole('button', { name: 'Done' }).click();
 
-  const arranged = [second!, third!, first!, ...rest];
+  const arranged = [home!, second!, third!, first!, ...rest];
   await expect(names).toHaveText(arranged);
   expect((await kept).status()).toBe(200);
   await page.reload();
