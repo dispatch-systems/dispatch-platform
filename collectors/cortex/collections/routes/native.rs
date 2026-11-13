@@ -284,16 +284,15 @@ impl Throttle {
         self.failure()
     }
     /// A request's place among the account's, which a throttle met while it waited for one
-    /// ends. One that waited behind another reader asks `check` again before it is sent: its
-    /// authority to read with this session may have gone meanwhile.
+    /// ends. Each asks `check` again as it is admitted, just before it is sent: its authority
+    /// to read with this session may have gone while it waited, or while the request before
+    /// it was answered.
     async fn admitted(&self, check: &Check) -> std::result::Result<gate::Admitted, Failure> {
         if self.gate.cooling() {
             return Err(self.failure());
         }
-        let (admitted, waited) = self.gate.admit().await;
-        if waited {
-            check().await.map_err(Failure::Stopped)?;
-        }
+        let admitted = self.gate.admit().await;
+        check().await.map_err(Failure::Stopped)?;
         if self.gate.cooling() {
             return Err(self.failure());
         }
@@ -537,12 +536,7 @@ impl Native {
         loop {
             let key = match self.key.take() {
                 Some(key) => key,
-                None => {
-                    let key = self.page_key(scope, throttle, check).await?;
-                    // Its authority may have gone while the page was fetched.
-                    check().await.map_err(Failure::Stopped)?;
-                    key
-                }
+                None => self.page_key(scope, throttle, check).await?,
             };
             let reading = Reading {
                 http: &self.http,
@@ -651,9 +645,6 @@ impl Reading<'_> {
             Some(wanted) => wanted(&summaries)?,
             None => Vec::new(),
         };
-        // Its authority may have gone while the list was fetched: no itinerary is asked for
-        // without it.
-        (self.check)().await.map_err(Failure::Stopped)?;
         self.itineraries(&listed, &HashMap::new(), &bytes).await
     }
     async fn day(&self, mode: Mode, started_at: i64) -> std::result::Result<Capture, Failure> {

@@ -78,10 +78,8 @@ impl Gate {
     pub(crate) fn narrowed(&self) -> bool {
         self.state().narrowed > 0
     }
-    /// A place among the requests admitted, once one is free at the width it has then, and
-    /// whether it was waited for: what its caller checked before may have changed since.
-    pub(crate) async fn admit(self: &Arc<Self>) -> (Admitted, bool) {
-        let mut waited = false;
+    /// A place among the requests admitted, once one is free at the width it has then.
+    pub(crate) async fn admit(self: &Arc<Self>) -> Admitted {
         loop {
             let freed = self.freed.notified();
             tokio::pin!(freed);
@@ -91,10 +89,9 @@ impl Gate {
                 let mut state = self.state();
                 if state.admitted < WIDTHS[state.narrowed] {
                     state.admitted += 1;
-                    return (Admitted(self.clone()), waited);
+                    return Admitted(self.clone());
                 }
             }
-            waited = true;
             freed.await;
         }
     }

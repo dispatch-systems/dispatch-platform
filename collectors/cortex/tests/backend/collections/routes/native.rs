@@ -695,16 +695,26 @@ async fn a_snapshot_asks_again_only_for_routes_something_may_be_happening_on() {
 }
 
 #[tokio::test]
-async fn a_read_of_some_itineraries_asks_its_authority_again_before_each_step() {
-    // The read's authority goes while the list's page is fetched for its key, or while the
-    // list is: nothing more is asked of Cortex after either.
-    for (lasts, pages, reads) in [(1, 1, 0), (2, 1, 1)] {
-        let (stand, session) = stand_in(Plays::FlakyItinerary).await;
-        let checks = Arc::new(AtomicUsize::new(0));
+async fn a_read_of_some_itineraries_asks_its_authority_again_before_each_request() {
+    // The read's authority goes once Cortex has answered with the list's page, the list, or
+    // the first itinerary: nothing more is asked of it after any. The account's gate admits
+    // one request at a time here, so the second itinerary would follow the first.
+    let cases: [(fn(&Stand) -> bool, usize, usize, usize); 3] = [
+        (|stand| stand.pages.load(Ordering::SeqCst) > 0, 1, 0, 0),
+        (|stand| stand.reads.load(Ordering::SeqCst) > 0, 1, 1, 0),
+        (|stand| stand.asked("itinerary-1") > 0, 1, 2, 1),
+    ];
+    for (index, (gone, pages, reads, first)) in cases.into_iter().enumerate() {
+        let (stand, session) = stand_in(Plays::Settled).await;
+        let gate = crate::connection::gate::of(&session.origin, &stand.day.scope.provider);
+        for _ in 0..2 {
+            gate.throttled(Duration::ZERO);
+            gate.narrow();
+        }
         let check = {
-            let checks = checks.clone();
+            let stand = stand.clone();
             move || -> dispatch_core::collection::browser::Pending<'static, ()> {
-                let current = checks.fetch_add(1, Ordering::SeqCst) < lasts;
+                let current = !gone(&stand);
                 Box::pin(async move { dispatch_core::ensure(current, "connection_changed", 409) })
             }
         };
@@ -713,9 +723,10 @@ async fn a_read_of_some_itineraries_asks_its_authority_again_before_each_step() 
             .unwrap()
             .read_some(&stand.day.scope, &check, &every)
             .await;
-        assert!(matches!(read, Err(Failure::Stopped(_))), "{lasts}");
-        assert_eq!(stand.pages.load(Ordering::SeqCst), pages, "{lasts}");
-        assert_eq!(stand.reads.load(Ordering::SeqCst), reads, "{lasts}");
-        assert_eq!(stand.asked("itinerary-1"), 0, "{lasts}");
+        assert!(matches!(read, Err(Failure::Stopped(_))), "{index}");
+        assert_eq!(stand.pages.load(Ordering::SeqCst), pages, "{index}");
+        assert_eq!(stand.reads.load(Ordering::SeqCst), reads, "{index}");
+        assert_eq!(stand.asked("itinerary-1"), first, "{index}");
+        assert_eq!(stand.asked("itinerary-2"), 0, "{index}");
     }
 }
