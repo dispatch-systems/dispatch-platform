@@ -69,8 +69,12 @@
 }
 
 /* The member's widgets on a grid of twelve columns, each row as tall as a column is wide, as
-   the editor's grid measures it. */
+   the editor's grid measures it: across the whole page, however wide. */
+.page-container:has(.home-page) {
+  max-width: none;
+}
 .home-page {
+  --home-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   container-type: inline-size;
   display: flex;
   flex-direction: column;
@@ -94,6 +98,9 @@
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  transition:
+    box-shadow 180ms var(--home-ease),
+    border-color 180ms var(--home-ease);
 }
 .home-widget-loading {
   height: 100%;
@@ -104,23 +111,56 @@
   color: var(--muted-foreground);
   font-size: 13px;
 }
+
+/* Arranging: each widget moves and resizes smoothly to its new cells, the one dragged lifts
+   under the pointer, and where it would land is outlined. */
+.home-editing .react-grid-item.cssTransforms {
+  transition:
+    transform 180ms var(--home-ease),
+    width 180ms var(--home-ease),
+    height 180ms var(--home-ease);
+}
+.home-editing .react-grid-item.cssTransforms.react-draggable-dragging {
+  transition: none;
+  z-index: 3;
+}
 .home-editing .home-cell {
   cursor: grab;
 }
+.home-editing .react-draggable-dragging {
+  cursor: grabbing;
+}
 .home-editing .home-widget {
   pointer-events: none;
-  outline: 2px dashed var(--border);
-  outline-offset: 2px;
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
 }
-.home-editing .react-grid-placeholder {
-  background: var(--primary);
+.home-editing .home-cell:hover .home-widget {
+  border-color: color-mix(in srgb, var(--primary) 70%, var(--border));
+}
+.home-editing .react-draggable-dragging .home-widget {
+  box-shadow: 0 18px 40px rgb(0 0 0 / 0.22);
+}
+.home-editing .react-grid-item.react-grid-placeholder {
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  border: 2px dashed color-mix(in srgb, var(--primary) 60%, transparent);
   border-radius: var(--radius);
-  opacity: 0.15;
+  opacity: 1;
+  transition: transform 120ms var(--home-ease);
+}
+.home-added .home-widget {
+  animation: home-in 220ms var(--home-ease);
+}
+@keyframes home-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
 }
 .home-remove {
   position: absolute;
   top: 8px;
   right: 8px;
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -131,6 +171,99 @@
   border-radius: 50%;
   cursor: pointer;
 }
+
+/* Its resize handles: a band along each edge and a square at each corner, a grip showing on
+   the widget the pointer is over. */
+.home-handle {
+  position: absolute;
+  z-index: 2;
+  touch-action: none;
+}
+.home-handle::after {
+  position: absolute;
+  background: var(--primary);
+  border-radius: 999px;
+  opacity: 0;
+  transition: opacity 120ms var(--home-ease);
+  content: '';
+}
+.home-cell:hover .home-handle::after {
+  opacity: 0.85;
+}
+.home-handle-n,
+.home-handle-s {
+  left: 16px;
+  right: 16px;
+  height: 12px;
+  cursor: ns-resize;
+}
+.home-handle-n {
+  top: -6px;
+}
+.home-handle-s {
+  bottom: -6px;
+}
+.home-handle-n::after,
+.home-handle-s::after {
+  top: 4px;
+  left: calc(50% - 18px);
+  width: 36px;
+  height: 4px;
+}
+.home-handle-e,
+.home-handle-w {
+  top: 16px;
+  bottom: 16px;
+  width: 12px;
+  cursor: ew-resize;
+}
+.home-handle-e {
+  right: -6px;
+}
+.home-handle-w {
+  left: -6px;
+}
+.home-handle-e::after,
+.home-handle-w::after {
+  top: calc(50% - 18px);
+  left: 4px;
+  width: 4px;
+  height: 36px;
+}
+.home-handle-ne,
+.home-handle-se,
+.home-handle-sw,
+.home-handle-nw {
+  width: 18px;
+  height: 18px;
+}
+.home-handle-ne::after,
+.home-handle-se::after,
+.home-handle-sw::after,
+.home-handle-nw::after {
+  inset: 5px;
+}
+.home-handle-ne {
+  top: -7px;
+  right: -7px;
+  cursor: nesw-resize;
+}
+.home-handle-sw {
+  bottom: -7px;
+  left: -7px;
+  cursor: nesw-resize;
+}
+.home-handle-se {
+  right: -7px;
+  bottom: -7px;
+  cursor: nwse-resize;
+}
+.home-handle-nw {
+  top: -7px;
+  left: -7px;
+  cursor: nwse-resize;
+}
+
 .home-add {
   display: grid;
   gap: 8px;
@@ -143,4 +276,16 @@
   align-items: center;
   gap: 10px;
   width: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-widget,
+  .home-handle::after,
+  .home-editing .react-grid-item.cssTransforms,
+  .home-editing .react-grid-item.react-grid-placeholder {
+    transition: none;
+  }
+  .home-added .home-widget {
+    animation: none;
+  }
 }

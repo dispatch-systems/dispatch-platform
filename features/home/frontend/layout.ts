@@ -82,3 +82,32 @@ export const nearest = (widget: Widget, w: number, h: number) =>
       Math.abs(widgetSizes[each].columns - w) + Math.abs(widgetSizes[each].rows - h);
     return off(step) < off(best) ? step : best;
   });
+
+/** The sides of a widget a resize handle moves: an edge, or the two of a corner. */
+export type Edge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
+
+/**
+ * `at` with `edge` dragged `columns` across and `rows` down, in cells and parts of one, at
+ * `widget`'s step nearest that, its other sides where they were; none where that would leave
+ * the grid or cover any of `others`.
+ */
+export function resized(
+  widget: Widget,
+  at: PlacedWidget,
+  edge: Edge,
+  [columns, rows]: readonly [number, number],
+  others: readonly Cells[],
+): PlacedWidget | undefined {
+  const w = at.w + (edge.includes('e') ? columns : edge.includes('w') ? -columns : 0);
+  const h = at.h + (edge.includes('s') ? rows : edge.includes('n') ? -rows : 0);
+  const size = widgetSizes[nearest(widget, w, h)];
+  const next = {
+    ...at,
+    x: edge.includes('w') ? at.x + at.w - size.columns : at.x,
+    y: edge.includes('n') ? at.y + at.h - size.rows : at.y,
+    w: size.columns,
+    h: size.rows,
+  };
+  const off = next.x < 0 || next.y < 0 || next.x + next.w > COLUMNS;
+  return off || others.some((other) => overlaps(other, next)) ? undefined : next;
+}

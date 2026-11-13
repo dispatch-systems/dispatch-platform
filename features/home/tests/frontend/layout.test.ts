@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { Widget } from '../../../../core/shell/frontend/runtime/slots.js';
-import { keeping, shown, starting } from '../../frontend/layout.js';
+import { keeping, resized, shown, starting } from '../../frontend/layout.js';
 
 const widget = (id: string, more: Partial<Widget> = {}) =>
   ({ id, label: id, sizes: ['small', 'wide'], load: async () => () => null, ...more }) as Widget;
@@ -46,4 +46,18 @@ test("the page shows the widgets the member has, by their ids now, and keeps the
     at('team.today', 6, 0),
     { ...at('timecard.today', 0, 9), w: 5, h: 4 },
   ]);
+});
+
+test('a widget resized from any side takes its nearest step, its other sides staying, and never leaves the grid or covers another', () => {
+  const vans = widget('vans.fleet', { sizes: ['small', 'wide', 'large'] });
+  const placed = at('vans.fleet', 3, 3);
+  // A cell and a half to the right is nearer wide than small.
+  assert.deepEqual(resized(vans, placed, 'e', [1.6, 0], []), at('vans.fleet', 3, 3, 6, 3));
+  assert.deepEqual(resized(vans, placed, 'e', [1.4, 0], []), placed);
+  // From the left, it grows leftward; from the top-left corner, up and left.
+  assert.deepEqual(resized(vans, placed, 'w', [-3, 0], []), at('vans.fleet', 0, 3, 6, 3));
+  assert.deepEqual(resized(vans, placed, 'nw', [-3, -3], []), at('vans.fleet', 0, 0, 6, 6));
+  // Past the grid's edge, or over another, it doesn't.
+  assert.equal(resized(vans, at('vans.fleet', 9, 0), 'e', [3, 0], []), undefined);
+  assert.equal(resized(vans, placed, 'w', [-3, 0], [at('dvic.today', 0, 3)]), undefined);
 });
