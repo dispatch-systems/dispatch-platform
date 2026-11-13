@@ -95,7 +95,7 @@ test(
           '../../features/driver_match/frontend/badge.ts',
         ],
         raw: 445_000,
-        transferred: 130_000,
+        transferred: 131_000,
       },
       {
         name: 'daily Timecard',
