@@ -657,7 +657,9 @@ impl Driver {
         let started_at = now();
         let mut records: BTreeMap<String, (String, Itinerary)> = BTreeMap::new();
         let mut known = HashSet::new();
-        for pass in 0..6 {
+        // Six passes read routes, as with a page, and a seventh only confirms the sixth's:
+        // each pass's list is what shows the one before it left every record current.
+        for pass in 0..=6 {
             let message = match pass {
                 0 => "Reading meal evidence".to_owned(),
                 _ => format!("Checking source changes (pass {pass})"),
@@ -673,7 +675,8 @@ impl Driver {
                 let read = rules::candidates(summaries, scope);
                 let ask = (read.iter().flatten())
                     .filter(|c| {
-                        have.get(c.id.as_str()) != Some(&c.revision.as_str())
+                        pass < 6
+                            && have.get(c.id.as_str()) != Some(&c.revision.as_str())
                             && !c.meals.is_empty()
                             && finished(kept, c).is_none()
                     })
