@@ -1,10 +1,10 @@
 //! What every Conduct backend test installs and starts from. A test binary holds one registry,
 //! so each installs the same: Conduct, and a stand-in for where a DSP keeps its files, which
 //! keeps its folders and what's saved in them in memory, and can be made unready, or to refuse
-//! what's saved. And how a test starts: a platform with one DSP and its owner writing up.
+//! what's saved or taken back. And how a test starts: a platform with one DSP and its owner writing up.
 use crate::FEATURE;
 use dispatch_core::{
-    Error, State,
+    Error, Result, State,
     accounts::{Auth, Context},
     db::{Store, s},
     manifest::{Feature, exposes::Shown, feature, optional},
@@ -63,10 +63,11 @@ struct KeptFolder {
     name: String,
     logged_as: Option<&'static str>,
 }
-/// A file the stand-in keeps: its DSP, the folder it's in, its name, how many bytes it holds,
-/// and who it came from.
+/// A file the stand-in keeps: its DSP, its ID, the folder it's in, its name, how many bytes it
+/// holds, and who it came from.
 struct KeptFile {
     dsp: String,
+    id: String,
     folder: String,
     name: String,
     length: usize,
@@ -75,15 +76,21 @@ struct KeptFile {
 /// A file as a test reads it: the folder it's in, as the names from the top down to it; its
 /// name; how many bytes it holds; and who it came from.
 pub type Saving = (String, String, usize, Author);
+/// What a test has the stand-in do to the platform as it keeps a DSP's next file.
+type OnSave = Box<dyn FnOnce(&Store, &str) -> Result<()> + Send>;
 /// What the stand-in keeps, in every test, each DSP's apart.
 struct Kept {
     /// How many folders it ever made: each one's ID is its own.
     made: usize,
+    /// How many files it ever saved: each one's ID is its own.
+    saved: usize,
     folders: Vec<KeptFolder>,
     files: Vec<KeptFile>,
     unready: BTreeSet<String>,
     refusing: BTreeMap<String, &'static str>,
-    switching_off: BTreeSet<String>,
+    on_save: BTreeMap<String, OnSave>,
+    /// Whose files it took back, by DSP: who asked, in the order they did.
+    removed: Vec<(String, Author)>,
 }
 impl Kept {
     /// The names of the DSP's folders from the top down to `id`, as a path.
@@ -101,11 +108,13 @@ impl Kept {
 }
 static KEPT: Mutex<Kept> = Mutex::new(Kept {
     made: 0,
+    saved: 0,
     folders: Vec::new(),
     files: Vec::new(),
     unready: BTreeSet::new(),
     refusing: BTreeMap::new(),
-    switching_off: BTreeSet::new(),
+    on_save: BTreeMap::new(),
+    removed: Vec::new(),
 });
 fn kept() -> std::sync::MutexGuard<'static, Kept> {
     KEPT.lock().unwrap_or_else(|poison| poison.into_inner())
@@ -125,6 +134,15 @@ pub fn files(dsp: &str) -> Vec<Saving> {
                 file.by.clone(),
             )
         })
+        .collect()
+}
+/// Who asked the stand-in to take a file of the DSP `dsp` back, in the order they did.
+pub fn removed(dsp: &str) -> Vec<Author> {
+    kept()
+        .removed
+        .iter()
+        .filter(|(of, _)| of == dsp)
+        .map(|(_, by)| by.clone())
         .collect()
 }
 /// The folders the stand-in keeps for the DSP `dsp`, each as the activity log was to call it:
@@ -178,7 +196,15 @@ pub fn refuse(dsp: &str, with: Option<&'static str>) {
 /// Has the stand-in switch Conduct off for the DSP once it keeps the next file of theirs, as
 /// the platform owner switching it off while its copies are saved.
 pub fn switch_off_on_save(dsp: &str) {
-    kept().switching_off.insert(dsp.to_owned());
+    on_save(dsp, |db, dsp| {
+        let owner = testing::a_user(db);
+        db.set_feature(dsp, "conduct", false, &owner).map(drop)
+    });
+}
+/// Has the stand-in do `then` to the platform once it keeps the next file of the DSP's, as
+/// someone changing things while its copies are saved.
+pub fn on_save(dsp: &str, then: impl FnOnce(&Store, &str) -> Result<()> + Send + 'static) {
+    kept().on_save.insert(dsp.to_owned(), Box::new(then));
 }
 
 /// The stand-in for where a DSP keeps its files.
@@ -297,7 +323,7 @@ impl Files for Keeping {
                 .map_ok(|chunk| chunk.to_vec())
                 .try_concat()
                 .await?;
-            let (id, switching_off) = {
+            let (id, then) = {
                 let mut kept = kept();
                 if let Some(code) = kept.refusing.get(dsp) {
                     return Err(Error::new(*code, 502));
@@ -305,26 +331,21 @@ impl Files for Keeping {
                 if !kept.folders.iter().any(|f| f.dsp == dsp && f.id == folder) {
                     return Err(not_found());
                 }
+                kept.saved += 1;
+                let id = format!("saved-{}", kept.saved);
                 kept.files.push(KeptFile {
                     dsp: dsp.to_owned(),
+                    id: id.clone(),
                     folder: folder.to_owned(),
                     name: file.name.clone(),
                     length: bytes.len(),
                     by: file.by,
                 });
-                (
-                    format!("saved-{}", kept.files.len()),
-                    kept.switching_off.remove(dsp),
-                )
+                (id, kept.on_save.remove(dsp))
             };
-            if switching_off {
+            if let Some(then) = then {
                 let at = dsp.to_owned();
-                state
-                    .run(move |db| {
-                        let owner = testing::a_user(db);
-                        db.set_feature(&at, "conduct", false, &owner).map(drop)
-                    })
-                    .await?;
+                state.run(move |db| then(db, &at)).await?;
             }
             Ok(Saved {
                 link: format!("https://example.test/{id}"),
@@ -350,5 +371,27 @@ impl Files for Keeping {
         _: Page,
     ) -> Answer<'a, Option<Saved>> {
         Box::pin(async { Err(Error::new("keeping_no_pages", 501)) })
+    }
+    fn remove<'a>(
+        &'a self,
+        _: &'a Arc<State>,
+        dsp: &'a str,
+        id: &'a str,
+        by: &'a Author,
+    ) -> Answer<'a, bool> {
+        Box::pin(async move {
+            let mut kept = kept();
+            if let Some(code) = kept.refusing.get(dsp) {
+                return Err(Error::new(*code, 502));
+            }
+            let before = kept.files.len();
+            kept.files
+                .retain(|file| !(file.dsp == dsp && file.id == id));
+            let removed = kept.files.len() < before;
+            if removed {
+                kept.removed.push((dsp.to_owned(), by.clone()));
+            }
+            Ok(removed)
+        })
     }
 }

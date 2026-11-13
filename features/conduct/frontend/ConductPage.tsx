@@ -4,6 +4,7 @@ import type { DspView, SessionView } from '../../../core/accounts/api/index.js';
 import { DataState, ErrorBox, Header, Tabs } from '../../../core/shell/frontend/ui/index.js';
 import type { ConductOverview, ConductSaved, ConductWriteup } from '../api/index.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
+import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import { LeaveGuards, type Guards } from '../../../core/shell/frontend/runtime/leave.js';
 import { usePrintNotice } from './notice/usePrintNotice.js';
 import { type HistoryFilters, useWriteup } from '../api/client.js';
@@ -160,6 +161,7 @@ export function ConductPage({ session, view }: { session: SessionView; view: Dsp
                   key={address.id}
                   overview={overview}
                   id={address.id}
+                  manages={can(view, 'conduct.manage')}
                   back={back}
                   edit={() => open({ view: 'write', edit: address.id })}
                   take={take}

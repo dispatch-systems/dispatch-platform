@@ -215,7 +215,10 @@ and weeks, so it's best submitted well before the limit.
   page over a Doc it wrote, wherever it's been moved inside the main folder, renamed as the page
   is and changed by whoever changed the page last, without logging it again. A Doc no longer
   inside the main folder isn't written over, and a page over 50 MB, the most Google turns into a
-  Doc, isn't written (`upload_too_large`). Those who see its folders hold `documents.use`.
+  Doc, isn't written (`upload_too_large`). It takes a file it kept back, wherever it's been moved
+  inside the main folder: moved to the account's trash and logged as a member trashing it is
+  (`documents.trashed`), with the member who asked as its actor, or none; a file no longer
+  inside the main folder, or a folder, isn't. Those who see its folders hold `documents.use`.
 - **Data:** `documents_connection`, `documents_connect_requests`, `documents_files` (with the
   name of whoever added or last changed a file who isn't a member, its own migration 3),
   `documents_people` (who the folder is shared with, and at what address) and

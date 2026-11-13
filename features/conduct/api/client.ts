@@ -28,6 +28,8 @@ const errors: Readonly<Record<string, string>> = {
   conduct_writeup_not_found: 'This writeup was deleted.',
   conduct_writeup_changed: 'This writeup changed in another session. Open it again to see it.',
   conduct_writeup_signed: 'This writeup is signed, so it can no longer change.',
+  conduct_copy_not_removed:
+    'The backed-up copy couldn’t be removed, so nothing was deleted. Try again.',
   conduct_date_ahead: 'A writeup can’t be dated after today.',
   conduct_signed_date: 'The signed date must be between the writeup’s date and today.',
   conduct_suspension_required: 'Enter how long the suspension is.',

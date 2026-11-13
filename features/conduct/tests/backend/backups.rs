@@ -18,8 +18,14 @@ const PHOTO: [u8; 4] = [0xff, 0xd8, 0xff, 0xdb];
 const TARDIES: &str = "Writeups/Jordan Gray/Excessive Tardies";
 
 /// Writes Jordan Gray up for tardies at `tier`, with a photo of the paper if `photo`, and marks
-/// it signed if `signed`.
-async fn written(state: &Arc<State>, c: &Context, tier: ConductTier, photo: bool, signed: bool) {
+/// it signed if `signed`: its ID and revision.
+async fn written(
+    state: &Arc<State>,
+    c: &Context,
+    tier: ConductTier,
+    photo: bool,
+    signed: bool,
+) -> (String, i64) {
     let c = c.clone();
     state
         .run(move |db| {
@@ -43,14 +49,30 @@ async fn written(state: &Arc<State>, c: &Context, tier: ConductTier, photo: bool
             if photo {
                 copies::keep(db, &c, &id, 1, &PHOTO)?;
             }
+            let mut revision = if photo { 2 } else { 1 };
             if signed {
-                let revision = if photo { 2 } else { 1 };
                 writeups::sign(db, &c, &id, revision, "2026-11-03", TODAY)?;
+                revision += 1;
             }
-            Ok(())
+            Ok((id, revision))
         })
         .await
-        .unwrap();
+        .unwrap()
+}
+/// Deletes the writeup `id` as read at `revision`, as its route does: its saved copy taken
+/// back first.
+async fn deleted(state: &Arc<State>, c: &Context, id: &str, revision: i64) -> Result<()> {
+    let (by, of) = (c.clone(), id.to_owned());
+    let copy = state
+        .read(move |db| saved(db, &by, &of, revision))
+        .await?;
+    if let Some((files, saved)) = copy {
+        take_back(state, c, files, &saved).await?;
+    }
+    let (by, of) = (c.clone(), id.to_owned());
+    state
+        .run(move |db| writeups::delete(db, &by, &of, revision))
+        .await
 }
 /// Has the DSP back its signed copies up, as its Settings saves it.
 async fn choose(state: &Arc<State>, c: &Context) {
@@ -185,4 +207,72 @@ async fn the_backup_says_why_the_copy_tried_latest_wasnt_saved() {
     let going = status(&state, &dsp).await.unwrap();
     assert_eq!(going.why.as_deref(), Some("Kept Drive is busy"));
     assert_eq!(going.waiting, 2);
+}
+
+#[tokio::test]
+async fn a_deleted_writeups_copy_is_taken_back_while_the_dsp_backs_its_copies_up() {
+    let (_root, state, c) = platform();
+    let dsp = c.dsp.id.clone();
+    choose(&state, &c).await;
+    let (verbal, at) = written(&state, &c, ConductTier::Verbal, true, true).await;
+    let (written_up, _) = written(&state, &c, ConductTier::Written, true, true).await;
+    back_up(&state, &dsp, 1000).await.unwrap();
+    assert_eq!(support::files(&dsp).len(), 2);
+
+    // While the copy can't be taken back, the writeup stays, and its copy with it.
+    support::refuse(&dsp, Some(support::BUSY));
+    let refused = deleted(&state, &c, &verbal, at).await;
+    assert_eq!(refused.unwrap_err().code, "conduct_copy_not_removed");
+    assert_eq!(support::files(&dsp).len(), 2);
+    let (at_dsp, id) = (dsp.clone(), verbal.clone());
+    state
+        .read(move |db| writeups::read(db, &at_dsp, &id))
+        .await
+        .expect("the writeup stays");
+
+    // Once it can, the copy goes as the member deleting it asked, then the writeup; the
+    // other's stays.
+    support::refuse(&dsp, None);
+    deleted(&state, &c, &verbal, at).await.unwrap();
+    let kept: Vec<String> = support::files(&dsp)
+        .into_iter()
+        .map(|(_, name, ..)| name)
+        .collect();
+    assert_eq!(kept, ["2026-11-02 Written.jpg"]);
+    assert_eq!(
+        support::removed(&dsp),
+        [Author::Member(c.actor().to_owned())]
+    );
+
+    // A copy already gone from the DSP's files doesn't keep its writeup.
+    support::trash(&dsp, "Writeups");
+    deleted(&state, &c, &written_up, at).await.unwrap();
+
+    // Once the DSP no longer backs its copies up, the copy saved stays where it is.
+    let (last, at) = written(&state, &c, ConductTier::Final, true, true).await;
+    back_up(&state, &dsp, 2000).await.unwrap();
+    assert_eq!(support::files(&dsp).len(), 1);
+    let off = c.clone();
+    state
+        .run(move |db| {
+            let chosen = json!({"signed_copies": false});
+            kept_settings::save(db, &off.dsp.id, off.actor(), &BACKUP, &chosen, 1, false).map(drop)
+        })
+        .await
+        .unwrap();
+    deleted(&state, &c, &last, at).await.unwrap();
+    assert_eq!(support::files(&dsp).len(), 1);
+}
+
+#[tokio::test]
+async fn a_copy_saved_as_its_writeup_is_deleted_goes_with_it() {
+    let (_root, state, c) = platform();
+    let dsp = c.dsp.id.clone();
+    choose(&state, &c).await;
+    let (id, at) = written(&state, &c, ConductTier::Verbal, true, true).await;
+
+    let by = c.clone();
+    support::on_save(&dsp, move |db, _| writeups::delete(db, &by, &id, at));
+    back_up(&state, &dsp, 1000).await.unwrap();
+    assert_eq!(support::files(&dsp), []);
 }

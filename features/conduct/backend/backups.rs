@@ -4,12 +4,13 @@
 //! the photos not yet saved are tried, so marking a writeup signed never waits on it; one whose
 //! try fails waits longer each time, and is tried for as long as it isn't saved. A folder is
 //! known by its ID, so one renamed or moved among the DSP's files still takes its photos, and
-//! one no longer there is made again. The copy saved is never changed or taken back: Conduct
-//! keeps its own.
-use super::{DOMAIN, copies, settings};
+//! one no longer there is made again. The copy saved is never changed, and is taken back only
+//! as its writeup is deleted, while the DSP still backs its copies up.
+use super::{DOMAIN, copies, settings, writeups};
 use crate::api::types::{ConductBackup, ConductTier};
 use dispatch_core::{
-    Code, Result, State,
+    Code, Error, Result, State,
+    accounts::Context,
     db::{FromRow, Row, Store, now},
     ensure,
     foundation::observability,
@@ -168,10 +169,14 @@ pub(crate) async fn back_up(state: &Arc<State>, dsp: &str, at: i64) -> Result<()
         if let Err(code) = &outcome {
             failed(Some(dsp), code);
         }
-        let of = dsp.to_owned();
-        state
-            .run_serving(dsp, DOMAIN, move |db| finish(db, &of, &photo, &outcome, at))
+        let (of, by, came) = (dsp.to_owned(), photo.signed_by.clone(), outcome.clone());
+        let there = state
+            .run_serving(dsp, DOMAIN, move |db| finish(db, &of, &photo, &came, at))
             .await?;
+        // Its writeup was deleted while its copy was saved: the copy goes with it.
+        if let (false, Ok(saved)) = (there, &outcome) {
+            files.remove(state, dsp, saved, &Author::Named(by)).await?;
+        }
         if stopped {
             break;
         }
@@ -310,33 +315,90 @@ impl Place<'_> {
 }
 
 /// Keeps what trying `photo` at `at` came to: where it was saved, or the code of why it wasn't,
-/// with when it's due its next try.
+/// with when it's due its next try. False, keeping nothing, once its writeup is deleted.
 fn finish(
     store: &Store,
     dsp: &str,
     photo: &Photo,
     outcome: &std::result::Result<String, String>,
     at: i64,
-) -> Result<()> {
+) -> Result<bool> {
     let db = store.dsp(dsp)?;
-    match outcome {
-        Ok(saved) => db.exec(
-            "INSERT INTO conduct_backups (writeup_id,saved_id,saved_at) VALUES (?,?,?) \
-             ON CONFLICT(writeup_id) DO UPDATE SET saved_id=excluded.saved_id,\
-             saved_at=excluded.saved_at,reason=NULL",
-            params![photo.writeup, saved, at],
-        ),
-        Err(code) => {
-            let wait = RETRIES_MS[(photo.attempts.max(0) as usize).min(RETRIES_MS.len() - 1)];
-            db.exec(
-                "INSERT INTO conduct_backups (writeup_id,attempts,tried_at,due_at,reason) \
-                 VALUES (?,1,?,?,?) ON CONFLICT(writeup_id) DO UPDATE SET attempts=attempts+1,\
-                 tried_at=excluded.tried_at,due_at=excluded.due_at,reason=excluded.reason",
-                params![photo.writeup, at, at + wait, code],
-            )
+    db.transaction(|| {
+        let there = db.one_as::<(i64,)>(
+            "SELECT 1 FROM conduct_writeups WHERE id=?",
+            [&photo.writeup],
+        )?;
+        if there.is_none() {
+            return Ok(false);
+        }
+        match outcome {
+            Ok(saved) => db.exec(
+                "INSERT INTO conduct_backups (writeup_id,saved_id,saved_at) VALUES (?,?,?) \
+                 ON CONFLICT(writeup_id) DO UPDATE SET saved_id=excluded.saved_id,\
+                 saved_at=excluded.saved_at,reason=NULL",
+                params![photo.writeup, saved, at],
+            ),
+            Err(code) => {
+                let wait = RETRIES_MS[(photo.attempts.max(0) as usize).min(RETRIES_MS.len() - 1)];
+                db.exec(
+                    "INSERT INTO conduct_backups (writeup_id,attempts,tried_at,due_at,reason) \
+                     VALUES (?,1,?,?,?) ON CONFLICT(writeup_id) DO UPDATE SET attempts=attempts+1,\
+                     tried_at=excluded.tried_at,due_at=excluded.due_at,reason=excluded.reason",
+                    params![photo.writeup, at, at + wait, code],
+                )
+            }
+        }?;
+        Ok(true)
+    })
+}
+
+/// How deleting a writeup is refused while its copy can't be taken back from where the DSP
+/// keeps its files.
+const NOT_REMOVED: &str = "conduct_copy_not_removed";
+
+/// Where the copy of the writeup `id` is saved, with what keeps it there, for the member `c`
+/// deleting the writeup as read at `revision`: none while the DSP doesn't back its copies up,
+/// or its copy isn't saved.
+pub(crate) fn saved(
+    store: &Store,
+    c: &Context,
+    id: &str,
+    revision: i64,
+) -> Result<Option<(&'static dyn Files, String)>> {
+    let dsp = &c.dsp.id;
+    let db = store.dsp(dsp)?;
+    writeups::deletable(&db, c, id, revision)?;
+    if !chosen(store, dsp)? {
+        return Ok(None);
+    }
+    let Some(files) = files::for_dsp(store, dsp)? else {
+        return Ok(None);
+    };
+    let saved = db.one_as::<(String,)>(
+        "SELECT saved_id FROM conduct_backups WHERE writeup_id=? AND saved_id IS NOT NULL",
+        [id],
+    )?;
+    Ok(saved.map(|(saved,)| (files, saved)))
+}
+
+/// Takes the copy `saved` back from where `files` keeps the DSP's, as the member `c` deleting
+/// its writeup; one already gone from there is taken back. Refused, as `NOT_REMOVED`, while
+/// it can't be: the writeup stays until its copy goes.
+pub(crate) async fn take_back(
+    state: &Arc<State>,
+    c: &Context,
+    files: &'static dyn Files,
+    saved: &str,
+) -> Result<()> {
+    let by = Author::Member(c.actor().to_owned());
+    match files.remove(state, &c.dsp.id, saved, &by).await {
+        Ok(_) => Ok(()),
+        Err(error) => {
+            failed(Some(&c.dsp.id), &error.code);
+            Err(Error::new(NOT_REMOVED, 409))
         }
     }
-    .map(drop)
 }
 
 /// Where the DSP's signed copies are backed up and how that's going, for Conduct's page of

@@ -295,6 +295,15 @@ impl Files for Keeping {
             }))
         })
     }
+    fn remove<'a>(
+        &'a self,
+        _: &'a Arc<State>,
+        _: &'a str,
+        _: &'a str,
+        _: &'a Author,
+    ) -> Answer<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
 }
 /// A page the stand-in keeps as a document: where, as what, who wrote it last, and how often
 /// it was written.

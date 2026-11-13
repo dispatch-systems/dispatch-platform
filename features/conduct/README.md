@@ -17,8 +17,9 @@ with a photo of the paper if they like.
 - **Uses:** `files`, what a feature exposes as where a DSP keeps its files, to back signed
   copies up while the DSP has one and chose to. Conduct never learns which feature keeps them.
 - **Permissions:** `conduct.use`, to see every writeup, write one up, change or delete one not yet
-  signed, and mark one signed. `conduct.manage`, which includes it, to add, change, retire and
-  restore categories and how each steps down. Only owners hold them until a role grants them.
+  signed, and mark one signed. `conduct.manage`, which includes it, to delete a signed one, and
+  to add, change, retire and restore categories and how each steps down. Only owners hold them
+  until a role grants them.
 - **Page:** Conduct, in a DSP's sidebar: Drivers (each driver at a tier, their tier in each
   category) and Writeups (every writeup), a driver's own page (each category's tier and when it
   next steps down), a writeup's, and the form that
@@ -33,7 +34,8 @@ with a photo of the paper if they like.
   ordering. Merged directory codes are resolved before filtering.
   `GET /api/dsp/conduct/context` supplies standing and previous notices at the selected
   notice date, preserving an edited notice's position within that day. A writeup mutation
-  answers with that writeup; category mutations answer with the compact overview. Writeups under
+  answers with that writeup; deleting one, and category mutations, with the compact overview.
+  Deleting a signed one needs `conduct.manage` (`permission_denied` without it). Writeups under
   `/api/dsp/conduct/writeups[/{id}[/sign|/delete|/copy]]`, behind `conduct.use`; categories under
   `/api/dsp/conduct/categories[/{id}[/retire|/restore]]`, behind `conduct.manage`, as are the read-only
   `GET /api/dsp/conduct/categories/{id}/impact` preview of a proposed step-down rule,
@@ -51,13 +53,15 @@ with a photo of the paper if they like.
   - `conduct_writeups`: each writeup as it prints. It names its person by their code in core's
     directory (`people::everyone`) and keeps their name as printed; the page shows whoever the
     code names now, a merged person's code finding whoever kept their IDs. Signed, it never
-    changes again, nor can it be deleted. Edits name the revision they read.
+    changes again, and only a member who manages Conduct deletes it, for good: where its person
+    stands is worked out without it from then on. Edits name the revision they read.
   - `conduct_requests`: actor-bound receipts for copy uploads and signatures, committed with
     the mutation. Retrying the same request returns its result; another actor, payload or
     notice cannot reuse it. Receipts cascade with unsigned deletion so an older release can
     still delete unsigned notices.
   - `conduct_copies`: the photo of a writeup's signed paper, which the page shrinks to 2000
-    pixels before sending. A signed writeup's photo, once kept, stays.
+    pixels before sending. A signed writeup's photo, once kept, stays until the writeup is
+    deleted.
   - `conduct_backups`: each signed copy as it's backed up: where it was saved, or how many tries
     failed, when the last did and why, by its error code, and when the next is due.
     `conduct_backup_folders`: the folders the copies go in, each by its ID where the DSP keeps
@@ -81,8 +85,13 @@ with a photo of the paper if they like.
   again. A try that fails is reported (`conduct.backup_failed`) and waits a minute, five,
   fifteen, an hour, then six hours between tries, for as long as it isn't saved; the rest of
   the pass waits for the next. While what keeps the DSP's files says it can't, nothing is
-  tried. What's saved is everyone's who sees those files, and is never changed or taken back:
-  Conduct keeps its own copy. Switched off, as Conduct itself or the DSP disabled, the backup
+  tried. What's saved is everyone's who sees those files, and is never changed: Conduct keeps
+  its own copy. It's taken back only as its writeup is deleted, while the DSP still backs its
+  copies up: moved to the trash of where the files are kept, as the member deleting it, before
+  the writeup goes. While it can't be, the deletion is refused (`conduct_copy_not_removed`) and
+  nothing is deleted; one already gone from the DSP's files doesn't keep its writeup. With the
+  backup off, the copy saved stays where it is. A copy saved in the moment its writeup was
+  deleted goes with it. Switched off, as Conduct itself or the DSP disabled, the backup
   stops before the next thing it would send, in a pass under way too, and what was saved stays.
 - **Activity log:** a category added, changed, retired or restored, and a writeup deleted, under
   Settings (`frontend/audit-wording.ts`). A writeup keeps who wrote it and who marked it signed

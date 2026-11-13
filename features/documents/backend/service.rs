@@ -219,6 +219,32 @@ impl Files for DocumentsFiles {
             }))
         })
     }
+    fn remove<'a>(
+        &'a self,
+        state: &'a Arc<State>,
+        dsp: &'a str,
+        id: &'a str,
+        by: &'a Author,
+    ) -> Answer<'a, bool> {
+        Box::pin(async move {
+            let owner = grant::capture(state, dsp, None).await?;
+            let tree = access::tree_for(state, &owner).await?;
+            if !tree.get(id).is_some_and(|row| !row.folder()) {
+                return Ok(false);
+            }
+            let name = match files::discard(state, &owner, &tree, id).await {
+                Err(error) if error.code == "documents_item_not_found" => return Ok(false),
+                name => name?,
+            };
+            let by = by.clone();
+            owner
+                .run(state, move |db, owner| {
+                    db.audit(actor(&by), Some(&owner.key.dsp), "documents.trashed", &name)
+                })
+                .await?;
+            Ok(true)
+        })
+    }
 }
 
 /// Records the file `made` as saved by `by` from `from`, and answers it.
@@ -251,13 +277,17 @@ async fn record(
     owner
         .run(state, move |db, owner| {
             db.record_documents_change_by(&owner.key.dsp, &id, &by)?;
-            let actor = match &by {
-                Author::Member(user) => Some(user.as_str()),
-                Author::Named(_) => None,
-            };
-            db.audit(actor, Some(&owner.key.dsp), action, &detail)
+            db.audit(actor(&by), Some(&owner.key.dsp), action, &detail)
         })
         .await
+}
+/// Who the activity log names for what `by` did: the member, or none for someone known only by
+/// name.
+fn actor(by: &Author) -> Option<&str> {
+    match by {
+        Author::Member(user) => Some(user),
+        Author::Named(_) => None,
+    }
 }
 
 #[cfg(test)]
