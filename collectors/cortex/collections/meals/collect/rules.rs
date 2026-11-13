@@ -14,6 +14,12 @@ pub(crate) struct Fault {
     pub(crate) code: &'static str,
     pub(crate) reason: String,
 }
+impl Fault {
+    /// A response that could not be read as text.
+    pub(crate) fn unread() -> Self {
+        fault(INCOMPLETE, "response_text")
+    }
+}
 fn fault(code: &'static str, reason: &str) -> Fault {
     Fault {
         code,

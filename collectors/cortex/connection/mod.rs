@@ -329,6 +329,19 @@ impl Driver {
 }
 /// The routes Timecard already holds for `scope`, which the collection need not read again
 /// while they stay as they were.
+/// Whether the job is still this worker's to run: asked again before a read with no page
+/// goes on after a wait, as each step with one asks through its progress.
+fn authority(run: &Run<'_>) -> impl Fn() -> Pending<'static, ()> + Send + Sync + 'static {
+    let (state, job, owner) = (run.state.clone(), run.job.to_owned(), run.owner.to_owned());
+    move || {
+        let (state, job, owner) = (state.clone(), job.clone(), owner.clone());
+        Box::pin(async move {
+            state
+                .read(move |db| db.guard(&job, &owner).map(|_| ()))
+                .await
+        })
+    }
+}
 async fn kept_meals(run: &Run<'_>, scope: &Scope) -> Result<Vec<crate::meals::Itinerary>> {
     let job = run.job.to_owned();
     let question = serde_json::to_value(scope)?;
@@ -427,6 +440,7 @@ impl Drives for Driver {
                             )
                         },
                         &collection::MealMethod::default(),
+                        &authority(run),
                     )
                     .await?;
                     captures.push(serde_json::from_value(data)?);
@@ -462,6 +476,7 @@ impl Drives for Driver {
                 )),
                 |progress, message| run.progress(progress, message),
                 &collection::MealMethod::default(),
+                &authority(run),
             )
             .await?;
             Ok(Collected {

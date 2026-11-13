@@ -3,15 +3,18 @@ use super::{
     live::Writer,
 };
 use crate::{
-    codes,
-    collections::routes::page::MOVE,
+    HOSTS, codes,
+    collections::routes::{Check, Failure, Native, page::MOVE},
     connection::{Driver, gate},
     discovery::Scope,
 };
 use dispatch_core::{
     Error, Result,
     collection::{
-        browser::page::{Page, call},
+        browser::{
+            http::SignedIn,
+            page::{Page, call},
+        },
         metrics::Recorder,
     },
     db::{now, s},
@@ -20,10 +23,10 @@ use dispatch_core::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     future::Future,
     sync::{
-        LazyLock,
+        LazyLock, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::Duration,
@@ -115,6 +118,12 @@ pub(crate) struct MealMethod {
     /// before, and a route the browser couldn't ask is moved to.
     #[serde(default = "asks")]
     pub ask: bool,
+    /// The day is read first with no page, with the browser's session: its list and the
+    /// itineraries of the routes it needs, signed and downloaded as the routes collection's
+    /// are, and read by the meal rules here. A day that can't be read so is read as the rest
+    /// of the method says.
+    #[serde(default = "asks")]
+    pub native: bool,
 }
 fn asks() -> bool {
     true
@@ -127,6 +136,7 @@ impl Default for MealMethod {
             windows: false,
             hook: true,
             ask: true,
+            native: true,
         }
     }
 }
@@ -140,6 +150,7 @@ impl MealMethod {
             windows: true,
             hook: false,
             ask: false,
+            native: false,
         }
     }
 }
@@ -466,6 +477,7 @@ impl Driver {
         live: Option<&Writer>,
         progress: F,
         method: &MealMethod,
+        check: &Check,
     ) -> Result<Value>
     where
         F: Fn(i64, String) -> Fut,
@@ -478,6 +490,18 @@ impl Driver {
             "invalid_cortex_scope",
             400,
         )?;
+        if method.native {
+            match self
+                .natively(scope, kept, metrics, live, &progress, check)
+                .await?
+            {
+                Ok(day) => {
+                    metrics.method("meals_native");
+                    return Ok(day);
+                }
+                Err(why) => metrics.fallback(why),
+            }
+        }
         self.ensure_page().await?;
         let installed = if method.hook {
             let added = self
@@ -569,6 +593,179 @@ impl Driver {
             unreadable: c.unreadable.clone(),
         }
     }
+    /// A route the list alone answers: one without meals or whose punches can't be read, and
+    /// a finished one Timecard holds unchanged.
+    fn answered_by_list(
+        &self,
+        scope: &Scope,
+        kept: &[Itinerary],
+        c: &Candidate,
+        metrics: &Recorder,
+    ) -> Option<Itinerary> {
+        if c.meals.is_empty() {
+            metrics.detail(if c.unreadable.is_some() {
+                "meal_unreadable"
+            } else {
+                "meal_list_only"
+            });
+            return Some(self.without_meals(scope, c));
+        }
+        let route = finished(kept, c)?;
+        metrics.detail("meal_kept");
+        Some(Itinerary {
+            observed_at: now(),
+            source_url: Some(format!("{}{}", self.origin, scope.detail_path(&c.id))),
+            ..route.clone()
+        })
+    }
+    /// The day read with no page, with the browser's session, or why it was not: what
+    /// `Failure::label` calls it. Each pass reads the day's list and the itineraries of the
+    /// routes whose record is missing or out of date, a few at a time at the account's gate,
+    /// and the meal rules read each response here, keeping only its meal evidence. It ends
+    /// with a list that shows every record at its latest revision, as the passes with a page
+    /// do. Throttled past what a read waits, or its authority gone, the collection ends.
+    async fn natively<F, Fut>(
+        &self,
+        scope: &Scope,
+        kept: &[Itinerary],
+        metrics: &Recorder,
+        live: Option<&Writer>,
+        progress: &F,
+        check: &Check,
+    ) -> Result<std::result::Result<Value, &'static str>>
+    where
+        F: Fn(i64, String) -> Fut,
+        Fut: Future<Output = Result<()>>,
+    {
+        let told = |fault: rules::Fault| {
+            metrics.detail(&fault.reason);
+            Error::new(fault.code, 502)
+        };
+        let session = SignedIn::of(&self.browser, &self.origin, &HOSTS).await?;
+        let mut native = Native::new(&session)?;
+        let started_at = now();
+        let mut records: BTreeMap<String, (String, Itinerary)> = BTreeMap::new();
+        let mut known = HashSet::new();
+        for pass in 0..6 {
+            let message = match pass {
+                0 => "Reading meal evidence".to_owned(),
+                _ => format!("Checking source changes (pass {pass})"),
+            };
+            progress(if pass == 0 { 10 } else { 85 }, message).await?;
+            // The list as this pass finds it, as the rules read it, and of its routes those
+            // whose itinerary is asked for.
+            let listed = Mutex::new(None);
+            let have: HashMap<&str, &str> = (records.iter())
+                .map(|(id, (revision, _))| (id.as_str(), revision.as_str()))
+                .collect();
+            let wanted = |summaries: &Value| {
+                let read = rules::candidates(summaries, scope);
+                let ask = (read.iter().flatten())
+                    .filter(|c| {
+                        have.get(c.id.as_str()) != Some(&c.revision.as_str())
+                            && !c.meals.is_empty()
+                            && finished(kept, c).is_none()
+                    })
+                    .map(|c| (c.id.clone(), c.transporter_id.clone()))
+                    .collect();
+                *listed.lock().expect("the day's list") = Some(read);
+                Ok(ask)
+            };
+            let itineraries = match native.read_some(scope, check, &wanted).await {
+                Ok(itineraries) => itineraries,
+                Err(Failure::Throttled(error) | Failure::Stopped(error)) => return Err(error),
+                Err(failure) => return Ok(Err(failure.label())),
+            };
+            let candidates = (listed.into_inner().expect("the day's list"))
+                .ok_or_else(|| Error::new("cortex_content_incomplete", 502))?
+                .map_err(told)?;
+            let ids: HashSet<String> = candidates.iter().map(|c| c.id.clone()).collect();
+            ensure(known.is_subset(&ids), "cortex_membership_regressed", 502)?;
+            known = ids;
+            let current = |records: &BTreeMap<String, (String, Itinerary)>, c: &Candidate| {
+                (records.get(&c.id)).is_some_and(|(revision, _)| revision == &c.revision)
+            };
+            let stale = candidates.iter().any(|c| !current(&records, c));
+            if let Some(live) = live {
+                if pass == 0 {
+                    live.start_cortex(scope, drivers(&candidates)).await?;
+                } else if stale {
+                    live.cortex_drivers(drivers(&candidates)).await?;
+                }
+            }
+            let mut read = Vec::new();
+            for c in candidates.iter().filter(|c| !current(&records, c)) {
+                if let Some(route) = self.answered_by_list(scope, kept, c, metrics) {
+                    read.push((c.clone(), Ok(route)));
+                }
+            }
+            // Each response is text only while the rules read it, away from the threads
+            // serving requests; nothing of it but its meal evidence is kept.
+            let asked: Vec<_> = (itineraries.into_iter())
+                .filter_map(|i| {
+                    let c = candidates.iter().find(|c| c.id == i.id)?;
+                    Some((c.clone(), i.detail))
+                })
+                .collect();
+            let of = scope.clone();
+            read.extend(
+                tokio::task::spawn_blocking(move || {
+                    (asked.into_iter())
+                        .map(|(c, detail)| {
+                            let evidence = match detail.text() {
+                                Ok(text) => rules::detail(&text, &c, &of),
+                                Err(_) => Err(rules::Fault::unread()),
+                            };
+                            (c, evidence)
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .await
+                .map_err(|_| Error::new("cortex_content_incomplete", 502))?,
+            );
+            for (c, evidence) in read {
+                match evidence {
+                    Ok(mut route) => {
+                        route.source_url =
+                            Some(format!("{}{}", self.origin, scope.detail_path(&c.id)));
+                        if let Some(live) = live {
+                            live.cortex(&Capture {
+                                scope: scope.clone(),
+                                started_at,
+                                finished_at: now(),
+                                itineraries: vec![route.clone()],
+                            })
+                            .await?;
+                        }
+                        records.insert(c.id, (c.revision, route));
+                    }
+                    // A meal swipe landed after the list was read. The next pass reads this
+                    // route at its new revision.
+                    Err(fault) if fault.code == codes::CORTEX_SOURCE_CHANGED.as_str() => {
+                        records.remove(&c.id);
+                    }
+                    Err(fault) => return Err(told(fault)),
+                }
+            }
+            // A finished day changes no more; any other is done once a list read after its
+            // records shows them all as they are.
+            let whole = candidates.len() == records.len()
+                && candidates.iter().all(|c| current(&records, c));
+            let settled = day_over(scope) && candidates.iter().all(|c| c.route_complete);
+            if whole && (settled || !stale) {
+                let capture = Capture {
+                    scope: scope.clone(),
+                    started_at,
+                    finished_at: now(),
+                    itineraries: records.into_values().map(|(_, route)| route).collect(),
+                };
+                capture.validate(scope)?;
+                progress(95, "Validating meal publication".into()).await?;
+                return Ok(Ok(serde_json::to_value(capture)?));
+            }
+        }
+        Err(Error::new("cortex_source_changed", 502))
+    }
     /// Reads until one pass finds every listed route's record at its latest revision.
     #[allow(clippy::too_many_arguments)]
     async fn passes<F, Fut>(
@@ -604,21 +801,7 @@ impl Driver {
                 {
                     continue;
                 }
-                let route = if c.meals.is_empty() {
-                    metrics.detail(if c.unreadable.is_some() {
-                        "meal_unreadable"
-                    } else {
-                        "meal_list_only"
-                    });
-                    self.without_meals(scope, c)
-                } else if let Some(route) = finished(kept, c) {
-                    metrics.detail("meal_kept");
-                    Itinerary {
-                        observed_at: now(),
-                        source_url: Some(format!("{}{}", self.origin, scope.detail_path(&c.id))),
-                        ..route.clone()
-                    }
-                } else {
+                let Some(route) = self.answered_by_list(scope, kept, c, metrics) else {
                     continue;
                 };
                 if let Some(live) = live {

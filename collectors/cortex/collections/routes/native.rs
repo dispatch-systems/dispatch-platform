@@ -69,7 +69,7 @@ const USER_REF: &str = "cortex-webapp-user";
 
 /// The itineraries a reader wants of a day, each by its id and driver, as it finds them in the
 /// day's list, which it is handed whole. Its error ends the read.
-pub type Wanted = dyn Fn(&Value) -> Result<Vec<(String, String)>> + Send + Sync;
+pub type Wanted<'a> = dyn Fn(&Value) -> Result<Vec<(String, String)>> + Send + Sync + 'a;
 /// What a read asks of Cortex with one key.
 type Asked<'r, T> = Pin<Box<dyn Future<Output = std::result::Result<T, Failure>> + Send + 'r>>;
 
@@ -506,7 +506,7 @@ impl Native {
         &mut self,
         scope: &Scope,
         check: &Check,
-        wanted: &Wanted,
+        wanted: &Wanted<'_>,
     ) -> std::result::Result<Vec<ItineraryCapture>, Failure> {
         self.keyed(scope, check, false, Some(wanted), |reading| {
             Box::pin(reading.some())
@@ -522,7 +522,7 @@ impl Native {
         scope: &Scope,
         check: &Check,
         reuse: bool,
-        wanted: Option<&Wanted>,
+        wanted: Option<&Wanted<'_>>,
         ask: impl for<'r> Fn(&'r Reading<'r>) -> Asked<'r, T>,
     ) -> std::result::Result<T, Failure> {
         self.throttle = Some(Throttle {
@@ -626,7 +626,7 @@ struct Reading<'a> {
     /// What the reader kept of the day, when this read may reuse settled routes' itineraries.
     kept: Option<&'a Kept>,
     /// The itineraries a read of some of the day's wants.
-    wanted: Option<&'a Wanted>,
+    wanted: Option<&'a Wanted<'a>>,
 }
 impl Reading<'_> {
     /// What a list is asked for with: the day, and whether it is past.
