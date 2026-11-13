@@ -125,7 +125,7 @@ pub struct ItineraryCapture {
 /// An itinerary's response, kept gzip-compressed, as Amazon sent it or as it is stored: a
 /// day's are tens of megabytes as text and a few compressed, so each is text only while
 /// something reads it. Outside this process it is its JSON text.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct Detail {
     /// Shared, so a reader that keeps a settled route's for its next read copies nothing.
     gzip: Arc<[u8]>,

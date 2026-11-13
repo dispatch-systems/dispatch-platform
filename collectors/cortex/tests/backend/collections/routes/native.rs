@@ -166,6 +166,7 @@ impl Stand {
         }
     }
     fn read(&self, path: &str, query: &str, request: &Asked) -> Response<Body> {
+        let mut level = flate2::Compression::fast();
         let first = self.reads.fetch_add(1, Ordering::SeqCst) == 0;
         if matches!(self.plays, Plays::SignsOut)
             || matches!(self.plays, Plays::RedirectsOnce) && first
@@ -287,12 +288,25 @@ impl Stand {
                         detail["itineraryDetails"]["stops"] = json!("none");
                         detail.to_string()
                     }
+                    // The finished route's itinerary comes compressed another way the second
+                    // time it is asked for, and changed from the third.
+                    Plays::Settled if index == 0 && times == 2 => {
+                        level = flate2::Compression::best();
+                        self.day.itineraries[0].detail.text().unwrap()
+                    }
+                    Plays::Settled if index == 0 && times > 2 => {
+                        let mut detail: Value =
+                            serde_json::from_str(&self.day.itineraries[0].detail.text().unwrap())
+                                .unwrap();
+                        detail["itineraryDetails"]["progressStatus"] = json!("BEHIND");
+                        detail.to_string()
+                    }
                     _ => self.day.itineraries[index].detail.text().unwrap(),
                 }
             }
             None => return status(StatusCode::NOT_FOUND),
         };
-        let mut gzipped = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        let mut gzipped = flate2::write::GzEncoder::new(Vec::new(), level);
         gzipped.write_all(body.as_bytes()).unwrap();
         Response::builder()
             .header(header::CONTENT_TYPE, "application/json;charset=UTF-8")
@@ -644,7 +658,8 @@ async fn a_snapshot_asks_again_only_for_routes_something_may_be_happening_on() {
     assert_eq!(asked(), (1, 2));
     assert_eq!(reader.counts(), [("reused", 1)]);
     assert_eq!(next.itineraries.len(), 2);
-    assert_eq!(next.itineraries[0].detail, first.itineraries[0].detail);
+    let text = |capture: &Capture| capture.itineraries[0].detail.text().unwrap();
+    assert_eq!(text(&next), text(&first));
     // One read in six asks for them all again, and found nothing the list had not shown.
     for _ in 0..4 {
         reader
@@ -658,8 +673,23 @@ async fn a_snapshot_asks_again_only_for_routes_something_may_be_happening_on() {
         .await
         .unwrap();
     assert_eq!(asked(), (2, 7));
+    // Cortex compressed the finished route's another way that time, which is no change.
     assert!(reader.counts().is_empty());
+    // The next such read finds it changed though the list said the same, and counts it.
+    for _ in 0..5 {
+        reader
+            .read(&scope, Mode::Snapshot, &authorized)
+            .await
+            .unwrap();
+    }
+    assert_eq!(asked(), (2, 12));
+    reader
+        .read(&scope, Mode::Snapshot, &authorized)
+        .await
+        .unwrap();
+    assert_eq!(asked(), (3, 13));
+    assert_eq!(reader.counts(), [("unseen", 1)]);
     // A completed day's read reuses nothing.
     reader.read(&scope, Mode::Final, &authorized).await.unwrap();
-    assert_eq!(asked(), (3, 8));
+    assert_eq!(asked(), (4, 14));
 }

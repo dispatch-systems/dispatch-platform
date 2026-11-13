@@ -28,7 +28,7 @@ read asks for at most twelve rounds and waits on throttling for at most two minu
 cooldown fails promptly and stays with the gate for a later scheduled attempt. The cooldown stays with the gate
 across cancellation; throttling never asks the browser to
 sign or discover again, and its fixed endpoint and status are logged without identifiers.
-Healthy reads download four at a time without a cooldown. `Native::throttling` counts
+Healthy reads download four at a time without a cooldown. `Native::counts` counts
 what a read met: the requests throttled, and the narrower width since; each refusal's log event
 carries the width it was asked at (`downloads`).
 A reader asked for a snapshot of the day it read last asks only for routes something may be

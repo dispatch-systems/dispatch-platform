@@ -493,12 +493,21 @@ impl Native {
                         let read = (capture.itineraries.iter())
                             .filter_map(|i| Some((i, *entries.get(i.id.as_str())?)));
                         if whole {
-                            self.unseen = (read.clone())
-                                .filter(|(i, entry)| {
-                                    (self.kept.settled(&i.id, entry))
-                                        .is_some_and(|kept| *kept != i.detail)
+                            // Each as text: Cortex may compress the same itinerary another
+                            // way, which is no change to it.
+                            let settled: Vec<(Detail, Detail)> = (read.clone())
+                                .filter_map(|(i, entry)| {
+                                    let kept = self.kept.settled(&i.id, entry)?;
+                                    Some((kept.clone(), i.detail.clone()))
                                 })
-                                .count() as u64;
+                                .collect();
+                            self.unseen = tokio::task::spawn_blocking(move || {
+                                (settled.iter())
+                                    .filter(|(kept, read)| kept.text().ok() != read.text().ok())
+                                    .count() as u64
+                            })
+                            .await
+                            .unwrap_or(0);
                         } else {
                             self.reused = (read.clone())
                                 .filter(|(i, entry)| self.kept.settled(&i.id, entry).is_some())
