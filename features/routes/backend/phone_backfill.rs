@@ -96,7 +96,7 @@ fn phones_kept(routes: &Db, publication: &Value) -> Result<Vec<(String, Option<S
     let invalid = |_| Error::new("routes_capture_invalid", 502);
     (capture.itineraries.iter())
         .map(|itinerary| {
-            let own = wire::drivers(&itinerary.detail).map_err(invalid)?;
+            let own = wire::drivers(&itinerary.detail.text()?).map_err(invalid)?;
             let phone = shaper.work_phone(&itinerary.transporter_id, &own.transporters);
             Ok((itinerary.id.clone(), phone))
         })

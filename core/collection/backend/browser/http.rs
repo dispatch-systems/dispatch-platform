@@ -217,20 +217,29 @@ impl Wire {
     /// Decoding takes a core: a reader on the threads serving requests hands it to a blocking
     /// one.
     pub fn into_text(self, limit: usize) -> std::result::Result<String, Refusal> {
-        let bytes = if self.gzipped {
-            let mut decoded = Vec::new();
-            flate2::read::GzDecoder::new(self.body.as_slice())
-                .take(limit as u64 + 1)
-                .read_to_end(&mut decoded)
-                .map_err(|_| Refusal::Unreadable("http_encoding"))?;
-            decoded
-        } else {
-            self.body
-        };
-        if bytes.len() > limit {
+        self.into_parts(limit).map(|(text, _)| text)
+    }
+    /// Its text as `into_text` reads it, and the body it came as when that was gzipped: what
+    /// keeps a large response compressed needs its text only to check it.
+    pub fn into_parts(
+        self,
+        limit: usize,
+    ) -> std::result::Result<(String, Option<Vec<u8>>), Refusal> {
+        if !self.gzipped {
+            if self.body.len() > limit {
+                return Err(Refusal::Unreadable("http_too_large"));
+            }
+            return Ok((utf8(self.body)?, None));
+        }
+        let mut decoded = Vec::new();
+        flate2::read::GzDecoder::new(self.body.as_slice())
+            .take(limit as u64 + 1)
+            .read_to_end(&mut decoded)
+            .map_err(|_| Refusal::Unreadable("http_encoding"))?;
+        if decoded.len() > limit {
             return Err(Refusal::Unreadable("http_too_large"));
         }
-        utf8(bytes)
+        Ok((utf8(decoded)?, Some(self.body)))
     }
 }
 

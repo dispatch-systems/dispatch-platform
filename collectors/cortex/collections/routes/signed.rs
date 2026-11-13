@@ -8,7 +8,7 @@
 //! with the browser's session, a few at a time; the application is handed more reads only
 //! as downloads finish, so no signature waits long to be used. A read that fails is signed
 //! and downloaded once more; whatever is still unread is left to the application's moves.
-use super::capture::{ItineraryCapture, MAX_BODY};
+use super::capture::{Detail, ItineraryCapture, MAX_BODY};
 use super::page::patterns;
 use super::protocol::{CaptureBudget, ITINERARY, ROUTE_SUMMARIES, itinerary_path, owned_by};
 use crate as cortex;
@@ -304,7 +304,7 @@ where
         self.read.itineraries[index] = Some(ItineraryCapture {
             id: id.clone(),
             transporter_id: transporter.clone(),
-            detail: text,
+            detail: Detail::of_text(&text)?,
         });
         self.metrics.page_finish(index + 1, None);
         self.metrics.direct();

@@ -130,18 +130,18 @@ fn rename(read: &mut Capture, n: usize, first: Value) {
     read.summaries["transporters"][n]["firstName"] = first.clone();
     read.route_summaries["transporters"][n]["firstName"] = first.clone();
     if let Some(itinerary) = read.itineraries.get_mut(n) {
-        let mut detail: Value = serde_json::from_str(&itinerary.detail).unwrap();
+        let mut detail: Value = serde_json::from_str(&itinerary.detail.text().unwrap()).unwrap();
         detail["transporters"][0]["firstName"] = first;
-        itinerary.detail = detail.to_string();
+        itinerary.detail = dispatch_cortex::routes::Detail::of_text(&detail.to_string()).unwrap();
     }
 }
 fn surname(read: &mut Capture, n: usize, last: &str) {
     read.summaries["transporters"][n]["lastName"] = json!(last);
     read.route_summaries["transporters"][n]["lastName"] = json!(last);
     if let Some(itinerary) = read.itineraries.get_mut(n) {
-        let mut detail: Value = serde_json::from_str(&itinerary.detail).unwrap();
+        let mut detail: Value = serde_json::from_str(&itinerary.detail.text().unwrap()).unwrap();
         detail["transporters"][0]["lastName"] = json!(last);
-        itinerary.detail = detail.to_string();
+        itinerary.detail = dispatch_cortex::routes::Detail::of_text(&detail.to_string()).unwrap();
     }
 }
 fn name(everyone: &Everyone, id: &str) -> String {
@@ -303,9 +303,9 @@ async fn live_proof_keeps_only_unchanged_people_and_still_refreshes_routes() {
         .push(duplicate);
     let mut itinerary = read.itineraries[0].clone();
     itinerary.id = "itinerary-extra".into();
-    let mut detail: Value = serde_json::from_str(&itinerary.detail).unwrap();
+    let mut detail: Value = serde_json::from_str(&itinerary.detail.text().unwrap()).unwrap();
     detail["itineraryDetails"]["itineraryId"] = json!("itinerary-extra");
-    itinerary.detail = detail.to_string();
+    itinerary.detail = dispatch_cortex::routes::Detail::of_text(&detail.to_string()).unwrap();
     read.itineraries.push(itinerary);
     keep(state, &a, read.clone()).await.unwrap();
     assert!(Arc::ptr_eq(&before, &everyone(state, &a).await));

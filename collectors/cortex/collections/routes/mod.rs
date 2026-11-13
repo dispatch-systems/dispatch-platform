@@ -9,8 +9,8 @@ mod signed;
 
 pub use browser::Browser;
 pub use capture::{
-    Capture, Collection, ItineraryCapture, JOB_KIND, MAX_BODY, MAX_CAPTURE_BYTES, MAX_ITINERARIES,
-    Mode, Request, add_capture_bytes, fixture, listed, token,
+    Capture, Collection, Detail, ItineraryCapture, JOB_KIND, MAX_BODY, MAX_CAPTURE_BYTES,
+    MAX_ITINERARIES, Mode, Request, add_capture_bytes, fixture, listed, token,
 };
 pub use native::{Check, Failure, Native};
 use serde::{Deserialize, Serialize};

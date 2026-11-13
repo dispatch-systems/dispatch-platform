@@ -104,9 +104,10 @@ fn phoneless(day: &str, mode: Mode) -> Capture {
         }
     }
     for itinerary in &mut read.itineraries {
-        let mut response: serde_json::Value = serde_json::from_str(&itinerary.detail).unwrap();
+        let mut response: serde_json::Value =
+            serde_json::from_str(&itinerary.detail.text().unwrap()).unwrap();
         response["transporters"] = json!([]);
-        itinerary.detail = response.to_string();
+        itinerary.detail = dispatch_cortex::routes::Detail::of_text(&response.to_string()).unwrap();
     }
     read
 }

@@ -27,6 +27,7 @@ futures-util = { workspace = true }
 hmac = { workspace = true }
 jpeg-decoder = { workspace = true }
 jpeg-encoder = { workspace = true }
+flate2 = { workspace = true }
 png = { workspace = true }
 serde = { workspace = true }
 # What it collects keeps the order its fields are written in.
@@ -39,7 +40,6 @@ zip = { workspace = true }
 [dev-dependencies]
 dispatch-core = { path = "../../core", features = ["testing"] }
 axum = { workspace = true }
-flate2 = { workspace = true }
 reqwest = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }

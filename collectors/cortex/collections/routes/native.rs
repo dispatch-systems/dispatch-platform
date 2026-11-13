@@ -13,7 +13,7 @@
 //! (`connection::gate`), which every reader of the account on this server shares, so a
 //! throttle one of them meets cools and narrows them all. A day is read whole, both lists
 //! and every itinerary, or not at all.
-use super::capture::{Capture, Collection, ItineraryCapture, MAX_BODY, Mode};
+use super::capture::{Capture, Collection, Detail, ItineraryCapture, MAX_BODY, Mode};
 use super::protocol::{
     CaptureBudget, ITINERARY, ROUTE_SUMMARIES, SUMMARIES, itineraries_listed, itinerary_path,
     owned_by, parsed,
@@ -217,6 +217,24 @@ async fn decoded(
         let text = wire.into_text(limit)?;
         check(&text)?;
         Ok(text)
+    })
+    .await
+    .map_err(|_| Failure::Unavailable(Error::new("cortex_content_incomplete", 502)))?
+}
+/// An itinerary's body `check`ed as text and kept compressed, as it came when it came so, away
+/// from the threads serving requests: its text lives only for the check.
+async fn detail(
+    wire: Wire,
+    limit: usize,
+    check: impl FnOnce(&str) -> Result<()> + Send + 'static,
+) -> std::result::Result<Detail, Failure> {
+    tokio::task::spawn_blocking(move || -> std::result::Result<Detail, Failure> {
+        let (text, gzip) = wire.into_parts(limit)?;
+        check(&text)?;
+        Ok(match gzip {
+            Some(gzip) => Detail::of_gzip(gzip, text.len()),
+            None => Detail::of_text(&text)?,
+        })
     })
     .await
     .map_err(|_| Failure::Unavailable(Error::new("cortex_content_incomplete", 502)))?
@@ -541,7 +559,7 @@ impl Reading<'_> {
         &self,
         (id, transporter): &(String, String),
         limit: usize,
-    ) -> std::result::Result<String, Failure> {
+    ) -> std::result::Result<Detail, Failure> {
         let params = [
             ("documentType", "Itinerary"),
             ("historicalDay", self.historical),
@@ -550,7 +568,7 @@ impl Reading<'_> {
         ];
         let wire = self.get(&itinerary_path(id), &params, limit).await?;
         let (id, transporter) = (id.clone(), transporter.clone());
-        decoded(wire, limit, move |text| {
+        detail(wire, limit, move |text| {
             ensure(
                 owned_by(text, &id, &transporter),
                 "routes_scope_mismatch",
@@ -567,7 +585,7 @@ impl Reading<'_> {
         listed: &[(String, String)],
         bytes: &CaptureBudget,
     ) -> std::result::Result<Vec<ItineraryCapture>, Failure> {
-        let mut read: Vec<Option<String>> = vec![None; listed.len()];
+        let mut read: Vec<Option<Detail>> = vec![None; listed.len()];
         let mut failure = None;
         let mut asked_again = false;
         for round in 0..ROUNDS {
@@ -597,7 +615,7 @@ impl Reading<'_> {
             while let Some((index, answer)) = answers.next().await {
                 match answer {
                     Ok(detail) => {
-                        bytes.add(detail.len())?;
+                        bytes.add(detail.bytes())?;
                         read[index] = Some(detail);
                     }
                     // Its authority gone, the read ends before another request is admitted

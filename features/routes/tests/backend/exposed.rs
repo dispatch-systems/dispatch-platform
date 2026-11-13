@@ -407,14 +407,15 @@ fn later(read: &mut Capture, driver: &str, phone: &str) {
     summary["itineraryStartTime"] = json!(began);
     let summaries = read.summaries["itinerarySummaries"].as_array_mut();
     summaries.unwrap().push(summary);
-    let mut response: Value = serde_json::from_str(&read.itineraries[0].detail).unwrap();
+    let mut response: Value =
+        serde_json::from_str(&read.itineraries[0].detail.text().unwrap()).unwrap();
     response["itineraryDetails"]["itineraryId"] = json!(id);
     response["itineraryDetails"]["transporterId"] = json!(driver);
     response["transporters"] = json!([{"transporterId":driver,"workPhoneNumber":phone}]);
     read.itineraries.push(ItineraryCapture {
         id,
         transporter_id: driver.into(),
-        detail: response.to_string(),
+        detail: dispatch_cortex::routes::Detail::of_text(&response.to_string()).unwrap(),
     });
 }
 
@@ -478,9 +479,11 @@ async fn a_days_work_phones_are_each_drivers_latest_saying_when_two_share_one() 
     publish_edited(&state, &db, &dsp, &day(4), Mode::Final, |read| {
         unlisted(read);
         for itinerary in &mut read.itineraries {
-            let mut response: Value = serde_json::from_str(&itinerary.detail).unwrap();
+            let mut response: Value =
+                serde_json::from_str(&itinerary.detail.text().unwrap()).unwrap();
             response["transporters"] = json!([]);
-            itinerary.detail = response.to_string();
+            itinerary.detail =
+                dispatch_cortex::routes::Detail::of_text(&response.to_string()).unwrap();
         }
     })
     .await;

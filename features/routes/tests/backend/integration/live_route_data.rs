@@ -96,7 +96,12 @@ impl Day {
         let mut lists = routes::fixture(&request).unwrap();
         let details = std::mem::take(&mut lists.itineraries)
             .into_iter()
-            .map(|i| (i.id, serde_json::from_str(&i.detail).unwrap()))
+            .map(|i| {
+                (
+                    i.id,
+                    serde_json::from_str(&i.detail.text().unwrap()).unwrap(),
+                )
+            })
             .collect();
         let mut day = Self {
             summaries: lists.summaries.clone(),
@@ -134,7 +139,8 @@ impl Day {
         capture.itineraries = routes::listed(&capture.summaries, &capture.scope)
             .into_iter()
             .map(|(id, transporter_id)| routes::ItineraryCapture {
-                detail: self.details[&id].to_string(),
+                detail: dispatch_cortex::routes::Detail::of_text(&self.details[&id].to_string())
+                    .unwrap(),
                 id,
                 transporter_id,
             })
