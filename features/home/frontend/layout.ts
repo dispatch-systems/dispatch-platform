@@ -10,6 +10,9 @@ import {
 // every widget they placed, those of features they don't have now among them; what the page
 // shows is those they have, each at the step it was placed at.
 
+/** A change to the widgets a member placed, made on those kept when it's saved. */
+export type Arrange = (update: (placed: PlacedWidget[]) => PlacedWidget[]) => void;
+
 type Cells = Pick<PlacedWidget, 'x' | 'y' | 'w' | 'h'>;
 const overlaps = (a: Cells, b: Cells) =>
   a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;

@@ -1,11 +1,4 @@
-import {
-  Component,
-  Suspense,
-  lazy,
-  type ComponentType,
-  type LazyExoticComponent,
-  type ReactNode,
-} from 'react';
+import { Component, useEffect, useState, type ComponentType, type ReactNode } from 'react';
 import type { DspView } from '../../../core/accounts/api/index.js';
 import type {
   Widget,
@@ -14,15 +7,7 @@ import type {
 } from '../../../core/shell/frontend/runtime/slots.js';
 
 // What draws each widget, loaded once, the first time it's shown.
-const drawn = new Map<string, LazyExoticComponent<ComponentType<WidgetProps>>>();
-function drawing(widget: Widget) {
-  let found = drawn.get(widget.id);
-  if (!found) {
-    found = lazy(() => widget.load().then((draw) => ({ default: draw })));
-    drawn.set(widget.id, found);
-  }
-  return found;
-}
+const loaded = new WeakMap<Widget, ComponentType<WidgetProps>>();
 
 /** A widget in its frame: loading on its own, and failing alone. */
 export function WidgetFrame({
@@ -34,16 +19,36 @@ export function WidgetFrame({
   size: WidgetSize;
   view: DspView;
 }) {
-  const Drawn = drawing(widget);
   return (
     <article className="home-widget" aria-label={widget.label}>
       <Failing id={widget.id}>
-        <Suspense fallback={<div className="home-widget-loading" />}>
-          <Drawn size={size} view={view} />
-        </Suspense>
+        <Drawn widget={widget} size={size} view={view} />
       </Failing>
     </article>
   );
+}
+
+/** The widget once its code has loaded, its frame empty until then. */
+function Drawn({ widget, size, view }: { widget: Widget; size: WidgetSize; view: DspView }) {
+  const [Loaded, setLoaded] = useState(() => loaded.get(widget));
+  const [failed, setFailed] = useState<unknown>();
+  useEffect(() => {
+    if (Loaded) return;
+    let live = true;
+    widget.load().then(
+      (component) => {
+        loaded.set(widget, component);
+        if (live) setLoaded(() => component);
+      },
+      (error: unknown) => live && setFailed(error),
+    );
+    return () => {
+      live = false;
+    };
+  }, [widget, Loaded]);
+  // A failed download fails as drawing it would, for the boundary around it.
+  if (failed) throw failed;
+  return Loaded ? <Loaded size={size} view={view} /> : <div className="home-widget-loading" />;
 }
 
 /** Keeps a widget that fails from taking the page with it. */

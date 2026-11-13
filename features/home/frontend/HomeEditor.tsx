@@ -16,9 +16,8 @@ import {
 import { ConfirmDialog, Header, Modal } from '../../../core/shell/frontend/ui/index.js';
 import type { PlacedWidget } from '../api/index.js';
 import { COLUMNS, GAP } from './grid.js';
-import { adding, keeping, nearest, shown } from './layout.js';
+import { adding, keeping, nearest, shown, type Arrange } from './layout.js';
 import { WidgetFrame } from './WidgetFrame.js';
-import type { Arrange } from './WidgetHome.js';
 
 /** Placed anywhere, never over another: one dragged onto another goes back. */
 const free = getCompactor(null, false, true);

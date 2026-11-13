@@ -4,17 +4,13 @@ import type { DspView, SessionView } from '../../../core/accounts/api/index.js';
 import { usePreference } from '../../../core/shell/frontend/runtime/preferences.js';
 import type { Widget } from '../../../core/shell/frontend/runtime/slots.js';
 import { Header } from '../../../core/shell/frontend/ui/index.js';
-import type { PlacedWidget } from '../api/index.js';
-import { shown, starting } from './layout.js';
+import { shown, starting, type Arrange } from './layout.js';
 import { WidgetGrid } from './WidgetGrid.js';
 
 // Loaded as the member asks to arrange the page, with what dragging and resizing need.
 const loadEditor = () => import('./HomeEditor.js');
 const HomeEditor = lazy(() => loadEditor().then((module) => ({ default: module.HomeEditor })));
 const preload = () => void loadEditor().catch(() => undefined);
-
-/** A change to the widgets a member placed, made on those kept when it's saved. */
-export type Arrange = (update: (placed: PlacedWidget[]) => PlacedWidget[]) => void;
 
 /**
  * The member's widgets where they placed them, or where the features start them until they
