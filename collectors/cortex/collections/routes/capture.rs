@@ -6,7 +6,10 @@ use dispatch_core::{Error, Result, db::now, ensure, text_enum};
 use flate2::{read::GzDecoder, write::GzEncoder};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::io::{Read, Write};
+use std::{
+    io::{Read, Write},
+    sync::Arc,
+};
 
 pub const JOB_KIND: &str = "cortex.routes.collect";
 /// Itineraries a day may list, well above any station seen.
@@ -122,9 +125,10 @@ pub struct ItineraryCapture {
 /// An itinerary's response, kept gzip-compressed, as Amazon sent it or as it is stored: a
 /// day's are tens of megabytes as text and a few compressed, so each is text only while
 /// something reads it. Outside this process it is its JSON text.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Detail {
-    gzip: Vec<u8>,
+    /// Shared, so a reader that keeps a settled route's for its next read copies nothing.
+    gzip: Arc<[u8]>,
     /// How long its text is.
     bytes: usize,
 }
@@ -134,13 +138,16 @@ impl Detail {
         let mut encoder = GzEncoder::new(Vec::new(), flate2::Compression::default());
         encoder.write_all(text.as_bytes())?;
         Ok(Self {
-            gzip: encoder.finish()?,
+            gzip: encoder.finish()?.into(),
             bytes: text.len(),
         })
     }
     /// A response already compressed, whose text is `bytes` long.
     pub fn of_gzip(gzip: Vec<u8>, bytes: usize) -> Self {
-        Self { gzip, bytes }
+        Self {
+            gzip: gzip.into(),
+            bytes,
+        }
     }
     /// How long its text is.
     pub fn bytes(&self) -> usize {
@@ -154,7 +161,7 @@ impl Detail {
     /// stored response that does not (`operation_failed`).
     pub fn text(&self) -> Result<String> {
         let mut text = Vec::new();
-        GzDecoder::new(self.gzip.as_slice())
+        GzDecoder::new(&*self.gzip)
             .take(self.bytes as u64 + 1)
             .read_to_end(&mut text)?;
         ensure(text.len() == self.bytes, "routes_capture_invalid", 502)?;
