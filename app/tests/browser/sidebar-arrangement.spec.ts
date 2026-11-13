@@ -8,6 +8,8 @@ test('a member arranges the sidebar where it is, with the keyboard, by dragging 
   const names = page
     .getByRole('navigation', { name: 'Primary navigation' })
     .locator('.nav-item > span:first-of-type');
+  // The DSP's own page is drawn once its view is in, and the sidebar lists every page then.
+  await expect(page.locator('.dsp-page')).toBeVisible();
   await expect(names.last()).toHaveText('Settings');
   const [first, second, third, fourth, ...rest] = await names.allTextContents();
   await page.getByLabel('Account menu').click();
