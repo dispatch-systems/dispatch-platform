@@ -600,6 +600,9 @@ impl Reading<'_> {
                         bytes.add(detail.len())?;
                         read[index] = Some(detail);
                     }
+                    // Its authority gone, the read ends before another request is admitted
+                    // in the one's place, which would not have waited and so not asked.
+                    Err(stopped @ Failure::Stopped(_)) => return Err(stopped),
                     Err(missed) => {
                         failure = Some(match failure {
                             Some(earlier) => missed.worse(earlier),
