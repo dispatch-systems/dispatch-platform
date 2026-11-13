@@ -5,7 +5,7 @@ import path from 'node:path';
 // `dispatchdev list <what>` and `dispatchdev explain <owner>`: what the product has, read from
 // what `dispatchdev generate` writes (app/generated/features.json, the catalog's snapshots,
 // the people data) and the slot catalogue, so the answer is the build's, not a guess from the
-// source. Each answers rows of plain values: a line each, or with --json the rows as JSON.
+// source; the widgets, which only the frontend declares, from each feature's manifest. Each answers rows of plain values: a line each, or with --json the rows as JSON.
 
 const FEATURES = 'app/generated/features.json';
 const SNAPSHOTS = 'app/tests/backend/snapshots';
@@ -81,6 +81,22 @@ export function frontendSlots(source: string) {
   return [...(body ?? '').matchAll(/^ {2}(?:get )?([a-zA-Z]+)\s*[:,(]/gm)]
     .map(([, key]) => key!)
     .filter((key) => key !== 'name');
+}
+/** The widgets a frontend manifest declares, each with its id, its label and the steps it draws. */
+export function declaredWidgets(source: string) {
+  const text = (key: string, entry: string) =>
+    new RegExp(`\\b${key}: (['"])(.*?)\\1`).exec(entry)?.[2] ?? '';
+  const list = /\n {2}widgets: \[([\s\S]*?)\n {2}\],/.exec(source)?.[1] ?? '';
+  return list
+    .split(/\n {4}\{/)
+    .slice(1)
+    .map((entry) => ({
+      id: text('id', entry),
+      label: text('label', entry),
+      sizes: [...(/\bsizes: \[([^\]]*)\]/.exec(entry)?.[1] ?? '').matchAll(/'(\w+)'/g)].map(
+        ([, size]) => size!,
+      ),
+    }));
 }
 /** Whether a backend slot holds something: a non-empty list, object or value. */
 const filled = (value: unknown): boolean =>
@@ -203,6 +219,20 @@ export const LISTS: Record<string, { about: string; rows: (root: string) => Row[
         root,
         `${SNAPSHOTS}/catalog-permissions.json`,
       ).permissions.map(([id, label]) => ({ id, label })),
+  },
+  widgets: {
+    about: 'every widget a member adds to their Home page, with the size steps it draws',
+    rows: (root) =>
+      Object.keys(features(root)).flatMap((name) => {
+        const manifest = `${featureDirectory(root, name)}/frontend/feature.ts`;
+        if (!fs.existsSync(path.join(root, manifest))) return [];
+        return declaredWidgets(read(root, manifest)).map((widget) => ({
+          id: widget.id,
+          label: widget.label,
+          feature: name,
+          sizes: widget.sizes,
+        }));
+      }),
   },
   pages: {
     about: 'every page and tab, with the permissions that show it',
