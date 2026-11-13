@@ -7,15 +7,15 @@ fn a_layout_is_kept_only_when_each_widget_fits_the_grid_once() {
     let kept = |widgets: Value| LAYOUT.keeps(&json!({ "widgets": widgets })).is_some();
     assert!(kept(json!([])));
     assert!(kept(json!([
-        placed(13, 0, 3, 3),
-        {"id": "dvic.today", "x": 0, "y": 3, "w": 16, "h": 6}
+        placed(9, 0, 3, 3),
+        {"id": "dvic.today", "x": 0, "y": 3, "w": 12, "h": 4}
     ])));
     for refused in [
         // Past the grid's right edge, or its bottom, which the page fills.
-        json!([placed(14, 0, 3, 3)]),
+        json!([placed(10, 0, 3, 3)]),
         json!([placed(250, 0, 250, 3)]),
-        json!([placed(0, 4, 3, 6)]),
-        json!([placed(0, 0, 3, 10)]),
+        json!([placed(0, 2, 3, 6)]),
+        json!([placed(0, 0, 3, 8)]),
         json!([placed(0, 65535, 3, 3)]),
         json!([placed(0, 0, 0, 3)]),
         json!([placed(0, 0, 3, 0)]),

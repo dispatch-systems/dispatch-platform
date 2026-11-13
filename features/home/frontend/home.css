@@ -68,7 +68,7 @@
   width: 100%;
 }
 
-/* The member's widgets on a grid of sixteen columns by nine rows below the page's header, which
+/* The member's widgets on a grid of twelve columns by seven rows below the page's header, which
    never scrolls: each cell a square as large as the space allows, the grid under the heading
    with whatever thin margin is left beside or below it. The editor's board measures the same
    cells. */
@@ -94,14 +94,14 @@
   min-height: 0;
 }
 .home-grid {
-  --home-cell: min(calc((100cqw + 16px) / 16), calc((100cqh + 16px) / 9));
+  --home-cell: min(calc((100cqw + 16px) / 12), calc((100cqh + 16px) / 7));
   display: grid;
   flex-shrink: 0;
-  grid-template-columns: repeat(16, minmax(0, 1fr));
-  grid-template-rows: repeat(9, minmax(0, 1fr));
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-rows: repeat(7, minmax(0, 1fr));
   gap: 16px;
-  width: calc(var(--home-cell) * 16 - 16px);
-  height: calc(var(--home-cell) * 9 - 16px);
+  width: calc(var(--home-cell) * 12 - 16px);
+  height: calc(var(--home-cell) * 7 - 16px);
 }
 .home-cell {
   position: relative;

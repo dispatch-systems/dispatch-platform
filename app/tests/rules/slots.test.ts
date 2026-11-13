@@ -313,7 +313,7 @@ test("every widget has ids of its own under its feature's name, and every id shi
           .filter((each) => !each.startsWith(`${owner}.`))
           .map((each) => `${each} is not under ${owner}'s name`),
         ...(sizes.length ? [] : [`${id} declares no size`]),
-        // Each once, and on the grid's sixteen columns by nine rows.
+        // Each once, and on the grid's twelve columns by seven rows.
         ...named
           .filter((size, index) => named.indexOf(size) !== index)
           .map((size) => `${id} declares ${size} twice`),
@@ -322,9 +322,9 @@ test("every widget has ids of its own under its feature's name, and every id shi
             ({ columns, rows }) =>
               ![columns, rows].every(Number.isInteger) ||
               columns < 1 ||
-              columns > 16 ||
+              columns > 12 ||
               rows < 1 ||
-              rows > 9,
+              rows > 7,
           )
           .map(
             ({ columns, rows }) => `${id} declares ${columns}×${rows}, which the grid can't hold`,
