@@ -80,7 +80,7 @@ export function SidebarEdit({
   arrangement,
   first,
   last,
-  reorder,
+  move: place,
   hide,
   reset,
   done,
@@ -92,8 +92,8 @@ export function SidebarEdit({
   /** The items kept before and after them, which neither move nor hide. */
   first?: Item;
   last?: Item;
-  /** Shows the items in a new order, and keeps it. */
-  reorder: (ids: string[]) => void;
+  /** Shows `id` moved just after `after`, or first without one, and keeps it. */
+  move: (id: string, after?: string) => void;
   /** Shows an item hidden, or listed again, and keeps it. */
   hide: (id: string, hidden: boolean) => void;
   /** Shows the app's own order again, and keeps none of the member's. */
@@ -109,9 +109,7 @@ export function SidebarEdit({
   // The listed items take their new order in the places they held, the hidden keeping theirs.
   const move = (from: number, to: number) => {
     if (to < 0 || to >= listed.length) return;
-    const moved = arrayMove(listed, from, to);
-    let next = 0;
-    reorder(items.map((item) => (hidden.includes(item.id) ? item.id : moved[next++]!.id)));
+    place(listed[from]!.id, arrayMove(listed, from, to)[to - 1]?.id);
   };
   const dropped = ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) return;

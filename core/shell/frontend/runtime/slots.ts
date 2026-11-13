@@ -41,7 +41,7 @@ export {
   ownerPlace,
   pageSidebar,
   pagesUnder,
-  reordered,
+  moved,
   hiding,
   routeOf,
   settingsPage,

@@ -34,7 +34,7 @@ import {
   keptItems,
   loadedSidebar,
   loadSidebar,
-  reordered,
+  moved,
   hiding,
   type DspRouteId,
   type PlatformRouteId,
@@ -367,7 +367,16 @@ export function Shell({
                     arrangement={arrangement}
                     first={first}
                     last={last}
-                    reorder={(ids) => saved.change((now = unarranged) => reordered(now, ids))}
+                    move={(id, after) =>
+                      saved.change((now = unarranged) =>
+                        moved(
+                          now,
+                          arranged(navigation, keptItems(), now).movable.map((item) => item.id),
+                          id,
+                          after,
+                        ),
+                      )
+                    }
                     hide={(id, hidden) =>
                       saved.change((now = unarranged) => hiding(now, id, hidden))
                     }
