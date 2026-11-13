@@ -736,8 +736,8 @@ function devServerNote(values: Values) {
   );
 }
 
-/** Every widget id shipped, which the app's slots test holds the widgets to. */
-const shippedWidgets = 'app/tests/frontend/widgets.txt';
+/** Every widget id shipped, which the slots rules hold the widgets to. */
+const shippedWidgets = 'app/tests/rules/widgets.txt';
 /** The shipped widgets with `id` among them, as a widget added lists itself. */
 export async function shipping(root: string, plan: Plan, id: string) {
   await change(plan, root, shippedWidgets, (text) =>

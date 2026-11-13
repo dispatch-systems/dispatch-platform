@@ -196,6 +196,7 @@ type FrontendManifest = {
   sidebars?: readonly { id: string; scope: string }[];
   settingsSections?: readonly { id: string }[];
   pageTabs?: readonly { page: string; id: string }[];
+  widgets?: readonly { id: string; formerly?: readonly string[]; sizes: readonly string[] }[];
 };
 type DspPage = { id: string; file: string; tabs: boolean; hostsSettings: boolean };
 async function frontendContributions() {
@@ -205,6 +206,12 @@ async function frontendContributions() {
   const names: { file: string; name: string }[] = [];
   const pages: DspPage[] = [];
   const pageTabs: (Contribution & { page: string })[] = [];
+  const widgets: {
+    owner: string;
+    id: string;
+    formerly: readonly string[];
+    sizes: readonly string[];
+  }[] = [];
   const manifests = files.filter((file) =>
     /^((core|collectors)\/[^/]+|features\/(?:custom\/[^/]+\/)?[^/]+|mcp)\/frontend\/feature\.ts$/.test(
       file,
@@ -230,9 +237,11 @@ async function frontendContributions() {
       pageTabs.push({ id: tab.id, page: tab.page, at: ownerName(file) });
     for (const section of feature.settingsSections ?? [])
       settingsSections.push({ id: section.id, at: ownerName(file) });
+    for (const widget of feature.widgets ?? [])
+      widgets.push({ owner: feature.name, formerly: [], ...widget });
     names.push({ file, name: feature.name });
   }
-  return { addresses, sidebars, settingsSections, names, pages, pageTabs };
+  return { addresses, sidebars, settingsSections, names, pages, pageTabs, widgets };
 }
 
 // A tab one feature adds to another's page shows where that page draws it: the app draws them
@@ -277,6 +286,36 @@ test("every page's address, sidebar of pages and Settings section has an id of i
     ...twice('address', addresses),
     ...twice('sidebar', sidebars),
     ...twice('settings section', settingsSections),
+  ]);
+});
+
+// Members' Home pages keep each widget by its id, so an id shipped stays a widget's, as its id or
+// one it once had: widgets.txt lists them, and adding a widget adds its own.
+test("every widget has ids of its own under its feature's name, and every id shipped is still one", async () => {
+  const { widgets } = await frontendContributions();
+  const ids = widgets.flatMap((widget) => [widget.id, ...widget.formerly]);
+  const shipped = fs
+    .readFileSync(path.join(root, 'app/tests/rules/widgets.txt'), 'utf8')
+    .split('\n')
+    .filter((line) => line && !line.startsWith('#'));
+  holds('slots', 'widgets', [
+    ...ids
+      .filter((id, index) => ids.indexOf(id) !== index)
+      .map((id) => `${id} is declared more than once`),
+    ...widgets.flatMap(({ owner, id, formerly, sizes }) => [
+      ...[id, ...formerly]
+        .filter((each) => !each.startsWith(`${owner}.`))
+        .map((each) => `${each} is not under ${owner}'s name`),
+      ...sizes
+        .filter((size, index) => sizes.indexOf(size) !== index)
+        .map((size) => `${id} lists ${size} twice`),
+    ]),
+    ...shipped
+      .filter((id) => !ids.includes(id))
+      .map((id) => `${id} shipped, and is no widget's id or former id`),
+    ...widgets
+      .filter(({ id }) => !shipped.includes(id))
+      .map(({ id }) => `${id} is missing from app/tests/rules/widgets.txt`),
   ]);
 });
 
