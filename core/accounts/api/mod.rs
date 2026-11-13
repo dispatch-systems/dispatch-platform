@@ -3,6 +3,7 @@ pub mod requests;
 pub mod types;
 pub(crate) mod routes {
     pub mod invitations;
+    pub mod preferences;
     pub mod security;
     pub mod sign_in;
 }
@@ -24,9 +25,11 @@ pub fn typescript(cfg: &ts_rs::Config) -> crate::Typescript {
         types::DspProfile,
         types::DspSummary,
         types::DspView,
+        types::KeptPreference,
         types::MailMessage,
         types::Member,
         types::PasskeySummary,
+        types::PreferenceSaved,
         types::PublicUser,
         types::Role,
         types::RoleSummary,
@@ -42,5 +45,6 @@ pub fn routes() -> Vec<crate::server::http::Route> {
     let mut all = routes::sign_in::routes();
     all.extend(routes::security::routes());
     all.extend(routes::invitations::routes());
+    all.extend(routes::preferences::routes());
     all
 }

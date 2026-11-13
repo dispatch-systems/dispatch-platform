@@ -39,8 +39,8 @@ test('a member arranges the sidebar where it is, with the keyboard, by dragging 
   await page.clock.runFor(100);
   const kept = page.waitForResponse(
     (response) =>
-      response.url().endsWith('/api/dsp/sidebar') &&
-      response.request().postDataJSON().hidden.length === 1,
+      response.url().endsWith('/api/dsp/preferences/shell.sidebar') &&
+      response.request().postDataJSON().value.hidden.length === 1,
   );
   await page.getByRole('button', { name: `Hide ${fourth}` }).click();
   await expect(page.getByRole('button', { name: `Show ${fourth}` })).toBeVisible();

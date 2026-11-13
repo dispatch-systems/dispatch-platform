@@ -46,6 +46,19 @@ page, which it names while the DSP has no short code, and nowhere else. There a 
 owner sets the DSP up, short code included, as they accept, unless the platform owner already
 gave it one, and is then sent to Sign In at the DSP's address.
 
+Each member keeps their own preferences in each DSP, as how they arranged its sidebar: what
+the `preferences` slot declares, core's and each feature's, in the DSP's database
+(`member_preferences`), a row for each they saved. Nothing is kept until they save, so a default
+changed later reaches everyone who never did. Each comes with their view of the DSP
+(`DspView.preferences`) and is saved by `POST /api/dsp/preferences/{id}` with the revision it
+was made from: a save made from an older one is answered with what is kept instead, and the
+dashboard makes its changes again on that (`runtime/preference-store.ts`), so two screens never
+replace each other's. A value is kept only of its declared shape; one kept at an earlier
+version reads through each upgrade since, and one this release can't read, as one a newer
+release kept, is sent as none and only cleared, never replaced. Saving none clears it back to
+its default. Theirs alone and that DSP's alone, not audited, expiring no view, and deleted with
+their account.
+
 Work done for someone without a request of theirs, such as telling them of something new, asks
 `Store::may` whether they would hold a permission at a DSP now, signed in at the address they
 used: their account active and admitted in that address's directory, and their access built as a

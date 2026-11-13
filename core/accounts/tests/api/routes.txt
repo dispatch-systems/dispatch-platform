@@ -27,4 +27,5 @@ POST /api/auth/security/recovery-codes Session Write
 POST /api/auth/security/sessions/revoke-all Session Write
 POST /api/auth/security/sessions/revoke-others Session Write
 POST /api/auth/security/sessions/{id}/revoke Session Write
+POST /api/dsp/preferences/{id} Dsp("access") Bookkeeping
 POST /api/invitations/{token}/accept Public Async

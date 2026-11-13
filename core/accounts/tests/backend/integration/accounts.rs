@@ -1,6 +1,7 @@
 use common::{audits, bootstrapped, seeded};
 use dispatch_core::testing as common;
 use dispatch_core::{
+    accounts::preferences::SIDEBAR,
     db::{self, s},
     foundation::crypto,
 };
@@ -87,11 +88,17 @@ async fn removing_a_member_deletes_their_account_and_settings_and_keeps_their_na
         settings::save(&db, dsp, s(whose, "id"), &MINE, &on, 0, false).unwrap();
     }
     // And how each arranged the sidebar.
-    let arranged = serde_json::from_value(json!({"order": ["team"], "hidden": []})).unwrap();
+    let arranged = json!({"order": ["team"], "hidden": []});
     for whose in [&member, &owner] {
-        db.arrange_sidebar(dsp, s(whose, "id"), &arranged).unwrap();
+        db.save_preference(dsp, s(whose, "id"), &SIDEBAR, 0, Some(&arranged))
+            .unwrap();
     }
-    let sidebar = |whose: &serde_json::Value| db.sidebar(dsp, s(whose, "id")).unwrap();
+    let sidebar = |whose: &serde_json::Value| {
+        db.preferences(dsp, s(whose, "id"), [&SIDEBAR])
+            .unwrap()
+            .remove(SIDEBAR.id)
+            .and_then(|kept| kept.value)
+    };
     let mine = |whose: &serde_json::Value| {
         settings::read_member::<serde_json::Value>(&db, dsp, s(whose, "id"), &MINE).unwrap()["on"]
             .clone()

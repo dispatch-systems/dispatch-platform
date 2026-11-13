@@ -193,10 +193,35 @@ pub struct RoleSummary {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "core/accounts/api/generated/"))]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct SidebarArrangement {
     pub order: Vec<String>,
     pub hidden: Vec<String>,
+}
+/// One of a member's preferences in a DSP as their last save kept it: the revision that save
+/// made, and its value, none when this release can't read it, as one a newer release kept.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/accounts/api/generated/"))]
+pub struct KeptPreference {
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub revision: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional, type = "unknown"))]
+    pub value: Option<serde_json::Value>,
+}
+/// What saving a preference answers: the revision it made; or, when it was made from another
+/// revision than the one kept, what is kept now, to make the change again on.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/accounts/api/generated/"))]
+#[serde(tag = "outcome", rename_all = "camelCase")]
+pub enum PreferenceSaved {
+    Saved {
+        #[cfg_attr(feature = "ts", ts(type = "number"))]
+        revision: i64,
+    },
+    Stale { current: KeptPreference },
 }
 /// What opening a DSP answers with: the signed view token and what the role may do.
 #[derive(Clone, Debug, Serialize)]
@@ -218,10 +243,9 @@ pub struct DspView {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub roles: Option<Vec<RoleSummary>>,
-    /// How the member arranged the sidebar here, once they have.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "ts", ts(optional))]
-    pub sidebar: Option<SidebarArrangement>,
+    /// The member's own preferences here, by id: each they have saved, of the features they
+    /// have here and core's.
+    pub preferences: BTreeMap<String, KeptPreference>,
 }
 #[derive(Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]

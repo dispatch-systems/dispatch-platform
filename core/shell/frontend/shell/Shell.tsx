@@ -18,17 +18,15 @@ import {
   ArrowUpRight,
   type LucideIcon,
 } from 'lucide-react';
-import type { DspView, SessionView } from '../../../accounts/api/index.js';
+import type { DspView, SessionView, SidebarArrangement } from '../../../accounts/api/index.js';
 import { Brand } from '../runtime/Brand.js';
 import { PageBadge } from '../ui/PageBadge.js';
 import { Popover } from '../ui/Popover.js';
 import { SidebarHead } from '../ui/SidebarHead.js';
 import { useFocusTrap } from '../ui/useFocusTrap.js';
 import { dspHash, platformHash } from '../runtime/navigation.js';
-import { sidebarSave } from '../runtime/endpoints.js';
-import { useFeedback } from '../runtime/feedback.js';
+import { usePreference } from '../runtime/preferences.js';
 import { useFillRequested } from '../runtime/fills.js';
-import { messageOf } from '../lib/errors.js';
 import { sourceLink } from '../lib/source.js';
 import {
   accountActions,
@@ -44,8 +42,9 @@ import {
   type SidebarProps,
 } from '../runtime/slots.js';
 import { SidebarPanels } from './SidebarPanels.js';
-import { useArrangement } from './useArrangement.js';
 import { Watchers } from './Watchers.js';
+/** The sidebar of a member who never arranged it: the app's own. */
+const unarranged: SidebarArrangement = { order: [], hidden: [] };
 // Loaded as the member asks to arrange the sidebar, with what dragging needs.
 const loadEdit = () => import('./SidebarEdit.js');
 const SidebarEdit = lazy(() => loadEdit().then((module) => ({ default: module.SidebarEdit })));
@@ -279,8 +278,8 @@ export function Shell({
   }, [list.shown]);
   // The app's sidebar, a DSP's as its member arranged it, between the page it opens on and
   // Settings; any other as the app lists it, its last item set apart.
-  const { arrangement, arrange } = useArrangement(view);
-  const { fail } = useFeedback();
+  const sidebar = usePreference(view, 'shell.sidebar');
+  const arrangement = sidebar.value ?? unarranged;
   const { first, movable, last } = useMemo(
     () => arranged(navigation, view ? keptItems() : {}, arrangement),
     [navigation, view, arrangement],
@@ -367,12 +366,10 @@ export function Shell({
                     arrangement={arrangement}
                     first={first}
                     last={last}
-                    rearrange={(ids, hidden) => rearranged(arrangement, ids, hidden)}
-                    save={(next) => {
-                      arrange(next);
-                      return sidebarSave(next);
-                    }}
-                    failed={(error) => fail(messageOf(error))}
+                    rearrange={(ids, hidden) =>
+                      sidebar.change((now) => rearranged(now ?? unarranged, ids, hidden))
+                    }
+                    reset={() => sidebar.change(() => undefined)}
                     done={() => {
                       setArranging(undefined);
                       drawer.current

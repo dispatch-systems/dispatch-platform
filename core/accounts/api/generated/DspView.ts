@@ -2,8 +2,8 @@
 import type { CustomFeatures } from "./CustomFeatures";
 import type { Dsp } from "./Dsp";
 import type { DspProfile } from "./DspProfile";
+import type { KeptPreference } from "./KeptPreference";
 import type { RoleSummary } from "./RoleSummary";
-import type { SidebarArrangement } from "./SidebarArrangement";
 
 /**
  * What opening a DSP answers with: the signed view token and what the role may do.
@@ -22,6 +22,7 @@ features: Array<string>, token: string, profile: DspProfile,
  */
 roles?: Array<RoleSummary>,
 /**
- * How the member arranged the sidebar here, once they have.
+ * The member's own preferences here, by id: each they have saved, of the features they
+ * have here and core's.
  */
-sidebar?: SidebarArrangement, };
+preferences: { [key in string]: KeptPreference }, };

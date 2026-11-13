@@ -70,7 +70,8 @@
       [11, "documents_people", "fb130ca99f140d80"],
       [12, "accounts", "3b90671344bd46dd"],
       [13, "schedule_rules", "75f9e9840423f306"],
-      [14, "beta_testers", "784fce94ff618581"]
+      [14, "beta_testers", "784fce94ff618581"],
+      [15, "member_preferences", "6301d90e9e5835a4"]
     ],
     "owned": [
       ["driver_match", 1, "open_sources", "02b0e6057d57f3fb"],

@@ -5,6 +5,7 @@ pub mod browser;
 pub mod directories;
 mod invitations;
 mod passwords;
+pub mod preferences;
 mod security;
 mod sessions;
 pub mod settings;

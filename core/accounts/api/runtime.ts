@@ -12,6 +12,7 @@ import {
   type AccountSession,
   type AuthenticatorSetup,
   type PasskeySummary,
+  type PreferenceSaved,
   type User,
 } from './index.js';
 import {
@@ -177,7 +178,11 @@ const customFeatures = z.object({
     z.object({ name: filled, url: filled, styles: z.array(filled), place: count }),
   ),
 });
-const sidebarArrangement = z.object({ order: z.array(filled), hidden: z.array(filled) });
+const keptPreference = z.object({ revision: count, value: z.optional(z.unknown()) });
+const preferenceSaved = z.discriminatedUnion('outcome', [
+  z.object({ outcome: z.literal('saved'), revision: count }),
+  z.object({ outcome: z.literal('stale'), current: keptPreference }),
+]) satisfies z.ZodMiniType<PreferenceSaved>;
 const viewSchema = z
   .object({
     dsp,
@@ -188,7 +193,7 @@ const viewSchema = z
     features: z.array(filled),
     custom: z.optional(customFeatures),
     profile,
-    sidebar: z.optional(sidebarArrangement),
+    preferences: z.record(filled, keptPreference),
   })
   .check(
     z.refine((view) => {
@@ -278,6 +283,6 @@ export const replies: Replies = (route, method) => {
     return recoveryCodes;
   if (route.startsWith('/api/auth/security/')) return okSchema;
   if (route === '/api/session/dsp') return viewSchema;
-  if (route === '/api/dsp/sidebar') return sidebarArrangement;
+  if (route.startsWith('/api/dsp/preferences/')) return preferenceSaved;
   return undefined;
 };
