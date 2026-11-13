@@ -1,7 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { Widget } from '../../../../core/shell/frontend/runtime/slots.js';
-import { adding, keeping, moving, resized, shown, starting } from '../../frontend/layout.js';
+import {
+  adding,
+  keeping,
+  moving,
+  resized,
+  setting,
+  shown,
+  starting,
+} from '../../frontend/layout.js';
 
 const cells = (columns: number, rows: number) => ({ columns, rows });
 const widget = (id: string, more: Partial<Widget> = {}) =>
@@ -41,8 +49,10 @@ test("the page shows the widgets the member has, by their ids now, and keeps the
     shown(layout, widgets).map((each) => each.at),
     [at('vans.fleet', 0, 0), at('dvic.today', 3, 0)],
   );
+  // Vans moved, DVIC and Team kept where they were: what the page shows of each is the caller's.
   assert.deepEqual(keeping(layout, widgets, [at('vans.fleet', 0, 3)]), [
     at('vans.fleet', 0, 3),
+    at('dvic.today', 0, 0),
     at('team.today', 6, 0),
   ]);
 });
@@ -89,4 +99,32 @@ test('the grid holds only what fits the page: a widget with no room is not added
   const full = [{ ...at('routes.today', 0, 0), w: 12, h: 7 }];
   assert.equal(adding(full, widget('vans.fleet')), undefined);
   assert.deepEqual(adding([at('dvic.today', 0, 0)], widget('vans.fleet')), at('vans.fleet', 3, 0));
+});
+
+test('a widget waiting for room is kept through every change but its own removal', () => {
+  const whole = { sizes: [cells(12, 7)] as Widget['sizes'] };
+  const widgets = [widget('dvic.today', whole), widget('vans.fleet', whole)];
+  // Back from a feature switched off where Vans was placed meanwhile, filling the grid.
+  const layout = [
+    { ...at('vans.fleet', 0, 0), w: 12, h: 7 },
+    { ...at('dvic.today', 0, 0), w: 12, h: 7 },
+  ];
+  assert.deepEqual(
+    shown(layout, widgets).map((each) => each.at.id),
+    ['vans.fleet'],
+  );
+  // Removing Vans keeps DVIC, which shows once there's room; removing DVIC itself drops it.
+  assert.deepEqual(keeping(layout, widgets, [], 'vans.fleet'), [layout[1]]);
+  assert.deepEqual(keeping(layout, widgets, [layout[0]!], 'dvic.today'), [layout[0]]);
+  // A move of Vans keeps DVIC waiting.
+  assert.deepEqual(keeping(layout, widgets, [layout[0]!]), layout);
+});
+
+test('a size made on one screen is kept on what another kept meanwhile only where it still fits', () => {
+  const shownNow = [at('dvic.today', 0, 0), at('vans.fleet', 3, 0)];
+  assert.deepEqual(setting(shownNow, at('dvic.today', 0, 0, 3, 6)), [
+    at('dvic.today', 0, 0, 3, 6),
+    at('vans.fleet', 3, 0),
+  ]);
+  assert.equal(setting(shownNow, at('dvic.today', 0, 0, 6, 3)), undefined);
 });

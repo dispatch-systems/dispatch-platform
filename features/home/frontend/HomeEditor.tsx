@@ -5,7 +5,16 @@ import type { Widget } from '../../../core/shell/frontend/runtime/slots.js';
 import { ConfirmDialog, Header, Modal } from '../../../core/shell/frontend/ui/index.js';
 import type { PlacedWidget } from '../api/index.js';
 import { COLUMNS, GAP, ROWS } from './grid.js';
-import { adding, keeping, moving, resized, shown, type Arrange, type Edge } from './layout.js';
+import {
+  adding,
+  keeping,
+  moving,
+  resized,
+  setting,
+  shown,
+  type Arrange,
+  type Edge,
+} from './layout.js';
 import { WidgetFrame } from './WidgetFrame.js';
 
 /** Each edge and corner of a widget, which resizing it drags. */
@@ -76,21 +85,25 @@ export function HomeEditor({
   // The widgets shown, as each change makes them on what's kept: one placed elsewhere since
   // keeps its place.
   const showing = (layout: PlacedWidget[]) => shown(layout, available).map(({ at }) => at);
-  /** Keeps each of `moved` where it is now. */
-  const place = (moved: readonly PlacedWidget[]) =>
-    arrange((layout) =>
-      keeping(
-        layout,
-        available,
-        showing(layout).map((at) => moved.find((each) => each.id === at.id) ?? at),
-      ),
-    );
+  // Each change is made again on what's kept when it's saved, as another screen may have moved
+  // the widgets meanwhile: one that no longer fits there leaves the page as it is.
+  /** Keeps what the page shows as `change` makes it; nothing where it gives none. */
+  const changing = (change: (shown: PlacedWidget[]) => PlacedWidget[] | undefined) =>
+    arrange((layout) => {
+      const next = change(showing(layout));
+      return next ? keeping(layout, available, next) : layout;
+    });
+  /** Drops `id` at `to`, moving those it covers aside. */
+  const drop = (id: string, to: { x: number; y: number }) => changing((now) => moving(now, id, to));
+  /** Keeps `at` as resized, where it fits. */
+  const keepSize = (at: PlacedWidget) => changing((now) => setting(now, at));
   const remove = (id: string) =>
     arrange((layout) =>
       keeping(
         layout,
         available,
         showing(layout).filter((at) => at.id !== id),
+        id,
       ),
     );
   const add = (widget: Widget) => {
@@ -114,7 +127,9 @@ export function HomeEditor({
     const move = (moved: globalThis.PointerEvent) => {
       const [dx, dy] = [moved.clientX - startX, moved.clientY - startY];
       if (!now && Math.hypot(dx, dy) < SLOP) return;
-      const [left, top] = [at.x * across + dx, at.y * down + dy];
+      // Under the pointer, but never past the board's edges, so the page never scrolls.
+      const left = Math.min(Math.max(at.x * across + dx, 0), (COLUMNS - at.w) * across);
+      const top = Math.min(Math.max(at.y * down + dy, 0), (ROWS - at.h) * down);
       const to = {
         x: Math.min(Math.max(Math.round(left / across), 0), COLUMNS - at.w),
         y: Math.min(Math.max(Math.round(top / down), 0), ROWS - at.h),
@@ -134,12 +149,7 @@ export function HomeEditor({
       cell.removeEventListener('pointermove', move);
       cell.removeEventListener('pointerup', end);
       cell.removeEventListener('pointercancel', end);
-      if (now)
-        place(
-          now.layout.filter(
-            (each, index) => each.x !== origin[index]!.x || each.y !== origin[index]!.y,
-          ),
-        );
+      if (now && (now.target.x !== at.x || now.target.y !== at.y)) drop(at.id, now.target);
       setHeld(undefined);
     };
     cell.addEventListener('pointermove', move);
@@ -178,7 +188,7 @@ export function HomeEditor({
       handle.removeEventListener('pointermove', move);
       handle.removeEventListener('pointerup', end);
       handle.removeEventListener('pointercancel', end);
-      if (last !== at) place([last]);
+      if (last !== at) keepSize(last);
       setResizing(undefined);
     };
     handle.addEventListener('pointermove', move);

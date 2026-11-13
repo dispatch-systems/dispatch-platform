@@ -83,14 +83,31 @@ export function shown(layout: readonly PlacedWidget[], widgets: readonly Widget[
 }
 
 /**
- * `layout` with the widgets the page shows as `placed`, each kept by its id now, and those of
- * features the member doesn't have now kept where they were.
+ * `layout` with the widgets the page shows as `placed`, each kept by its id now, and every other
+ * it kept where it was: one of a feature the member doesn't have now, and one waiting for room;
+ * none of `removed`.
  */
-export const keeping = (
+export function keeping(
   layout: readonly PlacedWidget[],
   widgets: readonly Widget[],
   placed: readonly PlacedWidget[],
-) => [...placed, ...layout.filter((each) => !widgetOf(widgets, each.id))];
+  removed?: string,
+) {
+  const idNow = (each: PlacedWidget) => widgetOf(widgets, each.id)?.id ?? each.id;
+  const waiting = layout.filter(
+    (each) => idNow(each) !== removed && !placed.some((at) => at.id === idNow(each)),
+  );
+  return [...placed, ...waiting];
+}
+
+/** `placed` with `at` in its own entry's place; none where it would leave the grid or cover another. */
+export const setting = (placed: readonly PlacedWidget[], at: PlacedWidget) =>
+  fits(
+    placed.filter((each) => each.id !== at.id),
+    at,
+  )
+    ? placed.map((each) => (each.id === at.id ? at : each))
+    : undefined;
 
 /**
  * `placed` with `id` moved to `to`, each widget it would cover moved to the free spot nearest its
