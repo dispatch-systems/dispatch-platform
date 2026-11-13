@@ -108,6 +108,21 @@ export const feature: FrontendFeature = {
     },
   ],
 {{/connection}}
+{{#widget}}
+  // Its widget for each member's Home page, drawn at the size step they choose.
+  widgets: [
+    {
+      id: '{{name}}.overview',
+      label: '{{label}}',
+      icon: {{icon}},
+      sizes: ['small', 'wide'],
+{{#permission}}
+      permission: ({ view }) => can(view, '{{name}}.view'),
+{{/permission}}
+      load: () => import('./widgets/{{pascal}}Widget.js').then((module) => module.{{pascal}}Widget),
+    },
+  ],
+{{/widget}}
 {{#platformSlots}}
   // Its switch's icon on the DSPs page.
   platformSlots: () => import('./platform-slots.js'),

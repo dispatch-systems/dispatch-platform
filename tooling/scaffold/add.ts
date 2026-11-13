@@ -28,6 +28,7 @@ export const usage = `Usage: dispatchdev add <piece> --to <feature> [options]
   sidebar <pages>     a sidebar of its own pages, as entries,history: its item in a DSP's
                       sidebar opens their list in place of the app's
   tab-of <feature>    a tab of another feature's page
+  widget              a widget a member adds to their Home page
   settings            a section of a DSP's Settings, on a page of its own, that its backend
                       declares and reads: for those who manage it
   api                 api/ with one endpoint behind the view permission
@@ -51,6 +52,7 @@ const PIECES: Record<string, { valued: boolean; readme: string; uses: string[] }
   page: { valued: false, readme: 'Page', uses: ['view'] },
   sidebar: { valued: true, readme: 'Sidebar', uses: ['view'] },
   'tab-of': { valued: true, readme: 'Tab', uses: [] },
+  widget: { valued: false, readme: 'Widget', uses: ['view'] },
   settings: { valued: false, readme: 'Settings', uses: ['manage'] },
   api: { valued: false, readme: 'API', uses: ['view'] },
   people: { valued: true, readme: 'People', uses: [] },
