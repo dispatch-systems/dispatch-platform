@@ -312,7 +312,7 @@ impl Throttle {
 }
 
 /// Reads of today in a row that reuse settled routes' itineraries, counting the one that
-/// asks for them all: every sixth read asks Cortex for every itinerary again, so a change
+/// asks for them all: one read in six asks Cortex for every itinerary again, so a change
 /// the list did not show is in live route data within half an hour at the default pace.
 const WHOLE_EVERY: u64 = 6;
 /// What a route's entry in the list says that moves with the clock rather than with what
@@ -437,7 +437,7 @@ impl Native {
     ///
     /// A snapshot of the day this reader read last asks Cortex only for the routes
     /// something may be happening on: a route the list shows finished, or not begun, and says
-    /// the same of as at its last read keeps the itinerary read then. Every `WHOLE_EVERY`th
+    /// the same of as at its last read keeps the itinerary read then. One read in `WHOLE_EVERY`
     /// read asks for them all, as does a first read, another day's or a completed day's.
     pub async fn read(
         &mut self,
@@ -453,7 +453,7 @@ impl Native {
         if mode != Mode::Snapshot || self.kept.scope.as_ref() != Some(scope) {
             self.kept = Kept::default();
         }
-        let whole = self.kept.reads % WHOLE_EVERY == 0;
+        let whole = self.kept.reads.is_multiple_of(WHOLE_EVERY);
         (self.reused, self.unseen) = (0, 0);
         let retry_budget = Mutex::new(RETRY_BUDGET);
         throttle.wait(&retry_budget).await?;

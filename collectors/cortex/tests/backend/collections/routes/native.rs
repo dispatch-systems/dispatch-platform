@@ -645,7 +645,7 @@ async fn a_snapshot_asks_again_only_for_routes_something_may_be_happening_on() {
     assert_eq!(reader.counts(), [("reused", 1)]);
     assert_eq!(next.itineraries.len(), 2);
     assert_eq!(next.itineraries[0].detail, first.itineraries[0].detail);
-    // Every sixth read asks for them all again, and found nothing the list had not shown.
+    // One read in six asks for them all again, and found nothing the list had not shown.
     for _ in 0..4 {
         reader
             .read(&scope, Mode::Snapshot, &authorized)

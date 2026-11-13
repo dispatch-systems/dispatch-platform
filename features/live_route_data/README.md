@@ -53,7 +53,7 @@ through core's live readers (`core/collection/backend/readers/`), never as jobs.
   - A native read after the day's first asks Cortex only for routes something may be happening
     on: a route the list shows finished, its driver's session ended, or not begun, and says the
     same of as at its last read, clock aside, keeps the itinerary read then, so the read is still
-    whole. Every sixth read asks for every itinerary again.
+    whole. One read in six asks for every itinerary again.
   - A read that isn't whole is never kept.
 - **A day:** its first whole read empties live route data of the day before (`clear_live`) before
   it is kept (`keep_live`). Each read after is kept in place. Once the window ends, the day is

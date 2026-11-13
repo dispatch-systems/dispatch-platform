@@ -33,7 +33,7 @@ what a read met: the requests throttled, and the narrower width since; each refu
 carries the width it was asked at (`downloads`).
 A reader asked for a snapshot of the day it read last asks only for routes something may be
 happening on: one the list shows finished, its driver's session ended, or not begun, and says
-the same of as at its last read, clock aside, keeps the itinerary read then, and every sixth read
+the same of as at its last read, clock aside, keeps the itinerary read then, and one read in six
 asks for them all; its counts say how many it reused (`reused`) and how many a read of them all
 found changed though the list said the same (`unseen`).
 `routes::Native` reads a day so for anything holding a session, outside a job too, and says why
