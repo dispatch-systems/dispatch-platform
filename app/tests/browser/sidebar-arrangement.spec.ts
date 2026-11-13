@@ -3,6 +3,7 @@ import { test, expect, login, openDsp } from '../../../core/shell/tests/support/
 test('a member arranges the sidebar where it is, with the keyboard, by dragging and by hiding, and finds it so on coming back', async ({
   page,
 }) => {
+  await page.clock.install();
   await login(page);
   await openDsp(page, 'Northline Logistics');
   const names = page
@@ -30,6 +31,8 @@ test('a member arranges the sidebar where it is, with the keyboard, by dragging 
   await page.mouse.down();
   await page.mouse.move(...(await centre(third!)), { steps: 8 });
   await page.mouse.up();
+  // What dragging runs on lets a click through again 50 ms after a drop, sooner than a hand clicks.
+  await page.clock.runFor(100);
   const kept = page.waitForResponse(
     (response) =>
       response.url().endsWith('/api/dsp/sidebar') &&
