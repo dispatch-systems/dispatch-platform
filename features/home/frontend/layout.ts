@@ -31,7 +31,7 @@ export const widgetOf = (widgets: readonly Widget[], id: string) =>
 /** `widget` placed at its first step, where it first fits beside `placed`. */
 export function adding(placed: readonly Cells[], widget: Widget): PlacedWidget {
   const { columns: w, rows: h } = widgetSizes[widget.sizes[0]];
-  return { id: widget.id, ...free(placed, w, h)!, w, h };
+  return { id: widget.id, ...free(placed, w, h), w, h };
 }
 
 /**
@@ -59,7 +59,7 @@ export function shown(layout: readonly PlacedWidget[], widgets: readonly Widget[
     const { columns: w, rows: h } = widgetSizes[size];
     const cells = { x: each.x, y: each.y, w, h };
     const others = placed.map((other) => other.at);
-    const at = others.some((other) => overlaps(other, cells)) ? free(others, w, h)! : cells;
+    const at = others.some((other) => overlaps(other, cells)) ? free(others, w, h) : cells;
     placed.push({ widget, size, at: { id: widget.id, ...cells, ...at } });
   }
   return placed;

@@ -31,7 +31,7 @@ export function WidgetFrame({
 /** The widget once its code has loaded, its frame empty until then. */
 function Drawn({ widget, size, view }: { widget: Widget; size: WidgetSize; view: DspView }) {
   const [Loaded, setLoaded] = useState(() => loaded.get(widget));
-  const [failed, setFailed] = useState<unknown>();
+  const [failed, setFailed] = useState<Error>();
   useEffect(() => {
     if (Loaded) return;
     let live = true;
@@ -40,7 +40,8 @@ function Drawn({ widget, size, view }: { widget: Widget; size: WidgetSize; view:
         loaded.set(widget, component);
         if (live) setLoaded(() => component);
       },
-      (error: unknown) => live && setFailed(error),
+      (error: unknown) =>
+        live && setFailed(error instanceof Error ? error : new Error(String(error))),
     );
     return () => {
       live = false;
