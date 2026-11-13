@@ -6,6 +6,10 @@ use crate::collections::meals::collect as collection;
 use dispatch_core::collection::browser::page::call;
 use tokio::time::sleep;
 
+/// A probe's authority to read: the operator's, who ran it.
+fn unchecked() -> dispatch_core::collection::browser::Pending<'static, ()> {
+    Box::pin(async { Ok(()) })
+}
 fn response_bytes(body: &Value) -> Result<Vec<u8>> {
     use base64::{Engine, engine::general_purpose::STANDARD};
     if body["base64Encoded"] == true {
@@ -330,7 +334,7 @@ async fn compare_tabs() -> Result<()> {
                 ..collection::MealMethod::rendered()
             };
             let capture = driver
-                .collect(&scope, &[], &metrics, None, |_, _| async { Ok(()) }, &method)
+                .collect(&scope, &[], &collection::Context { metrics: &metrics, live: None, check: &unchecked }, |_, _| async { Ok(()) }, &method)
                 .await;
             let capture = match capture {
                 Ok(capture) => capture,
@@ -487,7 +491,7 @@ async fn diagnose_tabs() -> Result<()> {
         };
         let collect = async {
             let result = driver
-                .collect(&scope, &[], &metrics, None, |_, _| async { Ok(()) }, &collection::MealMethod::rendered())
+                .collect(&scope, &[], &collection::Context { metrics: &metrics, live: None, check: &unchecked }, |_, _| async { Ok(()) }, &collection::MealMethod::rendered())
                 .await;
             done.store(true, std::sync::atomic::Ordering::SeqCst);
             result
@@ -1419,8 +1423,11 @@ async fn measure_meal_method() -> Result<()> {
             driver.collect(
                 &scope,
                 &kept,
-                &metrics,
-                None,
+                &collection::Context {
+                    metrics: &metrics,
+                    live: None,
+                    check: &unchecked,
+                },
                 |_, message: String| {
                     if message.starts_with("Checking source changes") {
                         passes.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
