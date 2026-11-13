@@ -101,7 +101,7 @@ test("each widget has ids of its own under its feature's name, and every id ship
   assert.deepEqual(
     shipped.filter((id) => !ids.includes(id)),
     [],
-    'a widget id that shipped is no widget\'s id or former id',
+    "a widget id that shipped is no widget's id or former id",
   );
   assert.deepEqual(
     declared.map(({ widget }) => widget.id).filter((id) => !shipped.includes(id)),
