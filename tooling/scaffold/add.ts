@@ -1,5 +1,5 @@
 import { featureDirectory, featureLocations } from '../shared/features.js';
-import { renderFeature, settingsNote, showing } from './new-feature.js';
+import { renderFeature, settingsNote, shipping, showing } from './new-feature.js';
 import { UsageError, names, parseArguments } from './common.js';
 import { exists, features, collectors, files, pageOf, peopleSources, read } from './repository.js';
 import { format, formatRust, type Plan } from './plan.js';
@@ -28,6 +28,7 @@ export const usage = `Usage: dispatchdev add <piece> --to <feature> [options]
   sidebar <pages>     a sidebar of its own pages, as entries,history: its item in a DSP's
                       sidebar opens their list in place of the app's
   tab-of <feature>    a tab of another feature's page
+  widget              a widget a member adds to their Home page
   settings            a section of a DSP's Settings, on a page of its own, that its backend
                       declares and reads: for those who manage it
   api                 api/ with one endpoint behind the view permission
@@ -51,6 +52,7 @@ const PIECES: Record<string, { valued: boolean; readme: string; uses: string[] }
   page: { valued: false, readme: 'Page', uses: ['view'] },
   sidebar: { valued: true, readme: 'Sidebar', uses: ['view'] },
   'tab-of': { valued: true, readme: 'Tab', uses: [] },
+  widget: { valued: false, readme: 'Widget', uses: ['view'] },
   settings: { valued: false, readme: 'Settings', uses: ['manage'] },
   api: { valued: false, readme: 'API', uses: ['view'] },
   people: { valued: true, readme: 'People', uses: [] },
@@ -256,6 +258,7 @@ export async function planAdd(root: string, argv: string[]) {
   const site = peopleSources(root).find((source) => source.id === value)?.site;
   if (piece === 'people' && site) installing(root, plan, dir, { collector: site });
   if (shown) await showing(root, plan, value!);
+  if (piece === 'widget') await shipping(root, plan, `${name}.overview`);
   // The test a contract or settings brings installs the feature with what it uses: the
   // collectors and features the feature map says it uses, what its other tests install, however
   // they name it, and what its manifest, as the piece leaves it, depends on.

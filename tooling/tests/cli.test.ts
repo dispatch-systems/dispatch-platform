@@ -14,7 +14,14 @@ import {
   report,
   writers,
 } from '../scaffold/generate.js';
-import { LISTS, explain, fields, frontendSlots, table } from '../scaffold/inventory.js';
+import {
+  LISTS,
+  declaredWidgets,
+  explain,
+  fields,
+  frontendSlots,
+  table,
+} from '../scaffold/inventory.js';
 import { KINDS } from '../scaffold/cli.js';
 import { repositoryRoot as root } from '../scaffold/common.js';
 
@@ -154,8 +161,10 @@ test("a standalone generate's next steps restart the preview only after a backen
 });
 
 test('list and explain read what the build lists', () => {
+  // Every list but the widgets, which no feature declares yet, has rows in this build.
   for (const [name, list] of Object.entries(LISTS))
-    assert(list.rows(root).length > 0, `dispatchdev list ${name} lists nothing`);
+    if (name !== 'widgets')
+      assert(list.rows(root).length > 0, `dispatchdev list ${name} lists nothing`);
   const features = LISTS.features!.rows(root).map((row) => row.name);
   assert(features.includes('slack') && features.includes('driver_match'));
   const slack = explain(root, 'slack');
@@ -170,6 +179,15 @@ test('list and explain read what the build lists', () => {
       "export const feature: FrontendFeature = {\n  name: 'x',\n  routes: [\n    { id: 'x' },\n  ],\n  // A note.\n  platformSlots: () => import('./p.js'),\n  get settingsSections() {\n    return [];\n  },\n};\n",
     ),
     ['routes', 'platformSlots', 'settingsSections'],
+  );
+  assert.deepEqual(
+    declaredWidgets(
+      "export const feature: FrontendFeature = {\n  name: 'x',\n  widgets: [\n    {\n      id: 'x.today',\n      label: \"Today's\",\n      sizes: ['small', 'wide'],\n    },\n    {\n      label: 'Week',\n      id: 'x.week',\n      sizes: ['large'],\n    },\n  ],\n};\n",
+    ),
+    [
+      { id: 'x.today', label: "Today's", sizes: ['small', 'wide'] },
+      { id: 'x.week', label: 'Week', sizes: ['large'] },
+    ],
   );
   assert.equal(
     table([

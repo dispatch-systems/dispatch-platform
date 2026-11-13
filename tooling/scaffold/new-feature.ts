@@ -68,6 +68,7 @@ export const usage = `Usage: dispatchdev new feature <name> [options]
                                     manage it
   --connection                      a card on a DSP's Connections tab, for one of the DSP's
                                     own accounts
+  --widget                          a widget a member adds to their Home page
   --contract <name>                 what it exposes to other features and agent tools, named
                                     for what it offers, as short_inspections: its contract
                                     crate in contract/, what fulfils it, and their test
@@ -75,7 +76,7 @@ export const usage = `Usage: dispatchdev new feature <name> [options]
                                     permission that shows what it keeps, which offered(<name>)
                                     reads
   --no-backend                      no backend/: a frontend-only feature, with --page,
-                                    --sidebar or --tab-of
+                                    --sidebar, --tab-of or --widget
   --label <label>                   its name as people read it (default: from <name>)
   --icon <name>                     its icon on its page, its switch and its people: a
                                     lucide-react icon, as Truck (default: LayoutGrid)
@@ -122,6 +123,7 @@ const FLAGS = [
   'page',
   'settings',
   'connection',
+  'widget',
   'no-backend',
   'shown',
   'dry-run',
@@ -211,6 +213,7 @@ function featureValues(root: string, argv: string[], adding = false) {
     );
   const page = args.flags.has('page') || Boolean(ownTabs);
   const connection = args.flags.has('connection');
+  const widget = args.flags.has('widget');
   const settings = args.flags.has('settings');
   const host = args.options.get('tab-of');
   if (page && host)
@@ -246,9 +249,9 @@ function featureValues(root: string, argv: string[], adding = false) {
     id: owner ? `${owner}-${id}` : id,
   }));
   if (args.flags.has('no-backend')) {
-    if (!page && !host && !sidebar)
+    if (!page && !host && !sidebar && !widget)
       throw new UsageError(
-        '--no-backend leaves only a frontend: add --page, --sidebar or --tab-of',
+        '--no-backend leaves only a frontend: add --page, --sidebar, --tab-of or --widget',
       );
     const logic = ['api', 'settings', 'tables', 'keeps', 'people', 'contract'].filter(
       (piece) => args.flags.has(piece) || args.options.has(piece),
@@ -436,7 +439,7 @@ function featureValues(root: string, argv: string[], adding = false) {
   // Settings draws its sections itself, from what its backend declares: no screen of its own.
   const screens = page || Boolean(host) || connection || sidebar;
   // A switch shows on the DSPs page with its icon, which the frontend's platform slots give.
-  const frontend = screens || switched;
+  const frontend = screens || switched || widget;
   // With no switch to show, a mandatory feature is only what its pieces make it.
   if (!api && !frontend && !database && !keeps && !contract && !settings)
     throw new UsageError(
@@ -518,6 +521,7 @@ function featureValues(root: string, argv: string[], adding = false) {
       )
       .join('\n'),
     connection,
+    widget,
     peopleIdent: source ? identOf(source.site) : '',
     readPeople: open.replace(/^self\./, 'store.'),
     site,
@@ -533,8 +537,8 @@ function featureValues(root: string, argv: string[], adding = false) {
     screens,
     platformSlots: switched,
     settingsIcon,
-    iconImport: page || settingsIcon || sidebar,
-    canImport: permission && (page || sidebar),
+    iconImport: page || settingsIcon || sidebar || widget,
+    canImport: permission && (page || sidebar || widget),
     page,
     tab: Boolean(host),
     settings,
@@ -640,6 +644,7 @@ function pieces(values: Values): [boolean, string, string][] {
     // frontend/tabs/ holds the tabs of its own page, which its manifest declares.
     [values.tab as boolean, 'frontend/Tab.tsx', `frontend/${pascal}Tab.tsx`],
     [values.connection as boolean, 'frontend/Card.tsx', `frontend/connection/${pascal}Card.tsx`],
+    [values.widget as boolean, 'frontend/Widget.tsx', `frontend/widgets/${pascal}Widget.tsx`],
     [values.platformSlots as boolean, 'frontend/platform-slots.ts', 'frontend/platform-slots.ts'],
     // A browser test only for a screen of its own.
     [values.screens as boolean, 'tests/browser/browser.spec.ts', `tests/browser/${slug}.spec.ts`],
@@ -731,6 +736,15 @@ function devServerNote(values: Values) {
   );
 }
 
+/** Every widget id shipped, which the slots rules hold the widgets to. */
+const shippedWidgets = 'app/tests/rules/widgets.txt';
+/** The shipped widgets with `id` among them, as a widget added lists itself. */
+export async function shipping(root: string, plan: Plan, id: string) {
+  await change(plan, root, shippedWidgets, (text) =>
+    text.split('\n').includes(id) ? text : `${text.trimEnd()}\n${id}\n`,
+  );
+}
+
 /** Where a page reads what's exposed, whose `ExposedName` names each one a page shows. */
 const exposedNames = 'core/shell/frontend/runtime/exposes.ts';
 /** `ExposedName` naming `contract` too, as a page shows it in every build, unless it does. */
@@ -766,6 +780,7 @@ export async function planFeature(root: string, argv: string[]) {
   await edit(appManifest, (text) => wiredManifest(text, wired, mcp));
   await edit(featureList, () => wiredList(wired));
   if (values.shown) await showing(root, plan, values.contract as string);
+  if (values.widget) await shipping(root, plan, `${name}.overview`);
 
   const declared = [values.switch && 'switch', values.permission && 'permissions'].filter(Boolean);
   const generated = [

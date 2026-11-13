@@ -65,6 +65,14 @@ test('add merges a piece into a feature that exists: its slot entries, fields an
   assert.match(documents, /pageTabs: \[\s*\{\s*page: 'uniforms',/);
   assert(!tab.changes.has('features/documents/feature.rs'));
 
+  // A widget on Vans, which has no page: its entry joins the manifest's slots, and what draws it
+  // is written beside it.
+  const widget = await add('widget', '--to', 'vans');
+  assert(writes(widget, 'features/vans').includes('frontend/widgets/VansWidget.tsx'));
+  const vans = changed(widget, 'features/vans/frontend/feature.ts');
+  assert.match(vans, /widgets: \[\s*\{\s*id: 'vans\.overview',/);
+  assert.equal(vans.match(/^\s+platformSlots:/gm)?.length, 1);
+
   // An API on Home: its routes, its permission, its types' export, and the ts Cargo feature.
   const api = await add('api', '--to', 'home');
   const home = changed(api, 'features/home/feature.rs');

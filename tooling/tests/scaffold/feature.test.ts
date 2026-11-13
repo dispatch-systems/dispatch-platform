@@ -565,8 +565,20 @@ test('--no-backend writes a frontend-only feature, and refuses the pieces that n
     file(plan, 'app/backend/features.rs'),
     /&dispatch_front::FEATURE\.registered\(None, "front"\),/,
   );
-  await refused(/add --page, --sidebar or --tab-of/, 'front', '--no-backend');
-  await refused(/add --page, --sidebar or --tab-of/, 'front', '--settings', '--no-backend');
+  await refused(/add --page, --sidebar, --tab-of or --widget/, 'front', '--no-backend');
+  await refused(
+    /add --page, --sidebar, --tab-of or --widget/,
+    'front',
+    '--settings',
+    '--no-backend',
+  );
+  // A widget alone is a frontend of its own: what draws it, behind its view permission.
+  const widget = await feature('front', '--widget', '--no-backend');
+  assert(writes(widget, 'features/front').includes('frontend/widgets/FrontWidget.tsx'));
+  assert.match(
+    file(widget, 'features/front/frontend/feature.ts'),
+    /widgets: \[\s*\{\s*id: 'front\.overview',[\s\S]*sizes: \['small', 'wide'\],\s*permission: \(\{ view \}\) => can\(view, 'front\.view'\),/,
+  );
   for (const piece of [['--api'], ['--settings'], ['--tables', 'dsp'], ['--keeps', 'cortex.dvic']])
     await refused(
       new RegExp(`Rust logic that ${piece[0]} needs`),
