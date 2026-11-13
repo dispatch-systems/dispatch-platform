@@ -1205,6 +1205,9 @@ name = "dispatch-home"
 version = "0.0.0"
 dependencies = [
  "dispatch-core",
+ "serde",
+ "serde_json",
+ "ts-rs",
 ]
 
 [[package]]
