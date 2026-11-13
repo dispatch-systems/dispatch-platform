@@ -179,7 +179,7 @@ const customFeatures = z.object({
   ),
 });
 const keptPreference = z.object({ revision: count, value: z.optional(z.unknown()) });
-const preferenceSaved = z.discriminatedUnion('outcome', [
+const preferenceSaved = z.union([
   z.object({ outcome: z.literal('saved'), revision: count }),
   z.object({ outcome: z.literal('stale'), current: keptPreference }),
 ]) satisfies z.ZodMiniType<PreferenceSaved>;

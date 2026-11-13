@@ -42,6 +42,7 @@ test("a member's preferences come with their view of a DSP, theirs alone and tha
   );
   assert.deepEqual((await member.select(north.id)).preferences, {});
   // Cleared, it's back to the app's own.
+  await owner.select(north.id);
   const cleared = await owner.post(SIDEBAR, { revision: 1, value: null });
   assert.deepEqual(cleared.value, { outcome: 'saved', revision: 0 });
   assert.deepEqual((await owner.select(north.id)).preferences, {});
