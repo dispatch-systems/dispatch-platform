@@ -100,9 +100,9 @@ impl Gate {
     }
     /// A place among the requests admitted, when one is free now.
     pub(crate) fn admit_now(self: &Arc<Self>) -> Option<Admitted> {
-        let mut admitted = self.admitted.lock().expect("cortex gate");
-        (*admitted < self.width()).then(|| {
-            *admitted += 1;
+        let mut state = self.state();
+        (state.admitted < WIDTHS[state.narrowed]).then(|| {
+            state.admitted += 1;
             Admitted(self.clone())
         })
     }
