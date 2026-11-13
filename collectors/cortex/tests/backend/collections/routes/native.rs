@@ -699,7 +699,9 @@ async fn a_read_of_some_itineraries_asks_its_authority_again_before_each_request
     // The read's authority goes once Cortex has answered with the list's page, the list, or
     // the first itinerary: nothing more is asked of it after any. The account's gate admits
     // one request at a time here, so the second itinerary would follow the first.
-    let cases: [(fn(&Stand) -> bool, usize, usize, usize); 3] = [
+    /// Whether the read's authority has gone, as the stand-in has answered so far.
+    type Gone = fn(&Stand) -> bool;
+    let cases: [(Gone, usize, usize, usize); 3] = [
         (|stand| stand.pages.load(Ordering::SeqCst) > 0, 1, 0, 0),
         (|stand| stand.reads.load(Ordering::SeqCst) > 0, 1, 1, 0),
         (|stand| stand.asked("itinerary-1") > 0, 1, 2, 1),
