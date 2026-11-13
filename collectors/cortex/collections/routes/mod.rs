@@ -12,7 +12,7 @@ pub use capture::{
     Capture, Collection, Detail, ItineraryCapture, JOB_KIND, MAX_BODY, MAX_CAPTURE_BYTES,
     MAX_ITINERARIES, Mode, Request, add_capture_bytes, fixture, listed, token,
 };
-pub use native::{Check, Failure, Native};
+pub use native::{Check, Failure, Native, Wanted};
 use serde::{Deserialize, Serialize};
 
 /// How a day's itineraries are read.

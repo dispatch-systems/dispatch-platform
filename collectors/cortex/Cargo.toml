@@ -31,7 +31,7 @@ flate2 = { workspace = true }
 png = { workspace = true }
 serde = { workspace = true }
 # What it collects keeps the order its fields are written in.
-serde_json = { workspace = true, features = ["preserve_order"] }
+serde_json = { workspace = true, features = ["preserve_order", "raw_value"] }
 sha2 = { workspace = true }
 tokio = { workspace = true }
 url = { workspace = true }

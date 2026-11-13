@@ -583,11 +583,11 @@ async fn a_read_ended_by_a_long_cooldown_narrows_the_read_after_it() {
 async fn authority_is_rechecked_after_cooldown_before_another_provider_request() {
     let (stand, session) = stand_in(Plays::ThrottledOnce).await;
     let mut native = Native::new(&session).unwrap();
-    let checks = Arc::new(AtomicUsize::new(0));
+    // The read's authority goes as Cortex throttles it.
     let check = {
-        let checks = checks.clone();
+        let stand = stand.clone();
         move || -> dispatch_core::collection::browser::Pending<'static, ()> {
-            let current = checks.fetch_add(1, Ordering::SeqCst) == 0;
+            let current = stand.throttled_until.lock().unwrap().is_none();
             Box::pin(async move { dispatch_core::ensure(current, "connection_changed", 409) })
         }
     };
@@ -595,7 +595,7 @@ async fn authority_is_rechecked_after_cooldown_before_another_provider_request()
     assert!(
         matches!(result, Err(Failure::Stopped(error)) if error.is(dispatch_core::Code::ConnectionChanged))
     );
-    assert_eq!(checks.load(Ordering::SeqCst), 2);
+    // Each itinerary was asked for once, and the throttled one not again after the cooldown.
     assert_eq!(stand.asked("itinerary-1"), 1);
     assert_eq!(stand.asked("itinerary-2"), 1);
 }
@@ -692,4 +692,43 @@ async fn a_snapshot_asks_again_only_for_routes_something_may_be_happening_on() {
     // A completed day's read reuses nothing.
     reader.read(&scope, Mode::Final, &authorized).await.unwrap();
     assert_eq!(asked(), (4, 14));
+}
+
+#[tokio::test]
+async fn a_read_of_some_itineraries_asks_its_authority_again_before_each_request() {
+    // The read's authority goes once Cortex has answered with the list's page, the list, or
+    // the first itinerary: nothing more is asked of it after any. The account's gate admits
+    // one request at a time here, so the second itinerary would follow the first.
+    /// Whether the read's authority has gone, as the stand-in has answered so far.
+    type Gone = fn(&Stand) -> bool;
+    let cases: [(Gone, usize, usize, usize); 3] = [
+        (|stand| stand.pages.load(Ordering::SeqCst) > 0, 1, 0, 0),
+        (|stand| stand.reads.load(Ordering::SeqCst) > 0, 1, 1, 0),
+        (|stand| stand.asked("itinerary-1") > 0, 1, 2, 1),
+    ];
+    for (index, (gone, pages, reads, first)) in cases.into_iter().enumerate() {
+        let (stand, session) = stand_in(Plays::Settled).await;
+        let gate = crate::connection::gate::of(&session.origin, &stand.day.scope.provider);
+        for _ in 0..2 {
+            gate.throttled(Duration::ZERO);
+            gate.narrow();
+        }
+        let check = {
+            let stand = stand.clone();
+            move || -> dispatch_core::collection::browser::Pending<'static, ()> {
+                let current = !gone(&stand);
+                Box::pin(async move { dispatch_core::ensure(current, "connection_changed", 409) })
+            }
+        };
+        let every = |summaries: &Value| Ok(crate::routes::listed(summaries, &stand.day.scope));
+        let read = Native::new(&session)
+            .unwrap()
+            .read_some(&stand.day.scope, &check, &every)
+            .await;
+        assert!(matches!(read, Err(Failure::Stopped(_))), "{index}");
+        assert_eq!(stand.pages.load(Ordering::SeqCst), pages, "{index}");
+        assert_eq!(stand.reads.load(Ordering::SeqCst), reads, "{index}");
+        assert_eq!(stand.asked("itinerary-1"), first, "{index}");
+        assert_eq!(stand.asked("itinerary-2"), 0, "{index}");
+    }
 }

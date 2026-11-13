@@ -37,7 +37,9 @@ use hmac::{Hmac, KeyInit, Mac};
 use serde_json::{Value, json};
 use std::{
     collections::HashMap,
+    future::Future,
     hash::{DefaultHasher, Hash, Hasher},
+    pin::Pin,
     sync::{
         Arc, Mutex,
         atomic::{AtomicU64, Ordering},
@@ -64,6 +66,12 @@ const PAGE_LIMIT: usize = 8 * 1024 * 1024;
 const KEY_BYTES: usize = 1024;
 /// The application's name for itself, on every request it signs.
 const USER_REF: &str = "cortex-webapp-user";
+
+/// The itineraries a reader wants of a day, each by its id and driver, as it finds them in the
+/// day's list, which it is handed whole. Its error ends the read.
+pub type Wanted<'a> = dyn Fn(&Value) -> Result<Vec<(String, String)>> + Send + Sync + 'a;
+/// What a read asks of Cortex with one key.
+type Asked<'r, T> = Pin<Box<dyn Future<Output = std::result::Result<T, Failure>> + Send + 'r>>;
 
 /// The caller's current authority to read with this session. Owned context lets each
 /// check run after a cooldown without borrowing a stale database snapshot.
@@ -276,16 +284,15 @@ impl Throttle {
         self.failure()
     }
     /// A request's place among the account's, which a throttle met while it waited for one
-    /// ends. One that waited behind another reader asks `check` again before it is sent: its
-    /// authority to read with this session may have gone meanwhile.
+    /// ends. Each asks `check` again as it is admitted, just before it is sent: its authority
+    /// to read with this session may have gone while it waited, or while the request before
+    /// it was answered.
     async fn admitted(&self, check: &Check) -> std::result::Result<gate::Admitted, Failure> {
         if self.gate.cooling() {
             return Err(self.failure());
         }
-        let (admitted, waited) = self.gate.admit().await;
-        if waited {
-            check().await.map_err(Failure::Stopped)?;
-        }
+        let admitted = self.gate.admit().await;
+        check().await.map_err(Failure::Stopped)?;
         if self.gate.cooling() {
             return Err(self.failure());
         }
@@ -445,20 +452,86 @@ impl Native {
         mode: Mode,
         check: &Check,
     ) -> std::result::Result<Capture, Failure> {
-        self.throttle = Some(Throttle {
-            gate: gate::of(&self.origin, &scope.provider),
-            refused: AtomicU64::new(0),
-        });
-        let throttle = self.throttle.as_ref().expect("the read's throttle");
         if mode != Mode::Snapshot || self.kept.scope.as_ref() != Some(scope) {
             self.kept = Kept::default();
         }
         let whole = self.kept.reads.is_multiple_of(WHOLE_EVERY);
         (self.reused, self.unseen) = (0, 0);
+        let started_at = now();
+        let capture = self
+            .keyed(scope, check, !whole, None, move |reading| {
+                Box::pin(reading.day(mode, started_at))
+            })
+            .await?;
+        if mode == Mode::Snapshot {
+            let entries = entries(&capture.summaries);
+            let read = (capture.itineraries.iter())
+                .filter_map(|i| Some((i, *entries.get(i.id.as_str())?)));
+            if whole {
+                // Each as text: Cortex may compress the same itinerary another way, which
+                // is no change to it.
+                let settled: Vec<(Detail, Detail)> = (read.clone())
+                    .filter_map(|(i, entry)| {
+                        let kept = self.kept.settled(&i.id, entry)?;
+                        Some((kept.clone(), i.detail.clone()))
+                    })
+                    .collect();
+                self.unseen = tokio::task::spawn_blocking(move || {
+                    (settled.iter())
+                        .filter(|(kept, read)| kept.text().ok() != read.text().ok())
+                        .count() as u64
+                })
+                .await
+                .unwrap_or(0);
+            } else {
+                self.reused = (read.clone())
+                    .filter(|(i, entry)| self.kept.settled(&i.id, entry).is_some())
+                    .count() as u64;
+            }
+            self.kept = Kept {
+                scope: Some(scope.clone()),
+                reads: self.kept.reads + 1,
+                routes: read
+                    .map(|(i, entry)| (i.id.clone(), (said(entry), i.detail.clone())))
+                    .collect(),
+            };
+        }
+        Ok(capture)
+    }
+    /// The day's list for `scope`, and of its itineraries those `wanted` picks from it, each
+    /// its driver's: for a reader that needs only some routes of a day, as the meal collection
+    /// does. Nothing of the day is kept for a next read.
+    pub async fn read_some(
+        &mut self,
+        scope: &Scope,
+        check: &Check,
+        wanted: &Wanted<'_>,
+    ) -> std::result::Result<Vec<ItineraryCapture>, Failure> {
+        self.keyed(scope, check, false, Some(wanted), |reading| {
+            Box::pin(reading.some())
+        })
+        .await
+    }
+    /// What `ask` reads of `scope`'s day with the key the list's page carries, at the
+    /// account's gate: the page asked for its key once more when Cortex refuses what it
+    /// signed or sends the session to sign in. `reuse` is whether the read may keep settled
+    /// routes' itineraries from the read before.
+    async fn keyed<T>(
+        &mut self,
+        scope: &Scope,
+        check: &Check,
+        reuse: bool,
+        wanted: Option<&Wanted<'_>>,
+        ask: impl for<'r> Fn(&'r Reading<'r>) -> Asked<'r, T>,
+    ) -> std::result::Result<T, Failure> {
+        self.throttle = Some(Throttle {
+            gate: gate::of(&self.origin, &scope.provider),
+            refused: AtomicU64::new(0),
+        });
+        let throttle = self.throttle.as_ref().expect("the read's throttle");
         let retry_budget = Mutex::new(RETRY_BUDGET);
         throttle.wait(&retry_budget).await?;
         check().await.map_err(Failure::Stopped)?;
-        let started_at = now();
         let mut asked_again = false;
         loop {
             let key = match self.key.take() {
@@ -475,9 +548,10 @@ impl Native {
                 throttle,
                 retry_budget: &retry_budget,
                 check,
-                kept: (!whole).then_some(&self.kept),
+                kept: reuse.then_some(&self.kept),
+                wanted,
             };
-            match reading.day(mode, started_at).await {
+            match ask(&reading).await {
                 // The page is asked once more: Cortex stopped accepting its key, or sends the
                 // session to sign in, which the page then shows.
                 Err(Failure::Refused | Failure::SignedOut) if !asked_again => asked_again = true,
@@ -487,39 +561,6 @@ impl Native {
                     }
                     if result.is_ok() && throttle.refused.load(Ordering::Relaxed) == 0 {
                         throttle.gate.read_clean();
-                    }
-                    if let (Ok(capture), Mode::Snapshot) = (&result, mode) {
-                        let entries = entries(&capture.summaries);
-                        let read = (capture.itineraries.iter())
-                            .filter_map(|i| Some((i, *entries.get(i.id.as_str())?)));
-                        if whole {
-                            // Each as text: Cortex may compress the same itinerary another
-                            // way, which is no change to it.
-                            let settled: Vec<(Detail, Detail)> = (read.clone())
-                                .filter_map(|(i, entry)| {
-                                    let kept = self.kept.settled(&i.id, entry)?;
-                                    Some((kept.clone(), i.detail.clone()))
-                                })
-                                .collect();
-                            self.unseen = tokio::task::spawn_blocking(move || {
-                                (settled.iter())
-                                    .filter(|(kept, read)| kept.text().ok() != read.text().ok())
-                                    .count() as u64
-                            })
-                            .await
-                            .unwrap_or(0);
-                        } else {
-                            self.reused = (read.clone())
-                                .filter(|(i, entry)| self.kept.settled(&i.id, entry).is_some())
-                                .count() as u64;
-                        }
-                        self.kept = Kept {
-                            scope: Some(scope.clone()),
-                            reads: self.kept.reads + 1,
-                            routes: read
-                                .map(|(i, entry)| (i.id.clone(), (said(entry), i.detail.clone())))
-                                .collect(),
-                        };
                     }
                     return result;
                 }
@@ -583,16 +624,32 @@ struct Reading<'a> {
     check: &'a Check,
     /// What the reader kept of the day, when this read may reuse settled routes' itineraries.
     kept: Option<&'a Kept>,
+    /// The itineraries a read of some of the day's wants.
+    wanted: Option<&'a Wanted<'a>>,
 }
 impl Reading<'_> {
+    /// What a list is asked for with: the day, and whether it is past.
+    fn lists(&self) -> [(&str, &str); 3] {
+        [
+            ("historicalDay", self.historical),
+            ("localDate", self.scope.date.as_str()),
+            ("serviceAreaId", self.scope.service_area_id.as_str()),
+        ]
+    }
+    /// The itineraries its reader wants of the day's list: none for a reader that wants the day.
+    async fn some(&self) -> std::result::Result<Vec<ItineraryCapture>, Failure> {
+        let text = self.list(SUMMARIES, &self.lists()).await?;
+        let bytes = CaptureBudget::new(text.len())?;
+        let summaries = parsed(&text)?;
+        let listed = match self.wanted {
+            Some(wanted) => wanted(&summaries)?,
+            None => Vec::new(),
+        };
+        self.itineraries(&listed, &HashMap::new(), &bytes).await
+    }
     async fn day(&self, mode: Mode, started_at: i64) -> std::result::Result<Capture, Failure> {
         let scope = self.scope;
-        let (date, area) = (scope.date.as_str(), scope.service_area_id.as_str());
-        let lists = [
-            ("historicalDay", self.historical),
-            ("localDate", date),
-            ("serviceAreaId", area),
-        ];
+        let lists = self.lists();
         let text = self.list(SUMMARIES, &lists).await?;
         let bytes = CaptureBudget::new(text.len())?;
         let summaries = parsed(&text)?;
