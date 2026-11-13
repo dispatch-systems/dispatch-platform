@@ -31,6 +31,7 @@ use std::{
 use tokio::time::{Instant, sleep};
 
 mod routes;
+mod rules;
 
 use routes::*;
 // The route's content has not settled yet; read it again.
