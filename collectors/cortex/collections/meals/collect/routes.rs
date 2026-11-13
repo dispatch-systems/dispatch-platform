@@ -12,6 +12,8 @@ pub(super) struct Routes<'a, F> {
     pub(super) pending: Vec<&'a Candidate>,
     pub(super) next: AtomicUsize,
     pub(super) stopped: AtomicBool,
+    /// Whether Cortex throttled a route of the collection, in any pass.
+    pub(super) throttled: &'a AtomicBool,
     pub(super) reads: &'a AtomicUsize,
     pub(super) done: AtomicUsize,
     pub(super) total: usize,
@@ -262,6 +264,12 @@ where
                         ),
                     )
                     .await;
+                // Another reader of the account may have been throttled while this route was
+                // made ready: it is asked once the account has cooled.
+                if gate.cooldown().is_some() {
+                    again.push_front((candidate, ordinal, attempt));
+                    break;
+                }
                 let moved =
                     named.is_ok_and(|v| v == true) && self.ask(page, candidate, &mut asking).await;
                 if moved {
@@ -299,6 +307,7 @@ where
                         let asked = waiting.swap_remove(index);
                         let (candidate, ordinal) = (asked.candidate, asked.ordinal);
                         if value["throttled"] == true {
+                            self.throttled.store(true, Ordering::SeqCst);
                             gate.throttled(gate::PAUSE);
                             self.metrics.detail("meal_throttled");
                             self.metrics.page_cancel(ordinal);

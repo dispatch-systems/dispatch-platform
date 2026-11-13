@@ -98,10 +98,11 @@ impl Gate {
             freed.await;
         }
     }
-    /// A place among the requests admitted, when one is free now.
+    /// A place among the requests admitted, when one is free now and no throttle's cooldown
+    /// is under way or yet to be waited out.
     pub(crate) fn admit_now(self: &Arc<Self>) -> Option<Admitted> {
         let mut state = self.state();
-        (state.admitted < WIDTHS[state.narrowed]).then(|| {
+        (state.until.is_none() && state.admitted < WIDTHS[state.narrowed]).then(|| {
             state.admitted += 1;
             Admitted(self.clone())
         })

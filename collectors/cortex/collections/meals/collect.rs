@@ -589,6 +589,7 @@ impl Driver {
         let mut records: BTreeMap<String, (String, Itinerary)> = BTreeMap::new();
         let mut known = HashSet::new();
         let reads = AtomicUsize::new(0);
+        let throttled = AtomicBool::new(false);
         // Later passes only re-read routes whose meals changed, so they are short.
         // Swipes arrive every few minutes at midday; allow for several of them.
         for pass in 0..6 {
@@ -644,6 +645,7 @@ impl Driver {
                         .collect(),
                     next: AtomicUsize::new(0),
                     stopped: AtomicBool::new(false),
+                    throttled: &throttled,
                     reads: &reads,
                     done: AtomicUsize::new(records.len()),
                     total: candidates.len(),
@@ -708,6 +710,11 @@ impl Driver {
                 itineraries: records.into_values().map(|(_, route)| route).collect(),
             };
             capture.validate(scope)?;
+            // A day read whole that met no throttle counts toward widening the account's
+            // gate again, as a native read of a day does.
+            if method.hook && !throttled.load(Ordering::SeqCst) {
+                gate::of(&self.origin, &scope.provider).read_clean();
+            }
             progress(95, "Validating meal publication".into()).await?;
             return Ok(serde_json::to_value(capture)?);
         }
