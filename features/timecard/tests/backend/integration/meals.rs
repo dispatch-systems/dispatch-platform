@@ -555,42 +555,28 @@ fn migration_minimizes_all_history_and_legacy_runtime_publications() {
 }
 
 #[test]
-fn a_day_is_read_from_the_live_route_data_a_dsp_holds_only_while_it_stands_for_a_collection() {
+fn a_collection_is_given_the_live_route_data_a_dsp_holds_only_while_it_stands_for_one() {
     use dispatch_core::manifest::registry;
     use dispatch_routes_contract::LiveRead;
     install();
     let (_root, db, id) = common::bootstrapped();
     common::ready_connection(&db, &id, cortex::PROVIDER).unwrap();
     let scope = scope();
-    let asked = || {
+    let asked = |question: serde_json::Value| {
         registry()
             .keeper(meals::JOB_KIND)
-            .kept(&db, &id, &json!({"live": scope}))
+            .kept(&db, &id, &question)
             .unwrap()
     };
-    // A route whose meal both deliveries bound, as live route data keeps its list and its
-    // itinerary's response.
-    let on = 1_768_082_400_000_i64; // 2026-01-10T22:00:00Z
-    let punch = json!({"punchId":"punch-1","breakId":"meal-1","type":"MEAL","state":"OFF",
-        "timeStampOn":on,"timeStampOff":on + 1_800_000,"sequenceNumber":1});
-    let delivered = |task: &str, time: i64| {
-        json!({"taskId":task,"taskType":"DROP_OFF","taskState":"DELIVERED",
-            "executionStatus":"COMPLETE","actualExecutionTime":time,"transporterId":null})
+    let list = || asked(json!({"live": scope}));
+    let itinerary = |at: i64, route: &str| {
+        asked(json!({"liveItinerary": {"scope": scope, "at": at, "id": route}}))
     };
-    let list = json!({
-        "itinerarySummaries":[{"itineraryId":"itinerary-1","transporterId":"driver-1",
-            "routeCode":"CX1","companyId":"provider-1","executionStatus":"COMPLETE","breaks":[punch]}],
-        "transporters":[{"transporterId":"driver-1","firstName":"Fixture","lastName":"Driver"}],
-    });
-    let itinerary = json!({"itineraryDetails":{"itineraryId":"itinerary-1","transporterId":"driver-1",
-        "executionStatus":"COMPLETE","breaks":[punch],"localDate":[2026,1,10],"serviceAreaId":"area-1",
-        "stopProgress":{"total":1,"completed":1},"unknownStops":[],"inactiveTasks":[],
-        "stops":[{"tasks":[delivered("before", on - 60000), delivered("after", on + 1_860_000)]}]}});
     let hold = |read: LiveRead| {
         *super::LIVE.lock().unwrap() = Some((
             read,
-            list.to_string(),
-            [("itinerary-1".to_owned(), itinerary.to_string())].into(),
+            "the day's list".into(),
+            [("itinerary-1".to_owned(), "its itinerary".to_owned())].into(),
         ));
     };
     let taken = |at: i64| LiveRead {
@@ -606,33 +592,29 @@ fn a_day_is_read_from_the_live_route_data_a_dsp_holds_only_while_it_stands_for_a
     hold(taken(recent));
     let owner = common::a_user(&db);
     db.set_feature(&id, "living", false, &owner).unwrap();
-    assert!(asked().is_null());
+    assert!(list().is_null());
+    assert!(itinerary(recent, "itinerary-1").is_null());
+    // On, a collection is given when the read was taken and what the source answered in it,
+    // the list and then each itinerary it asks for, of that read alone.
     db.set_feature(&id, "living", true, &owner).unwrap();
-    let day: meals::Capture = serde_json::from_value(asked()).unwrap();
-    assert_eq!((day.started_at, day.finished_at), (recent, recent));
-    let route = &day.itineraries[0];
-    assert_eq!(route.observed_at, recent);
-    assert_eq!(route.delivery_coverage, Coverage::Complete);
-    assert_eq!(
-        (route.meals[0].last_delivery, route.meals[0].first_delivery),
-        (Some(on - 60000), Some(on + 1_860_000))
-    );
-    // A read too old to stand for a collection, one of another station, and one that lacks
-    // a route's itinerary each leave the day to be collected.
+    assert_eq!(list(), json!({"at": recent, "list": "the day's list"}));
+    assert_eq!(itinerary(recent, "itinerary-1"), json!("its itinerary"));
+    assert!(itinerary(recent, "itinerary-2").is_null());
+    assert!(itinerary(recent - 1, "itinerary-1").is_null());
+    // A read too old to stand for a collection, and one of another station, give nothing.
     hold(taken(now() - 2 * 3_600_000));
-    assert!(asked().is_null());
+    assert!(list().is_null());
     hold(LiveRead {
         station: "TST2".into(),
         ..taken(recent)
     });
-    assert!(asked().is_null());
-    hold(taken(recent));
-    super::LIVE.lock().unwrap().as_mut().unwrap().2.clear();
-    assert!(asked().is_null());
-    // Nor does it replace a day Timecard holds as collected since.
+    assert!(list().is_null());
+    assert!(itinerary(recent, "itinerary-1").is_null());
+    // Nor does one older than the day Timecard holds as collected since.
     hold(taken(recent));
     db.publish_meals(&id, "collected-since", &meals::fixture(&scope), &scope)
         .unwrap();
-    assert!(asked().is_null());
+    assert!(list().is_null());
+    assert!(itinerary(recent, "itinerary-1").is_null());
     *super::LIVE.lock().unwrap() = None;
 }

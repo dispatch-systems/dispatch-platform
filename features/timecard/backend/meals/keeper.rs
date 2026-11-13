@@ -68,7 +68,17 @@ impl Keeper for MealBreaks {
         // for none of it.
         if let Some(scope) = question.get("live") {
             let scope: Scope = serde_json::from_value(scope.clone())?;
-            return Ok(serde_json::to_value(super::live_day(store, dsp, &scope)?)?);
+            return Ok(match super::live_list(store, dsp, &scope)? {
+                Some((at, list)) => json!({"at": at, "list": list}),
+                None => Value::Null,
+            });
+        }
+        if let Some(asked) = question.get("liveItinerary") {
+            let scope: Scope = serde_json::from_value(asked["scope"].clone())?;
+            let (Some(at), Some(id)) = (asked["at"].as_i64(), asked["id"].as_str()) else {
+                return Ok(Value::Null);
+            };
+            return Ok(json!(super::live_itinerary(store, dsp, &scope, at, id)?));
         }
         let scope: Scope = serde_json::from_value(question.clone())?;
         Ok(serde_json::to_value(super::kept_routes(

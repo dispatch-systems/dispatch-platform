@@ -340,15 +340,10 @@ fn authority(run: &Run<'_>) -> impl Fn() -> Pending<'static, ()> + Send + Sync +
         })
     }
 }
-/// The scope's day of meals as its keeper reads it from the live route data the DSP holds of
-/// today, with no request to Cortex: none when it holds no such read, or one it can't read
-/// the day's meals from whole, and the day is collected. Each route names the Cortex page it
-/// would be read from, and the day is checked as a collected one is.
-async fn live_meals(run: &Run<'_>, scope: &Scope, origin: &str) -> Option<Value> {
+/// What the keeper of meal breaks answers `question`, in a short turn of its own.
+async fn asked_of_keeper(run: &Run<'_>, question: Value) -> Result<Value> {
     let job = run.job.to_owned();
-    let question = json!({"live": scope});
-    let answer = run
-        .state
+    run.state
         .read(move |store| {
             let dsp = store.job_row(&job, None)?.dsp_id;
             registry()
@@ -356,8 +351,30 @@ async fn live_meals(run: &Run<'_>, scope: &Scope, origin: &str) -> Option<Value>
                 .kept(store, &dsp, &question)
         })
         .await
-        .ok()?;
-    let mut day: crate::meals::Capture = serde_json::from_value(answer).ok()?;
+}
+/// The scope's day of meals read from the live route data the DSP holds of today, with no
+/// request to Cortex: none when its keeper has no such read to give, or one the day's meals
+/// can't be read from whole, and the day is collected. The keeper gives the read's list, then
+/// each itinerary needed, a turn each, and the meal rules read them here; a read replaced
+/// meanwhile gives no more, and is no day. Each route names the Cortex page it would be read
+/// from, and the day is checked as a collected one is.
+async fn live_meals(run: &Run<'_>, scope: &Scope, origin: &str) -> Option<Value> {
+    let live = asked_of_keeper(run, json!({"live": scope})).await.ok()?;
+    let (at, list) = (live["at"].as_i64()?, live["list"].as_str()?.to_owned());
+    let kept = kept_meals(run, scope).await.unwrap_or_default();
+    let itinerary = |id: String| async move {
+        let question = json!({"liveItinerary": {"scope": scope, "at": at, "id": id}});
+        let answer = asked_of_keeper(run, question).await?;
+        Ok(answer.as_str().map(str::to_owned))
+    };
+    let mut day = collection::from_responses(scope, list, &kept, at, itinerary)
+        .await
+        .ok()??;
+    // The read every response came from is the one the keeper still holds.
+    let still = asked_of_keeper(run, json!({"live": scope})).await.ok()?;
+    if still["at"].as_i64() != Some(at) {
+        return None;
+    }
     for route in &mut day.itineraries {
         route.source_url = Some(format!("{origin}{}", scope.detail_path(&route.id)));
     }
