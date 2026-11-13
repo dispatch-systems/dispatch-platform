@@ -1,0 +1,49 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import type { Widget } from '../../../../core/shell/frontend/runtime/slots.js';
+import { keeping, shown, starting } from '../../frontend/layout.js';
+
+const widget = (id: string, more: Partial<Widget> = {}) =>
+  ({ id, label: id, sizes: ['small', 'wide'], load: async () => () => null, ...more }) as Widget;
+const at = (id: string, x: number, y: number, w = 3, h = 3) => ({ id, x, y, w, h });
+
+test('a page never arranged starts with the widgets that have a place on it, in that order, from the top left', () => {
+  const widgets = [
+    widget('vans.fleet', { home: 2, sizes: ['wide'] }),
+    widget('dvic.today', { home: 1 }),
+    widget('team.today'),
+    widget('routes.today', { home: 3, sizes: ['full'] }),
+  ];
+  assert.deepEqual(starting(widgets), [
+    at('dvic.today', 0, 0),
+    at('vans.fleet', 3, 0, 6, 3),
+    at('routes.today', 0, 3, 12, 6),
+  ]);
+});
+
+test("the page shows the widgets the member has, by their ids now, and keeps the rest's places", () => {
+  const widgets = [widget('vans.fleet', { formerly: ['vans.overview'] }), widget('dvic.today')];
+  const layout = [
+    at('vans.overview', 0, 0),
+    // Back from a feature switched off, where DVIC was placed meanwhile.
+    at('dvic.today', 0, 0),
+    // Of a feature the member doesn't have now.
+    at('team.today', 6, 0),
+    // Placed at cells that are none of its steps: shown at its nearest.
+    { ...at('timecard.today', 0, 9), w: 5, h: 4 },
+  ];
+  const placed = shown(layout, [...widgets, widget('timecard.today')]);
+  assert.deepEqual(
+    placed.map(({ at: each, size }) => [each, size]),
+    [
+      [at('vans.fleet', 0, 0), 'small'],
+      [at('dvic.today', 3, 0), 'small'],
+      [at('timecard.today', 0, 9, 6, 3), 'wide'],
+    ],
+  );
+  assert.deepEqual(keeping(layout, widgets, [at('vans.fleet', 0, 3)]), [
+    at('vans.fleet', 0, 3),
+    at('team.today', 6, 0),
+    { ...at('timecard.today', 0, 9), w: 5, h: 4 },
+  ]);
+});
