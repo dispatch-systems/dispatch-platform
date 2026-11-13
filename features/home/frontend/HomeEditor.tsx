@@ -64,10 +64,9 @@ export function HomeEditor({
   const [resizing, setResizing] = useState<PlacedWidget>();
   const [added, setAdded] = useState<string>();
   const origin = placed.map(({ at }) => at);
-  // A cell and the gap after it, in pixels: the most a square one can be with the whole grid in
-  // the space.
-  const pitch = size ? Math.min((size.width + GAP) / COLUMNS, (size.height + GAP) / ROWS) : 0;
-  const [across, down] = [pitch, pitch];
+  // A cell and the gap after it, across and down, in pixels: the grid fills the space.
+  const across = ((size?.width ?? 0) + GAP) / COLUMNS;
+  const down = ((size?.height ?? 0) + GAP) / ROWS;
   const box = ({ x, y, w, h }: PlacedWidget) => ({
     transform: `translate(${x * across}px, ${y * down}px)`,
     width: w * across - GAP,
@@ -206,10 +205,7 @@ export function HomeEditor({
         </button>
       </Header>
       <div ref={area} className="home-area">
-        <div
-          className={held ? 'home-board home-holding' : 'home-board'}
-          style={{ width: COLUMNS * pitch - GAP, height: ROWS * pitch - GAP }}
-        >
+        <div className={held ? 'home-board home-holding' : 'home-board'}>
           {size && held && <div className="home-drop" style={box(held.target)} />}
           {size &&
             placed.map(({ widget, at }, index) => {
