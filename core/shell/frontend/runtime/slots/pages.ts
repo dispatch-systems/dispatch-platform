@@ -1,6 +1,11 @@
 import type { ComponentType, ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import type { DspView, Permission, SessionView } from '../../../../accounts/api/index.js';
+import type {
+  DspView,
+  Permission,
+  SessionView,
+  SidebarArrangement,
+} from '../../../../accounts/api/index.js';
 import type { Feature } from '../../../../tenancy/api/index.js';
 import { hasFeature } from '../features.js';
 import { manifests } from './installed.js';
@@ -267,6 +272,56 @@ export function sidebarItems<P extends Route>(
     return listing.pages[0] === page ? [listing] : [];
   });
 }
+/**
+ * `ids`, and each of `among` they lack, put after the nearest before it in `among` that they
+ * have, or first when none is.
+ */
+function placing(ids: readonly string[], among: readonly string[]) {
+  const placed = [...ids];
+  among.forEach((id, at) => {
+    if (placed.includes(id)) return;
+    const before = among.slice(0, at).findLast((each) => placed.includes(each));
+    placed.splice(before === undefined ? 0 : placed.indexOf(before) + 1, 0, id);
+  });
+  return placed;
+}
+/** The item of a DSP's sidebar kept after the rest, never moved or hidden: Settings'. */
+export function lastItem() {
+  const page = settingsPage();
+  return page && (pageSidebar('dsp', page)?.id ?? page);
+}
+/**
+ * The app's sidebar as a member arranged it. `items` are in the app's order: all but `fixed`,
+ * the one with the id `last`, are `movable`, in the member's order, the hidden ones among them;
+ * one the member never placed, as a page a release added, follows the item it follows in the
+ * app's order.
+ */
+export function arranged<T extends { id: string }>(
+  items: readonly T[],
+  last: string | undefined,
+  { order }: SidebarArrangement,
+) {
+  const fixed = items.find((item) => item.id === last);
+  const movable = new Map(items.filter((item) => item !== fixed).map((item) => [item.id, item]));
+  const theirs = [...new Set(order)].filter((id) => movable.has(id));
+  return { movable: placing(theirs, [...movable.keys()]).map((id) => movable.get(id)!), fixed };
+}
+/**
+ * What to keep once a member arranges the items they have as `ids`, hiding `hidden`: an item
+ * `kept` names that they haven't now, as a page of a feature switched off, stays where it was,
+ * and hidden if it was.
+ */
+export const rearranged = (
+  kept: SidebarArrangement,
+  ids: readonly string[],
+  hidden: readonly string[],
+): SidebarArrangement => ({
+  order: placing(ids, kept.order),
+  hidden: [
+    ...hidden.filter((id) => ids.includes(id)),
+    ...kept.hidden.filter((id) => !ids.includes(id)),
+  ],
+});
 /**
  * The pages a sidebar of pages that draws its own lists for `access` beside its own, as Settings
  * lists a feature's page among its pages: those naming it their `parent` but its own page, the one

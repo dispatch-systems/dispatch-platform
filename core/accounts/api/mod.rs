@@ -33,6 +33,7 @@ pub fn typescript(cfg: &ts_rs::Config) -> crate::Typescript {
         types::RuntimeSource,
         types::SecurityStatus,
         types::SessionResponse,
+        types::SidebarArrangement,
     )
 }
 

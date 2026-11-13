@@ -1,5 +1,5 @@
 import { performancePolicy } from '../lib/performance-policy.js';
-import type { DspView, SessionView } from '../../../accounts/api/index.js';
+import type { DspView, SessionView, SidebarArrangement } from '../../../accounts/api/index.js';
 import { api } from './api.js';
 
 // The session's and the DSP view's endpoints. Every owner's own are in its api/client.ts, each
@@ -13,3 +13,6 @@ export const openDsp = (dspId: string, roleId?: string) =>
     roleId ? { dspId, roleId } : { dspId },
     AbortSignal.timeout(performancePolicy.readTimeoutMs),
   );
+/** Keeps how the member arranged the sidebar of the DSP open. */
+export const arrangeSidebar = (arrangement: SidebarArrangement) =>
+  api<SidebarArrangement>('/api/dsp/sidebar', arrangement);

@@ -19,6 +19,8 @@ export function collectionAffects(url: string, changes: readonly CollectionChang
 export function mutationAffects(mutation: string, url: string) {
   const write = path(mutation);
   if (write === '/api/session/dsp' || write.startsWith('/api/auth/')) return false;
+  // A member's arrangement of the sidebar is in their view alone, which no read holds.
+  if (write === '/api/dsp/sidebar') return false;
   const rules = cacheRules();
   const said = rules.map((owner) => owner.write?.(write, url));
   if (said.includes(true)) return true;

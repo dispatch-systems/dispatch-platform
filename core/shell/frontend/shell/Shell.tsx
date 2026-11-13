@@ -4,11 +4,20 @@ import {
   Suspense,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
 } from 'react';
-import { Menu, X, ChevronDown, LogOut, ArrowUpRight, type LucideIcon } from 'lucide-react';
+import {
+  Menu,
+  X,
+  ChevronDown,
+  LogOut,
+  ArrowDownUp,
+  ArrowUpRight,
+  type LucideIcon,
+} from 'lucide-react';
 import type { DspView, SessionView } from '../../../accounts/api/index.js';
 import { Brand } from '../runtime/Brand.js';
 import { PageBadge } from '../ui/PageBadge.js';
@@ -20,8 +29,11 @@ import { useFillRequested } from '../runtime/fills.js';
 import { sourceLink } from '../lib/source.js';
 import {
   accountActions,
+  arranged,
+  lastItem,
   loadedSidebar,
   loadSidebar,
+  rearranged,
   type DspRouteId,
   type PlatformRouteId,
   type Route,
@@ -29,7 +41,11 @@ import {
   type SidebarProps,
 } from '../runtime/slots.js';
 import { SidebarPanels } from './SidebarPanels.js';
+import { useArrangement } from './useArrangement.js';
 import { Watchers } from './Watchers.js';
+// Loaded as the member asks to arrange the sidebar, with what dragging needs.
+const loadEdit = () => import('./SidebarEdit.js');
+const SidebarEdit = lazy(() => loadEdit().then((module) => ({ default: module.SidebarEdit })));
 // Only a platform owner viewing a DSP sees them, so they load then.
 const DspViewBanner = lazy(() =>
   import('./DspViewBanner.js').then((module) => ({ default: module.DspViewBanner })),
@@ -57,12 +73,13 @@ export type NavItem = {
 /**
  * A sidebar's list, `current` highlighted: a link to each page, and in the app's (`open`) a
  * button for each sidebar of pages, which opens it. Following a link closes the sidebar where it
- * opens over the page (`close`).
+ * opens over the page (`close`). The app's sets its item `apart` from the rest, below them.
  */
 function NavList({
   label,
   items,
   current,
+  apart,
   dspId,
   open,
   close,
@@ -70,6 +87,7 @@ function NavList({
   label: string;
   items: readonly NavItem[];
   current: string;
+  apart?: string;
   dspId?: string;
   open?: (sidebar: Sidebar) => void;
   close: () => void;
@@ -79,7 +97,7 @@ function NavList({
       {items.map(({ id, label: itemLabel, icon: Icon, badge, preload, sidebar }) => {
         const warm = () => void preload().catch(() => undefined);
         const item = {
-          className: 'nav-item',
+          className: id === apart ? 'nav-item nav-apart' : 'nav-item',
           'aria-current': current === id ? ('page' as const) : undefined,
           onPointerEnter: warm,
           onPointerDown: warm,
@@ -256,12 +274,28 @@ export function Shell({
       preventScroll: true,
     });
   }, [list.shown]);
-  // The app's sidebar.
+  // The app's sidebar, a DSP's as its member arranged it, with Settings kept last; any other
+  // as the app lists it, its last item set apart.
+  const { arrangement, arrange } = useArrangement(view);
+  const { movable, fixed } = useMemo(
+    () => arranged(navigation, view && lastItem(), arrangement),
+    [navigation, view, arrangement],
+  );
+  const listed = view
+    ? [
+        ...movable.filter((item) => !arrangement.hidden.includes(item.id)),
+        ...(fixed ? [fixed] : []),
+      ]
+    : navigation;
+  // The page the member began arranging it on: opening another ends it.
+  const [arranging, setArranging] = useState<string>();
+  const edits = Boolean(view) && !session.readOnly;
   const pages = (
     <NavList
       label="Primary navigation"
-      items={navigation}
+      items={listed}
       current={sidebar?.id ?? current}
+      apart={view ? fixed?.id : navigation.at(-1)?.id}
       dspId={dspId}
       open={open}
       close={close}
@@ -322,7 +356,26 @@ export function Shell({
         <SidebarPanels
           shown={list.shown}
           draw={(panel) => {
-            if (!panel) return pages;
+            if (!panel)
+              return edits && arranging === opened ? (
+                <Suspense fallback={pages}>
+                  <SidebarEdit
+                    items={movable}
+                    hidden={arrangement.hidden}
+                    fixed={fixed}
+                    arrange={(ids, hidden) => arrange(rearranged(arrangement, ids, hidden))}
+                    reset={() => arrange({ order: [], hidden: [] })}
+                    done={() => {
+                      setArranging(undefined);
+                      drawer.current
+                        ?.querySelector<HTMLElement>('.account-button')
+                        ?.focus({ preventScroll: true });
+                    }}
+                  />
+                </Suspense>
+              ) : (
+                pages
+              );
             const head = <SidebarHead title={panel.label} back={back} />;
             // The shell's list of its pages, under its way back and its name: the page open
             // highlighted, or the one it is under, as a page of detail is.
@@ -409,6 +462,21 @@ export function Shell({
                 {actionLabel}
               </button>
             ))}
+            {edits && (
+              <button
+                onPointerEnter={() => void loadEdit().catch(() => undefined)}
+                onFocus={() => void loadEdit().catch(() => undefined)}
+                onClick={() => {
+                  // The app's own list is the one arranged, whichever the sidebar shows.
+                  opening.current++;
+                  setList((now) => ({ ...now, shown: undefined }));
+                  setArranging(opened);
+                }}
+              >
+                <ArrowDownUp size={16} />
+                Edit sidebar
+              </button>
+            )}
             {!session.readOnly && (
               <button className="danger" onClick={logout}>
                 <LogOut size={16} />
