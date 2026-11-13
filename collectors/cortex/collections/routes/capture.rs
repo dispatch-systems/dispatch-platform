@@ -150,16 +150,15 @@ impl Detail {
     pub fn gzip(&self) -> &[u8] {
         &self.gzip
     }
-    /// Its JSON text, no longer than it says it is.
+    /// Its JSON text, no longer than it says it is. One that does not inflate fails as any
+    /// stored response that does not (`operation_failed`).
     pub fn text(&self) -> Result<String> {
-        let invalid = || Error::new("routes_capture_invalid", 502);
-        let mut text = String::new();
+        let mut text = Vec::new();
         GzDecoder::new(self.gzip.as_slice())
             .take(self.bytes as u64 + 1)
-            .read_to_string(&mut text)
-            .map_err(|_| invalid())?;
+            .read_to_end(&mut text)?;
         ensure(text.len() == self.bytes, "routes_capture_invalid", 502)?;
-        Ok(text)
+        String::from_utf8(text).map_err(|_| Error::new("routes_capture_invalid", 502))
     }
 }
 impl Serialize for Detail {

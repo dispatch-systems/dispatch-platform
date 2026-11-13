@@ -219,8 +219,10 @@ impl Wire {
     pub fn into_text(self, limit: usize) -> std::result::Result<String, Refusal> {
         self.into_parts(limit).map(|(text, _)| text)
     }
-    /// Its text as `into_text` reads it, and the body it came as when that was gzipped: what
-    /// keeps a large response compressed needs its text only to check it.
+    /// Its text as `into_text` reads it, and the body it came as when that was gzipped and
+    /// inflates to exactly that text: what keeps a large response compressed needs its text
+    /// only to check it. A body that opens with a byte-order mark, which the text drops, is
+    /// not handed back.
     pub fn into_parts(
         self,
         limit: usize,
@@ -239,7 +241,8 @@ impl Wire {
         if decoded.len() > limit {
             return Err(Refusal::Unreadable("http_too_large"));
         }
-        Ok((utf8(decoded)?, Some(self.body)))
+        let marked = decoded.starts_with("\u{feff}".as_bytes());
+        Ok((utf8(decoded)?, (!marked).then_some(self.body)))
     }
 }
 
