@@ -6,26 +6,18 @@ import { present } from './installed.js';
 import type { Access } from './pages.js';
 
 // The widgets slot: what each feature shows of itself on a member's Home page. A widget sits where
-// the member places it on the page's grid, at one of the size steps it supports, which resizing
-// it snaps between, and draws what fits that step; within a step, its own CSS fits what it shows
-// to the frame.
+// the member places it on the page's grid, at one of the sizes it declares, which resizing it
+// snaps between, and fits what it shows to that size: it is drawn with its columns and rows, and
+// its own CSS fits within them.
 
 /**
- * The size steps a widget may be drawn at, in the Home page grid's cells: twelve columns that
- * stretch with the window, and rows each as tall as a column is wide, so a layout is the same on
- * every screen.
+ * A widget's size in the Home page grid's cells: of twelve columns by seven rows filling the
+ * window, each nearly square, so a layout is the same on every screen and the page never scrolls.
  */
-export const widgetSizes = {
-  small: { columns: 3, rows: 3 },
-  wide: { columns: 6, rows: 3 },
-  tall: { columns: 3, rows: 6 },
-  large: { columns: 6, rows: 6 },
-  full: { columns: 12, rows: 6 },
-} as const;
-export type WidgetSize = keyof typeof widgetSizes;
+export type WidgetCells = { columns: number; rows: number };
 
-/** What a widget is drawn with: the step it's at, and the view of the DSP open. */
-export type WidgetProps = { size: WidgetSize; view: DspView };
+/** What a widget is drawn with: its size in cells, and the view of the DSP open. */
+export type WidgetProps = WidgetCells & { view: DspView };
 
 /** One of an owner's widgets. */
 export type Widget = {
@@ -34,8 +26,11 @@ export type Widget = {
   /** Its name in the list of widgets to add. */
   label: string;
   icon: LucideIcon;
-  /** The steps it draws, each once, the first the one it is added at. */
-  sizes: readonly [WidgetSize, ...WidgetSize[]];
+  /**
+   * The sizes it draws, in cells, each once and from one cell to the whole grid: the first the
+   * one it is added at, and resizing it snaps to the nearest of them.
+   */
+  sizes: readonly [WidgetCells, ...WidgetCells[]];
   /** Who may add it and see it; omitted means every member. */
   permission?: (access: Access) => boolean;
   /** The part of its owner's feature it goes with: off or hidden with it. */

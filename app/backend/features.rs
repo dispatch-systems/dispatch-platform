@@ -59,6 +59,8 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
     all.extend(dispatch_driver_match::typescript(cfg));
     #[cfg(feature = "dvic")]
     all.extend(dispatch_dvic::typescript(cfg));
+    #[cfg(feature = "home")]
+    all.extend(dispatch_home::typescript(cfg));
     #[cfg(feature = "routes")]
     all.extend(dispatch_routes::typescript(cfg));
     #[cfg(feature = "slack")]

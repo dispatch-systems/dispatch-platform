@@ -196,7 +196,11 @@ type FrontendManifest = {
   sidebars?: readonly { id: string; scope: string }[];
   settingsSections?: readonly { id: string }[];
   pageTabs?: readonly { page: string; id: string }[];
-  widgets?: readonly { id: string; formerly?: readonly string[]; sizes: readonly string[] }[];
+  widgets?: readonly {
+    id: string;
+    formerly?: readonly string[];
+    sizes: readonly { columns: number; rows: number }[];
+  }[];
 };
 type DspPage = { id: string; file: string; tabs: boolean; hostsSettings: boolean };
 async function frontendContributions() {
@@ -210,7 +214,7 @@ async function frontendContributions() {
     owner: string;
     id: string;
     formerly: readonly string[];
-    sizes: readonly string[];
+    sizes: readonly { columns: number; rows: number }[];
   }[] = [];
   const manifests = files.filter((file) =>
     /^((core|collectors)\/[^/]+|features\/(?:custom\/[^/]+\/)?[^/]+|mcp)\/frontend\/feature\.ts$/.test(
@@ -302,14 +306,31 @@ test("every widget has ids of its own under its feature's name, and every id shi
     ...ids
       .filter((id, index) => ids.indexOf(id) !== index)
       .map((id) => `${id} is declared more than once`),
-    ...widgets.flatMap(({ owner, id, formerly, sizes }) => [
-      ...[id, ...formerly]
-        .filter((each) => !each.startsWith(`${owner}.`))
-        .map((each) => `${each} is not under ${owner}'s name`),
-      ...sizes
-        .filter((size, index) => sizes.indexOf(size) !== index)
-        .map((size) => `${id} lists ${size} twice`),
-    ]),
+    ...widgets.flatMap(({ owner, id, formerly, sizes }) => {
+      const named = sizes.map(({ columns, rows }) => `${columns}×${rows}`);
+      return [
+        ...[id, ...formerly]
+          .filter((each) => !each.startsWith(`${owner}.`))
+          .map((each) => `${each} is not under ${owner}'s name`),
+        ...(sizes.length ? [] : [`${id} declares no size`]),
+        // Each once, and on the grid's twelve columns by seven rows.
+        ...named
+          .filter((size, index) => named.indexOf(size) !== index)
+          .map((size) => `${id} declares ${size} twice`),
+        ...sizes
+          .filter(
+            ({ columns, rows }) =>
+              ![columns, rows].every(Number.isInteger) ||
+              columns < 1 ||
+              columns > 12 ||
+              rows < 1 ||
+              rows > 7,
+          )
+          .map(
+            ({ columns, rows }) => `${id} declares ${columns}×${rows}, which the grid can't hold`,
+          ),
+      ];
+    }),
     ...shipped
       .filter((id) => !ids.includes(id))
       .map((id) => `${id} shipped, and is no widget's id or former id`),

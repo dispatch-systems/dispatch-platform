@@ -11,6 +11,15 @@ autotests = false
 path = "feature.rs"
 doctest = false
 
+[features]
+# TypeScript definitions of its API types, for the app's export test; never in a build.
+ts = ["dep:ts-rs", "dispatch-core/ts"]
+
 # Core alone: it declares no collector or feature.
 [dependencies]
 dispatch-core = { path = "../../core" }
+serde = { workspace = true }
+ts-rs = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

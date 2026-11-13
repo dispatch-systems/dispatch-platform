@@ -577,7 +577,7 @@ test('--no-backend writes a frontend-only feature, and refuses the pieces that n
   assert(writes(widget, 'features/front').includes('frontend/widgets/FrontWidget.tsx'));
   assert.match(
     file(widget, 'features/front/frontend/feature.ts'),
-    /widgets: \[\s*\{\s*id: 'front\.overview',[\s\S]*sizes: \['small', 'wide'\],\s*permission: \(\{ view \}\) => can\(view, 'front\.view'\),/,
+    /widgets: \[\s*\{\s*id: 'front\.overview',[\s\S]*sizes: \[\s*\{ columns: 2, rows: 2 \},\s*\{ columns: 4, rows: 2 \},\s*\],\s*permission: \(\{ view \}\) => can\(view, 'front\.view'\),/,
   );
   for (const piece of [['--api'], ['--settings'], ['--tables', 'dsp'], ['--keeps', 'cortex.dvic']])
     await refused(

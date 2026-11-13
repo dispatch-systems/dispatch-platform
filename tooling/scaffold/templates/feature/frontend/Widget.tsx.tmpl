@@ -1,10 +1,10 @@
 import type { WidgetProps } from '{{toRoot}}core/shell/frontend/runtime/slots.js';
 
-/** {{label}}'s widget on a member's Home page, at the size step they chose. */
-export function {{pascal}}Widget({ size }: WidgetProps) {
+/** {{label}}'s widget on a member's Home page, at the size of its own they chose. */
+export function {{pascal}}Widget({ columns, rows }: WidgetProps) {
   return (
-    <section aria-label="{{label}}" data-size={size}>
-      {/* TODO(scaffold): what it shows at each size step it declares. */}
+    <section aria-label="{{label}}" data-columns={columns} data-rows={rows}>
+      {/* TODO(scaffold): what it shows at each of the sizes it declares. */}
     </section>
   );
 }

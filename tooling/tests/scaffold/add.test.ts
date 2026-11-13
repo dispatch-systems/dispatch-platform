@@ -73,15 +73,16 @@ test('add merges a piece into a feature that exists: its slot entries, fields an
   assert.match(vans, /widgets: \[\s*\{\s*id: 'vans\.overview',/);
   assert.equal(vans.match(/^\s+platformSlots:/gm)?.length, 1);
 
-  // An API on Home: its routes, its permission, its types' export, and the ts Cargo feature.
-  const api = await add('api', '--to', 'home');
-  const home = changed(api, 'features/home/feature.rs');
-  assert.match(home, /^mod api;$/m);
-  assert.match(home, /routes: api::routes::routes,/);
-  assert.match(home, /perm\("home\.view", /);
-  assert.match(home, /pub fn typescript\(/);
+  // An API on Live Route Data: its routes, its permission, its types' export, and the ts Cargo
+  // feature.
+  const api = await add('api', '--to', 'live_route_data');
+  const live = changed(api, 'features/live_route_data/feature.rs');
+  assert.match(live, /^mod api;$/m);
+  assert.match(live, /routes: api::routes::routes,/);
+  assert.match(live, /perm\("live_route_data\.view", /);
+  assert.match(live, /pub fn typescript\(/);
   assert.match(
-    changed(api, 'features/home/Cargo.toml'),
+    changed(api, 'features/live_route_data/Cargo.toml'),
     /\[features\]\nts = \["dep:ts-rs", "dispatch-core\/ts"\]/,
   );
 
@@ -169,8 +170,8 @@ test('add merges a piece into a feature that exists: its slot entries, fields an
   );
   // A README's line joins its list, whatever its last item's bold lead says.
   assert.match(
-    changed(await add('api', '--to', 'home'), 'features/home/README.md'),
-    /\*\*[^\n]*\n- \*\*API:\*\*/,
+    changed(await add('widget', '--to', 'home'), 'features/home/README.md'),
+    /\*\*[^\n]*\n- \*\*Widget:\*\*/,
   );
   // A permissions field it lacks holds only what the piece uses.
   assert.doesNotMatch(
@@ -319,12 +320,12 @@ test('--contract writes a contract crate on core alone, what fulfils it, its exp
     changed(second, 'features/driver_match/README.md'),
     /`match_counts`.*while it's on/,
   );
-  // Home has no backend/: it gains one, and core's test helpers for its test.
-  const home = await add('contract', 'home_counts', '--to', 'home');
-  assert(home.files.has('features/home/backend/mod.rs'));
-  assert.match(changed(home, 'features/home/feature.rs'), /^mod backend;$/m);
+  // Team has no backend/: it gains one, and core's test helpers for its test.
+  const team = await add('contract', 'team_counts', '--to', 'team');
+  assert(team.files.has('features/team/backend/mod.rs'));
+  assert.match(changed(team, 'features/team/feature.rs'), /^mod backend;$/m);
   assert.match(
-    changed(home, 'features/home/Cargo.toml'),
+    changed(team, 'features/team/Cargo.toml'),
     /\[dev-dependencies\]\ndispatch-core = \{ path = "..\/..\/core", features = \["testing"\] \}/,
   );
   // A name a manifest exposes, not yet generated into the feature map, is taken too.

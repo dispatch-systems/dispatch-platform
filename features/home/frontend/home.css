@@ -67,3 +67,258 @@
   flex-direction: column;
   width: 100%;
 }
+
+/* The member's widgets on a grid of twelve columns by seven rows filling the page below its
+   header, which never scrolls, edge to edge: each cell nearly square on a desktop screen. The
+   editor's board measures the same cells. */
+.page-container:has(.home-page) {
+  max-width: none;
+  overflow: hidden;
+}
+.home-page {
+  --home-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* How widgets making way, or settling where they're dropped, glide: unhurried, and easing out
+     softly as they arrive. */
+  --home-glide: 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+.home-area {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.home-grid {
+  display: grid;
+  flex: 1;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-rows: repeat(7, minmax(0, 1fr));
+  gap: 16px;
+}
+.home-cell {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+}
+.home-widget {
+  container-type: size;
+  height: 100%;
+  overflow: hidden;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition:
+    box-shadow 180ms var(--home-ease),
+    border-color 180ms var(--home-ease),
+    scale 180ms var(--home-ease);
+}
+.home-widget-loading {
+  height: 100%;
+  background: var(--accent);
+}
+.home-widget-failed {
+  padding: 16px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+/* Arranging: each widget glides to its cells as others make way for the one held, which lifts
+   under the pointer, and where it would land is outlined. */
+.home-board {
+  position: relative;
+  flex: 1;
+  touch-action: none;
+}
+.home-board .home-cell {
+  position: absolute;
+  top: 0;
+  left: 0;
+  cursor: grab;
+  transition:
+    transform var(--home-glide),
+    width var(--home-glide),
+    height var(--home-glide);
+}
+.home-board .home-cell.home-lifted {
+  z-index: 3;
+  cursor: grabbing;
+  transition: none;
+  will-change: transform;
+}
+.home-holding,
+.home-holding .home-cell {
+  cursor: grabbing;
+  user-select: none;
+}
+.home-board .home-widget {
+  pointer-events: none;
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
+}
+.home-board .home-cell:hover .home-widget {
+  border-color: color-mix(in srgb, var(--primary) 70%, var(--border));
+}
+.home-lifted .home-widget {
+  box-shadow: 0 20px 44px rgb(0 0 0 / 0.24);
+  scale: 1.02;
+}
+.home-drop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  border: 2px dashed color-mix(in srgb, var(--primary) 60%, transparent);
+  border-radius: var(--radius);
+  pointer-events: none;
+  transition:
+    transform 140ms var(--home-ease),
+    width 140ms var(--home-ease),
+    height 140ms var(--home-ease);
+}
+.home-added .home-widget {
+  animation: home-in 220ms var(--home-ease);
+}
+@keyframes home-in {
+  from {
+    opacity: 0;
+    scale: 0.96;
+  }
+}
+.home-remove {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+/* Its resize handles: a band along each edge and a square at each corner, a grip showing on
+   the widget the pointer is over. */
+.home-handle {
+  position: absolute;
+  z-index: 2;
+  touch-action: none;
+}
+.home-handle::after {
+  position: absolute;
+  background: var(--primary);
+  border-radius: 999px;
+  opacity: 0;
+  transition: opacity 120ms var(--home-ease);
+  content: '';
+}
+.home-cell:hover .home-handle::after {
+  opacity: 0.85;
+}
+.home-handle-n,
+.home-handle-s {
+  left: 16px;
+  right: 16px;
+  height: 12px;
+  cursor: ns-resize;
+}
+.home-handle-n {
+  top: -6px;
+}
+.home-handle-s {
+  bottom: -6px;
+}
+.home-handle-n::after,
+.home-handle-s::after {
+  top: 4px;
+  left: calc(50% - 18px);
+  width: 36px;
+  height: 4px;
+}
+.home-handle-e,
+.home-handle-w {
+  top: 16px;
+  bottom: 16px;
+  width: 12px;
+  cursor: ew-resize;
+}
+.home-handle-e {
+  right: -6px;
+}
+.home-handle-w {
+  left: -6px;
+}
+.home-handle-e::after,
+.home-handle-w::after {
+  top: calc(50% - 18px);
+  left: 4px;
+  width: 4px;
+  height: 36px;
+}
+.home-handle-ne,
+.home-handle-se,
+.home-handle-sw,
+.home-handle-nw {
+  width: 18px;
+  height: 18px;
+}
+.home-handle-ne::after,
+.home-handle-se::after,
+.home-handle-sw::after,
+.home-handle-nw::after {
+  inset: 5px;
+}
+.home-handle-ne {
+  top: -7px;
+  right: -7px;
+  cursor: nesw-resize;
+}
+.home-handle-sw {
+  bottom: -7px;
+  left: -7px;
+  cursor: nesw-resize;
+}
+.home-handle-se {
+  right: -7px;
+  bottom: -7px;
+  cursor: nwse-resize;
+}
+.home-handle-nw {
+  top: -7px;
+  left: -7px;
+  cursor: nwse-resize;
+}
+
+.home-add {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.home-add button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-widget,
+  .home-handle::after,
+  .home-board .home-cell,
+  .home-drop {
+    transition: none;
+  }
+  .home-added .home-widget {
+    animation: none;
+  }
+}
+.home-holding .home-handle::after {
+  opacity: 0;
+}
