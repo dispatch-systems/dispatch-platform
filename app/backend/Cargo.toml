@@ -108,6 +108,7 @@ dispatch-daily-performance = { path = "../../features/daily_performance", featur
 dispatch-documents = { path = "../../features/documents", features = ["ts"] }
 dispatch-driver-match = { path = "../../features/driver_match", features = ["ts"] }
 dispatch-dvic = { path = "../../features/dvic", features = ["ts"] }
+dispatch-home = { path = "../../features/home", features = ["ts"] }
 dispatch-routes = { path = "../../features/routes", features = ["ts"] }
 dispatch-slack = { path = "../../features/slack", features = ["ts"] }
 dispatch-timecard = { path = "../../features/timecard", features = ["ts"] }

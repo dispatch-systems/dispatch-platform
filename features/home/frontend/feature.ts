@@ -1,10 +1,16 @@
 import { createElement, lazy } from 'react';
 import { House } from 'lucide-react';
 import type { FrontendFeature } from '../../../core/shell/frontend/runtime/slots.js';
+import type { HomeLayout } from '../api/index.js';
 
 declare module '../../../core/shell/frontend/runtime/slots.js' {
   interface DspPages {
     overview: true;
+  }
+}
+declare module '../../../core/shell/frontend/runtime/preferences.js' {
+  interface Preferences {
+    'home.layout': HomeLayout;
   }
 }
 
@@ -24,7 +30,7 @@ export const feature: FrontendFeature = {
       remembered: false,
       landing: true,
       preload: load,
-      render: () => createElement(HomePage),
+      render: ({ session, view }) => createElement(HomePage, { session, view }),
     },
   ],
 };

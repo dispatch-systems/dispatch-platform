@@ -67,3 +67,79 @@
   flex-direction: column;
   width: 100%;
 }
+
+/* The member's widgets on a grid of twelve columns, each row as tall as a column is wide, as
+   the editor's grid measures it. */
+.home-page {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.home-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-auto-rows: calc((100cqw - 11 * 16px) / 12);
+  gap: 16px;
+}
+.home-cell {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+}
+.home-widget {
+  container-type: size;
+  height: 100%;
+  overflow: hidden;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.home-widget-loading {
+  height: 100%;
+  background: var(--accent);
+}
+.home-widget-failed {
+  padding: 16px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.home-editing .home-cell {
+  cursor: grab;
+}
+.home-editing .home-widget {
+  pointer-events: none;
+  outline: 2px dashed var(--border);
+  outline-offset: 2px;
+}
+.home-editing .react-grid-placeholder {
+  background: var(--primary);
+  border-radius: var(--radius);
+  opacity: 0.15;
+}
+.home-remove {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.home-add {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.home-add button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
