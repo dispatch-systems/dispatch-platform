@@ -289,3 +289,54 @@ fn an_itinerarys_response_that_is_not_the_route_listed_says_why() {
     assert!(unknown.meals.is_empty());
     assert_eq!(unknown.delivery_coverage, Coverage::Unavailable);
 }
+
+#[tokio::test]
+async fn a_days_meals_are_read_from_responses_already_kept_or_not_at_all() {
+    let (_, response) = finished();
+    let ended = with(
+        on(),
+        json!({"state":"OFF","timeStampOff":START + 1_800_000}),
+    );
+    let mut day = list(json!([ended]));
+    day["itinerarySummaries"][0]["executionStatus"] = json!("COMPLETE");
+    // A second route has no meal: the list alone answers for it.
+    day["itinerarySummaries"].as_array_mut().unwrap().push(
+        json!({"itineraryId":"itinerary-2","transporterId":"driver-1","routeCode":"CX2",
+            "companyId":"provider-1","executionStatus":"COMPLETE","breaks":[]}),
+    );
+    let read = |kept: Option<String>| {
+        let day = day.to_string();
+        async move {
+            super::super::from_responses(&scope(), day, &[], START, |id| {
+                let kept = kept.clone().filter(|_| id == "itinerary-1");
+                async move { Ok(kept) }
+            })
+            .await
+            .unwrap()
+        }
+    };
+    let capture = read(Some(response.to_string())).await.expect("the day");
+    assert_eq!((capture.started_at, capture.finished_at), (START, START));
+    let routes: Vec<_> = (capture.itineraries.iter())
+        .map(|route| (route.id.as_str(), route.observed_at, route.meals.len()))
+        .collect();
+    assert_eq!(
+        routes,
+        [("itinerary-1", START, 1), ("itinerary-2", START, 0)]
+    );
+    assert_eq!(
+        bounds(&capture.itineraries[0]),
+        [[
+            Some(START - 60000),
+            Some(START + 1_860_000),
+            Some(0),
+            Some(1)
+        ]]
+    );
+    // Without a route's itinerary, or with one that is not the route the list names, the
+    // day is not read from them.
+    assert!(read(None).await.is_none());
+    let mut other = response.clone();
+    other["itineraryDetails"]["transporterId"] = json!("driver-2");
+    assert!(read(Some(other.to_string())).await.is_none());
+}

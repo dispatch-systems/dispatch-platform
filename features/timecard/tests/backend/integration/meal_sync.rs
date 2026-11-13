@@ -10,10 +10,7 @@ use serde_json::{Value, json};
 
 /// Timecard, the Driver Match it joins drivers through, and both collectors it keeps.
 fn install() {
-    common::install(
-        &[&dispatch_paycom::COLLECTOR, &dispatch_cortex::COLLECTOR],
-        &[&dispatch_timecard::FEATURE],
-    );
+    super::install();
 }
 
 fn fixture() -> (tempfile::TempDir, Store, String, String) {

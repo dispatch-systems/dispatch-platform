@@ -149,6 +149,34 @@ pub trait LiveRouteData: Send + Sync {
     /// Each driver's latest work phone today, as the last whole live read left it; `Uncollected`
     /// without a live day.
     fn day_phones(&self, db: &Store, dsp: &str) -> Result<DayPhones>;
+    /// Where and when the read live route data holds of today was taken; none without a live
+    /// day.
+    fn live_read(&self, db: &Store, dsp: &str) -> Result<Option<LiveRead>>;
+    /// What the source answered in that read, kept whole, as its JSON text: the day's list of
+    /// routes, or the itinerary `itinerary` names. None without a live day, or when the read
+    /// holds no such itinerary. For a feature that reads of a response what Routes keeps no
+    /// row of; a day's are megabytes each, so one is asked for at a time.
+    fn live_response(
+        &self,
+        db: &Store,
+        dsp: &str,
+        itinerary: Option<&str>,
+    ) -> Result<Option<String>>;
+}
+
+/// The read live route data holds of today: the day and the place at the source it was taken
+/// of, and when.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LiveRead {
+    /// YYYY-MM-DD in the DSP's own time.
+    pub day: String,
+    pub station: String,
+    /// The source's IDs of the station's area and of the DSP's company there.
+    pub service_area_id: String,
+    pub provider: String,
+    pub timezone: String,
+    /// When the read ended, in milliseconds since the epoch.
+    pub collected_at: i64,
 }
 
 /// Each driver's latest work phone of a day, from the work phone each of their itineraries shows:

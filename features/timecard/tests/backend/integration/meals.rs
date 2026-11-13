@@ -108,10 +108,7 @@ fn bundled_scope_publication_is_atomic_replayable_and_keeps_the_real_job_identit
 
 /// Timecard, the Driver Match it joins drivers through, and both collectors it keeps.
 fn install() {
-    common::install(
-        &[&dispatch_paycom::COLLECTOR, &dispatch_cortex::COLLECTOR],
-        &[&dispatch_timecard::FEATURE],
-    );
+    super::install();
 }
 
 fn scope() -> Scope {
@@ -555,4 +552,69 @@ fn migration_minimizes_all_history_and_legacy_runtime_publications() {
             .exists([])
             .unwrap()
     );
+}
+
+#[test]
+fn a_collection_is_given_the_live_route_data_a_dsp_holds_only_while_it_stands_for_one() {
+    use dispatch_core::manifest::registry;
+    use dispatch_routes_contract::LiveRead;
+    install();
+    let (_root, db, id) = common::bootstrapped();
+    common::ready_connection(&db, &id, cortex::PROVIDER).unwrap();
+    let scope = scope();
+    let asked = |question: serde_json::Value| {
+        registry()
+            .keeper(meals::JOB_KIND)
+            .kept(&db, &id, &question)
+            .unwrap()
+    };
+    let list = || asked(json!({"live": scope}));
+    let itinerary = |at: i64, route: &str| {
+        asked(json!({"liveItinerary": {"scope": scope, "at": at, "id": route}}))
+    };
+    let hold = |read: LiveRead| {
+        *super::LIVE.lock().unwrap() = Some((
+            read,
+            "the day's list".into(),
+            [("itinerary-1".to_owned(), "its itinerary".to_owned())].into(),
+        ));
+    };
+    let taken = |at: i64| LiveRead {
+        day: scope.date.clone(),
+        station: scope.station.clone(),
+        service_area_id: scope.service_area_id.clone(),
+        provider: scope.provider.clone(),
+        timezone: scope.timezone.clone(),
+        collected_at: at,
+    };
+    let recent = now() - 60000;
+    // Nothing offers live route data for the DSP while the stand-in is switched off.
+    hold(taken(recent));
+    let owner = common::a_user(&db);
+    db.set_feature(&id, "living", false, &owner).unwrap();
+    assert!(list().is_null());
+    assert!(itinerary(recent, "itinerary-1").is_null());
+    // On, a collection is given when the read was taken and what the source answered in it,
+    // the list and then each itinerary it asks for, of that read alone.
+    db.set_feature(&id, "living", true, &owner).unwrap();
+    assert_eq!(list(), json!({"at": recent, "list": "the day's list"}));
+    assert_eq!(itinerary(recent, "itinerary-1"), json!("its itinerary"));
+    assert!(itinerary(recent, "itinerary-2").is_null());
+    assert!(itinerary(recent - 1, "itinerary-1").is_null());
+    // A read too old to stand for a collection, and one of another station, give nothing.
+    hold(taken(now() - 2 * 3_600_000));
+    assert!(list().is_null());
+    hold(LiveRead {
+        station: "TST2".into(),
+        ..taken(recent)
+    });
+    assert!(list().is_null());
+    assert!(itinerary(recent, "itinerary-1").is_null());
+    // Nor does one older than the day Timecard holds as collected since.
+    hold(taken(recent));
+    db.publish_meals(&id, "collected-since", &meals::fixture(&scope), &scope)
+        .unwrap();
+    assert!(list().is_null());
+    assert!(itinerary(recent, "itinerary-1").is_null());
+    *super::LIVE.lock().unwrap() = None;
 }

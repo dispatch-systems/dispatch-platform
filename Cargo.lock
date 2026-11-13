@@ -1402,6 +1402,7 @@ dependencies = [
  "dispatch-core",
  "dispatch-cortex",
  "dispatch-paycom",
+ "dispatch-routes-contract",
  "dispatch-timecard-contract",
  "rusqlite",
  "serde",

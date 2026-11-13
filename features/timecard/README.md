@@ -11,6 +11,15 @@ through Driver Match.
   timecards (Paycom), and its Meal Breaks tab alone needs meal breaks (Cortex); each switches
   on with what needs it. Its three tabs are parts of its own: Timecard, Meal Breaks and Employee
   Search.
+- **Meal breaks from live route data:** a meal collection may read a scope's day from the live
+  route data the DSP holds of today in place of asking Cortex. Asked for it (`Keeper::kept`,
+  `live`), Timecard gives when that read was taken and the day's list as the source answered it,
+  then each itinerary the collection asks for by its id (`liveItinerary`), a turn each, through
+  that contract alone and only while a feature offers it for the DSP (`meals::live_list`,
+  `meals::live_itinerary`). Only a read of the same day, station, area and company taken within
+  the last 65 minutes is given, never one older than the day Timecard already holds, and an
+  itinerary only of the read the collection began with. The collection reads them with Cortex's
+  meal rules; such a day is as of when live route data read it.
 - **Drivers and employees:** the Meal Breaks tab pairs each driver with their employee through
   core's directory, which Driver Match answers; it matches no names itself. A driver Driver
   Match hasn't reached yet, as while a collection runs, waits unmatched, as does every driver

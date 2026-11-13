@@ -327,8 +327,6 @@ impl Driver {
         result
     }
 }
-/// The routes Timecard already holds for `scope`, which the collection need not read again
-/// while they stay as they were.
 /// Whether the job is still this worker's to run: asked again before a read with no page
 /// goes on after a wait, as each step with one asks through its progress.
 fn authority(run: &Run<'_>) -> impl Fn() -> Pending<'static, ()> + Send + Sync + 'static {
@@ -342,6 +340,49 @@ fn authority(run: &Run<'_>) -> impl Fn() -> Pending<'static, ()> + Send + Sync +
         })
     }
 }
+/// What the keeper of meal breaks answers `question`, in a short turn of its own.
+async fn asked_of_keeper(run: &Run<'_>, question: Value) -> Result<Value> {
+    let job = run.job.to_owned();
+    run.state
+        .read(move |store| {
+            let dsp = store.job_row(&job, None)?.dsp_id;
+            registry()
+                .keeper(crate::meals::JOB_KIND)
+                .kept(store, &dsp, &question)
+        })
+        .await
+}
+/// The scope's day of meals read from the live route data the DSP holds of today, with no
+/// request to Cortex: none when its keeper has no such read to give, or one the day's meals
+/// can't be read from whole, and the day is collected. The keeper gives the read's list, then
+/// each itinerary needed, a turn each, and the meal rules read them here; a read replaced
+/// meanwhile gives no more, and is no day. Each route names the Cortex page it would be read
+/// from, and the day is checked as a collected one is.
+async fn live_meals(run: &Run<'_>, scope: &Scope, origin: &str) -> Option<Value> {
+    let live = asked_of_keeper(run, json!({"live": scope})).await.ok()?;
+    let (at, list) = (live["at"].as_i64()?, live["list"].as_str()?.to_owned());
+    let kept = kept_meals(run, scope).await.unwrap_or_default();
+    let itinerary = |id: String| async move {
+        let question = json!({"liveItinerary": {"scope": scope, "at": at, "id": id}});
+        let answer = asked_of_keeper(run, question).await?;
+        Ok(answer.as_str().map(str::to_owned))
+    };
+    let mut day = collection::from_responses(scope, list, &kept, at, itinerary)
+        .await
+        .ok()??;
+    // The read every response came from is the one the keeper still holds.
+    let still = asked_of_keeper(run, json!({"live": scope})).await.ok()?;
+    if still["at"].as_i64() != Some(at) {
+        return None;
+    }
+    for route in &mut day.itineraries {
+        route.source_url = Some(format!("{origin}{}", scope.detail_path(&route.id)));
+    }
+    day.validate(scope).ok()?;
+    serde_json::to_value(day).ok()
+}
+/// The routes Timecard already holds for `scope`, which the collection need not read again
+/// while they stay as they were.
 async fn kept_meals(run: &Run<'_>, scope: &Scope) -> Result<Vec<crate::meals::Itinerary>> {
     let job = run.job.to_owned();
     let question = serde_json::to_value(scope)?;
@@ -419,32 +460,14 @@ impl Drives for Driver {
                     )
                     .await?;
                     let scope = self.resolve_scope(scope_request, run.metrics).await?;
-                    let kept = kept_meals(run, &scope).await.unwrap_or_else(|_| {
-                        run.metrics.detail("meal_kept_unavailable");
-                        Vec::new()
-                    });
-                    let data = Driver::collect(
-                        self,
-                        &scope,
-                        &kept,
-                        &collection::Context {
-                            metrics: run.metrics,
-                            live: Some(&crate::meals::Writer::new(
-                                run.state.clone(),
-                                run.job,
-                                run.owner,
-                            )),
-                            check: &authority(run),
-                        },
-                        |progress, message| {
+                    let data = self
+                        .day_of_meals(run, &scope, |progress, message| {
                             run.progress(
                                 10 + (index as i64 * 100 + progress) * 85 / (count as i64 * 100),
                                 format!("{} · {} · {message}", request.date, scope.station),
                             )
-                        },
-                        &collection::MealMethod::default(),
-                    )
-                    .await?;
+                        })
+                        .await?;
                     captures.push(serde_json::from_value(data)?);
                 }
                 let data = crate::meals::DayCapture {
@@ -461,28 +484,11 @@ impl Drives for Driver {
             let scope = self
                 .resolve_scope(&serde_json::from_value(run.request.clone())?, run.metrics)
                 .await?;
-            // What Timecard holds only saves reads: without it, every route is read.
-            let kept = kept_meals(run, &scope).await.unwrap_or_else(|_| {
-                run.metrics.detail("meal_kept_unavailable");
-                Vec::new()
-            });
-            let data = Driver::collect(
-                self,
-                &scope,
-                &kept,
-                &collection::Context {
-                    metrics: run.metrics,
-                    live: Some(&crate::meals::Writer::new(
-                        run.state.clone(),
-                        run.job,
-                        run.owner,
-                    )),
-                    check: &authority(run),
-                },
-                |progress, message| run.progress(progress, message),
-                &collection::MealMethod::default(),
-            )
-            .await?;
+            let data = self
+                .day_of_meals(run, &scope, |progress, message| {
+                    run.progress(progress, message)
+                })
+                .await?;
             Ok(Collected {
                 data,
                 scope: Some(serde_json::to_value(scope)?),
@@ -491,5 +497,49 @@ impl Drives for Driver {
     }
     fn browser(&self) -> Option<&browseros::Session> {
         Some(&self.browser)
+    }
+}
+impl Driver {
+    /// A scope's day of meals: read from the live route data the DSP holds of it when its
+    /// keeper can (`live_meals`), and collected from Cortex otherwise, reading again only what
+    /// Timecard does not already hold.
+    async fn day_of_meals<F, Fut>(
+        &mut self,
+        run: &Run<'_>,
+        scope: &Scope,
+        progress: F,
+    ) -> Result<Value>
+    where
+        F: Fn(i64, String) -> Fut,
+        Fut: Future<Output = Result<()>>,
+    {
+        if let Some(day) = live_meals(run, scope, &self.origin).await {
+            run.metrics.method("meals_live_route_data");
+            // The job is still this worker's to publish it, as a collected day's last step asks.
+            progress(95, "Validating meal publication".into()).await?;
+            return Ok(day);
+        }
+        // What Timecard holds only saves reads: without it, every route is read.
+        let kept = kept_meals(run, scope).await.unwrap_or_else(|_| {
+            run.metrics.detail("meal_kept_unavailable");
+            Vec::new()
+        });
+        Driver::collect(
+            self,
+            scope,
+            &kept,
+            &collection::Context {
+                metrics: run.metrics,
+                live: Some(&crate::meals::Writer::new(
+                    run.state.clone(),
+                    run.job,
+                    run.owner,
+                )),
+                check: &authority(run),
+            },
+            progress,
+            &collection::MealMethod::default(),
+        )
+        .await
     }
 }

@@ -219,6 +219,74 @@ fn finished<'a>(kept: &'a [Itinerary], c: &Candidate) -> Option<&'a Itinerary> {
         && was == is)
         .then_some(route)
 }
+/// A day's meals read from responses already kept, as live route data keeps a day's: its
+/// list as `list`, and each itinerary `itinerary` gives by its id, read by the meal rules as
+/// a collection's are, each route as of `at`, when the responses were read. None when the day's
+/// meals can't be read from them whole: a route's itinerary is missing, a response is not the
+/// route the list names, or a meal changed between the list and it. `kept` is what Timecard
+/// already holds for the scope: a finished route it holds unchanged needs no itinerary. Each
+/// response is asked for as it is needed and read away from the threads serving requests.
+pub(crate) async fn from_responses<F, Fut>(
+    scope: &Scope,
+    list: String,
+    kept: &[Itinerary],
+    at: i64,
+    itinerary: F,
+) -> Result<Option<Capture>>
+where
+    F: Fn(String) -> Fut,
+    Fut: Future<Output = Result<Option<String>>>,
+{
+    let of = scope.clone();
+    let listed = tokio::task::spawn_blocking(move || {
+        let summaries = serde_json::from_str::<Value>(&list).ok()?;
+        rules::candidates(&summaries, &of).ok()
+    })
+    .await;
+    let Ok(Some(candidates)) = listed else {
+        return Ok(None);
+    };
+    let mut itineraries = Vec::with_capacity(candidates.len());
+    for c in candidates {
+        let route = if c.meals.is_empty() {
+            Itinerary {
+                id: c.id.clone(),
+                transporter_id: c.transporter_id.clone(),
+                driver: c.driver.clone(),
+                route: c.route.clone(),
+                observed_at: at,
+                route_complete: c.route_complete,
+                delivery_coverage: Coverage::Unavailable,
+                meals: Vec::new(),
+                source_url: None,
+                unreadable: c.unreadable.clone(),
+            }
+        } else if let Some(route) = finished(kept, &c) {
+            route.clone()
+        } else {
+            let Some(text) = itinerary(c.id.clone()).await? else {
+                return Ok(None);
+            };
+            let of = scope.clone();
+            let read = tokio::task::spawn_blocking(move || rules::detail(&text, &c, &of)).await;
+            let Ok(Ok(route)) = read else {
+                return Ok(None);
+            };
+            route
+        };
+        itineraries.push(Itinerary {
+            observed_at: at,
+            source_url: None,
+            ..route
+        });
+    }
+    Ok(Some(Capture {
+        scope: scope.clone(),
+        started_at: at,
+        finished_at: at,
+        itineraries,
+    }))
+}
 impl Driver {
     async fn meal_read(
         &self,

@@ -172,5 +172,8 @@ it is live route data, in a database of its own, `routelive`.
   refusing a day as `day` does) and today's (`LiveRouteData::day_phones`): each driver ID once with
   their phone by its ten digits, and whether it's another driver ID's latest that day too, which
   names no one driver; a day not collected, or not live, and one whose phones aren't extracted yet,
-  are told apart from a day without phones. And whether a number, by its last ten digits, is an
+  are told apart from a day without phones. Live route data also says where and when the read
+  it holds of today was taken (`live_read`), and gives what the source answered in it, kept
+  whole, as its JSON text: the day's list, or one itinerary by its id (`live_response`), for a
+  feature that reads of a response what Routes keeps no row of. And whether a number, by its last ten digits, is an
   itinerary's work phone on any day kept, live or historical (`ever_work_phone`).
