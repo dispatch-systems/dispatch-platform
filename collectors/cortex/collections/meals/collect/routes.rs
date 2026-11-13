@@ -62,13 +62,18 @@ where
         let ordinal = self.reads.fetch_add(1, Ordering::SeqCst) + 1;
         self.metrics.page_start(ordinal, 1);
         self.metrics.page_stage(ordinal, "content");
+        self.told().await?;
+        Ok(Some((candidate, ordinal)))
+    }
+    /// Tells how far the pass is, which fails once the job is no longer this worker's to
+    /// run: before each route is asked of Cortex, a first time or again.
+    async fn told(&self) -> Result<()> {
         let done = self.done.load(Ordering::SeqCst);
         (self.progress)(
             10 + (70 * done / self.total.max(1)) as i64,
             format!("Reading meal evidence ({}/{})", done + 1, self.total),
         )
-        .await?;
-        Ok(Some((candidate, ordinal)))
+        .await
     }
     /// A route's read, kept as the pass keeps it, or the error that ends the collection.
     pub(super) async fn end(
@@ -241,6 +246,8 @@ where
                     },
                 };
                 if attempt > 1 {
+                    // A cooldown passed since the job's authority was last asked.
+                    self.told().await?;
                     self.metrics.page_start(ordinal, attempt);
                     self.metrics.page_stage(ordinal, "content");
                 }

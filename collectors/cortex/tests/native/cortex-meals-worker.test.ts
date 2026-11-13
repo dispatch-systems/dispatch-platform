@@ -385,10 +385,8 @@ test(
       for (const date of Object.keys(held)) releaseDay(date);
       for (const timer of timers) clearTimeout(timer);
     });
-    // The collection waits for sixteen routes at once. Cortex answers over HTTP/2; this
-    // stand-in over HTTP/1.1, to which the browser opens six connections, so six at once
-    // is all it can see.
-    const atOnce = (routes: number) => Math.min(6, routes);
+    // The collection waits for as many routes at once as the account's gate admits: four.
+    const atOnce = (routes: number) => Math.min(4, routes);
     let active = 0;
     let swiped = false;
     const route = (date: string, n: number) => {
@@ -495,7 +493,7 @@ test(
       assert.equal(published[0].verifiedGapPairs, count, `${date}: each meal keeps both gaps`);
       const read = Object.keys(reads).filter((id) => id.includes(date));
       assert.equal(read.length, count, `${date}: every route's itinerary was read`);
-      assert.equal(peaks[date], atOnce(count), `${date}: as many at once as the browser sends`);
+      assert.equal(peaks[date], atOnce(count), `${date}: as many at once as the gate admits`);
       assert.equal(pages[date] ?? 0, 0, `${date}: no route's page is loaded`);
       assert.equal(unasked[date] ?? 0, 0, `${date}: each route is asked of the application`);
       // A finished day changes no more: unless a route changed while it was read, its list
@@ -713,8 +711,8 @@ test(
     const job = await collect(date, `throttled-${date}`, 120000);
     assert.equal(job.status, 'succeeded', JSON.stringify(job));
     const published = (await owner.get(`/api/dsp/cortex/meal-breaks?date=${date}`)).value;
-    assert.equal(published.length, 5);
-    assert.ok(published.every((route: any) => route.verifiedGapPairs === 1));
+    assert.equal(published[0].itineraryCount, 5);
+    assert.equal(published[0].verifiedGapPairs, 5);
     // Each throttled route was asked once more, the others once, and no route's page loaded.
     assert.deepEqual(
       requests,
