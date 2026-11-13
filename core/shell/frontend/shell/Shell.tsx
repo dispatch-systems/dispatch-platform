@@ -25,7 +25,10 @@ import { Popover } from '../ui/Popover.js';
 import { SidebarHead } from '../ui/SidebarHead.js';
 import { useFocusTrap } from '../ui/useFocusTrap.js';
 import { dspHash, platformHash } from '../runtime/navigation.js';
+import { sidebarSave } from '../runtime/endpoints.js';
+import { useFeedback } from '../runtime/feedback.js';
 import { useFillRequested } from '../runtime/fills.js';
+import { messageOf } from '../lib/errors.js';
 import { sourceLink } from '../lib/source.js';
 import {
   accountActions,
@@ -277,6 +280,7 @@ export function Shell({
   // The app's sidebar, a DSP's as its member arranged it, between the page it opens on and
   // Settings; any other as the app lists it, its last item set apart.
   const { arrangement, arrange } = useArrangement(view);
+  const { fail } = useFeedback();
   const { first, movable, last } = useMemo(
     () => arranged(navigation, view ? keptItems() : {}, arrangement),
     [navigation, view, arrangement],
@@ -360,11 +364,15 @@ export function Shell({
                 <Suspense fallback={pages}>
                   <SidebarEdit
                     items={movable}
-                    hidden={arrangement.hidden}
+                    arrangement={arrangement}
                     first={first}
                     last={last}
-                    arrange={(ids, hidden) => arrange(rearranged(arrangement, ids, hidden))}
-                    reset={() => arrange({ order: [], hidden: [] })}
+                    rearrange={(ids, hidden) => rearranged(arrangement, ids, hidden)}
+                    save={(next) => {
+                      arrange(next);
+                      return sidebarSave(next);
+                    }}
+                    failed={(error) => fail(messageOf(error))}
                     done={() => {
                       setArranging(undefined);
                       drawer.current

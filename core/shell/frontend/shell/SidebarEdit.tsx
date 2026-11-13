@@ -16,6 +16,8 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Eye, EyeOff, GripVertical, type LucideIcon } from 'lucide-react';
+import type { SidebarArrangement } from '../../../accounts/api/index.js';
+import { keepArrangement } from './arrangement-saves.js';
 
 /** What it shows of an item of the app's sidebar. */
 type Item = { id: string; label: string; icon?: LucideIcon };
@@ -70,32 +72,42 @@ function Listed({
 /**
  * The app's sidebar while its member arranges it, in place of its links: each item they list
  * with a handle to move it and an eye to hide it, between the ones kept first and last, which
- * have neither, and those hidden under their own heading, each with the eye that lists it again where it was. Every
- * change is arranged at once (`arrange`, with every item in its order and those hidden).
+ * have neither, and those hidden under their own heading, each with the eye that lists it
+ * again where it was. Every change shows at once (`save`) and is kept behind it, so nothing
+ * waits on the server; one that can't be kept says why and leaves the sidebar as arranged.
  */
 export function SidebarEdit({
   items,
-  hidden,
+  arrangement,
   first,
   last,
-  arrange,
-  reset,
+  rearrange,
+  save,
+  failed,
   done,
 }: {
   /** Every item that moves, in the member's order, the hidden ones among them. */
   items: readonly Item[];
-  hidden: readonly string[];
+  /** What is kept of how they arranged it, which names the hidden ones. */
+  arrangement: SidebarArrangement;
   /** The items kept before and after them, which neither move nor hide. */
   first?: Item;
   last?: Item;
-  arrange: (ids: string[], hidden: string[]) => void;
-  reset: () => void;
+  /** Shows the items in a new order, with those hidden, and answers what to keep of it. */
+  rearrange: (ids: string[], hidden: string[]) => SidebarArrangement;
+  /** Shows an arrangement, and answers its save, to send in its turn. */
+  save: (arrangement: SidebarArrangement) => () => Promise<unknown>;
+  /** Told why an arrangement couldn't be kept. */
+  failed: (error: unknown) => void;
   done: () => void;
 }) {
   const sensors = useSensors(useSensor(PointerSensor));
   const finish = useRef<HTMLButtonElement>(null);
   useEffect(() => finish.current?.focus({ preventScroll: true }), []);
+  const keep = (next: SidebarArrangement) => void keepArrangement(save(next), failed);
+  const { hidden } = arrangement;
   const ids = items.map((item) => item.id);
+  const arrange = (order: string[], hiding: string[]) => keep(rearrange(order, hiding));
   const listed = items.filter((item) => !hidden.includes(item.id));
   const unlisted = items.filter((item) => hidden.includes(item.id));
   // The listed items take their new order in the places they held, the hidden keeping theirs.
@@ -126,7 +138,7 @@ export function SidebarEdit({
   return (
     <div className="nav-list app-pages sidebar-edit" role="group" aria-label="Edit sidebar">
       <div className="sidebar-edit-bar">
-        <button type="button" onClick={reset}>
+        <button type="button" onClick={() => keep({ order: [], hidden: [] })}>
           Reset
         </button>
         <button ref={finish} type="button" className="primary" onClick={done}>
