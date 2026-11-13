@@ -119,6 +119,11 @@ it is live route data, in a database of its own, `routelive`.
   reads fields the earlier one didn't, in the audit log as `routes.reprocessed`, with the day.
   An itinerary's read groups its active tasks by stop once, and keeps the stored task order and
   the history of inactive tasks.
+- **Old days:** a day's read may be marked as one whose delivered and picked-up task rows were
+  let go (`route_publications.tasks_pruned`), as none is yet: an itinerary's tasks are then read
+  from its stored response, as its rows had them (`stored_tasks`), and a package is found on such
+  a day through `package_days`, which names the itineraries whose response holds it. Its
+  undelivered and removed tasks stay as rows, so what `driver_routes` reads of it is unchanged.
 - **Data:** each itinerary's work phone in its row, in both; in historical route data found by
   the phone too, for whether a number was ever one. Live route data, in `routelive`: today's one
   read, in historical route data's tables

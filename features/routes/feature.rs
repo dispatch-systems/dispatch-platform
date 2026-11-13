@@ -74,6 +74,7 @@ pub const FEATURE: Feature = Feature {
                 "staged_drivers",
                 "route_days_untold",
                 "route_days_noted",
+                "package_days",
                 // The window chosen before Settings kept it, read once to move it there.
                 "route_retention",
             ],
@@ -170,6 +171,11 @@ pub const FEATURE: Feature = Feature {
                     id: 12,
                     name: "days_untold",
                     apply: Sql(include_str!("migrations/routedata/0012_days_untold.sql")),
+                },
+                Migration {
+                    id: 13,
+                    name: "old_days",
+                    apply: Code(backend::add_old_days),
                 },
             ],
         },

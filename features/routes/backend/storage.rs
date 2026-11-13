@@ -68,6 +68,21 @@ pub(crate) fn add_work_phone(db: &Db) -> Result<()> {
     ))?;
     Ok(())
 }
+/// Migration 13: a day may be marked as one whose delivered and picked-up task rows were let
+/// go once it was old, its itineraries' tasks then read from the responses kept whole in
+/// `route_raw`, which hold every one. No day is so yet; the previous release never reads the
+/// column, and reads every day from its rows. With it, the lookup that finds a package on
+/// such a day, and an index no read used dropped.
+pub(crate) fn add_old_days(db: &Db) -> Result<()> {
+    add_column(
+        db,
+        "route_publications",
+        "tasks_pruned",
+        "INTEGER NOT NULL DEFAULT 0 CHECK (tasks_pruned IN (0, 1))",
+    )?;
+    db.0.execute_batch(include_str!("../migrations/routedata/0013_old_days.sql"))?;
+    Ok(())
+}
 /// Live route data's migration 2: each itinerary keeps its work phone, as in historical route
 /// data; a day's one read needs no index to find it by.
 pub(crate) fn add_live_work_phone(db: &Db) -> Result<()> {

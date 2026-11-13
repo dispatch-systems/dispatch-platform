@@ -298,6 +298,42 @@ async fn a_day_is_published_into_normalized_rows_with_its_raw_responses() {
             .unwrap()
             .is_none()
     );
+    // An old day whose delivered and picked-up task rows were let go reads the same: an
+    // itinerary's tasks from its stored response, and a package through the day's lookup.
+    let other = db
+        .route_itinerary(&id, "2026-09-25", "itinerary-1")
+        .unwrap()
+        .unwrap();
+    let storage = db.routes_db(&id).unwrap();
+    storage
+        .exec(
+            "INSERT INTO package_days SELECT DISTINCT tracking_id,publication_id,itinerary_id \
+             FROM tasks WHERE tracking_id IS NOT NULL",
+            [],
+        )
+        .unwrap();
+    let let_go = storage
+        .exec(
+            "DELETE FROM tasks WHERE active=1 AND (task_type='PICK_UP' OR task_state='DELIVERED')",
+            [],
+        )
+        .unwrap();
+    assert!(let_go > 0);
+    storage
+        .exec("UPDATE route_publications SET tasks_pruned=1", [])
+        .unwrap();
+    drop(storage);
+    for (itinerary, read) in [("itinerary-2", &detail), ("itinerary-1", &other)] {
+        assert_eq!(
+            db.route_itinerary(&id, "2026-09-25", itinerary)
+                .unwrap()
+                .as_ref(),
+            Some(read),
+            "{itinerary}"
+        );
+    }
+    assert_eq!(db.route_package(&id, "TBA000000000002").unwrap(), package);
+    assert_eq!(db.route_package(&id, "TBA999999999999").unwrap().events, []);
 }
 
 #[tokio::test]

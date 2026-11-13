@@ -149,6 +149,7 @@ pub(crate) fn sweep_routes_step(
     *selected = Some(publication.clone());
     let remaining = db.transaction(|| {
         for table in [
+            "package_days",
             "tasks",
             "stops",
             "route_raw",
