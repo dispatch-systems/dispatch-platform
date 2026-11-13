@@ -76,6 +76,9 @@
 }
 .home-page {
   --home-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* How widgets making way, or settling where they're dropped, glide: unhurried, and easing out
+     softly as they arrive. */
+  --home-glide: 320ms cubic-bezier(0.22, 1, 0.36, 1);
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -131,9 +134,9 @@
   left: 0;
   cursor: grab;
   transition:
-    transform 200ms var(--home-ease),
-    width 200ms var(--home-ease),
-    height 200ms var(--home-ease);
+    transform var(--home-glide),
+    width var(--home-glide),
+    height var(--home-glide);
 }
 .home-board .home-cell.home-lifted {
   z-index: 3;
