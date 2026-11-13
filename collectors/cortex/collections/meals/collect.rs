@@ -154,6 +154,14 @@ impl MealMethod {
         }
     }
 }
+/// What a collection is told as it reads and where it tells of it: the job's metrics, the
+/// live view of what it finds, and the job's authority, asked again after a wait with no page.
+#[derive(Clone, Copy)]
+pub(crate) struct Context<'a> {
+    pub metrics: &'a Recorder,
+    pub live: Option<&'a Writer>,
+    pub check: &'a Check,
+}
 /// What a read of the page asks `meal.js` for.
 #[derive(Clone, Copy)]
 pub(crate) enum Ask<'a> {
@@ -473,16 +481,19 @@ impl Driver {
         &mut self,
         scope: &Scope,
         kept: &[Itinerary],
-        metrics: &Recorder,
-        live: Option<&Writer>,
+        context: &Context<'_>,
         progress: F,
         method: &MealMethod,
-        check: &Check,
     ) -> Result<Value>
     where
         F: Fn(i64, String) -> Fut,
         Fut: Future<Output = Result<()>>,
     {
+        let Context {
+            metrics,
+            live,
+            check,
+        } = *context;
         scope.validate()?;
         ensure((1..=4).contains(&method.tabs), "invalid_cortex_scope", 400)?;
         ensure(

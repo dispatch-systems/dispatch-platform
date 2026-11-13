@@ -427,12 +427,15 @@ impl Drives for Driver {
                         self,
                         &scope,
                         &kept,
-                        run.metrics,
-                        Some(&crate::meals::Writer::new(
-                            run.state.clone(),
-                            run.job,
-                            run.owner,
-                        )),
+                        &collection::Context {
+                            metrics: run.metrics,
+                            live: Some(&crate::meals::Writer::new(
+                                run.state.clone(),
+                                run.job,
+                                run.owner,
+                            )),
+                            check: &authority(run),
+                        },
                         |progress, message| {
                             run.progress(
                                 10 + (index as i64 * 100 + progress) * 85 / (count as i64 * 100),
@@ -440,7 +443,6 @@ impl Drives for Driver {
                             )
                         },
                         &collection::MealMethod::default(),
-                        &authority(run),
                     )
                     .await?;
                     captures.push(serde_json::from_value(data)?);
@@ -468,15 +470,17 @@ impl Drives for Driver {
                 self,
                 &scope,
                 &kept,
-                run.metrics,
-                Some(&crate::meals::Writer::new(
-                    run.state.clone(),
-                    run.job,
-                    run.owner,
-                )),
+                &collection::Context {
+                    metrics: run.metrics,
+                    live: Some(&crate::meals::Writer::new(
+                        run.state.clone(),
+                        run.job,
+                        run.owner,
+                    )),
+                    check: &authority(run),
+                },
                 |progress, message| run.progress(progress, message),
                 &collection::MealMethod::default(),
-                &authority(run),
             )
             .await?;
             Ok(Collected {
