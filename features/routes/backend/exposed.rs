@@ -10,8 +10,8 @@ use dispatch_core::{
     manifest::people::Source,
 };
 use dispatch_routes_contract::{
-    Collected, CollectedDay, DayPhones, Driven, DriverRoutes, LiveRouteData, MOST_DAYS, MOST_IDS,
-    RouteDay, Undelivered,
+    Collected, CollectedDay, DayPhones, Driven, DriverRoutes, LiveRead, LiveRouteData, MOST_DAYS,
+    MOST_IDS, RouteDay, Undelivered,
 };
 use rusqlite::params;
 use serde_json::Value;
@@ -161,8 +161,59 @@ impl LiveRouteData for Live {
         let station = db.profile(dsp)?.station_code;
         work_phones::of_day(&*db.routes_live_db(dsp)?, &station, &day)
     }
+    fn live_read(&self, db: &Store, dsp: &str) -> Result<Option<LiveRead>> {
+        Ok(self.publication(db, dsp)?.and_then(|row| {
+            let collected = chrono::DateTime::parse_from_rfc3339(s(&row, "collected_at")).ok()?;
+            Some(LiveRead {
+                day: s(&row, "day").into(),
+                station: s(&row, "station").into(),
+                service_area_id: s(&row, "service_area_id").into(),
+                provider: s(&row, "provider").into(),
+                timezone: s(&row, "timezone").into(),
+                collected_at: collected.timestamp_millis(),
+            })
+        }))
+    }
+    fn live_response(
+        &self,
+        db: &Store,
+        dsp: &str,
+        itinerary: Option<&str>,
+    ) -> Result<Option<String>> {
+        let Some(publication) = self.publication(db, dsp)? else {
+            return Ok(None);
+        };
+        let name = match itinerary {
+            Some(id) => format!("itinerary:{id}"),
+            None => "summaries".into(),
+        };
+        use rusqlite::OptionalExtension;
+        let body: Option<Vec<u8>> = (db.routes_live_db(dsp)?.0)
+            .query_row(
+                "SELECT body FROM route_raw WHERE publication_id=? AND name=?",
+                params![s(&publication, "id"), name],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let Some(body) = body else {
+            return Ok(None);
+        };
+        String::from_utf8(super::shaping::gunzip(&body)?)
+            .map(Some)
+            .map_err(|_| dispatch_core::Error::new("routes_capture_invalid", 502))
+    }
 }
 impl Live {
+    /// The live store's read of today at the DSP's station.
+    fn publication(&self, db: &Store, dsp: &str) -> Result<Option<Value>> {
+        let station = db.profile(dsp)?.station_code;
+        let today = routes_today(db, dsp)?.to_string();
+        db.routes_live_db(dsp)?.one(
+            "SELECT id,day,station,service_area_id,provider,timezone,collected_at \
+             FROM route_publications WHERE station=? AND day=? AND active=1",
+            [&station, &today],
+        )
+    }
     /// What the drivers holding `ids`, or every driver, drive today as live route data holds it,
     /// the routes they're assigned to with it; nothing when it holds no read of today.
     fn driven(&self, db: &Store, dsp: &str, ids: Option<&[String]>) -> Result<Driven> {

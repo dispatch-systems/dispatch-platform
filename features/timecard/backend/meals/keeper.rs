@@ -64,6 +64,12 @@ impl Keeper for MealBreaks {
     /// The routes the scope's active publication holds, as Cortex collected them, so a
     /// collection reads again only what may still change.
     fn kept(&self, store: &Store, dsp: &str, question: &Value) -> Result<Value> {
+        // Asked for a scope's day as live route data holds it, the collection reads Cortex
+        // for none of it.
+        if let Some(scope) = question.get("live") {
+            let scope: Scope = serde_json::from_value(scope.clone())?;
+            return Ok(serde_json::to_value(super::live_day(store, dsp, &scope)?)?);
+        }
         let scope: Scope = serde_json::from_value(question.clone())?;
         Ok(serde_json::to_value(super::kept_routes(
             store, dsp, &scope,

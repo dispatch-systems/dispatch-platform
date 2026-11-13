@@ -316,6 +316,23 @@ async fn live_route_data_reads_today_with_its_assigned_routes_and_phones_only_wh
     assert_eq!(named, 0);
 
     assert_eq!(offered.live_day(&db, &dsp).unwrap(), Some(today.clone()));
+    // The read it holds says where and when it was taken, and gives what Cortex answered in
+    // it: the day's list, and each itinerary it holds, by its id.
+    let taken = offered.live_read(&db, &dsp).unwrap().expect("a live read");
+    assert_eq!(
+        (taken.day.as_str(), taken.station.as_str()),
+        (today.as_str(), "TST1")
+    );
+    assert!(taken.collected_at > 0);
+    let response = |itinerary: Option<&str>| {
+        (offered.live_response(&db, &dsp, itinerary).unwrap())
+            .map(|text| serde_json::from_str::<serde_json::Value>(&text).unwrap())
+    };
+    let list = response(None).expect("the day's list");
+    assert_eq!(list["itinerarySummaries"].as_array().map(Vec::len), Some(1));
+    let itinerary = response(Some("itinerary-1")).expect("its itinerary");
+    assert_eq!(itinerary["itineraryDetails"]["itineraryId"], "itinerary-1");
+    assert_eq!(response(Some("itinerary-2")), None);
     let driven = offered.day(&db, &dsp).unwrap();
     let days: Vec<_> = driven
         .days
@@ -373,6 +390,8 @@ async fn live_route_data_reads_today_with_its_assigned_routes_and_phones_only_wh
         .exec("UPDATE route_publications SET day=?", [&yesterday])
         .unwrap();
     assert_eq!(offered.live_day(&db, &dsp).unwrap(), None);
+    assert_eq!(offered.live_read(&db, &dsp).unwrap(), None);
+    assert_eq!(offered.live_response(&db, &dsp, None).unwrap(), None);
     assert!(nothing(
         offered.routes(&db, &dsp, &ids(&["driver-1"])).unwrap()
     ));

@@ -163,6 +163,65 @@ pub(crate) fn publish_meals(
         Ok(json!({"id":id,"itineraries":capture.itineraries.len(),"meals":meals,"verifiedGapPairs":gaps}))
     })
 }
+/// How old a live read may be and still stand in for a collection of the day: a little over
+/// the longest a DSP may set between its live reads, so a read is always in reach while live
+/// route data is being read, and one left behind when it stopped is not.
+const LIVE_FOR: i64 = 65 * 60 * 1000;
+
+/// The scope's day of meals read from the live route data the DSP holds of today, as a
+/// collection of it would find them, with no request to Cortex: only while a feature offers
+/// live route data for the DSP, it holds a read of the scope's day taken within `LIVE_FOR`,
+/// and every route's meals read from it whole (`cortex::meals::from_responses`). The day is as
+/// of when that read was taken.
+pub(crate) fn live_day(store: &Store, dsp: &str, scope: &Scope) -> Result<Option<Capture>> {
+    let Some(live) = dispatch_routes_contract::live_for_dsp(store, dsp)? else {
+        return Ok(None);
+    };
+    let Some(read) = live.live_read(store, dsp)? else {
+        return Ok(None);
+    };
+    let of_scope = (
+        read.day.as_str(),
+        read.station.as_str(),
+        read.service_area_id.as_str(),
+        read.provider.as_str(),
+        read.timezone.as_str(),
+    ) == (
+        scope.date.as_str(),
+        scope.station.as_str(),
+        scope.service_area_id.as_str(),
+        scope.provider.as_str(),
+        scope.timezone.as_str(),
+    );
+    let age = dispatch_core::db::now() - read.collected_at;
+    if !of_scope || !(0..=LIVE_FOR).contains(&age) {
+        return Ok(None);
+    }
+    let Some(list) = live.live_response(store, dsp, None)? else {
+        return Ok(None);
+    };
+    // A day Timecard already holds as collected later is never replaced by an older read.
+    let held = store.collector(dsp, cortex::PROVIDER)?.one(
+        "SELECT collected_at FROM meal_publications WHERE active=1 AND report_date=? AND \
+         station=? AND service_area_id=? AND provider=?",
+        params![
+            scope.date,
+            scope.station,
+            scope.service_area_id,
+            scope.provider
+        ],
+    )?;
+    if held.is_some_and(|held| s(&held, "collected_at") > at(read.collected_at).as_str()) {
+        return Ok(None);
+    }
+    let kept = kept_routes(store, dsp, scope)?;
+    let day = cortex::meals::from_responses(scope, &list, &kept, read.collected_at, &mut |id| {
+        live.live_response(store, dsp, Some(id))
+    })?;
+    // A live read kept meanwhile may have replaced some of what was read: the day is then
+    // collected instead.
+    Ok(day.filter(|_| live.live_read(store, dsp).ok().flatten().as_ref() == Some(&read)))
+}
 /// The routes of the scope's active publication, as Cortex collected them. Only a
 /// publication that kept each delivery's stop stands in for a collection.
 pub(crate) fn kept_routes(store: &Store, dsp: &str, scope: &Scope) -> Result<Vec<Itinerary>> {

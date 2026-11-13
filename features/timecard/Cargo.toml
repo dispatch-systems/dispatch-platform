@@ -16,11 +16,13 @@ doctest = false
 # name core's and Paycom's, whose definitions their own ts features bring.
 ts = ["dep:ts-rs", "dispatch-core/ts", "dispatch-paycom/ts"]
 
-# Core; and Paycom and Cortex, whose timecards and meal breaks it keeps.
+# Core; Paycom and Cortex, whose timecards and meal breaks it keeps; and the contract of live
+# route data, which it reads a day's meals from when a feature offers it for the DSP.
 [dependencies]
 dispatch-core = { path = "../../core" }
 dispatch-cortex = { path = "../../collectors/cortex" }
 dispatch-paycom = { path = "../../collectors/paycom" }
+dispatch-routes-contract = { path = "../routes/contract" }
 chrono = { workspace = true }
 chrono-tz = { workspace = true }
 rusqlite = { workspace = true }

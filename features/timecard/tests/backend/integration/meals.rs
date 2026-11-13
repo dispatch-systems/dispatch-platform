@@ -108,10 +108,7 @@ fn bundled_scope_publication_is_atomic_replayable_and_keeps_the_real_job_identit
 
 /// Timecard, the Driver Match it joins drivers through, and both collectors it keeps.
 fn install() {
-    common::install(
-        &[&dispatch_paycom::COLLECTOR, &dispatch_cortex::COLLECTOR],
-        &[&dispatch_timecard::FEATURE],
-    );
+    super::install();
 }
 
 fn scope() -> Scope {
@@ -555,4 +552,87 @@ fn migration_minimizes_all_history_and_legacy_runtime_publications() {
             .exists([])
             .unwrap()
     );
+}
+
+#[test]
+fn a_day_is_read_from_the_live_route_data_a_dsp_holds_only_while_it_stands_for_a_collection() {
+    use dispatch_core::manifest::registry;
+    use dispatch_routes_contract::LiveRead;
+    install();
+    let (_root, db, id) = common::bootstrapped();
+    common::ready_connection(&db, &id, cortex::PROVIDER).unwrap();
+    let scope = scope();
+    let asked = || {
+        registry()
+            .keeper(meals::JOB_KIND)
+            .kept(&db, &id, &json!({"live": scope}))
+            .unwrap()
+    };
+    // A route whose meal both deliveries bound, as live route data keeps its list and its
+    // itinerary's response.
+    let on = 1_768_082_400_000_i64; // 2026-01-10T22:00:00Z
+    let punch = json!({"punchId":"punch-1","breakId":"meal-1","type":"MEAL","state":"OFF",
+        "timeStampOn":on,"timeStampOff":on + 1_800_000,"sequenceNumber":1});
+    let delivered = |task: &str, time: i64| {
+        json!({"taskId":task,"taskType":"DROP_OFF","taskState":"DELIVERED",
+            "executionStatus":"COMPLETE","actualExecutionTime":time,"transporterId":null})
+    };
+    let list = json!({
+        "itinerarySummaries":[{"itineraryId":"itinerary-1","transporterId":"driver-1",
+            "routeCode":"CX1","companyId":"provider-1","executionStatus":"COMPLETE","breaks":[punch]}],
+        "transporters":[{"transporterId":"driver-1","firstName":"Fixture","lastName":"Driver"}],
+    });
+    let itinerary = json!({"itineraryDetails":{"itineraryId":"itinerary-1","transporterId":"driver-1",
+        "executionStatus":"COMPLETE","breaks":[punch],"localDate":[2026,1,10],"serviceAreaId":"area-1",
+        "stopProgress":{"total":1,"completed":1},"unknownStops":[],"inactiveTasks":[],
+        "stops":[{"tasks":[delivered("before", on - 60000), delivered("after", on + 1_860_000)]}]}});
+    let hold = |read: LiveRead| {
+        *super::LIVE.lock().unwrap() = Some((
+            read,
+            list.to_string(),
+            [("itinerary-1".to_owned(), itinerary.to_string())].into(),
+        ));
+    };
+    let taken = |at: i64| LiveRead {
+        day: scope.date.clone(),
+        station: scope.station.clone(),
+        service_area_id: scope.service_area_id.clone(),
+        provider: scope.provider.clone(),
+        timezone: scope.timezone.clone(),
+        collected_at: at,
+    };
+    let recent = now() - 60000;
+    // Nothing offers live route data for the DSP while the stand-in is switched off.
+    hold(taken(recent));
+    let owner = common::a_user(&db);
+    db.set_feature(&id, "living", false, &owner).unwrap();
+    assert!(asked().is_null());
+    db.set_feature(&id, "living", true, &owner).unwrap();
+    let day: meals::Capture = serde_json::from_value(asked()).unwrap();
+    assert_eq!((day.started_at, day.finished_at), (recent, recent));
+    let route = &day.itineraries[0];
+    assert_eq!(route.observed_at, recent);
+    assert_eq!(route.delivery_coverage, Coverage::Complete);
+    assert_eq!(
+        (route.meals[0].last_delivery, route.meals[0].first_delivery),
+        (Some(on - 60000), Some(on + 1_860_000))
+    );
+    // A read too old to stand for a collection, one of another station, and one that lacks
+    // a route's itinerary each leave the day to be collected.
+    hold(taken(now() - 2 * 3_600_000));
+    assert!(asked().is_null());
+    hold(LiveRead {
+        station: "TST2".into(),
+        ..taken(recent)
+    });
+    assert!(asked().is_null());
+    hold(taken(recent));
+    super::LIVE.lock().unwrap().as_mut().unwrap().2.clear();
+    assert!(asked().is_null());
+    // Nor does it replace a day Timecard holds as collected since.
+    hold(taken(recent));
+    db.publish_meals(&id, "collected-since", &meals::fixture(&scope), &scope)
+        .unwrap();
+    assert!(asked().is_null());
+    *super::LIVE.lock().unwrap() = None;
 }

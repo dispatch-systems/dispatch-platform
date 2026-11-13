@@ -8,10 +8,7 @@ use serde_json::{Value, json};
 
 /// Timecard and both collectors it keeps.
 fn install() {
-    common::install(
-        &[&dispatch_paycom::COLLECTOR, &dispatch_cortex::COLLECTOR],
-        &[&dispatch_timecard::FEATURE],
-    );
+    super::install();
 }
 
 /// A day in the demo period of Sep 6 to 19, 2026, within a week of its start.

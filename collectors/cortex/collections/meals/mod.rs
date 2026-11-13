@@ -6,5 +6,6 @@ mod day;
 mod live;
 
 pub use capture::{Capture, Coverage, Itinerary, JOB_KIND, Meal, fixture};
+pub use collect::from_responses;
 pub use day::{DayCapture, DayRequest};
 pub use live::Writer;
