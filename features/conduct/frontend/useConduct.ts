@@ -2,7 +2,8 @@ import { useCallback, useEffect } from 'react';
 import { api } from '../../../core/shell/frontend/runtime/api.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import type { ConductOverview } from '../api/index.js';
-import { conductUrl, useConductOverview } from '../api/client.js';
+import { useConductOverview } from '../api/client.js';
+import { conductUrl } from '../api/urls.js';
 
 /** Compact shared data, refreshed while visible and at the DSP's date boundary. */
 export function useConduct(timezone?: string) {

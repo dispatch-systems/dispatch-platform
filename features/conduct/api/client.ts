@@ -3,6 +3,7 @@ import { ApiError, wordedApi } from '../../../core/shell/frontend/runtime/api.js
 import { useCachedData } from '../../../core/shell/frontend/runtime/data-reads.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { upload } from '../../../core/shell/frontend/runtime/transfer.js';
+import { backupUrl, conductUrl } from './urls.js';
 import type {
   CategoryInput,
   ConductBackup,
@@ -44,7 +45,6 @@ function useConductRead<T>(url: string, refreshKey?: string) {
   return useCachedData<T>(url, 0, refreshKey, load);
 }
 
-export const conductUrl = '/api/dsp/conduct';
 /** Compact current standings and history totals. */
 export const useConductOverview = () => useConductRead<ConductOverview>(conductUrl);
 
@@ -113,7 +113,6 @@ export async function keepCopy(id: string, revision: number, photo: Blob, reques
   }
 }
 
-export const backupUrl = `${conductUrl}/backup`;
 /** How backing signed copies up is going, read again whenever `refreshKey` changes. */
 export const useConductBackup = (refreshKey: string) =>
   useConductRead<ConductBackup>(backupUrl, refreshKey);

@@ -3,7 +3,7 @@ import { FileWarning } from 'lucide-react';
 import { offered } from '../../../core/shell/frontend/runtime/exposes.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import type { FrontendFeature } from '../../../core/shell/frontend/runtime/slots.js';
-import { backupUrl, conductUrl } from '../api/client.js';
+import { backupUrl, conductUrl } from '../api/urls.js';
 
 // Conduct's frontend manifest, loaded up front: it stays small and loads the rest lazily.
 
