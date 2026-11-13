@@ -185,6 +185,11 @@ impl Task {
             };
         }
         let ends = matches!(attempt, Attempt::Dropped(_));
+        // A read that began, kept or not, parsed what its reader has let go of by its record.
+        let began = matches!(
+            attempt,
+            Attempt::Read(..) | Attempt::Failed(..) | Attempt::Dropped(Some(_))
+        );
         let ended = match (attempt, first) {
             // A retry that never read leaves the first try on record.
             (
@@ -193,7 +198,6 @@ impl Task {
             ) => self.write_record(&day, since, at, ended, Err(code)).await,
             (Attempt::Read(_turn, at, read), _) => {
                 let outcome = self.keep(&reading, &day, read).await;
-                crate::collection::release_memory().await;
                 self.record(&day, since, at, now(), outcome).await
             }
             (Attempt::Failed(at, ended, error), _) => {
@@ -210,6 +214,9 @@ impl Task {
             (Attempt::Late, None) => return Slot::Unrecorded,
             (Attempt::Dropped(None), None) => return Slot::Ended,
         };
+        if began {
+            crate::collection::release_memory().await;
+        }
         if ends {
             Slot::Ended
         } else {
