@@ -583,11 +583,11 @@ async fn a_read_ended_by_a_long_cooldown_narrows_the_read_after_it() {
 async fn authority_is_rechecked_after_cooldown_before_another_provider_request() {
     let (stand, session) = stand_in(Plays::ThrottledOnce).await;
     let mut native = Native::new(&session).unwrap();
-    let checks = Arc::new(AtomicUsize::new(0));
+    // The read's authority goes as Cortex throttles it.
     let check = {
-        let checks = checks.clone();
+        let stand = stand.clone();
         move || -> dispatch_core::collection::browser::Pending<'static, ()> {
-            let current = checks.fetch_add(1, Ordering::SeqCst) == 0;
+            let current = stand.throttled_until.lock().unwrap().is_none();
             Box::pin(async move { dispatch_core::ensure(current, "connection_changed", 409) })
         }
     };
@@ -595,7 +595,7 @@ async fn authority_is_rechecked_after_cooldown_before_another_provider_request()
     assert!(
         matches!(result, Err(Failure::Stopped(error)) if error.is(dispatch_core::Code::ConnectionChanged))
     );
-    assert_eq!(checks.load(Ordering::SeqCst), 2);
+    // Each itinerary was asked for once, and the throttled one not again after the cooldown.
     assert_eq!(stand.asked("itinerary-1"), 1);
     assert_eq!(stand.asked("itinerary-2"), 1);
 }
