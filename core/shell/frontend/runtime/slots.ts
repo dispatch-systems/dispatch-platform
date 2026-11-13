@@ -29,8 +29,10 @@ export type {
   SidebarProps,
 } from './slots/pages.js';
 export {
+  arranged,
   dspSetup,
   featureIcon,
+  keptItems,
   landingPage,
   listed,
   loadedSidebar,
@@ -39,6 +41,7 @@ export {
   ownerPlace,
   pageSidebar,
   pagesUnder,
+  rearranged,
   routeOf,
   settingsPage,
   sidebarItems,

@@ -1,7 +1,7 @@
 //! Who is signed in, and which DSP they are looking at.
 use crate::{
     Result,
-    accounts::api::types::{DspView, RoleSummary, SessionResponse},
+    accounts::api::types::{DspView, RoleSummary, SessionResponse, SidebarArrangement},
     db::Store,
     ensure,
     foundation::{
@@ -10,7 +10,7 @@ use crate::{
     },
     server::http::{
         input::{Input, Reply},
-        route::{Anyone, Public, Route, Session, User, read, write},
+        route::{Anyone, Dsp, Member, Public, Route, Session, User, read, write},
     },
     tenancy::{
         api::types::{SiteDsp, SiteInfo, SiteKind},
@@ -23,6 +23,8 @@ pub fn routes() -> Vec<Route> {
         read("/api/site", Public, site),
         read("/api/session", Session, session),
         write("/api/session/dsp", Session, open_dsp),
+        // A member's own arrangement, which no cached read holds.
+        write("/api/dsp/sidebar", Dsp(roles::ACCESS), arrange_sidebar).bookkeeping(),
     ]
 }
 
@@ -130,9 +132,25 @@ fn open_dsp(db: &Store, user: &User, input: &Input) -> Result<Reply> {
             name: c.role_name,
             owner: c.owner,
         },
+        sidebar: db.sidebar(&c.dsp.id, a.user.id.as_str())?,
         dsp: c.dsp,
         roles,
     })
+}
+
+/// The most pages an arrangement names, far past what a DSP has.
+const ARRANGED: usize = 200;
+
+// Keeps how the member arranged the sidebar of the DSP their view is of: theirs alone, so it
+// expires no view and is not audited. The pages are the dashboard's to know, so any id is kept.
+fn arrange_sidebar(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    v::fields(&input.body, &["order", "hidden"])?;
+    let to: SidebarArrangement = serde_json::from_value(input.body.clone())
+        .map_err(|_| crate::Error::new("invalid_input", 400))?;
+    v::ids(&to.order, ARRANGED)?;
+    v::ids(&to.hidden, ARRANGED)?;
+    db.arrange_sidebar(c.dsp_id(), c.actor(), &to)?;
+    Reply::of(&to)
 }
 
 // Authorization still runs on every request; keys cannot share membership-specific listings.

@@ -177,6 +177,7 @@ const customFeatures = z.object({
     z.object({ name: filled, url: filled, styles: z.array(filled), place: count }),
   ),
 });
+const sidebarArrangement = z.object({ order: z.array(filled), hidden: z.array(filled) });
 const viewSchema = z
   .object({
     dsp,
@@ -187,6 +188,7 @@ const viewSchema = z
     features: z.array(filled),
     custom: z.optional(customFeatures),
     profile,
+    sidebar: z.optional(sidebarArrangement),
   })
   .check(
     z.refine((view) => {
@@ -276,5 +278,6 @@ export const replies: Replies = (route, method) => {
     return recoveryCodes;
   if (route.startsWith('/api/auth/security/')) return okSchema;
   if (route === '/api/session/dsp') return viewSchema;
+  if (route === '/api/dsp/sidebar') return sidebarArrangement;
   return undefined;
 };

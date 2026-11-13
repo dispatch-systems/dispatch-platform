@@ -187,6 +187,17 @@ pub struct RoleSummary {
     pub name: String,
     pub owner: bool,
 }
+/// How a member arranged the app's sidebar in a DSP: its pages by id in their order, and those
+/// hidden. A page it doesn't name is listed where the app lists it; one named that the member
+/// no longer has keeps its place.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/accounts/api/generated/"))]
+#[serde(default)]
+pub struct SidebarArrangement {
+    pub order: Vec<String>,
+    pub hidden: Vec<String>,
+}
 /// What opening a DSP answers with: the signed view token and what the role may do.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -207,6 +218,10 @@ pub struct DspView {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub roles: Option<Vec<RoleSummary>>,
+    /// How the member arranged the sidebar here, once they have.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub sidebar: Option<SidebarArrangement>,
 }
 #[derive(Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]

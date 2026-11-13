@@ -358,11 +358,11 @@
     border-color var(--motion-duration),
     color var(--motion-duration);
 }
-/* The app's last item, Settings, set apart; a sidebar of pages lists its own without it. */
-.app-pages .nav-item:last-child {
+/* The app's item set apart below the rest, Settings; a sidebar of pages lists its own without it. */
+.app-pages .nav-apart {
   margin-top: 40px;
 }
-.app-pages .nav-item:last-child:after {
+.app-pages .nav-apart:after {
   content: '';
   background: var(--border);
   height: 1px;
@@ -370,6 +370,84 @@
   top: -20px;
   left: 12px;
   right: 12px;
+}
+/* The app's sidebar while its member arranges it: Reset and Done atop the items, each with a
+   handle to move it and an eye to hide it, in place of its link. */
+.sidebar-edit-bar {
+  justify-content: space-between;
+  padding: 0 3px 7px;
+  display: flex;
+}
+.sidebar-edit ul {
+  flex-direction: column;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+}
+.sidebar-edit h2 {
+  color: var(--muted-foreground);
+  margin: 16px 15px 0;
+  font-size: 12px;
+  font-weight: 550;
+}
+/* One with no handle starts where the others' icons do. */
+.sidebar-edit-item {
+  gap: 7px;
+  padding: 3px 2px 3px 29px;
+}
+.sidebar-edit-item:has(.sidebar-edit-grip) {
+  padding-left: 2px;
+}
+.sidebar-edit-item:hover {
+  background: transparent;
+}
+.sidebar-edit-item.unlisted {
+  color: var(--muted-foreground);
+}
+.sidebar-edit-item span {
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.sidebar-edit-item button {
+  color: var(--muted-foreground);
+  background: transparent;
+  border: 0;
+  flex-shrink: 0;
+  justify-content: center;
+  align-items: center;
+  width: 28px;
+  min-height: 34px;
+  padding: 0;
+  display: inline-flex;
+}
+.sidebar-edit-item button:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+.sidebar-edit-item button svg {
+  width: 16px;
+  height: 16px;
+}
+/* The handle is the one part a touch drags by, so the list still scrolls under a finger. */
+.sidebar-edit-item .sidebar-edit-grip {
+  cursor: grab;
+  touch-action: none;
+  width: 20px;
+}
+.sidebar-edit-item.dragging {
+  z-index: 1;
+  background: var(--popover);
+  box-shadow:
+    0 0 0 1px var(--primary),
+    0 6px 18px var(--shadow-color);
+}
+.sidebar-edit-item.dragging .sidebar-edit-grip {
+  cursor: grabbing;
 }
 .account-menu {
   position: relative;

@@ -3,6 +3,7 @@ import type { CustomFeatures } from "./CustomFeatures";
 import type { Dsp } from "./Dsp";
 import type { DspProfile } from "./DspProfile";
 import type { RoleSummary } from "./RoleSummary";
+import type { SidebarArrangement } from "./SidebarArrangement";
 
 /**
  * What opening a DSP answers with: the signed view token and what the role may do.
@@ -19,4 +20,8 @@ features: Array<string>, token: string, profile: DspProfile,
 /**
  * Every role of the DSP, sent only to a platform owner so they can look through one.
  */
-roles?: Array<RoleSummary>, };
+roles?: Array<RoleSummary>,
+/**
+ * How the member arranged the sidebar here, once they have.
+ */
+sidebar?: SidebarArrangement, };
