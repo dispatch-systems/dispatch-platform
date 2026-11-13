@@ -33,7 +33,8 @@ async fn offered(state: &Arc<State>, dsp: &str) -> Option<&'static dyn Files> {
 }
 
 #[tokio::test]
-async fn files_are_kept_inside_the_dsps_folder_once_connected_named_for_who_sent_them_and_taken_back() {
+async fn files_are_kept_inside_the_dsps_folder_once_connected_named_for_who_sent_them_and_taken_back()
+ {
     let (_root, state, dsp) = platform();
     let owner = state.read(|db| Ok(testing::a_user(db))).await.unwrap();
     let files = offered(&state, &dsp).await.expect("Documents is on");

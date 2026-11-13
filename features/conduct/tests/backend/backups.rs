@@ -63,9 +63,7 @@ async fn written(
 /// back first.
 async fn deleted(state: &Arc<State>, c: &Context, id: &str, revision: i64) -> Result<()> {
     let (by, of) = (c.clone(), id.to_owned());
-    let copy = state
-        .read(move |db| saved(db, &by, &of, revision))
-        .await?;
+    let copy = state.read(move |db| saved(db, &by, &of, revision)).await?;
     if let Some((files, saved)) = copy {
         take_back(state, c, files, &saved).await?;
     }
