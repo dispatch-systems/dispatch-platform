@@ -190,6 +190,8 @@ fn rows(db: &Db, table: &str) -> Vec<Map<String, Value>> {
         row.remove("publication_id");
         if table == "route_publications" {
             row.remove("id");
+            // Only historical route data lets an old day's task rows go, and marks it so.
+            row.remove("tasks_pruned");
         }
         if table == "route_raw" {
             let body: Vec<u8> =
