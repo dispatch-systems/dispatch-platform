@@ -185,11 +185,13 @@ impl Task {
             };
         }
         let ends = matches!(attempt, Attempt::Dropped(_));
-        // A read that began, kept or not, parsed what its reader has let go of by its record.
-        let began = matches!(
-            attempt,
-            Attempt::Read(..) | Attempt::Failed(..) | Attempt::Dropped(Some(_))
-        );
+        // A read that began, kept or not, parsed what its reader has let go of by its record:
+        // this try, or the first when its retry never read.
+        let began = first.is_some()
+            || matches!(
+                attempt,
+                Attempt::Read(..) | Attempt::Failed(..) | Attempt::Dropped(Some(_))
+            );
         let ended = match (attempt, first) {
             // A retry that never read leaves the first try on record.
             (
