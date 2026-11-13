@@ -16,12 +16,12 @@ const SLOP = 4;
 /** A widget held: where it is under the pointer, and the page as it would be dropped. */
 type Held = { id: string; left: number; top: number; target: PlacedWidget; layout: PlacedWidget[] };
 
-/** The board's size, as the window gives it, once it has one. */
+/** The size of the space the board is drawn in, as the window gives it, once it has one. */
 function useSize() {
-  const board = useRef<HTMLDivElement>(null);
+  const area = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ width: number; height: number }>();
   useEffect(() => {
-    const element = board.current;
+    const element = area.current;
     if (!element) return;
     const observer = new ResizeObserver(([entry]) => {
       const { width, height } = entry!.contentRect;
@@ -30,7 +30,7 @@ function useSize() {
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  return { board, size };
+  return { area, size };
 }
 
 /**
@@ -57,16 +57,17 @@ export function HomeEditor({
   reset: () => void;
   done: () => void;
 }) {
-  const { board, size } = useSize();
+  const { area, size } = useSize();
   const [listing, setListing] = useState(open);
   const [resetting, setResetting] = useState(false);
   const [held, setHeld] = useState<Held>();
   const [resizing, setResizing] = useState<PlacedWidget>();
   const [added, setAdded] = useState<string>();
   const origin = placed.map(({ at }) => at);
-  // A cell and the gap after it, across and down, in pixels.
-  const across = ((size?.width ?? 0) + GAP) / COLUMNS;
-  const down = ((size?.height ?? 0) + GAP) / ROWS;
+  // A cell and the gap after it, in pixels: the most a square one can be with the whole grid in
+  // the space.
+  const pitch = size ? Math.min((size.width + GAP) / COLUMNS, (size.height + GAP) / ROWS) : 0;
+  const [across, down] = [pitch, pitch];
   const box = ({ x, y, w, h }: PlacedWidget) => ({
     transform: `translate(${x * across}px, ${y * down}px)`,
     width: w * across - GAP,
@@ -204,49 +205,54 @@ export function HomeEditor({
           Done
         </button>
       </Header>
-      <div ref={board} className={held ? 'home-board home-holding' : 'home-board'}>
-        {size && held && <div className="home-drop" style={box(held.target)} />}
-        {size &&
-          placed.map(({ widget, at }, index) => {
-            const lifted = held?.id === widget.id;
-            const now =
-              held?.layout[index] ?? (resizing?.id === widget.id ? resizing : undefined) ?? at;
-            const classes = [
-              'home-cell',
-              lifted && 'home-lifted',
-              widget.id === added && 'home-added',
-            ];
-            return (
-              <div
-                key={widget.id}
-                className={classes.filter(Boolean).join(' ')}
-                style={
-                  lifted
-                    ? { ...box(at), transform: `translate(${held.left}px, ${held.top}px)` }
-                    : box(now)
-                }
-                onPointerDown={(event) => pickUp(event, at)}
-              >
-                <WidgetFrame widget={widget} columns={now.w} rows={now.h} view={view} />
-                <button
-                  type="button"
-                  className="home-remove"
-                  aria-label={`Remove ${widget.label}`}
-                  onClick={() => remove(widget.id)}
+      <div ref={area} className="home-area">
+        <div
+          className={held ? 'home-board home-holding' : 'home-board'}
+          style={{ width: COLUMNS * pitch - GAP, height: ROWS * pitch - GAP }}
+        >
+          {size && held && <div className="home-drop" style={box(held.target)} />}
+          {size &&
+            placed.map(({ widget, at }, index) => {
+              const lifted = held?.id === widget.id;
+              const now =
+                held?.layout[index] ?? (resizing?.id === widget.id ? resizing : undefined) ?? at;
+              const classes = [
+                'home-cell',
+                lifted && 'home-lifted',
+                widget.id === added && 'home-added',
+              ];
+              return (
+                <div
+                  key={widget.id}
+                  className={classes.filter(Boolean).join(' ')}
+                  style={
+                    lifted
+                      ? { ...box(at), transform: `translate(${held.left}px, ${held.top}px)` }
+                      : box(now)
+                  }
+                  onPointerDown={(event) => pickUp(event, at)}
                 >
-                  <X size={14} aria-hidden="true" />
-                </button>
-                {EDGES.map((edge) => (
-                  <span
-                    key={edge}
-                    className={`home-handle home-handle-${edge}`}
-                    aria-hidden="true"
-                    onPointerDown={(event) => resize(event, widget, at, edge)}
-                  />
-                ))}
-              </div>
-            );
-          })}
+                  <WidgetFrame widget={widget} columns={now.w} rows={now.h} view={view} />
+                  <button
+                    type="button"
+                    className="home-remove"
+                    aria-label={`Remove ${widget.label}`}
+                    onClick={() => remove(widget.id)}
+                  >
+                    <X size={14} aria-hidden="true" />
+                  </button>
+                  {EDGES.map((edge) => (
+                    <span
+                      key={edge}
+                      className={`home-handle home-handle-${edge}`}
+                      aria-hidden="true"
+                      onPointerDown={(event) => resize(event, widget, at, edge)}
+                    />
+                  ))}
+                </div>
+              );
+            })}
+        </div>
       </div>
       {listing && (
         <Modal title="Add widget" onClose={() => setListing(false)}>

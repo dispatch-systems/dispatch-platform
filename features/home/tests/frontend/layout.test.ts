@@ -58,7 +58,7 @@ test('a widget resized from any side snaps to the nearest of its own sizes, its 
   // From the top-left corner, it grows up and left.
   assert.deepEqual(resized(misses, placed, 'nw', [-2, -1], []), at('dvic.misses', 1, 2, 3, 2));
   // Past the grid's edge, or over another, it doesn't.
-  assert.equal(resized(misses, at('dvic.misses', 11, 0, 1, 1), 'e', [2, 0], []), undefined);
+  assert.equal(resized(misses, at('dvic.misses', 15, 0, 1, 1), 'e', [2, 0], []), undefined);
   assert.equal(resized(misses, placed, 'e', [1, 0], [at('vans.fleet', 4, 3)]), undefined);
   // Placed at cells none of its sizes is, it shows at its nearest.
   assert.deepEqual(
@@ -76,17 +76,17 @@ test("a widget held over others moves them to the free cells nearest their own, 
     at('team.today', 0, 3),
   ]);
   // Moved on from there, every other widget is where it was before it was picked up.
-  assert.deepEqual(moving(placed, 'dvic.today', { x: 9, y: 9 }), [
-    at('dvic.today', 9, 9),
+  assert.deepEqual(moving(placed, 'dvic.today', { x: 13, y: 6 }), [
+    at('dvic.today', 13, 6),
     at('vans.fleet', 3, 0),
     at('team.today', 0, 3),
   ]);
   // Off the grid, it goes nowhere.
-  assert.equal(moving(placed, 'dvic.today', { x: 10, y: 0 }), undefined);
+  assert.equal(moving(placed, 'dvic.today', { x: 14, y: 0 }), undefined);
 });
 
 test('the grid holds only what fits the page: a widget with no room is not added', () => {
-  const full = [{ ...at('routes.today', 0, 0), w: 12, h: 12 }];
+  const full = [{ ...at('routes.today', 0, 0), w: 16, h: 9 }];
   assert.equal(adding(full, widget('vans.fleet')), undefined);
   assert.deepEqual(adding([at('dvic.today', 0, 0)], widget('vans.fleet')), at('vans.fleet', 3, 0));
 });

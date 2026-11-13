@@ -19,6 +19,6 @@ test("a member's Home layout is kept as their own and comes with their view, onl
     revision: 1,
     value: layout,
   });
-  const offGrid = { widgets: [{ id: 'vans.fleet', x: 9, y: 0, w: 6, h: 3 }] };
+  const offGrid = { widgets: [{ id: 'vans.fleet', x: 12, y: 0, w: 6, h: 3 }] };
   assert.equal((await member.post(LAYOUT, { revision: 1, value: offGrid })).status, 400);
 });

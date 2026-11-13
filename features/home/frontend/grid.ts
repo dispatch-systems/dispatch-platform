@@ -1,7 +1,8 @@
 /**
- * The Home grid, as the backend holds a layout to it: twelve columns across the page and twelve
- * rows down the window below its header, which stretch with them, and the gap between cells.
+ * The Home grid, as the backend holds a layout to it: sixteen columns by nine rows, about a
+ * desktop screen's shape, each cell a square as large as the space below the page's header
+ * allows, and the gap between cells.
  */
-export const COLUMNS = 12;
-export const ROWS = 12;
+export const COLUMNS = 16;
+export const ROWS = 9;
 export const GAP = 16;

@@ -7,8 +7,9 @@ open to every member.
 - **Its page** (`#dsp/<id>/overview`, "Home Page") is the DSP's landing page, which every
   member may open: it declares no permission and asks for none. Without a landing page, a
   DSP opens on the first page its member may open, or says it has none.
-- **The grid:** twelve columns across the page and twelve rows down the window below its header,
-  which stretch with it, so a layout is the same on every screen and the page never scrolls
+- **The grid:** sixteen columns by nine rows below the page's header, about a desktop screen's
+  shape, each cell a square as large as the window allows, with whatever thin margin is left
+  beside or below it, so a layout is the same on every screen and the page never scrolls
   (`fills`). A widget sits at one of the size steps it declares, in the cells it was placed in;
   one placed in cells none of its steps fills shows at its nearest. A layout is kept only when
   each widget fits the grid, once, and a widget is offered to add only while it fits.

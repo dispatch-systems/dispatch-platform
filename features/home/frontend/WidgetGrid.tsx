@@ -12,19 +12,21 @@ export function WidgetGrid({
   view: DspView;
 }) {
   return (
-    <div className="home-grid">
-      {placed.map(({ widget, at }) => (
-        <div
-          key={widget.id}
-          className="home-cell"
-          style={{
-            gridColumn: `${at.x + 1} / span ${at.w}`,
-            gridRow: `${at.y + 1} / span ${at.h}`,
-          }}
-        >
-          <WidgetFrame widget={widget} columns={at.w} rows={at.h} view={view} />
-        </div>
-      ))}
+    <div className="home-area">
+      <div className="home-grid">
+        {placed.map(({ widget, at }) => (
+          <div
+            key={widget.id}
+            className="home-cell"
+            style={{
+              gridColumn: `${at.x + 1} / span ${at.w}`,
+              gridRow: `${at.y + 1} / span ${at.h}`,
+            }}
+          >
+            <WidgetFrame widget={widget} columns={at.w} rows={at.h} view={view} />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

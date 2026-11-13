@@ -11,9 +11,8 @@ import type { Access } from './pages.js';
 // its own CSS fits within them.
 
 /**
- * A widget's size in the Home page grid's cells: of twelve columns across the page and twelve
- * rows down the window, which stretch with it, so a layout is the same on every screen and the
- * page never scrolls.
+ * A widget's size in the Home page grid's square cells: of sixteen columns by nine rows, as large
+ * as the window allows, so a layout is the same on every screen and the page never scrolls.
  */
 export type WidgetCells = { columns: number; rows: number };
 
