@@ -22,7 +22,9 @@ const WIDTHS: [usize; 3] = [4, 2, 1];
 /// Reads in a row that meet no throttle before a narrowed gate widens a step.
 const CLEAN_READS: usize = 3;
 
-static GATES: LazyLock<Mutex<HashMap<(String, String), Arc<Gate>>>> = LazyLock::new(Mutex::default);
+/// Each gate by its account: the origin, then the company there.
+type Gates = HashMap<(String, String), Arc<Gate>>;
+static GATES: LazyLock<Mutex<Gates>> = LazyLock::new(Mutex::default);
 
 /// The gate of `provider`, a company on Cortex, at `origin`.
 pub(crate) fn of(origin: &str, provider: &str) -> Arc<Gate> {
