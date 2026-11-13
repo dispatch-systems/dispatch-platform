@@ -13,25 +13,28 @@ names another station, company or DSP. Meals are asked of the application's own 
 its pages ask, or read as moves inside an application whose action declines, each response
 withheld from the page so nothing renders. A day's routes are read first with no page, with the
 browser's session: every read signed here with the key Cortex gives the list's own page, and
-downloaded gzipped twelve at a time; a key Cortex refuses, or a session it keeps sending to sign
+downloaded gzipped four at a time; a key Cortex refuses, or a session it keeps sending to sign
 in, has the page asked for its key once more, and the browser closes once the day is read whole.
 A throttled native read (HTTP 429) pauses new requests while in-flight reads drain, keeps
 successful responses for that attempt, and retries only what is missing after Retry-After
 (seconds or an HTTP date), or ten seconds without one. A supplied delay is bounded at a day.
-Each throttled round of itineraries narrows the next, from twelve at a time to four, then one,
-and the reader keeps to that for the rest of the day's reads, also when the throttled read ended
-on a long cooldown or was cancelled; another day starts at twelve. A
+Every request waits its place at the account's gate (`connection/gate.rs`), one for each company
+at each origin, which every reader of the account on this server shares: a live read and a job
+that start together ask for four at once between them, and a throttle either meets cools both.
+Each throttled round narrows what the gate admits next, from four at a time to two, then one,
+also when the throttled read ended on a long cooldown or was cancelled; three reads in a row
+that meet no throttle widen it a step. A
 read asks for at most twelve rounds and waits on throttling for at most two minutes; a longer
-cooldown fails promptly and stays with the reader for a later scheduled attempt. The cooldown stays with the reader
+cooldown fails promptly and stays with the gate for a later scheduled attempt. The cooldown stays with the gate
 across cancellation; throttling never asks the browser to
 sign or discover again, and its fixed endpoint and status are logged without identifiers.
-Healthy reads still download twelve at a time without a cooldown. `Native::throttling` counts
+Healthy reads download four at a time without a cooldown. `Native::throttling` counts
 what a read met: the requests throttled, and the narrower width since; each refusal's log event
 carries the width it was asked at (`downloads`).
 `routes::Native` reads a day so for anything holding a session, outside a job too, and says why
 it could not: no key on the page, the key refused, the session ended, or Cortex unavailable.
 Otherwise the day is signed by the application's own API action, stopped before it leaves the
-browser and downloaded twelve at a time with its session, and whatever does not download is read
+browser and downloaded four at a time with its session, and whatever does not download is read
 as moves. A job's metrics name what read the day (`method`) and, when native reading fell back,
 why (`fallback`): one of those reasons, or `routes_native_invalid` for a day it read whole that
 failed the collection's checks. A feature reads a day outside a job the same way through

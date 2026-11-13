@@ -54,7 +54,7 @@ impl Default for Method {
             tabs: 3,
             windows: false,
             withhold: true,
-            downloads: 12,
+            downloads: 4,
         }
     }
 }

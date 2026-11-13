@@ -510,10 +510,10 @@ async fn persistent_throttling_does_not_request_a_browser_fallback() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_day_throttled_round_after_round_is_read_whole_fewer_at_a_time_from_then_on() {
+async fn a_day_throttled_round_after_round_is_read_whole_fewer_at_a_time_until_reads_run_clean() {
     let (stand, session) = stand_in(Plays::ThrottledTwice).await;
     let mut reader = Native::new(&session).unwrap();
-    let mut scope = stand.day.scope.clone();
+    let scope = stand.day.scope.clone();
     let capture = reader.read(&scope, Mode::Final, &authorized).await.unwrap();
     capture.validate(&request()).unwrap();
     // What was read is kept through each round; only the throttled itinerary is asked again.
@@ -521,15 +521,17 @@ async fn a_day_throttled_round_after_round_is_read_whole_fewer_at_a_time_from_th
     assert_eq!(stand.asked("itinerary-2"), 3);
     // Each throttled round narrowed the next, and the read's record says so.
     assert_eq!(reader.throttling(), [("throttled", 2), ("downloads", 1)]);
-    // The day's next read meets no throttle, asking for its itineraries one at a time;
-    // another day starts wide again.
+    // Another reader of the account, as a job's beside a live read's, is admitted as narrowly.
     stand.most_at_once.store(0, Ordering::SeqCst);
+    let mut other = Native::new(&session).unwrap();
+    other.read(&scope, Mode::Final, &authorized).await.unwrap();
+    assert_eq!(other.throttling(), [("downloads", 1)]);
+    assert_eq!(stand.most_at_once.load(Ordering::SeqCst), 1);
+    // Reads that go on meeting no throttle widen it again, a step at a time.
     reader.read(&scope, Mode::Final, &authorized).await.unwrap();
     assert_eq!(reader.throttling(), [("downloads", 1)]);
-    assert_eq!(stand.most_at_once.load(Ordering::SeqCst), 1);
-    scope.date = "2026-09-26".into();
-    let _ = reader.read(&scope, Mode::Final, &authorized).await;
-    assert!(reader.throttling().is_empty());
+    reader.read(&scope, Mode::Final, &authorized).await.unwrap();
+    assert_eq!(reader.throttling(), [("downloads", 2)]);
 }
 
 #[tokio::test(start_paused = true)]
@@ -545,7 +547,7 @@ async fn a_read_ended_by_a_long_cooldown_narrows_the_read_after_it() {
         .read(&stand.day.scope, Mode::Final, &authorized)
         .await
         .unwrap();
-    assert_eq!(reader.throttling(), [("downloads", 4)]);
+    assert_eq!(reader.throttling(), [("downloads", 2)]);
 }
 
 #[tokio::test(start_paused = true)]
@@ -567,4 +569,41 @@ async fn authority_is_rechecked_after_cooldown_before_another_provider_request()
     assert_eq!(checks.load(Ordering::SeqCst), 2);
     assert_eq!(stand.asked("itinerary-1"), 1);
     assert_eq!(stand.asked("itinerary-2"), 1);
+}
+
+#[tokio::test]
+async fn a_request_that_waited_at_the_gate_asks_its_authority_again_before_it_is_sent() {
+    let (stand, session) = stand_in(Plays::FlakyItinerary).await;
+    let scope = stand.day.scope.clone();
+    // Another reader of the account holds every place its gate has.
+    let gate = crate::connection::gate::of(&session.origin, &scope.provider);
+    let mut held = Vec::new();
+    for _ in 0..gate.width() {
+        held.push(gate.admit().await);
+    }
+    // The read's authority goes while its first request waits for a place.
+    let checks = Arc::new(AtomicUsize::new(0));
+    let check = {
+        let checks = checks.clone();
+        move || -> dispatch_core::collection::browser::Pending<'static, ()> {
+            let current = checks.fetch_add(1, Ordering::SeqCst) == 0;
+            Box::pin(async move { dispatch_core::ensure(current, "connection_changed", 409) })
+        }
+    };
+    let mut native = Native::new(&session).unwrap();
+    let read = native.read(&scope, Mode::Final, &check);
+    tokio::pin!(read);
+    tokio::select! {
+        biased;
+        _ = &mut read => panic!("the read was admitted while every place was held"),
+        _ = std::future::ready(()) => {}
+    }
+    drop(held);
+    assert!(
+        matches!(read.await, Err(Failure::Stopped(error)) if error.is(dispatch_core::Code::ConnectionChanged))
+    );
+    // Nothing was asked of Cortex once it had gone, not even the list's page for its key.
+    assert_eq!(checks.load(Ordering::SeqCst), 2);
+    assert_eq!(stand.pages.load(Ordering::SeqCst), 0);
+    assert_eq!(stand.asked("itinerary-1"), 0);
 }

@@ -68,8 +68,9 @@ through core's live readers (`core/collection/backend/readers/`), never as jobs.
 - **Throttling:** a native read refused with HTTP 429 keeps its reader and cooldown for the
   next attempt without opening a browser, including when that was its first native read.
   Longer cooldowns return promptly instead of occupying a shared live-read turn; short retries
-  share a two-minute wait budget, and each throttled round of itineraries narrows the next (twelve
-  at a time, then four, then one), which the reader keeps to for the rest of the day. Cancelling
+  share a two-minute wait budget, and each throttled round of itineraries narrows the next (four
+  at a time, then two, then one) for every reader of the DSP's Cortex account on the server, a
+  job's among them, until three reads in a row meet no throttle and widen it a step. Cancelling
   a read during that cooldown keeps its reader too. Before native requests resume, the connection
   revision and complete current route request are checked again, including provider, service
   area and discovery identity; a change discards the reader. Reads that meet no throttle keep
