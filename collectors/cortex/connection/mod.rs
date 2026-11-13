@@ -515,6 +515,8 @@ impl Driver {
     {
         if let Some(day) = live_meals(run, scope, &self.origin).await {
             run.metrics.method("meals_live_route_data");
+            // The job is still this worker's to publish it, as a collected day's last step asks.
+            progress(95, "Validating meal publication".into()).await?;
             return Ok(day);
         }
         // What Timecard holds only saves reads: without it, every route is read.
