@@ -80,7 +80,8 @@ export function SidebarEdit({
   arrangement,
   first,
   last,
-  rearrange,
+  reorder,
+  hide,
   reset,
   done,
 }: {
@@ -91,8 +92,10 @@ export function SidebarEdit({
   /** The items kept before and after them, which neither move nor hide. */
   first?: Item;
   last?: Item;
-  /** Shows the items in a new order, with those hidden, and keeps it. */
-  rearrange: (ids: string[], hidden: string[]) => void;
+  /** Shows the items in a new order, and keeps it. */
+  reorder: (ids: string[]) => void;
+  /** Shows an item hidden, or listed again, and keeps it. */
+  hide: (id: string, hidden: boolean) => void;
   /** Shows the app's own order again, and keeps none of the member's. */
   reset: () => void;
   done: () => void;
@@ -101,7 +104,6 @@ export function SidebarEdit({
   const finish = useRef<HTMLButtonElement>(null);
   useEffect(() => finish.current?.focus({ preventScroll: true }), []);
   const { hidden } = arrangement;
-  const ids = items.map((item) => item.id);
   const listed = items.filter((item) => !hidden.includes(item.id));
   const unlisted = items.filter((item) => hidden.includes(item.id));
   // The listed items take their new order in the places they held, the hidden keeping theirs.
@@ -109,10 +111,7 @@ export function SidebarEdit({
     if (to < 0 || to >= listed.length) return;
     const moved = arrayMove(listed, from, to);
     let next = 0;
-    rearrange(
-      items.map((item) => (hidden.includes(item.id) ? item.id : moved[next++]!.id)),
-      [...hidden],
-    );
+    reorder(items.map((item) => (hidden.includes(item.id) ? item.id : moved[next++]!.id)));
   };
   const dropped = ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) return;
@@ -156,7 +155,7 @@ export function SidebarEdit({
                 key={item.id}
                 item={item}
                 step={(by) => move(at, at + by)}
-                hide={() => rearrange(ids, [...hidden, item.id])}
+                hide={() => hide(item.id, true)}
               />
             ))}
           </ul>
@@ -171,16 +170,7 @@ export function SidebarEdit({
               <li key={id} className="nav-item sidebar-edit-item unlisted">
                 {Icon && <Icon aria-hidden="true" />}
                 <span>{label}</span>
-                <button
-                  type="button"
-                  aria-label={`Show ${label}`}
-                  onClick={() =>
-                    rearrange(
-                      ids,
-                      hidden.filter((each) => each !== id),
-                    )
-                  }
-                >
+                <button type="button" aria-label={`Show ${label}`} onClick={() => hide(id, false)}>
                   <EyeOff aria-hidden="true" />
                 </button>
               </li>

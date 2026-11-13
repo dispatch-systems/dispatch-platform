@@ -27,11 +27,19 @@ test("a member's preferences come with their view of a DSP, theirs alone and tha
   assert.deepEqual((await owner.select(summit.id)).preferences, {});
   const member = await f.client('member@dispatch.test');
   assert.deepEqual((await member.select(north.id)).preferences, {});
+  // A value is kept whole, as the sidebar reads it.
+  assert.deepEqual((await member.post(SIDEBAR, { revision: 0, value: {} })).value, {
+    outcome: 'saved',
+    revision: 1,
+  });
+  assert.deepEqual((await member.select(north.id)).preferences, {
+    'shell.sidebar': { revision: 1, value: { order: [], hidden: [] } },
+  });
   // Only a value of its shape, from a revision, of a preference that exists, is kept.
   for (const [body, status] of [
-    [{ revision: 0, value: { order: 'team' } }, 400],
-    [{ revision: 0, value: { order: [''], hidden: [] } }, 400],
-    [{ revision: 0, value: { pinned: ['team'] } }, 400],
+    [{ revision: 1, value: { order: 'team' } }, 400],
+    [{ revision: 1, value: { order: [''], hidden: [] } }, 400],
+    [{ revision: 1, value: { pinned: ['team'] } }, 400],
     [{ value: arranged }, 400],
     [{ revision: -1, value: arranged }, 400],
   ] as const)
@@ -40,10 +48,14 @@ test("a member's preferences come with their view of a DSP, theirs alone and tha
     (await member.post('/api/dsp/preferences/shell.nothing', { revision: 0, value: {} })).status,
     404,
   );
-  assert.deepEqual((await member.select(north.id)).preferences, {});
+  assert.deepEqual((await member.select(north.id)).preferences, {
+    'shell.sidebar': { revision: 1, value: { order: [], hidden: [] } },
+  });
   // Cleared, it's back to the app's own.
   await owner.select(north.id);
   const cleared = await owner.post(SIDEBAR, { revision: 1, value: null });
-  assert.deepEqual(cleared.value, { outcome: 'saved', revision: 0 });
-  assert.deepEqual((await owner.select(north.id)).preferences, {});
+  assert.deepEqual(cleared.value, { outcome: 'saved', revision: 2 });
+  assert.deepEqual((await owner.select(north.id)).preferences, {
+    'shell.sidebar': { revision: 2 },
+  });
 });

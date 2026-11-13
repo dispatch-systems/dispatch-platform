@@ -10,7 +10,7 @@ type Body = { revision: number; value: unknown };
 function server(kept: { revision: number; value?: unknown }) {
   const calls: { body: Body; answer: (saved?: PreferenceSaved) => void; refuse: () => void }[] = [];
   let waiting: (() => void) | undefined;
-  const post: Post = (_token, _id, body) =>
+  const post: Post = (_preference, body) =>
     new Promise((resolve, reject) => {
       const keep = () => {
         if (body.revision !== kept.revision) return { outcome: 'stale', current: kept } as const;
@@ -66,6 +66,7 @@ test("a change made from an older revision is made again on what another screen 
   const kept = store.of(
     viewOf({ 'shell.sidebar': { revision: 1, value: first } }),
     'shell.sidebar',
+    'ana',
   );
   remote.elsewhere({ order: ['vans', 'team'], hidden: [] });
   store.change(kept, hide('dvic'));
@@ -92,7 +93,7 @@ test('changes go one save at a time, the latest with those before, and one that 
   const store = new PreferenceStore(remote.post);
   let failed: (error: unknown) => void = () => {};
   const failure = new Promise((resolve) => (failed = resolve));
-  const kept = store.of(viewOf({}), 'shell.sidebar');
+  const kept = store.of(viewOf({}), 'shell.sidebar', 'ana');
   kept.failed = failed;
   store.change(kept, hide('a'));
   await remote.sent(1);
@@ -108,8 +109,12 @@ test('changes go one save at a time, the latest with those before, and one that 
   });
   remote.calls[1]!.refuse();
   assert.equal(((await failure) as Error).message, 'offline');
-  // A view opened again meanwhile never replaces what is still to be kept.
-  assert.equal(store.of(viewOf({}), 'shell.sidebar'), kept);
+  // A view opened again meanwhile never replaces what is still to be kept, and saves it from then
+  // on; another member signed in where they were never sees it.
+  const again = viewOf({});
+  assert.equal(store.of(again, 'shell.sidebar', 'ana'), kept);
+  assert.equal(kept.from, again);
+  assert.equal(store.of(viewOf({}), 'shell.sidebar', 'ben').shown, undefined);
   assert.deepEqual(kept.shown, { order: [], hidden: ['a', 'b', 'c'] });
   store.change(kept, () => undefined);
   await remote.sent(3);

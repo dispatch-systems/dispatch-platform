@@ -8,16 +8,20 @@ import type { DspView, PreferenceSaved } from '../../../accounts/api/index.js';
 
 /** A change: the value made from the one shown, or none to clear it back to its default. */
 export type Change<T> = (now: T | undefined) => T | undefined;
-/** Saves a value, none clearing it, made from `revision`, through the view `token`: answers none once that view is no longer open. */
+/**
+ * Saves a value of `preference`, none clearing it, made from `revision`: answers none once the
+ * session or the DSP it was read in is no longer the one open.
+ */
 export type Post = (
-  token: string,
-  id: string,
+  preference: Kept,
   body: { revision: number; value: unknown },
 ) => Promise<PreferenceSaved | undefined>;
 /** One preference of one DSP's member, as kept and as shown. */
 export type Kept = {
   readonly id: string;
-  /** The view it was read from, through whose token it is saved. */
+  /** The signed-in session it is the member's own in. */
+  readonly session: string;
+  /** The view it was read from, or the one opened since, through whose token it is saved. */
   from: DspView;
   /** What the server keeps, as last heard. */
   kept: { revision: number; value?: unknown };
@@ -42,15 +46,25 @@ export class PreferenceStore {
   constructor(private readonly post: Post) {}
 
   /**
-   * `id` of the DSP `view` is of: as the view brings it, unless changes of the member's are
-   * still on their way, which a view opened since never replaces.
+   * `id` of the member signed in as `session`, in the DSP `view` is of: as the view brings it,
+   * unless changes of theirs are still on their way, which a view opened since never replaces,
+   * and which are saved through it from then on, as one of another role they look through.
    */
-  of(view: DspView, id: string): Kept {
-    const key = `${view.dsp.id}\n${id}`;
+  of(view: DspView, id: string, session: string): Kept {
+    const key = `${session}\n${view.dsp.id}\n${id}`;
     const known = this.kept.get(key);
-    if (known && (known.from === view || known.sending || known.changes.length)) return known;
+    if (known && known.from !== view && (known.sending || known.changes.length)) known.from = view;
+    if (known?.from === view) return known;
     const kept = view.preferences[id] ?? { revision: 0 };
-    const fresh: Kept = { id, from: view, kept, changes: [], shown: kept.value, sending: false };
+    const fresh: Kept = {
+      id,
+      session,
+      from: view,
+      kept,
+      changes: [],
+      shown: kept.value,
+      sending: false,
+    };
     this.kept.set(key, fresh);
     return fresh;
   }
@@ -80,7 +94,7 @@ export class PreferenceStore {
       const value = applied(preference.kept.value, changes);
       let saved: PreferenceSaved | undefined;
       try {
-        saved = await this.post(preference.from.token, preference.id, {
+        saved = await this.post(preference, {
           revision: preference.kept.revision,
           value: value ?? null,
         });

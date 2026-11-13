@@ -156,7 +156,7 @@ fn concurrent_legacy_dsp_adoption_accepts_the_identity_committed_while_waiting()
 }
 
 #[test]
-fn each_members_sidebar_arrangement_moves_to_their_preferences_and_stays_for_a_rollback() {
+fn each_members_sidebar_arrangement_is_copied_to_their_preferences() {
     crate::testing::install(&[], &[]);
     let root = private();
     let file = root.path().join("dsp.sqlite");
@@ -189,7 +189,7 @@ fn each_members_sidebar_arrangement_moves_to_their_preferences_and_stays_for_a_r
                     "value": arranged})
         ]
     );
-    // The release before reads them where it kept them, after a rollback.
+    // Where Dev kept them stays as it was.
     assert_eq!(
         db.all("SELECT key FROM settings WHERE key LIKE 'sidebar:%'", [])
             .unwrap()

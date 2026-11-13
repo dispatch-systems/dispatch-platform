@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import type { DspView, PreferenceSaved, SidebarArrangement } from '../../../accounts/api/index.js';
 import { messageOf } from '../lib/errors.js';
-import { api, view as open, viewing } from './api.js';
+import { api, csrf, view as open, viewing } from './api.js';
 import { useFeedback } from './feedback.js';
 import { PreferenceStore, type Change } from './preference-store.js';
 
@@ -15,9 +15,10 @@ export interface Preferences {
 export type PreferenceId = Extract<keyof Preferences, string>;
 export type { Change };
 
-// A save goes only through the view it was read from, so none reaches a DSP left meanwhile.
-const store = new PreferenceStore((token, id, body) =>
-  viewing(open) === viewing(token)
+// A save goes only in the session and the DSP it was made in, so none reaches another member's
+// account or a DSP left meanwhile.
+const store = new PreferenceStore(({ id, session, from }, body) =>
+  session === csrf && viewing(open) === viewing(from.token)
     ? api<PreferenceSaved>(`/api/dsp/preferences/${id}`, body)
     : Promise.resolve(undefined),
 );
@@ -28,7 +29,7 @@ const store = new PreferenceStore((token, id, body) =>
  */
 export function usePreference<Id extends PreferenceId>(view: DspView | undefined, id: Id) {
   const { fail } = useFeedback();
-  const preference = view && store.of(view, id);
+  const preference = view && store.of(view, id, csrf);
   useEffect(() => {
     if (preference) preference.failed = (error) => fail(messageOf(error));
   }, [preference, fail]);

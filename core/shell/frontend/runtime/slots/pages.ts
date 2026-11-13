@@ -316,20 +316,18 @@ export function arranged<T extends { id: string }>(
   };
 }
 /**
- * What to keep once a member arranges the items they have as `ids`, hiding `hidden`: an item
- * `kept` names that they haven't now, as a page of a feature switched off, stays where it was,
- * and hidden if it was.
+ * `kept` with the items a member has now in the order `ids`: an item `kept` names that they
+ * haven't now, as a page of a feature switched off, stays where it was. Each change of theirs
+ * is made on what is kept when it's saved, so it changes only what they changed.
  */
-export const rearranged = (
-  kept: SidebarArrangement,
-  ids: readonly string[],
-  hidden: readonly string[],
-): SidebarArrangement => ({
+export const reordered = (kept: SidebarArrangement, ids: readonly string[]) => ({
   order: placing(ids, kept.order),
-  hidden: [
-    ...hidden.filter((id) => ids.includes(id)),
-    ...kept.hidden.filter((id) => !ids.includes(id)),
-  ],
+  hidden: kept.hidden,
+});
+/** `kept` with `id` hidden, or listed again. */
+export const hiding = (kept: SidebarArrangement, id: string, hidden: boolean) => ({
+  order: kept.order,
+  hidden: [...kept.hidden.filter((each) => each !== id), ...(hidden ? [id] : [])],
 });
 /**
  * The pages a sidebar of pages that draws its own lists for `access` beside its own, as Settings

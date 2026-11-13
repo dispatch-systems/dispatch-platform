@@ -56,7 +56,8 @@ dashboard makes its changes again on that (`runtime/preference-store.ts`), so tw
 replace each other's. A value is kept only of its declared shape; one kept at an earlier
 version reads through each upgrade since, and one this release can't read, as one a newer
 release kept, is sent as none and only cleared, never replaced. Saving none clears it back to
-its default. Theirs alone and that DSP's alone, not audited, expiring no view, and deleted with
+its default, keeping its row without a value so no revision is made twice. Pending changes stay
+with the session that made them. Theirs alone and that DSP's alone, not audited, expiring no view, and deleted with
 their account.
 
 Work done for someone without a request of theirs, such as telling them of something new, asks

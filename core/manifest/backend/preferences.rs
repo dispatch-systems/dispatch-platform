@@ -7,7 +7,7 @@ use crate::{
     Result,
     manifest::{Feature, Registry},
 };
-use serde::de::DeserializeOwned;
+use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 
 /// Core's own preferences, each declared by the core part that keeps it.
@@ -16,8 +16,9 @@ const CORE_PREFERENCES: &[&Preference] = &[&crate::accounts::preferences::SIDEBA
 /// The most bytes any value may take, as JSON.
 pub const MOST_BYTES: usize = 64 * 1024;
 
-/// What a preference's value reads as: its shape, which serde holds it to, and `check`.
-pub trait PreferenceValue: DeserializeOwned {
+/// What a preference's value reads as: its shape, which serde holds it to, and `check`. A value
+/// is kept and sent as this type writes it, every field it has written out.
+pub trait PreferenceValue: DeserializeOwned + Serialize {
     /// Fails unless a value of the right shape is one to keep, as a list within its bounds.
     fn check(&self) -> Result<()> {
         Ok(())
@@ -37,8 +38,8 @@ pub struct Preference {
     pub upgrades: &'static [Upgrade],
     /// The most bytes its value may take, as JSON.
     pub limit: usize,
-    /// Whether a value is one it keeps.
-    fits: fn(&Value) -> bool,
+    /// A value as it is kept, every field written out; none unless it's one it keeps.
+    normal: fn(&Value) -> Option<Value>,
 }
 /// One preference, its value a `T`: `preference::<Layout>("x.layout")`.
 pub const fn preference<T: PreferenceValue>(id: &'static str) -> Preference {
@@ -46,11 +47,13 @@ pub const fn preference<T: PreferenceValue>(id: &'static str) -> Preference {
         id,
         upgrades: &[],
         limit: 16 * 1024,
-        fits: fits::<T>,
+        normal: normal::<T>,
     }
 }
-fn fits<T: PreferenceValue>(value: &Value) -> bool {
-    T::deserialize(value).is_ok_and(|value| value.check().is_ok())
+fn normal<T: PreferenceValue>(value: &Value) -> Option<Value> {
+    let value = T::deserialize(value).ok()?;
+    value.check().ok()?;
+    serde_json::to_value(value).ok()
 }
 
 impl Preference {
@@ -68,9 +71,11 @@ impl Preference {
     pub fn version(&self) -> u32 {
         self.upgrades.len() as u32 + 1
     }
-    /// Whether to keep `value`: within its limit, and of its shape and bounds.
-    pub fn keeps(&self, value: &Value) -> bool {
-        serde_json::to_vec(value).is_ok_and(|bytes| bytes.len() <= self.limit) && (self.fits)(value)
+    /// `value` as it is kept, every field written out: none unless it's within its limit, and
+    /// of its shape and bounds.
+    pub fn keeps(&self, value: &Value) -> Option<Value> {
+        let value = (self.normal)(value)?;
+        (value.to_string().len() <= self.limit).then_some(value)
     }
     /// A value kept at `version` as it reads now, upgraded through each version since; none
     /// when it can't be read, as one a newer release kept or one no longer of its shape.
@@ -79,7 +84,7 @@ impl Preference {
         let value = since
             .iter()
             .try_fold(value, |value, upgrade| upgrade(value))?;
-        (self.fits)(&value).then_some(value)
+        (self.normal)(&value)
     }
 }
 

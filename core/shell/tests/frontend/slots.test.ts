@@ -38,7 +38,8 @@ import {
   pageSidebar,
   pagesUnder,
   arranged,
-  rearranged,
+  reordered,
+  hiding,
   sidebarItems,
   switchIcon,
   type ConnectionCard,
@@ -358,7 +359,11 @@ test("a member's arrangement orders the sidebar's items between the ones kept fi
     undefined,
   ]);
   // Arranging without Timecard, switched off, keeps it after what it followed, where it comes back.
-  const without = rearranged(theirs, ['conduct', 'team'], ['team']);
+  const without = hiding(
+    hiding(reordered(theirs, ['conduct', 'team']), 'conduct', false),
+    'team',
+    true,
+  );
   assert.deepEqual(without, {
     order: ['conduct', 'team', 'settings', 'timecard', 'home'],
     hidden: ['team'],

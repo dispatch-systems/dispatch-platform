@@ -34,7 +34,8 @@ import {
   keptItems,
   loadedSidebar,
   loadSidebar,
-  rearranged,
+  reordered,
+  hiding,
   type DspRouteId,
   type PlatformRouteId,
   type Route,
@@ -366,8 +367,9 @@ export function Shell({
                     arrangement={arrangement}
                     first={first}
                     last={last}
-                    rearrange={(ids, hidden) =>
-                      saved.change((now) => rearranged(now ?? unarranged, ids, hidden))
+                    reorder={(ids) => saved.change((now = unarranged) => reordered(now, ids))}
+                    hide={(id, hidden) =>
+                      saved.change((now = unarranged) => hiding(now, id, hidden))
                     }
                     reset={() => saved.change(() => undefined)}
                     done={() => {
