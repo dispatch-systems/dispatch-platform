@@ -1,10 +1,6 @@
 import { Component, memo, useEffect, useState, type ComponentType, type ReactNode } from 'react';
 import type { DspView } from '../../../core/accounts/api/index.js';
-import type {
-  Widget,
-  WidgetProps,
-  WidgetSize,
-} from '../../../core/shell/frontend/runtime/slots.js';
+import type { Widget, WidgetProps } from '../../../core/shell/frontend/runtime/slots.js';
 
 // What draws each widget, loaded once, the first time it's shown.
 const loaded = new WeakMap<Widget, ComponentType<WidgetProps>>();
@@ -12,24 +8,26 @@ const loaded = new WeakMap<Widget, ComponentType<WidgetProps>>();
 /** A widget in its frame: loading on its own, failing alone, and drawn again only as it changes. */
 export const WidgetFrame = memo(function WidgetFrame({
   widget,
-  size,
+  columns,
+  rows,
   view,
 }: {
   widget: Widget;
-  size: WidgetSize;
+  columns: number;
+  rows: number;
   view: DspView;
 }) {
   return (
     <article className="home-widget" aria-label={widget.label}>
       <Failing id={widget.id}>
-        <Drawn widget={widget} size={size} view={view} />
+        <Drawn widget={widget} columns={columns} rows={rows} view={view} />
       </Failing>
     </article>
   );
 });
 
 /** The widget once its code has loaded, its frame empty until then. */
-function Drawn({ widget, size, view }: { widget: Widget; size: WidgetSize; view: DspView }) {
+function Drawn({ widget, ...drawn }: WidgetProps & { widget: Widget }) {
   const [Loaded, setLoaded] = useState(() => loaded.get(widget));
   const [failed, setFailed] = useState<Error>();
   useEffect(() => {
@@ -49,7 +47,7 @@ function Drawn({ widget, size, view }: { widget: Widget; size: WidgetSize; view:
   }, [widget, Loaded]);
   // A failed download fails as drawing it would, for the boundary around it.
   if (failed) throw failed;
-  return Loaded ? <Loaded size={size} view={view} /> : <div className="home-widget-loading" />;
+  return Loaded ? <Loaded {...drawn} /> : <div className="home-widget-loading" />;
 }
 
 /** Keeps a widget that fails from taking the page with it. */

@@ -108,5 +108,5 @@ export {
 } from './slots/platform.js';
 export type { Watcher, Watching } from './slots/watchers.js';
 export { watchers } from './slots/watchers.js';
-export type { Widget, WidgetProps, WidgetSize } from './slots/widgets.js';
-export { widgetSizes, widgets } from './slots/widgets.js';
+export type { Widget, WidgetCells, WidgetProps } from './slots/widgets.js';
+export { widgets } from './slots/widgets.js';

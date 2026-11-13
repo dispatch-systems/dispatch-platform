@@ -182,11 +182,11 @@ test('list and explain read what the build lists', () => {
   );
   assert.deepEqual(
     declaredWidgets(
-      "export const feature: FrontendFeature = {\n  name: 'x',\n  widgets: [\n    {\n      id: 'x.today',\n      label: \"Today's\",\n      sizes: ['small', 'wide'],\n    },\n    {\n      label: 'Week',\n      id: 'x.week',\n      sizes: ['large'],\n    },\n  ],\n};\n",
+      "export const feature: FrontendFeature = {\n  name: 'x',\n  widgets: [\n    {\n      id: 'x.today',\n      label: \"Today's\",\n      size: { columns: 3, rows: 2 },\n    },\n    {\n      label: 'Week',\n      id: 'x.week',\n      size: { columns: 6, rows: 6 },\n    },\n  ],\n};\n",
     ),
     [
-      { id: 'x.today', label: "Today's", sizes: ['small', 'wide'] },
-      { id: 'x.week', label: 'Week', sizes: ['large'] },
+      { id: 'x.today', label: "Today's", size: '3×2' },
+      { id: 'x.week', label: 'Week', size: '6×6' },
     ],
   );
   assert.equal(

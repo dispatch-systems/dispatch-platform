@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import { Plus, RotateCcw, X } from 'lucide-react';
 import type { DspView } from '../../../core/accounts/api/index.js';
-import type { Widget, WidgetSize } from '../../../core/shell/frontend/runtime/slots.js';
+import type { Widget } from '../../../core/shell/frontend/runtime/slots.js';
 import { ConfirmDialog, Header, Modal } from '../../../core/shell/frontend/ui/index.js';
 import type { PlacedWidget } from '../api/index.js';
 import { COLUMNS, GAP, ROWS } from './grid.js';
@@ -36,8 +36,9 @@ function useSize() {
 /**
  * The page while its member arranges it: each widget picked up and dropped anywhere on the
  * grid, those where it would land moving aside while it's held there and back once it moves on;
- * resized from any side, snapping between its steps as it goes; or removed; others added from the
- * list of those that fit. Every change shows at once and is kept behind it.
+ * resized from any side, a cell at a time as the pointer goes, from one cell to the grid's edge;
+ * or removed; others added from the list of those that fit. Every change shows at once and is
+ * kept behind it.
  */
 export function HomeEditor({
   view,
@@ -50,7 +51,7 @@ export function HomeEditor({
 }: {
   view: DspView;
   available: readonly Widget[];
-  placed: readonly { widget: Widget; size: WidgetSize; at: PlacedWidget }[];
+  placed: readonly { widget: Widget; at: PlacedWidget }[];
   /** Whether it opens on the list of widgets to add. */
   adding: boolean;
   arrange: Arrange;
@@ -147,14 +148,9 @@ export function HomeEditor({
     cell.addEventListener('pointercancel', end);
   };
 
-  // Follows the pointer from the handle it pressed, the widget taking its nearest step as it
-  // goes, kept as it's let go.
-  const resize = (
-    event: PointerEvent<HTMLElement>,
-    widget: Widget,
-    at: PlacedWidget,
-    edge: Edge,
-  ) => {
+  // Follows the pointer from the handle it pressed, the widget a cell larger or smaller for each
+  // the pointer goes, kept as it's let go.
+  const resize = (event: PointerEvent<HTMLElement>, at: PlacedWidget, edge: Edge) => {
     event.preventDefault();
     event.stopPropagation();
     const handle = event.currentTarget;
@@ -164,7 +160,6 @@ export function HomeEditor({
     let last = at;
     const move = (moved: globalThis.PointerEvent) => {
       const next = resized(
-        widget,
         at,
         edge,
         [(moved.clientX - startX) / across, (moved.clientY - startY) / down],
@@ -207,7 +202,7 @@ export function HomeEditor({
       <div ref={board} className={held ? 'home-board home-holding' : 'home-board'}>
         {size && held && <div className="home-drop" style={box(held.target)} />}
         {size &&
-          placed.map(({ widget, size: step, at }, index) => {
+          placed.map(({ widget, at }, index) => {
             const lifted = held?.id === widget.id;
             const now =
               held?.layout[index] ?? (resizing?.id === widget.id ? resizing : undefined) ?? at;
@@ -227,7 +222,7 @@ export function HomeEditor({
                 }
                 onPointerDown={(event) => pickUp(event, at)}
               >
-                <WidgetFrame widget={widget} size={step} view={view} />
+                <WidgetFrame widget={widget} columns={now.w} rows={now.h} view={view} />
                 <button
                   type="button"
                   className="home-remove"
@@ -241,7 +236,7 @@ export function HomeEditor({
                     key={edge}
                     className={`home-handle home-handle-${edge}`}
                     aria-hidden="true"
-                    onPointerDown={(event) => resize(event, widget, at, edge)}
+                    onPointerDown={(event) => resize(event, at, edge)}
                   />
                 ))}
               </div>
