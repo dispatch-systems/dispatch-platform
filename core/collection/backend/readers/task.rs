@@ -185,6 +185,13 @@ impl Task {
             };
         }
         let ends = matches!(attempt, Attempt::Dropped(_));
+        // A read that began, kept or not, parsed what its reader has let go of by its record:
+        // this try, or the first when its retry never read.
+        let began = first.is_some()
+            || matches!(
+                attempt,
+                Attempt::Read(..) | Attempt::Failed(..) | Attempt::Dropped(Some(_))
+            );
         let ended = match (attempt, first) {
             // A retry that never read leaves the first try on record.
             (
@@ -209,6 +216,9 @@ impl Task {
             (Attempt::Late, None) => return Slot::Unrecorded,
             (Attempt::Dropped(None), None) => return Slot::Ended,
         };
+        if began {
+            crate::collection::release_memory().await;
+        }
         if ends {
             Slot::Ended
         } else {
@@ -308,6 +318,7 @@ impl Task {
         };
         self.busy();
         let stopped = self.reader.stopped(&self.reading(plan, &day)).await;
+        crate::collection::release_memory().await;
         let at = now();
         let stopped = match stopped {
             Ok(()) => {
