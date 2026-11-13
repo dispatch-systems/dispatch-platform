@@ -707,7 +707,10 @@ impl Store {
         settings::forget_member(&people, user)?;
         people.exec("DELETE FROM member_preferences WHERE user_id=?", [user])?;
         // Where a release before kept how they arranged the sidebar.
-        people.exec("DELETE FROM settings WHERE key=?", [format!("sidebar:{user}")])?;
+        people.exec(
+            "DELETE FROM settings WHERE key=?",
+            [format!("sidebar:{user}")],
+        )?;
         // Every invitation must name an existing sender, so the ones they sent go too.
         people.exec("DELETE FROM invitations WHERE created_by=?", [user])?;
         people.exec("DELETE FROM users WHERE id=?", [user])?;

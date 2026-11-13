@@ -8,14 +8,16 @@ type Body = { revision: number; value: unknown };
 
 /** A server keeping one preference as core does: a save made from another revision is told what's kept. */
 function server(kept: { revision: number; value?: unknown }) {
-  const calls: { body: Body; answer: (saved?: PreferenceSaved) => void; refuse: () => void }[] =
-    [];
+  const calls: { body: Body; answer: (saved?: PreferenceSaved) => void; refuse: () => void }[] = [];
   let waiting: (() => void) | undefined;
   const post: Post = (_token, _id, body) =>
     new Promise((resolve, reject) => {
       const keep = () => {
         if (body.revision !== kept.revision) return { outcome: 'stale', current: kept } as const;
-        kept = body.value === null ? { revision: 0 } : { revision: body.revision + 1, value: body.value };
+        kept =
+          body.value === null
+            ? { revision: 0 }
+            : { revision: body.revision + 1, value: body.value };
         return { outcome: 'saved', revision: kept.revision } as const;
       };
       calls.push({
@@ -61,7 +63,10 @@ test("a change made from an older revision is made again on what another screen 
   const first = { order: ['team'], hidden: [] };
   const remote = server({ revision: 1, value: first });
   const store = new PreferenceStore(remote.post);
-  const kept = store.of(viewOf({ 'shell.sidebar': { revision: 1, value: first } }), 'shell.sidebar');
+  const kept = store.of(
+    viewOf({ 'shell.sidebar': { revision: 1, value: first } }),
+    'shell.sidebar',
+  );
   remote.elsewhere({ order: ['vans', 'team'], hidden: [] });
   store.change(kept, hide('dvic'));
   assert.deepEqual(kept.shown, { order: ['team'], hidden: ['dvic'] });
@@ -75,7 +80,10 @@ test("a change made from an older revision is made again on what another screen 
   const shown = new Promise((resolve) => store.subscribe(() => resolve(undefined)));
   remote.calls[1]!.answer();
   await shown;
-  assert.deepEqual(remote.kept, { revision: 3, value: { order: ['vans', 'team'], hidden: ['dvic'] } });
+  assert.deepEqual(remote.kept, {
+    revision: 3,
+    value: { order: ['vans', 'team'], hidden: ['dvic'] },
+  });
   assert.deepEqual(kept.shown, remote.kept.value);
 });
 
@@ -94,7 +102,10 @@ test('changes go one save at a time, the latest with those before, and one that 
   assert.deepEqual(kept.shown, { order: [], hidden: ['a', 'b', 'c'] });
   remote.calls[0]!.answer();
   await remote.sent(2);
-  assert.deepEqual(remote.calls[1]!.body, { revision: 1, value: { order: [], hidden: ['a', 'b', 'c'] } });
+  assert.deepEqual(remote.calls[1]!.body, {
+    revision: 1,
+    value: { order: [], hidden: ['a', 'b', 'c'] },
+  });
   remote.calls[1]!.refuse();
   assert.equal(((await failure) as Error).message, 'offline');
   // A view opened again meanwhile never replaces what is still to be kept.

@@ -221,7 +221,9 @@ pub enum PreferenceSaved {
         #[cfg_attr(feature = "ts", ts(type = "number"))]
         revision: i64,
     },
-    Stale { current: KeptPreference },
+    Stale {
+        current: KeptPreference,
+    },
 }
 /// What opening a DSP answers with: the signed view token and what the role may do.
 #[derive(Clone, Debug, Serialize)]

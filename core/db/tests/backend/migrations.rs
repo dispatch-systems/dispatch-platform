@@ -184,8 +184,10 @@ fn each_members_sidebar_arrangement_moves_to_their_preferences_and_stays_for_a_r
             []
         )
         .unwrap(),
-        vec![json!({"user_id": "ana", "id": "shell.sidebar", "version": 1, "revision": 1,
-                    "value": arranged})]
+        vec![
+            json!({"user_id": "ana", "id": "shell.sidebar", "version": 1, "revision": 1,
+                    "value": arranged})
+        ]
     );
     // The release before reads them where it kept them, after a rollback.
     assert_eq!(

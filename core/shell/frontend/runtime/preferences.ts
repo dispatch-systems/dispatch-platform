@@ -1,11 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
-import type {
-  DspView,
-  PreferenceSaved,
-  SidebarArrangement,
-} from '../../../accounts/api/index.js';
+import type { DspView, PreferenceSaved, SidebarArrangement } from '../../../accounts/api/index.js';
 import { messageOf } from '../lib/errors.js';
-import { api, view, viewing } from './api.js';
+import { api, view as open, viewing } from './api.js';
 import { useFeedback } from './feedback.js';
 import { PreferenceStore, type Change } from './preference-store.js';
 
@@ -21,7 +17,7 @@ export type { Change };
 
 // A save goes only through the view it was read from, so none reaches a DSP left meanwhile.
 const store = new PreferenceStore((token, id, body) =>
-  viewing(view) === viewing(token)
+  viewing(open) === viewing(token)
     ? api<PreferenceSaved>(`/api/dsp/preferences/${id}`, body)
     : Promise.resolve(undefined),
 );
@@ -37,8 +33,7 @@ export function usePreference<Id extends PreferenceId>(view: DspView | undefined
     if (preference) preference.failed = (error) => fail(messageOf(error));
   }, [preference, fail]);
   const value = useSyncExternalStore(store.subscribe, () => preference?.shown) as
-    | Preferences[Id]
-    | undefined;
+    Preferences[Id] | undefined;
   return {
     value,
     change: (change: Change<Preferences[Id]>) =>

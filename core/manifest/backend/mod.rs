@@ -306,8 +306,8 @@ pub const fn feature(name: &'static str) -> Feature {
         exposes: &[],
         deleting: Deleting::NONE,
         page_sources: &[],
-        on: &[],
         preferences: &[],
+        on: &[],
     }
 }
 

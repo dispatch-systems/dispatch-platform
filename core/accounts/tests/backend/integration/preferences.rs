@@ -58,7 +58,10 @@ fn a_save_made_from_an_older_revision_is_told_what_is_kept_instead_of_replacing_
     assert!(kept("ana").is_empty());
     assert_eq!(kept("ben")[LAYOUT.id].revision, 1);
     // Only a value of its shape is kept.
-    for refused in [json!({"widgets": "vans"}), json!({"widgets": [], "pinned": []})] {
+    for refused in [
+        json!({"widgets": "vans"}),
+        json!({"widgets": [], "pinned": []}),
+    ] {
         let error = db
             .save_preference(&dsp, "ana", &LAYOUT, 0, Some(&refused))
             .unwrap_err();
@@ -104,7 +107,10 @@ fn an_earlier_version_reads_upgraded_and_one_this_release_cant_read_is_only_clea
     let stored = || {
         db.dsp(&dsp)
             .unwrap()
-            .one_as::<(String,)>("SELECT value FROM member_preferences WHERE user_id='ben'", [])
+            .one_as::<(String,)>(
+                "SELECT value FROM member_preferences WHERE user_id='ben'",
+                [],
+            )
             .unwrap()
     };
     assert_eq!(stored(), Some((newer.to_string(),)));

@@ -278,8 +278,8 @@ export function Shell({
   }, [list.shown]);
   // The app's sidebar, a DSP's as its member arranged it, between the page it opens on and
   // Settings; any other as the app lists it, its last item set apart.
-  const sidebar = usePreference(view, 'shell.sidebar');
-  const arrangement = sidebar.value ?? unarranged;
+  const saved = usePreference(view, 'shell.sidebar');
+  const arrangement = saved.value ?? unarranged;
   const { first, movable, last } = useMemo(
     () => arranged(navigation, view ? keptItems() : {}, arrangement),
     [navigation, view, arrangement],
@@ -367,9 +367,9 @@ export function Shell({
                     first={first}
                     last={last}
                     rearrange={(ids, hidden) =>
-                      sidebar.change((now) => rearranged(now ?? unarranged, ids, hidden))
+                      saved.change((now) => rearranged(now ?? unarranged, ids, hidden))
                     }
-                    reset={() => sidebar.change(() => undefined)}
+                    reset={() => saved.change(() => undefined)}
                     done={() => {
                       setArranging(undefined);
                       drawer.current
