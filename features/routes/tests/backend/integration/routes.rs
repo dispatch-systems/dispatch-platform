@@ -345,6 +345,40 @@ async fn a_day_is_published_into_normalized_rows_with_its_raw_responses() {
 }
 
 #[tokio::test]
+async fn a_packages_history_across_many_old_days_reads_the_same_without_their_rows() {
+    install();
+    let (_root, db, id) = ready();
+    let state = State::new(db.config.clone()).unwrap();
+    // Nine days, the package picked up and delivered on two itineraries of each.
+    for back in 0..9 {
+        let day = format!("2026-09-{}", 25 - back);
+        let capture = routes::fixture(&request(&day, Mode::Final)).unwrap();
+        publish(&state, &db, &id, &format!("day-{back}"), &day, &capture).await;
+    }
+    let before = db.route_package(&id, "TBA000000000001").unwrap();
+    assert_eq!(before.events.len(), 36);
+    let storage = db.routes_db(&id).unwrap();
+    let removed = "active=1 AND (task_type='PICK_UP' OR task_state='DELIVERED')";
+    storage
+        .exec(
+            &format!(
+                "INSERT INTO package_days SELECT DISTINCT tracking_id,publication_id,itinerary_id \
+                 FROM tasks WHERE tracking_id IS NOT NULL AND {removed}"
+            ),
+            [],
+        )
+        .unwrap();
+    storage
+        .exec(&format!("DELETE FROM tasks WHERE {removed}"), [])
+        .unwrap();
+    storage
+        .exec("UPDATE route_publications SET tasks_pruned=1", [])
+        .unwrap();
+    drop(storage);
+    assert_eq!(db.route_package(&id, "TBA000000000001").unwrap(), before);
+}
+
+#[tokio::test]
 async fn a_reprocess_rebuilds_every_row_from_the_stored_responses() {
     install();
     let (_root, db, id) = ready();

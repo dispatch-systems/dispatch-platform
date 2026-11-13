@@ -196,8 +196,8 @@ pub(super) fn route_package(store: &Store, id: &str, tracking: &str) -> Result<R
          FROM tasks t JOIN route_publications p ON p.id=t.publication_id AND p.active=1 \
          LEFT JOIN itineraries i ON i.publication_id=t.publication_id AND i.itinerary_id=t.itinerary_id \
          LEFT JOIN addresses a ON a.address_id=t.address_id \
-         WHERE t.tracking_id=? ORDER BY t.day DESC,t.executed_at,t.task_id LIMIT 500",
-        [tracking],
+         WHERE t.tracking_id=? ORDER BY t.day DESC,t.executed_at,t.task_id LIMIT ?",
+        params![tracking, MOST_EVENTS],
     )?;
     // On an old day whose delivered and picked-up task rows were let go, the rows it kept are
     // read above, and the rest of the package is in the responses of the itineraries that
@@ -207,7 +207,7 @@ pub(super) fn route_package(store: &Store, id: &str, tracking: &str) -> Result<R
          JOIN route_publications p ON p.id=d.publication_id AND p.active=1 AND p.tasks_pruned=1 \
          LEFT JOIN itineraries i ON i.publication_id=d.publication_id AND i.itinerary_id=d.itinerary_id \
          WHERE d.tracking_id=? ORDER BY p.day DESC LIMIT ?",
-        params![tracking, OLD_ITINERARIES],
+        params![tracking, MOST_EVENTS],
     )?;
     let task_of = |task: &Value| {
         (
@@ -217,12 +217,19 @@ pub(super) fn route_package(store: &Store, id: &str, tracking: &str) -> Result<R
         )
     };
     let mut read: std::collections::HashSet<_> = rows.iter().map(task_of).collect();
+    // Newest first, until the answer's five hundred events are found: each itinerary named
+    // holds at least one, so no more are ever read than a whole answer needs.
+    let mut found = 0;
     for held in &old {
+        if found >= MOST_EVENTS {
+            break;
+        }
         for mut task in stored_tasks(&db, s(held, "publication_id"), s(held, "itinerary_id"))? {
             if task["tracking_id"] == tracking && read.insert(task_of(&task)) {
                 task["driver_name"] = held["driver_name"].clone();
                 task["route_code"] = held["route_code"].clone();
                 rows.push(task);
+                found += 1;
             }
         }
     }
@@ -234,7 +241,7 @@ pub(super) fn route_package(store: &Store, id: &str, tracking: &str) -> Result<R
                     .cmp(&(b["executed_at"].as_i64(), s(b, "task_id")))
             })
         });
-        rows.truncate(500);
+        rows.truncate(MOST_EVENTS as usize);
     }
     let events = rows
         .iter()
@@ -260,9 +267,8 @@ const ITINERARY_SELECT: &str = "SELECT i.itinerary_id,i.transporter_id,i.driver_
     d.departed_at,d.first_stop_at,d.last_stop_at,d.session_end_at,d.stops_total,d.stops_completed,d.tasks_total,\
     d.delivered,d.picked_up,d.not_delivered,d.breaks_secs,d.overtime_secs \
     FROM itineraries i JOIN driver_days d ON d.publication_id=i.publication_id AND d.itinerary_id=i.itinerary_id";
-/// The itineraries of old days a package's history is read from at most, newest first: each
-/// is a stored response unpacked and shaped, and a package is on one or two a day it was out.
-const OLD_ITINERARIES: i64 = 16;
+/// The events a package's history answers with at most, newest first.
+const MOST_EVENTS: i64 = 500;
 /// An itinerary's tasks as its rows had them, read from its stored response: for a day whose
 /// task rows were let go. Each as a row of `tasks` joined to its address, in the rows' order,
 /// with the itinerary's day and driver; a task both on the route and removed from it is the
