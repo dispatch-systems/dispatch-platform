@@ -15,8 +15,10 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Eye, EyeOff, GripVertical } from 'lucide-react';
-import type { NavItem } from './Shell.js';
+import { Eye, EyeOff, GripVertical, type LucideIcon } from 'lucide-react';
+
+/** What it shows of an item of the app's sidebar. */
+type Item = { id: string; label: string; icon?: LucideIcon };
 
 /** An item dragged moves up and down its list, never off to the side. */
 const upAndDown: Modifier = ({ transform }) => ({ ...transform, x: 0 });
@@ -27,7 +29,7 @@ function Listed({
   step,
   hide,
 }: {
-  item: NavItem;
+  item: Item;
   /** Moves it one place up or down. */
   step: (by: -1 | 1) => void;
   hide: () => void;
@@ -80,10 +82,10 @@ export function SidebarEdit({
   done,
 }: {
   /** Every item that moves, in the member's order, the hidden ones among them. */
-  items: readonly NavItem[];
+  items: readonly Item[];
   hidden: readonly string[];
   /** The item kept last, which neither moves nor hides. */
-  fixed?: NavItem;
+  fixed?: Item;
   arrange: (ids: string[], hidden: string[]) => void;
   reset: () => void;
   done: () => void;
