@@ -203,11 +203,11 @@ pub(super) fn route_package(store: &Store, id: &str, tracking: &str) -> Result<R
     // read above, and the rest of the package is in the responses of the itineraries that
     // day's lookup names for it: each task once, whichever way it was read.
     let old = db.all(
-        "SELECT d.publication_id,d.itinerary_id,i.driver_name,i.route_code FROM package_days d \
+        "SELECT d.publication_id,d.itinerary_id,p.day,i.driver_name,i.route_code FROM package_days d \
          JOIN route_publications p ON p.id=d.publication_id AND p.active=1 AND p.tasks_pruned=1 \
          LEFT JOIN itineraries i ON i.publication_id=d.publication_id AND i.itinerary_id=d.itinerary_id \
-         WHERE d.tracking_id=? ORDER BY p.day DESC LIMIT ?",
-        params![tracking, MOST_EVENTS],
+         WHERE d.tracking_id=? ORDER BY p.day DESC",
+        [tracking],
     )?;
     let task_of = |task: &Value| {
         (
@@ -217,13 +217,17 @@ pub(super) fn route_package(store: &Store, id: &str, tracking: &str) -> Result<R
         )
     };
     let mut read: std::collections::HashSet<_> = rows.iter().map(task_of).collect();
-    // Newest first, until the answer's five hundred events are found: each itinerary named
-    // holds at least one, so no more are ever read than a whole answer needs.
+    // Newest day first, until the answer's five hundred events are found, and then to the
+    // end of the day that found them: within a day events are ordered by when they happened,
+    // across its itineraries, so the last of the answer may be on any of them.
     let mut found = 0;
+    let mut last_day = None;
     for held in &old {
-        if found >= MOST_EVENTS {
+        let day = s(held, "day");
+        if found >= MOST_EVENTS && last_day != Some(day) {
             break;
         }
+        last_day = Some(day);
         for mut task in stored_tasks(&db, s(held, "publication_id"), s(held, "itinerary_id"))? {
             if task["tracking_id"] == tracking && read.insert(task_of(&task)) {
                 task["driver_name"] = held["driver_name"].clone();

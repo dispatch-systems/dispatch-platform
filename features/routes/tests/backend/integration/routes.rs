@@ -349,14 +349,32 @@ async fn a_packages_history_across_many_old_days_reads_the_same_without_their_ro
     install();
     let (_root, db, id) = ready();
     let state = State::new(db.config.clone()).unwrap();
-    // Nine days, the package picked up and delivered on two itineraries of each.
-    for back in 0..9 {
-        let day = format!("2026-09-{}", 25 - back);
-        let capture = routes::fixture(&request(&day, Mode::Final)).unwrap();
+    // The package picked up and delivered on two itineraries of each of 125 days, four
+    // events a day, and on one itinerary of the newest: the answer's five hundred then end
+    // with the two pickups of one day, one on each of its itineraries.
+    let newest = chrono::NaiveDate::from_ymd_opt(2026, 9, 25).unwrap();
+    for back in 0..126 {
+        let day = (newest - chrono::Duration::days(back)).to_string();
+        let mut capture = routes::fixture(&request(&day, Mode::Final)).unwrap();
+        if back == 0 {
+            let first = capture.summaries["itinerarySummaries"][0].clone();
+            capture.summaries["itinerarySummaries"] = json!([first]);
+            capture.itineraries.truncate(1);
+        }
         publish(&state, &db, &id, &format!("day-{back}"), &day, &capture).await;
     }
     let before = db.route_package(&id, "TBA000000000001").unwrap();
-    assert_eq!(before.events.len(), 36);
+    assert_eq!(before.events.len(), 500);
+    let last: Vec<_> = (before.events[498..].iter())
+        .map(|event| (event.itinerary_id.as_str(), event.task.task_type.as_deref()))
+        .collect();
+    assert_eq!(
+        last,
+        [
+            ("itinerary-1", Some("PICK_UP")),
+            ("itinerary-2", Some("PICK_UP"))
+        ]
+    );
     let storage = db.routes_db(&id).unwrap();
     let removed = "active=1 AND (task_type='PICK_UP' OR task_state='DELIVERED')";
     storage
