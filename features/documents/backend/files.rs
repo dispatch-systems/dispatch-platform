@@ -633,21 +633,34 @@ pub async fn trash(
 ) -> Result<()> {
     let owner = grant::capture_member(state, c, access, expected).await?;
     let tree = access::tree_for(state, &owner).await?;
-    let row = tree.get(&id).ok_or_else(not_found)?;
+    let name = discard(state, &owner, &tree, &id).await?;
+    owner
+        .run_member(state, move |db, c| c.audit(db, "documents.trashed", &name))
+        .await
+}
+/// Moves the file or folder `id` of `tree`, and whatever it holds, to the account's trash, and
+/// takes it out of the DSP's copy: its name, for the activity log.
+pub(super) async fn discard(
+    state: &Arc<State>,
+    owner: &Grant,
+    tree: &Tree,
+    id: &str,
+) -> Result<String> {
+    let row = tree.get(id).ok_or_else(not_found)?;
     let name = row.name.to_string();
     // A shortcut's file stops being shared with the team as the shortcut goes.
     let shortcut = row.target.is_some();
     // Someone may have moved it out of Documents in Drive since the copy last heard: Google
     // says where it is now.
-    let answer = on_drive!(state, &owner, |google, token| google.get(token, &id));
-    let now = gone(state, &owner, &id, answer).await?;
+    let answer = on_drive!(state, owner, |google, token| google.get(token, id));
+    let now = gone(state, owner, id, answer).await?;
     if !now.parents.iter().any(|parent| tree.is_folder(parent)) {
-        confirmed(state, &owner, now).await?;
+        confirmed(state, owner, now).await?;
         return Err(not_found());
     }
-    let answer = on_drive!(state, &owner, |google, token| google.trash(token, &id));
-    gone(state, &owner, &id, answer).await?;
-    let removed = id.clone();
+    let answer = on_drive!(state, owner, |google, token| google.trash(token, id));
+    gone(state, owner, id, answer).await?;
+    let removed = id.to_owned();
     owner
         .read(state, move |_, owner| {
             owner.mirror.remove(&owner.connection.folder_id, &removed);
@@ -655,11 +668,9 @@ pub async fn trash(
         })
         .await?;
     if shortcut {
-        team::share_soon(state, &owner);
+        team::share_soon(state, owner);
     }
-    owner
-        .run_member(state, move |db, c| c.audit(db, "documents.trashed", &name))
-        .await
+    Ok(name)
 }
 
 #[cfg(test)]

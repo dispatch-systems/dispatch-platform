@@ -113,7 +113,7 @@ fn writing(category: &str, tier: ConductTier, revision: Option<i64>) -> WriteupI
 }
 
 #[test]
-fn a_writeup_changes_until_it_is_signed_and_never_after() {
+fn a_writeup_changes_until_it_is_signed_then_only_its_manager_deletes_it() {
     let (_root, store, c) = ready();
     let id = add(
         &store,
@@ -200,12 +200,31 @@ fn a_writeup_changes_until_it_is_signed_and_never_after() {
         "conduct_writeup_signed"
     );
     assert_eq!(
-        delete(&store, &c, &id, 5).unwrap_err().code,
-        "conduct_writeup_signed"
-    );
-    assert_eq!(
         copies::read(&store, &c.dsp.id, &id).unwrap().1,
         [0xff, 0xd8, 0xff, 0xe0]
+    );
+
+    // Nor is it deleted by a member who only uses Conduct: one who manages it deletes it, its
+    // photo with it.
+    let mut member = c.clone();
+    member.owner = false;
+    member.permissions = vec!["conduct.use".into()];
+    assert_eq!(
+        delete(&store, &member, &id, 5).unwrap_err().code,
+        "permission_denied"
+    );
+    assert_eq!(
+        delete(&store, &c, &id, 4).unwrap_err().code,
+        "conduct_writeup_changed"
+    );
+    delete(&store, &c, &id, 5).unwrap();
+    assert_eq!(
+        read(&store, &c.dsp.id, &id).unwrap_err().code,
+        "conduct_writeup_not_found"
+    );
+    assert_eq!(
+        copies::read(&store, &c.dsp.id, &id).unwrap_err().code,
+        "conduct_copy_not_found"
     );
 }
 

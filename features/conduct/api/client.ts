@@ -3,6 +3,7 @@ import { ApiError, wordedApi } from '../../../core/shell/frontend/runtime/api.js
 import { useCachedData } from '../../../core/shell/frontend/runtime/data-reads.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { upload } from '../../../core/shell/frontend/runtime/transfer.js';
+import { backupUrl, conductUrl } from './urls.js';
 import type {
   CategoryInput,
   ConductBackup,
@@ -28,6 +29,8 @@ const errors: Readonly<Record<string, string>> = {
   conduct_writeup_not_found: 'This writeup was deleted.',
   conduct_writeup_changed: 'This writeup changed in another session. Open it again to see it.',
   conduct_writeup_signed: 'This writeup is signed, so it can no longer change.',
+  conduct_copy_not_removed:
+    'The backed-up copy couldn’t be removed, so nothing was deleted. Try again.',
   conduct_date_ahead: 'A writeup can’t be dated after today.',
   conduct_signed_date: 'The signed date must be between the writeup’s date and today.',
   conduct_suspension_required: 'Enter how long the suspension is.',
@@ -42,7 +45,6 @@ function useConductRead<T>(url: string, refreshKey?: string) {
   return useCachedData<T>(url, 0, refreshKey, load);
 }
 
-export const conductUrl = '/api/dsp/conduct';
 /** Compact current standings and history totals. */
 export const useConductOverview = () => useConductRead<ConductOverview>(conductUrl);
 
@@ -111,7 +113,6 @@ export async function keepCopy(id: string, revision: number, photo: Blob, reques
   }
 }
 
-export const backupUrl = `${conductUrl}/backup`;
 /** How backing signed copies up is going, read again whenever `refreshKey` changes. */
 export const useConductBackup = (refreshKey: string) =>
   useConductRead<ConductBackup>(backupUrl, refreshKey);

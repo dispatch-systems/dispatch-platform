@@ -84,6 +84,10 @@ test('a driver is written up from the page, then marked signed and locked', asyn
   await expect(page.getByText(/^Signed \d+\/\d+\/\d{4}$/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Print', exact: true })).toBeVisible();
+  // Whoever manages Conduct still deletes it.
+  await page.getByRole('button', { name: 'Delete', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
+  await expect(page.getByText('No writeups', { exact: true })).toBeVisible();
 });
 
 test('wording is edited around blanks that no edit removes', async ({ page }) => {

@@ -1,6 +1,7 @@
 //! Documents keeping files for another feature through the `files` contract it exposes, against fixture
 //! mode's Drive: only while Documents is on and its account connected, only inside the DSP's
-//! own folder, and named for whoever they came from; and pages written as Docs, and over them.
+//! own folder, and named for whoever they came from, and taken back; and pages written as Docs,
+//! and over them.
 use super::*;
 use crate::backend::{
     support::{connect, platform},
@@ -32,7 +33,8 @@ async fn offered(state: &Arc<State>, dsp: &str) -> Option<&'static dyn Files> {
 }
 
 #[tokio::test]
-async fn files_are_kept_inside_the_dsps_folder_once_connected_and_named_for_who_sent_them() {
+async fn files_are_kept_inside_the_dsps_folder_once_connected_named_for_who_sent_them_and_taken_back()
+ {
     let (_root, state, dsp) = platform();
     let owner = state.read(|db| Ok(testing::a_user(db))).await.unwrap();
     let files = offered(&state, &dsp).await.expect("Documents is on");
@@ -119,6 +121,31 @@ async fn files_are_kept_inside_the_dsps_folder_once_connected_and_named_for_who_
         .expect("the save is logged");
     assert_eq!(saving["detail"], "van.jpg from Slack");
     assert!(saving["actorId"].is_null());
+
+    // Taken back, it goes to the trash, logged with no member as its actor for someone known
+    // only by name; one already gone, a folder, or a file elsewhere isn't.
+    assert!(files.remove(&state, &dsp, &saved.id, &dre).await.unwrap());
+    let tree = crate::backend::access::tree_for(&state, &captured)
+        .await
+        .unwrap();
+    assert!(tree.get(&saved.id).is_none());
+    let at = dsp.clone();
+    let logged = state
+        .read(move |db| testing::audits(db, Some(&at)))
+        .await
+        .unwrap();
+    let trashing = logged
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|event| event["action"] == "documents.trashed")
+        .expect("taking it back is logged");
+    assert_eq!(trashing["detail"], "van.jpg");
+    assert!(trashing["actorId"].is_null());
+    for id in [saved.id.as_str(), folder.id.as_str(), "elsewhere"] {
+        assert!(!files.remove(&state, &dsp, id, &dre).await.unwrap());
+    }
+    assert!(tree.get(&folder.id).is_some());
 
     // Nothing goes outside the DSP's folder.
     let file = incoming("van.jpg", "jpeg", dre).await;

@@ -73,6 +73,16 @@ pub trait Files: Shown + Send + Sync {
         id: &'a str,
         page: Page,
     ) -> Answer<'a, Option<Saved>>;
+    /// Moves the file `id` that `save` or `write` kept to the trash of where it's kept,
+    /// wherever it's been moved among the DSP's files, as `by` asked: false once it's gone
+    /// from them, or for a folder.
+    fn remove<'a>(
+        &'a self,
+        state: &'a Arc<State>,
+        dsp: &'a str,
+        id: &'a str,
+        by: &'a Author,
+    ) -> Answer<'a, bool>;
 }
 
 /// The feature keeping the DSP's files, while it's on for the DSP.

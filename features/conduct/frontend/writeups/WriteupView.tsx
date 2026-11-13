@@ -10,16 +10,21 @@ import { usePrintNotice } from '../notice/usePrintNotice.js';
 import { SignedState, categoryName, personOf } from '../parts.js';
 import { SignDialog } from './SignDialog.js';
 
-/** One writeup as it prints: printed, changed or deleted until it's signed, then only printed. */
+/**
+ * One writeup as it prints: printed, changed or deleted until it's signed, then only printed,
+ * or deleted by someone who manages Conduct (`manages`).
+ */
 export function WriteupView({
   overview,
   id,
+  manages,
   back,
   edit,
   take,
 }: {
   overview: ConductOverview;
   id: string;
+  manages: boolean;
   back: () => void;
   edit: () => void;
   take: (overview?: ConductOverview) => void;
@@ -59,17 +64,17 @@ export function WriteupView({
                   </p>
                 </div>
                 <div className="heading-actions">
+                  {(!writeup.signedOn || manages) && (
+                    <button type="button" className="danger" onClick={() => setDeleting(true)}>
+                      <Trash2 size={16} />
+                      Delete
+                    </button>
+                  )}
                   {!writeup.signedOn && (
-                    <>
-                      <button type="button" className="danger" onClick={() => setDeleting(true)}>
-                        <Trash2 size={16} />
-                        Delete
-                      </button>
-                      <button type="button" onClick={edit}>
-                        <Pencil size={16} />
-                        Edit
-                      </button>
-                    </>
+                    <button type="button" onClick={edit}>
+                      <Pencil size={16} />
+                      Edit
+                    </button>
                   )}
                   <button type="button" onClick={() => print(writeup)}>
                     <Printer size={16} />

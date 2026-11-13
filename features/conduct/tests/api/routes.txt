@@ -15,5 +15,5 @@ POST /api/dsp/conduct/categories/{id}/retire Dsp("conduct.manage") Write
 POST /api/dsp/conduct/writeups Dsp("conduct.use") Write
 POST /api/dsp/conduct/writeups/{id} Dsp("conduct.use") Write
 POST /api/dsp/conduct/writeups/{id}/copy Dsp("conduct.use") Upload
-POST /api/dsp/conduct/writeups/{id}/delete Dsp("conduct.use") Write
+POST /api/dsp/conduct/writeups/{id}/delete Dsp("conduct.use") Async
 POST /api/dsp/conduct/writeups/{id}/sign Dsp("conduct.use") Write

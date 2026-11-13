@@ -1,5 +1,5 @@
-//! The DSP's writeups: written, changed until signed, marked signed, and deleted until signed.
-//! A signed writeup never changes again.
+//! The DSP's writeups: written, changed until signed, marked signed, and deleted. A signed
+//! writeup never changes again, and only a member who manages Conduct deletes one.
 use super::categories;
 use crate::api::types::{ConductWriteup, ConductWriteupRow, WriteupInput};
 use dispatch_core::{
@@ -194,18 +194,37 @@ pub(crate) fn sign_requested(
     })
 }
 
-/// Deletes the writeup `id` while it's unsigned, and its photo with it, noting it in the DSP's
-/// activity log.
+/// Deletes the writeup `id` as read at `revision`, with its photo and what's kept of backing
+/// that up, noting it in the DSP's activity log: a signed one only for a member who manages
+/// Conduct.
 pub(crate) fn delete(store: &Store, c: &Context, id: &str, revision: i64) -> Result<()> {
     let db = store.dsp(&c.dsp.id)?;
     super::logged(store, &db, || {
-        let writeup = unsigned(&db, id, Some(revision))?;
+        let writeup = deletable(&db, c, id, revision)?;
         db.exec("DELETE FROM conduct_requests WHERE writeup_id=?", [id])?;
+        db.exec("DELETE FROM conduct_backups WHERE writeup_id=?", [id])?;
         db.exec("DELETE FROM conduct_copies WHERE writeup_id=?", [id])?;
         db.exec("DELETE FROM conduct_writeups WHERE id=?", [id])?;
         // By its id alone: the activity log keeps no one's disciplinary record.
         c.audit(store, "conduct.writeup_deleted", &writeup.row.id)
     })
+}
+
+/// The writeup `id`, while it's still as read at `revision` and the member `c` may delete it:
+/// anyone who uses Conduct until it's signed, then only who manages it.
+pub(crate) fn deletable(db: &Db, c: &Context, id: &str, revision: i64) -> Result<ConductWriteup> {
+    let writeup = one(db, id)?;
+    ensure(
+        writeup.row.signed_on.is_none() || c.can("conduct.manage"),
+        "permission_denied",
+        403,
+    )?;
+    ensure(
+        writeup.row.revision == revision,
+        "conduct_writeup_changed",
+        409,
+    )?;
+    Ok(writeup)
 }
 
 /// The writeup `id`, while nobody has marked it signed and it's still as read at `revision`.

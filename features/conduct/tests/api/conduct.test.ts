@@ -18,7 +18,7 @@ async function setup() {
   return { f, owner, north };
 }
 
-test('a writeup is written up for someone, suggests the next tier, and locks once signed', async (t) => {
+test('a writeup is written up for someone, suggests the next tier, and locks once signed until deleted', async (t) => {
   const { f, owner, north } = await setup();
   t.after(f.close);
   const read = await owner.get(route);
@@ -117,10 +117,23 @@ test('a writeup is written up for someone, suggests the next tier, and locks onc
     [2, 1, ['safety', 'tardies']],
   );
 
-  // Another DSP knows nothing of it.
+  // Signed, it's still deleted by whoever manages Conduct, and no longer counts.
+  const deleted = await owner.post(`${route}/writeups/${id}/delete`, {
+    revision: after.writeup.revision,
+  });
+  assert.equal(deleted.status, 200, deleted.body);
+  assert.equal((await owner.get(`${route}/writeups/${id}`)).status, 404);
+  assert.deepEqual(
+    (deleted.value as ConductOverview).drivers.map((d) => [d.person, d.count, d.categories]),
+    [[person.code, 1, ['safety']]],
+  );
+
+  // Another DSP knows nothing of what's left.
+  const waiting = (safety.value as ConductSaved).writeup.id;
+  assert.equal((await owner.get(`${route}/writeups/${waiting}`)).status, 200);
   const other = owner.session.dsps.find((d: { id: string }) => d.id !== north.id);
   await owner.select(other.id);
-  assert.equal((await owner.get(`${route}/writeups/${id}`)).status, 404);
+  assert.equal((await owner.get(`${route}/writeups/${waiting}`)).status, 404);
 });
 
 test('Conduct answers only those whose role grants it, and categories only those who manage it', async (t) => {

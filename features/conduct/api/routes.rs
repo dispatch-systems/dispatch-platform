@@ -1,7 +1,7 @@
 //! Conduct's endpoints, each registered with its path and access. The server checks the
 //! session and the permission before a handler runs. Writing up, changing, signing and
-//! deleting writeups is `conduct.use`; categories and how the backup is going are
-//! `conduct.manage`.
+//! deleting writeups is `conduct.use`, deleting a signed one `conduct.manage`; categories and
+//! how the backup is going are `conduct.manage`.
 use super::types::{CategoryInput, ConductSaved, WriteupInput};
 use crate::backend::{DOMAIN, backups, categories, copies, history, overview, writeups};
 use dispatch_core::{
@@ -10,7 +10,9 @@ use dispatch_core::{
     foundation::validate as v,
     server::http::{
         input::{Input, Reply, optional, optional_text, query_number},
-        route::{Dsp, Grant, Member, Route, async_get, coalesced_read, read, upload, write},
+        route::{
+            Dsp, Grant, Member, Route, async_get, async_post, coalesced_read, read, upload, write,
+        },
         upload::Upload,
     },
 };
@@ -34,7 +36,7 @@ pub fn routes() -> Vec<Route> {
         read("/api/dsp/conduct/writeups/{id}", USE, writeup_read),
         write("/api/dsp/conduct/writeups/{id}", USE, writeup_change),
         write("/api/dsp/conduct/writeups/{id}/sign", USE, writeup_sign),
-        write("/api/dsp/conduct/writeups/{id}/delete", USE, writeup_delete),
+        async_post("/api/dsp/conduct/writeups/{id}/delete", USE, writeup_delete),
         upload(
             "/api/dsp/conduct/writeups/{id}/copy",
             USE,
@@ -191,11 +193,32 @@ fn writeup_sign(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     }
     Reply::of(&saved(db, c, id)?)
 }
-fn writeup_delete(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+/// Deletes a writeup, a signed one only for a member who manages Conduct. Its copy where the
+/// DSP keeps its files goes first, outside the database, while the DSP backs its copies up:
+/// the writeup stays until that copy is gone.
+async fn writeup_delete(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     v::fields(&input.body, &["revision"])?;
     let revision = v::integer(&input.body, "revision", 1, i64::MAX)?;
-    writeups::delete(db, c, input.param("id"), revision)?;
-    Reply::of(&overview::read(db, c.state, c)?)
+    let asked = input.clone();
+    let (c, copy) = state
+        .read(move |db| {
+            let c = access.authorize(db, &asked)?;
+            let copy = backups::saved(db, &c, asked.param("id"), revision)?;
+            Ok((c, copy))
+        })
+        .await?;
+    if let Some((files, saved)) = copy {
+        backups::take_back(&state, &c, files, &saved).await?;
+    }
+    let ran = state.clone();
+    state
+        .run_scoped(c.dsp.id.clone(), DOMAIN, move |db| {
+            // Checked again: the member may have lost access while the copy went.
+            let c = access.authorize(db, &input)?;
+            writeups::delete(db, &c, input.param("id"), revision)?;
+            Reply::of(&overview::read(db, &ran, &c)?)
+        })
+        .await
 }
 
 /// Keeps a photo of a writeup's signed paper, its bytes read whole before the write.
