@@ -260,7 +260,7 @@ impl Stand {
                             .unwrap();
                     }
                     Plays::ThrottledTwice if index == 1 && times > 2 => {
-                        self.day.itineraries[index].detail.clone()
+                        self.day.itineraries[index].detail.text().unwrap()
                     }
                     Plays::Throttled | Plays::ThrottledTwice if index == 1 => {
                         return Response::builder()
@@ -275,14 +275,17 @@ impl Stand {
                     Plays::ItineraryDown if index == 1 => {
                         return status(StatusCode::SERVICE_UNAVAILABLE);
                     }
-                    Plays::WrongItinerary if index == 1 => self.day.itineraries[0].detail.clone(),
+                    Plays::WrongItinerary if index == 1 => {
+                        self.day.itineraries[0].detail.text().unwrap()
+                    }
                     Plays::UncheckedItinerary if index == 1 => {
                         let mut detail: Value =
-                            serde_json::from_str(&self.day.itineraries[1].detail).unwrap();
+                            serde_json::from_str(&self.day.itineraries[1].detail.text().unwrap())
+                                .unwrap();
                         detail["itineraryDetails"]["stops"] = json!("none");
                         detail.to_string()
                     }
-                    _ => self.day.itineraries[index].detail.clone(),
+                    _ => self.day.itineraries[index].detail.text().unwrap(),
                 }
             }
             None => return status(StatusCode::NOT_FOUND),
@@ -386,7 +389,13 @@ async fn a_day_is_read_whole_with_the_key_its_list_page_carries() {
         capture
             .itineraries
             .iter()
-            .map(|i| (i.id.clone(), i.transporter_id.clone(), i.detail.clone()))
+            .map(|i| {
+                (
+                    i.id.clone(),
+                    i.transporter_id.clone(),
+                    i.detail.text().unwrap(),
+                )
+            })
             .collect::<Vec<_>>()
     };
     assert_eq!(read(&capture), read(&stand.day));

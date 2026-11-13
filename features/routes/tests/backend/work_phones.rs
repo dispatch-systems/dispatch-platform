@@ -35,9 +35,11 @@ fn phones(read: &Capture) -> Vec<Option<String>> {
 }
 /// `read`'s `n`th itinerary's response with its driver's record showing `phone`, or none.
 fn own(read: &mut Capture, n: usize, phone: Option<&str>) {
-    let mut response: Value = serde_json::from_str(&read.itineraries[n].detail).unwrap();
+    let mut response: Value =
+        serde_json::from_str(&read.itineraries[n].detail.text().unwrap()).unwrap();
     response["transporters"][0]["workPhoneNumber"] = json!(phone);
-    read.itineraries[n].detail = response.to_string();
+    read.itineraries[n].detail =
+        dispatch_cortex::routes::Detail::of_text(&response.to_string()).unwrap();
 }
 
 #[test]

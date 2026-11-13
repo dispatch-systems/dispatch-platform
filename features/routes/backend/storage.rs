@@ -23,7 +23,8 @@ use dispatch_cortex::{
     self as cortex,
     discovery::Scope,
     routes::{
-        Capture, Collection, ItineraryCapture, MAX_CAPTURE_BYTES, Mode, add_capture_bytes, listed,
+        Capture, Collection, Detail, ItineraryCapture, MAX_CAPTURE_BYTES, Mode, add_capture_bytes,
+        listed,
     },
 };
 use serde_json::{Value, json};
@@ -241,11 +242,20 @@ pub(super) fn stored_capture(db: &Db, row: &Value) -> Result<Capture> {
     };
     let summaries: Value = serde_json::from_str(&blob("summaries")?)?;
     let route_summaries: Value = serde_json::from_str(&blob("route_summaries")?)?;
+    // Each itinerary stays compressed as it is stored: it is text only as it is read.
     let itineraries = listed(&summaries, &scope)
         .into_iter()
         .map(|(id, transporter_id)| {
+            let (body, raw): (Vec<u8>, i64) = db.0.query_row(
+                "SELECT body,raw_bytes FROM route_raw WHERE publication_id=? AND name=?",
+                [publication, format!("itinerary:{id}").as_str()],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )?;
+            let raw =
+                usize::try_from(raw).map_err(|_| Error::new("routes_capture_invalid", 502))?;
+            bytes = add_capture_bytes(bytes, raw)?;
             Ok(ItineraryCapture {
-                detail: blob(&format!("itinerary:{id}"))?,
+                detail: Detail::of_gzip(body, raw),
                 id,
                 transporter_id,
             })

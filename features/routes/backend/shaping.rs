@@ -154,12 +154,13 @@ impl Shaper {
     /// lives only while this runs.
     pub fn shape(&self, captured: &ItineraryCapture) -> Result<PreparedItinerary> {
         ensure(
-            captured.detail.len() <= MAX_BODY,
+            captured.detail.bytes() <= MAX_BODY,
             "routes_source_too_large",
             502,
         )?;
         let invalid = || Error::new("routes_capture_invalid", 502);
-        let response = wire::read(&captured.detail).map_err(|_| invalid())?;
+        // Its text lives only while its rows are read from it.
+        let response = wire::read(&captured.detail.text()?).map_err(|_| invalid())?;
         let read = response.detail.0.ok_or_else(invalid)?;
         let detail = Value::Object(read.rest);
         let (stops, tasks, day) = stop_rows(
@@ -182,8 +183,8 @@ impl Shaper {
             &captured.id,
             &captured.transporter_id,
             read,
-            captured.detail.len(),
-            gzip(captured.detail.as_bytes())?,
+            captured.detail.bytes(),
+            captured.detail.gzip().to_vec(),
         )
     }
     /// One itinerary's rows from what was read of its response, with `raw`, the response

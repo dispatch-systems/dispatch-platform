@@ -235,7 +235,8 @@ pub async fn measure_route_method<R: serde::Serialize>(
             .itineraries
             .iter()
             .map(|i| {
-                let text = serde_json::from_str::<Value>(&i.detail)
+                let text = (i.detail.text().ok())
+                    .and_then(|text| serde_json::from_str::<Value>(&text).ok())
                     .map(|v| digest(&canonical(&v).to_string()))
                     .unwrap_or_default();
                 (i.id.clone(), text)

@@ -217,20 +217,34 @@ impl Wire {
     /// Decoding takes a core: a reader on the threads serving requests hands it to a blocking
     /// one.
     pub fn into_text(self, limit: usize) -> std::result::Result<String, Refusal> {
-        let bytes = if self.gzipped {
-            let mut decoded = Vec::new();
-            flate2::read::GzDecoder::new(self.body.as_slice())
-                .take(limit as u64 + 1)
-                .read_to_end(&mut decoded)
-                .map_err(|_| Refusal::Unreadable("http_encoding"))?;
-            decoded
-        } else {
-            self.body
-        };
-        if bytes.len() > limit {
+        self.into_parts(limit).map(|(text, _)| text)
+    }
+    /// Its text as `into_text` reads it, and the body it came as when that was gzipped and
+    /// inflates to exactly that text: what keeps a large response compressed needs its text
+    /// only to check it. A body that opens with a byte-order mark, which the text drops, is
+    /// not handed back, nor one longer than its text.
+    pub fn into_parts(
+        self,
+        limit: usize,
+    ) -> std::result::Result<(String, Option<Vec<u8>>), Refusal> {
+        if !self.gzipped {
+            if self.body.len() > limit {
+                return Err(Refusal::Unreadable("http_too_large"));
+            }
+            return Ok((utf8(self.body)?, None));
+        }
+        let mut decoded = Vec::new();
+        flate2::read::GzDecoder::new(self.body.as_slice())
+            .take(limit as u64 + 1)
+            .read_to_end(&mut decoded)
+            .map_err(|_| Refusal::Unreadable("http_encoding"))?;
+        if decoded.len() > limit {
             return Err(Refusal::Unreadable("http_too_large"));
         }
-        utf8(bytes)
+        // Nor is one longer than its text, as bytes after its first member would make it:
+        // what is kept is then never more than the text a caller counts against its budget.
+        let kept = !decoded.starts_with("\u{feff}".as_bytes()) && self.body.len() <= decoded.len();
+        Ok((utf8(decoded)?, kept.then_some(self.body)))
     }
 }
 

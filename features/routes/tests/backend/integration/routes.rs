@@ -406,9 +406,11 @@ async fn a_reprocess_rebuilds_shared_staging_without_replaying_omitted_keys() {
         .unwrap()
         .truncate(1);
     // Replaying this day shapes neither address-2 nor a second itinerary's driver.
-    let mut detail: Value = serde_json::from_str(&capture.itineraries[0].detail).unwrap();
+    let mut detail: Value =
+        serde_json::from_str(&capture.itineraries[0].detail.text().unwrap()).unwrap();
     detail["addresses"].as_array_mut().unwrap().truncate(1);
-    capture.itineraries[0].detail = detail.to_string();
+    capture.itineraries[0].detail =
+        dispatch_cortex::routes::Detail::of_text(&detail.to_string()).unwrap();
     publish(&state, &db, &id, "replay", day, &capture).await;
     let storage = db.routes_db(&id).unwrap();
     let publication = storage
@@ -424,9 +426,9 @@ async fn a_reprocess_rebuilds_shared_staging_without_replaying_omitted_keys() {
     let mut later = routes::fixture(&request("2026-09-25", Mode::Final)).unwrap();
     later.summaries["transporters"][1]["firstName"] = json!("Current");
     for itinerary in &mut later.itineraries {
-        let mut detail: Value = serde_json::from_str(&itinerary.detail).unwrap();
+        let mut detail: Value = serde_json::from_str(&itinerary.detail.text().unwrap()).unwrap();
         detail["addresses"][1]["address1"] = json!("Current street");
-        itinerary.detail = detail.to_string();
+        itinerary.detail = dispatch_cortex::routes::Detail::of_text(&detail.to_string()).unwrap();
     }
     publish(&state, &db, &id, "later", "2026-09-25", &later).await;
 
@@ -712,15 +714,18 @@ async fn a_package_moved_between_drivers_keeps_a_row_under_each() {
     let mut capture = routes::fixture(&request("2026-09-25", Mode::Final)).unwrap();
     // The second driver delivered task-13; the first driver's itinerary lists it as
     // removed from their route, as Amazon lists a rescued package.
-    let second: Value = serde_json::from_str(&capture.itineraries[1].detail).unwrap();
+    let second: Value =
+        serde_json::from_str(&capture.itineraries[1].detail.text().unwrap()).unwrap();
     let rescued = second["itineraryDetails"]["stops"][1]["tasks"][0].clone();
     assert_eq!(rescued["taskId"], "task-13");
-    let mut first: Value = serde_json::from_str(&capture.itineraries[0].detail).unwrap();
+    let mut first: Value =
+        serde_json::from_str(&capture.itineraries[0].detail.text().unwrap()).unwrap();
     first["itineraryDetails"]["inactiveTasks"]
         .as_array_mut()
         .unwrap()
         .push(rescued);
-    capture.itineraries[0].detail = first.to_string();
+    capture.itineraries[0].detail =
+        dispatch_cortex::routes::Detail::of_text(&first.to_string()).unwrap();
     publish(&state, &db, &id, "rescue", "2026-09-25", &capture).await;
     let rows = db
         .routes_db(&id)
@@ -763,9 +768,9 @@ fn renamed(capture: &Capture, name: &str, street: &str) -> Capture {
     let mut renamed = capture.clone();
     renamed.summaries["transporters"][0]["firstName"] = json!(name);
     for itinerary in &mut renamed.itineraries {
-        let mut detail: Value = serde_json::from_str(&itinerary.detail).unwrap();
+        let mut detail: Value = serde_json::from_str(&itinerary.detail.text().unwrap()).unwrap();
         detail["addresses"][0]["address1"] = json!(street);
-        itinerary.detail = detail.to_string();
+        itinerary.detail = dispatch_cortex::routes::Detail::of_text(&detail.to_string()).unwrap();
     }
     renamed
 }
@@ -1447,7 +1452,10 @@ async fn a_stored_day_goes_through_storage_at_full_size() {
     capture.itineraries = routes::listed(&capture.summaries, &capture.scope)
         .into_iter()
         .map(|(itinerary, transporter)| routes::ItineraryCapture {
-            detail: blob(&format!("itinerary:{itinerary}")),
+            detail: dispatch_cortex::routes::Detail::of_text(&blob(&format!(
+                "itinerary:{itinerary}"
+            )))
+            .unwrap(),
             id: itinerary,
             transporter_id: transporter,
         })

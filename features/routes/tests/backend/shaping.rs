@@ -68,11 +68,11 @@ fn an_itinerary_read_straight_from_its_response_shapes_as_from_its_tree() {
     let odd = ItineraryCapture {
         id: "it-9".into(),
         transporter_id: "driver-1".into(),
-        detail: odd.into(),
+        detail: dispatch_cortex::routes::Detail::of_text(odd).unwrap(),
     };
     for captured in capture.itineraries.iter().chain([&odd]) {
         let typed = shaper.shape(captured).unwrap();
-        let tree: Value = serde_json::from_str(&captured.detail).unwrap();
+        let tree: Value = serde_json::from_str(&captured.detail.text().unwrap()).unwrap();
         let detail = &tree["itineraryDetails"];
         let (stops, tasks, day) = stop_rows(
             detail["stops"].as_array().into_iter().flatten(),
@@ -93,7 +93,7 @@ fn an_itinerary_read_straight_from_its_response_shapes_as_from_its_tree() {
                 &captured.id,
                 &captured.transporter_id,
                 read,
-                captured.detail.len(),
+                captured.detail.bytes(),
                 typed.raw.clone(),
             )
             .unwrap();
@@ -110,7 +110,10 @@ fn an_itinerary_read_straight_from_its_response_shapes_as_from_its_tree() {
     assert!(repeated.tasks.iter().any(|task| task.id == "t4"));
     // A detail that isn't an object is no itinerary.
     let refused = shaper.shape(&ItineraryCapture {
-        detail: json!({"itineraryDetails":[]}).to_string(),
+        detail: dispatch_cortex::routes::Detail::of_text(
+            &json!({"itineraryDetails":[]}).to_string(),
+        )
+        .unwrap(),
         ..odd
     });
     assert_eq!(refused.unwrap_err().code, "routes_capture_invalid");

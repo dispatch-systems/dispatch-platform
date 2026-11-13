@@ -3,8 +3,10 @@
 use crate::discovery::{CollectionRequest, Discovery, Scope};
 use chrono::NaiveDate;
 use dispatch_core::{Error, Result, db::now, ensure, text_enum};
+use flate2::{read::GzDecoder, write::GzEncoder};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::io::{Read, Write};
 
 pub const JOB_KIND: &str = "cortex.routes.collect";
 /// Itineraries a day may list, well above any station seen.
@@ -109,14 +111,72 @@ impl Request {
     }
 }
 
-/// One driver's itinerary as the detail API answered, kept as the JSON text it came
-/// as: a day holds tens of megabytes, which parsed trees would multiply.
+/// One driver's itinerary as the detail API answered.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ItineraryCapture {
     pub id: String,
     pub transporter_id: String,
-    pub detail: String,
+    pub detail: Detail,
+}
+/// An itinerary's response, kept gzip-compressed, as Amazon sent it or as it is stored: a
+/// day's are tens of megabytes as text and a few compressed, so each is text only while
+/// something reads it. Outside this process it is its JSON text.
+#[derive(Clone, Debug)]
+pub struct Detail {
+    gzip: Vec<u8>,
+    /// How long its text is.
+    bytes: usize,
+}
+impl Detail {
+    /// `text`, compressed here.
+    pub fn of_text(text: &str) -> Result<Self> {
+        let mut encoder = GzEncoder::new(Vec::new(), flate2::Compression::default());
+        encoder.write_all(text.as_bytes())?;
+        Ok(Self {
+            gzip: encoder.finish()?,
+            bytes: text.len(),
+        })
+    }
+    /// A response already compressed, whose text is `bytes` long.
+    pub fn of_gzip(gzip: Vec<u8>, bytes: usize) -> Self {
+        Self { gzip, bytes }
+    }
+    /// How long its text is.
+    pub fn bytes(&self) -> usize {
+        self.bytes
+    }
+    /// It compressed, as it is stored.
+    pub fn gzip(&self) -> &[u8] {
+        &self.gzip
+    }
+    /// Its JSON text, no longer than it says it is. One that does not inflate fails as any
+    /// stored response that does not (`operation_failed`).
+    pub fn text(&self) -> Result<String> {
+        let mut text = Vec::new();
+        GzDecoder::new(self.gzip.as_slice())
+            .take(self.bytes as u64 + 1)
+            .read_to_end(&mut text)?;
+        ensure(text.len() == self.bytes, "routes_capture_invalid", 502)?;
+        String::from_utf8(text).map_err(|_| Error::new("routes_capture_invalid", 502))
+    }
+}
+impl Serialize for Detail {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        let text = self.text().map_err(serde::ser::Error::custom)?;
+        serializer.serialize_str(&text)
+    }
+}
+impl<'de> Deserialize<'de> for Detail {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        Self::of_text(&text).map_err(serde::de::Error::custom)
+    }
 }
 /// A day's routes as collected, before they are stored: the two lists and every
 /// itinerary, each as Amazon sent it.
@@ -183,7 +243,7 @@ impl Capture {
         let mut total = add_capture_bytes(0, serde_json::to_vec(&self.summaries)?.len())?;
         total = add_capture_bytes(total, serde_json::to_vec(&self.route_summaries)?.len())?;
         for itinerary in &self.itineraries {
-            total = add_capture_bytes(total, itinerary.detail.len())?;
+            total = add_capture_bytes(total, itinerary.detail.bytes())?;
         }
         Ok(())
     }
@@ -224,7 +284,7 @@ impl Capture {
                 "routes_scope_mismatch",
                 502,
             )?;
-            let outline: Outline = serde_json::from_str(&captured.detail)
+            let outline: Outline = serde_json::from_str(&captured.detail.text()?)
                 .map_err(|_| Error::new("routes_capture_invalid", 502))?;
             let stops = outline.details.stops.unwrap_or_default();
             ensure(
@@ -366,7 +426,8 @@ pub(super) fn fixture_in(request: &Request, scope: &Scope) -> Result<Capture> {
             ItineraryCapture {
                 id: id.clone(),
                 transporter_id: (*transporter).into(),
-                detail: json!({"itineraryDetails":{"itineraryId":id,"transporterId":transporter,"transporterName":"Fixture Driver",
+                detail: Detail::of_text(
+                    &json!({"itineraryDetails":{"itineraryId":id,"transporterId":transporter,"transporterName":"Fixture Driver",
                     "serviceAreaId":scope.service_area_id,"companyId":scope.provider,"localDate":[2026,9,25],"routeCode":route,
                     "executionStatus":"COMPLETE","progressStatus":"ON_TIME","itineraryStartTime":midnight + 10 * 60_000,
                     "plannedDepartureTime":midnight,"sessionEndTime":midnight + 8 * hour,"routeCreationTime":midnight - 6 * hour,
@@ -381,6 +442,8 @@ pub(super) fn fixture_in(request: &Request, scope: &Scope) -> Result<Capture> {
                     "addresses":addresses,"transporters":[transporters[i].clone()],"companies":companies,
                     "itineraryPartners":null,"routePauseStatus":null})
                 .to_string(),
+                )
+                .expect("a fixture itinerary compresses"),
             }
         })
         .collect();

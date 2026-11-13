@@ -13,7 +13,7 @@
 //! opened (`Browser`), the same way.
 use super::{
     Day, INVALID, Method, NATIVE, Navigation,
-    capture::{Capture, Collection, ItineraryCapture, Request},
+    capture::{Capture, Collection, Detail, ItineraryCapture, Request},
     native::{Check, Failure, Native},
     page::{MOVE_FAILED, patterns, routes_page},
     protocol::{
@@ -456,7 +456,7 @@ where
                 ItineraryCapture {
                     id: id.clone(),
                     transporter_id: transporter.clone(),
-                    detail,
+                    detail: Detail::of_text(&detail)?,
                 },
             ));
             // A reloaded page keeps what it rendered until collected; a withheld one never
