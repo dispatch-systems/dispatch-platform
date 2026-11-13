@@ -316,10 +316,11 @@ export function arranged<T extends { id: string }>(
   };
 }
 /**
- * `kept` with `id` moved just after `after` among the items a member has now, `ids` in their
- * order, or first without one: an item `kept` names that they haven't now, as a page of a
- * feature switched off, stays where it was. Each change of theirs is made on what is kept when
- * it's saved, so it changes only what they changed.
+ * `kept` with the listed item `id` moved just after the listed item `after`, or first without
+ * one, among the items a member has now, `ids` in their order: the hidden keep their places, and
+ * an item `kept` names that they haven't now, as a page of a feature switched off, stays where
+ * it was. Each change of theirs is made on what is kept when it's saved, so it changes only what
+ * they changed.
  */
 export function moved(
   kept: SidebarArrangement,
@@ -327,9 +328,11 @@ export function moved(
   id: string,
   after?: string,
 ) {
-  const rest = ids.filter((each) => each !== id);
-  rest.splice(after === undefined ? 0 : rest.indexOf(after) + 1, 0, id);
-  return { order: placing(rest, kept.order), hidden: kept.hidden };
+  const listed = ids.filter((each) => each !== id && !kept.hidden.includes(each));
+  listed.splice(after === undefined ? 0 : listed.indexOf(after) + 1, 0, id);
+  let next = 0;
+  const order = ids.map((each) => (kept.hidden.includes(each) ? each : listed[next++]!));
+  return { order: placing(order, kept.order), hidden: kept.hidden };
 }
 /** `kept` with `id` hidden, or listed again. */
 export const hiding = (kept: SidebarArrangement, id: string, hidden: boolean) => ({
