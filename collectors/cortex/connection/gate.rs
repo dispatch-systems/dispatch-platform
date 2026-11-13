@@ -16,6 +16,8 @@ use tokio::{sync::Notify, time::Instant};
 /// Requests admitted at once: four, the widest Cortex was seen to answer without throttling
 /// since it began to, then fewer after each round it throttled.
 const WIDTHS: [usize; 3] = [4, 2, 1];
+/// How long a throttle that names no delay leaves the account alone.
+pub(crate) const PAUSE: Duration = Duration::from_secs(10);
 /// Reads in a row that meet no throttle before a narrowed gate widens a step.
 const CLEAN_READS: usize = 3;
 
@@ -95,6 +97,14 @@ impl Gate {
             waited = true;
             freed.await;
         }
+    }
+    /// A place among the requests admitted, when one is free now.
+    pub(crate) fn admit_now(self: &Arc<Self>) -> Option<Admitted> {
+        let mut admitted = self.admitted.lock().expect("cortex gate");
+        (*admitted < self.width()).then(|| {
+            *admitted += 1;
+            Admitted(self.clone())
+        })
     }
     /// Before a round of requests: one that follows a throttle admits fewer at once, down to
     /// one.

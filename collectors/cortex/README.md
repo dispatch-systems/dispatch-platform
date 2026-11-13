@@ -48,7 +48,8 @@ and each day it reads is the fixture's, as a job's is. Reports download
 cookie-free from the report host only. Vans are the fleet's one list over HTTP, every status it accepts at once and
 each continuation page after, for an account that sees the DSP's company alone, with the company
 list the start's session check read. A meal collection waits for sixteen routes at once in one
-tab, reads the day's list from the response the application fetched, and reads no itinerary for
+tab, and no more than the account's gate admits, asks a route Cortex throttled again once the
+account has cooled, never from a loaded page, reads the day's list from the response the application fetched, and reads no itinerary for
 a route without meals or a finished route Timecard already holds as listed. A meal start pressed
 twice, minutes apart, is one meal from the first press; a route whose punches break another meal
 rule is kept without meals, named for the rule, and the rest of the day is read. The

@@ -21,7 +21,9 @@
   // The list response the application received, with the address it asked.
   let list = null;
   const read = (status, text, input) => {
-    // The application answers a failed request itself; the collection loads the page.
+    // A throttled request is asked again by the collection, once the account has cooled.
+    if (status === 429) return { throttled: true };
+    // The application answers any other failed request itself; the collection loads the page.
     if (status !== 200) return { unanswered: true };
     try {
       return detail(JSON.parse(text).itineraryDetails, input.candidate, input.scope, false);

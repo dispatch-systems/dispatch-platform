@@ -656,3 +656,70 @@ test(
     assert.deepEqual(asked, {});
   },
 );
+test(
+  'Cortex asks a throttled route again, never loading its page',
+  { skip: native, timeout: 180000 },
+  async (t) => {
+    // Cortex throttles the first request for two of the day's five routes.
+    const date = '2026-01-20';
+    const ids = [1, 2, 3, 4, 5].map((n) => `itinerary-${date}-${n}`);
+    const throttled = [ids[1]!, ids[3]!];
+    const requests: Record<string, number> = {};
+    let pages = 0;
+    const on = Date.parse(`${date}T20:00:00Z`);
+    const route = (id: string) => ({
+      itineraryId: id,
+      transporterId: id.replace('itinerary', 'driver'),
+      routeCode: `CX${id.at(-1)}`,
+      companyId: 'provider-1',
+      executionStatus: 'COMPLETE',
+      stopProgress: { total: 1, completed: 1 },
+      breaks: [
+        {
+          punchId: 'punch-1',
+          breakId: 'meal-1',
+          type: 'MEAL',
+          state: 'OFF',
+          timeStampOn: on,
+          timeStampOff: on + 1800000,
+          sequenceNumber: 1,
+        },
+      ],
+    });
+    const { collect, owner } = await site(t, async (url) => {
+      if (url.pathname.startsWith(itineraryApi)) {
+        const id = url.searchParams.get('itineraryId')!;
+        requests[id] = (requests[id] ?? 0) + 1;
+        if (throttled.includes(id) && requests[id] === 1) return { status: 429 };
+        return {
+          json: {
+            itineraryDetails: {
+              ...route(id),
+              localDate: date.split('-').map(Number),
+              serviceAreaId: 'area-1',
+              unknownStops: [],
+              inactiveTasks: [],
+              stops: [
+                { tasks: [delivered('before', on - 60000), delivered('after', on + 1860000)] },
+              ],
+            },
+          },
+        };
+      }
+      if (url.pathname === summariesApi) return { json: listResponse(ids.map(route)) };
+      if (url.pathname.includes('/documentType/')) pages++;
+      return { html: executionPage({}) };
+    });
+    const job = await collect(date, `throttled-${date}`, 120000);
+    assert.equal(job.status, 'succeeded', JSON.stringify(job));
+    const published = (await owner.get(`/api/dsp/cortex/meal-breaks?date=${date}`)).value;
+    assert.equal(published.length, 5);
+    assert.ok(published.every((route: any) => route.verifiedGapPairs === 1));
+    // Each throttled route was asked once more, the others once, and no route's page loaded.
+    assert.deepEqual(
+      requests,
+      Object.fromEntries(ids.map((id) => [id, throttled.includes(id) ? 2 : 1])),
+    );
+    assert.equal(pages, 0);
+  },
+);

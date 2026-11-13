@@ -1,6 +1,9 @@
 //! One pass over the routes whose record is missing or out of date, shared by the tabs: each
 //! route read in a lane, its record kept, and the live view told as it goes.
 use super::*;
+use crate::connection::gate;
+use std::collections::VecDeque;
+use tokio::time::sleep_until;
 
 /// One pass over the routes whose record is missing or out of date, shared by the tabs.
 pub(super) struct Routes<'a, F> {
@@ -17,6 +20,18 @@ pub(super) struct Routes<'a, F> {
     pub(super) started_at: i64,
     pub(super) progress: &'a F,
     pub(super) method: &'a MealMethod,
+}
+/// How long a pass waits on Cortex's throttling at most, as a native read does: a longer
+/// cooldown ends the collection, whose next attempt finds the account's gate as it left it.
+const THROTTLE_BUDGET: Duration = Duration::from_secs(120);
+/// A route asked of the application and not yet answered: the try it is on, since when, and
+/// its place at the account's gate, given up as it is answered or given up on.
+struct Asked<'a> {
+    candidate: &'a Candidate,
+    ordinal: usize,
+    attempt: usize,
+    at: Instant,
+    _admitted: gate::Admitted,
 }
 /// A route's record at the revision it was read, or `None` when it changed meanwhile.
 pub(super) type Read = (String, Option<(String, Itinerary)>);
@@ -157,19 +172,27 @@ where
             .await
             .is_ok_and(|v| v == true)
     }
-    /// Reads routes through the hook, `in_flight` at once: each is named to the hook and
-    /// asked of the application, or the application moved to it, without waiting for the
-    /// one before, and what the hook has read is taken every 50 ms. A route the
-    /// application didn't answer, or not within 20 s, is read afterwards from its own
-    /// loaded page. `loaded` is whether the tab shows the application already; one that
+    /// Reads routes through the hook, `in_flight` at once and no more than the account's gate
+    /// admits (`connection::gate`): each is named to the hook and asked of the application, or
+    /// the application moved to it, without waiting for the one before, and what the hook has
+    /// read is taken every 50 ms. A route Cortex throttled is asked again the same way once
+    /// the account has cooled, fewer at once, never from a loaded page, which would ask Cortex
+    /// for more; a pass waits on throttling for `THROTTLE_BUDGET` at most. A route the
+    /// application didn't answer otherwise, or not within 20 s, is read afterwards from its
+    /// own loaded page. `loaded` is whether the tab shows the application already; one that
     /// doesn't loads its first route's page.
     pub(super) async fn moves(&self, page: &Page, loaded: bool) -> Result<Vec<Read>> {
         let driver = self.driver;
+        let gate = gate::of(&driver.origin, &self.scope.provider);
         let mut reads = Vec::new();
         let mut moving = loaded;
         let mut asking = self.method.ask;
-        let mut waiting: Vec<(&'a Candidate, usize, Instant)> = Vec::new();
+        let mut waiting: Vec<Asked<'a>> = Vec::new();
+        // Routes Cortex throttled, to ask again, each with its ordinal and the try it is on.
+        let mut again: VecDeque<(&'a Candidate, usize, usize)> = VecDeque::new();
         let mut unanswered: Vec<(&'a Candidate, usize)> = Vec::new();
+        let mut budget = THROTTLE_BUDGET;
+        let mut drained = false;
         loop {
             if !moving {
                 let Some((candidate, ordinal)) = self.begin().await? else {
@@ -188,12 +211,39 @@ where
                 reads.push(self.end(candidate, ordinal, result).await?);
                 continue;
             }
-            let mut drained = false;
-            while waiting.len() < self.method.in_flight {
-                let Some((candidate, ordinal)) = self.begin().await? else {
-                    drained = true;
+            // A throttle cools the account for every reader of it: once what was asked
+            // has drained, nothing is asked before it has passed, and then fewer at once.
+            if waiting.is_empty()
+                && let Some(until) = gate.cooldown()
+            {
+                let delay = until.saturating_duration_since(Instant::now());
+                ensure(delay <= budget, codes::CORTEX_THROTTLED.as_str(), 502)?;
+                budget -= delay;
+                sleep_until(until).await;
+                gate.cooled(until);
+                gate.narrow();
+            }
+            while gate.cooldown().is_none()
+                && waiting.len() < self.method.in_flight.min(gate.width())
+            {
+                let Some(admitted) = gate.admit_now() else {
                     break;
                 };
+                let (candidate, ordinal, attempt) = match again.pop_front() {
+                    Some(next) => next,
+                    None if drained => break,
+                    None => match self.begin().await? {
+                        Some((candidate, ordinal)) => (candidate, ordinal, 1),
+                        None => {
+                            drained = true;
+                            break;
+                        }
+                    },
+                };
+                if attempt > 1 {
+                    self.metrics.page_start(ordinal, attempt);
+                    self.metrics.page_stage(ordinal, "content");
+                }
                 let input =
                     json!({"candidate": candidate, "scope": self.scope, "origin": driver.origin});
                 let named = driver
@@ -208,18 +258,24 @@ where
                 let moved =
                     named.is_ok_and(|v| v == true) && self.ask(page, candidate, &mut asking).await;
                 if moved {
-                    waiting.push((candidate, ordinal, Instant::now()));
+                    waiting.push(Asked {
+                        candidate,
+                        ordinal,
+                        attempt,
+                        at: Instant::now(),
+                        _admitted: admitted,
+                    });
                 } else {
                     unanswered.push((candidate, ordinal));
                 }
             }
-            if waiting.is_empty() {
-                if drained {
-                    break;
-                }
-                continue;
+            if waiting.is_empty() && again.is_empty() && drained {
+                break;
             }
             sleep(Duration::from_millis(50)).await;
+            if waiting.is_empty() {
+                continue;
+            }
             match driver
                 .browser
                 .evaluate(
@@ -230,11 +286,17 @@ where
             {
                 Ok(Value::Object(taken)) => {
                     for (id, value) in taken {
-                        let Some(index) = waiting.iter().position(|(c, ..)| c.id == id) else {
+                        let Some(index) = waiting.iter().position(|a| a.candidate.id == id) else {
                             continue;
                         };
-                        let (candidate, ordinal, _) = waiting.swap_remove(index);
-                        if value["unanswered"] == true {
+                        let asked = waiting.swap_remove(index);
+                        let (candidate, ordinal) = (asked.candidate, asked.ordinal);
+                        if value["throttled"] == true {
+                            gate.throttled(gate::PAUSE);
+                            self.metrics.detail("meal_throttled");
+                            self.metrics.page_cancel(ordinal);
+                            again.push_back((candidate, ordinal, asked.attempt + 1));
+                        } else if value["unanswered"] == true {
                             self.metrics.detail("meal_hook_unanswered");
                             unanswered.push((candidate, ordinal));
                         } else {
@@ -249,9 +311,9 @@ where
             }
             let mut index = 0;
             while index < waiting.len() {
-                if waiting[index].2.elapsed() >= MOVE_DEADLINE {
-                    let (candidate, ordinal, _) = waiting.swap_remove(index);
-                    unanswered.push((candidate, ordinal));
+                if waiting[index].at.elapsed() >= MOVE_DEADLINE {
+                    let asked = waiting.swap_remove(index);
+                    unanswered.push((asked.candidate, asked.ordinal));
                 } else {
                     index += 1;
                 }
