@@ -736,6 +736,15 @@ function devServerNote(values: Values) {
   );
 }
 
+/** Every widget id shipped, which the app's slots test holds the widgets to. */
+const shippedWidgets = 'app/tests/frontend/widgets.txt';
+/** The shipped widgets with `id` among them, as a widget added lists itself. */
+export async function shipping(root: string, plan: Plan, id: string) {
+  await change(plan, root, shippedWidgets, (text) =>
+    text.split('\n').includes(id) ? text : `${text.trimEnd()}\n${id}\n`,
+  );
+}
+
 /** Where a page reads what's exposed, whose `ExposedName` names each one a page shows. */
 const exposedNames = 'core/shell/frontend/runtime/exposes.ts';
 /** `ExposedName` naming `contract` too, as a page shows it in every build, unless it does. */
@@ -771,6 +780,7 @@ export async function planFeature(root: string, argv: string[]) {
   await edit(appManifest, (text) => wiredManifest(text, wired, mcp));
   await edit(featureList, () => wiredList(wired));
   if (values.shown) await showing(root, plan, values.contract as string);
+  if (values.widget) await shipping(root, plan, `${name}.overview`);
 
   const declared = [values.switch && 'switch', values.permission && 'permissions'].filter(Boolean);
   const generated = [

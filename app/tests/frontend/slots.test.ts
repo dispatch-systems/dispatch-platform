@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import '../support/manifests.js';
 import { featureCatalog } from '../../../core/shell/frontend/runtime/features.js';
 import { features } from '../../frontend/features.js';
@@ -11,6 +12,7 @@ import {
   loadPlatformSlots,
   switchIcon,
 } from '../../../core/shell/frontend/runtime/slots.js';
+import { manifests } from '../../../core/shell/frontend/runtime/slots/installed.js';
 
 const once = (ids: readonly string[], what: string) =>
   assert.deepEqual(
@@ -79,4 +81,31 @@ test("one page at most is where a DSP lands, one draws Settings, and one owner s
   assert(pages.filter((page) => page.scope === 'dsp' && page.landing).length <= 1);
   assert(pages.filter((page) => page.scope === 'dsp' && page.hostsSettings).length <= 1);
   assert(features.filter((feature) => feature.dspSetup).length <= 1);
+});
+
+test("each widget has ids of its own under its feature's name, and every id shipped is one", () => {
+  const declared = manifests().flatMap((owner) =>
+    (owner.widgets ?? []).map((widget) => ({ owner: owner.name, widget })),
+  );
+  const ids = declared.flatMap(({ widget }) => [widget.id, ...(widget.formerly ?? [])]);
+  once(ids, 'widget ids');
+  for (const { owner, widget } of declared) {
+    for (const id of [widget.id, ...(widget.formerly ?? [])])
+      assert(id.startsWith(`${owner}.`), `${id} is not under ${owner}'s name`);
+    once(widget.sizes, `${widget.id}'s sizes`);
+  }
+  const shipped = fs
+    .readFileSync(new URL('widgets.txt', import.meta.url), 'utf8')
+    .split('\n')
+    .filter((line) => line && !line.startsWith('#'));
+  assert.deepEqual(
+    shipped.filter((id) => !ids.includes(id)),
+    [],
+    'a widget id that shipped is no widget\'s id or former id',
+  );
+  assert.deepEqual(
+    declared.map(({ widget }) => widget.id).filter((id) => !shipped.includes(id)),
+    [],
+    'a widget is missing from app/tests/frontend/widgets.txt',
+  );
 });
