@@ -570,3 +570,40 @@ async fn authority_is_rechecked_after_cooldown_before_another_provider_request()
     assert_eq!(stand.asked("itinerary-1"), 1);
     assert_eq!(stand.asked("itinerary-2"), 1);
 }
+
+#[tokio::test]
+async fn a_request_that_waited_at_the_gate_asks_its_authority_again_before_it_is_sent() {
+    let (stand, session) = stand_in(Plays::FlakyItinerary).await;
+    let scope = stand.day.scope.clone();
+    // Another reader of the account holds every place its gate has.
+    let gate = crate::connection::gate::of(&session.origin, &scope.provider);
+    let mut held = Vec::new();
+    for _ in 0..gate.width() {
+        held.push(gate.admit().await);
+    }
+    // The read's authority goes while its first request waits for a place.
+    let checks = Arc::new(AtomicUsize::new(0));
+    let check = {
+        let checks = checks.clone();
+        move || -> dispatch_core::collection::browser::Pending<'static, ()> {
+            let current = checks.fetch_add(1, Ordering::SeqCst) == 0;
+            Box::pin(async move { dispatch_core::ensure(current, "connection_changed", 409) })
+        }
+    };
+    let mut native = Native::new(&session).unwrap();
+    let read = native.read(&scope, Mode::Final, &check);
+    tokio::pin!(read);
+    tokio::select! {
+        biased;
+        _ = &mut read => panic!("the read was admitted while every place was held"),
+        _ = std::future::ready(()) => {}
+    }
+    drop(held);
+    assert!(
+        matches!(read.await, Err(Failure::Stopped(error)) if error.is(dispatch_core::Code::ConnectionChanged))
+    );
+    // Nothing was asked of Cortex once it had gone, not even the list's page for its key.
+    assert_eq!(checks.load(Ordering::SeqCst), 2);
+    assert_eq!(stand.pages.load(Ordering::SeqCst), 0);
+    assert_eq!(stand.asked("itinerary-1"), 0);
+}

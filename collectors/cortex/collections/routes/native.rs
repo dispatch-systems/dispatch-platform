@@ -261,6 +261,22 @@ impl Throttle {
         );
         self.failure()
     }
+    /// A request's place among the account's, which a throttle met while it waited for one
+    /// ends. One that waited behind another reader asks `check` again before it is sent: its
+    /// authority to read with this session may have gone meanwhile.
+    async fn admitted(&self, check: &Check) -> std::result::Result<gate::Admitted, Failure> {
+        if self.gate.cooling() {
+            return Err(self.failure());
+        }
+        let (admitted, waited) = self.gate.admit().await;
+        if waited {
+            check().await.map_err(Failure::Stopped)?;
+        }
+        if self.gate.cooling() {
+            return Err(self.failure());
+        }
+        Ok(admitted)
+    }
     /// Whether a throttle was observed, including one whose delay passed while in-flight
     /// requests drained. A healthy read has no timer or added wait.
     async fn wait(&self, budget: &Mutex<Duration>) -> std::result::Result<bool, Failure> {
@@ -344,7 +360,7 @@ impl Native {
         loop {
             let key = match self.key.take() {
                 Some(key) => key,
-                None => self.page_key(scope, throttle).await?,
+                None => self.page_key(scope, throttle, check).await?,
             };
             let reading = Reading {
                 http: &self.http,
@@ -379,9 +395,11 @@ impl Native {
         &self,
         scope: &Scope,
         throttle: &Throttle,
+        check: &Check,
     ) -> std::result::Result<Key, Failure> {
         let url = format!("{}{}", self.origin, scope.list_path());
         let referer = format!("{}/", self.origin);
+        let _admitted = throttle.admitted(check).await?;
         let html = match self
             .http
             .wire(&url, "text/html", &[], &referer, PAGE_LIMIT)
@@ -479,14 +497,7 @@ impl Reading<'_> {
         params: &[(&str, &str)],
         limit: usize,
     ) -> std::result::Result<Wire, Failure> {
-        if self.throttle.gate.cooling() {
-            return Err(self.throttle.failure());
-        }
-        // Its place among the account's requests, which a throttle met while it waited ends.
-        let _admitted = self.throttle.gate.admit().await;
-        if self.throttle.gate.cooling() {
-            return Err(self.throttle.failure());
-        }
+        let _admitted = self.throttle.admitted(self.check).await?;
         let (url, headers) = self.key.sign(self.origin, endpoint, params);
         self.http
             .wire(&url, "application/json", &headers, &self.referer, limit)
