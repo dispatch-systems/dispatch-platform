@@ -237,7 +237,12 @@ where
                     break;
                 };
                 let (candidate, ordinal, attempt) = match again.pop_front() {
-                    Some(next) => next,
+                    Some(next) => {
+                        // A cooldown passed since the job's authority was last asked,
+                        // whether the route was throttled or held back before it was asked.
+                        self.told().await?;
+                        next
+                    }
                     None if drained => break,
                     None => match self.begin().await? {
                         Some((candidate, ordinal)) => (candidate, ordinal, 1),
@@ -248,8 +253,6 @@ where
                     },
                 };
                 if attempt > 1 {
-                    // A cooldown passed since the job's authority was last asked.
-                    self.told().await?;
                     self.metrics.page_start(ordinal, attempt);
                     self.metrics.page_stage(ordinal, "content");
                 }
