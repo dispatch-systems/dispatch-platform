@@ -6,7 +6,7 @@ use dispatch_core::{
     db::Store,
     manifest::{Feature, feature, optional, people::Source},
 };
-use dispatch_routes_contract::{DayPhones, Driven, DriverPhone, LiveRouteData, RouteDay};
+use dispatch_routes_contract::{DayPhones, Driven, DriverPhone, LiveRead, LiveRouteData, RouteDay};
 
 pub(super) static LIVE: Feature = Feature {
     switch: optional("live", "Live", &[]),
@@ -83,5 +83,12 @@ impl LiveRouteData for Live {
             true => DayPhones::Read(phones(dsp)),
             false => DayPhones::Uncollected,
         })
+    }
+    /// It keeps no read's place or responses: nothing here reads them.
+    fn live_read(&self, _: &Store, _: &str) -> Result<Option<LiveRead>> {
+        Ok(None)
+    }
+    fn live_response(&self, _: &Store, _: &str, _: Option<&str>) -> Result<Option<String>> {
+        Ok(None)
     }
 }
