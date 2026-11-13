@@ -537,7 +537,12 @@ impl Native {
         loop {
             let key = match self.key.take() {
                 Some(key) => key,
-                None => self.page_key(scope, throttle, check).await?,
+                None => {
+                    let key = self.page_key(scope, throttle, check).await?;
+                    // Its authority may have gone while the page was fetched.
+                    check().await.map_err(Failure::Stopped)?;
+                    key
+                }
             };
             let reading = Reading {
                 http: &self.http,
@@ -646,6 +651,9 @@ impl Reading<'_> {
             Some(wanted) => wanted(&summaries)?,
             None => Vec::new(),
         };
+        // Its authority may have gone while the list was fetched: no itinerary is asked for
+        // without it.
+        (self.check)().await.map_err(Failure::Stopped)?;
         self.itineraries(&listed, &HashMap::new(), &bytes).await
     }
     async fn day(&self, mode: Mode, started_at: i64) -> std::result::Result<Capture, Failure> {

@@ -693,3 +693,29 @@ async fn a_snapshot_asks_again_only_for_routes_something_may_be_happening_on() {
     reader.read(&scope, Mode::Final, &authorized).await.unwrap();
     assert_eq!(asked(), (4, 14));
 }
+
+#[tokio::test]
+async fn a_read_of_some_itineraries_asks_its_authority_again_before_each_step() {
+    // The read's authority goes while the list's page is fetched for its key, or while the
+    // list is: nothing more is asked of Cortex after either.
+    for (lasts, pages, reads) in [(1, 1, 0), (2, 1, 1)] {
+        let (stand, session) = stand_in(Plays::FlakyItinerary).await;
+        let checks = Arc::new(AtomicUsize::new(0));
+        let check = {
+            let checks = checks.clone();
+            move || -> dispatch_core::collection::browser::Pending<'static, ()> {
+                let current = checks.fetch_add(1, Ordering::SeqCst) < lasts;
+                Box::pin(async move { dispatch_core::ensure(current, "connection_changed", 409) })
+            }
+        };
+        let every = |summaries: &Value| Ok(crate::routes::listed(summaries, &stand.day.scope));
+        let read = Native::new(&session)
+            .unwrap()
+            .read_some(&stand.day.scope, &check, &every)
+            .await;
+        assert!(matches!(read, Err(Failure::Stopped(_))), "{lasts}");
+        assert_eq!(stand.pages.load(Ordering::SeqCst), pages, "{lasts}");
+        assert_eq!(stand.reads.load(Ordering::SeqCst), reads, "{lasts}");
+        assert_eq!(stand.asked("itinerary-1"), 0, "{lasts}");
+    }
+}

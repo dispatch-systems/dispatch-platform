@@ -69,7 +69,8 @@ async function site(t: TestContext, answer: Answer, keyed = false) {
       res.end();
       return;
     }
-    if (req.headers.accept === 'text/html') {
+    // What a read with no page asks a page with: a browser's navigation accepts more.
+    if (req.headers.accept === 'text/html,application/xhtml+xml') {
       const key = { hmacSession: { sessionKey: 'fixture-key', sessionId: 'fixture-session' } };
       res.setHeader('content-type', 'text/html');
       res.end(
