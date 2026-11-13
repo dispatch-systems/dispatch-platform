@@ -103,7 +103,7 @@ test("a core part's list names its integration tests, API tests and browser spec
   assert.deepEqual(targets('core/accounts', 'core/Cargo.toml'), []);
   assert.deepEqual(commands.slice(0, 2), [
     'cargo test --locked -p dispatch-core --lib -- accounts::',
-    'cargo test --locked -p dispatch-core --test integration -- accounts::',
+    'cargo test --locked -p dispatch-core --test integration -- accounts:: preferences::',
   ]);
   const api = owned('core/accounts/tests/api', /\.test\.ts$/);
   assert(api.includes('core/accounts/tests/api/api-sign-in.test.ts'));

@@ -11,4 +11,6 @@ mod browser_update;
 mod egress;
 #[path = "../../../../server/tests/backend/integration/mail.rs"]
 mod mail;
+#[path = "../../../../accounts/tests/backend/integration/preferences.rs"]
+mod preferences;
 mod storage;

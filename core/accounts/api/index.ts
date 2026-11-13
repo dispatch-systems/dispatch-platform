@@ -21,6 +21,8 @@ export type DspView = Narrow<
 >;
 export type { DspProfile } from './generated/DspProfile';
 export type { SidebarArrangement } from './generated/SidebarArrangement';
+export type { KeptPreference } from './generated/KeptPreference';
+export type { PreferenceSaved } from './generated/PreferenceSaved';
 export type { AccountSession } from './generated/AccountSession';
 export type { SecurityStatus } from './generated/SecurityStatus';
 export type { PasskeySummary } from './generated/PasskeySummary';

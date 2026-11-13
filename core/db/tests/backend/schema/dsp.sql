@@ -36,6 +36,7 @@ CREATE TABLE documents_files ( file_id TEXT PRIMARY KEY, added_by TEXT NOT NULL,
 CREATE TABLE documents_people ( user_id TEXT PRIMARY KEY, linked_email TEXT, shared_email TEXT, share_id TEXT, state TEXT NOT NULL CHECK (state IN ('shared', 'needs_account', 'refused')), refusal TEXT, emailed_at TEXT, updated_at TEXT NOT NULL );
 CREATE TABLE documents_shared_files ( file_id TEXT NOT NULL, email TEXT NOT NULL, share_id TEXT NOT NULL, shared_at TEXT NOT NULL, PRIMARY KEY (file_id, email) );
 CREATE TABLE invitations ( hash TEXT PRIMARY KEY, dsp_id TEXT NOT NULL, email TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('owner','manager','member')), expires_at INTEGER NOT NULL, created_by TEXT NOT NULL, used_at INTEGER, role_id TEXT );
+CREATE TABLE member_preferences ( user_id TEXT NOT NULL, id TEXT NOT NULL, version INTEGER NOT NULL, revision INTEGER NOT NULL, value TEXT, saved_at TEXT NOT NULL, PRIMARY KEY (user_id, id) ) WITHOUT ROWID;
 CREATE TABLE memberships ( id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), dsp_id TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('owner','manager','member')), role_id TEXT REFERENCES roles(id), UNIQUE(user_id,dsp_id) );
 CREATE TABLE owner_migrations (owner TEXT NOT NULL, id INTEGER NOT NULL, name TEXT NOT NULL, applied_at INTEGER NOT NULL, PRIMARY KEY(owner, id));
 CREATE TABLE people ( code TEXT PRIMARY KEY, created_at TEXT NOT NULL, merged_into TEXT REFERENCES people(code), merged_at TEXT, merged_by TEXT, split_from TEXT REFERENCES people(code), created_by TEXT );

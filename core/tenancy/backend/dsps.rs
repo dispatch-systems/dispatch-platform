@@ -5,7 +5,7 @@ use crate::{
         Auth, Context,
         api::{
             requests::DspSetupRequest,
-            types::{Dsp, DspProfile, DspSummary, Member, SidebarArrangement},
+            types::{Dsp, DspProfile, DspSummary, Member},
         },
     },
     collection::api::types::ConnectionStatus,
@@ -390,17 +390,6 @@ impl Store {
             self.dsp(id)?.setting("dsp.profile", json!({}))?,
         )?)
     }
-    /// How `user` arranged the sidebar in the DSP, none until they have: theirs alone, kept in
-    /// the DSP's own database.
-    pub fn sidebar(&self, id: &str, user: &str) -> Result<Option<SidebarArrangement>> {
-        Ok(serde_json::from_value(
-            self.dsp(id)?.setting(&sidebar_key(user), Value::Null)?,
-        )?)
-    }
-    pub fn arrange_sidebar(&self, id: &str, user: &str, to: &SidebarArrangement) -> Result<()> {
-        self.dsp(id)?
-            .set(&sidebar_key(user), &serde_json::to_value(to)?)
-    }
     /// Hides the AI Support button from a DSP's members, or shows it to them again. Only the
     /// button: their tickets stay as they are, and the platform owner always has it. Audited;
     /// open views expire, so members lose or regain it at once.
@@ -716,16 +705,17 @@ impl Store {
         people.exec("DELETE FROM sessions WHERE user_id=?", [user])?;
         people.exec("DELETE FROM resets WHERE user_id=?", [user])?;
         settings::forget_member(&people, user)?;
-        people.exec("DELETE FROM settings WHERE key=?", [sidebar_key(user)])?;
+        people.exec("DELETE FROM member_preferences WHERE user_id=?", [user])?;
+        // Where a release before kept how they arranged the sidebar.
+        people.exec(
+            "DELETE FROM settings WHERE key=?",
+            [format!("sidebar:{user}")],
+        )?;
         // Every invitation must name an existing sender, so the ones they sent go too.
         people.exec("DELETE FROM invitations WHERE created_by=?", [user])?;
         people.exec("DELETE FROM users WHERE id=?", [user])?;
         Ok(())
     }
-}
-/// Where a member's arrangement of the sidebar is kept, among the DSP's settings.
-fn sidebar_key(user: &str) -> String {
-    format!("sidebar:{user}")
 }
 /// Fails unless the platform lists the DSP, for an operator command run beside the
 /// server: it reads the platform's database read-only and changes nothing.

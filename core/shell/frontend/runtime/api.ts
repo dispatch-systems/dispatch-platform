@@ -53,6 +53,7 @@ const labels: Record<string, string> = {
   settings_changed_reload_before_saving:
     'These settings changed in another session and have been reloaded. Make your change again.',
   schedule_not_found: 'This schedule has no rules. Refresh and try again.',
+  preference_unreadable: 'A newer version of Dispatch saved this. Reset it to change it here.',
   schedule_limit: 'A DSP can have up to 50 schedule rules.',
   invalid_schedule_time: 'Choose valid times, each once.',
   invalid_schedule_interval: 'Choose an interval from 30 minutes to 12 hours, in half-hour steps.',

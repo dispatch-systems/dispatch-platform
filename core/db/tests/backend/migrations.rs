@@ -152,7 +152,50 @@ fn concurrent_legacy_dsp_adoption_accepts_the_identity_committed_while_waiting()
     });
 
     verify_dsp_identity(&first, &id).unwrap();
-    assert_eq!(ids(&first), (1..=14).collect::<Vec<i64>>());
+    assert_eq!(ids(&first), (1..=15).collect::<Vec<i64>>());
+}
+
+#[test]
+fn each_members_sidebar_arrangement_is_copied_to_their_preferences() {
+    crate::testing::install(&[], &[]);
+    let root = private();
+    let file = root.path().join("dsp.sqlite");
+    // A DSP's database from before member preferences, which kept arrangements among settings.
+    let before: String = legacy(Kind::DSP)
+        .lines()
+        .filter(|line| !line.starts_with("CREATE TABLE member_preferences"))
+        .map(|line| format!("{line}\n"))
+        .collect();
+    older(&file, Kind::DSP, &before);
+    let arranged = r#"{"order":["team"],"hidden":["vans"]}"#;
+    rusqlite::Connection::open(&file)
+        .unwrap()
+        .execute(
+            "INSERT INTO settings(key,value) VALUES ('sidebar:ana',?),('sidebar:ben','{'),\
+             ('dsp.profile','{}')",
+            [arranged],
+        )
+        .unwrap();
+    let db = Db::open(&file, Kind::DSP).unwrap();
+    migrate_dsp(&db, &format!("dsp_{}", "1".repeat(32)), None).unwrap();
+    assert_eq!(
+        db.all(
+            "SELECT user_id,id,version,revision,value FROM member_preferences",
+            []
+        )
+        .unwrap(),
+        vec![
+            json!({"user_id": "ana", "id": "shell.sidebar", "version": 1, "revision": 1,
+                    "value": arranged})
+        ]
+    );
+    // Where Dev kept them stays as it was.
+    assert_eq!(
+        db.all("SELECT key FROM settings WHERE key LIKE 'sidebar:%'", [])
+            .unwrap()
+            .len(),
+        2
+    );
 }
 
 #[test]
@@ -367,7 +410,7 @@ fn jobs_and_schedules_from_before_the_dvic_collection_keep_their_rows_through_th
     let db = Db::open(&file, Kind::DSP).unwrap();
     migrate_dsp(&db, &id, None).unwrap();
     verify_dsp_identity(&db, &id).unwrap();
-    assert_eq!(ids(&db), (1..=14).collect::<Vec<i64>>());
+    assert_eq!(ids(&db), (1..=15).collect::<Vec<i64>>());
     assert_eq!(dump(&db), recorded(Kind::DSP));
     assert_eq!(
         db.all("SELECT id,collection,enabled FROM collection_schedules", [])
@@ -455,7 +498,7 @@ fn schedules_from_before_collections_were_open_keep_their_rows_through_the_rebui
     let db = Db::open(&file, Kind::DSP).unwrap();
     migrate_dsp(&db, &id, None).unwrap();
     verify_dsp_identity(&db, &id).unwrap();
-    assert_eq!(ids(&db), (1..=14).collect::<Vec<i64>>());
+    assert_eq!(ids(&db), (1..=15).collect::<Vec<i64>>());
     assert_eq!(dump(&db), recorded(Kind::DSP));
     assert_eq!(
         db.all("SELECT id,collection,enabled FROM collection_schedules", [])

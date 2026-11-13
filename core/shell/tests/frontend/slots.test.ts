@@ -38,7 +38,8 @@ import {
   pageSidebar,
   pagesUnder,
   arranged,
-  rearranged,
+  moved,
+  hiding,
   sidebarItems,
   switchIcon,
   type ConnectionCard,
@@ -358,12 +359,23 @@ test("a member's arrangement orders the sidebar's items between the ones kept fi
     undefined,
   ]);
   // Arranging without Timecard, switched off, keeps it after what it followed, where it comes back.
-  const without = rearranged(theirs, ['conduct', 'team'], ['team']);
+  const without = hiding(
+    moved(hiding(theirs, 'conduct', false), ['team', 'conduct'], 'conduct'),
+    'team',
+    true,
+  );
   assert.deepEqual(without, {
     order: ['conduct', 'team', 'settings', 'timecard', 'home'],
     hidden: ['team'],
   });
   assert.deepEqual(ids(app, kept, without), ['home', 'conduct team timecard', 'settings']);
+  // A move made on another screen meanwhile keeps its place beside one made here.
+  const four = ['a', 'b', 'c', 'd'];
+  const elsewhere = moved({ order: four, hidden: [] }, four, 'd', 'b');
+  assert.deepEqual(moved(elsewhere, elsewhere.order, 'b').order, ['b', 'a', 'd', 'c']);
+  // One hidden keeps its place among those listed as they move around it.
+  const between = { order: ['a', 'h', 'b'], hidden: ['h'] };
+  assert.deepEqual(moved(between, between.order, 'b').order, ['b', 'h', 'a']);
 });
 
 test('a page another owner puts under a sidebar of pages leaves its item where its own page is, and the sidebar lists it while the DSP has its feature', () => {

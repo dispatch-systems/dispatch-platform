@@ -38,11 +38,9 @@ memberships are its own, in its database beside its people's accounts; the platf
 any DSP without one.
 
 A member arranges a DSP's sidebar for themselves: the order of its pages and which are hidden,
-kept by page id under `sidebar:<user>` in the DSP's own settings, sent with their view of it
-(`sidebar`) and saved by `POST /api/dsp/sidebar`. It is theirs alone and that DSP's alone, is
-not audited, expires no view, and goes with their account. The dashboard knows the pages, so
-any id is kept: one it no longer lists keeps its place, and the page a DSP opens on and
-Settings stay first and last whatever is kept.
+by page id, kept as their preference `shell.sidebar` (Accounts' member preferences). The
+dashboard knows the pages, so any id is kept: one it no longer lists keeps its place, and the
+page a DSP opens on and Settings stay first and last whatever is kept.
 
 A DSP's short code names its address: 2 to 16 letters and digits, kept in lowercase in `dsps`
 and as its abbreviation in its profile, which collectors give Amazon as the DSP's code. No two

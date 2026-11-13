@@ -86,6 +86,7 @@ pub const TABLES: Tables = &[
             "authenticator_apps",
             "account_passkeys",
             "invitations",
+            "member_preferences",
         ],
     ),
     // Every database records the migrations it ran, the features' own by feature, and each
@@ -338,6 +339,13 @@ const DSP: &[Migration] = &[
         name: "beta_testers",
         apply: Sql(include_str!(
             "../../tenancy/migrations/dsp/0014_beta_testers.sql"
+        )),
+    },
+    Migration {
+        id: 15,
+        name: "member_preferences",
+        apply: Sql(include_str!(
+            "../../accounts/migrations/dsp/0015_member_preferences.sql"
         )),
     },
 ];
