@@ -22,8 +22,10 @@ const delivered = (id: string, time: number) => ({
 });
 type Answer = (url: URL) => Promise<{ json: unknown } | { html: string } | { status: number }>;
 // A Cortex site answered by `answer`, and a DSP whose Cortex connection signs in to it.
-// Its landing page keeps a session the next job's browser starts from.
-async function site(t: TestContext, answer: Answer) {
+// Its landing page keeps a session the next job's browser starts from. A collection asks the
+// list's page for the key to read with no page before it opens one: only a `keyed` site has
+// one, so the others are read with a page, and that ask is none of `answer`'s.
+async function site(t: TestContext, answer: Answer, keyed = false) {
   const seen = { landings: 0, companies: 0 };
   // Asks of the application's API action it ignored, by route.
   const ignored: Record<string, number> = {};
@@ -65,6 +67,14 @@ async function site(t: TestContext, answer: Answer) {
     ) {
       res.writeHead(404);
       res.end();
+      return;
+    }
+    if (req.headers.accept === 'text/html') {
+      const key = { hmacSession: { sessionKey: 'fixture-key', sessionId: 'fixture-session' } };
+      res.setHeader('content-type', 'text/html');
+      res.end(
+        `<title>DSP Console</title>${keyed ? `<script type="a-state">${JSON.stringify(key)}</script>` : ''}`,
+      );
       return;
     }
     const answered = await answer(url);
@@ -718,6 +728,86 @@ test(
       requests,
       Object.fromEntries(ids.map((id) => [id, throttled.includes(id) ? 2 : 1])),
     );
+    assert.equal(pages, 0);
+  },
+);
+test(
+  "Cortex reads a day's meals with no page when the list's page gives it a key",
+  { skip: native, timeout: 180000 },
+  async (t) => {
+    // A finished day of three routes: one whose meal its deliveries bound, one whose
+    // deliveries can't bound its meal, and one without a meal.
+    const date = '2026-01-21';
+    const on = Date.parse(`${date}T20:00:00Z`);
+    const id = (n: number) => `itinerary-${date}-${n}`;
+    const requests: Record<string, number> = {};
+    let pages = 0;
+    const route = (n: number) => ({
+      itineraryId: id(n),
+      transporterId: `driver-${date}-${n}`,
+      routeCode: `CX${n}`,
+      companyId: 'provider-1',
+      executionStatus: 'COMPLETE',
+      stopProgress: { total: 1, completed: 1 },
+      breaks:
+        n === 3
+          ? []
+          : [
+              {
+                punchId: 'punch-1',
+                breakId: 'meal-1',
+                type: 'MEAL',
+                state: 'OFF',
+                timeStampOn: on,
+                timeStampOff: on + 1800000,
+                sequenceNumber: 1,
+              },
+            ],
+    });
+    const { collect, owner } = await site(
+      t,
+      async (url) => {
+        if (url.pathname.startsWith(itineraryApi)) {
+          const asked = url.searchParams.get('itineraryId')!;
+          requests[asked] = (requests[asked] ?? 0) + 1;
+          const n = Number(asked.at(-1));
+          return {
+            json: {
+              itineraryDetails: {
+                ...route(n),
+                localDate: date.split('-').map(Number),
+                serviceAreaId: 'area-1',
+                unknownStops: [],
+                inactiveTasks: [],
+                // The second route's deliveries disagree with each other, so its meal
+                // keeps no gaps.
+                stops: [
+                  {
+                    tasks: [
+                      delivered('before', on - 60000),
+                      delivered(n === 2 ? 'before' : 'after', on + 1860000),
+                    ],
+                  },
+                ],
+              },
+            },
+          };
+        }
+        if (url.pathname === summariesApi) return { json: listResponse([1, 2, 3].map(route)) };
+        pages++;
+        return { html: executionPage({}) };
+      },
+      true,
+    );
+    const job = await collect(date, `native-${date}`, 120000);
+    assert.equal(job.status, 'succeeded', JSON.stringify(job));
+    const published = (await owner.get(`/api/dsp/cortex/meal-breaks?date=${date}`)).value;
+    assert.equal(published[0].itineraryCount, 3);
+    assert.equal(published[0].mealCount, 2);
+    assert.equal(published[0].verifiedGapPairs, 1);
+    // Only the routes with a meal had their itinerary asked for, once each, and the
+    // browser loaded neither the list nor a route.
+    assert.deepEqual(requests, { [id(1)]: 1, [id(2)]: 1 });
     assert.equal(pages, 0);
   },
 );

@@ -38,8 +38,8 @@ use serde_json::{Value, json};
 use std::{
     collections::HashMap,
     future::Future,
-    pin::Pin,
     hash::{DefaultHasher, Hash, Hasher},
+    pin::Pin,
     sync::{
         Arc, Mutex,
         atomic::{AtomicU64, Ordering},

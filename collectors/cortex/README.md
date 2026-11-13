@@ -9,7 +9,13 @@ sign-in or a verification, or none at all, signs in on the page as the owner's o
 always do. Discovery finds the station's service area and the DSP's company there, kept beside
 the profile for a week; performance and DVIC collections read for it, at the address the API
 last answered, with no page, and find it again when the credentials change or what they read
-names another station, company or DSP. Meals are asked of the application's own API action, as
+names another station, company or DSP. A day's meals are read first with no page, as its routes
+are: the day's list and the itineraries of the routes with a meal Timecard does not already hold
+finished, signed here and downloaded at the account's gate, each read by the meal rules
+(`meals/collect/rules.rs`, which answer as `scripts/meal_rules.js` does) and let go, only its meal
+evidence kept; a job's metrics then name `meals_native` as what read the day. A day that can't be
+read so, as with no key on the list's page, names why (`fallback`) and is read with a page: there
+meals are asked of the application's own API action, as
 its pages ask, or read as moves inside an application whose action declines, each response
 withheld from the page so nothing renders. A day's routes are read first with no page, with the
 browser's session: every read signed here with the key Cortex gives the list's own page, and
