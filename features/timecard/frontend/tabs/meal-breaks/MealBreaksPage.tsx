@@ -9,7 +9,13 @@ import {
   useMealComparison,
   useMealPeriodGaps,
 } from '../../../api/client.js';
-import { navigate } from '../../../../../core/shell/frontend/runtime/navigation.js';
+import {
+  hashQuery,
+  navigate,
+  replaceHashQuery,
+  useHashQuery,
+} from '../../../../../core/shell/frontend/runtime/navigation.js';
+import { lateLink } from '../../tabs.js';
 import { useTableState } from '../../../../../core/shell/frontend/runtime/useTableState.js';
 import {
   DataState,
@@ -53,8 +59,20 @@ export function MealBreaksPage({
   settings: PaycomSettings;
   onOpenEmployee?: (code: string, date: string) => void;
 }) {
-  const [query, setQuery] = useUpdateState('meal-query', ''),
-    [filter, setFilter] = useUpdateState('meal-filter', 'all');
+  const [keptQuery, setQuery] = useUpdateState('meal-query', ''),
+    [keptFilter, setFilter] = useUpdateState('meal-filter', 'all');
+  // A link to a day's late DAs shows them, unsearched, at once, then as this page's choice.
+  const [linked, setLinked] = useHashQuery(lateLink);
+  const query = linked ? '' : keptQuery,
+    filter = linked ? 'late' : keptFilter;
+  useEffect(() => {
+    if (!linked) return;
+    setQuery('');
+    setFilter('late');
+    const { late: _, ...rest } = Object.fromEntries(hashQuery());
+    replaceHashQuery(rest);
+    setLinked(undefined);
+  }, [linked, setFilter, setLinked, setQuery]);
   const state = useTableState('meal', { id: 'employee', desc: false });
   const settledQuery = useSettled(query, performancePolicy.employeeSearchDelayMs);
   const deferredSearch = useDeferredValue(settledQuery.toLowerCase());

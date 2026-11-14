@@ -3,7 +3,7 @@ import { ClipboardCheck } from 'lucide-react';
 import type { DspView } from '../../../core/accounts/api/index.js';
 import { begins } from '../../../core/shell/frontend/runtime/data-policy.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
-import type { FrontendFeature } from '../../../core/shell/frontend/runtime/slots.js';
+import { sizesUpTo, type FrontendFeature } from '../../../core/shell/frontend/runtime/slots.js';
 
 declare module '../../../core/shell/frontend/runtime/slots.js' {
   interface DspPages {
@@ -45,15 +45,7 @@ export const feature: FrontendFeature = {
       id: 'dvic.latest',
       label: 'Latest DVIC',
       icon: ClipboardCheck,
-      // Added at two by two; every size from one cell to four by four.
-      sizes: [
-        { columns: 2, rows: 2 },
-        ...[1, 2, 3, 4].flatMap((columns) =>
-          [1, 2, 3, 4]
-            .filter((rows) => columns !== 2 || rows !== 2)
-            .map((rows) => ({ columns, rows })),
-        ),
-      ] as const,
+      sizes: sizesUpTo({ columns: 4, rows: 4 }, { columns: 2, rows: 2 }),
       permission: ({ view }) => can(view, 'dvic.view'),
       part: 'dvic.day',
       load: () => import('./widgets/LatestDvicWidget.js').then((module) => module.LatestDvicWidget),

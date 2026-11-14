@@ -109,4 +109,4 @@ export {
 export type { Watcher, Watching } from './slots/watchers.js';
 export { watchers } from './slots/watchers.js';
 export type { Widget, WidgetCells, WidgetProps } from './slots/widgets.js';
-export { widgets } from './slots/widgets.js';
+export { sizesUpTo, widgets } from './slots/widgets.js';
