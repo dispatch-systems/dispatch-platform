@@ -304,6 +304,9 @@ pub(in crate::backend) fn stored_tasks(
             continue;
         }
         let mut row = serde_json::to_value(task)?;
+        // As its row reads them: a row keeps its events as JSON text, and a time of nine
+        // places read back from that text can be the number beside the one first read.
+        row["events"] = serde_json::from_str(&task.events.to_string())?;
         row["task_id"] = json!(task.id);
         row["active"] = json!(active);
         row["day"] = publication["day"].clone();
