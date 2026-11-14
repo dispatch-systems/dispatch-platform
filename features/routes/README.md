@@ -122,7 +122,7 @@ it is live route data, in a database of its own, `routelive`.
 - **Old days:** hourly upkeep lets the delivered and picked-up task rows of a day older than 30
   days go (`old_days`), once each itinerary's rows are proven to be what its stored response
   reads as, a fact at a time; a day with one row that differs, or a response it can't read,
-  keeps every row (`routes.old_day_kept`, logged with why). The day is then marked
+  keeps every row (`routes.old_day_kept`, logged with why and the name of the fact that differed). The day is then marked
   (`route_publications.tasks_pruned`) and its packages named in `package_days` in one write, and
   its rows deleted in small steps; a reprocess of the day rebuilds them all. For such a day an
   itinerary's tasks are read from its stored response, as its rows had them (`stored_tasks`), and a package is found on such
