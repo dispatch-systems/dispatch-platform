@@ -417,7 +417,7 @@ test('Latest DVIC counts every short inspection of a day past its first page of 
   await page.getByRole('dialog').getByRole('button', { name: 'Latest DVIC', exact: true }).click();
   await page.getByRole('button', { name: 'Done', exact: true }).click();
   const widget = page.getByRole('article', { name: 'Latest DVIC' });
-  await expect(widget.getByRole('contentinfo')).toHaveText('8 short');
+  await expect(widget.getByText('8 short', { exact: true })).toBeVisible();
   await expect(widget.getByRole('listitem').filter({ hasText: 'Taylor Brooks' })).toContainText(
     '×15',
   );
