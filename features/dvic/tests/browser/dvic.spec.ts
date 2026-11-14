@@ -403,3 +403,22 @@ test('Latest DVIC, added to Home, keeps its place and opens DVIC on the day it s
   await expect(page.getByRole('heading', { name: 'Sat, Sep 26, 2026' })).toBeVisible();
   await expect(page.locator('.dvic-footer')).toContainText('3 records');
 });
+
+test('Latest DVIC counts every short inspection of a day past its first page of them', async ({
+  page,
+  dispatch,
+}) => {
+  // Sep 26 holds every seventh of 800: 115 short inspections by all eight drivers, Taylor
+  // Brooks's 15 of them spread through its pages.
+  const { dsp } = await seedDvic(dispatch, 800);
+  await login(page);
+  await openDsp(page, dsp.name);
+  await page.getByRole('button', { name: 'Add widget', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Latest DVIC', exact: true }).click();
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  const widget = page.getByRole('article', { name: 'Latest DVIC' });
+  await expect(widget.getByRole('contentinfo')).toHaveText('8 short');
+  await expect(widget.getByRole('listitem').filter({ hasText: 'Taylor Brooks' })).toContainText(
+    '×15',
+  );
+});

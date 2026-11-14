@@ -4,7 +4,8 @@ import { useCollectionUpdates } from '../../../../core/collection/frontend/live-
 import { dspHash } from '../../../../core/shell/frontend/runtime/navigation.js';
 import { localDate } from '../../../../core/shell/frontend/lib/day.js';
 import { performancePolicy } from '../../../../core/shell/frontend/lib/performance-policy.js';
-import { useDayInspections, useDvicStatus } from '../../api/client.js';
+import { useDvicStatus, useWholeDay } from '../../api/client.js';
+import { usePublished } from '../published.js';
 import {
   fleetLabel,
   inspectionBand,
@@ -14,7 +15,6 @@ import {
   inspectionInitials,
   inspectionShare,
   latestCollected,
-  publication as publishedAt,
   shortDrivers,
   type ShortDriver,
 } from '../dvic.js';
@@ -30,11 +30,9 @@ export function LatestDvicWidget({ columns, rows, view }: WidgetProps) {
   useCollectionUpdates();
   const status = useDvicStatus(performancePolicy.recoveryPollMs);
   const date = latestCollected(status.data, localDate(view.dsp.timezone));
-  const day = useDayInspections(date ?? '', '', '', 0, publishedAt(status.data).publication);
+  const day = useWholeDay(date ?? '', usePublished(status.data).publication);
   const drivers = day.data ? shortDrivers(day.data.inspections) : undefined;
-  // A day of more than a page of short inspections may have more drivers than the page names.
-  const more = day.data ? day.data.total > day.data.inspections.length : false;
-  const count = drivers && `${drivers.length}${more ? '+' : ''}`;
+  const count = drivers?.length;
   const failed = status.error || day.error;
   const detail = columns >= 3;
   return (
@@ -54,7 +52,7 @@ export function LatestDvicWidget({ columns, rows, view }: WidgetProps) {
         <p className="dvic-latest-note">{failed}</p>
       ) : status.data && !date ? (
         <p className="dvic-latest-note">Not collected yet</p>
-      ) : !drivers || !count ? null : columns === 1 || !drivers.length ? (
+      ) : !drivers ? null : columns === 1 || !drivers.length ? (
         <div className="dvic-latest-count">
           <strong>{count}</strong>
           <span>short</span>

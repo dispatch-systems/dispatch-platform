@@ -27,17 +27,11 @@ import {
   useHashQuery,
 } from '../../../core/shell/frontend/runtime/navigation.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
-import {
-  isCollected,
-  latestCollected,
-  publication as publishedAt,
-  weekDays,
-  weekStart,
-  type VehicleClass,
-} from './dvic.js';
+import { isCollected, latestCollected, weekDays, weekStart, type VehicleClass } from './dvic.js';
 import { localDate, shiftDate } from '../../../core/shell/frontend/lib/day.js';
 import { performancePolicy } from '../../../core/shell/frontend/lib/performance-policy.js';
 import { randomId } from '../../../core/shell/frontend/lib/random-id.js';
+import { usePublished } from './published.js';
 import { usePageTabs } from '../../../core/shell/frontend/runtime/PageTabs.js';
 
 const activeJob = (job: Job) => ['queued', 'running', 'waiting_verification'].includes(job.status);
@@ -50,7 +44,13 @@ const views = [
 /** The day a link opens the page on (`?day=`), as Home's Latest DVIC does: on the Day tab, unfiltered. */
 const linkedDay = (query: URLSearchParams) => {
   const day = query.get('day');
-  return day && /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : undefined;
+  // Only a real day the page can show, one a mistyped link can't break it with.
+  return day &&
+    day >= '2000-01-02' &&
+    Date.parse(day + 'T12:00:00Z') &&
+    new Date(day + 'T12:00:00Z').toISOString().startsWith(day)
+    ? day
+    : undefined;
 };
 
 function selectedWeek(status: DvicStatus | undefined, today: string, chosenWeek?: string) {
@@ -154,13 +154,7 @@ export function useDvicPage(view: DspView) {
   const pendingStatus = jobs.find((job) => job.id === pending?.id) ?? pending;
   const running =
     jobs.find(activeJob) ?? (pendingStatus && activeJob(pendingStatus) ? pendingStatus : undefined);
-  const { completed, checked, publication } = publishedAt(status.data);
-  useEffect(() => {
-    if (status.data)
-      dataCache.observeVersion('dvic', publication, (key) =>
-        ['summary?', 'day?', 'inspection?'].some((part) => key.startsWith('/api/dsp/dvic/' + part)),
-      );
-  }, [publication, status.data]);
+  const { completed, checked, publication } = usePublished(status.data);
   const inspections = useSummary(
     status.data ? summaryUrl(start, end, search, vehicles, page) : '',
     publication,
