@@ -48,7 +48,7 @@ function label(minute: number) {
     hour = Math.floor(m / 60);
   return `${hour % 12 || 12}:${String(m % 60).padStart(2, '0')} ${hour < 12 ? 'AM' : 'PM'}`;
 }
-function parseClock(value: string | null) {
+export function parseClock(value: string | null) {
   if (!value) return null;
   const match = /^(\d{1,2}):(\d{2})(?:\s*([AP]M))?$/i.exec(value.trim());
   if (!match) return null;

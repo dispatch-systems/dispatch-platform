@@ -48,6 +48,22 @@ declare module './installed.js' {
   }
 }
 
+/**
+ * Every size from one cell to `most`, `first` first, the size a widget is added at: for a widget
+ * that fits what it shows to any size up to its largest.
+ */
+export const sizesUpTo = (
+  most: WidgetCells,
+  first: WidgetCells,
+): readonly [WidgetCells, ...WidgetCells[]] => [
+  first,
+  ...Array.from({ length: most.columns }, (_, column) =>
+    Array.from({ length: most.rows }, (_, row) => ({ columns: column + 1, rows: row + 1 })),
+  )
+    .flat()
+    .filter((size) => size.columns !== first.columns || size.rows !== first.rows),
+];
+
 /** The widgets the member may add in the DSP they have open, in the order the owners are listed. */
 export const widgets = (access: Access & { view: DspView }) =>
   present(access.view, (feature) => feature.widgets).filter(

@@ -1,10 +1,11 @@
 import { createElement, lazy } from 'react';
-import { CalendarDays } from 'lucide-react';
+import { AlarmClock, CalendarDays } from 'lucide-react';
 import type { DspView } from '../../../core/accounts/api/index.js';
 import { begins, path } from '../../../core/shell/frontend/runtime/data-policy.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import {
   settingsRead,
+  sizesUpTo,
   type Access,
   type FrontendFeature,
 } from '../../../core/shell/frontend/runtime/slots.js';
@@ -49,6 +50,18 @@ export const feature: FrontendFeature = {
       render: ({ view }) => createElement(PaycomPage, { view }),
       ready: (view) => Boolean(pageReady?.(view) && isTimecardDataReady(view)),
       prefetch: ({ view, immediate }) => prefetchTimecard(view, immediate),
+    },
+  ],
+  // Today's late DAs, as Meal Breaks lists them, for each member's Home page.
+  widgets: [
+    {
+      id: 'timecard.late_das',
+      label: 'Late DAs',
+      icon: AlarmClock,
+      sizes: sizesUpTo({ columns: 4, rows: 4 }, { columns: 2, rows: 2 }),
+      permission: ({ view }) => can(view, 'timecard.view'),
+      part: 'timecard.meal_breaks',
+      load: () => import('./widgets/LateDasWidget.js').then((module) => module.LateDasWidget),
     },
   ],
   movedToSettings: { 'paycom-settings': 'timecard' },

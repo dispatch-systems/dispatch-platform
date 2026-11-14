@@ -51,6 +51,13 @@ through Driver Match.
   departments chosen or any. Their departments and stations are the newest Paycom roster's,
   listed as Settings is read. Its backend reads them with `settings::read`
   (`backend/settings.rs`).
+- **Widget:** `timecard.late_das`, Late DAs, which a member with `timecard.view` adds to their
+  Home page while Meal Breaks is on: today's late DAs as Meal Breaks' Late DAs lists them, by the
+  DSP's `timecard.late_das` rule, latest in first. It is added at two cells by two and resizes to
+  any size up to four by four: the count in one column, with their names under it from two rows;
+  each one's IN DAY time from two columns, their department from three by two, and how late from
+  four. It opens Meal Breaks on today with Late DAs (`?late=<date>`), which a link to any day
+  does.
 - **Employee workspace:** the directory scrolls independently of the selected detail.
   Changing a person, filter or detail view preserves the displayed period. Meal comparisons
   are flat rows, including additional meals. Regular and overtime minutes come from complete

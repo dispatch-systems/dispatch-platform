@@ -3,6 +3,7 @@ import {
   lazy,
   Suspense,
   use,
+  useEffect,
   useLayoutEffect,
   useState,
   useTransition,
@@ -26,11 +27,13 @@ import {
   navigate,
   pageHash,
   settingsHash,
+  useHashQuery,
 } from '../../../core/shell/frontend/runtime/navigation.js';
+import { validPaycomDate } from './paycom-date.js';
 import { SourceSyncStatus } from './SourceSyncStatus.js';
 import { EmployeePeriodSync } from './tabs/employees/EmployeePeriodSync.js';
 import { useDailySync } from './useDailySync.js';
-import { shownTimecardTabs, preferredTimecardTab, selectedTimecardTab } from './tabs.js';
+import { lateLink, shownTimecardTabs, preferredTimecardTab, selectedTimecardTab } from './tabs.js';
 
 const loadEmployees = () => import('./tabs/employees/EmployeesPage.js');
 const loadTimecards = () => import('./tabs/daily/TimecardsPage.js');
@@ -75,11 +78,25 @@ export function PaycomPage({ view }: { view: DspView }) {
     'timecard',
   );
   const [pending, startTransition] = useTransition();
-  const { date, today, selectDate } = usePaycomDate(view.dsp.id, view.dsp.timezone);
+  const { date: chosenDate, today, selectDate } = usePaycomDate(view.dsp.id, view.dsp.timezone);
+  // A link to a day's late DAs opens Meal Breaks on it at once, then as the page's own choice;
+  // Meal Breaks takes its Late DAs from the same link and clears it.
+  const [linked, setLinked] = useHashQuery(lateLink);
+  const linkedDay = linked && validPaycomDate(linked, today) ? linked : undefined;
+  const date = linkedDay ?? chosenDate;
+  useEffect(() => {
+    if (!linked) return;
+    if (linkedDay) {
+      setTab('meal-breaks');
+      selectDate(linkedDay);
+    }
+    setLinked(undefined);
+  }, [linked, linkedDay, selectDate, setLinked, setTab]);
   const settings = usePaycomSettings();
   useCollectionUpdates();
   const shownTabs = shownTimecardTabs(view);
-  const ownTab = preferredTimecardTab(shownTabs, selectedTab) ?? 'timecards';
+  const ownTab =
+    preferredTimecardTab(shownTabs, linkedDay ? 'meal-breaks' : selectedTab) ?? 'timecards';
   const hosting = usePageTabs(
     'paycom',
     shownTabs.map(([id, label]) => [id, label]),
