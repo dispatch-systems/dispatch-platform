@@ -397,6 +397,83 @@ async fn a_packages_history_across_many_old_days_reads_the_same_without_their_ro
 }
 
 #[tokio::test]
+async fn an_old_days_rows_go_only_once_they_read_the_same_from_its_responses() {
+    install();
+    let (_root, db, id) = ready();
+    let state = State::new(db.config.clone()).unwrap();
+    // The bootstrapped DSP keeps UTC, so its days are UTC days.
+    let today = chrono::Utc::now().date_naive();
+    let day = |back: i64| (today - chrono::Duration::days(back)).to_string();
+    // Two days older than a month and one inside it.
+    let (old, odd, recent) = (day(40), day(41), day(5));
+    for (key, day) in [("old", &old), ("odd", &odd), ("recent", &recent)] {
+        let capture = routes::fixture(&request(day, Mode::Final)).unwrap();
+        publish(&state, &db, &id, key, day, &capture).await;
+    }
+    let rows = |day: &str, of: &str| {
+        count(
+            &db,
+            &id,
+            &format!("SELECT count(*) FROM tasks WHERE day='{day}' AND {of}"),
+        )
+    };
+    let pruned = |day: &str| {
+        count(
+            &db,
+            &id,
+            &format!("SELECT tasks_pruned FROM route_publications WHERE day='{day}' AND active=1"),
+        )
+    };
+    let let_go = "active=1 AND (task_type='PICK_UP' OR task_state='DELIVERED')";
+    let stays = "NOT (active=1 AND (task_type='PICK_UP' OR task_state='DELIVERED'))";
+    let before = (rows(&old, "1"), rows(&odd, "1"), rows(&recent, "1"));
+    assert!(rows(&old, let_go) > 0 && rows(&old, stays) > 0);
+    let read = |day: &str| {
+        (
+            db.route_itinerary(&id, day, "itinerary-1").unwrap(),
+            db.route_itinerary(&id, day, "itinerary-2").unwrap(),
+        )
+    };
+    let (itineraries, package) = (
+        read(&old),
+        db.route_package(&id, "TBA000000000002").unwrap(),
+    );
+    // One task row of the other old day says what its stored response does not.
+    db.routes_db(&id)
+        .unwrap()
+        .exec(
+            "UPDATE tasks SET state_context='ODD' WHERE rowid=(SELECT rowid FROM tasks WHERE day=? LIMIT 1)",
+            [&odd],
+        )
+        .unwrap();
+
+    // Routes' hourly upkeep, as the scheduler offers it.
+    let upkeep = || (dispatch_routes::FEATURE.maintenance[0].run)(state.clone(), true);
+    upkeep().await;
+
+    // The day whose every row its responses read the same let its delivered and picked-up
+    // rows go, kept the rest, and reads exactly as before.
+    assert_eq!(pruned(&old), 1);
+    assert_eq!(rows(&old, let_go), 0);
+    assert_eq!(rows(&old, "1"), rows(&old, stays));
+    assert!(rows(&old, stays) > 0);
+    assert!(count(&db, &id, "SELECT count(*) FROM package_days") > 0);
+    assert_eq!(read(&old), itineraries);
+    assert_eq!(db.route_package(&id, "TBA000000000002").unwrap(), package);
+    // The day with a row its response reads otherwise keeps every row, as does a recent one.
+    assert_eq!((pruned(&odd), rows(&odd, "1")), (0, before.1));
+    assert_eq!((pruned(&recent), rows(&recent, "1")), (0, before.2));
+    assert!(before.0 > rows(&old, "1"));
+    // A later pass finds nothing more to do.
+    let after = (rows(&old, "1"), rows(&odd, "1"), rows(&recent, "1"));
+    upkeep().await;
+    assert_eq!(
+        (rows(&old, "1"), rows(&odd, "1"), rows(&recent, "1")),
+        after
+    );
+}
+
+#[tokio::test]
 async fn a_reprocess_rebuilds_every_row_from_the_stored_responses() {
     install();
     let (_root, db, id) = ready();

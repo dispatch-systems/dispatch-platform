@@ -1,6 +1,7 @@
 //! Routes storage registration, migrations and capture restoration, with one DSP store facade.
 mod commands;
 mod reads;
+pub(in crate::backend) use reads::stored_tasks;
 mod reprocess;
 
 pub(super) use commands::stage_prepared_routes_start;
