@@ -16,8 +16,7 @@ open to every member.
   or a DSP whose features give the member no widget, shows that the page is still being built.
 - **A member's layout** (`backend/layout.rs`) is their preference `home.layout`: each widget they
   placed, by its id, column, row, width and height, kept by core and sent with their view.
-  Until they arrange it, the page shows the widgets that have a place on one never arranged
-  (`home`), in that order while they fit, and nothing is kept. A widget of a feature they don't
+  No widget is on it until they add one: a page never arranged is blank. A widget of a feature they don't
   have now keeps its place, and one back where another was placed meanwhile shows at the free
   cells nearest its own, or waits, kept, while there are none.
 - **Arranging it:** Edit, or Add widget on a page with none, loads the editor: a widget picked up
@@ -25,7 +24,7 @@ open to every member.
   their own while it's held there, and back once it moves on (`moving`, worked out from where
   they were as it was picked up); one resized from any edge or corner snaps between its steps
   as the pointer goes, never over another; one removed goes; others are added from the list of
-  those that fit; Reset clears the layout back to where the widgets start. Each change shows at
+  those that fit; Reset clears the page. Each change shows at
   once, glides into place, and is kept behind it, made again on what another screen kept
   meanwhile.
 - **A widget** loads its own code when first shown and fails alone, saying it couldn't load.

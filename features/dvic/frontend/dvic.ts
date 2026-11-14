@@ -1,4 +1,4 @@
-import type { DvicCoverage, DvicInspection } from '../api/index.js';
+import type { DvicCoverage, DvicInspection, DvicStatus } from '../api/index.js';
 import { shiftDate } from '../../../core/shell/frontend/lib/day.js';
 import { dateFormatter } from '../../../core/shell/frontend/lib/date-format.js';
 
@@ -8,6 +8,27 @@ export const weekDays = (start: string) => Array.from({ length: 7 }, (_, i) => s
 /** Whether a checked report covers the day; if none does, its short inspections are unknown. */
 export const isCollected = (covered: DvicCoverage[], date: string) =>
   covered.some((stretch) => stretch.from <= date && date <= stretch.through);
+/** The latest collected day, whether or not anyone was short that day; none before a report. */
+export function latestCollected(status: DvicStatus | undefined, today: string) {
+  const through = status?.covered.at(-1)?.through;
+  return through && through > today ? today : through;
+}
+/**
+ * What DVIC has published: its latest finished run and checked report. Reads of its inspections
+ * are read again as it changes.
+ */
+export function publication(status: DvicStatus | undefined) {
+  const completed = status?.jobs
+    .filter((job) => job.status === 'succeeded')
+    .map((job) => job.completedAt ?? '')
+    .sort()
+    .at(-1);
+  const checked = status?.weeks
+    .map((week) => week.checkedAt)
+    .sort()
+    .at(-1);
+  return { completed, checked, publication: (completed ?? '') + ':' + (checked ?? '') };
+}
 export const inspectionDate = (date: string, weekday = false) =>
   dateFormatter('en-US', {
     timeZone: 'UTC',
@@ -75,3 +96,16 @@ const initialsOf = (row: DvicInspection) =>
     .map((word) => word[0])
     .join('');
 export const inspectionInitials = initialsOf;
+
+/** A driver short on a day: their shortest inspection, and how many short ones they had. */
+export type ShortDriver = { shortest: DvicInspection; count: number };
+/** Each driver once, at their shortest, from inspections ordered shortest first. */
+export function shortDrivers(inspections: readonly DvicInspection[]) {
+  const drivers = new Map<string, ShortDriver>();
+  for (const row of inspections) {
+    const driver = drivers.get(row.driverId);
+    if (driver) driver.count++;
+    else drivers.set(row.driverId, { shortest: row, count: 1 });
+  }
+  return [...drivers.values()];
+}

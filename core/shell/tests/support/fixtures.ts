@@ -65,6 +65,17 @@ export function dspAddress(page: Page, code: string) {
   const admin = new URL(page.url());
   return `${admin.protocol}//${code}.localhost:${admin.port}/`;
 }
+/**
+ * Waits for a DSP's Home page, as either it shows: the member's widgets, where any feature gives
+ * them one, or that it is still being built, where none does or the window is too narrow for them.
+ */
+export async function atHome(page: Page) {
+  await expect(
+    page
+      .getByRole('heading', { name: 'Home', exact: true, level: 1 })
+      .or(page.getByRole('heading', { name: 'Currently under development', exact: true })),
+  ).toBeVisible();
+}
 /** From the platform's DSP list, choose a DSP and enter its view from its pane. */
 export async function openDsp(page: Page, name: string) {
   await page

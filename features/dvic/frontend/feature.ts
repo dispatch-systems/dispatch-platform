@@ -39,6 +39,24 @@ export const feature: FrontendFeature = {
       },
     },
   ],
+  // Who was short on the latest collected day, for each member's Home page.
+  widgets: [
+    {
+      id: 'dvic.latest',
+      label: 'Latest DVIC',
+      icon: ClipboardCheck,
+      sizes: [
+        { columns: 2, rows: 2 },
+        { columns: 1, rows: 1 },
+        { columns: 2, rows: 1 },
+        { columns: 3, rows: 2 },
+        { columns: 4, rows: 3 },
+      ],
+      permission: ({ view }) => can(view, 'dvic.view'),
+      part: 'dvic.day',
+      load: () => import('./widgets/LatestDvicWidget.js').then((module) => module.LatestDvicWidget),
+    },
+  ],
   platformSlots: () => import('./platform-slots.js'),
   collected: () => import('./collected.js'),
   errors: {

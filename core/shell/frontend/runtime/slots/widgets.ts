@@ -37,8 +37,6 @@ export type Widget = {
   part?: Feature;
   /** The ids it once had, which a Home page that kept one shows it for. */
   formerly?: readonly string[];
-  /** Its place on the Home page of a member who never arranged theirs, lowest first; omitted, it isn't on it. */
-  home?: number;
   /** Loads what draws it. */
   load: () => Promise<ComponentType<WidgetProps>>;
 };

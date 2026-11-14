@@ -1,6 +1,7 @@
 import {
   test,
   expect,
+  atHome,
   demo,
   dspAddress,
   fromPage,
@@ -75,9 +76,7 @@ test('an address another DSP already has gets a login of its own at a newly invi
   await page.getByLabel('Email address').fill('existing-invite@dispatch.test');
   await page.getByLabel('Password', { exact: true }).fill(separate);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(
-    page.getByRole('heading', { name: 'Currently under development', exact: true }),
-  ).toBeVisible();
+  await atHome(page);
   const current = (await fromPage(page, '/api/session')).value;
   expect(current.dsps.map((dsp: { name: string }) => dsp.name)).toEqual(['New invited DSP']);
   expect(current.dsps[0].profile).toMatchObject({
@@ -130,9 +129,7 @@ test('an owner whose DSP has no details yet sets them up on opening it', async (
   await page.getByLabel('DSP name', { exact: true }).fill('Resumed DSP');
   await page.getByLabel('Station code', { exact: true }).fill('TST2');
   await page.getByRole('button', { name: 'Save DSP details', exact: true }).click();
-  await expect(
-    page.getByRole('heading', { name: 'Currently under development', exact: true }),
-  ).toBeVisible();
+  await atHome(page);
   const current = (await fromPage(page, '/api/session')).value;
   expect(current.dsps[0].profile).toMatchObject({
     abbreviation: 'RDSP',

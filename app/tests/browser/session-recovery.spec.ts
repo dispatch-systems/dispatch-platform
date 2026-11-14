@@ -1,4 +1,4 @@
-import { test, expect, demo, login } from '../../../core/shell/tests/support/fixtures.js';
+import { test, expect, demo, login, atHome } from '../../../core/shell/tests/support/fixtures.js';
 
 test('startup reads the session while the address is still loading', async ({ page }) => {
   let release!: () => void;
@@ -38,7 +38,7 @@ test('an idle dashboard renews an expired presence view once and signs out when 
   });
   await page.clock.install();
   await login(page, demo.member);
-  await expect(page.getByRole('heading', { name: 'Currently under development' })).toBeVisible();
+  await atHome(page);
   await expect.poll(() => accepted).toBeGreaterThan(0);
   const first = opened;
   dispatch.database('data/platform/accounts.sqlite', (db) =>

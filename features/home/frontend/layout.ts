@@ -48,19 +48,6 @@ export function adding(placed: readonly Cells[], widget: Widget): PlacedWidget |
 }
 
 /**
- * The layout of a member who never arranged theirs: each widget with a place on it (`home`), in
- * that order, filling the grid from the top left while it fits.
- */
-export const starting = (widgets: readonly Widget[]) =>
-  widgets
-    .filter((widget) => widget.home !== undefined)
-    .sort((a, b) => a.home! - b.home!)
-    .reduce<PlacedWidget[]>((placed, widget) => {
-      const added = adding(placed, widget);
-      return added ? [...placed, added] : placed;
-    }, []);
-
-/**
  * What the page shows of `layout`: each widget placed that the member has now, by its id now,
  * where it was placed, at the size of its own nearest the cells it was placed in. One back from a
  * feature switched off, where another was placed meanwhile, shows at the free cells nearest its

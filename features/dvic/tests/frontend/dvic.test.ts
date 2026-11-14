@@ -7,6 +7,7 @@ import {
   inspectionDate,
   inspectionWeekday,
   inspectionShortfall,
+  shortDrivers,
   weekDays,
   weekStart,
 } from '../../frontend/dvic.js';
@@ -75,4 +76,27 @@ test('bands follow the share of the minimum with exact boundaries', () => {
   assert.equal(inspectionBand(at(0)), 'low');
   assert.equal(inspectionBand(at(225, 300)), 'high');
   assert.equal(inspectionBand(at(104, 300)), 'low');
+});
+
+test('Latest DVIC names each driver once, at their shortest, shortest first, with how many they had', () => {
+  const short = (id: string, driverId: string, durationSeconds: number) => ({
+    ...row(id),
+    driverId,
+    durationSeconds,
+  });
+  // The day's read orders them shortest first.
+  const drivers = shortDrivers([
+    short('a', 'driver-2', 20),
+    short('b', 'driver-1', 40),
+    short('c', 'driver-2', 60),
+    short('d', 'driver-3', 80),
+  ]);
+  assert.deepEqual(
+    drivers.map(({ shortest, count }) => [shortest.id, count]),
+    [
+      ['a', 2],
+      ['b', 1],
+      ['d', 1],
+    ],
+  );
 });
