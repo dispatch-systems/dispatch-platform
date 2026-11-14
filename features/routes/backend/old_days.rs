@@ -173,22 +173,23 @@ fn looked(store: &Store, id: &str, db: &Db, days: &mut Days) -> Result<Next> {
                 days.progress = Progress::Marking(publication);
                 return Ok(Next::Write);
             };
-            match same(db, &publication, &itinerary) {
-                Ok(true) => {
+            match differs(db, &publication, &itinerary) {
+                Ok(None) => {
                     days.progress = Progress::Checking {
                         publication,
                         pending,
                     };
                 }
                 differs => {
-                    let why = match differs {
-                        Ok(_) => "rows_differ".to_owned(),
-                        Err(error) => error.code,
+                    // Which fact differed, by its column's name: never what it held.
+                    let (why, fact) = match differs {
+                        Ok(fact) => ("rows_differ".to_owned(), fact),
+                        Err(error) => (error.code, None),
                     };
                     observability::event(
                         "warn",
                         "routes.old_day_kept",
-                        json!({"dspId":id,"publication":publication,"reason":why}),
+                        json!({"dspId":id,"publication":publication,"reason":why,"fact":fact}),
                     );
                     days.kept.insert(publication);
                 }
@@ -256,9 +257,10 @@ fn unpruned(db: &Db, publication: &str) -> Result<bool> {
         .is_some())
 }
 
-/// Whether an itinerary's task rows are what its stored response reads as: every task, each
-/// with every fact a row holds.
-fn same(db: &Db, publication: &str, itinerary: &str) -> Result<bool> {
+/// How an itinerary's task rows differ from what its stored response reads as, if they do:
+/// `tasks` when they are not the same tasks, else the first fact of a task that differs, by
+/// its column's name. None when every task is there with every fact a row holds.
+fn differs(db: &Db, publication: &str, itinerary: &str) -> Result<Option<&'static str>> {
     let facts = |task: &Value, events: Value| -> (String, Vec<Value>) {
         let facts = FACTS
             .iter()
@@ -285,7 +287,13 @@ fn same(db: &Db, publication: &str, itinerary: &str) -> Result<bool> {
         .iter()
         .map(|task| facts(task, task["events"].clone()))
         .collect();
-    Ok(stored == read)
+    if !stored.keys().eq(read.keys()) {
+        return Ok(Some("tasks"));
+    }
+    Ok(stored.values().zip(read.values()).find_map(|(row, read)| {
+        let at = row.iter().zip(read).position(|(a, b)| a != b)?;
+        Some(FACTS[at])
+    }))
 }
 
 /// Marks a day whose every itinerary matched, and names where each package it lets go is, in
