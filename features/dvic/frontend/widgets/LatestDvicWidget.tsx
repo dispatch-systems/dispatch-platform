@@ -25,10 +25,11 @@ import {
 import './latest-dvic.css';
 
 /**
- * Who was short on the latest collected day, shortest first: the count alone in one column, the
- * drivers as rows fit from two, with each one's time and van from three, and a bar for their share
- * of the minimum from four by three. A day nobody was short shows its 0 beside the days before
- * it, from two by two. It opens DVIC on that day, whether or not anyone was short.
+ * Who was short on the latest collected day, shortest first, at any size from one cell to four by
+ * four: the count in one column, with the drivers' names under it from two rows; the drivers as
+ * rows fit from two columns, with each one's time and van from three by two, and a bar for their
+ * share of the minimum from four by three. A day nobody was short shows its 0 beside the days
+ * before it from two rows. It opens DVIC on that day, whether or not anyone was short.
  */
 export function LatestDvicWidget({ columns, rows, view }: WidgetProps) {
   // A run that ends, wherever it started, shows here at once, as it does on DVIC's page.
@@ -40,7 +41,7 @@ export function LatestDvicWidget({ columns, rows, view }: WidgetProps) {
   const drivers = day.data ? shortDrivers(day.data.inspections) : undefined;
   const count = drivers?.length;
   const failed = status.error || day.error;
-  const detail = columns >= 3;
+  const detail = columns >= 3 && rows >= 2;
   return (
     <a
       className="dvic-latest"
@@ -52,7 +53,7 @@ export function LatestDvicWidget({ columns, rows, view }: WidgetProps) {
         <ClipboardCheck aria-hidden="true" />
         {/* One column has room for its date beside DVIC alone. */}
         <strong>{columns === 1 ? 'DVIC' : 'Latest DVIC'}</strong>
-        {date && <span>{inspectionDate(date, detail)}</span>}
+        {date && <span>{inspectionDate(date, columns >= 3)}</span>}
       </header>
       {failed ? (
         <p className="dvic-latest-note">{failed}</p>
@@ -67,10 +68,19 @@ export function LatestDvicWidget({ columns, rows, view }: WidgetProps) {
           publication={publication}
         />
       ) : columns === 1 ? (
-        <div className="dvic-latest-count">
-          <strong>{count}</strong>
-          <span>short</span>
-        </div>
+        <>
+          <div className="dvic-latest-count">
+            <strong>{count}</strong>
+            <span>short</span>
+          </div>
+          {rows > 1 && (
+            <ol className="dvic-latest-list">
+              {drivers.map((driver) => (
+                <Driver key={driver.shortest.driverId} driver={driver} brief />
+              ))}
+            </ol>
+          )}
+        </>
       ) : (
         <>
           <ol className="dvic-latest-list">
@@ -91,8 +101,9 @@ export function LatestDvicWidget({ columns, rows, view }: WidgetProps) {
 }
 
 /**
- * A day nobody was short: its 0, and from two by two a bar of short inspections for each day before
- * it, five, or seven from three columns; a day no report covers has none, its count unknown.
+ * A day nobody was short: its 0, and from two rows a bar of short inspections for each day before
+ * it, rising, five at two columns and seven from three, or across, in one column, four at two rows
+ * and seven from three; a day no report covers has none, its count unknown.
  */
 function Quiet({
   date,
@@ -107,7 +118,8 @@ function Quiet({
   rows: number;
   publication: string;
 }) {
-  const shown = columns === 1 || rows === 1 ? 0 : columns >= 3 ? 7 : 5;
+  const across = columns === 1;
+  const shown = rows === 1 ? 0 : across ? (rows >= 3 ? 7 : 4) : columns >= 3 ? 7 : 5;
   const from = shiftDate(date, 1 - shown);
   const summary = useSummary(shown ? summaryUrl(from, date, '', '') : '', publication).data;
   const counts = new Map(summary?.days.map((day) => [day.date, day.count]));
@@ -122,7 +134,7 @@ function Quiet({
         </span>
       </div>
       {summary && (
-        <ol className="dvic-latest-days">
+        <ol className="dvic-latest-days" data-across={across || undefined}>
           {days.map((day) => {
             const count = isCollected(covered, day) ? (counts.get(day) ?? 0) : undefined;
             const height = { '--height': `${((count ?? 0) / most) * 100}%` } as CSSProperties;
@@ -146,14 +158,17 @@ function Quiet({
   );
 }
 
+/** A driver's row: their name alone, `brief`, in one column; else their shortest's time too. */
 function Driver({
   driver: { shortest, count },
-  detail,
-  bar,
+  detail = false,
+  bar = false,
+  brief = false,
 }: {
   driver: ShortDriver;
-  detail: boolean;
-  bar: boolean;
+  detail?: boolean;
+  bar?: boolean;
+  brief?: boolean;
 }) {
   return (
     <li data-band={inspectionBand(shortest)}>
@@ -178,9 +193,11 @@ function Driver({
           <span style={{ width: `${inspectionShare(shortest) * 100}%` }} />
         </span>
       )}
-      <span className="dvic-latest-took">
-        {duration(shortest.durationSeconds)} <small>of {duration(shortest.minimumSeconds)}</small>
-      </span>
+      {!brief && (
+        <span className="dvic-latest-took">
+          {duration(shortest.durationSeconds)} <small>of {duration(shortest.minimumSeconds)}</small>
+        </span>
+      )}
     </li>
   );
 }
