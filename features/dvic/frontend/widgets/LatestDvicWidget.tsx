@@ -46,8 +46,9 @@ export function LatestDvicWidget({ columns, rows, view }: WidgetProps) {
     >
       <header>
         <ClipboardCheck aria-hidden="true" />
-        <strong>Latest DVIC</strong>
-        {date && columns > 1 && <span>{inspectionDate(date, detail)}</span>}
+        {/* One column has room for its date beside DVIC alone. */}
+        <strong>{columns === 1 ? 'DVIC' : 'Latest DVIC'}</strong>
+        {date && <span>{inspectionDate(date, detail)}</span>}
       </header>
       {failed ? (
         <p className="dvic-latest-note">{failed}</p>
@@ -57,7 +58,6 @@ export function LatestDvicWidget({ columns, rows, view }: WidgetProps) {
         <div className="dvic-latest-count">
           <strong>{count}</strong>
           <span>short</span>
-          {columns === 1 && date && <small>{inspectionDate(date)}</small>}
         </div>
       ) : (
         <>

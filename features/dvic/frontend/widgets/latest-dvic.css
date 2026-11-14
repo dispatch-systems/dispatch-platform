@@ -58,17 +58,15 @@
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
-.dvic-latest-count span,
-.dvic-latest-count small {
+.dvic-latest-count span {
   font-size: 12px;
   color: var(--muted-foreground);
 }
-.dvic-latest-count small {
-  margin-top: auto;
+.dvic-latest[data-columns='1'] {
+  padding: 10px 12px;
 }
-.dvic-latest[data-columns='1'] .dvic-latest-count {
-  justify-content: flex-start;
-  padding-top: 4px;
+.dvic-latest[data-columns='1'] > header {
+  font-size: 12px;
 }
 /* As many drivers as fit, each whole: one that doesn't wraps into a column past the edge. */
 .dvic-latest-list {
@@ -167,7 +165,7 @@
   color: var(--muted-foreground);
 }
 .dvic-latest[data-columns='4'] .dvic-latest-took {
-  width: 96px;
+  min-width: 110px;
   text-align: right;
 }
 .dvic-latest > footer {
