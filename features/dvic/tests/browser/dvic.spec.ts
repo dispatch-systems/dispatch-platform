@@ -146,7 +146,13 @@ test('the latest collected day opens first even when nobody was short; Today lea
   });
   await login(page);
   await openDsp(page, dsp.name);
-  await page.getByRole('link', { name: 'DVIC', exact: true }).click();
+  // Latest DVIC shows that day's 0 beside the days before it, and opens DVIC on it.
+  await page.getByRole('button', { name: 'Add widget', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Latest DVIC', exact: true }).click();
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  const widget = page.getByRole('article', { name: 'Latest DVIC' });
+  await expect(widget.getByRole('listitem')).toHaveText(['3Tue', '3Wed', '3Thu', '3Fri', '0Sat']);
+  await widget.getByRole('link').click();
   const latest = page.getByRole('heading', { name: 'Sat, Sep 26, 2026' });
   await expect(latest).toBeVisible();
   await expect(page.getByText('No short inspections on this day', { exact: true })).toBeVisible();
