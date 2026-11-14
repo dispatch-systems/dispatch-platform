@@ -263,3 +263,52 @@
   font-weight: inherit;
   text-align: center;
 }
+/* One column: its count over its drivers' names, or its 0 over the days before it, across. */
+.dvic-latest[data-columns='1'] .dvic-latest-count {
+  flex: none;
+}
+.dvic-latest[data-columns='1'] .dvic-latest-list li {
+  padding-left: 7px;
+  font-size: 11.5px;
+}
+.dvic-latest[data-columns='1'] .dvic-latest-zero {
+  align-self: center;
+}
+.dvic-latest-days[data-across] {
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 5px;
+}
+.dvic-latest-days[data-across] li {
+  flex: none;
+  flex-direction: row;
+  gap: 6px;
+}
+.dvic-latest-days[data-across] small {
+  order: -1;
+  width: 26px;
+}
+.dvic-latest-days[data-across] .dvic-latest-track {
+  flex: 1;
+  height: 6px;
+  max-width: none;
+  margin: 0 20px 0 0;
+}
+.dvic-latest-days[data-across] .dvic-latest-track i {
+  top: 0;
+  width: var(--height);
+  height: auto;
+}
+.dvic-latest-days[data-across] .dvic-latest-track i[data-zero] {
+  width: 10px;
+  top: 1px;
+  height: 3px;
+}
+.dvic-latest-days[data-across] .dvic-latest-track b {
+  left: auto;
+  right: -20px;
+  bottom: auto;
+  top: -5px;
+  width: 16px;
+  text-align: left;
+}

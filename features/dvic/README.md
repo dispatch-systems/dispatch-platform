@@ -168,7 +168,9 @@ them driving. It sometimes writes only a last initial, so its spellings are read
 
 `dvic.latest`, Latest DVIC, which a member with `dvic.view` adds to their Home page while the
 Day tab is on: who was short on the latest collected day, the day DVIC opens on, each driver once
-at their shortest, shortest first. It is added at two cells by two and resizes to one by one, two
-by one, three by two or four by three: the count alone in one column, the drivers as rows fit
-from two, each one's time and van from three, and a bar of their share of the minimum from four
-by three. It opens DVIC on that day (`?day=`), whether or not anyone was short.
+at their shortest, shortest first. It is added at two cells by two and resizes to any size up to
+four by four: the count in one column, with the drivers' names under it from two rows; the drivers
+as rows fit from two columns, each one's time and van from three by two, and a bar of their share
+of the minimum from four by three. A day nobody was short shows its 0 beside a bar for each day
+before it from two rows, from DVIC's week summary. It opens DVIC on that day (`?day=`), whether
+or not anyone was short.
