@@ -1,7 +1,12 @@
 //! Routes' upkeep: retiring route data past each DSP's retention window, deleting what no
 //! reader sees any more, telling of the days whose route data changed that nothing told of, and
 //! extracting the work phones of saved days kept before Routes kept them.
-use super::{COLLECTION, RoutesStore, saving, scope::retention_start};
+use super::{
+    COLLECTION, RoutesStore,
+    old_days::{self, Next},
+    saving,
+    scope::retention_start,
+};
 use dispatch_core::{
     Error, Result, State,
     db::Store,
@@ -57,6 +62,32 @@ fn clean(state: Arc<State>, expire: bool) -> Upkeep {
                     .await
                 {
                     failed("routes_expiry_failed", &error);
+                }
+            }
+            // An old day's rows go once each itinerary's are proven to read the same from its
+            // stored response: a look at a time, each write a short one of its own. A day is
+            // some seventy steps; the rest waits for the next pass.
+            for _ in 0..400 {
+                let id = dsp.clone();
+                match state.read(move |db| old_days::look(db, &id)).await {
+                    Ok(Next::Done) => break,
+                    Ok(Next::Look) => {}
+                    Ok(Next::Write) => {
+                        let id = dsp.clone();
+                        let wrote = state
+                            .run_serving(dsp.clone(), super::DOMAIN, move |db| {
+                                old_days::write(db, &id)
+                            })
+                            .await;
+                        if let Err(error) = wrote {
+                            failed("routes_old_days_failed", &error);
+                            break;
+                        }
+                    }
+                    Err(error) => {
+                        failed("routes_old_days_failed", &error);
+                        break;
+                    }
                 }
             }
             // A day of rows is a few dozen steps; the rest waits for the next minute.

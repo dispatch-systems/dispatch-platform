@@ -1,12 +1,13 @@
 //! Routes storage registration, migrations and capture restoration, with one DSP store facade.
 mod commands;
 mod reads;
+pub(in crate::backend) use reads::stored_tasks;
 mod reprocess;
 
 pub(super) use commands::stage_prepared_routes_start;
 
 use super::{
-    maintenance,
+    maintenance, old_days,
     shaping::{PreparedItinerary, gunzip},
     staging::Staged,
 };
@@ -149,6 +150,10 @@ pub trait RoutesStore {
     /// replaced, a retention window retired, or a job left unfinished. Answers whether
     /// more remains. A publication whose job still runs is being staged and is kept.
     fn sweep_routes(&self, id: &str) -> Result<bool>;
+    /// One step toward letting the delivered and picked-up task rows of the DSP's days older
+    /// than a month go (`old_days`): a look, and the write it finds due. Answers whether
+    /// more remains.
+    fn let_go_of_old_route_days(&self, id: &str) -> Result<bool>;
     fn reprocess_routes(&self, id: &str, day: Option<&str>) -> Result<RouteReprocess>;
     fn route_days(&self, id: &str) -> Result<RouteDays>;
     fn route_day(&self, id: &str, day: &str) -> Result<Option<RouteDayView>>;
@@ -200,6 +205,16 @@ impl RoutesStore for Store {
     }
     fn sweep_routes(&self, id: &str) -> Result<bool> {
         maintenance::sweep_routes_step(self, id, &mut None)
+    }
+    fn let_go_of_old_route_days(&self, id: &str) -> Result<bool> {
+        Ok(match old_days::look(self, id)? {
+            old_days::Next::Done => false,
+            old_days::Next::Look => true,
+            old_days::Next::Write => {
+                old_days::write(self, id)?;
+                true
+            }
+        })
     }
     fn reprocess_routes(&self, id: &str, day: Option<&str>) -> Result<RouteReprocess> {
         reprocess::reprocess_routes(self, id, day)

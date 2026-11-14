@@ -119,9 +119,13 @@ it is live route data, in a database of its own, `routelive`.
   reads fields the earlier one didn't, in the audit log as `routes.reprocessed`, with the day.
   An itinerary's read groups its active tasks by stop once, and keeps the stored task order and
   the history of inactive tasks.
-- **Old days:** a day's read may be marked as one whose delivered and picked-up task rows were
-  let go (`route_publications.tasks_pruned`), as none is yet: an itinerary's tasks are then read
-  from its stored response, as its rows had them (`stored_tasks`), and a package is found on such
+- **Old days:** hourly upkeep lets the delivered and picked-up task rows of a day older than 30
+  days go (`old_days`), once each itinerary's rows are proven to be what its stored response
+  reads as, a fact at a time; a day with one row that differs, or a response it can't read,
+  keeps every row (`routes.old_day_kept`, logged with why). The day is then marked
+  (`route_publications.tasks_pruned`) and its packages named in `package_days` in one write, and
+  its rows deleted in small steps; a reprocess of the day rebuilds them all. For such a day an
+  itinerary's tasks are read from its stored response, as its rows had them (`stored_tasks`), and a package is found on such
   a day through `package_days`, which names the itineraries whose response holds it. Its
   undelivered and removed tasks stay as rows, so what `driver_routes` reads of it is unchanged.
 - **Data:** each itinerary's work phone in its row, in both; in historical route data found by

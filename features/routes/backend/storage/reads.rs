@@ -277,7 +277,11 @@ const MOST_EVENTS: i64 = 500;
 /// task rows were let go. Each as a row of `tasks` joined to its address, in the rows' order,
 /// with the itinerary's day and driver; a task both on the route and removed from it is the
 /// one on the route, as its rows kept it. None for an itinerary the day holds no response of.
-fn stored_tasks(db: &Db, publication_id: &str, itinerary_id: &str) -> Result<Vec<Value>> {
+pub(in crate::backend) fn stored_tasks(
+    db: &Db,
+    publication_id: &str,
+    itinerary_id: &str,
+) -> Result<Vec<Value>> {
     let Some(publication) = db.one(
         "SELECT * FROM route_publications WHERE id=?",
         [publication_id],

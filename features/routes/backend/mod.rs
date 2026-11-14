@@ -6,6 +6,7 @@ pub(crate) mod exposed;
 pub(crate) mod keeper;
 mod live;
 pub(crate) mod maintenance;
+pub(crate) mod old_days;
 pub(crate) mod people;
 mod phone_backfill;
 mod publishing;
