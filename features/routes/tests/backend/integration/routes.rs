@@ -10,7 +10,7 @@ use dispatch_core::settings::{self, Saved};
 use dispatch_core::testing as common;
 use dispatch_cortex::{
     self as cortex,
-    routes::{self, Capture, Mode, Request},
+    routes::{self, Capture, Detail, Mode, Request},
 };
 use dispatch_routes::{RoutesStore, save_day};
 use serde_json::{Value, json};
@@ -28,6 +28,22 @@ fn request(day: &str, mode: Mode) -> Request {
     )
     .unwrap()
     .unwrap()
+}
+/// `capture` with every task event at `at`, a time as Amazon writes them: seconds and a
+/// fraction.
+fn timed(mut capture: Capture, at: &str) -> Capture {
+    const KEY: &str = "\"executionTime\":";
+    for itinerary in &mut capture.itineraries {
+        let text = itinerary.detail.text().unwrap();
+        let mut events = text.split(KEY);
+        let mut timed = events.next().unwrap().to_owned();
+        for event in events {
+            let rest = event.trim_start_matches(|c: char| c.is_ascii_digit());
+            timed += &format!("{KEY}{at}{rest}");
+        }
+        itinerary.detail = Detail::of_text(&timed).unwrap();
+    }
+    capture
 }
 /// A DSP with a station and an enabled Cortex connection.
 fn ready() -> (tempfile::TempDir, Store, String) {
@@ -407,7 +423,12 @@ async fn an_old_days_rows_go_only_once_they_read_the_same_from_its_responses() {
     // Two days older than a month and one inside it.
     let (old, odd, recent) = (day(40), day(41), day(5));
     for (key, day) in [("old", &old), ("odd", &odd), ("recent", &recent)] {
-        let capture = routes::fixture(&request(day, Mode::Final)).unwrap();
+        // An event time as Amazon writes it, nine places long: a row's text keeps it as
+        // 1788377329.0019999, which read back is another number than the response reads as.
+        let capture = timed(
+            routes::fixture(&request(day, Mode::Final)).unwrap(),
+            "1788377329.002000000",
+        );
         publish(&state, &db, &id, key, day, &capture).await;
     }
     let rows = |day: &str, of: &str| {
