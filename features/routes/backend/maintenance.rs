@@ -64,10 +64,10 @@ fn clean(state: Arc<State>, expire: bool) -> Upkeep {
                     failed("routes_expiry_failed", &error);
                 }
             }
-            // An old day's rows go once each itinerary's are proven to read the same from its
-            // stored response: a look at a time, each write a short one of its own. A day is
-            // some seventy steps; the rest waits for the next pass.
-            for _ in 0..400 {
+            // Hourly, an old day's rows go once each itinerary's are proven to read the same
+            // from its stored response: a look at a time, each write a short one of its own.
+            // A day is some seventy steps; the rest waits for the next hour.
+            for _ in 0..if expire { 400 } else { 0 } {
                 let id = dsp.clone();
                 match state.read(move |db| old_days::look(db, &id)).await {
                     Ok(Next::Done) => break,

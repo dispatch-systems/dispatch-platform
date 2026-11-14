@@ -447,7 +447,9 @@ async fn an_old_days_rows_go_only_once_they_read_the_same_from_its_responses() {
         )
         .unwrap();
 
-    while db.let_go_of_old_route_days(&id).unwrap() {}
+    // Routes' hourly upkeep, as the scheduler offers it.
+    let upkeep = || (dispatch_routes::FEATURE.maintenance[0].run)(state.clone(), true);
+    upkeep().await;
 
     // The day whose every row its responses read the same let its delivered and picked-up
     // rows go, kept the rest, and reads exactly as before.
@@ -462,8 +464,13 @@ async fn an_old_days_rows_go_only_once_they_read_the_same_from_its_responses() {
     assert_eq!((pruned(&odd), rows(&odd, "1")), (0, before.1));
     assert_eq!((pruned(&recent), rows(&recent, "1")), (0, before.2));
     assert!(before.0 > rows(&old, "1"));
-    // Nothing more is due, and a later pass finds the same.
-    assert!(!db.let_go_of_old_route_days(&id).unwrap());
+    // A later pass finds nothing more to do.
+    let after = (rows(&old, "1"), rows(&odd, "1"), rows(&recent, "1"));
+    upkeep().await;
+    assert_eq!(
+        (rows(&old, "1"), rows(&odd, "1"), rows(&recent, "1")),
+        after
+    );
 }
 
 #[tokio::test]

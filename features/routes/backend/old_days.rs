@@ -66,7 +66,7 @@ const FACTS: [&str; 29] = [
 
 /// Where a DSP's old days stand between steps. Kept in the server's memory: started again,
 /// it finds a day left half deleted first, and checks the next from its first itinerary.
-#[derive(Default)]
+#[derive(Clone, Default)]
 enum Progress {
     /// A day left marked with rows still to delete, as a restart leaves one, is looked for.
     #[default]
@@ -112,6 +112,15 @@ pub(super) fn look(store: &Store, id: &str) -> Result<Next> {
     let db = store.routes_db(id)?;
     let mut all = DAYS.lock().expect("old route days");
     let days = all.entry(id.to_owned()).or_default();
+    // A look that fails leaves the day where it was, for the next pass to take up again.
+    let was = days.progress.clone();
+    let looked = looked(store, id, &db, days);
+    if looked.is_err() {
+        days.progress = was;
+    }
+    looked
+}
+fn looked(store: &Store, id: &str, db: &Db, days: &mut Days) -> Result<Next> {
     match std::mem::replace(&mut days.progress, Progress::Idle) {
         Progress::Unknown => {
             let left = db.one_as::<(String,)>(
@@ -157,14 +166,14 @@ pub(super) fn look(store: &Store, id: &str) -> Result<Next> {
             mut pending,
         } => {
             // The day as it is now: one retired or replaced since is left alone.
-            if !unpruned(&db, &publication)? {
+            if !unpruned(db, &publication)? {
                 return Ok(Next::Look);
             }
             let Some(itinerary) = pending.pop() else {
                 days.progress = Progress::Marking(publication);
                 return Ok(Next::Write);
             };
-            match same(&db, &publication, &itinerary) {
+            match same(db, &publication, &itinerary) {
                 Ok(true) => {
                     days.progress = Progress::Checking {
                         publication,
@@ -202,10 +211,20 @@ pub(super) fn write(store: &Store, id: &str) -> Result<()> {
     let db = store.routes_db(id)?;
     let mut all = DAYS.lock().expect("old route days");
     let days = all.entry(id.to_owned()).or_default();
+    // A write that fails leaves the day where it was: a marked day's rows are deleted by a
+    // later pass, never forgotten.
+    let was = days.progress.clone();
+    let wrote = wrote(&db, days);
+    if wrote.is_err() {
+        days.progress = was;
+    }
+    wrote
+}
+fn wrote(db: &Db, days: &mut Days) -> Result<()> {
     match std::mem::replace(&mut days.progress, Progress::Idle) {
         Progress::Marking(publication) => {
-            if unpruned(&db, &publication)? {
-                mark(&db, &publication)?;
+            if unpruned(db, &publication)? {
+                mark(db, &publication)?;
                 days.progress = Progress::Deleting(publication);
             }
         }
