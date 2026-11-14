@@ -276,7 +276,7 @@
 }
 .dvic-latest-days[data-across] {
   flex-direction: column;
-  justify-content: flex-end;
+  justify-content: space-evenly;
   gap: 5px;
 }
 .dvic-latest-days[data-across] li {
@@ -290,7 +290,7 @@
 }
 .dvic-latest-days[data-across] .dvic-latest-track {
   flex: 1;
-  height: 6px;
+  height: 8px;
   max-width: none;
   margin: 0 20px 0 0;
 }
