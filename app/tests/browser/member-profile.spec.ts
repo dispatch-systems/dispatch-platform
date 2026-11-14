@@ -7,6 +7,7 @@ import {
   linkIn,
   login,
   openDsp,
+  atHome,
 } from '../../../core/shell/tests/support/fixtures.js';
 import { capturedMail } from '../../../core/shell/tests/support/mail-support.js';
 import type { fixture } from '../../../core/shell/tests/support/support.js';
@@ -79,9 +80,7 @@ test('a DSP member invite creates a profile in its own responsive map screen', a
   expect((await fromPage(page, '/api/session')).status).toBe(401);
   await page.getByLabel('Password', { exact: true }).fill(demo.password);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(
-    page.getByRole('heading', { name: 'Currently under development', exact: true }),
-  ).toBeVisible();
+  await atHome(page);
   expect(new URL(page.url()).hostname).toBe(`${demo.memberDsp}.localhost`);
   await expect(page.locator('.member-profile-page')).toHaveCount(0);
   const session = (await fromPage(page, '/api/session')).value;

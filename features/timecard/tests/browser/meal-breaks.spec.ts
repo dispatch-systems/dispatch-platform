@@ -10,6 +10,7 @@ import {
   demo,
   login,
   openDsp,
+  atHome,
 } from '../../../../core/shell/tests/support/fixtures.js';
 import { expectDate, setDate } from '../support/page.js';
 import type { MealSource } from '../../api/index.js';
@@ -114,7 +115,7 @@ function sample(): MealComparisonSource {
 async function open(page: Page, member = false, selectedDate: string | null = date) {
   await login(page, member ? demo.member : demo.email);
   if (!member) await openDsp(page, 'Northline Logistics');
-  await expect(page.getByRole('heading', { name: 'Currently under development' })).toBeVisible();
+  await atHome(page);
   if (page.viewportSize()!.width < 700)
     await page.getByRole('button', { name: 'Open navigation' }).click();
   await page.getByRole('link', { name: 'Timecard', exact: true }).click();

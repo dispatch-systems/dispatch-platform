@@ -1,4 +1,11 @@
-import { test, expect, demo, login, openDsp } from '../../../core/shell/tests/support/fixtures.js';
+import {
+  test,
+  expect,
+  demo,
+  login,
+  openDsp,
+  atHome,
+} from '../../../core/shell/tests/support/fixtures.js';
 import { setDate } from '../../../features/timecard/tests/support/page.js';
 import { capturedMail } from '../../../core/shell/tests/support/mail-support.js';
 test('owner dashboard, search, workforce, timecards, connection verification and collection', async ({
@@ -41,9 +48,7 @@ test('owner dashboard, search, workforce, timecards, connection verification and
     'true',
   );
   await pane.getByRole('button', { name: 'View', exact: true }).click();
-  await expect(
-    page.getByRole('heading', { name: 'Currently under development', exact: true }),
-  ).toBeVisible();
+  await atHome(page);
   await page.getByRole('link', { name: 'Timecard', exact: true }).click();
   await page.getByRole('tab', { name: 'Employees', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Avery Morgan' })).toBeVisible();
@@ -140,9 +145,7 @@ test('member lands in own DSP, cannot see privileged navigation, mobile drawer w
   page,
 }) => {
   await login(page, 'member@dispatch.test');
-  await expect(
-    page.getByRole('heading', { name: 'Currently under development', exact: true }),
-  ).toBeVisible();
+  await atHome(page);
   await expect(page.getByRole('region', { name: 'DSP viewing mode' })).toHaveCount(0);
   // The drawer opens wherever the menu button replaces the sidebar: up to 980px wide.
   for (const width of [900, 390]) {
@@ -364,9 +367,7 @@ test('create a DSP and accept its owner invitation while another account is sign
   await page.getByLabel('Password', { exact: true }).fill('Invited-secure-1!');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   expect(errors).toEqual([]);
-  await expect(
-    page.getByRole('heading', { name: 'Currently under development', exact: true }),
-  ).toBeVisible();
+  await atHome(page);
 });
 
 test('account settings name the account and refuse mismatched new passwords', async ({ page }) => {
