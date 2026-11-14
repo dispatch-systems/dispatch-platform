@@ -119,7 +119,7 @@
   "features/dvic/tests/browser/dvic.spec.ts › the day digest and week grid read the same inspections, with details on desktop and mobile": 6.4,
   "features/dvic/tests/browser/dvic.spec.ts › the latest collected day opens first even when nobody was short; Today leaves it and Latest returns": 5.4,
   "features/dvic/tests/browser/dvic.spec.ts › unconfigured collection explains the missing station and Cortex connection": 6.5,
-  "features/home/tests/browser/home.spec.ts › a member opens their DSP on its home page": 3.8,
+  "features/home/tests/browser/home.spec.ts › a member opens their DSP on its home page, blank until they add a widget, and still being built in a window as narrow as a drawer": 3.8,
   "features/live_route_data/tests/browser/live-route-data.spec.ts › Live Route Data shows its last read, its next and its last error on its page of Settings": 4.5,
   "features/live_route_data/tests/browser/live-route-data.spec.ts › Live Route Data words the schedule its page of Settings refuses, and keeps the days and interval chosen": 5.5,
   "features/routes/tests/browser/routes-settings.spec.ts › Settings draws route data from its declaration, and a window that deletes stored days asks first": 7.7,
