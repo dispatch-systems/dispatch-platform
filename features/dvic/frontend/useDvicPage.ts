@@ -19,9 +19,22 @@ import {
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { hasFeature } from '../../../core/shell/frontend/runtime/features.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
-import { dspHash, settingsHash } from '../../../core/shell/frontend/runtime/navigation.js';
+import {
+  dspHash,
+  hashQuery,
+  replaceHashQuery,
+  settingsHash,
+  useHashQuery,
+} from '../../../core/shell/frontend/runtime/navigation.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
-import { isCollected, weekDays, weekStart, type VehicleClass } from './dvic.js';
+import {
+  isCollected,
+  latestCollected,
+  publication as publishedAt,
+  weekDays,
+  weekStart,
+  type VehicleClass,
+} from './dvic.js';
 import { localDate, shiftDate } from '../../../core/shell/frontend/lib/day.js';
 import { performancePolicy } from '../../../core/shell/frontend/lib/performance-policy.js';
 import { randomId } from '../../../core/shell/frontend/lib/random-id.js';
@@ -34,10 +47,14 @@ const views = [
   ['week', 'Week', 'dvic.week'],
 ] as const;
 
+/** The day a link opens the page on (`?day=`), as Home's Latest DVIC does: on the Day tab, unfiltered. */
+const linkedDay = (query: URLSearchParams) => {
+  const day = query.get('day');
+  return day && /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : undefined;
+};
+
 function selectedWeek(status: DvicStatus | undefined, today: string, chosenWeek?: string) {
-  // The latest collected day, whether or not anyone was short that day.
-  const through = status?.covered.at(-1)?.through;
-  const latestDate = through && through > today ? today : through;
+  const latestDate = latestCollected(status, today);
   const start =
     chosenWeek && chosenWeek >= '2000-01-02' && chosenWeek <= today
       ? chosenWeek
@@ -57,16 +74,15 @@ export function isDvicPageReady(view: DspView) {
     return false;
   const status = dataCache.peek('/api/dsp/dvic/status').data as DvicStatus | undefined;
   if (status === undefined) return false;
-  const chosenWeek = readUpdateState<string | undefined>(
-    'dvic-week',
-    undefined,
-    dspHash(view.dsp.id, 'dvic'),
-  );
-  const { start } = selectedWeek(status, localDate(view.dsp.timezone), chosenWeek);
   const hash = dspHash(view.dsp.id, 'dvic');
-  const query = readUpdateState('dvic-query', '', hash).trim().toLowerCase();
-  const vehicles = readUpdateState<VehicleClass>('dvic-vehicles', '', hash);
-  const page = readUpdateState('dvic-week-page', 0, hash);
+  const linked = linkedDay(hashQuery());
+  const chosenWeek = linked
+    ? weekStart(linked)
+    : readUpdateState<string | undefined>('dvic-week', undefined, hash);
+  const { start } = selectedWeek(status, localDate(view.dsp.timezone), chosenWeek);
+  const query = linked ? '' : readUpdateState('dvic-query', '', hash).trim().toLowerCase();
+  const vehicles = linked ? '' : readUpdateState<VehicleClass>('dvic-vehicles', '', hash);
+  const page = linked ? 0 : readUpdateState('dvic-week-page', 0, hash);
   return (
     dataCache.peek(summaryUrl(start, shiftDate(start, 6), query, vehicles, page)).data !== undefined
   );
@@ -84,7 +100,10 @@ export function useDvicPage(view: DspView) {
     collecting ? performancePolicy.activeCollectionPollMs : performancePolicy.recoveryPollMs,
   );
   const shownViews = views.filter(([, , feature]) => hasFeature(view, feature));
-  const [chosenTab, setTab] = useUpdateState<'day' | 'week'>('dvic-tab', 'day');
+  // A link to a day shows it at once, then becomes the page's own choice, as if picked here.
+  const [linked, setLinked] = useHashQuery(linkedDay);
+  const [keptTab, setTab] = useUpdateState<'day' | 'week'>('dvic-tab', 'day');
+  const chosenTab = linked ? 'day' : keptTab;
   const tab = shownViews.some(([id]) => id === chosenTab)
     ? chosenTab
     : (shownViews[0]?.[0] ?? chosenTab);
@@ -92,13 +111,30 @@ export function useDvicPage(view: DspView) {
     'dvic',
     shownViews.map(([id, label]) => [id, label]),
   );
-  const [chosenWeek, setChosenWeek] = useUpdateState<string | undefined>('dvic-week', undefined);
-  const [chosenDay, setChosenDay] = useUpdateState<string | undefined>('dvic-day', undefined);
-  const [query, setQuery] = useUpdateState('dvic-query', '');
+  const [keptWeek, setChosenWeek] = useUpdateState<string | undefined>('dvic-week', undefined);
+  const chosenWeek = linked ? weekStart(linked) : keptWeek;
+  const [keptDay, setChosenDay] = useUpdateState<string | undefined>('dvic-day', undefined);
+  const chosenDay = linked ?? keptDay;
+  const [keptQuery, setQuery] = useUpdateState('dvic-query', '');
+  const query = linked ? '' : keptQuery;
   const search = useSettled(query, performancePolicy.employeeSearchDelayMs).trim().toLowerCase();
-  const [vehicles, setVehicles] = useUpdateState<VehicleClass>('dvic-vehicles', '');
-  const [page, setPage] = useUpdateState('dvic-week-page', 0);
+  const [keptVehicles, setVehicles] = useUpdateState<VehicleClass>('dvic-vehicles', '');
+  const vehicles = linked ? '' : keptVehicles;
+  const [keptPage, setPage] = useUpdateState('dvic-week-page', 0);
+  const page = linked ? 0 : keptPage;
   const [selected, setSelected] = useState<string>();
+  useEffect(() => {
+    if (!linked) return;
+    setTab('day');
+    setChosenWeek(weekStart(linked));
+    setChosenDay(linked);
+    setQuery('');
+    setVehicles('');
+    setPage(0);
+    setSelected(undefined);
+    replaceHashQuery({});
+    setLinked(undefined);
+  }, [linked, setLinked, setTab, setChosenWeek, setChosenDay, setQuery, setVehicles, setPage]);
   const [pending, setPending] = useState<Job>();
   // A retry keeps its request's id, so a lost reply can't queue it twice; another week is
   // another request.
@@ -118,16 +154,7 @@ export function useDvicPage(view: DspView) {
   const pendingStatus = jobs.find((job) => job.id === pending?.id) ?? pending;
   const running =
     jobs.find(activeJob) ?? (pendingStatus && activeJob(pendingStatus) ? pendingStatus : undefined);
-  const completed = jobs
-    .filter((job) => job.status === 'succeeded')
-    .map((job) => job.completedAt ?? '')
-    .sort()
-    .at(-1);
-  const checked = status.data?.weeks
-    .map((week) => week.checkedAt)
-    .sort()
-    .at(-1);
-  const publication = (completed ?? '') + ':' + (checked ?? '');
+  const { completed, checked, publication } = publishedAt(status.data);
   useEffect(() => {
     if (status.data)
       dataCache.observeVersion('dvic', publication, (key) =>

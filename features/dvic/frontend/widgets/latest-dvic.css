@@ -1,0 +1,176 @@
+/* Latest DVIC on Home: its frame is the widget's whole cell, a size container. */
+.dvic-latest {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  padding: 12px 14px;
+  box-sizing: border-box;
+  color: var(--foreground);
+  text-decoration: none;
+}
+.dvic-latest:hover {
+  background: var(--accent);
+}
+.dvic-latest:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+  border-radius: var(--radius);
+}
+.dvic-latest > header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.dvic-latest > header svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  color: var(--muted-foreground);
+}
+.dvic-latest > header strong {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dvic-latest > header span {
+  margin-left: auto;
+  color: var(--muted-foreground);
+}
+.dvic-latest-note {
+  margin: auto 0;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  text-align: center;
+}
+.dvic-latest-count {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.dvic-latest-count strong {
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.dvic-latest-count span,
+.dvic-latest-count small {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.dvic-latest-count small {
+  margin-top: auto;
+}
+.dvic-latest[data-columns='1'] .dvic-latest-count {
+  justify-content: flex-start;
+  padding-top: 4px;
+}
+/* As many drivers as fit, each whole: one that doesn't wraps into a column past the edge. */
+.dvic-latest-list {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 6px 40px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: hidden;
+}
+.dvic-latest-list li {
+  --tone: var(--series-4);
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 0 2px 9px;
+  box-sizing: border-box;
+  border-left: 3px solid var(--tone);
+  font-size: 12.5px;
+}
+.dvic-latest-list li[data-band='high'] {
+  --tone: var(--series-1);
+}
+.dvic-latest-list li[data-band='low'] {
+  --tone: var(--destructive);
+}
+.dvic-latest-initials {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted-foreground);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.dvic-latest-driver {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.dvic-latest-driver strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dvic-latest-driver small {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dvic-latest-times {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--muted);
+  font-size: 10.5px;
+}
+.dvic-latest-bar {
+  flex: 1.2;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--muted);
+  overflow: hidden;
+}
+.dvic-latest-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--tone);
+}
+.dvic-latest-took {
+  margin-left: auto;
+  white-space: nowrap;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.dvic-latest-took small {
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.dvic-latest[data-columns='4'] .dvic-latest-took {
+  width: 96px;
+  text-align: right;
+}
+.dvic-latest > footer {
+  font-size: 11px;
+  color: var(--muted-foreground);
+}

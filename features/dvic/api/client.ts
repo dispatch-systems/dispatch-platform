@@ -19,6 +19,7 @@ export const summaryUrl = (from: string, to: string, query: string, vehicles: st
   `/api/dsp/dvic/summary?${new URLSearchParams({ from, to, q: query, vehicles, offset: String(page * 25) }).toString()}`;
 export const useSummary = (url: string, publication: string) =>
   useCachedData<DvicSummary>(url, performancePolicy.recoveryPollMs, publication);
+/** A day's short inspections, shortest first, a page of 100; none read without a day. */
 export const useDayInspections = (
   date: string,
   query: string,
@@ -27,7 +28,9 @@ export const useDayInspections = (
   publication: string,
 ) =>
   useCachedData<DvicInspectionPage>(
-    `/api/dsp/dvic/day?${new URLSearchParams({ date, q: query, vehicles, offset: String(page * 100) }).toString()}`,
+    date
+      ? `/api/dsp/dvic/day?${new URLSearchParams({ date, q: query, vehicles, offset: String(page * 100) }).toString()}`
+      : '',
     performancePolicy.recoveryPollMs,
     publication,
   );

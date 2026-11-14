@@ -2,3 +2,4 @@
 # renamed keeps its old id in `formerly`, and one removed leaves its id to the widget that takes
 # its place. The slots rules hold every widget to this list, custom ones too; adding a widget
 # adds its id.
+dvic.latest

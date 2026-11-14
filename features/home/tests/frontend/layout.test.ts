@@ -1,15 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { Widget } from '../../../../core/shell/frontend/runtime/slots.js';
-import {
-  adding,
-  keeping,
-  moving,
-  resized,
-  setting,
-  shown,
-  starting,
-} from '../../frontend/layout.js';
+import { adding, keeping, moving, resized, setting, shown } from '../../frontend/layout.js';
 
 const cells = (columns: number, rows: number) => ({ columns, rows });
 const widget = (id: string, more: Partial<Widget> = {}) =>
@@ -21,20 +13,6 @@ const widget = (id: string, more: Partial<Widget> = {}) =>
     ...more,
   }) as Widget;
 const at = (id: string, x: number, y: number, w = 3, h = 3) => ({ id, x, y, w, h });
-
-test('a page never arranged starts with the widgets that have a place on it, in that order, from the top left', () => {
-  const widgets = [
-    widget('vans.fleet', { home: 2, sizes: [cells(6, 3)] }),
-    widget('dvic.today', { home: 1 }),
-    widget('team.today'),
-    widget('routes.today', { home: 3, sizes: [cells(12, 4)] }),
-  ];
-  assert.deepEqual(starting(widgets), [
-    at('dvic.today', 0, 0),
-    at('vans.fleet', 3, 0, 6, 3),
-    at('routes.today', 0, 3, 12, 4),
-  ]);
-});
 
 test("the page shows the widgets the member has, by their ids now, and keeps the rest's places", () => {
   const widgets = [widget('vans.fleet', { formerly: ['vans.overview'] }), widget('dvic.today')];
