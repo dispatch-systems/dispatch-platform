@@ -373,3 +373,33 @@ test('DVIC viewers can read without collection controls; a disabled feature has 
   await expect(page.getByRole('link', { name: 'DVIC', exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'DVIC', exact: true })).toHaveCount(0);
 });
+
+test('Latest DVIC, added to Home, keeps its place and opens DVIC on the day it shows, whatever week DVIC was left on', async ({
+  page,
+  dispatch,
+}) => {
+  const { dsp } = await seedDvic(dispatch);
+  await login(page);
+  await openDsp(page, dsp.name);
+  // DVIC left on another week opens on the widget's day all the same.
+  await page.getByRole('link', { name: 'DVIC', exact: true }).click();
+  await page.getByRole('button', { name: 'Previous week' }).click();
+  await expect(page.getByRole('group', { name: 'Inspection week' })).toContainText(
+    'Sep 13 – Sep 19',
+  );
+  // A Home page never arranged is blank until a widget is added.
+  await page.getByRole('link', { name: 'Home Page', exact: true }).click();
+  await expect(page.locator('.home-widget')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Add widget', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Latest DVIC', exact: true }).click();
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  const widget = page.getByRole('article', { name: 'Latest DVIC' });
+  await expect(widget).toContainText('Sep 26');
+  await expect(widget.getByRole('listitem').first()).toContainText('Taylor Brooks');
+  await expect(widget.getByRole('listitem').first()).toContainText('34s');
+  await page.reload();
+  await expect(widget.getByRole('listitem').first()).toContainText('Taylor Brooks');
+  await widget.getByRole('link').click();
+  await expect(page.getByRole('heading', { name: 'Sat, Sep 26, 2026' })).toBeVisible();
+  await expect(page.locator('.dvic-footer')).toContainText('3 records');
+});
