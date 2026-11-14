@@ -172,3 +172,94 @@
   font-size: 11px;
   color: var(--muted-foreground);
 }
+/* A day nobody was short: its 0, centred, or above the days before it. */
+.dvic-latest-quiet {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+.dvic-latest-quiet[data-days] {
+  align-items: stretch;
+  justify-content: flex-start;
+}
+.dvic-latest-zero {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.dvic-latest[data-columns='1'] .dvic-latest-zero {
+  flex-direction: column;
+  gap: 4px;
+}
+.dvic-latest-zero svg {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  color: var(--series-1);
+}
+.dvic-latest-zero strong {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--foreground);
+}
+.dvic-latest-days {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dvic-latest-days li {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  color: var(--muted-foreground);
+}
+.dvic-latest-days li[data-latest] {
+  color: var(--foreground);
+  font-weight: 600;
+}
+/* Each day's bar rises from the foot of its track, its count just above it. */
+.dvic-latest-track {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  max-width: 30px;
+  margin-top: 16px;
+}
+.dvic-latest-track i {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--height);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--muted-foreground) 40%, transparent);
+}
+.dvic-latest-track i[data-zero] {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--series-1);
+}
+.dvic-latest-track b {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--height) + 4px);
+  font-weight: inherit;
+  text-align: center;
+}
